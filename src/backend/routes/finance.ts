@@ -1,0 +1,333 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { getSqliteDatabase } from '../db/database';
+import { computeMonthlyBilling, generateMonthlyBilling } from '../lib/billing';
+import { nextDocumentNumber } from '../lib/numbering';
+import { recordAudit } from '../lib/audit';
+import { requireAuth, requireRole } from './auth';
+
+const monthSchema = z.object({
+  referenceMonth: z.string().regex(/^\d{4}-\d{2}$/)
+});
+
+const paySchema = z.object({
+  paymentMethod: z.enum(['numerario', 'transferencia', 'outro']).default('numerario'),
+  paymentDate: z.string().optional()
+});
+
+const cancelSchema = z.object({
+  reason: z.string().trim().optional().nullable()
+});
+
+const serviceSchema = z.object({
+  clientId: z.coerce.number().int().positive(),
+  planId: z.coerce.number().int().positive().optional().nullable(),
+  monthlyValueCve: z.coerce.number().min(0),
+  dueDay: z.coerce.number().int().min(1).max(31).default(1),
+  activationDate: z.string().optional().nullable(),
+  status: z.enum(['active', 'suspended', 'cancelled']).default('active'),
+  technicalNotes: z.string().trim().optional().nullable()
+});
+
+const nextNumber = nextDocumentNumber;
+
+export async function registerFinanceRoutes(app: FastifyInstance) {
+  const billingWrite = { preHandler: requireRole(['admin', 'operator']) };
+
+  app.get('/api/services', { preHandler: requireAuth() }, async () => {
+    const db = getSqliteDatabase();
+    return db.prepare(`
+      SELECT
+        s.id,
+        s.client_id AS clientId,
+        c.full_name AS clientName,
+        s.plan_id AS planId,
+        p.name AS planName,
+        s.monthly_value_cve AS monthlyValueCve,
+        s.due_day AS dueDay,
+        s.status,
+        s.activation_date AS activationDate,
+        s.technical_notes AS technicalNotes
+      FROM services s
+      JOIN clients c ON c.id = s.client_id
+      LEFT JOIN internet_plans p ON p.id = s.plan_id
+      ORDER BY c.full_name
+    `).all();
+  });
+
+  app.post('/api/services', billingWrite, async (request, reply) => {
+    const parsed = serviceSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Dados de servico invalidos' });
+    }
+
+    const db = getSqliteDatabase();
+    const client = db.prepare('SELECT id FROM clients WHERE id = ?').get(parsed.data.clientId);
+    if (!client) {
+      return reply.status(404).send({ error: 'Cliente nao encontrado' });
+    }
+
+    if (parsed.data.planId) {
+      const plan = db.prepare('SELECT id FROM internet_plans WHERE id = ?').get(parsed.data.planId);
+      if (!plan) {
+        return reply.status(404).send({ error: 'Plano nao encontrado' });
+      }
+    }
+
+    const result = db.prepare(`
+      INSERT INTO services (
+        client_id, plan_id, monthly_value_cve, activation_date, due_day,
+        status, technical_notes, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    `).run(
+      parsed.data.clientId,
+      parsed.data.planId || null,
+      parsed.data.monthlyValueCve,
+      parsed.data.activationDate || null,
+      parsed.data.dueDay,
+      parsed.data.status,
+      parsed.data.technicalNotes || null
+    );
+
+    recordAudit(request, {
+      action: 'create',
+      entityType: 'service',
+      entityId: Number(result.lastInsertRowid),
+      summary: `Criou servico para cliente ${parsed.data.clientId}`,
+      metadata: { clientId: parsed.data.clientId, planId: parsed.data.planId ?? null, status: parsed.data.status }
+    });
+    return reply.status(201).send({ id: result.lastInsertRowid });
+  });
+
+  app.put('/api/services/:id', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const parsed = serviceSchema.safeParse(request.body);
+    if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Dados de servico invalidos' });
+    }
+
+    const db = getSqliteDatabase();
+    const service = db.prepare('SELECT id FROM services WHERE id = ?').get(id);
+    if (!service) {
+      return reply.status(404).send({ error: 'Servico nao encontrado' });
+    }
+
+    const client = db.prepare('SELECT id FROM clients WHERE id = ?').get(parsed.data.clientId);
+    if (!client) {
+      return reply.status(404).send({ error: 'Cliente nao encontrado' });
+    }
+
+    if (parsed.data.planId) {
+      const plan = db.prepare('SELECT id FROM internet_plans WHERE id = ?').get(parsed.data.planId);
+      if (!plan) {
+        return reply.status(404).send({ error: 'Plano nao encontrado' });
+      }
+    }
+
+    db.prepare(`
+      UPDATE services
+      SET client_id = ?,
+          plan_id = ?,
+          monthly_value_cve = ?,
+          activation_date = ?,
+          due_day = ?,
+          status = ?,
+          technical_notes = ?,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(
+      parsed.data.clientId,
+      parsed.data.planId || null,
+      parsed.data.monthlyValueCve,
+      parsed.data.activationDate || null,
+      parsed.data.dueDay,
+      parsed.data.status,
+      parsed.data.technicalNotes || null,
+      id
+    );
+
+    recordAudit(request, {
+      action: 'update',
+      entityType: 'service',
+      entityId: id,
+      summary: `Atualizou servico ${id}`,
+      metadata: { clientId: parsed.data.clientId, planId: parsed.data.planId ?? null, status: parsed.data.status }
+    });
+    return { ok: true };
+  });
+
+  app.get('/api/payments', { preHandler: requireRole(['admin', 'operator']) }, async () => {
+    const db = getSqliteDatabase();
+    return db.prepare(`
+      SELECT
+        py.id,
+        py.client_id AS clientId,
+        c.full_name AS clientName,
+        c.client_code AS clientCode,
+        c.nif AS clientNif,
+        c.phone AS clientPhone,
+        py.service_id AS serviceId,
+        py.reference_month AS referenceMonth,
+        py.amount_cve AS amountCve,
+        py.due_date AS dueDate,
+        py.payment_date AS paymentDate,
+        py.payment_method AS paymentMethod,
+        py.status,
+        py.invoice_number AS invoiceNumber,
+        py.invoice_date AS invoiceDate,
+        py.receipt_number AS receiptNumber,
+        py.receipt_date AS receiptDate
+      FROM payments py
+      JOIN clients c ON c.id = py.client_id
+      ORDER BY py.reference_month DESC, c.full_name
+    `).all();
+  });
+
+  app.post('/api/billing/preview-monthly', billingWrite, async (request, reply) => {
+    const parsed = monthSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Mes de referencia invalido' });
+    }
+    const db = getSqliteDatabase();
+    return computeMonthlyBilling(db, parsed.data.referenceMonth);
+  });
+
+  app.post('/api/billing/generate-monthly', billingWrite, async (request, reply) => {
+    const parsed = monthSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Mes de referencia invalido' });
+    }
+
+    const db = getSqliteDatabase();
+    const result = generateMonthlyBilling(db, parsed.data.referenceMonth);
+    recordAudit(request, {
+      action: 'generate_monthly',
+      entityType: 'billing',
+      entityId: parsed.data.referenceMonth,
+      summary: `Gerou cobranca mensal ${parsed.data.referenceMonth}`,
+      metadata: { activeServices: result.activeServices, created: result.created }
+    });
+    return {
+      referenceMonth: result.referenceMonth,
+      activeServices: result.activeServices,
+      created: result.created
+    };
+  });
+
+  app.post('/api/payments/:id/pay', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const parsed = paySchema.safeParse(request.body || {});
+    if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Pagamento invalido' });
+    }
+
+    const db = getSqliteDatabase();
+    const payment = db.prepare('SELECT id, status FROM payments WHERE id = ?').get(id) as { id: number; status: 'pending' | 'paid' | 'overdue' | 'cancelled' } | undefined;
+    if (!payment) {
+      return reply.status(404).send({ error: 'Pagamento nao encontrado' });
+    }
+    if (payment.status === 'cancelled') {
+      return reply.status(400).send({ error: 'Pagamento anulado nao pode ser pago' });
+    }
+
+    const receiptNumber = nextNumber('receipt', id);
+    db.prepare(`
+      UPDATE payments
+      SET status = 'paid',
+          payment_method = ?,
+          payment_date = ?,
+          receipt_number = COALESCE(receipt_number, ?),
+          receipt_date = COALESCE(receipt_date, date('now')),
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(parsed.data.paymentMethod, parsed.data.paymentDate || new Date().toISOString().slice(0, 10), receiptNumber, id);
+
+    recordAudit(request, {
+      action: 'pay',
+      entityType: 'payment',
+      entityId: id,
+      summary: `Marcou pagamento ${id} como pago`,
+      metadata: { paymentMethod: parsed.data.paymentMethod }
+    });
+    return db.prepare('SELECT * FROM payments WHERE id = ?').get(id);
+  });
+
+  app.post('/api/payments/:id/overdue', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Pagamento invalido' });
+    }
+
+    const db = getSqliteDatabase();
+    const payment = db.prepare('SELECT id, status FROM payments WHERE id = ?')
+      .get(id) as { id: number; status: 'pending' | 'paid' | 'overdue' | 'cancelled' } | undefined;
+    if (!payment) {
+      return reply.status(404).send({ error: 'Pagamento nao encontrado' });
+    }
+    if (payment.status === 'paid') {
+      return reply.status(400).send({ error: 'Pagamento pago nao pode ser marcado em atraso' });
+    }
+    if (payment.status === 'cancelled') {
+      return reply.status(400).send({ error: 'Pagamento anulado nao pode ser marcado em atraso' });
+    }
+
+    db.prepare(`
+      UPDATE payments
+      SET status = 'overdue',
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(id);
+
+    recordAudit(request, {
+      action: 'mark_overdue',
+      entityType: 'payment',
+      entityId: id,
+      summary: `Marcou pagamento ${id} em atraso`
+    });
+    return db.prepare('SELECT * FROM payments WHERE id = ?').get(id);
+  });
+
+  app.post('/api/payments/:id/cancel', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const parsed = cancelSchema.safeParse(request.body || {});
+    if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Pagamento invalido' });
+    }
+
+    const db = getSqliteDatabase();
+    const payment = db.prepare('SELECT id, status, notes FROM payments WHERE id = ?')
+      .get(id) as { id: number; status: 'pending' | 'paid' | 'overdue' | 'cancelled'; notes: string | null } | undefined;
+    if (!payment) {
+      return reply.status(404).send({ error: 'Pagamento nao encontrado' });
+    }
+    if (payment.status === 'paid') {
+      return reply.status(400).send({ error: 'Pagamento pago nao pode ser anulado' });
+    }
+    if (payment.status === 'cancelled') {
+      return reply.status(400).send({ error: 'Pagamento ja esta anulado' });
+    }
+
+    const reason = parsed.data.reason?.trim() || '';
+    const notes = reason
+      ? [payment.notes?.trim(), reason].filter(Boolean).join('\n')
+      : payment.notes;
+
+    db.prepare(`
+      UPDATE payments
+      SET status = 'cancelled',
+          notes = ?,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(notes || null, id);
+
+    recordAudit(request, {
+      action: 'cancel',
+      entityType: 'payment',
+      entityId: id,
+      summary: `Anulou pagamento ${id}`,
+      metadata: { reason }
+    });
+    return db.prepare('SELECT * FROM payments WHERE id = ?').get(id);
+  });
+}

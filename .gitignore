@@ -1,0 +1,82 @@
+# Dependencies
+node_modules/
+
+# Build artefactos
+dist/
+release/
+out/
+build/
+
+# TypeScript
+*.tsbuildinfo
+
+# Logs
+*.log
+.dev-*.log
+.dev-*.err.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Snapshots / pacotes locais
+*.zip
+*.tar.gz
+*.7z
+
+# Bases de dados locais (SQLite)
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Backups
+backups/
+*.backup
+
+# Variaveis de ambiente / segredos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# Caches
+.cache/
+.parcel-cache/
+.eslintcache
+.npm/
+.pnpm-store/
+
+# Coverage / testes
+coverage/
+.nyc_output/
+
+# Scratch / specs internos
+.scratch/
+.specs/
+
+# Electron-builder
+release-builds/
+app-builds/
+
+# Agents / runtime locais
+.agents/
+
+# Claude Code settings locais (por maquina)
+.claude/settings.local.json

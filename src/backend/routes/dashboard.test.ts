@@ -1,0 +1,159 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import type { FastifyInstance } from 'fastify';
+import type Database from 'better-sqlite3';
+
+let app: FastifyInstance;
+let db: Database.Database;
+let dataDir: string;
+let closeDatabaseForTests: () => void;
+
+const TABLES_TO_CLEAR = [
+  'service_events',
+  'service_device_assignments',
+  'payments',
+  'stock_movements',
+  'services',
+  'internet_plans',
+  'equipment_catalog',
+  'app_settings',
+  'clients'
+];
+
+beforeAll(async () => {
+  dataDir = mkdtempSync(path.join(tmpdir(), 'ispm-dashboard-test-'));
+  process.env.ISPM_DATA_DIR = dataDir;
+  process.env.ISPM_AUTH = 'off';
+
+  const server = await import('../server');
+  const database = await import('../db/database');
+
+  app = await server.createBackendApp();
+  await app.ready();
+  db = database.getSqliteDatabase();
+  closeDatabaseForTests = database.closeDatabaseForTests;
+});
+
+beforeEach(() => {
+  for (const table of TABLES_TO_CLEAR) {
+    db.prepare(`DELETE FROM ${table}`).run();
+  }
+});
+
+afterAll(async () => {
+  await app.close();
+  closeDatabaseForTests();
+  rmSync(dataDir, { recursive: true, force: true });
+  delete process.env.ISPM_DATA_DIR;
+  delete process.env.ISPM_AUTH;
+});
+
+describe('GET /api/dashboard/summary', () => {
+  test('returns sane zero state with empty database', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/dashboard/summary' });
+    expect(response.statusCode).toBe(200);
+
+    const body = response.json();
+    expect(body).toMatchObject({
+      totalClients: 0,
+      activeClients: 0,
+      suspendedClients: 0,
+      cancelledClients: 0,
+      clientsWithoutPhone: 0,
+      overduePayments: 0,
+      pendingPayments: 0,
+      lowStockModels: 0,
+      activeServices: 0,
+      paidMonthCve: 0
+    });
+
+    expect(Array.isArray(body.revenueByMonth)).toBe(true);
+    expect(body.revenueByMonth).toHaveLength(12);
+    body.revenueByMonth.forEach((point: { referenceMonth: string; paidCve: number; pendingCve: number }) => {
+      expect(point.paidCve).toBe(0);
+      expect(point.pendingCve).toBe(0);
+      expect(point.referenceMonth).toMatch(/^\d{4}-\d{2}$/);
+    });
+
+    expect(Array.isArray(body.upcomingDues)).toBe(true);
+    expect(body.upcomingDues).toHaveLength(0);
+
+    expect(Array.isArray(body.criticalOverdue)).toBe(true);
+    expect(body.criticalOverdue).toHaveLength(0);
+
+    expect(Array.isArray(body.planMix)).toBe(true);
+    expect(body.planMix).toHaveLength(0);
+
+    expect(Array.isArray(body.workQueue)).toBe(true);
+    expect(body.workQueue).toHaveLength(0);
+  });
+
+  test('aggregates paid revenue for the current month into paidMonthCve', async () => {
+    db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('C001', 'Cliente Teste', 'active')`).run();
+    const clientId = db.prepare(`SELECT id FROM clients WHERE client_code = 'C001'`).get() as { id: number };
+    db.prepare(`INSERT INTO internet_plans (name, connection_type, monthly_price_cve, active) VALUES ('Plano A', 'fibra', 3500, 1)`).run();
+    const planId = db.prepare(`SELECT id FROM internet_plans WHERE name = 'Plano A'`).get() as { id: number };
+    db.prepare(`
+      INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status)
+      VALUES (?, ?, 3500, 10, 'active')
+    `).run(clientId.id, planId.id);
+    const serviceId = db.prepare(`SELECT id FROM services LIMIT 1`).get() as { id: number };
+
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const dueDate = `${currentMonth}-10`;
+
+    db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
+      VALUES (?, ?, ?, 3500, ?, ?, 'paid')
+    `).run(clientId.id, serviceId.id, currentMonth, dueDate, dueDate);
+
+    const response = await app.inject({ method: 'GET', url: '/api/dashboard/summary' });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+
+    expect(body.paidMonthCve).toBe(3500);
+    expect(body.activeServices).toBe(1);
+    expect(body.planMix).toEqual([{ connectionType: 'fibra', count: 1 }]);
+
+    const lastPoint = body.revenueByMonth.at(-1);
+    expect(lastPoint?.referenceMonth).toBe(currentMonth);
+    expect(lastPoint?.paidCve).toBe(3500);
+  });
+
+  test('flags critical overdue payments older than 30 days', async () => {
+    db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('C002', 'Cliente Atrasado', 'active')`).run();
+    const clientId = db.prepare(`SELECT id FROM clients WHERE client_code = 'C002'`).get() as { id: number };
+    db.prepare(`INSERT INTO internet_plans (name, connection_type, monthly_price_cve, active) VALUES ('Plano B', 'radio', 2000, 1)`).run();
+    const planId = db.prepare(`SELECT id FROM internet_plans WHERE name = 'Plano B'`).get() as { id: number };
+    db.prepare(`
+      INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status)
+      VALUES (?, ?, 2000, 1, 'active')
+    `).run(clientId.id, planId.id);
+    const serviceId = db.prepare(`SELECT id FROM services LIMIT 1`).get() as { id: number };
+
+    const fortyDaysAgo = new Date();
+    fortyDaysAgo.setDate(fortyDaysAgo.getDate() - 40);
+    const overdueDate = fortyDaysAgo.toISOString().slice(0, 10);
+    const overdueMonth = overdueDate.slice(0, 7);
+
+    db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+      VALUES (?, ?, ?, 2000, ?, 'overdue')
+    `).run(clientId.id, serviceId.id, overdueMonth, overdueDate);
+
+    const response = await app.inject({ method: 'GET', url: '/api/dashboard/summary' });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+
+    expect(body.criticalOverdue).toHaveLength(1);
+    expect(body.criticalOverdue[0]).toMatchObject({
+      clientName: 'Cliente Atrasado',
+      clientCode: 'C002',
+      amountCve: 2000
+    });
+    expect(body.criticalOverdue[0].daysOverdue).toBeGreaterThanOrEqual(39);
+  });
+});

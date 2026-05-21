@@ -1,0 +1,659 @@
+import { Cable, History, Pencil, Plus, Wrench } from 'lucide-react';
+import type { FormEvent } from 'react';
+import { useEffect, useState } from 'react';
+import { Badge, Dialog, useToast } from '../components';
+import { authFetch, useAuth } from '../lib/auth';
+import { statusLabel, statusTone } from '../lib/status';
+import type { Client, DeviceAssignment, PlanRow, ServiceEvent, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
+
+const eventTypeLabel: Record<ServiceEventType, string> = {
+  instalacao: 'Instalacao',
+  manutencao: 'Manutencao',
+  troca_equipamento: 'Troca de equipamento',
+  visita: 'Visita tecnica',
+  alteracao_servico: 'Alteracao de servico'
+};
+
+const eventTypeTone: Record<ServiceEventType, 'success' | 'info' | 'neutral' | 'accent'> = {
+  instalacao: 'success',
+  manutencao: 'info',
+  troca_equipamento: 'info',
+  visita: 'neutral',
+  alteracao_servico: 'accent'
+};
+
+type DeviceFormState = {
+  catalogId: string;
+  serialNumber: string;
+  assetTag: string;
+  ipAddress: string;
+  macAddress: string;
+  notes: string;
+};
+
+type EventFormState = {
+  eventType: ServiceEventType;
+  notes: string;
+};
+
+function emptyDeviceForm(): DeviceFormState {
+  return { catalogId: '', serialNumber: '', assetTag: '', ipAddress: '', macAddress: '', notes: '' };
+}
+
+function emptyEventForm(): EventFormState {
+  return { eventType: 'visita', notes: '' };
+}
+
+function formatDateTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDateOnly(iso: string | null): string {
+  if (!iso) return '-';
+  return iso.slice(0, 10);
+}
+
+type ServiceFormState = {
+  clientId: string;
+  planId: string;
+  monthlyValueCve: string;
+  dueDay: string;
+  activationDate: string;
+  status: 'active' | 'suspended' | 'cancelled';
+  technicalNotes: string;
+};
+
+function emptyServiceForm(): ServiceFormState {
+  return {
+    clientId: '',
+    planId: '',
+    monthlyValueCve: '',
+    dueDay: '1',
+    activationDate: new Date().toISOString().slice(0, 10),
+    status: 'active',
+    technicalNotes: ''
+  };
+}
+
+export function ServicesModule() {
+  const { toast } = useToast();
+  const auth = useAuth();
+  const canManageServices = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
+  const canRecordTechnical = auth.isAuthBypassed || auth.hasRole('admin', 'operator', 'technician');
+  const [services, setServices] = useState<ServiceRow[]>([]);
+  const [selectedService, setSelectedService] = useState<ServiceRow | null>(null);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [plans, setPlans] = useState<PlanRow[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [editingService, setEditingService] = useState<ServiceRow | null>(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | ServiceRow['status']>('all');
+  const [form, setForm] = useState<ServiceFormState>(emptyServiceForm());
+  const [technicalHistory, setTechnicalHistory] = useState<TechnicalHistory | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [catalogList, setCatalogList] = useState<StockCatalogRow[]>([]);
+  const [showDeviceDialog, setShowDeviceDialog] = useState(false);
+  const [deviceForm, setDeviceForm] = useState<DeviceFormState>(emptyDeviceForm());
+  const [showEventDialog, setShowEventDialog] = useState(false);
+  const [eventForm, setEventForm] = useState<EventFormState>(emptyEventForm());
+  const [submitting, setSubmitting] = useState(false);
+
+  function loadServices() {
+    return authFetch('http://127.0.0.1:3001/api/services')
+      .then((response) => response.json() as Promise<ServiceRow[]>)
+      .then(setServices)
+      .catch(() => setServices([]));
+  }
+
+  useEffect(() => {
+    void loadServices();
+    authFetch('http://127.0.0.1:3001/api/clients')
+      .then((response) => response.json() as Promise<Client[]>)
+      .then(setClients)
+      .catch(() => setClients([]));
+    authFetch('http://127.0.0.1:3001/api/plans')
+      .then((response) => response.json() as Promise<PlanRow[]>)
+      .then(setPlans)
+      .catch(() => setPlans([]));
+  }, []);
+
+  function updateForm(field: keyof ServiceFormState, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function selectPlan(planId: string) {
+    const plan = plans.find((item) => String(item.id) === planId);
+    setForm((current) => ({
+      ...current,
+      planId,
+      monthlyValueCve: plan ? String(plan.monthlyPriceCve) : current.monthlyValueCve
+    }));
+  }
+
+  function openCreate() {
+    setSelectedService(null);
+    setEditingService(null);
+    setForm(emptyServiceForm());
+    setShowForm(true);
+  }
+
+  function editService(service: ServiceRow) {
+    setEditingService(service);
+    setSelectedService(null);
+    setForm({
+      clientId: String(service.clientId),
+      planId: service.planId ? String(service.planId) : '',
+      monthlyValueCve: String(service.monthlyValueCve),
+      dueDay: String(service.dueDay),
+      activationDate: service.activationDate || new Date().toISOString().slice(0, 10),
+      status: service.status,
+      technicalNotes: service.technicalNotes || ''
+    });
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    setEditingService(null);
+    setShowForm(false);
+    setForm(emptyServiceForm());
+  }
+
+  async function loadTechnicalHistory(serviceId: number) {
+    setHistoryLoading(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/services/${serviceId}/technical-history`);
+      if (!response.ok) {
+        setTechnicalHistory({ serviceId, assignments: [], events: [] });
+        return;
+      }
+      const data = await response.json() as TechnicalHistory;
+      setTechnicalHistory(data);
+    } catch {
+      setTechnicalHistory({ serviceId, assignments: [], events: [] });
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function ensureCatalogLoaded() {
+    if (catalogList.length > 0) return;
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/stock/summary');
+      if (!response.ok) return;
+      const data = await response.json() as StockSummary;
+      setCatalogList(data.rows.filter((r) => r.active));
+    } catch {
+      // silent
+    }
+  }
+
+  useEffect(() => {
+    if (!selectedService) {
+      setTechnicalHistory(null);
+      return;
+    }
+    void loadTechnicalHistory(selectedService.id);
+  }, [selectedService]);
+
+  function openDeviceDialog() {
+    setDeviceForm(emptyDeviceForm());
+    void ensureCatalogLoaded();
+    setShowDeviceDialog(true);
+  }
+
+  function closeDeviceDialog() {
+    if (submitting) return;
+    setShowDeviceDialog(false);
+    setDeviceForm(emptyDeviceForm());
+  }
+
+  async function submitDeviceAssignment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedService) return;
+    if (!deviceForm.catalogId) {
+      toast('Seleciona o modelo do equipamento.', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/services/${selectedService.id}/device-assignments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          catalogId: Number(deviceForm.catalogId),
+          serialNumber: deviceForm.serialNumber || null,
+          assetTag: deviceForm.assetTag || null,
+          ipAddress: deviceForm.ipAddress || null,
+          macAddress: deviceForm.macAddress || null,
+          notes: deviceForm.notes || null
+        })
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) {
+        toast(data.error || 'Nao foi possivel atribuir o equipamento.', 'error');
+        return;
+      }
+      toast('Equipamento atribuido ao servico.', 'success');
+      setShowDeviceDialog(false);
+      setDeviceForm(emptyDeviceForm());
+      await loadTechnicalHistory(selectedService.id);
+    } catch {
+      toast('Falha de rede ao atribuir equipamento.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function openEventDialog() {
+    setEventForm(emptyEventForm());
+    setShowEventDialog(true);
+  }
+
+  function closeEventDialog() {
+    if (submitting) return;
+    setShowEventDialog(false);
+    setEventForm(emptyEventForm());
+  }
+
+  async function submitEvent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedService) return;
+    setSubmitting(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/services/${selectedService.id}/technical-events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventType: eventForm.eventType,
+          notes: eventForm.notes || null
+        })
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) {
+        toast(data.error || 'Nao foi possivel registar o evento.', 'error');
+        return;
+      }
+      toast('Evento tecnico registado.', 'success');
+      setShowEventDialog(false);
+      setEventForm(emptyEventForm());
+      await loadTechnicalHistory(selectedService.id);
+    } catch {
+      toast('Falha de rede ao registar evento.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function saveService(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const url = editingService ? `http://127.0.0.1:3001/api/services/${editingService.id}` : 'http://127.0.0.1:3001/api/services';
+    const response = await authFetch(url, {
+      method: editingService ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientId: Number(form.clientId),
+        planId: form.planId ? Number(form.planId) : null,
+        monthlyValueCve: Number(form.monthlyValueCve),
+        dueDay: Number(form.dueDay),
+        activationDate: form.activationDate,
+        status: form.status,
+        technicalNotes: form.technicalNotes
+      })
+    });
+
+    if (!response.ok) {
+      const result = await response.json() as { error?: string };
+      toast(result.error || (editingService ? 'Nao foi possivel atualizar o servico.' : 'Nao foi possivel criar o servico.'), 'error');
+      return;
+    }
+
+    toast(editingService ? 'Servico atualizado.' : 'Servico criado.', 'success');
+    closeForm();
+    await loadServices();
+  }
+
+  const visibleServices = services.filter((service) => {
+    const normalizedSearch = search.trim().toLowerCase();
+    const matchesSearch = !normalizedSearch
+      || service.clientName.toLowerCase().includes(normalizedSearch)
+      || (service.planName || '').toLowerCase().includes(normalizedSearch);
+    const matchesStatus = statusFilter === 'all' || service.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  return (
+    <section className="module-panel">
+      <div className="module-header">
+        <div>
+          <p className="eyebrow">Modulo</p>
+          <h2>Servicos</h2>
+        </div>
+        {canManageServices && (
+          <button type="button" onClick={openCreate}>
+            Novo servico
+          </button>
+        )}
+      </div>
+
+      <div className="filter-bar">
+        <label>
+          Buscar
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente ou plano" />
+        </label>
+        <label>
+          Estado
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | ServiceRow['status'])}>
+            <option value="all">Todos</option>
+            <option value="active">Ativos</option>
+            <option value="suspended">Suspensos</option>
+            <option value="cancelled">Cancelados</option>
+          </select>
+        </label>
+        <button type="button" onClick={() => {
+          setSearch('');
+          setStatusFilter('all');
+        }}>
+          Limpar filtros
+        </button>
+        <small>{visibleServices.length} servicos</small>
+      </div>
+
+      {selectedService && (
+        <div className="client-detail">
+          <div>
+            <p className="eyebrow">Servico selecionado</p>
+            <h2>{selectedService.clientName}</h2>
+          </div>
+          <dl>
+            <div><dt>Plano</dt><dd>{selectedService.planName || '-'}</dd></div>
+            <div><dt>Mensalidade</dt><dd>{selectedService.monthlyValueCve.toLocaleString('pt-PT')} CVE</dd></div>
+            <div><dt>Vencimento</dt><dd>Dia {selectedService.dueDay}</dd></div>
+            <div><dt>Estado</dt><dd>{selectedService.status}</dd></div>
+          </dl>
+
+          <section className="technical-section">
+            <header className="technical-section-head">
+              <div>
+                <p className="eyebrow"><Cable size={12} /> Equipamentos</p>
+                <h3>
+                  {technicalHistory
+                    ? `${technicalHistory.assignments.filter((a) => !a.endDate).length} ativo(s) / ${technicalHistory.assignments.length} total`
+                    : 'A carregar...'}
+                </h3>
+              </div>
+              {canRecordTechnical && (
+                <button type="button" className="technical-add" onClick={openDeviceDialog}>
+                  <Plus size={14} /> Adicionar
+                </button>
+              )}
+            </header>
+            {historyLoading && !technicalHistory && <p className="module-message">A carregar historico...</p>}
+            {technicalHistory && technicalHistory.assignments.length === 0 && (
+              <p className="module-message">Nenhum equipamento atribuido a este servico.</p>
+            )}
+            {technicalHistory && technicalHistory.assignments.length > 0 && (
+              <ul className="technical-list">
+                {technicalHistory.assignments.map((assignment: DeviceAssignment) => {
+                  const active = !assignment.endDate;
+                  return (
+                    <li key={assignment.id} className={active ? 'technical-item active' : 'technical-item past'}>
+                      <div className="technical-item-head">
+                        <strong>
+                          {assignment.brand ? `${assignment.brand} ${assignment.model}` : assignment.model}
+                          <span className="technical-item-type"> · {assignment.catalogType}</span>
+                        </strong>
+                        <Badge tone={active ? 'success' : 'neutral'}>{active ? 'Ativo' : 'Removido'}</Badge>
+                      </div>
+                      <dl className="technical-item-meta">
+                        {assignment.serialNumber && <div><dt>Serial</dt><dd>{assignment.serialNumber}</dd></div>}
+                        {assignment.macAddress && <div><dt>MAC</dt><dd>{assignment.macAddress}</dd></div>}
+                        {assignment.ipAddress && <div><dt>IP</dt><dd>{assignment.ipAddress}</dd></div>}
+                        {assignment.assetTag && <div><dt>Tag</dt><dd>{assignment.assetTag}</dd></div>}
+                        <div><dt>Inicio</dt><dd>{formatDateOnly(assignment.startDate)}</dd></div>
+                        {assignment.endDate && <div><dt>Fim</dt><dd>{formatDateOnly(assignment.endDate)}</dd></div>}
+                      </dl>
+                      {assignment.notes && <p className="technical-item-notes">{assignment.notes}</p>}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
+          <section className="technical-section">
+            <header className="technical-section-head">
+              <div>
+                <p className="eyebrow"><History size={12} /> Eventos tecnicos</p>
+                <h3>{technicalHistory ? `${technicalHistory.events.length} evento(s)` : 'A carregar...'}</h3>
+              </div>
+              {canRecordTechnical && (
+                <button type="button" className="technical-add" onClick={openEventDialog}>
+                  <Wrench size={14} /> Registar
+                </button>
+              )}
+            </header>
+            {technicalHistory && technicalHistory.events.length === 0 && (
+              <p className="module-message">Sem eventos registados para este servico.</p>
+            )}
+            {technicalHistory && technicalHistory.events.length > 0 && (
+              <ul className="technical-timeline">
+                {technicalHistory.events.map((event: ServiceEvent) => (
+                  <li key={event.id} className="technical-event">
+                    <div className="technical-event-head">
+                      <Badge tone={eventTypeTone[event.eventType]}>{eventTypeLabel[event.eventType]}</Badge>
+                      <small>{formatDateTime(event.createdAt)}</small>
+                    </div>
+                    {event.notes && <p className="technical-event-notes">{event.notes}</p>}
+                    {event.technicianName && (
+                      <small className="technical-event-tech">Tecnico: {event.technicianName}</small>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <div className="form-actions detail-actions">
+            <button type="button" onClick={() => setSelectedService(null)}>Fechar detalhe</button>
+            {canManageServices && <button type="button" onClick={() => editService(selectedService)}>Editar servico</button>}
+          </div>
+        </div>
+      )}
+
+      <div className="module-table">
+        {visibleServices.map((service) => (
+          <div
+            className="module-row service-row interactive"
+            key={service.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => setSelectedService(service)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                setSelectedService(service);
+              }
+            }}
+          >
+            <span>
+              <strong>{service.clientName}</strong>
+              <small>{service.planName || 'Sem plano'} - dia {service.dueDay}</small>
+            </span>
+            <small>{service.monthlyValueCve.toLocaleString('pt-PT')} CVE</small>
+            <Badge tone={statusTone(service.status)}>{statusLabel(service.status)}</Badge>
+            {canManageServices && (
+              <div className="row-actions" onClick={(event) => event.stopPropagation()}>
+                <button
+                  type="button"
+                  className="row-action"
+                  title="Editar servico"
+                  aria-label="Editar servico"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    editService(service);
+                  }}
+                >
+                  <Pencil size={14} />
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+        {visibleServices.length === 0 && (
+          <p className="module-message">Nenhum servico encontrado para os filtros atuais.</p>
+        )}
+      </div>
+
+      <Dialog
+        open={showForm}
+        onClose={closeForm}
+        eyebrow={editingService ? 'Editar servico' : 'Novo servico'}
+        title={editingService ? editingService.clientName : 'Servico'}
+        size="md"
+        actions={
+          <>
+            <button type="button" onClick={closeForm}>Cancelar</button>
+            <button type="submit" form="service-form" className="primary">
+              {editingService ? 'Atualizar servico' : 'Gravar servico'}
+            </button>
+          </>
+        }
+      >
+        <form id="service-form" className="client-form" onSubmit={saveService}>
+          <label>
+            Cliente
+            <select required value={form.clientId} onChange={(event) => updateForm('clientId', event.target.value)}>
+              <option value="">Selecionar cliente</option>
+              {clients.map((client) => (
+                <option key={client.id} value={client.id}>{client.fullName} - {client.clientCode}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Plano
+            <select value={form.planId} onChange={(event) => selectPlan(event.target.value)}>
+              <option value="">Sem plano</option>
+              {plans.map((plan) => (
+                <option key={plan.id} value={plan.id}>{plan.name} - {plan.monthlyPriceCve.toLocaleString('pt-PT')} CVE</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Mensalidade CVE
+            <input required type="number" min="0" value={form.monthlyValueCve} onChange={(event) => updateForm('monthlyValueCve', event.target.value)} />
+          </label>
+          <label>
+            Dia de vencimento
+            <input required type="number" min="1" max="31" value={form.dueDay} onChange={(event) => updateForm('dueDay', event.target.value)} />
+          </label>
+          <label>
+            Data de ativacao
+            <input type="date" value={form.activationDate} onChange={(event) => updateForm('activationDate', event.target.value)} />
+          </label>
+          <label>
+            Estado
+            <select value={form.status} onChange={(event) => updateForm('status', event.target.value)}>
+              <option value="active">Ativo</option>
+              <option value="suspended">Suspenso</option>
+              <option value="cancelled">Cancelado</option>
+            </select>
+          </label>
+          <label className="wide-field">
+            Notas tecnicas
+            <input value={form.technicalNotes} onChange={(event) => updateForm('technicalNotes', event.target.value)} />
+          </label>
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={showDeviceDialog}
+        onClose={closeDeviceDialog}
+        eyebrow="Equipamento"
+        title={selectedService ? `Atribuir a ${selectedService.clientName}` : 'Atribuir equipamento'}
+        size="md"
+        closeOnBackdrop={!submitting}
+        actions={
+          <>
+            <button type="button" onClick={closeDeviceDialog} disabled={submitting}>Cancelar</button>
+            <button type="submit" form="device-form" className="primary" disabled={submitting}>
+              {submitting ? 'A gravar...' : 'Atribuir'}
+            </button>
+          </>
+        }
+      >
+        <form id="device-form" className="client-form" onSubmit={submitDeviceAssignment}>
+          <label className="wide-field">
+            Modelo do equipamento
+            <select required value={deviceForm.catalogId} onChange={(event) => setDeviceForm((c) => ({ ...c, catalogId: event.target.value }))}>
+              <option value="">Selecionar modelo</option>
+              {catalogList.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} un.
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Serial
+            <input value={deviceForm.serialNumber} onChange={(event) => setDeviceForm((c) => ({ ...c, serialNumber: event.target.value }))} />
+          </label>
+          <label>
+            Asset tag
+            <input value={deviceForm.assetTag} onChange={(event) => setDeviceForm((c) => ({ ...c, assetTag: event.target.value }))} />
+          </label>
+          <label>
+            MAC
+            <input value={deviceForm.macAddress} onChange={(event) => setDeviceForm((c) => ({ ...c, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
+          </label>
+          <label>
+            IP
+            <input value={deviceForm.ipAddress} onChange={(event) => setDeviceForm((c) => ({ ...c, ipAddress: event.target.value }))} placeholder="192.168.X.Y" />
+          </label>
+          <label className="wide-field">
+            Notas
+            <input value={deviceForm.notes} onChange={(event) => setDeviceForm((c) => ({ ...c, notes: event.target.value }))} />
+          </label>
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={showEventDialog}
+        onClose={closeEventDialog}
+        eyebrow="Evento tecnico"
+        title={selectedService ? `Registar para ${selectedService.clientName}` : 'Registar evento'}
+        size="md"
+        closeOnBackdrop={!submitting}
+        actions={
+          <>
+            <button type="button" onClick={closeEventDialog} disabled={submitting}>Cancelar</button>
+            <button type="submit" form="event-form" className="primary" disabled={submitting}>
+              {submitting ? 'A gravar...' : 'Registar'}
+            </button>
+          </>
+        }
+      >
+        <form id="event-form" className="client-form" onSubmit={submitEvent}>
+          <label className="wide-field">
+            Tipo de evento
+            <select required value={eventForm.eventType} onChange={(event) => setEventForm((c) => ({ ...c, eventType: event.target.value as ServiceEventType }))}>
+              {(Object.keys(eventTypeLabel) as ServiceEventType[]).map((key) => (
+                <option key={key} value={key}>{eventTypeLabel[key]}</option>
+              ))}
+            </select>
+          </label>
+          <label className="wide-field">
+            Notas
+            <textarea
+              rows={4}
+              value={eventForm.notes}
+              onChange={(event) => setEventForm((c) => ({ ...c, notes: event.target.value }))}
+              placeholder="Detalhes da intervencao, observacoes, peca substituida..."
+            />
+          </label>
+        </form>
+      </Dialog>
+    </section>
+  );
+}
