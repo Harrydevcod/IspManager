@@ -2495,6 +2495,9 @@ h2 {
   fill: var(--accent);
   font-weight: 600;
 }
+.sparkline svg .bar-axis-future {
+  fill-opacity: 0.4;
+}
 .sparkline svg .bar-axis-meta {
   fill: var(--text-3);
   font-size: 9px;

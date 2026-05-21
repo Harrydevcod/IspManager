@@ -92,12 +92,18 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
     return { width, height, padding, bars, maxValue, usableH, slot, avgPaid, yearBreaks };
   }, [points]);
 
+  const todayKey = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+
   if (points.every((p) => p.paidCve === 0 && p.pendingCve === 0)) {
-    return <div className="sparkline-empty">Sem registos de receita nos ultimos 12 meses.</div>;
+    const year = points[0]?.referenceMonth.slice(0, 4) ?? new Date().getFullYear();
+    return <div className="sparkline-empty">Sem registos de receita em {year}.</div>;
   }
 
   const baselineY = layout.padding.top + layout.usableH;
-  const currentIdx = points.length - 1;
+  const currentIdx = points.findIndex((p) => p.referenceMonth === todayKey);
   const labelY = baselineY + 16;
   const avgY = baselineY - (layout.avgPaid / layout.maxValue) * layout.usableH;
   const hovered = hoveredIdx !== null ? layout.bars[hoveredIdx] : null;
@@ -227,7 +233,13 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
                 x={bar.cx}
                 y={labelY}
                 textAnchor="middle"
-                className={isCurrent ? 'bar-axis bar-axis-current' : 'bar-axis'}
+                className={
+                  isCurrent
+                    ? 'bar-axis bar-axis-current'
+                    : bar.referenceMonth > todayKey
+                      ? 'bar-axis bar-axis-future'
+                      : 'bar-axis'
+                }
               >
                 {formatMonthLabel(bar.referenceMonth)}
               </text>
@@ -351,7 +363,11 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
       </MetricGrid>
 
       <section className="dashboard-grid">
-        <Card eyebrow="Receita" title="12 meses" className="dashboard-card-wide">
+        <Card
+          eyebrow="Receita anual"
+          title={String(new Date().getFullYear())}
+          className="dashboard-card-wide"
+        >
           {summary
             ? <RevenueBars points={summary.revenueByMonth} />
             : <p className="module-message">A carregar...</p>}

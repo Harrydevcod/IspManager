@@ -33,12 +33,11 @@ function currentMonthKey(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function last12Months(): string[] {
+function currentYearMonths(): string[] {
   const months: string[] = [];
-  const now = new Date();
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  const year = new Date().getFullYear();
+  for (let m = 1; m <= 12; m++) {
+    months.push(`${year}-${String(m).padStart(2, '0')}`);
   }
   return months;
 }
@@ -65,16 +64,16 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         ), 0) AS paidMonthCve
     `).get({ currentMonth }) as DashboardMetricRow;
 
-    const months = last12Months();
+    const months = currentYearMonths();
     const revenueRows = db.prepare(`
       SELECT reference_month AS referenceMonth,
              COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_cve ELSE 0 END), 0) AS paidCve,
              COALESCE(SUM(CASE WHEN status IN ('pending','overdue') THEN amount_cve ELSE 0 END), 0) AS pendingCve
       FROM payments
-      WHERE reference_month >= @from
+      WHERE reference_month >= @from AND reference_month <= @to
       GROUP BY reference_month
       ORDER BY reference_month ASC
-    `).all({ from: months[0] }) as RevenuePoint[];
+    `).all({ from: months[0], to: months[11] }) as RevenuePoint[];
     const revenueByMonth: RevenuePoint[] = months.map((month) => {
       const found = revenueRows.find((row) => row.referenceMonth === month);
       return found

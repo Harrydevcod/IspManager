@@ -117,9 +117,12 @@ describe('GET /api/dashboard/summary', () => {
     expect(body.activeServices).toBe(1);
     expect(body.planMix).toEqual([{ connectionType: 'fibra', count: 1 }]);
 
-    const lastPoint = body.revenueByMonth.at(-1);
-    expect(lastPoint?.referenceMonth).toBe(currentMonth);
-    expect(lastPoint?.paidCve).toBe(3500);
+    expect(body.revenueByMonth[0].referenceMonth).toBe(`${now.getFullYear()}-01`);
+    expect(body.revenueByMonth.at(-1)?.referenceMonth).toBe(`${now.getFullYear()}-12`);
+    const currentPoint = body.revenueByMonth.find(
+      (p: { referenceMonth: string }) => p.referenceMonth === currentMonth
+    );
+    expect(currentPoint?.paidCve).toBe(3500);
   });
 
   test('flags critical overdue payments older than 30 days', async () => {
