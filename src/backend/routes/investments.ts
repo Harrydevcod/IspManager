@@ -93,12 +93,46 @@ type InvestmentBaseRow = {
   desiredMarginPct: number;
 };
 
-function profitability(row: InvestmentBaseRow) {
+type CompanyOpexContext = {
+  totalExpensesCve: number;
+  monthsWithExpenses: number;
+  avgMonthlyOpex: number;
+  totalInstalledActive: number;
+  opexPerClientPerMonth: number;
+};
+
+const ACTIVE_INVESTMENT_STATUSES = new Set(['ativo', 'em_execucao', 'recuperado']);
+
+function loadCompanyOpexContext(
+  db: ReturnType<typeof getSqliteDatabase>,
+  rows: Array<{ installedClients: number; status: string }>
+): CompanyOpexContext {
+  const expensesRow = db.prepare(`
+    SELECT
+      COALESCE(SUM(amount_cve), 0) AS totalExpensesCve,
+      COUNT(DISTINCT reference_month) AS monthsWithExpenses
+    FROM expenses
+  `).get() as { totalExpensesCve: number; monthsWithExpenses: number };
+
+  const totalExpensesCve = Number(expensesRow.totalExpensesCve) || 0;
+  const monthsWithExpenses = Math.max(1, Number(expensesRow.monthsWithExpenses) || 0);
+  const avgMonthlyOpex = totalExpensesCve / monthsWithExpenses;
+  const totalInstalledActive = rows
+    .filter((r) => ACTIVE_INVESTMENT_STATUSES.has(r.status))
+    .reduce((sum, r) => sum + (Number(r.installedClients) || 0), 0);
+  const opexPerClientPerMonth = totalInstalledActive > 0 ? avgMonthlyOpex / totalInstalledActive : 0;
+
+  return { totalExpensesCve, monthsWithExpenses, avgMonthlyOpex, totalInstalledActive, opexPerClientPerMonth };
+}
+
+function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext) {
   const activeClients = Math.max(1, row.installedClients || row.targetClients || 1);
   const targetClients = Math.max(1, row.targetClients || 1);
-  const monthlyNetProfitCve = row.expectedMonthlyRevenueCve - row.monthlyOperationalCostCve;
+  const imputedMonthlyOpexCve = opexCtx.opexPerClientPerMonth * (Number(row.installedClients) || 0);
+  const effectiveMonthlyOpexCve = (Number(row.monthlyOperationalCostCve) || 0) + imputedMonthlyOpexCve;
+  const monthlyNetProfitCve = row.expectedMonthlyRevenueCve - effectiveMonthlyOpexCve;
   const costPerClientCve = row.totalCostCve / targetClients;
-  const operationalCostPerClientCve = row.monthlyOperationalCostCve / activeClients;
+  const operationalCostPerClientCve = effectiveMonthlyOpexCve / activeClients;
   const baseRecoveryPrice = costPerClientCve / Math.max(1, row.desiredPaybackMonths || 1);
   const recommendedPlanCve = (baseRecoveryPrice + operationalCostPerClientCve)
     * (1 + Math.max(0, row.desiredMarginPct || 0) / 100);
@@ -107,6 +141,8 @@ function profitability(row: InvestmentBaseRow) {
     costPerClientCve,
     operationalCostPerClientCve,
     recommendedPlanCve,
+    imputedMonthlyOpexCve,
+    effectiveMonthlyOpexCve,
     monthlyNetProfitCve,
     accumulatedProfitCve,
     recoveryMonths: monthlyNetProfitCve > 0 ? row.totalCostCve / monthlyNetProfitCve : null,
@@ -197,16 +233,27 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       ORDER BY id ASC
     `);
 
+    // Company-wide OPEX context (Fase 1 rateio): each active investment absorbs
+    // a per-client share of the average monthly OPEX from the expenses table.
+    // Use ALL investments matching the activity filter — not only the filtered
+    // page — so the denominator reflects company-wide installed base.
+    const allActive = db.prepare(`
+      SELECT installed_clients AS installedClients, status FROM investments
+    `).all() as Array<{ installedClients: number; status: string }>;
+    const opexCtx = loadCompanyOpexContext(db, allActive);
+
     const rowsWithItems = rows.map((row) => ({
       ...row,
-      ...profitability(row),
+      ...profitability(row, opexCtx),
       items: items.all(row.id)
     }));
 
-    const totalCostCve = rows.reduce((sum, row) => sum + Number(row.totalCostCve || 0), 0);
-    const monthlyNetProfitCve = rows.reduce((sum, row) => sum + profitability(row).monthlyNetProfitCve, 0);
-    const accumulatedProfitCve = rows.reduce((sum, row) => sum + profitability(row).accumulatedProfitCve, 0);
-    const roiRows = rows.map(profitability).filter((row) => row.roiPct !== null) as Array<{ roiPct: number }>;
+    const totalCostCve = rowsWithItems.reduce((sum, row) => sum + Number(row.totalCostCve || 0), 0);
+    const monthlyNetProfitCve = rowsWithItems.reduce((sum, row) => sum + row.monthlyNetProfitCve, 0);
+    const accumulatedProfitCve = rowsWithItems.reduce((sum, row) => sum + row.accumulatedProfitCve, 0);
+    const totalImputedOpexCve = rowsWithItems.reduce((sum, row) => sum + row.imputedMonthlyOpexCve, 0);
+    const totalEffectiveOpexCve = rowsWithItems.reduce((sum, row) => sum + row.effectiveMonthlyOpexCve, 0);
+    const roiRows = rowsWithItems.filter((row) => row.roiPct !== null) as Array<{ roiPct: number }>;
     const lowRoiCount = rowsWithItems.filter((row) => (row.roiPct ?? 0) < 0 || row.monthlyNetProfitCve <= 0).length;
     const notRecoveredCount = rowsWithItems.filter((row) => !row.isRecovered).length;
     const zoneSummary = [...rowsWithItems.reduce((map, row) => {
@@ -227,18 +274,24 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     return {
       rows: rowsWithItems,
       totals: {
-        count: rows.length,
+        count: rowsWithItems.length,
         totalCostCve,
         monthlyNetProfitCve,
         accumulatedProfitCve,
+        totalImputedOpexCve,
+        totalEffectiveOpexCve,
         averageRoiPct: roiRows.length > 0 ? roiRows.reduce((sum, row) => sum + row.roiPct, 0) / roiRows.length : null,
         lowRoiCount,
         notRecoveredCount
       },
+      companyOpexShare: opexCtx,
       zoneSummary,
       alerts: [
         ...(lowRoiCount > 0 ? [`${lowRoiCount} investimento(s) com ROI baixo ou lucro mensal negativo`] : []),
-        ...(notRecoveredCount > 0 ? [`${notRecoveredCount} investimento(s) ainda nao recuperados`] : [])
+        ...(notRecoveredCount > 0 ? [`${notRecoveredCount} investimento(s) ainda nao recuperados`] : []),
+        ...(opexCtx.totalExpensesCve > 0 && opexCtx.totalInstalledActive === 0
+          ? ['Despesas registadas sem clientes instalados ativos — rateio OPEX desactivado']
+          : [])
       ]
     };
   });

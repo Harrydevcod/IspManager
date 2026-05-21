@@ -31,6 +31,7 @@ beforeEach(() => {
   db.prepare('DELETE FROM services').run();
   db.prepare('DELETE FROM clients').run();
   db.prepare('DELETE FROM internet_plans').run();
+  db.prepare('DELETE FROM expenses').run();
 });
 
 afterAll(async () => {
@@ -128,6 +129,93 @@ describe('investments CRUD', () => {
     const marchZone = await app.inject({ method: 'GET', url: '/api/investments?month=2026-03&type=zona&zone=Vila%20Nova' });
     expect(marchZone.json().rows).toHaveLength(1);
     expect(marchZone.json().totals.totalCostCve).toBe(10);
+  });
+
+  test('imputes a pro-rata share of company OPEX based on installed clients', async () => {
+    // Two active investments sharing 10 installed clients (6 + 4).
+    db.prepare(`INSERT INTO investments
+                (name, type, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve, monthly_operational_cost_cve)
+                VALUES ('Backbone', 'infraestrutura', '2026-05-01', '2026-05', 60000, 10, 6, 'ativo', 30000, 0)`).run();
+    db.prepare(`INSERT INTO investments
+                (name, type, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve, monthly_operational_cost_cve)
+                VALUES ('Edge zona', 'zona', '2026-05-01', '2026-05', 20000, 4, 4, 'ativo', 16000, 0)`).run();
+
+    // 30k of OPEX spread across two months → avg 15k/month.
+    db.prepare(`INSERT INTO expenses
+                (category, description, amount_cve, expense_date, reference_month)
+                VALUES ('banda_internet', 'Upstream Abril', 12000, '2026-04-10', '2026-04')`).run();
+    db.prepare(`INSERT INTO expenses
+                (category, description, amount_cve, expense_date, reference_month)
+                VALUES ('banda_internet', 'Upstream Maio', 12000, '2026-05-10', '2026-05')`).run();
+    db.prepare(`INSERT INTO expenses
+                (category, description, amount_cve, expense_date, reference_month)
+                VALUES ('salarios', 'Salarios Maio', 6000, '2026-05-30', '2026-05')`).run();
+    // avgMonthlyOpex = 30000 / 2 = 15000; opexPerClient = 15000 / 10 = 1500.
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      rows: Array<{ name: string; imputedMonthlyOpexCve: number; effectiveMonthlyOpexCve: number; monthlyNetProfitCve: number }>;
+      companyOpexShare: { avgMonthlyOpex: number; opexPerClientPerMonth: number; totalInstalledActive: number };
+      totals: { totalImputedOpexCve: number; totalEffectiveOpexCve: number };
+    };
+
+    expect(body.companyOpexShare.avgMonthlyOpex).toBe(15000);
+    expect(body.companyOpexShare.totalInstalledActive).toBe(10);
+    expect(body.companyOpexShare.opexPerClientPerMonth).toBe(1500);
+
+    const backbone = body.rows.find((r) => r.name === 'Backbone')!;
+    const edge = body.rows.find((r) => r.name === 'Edge zona')!;
+    expect(backbone.imputedMonthlyOpexCve).toBe(9000); // 6 clients × 1500
+    expect(backbone.effectiveMonthlyOpexCve).toBe(9000);
+    expect(backbone.monthlyNetProfitCve).toBe(21000); // 30000 - 9000
+
+    expect(edge.imputedMonthlyOpexCve).toBe(6000); // 4 × 1500
+    expect(edge.effectiveMonthlyOpexCve).toBe(6000);
+    expect(edge.monthlyNetProfitCve).toBe(10000); // 16000 - 6000
+
+    expect(body.totals.totalImputedOpexCve).toBe(15000); // = avgMonthlyOpex
+    expect(body.totals.totalEffectiveOpexCve).toBe(15000);
+  });
+
+  test('combines direct OPEX with the imputed share', async () => {
+    db.prepare(`INSERT INTO investments
+                (name, type, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve, monthly_operational_cost_cve)
+                VALUES ('Cliente VIP', 'cliente', '2026-05-01', '2026-05', 8000, 1, 1, 'ativo', 5000, 750)`).run();
+    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month)
+                VALUES ('infraestrutura', 'Aluguer torre', 2000, '2026-05-01', '2026-05')`).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
+    const row = (response.json() as { rows: Array<{ imputedMonthlyOpexCve: number; effectiveMonthlyOpexCve: number; monthlyNetProfitCve: number }> }).rows[0];
+
+    // avgMonthlyOpex = 2000 (1 month); opexPerClient = 2000 / 1 = 2000.
+    expect(row.imputedMonthlyOpexCve).toBe(2000);
+    expect(row.effectiveMonthlyOpexCve).toBe(2750); // 750 direct + 2000 imputed
+    expect(row.monthlyNetProfitCve).toBe(2250); // 5000 - 2750
+  });
+
+  test('skips OPEX rateio when no installed clients are active', async () => {
+    // Only planned investments with installed=0 → denominator is 0, imputed=0.
+    db.prepare(`INSERT INTO investments
+                (name, type, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve, monthly_operational_cost_cve)
+                VALUES ('Futuro projecto', 'expansao', '2026-05-01', '2026-05', 50000, 20, 0, 'planeado', 0, 0)`).run();
+    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month)
+                VALUES ('outros', 'Despesa solta', 5000, '2026-05-01', '2026-05')`).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
+    const body = response.json() as {
+      rows: Array<{ imputedMonthlyOpexCve: number }>;
+      companyOpexShare: { totalInstalledActive: number; opexPerClientPerMonth: number };
+      alerts: string[];
+    };
+    expect(body.companyOpexShare.totalInstalledActive).toBe(0);
+    expect(body.companyOpexShare.opexPerClientPerMonth).toBe(0);
+    expect(body.rows[0].imputedMonthlyOpexCve).toBe(0);
+    expect(body.alerts.some((a) => a.toLowerCase().includes('rateio'))).toBe(true);
   });
 
   test('dashboard summary aggregates investment cost per month', async () => {

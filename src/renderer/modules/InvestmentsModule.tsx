@@ -164,7 +164,8 @@ function formatMonths(value: number | null): string {
 export function InvestmentsModule() {
   const [data, setData] = useState<InvestmentList>({
     rows: [],
-    totals: { count: 0, totalCostCve: 0, monthlyNetProfitCve: 0, accumulatedProfitCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
+    totals: { count: 0, totalCostCve: 0, monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalEffectiveOpexCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
+    companyOpexShare: { totalExpensesCve: 0, monthsWithExpenses: 0, avgMonthlyOpex: 0, totalInstalledActive: 0, opexPerClientPerMonth: 0 },
     zoneSummary: [],
     alerts: []
   });
@@ -230,7 +231,8 @@ export function InvestmentsModule() {
       })
       .catch(() => setData({
         rows: [],
-        totals: { count: 0, totalCostCve: 0, monthlyNetProfitCve: 0, accumulatedProfitCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
+        totals: { count: 0, totalCostCve: 0, monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalEffectiveOpexCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
+        companyOpexShare: { totalExpensesCve: 0, monthsWithExpenses: 0, avgMonthlyOpex: 0, totalInstalledActive: 0, opexPerClientPerMonth: 0 },
         zoneSummary: [],
         alerts: []
       }));
@@ -519,6 +521,15 @@ export function InvestmentsModule() {
                   <dd>{formatCve(selected.monthlyNetProfitCve)}</dd>
                 </div>
                 <div>
+                  <dt>OPEX mensal</dt>
+                  <dd>
+                    {formatCve(selected.effectiveMonthlyOpexCve)}
+                    <small style={{ display: 'block', color: 'var(--text-3)', fontSize: 11, marginTop: 2 }}>
+                      directo {formatCve(selected.monthlyOperationalCostCve)} + rateio {formatCve(selected.imputedMonthlyOpexCve)}
+                    </small>
+                  </dd>
+                </div>
+                <div>
                   <dt>Custo / cliente</dt>
                   <dd>{formatCve(selected.costPerClientCve)}</dd>
                 </div>
@@ -545,6 +556,13 @@ export function InvestmentsModule() {
                   </div>
                 ))}
               </div>
+              {data.companyOpexShare.totalExpensesCve > 0 && (
+                <div className="investment-opex-share">
+                  <strong>Rateio OPEX da empresa</strong>
+                  <span>OPEX médio: {formatCve(data.companyOpexShare.avgMonthlyOpex)} / mês ({data.companyOpexShare.monthsWithExpenses} {data.companyOpexShare.monthsWithExpenses === 1 ? 'mês' : 'meses'})</span>
+                  <span>Por cliente activo: {formatCve(data.companyOpexShare.opexPerClientPerMonth)} ({data.companyOpexShare.totalInstalledActive} clientes)</span>
+                </div>
+              )}
               {data.zoneSummary.length > 0 && (
                 <div className="investment-zone-summary">
                   <strong>Zonas mais rentaveis</strong>

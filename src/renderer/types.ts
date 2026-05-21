@@ -217,6 +217,8 @@ export type Investment = {
   costPerClientCve: number;
   operationalCostPerClientCve: number;
   recommendedPlanCve: number;
+  imputedMonthlyOpexCve: number;
+  effectiveMonthlyOpexCve: number;
   monthlyNetProfitCve: number;
   accumulatedProfitCve: number;
   recoveryMonths: number | null;
@@ -229,6 +231,14 @@ export type Investment = {
   updatedAt: string;
 };
 
+export type CompanyOpexShare = {
+  totalExpensesCve: number;
+  monthsWithExpenses: number;
+  avgMonthlyOpex: number;
+  totalInstalledActive: number;
+  opexPerClientPerMonth: number;
+};
+
 export type InvestmentList = {
   rows: Investment[];
   totals: {
@@ -236,10 +246,13 @@ export type InvestmentList = {
     totalCostCve: number;
     monthlyNetProfitCve: number;
     accumulatedProfitCve: number;
+    totalImputedOpexCve: number;
+    totalEffectiveOpexCve: number;
     averageRoiPct: number | null;
     lowRoiCount: number;
     notRecoveredCount: number;
   };
+  companyOpexShare: CompanyOpexShare;
   zoneSummary: Array<{
     zone: string;
     investments: number;
