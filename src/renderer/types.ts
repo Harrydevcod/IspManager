@@ -12,6 +12,7 @@ export type SectionId =
   | 'services'
   | 'payments'
   | 'investments'
+  | 'expenses'
   | 'work-orders'
   | 'stock'
   | 'reports'
@@ -114,6 +115,41 @@ export type RevenuePoint = {
   paidCve: number;
   pendingCve: number;
   expenseCve: number;
+  opexCve: number;
+};
+
+export type ExpenseCategory =
+  | 'equipamento'
+  | 'infraestrutura'
+  | 'salarios'
+  | 'marketing'
+  | 'impostos'
+  | 'licencas'
+  | 'combustivel'
+  | 'banda_internet'
+  | 'outros';
+
+export type Expense = {
+  id: number;
+  category: ExpenseCategory;
+  description: string;
+  amountCve: number;
+  expenseDate: string;
+  referenceMonth: string;
+  supplier: string | null;
+  invoiceReference: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ExpenseList = {
+  rows: Expense[];
+  totals: {
+    count: number;
+    totalCve: number;
+    byCategory: Array<{ category: string; count: number; totalCve: number }>;
+  };
 };
 
 export type InvestmentType =

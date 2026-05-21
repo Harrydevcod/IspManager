@@ -15,8 +15,15 @@ type DashboardMetricRow = {
   paidMonthCve: number;
 };
 
-type RevenuePoint = { referenceMonth: string; paidCve: number; pendingCve: number; expenseCve: number };
+type RevenuePoint = {
+  referenceMonth: string;
+  paidCve: number;
+  pendingCve: number;
+  expenseCve: number;
+  opexCve: number;
+};
 type InvestmentAggregate = { referenceMonth: string; expenseCve: number };
+type ExpenseAggregate = { referenceMonth: string; opexCve: number };
 type UpcomingDue = { paymentId: number; clientName: string; clientCode: string; dueDate: string; amountCve: number };
 type CriticalOverdue = {
   paymentId: number;
@@ -74,7 +81,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       WHERE reference_month >= @from AND reference_month <= @to
       GROUP BY reference_month
       ORDER BY reference_month ASC
-    `).all({ from: months[0], to: months[11] }) as Array<Omit<RevenuePoint, 'expenseCve'>>;
+    `).all({ from: months[0], to: months[11] }) as Array<Pick<RevenuePoint, 'referenceMonth' | 'paidCve' | 'pendingCve'>>;
     const investmentRows = db.prepare(`
       SELECT reference_month AS referenceMonth,
              COALESCE(SUM(total_cost_cve), 0) AS expenseCve
@@ -83,18 +90,29 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       GROUP BY reference_month
       ORDER BY reference_month ASC
     `).all({ from: months[0], to: months[11] }) as InvestmentAggregate[];
+    const expenseRows = db.prepare(`
+      SELECT reference_month AS referenceMonth,
+             COALESCE(SUM(amount_cve), 0) AS opexCve
+      FROM expenses
+      WHERE reference_month >= @from AND reference_month <= @to
+      GROUP BY reference_month
+      ORDER BY reference_month ASC
+    `).all({ from: months[0], to: months[11] }) as ExpenseAggregate[];
     const investmentByMonth = new Map(investmentRows.map((r) => [r.referenceMonth, Number(r.expenseCve) || 0]));
+    const expenseByMonth = new Map(expenseRows.map((r) => [r.referenceMonth, Number(r.opexCve) || 0]));
     const revenueByMonth: RevenuePoint[] = months.map((month) => {
       const found = revenueRows.find((row) => row.referenceMonth === month);
       const expenseCve = investmentByMonth.get(month) ?? 0;
+      const opexCve = expenseByMonth.get(month) ?? 0;
       return found
         ? {
             referenceMonth: month,
             paidCve: Number(found.paidCve) || 0,
             pendingCve: Number(found.pendingCve) || 0,
-            expenseCve
+            expenseCve,
+            opexCve
           }
-        : { referenceMonth: month, paidCve: 0, pendingCve: 0, expenseCve };
+        : { referenceMonth: month, paidCve: 0, pendingCve: 0, expenseCve, opexCve };
     });
 
     const upcomingDues = db.prepare(`

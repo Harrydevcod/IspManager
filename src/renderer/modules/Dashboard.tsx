@@ -55,7 +55,7 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
     const padding = { top: 22, right: 4, bottom: 32, left: 4 };
     const usableW = width - padding.left - padding.right;
     const usableH = height - padding.top - padding.bottom;
-    const maxValue = Math.max(1, ...points.map((p) => Math.max(p.paidCve + p.pendingCve, p.expenseCve)));
+    const maxValue = Math.max(1, ...points.map((p) => Math.max(p.paidCve + p.pendingCve, p.expenseCve, p.opexCve)));
     const slot = points.length > 0 ? usableW / points.length : 0;
     const barWidth = Math.min(32, Math.max(8, slot * 0.62));
     const bars = points.map((point, idx) => {
@@ -94,7 +94,12 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
       const y = padding.top + usableH - (p.expenseCve / maxValue) * usableH;
       return { idx, expenseCve: p.expenseCve, hasData, y, cx: bars[idx].cx };
     });
-    return { width, height, padding, bars, maxValue, usableH, slot, avgPaid, yearBreaks, investments };
+    const opex = points.map((p, idx) => {
+      const hasData = p.opexCve > 0;
+      const y = padding.top + usableH - (p.opexCve / maxValue) * usableH;
+      return { idx, opexCve: p.opexCve, hasData, y, cx: bars[idx].cx };
+    });
+    return { width, height, padding, bars, maxValue, usableH, slot, avgPaid, yearBreaks, investments, opex };
   }, [points]);
 
   const todayKey = useMemo(() => {
@@ -102,7 +107,7 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   }, []);
 
-  if (points.every((p) => p.paidCve === 0 && p.pendingCve === 0 && p.expenseCve === 0)) {
+  if (points.every((p) => p.paidCve === 0 && p.pendingCve === 0 && p.expenseCve === 0 && p.opexCve === 0)) {
     const year = points[0]?.referenceMonth.slice(0, 4) ?? new Date().getFullYear();
     return <div className="sparkline-empty">Sem registos de receita em {year}.</div>;
   }
@@ -202,6 +207,38 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
               r={p.idx === hoveredIdx ? 4 : 2.5}
               fill="var(--danger)"
               className="expense-dot"
+            />
+          );
+        })}
+
+        {(() => {
+          const linePoints = layout.opex.filter((p) => p.hasData);
+          if (linePoints.length < 2) return null;
+          const d = linePoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.cx.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+          return (
+            <path
+              d={d}
+              className="opex-line"
+              fill="none"
+              stroke="var(--accent-2)"
+              strokeWidth="1.5"
+              strokeDasharray="4 3"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          );
+        })()}
+
+        {layout.opex.map((p) => {
+          if (!p.hasData) return null;
+          return (
+            <circle
+              key={`opex-${p.idx}`}
+              cx={p.cx}
+              cy={p.y}
+              r={p.idx === hoveredIdx ? 3.5 : 2}
+              fill="var(--accent-2)"
+              className="opex-dot"
             />
           );
         })}
@@ -308,10 +345,19 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
               <dt><span className="dot dot-expense" />Investimentos</dt>
               <dd>{formatCompactCve(hoveredPoint.expenseCve)} CVE</dd>
             </div>
-            <div className={`bar-tooltip-total ${hoveredPoint.paidCve - hoveredPoint.expenseCve < 0 ? 'profit-negative' : 'profit-positive'}`}>
-              <dt>Lucro</dt>
-              <dd>{(hoveredPoint.paidCve - hoveredPoint.expenseCve) < 0 ? '-' : ''}{formatCompactCve(Math.abs(hoveredPoint.paidCve - hoveredPoint.expenseCve))} CVE</dd>
+            <div>
+              <dt><span className="dot dot-opex" />Despesas</dt>
+              <dd>{formatCompactCve(hoveredPoint.opexCve)} CVE</dd>
             </div>
+            {(() => {
+              const net = hoveredPoint.paidCve - hoveredPoint.expenseCve - hoveredPoint.opexCve;
+              return (
+                <div className={`bar-tooltip-total ${net < 0 ? 'profit-negative' : 'profit-positive'}`}>
+                  <dt>Lucro</dt>
+                  <dd>{net < 0 ? '-' : ''}{formatCompactCve(Math.abs(net))} CVE</dd>
+                </div>
+              );
+            })()}
           </dl>
           {deltaPct !== null && (
             <p className={`bar-tooltip-delta ${deltaPct >= 0 ? 'positive' : 'negative'}`}>
