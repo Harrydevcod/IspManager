@@ -248,7 +248,26 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
           </div>
         </Card>
 
-        <Card eyebrow="Mix" title="Planos ativos">
+        <Card eyebrow="Proximos 7 dias" title="Vencimentos" className="dashboard-card-list">
+          {summary && summary.upcomingDues.length > 0 ? (
+            <ul className="dashboard-list">
+              {summary.upcomingDues.map((due) => (
+                <li key={due.paymentId}>
+                  <CalendarClock size={14} />
+                  <div className="dashboard-list-meta">
+                    <strong>{due.clientName}</strong>
+                    <small>{due.clientCode} - {formatDayMonth(due.dueDate)}</small>
+                  </div>
+                  <span className="dashboard-list-amount">{formatCve(due.amountCve)} CVE</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="module-message">Nenhum vencimento previsto nos proximos 7 dias.</p>
+          )}
+        </Card>
+
+        <Card eyebrow="Mix" title="Planos ativos" className="dashboard-card-compact">
           {summary && summary.planMix.length > 0 ? (
             <ul className="plan-mix">
               {summary.planMix.map((entry) => {
@@ -266,25 +285,6 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
             </ul>
           ) : (
             <p className="module-message">Sem servicos ativos com plano atribuido.</p>
-          )}
-        </Card>
-
-        <Card eyebrow="Proximos 7 dias" title="Vencimentos" className="dashboard-card-list">
-          {summary && summary.upcomingDues.length > 0 ? (
-            <ul className="dashboard-list">
-              {summary.upcomingDues.map((due) => (
-                <li key={due.paymentId}>
-                  <CalendarClock size={14} />
-                  <div className="dashboard-list-meta">
-                    <strong>{due.clientName}</strong>
-                    <small>{due.clientCode} - {formatDayMonth(due.dueDate)}</small>
-                  </div>
-                  <span className="dashboard-list-amount">{formatCve(due.amountCve)} CVE</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="module-message">Nenhum vencimento previsto nos proximos 7 dias.</p>
           )}
         </Card>
 

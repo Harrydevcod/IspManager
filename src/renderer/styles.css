@@ -2412,6 +2412,10 @@ h2 {
 }
 .dashboard-card-wide { grid-column: 1 / -1; }
 .dashboard-card-list { min-height: 220px; }
+.dashboard-card-compact { align-self: start; }
+.dashboard-card-compact .plan-mix { gap: var(--s2); }
+.dashboard-card-compact .plan-mix-row { font-size: var(--fs-xs); }
+.dashboard-card-compact .plan-mix-bar { height: 4px; margin-top: 4px; }
 
 /* Revenue chart: stacked vertical bars (paid base + pending top).
    Current month rendered with full opacity; previous months recede.
