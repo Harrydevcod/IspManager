@@ -215,6 +215,145 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     };
   });
 
+  app.post('/api/billing/preview-reverse-monthly', billingWrite, async (request, reply) => {
+    const parsed = monthSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Mes de referencia invalido' });
+    }
+    const db = getSqliteDatabase();
+    const referenceMonth = parsed.data.referenceMonth;
+
+    const rows = db.prepare(`
+      SELECT
+        py.id,
+        py.client_id AS clientId,
+        c.full_name AS clientName,
+        c.client_code AS clientCode,
+        py.amount_cve AS amountCve,
+        py.due_date AS dueDate,
+        py.invoice_number AS invoiceNumber,
+        py.status
+      FROM payments py
+      JOIN clients c ON c.id = py.client_id
+      WHERE py.reference_month = ?
+      ORDER BY c.full_name
+    `).all(referenceMonth) as Array<{
+      id: number;
+      clientId: number;
+      clientName: string;
+      clientCode: string | null;
+      amountCve: number;
+      dueDate: string;
+      invoiceNumber: string | null;
+      status: 'pending' | 'paid' | 'overdue' | 'cancelled';
+    }>;
+
+    const eligible = rows.filter((r) => r.status === 'pending' || r.status === 'overdue');
+    const paidLocked = rows.filter((r) => r.status === 'paid');
+    const cancelledKept = rows.filter((r) => r.status === 'cancelled');
+
+    return {
+      referenceMonth,
+      total: rows.length,
+      eligibleCount: eligible.length,
+      paidLockedCount: paidLocked.length,
+      cancelledCount: cancelledKept.length,
+      totalCve: eligible.reduce((sum, r) => sum + r.amountCve, 0),
+      eligible,
+      paidLocked: paidLocked.map((r) => ({
+        id: r.id,
+        clientName: r.clientName,
+        clientCode: r.clientCode,
+        invoiceNumber: r.invoiceNumber,
+        amountCve: r.amountCve
+      }))
+    };
+  });
+
+  app.post('/api/billing/reverse-monthly', billingWrite, async (request, reply) => {
+    const parsed = monthSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Mes de referencia invalido' });
+    }
+    const db = getSqliteDatabase();
+    const referenceMonth = parsed.data.referenceMonth;
+
+    const eligibleStmt = db.prepare(`
+      SELECT id, invoice_number AS invoiceNumber
+      FROM payments
+      WHERE reference_month = ? AND status IN ('pending', 'overdue')
+    `);
+    const deleteStmt = db.prepare(`
+      DELETE FROM payments
+      WHERE reference_month = ? AND status IN ('pending', 'overdue')
+    `);
+
+    const eligibleRows = eligibleStmt.all(referenceMonth) as Array<{ id: number; invoiceNumber: string | null }>;
+    const result = db.transaction(() => deleteStmt.run(referenceMonth))();
+
+    recordAudit(request, {
+      action: 'reverse_monthly',
+      entityType: 'billing',
+      entityId: referenceMonth,
+      summary: `Reverteu cobranca mensal ${referenceMonth}`,
+      metadata: {
+        referenceMonth,
+        reversed: result.changes,
+        invoiceNumbers: eligibleRows.map((r) => r.invoiceNumber).filter(Boolean)
+      }
+    });
+
+    return {
+      referenceMonth,
+      reversed: result.changes
+    };
+  });
+
+  app.post('/api/payments/:id/revert', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Pagamento invalido' });
+    }
+
+    const db = getSqliteDatabase();
+    const payment = db.prepare(`
+      SELECT id, status, reference_month AS referenceMonth, invoice_number AS invoiceNumber, client_id AS clientId
+      FROM payments WHERE id = ?
+    `).get(id) as {
+      id: number;
+      status: 'pending' | 'paid' | 'overdue' | 'cancelled';
+      referenceMonth: string;
+      invoiceNumber: string | null;
+      clientId: number;
+    } | undefined;
+
+    if (!payment) {
+      return reply.status(404).send({ error: 'Pagamento nao encontrado' });
+    }
+    if (payment.status === 'paid') {
+      return reply.status(400).send({ error: 'Pagamento pago nao pode ser revertido. Use anular.' });
+    }
+    if (payment.status === 'cancelled') {
+      return reply.status(400).send({ error: 'Pagamento ja esta anulado. Nada a reverter.' });
+    }
+
+    db.prepare('DELETE FROM payments WHERE id = ?').run(id);
+
+    recordAudit(request, {
+      action: 'revert',
+      entityType: 'payment',
+      entityId: id,
+      summary: `Reverteu pagamento ${id}`,
+      metadata: {
+        referenceMonth: payment.referenceMonth,
+        invoiceNumber: payment.invoiceNumber,
+        clientId: payment.clientId
+      }
+    });
+
+    return { id, reverted: true };
+  });
+
   app.post('/api/payments/:id/pay', billingWrite, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     const parsed = paySchema.safeParse(request.body || {});

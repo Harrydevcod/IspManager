@@ -1,6 +1,6 @@
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Download, Eye, FileText, MessageCircle, ReceiptText, Send, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, Eye, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Undo2, X } from 'lucide-react';
 import { Badge, DataList, DetailModal, Dialog, FilterBar, Message, useToast } from '../components';
 import { formatCve } from '../lib/format';
 import { authFetch, useAuth } from '../lib/auth';
@@ -94,6 +94,20 @@ export function PaymentsModule() {
   const [submitting, setSubmitting] = useState(false);
   const [monthlyPreview, setMonthlyPreview] = useState<BillingPreview | null>(null);
   const [monthlyLoading, setMonthlyLoading] = useState(false);
+  const [reversePreview, setReversePreview] = useState<{
+    referenceMonth: string;
+    total: number;
+    eligibleCount: number;
+    paidLockedCount: number;
+    cancelledCount: number;
+    totalCve: number;
+    eligible: Array<{ id: number; clientName: string; clientCode: string | null; invoiceNumber: string | null; amountCve: number; dueDate: string; status: 'pending' | 'overdue' }>;
+    paidLocked: Array<{ id: number; clientName: string; clientCode: string | null; invoiceNumber: string | null; amountCve: number }>;
+  } | null>(null);
+  const [reverseLoading, setReverseLoading] = useState(false);
+  const [reverseSubmitting, setReverseSubmitting] = useState(false);
+  const [individualRevert, setIndividualRevert] = useState<PaymentRow | null>(null);
+  const [individualRevertSubmitting, setIndividualRevertSubmitting] = useState(false);
   const [search, setSearch] = useState('');
   const [showAllMonths, setShowAllMonths] = useState(false);
   const [sortMode, setSortMode] = useState<PaymentSortMode>('dueAsc');
@@ -239,6 +253,94 @@ export function PaymentsModule() {
 
   function closeMonthlyPreview() {
     setMonthlyPreview(null);
+  }
+
+  async function openReversePreview() {
+    setReverseLoading(true);
+    setReversePreview(null);
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/billing/preview-reverse-monthly', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referenceMonth })
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({ error: 'Nao foi possivel pre-visualizar reversao.' })) as { error?: string };
+        toast(result.error || 'Nao foi possivel pre-visualizar reversao.', 'error');
+        return;
+      }
+      const preview = await response.json() as NonNullable<typeof reversePreview>;
+      setReversePreview(preview);
+    } catch {
+      toast('Falha de rede ao consultar reversao.', 'error');
+    } finally {
+      setReverseLoading(false);
+    }
+  }
+
+  function closeReversePreview() {
+    if (reverseSubmitting) return;
+    setReversePreview(null);
+  }
+
+  async function confirmReverseMonthly() {
+    if (!reversePreview || reversePreview.eligibleCount === 0) return;
+    setReverseSubmitting(true);
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/billing/reverse-monthly', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referenceMonth: reversePreview.referenceMonth })
+      });
+      const result = await response.json() as { reversed?: number; error?: string };
+      if (!response.ok) {
+        toast(result.error || 'Falha ao reverter mensalidades.', 'error');
+        return;
+      }
+      toast(`Revertidas ${result.reversed || 0} cobranca(s) de ${reversePreview.referenceMonth}.`, 'success');
+      setReversePreview(null);
+      await loadPayments();
+    } catch {
+      toast('Falha de rede ao reverter mensalidades.', 'error');
+    } finally {
+      setReverseSubmitting(false);
+    }
+  }
+
+  function openIndividualRevert(payment: PaymentRow) {
+    setIndividualRevert(payment);
+  }
+
+  function closeIndividualRevert() {
+    if (individualRevertSubmitting) return;
+    setIndividualRevert(null);
+  }
+
+  async function confirmIndividualRevert() {
+    if (!individualRevert) return;
+    setIndividualRevertSubmitting(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/payments/${individualRevert.id}/revert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) {
+        toast(result.error || 'Falha ao reverter pagamento.', 'error');
+        return;
+      }
+      toast(`Cobranca de ${individualRevert.clientName} (${individualRevert.referenceMonth}) revertida.`, 'success');
+      setIndividualRevert(null);
+      if (selectedPayment?.id === individualRevert.id) {
+        setSelectedPayment(null);
+        closeActionForm();
+      }
+      await loadPayments();
+    } catch {
+      toast('Falha de rede ao reverter pagamento.', 'error');
+    } finally {
+      setIndividualRevertSubmitting(false);
+    }
   }
 
   async function confirmMonthlyGenerate() {
@@ -475,6 +577,15 @@ export function PaymentsModule() {
           <input type="month" value={referenceMonth} onChange={(event) => setReferenceMonth(event.target.value)} />
           <button type="button" onClick={() => void openMonthlyPreview()} disabled={monthlyLoading}>
             {monthlyLoading && !monthlyPreview ? 'A calcular...' : 'Gerar mensalidades'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void openReversePreview()}
+            disabled={reverseLoading}
+            title="Reverter mensalidades geradas para este mes"
+          >
+            <RotateCcw size={14} />
+            {reverseLoading ? 'A consultar...' : 'Reverter mensalidades'}
           </button>
           <button type="button" onClick={() => void openOverduePreview()} disabled={notifyLoading}>
             <Send size={14} />
@@ -842,6 +953,15 @@ export function PaymentsModule() {
                 <X size={16} />
               </button>
             )}
+            {(p.status === 'pending' || p.status === 'overdue') && (
+              <button
+                type="button"
+                title="Reverter geracao (apaga a cobranca)"
+                onClick={() => openIndividualRevert(p)}
+              >
+                <Undo2 size={16} />
+              </button>
+            )}
           </>
         )}
         onRowClick={(p) => previewPaymentDocument(p)}
@@ -914,6 +1034,117 @@ export function PaymentsModule() {
                 </ul>
               </details>
             )}
+          </div>
+        )}
+      </Dialog>
+
+      <Dialog
+        open={!!reversePreview}
+        onClose={closeReversePreview}
+        eyebrow="Reverter geracao"
+        title={reversePreview ? `Mensalidades de ${reversePreview.referenceMonth}` : 'Reverter mensalidades'}
+        size="md"
+        closeOnBackdrop={!reverseSubmitting}
+        actions={
+          <>
+            <button type="button" onClick={closeReversePreview} disabled={reverseSubmitting}>Cancelar</button>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => void confirmReverseMonthly()}
+              disabled={reverseSubmitting || !reversePreview || reversePreview.eligibleCount === 0}
+            >
+              {reverseSubmitting
+                ? 'A reverter...'
+                : reversePreview && reversePreview.eligibleCount > 0
+                  ? `Reverter ${reversePreview.eligibleCount} cobranca(s)`
+                  : 'Nada a reverter'}
+            </button>
+          </>
+        }
+      >
+        {reversePreview && (
+          <div className="overdue-notify">
+            <p className="overdue-notify-summary">
+              <strong>{reversePreview.total}</strong> cobranca(s) em {reversePreview.referenceMonth}.{' '}
+              <strong>{reversePreview.eligibleCount}</strong> serao apagadas ({formatCve(reversePreview.totalCve)}).{' '}
+              {reversePreview.paidLockedCount > 0 && (
+                <span className="overdue-notify-skip">
+                  {reversePreview.paidLockedCount} pagas ficam intactas (anular se necessario).
+                </span>
+              )}
+              {reversePreview.cancelledCount > 0 && (
+                <span className="overdue-notify-skip">
+                  {' '}{reversePreview.cancelledCount} ja anuladas.
+                </span>
+              )}
+            </p>
+
+            {reversePreview.eligibleCount > 0 ? (
+              <ul className="overdue-notify-list">
+                {reversePreview.eligible.map((row) => (
+                  <li key={row.id}>
+                    <div className="overdue-notify-meta">
+                      <strong>{row.clientName}</strong>
+                      <small>
+                        {row.clientCode || '-'} - FT {row.invoiceNumber || '-'} - venc. {row.dueDate}
+                      </small>
+                    </div>
+                    <Badge tone={row.status === 'overdue' ? 'danger' : 'info'}>{row.status}</Badge>
+                    <span className="overdue-notify-amount">{formatCve(row.amountCve)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="module-message">
+                Sem cobrancas pendentes ou em atraso para reverter em {reversePreview.referenceMonth}.
+              </p>
+            )}
+
+            {reversePreview.paidLockedCount > 0 && (
+              <details className="overdue-notify-skipped">
+                <summary>Pagas ({reversePreview.paidLockedCount}) - nao serao apagadas</summary>
+                <ul>
+                  {reversePreview.paidLocked.map((row) => (
+                    <li key={row.id}>
+                      {row.clientName} <small>(FT {row.invoiceNumber || '-'} - {formatCve(row.amountCve)})</small>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        )}
+      </Dialog>
+
+      <Dialog
+        open={!!individualRevert}
+        onClose={closeIndividualRevert}
+        eyebrow="Reverter cobranca"
+        title={individualRevert ? `${individualRevert.clientName} - ${individualRevert.referenceMonth}` : 'Reverter cobranca'}
+        size="sm"
+        closeOnBackdrop={!individualRevertSubmitting}
+        actions={
+          <>
+            <button type="button" onClick={closeIndividualRevert} disabled={individualRevertSubmitting}>Cancelar</button>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => void confirmIndividualRevert()}
+              disabled={individualRevertSubmitting}
+            >
+              {individualRevertSubmitting ? 'A reverter...' : 'Confirmar reversao'}
+            </button>
+          </>
+        }
+      >
+        {individualRevert && (
+          <div className="overdue-notify">
+            <p className="overdue-notify-summary">
+              Vai apagar a cobranca <strong>FT {individualRevert.invoiceNumber || individualRevert.id}</strong>{' '}
+              de <strong>{individualRevert.clientName}</strong> ({formatCve(individualRevert.amountCve)}).
+              Esta accao nao pode ser desfeita. Se a cobranca foi enviada ao cliente, considere anular em vez de reverter.
+            </p>
           </div>
         )}
       </Dialog>
