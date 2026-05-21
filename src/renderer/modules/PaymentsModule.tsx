@@ -15,6 +15,24 @@ type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
 type PaymentActionMode = 'pay' | 'cancel' | 'whatsapp';
 type PaymentSortMode = 'dueAsc' | 'dueDesc' | 'amountDesc' | 'clientAsc';
 
+const CANCEL_REASON_CHIPS_PENDING = [
+  'Cobranca duplicada',
+  'Cliente cancelou o servico',
+  'Erro na geracao da mensalidade',
+  'Renegociacao com o cliente',
+  'Suspensao do servico no periodo',
+  'Plano alterado a meio do mes'
+];
+
+const CANCEL_REASON_CHIPS_PAID = [
+  'Valor cobrado errado - reemissao com o valor correcto',
+  'Pagamento duplicado - cobranca registada duas vezes',
+  'Servico nao prestado durante o periodo cobrado',
+  'Reembolso integral ao cliente',
+  'Mes de referencia incorrecto na fatura',
+  'Plano errado aplicado na cobranca'
+];
+
 type BillingPreviewRow = {
   serviceId: number;
   clientId: number;
@@ -853,6 +871,23 @@ export function PaymentsModule() {
                 </div>
                 <label>
                   Motivo {wasPaid && <em className="payment-form-hint">(minimo 10 caracteres)</em>}
+                  <div className="reason-chips" role="list" aria-label="Motivos sugeridos">
+                    {(wasPaid ? CANCEL_REASON_CHIPS_PAID : CANCEL_REASON_CHIPS_PENDING).map((suggestion) => {
+                      const active = cancelReason.trim() === suggestion;
+                      return (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          role="listitem"
+                          className={active ? 'reason-chip reason-chip-active' : 'reason-chip'}
+                          onClick={() => setCancelReason(suggestion)}
+                          disabled={submitting}
+                        >
+                          {suggestion}
+                        </button>
+                      );
+                    })}
+                  </div>
                   <textarea
                     value={cancelReason}
                     onChange={(event) => setCancelReason(event.target.value)}
@@ -860,8 +895,8 @@ export function PaymentsModule() {
                     required
                     minLength={minLen}
                     placeholder={wasPaid
-                      ? 'Ex: valor cobrado 5500 em vez de 4500; cliente notificado por WhatsApp 21/05.'
-                      : 'Ex: cobranca duplicada'}
+                      ? 'Escolhe um motivo acima ou escreve: ex. valor cobrado 5500 em vez de 4500; cliente notificado.'
+                      : 'Escolhe um motivo acima ou escreve livremente.'}
                     disabled={submitting}
                   />
                 </label>
