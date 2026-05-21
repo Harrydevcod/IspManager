@@ -55,7 +55,7 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
     const padding = { top: 22, right: 4, bottom: 32, left: 4 };
     const usableW = width - padding.left - padding.right;
     const usableH = height - padding.top - padding.bottom;
-    const maxValue = Math.max(1, ...points.map((p) => p.paidCve + p.pendingCve));
+    const maxValue = Math.max(1, ...points.map((p) => Math.max(p.paidCve + p.pendingCve, p.expenseCve)));
     const slot = points.length > 0 ? usableW / points.length : 0;
     const barWidth = Math.min(32, Math.max(8, slot * 0.62));
     const bars = points.map((point, idx) => {
@@ -89,7 +89,12 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
       const curYear = points[i].referenceMonth.slice(0, 4);
       if (prevYear !== curYear) yearBreaks.push(i);
     }
-    return { width, height, padding, bars, maxValue, usableH, slot, avgPaid, yearBreaks };
+    const investments = points.map((p, idx) => {
+      const hasData = p.expenseCve > 0;
+      const y = padding.top + usableH - (p.expenseCve / maxValue) * usableH;
+      return { idx, expenseCve: p.expenseCve, hasData, y, cx: bars[idx].cx };
+    });
+    return { width, height, padding, bars, maxValue, usableH, slot, avgPaid, yearBreaks, investments };
   }, [points]);
 
   const todayKey = useMemo(() => {
@@ -97,7 +102,7 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   }, []);
 
-  if (points.every((p) => p.paidCve === 0 && p.pendingCve === 0)) {
+  if (points.every((p) => p.paidCve === 0 && p.pendingCve === 0 && p.expenseCve === 0)) {
     const year = points[0]?.referenceMonth.slice(0, 4) ?? new Date().getFullYear();
     return <div className="sparkline-empty">Sem registos de receita em {year}.</div>;
   }
@@ -169,6 +174,37 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
             </text>
           </>
         )}
+
+        {(() => {
+          const linePoints = layout.investments.filter((p) => p.hasData);
+          if (linePoints.length < 2) return null;
+          const d = linePoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.cx.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+          return (
+            <path
+              d={d}
+              className="expense-line"
+              fill="none"
+              stroke="var(--danger)"
+              strokeWidth="1.5"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          );
+        })()}
+
+        {layout.investments.map((p) => {
+          if (!p.hasData) return null;
+          return (
+            <circle
+              key={`expense-${p.idx}`}
+              cx={p.cx}
+              cy={p.y}
+              r={p.idx === hoveredIdx ? 4 : 2.5}
+              fill="var(--danger)"
+              className="expense-dot"
+            />
+          );
+        })}
 
         {layout.bars.map((bar, idx) => {
           const isCurrent = idx === currentIdx;
@@ -268,9 +304,13 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
               <dt><span className="dot dot-pending" />Pendente</dt>
               <dd>{formatCompactCve(hoveredPoint.pendingCve)} CVE</dd>
             </div>
-            <div className="bar-tooltip-total">
-              <dt>Total</dt>
-              <dd>{formatCompactCve(hoveredPoint.paidCve + hoveredPoint.pendingCve)} CVE</dd>
+            <div>
+              <dt><span className="dot dot-expense" />Investimentos</dt>
+              <dd>{formatCompactCve(hoveredPoint.expenseCve)} CVE</dd>
+            </div>
+            <div className={`bar-tooltip-total ${hoveredPoint.paidCve - hoveredPoint.expenseCve < 0 ? 'profit-negative' : 'profit-positive'}`}>
+              <dt>Lucro</dt>
+              <dd>{(hoveredPoint.paidCve - hoveredPoint.expenseCve) < 0 ? '-' : ''}{formatCompactCve(Math.abs(hoveredPoint.paidCve - hoveredPoint.expenseCve))} CVE</dd>
             </div>
           </dl>
           {deltaPct !== null && (
@@ -311,8 +351,13 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
   }, []);
 
   const totalPlanCount = summary?.planMix.reduce((acc, entry) => acc + entry.count, 0) || 0;
-  const currentMonthRevenue = summary?.revenueByMonth.at(-1)?.paidCve || 0;
-  const previousMonthRevenue = summary?.revenueByMonth.at(-2)?.paidCve || 0;
+  const currentMonthKey = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+  const currentMonthIndex = summary?.revenueByMonth.findIndex((point) => point.referenceMonth === currentMonthKey) ?? -1;
+  const currentMonthRevenue = currentMonthIndex >= 0 ? summary?.revenueByMonth[currentMonthIndex]?.paidCve || 0 : 0;
+  const previousMonthRevenue = currentMonthIndex > 0 ? summary?.revenueByMonth[currentMonthIndex - 1]?.paidCve || 0 : 0;
   const revenueTrendPct = previousMonthRevenue > 0
     ? ((currentMonthRevenue - previousMonthRevenue) / previousMonthRevenue) * 100
     : null;
@@ -372,8 +417,9 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
             ? <RevenueBars points={summary.revenueByMonth} />
             : <p className="module-message">A carregar...</p>}
           <div className="sparkline-legend">
-            <span className="legend-item legend-paid">Pago</span>
+            <span className="legend-item legend-paid">Receita paga</span>
             <span className="legend-item legend-pending">Pendente</span>
+            <span className="legend-item legend-expense">Investimentos</span>
           </div>
         </Card>
 

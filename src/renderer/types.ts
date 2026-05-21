@@ -11,6 +11,7 @@ export type SectionId =
   | 'plans'
   | 'services'
   | 'payments'
+  | 'investments'
   | 'work-orders'
   | 'stock'
   | 'reports'
@@ -112,6 +113,105 @@ export type RevenuePoint = {
   referenceMonth: string;
   paidCve: number;
   pendingCve: number;
+  expenseCve: number;
+};
+
+export type InvestmentType =
+  | 'cliente'
+  | 'zona'
+  | 'equipamento'
+  | 'infraestrutura'
+  | 'manutencao'
+  | 'expansao'
+  | 'outro';
+
+export type InvestmentStatus = 'planeado' | 'em_execucao' | 'ativo' | 'recuperado' | 'cancelado';
+
+export type InvestmentItemType =
+  | 'antena'
+  | 'router'
+  | 'cpe'
+  | 'switch'
+  | 'cabo'
+  | 'conector'
+  | 'fibra'
+  | 'caixa'
+  | 'poste'
+  | 'ups'
+  | 'bateria'
+  | 'ferramenta'
+  | 'material'
+  | 'instalacao'
+  | 'mao_obra'
+  | 'manutencao'
+  | 'outro';
+
+export type InvestmentItem = {
+  id: number;
+  investmentId: number;
+  itemType: InvestmentItemType;
+  itemName: string;
+  quantity: number;
+  quantityUsed: number;
+  quantityRemaining: number;
+  unitCostCve: number;
+  totalCostCve: number;
+};
+
+export type Investment = {
+  id: number;
+  name: string;
+  type: InvestmentType;
+  clientId: number | null;
+  clientName: string | null;
+  zone: string | null;
+  description: string | null;
+  supplier: string | null;
+  investmentDate: string;
+  referenceMonth: string;
+  status: InvestmentStatus;
+  targetClients: number;
+  installedClients: number;
+  desiredPaybackMonths: number;
+  desiredMarginPct: number;
+  expectedMonthlyRevenueCve: number;
+  monthlyOperationalCostCve: number;
+  accumulatedRevenueCve: number;
+  totalCostCve: number;
+  costPerClientCve: number;
+  operationalCostPerClientCve: number;
+  recommendedPlanCve: number;
+  monthlyNetProfitCve: number;
+  accumulatedProfitCve: number;
+  recoveryMonths: number | null;
+  roiPct: number | null;
+  annualRoiPct: number | null;
+  isRecovered: boolean;
+  notes: string | null;
+  items: InvestmentItem[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type InvestmentList = {
+  rows: Investment[];
+  totals: {
+    count: number;
+    totalCostCve: number;
+    monthlyNetProfitCve: number;
+    accumulatedProfitCve: number;
+    averageRoiPct: number | null;
+    lowRoiCount: number;
+    notRecoveredCount: number;
+  };
+  zoneSummary: Array<{
+    zone: string;
+    investments: number;
+    totalCostCve: number;
+    monthlyNetProfitCve: number;
+    roiPct: number | null;
+  }>;
+  alerts: string[];
 };
 
 export type UpcomingDue = {

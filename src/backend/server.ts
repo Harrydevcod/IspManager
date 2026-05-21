@@ -8,6 +8,7 @@ import { registerClientRoutes } from './routes/clients';
 import { registerUserRoutes } from './routes/users';
 import { registerDashboardRoutes } from './routes/dashboard';
 import { registerDocumentRoutes } from './routes/documents';
+import { registerInvestmentRoutes } from './routes/investments';
 import { registerFinanceRoutes } from './routes/finance';
 import { registerPlanRoutes } from './routes/plans';
 import { registerReportRoutes } from './routes/reports';
@@ -62,6 +63,7 @@ export async function createBackendApp() {
   await registerDashboardRoutes(app);
   await registerClientRoutes(app);
   await registerPlanRoutes(app);
+  await registerInvestmentRoutes(app);
   await registerFinanceRoutes(app);
   await registerDocumentRoutes(app);
   await registerTechnicalRoutes(app);

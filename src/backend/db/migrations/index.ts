@@ -3,6 +3,9 @@ import m0001 from './0001_initial_schema';
 import m0002 from './0002_work_orders';
 import m0003 from './0003_audit_logs';
 import m0004 from './0004_payments_status_check';
+import m0005 from './0005_expenses';
+import m0006 from './0006_investments';
+import m0007 from './0007_investment_profitability';
 
 /**
  * The migration chain, in the order new migrations are appended.
@@ -12,6 +15,6 @@ import m0004 from './0004_payments_status_check';
  * the next version number and append it here. Never edit a shipped migration —
  * the runner enforces this via checksum drift detection.
  */
-export const migrations: Migration[] = [m0001, m0002, m0003, m0004];
+export const migrations: Migration[] = [m0001, m0002, m0003, m0004, m0005, m0006, m0007];
 
 export type { Migration } from './types';
