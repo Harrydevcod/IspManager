@@ -3703,3 +3703,40 @@ h2 {
   }
   .user-row-meta { width: 100%; justify-content: space-between; }
 }
+
+/* Destructive-action affordances: paid-cancellation surface and ghost buttons.
+   Used by PaymentsModule when anulling a payment that was already registered. */
+button.danger-ghost {
+  color: var(--danger);
+}
+button.danger-ghost:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--danger) 8%, transparent);
+  border-color: color-mix(in oklch, var(--danger) 40%, var(--border));
+}
+button.danger {
+  background: var(--danger);
+  color: var(--bg);
+  border-color: var(--danger);
+}
+button.danger:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+button.danger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.payment-action-form--cancel-paid {
+  border-left: 2px solid var(--danger);
+  padding-left: var(--s4);
+  background: color-mix(in oklch, var(--danger) 4%, transparent);
+}
+.payment-action-form--cancel-paid .eyebrow {
+  color: var(--danger);
+}
+.payment-form-hint {
+  margin-left: var(--s2);
+  font-style: normal;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+}

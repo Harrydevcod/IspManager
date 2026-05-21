@@ -435,21 +435,41 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     }
 
     const db = getSqliteDatabase();
-    const payment = db.prepare('SELECT id, status, notes FROM payments WHERE id = ?')
-      .get(id) as { id: number; status: 'pending' | 'paid' | 'overdue' | 'cancelled'; notes: string | null } | undefined;
+    const payment = db.prepare(`
+      SELECT id, status, notes, amount_cve AS amountCve, invoice_number AS invoiceNumber,
+             receipt_number AS receiptNumber, reference_month AS referenceMonth
+      FROM payments WHERE id = ?
+    `).get(id) as {
+      id: number;
+      status: 'pending' | 'paid' | 'overdue' | 'cancelled';
+      notes: string | null;
+      amountCve: number;
+      invoiceNumber: string | null;
+      receiptNumber: string | null;
+      referenceMonth: string;
+    } | undefined;
     if (!payment) {
       return reply.status(404).send({ error: 'Pagamento nao encontrado' });
-    }
-    if (payment.status === 'paid') {
-      return reply.status(400).send({ error: 'Pagamento pago nao pode ser anulado' });
     }
     if (payment.status === 'cancelled') {
       return reply.status(400).send({ error: 'Pagamento ja esta anulado' });
     }
 
     const reason = parsed.data.reason?.trim() || '';
-    const notes = reason
-      ? [payment.notes?.trim(), reason].filter(Boolean).join('\n')
+    const wasPaid = payment.status === 'paid';
+    if (wasPaid && reason.length < 10) {
+      return reply.status(400).send({
+        error: 'Anular pagamento ja registado exige um motivo detalhado (minimo 10 caracteres).'
+      });
+    }
+
+    const stampedReason = reason
+      ? wasPaid
+        ? `[ANULACAO POS-PAGAMENTO] ${reason}`
+        : reason
+      : '';
+    const notes = stampedReason
+      ? [payment.notes?.trim(), stampedReason].filter(Boolean).join('\n')
       : payment.notes;
 
     db.prepare(`
@@ -461,11 +481,20 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     `).run(notes || null, id);
 
     recordAudit(request, {
-      action: 'cancel',
+      action: wasPaid ? 'cancel_paid' : 'cancel',
       entityType: 'payment',
       entityId: id,
-      summary: `Anulou pagamento ${id}`,
-      metadata: { reason }
+      summary: wasPaid
+        ? `Anulou pagamento ja registado ${id} (FT ${payment.invoiceNumber || '-'}, REC ${payment.receiptNumber || '-'})`
+        : `Anulou pagamento ${id}`,
+      metadata: {
+        reason,
+        priorStatus: payment.status,
+        invoiceNumber: payment.invoiceNumber,
+        receiptNumber: payment.receiptNumber,
+        amountCve: payment.amountCve,
+        referenceMonth: payment.referenceMonth
+      }
     });
     return db.prepare('SELECT * FROM payments WHERE id = ?').get(id);
   });

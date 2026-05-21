@@ -763,10 +763,17 @@ export function PaymentsModule() {
                   {wasReminderSentToday(selectedPayment.id) ? 'Enviado hoje' : 'WhatsApp'}
                 </button>
               )}
-              {selectedPayment.status !== 'paid' && selectedPayment.status !== 'cancelled' && (
-                <button type="button" onClick={() => openCancelForm(selectedPayment)}>
+              {selectedPayment.status !== 'cancelled' && (
+                <button
+                  type="button"
+                  onClick={() => openCancelForm(selectedPayment)}
+                  className={selectedPayment.status === 'paid' ? 'danger-ghost' : undefined}
+                  title={selectedPayment.status === 'paid'
+                    ? 'Anular pagamento ja registado (ex: erro de faturacao)'
+                    : 'Anular cobranca'}
+                >
                   <X size={16} />
-                  Anular
+                  {selectedPayment.status === 'paid' ? 'Anular pago' : 'Anular'}
                 </button>
               )}
             </>
@@ -803,36 +810,60 @@ export function PaymentsModule() {
             </form>
           )}
 
-          {showActionForm && actionMode === 'cancel' && (
-            <form
-              className="payment-action-form payment-action-form--cancel"
-              onSubmit={(event: FormEvent<HTMLFormElement>) => {
-                event.preventDefault();
-                void submitCancel(selectedPayment.id, cancelReason);
-              }}
-            >
-              <div>
-                <p className="eyebrow">Anular pagamento</p>
-                <small>O pagamento e marcado anulado e o motivo fica registado nas notas.</small>
-              </div>
-              <label>
-                Motivo
-                <textarea
-                  value={cancelReason}
-                  onChange={(event) => setCancelReason(event.target.value)}
-                  rows={3}
-                  required
-                  minLength={3}
-                  placeholder="Ex: cobranca duplicada"
-                  disabled={submitting}
-                />
-              </label>
-              <div className="inline-actions">
-                <button type="submit" disabled={submitting || cancelReason.trim().length < 3}>Confirmar anulacao</button>
-                <button type="button" onClick={closeActionForm} disabled={submitting}>Cancelar</button>
-              </div>
-            </form>
-          )}
+          {showActionForm && actionMode === 'cancel' && (() => {
+            const wasPaid = selectedPayment.status === 'paid';
+            const minLen = wasPaid ? 10 : 3;
+            return (
+              <form
+                className={`payment-action-form payment-action-form--cancel${wasPaid ? ' payment-action-form--cancel-paid' : ''}`}
+                onSubmit={(event: FormEvent<HTMLFormElement>) => {
+                  event.preventDefault();
+                  void submitCancel(selectedPayment.id, cancelReason);
+                }}
+              >
+                <div>
+                  <p className="eyebrow">
+                    {wasPaid ? 'Anular pagamento ja registado' : 'Anular pagamento'}
+                  </p>
+                  {wasPaid ? (
+                    <small>
+                      <strong>Atencao:</strong> anular um pagamento ja registado nao devolve dinheiro.
+                      Marca a cobranca <strong>FT {selectedPayment.invoiceNumber || '-'}</strong>
+                      {selectedPayment.receiptNumber ? ` / REC ${selectedPayment.receiptNumber}` : ''}
+                      {' '}como invalida, congela os numeros e regista a anulacao no audit log.
+                      Use para corrigir erros de faturacao no valor.
+                    </small>
+                  ) : (
+                    <small>O pagamento e marcado anulado e o motivo fica registado nas notas.</small>
+                  )}
+                </div>
+                <label>
+                  Motivo {wasPaid && <em className="payment-form-hint">(minimo 10 caracteres)</em>}
+                  <textarea
+                    value={cancelReason}
+                    onChange={(event) => setCancelReason(event.target.value)}
+                    rows={wasPaid ? 4 : 3}
+                    required
+                    minLength={minLen}
+                    placeholder={wasPaid
+                      ? 'Ex: valor cobrado 5500 em vez de 4500; cliente notificado por WhatsApp 21/05.'
+                      : 'Ex: cobranca duplicada'}
+                    disabled={submitting}
+                  />
+                </label>
+                <div className="inline-actions">
+                  <button
+                    type="submit"
+                    className={wasPaid ? 'danger' : undefined}
+                    disabled={submitting || cancelReason.trim().length < minLen}
+                  >
+                    {wasPaid ? 'Confirmar anulacao pos-pagamento' : 'Confirmar anulacao'}
+                  </button>
+                  <button type="button" onClick={closeActionForm} disabled={submitting}>Cancelar</button>
+                </div>
+              </form>
+            );
+          })()}
 
           {showActionForm && actionMode === 'whatsapp' && (
             <form
@@ -948,8 +979,15 @@ export function PaymentsModule() {
                 <MessageCircle size={16} />
               </button>
             )}
-            {p.status !== 'paid' && p.status !== 'cancelled' && (
-              <button type="button" title="Anular pagamento" onClick={() => openCancelForm(p)}>
+            {p.status !== 'cancelled' && (
+              <button
+                type="button"
+                title={p.status === 'paid'
+                  ? 'Anular pagamento ja registado (erro de faturacao)'
+                  : 'Anular cobranca'}
+                onClick={() => openCancelForm(p)}
+                className={p.status === 'paid' ? 'danger-ghost' : undefined}
+              >
                 <X size={16} />
               </button>
             )}
