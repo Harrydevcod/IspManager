@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, CalendarClock, MessageCircle, PhoneOff, TrendingUp, UsersRound } from 'lucide-react';
+import { Activity, AlertTriangle, CalendarClock, MessageCircle, TrendingUp, UsersRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Badge, Card, Message, MetricCard, MetricGrid } from '../components';
 import { authFetch } from '../lib/auth';
@@ -212,12 +212,6 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
       value: summary ? String(summary.activeServices) : '...',
       trend: 'a faturar',
       icon: Activity
-    },
-    {
-      label: 'Sem telefone',
-      value: summary ? String(summary.clientsWithoutPhone) : '...',
-      trend: 'cadastro incompleto',
-      icon: PhoneOff
     }
   ];
 

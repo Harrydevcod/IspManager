@@ -59,10 +59,6 @@ function counterFor(id: SectionId, summary: DashboardSummary | null): SidebarCou
       return summary.openWorkOrders > 0
         ? { count: summary.openWorkOrders, tone: 'info' }
         : null;
-    case 'clients':
-      return summary.clientsWithoutPhone > 0
-        ? { count: summary.clientsWithoutPhone, tone: 'neutral' }
-        : null;
     default:
       return null;
   }

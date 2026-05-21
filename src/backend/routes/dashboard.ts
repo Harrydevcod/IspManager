@@ -7,7 +7,6 @@ type DashboardMetricRow = {
   activeClients: number;
   suspendedClients: number;
   cancelledClients: number;
-  clientsWithoutPhone: number;
   overduePayments: number;
   pendingPayments: number;
   lowStockModels: number;
@@ -55,7 +54,6 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         (SELECT count(*) FROM clients WHERE status = 'active') AS activeClients,
         (SELECT count(*) FROM clients WHERE status = 'suspended') AS suspendedClients,
         (SELECT count(*) FROM clients WHERE status = 'cancelled') AS cancelledClients,
-        (SELECT count(*) FROM clients WHERE phone IS NULL OR phone = '') AS clientsWithoutPhone,
         (SELECT count(*) FROM payments WHERE status = 'overdue') AS overduePayments,
         (SELECT count(*) FROM payments WHERE status = 'pending') AS pendingPayments,
         (SELECT count(*) FROM equipment_catalog WHERE active = 1 AND stock_total <= 3) AS lowStockModels,
@@ -136,9 +134,6 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     if (summary.lowStockModels > 0) {
       workQueue.push(`${summary.lowStockModels} modelos com stock baixo`);
     }
-    if (summary.clientsWithoutPhone > 0) {
-      workQueue.push(`${summary.clientsWithoutPhone} clientes sem telefone no cadastro`);
-    }
     if (summary.openWorkOrders > 0) {
       workQueue.push(`${summary.openWorkOrders} OS tecnicas em aberto`);
     }
@@ -148,7 +143,6 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       activeClients: summary.activeClients ?? 0,
       suspendedClients: summary.suspendedClients ?? 0,
       cancelledClients: summary.cancelledClients ?? 0,
-      clientsWithoutPhone: summary.clientsWithoutPhone ?? 0,
       overduePayments: summary.overduePayments ?? 0,
       pendingPayments: summary.pendingPayments ?? 0,
       lowStockModels: summary.lowStockModels ?? 0,

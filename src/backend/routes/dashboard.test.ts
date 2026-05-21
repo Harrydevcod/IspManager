@@ -61,7 +61,6 @@ describe('GET /api/dashboard/summary', () => {
       activeClients: 0,
       suspendedClients: 0,
       cancelledClients: 0,
-      clientsWithoutPhone: 0,
       overduePayments: 0,
       pendingPayments: 0,
       lowStockModels: 0,

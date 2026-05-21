@@ -142,7 +142,6 @@ export type DashboardSummary = {
   activeClients: number;
   suspendedClients: number;
   cancelledClients: number;
-  clientsWithoutPhone: number;
   overduePayments: number;
   pendingPayments: number;
   lowStockModels: number;
