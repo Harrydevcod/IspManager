@@ -24,50 +24,91 @@ function formatCve(value: number): string {
   return currencyFormatter.format(value);
 }
 
-function RevenueSparkline({ points }: { points: RevenuePoint[] }) {
+function RevenueBars({ points }: { points: RevenuePoint[] }) {
   const layout = useMemo(() => {
     const width = 560;
-    const height = 96;
-    const padding = { top: 10, right: 8, bottom: 18, left: 8 };
+    const height = 112;
+    const padding = { top: 14, right: 4, bottom: 22, left: 4 };
     const usableW = width - padding.left - padding.right;
     const usableH = height - padding.top - padding.bottom;
     const maxValue = Math.max(1, ...points.map((p) => p.paidCve + p.pendingCve));
-    const stepX = points.length > 1 ? usableW / (points.length - 1) : 0;
-    const project = (idx: number, value: number) => ({
-      x: padding.left + idx * stepX,
-      y: padding.top + usableH - (value / maxValue) * usableH
+    const slot = points.length > 0 ? usableW / points.length : 0;
+    const barWidth = Math.min(28, Math.max(6, slot * 0.58));
+    const bars = points.map((point, idx) => {
+      const total = point.paidCve + point.pendingCve;
+      const paidH = (point.paidCve / maxValue) * usableH;
+      const pendingH = (point.pendingCve / maxValue) * usableH;
+      const cx = padding.left + slot * idx + slot / 2;
+      const x = cx - barWidth / 2;
+      const paidY = padding.top + usableH - paidH;
+      const pendingY = paidY - pendingH;
+      return { x, paidY, paidH, pendingY, pendingH, barWidth, total, key: point.referenceMonth };
     });
-    const paidPath = points.map((p, i) => {
-      const pt = project(i, p.paidCve);
-      return `${i === 0 ? 'M' : 'L'}${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
-    }).join(' ');
-    const paidArea = `${paidPath} L${(padding.left + (points.length - 1) * stepX).toFixed(1)},${(padding.top + usableH).toFixed(1)} L${padding.left.toFixed(1)},${(padding.top + usableH).toFixed(1)} Z`;
-    const pendingPath = points.map((p, i) => {
-      const pt = project(i, p.paidCve + p.pendingCve);
-      return `${i === 0 ? 'M' : 'L'}${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
-    }).join(' ');
-    return { width, height, padding, project, paidPath, paidArea, pendingPath, maxValue };
+    return { width, height, padding, bars, maxValue, usableH };
   }, [points]);
 
   if (points.every((p) => p.paidCve === 0 && p.pendingCve === 0)) {
     return <div className="sparkline-empty">Sem registos de receita nos ultimos 12 meses.</div>;
   }
 
+  const baselineY = layout.padding.top + layout.usableH;
+  const currentIdx = points.length - 1;
+
   return (
     <div className="sparkline">
-      <svg viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" role="img" aria-label="Receita dos ultimos 12 meses">
-        <path d={layout.paidArea} fill="var(--accent)" fillOpacity="0.18" />
-        <path d={layout.pendingPath} fill="none" stroke="var(--info)" strokeWidth="1.5" strokeDasharray="3 3" strokeLinejoin="round" strokeLinecap="round" />
-        <path d={layout.paidPath} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-        {points.map((point, idx) => {
-          const projected = layout.project(idx, point.paidCve);
-          return <circle key={point.referenceMonth} cx={projected.x} cy={projected.y} r="2.5" fill="var(--accent)" />;
+      <svg
+        viewBox={`0 0 ${layout.width} ${layout.height}`}
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="Receita dos ultimos 12 meses"
+      >
+        <line
+          x1={layout.padding.left}
+          x2={layout.width - layout.padding.right}
+          y1={baselineY}
+          y2={baselineY}
+          stroke="var(--border)"
+          strokeWidth="1"
+        />
+        {layout.bars.map((bar, idx) => {
+          const isCurrent = idx === currentIdx;
+          return (
+            <g key={bar.key} className={isCurrent ? 'bar bar-current' : 'bar'}>
+              {bar.pendingH > 0 && (
+                <rect
+                  x={bar.x}
+                  y={bar.pendingY}
+                  width={bar.barWidth}
+                  height={Math.max(1, bar.pendingH)}
+                  rx="1.5"
+                  fill="var(--info)"
+                  fillOpacity={isCurrent ? '0.45' : '0.28'}
+                />
+              )}
+              {bar.paidH > 0 && (
+                <rect
+                  x={bar.x}
+                  y={bar.paidY}
+                  width={bar.barWidth}
+                  height={Math.max(1, bar.paidH)}
+                  rx="1.5"
+                  fill="var(--accent)"
+                  fillOpacity={isCurrent ? '1' : '0.78'}
+                />
+              )}
+            </g>
+          );
         })}
       </svg>
       <div className="sparkline-axis">
         {points.map((point, idx) => (
           (idx % 2 === 0 || idx === points.length - 1) && (
-            <span key={point.referenceMonth}>{formatMonthLabel(point.referenceMonth)}</span>
+            <span
+              key={point.referenceMonth}
+              className={idx === currentIdx ? 'sparkline-axis-current' : undefined}
+            >
+              {formatMonthLabel(point.referenceMonth)}
+            </span>
           )
         ))}
       </div>
@@ -162,11 +203,11 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
       <section className="dashboard-grid">
         <Card eyebrow="Receita" title="12 meses" className="dashboard-card-wide">
           {summary
-            ? <RevenueSparkline points={summary.revenueByMonth} />
+            ? <RevenueBars points={summary.revenueByMonth} />
             : <p className="module-message">A carregar...</p>}
           <div className="sparkline-legend">
             <span className="legend-item legend-paid">Pago</span>
-            <span className="legend-item legend-pending">Pago + pendente</span>
+            <span className="legend-item legend-pending">Pendente</span>
           </div>
         </Card>
 
