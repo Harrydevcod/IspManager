@@ -2417,8 +2417,22 @@ h2 {
 }
 .dashboard-card-wide { grid-column: 1 / -1; }
 .dashboard-card-list { min-height: 200px; }
-.dashboard-card-compact { align-self: start; }
-.dashboard-card-compact .plan-mix { gap: var(--s2); }
+/* Compact card matches the height of its row neighbours (lists with
+   min-height 200px), but keeps its slim plan-mix density by stretching
+   into a flex column and distributing the bar rows evenly. */
+.dashboard-card-compact {
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+.dashboard-card-compact .plan-mix {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: var(--s2);
+}
 .dashboard-card-compact .plan-mix-row { font-size: var(--fs-xs); }
 .dashboard-card-compact .plan-mix-bar { height: 4px; margin-top: 4px; }
 
