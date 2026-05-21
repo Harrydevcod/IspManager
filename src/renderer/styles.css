@@ -2421,8 +2421,9 @@ h2 {
 }
 .sparkline svg {
   width: 100%;
-  height: 132px;
+  height: 156px;
   display: block;
+  overflow: visible;
 }
 .sparkline svg .bar rect {
   transition: fill-opacity 160ms ease;
@@ -2430,21 +2431,33 @@ h2 {
 .sparkline svg .bar:hover rect {
   fill-opacity: 1;
 }
-.sparkline-axis {
-  display: flex;
-  justify-content: space-between;
-  margin-top: var(--s2);
-  color: var(--text-3);
-  font-size: var(--fs-xs);
-  text-transform: capitalize;
-  letter-spacing: 0.04em;
+.sparkline svg .bar-axis {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  fill: var(--text-3);
 }
-.sparkline-axis-current {
-  color: var(--accent);
+.sparkline svg .bar-axis-current {
+  fill: var(--accent);
   font-weight: 600;
 }
+.sparkline svg .bar-value {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.sparkline svg .bar-value-inside {
+  fill: var(--bg);
+  font-weight: 600;
+}
+.sparkline svg .bar-value-above {
+  fill: var(--text-2);
+}
 .sparkline-empty {
-  height: 132px;
+  height: 156px;
   display: grid;
   place-items: center;
   color: var(--text-3);

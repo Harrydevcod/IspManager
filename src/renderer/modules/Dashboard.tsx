@@ -24,16 +24,29 @@ function formatCve(value: number): string {
   return currencyFormatter.format(value);
 }
 
+function formatCompactCve(value: number): string {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
+  }
+  if (value >= 10_000) {
+    return `${Math.round(value / 1000)}k`;
+  }
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1)}k`;
+  }
+  return String(Math.round(value));
+}
+
 function RevenueBars({ points }: { points: RevenuePoint[] }) {
   const layout = useMemo(() => {
     const width = 560;
-    const height = 112;
-    const padding = { top: 14, right: 4, bottom: 22, left: 4 };
+    const height = 144;
+    const padding = { top: 18, right: 4, bottom: 28, left: 4 };
     const usableW = width - padding.left - padding.right;
     const usableH = height - padding.top - padding.bottom;
     const maxValue = Math.max(1, ...points.map((p) => p.paidCve + p.pendingCve));
     const slot = points.length > 0 ? usableW / points.length : 0;
-    const barWidth = Math.min(28, Math.max(6, slot * 0.58));
+    const barWidth = Math.min(32, Math.max(8, slot * 0.62));
     const bars = points.map((point, idx) => {
       const total = point.paidCve + point.pendingCve;
       const paidH = (point.paidCve / maxValue) * usableH;
@@ -42,7 +55,20 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
       const x = cx - barWidth / 2;
       const paidY = padding.top + usableH - paidH;
       const pendingY = paidY - pendingH;
-      return { x, paidY, paidH, pendingY, pendingH, barWidth, total, key: point.referenceMonth };
+      const topY = pendingH > 0 ? pendingY : paidY;
+      return {
+        x,
+        cx,
+        paidY,
+        paidH,
+        pendingY,
+        pendingH,
+        topY,
+        barWidth,
+        total,
+        referenceMonth: point.referenceMonth,
+        key: point.referenceMonth
+      };
     });
     return { width, height, padding, bars, maxValue, usableH };
   }, [points]);
@@ -53,6 +79,7 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
 
   const baselineY = layout.padding.top + layout.usableH;
   const currentIdx = points.length - 1;
+  const labelY = baselineY + 16;
 
   return (
     <div className="sparkline">
@@ -72,6 +99,10 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
         />
         {layout.bars.map((bar, idx) => {
           const isCurrent = idx === currentIdx;
+          const totalH = bar.paidH + bar.pendingH;
+          const valueInside = totalH >= 22 && bar.total > 0;
+          const valueY = valueInside ? bar.topY + 12 : bar.topY - 5;
+          const showValue = bar.total > 0 && (idx % 2 === 0 || isCurrent);
           return (
             <g key={bar.key} className={isCurrent ? 'bar bar-current' : 'bar'}>
               {bar.pendingH > 0 && (
@@ -96,22 +127,28 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
                   fillOpacity={isCurrent ? '1' : '0.78'}
                 />
               )}
+              {showValue && (
+                <text
+                  x={bar.cx}
+                  y={valueY}
+                  textAnchor="middle"
+                  className={valueInside ? 'bar-value bar-value-inside' : 'bar-value bar-value-above'}
+                >
+                  {formatCompactCve(bar.total)}
+                </text>
+              )}
+              <text
+                x={bar.cx}
+                y={labelY}
+                textAnchor="middle"
+                className={isCurrent ? 'bar-axis bar-axis-current' : 'bar-axis'}
+              >
+                {formatMonthLabel(bar.referenceMonth)}
+              </text>
             </g>
           );
         })}
       </svg>
-      <div className="sparkline-axis">
-        {points.map((point, idx) => (
-          (idx % 2 === 0 || idx === points.length - 1) && (
-            <span
-              key={point.referenceMonth}
-              className={idx === currentIdx ? 'sparkline-axis-current' : undefined}
-            >
-              {formatMonthLabel(point.referenceMonth)}
-            </span>
-          )
-        ))}
-      </div>
     </div>
   );
 }
