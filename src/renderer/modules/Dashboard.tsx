@@ -1,5 +1,6 @@
 import { Activity, AlertTriangle, CalendarClock, MessageCircle, TrendingUp, UsersRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { Badge, Card, Message, MetricCard, MetricGrid } from '../components';
 import { authFetch } from '../lib/auth';
 import type { DashboardSummary, RevenuePoint } from '../types';
@@ -37,11 +38,21 @@ function formatCompactCve(value: number): string {
   return String(Math.round(value));
 }
 
+const longMonthFormatter = new Intl.DateTimeFormat('pt-PT', { month: 'long', year: 'numeric' });
+
+function formatLongMonth(referenceMonth: string): string {
+  const [year, month] = referenceMonth.split('-');
+  const date = new Date(Number(year), Number(month) - 1, 1);
+  return longMonthFormatter.format(date);
+}
+
 function RevenueBars({ points }: { points: RevenuePoint[] }) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
   const layout = useMemo(() => {
     const width = 560;
-    const height = 144;
-    const padding = { top: 18, right: 4, bottom: 28, left: 4 };
+    const height = 156;
+    const padding = { top: 22, right: 4, bottom: 32, left: 4 };
     const usableW = width - padding.left - padding.right;
     const usableH = height - padding.top - padding.bottom;
     const maxValue = Math.max(1, ...points.map((p) => p.paidCve + p.pendingCve));
@@ -70,7 +81,15 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
         key: point.referenceMonth
       };
     });
-    return { width, height, padding, bars, maxValue, usableH };
+    const paidValues = points.map((p) => p.paidCve).filter((v) => v > 0);
+    const avgPaid = paidValues.length > 0 ? paidValues.reduce((a, b) => a + b, 0) / paidValues.length : 0;
+    const yearBreaks: number[] = [];
+    for (let i = 1; i < points.length; i++) {
+      const prevYear = points[i - 1].referenceMonth.slice(0, 4);
+      const curYear = points[i].referenceMonth.slice(0, 4);
+      if (prevYear !== curYear) yearBreaks.push(i);
+    }
+    return { width, height, padding, bars, maxValue, usableH, slot, avgPaid, yearBreaks };
   }, [points]);
 
   if (points.every((p) => p.paidCve === 0 && p.pendingCve === 0)) {
@@ -80,6 +99,13 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
   const baselineY = layout.padding.top + layout.usableH;
   const currentIdx = points.length - 1;
   const labelY = baselineY + 16;
+  const avgY = baselineY - (layout.avgPaid / layout.maxValue) * layout.usableH;
+  const hovered = hoveredIdx !== null ? layout.bars[hoveredIdx] : null;
+  const hoveredPoint = hoveredIdx !== null ? points[hoveredIdx] : null;
+  const prevPoint = hoveredIdx !== null && hoveredIdx > 0 ? points[hoveredIdx - 1] : null;
+  const deltaPct = hoveredPoint && prevPoint && prevPoint.paidCve > 0
+    ? ((hoveredPoint.paidCve - prevPoint.paidCve) / prevPoint.paidCve) * 100
+    : null;
 
   return (
     <div className="sparkline">
@@ -88,6 +114,7 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
         preserveAspectRatio="none"
         role="img"
         aria-label="Receita dos ultimos 12 meses"
+        onMouseLeave={() => setHoveredIdx(null)}
       >
         <line
           x1={layout.padding.left}
@@ -97,14 +124,73 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
           stroke="var(--border)"
           strokeWidth="1"
         />
+
+        {layout.yearBreaks.map((breakIdx) => {
+          const x = layout.padding.left + layout.slot * breakIdx;
+          return (
+            <line
+              key={`year-${breakIdx}`}
+              x1={x}
+              x2={x}
+              y1={layout.padding.top}
+              y2={baselineY}
+              stroke="var(--text-3)"
+              strokeOpacity="0.18"
+              strokeDasharray="2 3"
+            />
+          );
+        })}
+
+        {layout.avgPaid > 0 && (
+          <>
+            <line
+              x1={layout.padding.left}
+              x2={layout.width - layout.padding.right}
+              y1={avgY}
+              y2={avgY}
+              stroke="var(--text-3)"
+              strokeOpacity="0.55"
+              strokeWidth="1"
+              strokeDasharray="3 3"
+            />
+            <text
+              x={layout.width - layout.padding.right}
+              y={avgY - 4}
+              textAnchor="end"
+              className="bar-axis bar-axis-meta"
+            >
+              média {formatCompactCve(layout.avgPaid)}
+            </text>
+          </>
+        )}
+
         {layout.bars.map((bar, idx) => {
           const isCurrent = idx === currentIdx;
+          const isHovered = idx === hoveredIdx;
+          const dim = hoveredIdx !== null && !isHovered;
           const totalH = bar.paidH + bar.pendingH;
           const valueInside = totalH >= 22 && bar.total > 0;
           const valueY = valueInside ? bar.topY + 12 : bar.topY - 5;
           const showValue = bar.total > 0 && (idx % 2 === 0 || isCurrent);
+          let groupClass = 'bar';
+          if (isCurrent) groupClass += ' bar-current';
+          if (isHovered) groupClass += ' bar-hovered';
+          if (dim) groupClass += ' bar-dim';
           return (
-            <g key={bar.key} className={isCurrent ? 'bar bar-current' : 'bar'}>
+            <g
+              key={bar.key}
+              className={groupClass}
+              style={{ ['--i' as never]: idx } as CSSProperties}
+              onMouseEnter={() => setHoveredIdx(idx)}
+            >
+              <rect
+                className="bar-hitbox"
+                x={layout.padding.left + layout.slot * idx}
+                y={layout.padding.top}
+                width={layout.slot}
+                height={layout.usableH}
+                fill="transparent"
+              />
               {bar.pendingH > 0 && (
                 <rect
                   x={bar.x}
@@ -113,7 +199,7 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
                   height={Math.max(1, bar.pendingH)}
                   rx="1.5"
                   fill="var(--info)"
-                  fillOpacity={isCurrent ? '0.45' : '0.28'}
+                  fillOpacity={isCurrent || isHovered ? '0.55' : '0.28'}
                 />
               )}
               {bar.paidH > 0 && (
@@ -124,7 +210,7 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
                   height={Math.max(1, bar.paidH)}
                   rx="1.5"
                   fill="var(--accent)"
-                  fillOpacity={isCurrent ? '1' : '0.78'}
+                  fillOpacity={isCurrent || isHovered ? '1' : '0.78'}
                 />
               )}
               {showValue && (
@@ -149,6 +235,39 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
           );
         })}
       </svg>
+
+      {hovered && hoveredPoint && (
+        <div
+          className="bar-tooltip"
+          style={{
+            left: `${(hovered.cx / layout.width) * 100}%`,
+            top: `${(hovered.topY / layout.height) * 100}%`
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          <p className="bar-tooltip-month">{formatLongMonth(hoveredPoint.referenceMonth)}</p>
+          <dl className="bar-tooltip-rows">
+            <div>
+              <dt><span className="dot dot-paid" />Pago</dt>
+              <dd>{formatCompactCve(hoveredPoint.paidCve)} CVE</dd>
+            </div>
+            <div>
+              <dt><span className="dot dot-pending" />Pendente</dt>
+              <dd>{formatCompactCve(hoveredPoint.pendingCve)} CVE</dd>
+            </div>
+            <div className="bar-tooltip-total">
+              <dt>Total</dt>
+              <dd>{formatCompactCve(hoveredPoint.paidCve + hoveredPoint.pendingCve)} CVE</dd>
+            </div>
+          </dl>
+          {deltaPct !== null && (
+            <p className={`bar-tooltip-delta ${deltaPct >= 0 ? 'positive' : 'negative'}`}>
+              {deltaPct >= 0 ? '+' : ''}{deltaPct.toFixed(1)}% vs mes anterior
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

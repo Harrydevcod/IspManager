@@ -2443,21 +2443,46 @@ h2 {
 
 /* Revenue chart: stacked vertical bars (paid base + pending top).
    Current month rendered with full opacity; previous months recede.
-   Axis labels show every other month with the current one in accent. */
+   Hover surfaces a floating tooltip with exact paid/pending/total and
+   MoM delta; non-hovered bars dim. Average paid line + year breaks
+   give analytical context without colour candy. */
 .sparkline {
   display: block;
+  position: relative;
 }
 .sparkline svg {
   width: 100%;
-  height: 156px;
+  height: 168px;
   display: block;
   overflow: visible;
 }
 .sparkline svg .bar rect {
-  transition: fill-opacity 160ms ease;
+  transition: fill-opacity 180ms ease, transform 220ms ease;
 }
-.sparkline svg .bar:hover rect {
+.sparkline svg .bar.bar-dim rect {
+  fill-opacity: 0.35;
+}
+.sparkline svg .bar:not(.bar-current):not(.bar-hovered):hover rect {
   fill-opacity: 1;
+}
+.sparkline svg .bar {
+  cursor: default;
+  animation: bar-grow-in 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 32ms);
+}
+@keyframes bar-grow-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.sparkline svg .bar rect:not(.bar-hitbox) {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: bar-rect-rise 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 32ms);
+}
+@keyframes bar-rect-rise {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
 }
 .sparkline svg .bar-axis {
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
@@ -2470,6 +2495,98 @@ h2 {
   fill: var(--accent);
   font-weight: 600;
 }
+.sparkline svg .bar-axis-meta {
+  fill: var(--text-3);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Floating hover tooltip with breakdown + month-over-month delta.
+   Positioned absolutely over the chart in % of viewBox so it tracks
+   the bar regardless of how the SVG scales horizontally. */
+.bar-tooltip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 12px));
+  min-width: 180px;
+  padding: 10px 12px;
+  background: color-mix(in oklch, var(--surface-1) 92%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px -16px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: 4;
+  animation: bar-tooltip-in 140ms ease-out;
+}
+@keyframes bar-tooltip-in {
+  from { opacity: 0; transform: translate(-50%, calc(-100% - 4px)); }
+  to   { opacity: 1; transform: translate(-50%, calc(-100% - 12px)); }
+}
+.bar-tooltip-month {
+  margin: 0 0 6px;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.bar-tooltip-rows {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+.bar-tooltip-rows > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+.bar-tooltip-rows dt {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.bar-tooltip-rows dd {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1);
+}
+.bar-tooltip-rows .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.bar-tooltip-rows .dot-paid { background: var(--accent); }
+.bar-tooltip-rows .dot-pending { background: var(--info); opacity: 0.55; }
+.bar-tooltip-rows .bar-tooltip-total {
+  padding-top: 6px;
+  margin-top: 2px;
+  border-top: 1px dashed var(--border);
+}
+.bar-tooltip-rows .bar-tooltip-total dt {
+  font-weight: 600;
+  color: var(--text-1);
+}
+.bar-tooltip-rows .bar-tooltip-total dd {
+  font-weight: 600;
+}
+.bar-tooltip-delta {
+  margin: 8px 0 0;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.02em;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-variant-numeric: tabular-nums;
+}
+.bar-tooltip-delta.positive { color: var(--success, #34d399); }
+.bar-tooltip-delta.negative { color: var(--danger); }
 .sparkline svg .bar-value {
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 10px;
