@@ -398,9 +398,11 @@ export function PaymentsModule() {
 
   async function submitCancel(paymentId: number, reason: string) {
     if (!reason.trim()) {
-      setMessage('Indique o motivo da anulacao.');
+      toast('Indique o motivo da anulacao.', 'error');
       return;
     }
+    const target = payments.find((p) => p.id === paymentId);
+    const wasPaid = target?.status === 'paid';
     setSubmitting(true);
     try {
       const response = await authFetch(`http://127.0.0.1:3001/api/payments/${paymentId}/cancel`, {
@@ -408,15 +410,27 @@ export function PaymentsModule() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: reason.trim() })
       });
-      if (response.ok) {
-        setMessage('Pagamento anulado.');
-        const refreshedPayments = await loadPayments();
-        setSelectedPayment((current) => refreshedPayments.find((item) => item.id === (current?.id || paymentId)) || current);
-        closeActionForm();
+      const result = await response.json().catch(() => ({})) as { error?: string; status?: string };
+      if (!response.ok) {
+        toast(result.error || 'Nao foi possivel anular o pagamento.', 'error');
         return;
       }
-      const result = await response.json().catch(() => ({ error: 'Nao foi possivel anular o pagamento.' })) as { error?: string };
-      setMessage(result.error || 'Nao foi possivel anular o pagamento.');
+      const refreshedPayments = await loadPayments();
+      const fresh = refreshedPayments.find((item) => item.id === paymentId);
+      if (fresh?.status !== 'cancelled') {
+        toast('A resposta nao confirmou a anulacao. Verifica o backend.', 'error');
+        return;
+      }
+      toast(
+        wasPaid
+          ? `Pagamento anulado (FT ${fresh.invoiceNumber || fresh.id}). Receita do mes atualizada.`
+          : 'Cobranca anulada.',
+        'success'
+      );
+      setSelectedPayment((current) => refreshedPayments.find((item) => item.id === (current?.id || paymentId)) || current);
+      closeActionForm();
+    } catch {
+      toast('Falha de rede ao anular pagamento.', 'error');
     } finally {
       setSubmitting(false);
     }

@@ -624,6 +624,66 @@ describe('finance routes', () => {
     expect(invoice.json()).toEqual({ error: 'Pagamento anulado nao pode gerar fatura' });
   });
 
+  test('allows cancelling a paid payment when given a 10+ char reason', async () => {
+    const client = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status)
+      VALUES ('CLT-T003', 'Cliente Anular Pago', 'active')
+    `).run();
+    const plan = db.prepare(`
+      INSERT INTO internet_plans (
+        name, download_speed, upload_speed, connection_type, monthly_price_cve
+      )
+      VALUES ('Plano Pago', '20 Mbps', '10 Mbps', 'fibra', 4500)
+    `).run();
+    const service = db.prepare(`
+      INSERT INTO services (
+        client_id, plan_id, monthly_value_cve, activation_date, due_day, status
+      )
+      VALUES (?, ?, 4500, '2026-01-01', 5, 'active')
+    `).run(client.lastInsertRowid, plan.lastInsertRowid);
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/billing/generate-monthly',
+      payload: { referenceMonth: '2026-03' }
+    });
+
+    const payment = db.prepare('SELECT id FROM payments WHERE service_id = ?')
+      .get(service.lastInsertRowid) as { id: number };
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/payments/${payment.id}/pay`,
+      payload: { paymentMethod: 'numerario', paymentDate: '2026-03-05' }
+    });
+
+    const paid = db.prepare('SELECT status FROM payments WHERE id = ?')
+      .get(payment.id) as { status: string };
+    expect(paid.status).toBe('paid');
+
+    const shortReason = await app.inject({
+      method: 'POST',
+      url: `/api/payments/${payment.id}/cancel`,
+      payload: { reason: 'curto' }
+    });
+    expect(shortReason.statusCode).toBe(400);
+
+    const proper = await app.inject({
+      method: 'POST',
+      url: `/api/payments/${payment.id}/cancel`,
+      payload: { reason: 'Valor cobrado errado: 5500 em vez de 4500. Cliente notificado.' }
+    });
+    expect(proper.statusCode).toBe(200);
+    expect(proper.json()).toMatchObject({ status: 'cancelled' });
+
+    const cancelled = db.prepare('SELECT status, notes, invoice_number, receipt_number FROM payments WHERE id = ?')
+      .get(payment.id) as { status: string; notes: string | null; invoice_number: string | null; receipt_number: string | null };
+    expect(cancelled.status).toBe('cancelled');
+    expect(cancelled.notes).toMatch(/\[ANULACAO POS-PAGAMENTO\]/);
+    expect(cancelled.invoice_number).not.toBeNull();
+    expect(cancelled.receipt_number).not.toBeNull();
+  });
+
   test('settings PUT rejects a non-existent backupDir', async () => {
     const base = {
       companyName: 'X', defaultDueDay: 1, currencyCode: 'CVE',
