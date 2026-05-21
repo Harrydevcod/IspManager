@@ -267,27 +267,6 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
           )}
         </Card>
 
-        <Card eyebrow="Mix" title="Planos ativos" className="dashboard-card-compact">
-          {summary && summary.planMix.length > 0 ? (
-            <ul className="plan-mix">
-              {summary.planMix.map((entry) => {
-                const pct = totalPlanCount > 0 ? (entry.count / totalPlanCount) * 100 : 0;
-                return (
-                  <li key={entry.connectionType}>
-                    <div className="plan-mix-row">
-                      <span>{planTypeLabel[entry.connectionType] || entry.connectionType}</span>
-                      <strong>{entry.count}</strong>
-                    </div>
-                    <div className="plan-mix-bar"><span style={{ width: `${pct}%` }} /></div>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="module-message">Sem servicos ativos com plano atribuido.</p>
-          )}
-        </Card>
-
         <Card eyebrow="Mais de 30 dias" title="Atrasos criticos" className="dashboard-card-list">
           {summary && summary.criticalOverdue.length > 0 ? (
             <ul className="dashboard-list">
@@ -308,6 +287,27 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
             </ul>
           ) : (
             <p className="module-message">Sem atrasos com mais de 30 dias.</p>
+          )}
+        </Card>
+
+        <Card eyebrow="Mix" title="Planos ativos" className="dashboard-card-compact">
+          {summary && summary.planMix.length > 0 ? (
+            <ul className="plan-mix">
+              {summary.planMix.map((entry) => {
+                const pct = totalPlanCount > 0 ? (entry.count / totalPlanCount) * 100 : 0;
+                return (
+                  <li key={entry.connectionType}>
+                    <div className="plan-mix-row">
+                      <span>{planTypeLabel[entry.connectionType] || entry.connectionType}</span>
+                      <strong>{entry.count}</strong>
+                    </div>
+                    <div className="plan-mix-bar"><span style={{ width: `${pct}%` }} /></div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="module-message">Sem servicos ativos com plano atribuido.</p>
           )}
         </Card>
 
