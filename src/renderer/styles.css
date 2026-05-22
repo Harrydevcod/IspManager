@@ -4619,6 +4619,63 @@ button.danger:disabled {
   border: 1px solid var(--border);
 }
 
+/* Settings — horizontal segmented tabs */
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: var(--s2) 0 var(--s5);
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+}
+.settings-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-3);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.settings-tab:hover {
+  color: var(--text);
+  background: color-mix(in oklch, var(--surface) 70%, transparent);
+}
+.settings-tab.is-active {
+  background: color-mix(in oklch, var(--accent) 12%, var(--surface));
+  border-color: color-mix(in oklch, var(--accent) 38%, var(--border));
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 0 color-mix(in oklch, var(--accent) 18%, transparent);
+}
+.settings-tab svg {
+  color: currentColor;
+  opacity: 0.85;
+}
+.settings-tab.is-active svg { opacity: 1; }
+@media (max-width: 640px) {
+  .settings-tab span { display: none; }
+  .settings-tab { padding: 9px 14px; }
+}
+
+.settings-form {
+  animation: settings-fade 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes settings-fade {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-form { animation: none; }
+}
+
 .expense-allocation {
   margin: 0;
   padding: var(--s4);

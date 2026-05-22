@@ -1,8 +1,18 @@
+import { Banknote, Building2, DatabaseBackup, MessageCircle } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { authFetch } from '../lib/auth';
 import { fallbackWhatsappTemplate } from '../lib/whatsapp';
 import { BackupsPanel } from './BackupsPanel';
+
+type SettingsTab = 'company' | 'billing' | 'whatsapp' | 'backups';
+
+const TABS: { id: SettingsTab; label: string; icon: typeof Building2 }[] = [
+  { id: 'company', label: 'Empresa', icon: Building2 },
+  { id: 'billing', label: 'Faturação', icon: Banknote },
+  { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
+  { id: 'backups', label: 'Backups', icon: DatabaseBackup }
+];
 
 type SettingsFormState = {
   companyName: string;
@@ -27,6 +37,7 @@ type SettingsFormState = {
 
 export function SettingsModule() {
   const [message, setMessage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<SettingsTab>('company');
   const [form, setForm] = useState<SettingsFormState>({
     companyName: 'ISPM',
     nif: '',
@@ -98,112 +109,149 @@ export function SettingsModule() {
       <div className="module-header">
         <div>
           <p className="eyebrow">Sistema</p>
-          <h2>Configuracoes</h2>
+          <h2>Configurações</h2>
         </div>
       </div>
 
+      <nav className="settings-tabs" role="tablist" aria-label="Configurações por tópico">
+        {TABS.map((tab) => {
+          const Icon = tab.icon;
+          const active = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              className={`settings-tab${active ? ' is-active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              <Icon size={14} />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+
       {message && <p className="module-message">{message}</p>}
 
-      <form className="client-form" onSubmit={saveSettings}>
-        <label>
-          Nome da empresa
-          <input required value={form.companyName} onChange={(event) => updateForm('companyName', event.target.value)} />
-        </label>
-        <label>
-          NIF
-          <input value={form.nif} onChange={(event) => updateForm('nif', event.target.value)} />
-        </label>
-        <label>
-          Telefone
-          <input value={form.phone} onChange={(event) => updateForm('phone', event.target.value)} />
-        </label>
-        <label>
-          Email
-          <input type="email" value={form.email} onChange={(event) => updateForm('email', event.target.value)} />
-        </label>
-        <label>
-          Ilha
-          <input value={form.island} onChange={(event) => updateForm('island', event.target.value)} />
-        </label>
-        <label>
-          Dia padrao de vencimento
-          <input required type="number" min="1" max="31" value={form.defaultDueDay} onChange={(event) => updateForm('defaultDueDay', event.target.value)} />
-        </label>
-        <label>
-          Moeda
-          <input required value={form.currencyCode} onChange={(event) => updateForm('currencyCode', event.target.value)} />
-        </label>
-        <label>
-          Prefixo fatura
-          <input required value={form.invoicePrefix} onChange={(event) => updateForm('invoicePrefix', event.target.value)} />
-        </label>
-        <label>
-          Prefixo recibo
-          <input required value={form.receiptPrefix} onChange={(event) => updateForm('receiptPrefix', event.target.value)} />
-        </label>
-        <label>
-          Regime fiscal
-          <select value={form.fiscalRegime} onChange={(event) => updateForm('fiscalRegime', event.target.value as 'normal' | 'rempe')}>
-            <option value="normal">Regime Normal (com IVA)</option>
-            <option value="rempe">REMPE (isento IVA)</option>
-          </select>
-        </label>
-        <label>
-          Taxa de IVA (%)
-          <input required type="number" min="0" max="100" step="0.5" value={form.ivaRate} onChange={(event) => updateForm('ivaRate', event.target.value)} />
-        </label>
-        <label className="wide-field">
-          Morada
-          <input value={form.address} onChange={(event) => updateForm('address', event.target.value)} />
-        </label>
-        <label className="wide-field">
-          Observacoes no documento
-          <textarea rows={3} value={form.legalNotes} onChange={(event) => updateForm('legalNotes', event.target.value)} placeholder="Texto opcional que aparece no rodape de cada fatura/recibo (ex: termos, IBAN, agradecimento)" />
-        </label>
-        <label className="wide-field settings-toggle">
-          <input
-            type="checkbox"
-            checked={form.showIva}
-            onChange={(event) => setForm((current) => ({ ...current, showIva: event.target.checked }))}
-          />
-          <span>
-            <strong>Mostrar linha de IVA nos documentos</strong>
-            <small>Quando desligado, fatura/recibo mostram apenas o total (servico informal). Liga quando estiveres com contabilidade organizada.</small>
-          </span>
-        </label>
-        <label className="wide-field settings-toggle">
-          <input
-            type="checkbox"
-            checked={form.printQrCode}
-            onChange={(event) => setForm((current) => ({ ...current, printQrCode: event.target.checked }))}
-          />
-          <span>
-            <strong>Imprimir QR Code fiscal nos documentos</strong>
-            <small>QR no formato Portaria 47/2021 (preparatorio para e-Fatura). Liga quando estiveres preparado para credenciacao na DNRE.</small>
-          </span>
-        </label>
-        <label className="wide-field">
-          Mensagem WhatsApp
-          <textarea
-            rows={4}
-            value={form.whatsappTemplate}
-            onChange={(event) => updateForm('whatsappTemplate', event.target.value)}
-          />
-        </label>
-        <label>
-          UltraMsg instance ID
-          <input value={form.ultraMsgInstanceId} onChange={(event) => updateForm('ultraMsgInstanceId', event.target.value)} placeholder="instance00000" />
-        </label>
-        <label>
-          UltraMsg token
-          <input type="password" value={form.ultraMsgToken} onChange={(event) => updateForm('ultraMsgToken', event.target.value)} />
-        </label>
+      {activeTab !== 'backups' && (
+      <form className="client-form settings-form" onSubmit={saveSettings}>
+        {activeTab === 'company' && (
+          <>
+            <label>
+              Nome da empresa
+              <input required value={form.companyName} onChange={(event) => updateForm('companyName', event.target.value)} />
+            </label>
+            <label>
+              NIF
+              <input value={form.nif} onChange={(event) => updateForm('nif', event.target.value)} />
+            </label>
+            <label>
+              Telefone
+              <input value={form.phone} onChange={(event) => updateForm('phone', event.target.value)} />
+            </label>
+            <label>
+              Email
+              <input type="email" value={form.email} onChange={(event) => updateForm('email', event.target.value)} />
+            </label>
+            <label>
+              Ilha
+              <input value={form.island} onChange={(event) => updateForm('island', event.target.value)} />
+            </label>
+            <label className="wide-field">
+              Morada
+              <input value={form.address} onChange={(event) => updateForm('address', event.target.value)} />
+            </label>
+          </>
+        )}
+
+        {activeTab === 'billing' && (
+          <>
+            <label>
+              Dia padrão de vencimento
+              <input required type="number" min="1" max="31" value={form.defaultDueDay} onChange={(event) => updateForm('defaultDueDay', event.target.value)} />
+            </label>
+            <label>
+              Moeda
+              <input required value={form.currencyCode} onChange={(event) => updateForm('currencyCode', event.target.value)} />
+            </label>
+            <label>
+              Prefixo fatura
+              <input required value={form.invoicePrefix} onChange={(event) => updateForm('invoicePrefix', event.target.value)} />
+            </label>
+            <label>
+              Prefixo recibo
+              <input required value={form.receiptPrefix} onChange={(event) => updateForm('receiptPrefix', event.target.value)} />
+            </label>
+            <label>
+              Regime fiscal
+              <select value={form.fiscalRegime} onChange={(event) => updateForm('fiscalRegime', event.target.value as 'normal' | 'rempe')}>
+                <option value="normal">Regime Normal (com IVA)</option>
+                <option value="rempe">REMPE (isento IVA)</option>
+              </select>
+            </label>
+            <label>
+              Taxa de IVA (%)
+              <input required type="number" min="0" max="100" step="0.5" value={form.ivaRate} onChange={(event) => updateForm('ivaRate', event.target.value)} />
+            </label>
+            <label className="wide-field">
+              Observações no documento
+              <textarea rows={3} value={form.legalNotes} onChange={(event) => updateForm('legalNotes', event.target.value)} placeholder="Texto opcional que aparece no rodapé de cada fatura/recibo (ex: termos, IBAN, agradecimento)" />
+            </label>
+            <label className="wide-field settings-toggle">
+              <input
+                type="checkbox"
+                checked={form.showIva}
+                onChange={(event) => setForm((current) => ({ ...current, showIva: event.target.checked }))}
+              />
+              <span>
+                <strong>Mostrar linha de IVA nos documentos</strong>
+                <small>Quando desligado, fatura/recibo mostram apenas o total (serviço informal). Liga quando estiveres com contabilidade organizada.</small>
+              </span>
+            </label>
+            <label className="wide-field settings-toggle">
+              <input
+                type="checkbox"
+                checked={form.printQrCode}
+                onChange={(event) => setForm((current) => ({ ...current, printQrCode: event.target.checked }))}
+              />
+              <span>
+                <strong>Imprimir QR Code fiscal nos documentos</strong>
+                <small>QR no formato Portaria 47/2021 (preparatório para e-Fatura). Liga quando estiveres preparado para credenciação na DNRE.</small>
+              </span>
+            </label>
+          </>
+        )}
+
+        {activeTab === 'whatsapp' && (
+          <>
+            <label className="wide-field">
+              Mensagem WhatsApp
+              <textarea
+                rows={4}
+                value={form.whatsappTemplate}
+                onChange={(event) => updateForm('whatsappTemplate', event.target.value)}
+              />
+            </label>
+            <label>
+              UltraMsg instance ID
+              <input value={form.ultraMsgInstanceId} onChange={(event) => updateForm('ultraMsgInstanceId', event.target.value)} placeholder="instance00000" />
+            </label>
+            <label>
+              UltraMsg token
+              <input type="password" value={form.ultraMsgToken} onChange={(event) => updateForm('ultraMsgToken', event.target.value)} />
+            </label>
+          </>
+        )}
+
         <div className="form-actions">
-          <button type="submit">Gravar configuracoes</button>
+          <button type="submit">Gravar configurações</button>
         </div>
       </form>
+      )}
 
-      <BackupsPanel />
+      {activeTab === 'backups' && <BackupsPanel />}
     </section>
   );
 }
