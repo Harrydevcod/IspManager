@@ -4510,6 +4510,51 @@ button.danger:disabled {
   font-size: 12px;
 }
 
+.expense-allocation {
+  margin: 0;
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: color-mix(in oklch, var(--surface-2) 80%, transparent);
+  display: grid;
+  gap: var(--s3);
+}
+.expense-allocation legend {
+  padding: 0 6px;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  font-weight: 600;
+}
+.expense-allocation > small {
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.expense-allocation-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.expense-allocation-tabs button {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+.expense-allocation-tabs button:hover {
+  border-color: color-mix(in oklch, var(--accent) 40%, var(--border));
+  color: var(--text);
+}
+.expense-allocation-tabs button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 8%, transparent);
+}
+
 /* Client profitability panel (Fase 2). */
 .client-profitability {
   margin-top: var(--s4);

@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Badge, DataList, Dialog, FilterBar, Message, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve } from '../lib/format';
-import type { Expense, ExpenseCategory, ExpenseList } from '../types';
+import type { Client, Expense, ExpenseCategory, ExpenseList, Investment, InvestmentList } from '../types';
+
+type AllocationTarget = 'none' | 'investment' | 'zone' | 'client';
 
 const CATEGORIES: { value: ExpenseCategory; label: string; tone: 'success' | 'danger' | 'info' | 'neutral' | 'accent' }[] = [
   { value: 'salarios', label: 'Salarios', tone: 'accent' },
@@ -26,6 +28,10 @@ type FormState = {
   supplier: string;
   invoiceReference: string;
   notes: string;
+  allocationTarget: AllocationTarget;
+  investmentId: string;
+  zone: string;
+  clientId: string;
 };
 
 function todayIso() {
@@ -44,11 +50,20 @@ function emptyForm(): FormState {
     expenseDate: todayIso(),
     supplier: '',
     invoiceReference: '',
-    notes: ''
+    notes: '',
+    allocationTarget: 'none',
+    investmentId: '',
+    zone: '',
+    clientId: ''
   };
 }
 
 function fromExpense(expense: Expense): FormState {
+  const allocationTarget: AllocationTarget =
+    expense.investmentId != null ? 'investment'
+    : expense.clientId != null ? 'client'
+    : expense.zone ? 'zone'
+    : 'none';
   return {
     category: expense.category,
     description: expense.description,
@@ -56,7 +71,11 @@ function fromExpense(expense: Expense): FormState {
     expenseDate: expense.expenseDate,
     supplier: expense.supplier || '',
     invoiceReference: expense.invoiceReference || '',
-    notes: expense.notes || ''
+    notes: expense.notes || '',
+    allocationTarget,
+    investmentId: expense.investmentId != null ? String(expense.investmentId) : '',
+    zone: expense.zone || '',
+    clientId: expense.clientId != null ? String(expense.clientId) : ''
   };
 }
 
@@ -80,6 +99,26 @@ export function ExpensesModule() {
   const [editing, setEditing] = useState<Expense | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
+  const [investments, setInvestments] = useState<Investment[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+
+  useEffect(() => {
+    authFetch('http://127.0.0.1:3001/api/investments?showAll=1')
+      .then((r) => r.ok ? r.json() as Promise<InvestmentList> : null)
+      .then((payload) => setInvestments(payload?.rows ?? []))
+      .catch(() => setInvestments([]));
+    authFetch('http://127.0.0.1:3001/api/clients')
+      .then((r) => r.ok ? r.json() as Promise<Client[]> : [])
+      .then(setClients)
+      .catch(() => setClients([]));
+  }, []);
+
+  const zones = useMemo(() => {
+    const set = new Set<string>();
+    for (const inv of investments) if (inv.zone) set.add(inv.zone);
+    for (const cl of clients) if (cl.zone) set.add(cl.zone);
+    return [...set].sort();
+  }, [investments, clients]);
 
   const categoryMeta = useMemo(
     () => Object.fromEntries(CATEGORIES.map((c) => [c.value, c])) as Record<ExpenseCategory, (typeof CATEGORIES)[number]>,
@@ -152,7 +191,10 @@ export function ExpensesModule() {
         expenseDate: form.expenseDate,
         supplier: form.supplier.trim() || null,
         invoiceReference: form.invoiceReference.trim() || null,
-        notes: form.notes.trim() || null
+        notes: form.notes.trim() || null,
+        investmentId: form.allocationTarget === 'investment' && form.investmentId ? Number(form.investmentId) : null,
+        zone: form.allocationTarget === 'zone' && form.zone ? form.zone : null,
+        clientId: form.allocationTarget === 'client' && form.clientId ? Number(form.clientId) : null
       };
       const url = editing
         ? `http://127.0.0.1:3001/api/expenses/${editing.id}`
@@ -276,6 +318,22 @@ export function ExpensesModule() {
             )
           },
           {
+            cell: (expense) => {
+              const allocLabel = expense.investmentName
+                ? `→ ${expense.investmentName}`
+                : expense.clientName
+                  ? `→ ${expense.clientName}`
+                  : expense.zone
+                    ? `→ ${expense.zone}`
+                    : null;
+              return allocLabel ? (
+                <Badge tone="info">{allocLabel}</Badge>
+              ) : (
+                <small style={{ color: 'var(--text-3)', fontSize: 11 }}>rateio</small>
+              );
+            }
+          },
+          {
             cell: (expense) => (
               <Badge tone={categoryMeta[expense.category]?.tone || 'neutral'}>
                 {categoryMeta[expense.category]?.label || expense.category}
@@ -383,6 +441,70 @@ export function ExpensesModule() {
               />
             </label>
           </div>
+          <fieldset className="expense-allocation">
+            <legend>Alocação (opcional)</legend>
+            <small>
+              Se ligares a um alvo, o valor vai 100% para esse investimento/zona/cliente em vez de entrar no rateio uniforme.
+            </small>
+            <div className="expense-allocation-tabs">
+              {(['none', 'investment', 'zone', 'client'] as AllocationTarget[]).map((target) => (
+                <button
+                  key={target}
+                  type="button"
+                  className={form.allocationTarget === target ? 'active' : ''}
+                  onClick={() => setForm((f) => ({ ...f, allocationTarget: target }))}
+                >
+                  {target === 'none' ? 'Pool (rateio)' : target === 'investment' ? 'Investimento' : target === 'zone' ? 'Zona' : 'Cliente'}
+                </button>
+              ))}
+            </div>
+            {form.allocationTarget === 'investment' && (
+              <label className="field-wide">
+                Investimento alvo
+                <select
+                  value={form.investmentId}
+                  onChange={(e) => setForm((f) => ({ ...f, investmentId: e.target.value }))}
+                >
+                  <option value="">Selecionar...</option>
+                  {investments.map((inv) => (
+                    <option key={inv.id} value={inv.id}>
+                      {inv.name}{inv.zone ? ` · ${inv.zone}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {form.allocationTarget === 'zone' && (
+              <label className="field-wide">
+                Zona alvo
+                <input
+                  list="expense-zones"
+                  value={form.zone}
+                  onChange={(e) => setForm((f) => ({ ...f, zone: e.target.value }))}
+                  placeholder="Ex: Palmarejo"
+                />
+                <datalist id="expense-zones">
+                  {zones.map((z) => <option key={z} value={z} />)}
+                </datalist>
+              </label>
+            )}
+            {form.allocationTarget === 'client' && (
+              <label className="field-wide">
+                Cliente alvo
+                <select
+                  value={form.clientId}
+                  onChange={(e) => setForm((f) => ({ ...f, clientId: e.target.value }))}
+                >
+                  <option value="">Selecionar...</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.fullName}{c.clientCode ? ` · ${c.clientCode}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </fieldset>
           <label className="field-wide">
             Notas
             <textarea

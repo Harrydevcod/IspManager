@@ -514,11 +514,33 @@ export function InvestmentsModule() {
                 </div>
                 <div>
                   <dt>Retorno mensal</dt>
-                  <dd>{formatCve(selected.expectedMonthlyRevenueCve)}</dd>
+                  <dd>
+                    {selected.actualMonthlyRevenueCve != null
+                      ? formatCve(selected.actualMonthlyRevenueCve)
+                      : formatCve(selected.expectedMonthlyRevenueCve)}
+                    {selected.actualMonthlyRevenueCve != null && (
+                      <small style={{ display: 'block', color: 'var(--text-3)', fontSize: 11, marginTop: 2 }}>
+                        real ({selected.revenueSource === 'zone' ? 'zona' : 'cliente'}); esperado {formatCve(selected.expectedMonthlyRevenueCve)}
+                        {selected.revenueVarianceCve != null && (
+                          <span
+                            style={{
+                              marginLeft: 6,
+                              color: selected.revenueVarianceCve >= 0 ? 'var(--success)' : 'var(--danger)',
+                              fontVariantNumeric: 'tabular-nums'
+                            }}
+                          >
+                            ({selected.revenueVarianceCve >= 0 ? '+' : ''}{formatCve(selected.revenueVarianceCve)})
+                          </span>
+                        )}
+                      </small>
+                    )}
+                  </dd>
                 </div>
                 <div>
                   <dt>Lucro mensal</dt>
-                  <dd>{formatCve(selected.monthlyNetProfitCve)}</dd>
+                  <dd className={selected.monthlyNetProfitCve < 0 ? 'profit-negative' : 'profit-positive'}>
+                    {formatCve(selected.monthlyNetProfitCve)}
+                  </dd>
                 </div>
                 <div>
                   <dt>OPEX mensal</dt>
@@ -526,6 +548,7 @@ export function InvestmentsModule() {
                     {formatCve(selected.effectiveMonthlyOpexCve)}
                     <small style={{ display: 'block', color: 'var(--text-3)', fontSize: 11, marginTop: 2 }}>
                       directo {formatCve(selected.monthlyOperationalCostCve)} + rateio {formatCve(selected.imputedMonthlyOpexCve)}
+                      {selected.directAllocatedOpexCve > 0 && ` + alocado ${formatCve(selected.directAllocatedOpexCve)}`}
                     </small>
                   </dd>
                 </div>

@@ -139,6 +139,11 @@ export type Expense = {
   supplier: string | null;
   invoiceReference: string | null;
   notes: string | null;
+  investmentId: number | null;
+  investmentName: string | null;
+  zone: string | null;
+  clientId: number | null;
+  clientName: string | null;
   createdAt: string;
   updatedAt: string;
 };
