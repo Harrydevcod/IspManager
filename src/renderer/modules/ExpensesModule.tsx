@@ -1,7 +1,7 @@
 import { Pencil, Plus, Repeat, Trash2 } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, DataTable, Dialog, FilterBar, Message, useToast } from '../components';
+import { Badge, Combobox, DataTable, Dialog, FilterBar, Message, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import type { Client, Expense, ExpenseCategory, ExpenseList, ExpenseTemplate, ExpenseTemplateList, Investment, InvestmentList } from '../types';
@@ -408,7 +408,7 @@ export function ExpensesModule() {
         rowKey={(expense) => expense.id}
         className="expenses-table"
         gridTemplateColumns="minmax(260px, 1fr) 190px 158px 132px"
-        actionsHeader="Acoes"
+        actionsHeader="Ações"
         actionsWidth="92px"
         empty={
           <div className="module-message">
@@ -620,17 +620,15 @@ export function ExpensesModule() {
             {form.allocationTarget === 'client' && (
               <label className="field-wide">
                 Cliente alvo
-                <select
-                  value={form.clientId}
-                  onChange={(e) => setForm((f) => ({ ...f, clientId: e.target.value }))}
-                >
-                  <option value="">Selecionar...</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.fullName}{c.clientCode ? ` · ${c.clientCode}` : ''}
-                    </option>
-                  ))}
-                </select>
+                <Combobox
+                  options={clients}
+                  value={form.clientId ? Number(form.clientId) : null}
+                  onChange={(next) => setForm((f) => ({ ...f, clientId: next == null ? '' : String(next) }))}
+                  rowKey={(c) => c.id}
+                  rowCode={(c) => c.clientCode}
+                  rowLabel={(c) => c.fullName}
+                  placeholder="Selecionar cliente..."
+                />
               </label>
             )}
           </fieldset>

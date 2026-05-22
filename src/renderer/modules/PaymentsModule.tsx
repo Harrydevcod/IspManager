@@ -982,8 +982,9 @@ export function PaymentsModule() {
           {
             cell: (p) => (
               <span>
+                <small className="entity-code">{p.clientCode || '—'}</small>
                 <strong>{p.clientName}</strong>
-                <small>{p.referenceMonth} - FT {p.invoiceNumber || '-'}</small>
+                <small>{p.referenceMonth} · FT {p.invoiceNumber || '-'}</small>
               </span>
             )
           },
@@ -1097,8 +1098,9 @@ export function PaymentsModule() {
                 {overduePreview.eligible.map((row) => (
                   <li key={row.paymentId}>
                     <div className="overdue-notify-meta">
+                      <small className="entity-code">{row.clientCode}</small>
                       <strong>{row.clientName}</strong>
-                      <small>{row.clientCode} - {row.phone}</small>
+                      <small>{row.phone}</small>
                     </div>
                     <Badge tone="danger">{row.daysOverdue}d</Badge>
                     <span className="overdue-notify-amount">{formatCve(row.amountCve)}</span>
@@ -1172,10 +1174,9 @@ export function PaymentsModule() {
                 {reversePreview.eligible.map((row) => (
                   <li key={row.id}>
                     <div className="overdue-notify-meta">
+                      <small className="entity-code">{row.clientCode || '—'}</small>
                       <strong>{row.clientName}</strong>
-                      <small>
-                        {row.clientCode || '-'} - FT {row.invoiceNumber || '-'} - venc. {row.dueDate}
-                      </small>
+                      <small>FT {row.invoiceNumber || '-'} · venc. {row.dueDate}</small>
                     </div>
                     <Badge tone={row.status === 'overdue' ? 'danger' : 'info'}>{row.status}</Badge>
                     <span className="overdue-notify-amount">{formatCve(row.amountCve)}</span>

@@ -1,7 +1,7 @@
 import { Download, FileText, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, DataList, Dialog, FilterBar, Message, useToast } from '../components';
+import { Badge, Combobox, DataList, Dialog, FilterBar, Message, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import type { Client, Investment, InvestmentItemType, InvestmentList, InvestmentStatus, InvestmentTimeline, InvestmentType } from '../types';
@@ -755,10 +755,15 @@ export function InvestmentsModule() {
               <h3>Associacao</h3>
               <label>
                 Cliente
-                <select value={form.clientId} onChange={(e) => setForm((f) => ({ ...f, clientId: e.target.value }))}>
-                  <option value="">Sem cliente</option>
-                  {clients.map((client) => <option key={client.id} value={client.id}>{client.fullName}</option>)}
-                </select>
+                <Combobox
+                  options={clients}
+                  value={form.clientId ? Number(form.clientId) : null}
+                  onChange={(next) => setForm((f) => ({ ...f, clientId: next == null ? '' : String(next) }))}
+                  rowKey={(client) => client.id}
+                  rowCode={(client) => client.clientCode}
+                  rowLabel={(client) => client.fullName}
+                  placeholder="Sem cliente"
+                />
               </label>
               <label>
                 Zona / bairro

@@ -382,8 +382,8 @@ export function WorkOrdersModule() {
                         <h4 className="kanban-card-title">{order.title}</h4>
                         {order.clientName && (
                           <p className="kanban-card-client">
-                            {order.clientName}
-                            {order.clientCode && <span className="kanban-card-code"> · {order.clientCode}</span>}
+                            {order.clientCode && <span className="entity-code kanban-card-code">{order.clientCode}</span>}
+                            <span className="kanban-card-client-name">{order.clientName}</span>
                           </p>
                         )}
                         {metaParts.length > 0 && (

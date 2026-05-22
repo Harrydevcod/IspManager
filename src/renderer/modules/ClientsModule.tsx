@@ -279,11 +279,10 @@ export function ClientsModule() {
       {selectedClient && (
         <div className="client-detail">
           <div>
-            <p className="eyebrow">Cliente selecionado</p>
+            <p className="eyebrow entity-code">{selectedClient.clientCode}</p>
             <h2>{selectedClient.fullName}</h2>
           </div>
           <dl>
-            <div><dt>Codigo</dt><dd>{selectedClient.clientCode}</dd></div>
             <div><dt>Telefone</dt><dd>{selectedClient.phone || 'Sem telefone'}</dd></div>
             <div><dt>Ilha</dt><dd>{selectedClient.island || '-'}</dd></div>
             <div><dt>Zona</dt><dd>{selectedClient.zone || '-'}</dd></div>
@@ -403,8 +402,9 @@ export function ClientsModule() {
                 }}
               >
                 <span>
+                  <small className="entity-code">{client.clientCode}</small>
                   <strong>{client.fullName}</strong>
-                  <small>{client.clientCode} - {client.phone || 'sem telefone'}</small>
+                  <small>{client.phone || 'sem telefone'}</small>
                 </span>
                 <Badge tone={statusTone(client.status)}>{statusLabel(client.status)}</Badge>
                 <div className="row-actions" onClick={(event) => event.stopPropagation()}>

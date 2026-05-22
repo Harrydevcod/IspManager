@@ -213,8 +213,9 @@ export function ReportsModule() {
         {view === 'overdue' && summary?.overdueClients.map((row) => (
           <div className="module-row report-row with-action" key={row.clientCode}>
             <span>
+              <small className="entity-code">{row.clientCode}</small>
               <strong>{row.clientName}</strong>
-              <small>{row.clientCode} - {row.phone || 'sem telefone'}</small>
+              <small>{row.phone || 'sem telefone'}</small>
             </span>
             <small>{row.payments} cobrancas</small>
             <small>{row.amountCve.toLocaleString('pt-PT')} CVE</small>

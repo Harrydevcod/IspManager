@@ -9,9 +9,9 @@ type Column = {
 };
 
 const COLUMNS: Column[] = [
-  { key: 'nome', header: 'Nome', width: 28, example1: 'Maria Silva Tavares', example2: 'João Mendes Lima' },
   { key: 'codigo', header: 'Código', width: 14, example1: 'CLT-0001', example2: '' },
   { key: 'nif', header: 'NIF', width: 14, example1: '100200300', example2: '234567890' },
+  { key: 'nome', header: 'Nome', width: 28, example1: 'Maria Silva Tavares', example2: 'João Mendes Lima' },
   { key: 'telefone', header: 'Telefone', width: 14, example1: '9911223', example2: '9933445' },
   { key: 'email', header: 'Email', width: 28, example1: 'maria.tavares@exemplo.cv', example2: '' },
   { key: 'morada', header: 'Morada', width: 32, example1: 'Rua do Mar, 12', example2: 'Avenida Amílcar Cabral, 5' },
@@ -43,9 +43,9 @@ const INSTRUCTION_FIELD_FONT: Partial<ExcelJS.Font> = { name: 'Inter', size: 11,
 const INSTRUCTION_BODY_FONT: Partial<ExcelJS.Font> = { name: 'Inter', size: 11, color: { argb: 'FF334155' } };
 
 const INSTRUCTIONS: { field: string; required: string; rule: string }[] = [
-  { field: 'Nome', required: 'obrigatório', rule: 'Nome completo do cliente.' },
   { field: 'Código', required: 'opcional', rule: 'Se vazio, o sistema gera (CLT-NNNN).' },
   { field: 'NIF', required: 'opcional', rule: '9 dígitos numéricos. Duplicados são ignorados.' },
+  { field: 'Nome', required: 'obrigatório', rule: 'Nome completo do cliente.' },
   { field: 'Telefone', required: 'opcional', rule: 'Número de contacto. Duplicados são ignorados.' },
   { field: 'Email', required: 'opcional', rule: 'Validado no formato nome@dominio.tld.' },
   { field: 'Morada', required: 'opcional', rule: 'Endereço livre.' },

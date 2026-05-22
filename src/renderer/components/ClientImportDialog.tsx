@@ -8,9 +8,9 @@ import { useToast } from './Toaster';
 import { authFetch } from '../lib/auth';
 
 type TargetField =
-  | 'fullName'
   | 'clientCode'
   | 'nif'
+  | 'fullName'
   | 'phone'
   | 'email'
   | 'address'
@@ -18,9 +18,9 @@ type TargetField =
   | 'zone';
 
 const TARGET_LABEL: Record<TargetField, string> = {
-  fullName: 'Nome',
-  clientCode: 'Codigo',
+  clientCode: 'Código',
   nif: 'NIF',
+  fullName: 'Nome',
   phone: 'Telefone',
   email: 'Email',
   address: 'Morada',
@@ -29,9 +29,9 @@ const TARGET_LABEL: Record<TargetField, string> = {
 };
 
 const TARGET_HINTS: Record<TargetField, RegExp[]> = {
-  fullName: [/^(nome|name|cliente|fullname|full[\s_-]?name|nome[\s_-]?completo|razao[\s_-]?social)$/i],
   clientCode: [/^(codigo|c[oó]digo|code|client[\s_-]?code|cliente[\s_-]?id|n[uú]mero|nº|n\.|numero)$/i],
   nif: [/^(nif|fiscal|tax(\s?id)?|cif)$/i],
+  fullName: [/^(nome|name|cliente|fullname|full[\s_-]?name|nome[\s_-]?completo|razao[\s_-]?social)$/i],
   phone: [/^(telefone|telem[oó]vel|phone|tel|contacto|m[oó]vel|mobile|whatsapp)$/i],
   email: [/^(e?[\s_-]?mail|correio)$/i],
   address: [/^(morada|endere[cç]o|address|rua)$/i],
@@ -66,9 +66,9 @@ type ExistingHints = {
 
 function detectMapping(headers: string[]): Record<TargetField, string | ''> {
   const map: Record<TargetField, string | ''> = {
-    fullName: '',
     clientCode: '',
     nif: '',
+    fullName: '',
     phone: '',
     email: '',
     address: '',
@@ -187,9 +187,9 @@ export function ClientImportDialog({ open, onClose, onCompleted }: ClientImportD
   const [headers, setHeaders] = useState<string[]>([]);
   const [rawRows, setRawRows] = useState<ParsedRow[]>([]);
   const [mapping, setMapping] = useState<Record<TargetField, string | ''>>({
-    fullName: '',
     clientCode: '',
     nif: '',
+    fullName: '',
     phone: '',
     email: '',
     address: '',
@@ -436,7 +436,7 @@ export function ClientImportDialog({ open, onClose, onCompleted }: ClientImportD
             <p>
               Primeira linha = cabeçalhos. Colunas reconhecidas automaticamente:
               {' '}
-              <em>nome, codigo, NIF, telefone, email, morada, ilha, zona</em>.
+              <em>código, NIF, nome, telefone, email, morada, ilha, zona</em>.
               Podes mapear manualmente no próximo passo. Linhas duplicadas (por código,
               NIF ou telefone) são ignoradas — o import é seguro de repetir.
             </p>
@@ -491,9 +491,9 @@ export function ClientImportDialog({ open, onClose, onCompleted }: ClientImportD
                 <tr>
                   <th>#</th>
                   <th>Estado</th>
-                  <th>Nome</th>
-                  <th>Codigo</th>
+                  <th>Código</th>
                   <th>NIF</th>
+                  <th>Nome</th>
                   <th>Telefone</th>
                 </tr>
               </thead>
@@ -517,9 +517,9 @@ export function ClientImportDialog({ open, onClose, onCompleted }: ClientImportD
                     <tr key={row.index} className={statusClass}>
                       <td>{String(row.index + 1).padStart(2, '0')}</td>
                       <td className="import-status-cell">{statusLabel}</td>
+                      <td className="import-cell-code">{row.values.clientCode || <span className="muted">auto</span>}</td>
+                      <td className="import-cell-code">{row.values.nif || <span className="muted">—</span>}</td>
                       <td>{row.values.fullName || <em className="muted">—</em>}</td>
-                      <td>{row.values.clientCode || <span className="muted">auto</span>}</td>
-                      <td>{row.values.nif || <span className="muted">—</span>}</td>
                       <td>{row.values.phone || <span className="muted">—</span>}</td>
                     </tr>
                   );

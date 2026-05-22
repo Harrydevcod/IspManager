@@ -328,11 +328,13 @@ export function StockModule() {
                   return (
                     <li key={row.id} className={`technical-item ${active ? 'active' : 'past'}`}>
                       <div className="technical-item-head">
-                        <strong>{row.clientName}</strong>
+                        <div className="technical-item-identity">
+                          <small className="entity-code">{row.clientCode}</small>
+                          <strong>{row.clientName}</strong>
+                        </div>
                         <Badge tone={active ? 'success' : 'neutral'}>{active ? 'Ativo' : 'Devolvido'}</Badge>
                       </div>
                       <dl className="technical-item-meta">
-                        <div><dt>Codigo</dt><dd>{row.clientCode}</dd></div>
                         {row.serialNumber && <div><dt>Serial</dt><dd>{row.serialNumber}</dd></div>}
                         {row.assetTag && <div><dt>Asset</dt><dd>{row.assetTag}</dd></div>}
                         {row.macAddress && <div><dt>MAC</dt><dd>{row.macAddress}</dd></div>}

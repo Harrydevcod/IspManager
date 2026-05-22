@@ -1,7 +1,7 @@
 import { Cable, History, Pencil, Plus, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Badge, Dialog, useToast } from '../components';
+import { Badge, Combobox, Dialog, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { statusLabel, statusTone } from '../lib/status';
 import type { Client, DeviceAssignment, PlanRow, ServiceEvent, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
@@ -524,12 +524,16 @@ export function ServicesModule() {
         <form id="service-form" className="client-form" onSubmit={saveService}>
           <label>
             Cliente
-            <select required value={form.clientId} onChange={(event) => updateForm('clientId', event.target.value)}>
-              <option value="">Selecionar cliente</option>
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>{client.fullName} - {client.clientCode}</option>
-              ))}
-            </select>
+            <Combobox
+              options={clients}
+              value={form.clientId ? Number(form.clientId) : null}
+              onChange={(next) => updateForm('clientId', next == null ? '' : String(next))}
+              rowKey={(client) => client.id}
+              rowCode={(client) => client.clientCode}
+              rowLabel={(client) => client.fullName}
+              rowHint={(client) => client.phone || undefined}
+              placeholder="Selecionar cliente..."
+            />
           </label>
           <label>
             Plano

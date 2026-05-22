@@ -482,8 +482,9 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
                 <li key={due.paymentId}>
                   <CalendarClock size={14} />
                   <div className="dashboard-list-meta">
+                    <small className="entity-code">{due.clientCode}</small>
                     <strong>{due.clientName}</strong>
-                    <small>{due.clientCode} - {formatDayMonth(due.dueDate)}</small>
+                    <small>{formatDayMonth(due.dueDate)}</small>
                   </div>
                   <span className="dashboard-list-amount">{formatCve(due.amountCve)} CVE</span>
                 </li>
@@ -501,11 +502,9 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
                 <li key={overdue.paymentId}>
                   <AlertTriangle size={14} />
                   <div className="dashboard-list-meta">
+                    <small className="entity-code">{overdue.clientCode}</small>
                     <strong>{overdue.clientName}</strong>
-                    <small>
-                      {overdue.clientCode}
-                      {overdue.clientPhone ? ` - ${overdue.clientPhone}` : ''}
-                    </small>
+                    {overdue.clientPhone && <small>{overdue.clientPhone}</small>}
                   </div>
                   <Badge tone="danger">{overdue.daysOverdue}d</Badge>
                   <span className="dashboard-list-amount">{formatCve(overdue.amountCve)} CVE</span>
