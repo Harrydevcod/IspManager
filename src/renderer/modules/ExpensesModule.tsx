@@ -322,10 +322,12 @@ export function ExpensesModule() {
     <section className="module-panel">
       <div className="module-header">
         <div>
+          <p className="eyebrow">Painel operacional</p>
           <h2>Despesas operacionais</h2>
           <small>
-            {data.totals.count} {data.totals.count === 1 ? 'lancamento' : 'lancamentos'} ·{' '}
+            {data.totals.count} {data.totals.count === 1 ? 'lançamento' : 'lançamentos'} ·{' '}
             <strong>{formatCve(data.totals.totalCve)}</strong>
+            {showAllMonths ? ' · todos os meses' : ` · ${month}`}
           </small>
         </div>
         <div style={{ display: 'flex', gap: 'var(--s2)' }}>
@@ -371,21 +373,32 @@ export function ExpensesModule() {
 
       {error && <Message tone="error">{error}</Message>}
 
-      {data.totals.byCategory.length > 0 && (
-        <div className="expenses-summary">
-          {data.totals.byCategory.map((entry) => (
-            <div key={entry.category} className="expenses-summary-card">
-              <Badge tone={categoryMeta[entry.category as ExpenseCategory]?.tone || 'neutral'}>
-                {categoryMeta[entry.category as ExpenseCategory]?.label || entry.category}
-              </Badge>
-              <strong>{formatCve(entry.totalCve)}</strong>
-              <small>
-                {entry.count} {entry.count === 1 ? 'lancamento' : 'lancamentos'}
-              </small>
-            </div>
-          ))}
-        </div>
-      )}
+      {data.totals.byCategory.length > 0 && (() => {
+        const maxTotal = Math.max(1, ...data.totals.byCategory.map((c) => c.totalCve));
+        const grandTotal = data.totals.totalCve || 1;
+        return (
+          <div className="expenses-summary">
+            {data.totals.byCategory.map((entry) => {
+              const tone = categoryMeta[entry.category as ExpenseCategory]?.tone || 'neutral';
+              const pct = (entry.totalCve / grandTotal) * 100;
+              const barPct = (entry.totalCve / maxTotal) * 100;
+              return (
+                <div key={entry.category} className={`expenses-summary-card tone-${tone}`}>
+                  <Badge tone={tone}>
+                    {categoryMeta[entry.category as ExpenseCategory]?.label || entry.category}
+                  </Badge>
+                  <strong>{formatCve(entry.totalCve)}</strong>
+                  <div className="expenses-summary-bar"><span style={{ width: `${barPct}%` }} /></div>
+                  <small>
+                    <span>{entry.count} {entry.count === 1 ? 'lançamento' : 'lançamentos'}</span>
+                    <span className="pct">{pct.toFixed(1)}%</span>
+                  </small>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       <DataList
         rows={data.rows}
@@ -420,7 +433,7 @@ export function ExpensesModule() {
               return allocLabel ? (
                 <Badge tone="info">{allocLabel}</Badge>
               ) : (
-                <small style={{ color: 'var(--text-3)', fontSize: 11 }}>rateio</small>
+                <span className="expenses-alloc-tag">rateio</span>
               );
             }
           },
@@ -432,7 +445,7 @@ export function ExpensesModule() {
             )
           },
           {
-            cell: (expense) => <b>{formatCve(expense.amountCve)}</b>
+            cell: (expense) => <span className="expenses-amount">{formatCve(expense.amountCve)}</span>
           }
         ]}
         actions={(expense) => (
@@ -471,66 +484,74 @@ export function ExpensesModule() {
         }
       >
         <form id="expense-form" className="expense-form" onSubmit={submit}>
-          <label className="field-wide">
-            Descricao
-            <input
-              value={form.description}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              required
-              maxLength={240}
-              placeholder="Ex: Banda mensal Sotelco"
-            />
-          </label>
-          <div className="expense-form-grid">
-            <label>
-              Categoria
-              <select
-                value={form.category}
-                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as ExpenseCategory }))}
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Valor (CVE)
+          <div className="expense-form-section">
+            <span className="expense-form-section-title">Identificação</span>
+            <label className="field-wide">
+              Descrição
               <input
-                value={form.amountCve}
-                onChange={(e) => setForm((f) => ({ ...f, amountCve: e.target.value }))}
-                inputMode="decimal"
+                value={form.description}
+                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                 required
-                placeholder="0"
+                maxLength={240}
+                placeholder="Ex: Banda mensal Sotelco"
               />
             </label>
-            <label>
-              Data
-              <input
-                type="date"
-                value={form.expenseDate}
-                onChange={(e) => setForm((f) => ({ ...f, expenseDate: e.target.value }))}
-                required
-              />
-            </label>
-            <label>
-              Fornecedor
-              <input
-                value={form.supplier}
-                onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))}
-                maxLength={160}
-              />
-            </label>
-            <label>
-              Documento / Referencia
-              <input
-                value={form.invoiceReference}
-                onChange={(e) => setForm((f) => ({ ...f, invoiceReference: e.target.value }))}
-                maxLength={80}
-                placeholder="FT-2026/142"
-              />
-            </label>
+            <div className="expense-form-grid">
+              <label className="col-amount expense-form-amount">
+                Valor
+                <input
+                  value={form.amountCve}
+                  onChange={(e) => setForm((f) => ({ ...f, amountCve: e.target.value }))}
+                  inputMode="decimal"
+                  required
+                  placeholder="0"
+                />
+              </label>
+              <label className="col-date">
+                Data
+                <input
+                  type="date"
+                  value={form.expenseDate}
+                  onChange={(e) => setForm((f) => ({ ...f, expenseDate: e.target.value }))}
+                  required
+                />
+              </label>
+              <label className="col-category">
+                Categoria
+                <select
+                  value={form.category}
+                  onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as ExpenseCategory }))}
+                >
+                  {CATEGORIES.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div className="expense-form-section">
+            <span className="expense-form-section-title">Documento</span>
+            <div className="expense-form-grid">
+              <label className="col-supplier">
+                Fornecedor
+                <input
+                  value={form.supplier}
+                  onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))}
+                  maxLength={160}
+                  placeholder="Nome ou empresa"
+                />
+              </label>
+              <label className="col-doc">
+                Referência
+                <input
+                  value={form.invoiceReference}
+                  onChange={(e) => setForm((f) => ({ ...f, invoiceReference: e.target.value }))}
+                  maxLength={80}
+                  placeholder="FT-2026/142"
+                />
+              </label>
+            </div>
           </div>
           <fieldset className="expense-allocation">
             <legend>Alocação (opcional)</legend>
@@ -624,10 +645,20 @@ export function ExpensesModule() {
         }
       >
         <div className="expense-templates">
+          <div className="expense-templates-kpi">
+            <div>
+              <span className="expense-templates-kpi-label">Total mensal ativo</span>
+              <span className="expense-templates-kpi-value">{formatCve(templates.totals.totalActiveMonthlyCve)}</span>
+            </div>
+            <div className="expense-templates-kpi-meta">
+              {templates.rows.filter((t) => t.active === 1).length} ativo(s)
+              <br />
+              {templates.totals.count} no total
+            </div>
+          </div>
           <small>
             Cada template ativo gera uma despesa por mês no dia configurado (1–28). A geração é
             idempotente — chamar "Gerar agora" várias vezes não duplica lançamentos.
-            Total mensal ativo: <strong>{formatCve(templates.totals.totalActiveMonthlyCve)}</strong>
           </small>
 
           <form onSubmit={submitTemplate} className="expense-template-form">
@@ -680,11 +711,14 @@ export function ExpensesModule() {
             <ul className="expense-template-list">
               {templates.rows.map((t) => (
                 <li key={t.id} className={t.active ? '' : 'inactive'}>
-                  <div>
+                  <span className="expense-template-day" aria-hidden="true">{t.dayOfMonth}</span>
+                  <div className="expense-template-meta">
                     <strong>{t.name}</strong>
+                    <span className={`expense-template-status ${t.active ? 'active' : 'paused'}`}>
+                      {t.active ? 'Ativo' : 'Pausado'}
+                    </span>
                     <small>
-                      {categoryMeta[t.category]?.label} · dia {t.dayOfMonth} · {formatCve(t.amountCve)}
-                      {t.lastGeneratedMonth ? ` · última: ${t.lastGeneratedMonth}` : ' · nunca gerado'}
+                      {categoryMeta[t.category]?.label} · {formatCve(t.amountCve)} · {t.lastGeneratedMonth ? `última geração ${t.lastGeneratedMonth}` : 'nunca gerado'}
                     </small>
                   </div>
                   <div className="expense-template-actions">

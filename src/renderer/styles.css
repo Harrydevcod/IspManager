@@ -4452,129 +4452,289 @@ button.danger:disabled {
   background: color-mix(in oklch, var(--danger) 8%, transparent);
 }
 
-/* Expenses (OPEX) module */
+/* Expenses (OPEX) module — editorial dark-first */
 .expense-form {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  gap: var(--s5);
+}
+.expense-form-section {
+  display: grid;
   gap: var(--s3);
 }
+.expense-form-section-title {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-weight: 700;
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--border);
+}
 .expense-form label {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 6px;
-  font-size: 13px;
-  color: var(--text-2);
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  color: var(--text-3);
+  text-transform: none;
+  font-weight: 500;
 }
-.expense-form .field-wide {
-  width: 100%;
+.expense-form label > input,
+.expense-form label > select,
+.expense-form label > textarea {
+  color: var(--text);
+  font-weight: 400;
 }
+.expense-form .field-wide { width: 100%; }
 .expense-form-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: var(--s3) var(--s4);
 }
+.expense-form-grid > .col-amount { grid-column: span 5; }
+.expense-form-grid > .col-date { grid-column: span 4; }
+.expense-form-grid > .col-category { grid-column: span 3; }
+.expense-form-grid > .col-supplier { grid-column: span 7; }
+.expense-form-grid > .col-doc { grid-column: span 5; }
 @media (max-width: 720px) {
-  .expense-form-grid {
-    grid-template-columns: 1fr;
-  }
+  .expense-form-grid > [class^="col-"] { grid-column: span 12; }
 }
 .expense-form input,
 .expense-form select,
-.expense-form textarea {
-  width: 100%;
+.expense-form textarea { width: 100%; }
+.expense-form-amount {
+  position: relative;
+}
+.expense-form-amount input {
+  padding-right: 44px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+.expense-form-amount::after {
+  content: 'CVE';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(20%);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--text-3);
+  font-weight: 700;
+  pointer-events: none;
 }
 
+/* Summary cards — mini-bar proporcional + % do total. */
 .expenses-summary {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: var(--s3);
-  margin: var(--s3) 0 var(--s4);
+  margin: var(--s4) 0 var(--s5);
 }
 .expenses-summary-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: var(--s3);
-  border-radius: var(--r1);
+  --tone: var(--accent);
+  position: relative;
+  display: grid;
+  gap: var(--s2);
+  padding: var(--s4);
+  border-radius: var(--r2);
   border: 1px solid var(--border);
-  background: color-mix(in oklch, var(--surface-2) 92%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-2) 96%, transparent), var(--surface-2));
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  overflow: hidden;
 }
+.expenses-summary-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: var(--tone);
+  opacity: 0.55;
+  transition: opacity 180ms ease, width 180ms ease;
+}
+.expenses-summary-card:hover {
+  border-color: color-mix(in oklch, var(--tone) 35%, var(--border));
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px -16px rgba(0, 0, 0, 0.55);
+}
+.expenses-summary-card:hover::before { opacity: 1; width: 3px; }
+.expenses-summary-card .badge { width: fit-content; }
+.expenses-summary-card.tone-accent { --tone: var(--accent); }
+.expenses-summary-card.tone-info { --tone: var(--info); }
+.expenses-summary-card.tone-success { --tone: var(--success); }
+.expenses-summary-card.tone-danger { --tone: var(--danger); }
+.expenses-summary-card.tone-neutral { --tone: var(--text-3); }
 .expenses-summary-card strong {
-  font-size: 1.05rem;
+  font-size: 1.35rem;
   color: var(--text);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.1;
 }
 .expenses-summary-card small {
   color: var(--text-3);
-  font-size: 12px;
+  font-size: 11px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.expenses-summary-card .pct {
+  color: var(--text-2);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.expenses-summary-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--surface) 90%, transparent);
+  overflow: hidden;
+  margin-top: 2px;
+}
+.expenses-summary-bar > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--tone), color-mix(in oklch, var(--tone) 60%, transparent));
+  border-radius: 2px;
+}
+
+/* DataList polish — tabular numerals + subtle rateio pill. */
+.expenses-amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.expenses-alloc-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: color-mix(in oklch, var(--surface-2) 88%, transparent);
+  border: 1px solid var(--border);
 }
 
 .expense-allocation {
   margin: 0;
-  padding: var(--s3);
+  padding: var(--s4);
   border: 1px solid var(--border);
-  border-radius: var(--r1);
-  background: color-mix(in oklch, var(--surface-2) 80%, transparent);
+  border-radius: var(--r2);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-2) 94%, transparent), color-mix(in oklch, var(--surface-2) 86%, transparent));
   display: grid;
   gap: var(--s3);
 }
 .expense-allocation legend {
-  padding: 0 6px;
-  font-size: var(--fs-sm);
-  color: var(--text-2);
-  font-weight: 600;
+  padding: 0 8px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-weight: 700;
 }
 .expense-allocation > small {
   color: var(--text-3);
   font-size: 11px;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 .expense-allocation-tabs {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+}
+@media (max-width: 520px) {
+  .expense-allocation-tabs { grid-template-columns: repeat(2, 1fr); }
 }
 .expense-allocation-tabs button {
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-2);
-  border-radius: 999px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-3);
+  border-radius: 6px;
   font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  transition: border-color 140ms ease, color 140ms ease;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
 }
 .expense-allocation-tabs button:hover {
-  border-color: color-mix(in oklch, var(--accent) 40%, var(--border));
   color: var(--text);
+  background: color-mix(in oklch, var(--surface-2) 80%, transparent);
 }
 .expense-allocation-tabs button.active {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: color-mix(in oklch, var(--accent) 8%, transparent);
+  background: color-mix(in oklch, var(--accent) 14%, var(--surface-2));
+  border-color: color-mix(in oklch, var(--accent) 40%, var(--border));
+  color: var(--text);
+  font-weight: 600;
 }
 
 .expense-templates {
   display: grid;
   gap: var(--s4);
 }
+.expense-templates-kpi {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s4);
+  border-radius: var(--r2);
+  border: 1px solid var(--border);
+  background:
+    linear-gradient(135deg, color-mix(in oklch, var(--accent) 8%, var(--surface-2)), var(--surface-2) 70%);
+}
+.expense-templates-kpi-label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-weight: 700;
+  display: block;
+  margin-bottom: 4px;
+}
+.expense-templates-kpi-value {
+  font-size: 1.5rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+.expense-templates-kpi-meta {
+  color: var(--text-3);
+  font-size: 11px;
+  text-align: right;
+  line-height: 1.5;
+}
 .expense-templates > small {
   color: var(--text-3);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.55;
 }
 .expense-template-form {
   display: grid;
-  grid-template-columns: 1.6fr 1fr 0.8fr 0.8fr auto;
+  grid-template-columns: 2fr 1.4fr 1fr 0.8fr auto;
   gap: var(--s2) var(--s3);
   align-items: end;
+  padding: var(--s3);
+  border: 1px dashed var(--border);
+  border-radius: var(--r1);
 }
 .expense-template-form label {
   display: grid;
   gap: 4px;
-  font-size: 12px;
-  color: var(--text-2);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-weight: 600;
 }
 @media (max-width: 720px) {
   .expense-template-form { grid-template-columns: 1fr 1fr; }
@@ -4587,25 +4747,76 @@ button.danger:disabled {
   gap: var(--s2);
 }
 .expense-template-list li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   gap: var(--s3);
-  padding: var(--s3);
+  align-items: center;
+  padding: var(--s3) var(--s4);
   border: 1px solid var(--border);
   border-radius: var(--r1);
   background: var(--surface-2);
+  transition: border-color 140ms ease, background 140ms ease;
 }
-.expense-template-list li.inactive { opacity: 0.55; }
-.expense-template-list li strong { color: var(--text); }
-.expense-template-list li small {
+.expense-template-list li:hover {
+  border-color: var(--border-2);
+  background: color-mix(in oklch, var(--surface-2) 92%, transparent);
+}
+.expense-template-list li.inactive {
+  opacity: 0.55;
+  background: color-mix(in oklch, var(--surface) 50%, var(--surface-2));
+}
+.expense-template-day {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--accent) 14%, var(--surface));
+  border: 1px solid color-mix(in oklch, var(--accent) 38%, var(--border));
+  color: var(--text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  letter-spacing: -0.02em;
+}
+.expense-template-list li.inactive .expense-template-day {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text-3);
+}
+.expense-template-meta strong { color: var(--text); font-weight: 600; }
+.expense-template-meta small {
   display: block;
   color: var(--text-3);
   font-size: 11px;
-  margin-top: 2px;
+  margin-top: 3px;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
 }
-.expense-template-actions { display: flex; gap: 6px; }
+.expense-template-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-left: 6px;
+}
+.expense-template-status.active {
+  color: var(--success);
+  background: color-mix(in oklch, var(--success) 12%, transparent);
+}
+.expense-template-status.paused {
+  color: var(--text-3);
+  background: color-mix(in oklch, var(--text-3) 14%, transparent);
+}
+.expense-template-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
 
 /* Fase 3 — analytics interno do módulo Rentabilidade */
 .investment-alerts span.alert-danger {
