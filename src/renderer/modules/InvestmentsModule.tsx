@@ -407,15 +407,6 @@ export function InvestmentsModule() {
         <div>
           <span>Total investido</span>
           <strong>{formatCve(data.totals.totalInvestedCve)}</strong>
-          <small>
-            CAPEX {formatCve(data.totals.totalInvestedCve - data.totals.totalExpensesCve)} · OPEX {formatCve(data.totals.totalExpensesCve)}
-            {data.totals.investedByYear.length > 0 && (
-              <>
-                {' · por ano: '}
-                {data.totals.investedByYear.map((y) => `${y.year} ${formatCve(y.totalCve)}`).join(', ')}
-              </>
-            )}
-          </small>
         </div>
         <div>
           <span>Lucro mensal liquido</span>
