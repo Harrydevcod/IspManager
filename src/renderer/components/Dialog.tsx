@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
@@ -14,7 +14,7 @@ export type DialogProps = {
 };
 
 const FOCUSABLE_SELECTOR =
-  'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  'a[href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function Dialog({
   open,
@@ -27,6 +27,7 @@ export function Dialog({
   closeOnBackdrop = true
 }: DialogProps) {
   const cardRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   // Stash the latest onClose in a ref so the lifecycle effect can depend
   // solely on `open`. Otherwise a parent that re-renders on every keystroke
   // (passing a fresh inline `onClose`) would re-run the effect, snap focus
@@ -43,7 +44,7 @@ export function Dialog({
     const root = cardRef.current;
 
     const firstFocusable = root?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
-    firstFocusable?.focus();
+    (firstFocusable ?? root)?.focus();
 
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -95,13 +96,14 @@ export function Dialog({
         className={`dialog dialog-${size}`}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="dialog-title"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="dialog-header">
           <div>
             {eyebrow && <p className="eyebrow">{eyebrow}</p>}
-            <h2 id="dialog-title">{title}</h2>
+            <h2 id={titleId}>{title}</h2>
           </div>
           <button
             type="button"

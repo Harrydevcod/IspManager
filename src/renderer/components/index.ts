@@ -11,6 +11,7 @@ export * from './PageHeader';
 export * from './Badge';
 export * from './FilterBar';
 export * from './DataList';
+export * from './DataTable';
 export * from './DetailModal';
 export * from './Dialog';
 export * from './ThemeToggle';

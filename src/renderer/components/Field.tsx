@@ -9,9 +9,9 @@ type FieldProps = InputHTMLAttributes<HTMLInputElement> & { label: string; error
  */
 export function Field({ label, error, id, ...rest }: FieldProps) {
   return (
-    <label className="field">
+    <label className="field" htmlFor={id}>
       <span className="field-label">{label}</span>
-      <input id={id} {...rest} />
+      <input id={id} aria-invalid={error ? true : undefined} {...rest} />
       {error ? <span className="field-error">{error}</span> : null}
     </label>
   );
