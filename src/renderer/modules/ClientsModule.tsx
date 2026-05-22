@@ -3,9 +3,10 @@ import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { Badge, ClientImportDialog, Dialog, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
+import { formatCve } from '../lib/format';
 import { statusLabel, statusTone } from '../lib/status';
 import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
-import type { Client } from '../types';
+import type { Client, ClientProfitability } from '../types';
 
 type ClientFormState = {
   fullName: string;
@@ -41,6 +42,8 @@ export function ClientsModule() {
     whatsappTemplate: fallbackWhatsappTemplate
   });
   const [form, setForm] = useState<ClientFormState>(emptyClientForm());
+  const [profitability, setProfitability] = useState<ClientProfitability | null>(null);
+  const [profitabilityLoading, setProfitabilityLoading] = useState(false);
 
   function loadClients() {
     setLoading(true);
@@ -62,6 +65,29 @@ export function ClientsModule() {
       })
       .finally(() => setLoading(false));
   }
+
+  useEffect(() => {
+    if (!selectedClient) {
+      setProfitability(null);
+      return;
+    }
+    let cancelled = false;
+    setProfitabilityLoading(true);
+    authFetch(`http://127.0.0.1:3001/api/clients/${selectedClient.id}/profitability`)
+      .then((response) => response.ok ? response.json() as Promise<ClientProfitability> : null)
+      .then((data) => {
+        if (!cancelled) setProfitability(data);
+      })
+      .catch(() => {
+        if (!cancelled) setProfitability(null);
+      })
+      .finally(() => {
+        if (!cancelled) setProfitabilityLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClient]);
 
   useEffect(() => {
     void loadClients();
@@ -271,6 +297,90 @@ export function ClientsModule() {
             </button>
             {canManageClients && <button type="button" onClick={() => editClient(selectedClient)}>Editar cliente</button>}
           </div>
+
+          <section className="client-profitability">
+            <header>
+              <strong>Rentabilidade</strong>
+              {profitability && profitability.investments.length > 0 && (
+                <Badge tone={profitability.isRecovered ? 'success' : profitability.netProfitCve < 0 ? 'danger' : 'info'}>
+                  {profitability.isRecovered ? 'Recuperado' : profitability.netProfitCve < 0 ? 'Em prejuizo' : 'Em retorno'}
+                </Badge>
+              )}
+            </header>
+
+            {profitabilityLoading && <p className="module-message">A calcular rentabilidade...</p>}
+
+            {!profitabilityLoading && profitability && profitability.investments.length === 0 && (
+              <p className="module-message">Sem investimentos registados para este cliente.</p>
+            )}
+
+            {!profitabilityLoading && profitability && profitability.investments.length > 0 && (
+              <>
+                <dl className="client-profitability-grid">
+                  <div>
+                    <dt>Custo de instalacao</dt>
+                    <dd>{formatCve(profitability.installationCostCve)}</dd>
+                  </div>
+                  <div>
+                    <dt>Receita paga</dt>
+                    <dd>{formatCve(profitability.paidRevenueCve)}</dd>
+                  </div>
+                  <div>
+                    <dt>Receita pendente</dt>
+                    <dd>{formatCve(profitability.pendingRevenueCve)}</dd>
+                  </div>
+                  <div>
+                    <dt>Lucro acumulado</dt>
+                    <dd className={profitability.netProfitCve < 0 ? 'profit-negative' : 'profit-positive'}>
+                      {formatCve(profitability.netProfitCve)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Lucro mensal</dt>
+                    <dd className={profitability.monthlyNetProfitCve < 0 ? 'profit-negative' : 'profit-positive'}>
+                      {formatCve(profitability.monthlyNetProfitCve)}
+                    </dd>
+                    <small>
+                      receita media {formatCve(profitability.monthlyAverageRevenueCve)} - OPEX rateio {formatCve(profitability.imputedMonthlyOpexCve)}
+                    </small>
+                  </div>
+                  <div>
+                    <dt>Meses ate recuperar</dt>
+                    <dd>
+                      {profitability.monthsToBreakeven === null
+                        ? '-'
+                        : profitability.monthsToBreakeven < 1
+                          ? '< 1 mes'
+                          : `${profitability.monthsToBreakeven.toFixed(profitability.monthsToBreakeven >= 10 ? 0 : 1)} meses`}
+                    </dd>
+                    {profitability.projectedBreakevenDate && !profitability.isRecovered && (
+                      <small>previsao: {profitability.projectedBreakevenDate}</small>
+                    )}
+                  </div>
+                  <div>
+                    <dt>Rentabilidade</dt>
+                    <dd className={(profitability.profitabilityPct ?? 0) < 0 ? 'profit-negative' : 'profit-positive'}>
+                      {profitability.profitabilityPct === null ? '-' : `${profitability.profitabilityPct.toFixed(1)}%`}
+                    </dd>
+                  </div>
+                </dl>
+
+                {profitability.equipmentUsed.length > 0 && (
+                  <div className="client-profitability-equipment">
+                    <strong>Equipamentos usados</strong>
+                    <ul>
+                      {profitability.equipmentUsed.map((eq) => (
+                        <li key={`${eq.itemType}-${eq.itemName}`}>
+                          <span>{eq.itemName}</span>
+                          <small>{eq.quantityUsed} de {eq.quantity} · {formatCve(eq.totalCostCve)}</small>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
+          </section>
         </div>
       )}
 

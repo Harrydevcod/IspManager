@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
+import { loadCompanyOpexContext, type CompanyOpexContext } from '../lib/opex';
 import { requireAuth, requireRole } from './auth';
 
 const investmentType = z.enum(['cliente', 'zona', 'equipamento', 'infraestrutura', 'manutencao', 'expansao', 'outro']);
@@ -92,38 +93,6 @@ type InvestmentBaseRow = {
   desiredPaybackMonths: number;
   desiredMarginPct: number;
 };
-
-type CompanyOpexContext = {
-  totalExpensesCve: number;
-  monthsWithExpenses: number;
-  avgMonthlyOpex: number;
-  totalInstalledActive: number;
-  opexPerClientPerMonth: number;
-};
-
-const ACTIVE_INVESTMENT_STATUSES = new Set(['ativo', 'em_execucao', 'recuperado']);
-
-function loadCompanyOpexContext(
-  db: ReturnType<typeof getSqliteDatabase>,
-  rows: Array<{ installedClients: number; status: string }>
-): CompanyOpexContext {
-  const expensesRow = db.prepare(`
-    SELECT
-      COALESCE(SUM(amount_cve), 0) AS totalExpensesCve,
-      COUNT(DISTINCT reference_month) AS monthsWithExpenses
-    FROM expenses
-  `).get() as { totalExpensesCve: number; monthsWithExpenses: number };
-
-  const totalExpensesCve = Number(expensesRow.totalExpensesCve) || 0;
-  const monthsWithExpenses = Math.max(1, Number(expensesRow.monthsWithExpenses) || 0);
-  const avgMonthlyOpex = totalExpensesCve / monthsWithExpenses;
-  const totalInstalledActive = rows
-    .filter((r) => ACTIVE_INVESTMENT_STATUSES.has(r.status))
-    .reduce((sum, r) => sum + (Number(r.installedClients) || 0), 0);
-  const opexPerClientPerMonth = totalInstalledActive > 0 ? avgMonthlyOpex / totalInstalledActive : 0;
-
-  return { totalExpensesCve, monthsWithExpenses, avgMonthlyOpex, totalInstalledActive, opexPerClientPerMonth };
-}
 
 function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext) {
   const activeClients = Math.max(1, row.installedClients || row.targetClients || 1);
@@ -235,12 +204,9 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
 
     // Company-wide OPEX context (Fase 1 rateio): each active investment absorbs
     // a per-client share of the average monthly OPEX from the expenses table.
-    // Use ALL investments matching the activity filter — not only the filtered
-    // page — so the denominator reflects company-wide installed base.
-    const allActive = db.prepare(`
-      SELECT installed_clients AS installedClients, status FROM investments
-    `).all() as Array<{ installedClients: number; status: string }>;
-    const opexCtx = loadCompanyOpexContext(db, allActive);
+    // loadCompanyOpexContext scans ALL investments so the denominator reflects
+    // the company-wide installed base, independent of this query's filter.
+    const opexCtx = loadCompanyOpexContext();
 
     const rowsWithItems = rows.map((row) => ({
       ...row,

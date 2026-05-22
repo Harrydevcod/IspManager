@@ -4509,3 +4509,88 @@ button.danger:disabled {
   color: var(--text-3);
   font-size: 12px;
 }
+
+/* Client profitability panel (Fase 2). */
+.client-profitability {
+  margin-top: var(--s4);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: var(--s3);
+}
+.client-profitability > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s3);
+}
+.client-profitability > header strong {
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+.client-profitability-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--s3);
+  margin: 0;
+}
+.client-profitability-grid > div {
+  display: grid;
+  gap: 4px;
+  padding: var(--s3);
+  border-radius: var(--r1);
+  background: color-mix(in oklch, var(--surface-2) 90%, transparent);
+  border: 1px solid var(--border);
+}
+.client-profitability-grid dt {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.client-profitability-grid dd {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.client-profitability-grid small {
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.client-profitability-grid .profit-positive { color: var(--success); }
+.client-profitability-grid .profit-negative { color: var(--danger); }
+.client-profitability-equipment {
+  display: grid;
+  gap: var(--s2);
+}
+.client-profitability-equipment strong {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.client-profitability-equipment ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--s2);
+}
+.client-profitability-equipment li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+}
+.client-profitability-equipment li span {
+  color: var(--text);
+}
+.client-profitability-equipment li small {
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}

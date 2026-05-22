@@ -263,6 +263,51 @@ export type InvestmentList = {
   alerts: string[];
 };
 
+export type ClientProfitability = {
+  clientId: number;
+  client: {
+    id: number;
+    clientCode: string;
+    fullName: string;
+    phone: string | null;
+    island: string | null;
+    zone: string | null;
+    status: string;
+  };
+  installationCostCve: number;
+  investments: Array<{
+    id: number;
+    name: string;
+    type: string;
+    investmentDate: string;
+    referenceMonth: string;
+    status: string;
+    zone: string | null;
+    totalCostCve: number;
+  }>;
+  equipmentUsed: Array<{
+    itemType: string;
+    itemName: string;
+    quantity: number;
+    quantityUsed: number;
+    totalCostCve: number;
+  }>;
+  paidRevenueCve: number;
+  pendingRevenueCve: number;
+  monthsActive: number;
+  paidMonths: number;
+  monthlyAverageRevenueCve: number;
+  imputedMonthlyOpexCve: number;
+  cumulativeOpexCve: number;
+  monthlyNetProfitCve: number;
+  netProfitCve: number;
+  monthsToBreakeven: number | null;
+  projectedBreakevenDate: string | null;
+  profitabilityPct: number | null;
+  isRecovered: boolean;
+  companyOpexShare: CompanyOpexShare;
+};
+
 export type UpcomingDue = {
   paymentId: number;
   clientName: string;

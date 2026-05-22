@@ -4,7 +4,15 @@ import { z } from 'zod';
 import { getDatabase, getSqliteDatabase } from '../db/database';
 import { clients } from '../db/schema';
 import { recordAudit } from '../lib/audit';
+import { loadCompanyOpexContext } from '../lib/opex';
 import { requireAuth, requireRole } from './auth';
+
+function addMonthsIso(isoDate: string, months: number): string {
+  const date = new Date(`${isoDate.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return isoDate;
+  date.setUTCMonth(date.getUTCMonth() + Math.round(months));
+  return date.toISOString().slice(0, 10);
+}
 
 const createClientSchema = z.object({
   fullName: z.string().trim().min(1),
@@ -25,6 +33,112 @@ export async function registerClientRoutes(app: FastifyInstance) {
       .select()
       .from(clients)
       .orderBy(asc(clients.fullName));
+  });
+
+  app.get('/api/clients/:id/profitability', { preHandler: requireAuth() }, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Id invalido' });
+    }
+    const db = getSqliteDatabase();
+
+    const client = db.prepare(`
+      SELECT id, client_code AS clientCode, full_name AS fullName, phone, island, zone, status
+      FROM clients WHERE id = ?
+    `).get(id) as {
+      id: number; clientCode: string; fullName: string; phone: string | null;
+      island: string | null; zone: string | null; status: string;
+    } | undefined;
+    if (!client) return reply.status(404).send({ error: 'Cliente nao encontrado' });
+
+    const investmentRows = db.prepare(`
+      SELECT id, name, type, investment_date AS investmentDate, reference_month AS referenceMonth,
+             status, zone, total_cost_cve AS totalCostCve
+      FROM investments
+      WHERE client_id = ?
+      ORDER BY investment_date ASC, id ASC
+    `).all(id) as Array<{
+      id: number; name: string; type: string; investmentDate: string; referenceMonth: string;
+      status: string; zone: string | null; totalCostCve: number;
+    }>;
+
+    const installationCostCve = investmentRows.reduce((sum, r) => sum + Number(r.totalCostCve || 0), 0);
+
+    const equipmentUsed = investmentRows.length === 0 ? [] : db.prepare(`
+      SELECT item_type AS itemType,
+             item_name AS itemName,
+             SUM(quantity) AS quantity,
+             SUM(quantity_used) AS quantityUsed,
+             SUM(total_cost_cve) AS totalCostCve
+      FROM investment_items
+      WHERE investment_id IN (${investmentRows.map(() => '?').join(',')})
+      GROUP BY item_type, item_name
+      ORDER BY totalCostCve DESC, item_name ASC
+    `).all(...investmentRows.map((r) => r.id)) as Array<{
+      itemType: string; itemName: string; quantity: number; quantityUsed: number; totalCostCve: number;
+    }>;
+
+    const payments = db.prepare(`
+      SELECT id, status, amount_cve AS amountCve, due_date AS dueDate,
+             payment_date AS paymentDate, reference_month AS referenceMonth
+      FROM payments
+      WHERE client_id = ?
+      ORDER BY due_date ASC, id ASC
+    `).all(id) as Array<{
+      id: number; status: string; amountCve: number; dueDate: string;
+      paymentDate: string | null; referenceMonth: string;
+    }>;
+
+    const paidRevenueCve = payments.filter((p) => p.status === 'paid').reduce((s, p) => s + Number(p.amountCve), 0);
+    const pendingRevenueCve = payments
+      .filter((p) => p.status === 'pending' || p.status === 'overdue')
+      .reduce((s, p) => s + Number(p.amountCve), 0);
+    const monthsActive = new Set(payments.map((p) => p.referenceMonth)).size;
+    const paidMonths = new Set(payments.filter((p) => p.status === 'paid').map((p) => p.referenceMonth)).size;
+    const monthlyAverageRevenueCve = paidMonths > 0 ? paidRevenueCve / paidMonths : 0;
+
+    const opexCtx = loadCompanyOpexContext();
+    const imputedMonthlyOpexCve = opexCtx.opexPerClientPerMonth;
+    const cumulativeOpexCve = imputedMonthlyOpexCve * monthsActive;
+    const monthlyNetProfitCve = monthlyAverageRevenueCve - imputedMonthlyOpexCve;
+    const netProfitCve = paidRevenueCve - installationCostCve - cumulativeOpexCve;
+    const monthsToBreakeven = monthlyNetProfitCve > 0 && installationCostCve > 0
+      ? installationCostCve / monthlyNetProfitCve
+      : null;
+    const profitabilityPct = installationCostCve > 0
+      ? (netProfitCve / installationCostCve) * 100
+      : null;
+    const isRecovered = installationCostCve > 0 && netProfitCve >= 0;
+
+    const oldestPaidDate = payments
+      .filter((p) => p.status === 'paid' && p.paymentDate)
+      .map((p) => p.paymentDate!)
+      .sort()[0] || null;
+    const projectedBreakevenDate = (oldestPaidDate && monthsToBreakeven)
+      ? addMonthsIso(oldestPaidDate, monthsToBreakeven)
+      : null;
+
+    return {
+      clientId: client.id,
+      client,
+      installationCostCve,
+      investments: investmentRows,
+      equipmentUsed,
+      paidRevenueCve,
+      pendingRevenueCve,
+      monthsActive,
+      paidMonths,
+      monthlyAverageRevenueCve,
+      imputedMonthlyOpexCve,
+      cumulativeOpexCve,
+      monthlyNetProfitCve,
+      netProfitCve,
+      monthsToBreakeven,
+      projectedBreakevenDate,
+      profitabilityPct,
+      isRecovered,
+      companyOpexShare: opexCtx
+    };
   });
 
   app.post('/api/clients', canWriteClients, async (request, reply) => {
