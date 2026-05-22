@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { requireRole } from './auth';
 
@@ -11,8 +12,38 @@ type ReportMetricRow = {
   stockValueCve: number;
 };
 
+const querySchema = z.object({
+  view: z.enum(['revenue', 'overdue', 'stock']).default('revenue'),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+});
+
 export async function registerReportRoutes(app: FastifyInstance) {
-  app.get('/api/reports/summary', { preHandler: requireRole(['admin', 'operator']) }, async () => {
+  app.get('/api/reports/summary', { preHandler: requireRole(['admin', 'operator']) }, async (request, reply) => {
+    const parsed = querySchema.safeParse(request.query || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Filtros invalidos' });
+    }
+
+    const { view, page, pageSize, dateFrom, dateTo } = parsed.data;
+    const offset = (page - 1) * pageSize;
+    const paymentWhere: string[] = [];
+    const params: Record<string, unknown> = { limit: pageSize, offset };
+    if (dateFrom) {
+      paymentWhere.push('due_date >= @dateFrom');
+      params.dateFrom = dateFrom;
+    }
+    if (dateTo) {
+      paymentWhere.push('due_date <= @dateTo');
+      params.dateTo = dateTo;
+    }
+    const paymentWhereSql = paymentWhere.length ? `WHERE ${paymentWhere.join(' AND ')}` : '';
+    const overdueWhereSql = paymentWhere.length
+      ? `WHERE py.status = 'overdue' AND ${paymentWhere.map((condition) => `py.${condition}`).join(' AND ')}`
+      : "WHERE py.status = 'overdue'";
+
     const db = getSqliteDatabase();
 
     const metrics = db.prepare(`
@@ -36,10 +67,22 @@ export async function registerReportRoutes(app: FastifyInstance) {
         coalesce(sum(case when status = 'pending' then amount_cve else 0 end), 0) AS pendingCve,
         count(*) AS payments
       FROM payments
+      ${paymentWhereSql}
       GROUP BY reference_month
       ORDER BY reference_month DESC
-      LIMIT 12
-    `).all();
+      LIMIT @limit
+      OFFSET @offset
+    `).all(params);
+
+    const revenueTotal = db.prepare(`
+      SELECT count(*) AS total
+      FROM (
+        SELECT reference_month
+        FROM payments
+        ${paymentWhereSql}
+        GROUP BY reference_month
+      )
+    `).get(params) as { total: number };
 
     const overdueClients = db.prepare(`
       SELECT
@@ -51,11 +94,23 @@ export async function registerReportRoutes(app: FastifyInstance) {
         min(py.due_date) AS oldestDueDate
       FROM payments py
       JOIN clients c ON c.id = py.client_id
-      WHERE py.status = 'overdue'
+      ${overdueWhereSql}
       GROUP BY c.id
       ORDER BY amountCve DESC, oldestDueDate
-      LIMIT 20
-    `).all();
+      LIMIT @limit
+      OFFSET @offset
+    `).all(params);
+
+    const overdueTotal = db.prepare(`
+      SELECT count(*) AS total
+      FROM (
+        SELECT c.id
+        FROM payments py
+        JOIN clients c ON c.id = py.client_id
+        ${overdueWhereSql}
+        GROUP BY c.id
+      )
+    `).get(params) as { total: number };
 
     const stockRows = db.prepare(`
       SELECT
@@ -67,9 +122,34 @@ export async function registerReportRoutes(app: FastifyInstance) {
       FROM equipment_catalog
       WHERE active = 1
       ORDER BY stock_total ASC, brand, model
-      LIMIT 20
-    `).all();
+      LIMIT @limit
+      OFFSET @offset
+    `).all(params);
 
-    return { metrics, revenueByMonth, overdueClients, stockRows };
+    const stockTotal = db.prepare(`
+      SELECT count(*) AS total
+      FROM equipment_catalog
+      WHERE active = 1
+    `).get() as { total: number };
+
+    const total = view === 'revenue'
+      ? revenueTotal.total
+      : view === 'overdue'
+        ? overdueTotal.total
+        : stockTotal.total;
+
+    return {
+      metrics,
+      revenueByMonth,
+      overdueClients,
+      stockRows,
+      pagination: {
+        view,
+        page,
+        pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize))
+      }
+    };
   });
 }

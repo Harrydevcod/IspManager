@@ -320,6 +320,8 @@ export type InvestmentList = {
   totals: {
     count: number;
     totalCostCve: number;
+    totalExpensesCve: number;
+    totalInvestedCve: number;
     monthlyNetProfitCve: number;
     accumulatedProfitCve: number;
     totalImputedOpexCve: number;
@@ -425,6 +427,7 @@ export type DashboardSummary = {
   activeServices: number;
   openWorkOrders: number;
   paidMonthCve: number;
+  totalInvestedCve: number;
   revenueByMonth: RevenuePoint[];
   upcomingDues: UpcomingDue[];
   criticalOverdue: CriticalOverdue[];
@@ -462,6 +465,13 @@ export type ReportsSummary = {
     stockTotal: number;
     valueCve: number;
   }>;
+  pagination: {
+    view: ReportView;
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
 };
 
 export type ReportView = 'revenue' | 'overdue' | 'stock';

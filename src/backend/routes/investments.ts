@@ -238,6 +238,8 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     }));
 
     const totalCostCve = rowsWithItems.reduce((sum, row) => sum + Number(row.totalCostCve || 0), 0);
+    const totalExpensesCve = opexCtx.totalExpensesCve;
+    const totalInvestedCve = totalCostCve + totalExpensesCve;
     const monthlyNetProfitCve = rowsWithItems.reduce((sum, row) => sum + row.monthlyNetProfitCve, 0);
     const accumulatedProfitCve = rowsWithItems.reduce((sum, row) => sum + row.accumulatedProfitCve, 0);
     const totalImputedOpexCve = rowsWithItems.reduce((sum, row) => sum + row.imputedMonthlyOpexCve, 0);
@@ -334,6 +336,8 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       totals: {
         count: rowsWithItems.length,
         totalCostCve,
+        totalExpensesCve,
+        totalInvestedCve,
         monthlyNetProfitCve,
         accumulatedProfitCve,
         totalImputedOpexCve,

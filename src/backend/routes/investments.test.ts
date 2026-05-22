@@ -197,6 +197,62 @@ describe('investments CRUD', () => {
     expect(row.monthlyNetProfitCve).toBe(2250); // 5000 - 2750
   });
 
+  test('uses expenses created through the expenses module API in profitability calculations', async () => {
+    const investmentId = db.prepare(`INSERT INTO investments
+                (name, type, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve, monthly_operational_cost_cve)
+                VALUES ('Zona despesas API', 'zona', '2026-05-01', '2026-05', 20000, 4, 4, 'ativo', 16000, 0)`).run().lastInsertRowid as number;
+
+    const sharedExpense = await app.inject({
+      method: 'POST',
+      url: '/api/expenses',
+      payload: {
+        category: 'banda_internet',
+        description: 'Upstream registado em Despesas',
+        amountCve: 4000,
+        expenseDate: '2026-05-10'
+      }
+    });
+    expect(sharedExpense.statusCode).toBe(201);
+
+    const directExpense = await app.inject({
+      method: 'POST',
+      url: '/api/expenses',
+      payload: {
+        category: 'infraestrutura',
+        description: 'Torre alocada em Despesas',
+        amountCve: 2500,
+        expenseDate: '2026-05-12',
+        investmentId
+      }
+    });
+    expect(directExpense.statusCode).toBe(201);
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
+    expect(response.statusCode).toBe(200);
+    const payload = response.json() as {
+      totals: { totalCostCve: number; totalExpensesCve: number; totalInvestedCve: number };
+      companyOpexShare: { totalExpensesCve: number; totalAllocatedCve: number; totalUnallocatedCve: number };
+      rows: Array<{ imputedMonthlyOpexCve: number; directAllocatedOpexCve: number; effectiveMonthlyOpexCve: number; monthlyNetProfitCve: number }>;
+    };
+
+    expect(payload.totals).toMatchObject({
+      totalCostCve: 20000,
+      totalExpensesCve: 6500,
+      totalInvestedCve: 26500
+    });
+    expect(payload.companyOpexShare).toMatchObject({
+      totalExpensesCve: 6500,
+      totalAllocatedCve: 2500,
+      totalUnallocatedCve: 4000
+    });
+    const row = payload.rows[0];
+    expect(row.imputedMonthlyOpexCve).toBe(4000);
+    expect(row.directAllocatedOpexCve).toBe(2500);
+    expect(row.effectiveMonthlyOpexCve).toBe(6500);
+    expect(row.monthlyNetProfitCve).toBe(9500);
+  });
+
   test('skips OPEX rateio when no installed clients are active', async () => {
     // Only planned investments with installed=0 → denominator is 0, imputed=0.
     db.prepare(`INSERT INTO investments

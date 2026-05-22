@@ -300,8 +300,36 @@ describe('auth flow', () => {
       headers: { authorization: `Bearer ${adminToken}` }
     });
     expect(logs.statusCode).toBe(200);
-    const actions = logs.json().map((row: any) => row.action);
+    const actions = logs.json().rows.map((row: any) => row.action);
     expect(actions).toContain('create');
     expect(actions).toContain('reset_password');
+  });
+
+  test('admin can page and filter audit logs by date', async () => {
+    const adminToken = await setupAdminToken();
+    const insert = db.prepare(`
+      INSERT INTO audit_logs (action, entity_type, entity_id, summary, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    insert.run('create', 'clients', '1', 'Cliente criado', '2026-05-01 09:00:00');
+    insert.run('update', 'clients', '1', 'Cliente atualizado', '2026-05-02 10:00:00');
+    insert.run('delete', 'plans', '2', 'Plano removido', '2026-05-03 11:00:00');
+
+    const page = await app.inject({
+      method: 'GET',
+      url: '/api/audit-logs?page=1&pageSize=1&dateFrom=2026-05-01&dateTo=2026-05-02&entityType=clients',
+      headers: { authorization: `Bearer ${adminToken}` }
+    });
+
+    expect(page.statusCode).toBe(200);
+    expect(page.json()).toMatchObject({
+      page: 1,
+      pageSize: 1,
+      total: 2,
+      totalPages: 2,
+      entities: expect.arrayContaining(['clients', 'plans'])
+    });
+    expect(page.json().rows).toHaveLength(1);
+    expect(page.json().rows[0].summary).toBe('Cliente atualizado');
   });
 });

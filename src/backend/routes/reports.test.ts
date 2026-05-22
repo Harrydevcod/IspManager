@@ -29,6 +29,13 @@ type ReportSummary = {
     oldestDueDate: string;
   }>;
   stockRows: Array<{ type: string; brand: string; model: string; stockTotal: number; valueCve: number }>;
+  pagination: {
+    view: 'revenue' | 'overdue' | 'stock';
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
 };
 
 beforeAll(async () => {
@@ -136,6 +143,26 @@ describe('GET /api/reports/summary', () => {
     const may = body.revenueByMonth.find((r) => r.referenceMonth === '2026-05')!;
     expect(may.paidCve).toBe(0);
     expect(may.pendingCve).toBe(4500);
+  });
+
+  test('paginates and filters report rows by payment date range', async () => {
+    seedBasicScenario();
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/reports/summary?view=revenue&page=1&pageSize=1&dateFrom=2026-02-01&dateTo=2026-03-31'
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as ReportSummary;
+
+    expect(body.pagination).toEqual({
+      view: 'revenue',
+      page: 1,
+      pageSize: 1,
+      total: 2,
+      totalPages: 2
+    });
+    expect(body.revenueByMonth).toHaveLength(1);
+    expect(body.revenueByMonth[0].referenceMonth).toBe('2026-03');
   });
 
   test('overdueClients groups by client and stockRows excludes inactive equipment ordered by stock asc', async () => {
