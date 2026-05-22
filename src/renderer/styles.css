@@ -4676,9 +4676,17 @@ button.danger:disabled {
   font-weight: 600;
 }
 
+.dialog:has(.expense-templates) {
+  max-width: min(920px, calc(100vw - var(--s6)));
+}
+.dialog:has(.expense-templates) .dialog-body {
+  overflow-x: hidden;
+}
+
 .expense-templates {
   display: grid;
   gap: var(--s4);
+  min-width: 0;
 }
 .expense-templates-kpi {
   display: grid;
@@ -4720,12 +4728,13 @@ button.danger:disabled {
 }
 .expense-template-form {
   display: grid;
-  grid-template-columns: 2fr 1.4fr 1fr 0.8fr auto;
-  gap: var(--s2) var(--s3);
+  grid-template-columns: 2fr 1fr 1fr auto;
+  gap: var(--s3);
   align-items: end;
-  padding: var(--s3);
+  padding: var(--s4);
   border: 1px dashed var(--border);
   border-radius: var(--r1);
+  background: color-mix(in oklch, var(--surface) 60%, transparent);
 }
 .expense-template-form label {
   display: grid;
@@ -4735,9 +4744,23 @@ button.danger:disabled {
   text-transform: uppercase;
   color: var(--text-3);
   font-weight: 600;
+  min-width: 0;
+}
+.expense-template-form label.full {
+  grid-column: 1 / -1;
+}
+.expense-template-form input,
+.expense-template-form select {
+  width: 100%;
+  min-width: 0;
+}
+.expense-template-form button[type="submit"] {
+  white-space: nowrap;
 }
 @media (max-width: 720px) {
   .expense-template-form { grid-template-columns: 1fr 1fr; }
+  .expense-template-form label.full { grid-column: 1 / -1; }
+  .expense-template-form button[type="submit"] { grid-column: 1 / -1; }
 }
 .expense-template-list {
   list-style: none;
@@ -4748,7 +4771,7 @@ button.danger:disabled {
 }
 .expense-template-list li {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: var(--s3);
   align-items: center;
   padding: var(--s3) var(--s4);
@@ -4756,6 +4779,14 @@ button.danger:disabled {
   border-radius: var(--r1);
   background: var(--surface-2);
   transition: border-color 140ms ease, background 140ms ease;
+  min-width: 0;
+}
+.expense-template-meta { min-width: 0; }
+.expense-template-meta small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 .expense-template-list li:hover {
   border-color: var(--border-2);

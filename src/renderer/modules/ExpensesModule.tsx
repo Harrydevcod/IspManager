@@ -634,7 +634,7 @@ export function ExpensesModule() {
         onClose={() => setTemplatesOpen(false)}
         eyebrow="Despesas recorrentes"
         title="Templates mensais"
-        size="md"
+        size="lg"
         actions={
           <>
             <button type="button" onClick={() => setTemplatesOpen(false)}>Fechar</button>
@@ -662,12 +662,12 @@ export function ExpensesModule() {
           </small>
 
           <form onSubmit={submitTemplate} className="expense-template-form">
-            <label>
+            <label className="full">
               Nome
               <input
                 value={templateForm.name}
                 onChange={(e) => setTemplateForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="Ex: Salarios"
+                placeholder="Ex: Salários da equipa"
                 required
                 maxLength={180}
               />
@@ -688,10 +688,11 @@ export function ExpensesModule() {
                 onChange={(e) => setTemplateForm((f) => ({ ...f, amountCve: e.target.value }))}
                 inputMode="decimal"
                 required
+                placeholder="0"
               />
             </label>
             <label>
-              Dia do mês (1–28)
+              Dia (1–28)
               <input
                 type="number"
                 min={1}
@@ -701,7 +702,7 @@ export function ExpensesModule() {
               />
             </label>
             <button type="submit" className="primary" disabled={templateSaving}>
-              {templateSaving ? 'A guardar...' : 'Adicionar template'}
+              {templateSaving ? 'A guardar...' : 'Adicionar'}
             </button>
           </form>
 
