@@ -1,4 +1,4 @@
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Download, FileText, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Badge, DataList, Dialog, FilterBar, Message, useToast } from '../components';
@@ -381,6 +381,22 @@ export function InvestmentsModule() {
         </div>
         <div className="inline-actions">
           <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} disabled={showAllMonths} />
+          <a
+            href="http://127.0.0.1:3001/api/investments/report.pdf"
+            target="_blank"
+            rel="noreferrer"
+            className="button-link"
+            title="Exportar relatório PDF"
+          >
+            <FileText size={14} /> PDF
+          </a>
+          <a
+            href="http://127.0.0.1:3001/api/investments/report.xlsx"
+            className="button-link"
+            title="Exportar dados em Excel"
+          >
+            <Download size={14} /> Excel
+          </a>
           <button type="button" className="primary" onClick={openCreate}>
             <Plus size={14} /> Novo investimento
           </button>

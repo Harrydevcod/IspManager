@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
 import { loadActualMonthlyRevenue, loadCompanyOpexContext, type CompanyOpexContext } from '../lib/opex';
+import { buildProfitabilityPdf, buildProfitabilityXlsx } from '../lib/profitability-export';
 import { requireAuth, requireRole } from './auth';
 
 const investmentType = z.enum(['cliente', 'zona', 'equipamento', 'infraestrutura', 'manutencao', 'expansao', 'outro']);
@@ -348,6 +349,25 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       equipmentTop,
       alerts
     };
+  });
+
+  app.get('/api/investments/report.pdf', { preHandler: requireRole(['admin', 'operator']) }, async (request, reply) => {
+    const buffer = await buildProfitabilityPdf();
+    const filename = `Rentabilidade-${new Date().toISOString().slice(0, 10)}.pdf`;
+    const inline = (request.query as { inline?: string } | undefined)?.inline === '1';
+    reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${filename}"`)
+      .send(buffer);
+  });
+
+  app.get('/api/investments/report.xlsx', { preHandler: requireRole(['admin', 'operator']) }, async (request, reply) => {
+    const buffer = await buildProfitabilityXlsx();
+    const filename = `Rentabilidade-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(buffer);
   });
 
   app.get('/api/investments/:id/timeline', canRead, async (request, reply) => {

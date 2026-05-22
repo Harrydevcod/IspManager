@@ -326,6 +326,32 @@ describe('investments CRUD', () => {
     expect(danger!.message.toLowerCase()).toContain('lucro');
   });
 
+  test('GET /api/investments/report.pdf returns a PDF buffer', async () => {
+    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_cve, target_clients, installed_clients, status, expected_monthly_revenue_cve)
+                VALUES ('Backbone PDF', 'infraestrutura', '2026-05-01', '2026-05', 12000, 5, 3, 'ativo', 8000)`).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments/report.pdf' });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe('application/pdf');
+    expect(String(response.headers['content-disposition'])).toContain('attachment');
+    expect(response.rawPayload.slice(0, 4).toString('ascii')).toBe('%PDF');
+    expect(response.rawPayload.length).toBeGreaterThan(800);
+  });
+
+  test('GET /api/investments/report.xlsx returns an XLSX buffer', async () => {
+    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_cve, target_clients, installed_clients, status, expected_monthly_revenue_cve)
+                VALUES ('Edge zona XLSX', 'zona', '2026-05-01', '2026-05', 30000, 10, 6, 'ativo', 18000)`).run();
+    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month)
+                VALUES ('banda_internet', 'Upstream Maio', 8000, '2026-05-15', '2026-05')`).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments/report.xlsx' });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    // XLSX = ZIP archive → starts with "PK".
+    expect(response.rawPayload.slice(0, 2).toString('ascii')).toBe('PK');
+    expect(response.rawPayload.length).toBeGreaterThan(2000);
+  });
+
   test('dashboard summary aggregates investment cost per month', async () => {
     const now = new Date();
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;

@@ -4691,6 +4691,24 @@ button.danger:disabled {
 .investment-timeline-footer .profit-positive { color: var(--success); }
 .investment-timeline-footer .profit-negative { color: var(--danger); }
 
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  border-radius: var(--r1);
+  font-size: 12px;
+  text-decoration: none;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+.button-link:hover {
+  border-color: color-mix(in oklch, var(--accent) 50%, var(--border));
+  color: var(--text);
+}
+
 /* Client profitability panel (Fase 2). */
 .client-profitability {
   margin-top: var(--s4);
