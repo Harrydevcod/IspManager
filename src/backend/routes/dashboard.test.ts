@@ -68,8 +68,7 @@ describe('GET /api/dashboard/summary', () => {
       pendingPayments: 0,
       lowStockModels: 0,
       activeServices: 0,
-      paidMonthCve: 0,
-      totalInvestedCve: 0
+      paidMonthCve: 0
     });
 
     expect(Array.isArray(body.revenueByMonth)).toBe(true);
@@ -127,40 +126,6 @@ describe('GET /api/dashboard/summary', () => {
       (p: { referenceMonth: string }) => p.referenceMonth === currentMonth
     );
     expect(currentPoint?.paidCve).toBe(3500);
-  });
-
-  test('includes investments and expenses in totalInvestedCve', async () => {
-    db.prepare(`
-      INSERT INTO investments (
-        name, type, client_id, zone, description, supplier, investment_date, reference_month,
-        status, target_clients, installed_clients, desired_payback_months, desired_margin_pct,
-        expected_monthly_revenue_cve, monthly_operational_cost_cve, accumulated_revenue_cve,
-        total_cost_cve, notes, created_by, created_at, updated_at
-      )
-      VALUES (
-        'Investimento Principal', 'infraestrutura', NULL, NULL, NULL, NULL, '2026-05-10', '2026-05',
-        'ativo', 1, 0, 6, 30,
-        0, 0, 0,
-        20000, NULL, NULL, datetime('now'), datetime('now')
-      )
-    `).run();
-
-    db.prepare(`
-      INSERT INTO expenses (
-        category, description, amount_cve, expense_date, reference_month,
-        supplier, invoice_reference, notes, investment_id, zone, client_id, created_by
-      )
-      VALUES (
-        'manutencao', 'Despesa operacional', 6500, '2026-05-12', '2026-05',
-        NULL, NULL, NULL, NULL, NULL, NULL, NULL
-      )
-    `).run();
-
-    const response = await app.inject({ method: 'GET', url: '/api/dashboard/summary' });
-    expect(response.statusCode).toBe(200);
-    const body = response.json();
-
-    expect(body.totalInvestedCve).toBe(26500);
   });
 
   test('flags critical overdue payments older than 30 days', async () => {
