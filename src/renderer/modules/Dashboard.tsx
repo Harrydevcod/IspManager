@@ -434,6 +434,12 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
       value: summary ? String(summary.activeServices) : '...',
       trend: 'a faturar',
       icon: Activity
+    },
+    {
+      label: 'Total investido',
+      value: summary ? `${formatCve(summary.totalInvestedCve)} CVE` : '...',
+      trend: 'investimentos + despesas',
+      icon: TrendingUp
     }
   ];
 

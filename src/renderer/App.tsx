@@ -229,7 +229,9 @@ function AppShell() {
   };
 
   return (
-    <main className="app-shell">
+    <>
+      <a className="skip-link" href="#app-content">Saltar para conteudo</a>
+      <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark">I</span>
@@ -243,28 +245,33 @@ function AppShell() {
           type="button"
           className="palette-trigger"
           onClick={() => setPaletteOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={paletteOpen}
           title="Procurar (Ctrl+K)"
         >
-          <Search size={14} />
+          <Search size={14} aria-hidden />
           <span>Procurar</span>
-          <kbd>Ctrl K</kbd>
+          <kbd aria-hidden="true">Ctrl K</kbd>
         </button>
 
         <nav className="nav-list" aria-label="Principal">
           {visibleSections.map((item) => {
             const Icon = item.icon;
             const counter = counterFor(item.id, summary);
+            const counterLabel = counter ? `, ${counter.count} alerta${counter.count === 1 ? '' : 's'}` : '';
             return (
               <button
                 className={section === item.id ? 'active' : ''}
                 key={item.id}
                 type="button"
                 onClick={() => setSection(item.id)}
+                aria-current={section === item.id ? 'page' : undefined}
+                aria-label={`${item.label}${counterLabel}`}
               >
-                <Icon size={18} />
+                <Icon size={18} aria-hidden />
                 <span className="nav-label">{item.label}</span>
                 {counter && (
-                  <span className={`nav-counter nav-counter-${counter.tone}`}>{counter.count}</span>
+                  <span className={`nav-counter nav-counter-${counter.tone}`} aria-hidden="true">{counter.count}</span>
                 )}
               </button>
             );
@@ -293,15 +300,15 @@ function AppShell() {
         )}
       </aside>
 
-        <section className="content">
+        <section className="content" id="app-content" tabIndex={-1}>
           <PageHeader
             eyebrow="Cabo Verde"
             title="Painel operacional"
             actions={
               <>
                 <ThemeToggle />
-                <div className={`status ${health}`}>
-                  <Activity size={16} />
+                <div className={`status ${health}`} role="status" aria-live="polite">
+                  <Activity size={16} aria-hidden />
                   <span>{health === 'checking' ? 'A verificar API' : health === 'online' ? 'API local online' : 'API offline'}</span>
                 </div>
               </>
@@ -329,5 +336,6 @@ function AppShell() {
           items={paletteItems}
         />
       </main>
+    </>
   );
 }

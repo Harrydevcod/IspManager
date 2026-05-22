@@ -1,7 +1,7 @@
 import { Pencil, Plus, Repeat, Trash2 } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, DataList, Dialog, FilterBar, Message, useToast } from '../components';
+import { Badge, DataTable, Dialog, FilterBar, Message, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import type { Client, Expense, ExpenseCategory, ExpenseList, ExpenseTemplate, ExpenseTemplateList, Investment, InvestmentList } from '../types';
@@ -319,7 +319,7 @@ export function ExpensesModule() {
   };
 
   return (
-    <section className="module-panel">
+    <section className="module-panel expenses-module">
       <div className="module-header">
         <div>
           <p className="eyebrow">Painel operacional</p>
@@ -330,7 +330,7 @@ export function ExpensesModule() {
             {showAllMonths ? ' · todos os meses' : ` · ${month}`}
           </small>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--s2)' }}>
+        <div className="expenses-header-actions">
           <button type="button" onClick={openTemplates}>
             <Repeat size={16} /> Recorrentes
           </button>
@@ -340,36 +340,38 @@ export function ExpensesModule() {
         </div>
       </div>
 
-      <FilterBar>
-        <label>
-          Mes
-          <input
-            type="month"
-            value={month}
-            disabled={showAllMonths}
-            onChange={(e) => setMonth(e.target.value || currentMonth())}
-          />
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={showAllMonths}
-            onChange={(e) => setShowAllMonths(e.target.checked)}
-          />
-          Ver todos os meses
-        </label>
-        <label>
-          Categoria
-          <select value={category} onChange={(e) => setCategory(e.target.value as 'all' | ExpenseCategory)}>
-            <option value="all">Todas</option>
-            {CATEGORIES.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </FilterBar>
+      <div className="expenses-filter-shell">
+        <FilterBar>
+          <label>
+            Mes
+            <input
+              type="month"
+              value={month}
+              disabled={showAllMonths}
+              onChange={(e) => setMonth(e.target.value || currentMonth())}
+            />
+          </label>
+          <label className="expenses-toggle-filter">
+            <input
+              type="checkbox"
+              checked={showAllMonths}
+              onChange={(e) => setShowAllMonths(e.target.checked)}
+            />
+            <span>Todos os meses</span>
+          </label>
+          <label>
+            Categoria
+            <select value={category} onChange={(e) => setCategory(e.target.value as 'all' | ExpenseCategory)}>
+              <option value="all">Todas</option>
+              {CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </FilterBar>
+      </div>
 
       {error && <Message tone="error">{error}</Message>}
 
@@ -400,9 +402,14 @@ export function ExpensesModule() {
         );
       })()}
 
-      <DataList
+      <div className="expenses-list">
+      <DataTable
         rows={data.rows}
         rowKey={(expense) => expense.id}
+        className="expenses-table"
+        gridTemplateColumns="minmax(260px, 1fr) 190px 158px 132px"
+        actionsHeader="Acoes"
+        actionsWidth="92px"
         empty={
           <div className="module-message">
             {loading ? 'A carregar...' : 'Sem despesas registadas para os filtros atuais.'}
@@ -410,8 +417,10 @@ export function ExpensesModule() {
         }
         columns={[
           {
+            header: 'Despesa',
+            className: 'expenses-description-cell',
             cell: (expense) => (
-              <span>
+              <span className="expenses-row-main">
                 <strong>{expense.description}</strong>
                 <small>
                   {expense.expenseDate}
@@ -422,6 +431,8 @@ export function ExpensesModule() {
             )
           },
           {
+            header: 'Alocacao',
+            align: 'center',
             cell: (expense) => {
               const allocLabel = expense.investmentName
                 ? `→ ${expense.investmentName}`
@@ -438,6 +449,8 @@ export function ExpensesModule() {
             }
           },
           {
+            header: 'Categoria',
+            align: 'center',
             cell: (expense) => (
               <Badge tone={categoryMeta[expense.category]?.tone || 'neutral'}>
                 {categoryMeta[expense.category]?.label || expense.category}
@@ -445,25 +458,29 @@ export function ExpensesModule() {
             )
           },
           {
+            header: 'Valor',
+            align: 'end',
             cell: (expense) => <span className="expenses-amount">{formatCve(expense.amountCve)}</span>
           }
         ]}
         actions={(expense) => (
           <>
-            <button type="button" title="Editar" onClick={() => openEdit(expense)}>
-              <Pencil size={16} />
+            <button type="button" title="Editar" aria-label="Editar despesa" onClick={() => openEdit(expense)}>
+              <Pencil size={16} aria-hidden />
             </button>
             <button
               type="button"
               title="Apagar"
               className="danger-ghost"
+              aria-label="Apagar despesa"
               onClick={() => void remove(expense)}
             >
-              <Trash2 size={16} />
+              <Trash2 size={16} aria-hidden />
             </button>
           </>
         )}
       />
+      </div>
 
       <Dialog
         open={dialogOpen}
