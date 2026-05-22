@@ -13,6 +13,11 @@ const expenseCategory = z.enum([
   'licencas',
   'combustivel',
   'banda_internet',
+  'aluguer',
+  'energia',
+  'manutencao',
+  'deslocacoes',
+  'reparacoes',
   'outros'
 ]);
 

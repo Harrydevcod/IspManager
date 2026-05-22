@@ -127,7 +127,36 @@ export type ExpenseCategory =
   | 'licencas'
   | 'combustivel'
   | 'banda_internet'
+  | 'aluguer'
+  | 'energia'
+  | 'manutencao'
+  | 'deslocacoes'
+  | 'reparacoes'
   | 'outros';
+
+export type ExpenseTemplate = {
+  id: number;
+  name: string;
+  category: ExpenseCategory;
+  amountCve: number;
+  dayOfMonth: number;
+  supplier: string | null;
+  notes: string | null;
+  investmentId: number | null;
+  investmentName: string | null;
+  zone: string | null;
+  clientId: number | null;
+  clientName: string | null;
+  active: number;
+  lastGeneratedMonth: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ExpenseTemplateList = {
+  rows: ExpenseTemplate[];
+  totals: { count: number; totalActiveMonthlyCve: number };
+};
 
 export type Expense = {
   id: number;

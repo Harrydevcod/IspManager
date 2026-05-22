@@ -10,6 +10,8 @@ import { registerDashboardRoutes } from './routes/dashboard';
 import { registerDocumentRoutes } from './routes/documents';
 import { registerInvestmentRoutes } from './routes/investments';
 import { registerExpenseRoutes } from './routes/expenses';
+import { registerExpenseTemplateRoutes } from './routes/expense-templates';
+import { runRecurringExpensesIfDue } from './lib/recurring-expenses';
 import { registerFinanceRoutes } from './routes/finance';
 import { registerPlanRoutes } from './routes/plans';
 import { registerReportRoutes } from './routes/reports';
@@ -57,6 +59,18 @@ export async function createBackendApp() {
     }
   }
 
+  // Generate recurring expenses for any due templates. Idempotent.
+  if (process.env.ISPM_RECURRING_EXPENSES !== 'off') {
+    try {
+      const result = runRecurringExpensesIfDue();
+      if ('ran' in result) {
+        app.log.info({ result }, 'recurring expenses generated');
+      }
+    } catch (err) {
+      app.log.error({ err }, 'recurring expenses failed');
+    }
+  }
+
   await registerAuthRoutes(app);
   await registerAuditRoutes(app);
   await registerUserRoutes(app);
@@ -66,6 +80,7 @@ export async function createBackendApp() {
   await registerPlanRoutes(app);
   await registerInvestmentRoutes(app);
   await registerExpenseRoutes(app);
+  await registerExpenseTemplateRoutes(app);
   await registerFinanceRoutes(app);
   await registerDocumentRoutes(app);
   await registerTechnicalRoutes(app);

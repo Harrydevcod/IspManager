@@ -4555,6 +4555,58 @@ button.danger:disabled {
   background: color-mix(in oklch, var(--accent) 8%, transparent);
 }
 
+.expense-templates {
+  display: grid;
+  gap: var(--s4);
+}
+.expense-templates > small {
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.expense-template-form {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 0.8fr 0.8fr auto;
+  gap: var(--s2) var(--s3);
+  align-items: end;
+}
+.expense-template-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+@media (max-width: 720px) {
+  .expense-template-form { grid-template-columns: 1fr 1fr; }
+}
+.expense-template-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--s2);
+}
+.expense-template-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+}
+.expense-template-list li.inactive { opacity: 0.55; }
+.expense-template-list li strong { color: var(--text); }
+.expense-template-list li small {
+  display: block;
+  color: var(--text-3);
+  font-size: 11px;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.expense-template-actions { display: flex; gap: 6px; }
+
 /* Client profitability panel (Fase 2). */
 .client-profitability {
   margin-top: var(--s4);

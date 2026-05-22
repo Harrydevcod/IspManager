@@ -1,22 +1,27 @@
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Repeat, Trash2 } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Badge, DataList, Dialog, FilterBar, Message, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve } from '../lib/format';
-import type { Client, Expense, ExpenseCategory, ExpenseList, Investment, InvestmentList } from '../types';
+import type { Client, Expense, ExpenseCategory, ExpenseList, ExpenseTemplate, ExpenseTemplateList, Investment, InvestmentList } from '../types';
 
 type AllocationTarget = 'none' | 'investment' | 'zone' | 'client';
 
 const CATEGORIES: { value: ExpenseCategory; label: string; tone: 'success' | 'danger' | 'info' | 'neutral' | 'accent' }[] = [
   { value: 'salarios', label: 'Salarios', tone: 'accent' },
   { value: 'banda_internet', label: 'Banda internet', tone: 'info' },
+  { value: 'aluguer', label: 'Aluguer', tone: 'info' },
+  { value: 'energia', label: 'Energia', tone: 'accent' },
   { value: 'infraestrutura', label: 'Infraestrutura', tone: 'info' },
   { value: 'equipamento', label: 'Equipamento', tone: 'neutral' },
+  { value: 'manutencao', label: 'Manutencao', tone: 'neutral' },
+  { value: 'reparacoes', label: 'Reparacoes', tone: 'danger' },
   { value: 'marketing', label: 'Marketing', tone: 'success' },
   { value: 'impostos', label: 'Impostos', tone: 'danger' },
   { value: 'licencas', label: 'Licencas', tone: 'neutral' },
   { value: 'combustivel', label: 'Combustivel', tone: 'neutral' },
+  { value: 'deslocacoes', label: 'Deslocacoes', tone: 'neutral' },
   { value: 'outros', label: 'Outros', tone: 'neutral' }
 ];
 
@@ -101,6 +106,87 @@ export function ExpensesModule() {
   const [submitting, setSubmitting] = useState(false);
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [templates, setTemplates] = useState<ExpenseTemplateList>({ rows: [], totals: { count: 0, totalActiveMonthlyCve: 0 } });
+  const [templateForm, setTemplateForm] = useState({ name: '', category: 'outros' as ExpenseCategory, amountCve: '', dayOfMonth: '1' });
+  const [templateSaving, setTemplateSaving] = useState(false);
+
+  const loadTemplates = () =>
+    authFetch('http://127.0.0.1:3001/api/expense-templates')
+      .then((r) => r.ok ? r.json() as Promise<ExpenseTemplateList> : { rows: [], totals: { count: 0, totalActiveMonthlyCve: 0 } })
+      .then(setTemplates)
+      .catch(() => setTemplates({ rows: [], totals: { count: 0, totalActiveMonthlyCve: 0 } }));
+
+  const openTemplates = () => {
+    setTemplatesOpen(true);
+    void loadTemplates();
+  };
+
+  const submitTemplate = async (event: FormEvent) => {
+    event.preventDefault();
+    const amount = Number(templateForm.amountCve.replace(',', '.'));
+    if (!templateForm.name.trim()) { toast('Indica um nome'); return; }
+    if (!Number.isFinite(amount) || amount < 0) { toast('Valor invalido'); return; }
+    setTemplateSaving(true);
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/expense-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: templateForm.name.trim(),
+          category: templateForm.category,
+          amountCve: amount,
+          dayOfMonth: Math.max(1, Math.min(28, Number(templateForm.dayOfMonth) || 1))
+        })
+      });
+      if (!response.ok) throw new Error('Nao foi possivel guardar template');
+      toast('Template criado');
+      setTemplateForm({ name: '', category: 'outros', amountCve: '', dayOfMonth: '1' });
+      await loadTemplates();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erro');
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
+
+  const toggleTemplate = async (template: ExpenseTemplate) => {
+    await authFetch(`http://127.0.0.1:3001/api/expense-templates/${template.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: template.name,
+        category: template.category,
+        amountCve: template.amountCve,
+        dayOfMonth: template.dayOfMonth,
+        supplier: template.supplier,
+        notes: template.notes,
+        investmentId: template.investmentId,
+        zone: template.zone,
+        clientId: template.clientId,
+        active: !template.active
+      })
+    });
+    await loadTemplates();
+  };
+
+  const deleteTemplate = async (template: ExpenseTemplate) => {
+    if (!window.confirm(`Apagar template "${template.name}"?`)) return;
+    await authFetch(`http://127.0.0.1:3001/api/expense-templates/${template.id}`, { method: 'DELETE' });
+    await loadTemplates();
+  };
+
+  const runTemplates = async () => {
+    const response = await authFetch('http://127.0.0.1:3001/api/expense-templates/run', { method: 'POST' });
+    const result = await response.json() as { ran?: true; generated?: number; skipped?: true; reason?: string };
+    if (result.ran) {
+      toast(`${result.generated} despesa(s) gerada(s)`);
+      await load();
+      await loadTemplates();
+    } else {
+      toast(`Saltado: ${result.reason}`);
+    }
+  };
 
   useEffect(() => {
     authFetch('http://127.0.0.1:3001/api/investments?showAll=1')
@@ -242,9 +328,14 @@ export function ExpensesModule() {
             <strong>{formatCve(data.totals.totalCve)}</strong>
           </small>
         </div>
-        <button type="button" className="primary" onClick={openCreate}>
-          <Plus size={16} /> Nova despesa
-        </button>
+        <div style={{ display: 'flex', gap: 'var(--s2)' }}>
+          <button type="button" onClick={openTemplates}>
+            <Repeat size={16} /> Recorrentes
+          </button>
+          <button type="button" className="primary" onClick={openCreate}>
+            <Plus size={16} /> Nova despesa
+          </button>
+        </div>
       </div>
 
       <FilterBar>
@@ -515,6 +606,100 @@ export function ExpensesModule() {
             />
           </label>
         </form>
+      </Dialog>
+
+      <Dialog
+        open={templatesOpen}
+        onClose={() => setTemplatesOpen(false)}
+        eyebrow="Despesas recorrentes"
+        title="Templates mensais"
+        size="md"
+        actions={
+          <>
+            <button type="button" onClick={() => setTemplatesOpen(false)}>Fechar</button>
+            <button type="button" className="primary" onClick={() => void runTemplates()}>
+              Gerar agora
+            </button>
+          </>
+        }
+      >
+        <div className="expense-templates">
+          <small>
+            Cada template ativo gera uma despesa por mês no dia configurado (1–28). A geração é
+            idempotente — chamar "Gerar agora" várias vezes não duplica lançamentos.
+            Total mensal ativo: <strong>{formatCve(templates.totals.totalActiveMonthlyCve)}</strong>
+          </small>
+
+          <form onSubmit={submitTemplate} className="expense-template-form">
+            <label>
+              Nome
+              <input
+                value={templateForm.name}
+                onChange={(e) => setTemplateForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="Ex: Salarios"
+                required
+                maxLength={180}
+              />
+            </label>
+            <label>
+              Categoria
+              <select
+                value={templateForm.category}
+                onChange={(e) => setTemplateForm((f) => ({ ...f, category: e.target.value as ExpenseCategory }))}
+              >
+                {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </label>
+            <label>
+              Valor (CVE)
+              <input
+                value={templateForm.amountCve}
+                onChange={(e) => setTemplateForm((f) => ({ ...f, amountCve: e.target.value }))}
+                inputMode="decimal"
+                required
+              />
+            </label>
+            <label>
+              Dia do mês (1–28)
+              <input
+                type="number"
+                min={1}
+                max={28}
+                value={templateForm.dayOfMonth}
+                onChange={(e) => setTemplateForm((f) => ({ ...f, dayOfMonth: e.target.value }))}
+              />
+            </label>
+            <button type="submit" className="primary" disabled={templateSaving}>
+              {templateSaving ? 'A guardar...' : 'Adicionar template'}
+            </button>
+          </form>
+
+          {templates.rows.length === 0 ? (
+            <p className="module-message">Sem templates ainda. Adiciona um acima.</p>
+          ) : (
+            <ul className="expense-template-list">
+              {templates.rows.map((t) => (
+                <li key={t.id} className={t.active ? '' : 'inactive'}>
+                  <div>
+                    <strong>{t.name}</strong>
+                    <small>
+                      {categoryMeta[t.category]?.label} · dia {t.dayOfMonth} · {formatCve(t.amountCve)}
+                      {t.lastGeneratedMonth ? ` · última: ${t.lastGeneratedMonth}` : ' · nunca gerado'}
+                    </small>
+                  </div>
+                  <div className="expense-template-actions">
+                    <button type="button" onClick={() => void toggleTemplate(t)}>
+                      {t.active ? 'Pausar' : 'Ativar'}
+                    </button>
+                    <button type="button" className="danger-ghost" onClick={() => void deleteTemplate(t)}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </Dialog>
     </section>
   );
