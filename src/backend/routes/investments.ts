@@ -239,7 +239,35 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
 
     const totalCostCve = rowsWithItems.reduce((sum, row) => sum + Number(row.totalCostCve || 0), 0);
     const totalExpensesCve = opexCtx.totalExpensesCve;
-    const totalInvestedCve = totalCostCve + totalExpensesCve;
+    const allTimeCapexRow = getSqliteDatabase()
+      .prepare(`SELECT COALESCE(SUM(total_cost_cve), 0) AS totalCve FROM investments`)
+      .get() as { totalCve: number };
+    const allTimeCapexCve = Number(allTimeCapexRow.totalCve) || 0;
+    const totalInvestedCve = allTimeCapexCve + totalExpensesCve;
+    const byYearRows = getSqliteDatabase().prepare(`
+      SELECT year, SUM(capexCve) AS capexCve, SUM(opexCve) AS opexCve
+      FROM (
+        SELECT substr(reference_month, 1, 4) AS year,
+               COALESCE(SUM(total_cost_cve), 0) AS capexCve,
+               0 AS opexCve
+        FROM investments
+        GROUP BY year
+        UNION ALL
+        SELECT substr(reference_month, 1, 4) AS year,
+               0 AS capexCve,
+               COALESCE(SUM(amount_cve), 0) AS opexCve
+        FROM expenses
+        GROUP BY year
+      )
+      GROUP BY year
+      ORDER BY year DESC
+    `).all() as Array<{ year: string; capexCve: number; opexCve: number }>;
+    const investedByYear = byYearRows.map((row) => ({
+      year: row.year,
+      capexCve: Number(row.capexCve) || 0,
+      opexCve: Number(row.opexCve) || 0,
+      totalCve: (Number(row.capexCve) || 0) + (Number(row.opexCve) || 0)
+    }));
     const monthlyNetProfitCve = rowsWithItems.reduce((sum, row) => sum + row.monthlyNetProfitCve, 0);
     const accumulatedProfitCve = rowsWithItems.reduce((sum, row) => sum + row.accumulatedProfitCve, 0);
     const totalImputedOpexCve = rowsWithItems.reduce((sum, row) => sum + row.imputedMonthlyOpexCve, 0);
@@ -338,6 +366,7 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
         totalCostCve,
         totalExpensesCve,
         totalInvestedCve,
+        investedByYear,
         monthlyNetProfitCve,
         accumulatedProfitCve,
         totalImputedOpexCve,

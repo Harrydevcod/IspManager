@@ -331,6 +331,7 @@ export type InvestmentList = {
     totalCostCve: number;
     totalExpensesCve: number;
     totalInvestedCve: number;
+    investedByYear: Array<{ year: string; capexCve: number; opexCve: number; totalCve: number }>;
     monthlyNetProfitCve: number;
     accumulatedProfitCve: number;
     totalImputedOpexCve: number;

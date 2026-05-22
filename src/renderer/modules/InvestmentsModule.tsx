@@ -164,7 +164,7 @@ function formatMonths(value: number | null): string {
 export function InvestmentsModule() {
   const [data, setData] = useState<InvestmentList>({
     rows: [],
-    totals: { count: 0, totalCostCve: 0, totalExpensesCve: 0, totalInvestedCve: 0, monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalDirectOpexCve: 0, totalEffectiveOpexCve: 0, totalActualRevenueCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
+    totals: { count: 0, totalCostCve: 0, totalExpensesCve: 0, totalInvestedCve: 0, investedByYear: [], monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalDirectOpexCve: 0, totalEffectiveOpexCve: 0, totalActualRevenueCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
     companyOpexShare: { totalExpensesCve: 0, totalAllocatedCve: 0, totalUnallocatedCve: 0, monthsWithExpenses: 0, monthsWithUnallocated: 0, avgMonthlyOpex: 0, avgMonthlyUnallocated: 0, totalInstalledActive: 0, opexPerClientPerMonth: 0, directByInvestment: {}, directByZone: {}, directByClient: {} },
     zoneSummary: [],
     equipmentTop: [],
@@ -233,7 +233,7 @@ export function InvestmentsModule() {
       })
       .catch(() => setData({
         rows: [],
-        totals: { count: 0, totalCostCve: 0, totalExpensesCve: 0, totalInvestedCve: 0, monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalDirectOpexCve: 0, totalEffectiveOpexCve: 0, totalActualRevenueCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
+        totals: { count: 0, totalCostCve: 0, totalExpensesCve: 0, totalInvestedCve: 0, investedByYear: [], monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalDirectOpexCve: 0, totalEffectiveOpexCve: 0, totalActualRevenueCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
         companyOpexShare: { totalExpensesCve: 0, totalAllocatedCve: 0, totalUnallocatedCve: 0, monthsWithExpenses: 0, monthsWithUnallocated: 0, avgMonthlyOpex: 0, avgMonthlyUnallocated: 0, totalInstalledActive: 0, opexPerClientPerMonth: 0, directByInvestment: {}, directByZone: {}, directByClient: {} },
         zoneSummary: [],
         equipmentTop: [],
@@ -407,7 +407,15 @@ export function InvestmentsModule() {
         <div>
           <span>Total investido</span>
           <strong>{formatCve(data.totals.totalInvestedCve)}</strong>
-          <small>investimentos + despesas</small>
+          <small>
+            CAPEX {formatCve(data.totals.totalInvestedCve - data.totals.totalExpensesCve)} · OPEX {formatCve(data.totals.totalExpensesCve)}
+            {data.totals.investedByYear.length > 0 && (
+              <>
+                {' · por ano: '}
+                {data.totals.investedByYear.map((y) => `${y.year} ${formatCve(y.totalCve)}`).join(', ')}
+              </>
+            )}
+          </small>
         </div>
         <div>
           <span>Lucro mensal liquido</span>

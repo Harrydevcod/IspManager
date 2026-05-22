@@ -3368,11 +3368,13 @@ h2 {
   font-size: clamp(1.1rem, 1.8vw, 1.55rem);
   line-height: 1.1;
 }
-.expenses-metrics small {
+.expenses-metrics small,
+.investment-metrics small {
   display: block;
   margin-top: var(--s1);
   color: var(--text-3);
   font-size: var(--fs-xs);
+  line-height: 1.5;
 }
 @media (max-width: 760px) {
   .investment-metrics,
