@@ -155,23 +155,37 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
       return map;
     }, new Map<string, CategoryTotal>());
 
-    const currentYear = new Date().getFullYear().toString();
-    const yearWindow = { from: `${currentYear}-01`, to: `${currentYear}-12` };
-    const yearExpenses = db.prepare(`
+    const allExpenses = db.prepare(`
       SELECT COALESCE(SUM(amount_cve), 0) AS totalCve, COUNT(*) AS count
       FROM expenses
-      WHERE reference_month >= @from AND reference_month <= @to
-    `).get(yearWindow) as { totalCve: number; count: number };
-    const yearInvestments = db.prepare(`
+    `).get() as { totalCve: number; count: number };
+    const allInvestments = db.prepare(`
       SELECT COALESCE(SUM(total_cost_cve), 0) AS totalCve, COUNT(*) AS count
       FROM investments
-      WHERE reference_month >= @from AND reference_month <= @to
-    `).get(yearWindow) as { totalCve: number; count: number };
+    `).get() as { totalCve: number; count: number };
+    const byYearRows = db.prepare(`
+      SELECT year, SUM(opexCve) AS opexCve, SUM(capexCve) AS capexCve
+      FROM (
+        SELECT substr(reference_month, 1, 4) AS year,
+               COALESCE(SUM(amount_cve), 0) AS opexCve,
+               0 AS capexCve
+        FROM expenses
+        GROUP BY year
+        UNION ALL
+        SELECT substr(reference_month, 1, 4) AS year,
+               0 AS opexCve,
+               COALESCE(SUM(total_cost_cve), 0) AS capexCve
+        FROM investments
+        GROUP BY year
+      )
+      GROUP BY year
+      ORDER BY year DESC
+    `).all() as Array<{ year: string; opexCve: number; capexCve: number }>;
 
-    const opexCve = Number(yearExpenses.totalCve) || 0;
-    const capexCve = Number(yearInvestments.totalCve) || 0;
-    const opexCount = Number(yearExpenses.count) || 0;
-    const capexCount = Number(yearInvestments.count) || 0;
+    const opexCve = Number(allExpenses.totalCve) || 0;
+    const capexCve = Number(allInvestments.totalCve) || 0;
+    const opexCount = Number(allExpenses.count) || 0;
+    const capexCount = Number(allInvestments.count) || 0;
 
     return {
       rows,
@@ -179,14 +193,19 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
         count: rows.length,
         totalCve,
         byCategory: [...byCategoryMap.values()].sort((a, b) => b.totalCve - a.totalCve),
-        year: {
-          label: currentYear,
-          count: opexCount + capexCount,
+        accumulated: {
           totalCve: opexCve + capexCve,
+          count: opexCount + capexCount,
           opexCve,
           capexCve,
           opexCount,
-          capexCount
+          capexCount,
+          byYear: byYearRows.map((row) => ({
+            year: row.year,
+            opexCve: Number(row.opexCve) || 0,
+            capexCve: Number(row.capexCve) || 0,
+            totalCve: (Number(row.opexCve) || 0) + (Number(row.capexCve) || 0)
+          }))
         }
       }
     };

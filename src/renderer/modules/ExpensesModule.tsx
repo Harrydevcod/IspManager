@@ -100,7 +100,7 @@ export function ExpensesModule() {
       count: 0,
       totalCve: 0,
       byCategory: [],
-      year: { label: String(new Date().getFullYear()), count: 0, totalCve: 0, opexCve: 0, capexCve: 0, opexCount: 0, capexCount: 0 }
+      accumulated: { totalCve: 0, count: 0, opexCve: 0, capexCve: 0, opexCount: 0, capexCount: 0, byYear: [] }
     }
   });
   const [loading, setLoading] = useState(false);
@@ -342,10 +342,18 @@ export function ExpensesModule() {
 
       <div className="expenses-metrics" aria-label="Resumo de despesas">
         <div>
-          <span>Despesa anual ({data.totals.year.label})</span>
-          <strong>{formatCve(data.totals.year.totalCve)}</strong>
+          <span>Total acumulado (CAPEX + OPEX)</span>
+          <strong>{formatCve(data.totals.accumulated.totalCve)}</strong>
           <small>
-            OPEX {formatCve(data.totals.year.opexCve)} · CAPEX {formatCve(data.totals.year.capexCve)}
+            CAPEX {formatCve(data.totals.accumulated.capexCve)} · OPEX {formatCve(data.totals.accumulated.opexCve)}
+            {data.totals.accumulated.byYear.length > 0 && (
+              <>
+                {' · por ano: '}
+                {data.totals.accumulated.byYear
+                  .map((y) => `${y.year} ${formatCve(y.totalCve)}`)
+                  .join(', ')}
+              </>
+            )}
           </small>
         </div>
         <div>

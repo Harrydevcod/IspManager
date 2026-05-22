@@ -183,14 +183,14 @@ export type ExpenseList = {
     count: number;
     totalCve: number;
     byCategory: Array<{ category: string; count: number; totalCve: number }>;
-    year: {
-      label: string;
-      count: number;
+    accumulated: {
       totalCve: number;
+      count: number;
       opexCve: number;
       capexCve: number;
       opexCount: number;
       capexCount: number;
+      byYear: Array<{ year: string; opexCve: number; capexCve: number; totalCve: number }>;
     };
   };
 };
