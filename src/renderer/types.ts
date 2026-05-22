@@ -183,6 +183,7 @@ export type ExpenseList = {
     count: number;
     totalCve: number;
     byCategory: Array<{ category: string; count: number; totalCve: number }>;
+    year: { label: string; count: number; totalCve: number };
   };
 };
 

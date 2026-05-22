@@ -155,12 +155,26 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
       return map;
     }, new Map<string, CategoryTotal>());
 
+    const currentYear = new Date().getFullYear().toString();
+    const yearRow = db.prepare(`
+      SELECT
+        COALESCE(SUM(amount_cve), 0) AS totalCve,
+        COUNT(*) AS count
+      FROM expenses
+      WHERE reference_month >= @from AND reference_month <= @to
+    `).get({ from: `${currentYear}-01`, to: `${currentYear}-12` }) as { totalCve: number; count: number };
+
     return {
       rows,
       totals: {
         count: rows.length,
         totalCve,
-        byCategory: [...byCategoryMap.values()].sort((a, b) => b.totalCve - a.totalCve)
+        byCategory: [...byCategoryMap.values()].sort((a, b) => b.totalCve - a.totalCve),
+        year: {
+          label: currentYear,
+          count: Number(yearRow.count) || 0,
+          totalCve: Number(yearRow.totalCve) || 0
+        }
       }
     };
   });

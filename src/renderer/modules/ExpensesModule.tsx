@@ -96,7 +96,7 @@ export function ExpensesModule() {
   const [category, setCategory] = useState<'all' | ExpenseCategory>('all');
   const [data, setData] = useState<ExpenseList>({
     rows: [],
-    totals: { count: 0, totalCve: 0, byCategory: [] }
+    totals: { count: 0, totalCve: 0, byCategory: [], year: { label: String(new Date().getFullYear()), count: 0, totalCve: 0 } }
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -324,11 +324,6 @@ export function ExpensesModule() {
         <div>
           <p className="eyebrow">Painel operacional</p>
           <h2>Despesas operacionais</h2>
-          <small>
-            {data.totals.count} {data.totals.count === 1 ? 'lançamento' : 'lançamentos'} ·{' '}
-            <strong>{formatCve(data.totals.totalCve)}</strong>
-            {showAllMonths ? ' · todos os meses' : ` · ${month}`}
-          </small>
         </div>
         <div className="expenses-header-actions">
           <button type="button" onClick={openTemplates}>
@@ -337,6 +332,22 @@ export function ExpensesModule() {
           <button type="button" className="primary" onClick={openCreate}>
             <Plus size={16} /> Nova despesa
           </button>
+        </div>
+      </div>
+
+      <div className="expenses-metrics" aria-label="Resumo de despesas">
+        <div>
+          <span>Despesa anual ({data.totals.year.label})</span>
+          <strong>{formatCve(data.totals.year.totalCve)}</strong>
+          <small>{data.totals.year.count} {data.totals.year.count === 1 ? 'lançamento' : 'lançamentos'}</small>
+        </div>
+        <div>
+          <span>Filtro actual</span>
+          <strong>{formatCve(data.totals.totalCve)}</strong>
+          <small>
+            {data.totals.count} {data.totals.count === 1 ? 'lançamento' : 'lançamentos'}
+            {showAllMonths ? ' · todos os meses' : ` · ${month}`}
+          </small>
         </div>
       </div>
 
