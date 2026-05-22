@@ -27,6 +27,14 @@ export function Dialog({
   closeOnBackdrop = true
 }: DialogProps) {
   const cardRef = useRef<HTMLDivElement>(null);
+  // Stash the latest onClose in a ref so the lifecycle effect can depend
+  // solely on `open`. Otherwise a parent that re-renders on every keystroke
+  // (passing a fresh inline `onClose`) would re-run the effect, snap focus
+  // back to the first focusable element and steal the input mid-typing.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -43,7 +51,7 @@ export function Dialog({
     function onKey(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key === 'Tab' && root) {
@@ -70,7 +78,7 @@ export function Dialog({
       document.body.style.overflow = prevOverflow;
       previouslyFocused?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
