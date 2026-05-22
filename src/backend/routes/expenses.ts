@@ -156,13 +156,22 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
     }, new Map<string, CategoryTotal>());
 
     const currentYear = new Date().getFullYear().toString();
-    const yearRow = db.prepare(`
-      SELECT
-        COALESCE(SUM(amount_cve), 0) AS totalCve,
-        COUNT(*) AS count
+    const yearWindow = { from: `${currentYear}-01`, to: `${currentYear}-12` };
+    const yearExpenses = db.prepare(`
+      SELECT COALESCE(SUM(amount_cve), 0) AS totalCve, COUNT(*) AS count
       FROM expenses
       WHERE reference_month >= @from AND reference_month <= @to
-    `).get({ from: `${currentYear}-01`, to: `${currentYear}-12` }) as { totalCve: number; count: number };
+    `).get(yearWindow) as { totalCve: number; count: number };
+    const yearInvestments = db.prepare(`
+      SELECT COALESCE(SUM(total_cost_cve), 0) AS totalCve, COUNT(*) AS count
+      FROM investments
+      WHERE reference_month >= @from AND reference_month <= @to
+    `).get(yearWindow) as { totalCve: number; count: number };
+
+    const opexCve = Number(yearExpenses.totalCve) || 0;
+    const capexCve = Number(yearInvestments.totalCve) || 0;
+    const opexCount = Number(yearExpenses.count) || 0;
+    const capexCount = Number(yearInvestments.count) || 0;
 
     return {
       rows,
@@ -172,8 +181,12 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
         byCategory: [...byCategoryMap.values()].sort((a, b) => b.totalCve - a.totalCve),
         year: {
           label: currentYear,
-          count: Number(yearRow.count) || 0,
-          totalCve: Number(yearRow.totalCve) || 0
+          count: opexCount + capexCount,
+          totalCve: opexCve + capexCve,
+          opexCve,
+          capexCve,
+          opexCount,
+          capexCount
         }
       }
     };

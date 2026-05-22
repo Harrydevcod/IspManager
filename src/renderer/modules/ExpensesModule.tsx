@@ -96,7 +96,12 @@ export function ExpensesModule() {
   const [category, setCategory] = useState<'all' | ExpenseCategory>('all');
   const [data, setData] = useState<ExpenseList>({
     rows: [],
-    totals: { count: 0, totalCve: 0, byCategory: [], year: { label: String(new Date().getFullYear()), count: 0, totalCve: 0 } }
+    totals: {
+      count: 0,
+      totalCve: 0,
+      byCategory: [],
+      year: { label: String(new Date().getFullYear()), count: 0, totalCve: 0, opexCve: 0, capexCve: 0, opexCount: 0, capexCount: 0 }
+    }
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -339,7 +344,9 @@ export function ExpensesModule() {
         <div>
           <span>Despesa anual ({data.totals.year.label})</span>
           <strong>{formatCve(data.totals.year.totalCve)}</strong>
-          <small>{data.totals.year.count} {data.totals.year.count === 1 ? 'lançamento' : 'lançamentos'}</small>
+          <small>
+            OPEX {formatCve(data.totals.year.opexCve)} · CAPEX {formatCve(data.totals.year.capexCve)}
+          </small>
         </div>
         <div>
           <span>Filtro actual</span>
