@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getDatabase, getSqliteDatabase } from '../db/database';
 import { clients } from '../db/schema';
 import { recordAudit } from '../lib/audit';
+import { buildClientsImportTemplate } from '../lib/clients-import-template';
 import { loadCompanyOpexContext } from '../lib/opex';
 import { requireAuth, requireRole } from './auth';
 
@@ -33,6 +34,14 @@ export async function registerClientRoutes(app: FastifyInstance) {
       .select()
       .from(clients)
       .orderBy(asc(clients.fullName));
+  });
+
+  app.get('/api/clients/import-template.xlsx', canWriteClients, async (_request, reply) => {
+    const buffer = await buildClientsImportTemplate();
+    reply
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', 'attachment; filename="clientes-template.xlsx"')
+      .send(buffer);
   });
 
   app.get('/api/clients/:id/profitability', { preHandler: requireAuth() }, async (request, reply) => {

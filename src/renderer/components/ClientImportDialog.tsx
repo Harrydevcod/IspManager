@@ -1,6 +1,6 @@
 import Papa from 'papaparse';
 import readXlsxFile from 'read-excel-file/browser';
-import { CheckCircle2, FileSpreadsheet, FileText, Upload, X } from 'lucide-react';
+import { CheckCircle2, Download, FileSpreadsheet, FileText, Upload, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
 import { Dialog } from './Dialog';
@@ -204,7 +204,33 @@ export function ClientImportDialog({ open, onClose, onCompleted }: ClientImportD
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<BulkResult | null>(null);
   const [dragHover, setDragHover] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function downloadTemplate() {
+    if (downloadingTemplate) return;
+    setDownloadingTemplate(true);
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/clients/import-template.xlsx');
+      if (!response.ok) {
+        toast('Não foi possível descarregar o template.', 'error');
+        return;
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'clientes-template.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast('Falha de rede ao descarregar o template.', 'error');
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -393,6 +419,18 @@ export function ClientImportDialog({ open, onClose, onCompleted }: ClientImportD
             />
           </div>
           {parseError && <p className="import-error">{parseError}</p>}
+          <div className="import-template-row">
+            <button
+              type="button"
+              className="import-template-button"
+              onClick={() => void downloadTemplate()}
+              disabled={downloadingTemplate}
+            >
+              <Download size={14} aria-hidden />
+              {downloadingTemplate ? 'A preparar...' : 'Descarregar template Excel'}
+            </button>
+            <span className="import-template-hint">Cabeçalhos prontos + 2 linhas de exemplo + folha de instruções.</span>
+          </div>
           <details className="import-help">
             <summary>O que deve conter o ficheiro</summary>
             <p>

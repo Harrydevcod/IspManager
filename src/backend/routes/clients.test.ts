@@ -234,3 +234,19 @@ describe('POST /api/clients/bulk', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM clients').get()).toEqual({ n: 1 });
   });
 });
+
+describe('GET /api/clients/import-template.xlsx', () => {
+  test('returns an XLSX buffer with the expected headers and disposition', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/clients/import-template.xlsx' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect(response.headers['content-disposition']).toBe('attachment; filename="clientes-template.xlsx"');
+
+    const buffer = response.rawPayload;
+    expect(buffer.length).toBeGreaterThan(0);
+    // XLSX = ZIP archive → starts with "PK".
+    expect(buffer[0]).toBe(0x50);
+    expect(buffer[1]).toBe(0x4b);
+  });
+});
