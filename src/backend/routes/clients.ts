@@ -99,8 +99,19 @@ export async function registerClientRoutes(app: FastifyInstance) {
 
     const opexCtx = loadCompanyOpexContext();
     const imputedMonthlyOpexCve = opexCtx.opexPerClientPerMonth;
-    const cumulativeOpexCve = imputedMonthlyOpexCve * monthsActive;
-    const monthlyNetProfitCve = monthlyAverageRevenueCve - imputedMonthlyOpexCve;
+    const directClientOpexCve = opexCtx.directByClient[client.id] || 0;
+    const directZoneOpexCve = client.zone ? (opexCtx.directByZone[client.zone] || 0) : 0;
+    // Zone-pinned expenses split across all active clients in the zone.
+    const zoneActiveCount = client.zone
+      ? (db.prepare(`SELECT COUNT(*) AS n FROM clients WHERE zone = ? AND status = 'active'`).get(client.zone) as { n: number }).n
+      : 0;
+    const directZonePerClientCve = zoneActiveCount > 0 ? directZoneOpexCve / zoneActiveCount : 0;
+    const directInvestmentOpexCve = investmentRows
+      .reduce((sum, inv) => sum + (opexCtx.directByInvestment[inv.id] || 0), 0);
+    const effectiveMonthlyOpexCve =
+      imputedMonthlyOpexCve + directClientOpexCve + directZonePerClientCve + directInvestmentOpexCve;
+    const cumulativeOpexCve = effectiveMonthlyOpexCve * monthsActive;
+    const monthlyNetProfitCve = monthlyAverageRevenueCve - effectiveMonthlyOpexCve;
     const netProfitCve = paidRevenueCve - installationCostCve - cumulativeOpexCve;
     const monthsToBreakeven = monthlyNetProfitCve > 0 && installationCostCve > 0
       ? installationCostCve / monthlyNetProfitCve
@@ -130,6 +141,10 @@ export async function registerClientRoutes(app: FastifyInstance) {
       paidMonths,
       monthlyAverageRevenueCve,
       imputedMonthlyOpexCve,
+      directClientOpexCve,
+      directZoneOpexCve: directZonePerClientCve,
+      directInvestmentOpexCve,
+      effectiveMonthlyOpexCve,
       cumulativeOpexCve,
       monthlyNetProfitCve,
       netProfitCve,

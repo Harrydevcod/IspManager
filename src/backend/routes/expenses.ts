@@ -24,14 +24,21 @@ const expenseSchema = z.object({
   referenceMonth: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   supplier: z.string().trim().max(160).optional().nullable(),
   invoiceReference: z.string().trim().max(80).optional().nullable(),
-  notes: z.string().trim().max(500).optional().nullable()
+  notes: z.string().trim().max(500).optional().nullable(),
+  investmentId: z.coerce.number().int().positive().optional().nullable(),
+  zone: z.string().trim().max(120).optional().nullable(),
+  clientId: z.coerce.number().int().positive().optional().nullable()
 });
 
 const listQuerySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   year: z.string().regex(/^\d{4}$/).optional(),
   category: expenseCategory.optional(),
-  supplier: z.string().trim().max(160).optional()
+  supplier: z.string().trim().max(160).optional(),
+  investmentId: z.coerce.number().int().positive().optional(),
+  zone: z.string().trim().max(120).optional(),
+  clientId: z.coerce.number().int().positive().optional(),
+  allocation: z.enum(['allocated', 'unallocated']).optional()
 });
 
 type ExpenseInput = z.infer<typeof expenseSchema>;
@@ -50,6 +57,11 @@ type ExpenseRow = {
   supplier: string | null;
   invoiceReference: string | null;
   notes: string | null;
+  investmentId: number | null;
+  investmentName: string | null;
+  zone: string | null;
+  clientId: number | null;
+  clientName: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -67,42 +79,66 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
     }
 
     const where: string[] = [];
-    const params: Record<string, string> = {};
+    const params: Record<string, string | number> = {};
     if (filter.data.month) {
-      where.push('reference_month = @month');
+      where.push('e.reference_month = @month');
       params.month = filter.data.month;
     } else if (filter.data.year) {
-      where.push('reference_month >= @from AND reference_month <= @to');
+      where.push('e.reference_month >= @from AND e.reference_month <= @to');
       params.from = `${filter.data.year}-01`;
       params.to = `${filter.data.year}-12`;
     }
     if (filter.data.category) {
-      where.push('category = @category');
+      where.push('e.category = @category');
       params.category = filter.data.category;
     }
     if (filter.data.supplier) {
-      where.push('supplier LIKE @supplier');
+      where.push('e.supplier LIKE @supplier');
       params.supplier = `%${filter.data.supplier}%`;
+    }
+    if (filter.data.investmentId) {
+      where.push('e.investment_id = @investmentId');
+      params.investmentId = filter.data.investmentId;
+    }
+    if (filter.data.zone) {
+      where.push('e.zone = @zone');
+      params.zone = filter.data.zone;
+    }
+    if (filter.data.clientId) {
+      where.push('e.client_id = @clientId');
+      params.clientId = filter.data.clientId;
+    }
+    if (filter.data.allocation === 'allocated') {
+      where.push('(e.investment_id IS NOT NULL OR e.zone IS NOT NULL OR e.client_id IS NOT NULL)');
+    } else if (filter.data.allocation === 'unallocated') {
+      where.push('e.investment_id IS NULL AND e.zone IS NULL AND e.client_id IS NULL');
     }
 
     const db = getSqliteDatabase();
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const rows = db.prepare(`
       SELECT
-        id,
-        category,
-        description,
-        amount_cve AS amountCve,
-        expense_date AS expenseDate,
-        reference_month AS referenceMonth,
-        supplier,
-        invoice_reference AS invoiceReference,
-        notes,
-        created_at AS createdAt,
-        updated_at AS updatedAt
-      FROM expenses
+        e.id,
+        e.category,
+        e.description,
+        e.amount_cve AS amountCve,
+        e.expense_date AS expenseDate,
+        e.reference_month AS referenceMonth,
+        e.supplier,
+        e.invoice_reference AS invoiceReference,
+        e.notes,
+        e.investment_id AS investmentId,
+        i.name AS investmentName,
+        e.zone,
+        e.client_id AS clientId,
+        c.full_name AS clientName,
+        e.created_at AS createdAt,
+        e.updated_at AS updatedAt
+      FROM expenses e
+      LEFT JOIN investments i ON i.id = e.investment_id
+      LEFT JOIN clients c ON c.id = e.client_id
       ${whereSql}
-      ORDER BY expense_date DESC, id DESC
+      ORDER BY e.expense_date DESC, e.id DESC
     `).all(params) as ExpenseRow[];
 
     const totalCve = rows.reduce((sum, row) => sum + Number(row.amountCve || 0), 0);
@@ -136,10 +172,10 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
     const info = db.prepare(`
       INSERT INTO expenses (
         category, description, amount_cve, expense_date, reference_month,
-        supplier, invoice_reference, notes, created_by
+        supplier, invoice_reference, notes, investment_id, zone, client_id, created_by
       )
       VALUES (@category, @description, @amountCve, @expenseDate, @referenceMonth,
-              @supplier, @invoiceReference, @notes, @createdBy)
+              @supplier, @invoiceReference, @notes, @investmentId, @zone, @clientId, @createdBy)
     `).run({
       category: input.category,
       description: input.description,
@@ -149,6 +185,9 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
       supplier: input.supplier ?? null,
       invoiceReference: input.invoiceReference ?? null,
       notes: input.notes ?? null,
+      investmentId: input.investmentId ?? null,
+      zone: input.zone ?? null,
+      clientId: input.clientId ?? null,
       createdBy: request.user?.id ?? null
     });
 
@@ -187,6 +226,9 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
         supplier = @supplier,
         invoice_reference = @invoiceReference,
         notes = @notes,
+        investment_id = @investmentId,
+        zone = @zone,
+        client_id = @clientId,
         updated_at = datetime('now')
       WHERE id = @id
     `).run({
@@ -198,7 +240,10 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
       referenceMonth,
       supplier: input.supplier ?? null,
       invoiceReference: input.invoiceReference ?? null,
-      notes: input.notes ?? null
+      notes: input.notes ?? null,
+      investmentId: input.investmentId ?? null,
+      zone: input.zone ?? null,
+      clientId: input.clientId ?? null
     });
 
     if (info.changes === 0) {

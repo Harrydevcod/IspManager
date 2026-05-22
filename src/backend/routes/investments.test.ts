@@ -25,13 +25,13 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  db.prepare('DELETE FROM expenses').run();
   db.prepare('DELETE FROM investment_items').run();
   db.prepare('DELETE FROM investments').run();
   db.prepare('DELETE FROM payments').run();
   db.prepare('DELETE FROM services').run();
   db.prepare('DELETE FROM clients').run();
   db.prepare('DELETE FROM internet_plans').run();
-  db.prepare('DELETE FROM expenses').run();
 });
 
 afterAll(async () => {
@@ -216,6 +216,71 @@ describe('investments CRUD', () => {
     expect(body.companyOpexShare.opexPerClientPerMonth).toBe(0);
     expect(body.rows[0].imputedMonthlyOpexCve).toBe(0);
     expect(body.alerts.some((a) => a.toLowerCase().includes('rateio'))).toBe(true);
+  });
+
+  test('direct OPEX allocation via investment_id bypasses the pool', async () => {
+    db.prepare(`INSERT INTO investments
+                (name, type, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve, monthly_operational_cost_cve)
+                VALUES ('Backbone', 'infraestrutura', '2026-05-01', '2026-05', 60000, 10, 6, 'ativo', 30000, 0)`).run();
+    const targetId = db.prepare(`INSERT INTO investments
+                (name, type, zone, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve, monthly_operational_cost_cve)
+                VALUES ('Edge zona', 'zona', 'Palmarejo', '2026-05-01', '2026-05', 20000, 4, 4, 'ativo', 16000, 0)`).run().lastInsertRowid as number;
+
+    // Aluguer de torre alocado 100% ao "Edge zona". Não entra no rateio.
+    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month, investment_id)
+                VALUES ('infraestrutura', 'Aluguer torre Palmarejo', 6000, '2026-05-01', '2026-05', ?)`).run(targetId);
+    // OPEX não-alocado para o pool: 4000/mês.
+    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month)
+                VALUES ('banda_internet', 'Upstream Maio', 4000, '2026-05-10', '2026-05')`).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
+    const body = response.json() as {
+      rows: Array<{ name: string; imputedMonthlyOpexCve: number; directAllocatedOpexCve: number; effectiveMonthlyOpexCve: number }>;
+      companyOpexShare: { totalAllocatedCve: number; totalUnallocatedCve: number; opexPerClientPerMonth: number };
+    };
+
+    // opexPerClient = unallocatedAvg / installed = 4000 / (6+4) = 400
+    expect(body.companyOpexShare.opexPerClientPerMonth).toBe(400);
+    expect(body.companyOpexShare.totalAllocatedCve).toBe(6000);
+    expect(body.companyOpexShare.totalUnallocatedCve).toBe(4000);
+
+    const edge = body.rows.find((r) => r.name === 'Edge zona')!;
+    expect(edge.directAllocatedOpexCve).toBe(6000);
+    expect(edge.imputedMonthlyOpexCve).toBe(1600); // 4 × 400
+    expect(edge.effectiveMonthlyOpexCve).toBe(7600);
+
+    const bb = body.rows.find((r) => r.name === 'Backbone')!;
+    expect(bb.directAllocatedOpexCve).toBe(0);
+    expect(bb.imputedMonthlyOpexCve).toBe(2400); // 6 × 400
+    expect(bb.effectiveMonthlyOpexCve).toBe(2400);
+  });
+
+  test('actualMonthlyRevenue derives from paid payments of the linked client', async () => {
+    const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, status)
+                                 VALUES ('CLT-VIP', 'VIP', 'active')`).run().lastInsertRowid as number;
+    db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 5000, 10, 'active')`).run(clientId);
+    const serviceId = (db.prepare(`SELECT id FROM services WHERE client_id = ?`).get(clientId) as { id: number }).id;
+    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
+                VALUES (?, ?, '2026-03', 5000, '2026-03-10', '2026-03-10', 'paid')`).run(clientId, serviceId);
+    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
+                VALUES (?, ?, '2026-04', 5000, '2026-04-10', '2026-04-10', 'paid')`).run(clientId, serviceId);
+
+    db.prepare(`INSERT INTO investments
+                (name, type, client_id, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve)
+                VALUES ('Instalacao VIP', 'cliente', ?, '2026-03-01', '2026-03', 8000, 1, 1, 'ativo', 3000)`)
+      .run(clientId);
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-03' });
+    const row = (response.json() as { rows: Array<{ actualMonthlyRevenueCve: number; revenueSource: string; revenueVarianceCve: number; monthlyNetProfitCve: number }> }).rows[0];
+
+    expect(row.actualMonthlyRevenueCve).toBe(5000); // média dos 2 paid
+    expect(row.revenueSource).toBe('client');
+    expect(row.revenueVarianceCve).toBe(2000); // 5000 actual - 3000 expected
+    // monthlyNetProfit uses ACTUAL revenue (5000) not expected
+    expect(row.monthlyNetProfitCve).toBe(5000);
   });
 
   test('dashboard summary aggregates investment cost per month', async () => {

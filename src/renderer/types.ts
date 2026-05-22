@@ -218,7 +218,11 @@ export type Investment = {
   operationalCostPerClientCve: number;
   recommendedPlanCve: number;
   imputedMonthlyOpexCve: number;
+  directAllocatedOpexCve: number;
   effectiveMonthlyOpexCve: number;
+  actualMonthlyRevenueCve: number | null;
+  revenueSource: 'client' | 'zone' | null;
+  revenueVarianceCve: number | null;
   monthlyNetProfitCve: number;
   accumulatedProfitCve: number;
   recoveryMonths: number | null;
@@ -233,10 +237,17 @@ export type Investment = {
 
 export type CompanyOpexShare = {
   totalExpensesCve: number;
+  totalAllocatedCve: number;
+  totalUnallocatedCve: number;
   monthsWithExpenses: number;
+  monthsWithUnallocated: number;
   avgMonthlyOpex: number;
+  avgMonthlyUnallocated: number;
   totalInstalledActive: number;
   opexPerClientPerMonth: number;
+  directByInvestment: Record<number, number>;
+  directByZone: Record<string, number>;
+  directByClient: Record<number, number>;
 };
 
 export type InvestmentList = {
@@ -247,7 +258,9 @@ export type InvestmentList = {
     monthlyNetProfitCve: number;
     accumulatedProfitCve: number;
     totalImputedOpexCve: number;
+    totalDirectOpexCve: number;
     totalEffectiveOpexCve: number;
+    totalActualRevenueCve: number;
     averageRoiPct: number | null;
     lowRoiCount: number;
     notRecoveredCount: number;
@@ -298,6 +311,10 @@ export type ClientProfitability = {
   paidMonths: number;
   monthlyAverageRevenueCve: number;
   imputedMonthlyOpexCve: number;
+  directClientOpexCve: number;
+  directZoneOpexCve: number;
+  directInvestmentOpexCve: number;
+  effectiveMonthlyOpexCve: number;
   cumulativeOpexCve: number;
   monthlyNetProfitCve: number;
   netProfitCve: number;

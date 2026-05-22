@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
-import { loadCompanyOpexContext, type CompanyOpexContext } from '../lib/opex';
+import { loadActualMonthlyRevenue, loadCompanyOpexContext, type CompanyOpexContext } from '../lib/opex';
 import { requireAuth, requireRole } from './auth';
 
 const investmentType = z.enum(['cliente', 'zona', 'equipamento', 'infraestrutura', 'manutencao', 'expansao', 'outro']);
@@ -92,14 +92,32 @@ type InvestmentBaseRow = {
   installedClients: number;
   desiredPaybackMonths: number;
   desiredMarginPct: number;
+  clientId: number | null;
+  zone: string | null;
 };
 
 function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext) {
   const activeClients = Math.max(1, row.installedClients || row.targetClients || 1);
   const targetClients = Math.max(1, row.targetClients || 1);
   const imputedMonthlyOpexCve = opexCtx.opexPerClientPerMonth * (Number(row.installedClients) || 0);
-  const effectiveMonthlyOpexCve = (Number(row.monthlyOperationalCostCve) || 0) + imputedMonthlyOpexCve;
-  const monthlyNetProfitCve = row.expectedMonthlyRevenueCve - effectiveMonthlyOpexCve;
+  const directAllocatedOpexCve =
+    (opexCtx.directByInvestment[row.id] || 0)
+    + (row.clientId != null ? (opexCtx.directByClient[row.clientId] || 0) : 0)
+    + (row.zone ? (opexCtx.directByZone[row.zone] || 0) : 0);
+  const effectiveMonthlyOpexCve =
+    (Number(row.monthlyOperationalCostCve) || 0) + imputedMonthlyOpexCve + directAllocatedOpexCve;
+
+  const actual = loadActualMonthlyRevenue({ clientId: row.clientId, zone: row.zone });
+  const actualMonthlyRevenueCve = actual?.cve ?? null;
+  const revenueSource: 'client' | 'zone' | null = actual?.source ?? null;
+  const revenueVarianceCve = actualMonthlyRevenueCve != null
+    ? actualMonthlyRevenueCve - row.expectedMonthlyRevenueCve
+    : null;
+  const monthlyRevenueForRoi = actualMonthlyRevenueCve != null
+    ? actualMonthlyRevenueCve
+    : row.expectedMonthlyRevenueCve;
+
+  const monthlyNetProfitCve = monthlyRevenueForRoi - effectiveMonthlyOpexCve;
   const costPerClientCve = row.totalCostCve / targetClients;
   const operationalCostPerClientCve = effectiveMonthlyOpexCve / activeClients;
   const baseRecoveryPrice = costPerClientCve / Math.max(1, row.desiredPaybackMonths || 1);
@@ -111,7 +129,11 @@ function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext) {
     operationalCostPerClientCve,
     recommendedPlanCve,
     imputedMonthlyOpexCve,
+    directAllocatedOpexCve,
     effectiveMonthlyOpexCve,
+    actualMonthlyRevenueCve,
+    revenueSource,
+    revenueVarianceCve,
     monthlyNetProfitCve,
     accumulatedProfitCve,
     recoveryMonths: monthlyNetProfitCve > 0 ? row.totalCostCve / monthlyNetProfitCve : null,
@@ -218,7 +240,10 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     const monthlyNetProfitCve = rowsWithItems.reduce((sum, row) => sum + row.monthlyNetProfitCve, 0);
     const accumulatedProfitCve = rowsWithItems.reduce((sum, row) => sum + row.accumulatedProfitCve, 0);
     const totalImputedOpexCve = rowsWithItems.reduce((sum, row) => sum + row.imputedMonthlyOpexCve, 0);
+    const totalDirectOpexCve = rowsWithItems.reduce((sum, row) => sum + row.directAllocatedOpexCve, 0);
     const totalEffectiveOpexCve = rowsWithItems.reduce((sum, row) => sum + row.effectiveMonthlyOpexCve, 0);
+    const totalActualRevenueCve = rowsWithItems.reduce(
+      (sum, row) => sum + (row.actualMonthlyRevenueCve ?? 0), 0);
     const roiRows = rowsWithItems.filter((row) => row.roiPct !== null) as Array<{ roiPct: number }>;
     const lowRoiCount = rowsWithItems.filter((row) => (row.roiPct ?? 0) < 0 || row.monthlyNetProfitCve <= 0).length;
     const notRecoveredCount = rowsWithItems.filter((row) => !row.isRecovered).length;
@@ -245,7 +270,9 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
         monthlyNetProfitCve,
         accumulatedProfitCve,
         totalImputedOpexCve,
+        totalDirectOpexCve,
         totalEffectiveOpexCve,
+        totalActualRevenueCve,
         averageRoiPct: roiRows.length > 0 ? roiRows.reduce((sum, row) => sum + row.roiPct, 0) / roiRows.length : null,
         lowRoiCount,
         notRecoveredCount

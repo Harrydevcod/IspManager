@@ -29,9 +29,9 @@ beforeEach(() => {
   db.prepare('DELETE FROM work_orders').run();
   db.prepare('DELETE FROM service_events').run();
   db.prepare('DELETE FROM service_device_assignments').run();
+  db.prepare('DELETE FROM expenses').run();
   db.prepare('DELETE FROM investment_items').run();
   db.prepare('DELETE FROM investments').run();
-  db.prepare('DELETE FROM expenses').run();
   db.prepare('DELETE FROM payments').run();
   db.prepare('DELETE FROM stock_movements').run();
   db.prepare('DELETE FROM services').run();
