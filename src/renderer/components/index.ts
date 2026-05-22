@@ -12,6 +12,7 @@ export * from './Badge';
 export * from './FilterBar';
 export * from './DataList';
 export * from './DataTable';
+export * from './Combobox';
 export * from './DetailModal';
 export * from './Dialog';
 export * from './ThemeToggle';
