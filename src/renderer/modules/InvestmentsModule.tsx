@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Badge, DataList, Dialog, FilterBar, Message, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve } from '../lib/format';
-import type { Client, Investment, InvestmentItemType, InvestmentList, InvestmentStatus, InvestmentType } from '../types';
+import type { Client, Investment, InvestmentItemType, InvestmentList, InvestmentStatus, InvestmentTimeline, InvestmentType } from '../types';
 
 const TYPES: { value: InvestmentType; label: string }[] = [
   { value: 'cliente', label: 'Cliente' },
@@ -167,6 +167,7 @@ export function InvestmentsModule() {
     totals: { count: 0, totalCostCve: 0, monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalDirectOpexCve: 0, totalEffectiveOpexCve: 0, totalActualRevenueCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
     companyOpexShare: { totalExpensesCve: 0, totalAllocatedCve: 0, totalUnallocatedCve: 0, monthsWithExpenses: 0, monthsWithUnallocated: 0, avgMonthlyOpex: 0, avgMonthlyUnallocated: 0, totalInstalledActive: 0, opexPerClientPerMonth: 0, directByInvestment: {}, directByZone: {}, directByClient: {} },
     zoneSummary: [],
+    equipmentTop: [],
     alerts: []
   });
   const [clients, setClients] = useState<Client[]>([]);
@@ -174,6 +175,7 @@ export function InvestmentsModule() {
   const [type, setType] = useState<InvestmentType | 'all'>('all');
   const [showAllMonths, setShowAllMonths] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [timeline, setTimeline] = useState<InvestmentTimeline | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Investment | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -234,6 +236,7 @@ export function InvestmentsModule() {
         totals: { count: 0, totalCostCve: 0, monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalDirectOpexCve: 0, totalEffectiveOpexCve: 0, totalActualRevenueCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
         companyOpexShare: { totalExpensesCve: 0, totalAllocatedCve: 0, totalUnallocatedCve: 0, monthsWithExpenses: 0, monthsWithUnallocated: 0, avgMonthlyOpex: 0, avgMonthlyUnallocated: 0, totalInstalledActive: 0, opexPerClientPerMonth: 0, directByInvestment: {}, directByZone: {}, directByClient: {} },
         zoneSummary: [],
+        equipmentTop: [],
         alerts: []
       }));
   }
@@ -248,6 +251,19 @@ export function InvestmentsModule() {
       .then(setClients)
       .catch(() => setClients([]));
   }, []);
+
+  useEffect(() => {
+    if (!selected) {
+      setTimeline(null);
+      return;
+    }
+    let cancelled = false;
+    authFetch(`http://127.0.0.1:3001/api/investments/${selected.id}/timeline`)
+      .then((r) => r.ok ? r.json() as Promise<InvestmentTimeline> : null)
+      .then((data) => { if (!cancelled) setTimeline(data); })
+      .catch(() => { if (!cancelled) setTimeline(null); });
+    return () => { cancelled = true; };
+  }, [selected?.id]);
 
   function openCreate() {
     setEditing(null);
@@ -392,8 +408,37 @@ export function InvestmentsModule() {
 
       {data.alerts.length > 0 && (
         <div className="investment-alerts">
-          {data.alerts.map((alert) => <span key={alert}>{alert}</span>)}
+          {data.alerts.map((alert, idx) => (
+            <span key={`${alert.severity}-${alert.message}-${idx}`} className={`alert-${alert.severity}`}>
+              {alert.target && <strong>{alert.target.name}:</strong>} {alert.message}
+            </span>
+          ))}
         </div>
+      )}
+
+      {data.equipmentTop.length > 0 && (
+        <section className="investment-equipment-top" aria-label="Top equipamentos">
+          <header>
+            <strong>Top equipamentos por custo</strong>
+            <small>Soma dos investimentos no filtro atual</small>
+          </header>
+          <ul>
+            {data.equipmentTop.map((eq) => {
+              const max = data.equipmentTop[0].totalCostCve || 1;
+              const pct = (eq.totalCostCve / max) * 100;
+              return (
+                <li key={eq.itemType}>
+                  <div className="row">
+                    <span>{eq.itemType}</span>
+                    <strong>{formatCve(eq.totalCostCve)}</strong>
+                  </div>
+                  <div className="bar"><div style={{ width: `${pct}%` }} /></div>
+                  <small>{eq.quantityUsed} de {eq.quantity} usados</small>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
 
       <section className="investment-return-panel" aria-label="Investimento versus retorno anual">
@@ -579,6 +624,53 @@ export function InvestmentsModule() {
                   </div>
                 ))}
               </div>
+              {timeline && timeline.points.length > 1 && (
+                <div className="investment-timeline">
+                    <div className="investment-timeline-head">
+                      <strong>Evolução do lucro acumulado</strong>
+                      <small>
+                        {timeline.recoveredAt
+                          ? `Recuperado em ${timeline.recoveredAt} (${timeline.monthsToRecovery} meses)`
+                          : 'Ainda não recuperado'}
+                      </small>
+                    </div>
+                    {(() => {
+                      const w = 320; const h = 70; const pad = 6;
+                      const profits = timeline.points.map((p) => p.cumulativeProfitCve);
+                      const min = Math.min(0, ...profits);
+                      const max = Math.max(0, ...profits);
+                      const range = max - min || 1;
+                      const stepX = (w - pad * 2) / Math.max(1, timeline.points.length - 1);
+                      const yFor = (v: number) => pad + (h - pad * 2) * (1 - (v - min) / range);
+                      const path = profits
+                        .map((v, i) => `${i === 0 ? 'M' : 'L'}${(pad + i * stepX).toFixed(1)},${yFor(v).toFixed(1)}`)
+                        .join(' ');
+                      const zeroY = yFor(0);
+                      const last = timeline.points[timeline.points.length - 1];
+                      return (
+                        <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="investment-timeline-svg">
+                          <line x1={pad} x2={w - pad} y1={zeroY} y2={zeroY} stroke="var(--border)" strokeDasharray="2 3" />
+                          <path d={path} fill="none" stroke={last.cumulativeProfitCve >= 0 ? 'var(--success)' : 'var(--danger)'} strokeWidth="1.5" />
+                          <circle
+                            cx={pad + (timeline.points.length - 1) * stepX}
+                            cy={yFor(last.cumulativeProfitCve)}
+                            r="2.5"
+                            fill={last.cumulativeProfitCve >= 0 ? 'var(--success)' : 'var(--danger)'}
+                          />
+                        </svg>
+                      );
+                    })()}
+                    <div className="investment-timeline-footer">
+                      <span>
+                        Hoje: <strong className={timeline.points[timeline.points.length - 1].cumulativeProfitCve < 0 ? 'profit-negative' : 'profit-positive'}>
+                          {formatCve(timeline.points[timeline.points.length - 1].cumulativeProfitCve)}
+                        </strong>
+                      </span>
+                      <span>{timeline.points.length} {timeline.points.length === 1 ? 'mês' : 'meses'}</span>
+                    </div>
+                  </div>
+                )}
+
               {data.companyOpexShare.totalExpensesCve > 0 && (
                 <div className="investment-opex-share">
                   <strong>Rateio OPEX da empresa</strong>

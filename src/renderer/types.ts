@@ -284,6 +284,37 @@ export type CompanyOpexShare = {
   directByClient: Record<number, number>;
 };
 
+export type ProfitabilityAlert = {
+  severity: 'info' | 'warning' | 'danger';
+  message: string;
+  target?: { kind: 'investment' | 'zone' | 'global'; id?: number; name: string };
+};
+
+export type EquipmentUsage = {
+  itemType: string;
+  totalCostCve: number;
+  quantity: number;
+  quantityUsed: number;
+};
+
+export type InvestmentTimelinePoint = {
+  month: string;
+  paidRevenueCve: number;
+  imputedOpexCve: number;
+  directOpexCve: number;
+  monthlyNetCve: number;
+  cumulativeNetCve: number;
+  cumulativeProfitCve: number;
+  roiPct: number | null;
+};
+
+export type InvestmentTimeline = {
+  investment: { id: number; name: string; totalCostCve: number; desiredPaybackMonths: number; investmentDate: string };
+  points: InvestmentTimelinePoint[];
+  recoveredAt: string | null;
+  monthsToRecovery: number | null;
+};
+
 export type InvestmentList = {
   rows: Investment[];
   totals: {
@@ -307,7 +338,8 @@ export type InvestmentList = {
     monthlyNetProfitCve: number;
     roiPct: number | null;
   }>;
-  alerts: string[];
+  equipmentTop: EquipmentUsage[];
+  alerts: ProfitabilityAlert[];
 };
 
 export type ClientProfitability = {

@@ -210,12 +210,12 @@ describe('investments CRUD', () => {
     const body = response.json() as {
       rows: Array<{ imputedMonthlyOpexCve: number }>;
       companyOpexShare: { totalInstalledActive: number; opexPerClientPerMonth: number };
-      alerts: string[];
+      alerts: Array<{ severity: string; message: string }>;
     };
     expect(body.companyOpexShare.totalInstalledActive).toBe(0);
     expect(body.companyOpexShare.opexPerClientPerMonth).toBe(0);
     expect(body.rows[0].imputedMonthlyOpexCve).toBe(0);
-    expect(body.alerts.some((a) => a.toLowerCase().includes('rateio'))).toBe(true);
+    expect(body.alerts.some((a) => a.message.toLowerCase().includes('rateio'))).toBe(true);
   });
 
   test('direct OPEX allocation via investment_id bypasses the pool', async () => {
@@ -281,6 +281,49 @@ describe('investments CRUD', () => {
     expect(row.revenueVarianceCve).toBe(2000); // 5000 actual - 3000 expected
     // monthlyNetProfit uses ACTUAL revenue (5000) not expected
     expect(row.monthlyNetProfitCve).toBe(5000);
+  });
+
+  test('GET /api/investments/:id/timeline returns monthly cumulative profit and recovery month', async () => {
+    const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-T1', 'Cliente Timeline', 'active')`).run().lastInsertRowid as number;
+    db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 5000, 10, 'active')`).run(clientId);
+    const serviceId = (db.prepare('SELECT id FROM services WHERE client_id = ?').get(clientId) as { id: number }).id;
+    // Pago em 4 meses consecutivos.
+    for (const m of ['2026-02', '2026-03', '2026-04', '2026-05']) {
+      db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
+                  VALUES (?, ?, ?, 5000, ?, ?, 'paid')`).run(clientId, serviceId, m, `${m}-10`, `${m}-10`);
+    }
+    const id = db.prepare(`INSERT INTO investments
+                (name, type, client_id, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve)
+                VALUES ('Instalacao timeline', 'cliente', ?, '2026-02-01', '2026-02', 10000, 1, 1, 'ativo', 5000)`).run(clientId).lastInsertRowid as number;
+
+    const response = await app.inject({ method: 'GET', url: `/api/investments/${id}/timeline` });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { points: Array<{ month: string; paidRevenueCve: number; cumulativeProfitCve: number }>; recoveredAt: string | null; monthsToRecovery: number | null };
+    expect(body.points.length).toBeGreaterThanOrEqual(4);
+    expect(body.points[0].paidRevenueCve).toBe(5000); // 2026-02
+    // Lucro acumulado >= 0 a partir do 2º mês (5000+5000-10000 = 0).
+    expect(body.recoveredAt).toBe('2026-03');
+    expect(body.monthsToRecovery).toBe(2);
+  });
+
+  test('GET /api/investments/:id/timeline 404 when investment does not exist', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/investments/9999/timeline' });
+    expect(response.statusCode).toBe(404);
+  });
+
+  test('alerts surface per-investment danger when monthly profit is negative', async () => {
+    db.prepare(`INSERT INTO investments
+                (name, type, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve, monthly_operational_cost_cve)
+                VALUES ('Cliente caro', 'cliente', '2026-05-01', '2026-05', 100000, 1, 1, 'ativo', 1000, 9000)`).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
+    const body = response.json() as { alerts: Array<{ severity: string; message: string; target?: { kind: string; name: string } }> };
+    const danger = body.alerts.find((a) => a.severity === 'danger' && a.target?.kind === 'investment');
+    expect(danger).toBeDefined();
+    expect(danger!.target!.name).toBe('Cliente caro');
+    expect(danger!.message.toLowerCase()).toContain('lucro');
   });
 
   test('dashboard summary aggregates investment cost per month', async () => {

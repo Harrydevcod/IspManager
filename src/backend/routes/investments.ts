@@ -206,7 +206,7 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       LEFT JOIN clients ON clients.id = investments.client_id
       ${whereSql}
       ORDER BY investments.investment_date DESC, investments.id DESC
-    `).all(params) as Array<InvestmentBaseRow & { zone: string | null; status: string }>;
+    `).all(params) as Array<InvestmentBaseRow & { name: string; zone: string | null; status: string }>;
 
     const items = db.prepare(`
       SELECT
@@ -262,6 +262,72 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       .sort((a, b) => b.monthlyNetProfitCve - a.monthlyNetProfitCve)
       .slice(0, 6);
 
+    type Alert = {
+      severity: 'info' | 'warning' | 'danger';
+      message: string;
+      target?: { kind: 'investment' | 'zone' | 'global'; id?: number; name: string };
+    };
+    const alerts: Alert[] = [];
+
+    for (const row of rowsWithItems) {
+      if (row.monthlyNetProfitCve < 0) {
+        alerts.push({
+          severity: 'danger',
+          message: `Lucro mensal negativo (${Math.round(row.monthlyNetProfitCve)} CVE/mês)`,
+          target: { kind: 'investment', id: row.id, name: row.name }
+        });
+      } else if (row.roiPct !== null && row.roiPct < 0 && row.monthlyNetProfitCve <= 0) {
+        alerts.push({
+          severity: 'warning',
+          message: `ROI ${row.roiPct.toFixed(1)}% sem lucro mensal`,
+          target: { kind: 'investment', id: row.id, name: row.name }
+        });
+      }
+      if (
+        !row.isRecovered
+        && row.recoveryMonths !== null
+        && row.desiredPaybackMonths > 0
+        && row.recoveryMonths > row.desiredPaybackMonths * 1.5
+      ) {
+        alerts.push({
+          severity: 'warning',
+          message: `Recuperação prevista em ${row.recoveryMonths.toFixed(0)} meses (alvo ${row.desiredPaybackMonths})`,
+          target: { kind: 'investment', id: row.id, name: row.name }
+        });
+      }
+    }
+    for (const zone of zoneSummary) {
+      if (zone.monthlyNetProfitCve < 0) {
+        alerts.push({
+          severity: 'warning',
+          message: `Zona ${zone.zone}: lucro mensal agregado negativo`,
+          target: { kind: 'zone', name: zone.zone }
+        });
+      }
+    }
+    if (opexCtx.totalExpensesCve > 0 && opexCtx.totalInstalledActive === 0) {
+      alerts.push({
+        severity: 'info',
+        message: 'Despesas registadas sem clientes instalados ativos — rateio OPEX desativado',
+        target: { kind: 'global', name: 'OPEX' }
+      });
+    }
+
+    // Equipment usage analytics — top 5 by total cost across the filter set.
+    const equipmentMap = new Map<string, { itemType: string; totalCostCve: number; quantity: number; quantityUsed: number }>();
+    for (const row of rowsWithItems) {
+      for (const item of row.items as Array<{ itemType: string; totalCostCve: number; quantity: number; quantityUsed: number }>) {
+        const cur = equipmentMap.get(item.itemType) || { itemType: item.itemType, totalCostCve: 0, quantity: 0, quantityUsed: 0 };
+        cur.totalCostCve += Number(item.totalCostCve || 0);
+        cur.quantity += Number(item.quantity || 0);
+        cur.quantityUsed += Number(item.quantityUsed || 0);
+        equipmentMap.set(item.itemType, cur);
+      }
+    }
+    const equipmentTop = [...equipmentMap.values()]
+      .sort((a, b) => b.totalCostCve - a.totalCostCve)
+      .slice(0, 5);
+
     return {
       rows: rowsWithItems,
       totals: {
@@ -279,13 +345,102 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       },
       companyOpexShare: opexCtx,
       zoneSummary,
-      alerts: [
-        ...(lowRoiCount > 0 ? [`${lowRoiCount} investimento(s) com ROI baixo ou lucro mensal negativo`] : []),
-        ...(notRecoveredCount > 0 ? [`${notRecoveredCount} investimento(s) ainda nao recuperados`] : []),
-        ...(opexCtx.totalExpensesCve > 0 && opexCtx.totalInstalledActive === 0
-          ? ['Despesas registadas sem clientes instalados ativos — rateio OPEX desactivado']
-          : [])
-      ]
+      equipmentTop,
+      alerts
+    };
+  });
+
+  app.get('/api/investments/:id/timeline', canRead, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Id invalido' });
+    }
+    const db = getSqliteDatabase();
+    const inv = db.prepare(`
+      SELECT id, name, client_id AS clientId, zone, investment_date AS investmentDate,
+             total_cost_cve AS totalCostCve, desired_payback_months AS desiredPaybackMonths,
+             installed_clients AS installedClients
+      FROM investments WHERE id = ?
+    `).get(id) as
+      | { id: number; name: string; clientId: number | null; zone: string | null; investmentDate: string;
+          totalCostCve: number; desiredPaybackMonths: number; installedClients: number }
+      | undefined;
+    if (!inv) return reply.status(404).send({ error: 'Investimento nao encontrado' });
+
+    const opexCtx = loadCompanyOpexContext();
+    const opexPerClient = opexCtx.opexPerClientPerMonth * (Number(inv.installedClients) || 0);
+
+    const startMonth = inv.investmentDate.slice(0, 7);
+    const now = new Date();
+    const endMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    const months: string[] = [];
+    {
+      const [sy, sm] = startMonth.split('-').map(Number);
+      const [ey, em] = endMonth.split('-').map(Number);
+      let y = sy; let m = sm;
+      while (y < ey || (y === ey && m <= em)) {
+        months.push(`${y}-${String(m).padStart(2, '0')}`);
+        m += 1;
+        if (m > 12) { m = 1; y += 1; }
+        if (months.length > 240) break; // hard cap 20 years
+      }
+    }
+
+    // Revenue by month — paid payments tied to clientId or zone.
+    const revenueByMonth = new Map<string, number>();
+    if (inv.clientId != null) {
+      const rows = db.prepare(`
+        SELECT reference_month AS m, COALESCE(SUM(amount_cve), 0) AS cve
+        FROM payments WHERE client_id = ? AND status = 'paid'
+        GROUP BY reference_month
+      `).all(inv.clientId) as Array<{ m: string; cve: number }>;
+      for (const r of rows) revenueByMonth.set(r.m, Number(r.cve) || 0);
+    } else if (inv.zone) {
+      const rows = db.prepare(`
+        SELECT py.reference_month AS m, COALESCE(SUM(py.amount_cve), 0) AS cve
+        FROM payments py JOIN clients c ON c.id = py.client_id
+        WHERE c.zone = ? AND py.status = 'paid'
+        GROUP BY py.reference_month
+      `).all(inv.zone) as Array<{ m: string; cve: number }>;
+      for (const r of rows) revenueByMonth.set(r.m, Number(r.cve) || 0);
+    }
+
+    // Direct OPEX allocated to this investment by month.
+    const directOpexByMonth = new Map<string, number>(
+      (db.prepare(`
+        SELECT reference_month AS m, COALESCE(SUM(amount_cve), 0) AS cve
+        FROM expenses WHERE investment_id = ? GROUP BY reference_month
+      `).all(id) as Array<{ m: string; cve: number }>).map((r) => [r.m, Number(r.cve) || 0])
+    );
+
+    let cumulativeNet = 0;
+    let recoveredAt: string | null = null;
+    const points = months.map((month) => {
+      const revenue = revenueByMonth.get(month) ?? 0;
+      const directOpex = directOpexByMonth.get(month) ?? 0;
+      const imputed = opexPerClient;
+      const monthlyNet = revenue - imputed - directOpex;
+      cumulativeNet += monthlyNet;
+      const cumulativeProfit = cumulativeNet - inv.totalCostCve;
+      if (recoveredAt === null && cumulativeProfit >= 0) recoveredAt = month;
+      return {
+        month,
+        paidRevenueCve: revenue,
+        imputedOpexCve: imputed,
+        directOpexCve: directOpex,
+        monthlyNetCve: monthlyNet,
+        cumulativeNetCve: cumulativeNet,
+        cumulativeProfitCve: cumulativeProfit,
+        roiPct: inv.totalCostCve > 0 ? (cumulativeProfit / inv.totalCostCve) * 100 : null
+      };
+    });
+
+    return {
+      investment: { id: inv.id, name: inv.name, totalCostCve: inv.totalCostCve, desiredPaybackMonths: inv.desiredPaybackMonths, investmentDate: inv.investmentDate },
+      points,
+      recoveredAt,
+      monthsToRecovery: recoveredAt ? months.indexOf(recoveredAt) + 1 : null
     };
   });
 
