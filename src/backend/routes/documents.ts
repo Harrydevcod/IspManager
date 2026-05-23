@@ -289,30 +289,30 @@ function buildDocument(
   const docDate = isReceipt ? row.receiptDate || row.paymentDate : row.invoiceDate;
   const W = doc.page.width;
   const H = doc.page.height;
-  const M = 40;
+  const M = 28; // A5 padrão — margens proporcionais ao formato
   const CW = W - M * 2;
   const currency = company.currencyCode || 'CVE';
 
-  // === 1) MASTHEAD — coluna esquerda larga (brand + EMITENTE), coluna direita
-  // estreita encostada à margem (doc info + CLIENTE). Lê-se em 2 blocos verticais.
-  const rightColW = 200;
+  // === 1) MASTHEAD — coluna esquerda (brand + EMITENTE), coluna direita
+  // encostada à margem direita (doc info + CLIENTE).
+  const rightColW = 140;
   const rightColX = W - M - rightColW; // flush right margin
-  const leftColW = CW - rightColW - 32;
+  const leftColW = CW - rightColW - 20;
 
   let y = M;
   // LEFT: brand
-  doc.fillColor(PALETTE.accent).fontSize(7).font('Helvetica-Bold')
+  doc.fillColor(PALETTE.accent).fontSize(6.5).font('Helvetica-Bold')
     .text('ISP - CABO VERDE', M, y, { width: leftColW, lineBreak: false, characterSpacing: 1.6 });
-  doc.fillColor(PALETTE.ink).fontSize(24).font('Helvetica-Bold')
-    .text(fitText(doc, company.companyName || 'ISPM', leftColW), M, y + 12, { width: leftColW, lineBreak: false });
+  doc.fillColor(PALETTE.ink).fontSize(19).font('Helvetica-Bold')
+    .text(fitText(doc, company.companyName || 'ISPM', leftColW), M, y + 11, { width: leftColW, lineBreak: false });
 
-  // RIGHT: doc info (FATURA / FT 004/2026-05 / Emitido em ...) — left-aligned para colar com o CLIENTE abaixo
-  doc.fillColor(PALETTE.muted).fontSize(7).font('Helvetica-Bold')
+  // RIGHT: doc info (FATURA / FT 004/2026-05 / Emitido em ...)
+  doc.fillColor(PALETTE.muted).fontSize(6.5).font('Helvetica-Bold')
     .text(label, rightColX, y, { width: rightColW, lineBreak: false, characterSpacing: 1.6 });
-  doc.fillColor(PALETTE.accent).fontSize(22).font('Helvetica-Bold')
-    .text(fitText(doc, docNumber || '—', rightColW), rightColX, y + 12, { width: rightColW, lineBreak: false });
-  doc.fillColor(PALETTE.muted).fontSize(9).font('Helvetica')
-    .text(`Emitido em ${formatDate(docDate)}`, rightColX, y + 42, { width: rightColW, lineBreak: false });
+  doc.fillColor(PALETTE.accent).fontSize(17).font('Helvetica-Bold')
+    .text(fitText(doc, docNumber || '—', rightColW), rightColX, y + 11, { width: rightColW, lineBreak: false });
+  doc.fillColor(PALETTE.muted).fontSize(8).font('Helvetica')
+    .text(`Emitido em ${formatDate(docDate)}`, rightColX, y + 35, { width: rightColW, lineBreak: false });
 
   // === 2) PARTY COLUMNS — EMITENTE abaixo do brand, CLIENTE abaixo da info do doc
   const emitenteLines: PartyLine[] = [{ value: company.companyName || 'ISPM', bold: true }];
@@ -330,8 +330,8 @@ function buildDocument(
   if (row.clientAddress) clienteLines.push({ label: 'Morada', value: row.clientAddress });
   if (row.clientIsland) clienteLines.push({ label: 'Ilha', value: row.clientIsland });
 
-  const leftPartyY = M + 46;   // 12 (eyebrow gap) + 24 (h1) + 10 (breathing) ≈ 46
-  const rightPartyY = M + 62;  // 12 + 22 (number) + 20 (Emitido + breathing) ≈ 62
+  const leftPartyY = M + 38;   // 11 (eyebrow gap) + 19 (h1) + 8 (breathing) ≈ 38
+  const rightPartyY = M + 52;  // 11 + 17 + 16 (Emitido + breathing) + 8 ≈ 52
   const emitenteEnd = writeParty(doc, M, leftPartyY, leftColW, 'EMITENTE', emitenteLines);
   const clienteEnd = writeParty(doc, rightColX, rightPartyY, rightColW, 'CLIENTE', clienteLines);
   y = Math.max(emitenteEnd, clienteEnd) + 14;
@@ -517,8 +517,8 @@ async function pdfBuffer(row: PaymentDocumentRow, kind: DocumentKind) {
 
   return new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({
-      size: 'A4',
-      margin: 40,
+      size: 'A5',
+      margin: 28,
       bufferPages: true,
       autoFirstPage: false
     });
@@ -526,7 +526,7 @@ async function pdfBuffer(row: PaymentDocumentRow, kind: DocumentKind) {
     doc.on('data', (chunk: Buffer) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
-    doc.addPage({ size: 'A4', margin: 40 });
+    doc.addPage({ size: 'A5', margin: 28 });
     doc.addPage = () => doc;
     buildDocument(doc, row, company, kind, totals, qrPng);
     doc.end();
