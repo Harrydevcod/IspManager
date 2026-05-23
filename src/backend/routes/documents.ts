@@ -310,11 +310,11 @@ function buildDocument(
   if (company.phone) emitenteLines.push({ label: 'Telefone', value: company.phone });
   if (company.email) emitenteLines.push({ label: 'Email', value: company.email });
 
+  // Bloco CLIENTE — apenas identificação (nome, código, NIF) + morada (sede/domicílio,
+  // requisito Art. 32 nº5 CIVA). Telefone e Email são confidenciais e omitidos da fatura/recibo.
   const clienteLines: PartyLine[] = [{ value: row.clientName, bold: true }];
   if (row.clientCode) clienteLines.push({ label: 'Codigo', value: row.clientCode });
   if (row.clientNif) clienteLines.push({ label: 'NIF', value: row.clientNif });
-  if (row.clientPhone) clienteLines.push({ label: 'Telefone', value: row.clientPhone });
-  if (row.clientEmail) clienteLines.push({ label: 'Email', value: row.clientEmail });
   if (row.clientAddress) clienteLines.push({ label: 'Morada', value: row.clientAddress });
   if (row.clientIsland) clienteLines.push({ label: 'Ilha', value: row.clientIsland });
 
