@@ -3,17 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#16130F" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#F6F3EC" media="(prefers-color-scheme: light)" />
+    <meta name="color-scheme" content="dark light" />
     <title>ISPM</title>
     <script>
       (function () {
         try {
-          var t = localStorage.getItem('ispm-theme');
-          if (t !== 'light' && t !== 'dark') t = 'dark';
+          var stored = localStorage.getItem('ispm-theme');
+          var t;
+          if (stored === 'light' || stored === 'dark') {
+            t = stored;
+          } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+            t = 'light';
+          } else {
+            t = 'dark';
+          }
           document.documentElement.dataset.theme = t;
+          document.documentElement.style.colorScheme = t;
           document.documentElement.style.background =
             t === 'light' ? '#F6F3EC' : '#16130F';
         } catch (e) {
           document.documentElement.dataset.theme = 'dark';
+          document.documentElement.style.colorScheme = 'dark';
         }
       })();
     </script>

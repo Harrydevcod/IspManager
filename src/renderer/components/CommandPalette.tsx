@@ -139,7 +139,7 @@ export function CommandPalette({ open, onClose, items, placeholder = 'Procurar a
             role="combobox"
             aria-label="Procurar comandos"
             aria-autocomplete="list"
-            aria-expanded={true}
+            aria-expanded={filtered.length > 0}
             aria-controls="command-palette-listbox"
             aria-activedescendant={filtered[activeIndex] ? `palette-option-${filtered[activeIndex].id}` : undefined}
           />
