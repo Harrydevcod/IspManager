@@ -65,20 +65,27 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={{ toast }}>
       {children}
       {typeof document !== 'undefined' && createPortal(
-        <div className="toaster" role="region" aria-label="Notificacoes" aria-live="polite">
+        <div className="toaster" role="region" aria-label="Notificações">
           {toasts.map((t) => {
             const Icon = ICONS[t.tone];
+            const isError = t.tone === 'error';
             return (
-              <div key={t.id} className={`toast toast-${t.tone}`} role="status">
-                <Icon size={16} className="toast-icon" />
+              <div
+                key={t.id}
+                className={`toast toast-${t.tone}`}
+                role={isError ? 'alert' : 'status'}
+                aria-live={isError ? 'assertive' : 'polite'}
+                aria-atomic="true"
+              >
+                <Icon size={16} className="toast-icon" aria-hidden />
                 <span className="toast-message">{t.message}</span>
                 <button
                   type="button"
                   className="toast-close"
                   onClick={() => dismiss(t.id)}
-                  aria-label="Fechar notificacao"
+                  aria-label="Fechar notificação"
                 >
-                  <X size={14} />
+                  <X size={14} aria-hidden />
                 </button>
               </div>
             );

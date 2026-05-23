@@ -128,7 +128,7 @@ export function CommandPalette({ open, onClose, items, placeholder = 'Procurar a
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="palette-header">
-          <Search size={16} />
+          <Search size={16} aria-hidden />
           <input
             ref={inputRef}
             value={query}
@@ -136,15 +136,28 @@ export function CommandPalette({ open, onClose, items, placeholder = 'Procurar a
             placeholder={placeholder}
             spellCheck={false}
             autoComplete="off"
+            role="combobox"
+            aria-label="Procurar comandos"
+            aria-autocomplete="list"
+            aria-expanded={true}
+            aria-controls="command-palette-listbox"
+            aria-activedescendant={filtered[activeIndex] ? `palette-option-${filtered[activeIndex].id}` : undefined}
           />
-          <kbd>ESC</kbd>
+          <kbd aria-hidden>ESC</kbd>
         </header>
-        <ul ref={listRef} className="palette-list" role="listbox">
+        <ul
+          ref={listRef}
+          id="command-palette-listbox"
+          className="palette-list"
+          role="listbox"
+          aria-label="Comandos disponíveis"
+        >
           {filtered.length === 0 ? (
-            <li className="palette-empty">Sem resultados para "{query}"</li>
+            <li className="palette-empty" role="presentation">Sem resultados para "{query}"</li>
           ) : filtered.map((item, idx) => (
             <li
               key={item.id}
+              id={`palette-option-${item.id}`}
               data-active={idx === activeIndex ? 'true' : undefined}
               className={idx === activeIndex ? 'palette-item active' : 'palette-item'}
               role="option"
@@ -155,7 +168,7 @@ export function CommandPalette({ open, onClose, items, placeholder = 'Procurar a
                 onClose();
               }}
             >
-              <span className="palette-item-icon">{item.icon || <ArrowRight size={14} />}</span>
+              <span className="palette-item-icon" aria-hidden>{item.icon || <ArrowRight size={14} aria-hidden />}</span>
               <div className="palette-item-meta">
                 <strong>{item.label}</strong>
                 {item.hint && <small>{item.hint}</small>}

@@ -489,12 +489,12 @@ export function ClientImportDialog({ open, onClose, onCompleted }: ClientImportD
             <table className="import-table">
               <thead>
                 <tr>
-                  <th>#</th>
-                  <th>Estado</th>
-                  <th>Código</th>
-                  <th>NIF</th>
-                  <th>Nome</th>
-                  <th>Telefone</th>
+                  <th scope="col">#</th>
+                  <th scope="col">Estado</th>
+                  <th scope="col">Código</th>
+                  <th scope="col">NIF</th>
+                  <th scope="col">Nome</th>
+                  <th scope="col">Telefone</th>
                 </tr>
               </thead>
               <tbody>
