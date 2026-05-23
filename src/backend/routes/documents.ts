@@ -240,27 +240,36 @@ function buildQrPayload(row: PaymentDocumentRow, company: CompanyInfo, kind: Doc
   ].join('*');
 }
 
-function writeParty(doc: any, x: number, y: number, width: number, label: string, lines: PartyLine[]): number {
+function writeParty(
+  doc: any,
+  x: number,
+  y: number,
+  width: number,
+  label: string,
+  lines: PartyLine[],
+  align: 'left' | 'right' = 'left'
+): number {
   // Eyebrow da secção (EMITENTE / CLIENTE) com hairline acentuado abaixo.
   doc.fillColor(PALETTE.accent).fontSize(7).font('Helvetica-Bold')
-    .text(label, x, y, { width, lineBreak: false, characterSpacing: 1.6 });
+    .text(label, x, y, { width, align, lineBreak: false, characterSpacing: 1.6 });
+  const hairlineX = align === 'right' ? x + width - 18 : x;
   doc.strokeColor(PALETTE.accent).lineWidth(0.6)
-    .moveTo(x, y + 11.5).lineTo(x + 18, y + 11.5).stroke();
+    .moveTo(hairlineX, y + 11.5).lineTo(hairlineX + 18, y + 11.5).stroke();
   let cursor = y + 18;
   for (const line of lines) {
     if (line.bold) {
       doc.fillColor(PALETTE.ink).fontSize(13).font('Helvetica-Bold')
-        .text(fitText(doc, line.value, width), x, cursor, { width, lineBreak: false });
+        .text(fitText(doc, line.value, width), x, cursor, { width, align, lineBreak: false });
       cursor += 19;
       continue;
     }
     if (line.label) {
       doc.fillColor(PALETTE.muted).fontSize(6.5).font('Helvetica-Bold')
-        .text(line.label.toUpperCase(), x, cursor, { width, lineBreak: false, characterSpacing: 1 });
+        .text(line.label.toUpperCase(), x, cursor, { width, align, lineBreak: false, characterSpacing: 1 });
       cursor += 9;
     }
     doc.fillColor(PALETTE.ink).fontSize(9.5).font('Helvetica')
-      .text(fitText(doc, line.value, width), x, cursor, { width, lineBreak: false });
+      .text(fitText(doc, line.value, width), x, cursor, { width, align, lineBreak: false });
     cursor += 13;
   }
   return cursor;
@@ -322,7 +331,7 @@ function buildDocument(
   const leftPartyY = M + 46;   // 12 (eyebrow gap) + 24 (h1) + 10 (breathing) ≈ 46
   const rightPartyY = M + 62;  // 12 + 22 (number) + 20 (Emitido + breathing) ≈ 62
   const emitenteEnd = writeParty(doc, M, leftPartyY, colW, 'EMITENTE', emitenteLines);
-  const clienteEnd = writeParty(doc, rightX, rightPartyY, colW, 'CLIENTE', clienteLines);
+  const clienteEnd = writeParty(doc, rightX, rightPartyY, colW, 'CLIENTE', clienteLines, 'right');
   y = Math.max(emitenteEnd, clienteEnd) + 14;
   doc.moveTo(M, y).lineTo(W - M, y).strokeColor(PALETTE.accent).lineWidth(1.2).stroke();
   y += 18;
