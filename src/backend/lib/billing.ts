@@ -18,10 +18,27 @@ export type BillingPreview = {
   totalCve: number;
 };
 
-export function dueDateFor(referenceMonth: string, dueDay: number): string {
-  const [year, month] = referenceMonth.split('-').map(Number);
-  const lastDay = new Date(year, month, 0).getDate();
-  return `${referenceMonth}-${String(Math.min(dueDay, lastDay)).padStart(2, '0')}`;
+/**
+ * Política fiscal: vencimento padrão = data de emissão + 30 dias (≈ um mês).
+ * Mantemos a assinatura antiga (referenceMonth, dueDay) por compatibilidade
+ * mas o cálculo passou a ser independente desses argumentos.
+ */
+export const PAYMENT_DUE_DAYS = 30;
+
+export function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export function dueDateFromIssue(issueIso: string, days: number = PAYMENT_DUE_DAYS): string {
+  const issue = new Date(`${issueIso}T00:00:00Z`);
+  if (Number.isNaN(issue.getTime())) return issueIso;
+  issue.setUTCDate(issue.getUTCDate() + days);
+  return issue.toISOString().slice(0, 10);
+}
+
+// kept for back-compat with callers that still pass the old signature
+export function dueDateFor(_referenceMonth: string, _dueDay: number): string {
+  return dueDateFromIssue(todayIso(), PAYMENT_DUE_DAYS);
 }
 
 /**
@@ -48,6 +65,11 @@ export function computeMonthlyBilling(db: DatabaseType, referenceMonth: string):
   const toCreate: BillingPreviewRow[] = [];
   let alreadyBilled = 0;
 
+  // Vencimento = data de emissão + 30 dias (todas as faturas geradas nesta corrida
+  // partilham a mesma data de emissão, hoje).
+  const issueIso = todayIso();
+  const dueIso = dueDateFromIssue(issueIso, PAYMENT_DUE_DAYS);
+
   for (const svc of services) {
     const hit = existsStmt.get(svc.serviceId, referenceMonth) as { hit: number } | undefined;
     if (hit) {
@@ -60,7 +82,7 @@ export function computeMonthlyBilling(db: DatabaseType, referenceMonth: string):
       clientName: svc.clientName,
       planName: svc.planName,
       amountCve: svc.amountCve,
-      dueDate: dueDateFor(referenceMonth, svc.dueDay)
+      dueDate: dueIso
     });
   }
 

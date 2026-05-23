@@ -10,6 +10,13 @@ let db: Database.Database;
 let dataDir: string;
 let closeDatabaseForTests: () => void;
 
+// Política: vencimento = data de emissão (hoje) + 30 dias
+function expectedDueIso(): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + 30);
+  return d.toISOString().slice(0, 10);
+}
+
 beforeAll(async () => {
   dataDir = mkdtempSync(path.join(tmpdir(), 'ispm-test-'));
   process.env.ISPM_DATA_DIR = dataDir;
@@ -99,6 +106,11 @@ describe('settings routes', () => {
       invoicePrefix: 'FT',
       receiptPrefix: 'RC',
       whatsappTemplate: 'Ola {nome}, somos da {empresa}. Entramos em contacto sobre o seu servico de internet.',
+      whatsappTestTemplate: 'Teste UltraMsg - {empresa}. Ola {nome}, esta mensagem confirma que a integracao WhatsApp esta ativa.',
+      whatsappInvoiceReadyTemplate: 'Ola {nome}, a sua fatura {fatura} de {mes} no valor de {valor} CVE ja esta pronta. Vencimento: {vencimento}. {empresa}',
+      whatsappReceiptTemplate: 'Ola {nome}, confirmamos o recebimento de {valor} CVE referente a {mes}. O seu recibo {recibo} foi emitido. Obrigado, {empresa}.',
+      whatsappOverdueTemplate: 'Ola {nome}, a sua fatura {fatura} de {mes}, no valor de {valor} CVE, esta em atraso desde {vencimento}. Por favor regularize para evitar constrangimentos. {empresa}',
+      whatsappSuspensionNoticeDays: 15,
       ultraMsgInstanceId: '',
       ultraMsgToken: ''
     });
@@ -139,6 +151,12 @@ describe('settings routes', () => {
         showIva: false,
         printQrCode: false,
         whatsappTemplate: 'Ola {nome}, a sua mensalidade esta disponivel.',
+        whatsappTestTemplate: 'Teste para {nome}',
+        whatsappInvoiceReadyTemplate: 'Fatura pronta {fatura}',
+        whatsappReceiptTemplate: 'Recibo emitido {recibo}',
+        whatsappOverdueTemplate: 'Fatura em atraso {fatura}',
+        whatsappSuspensionTemplate: 'Suspensao em {dias_suspensao} dias',
+        whatsappSuspensionNoticeDays: 10,
         ultraMsgInstanceId: 'instance1150',
         ultraMsgToken: 'token-teste'
       }
@@ -156,6 +174,12 @@ describe('settings routes', () => {
       nif: '123456789',
       defaultDueDay: 15,
       whatsappTemplate: 'Ola {nome}, a sua mensalidade esta disponivel.',
+      whatsappTestTemplate: 'Teste para {nome}',
+      whatsappInvoiceReadyTemplate: 'Fatura pronta {fatura}',
+      whatsappReceiptTemplate: 'Recibo emitido {recibo}',
+      whatsappOverdueTemplate: 'Fatura em atraso {fatura}',
+      whatsappSuspensionTemplate: 'Suspensao em {dias_suspensao} dias',
+      whatsappSuspensionNoticeDays: 10,
       ultraMsgInstanceId: 'instance1150',
       ultraMsgToken: 'token-teste'
     });
@@ -204,6 +228,49 @@ describe('whatsapp routes', () => {
     expect((options?.body as URLSearchParams).get('token')).toBe('token-teste');
     expect((options?.body as URLSearchParams).get('to')).toBe('+2389910000');
     expect((options?.body as URLSearchParams).get('body')).toBe('Ola cliente');
+    fetchMock.mockRestore();
+  });
+
+  test('uses operational templates for overdue and suspension notices', async () => {
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('ultraMsgInstanceId', 'instance1150')").run();
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('ultraMsgToken', 'token-teste')").run();
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('companyName', 'ISP CV')").run();
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('whatsappOverdueTemplate', 'Atraso {nome} {fatura} {valor} {mes} {vencimento} {empresa}')").run();
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('whatsappSuspensionTemplate', 'Corte {nome} {dias_atraso}/{dias_suspensao} {fatura}')").run();
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('whatsappSuspensionNoticeDays', '10')").run();
+
+    const client = db.prepare(`
+      INSERT INTO clients (client_code, full_name, phone, status)
+      VALUES ('CLT-WA', 'Cliente WhatsApp', '9910000', 'active')
+    `).run();
+    const service = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
+      VALUES (?, 2500, 1, 'active')
+    `).run(client.lastInsertRowid);
+    db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status, invoice_number)
+      VALUES (?, ?, '2026-04', 2500, date('now', '-12 days'), 'overdue', 'FT-001')
+    `).run(client.lastInsertRowid, service.lastInsertRowid);
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ sent: true }), { status: 200 }));
+
+    const overdue = await app.inject({
+      method: 'POST',
+      url: '/api/payments/notify-overdue',
+      payload: { dryRun: false, noticeType: 'overdue' }
+    });
+    expect(overdue.statusCode).toBe(200);
+    expect((fetchMock.mock.calls[0][1]?.body as URLSearchParams).get('body')).toContain('Atraso Cliente WhatsApp FT-001 2500 2026-04');
+
+    fetchMock.mockClear();
+    const suspension = await app.inject({
+      method: 'POST',
+      url: '/api/payments/notify-overdue',
+      payload: { dryRun: false, noticeType: 'suspension' }
+    });
+    expect(suspension.statusCode).toBe(200);
+    expect((fetchMock.mock.calls[0][1]?.body as URLSearchParams).get('body')).toContain('Corte Cliente WhatsApp 12/10 FT-001');
+
     fetchMock.mockRestore();
   });
 });
@@ -262,7 +329,7 @@ describe('finance routes', () => {
 
     expect(payment).toMatchObject({
       amountCve: 3500,
-      dueDate: '2026-02-28',
+      dueDate: expectedDueIso(),
       status: 'pending'
     });
     expect(payment.invoiceNumber).toMatch(/^FT-\d{4}-\d{5}$/);
@@ -357,7 +424,7 @@ describe('finance routes', () => {
       clientName: 'Cliente Preview',
       planName: 'Plano Preview',
       amountCve: 3500,
-      dueDate: '2026-06-10'
+      dueDate: expectedDueIso()
     });
 
     expect(db.prepare('SELECT count(*) AS count FROM payments').get()).toEqual({ count: 0 });

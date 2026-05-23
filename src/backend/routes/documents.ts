@@ -438,6 +438,12 @@ function buildDocument(
 
   // === 7) OBSERVATIONS
   const observations: string[] = [];
+  if (!isReceipt) {
+    // Aviso fiscal de suspensão — presente apenas em faturas (não em recibos).
+    observations.push(
+      'Após a data limite de pagamento indicada, o serviço poderá ser suspenso por falta de regularização.'
+    );
+  }
   if (isReceipt && row.paymentMethod) {
     observations.push(`Metodo de pagamento: ${row.paymentMethod}`);
   }
