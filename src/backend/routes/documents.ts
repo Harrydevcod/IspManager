@@ -284,28 +284,26 @@ function buildDocument(
   const CW = W - M * 2;
   const currency = company.currencyCode || 'CVE';
 
-  // === 1) MASTHEAD
-  let y = M;
-  doc.fillColor(PALETTE.accent).fontSize(7).font('Helvetica-Bold')
-    .text('ISP - CABO VERDE', M, y, { width: 280, lineBreak: false, characterSpacing: 1.6 });
-  doc.fillColor(PALETTE.ink).fontSize(24).font('Helvetica-Bold')
-    .text(fitText(doc, company.companyName || 'ISPM', 320), M, y + 12, { width: 320, lineBreak: false });
-
-  doc.fillColor(PALETTE.muted).fontSize(7).font('Helvetica-Bold')
-    .text(label, W - M - 180, y, { width: 180, align: 'right', lineBreak: false, characterSpacing: 1.6 });
-  doc.fillColor(PALETTE.accent).fontSize(22).font('Helvetica-Bold')
-    .text(fitText(doc, docNumber || '—', 180), W - M - 180, y + 12, { width: 180, align: 'right', lineBreak: false });
-  doc.fillColor(PALETTE.muted).fontSize(9).font('Helvetica')
-    .text(`Emitido em ${formatDate(docDate)}`, W - M - 180, y + 42, { width: 180, align: 'right', lineBreak: false });
-
-  y = M + 68;
-  doc.moveTo(M, y).lineTo(W - M, y).strokeColor(PALETTE.accent).lineWidth(1.4).stroke();
-  y += 22;
-
-  // === 2) PARTY COLUMNS
+  // === 1) MASTHEAD — duas colunas alinhadas com as Party Columns abaixo
   const colW = (CW - 32) / 2;
   const rightX = M + colW + 32;
 
+  let y = M;
+  // LEFT: brand
+  doc.fillColor(PALETTE.accent).fontSize(7).font('Helvetica-Bold')
+    .text('ISP - CABO VERDE', M, y, { width: colW, lineBreak: false, characterSpacing: 1.6 });
+  doc.fillColor(PALETTE.ink).fontSize(24).font('Helvetica-Bold')
+    .text(fitText(doc, company.companyName || 'ISPM', colW), M, y + 12, { width: colW, lineBreak: false });
+
+  // RIGHT: doc info (FATURA / FT 004/2026-05 / Emitido em ...)
+  doc.fillColor(PALETTE.muted).fontSize(7).font('Helvetica-Bold')
+    .text(label, rightX, y, { width: colW, align: 'right', lineBreak: false, characterSpacing: 1.6 });
+  doc.fillColor(PALETTE.accent).fontSize(22).font('Helvetica-Bold')
+    .text(fitText(doc, docNumber || '—', colW), rightX, y + 12, { width: colW, align: 'right', lineBreak: false });
+  doc.fillColor(PALETTE.muted).fontSize(9).font('Helvetica')
+    .text(`Emitido em ${formatDate(docDate)}`, rightX, y + 42, { width: colW, align: 'right', lineBreak: false });
+
+  // === 2) PARTY COLUMNS — EMITENTE abaixo do brand, CLIENTE abaixo da info do doc
   const emitenteLines: PartyLine[] = [{ value: company.companyName || 'ISPM', bold: true }];
   if (company.nif) emitenteLines.push({ label: 'NIF', value: company.nif });
   if (company.address) emitenteLines.push({ label: 'Morada', value: company.address });
@@ -321,9 +319,13 @@ function buildDocument(
   if (row.clientAddress) clienteLines.push({ label: 'Morada', value: row.clientAddress });
   if (row.clientIsland) clienteLines.push({ label: 'Ilha', value: row.clientIsland });
 
-  const emitenteEnd = writeParty(doc, M, y, colW, 'EMITENTE', emitenteLines);
-  const clienteEnd = writeParty(doc, rightX, y, colW, 'CLIENTE', clienteLines);
-  y = Math.max(emitenteEnd, clienteEnd) + 18;
+  const leftPartyY = M + 46;   // 12 (eyebrow gap) + 24 (h1) + 10 (breathing) ≈ 46
+  const rightPartyY = M + 62;  // 12 + 22 (number) + 20 (Emitido + breathing) ≈ 62
+  const emitenteEnd = writeParty(doc, M, leftPartyY, colW, 'EMITENTE', emitenteLines);
+  const clienteEnd = writeParty(doc, rightX, rightPartyY, colW, 'CLIENTE', clienteLines);
+  y = Math.max(emitenteEnd, clienteEnd) + 14;
+  doc.moveTo(M, y).lineTo(W - M, y).strokeColor(PALETTE.accent).lineWidth(1.2).stroke();
+  y += 18;
 
   // === 3) META STRIP
   const stripH = 46;
