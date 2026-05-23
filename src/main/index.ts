@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'node:path';
 import { startBackend } from '../backend/server';
 
@@ -43,6 +43,19 @@ app.whenReady().then(async () => {
   ipcMain.handle('app:relaunch', () => {
     app.relaunch();
     app.exit(0);
+  });
+
+  ipcMain.handle('dialog:choose-backup-file', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Importar backup',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Backup SQLite', extensions: ['sqlite', 'db', 'bak'] },
+        { name: 'Todos os ficheiros', extensions: ['*'] }
+      ]
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
   });
 
   await createWindow();

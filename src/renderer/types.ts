@@ -1,6 +1,10 @@
 declare global {
   interface Window {
-    ispm?: { platform: string; relaunch?: () => Promise<void> };
+    ispm?: {
+      platform: string;
+      relaunch?: () => Promise<void>;
+      chooseBackupFile?: () => Promise<string | null>;
+    };
   }
 }
 

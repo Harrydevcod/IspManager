@@ -1938,6 +1938,13 @@ h2 {
   gap: var(--s4);
 }
 
+.backups-head-actions {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .backups-dir {
   font-size: var(--fs-xs);
   color: var(--text-3);

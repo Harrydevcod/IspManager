@@ -42,6 +42,42 @@ export function BackupsPanel() {
     }
   }
 
+  async function importBackup() {
+    if (!window.ispm?.chooseBackupFile) {
+      setMessage('Importação só disponível no Electron desktop.');
+      return;
+    }
+    const picked = await window.ispm.chooseBackupFile();
+    if (!picked) return;
+    if (!window.confirm(
+      'Importar este backup vai SUBSTITUIR a base de dados actual. ' +
+      'Uma cópia da base actual será guardada em pre-restore-*.sqlite. Continuar?'
+    )) {
+      return;
+    }
+    setBusy(true);
+    setMessage('');
+    try {
+      const res = await authFetch('http://127.0.0.1:3001/api/backups/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: picked })
+      });
+      if (!res.ok) {
+        const e = await res.json();
+        setMessage(`Erro: ${e.error}`);
+        return;
+      }
+      if (window.ispm?.relaunch) {
+        await window.ispm.relaunch();
+      } else {
+        setMessage('Importação concluída. Reabra a aplicação para carregar a base restaurada.');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function doRestore(file: string) {
     setBusy(true);
     setMessage('');
@@ -75,9 +111,14 @@ export function BackupsPanel() {
           <h3>Backups</h3>
           <p className="backups-dir">{backupDir}</p>
         </div>
-        <button type="button" disabled={busy} onClick={() => void createNow()}>
-          Criar backup agora
-        </button>
+        <div className="backups-head-actions">
+          <button type="button" disabled={busy} onClick={() => void importBackup()}>
+            Importar backup…
+          </button>
+          <button type="button" disabled={busy} onClick={() => void createNow()}>
+            Criar backup agora
+          </button>
+        </div>
       </header>
 
       {message && <p className="backups-msg">{message}</p>}
