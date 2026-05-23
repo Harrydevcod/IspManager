@@ -331,7 +331,7 @@ function buildDocument(
   const leftPartyY = M + 46;   // 12 (eyebrow gap) + 24 (h1) + 10 (breathing) ≈ 46
   const rightPartyY = M + 62;  // 12 + 22 (number) + 20 (Emitido + breathing) ≈ 62
   const emitenteEnd = writeParty(doc, M, leftPartyY, colW, 'EMITENTE', emitenteLines);
-  const clienteEnd = writeParty(doc, rightX, rightPartyY, colW, 'CLIENTE', clienteLines, 'right');
+  const clienteEnd = writeParty(doc, rightX, rightPartyY, colW, 'CLIENTE', clienteLines);
   y = Math.max(emitenteEnd, clienteEnd) + 14;
   doc.moveTo(M, y).lineTo(W - M, y).strokeColor(PALETTE.accent).lineWidth(1.2).stroke();
   y += 18;
