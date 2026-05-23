@@ -264,7 +264,7 @@ export type Investment = {
   directAllocatedOpexCve: number;
   effectiveMonthlyOpexCve: number;
   actualMonthlyRevenueCve: number | null;
-  revenueSource: 'client' | 'zone' | null;
+  revenueSource: 'client' | 'zone' | 'global-share' | null;
   revenueVarianceCve: number | null;
   monthlyNetProfitCve: number;
   accumulatedProfitCve: number;

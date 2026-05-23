@@ -97,7 +97,7 @@ type InvestmentBaseRow = {
   zone: string | null;
 };
 
-function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext) {
+function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext, companyMonthlyRevenue: number) {
   const activeClients = Math.max(1, row.installedClients || row.targetClients || 1);
   const targetClients = Math.max(1, row.targetClients || 1);
   const imputedMonthlyOpexCve = opexCtx.opexPerClientPerMonth * (Number(row.installedClients) || 0);
@@ -108,9 +108,25 @@ function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext) {
   const effectiveMonthlyOpexCve =
     (Number(row.monthlyOperationalCostCve) || 0) + imputedMonthlyOpexCve + directAllocatedOpexCve;
 
-  const actual = loadActualMonthlyRevenue({ clientId: row.clientId, zone: row.zone });
-  const actualMonthlyRevenueCve = actual?.cve ?? null;
-  const revenueSource: 'client' | 'zone' | null = actual?.source ?? null;
+  const linked = loadActualMonthlyRevenue({ clientId: row.clientId, zone: row.zone });
+
+  // Fallback global pro-rata: when the investment has no client_id/zone but contributes
+  // installed_clients to the active pool, attribute a share of the company-wide paid
+  // revenue proportional to its installed clients. Mirrors the OPEX rateio logic.
+  const canUseGlobalShare =
+    linked === null
+    && row.clientId == null
+    && (!row.zone)
+    && opexCtx.totalInstalledActive > 0
+    && (Number(row.installedClients) || 0) > 0
+    && companyMonthlyRevenue > 0;
+  const globalShareCve = canUseGlobalShare
+    ? companyMonthlyRevenue * ((Number(row.installedClients) || 0) / opexCtx.totalInstalledActive)
+    : null;
+
+  const actualMonthlyRevenueCve = linked?.cve ?? globalShareCve;
+  const revenueSource: 'client' | 'zone' | 'global-share' | null =
+    linked?.source ?? (globalShareCve !== null ? 'global-share' : null);
   const revenueVarianceCve = actualMonthlyRevenueCve != null
     ? actualMonthlyRevenueCve - row.expectedMonthlyRevenueCve
     : null;
@@ -231,9 +247,22 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     // the company-wide installed base, independent of this query's filter.
     const opexCtx = loadCompanyOpexContext();
 
+    // Company-wide paid revenue / months → average monthly company revenue,
+    // used as fallback denominator for investments without client_id/zone.
+    const revenueRow = getSqliteDatabase().prepare(`
+      SELECT COALESCE(SUM(amount_cve), 0) AS totalCve,
+             COUNT(DISTINCT reference_month) AS months
+      FROM payments
+      WHERE status = 'paid'
+    `).get() as { totalCve: number; months: number };
+    const revenueMonths = Math.max(0, Number(revenueRow.months) || 0);
+    const companyMonthlyRevenue = revenueMonths > 0
+      ? Number(revenueRow.totalCve) / revenueMonths
+      : 0;
+
     const rowsWithItems = rows.map((row) => ({
       ...row,
-      ...profitability(row, opexCtx),
+      ...profitability(row, opexCtx, companyMonthlyRevenue),
       items: items.all(row.id)
     }));
 

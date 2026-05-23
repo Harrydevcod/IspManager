@@ -581,7 +581,11 @@ export function InvestmentsModule() {
                       : formatCve(selected.expectedMonthlyRevenueCve)}
                     {selected.actualMonthlyRevenueCve != null && (
                       <small style={{ display: 'block', color: 'var(--text-3)', fontSize: 11, marginTop: 2 }}>
-                        real ({selected.revenueSource === 'zone' ? 'zona' : 'cliente'}); esperado {formatCve(selected.expectedMonthlyRevenueCve)}
+                        {selected.revenueSource === 'global-share'
+                          ? 'rateio'
+                          : selected.revenueSource === 'zone'
+                            ? 'real (zona)'
+                            : 'real (cliente)'}; esperado {formatCve(selected.expectedMonthlyRevenueCve)}
                         {selected.revenueVarianceCve != null && (
                           <span
                             style={{
