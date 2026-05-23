@@ -241,19 +241,22 @@ function buildQrPayload(row: PaymentDocumentRow, company: CompanyInfo, kind: Doc
 }
 
 function writeParty(doc: any, x: number, y: number, width: number, label: string, lines: PartyLine[]): number {
-  doc.fillColor(PALETTE.muted).fontSize(7).font('Helvetica-Bold')
-    .text(label, x, y, { width, lineBreak: false, characterSpacing: 1.2 });
-  let cursor = y + 13;
+  // Eyebrow da secção (EMITENTE / CLIENTE) com hairline acentuado abaixo.
+  doc.fillColor(PALETTE.accent).fontSize(7).font('Helvetica-Bold')
+    .text(label, x, y, { width, lineBreak: false, characterSpacing: 1.6 });
+  doc.strokeColor(PALETTE.accent).lineWidth(0.6)
+    .moveTo(x, y + 11.5).lineTo(x + 18, y + 11.5).stroke();
+  let cursor = y + 18;
   for (const line of lines) {
     if (line.bold) {
       doc.fillColor(PALETTE.ink).fontSize(13).font('Helvetica-Bold')
         .text(fitText(doc, line.value, width), x, cursor, { width, lineBreak: false });
-      cursor += 17;
+      cursor += 19;
       continue;
     }
     if (line.label) {
-      doc.fillColor(PALETTE.light).fontSize(6.5).font('Helvetica-Bold')
-        .text(line.label.toUpperCase(), x, cursor, { width, lineBreak: false, characterSpacing: 0.8 });
+      doc.fillColor(PALETTE.muted).fontSize(6.5).font('Helvetica-Bold')
+        .text(line.label.toUpperCase(), x, cursor, { width, lineBreak: false, characterSpacing: 1 });
       cursor += 9;
     }
     doc.fillColor(PALETTE.ink).fontSize(9.5).font('Helvetica')
@@ -313,7 +316,7 @@ function buildDocument(
   // Bloco CLIENTE — apenas identificação (nome, código, NIF) + morada (sede/domicílio,
   // requisito Art. 32 nº5 CIVA). Telefone e Email são confidenciais e omitidos da fatura/recibo.
   const clienteLines: PartyLine[] = [{ value: row.clientName, bold: true }];
-  if (row.clientCode) clienteLines.push({ label: 'Codigo', value: row.clientCode });
+  if (row.clientCode) clienteLines.push({ label: 'Código', value: row.clientCode });
   if (row.clientNif) clienteLines.push({ label: 'NIF', value: row.clientNif });
   if (row.clientAddress) clienteLines.push({ label: 'Morada', value: row.clientAddress });
   if (row.clientIsland) clienteLines.push({ label: 'Ilha', value: row.clientIsland });
