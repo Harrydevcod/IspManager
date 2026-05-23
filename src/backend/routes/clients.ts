@@ -174,7 +174,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
 
     const db = getDatabase();
     const total = await db.$count(clients);
-    const clientCode = `CLT-${String(total + 1).padStart(4, '0')}`;
+    const clientCode = `C${String(total + 1).padStart(4, '0')}`;
     const now = new Date().toISOString();
 
     const [client] = await db
@@ -291,10 +291,10 @@ export async function registerClientRoutes(app: FastifyInstance) {
       (db.prepare('SELECT COUNT(*) AS n FROM clients').get() as { n: number }).n + 1;
 
     function nextCode(): string {
-      while (existingCodes.has(`CLT-${String(codeSequence).padStart(4, '0')}`)) {
+      while (existingCodes.has(`C${String(codeSequence).padStart(4, '0')}`)) {
         codeSequence += 1;
       }
-      const code = `CLT-${String(codeSequence).padStart(4, '0')}`;
+      const code = `C${String(codeSequence).padStart(4, '0')}`;
       codeSequence += 1;
       return code;
     }

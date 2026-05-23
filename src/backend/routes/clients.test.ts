@@ -67,7 +67,7 @@ describe('POST /api/clients/bulk', () => {
     const body = response.json();
     expect(body.summary).toEqual({ received: 2, inserted: 2, skipped: 0, errors: 0 });
     expect(body.inserted).toHaveLength(2);
-    expect(body.inserted[0].clientCode).toMatch(/^CLT-\d{4}$/);
+    expect(body.inserted[0].clientCode).toMatch(/^C\d{4}$/);
 
     const stored = db.prepare('SELECT full_name, phone, nif, email FROM clients ORDER BY id').all();
     expect(stored).toEqual([
