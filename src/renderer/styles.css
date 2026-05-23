@@ -126,17 +126,17 @@ table {
 
   --text: oklch(27% 0.013 72);
   --text-2: oklch(45% 0.013 72);
-  --text-3: oklch(56% 0.012 72);
+  --text-3: oklch(48% 0.013 72);
 
-  --accent: oklch(57% 0.128 68);
-  --accent-2: oklch(50% 0.13 67);
+  --accent: oklch(48% 0.135 65);
+  --accent-2: oklch(42% 0.13 65);
   --on-accent: oklch(99% 0.012 80);
 
-  --success: oklch(52% 0.14 158);
+  --success: oklch(46% 0.14 158);
   --success-bg: oklch(94.5% 0.045 158);
-  --danger: oklch(53% 0.19 26);
+  --danger: oklch(46% 0.19 26);
   --danger-bg: oklch(94.5% 0.055 26);
-  --info: oklch(52% 0.13 240);
+  --info: oklch(46% 0.13 240);
   --info-bg: oklch(94.5% 0.045 240);
 
   --ring: color-mix(in oklch, var(--accent) 55%, transparent);
@@ -283,6 +283,21 @@ a:hover {
 
 #app-content:focus-visible {
   outline: none;
+}
+
+/* prefers-contrast: more — strengthen borders + focus ring */
+@media (prefers-contrast: more) {
+  :root {
+    --border: oklch(48% 0.014 72);
+    --border-2: oklch(58% 0.016 72);
+  }
+  :root[data-theme="light"] {
+    --border: oklch(70% 0.012 72);
+    --border-2: oklch(58% 0.016 72);
+  }
+  :where(button, [role="button"], a, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline-width: 3px;
+  }
 }
 
 /* Windows High Contrast / forced colors — keep boundaries readable */
