@@ -1,6 +1,6 @@
 import { Download, FileText, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Combobox, DataList, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve } from '../lib/format';
@@ -219,7 +219,7 @@ export function InvestmentsModule() {
     }));
   }, [data.rows]);
 
-  function load() {
+  const load = useCallback(() => {
     const params = new URLSearchParams();
     if (!showAllMonths) params.set('month', month);
     if (type !== 'all') params.set('type', type);
@@ -239,11 +239,11 @@ export function InvestmentsModule() {
         equipmentTop: [],
         alerts: []
       }));
-  }
+  }, [month, type, showAllMonths]);
 
   useEffect(() => {
     void load();
-  }, [month, type, showAllMonths]);
+  }, [load]);
 
   useEffect(() => {
     authFetch('http://127.0.0.1:3001/api/clients')
@@ -263,7 +263,7 @@ export function InvestmentsModule() {
       .then((data) => { if (!cancelled) setTimeline(data); })
       .catch(() => { if (!cancelled) setTimeline(null); });
     return () => { cancelled = true; };
-  }, [selected?.id]);
+  }, [selected]);
 
   function openCreate() {
     setEditing(null);

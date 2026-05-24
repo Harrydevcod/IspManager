@@ -1,6 +1,6 @@
 import { MessageCircle, Pencil, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, ClientImportDialog, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
@@ -45,7 +45,7 @@ export function ClientsModule() {
   const [profitability, setProfitability] = useState<ClientProfitability | null>(null);
   const [profitabilityLoading, setProfitabilityLoading] = useState(false);
 
-  function loadClients() {
+  const loadClients = useCallback(() => {
     setLoading(true);
     return authFetch('http://127.0.0.1:3001/api/clients')
       .then((response) => {
@@ -64,7 +64,7 @@ export function ClientsModule() {
         toast(message, 'error');
       })
       .finally(() => setLoading(false));
-  }
+  }, [toast]);
 
   useEffect(() => {
     if (!selectedClient) {
@@ -91,6 +91,9 @@ export function ClientsModule() {
 
   useEffect(() => {
     void loadClients();
+  }, [loadClients]);
+
+  useEffect(() => {
     authFetch('http://127.0.0.1:3001/api/settings')
       .then((response) => {
         if (!response.ok) {

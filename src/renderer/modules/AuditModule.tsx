@@ -1,5 +1,5 @@
 import { Inbox } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, EmptyState, Field, FilterBar, Message, Select } from '../components';
 import { authFetch } from '../lib/auth';
 
@@ -50,7 +50,7 @@ export function AuditModule() {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
 
-  function load() {
+  const load = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams({
       page: String(page),
@@ -77,11 +77,11 @@ export function AuditModule() {
         setTotalPages(1);
       })
       .finally(() => setLoading(false));
-  }
+  }, [page, entityFilter, dateFrom, dateTo]);
 
   useEffect(() => {
     void load();
-  }, [entityFilter, dateFrom, dateTo, page]);
+  }, [load]);
 
   const showingFrom = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const showingTo = Math.min(page * PAGE_SIZE, total);
