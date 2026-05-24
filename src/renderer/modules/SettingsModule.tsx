@@ -1,8 +1,19 @@
 import { Banknote, Building2, DatabaseBackup, MessageCircle } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
+import { Button, Field, Message, Select, Textarea, Toggle } from '../components';
 import { authFetch } from '../lib/auth';
-import { fallbackWhatsappTemplate } from '../lib/whatsapp';
+import {
+  fallbackWhatsappInvoiceReadyTemplate,
+  fallbackWhatsappOverdueTemplate,
+  fallbackWhatsappReceiptTemplate,
+  fallbackWhatsappSuspensionTemplate,
+  fallbackWhatsappTestTemplate,
+  fallbackWhatsappTemplate,
+  normalizeWhatsappPhone,
+  renderWhatsappMessage,
+  sendWhatsappViaUltraMsg
+} from '../lib/whatsapp';
 import { BackupsPanel } from './BackupsPanel';
 
 type SettingsTab = 'company' | 'billing' | 'whatsapp' | 'backups';
@@ -31,12 +42,23 @@ type SettingsFormState = {
   printQrCode: boolean;
   legalNotes: string;
   whatsappTemplate: string;
+  whatsappTestTemplate: string;
+  whatsappInvoiceReadyTemplate: string;
+  whatsappReceiptTemplate: string;
+  whatsappOverdueTemplate: string;
+  whatsappSuspensionTemplate: string;
+  whatsappSuspensionNoticeDays: string;
   ultraMsgInstanceId: string;
   ultraMsgToken: string;
 };
 
 export function SettingsModule() {
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ tone: 'neutral' | 'success' | 'error'; text: string; placement: 'top' | 'save' } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [testSending, setTestSending] = useState(false);
+  const [testPhone, setTestPhone] = useState('');
+  const [testMessage, setTestMessage] = useState<{ tone: 'neutral' | 'success' | 'error'; text: string } | null>(null);
+  const [lastSavedForm, setLastSavedForm] = useState<SettingsFormState | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>('company');
   const [form, setForm] = useState<SettingsFormState>({
     companyName: 'ISPM',
@@ -55,9 +77,16 @@ export function SettingsModule() {
     printQrCode: false,
     legalNotes: '',
     whatsappTemplate: fallbackWhatsappTemplate,
+    whatsappTestTemplate: fallbackWhatsappTestTemplate,
+    whatsappInvoiceReadyTemplate: fallbackWhatsappInvoiceReadyTemplate,
+    whatsappReceiptTemplate: fallbackWhatsappReceiptTemplate,
+    whatsappOverdueTemplate: fallbackWhatsappOverdueTemplate,
+    whatsappSuspensionTemplate: fallbackWhatsappSuspensionTemplate,
+    whatsappSuspensionNoticeDays: '15',
     ultraMsgInstanceId: '',
     ultraMsgToken: ''
   });
+  const hasUnsavedChanges = !lastSavedForm || JSON.stringify(form) !== JSON.stringify(lastSavedForm);
 
   useEffect(() => {
     authFetch('http://127.0.0.1:3001/api/settings')
@@ -65,18 +94,25 @@ export function SettingsModule() {
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
         }
-        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'ivaRate'> & { defaultDueDay: number; ivaRate: number }>;
+        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'ivaRate' | 'whatsappSuspensionNoticeDays'> & { defaultDueDay: number; ivaRate: number; whatsappSuspensionNoticeDays: number }>;
       })
       .then((settings) => {
-        setForm({
+        const loadedForm = {
           ...settings,
           defaultDueDay: String(settings.defaultDueDay),
-          ivaRate: String(settings.ivaRate)
-        });
+          ivaRate: String(settings.ivaRate),
+          whatsappSuspensionNoticeDays: String(settings.whatsappSuspensionNoticeDays)
+        };
+        setForm(loadedForm);
+        setLastSavedForm(loadedForm);
         setMessage(null);
       })
       .catch((err: unknown) => {
-        setMessage(err instanceof Error ? err.message : 'Erro ao carregar configuracoes');
+        setMessage({
+          tone: 'error',
+          text: err instanceof Error ? err.message : 'Erro ao carregar configuracoes',
+          placement: 'top'
+        });
       });
   }, []);
 
@@ -84,24 +120,89 @@ export function SettingsModule() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  function templateRows(value: string) {
+    const explicitLines = value.split('\n').length;
+    const wrappedLines = Math.ceil(value.length / 92);
+    return Math.min(4, Math.max(2, explicitLines, wrappedLines));
+  }
+
+  useEffect(() => {
+    if (message?.placement !== 'save' || message.tone === 'error') return;
+    const timeout = window.setTimeout(() => {
+      setMessage((current) => current === message ? null : current);
+    }, 4000);
+    return () => window.clearTimeout(timeout);
+  }, [message]);
+
+  useEffect(() => {
+    if (!testMessage || testMessage.tone === 'error') return;
+    const timeout = window.setTimeout(() => {
+      setTestMessage((current) => current === testMessage ? null : current);
+    }, 4000);
+    return () => window.clearTimeout(timeout);
+  }, [testMessage]);
+
   async function saveSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const response = await authFetch('http://127.0.0.1:3001/api/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...form,
-        defaultDueDay: Number(form.defaultDueDay),
-        ivaRate: Number(form.ivaRate)
-      })
-    });
-
-    if (!response.ok) {
-      setMessage('Nao foi possivel gravar configuracoes.');
+    if (!hasUnsavedChanges) {
+      setMessage({ tone: 'neutral', text: 'Nao ha alteracoes por guardar.', placement: 'save' });
       return;
     }
 
-    setMessage('Configuracoes atualizadas.');
+    setSaving(true);
+    setMessage({ tone: 'neutral', text: 'A gravar configuracoes...', placement: 'save' });
+
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...form,
+          defaultDueDay: Number(form.defaultDueDay),
+          ivaRate: Number(form.ivaRate),
+          whatsappSuspensionNoticeDays: Number(form.whatsappSuspensionNoticeDays)
+        })
+      });
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({ error: 'Nao foi possivel gravar configuracoes.' })) as { error?: string };
+        setMessage({ tone: 'error', text: result.error || 'Nao foi possivel gravar configuracoes.', placement: 'save' });
+        return;
+      }
+
+      setLastSavedForm(form);
+      setMessage({ tone: 'success', text: 'Configuracoes gravadas com sucesso.', placement: 'save' });
+    } catch {
+      setMessage({ tone: 'error', text: 'Falha de rede ao gravar configuracoes.', placement: 'save' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function sendTestWhatsapp() {
+    if (!normalizeWhatsappPhone(testPhone)) {
+      setTestMessage({ tone: 'error', text: 'Indique um telefone WhatsApp valido para teste.' });
+      return;
+    }
+
+    setTestSending(true);
+    setTestMessage({ tone: 'neutral', text: 'A enviar mensagem de teste...' });
+    try {
+      const body = renderWhatsappMessage(
+        form.whatsappTestTemplate,
+        { fullName: 'Teste ISPM', clientCode: 'TESTE', phone: testPhone },
+        form.companyName
+      );
+      await sendWhatsappViaUltraMsg(testPhone, body);
+      setTestMessage({ tone: 'success', text: 'Mensagem de teste enviada via UltraMsg.' });
+    } catch (err) {
+      setTestMessage({
+        tone: 'error',
+        text: err instanceof Error ? err.message : 'Nao foi possivel enviar a mensagem de teste.'
+      });
+    } finally {
+      setTestSending(false);
+    }
   }
 
   return (
@@ -118,135 +219,240 @@ export function SettingsModule() {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
           return (
-            <button
+            <Button
               key={tab.id}
-              type="button"
+              variant="ghost"
               role="tab"
               aria-selected={active}
               className={`settings-tab${active ? ' is-active' : ''}`}
               onClick={() => setActiveTab(tab.id)}
             >
-              <Icon size={14} />
+              <Icon size={14} aria-hidden />
               <span>{tab.label}</span>
-            </button>
+            </Button>
           );
         })}
       </nav>
 
-      {message && <p className="module-message">{message}</p>}
+      {message && message.placement === 'top' && <Message tone={message.tone}>{message.text}</Message>}
 
       {activeTab !== 'backups' && (
       <form className="client-form settings-form" onSubmit={saveSettings}>
         {activeTab === 'company' && (
           <>
-            <label>
-              Nome da empresa
-              <input required value={form.companyName} onChange={(event) => updateForm('companyName', event.target.value)} />
-            </label>
-            <label>
-              NIF
-              <input value={form.nif} onChange={(event) => updateForm('nif', event.target.value)} />
-            </label>
-            <label>
-              Telefone
-              <input value={form.phone} onChange={(event) => updateForm('phone', event.target.value)} />
-            </label>
-            <label>
-              Email
-              <input type="email" value={form.email} onChange={(event) => updateForm('email', event.target.value)} />
-            </label>
-            <label>
-              Ilha
-              <input value={form.island} onChange={(event) => updateForm('island', event.target.value)} />
-            </label>
-            <label className="wide-field">
-              Morada
-              <input value={form.address} onChange={(event) => updateForm('address', event.target.value)} />
-            </label>
+            <Field
+              label="Nome da empresa"
+              required
+              value={form.companyName}
+              onChange={(event) => updateForm('companyName', event.target.value)}
+            />
+            <Field
+              label="NIF"
+              value={form.nif}
+              onChange={(event) => updateForm('nif', event.target.value)}
+            />
+            <Field
+              label="Telefone"
+              type="tel"
+              autoComplete="tel"
+              inputMode="tel"
+              value={form.phone}
+              onChange={(event) => updateForm('phone', event.target.value)}
+            />
+            <Field
+              label="Email"
+              type="email"
+              autoComplete="email"
+              spellCheck={false}
+              value={form.email}
+              onChange={(event) => updateForm('email', event.target.value)}
+            />
+            <Field
+              label="Ilha"
+              value={form.island}
+              onChange={(event) => updateForm('island', event.target.value)}
+            />
+            <Field
+              wide
+              label="Morada"
+              value={form.address}
+              onChange={(event) => updateForm('address', event.target.value)}
+            />
           </>
         )}
 
         {activeTab === 'billing' && (
           <>
-            <label>
-              Dia padrão de vencimento
-              <input required type="number" min="1" max="31" value={form.defaultDueDay} onChange={(event) => updateForm('defaultDueDay', event.target.value)} />
-            </label>
-            <label>
-              Moeda
-              <input required value={form.currencyCode} onChange={(event) => updateForm('currencyCode', event.target.value)} />
-            </label>
-            <label>
-              Prefixo fatura
-              <input required value={form.invoicePrefix} onChange={(event) => updateForm('invoicePrefix', event.target.value)} />
-            </label>
-            <label>
-              Prefixo recibo
-              <input required value={form.receiptPrefix} onChange={(event) => updateForm('receiptPrefix', event.target.value)} />
-            </label>
-            <label>
-              Regime fiscal
-              <select value={form.fiscalRegime} onChange={(event) => updateForm('fiscalRegime', event.target.value as 'normal' | 'rempe')}>
-                <option value="normal">Regime Normal (com IVA)</option>
-                <option value="rempe">REMPE (isento IVA)</option>
-              </select>
-            </label>
-            <label>
-              Taxa de IVA (%)
-              <input required type="number" min="0" max="100" step="0.5" value={form.ivaRate} onChange={(event) => updateForm('ivaRate', event.target.value)} />
-            </label>
-            <label className="wide-field">
-              Observações no documento
-              <textarea rows={3} value={form.legalNotes} onChange={(event) => updateForm('legalNotes', event.target.value)} placeholder="Texto opcional que aparece no rodapé de cada fatura/recibo (ex: termos, IBAN, agradecimento)" />
-            </label>
-            <label className="wide-field settings-toggle">
-              <input
-                type="checkbox"
-                checked={form.showIva}
-                onChange={(event) => setForm((current) => ({ ...current, showIva: event.target.checked }))}
-              />
-              <span>
-                <strong>Mostrar linha de IVA nos documentos</strong>
-                <small>Quando desligado, fatura/recibo mostram apenas o total (serviço informal). Liga quando estiveres com contabilidade organizada.</small>
-              </span>
-            </label>
-            <label className="wide-field settings-toggle">
-              <input
-                type="checkbox"
-                checked={form.printQrCode}
-                onChange={(event) => setForm((current) => ({ ...current, printQrCode: event.target.checked }))}
-              />
-              <span>
-                <strong>Imprimir QR Code fiscal nos documentos</strong>
-                <small>QR no formato Portaria 47/2021 (preparatório para e-Fatura). Liga quando estiveres preparado para credenciação na DNRE.</small>
-              </span>
-            </label>
+            <Field
+              label="Dia padrão de vencimento"
+              required
+              type="number"
+              min={1}
+              max={31}
+              value={form.defaultDueDay}
+              onChange={(event) => updateForm('defaultDueDay', event.target.value)}
+            />
+            <Field
+              label="Moeda"
+              required
+              value={form.currencyCode}
+              onChange={(event) => updateForm('currencyCode', event.target.value)}
+            />
+            <Field
+              label="Prefixo fatura"
+              required
+              value={form.invoicePrefix}
+              onChange={(event) => updateForm('invoicePrefix', event.target.value)}
+            />
+            <Field
+              label="Prefixo recibo"
+              required
+              value={form.receiptPrefix}
+              onChange={(event) => updateForm('receiptPrefix', event.target.value)}
+            />
+            <Select
+              label="Regime fiscal"
+              value={form.fiscalRegime}
+              onChange={(event) => updateForm('fiscalRegime', event.target.value as 'normal' | 'rempe')}
+            >
+              <option value="normal">Regime Normal (com IVA)</option>
+              <option value="rempe">REMPE (isento IVA)</option>
+            </Select>
+            <Field
+              label="Taxa de IVA (%)"
+              required
+              type="number"
+              min={0}
+              max={100}
+              step={0.5}
+              value={form.ivaRate}
+              onChange={(event) => updateForm('ivaRate', event.target.value)}
+            />
+            <Textarea
+              label="Observações no documento"
+              rows={3}
+              value={form.legalNotes}
+              onChange={(event) => updateForm('legalNotes', event.target.value)}
+              placeholder="Texto opcional que aparece no rodapé de cada fatura/recibo (ex: termos, IBAN, agradecimento)"
+            />
+            <Toggle
+              title="Mostrar linha de IVA nos documentos"
+              description="Quando desligado, fatura/recibo mostram apenas o total (serviço informal). Liga quando estiveres com contabilidade organizada."
+              checked={form.showIva}
+              onChange={(event) => setForm((current) => ({ ...current, showIva: event.target.checked }))}
+            />
+            <Toggle
+              title="Imprimir QR Code fiscal nos documentos"
+              description="QR no formato Portaria 47/2021 (preparatório para e-Fatura). Liga quando estiveres preparado para credenciação na DNRE."
+              checked={form.printQrCode}
+              onChange={(event) => setForm((current) => ({ ...current, printQrCode: event.target.checked }))}
+            />
           </>
         )}
 
         {activeTab === 'whatsapp' && (
           <>
-            <label className="wide-field">
-              Mensagem WhatsApp
-              <textarea
-                rows={4}
-                value={form.whatsappTemplate}
-                onChange={(event) => updateForm('whatsappTemplate', event.target.value)}
-              />
-            </label>
-            <label>
-              UltraMsg instance ID
-              <input value={form.ultraMsgInstanceId} onChange={(event) => updateForm('ultraMsgInstanceId', event.target.value)} placeholder="instance00000" />
-            </label>
-            <label>
-              UltraMsg token
-              <input type="password" value={form.ultraMsgToken} onChange={(event) => updateForm('ultraMsgToken', event.target.value)} />
-            </label>
+            <Field
+              label="UltraMsg instance ID"
+              autoComplete="off"
+              spellCheck={false}
+              value={form.ultraMsgInstanceId}
+              onChange={(event) => updateForm('ultraMsgInstanceId', event.target.value)}
+              placeholder="instance00000"
+            />
+            <Field
+              label="UltraMsg token"
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              value={form.ultraMsgToken}
+              onChange={(event) => updateForm('ultraMsgToken', event.target.value)}
+            />
+            <Field
+              label="Avisar suspensao apos X dias"
+              type="number"
+              min={1}
+              max={120}
+              value={form.whatsappSuspensionNoticeDays}
+              onChange={(event) => updateForm('whatsappSuspensionNoticeDays', event.target.value)}
+            />
+            <Textarea
+              className="whatsapp-template-field"
+              label="Mensagem de teste"
+              rows={templateRows(form.whatsappTestTemplate)}
+              value={form.whatsappTestTemplate}
+              onChange={(event) => updateForm('whatsappTestTemplate', event.target.value)}
+            />
+            <Field
+              label="Telefone para teste"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              value={testPhone}
+              onChange={(event) => setTestPhone(event.target.value)}
+              placeholder="9910000 ou 2389910000"
+            />
+            <div className="settings-test-whatsapp" aria-label="Enviar mensagem de teste">
+              <span>Envio de teste</span>
+              {testMessage && <Message tone={testMessage.tone}>{testMessage.text}</Message>}
+              <Button
+                variant="secondary"
+                onClick={() => void sendTestWhatsapp()}
+                disabled={!normalizeWhatsappPhone(testPhone)}
+                loading={testSending}
+              >
+                {testSending ? 'A enviar teste...' : 'Enviar teste'}
+              </Button>
+            </div>
+            <Textarea
+              className="whatsapp-template-field"
+              label="Mensagem geral WhatsApp"
+              rows={templateRows(form.whatsappTemplate)}
+              value={form.whatsappTemplate}
+              onChange={(event) => updateForm('whatsappTemplate', event.target.value)}
+            />
+            <Textarea
+              className="whatsapp-template-field"
+              label="Fatura do mes pronta"
+              rows={templateRows(form.whatsappInvoiceReadyTemplate)}
+              value={form.whatsappInvoiceReadyTemplate}
+              onChange={(event) => updateForm('whatsappInvoiceReadyTemplate', event.target.value)}
+            />
+            <Textarea
+              className="whatsapp-template-field"
+              label="Confirmacao de recebimento e recibo"
+              rows={templateRows(form.whatsappReceiptTemplate)}
+              value={form.whatsappReceiptTemplate}
+              onChange={(event) => updateForm('whatsappReceiptTemplate', event.target.value)}
+            />
+            <Textarea
+              className="whatsapp-template-field"
+              label="Fatura em atraso"
+              rows={templateRows(form.whatsappOverdueTemplate)}
+              value={form.whatsappOverdueTemplate}
+              onChange={(event) => updateForm('whatsappOverdueTemplate', event.target.value)}
+            />
+            <Textarea
+              className="whatsapp-template-field"
+              label="Aviso de corte/suspensao"
+              rows={templateRows(form.whatsappSuspensionTemplate)}
+              value={form.whatsappSuspensionTemplate}
+              onChange={(event) => updateForm('whatsappSuspensionTemplate', event.target.value)}
+            />
           </>
         )}
 
         <div className="form-actions">
-          <button type="submit">Gravar configurações</button>
+          {message && message.placement === 'save' && (
+            <Message tone={message.tone}>{message.text}</Message>
+          )}
+          <Button type="submit" variant="primary" loading={saving}>
+            {saving
+              ? 'A gravar...'
+              : !hasUnsavedChanges
+                ? 'Alterar configurações'
+                : 'Guardar alterações'}
+          </Button>
         </div>
       </form>
       )}

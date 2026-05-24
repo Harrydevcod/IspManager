@@ -68,7 +68,22 @@
   --motion-base: 180ms;
   --motion-slow: 280ms;
 
-  /* legacy aliases — keep non-slice modules coherent */
+  /* z-index scale - name every cross-component layer.
+     Local intra-component stacking (sticky <thead>) stays at literal 1. */
+  --z-base: 1;
+  --z-sticky: 40;     /* sidebar, in-shell popovers */
+  --z-dialog: 100;    /* modal scrim */
+  --z-palette: 105;   /* command palette (above dialog) */
+  --z-toast: 110;     /* always above modals */
+  --z-skip: 200;      /* skip-link wins over toast for a11y */
+  --z-auth: 1000;     /* full-screen auth overlay */
+
+  /* breakpoint scale - for future use; existing @media queries migrate progressively. */
+  --bp-sm: 640px;
+  --bp-md: 960px;
+  --bp-lg: 1280px;
+
+  /* legacy aliases - keep non-slice modules coherent */
   --ink: var(--text);
   --muted: var(--text-3);
   --paper: var(--bg);
@@ -148,6 +163,10 @@ table {
   box-sizing: border-box;
 }
 
+html {
+  background: var(--bg);
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -222,7 +241,7 @@ a:hover {
   position: fixed;
   left: var(--s4);
   top: var(--s4);
-  z-index: 200;
+  z-index: var(--z-skip);
   transform: translateY(calc(-100% - var(--s4)));
   border: 1px solid var(--accent);
   border-radius: var(--r1);
@@ -1196,7 +1215,7 @@ h2 {
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  z-index: 40;
+  z-index: var(--z-sticky);
   background: var(--surface);
   border: 1px solid var(--border-2);
   border-radius: var(--r2);
@@ -1246,7 +1265,7 @@ h2 {
   position: sticky;
   top: 0;
   background: var(--surface);
-  z-index: 1;
+  z-index: var(--z-base);
 }
 
 .combobox-option {
@@ -2093,7 +2112,7 @@ h2 {
   .sidebar {
     position: sticky;
     top: 0;
-    z-index: 40;
+    z-index: var(--z-sticky);
     height: auto;
     max-height: none;
     overflow: visible;
@@ -2300,6 +2319,47 @@ h2 {
   background: var(--surface-3);
 }
 
+.btn-secondary {
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.btn-secondary:hover {
+  background: var(--surface-3);
+  border-color: var(--border-2);
+}
+
+.btn-danger {
+  border: 1px solid var(--danger);
+  background: var(--danger);
+  color: var(--on-accent);
+}
+
+.btn-danger:hover {
+  filter: brightness(1.05);
+}
+
+.btn-sm {
+  min-height: 32px;
+  padding: 0 var(--s3);
+  font-size: var(--fs-sm);
+}
+
+.btn-lg {
+  min-height: 48px;
+  padding: 0 var(--s5);
+  font-size: var(--fs-lg);
+}
+
+.btn-loading {
+  cursor: progress;
+}
+
+.btn-spinner {
+  animation: spin 720ms linear infinite;
+}
+
 .btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -2321,6 +2381,44 @@ h2 {
 .field-error {
   color: var(--danger);
   font-size: var(--fs-xs);
+}
+
+.field-hint {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+/* Toggle primitive - checkbox with adjacent title + optional caption.
+   label.field-toggle wins specificity over .client-form label without
+   needing !important (the legacy .settings-toggle used !important). */
+label.field-toggle {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: var(--s3);
+  align-items: start;
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.field-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.field-toggle > span {
+  display: grid;
+  gap: 4px;
+}
+
+.field-toggle small {
+  font-weight: 500;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
 }
 
 .module-message.success {
@@ -2384,7 +2482,7 @@ h2 {
   -webkit-backdrop-filter: blur(8px) saturate(120%);
   display: grid;
   place-items: center;
-  z-index: 100;
+  z-index: var(--z-dialog);
   padding: var(--s5);
   animation: dialog-scrim-in 140ms ease-out;
   overscroll-behavior: contain;
@@ -2599,7 +2697,7 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: var(--s2);
-  z-index: 110;
+  z-index: var(--z-toast);
   pointer-events: none;
   max-width: 380px;
 }
@@ -2656,7 +2754,7 @@ h2 {
   background: oklch(0% 0 0 / 0.55);
   backdrop-filter: blur(10px) saturate(120%);
   -webkit-backdrop-filter: blur(10px) saturate(120%);
-  z-index: 105;
+  z-index: var(--z-palette);
   display: grid;
   place-items: start center;
   padding-top: 14vh;
@@ -3272,7 +3370,7 @@ h2 {
   border-radius: 8px;
   box-shadow: 0 12px 32px -16px rgba(0, 0, 0, 0.45);
   pointer-events: none;
-  z-index: 4;
+  z-index: var(--z-base);
   animation: bar-tooltip-in 140ms ease-out;
 }
 @keyframes bar-tooltip-in {
@@ -3340,7 +3438,7 @@ h2 {
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-variant-numeric: tabular-nums;
 }
-.bar-tooltip-delta.positive { color: var(--success, #34d399); }
+.bar-tooltip-delta.positive { color: var(--success); }
 .bar-tooltip-delta.negative { color: var(--danger); }
 .sparkline svg .bar-value {
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
@@ -4615,7 +4713,7 @@ h2 {
   position: sticky;
   top: 0;
   background: var(--surface);
-  z-index: 1;
+  z-index: var(--z-base);
 }
 
 .import-table th {
@@ -4765,7 +4863,7 @@ h2 {
     radial-gradient(ellipse at bottom right,
       color-mix(in oklch, var(--accent) 4%, transparent), transparent 50%);
   padding: var(--s5);
-  z-index: 1000;
+  z-index: var(--z-auth);
 }
 
 .auth-loading {
@@ -5640,7 +5738,7 @@ button.danger:disabled {
   gap: 4px;
 }
 
-.settings-form .settings-template-textarea {
+.settings-form .whatsapp-template-field textarea {
   min-height: 0;
   padding-block: 8px;
   line-height: 1.35;

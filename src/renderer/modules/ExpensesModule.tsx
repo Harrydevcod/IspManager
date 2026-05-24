@@ -1,7 +1,7 @@
 import { Pencil, Plus, Repeat, Trash2 } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Combobox, DataTable, Dialog, FilterBar, Message, useToast } from '../components';
+import { Badge, Button, Combobox, DataTable, Dialog, Field, FilterBar, Message, Select, Textarea, Toggle, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import type { Client, Expense, ExpenseCategory, ExpenseList, ExpenseTemplate, ExpenseTemplateList, Investment, InvestmentList } from '../types';
@@ -331,12 +331,12 @@ export function ExpensesModule() {
           <h2>Despesas operacionais</h2>
         </div>
         <div className="expenses-header-actions">
-          <button type="button" onClick={openTemplates}>
-            <Repeat size={16} /> Recorrentes
-          </button>
-          <button type="button" className="primary" onClick={openCreate}>
-            <Plus size={16} /> Nova despesa
-          </button>
+          <Button variant="secondary" leadingIcon={<Repeat size={16} aria-hidden />} onClick={openTemplates}>
+            Recorrentes
+          </Button>
+          <Button leadingIcon={<Plus size={16} aria-hidden />} onClick={openCreate}>
+            Nova despesa
+          </Button>
         </div>
       </div>
 
@@ -368,34 +368,27 @@ export function ExpensesModule() {
 
       <div className="expenses-filter-shell">
         <FilterBar>
-          <label>
-            Mes
-            <input
-              type="month"
-              value={month}
-              disabled={showAllMonths}
-              onChange={(e) => setMonth(e.target.value || currentMonth())}
-            />
-          </label>
-          <label className="expenses-toggle-filter">
-            <input
-              type="checkbox"
-              checked={showAllMonths}
-              onChange={(e) => setShowAllMonths(e.target.checked)}
-            />
-            <span>Todos os meses</span>
-          </label>
-          <label>
-            Categoria
-            <select value={category} onChange={(e) => setCategory(e.target.value as 'all' | ExpenseCategory)}>
-              <option value="all">Todas</option>
-              {CATEGORIES.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Field
+            label="Mes"
+            type="month"
+            value={month}
+            disabled={showAllMonths}
+            onChange={(e) => setMonth(e.target.value || currentMonth())}
+          />
+          <Toggle
+            className="expenses-toggle-filter"
+            title="Todos os meses"
+            checked={showAllMonths}
+            onChange={(e) => setShowAllMonths(e.target.checked)}
+          />
+          <Select label="Categoria" value={category} onChange={(e) => setCategory(e.target.value as 'all' | ExpenseCategory)}>
+            <option value="all">Todas</option>
+            {CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </Select>
         </FilterBar>
       </div>
 
@@ -491,18 +484,19 @@ export function ExpensesModule() {
         ]}
         actions={(expense) => (
           <>
-            <button type="button" title="Editar" aria-label="Editar despesa" onClick={() => openEdit(expense)}>
+            <Button variant="icon" size="sm" title="Editar" aria-label="Editar despesa" onClick={() => openEdit(expense)}>
               <Pencil size={16} aria-hidden />
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="icon"
+              size="sm"
               title="Apagar"
               className="danger-ghost"
               aria-label="Apagar despesa"
               onClick={() => void remove(expense)}
             >
               <Trash2 size={16} aria-hidden />
-            </button>
+            </Button>
           </>
         )}
       />
@@ -517,83 +511,77 @@ export function ExpensesModule() {
         closeOnBackdrop={!submitting}
         actions={
           <>
-            <button type="button" onClick={closeDialog} disabled={submitting}>
+            <Button variant="secondary" onClick={closeDialog} disabled={submitting}>
               Cancelar
-            </button>
-            <button type="submit" form="expense-form" className="primary" disabled={submitting}>
+            </Button>
+            <Button type="submit" form="expense-form" loading={submitting}>
               {submitting ? 'A guardar...' : editing ? 'Guardar alteracoes' : 'Registar'}
-            </button>
+            </Button>
           </>
         }
       >
         <form id="expense-form" className="expense-form" onSubmit={submit}>
           <div className="expense-form-section">
             <span className="expense-form-section-title">Identificação</span>
-            <label className="field-wide">
-              Descrição
-              <input
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                required
-                maxLength={240}
-                placeholder="Ex: Banda mensal Sotelco"
-              />
-            </label>
+            <Field
+              wide
+              label="Descricao"
+              value={form.description}
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+              required
+              maxLength={240}
+              placeholder="Ex: Banda mensal Sotelco"
+            />
             <div className="expense-form-grid">
-              <label className="col-amount expense-form-amount">
-                Valor
-                <input
-                  value={form.amountCve}
-                  onChange={(e) => setForm((f) => ({ ...f, amountCve: e.target.value }))}
-                  inputMode="decimal"
-                  required
-                  placeholder="0"
-                />
-              </label>
-              <label className="col-date">
-                Data
-                <input
-                  type="date"
-                  value={form.expenseDate}
-                  onChange={(e) => setForm((f) => ({ ...f, expenseDate: e.target.value }))}
-                  required
-                />
-              </label>
-              <label className="col-category">
-                Categoria
-                <select
-                  value={form.category}
-                  onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as ExpenseCategory }))}
-                >
-                  {CATEGORIES.map((c) => (
-                    <option key={c.value} value={c.value}>{c.label}</option>
-                  ))}
-                </select>
-              </label>
+              <Field
+                className="col-amount expense-form-amount"
+                label="Valor"
+                value={form.amountCve}
+                onChange={(e) => setForm((f) => ({ ...f, amountCve: e.target.value }))}
+                inputMode="decimal"
+                required
+                placeholder="0"
+              />
+              <Field
+                className="col-date"
+                label="Data"
+                type="date"
+                value={form.expenseDate}
+                onChange={(e) => setForm((f) => ({ ...f, expenseDate: e.target.value }))}
+                required
+              />
+              <Select
+                className="col-category"
+                label="Categoria"
+                value={form.category}
+                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as ExpenseCategory }))}
+              >
+                {CATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </Select>
             </div>
           </div>
 
           <div className="expense-form-section">
             <span className="expense-form-section-title">Documento</span>
             <div className="expense-form-grid">
-              <label className="col-supplier">
-                Fornecedor
-                <input
-                  value={form.supplier}
-                  onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))}
-                  maxLength={160}
-                  placeholder="Nome ou empresa"
-                />
-              </label>
-              <label className="col-doc">
-                Referência
-                <input
-                  value={form.invoiceReference}
-                  onChange={(e) => setForm((f) => ({ ...f, invoiceReference: e.target.value }))}
-                  maxLength={80}
-                  placeholder="FT-2026/142"
-                />
-              </label>
+              <Field
+                className="col-supplier"
+                label="Fornecedor"
+                value={form.supplier}
+                onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))}
+                maxLength={160}
+                placeholder="Nome ou empresa"
+              />
+              <Field
+                className="col-doc"
+                label="Referencia"
+                value={form.invoiceReference}
+                onChange={(e) => setForm((f) => ({ ...f, invoiceReference: e.target.value }))}
+                maxLength={80}
+                placeholder="FT-2026/142"
+              />
             </div>
           </div>
           <fieldset className="expense-allocation">
@@ -603,36 +591,37 @@ export function ExpensesModule() {
             </small>
             <div className="expense-allocation-tabs">
               {(['none', 'investment', 'zone', 'client'] as AllocationTarget[]).map((target) => (
-                <button
+                <Button
                   key={target}
-                  type="button"
+                  variant="ghost"
+                  size="sm"
                   className={form.allocationTarget === target ? 'active' : ''}
                   onClick={() => setForm((f) => ({ ...f, allocationTarget: target }))}
                 >
                   {target === 'none' ? 'Pool (rateio)' : target === 'investment' ? 'Investimento' : target === 'zone' ? 'Zona' : 'Cliente'}
-                </button>
+                </Button>
               ))}
             </div>
             {form.allocationTarget === 'investment' && (
-              <label className="field-wide">
-                Investimento alvo
-                <select
-                  value={form.investmentId}
-                  onChange={(e) => setForm((f) => ({ ...f, investmentId: e.target.value }))}
-                >
-                  <option value="">Selecionar...</option>
-                  {investments.map((inv) => (
-                    <option key={inv.id} value={inv.id}>
-                      {inv.name}{inv.zone ? ` · ${inv.zone}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <Select
+                wide
+                label="Investimento alvo"
+                value={form.investmentId}
+                onChange={(e) => setForm((f) => ({ ...f, investmentId: e.target.value }))}
+              >
+                <option value="">Selecionar...</option>
+                {investments.map((inv) => (
+                  <option key={inv.id} value={inv.id}>
+                    {inv.name}{inv.zone ? ` - ${inv.zone}` : ''}
+                  </option>
+                ))}
+              </Select>
             )}
             {form.allocationTarget === 'zone' && (
-              <label className="field-wide">
-                Zona alvo
-                <input
+              <>
+                <Field
+                  wide
+                  label="Zona alvo"
                   list="expense-zones"
                   value={form.zone}
                   onChange={(e) => setForm((f) => ({ ...f, zone: e.target.value }))}
@@ -641,7 +630,7 @@ export function ExpensesModule() {
                 <datalist id="expense-zones">
                   {zones.map((z) => <option key={z} value={z} />)}
                 </datalist>
-              </label>
+              </>
             )}
             {form.allocationTarget === 'client' && (
               <label className="field-wide">
@@ -658,15 +647,13 @@ export function ExpensesModule() {
               </label>
             )}
           </fieldset>
-          <label className="field-wide">
-            Notas
-            <textarea
-              value={form.notes}
-              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-              rows={3}
-              maxLength={500}
-            />
-          </label>
+          <Textarea
+            label="Notas"
+            value={form.notes}
+            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+            rows={3}
+            maxLength={500}
+          />
         </form>
       </Dialog>
 
@@ -678,10 +665,10 @@ export function ExpensesModule() {
         size="lg"
         actions={
           <>
-            <button type="button" onClick={() => setTemplatesOpen(false)}>Fechar</button>
-            <button type="button" className="primary" onClick={() => void runTemplates()}>
+            <Button variant="secondary" onClick={() => setTemplatesOpen(false)}>Fechar</Button>
+            <Button onClick={() => void runTemplates()}>
               Gerar agora
-            </button>
+            </Button>
           </>
         }
       >
@@ -703,52 +690,46 @@ export function ExpensesModule() {
           </small>
 
           <form onSubmit={submitTemplate} className="expense-template-form">
-            <label className="full">
-              Nome
-              <input
-                value={templateForm.name}
-                onChange={(e) => setTemplateForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="Ex: Salários da equipa"
-                required
-                maxLength={180}
-              />
-            </label>
-            <label>
-              Categoria
-              <select
-                value={templateForm.category}
-                onChange={(e) => setTemplateForm((f) => ({ ...f, category: e.target.value as ExpenseCategory }))}
-              >
-                {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
-            </label>
-            <label>
-              Valor (CVE)
-              <input
-                value={templateForm.amountCve}
-                onChange={(e) => setTemplateForm((f) => ({ ...f, amountCve: e.target.value }))}
-                inputMode="decimal"
-                required
-                placeholder="0"
-              />
-            </label>
-            <label>
-              Dia (1–28)
-              <input
-                type="number"
-                min={1}
-                max={28}
-                value={templateForm.dayOfMonth}
-                onChange={(e) => setTemplateForm((f) => ({ ...f, dayOfMonth: e.target.value }))}
-              />
-            </label>
-            <button type="submit" className="primary" disabled={templateSaving}>
+            <Field
+              wide
+              className="full"
+              label="Nome"
+              value={templateForm.name}
+              onChange={(e) => setTemplateForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="Ex: Salarios da equipa"
+              required
+              maxLength={180}
+            />
+            <Select
+              label="Categoria"
+              value={templateForm.category}
+              onChange={(e) => setTemplateForm((f) => ({ ...f, category: e.target.value as ExpenseCategory }))}
+            >
+              {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </Select>
+            <Field
+              label="Valor (CVE)"
+              value={templateForm.amountCve}
+              onChange={(e) => setTemplateForm((f) => ({ ...f, amountCve: e.target.value }))}
+              inputMode="decimal"
+              required
+              placeholder="0"
+            />
+            <Field
+              label="Dia (1-28)"
+              type="number"
+              min={1}
+              max={28}
+              value={templateForm.dayOfMonth}
+              onChange={(e) => setTemplateForm((f) => ({ ...f, dayOfMonth: e.target.value }))}
+            />
+            <Button type="submit" loading={templateSaving}>
               {templateSaving ? 'A guardar...' : 'Adicionar'}
-            </button>
+            </Button>
           </form>
 
           {templates.rows.length === 0 ? (
-            <p className="module-message">Sem templates ainda. Adiciona um acima.</p>
+            <Message>Sem templates ainda. Adiciona um acima.</Message>
           ) : (
             <ul className="expense-template-list">
               {templates.rows.map((t) => (
@@ -764,12 +745,12 @@ export function ExpensesModule() {
                     </small>
                   </div>
                   <div className="expense-template-actions">
-                    <button type="button" onClick={() => void toggleTemplate(t)}>
+                    <Button variant="secondary" size="sm" onClick={() => void toggleTemplate(t)}>
                       {t.active ? 'Pausar' : 'Ativar'}
-                    </button>
-                    <button type="button" className="danger-ghost" onClick={() => void deleteTemplate(t)}>
-                      <Trash2 size={14} />
-                    </button>
+                    </Button>
+                    <Button variant="icon" size="sm" className="danger-ghost" onClick={() => void deleteTemplate(t)}>
+                      <Trash2 size={14} aria-hidden />
+                    </Button>
                   </div>
                 </li>
               ))}

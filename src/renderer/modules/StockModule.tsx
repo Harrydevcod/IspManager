@@ -1,7 +1,7 @@
 import { Activity, ArrowDownUp, Banknote, Boxes, Gauge, Pencil, Users } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Badge, Dialog, useToast } from '../components';
+import { Badge, Button, Dialog, Field, FilterBar, Message, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { stockLevelTone } from '../lib/status';
 import type { CatalogAssignments, StockCatalogRow, StockMovement, StockSummary } from '../types';
@@ -218,45 +218,36 @@ export function StockModule() {
           <h2>Stock</h2>
         </div>
         {canManageStock && (
-          <button type="button" onClick={openCreateCatalog}>
+          <Button onClick={openCreateCatalog}>
             Novo equipamento
-          </button>
+          </Button>
         )}
       </div>
 
-      <div className="filter-bar">
-        <label>
-          Buscar
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Marca, modelo ou fornecedor" />
-        </label>
-        <label>
-          Tipo
-          <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | StockCatalogRow['type'])}>
-            <option value="all">Todos</option>
-            <option value="cpe">CPE</option>
-            <option value="router">Router</option>
-            <option value="antena">Antena</option>
-            <option value="switch">Switch</option>
-            <option value="outro">Outro</option>
-          </select>
-        </label>
-        <label>
-          Stock
-          <select value={stockFilter} onChange={(event) => setStockFilter(event.target.value as 'all' | 'low' | 'out')}>
-            <option value="all">Todos</option>
-            <option value="low">Baixo</option>
-            <option value="out">Esgotado</option>
-          </select>
-        </label>
-        <button type="button" onClick={() => {
+      <FilterBar>
+        <Field type="search" label="Buscar" aria-label="Pesquisar stock" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Marca, modelo ou fornecedor" />
+        <Select label="Tipo" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | StockCatalogRow['type'])}>
+          <option value="all">Todos</option>
+          <option value="cpe">CPE</option>
+          <option value="router">Router</option>
+          <option value="antena">Antena</option>
+          <option value="switch">Switch</option>
+          <option value="outro">Outro</option>
+        </Select>
+        <Select label="Stock" value={stockFilter} onChange={(event) => setStockFilter(event.target.value as 'all' | 'low' | 'out')}>
+          <option value="all">Todos</option>
+          <option value="low">Baixo</option>
+          <option value="out">Esgotado</option>
+        </Select>
+        <Button variant="secondary" onClick={() => {
           setSearch('');
           setTypeFilter('all');
           setStockFilter('all');
         }}>
           Limpar filtros
-        </button>
+        </Button>
         <small>{visibleStockRows.length} modelos</small>
-      </div>
+      </FilterBar>
 
       <section className="metric-grid compact" aria-label="Resumo de stock">
         <article className="metric-card">
@@ -294,8 +285,8 @@ export function StockModule() {
             </div>
             {canManageStock && (
               <div className="inline-actions">
-                <button type="button" onClick={() => editCatalog(selectedCatalog)}>Editar</button>
-                <button type="button" onClick={openMovementForm}>Movimento</button>
+                <Button variant="secondary" size="sm" onClick={() => editCatalog(selectedCatalog)}>Editar</Button>
+                <Button size="sm" onClick={openMovementForm}>Movimento</Button>
               </div>
             )}
           </div>
@@ -317,9 +308,9 @@ export function StockModule() {
                 </span>
               )}
             </header>
-            {!assignments && <p className="muted">A carregar...</p>}
+            {!assignments && <Message>A carregar...</Message>}
             {assignments && assignments.items.length === 0 && (
-              <p className="muted">Este modelo ainda nao foi atribuido a nenhum servico.</p>
+              <Message>Este modelo ainda nao foi atribuido a nenhum servico.</Message>
             )}
             {assignments && assignments.items.length > 0 && (
               <ul className="technical-list">
@@ -385,8 +376,9 @@ export function StockModule() {
             <Badge tone={stockLevelTone(item.stockTotal)}>{item.stockTotal} un.</Badge>
             {canManageStock && (
               <div className="row-actions" onClick={(event) => event.stopPropagation()}>
-                <button
-                  type="button"
+                <Button
+                  variant="icon"
+                  size="sm"
                   className="row-action"
                   title="Editar equipamento"
                   aria-label="Editar equipamento"
@@ -395,10 +387,11 @@ export function StockModule() {
                     editCatalog(item);
                   }}
                 >
-                  <Pencil size={14} />
-                </button>
-                <button
-                  type="button"
+                  <Pencil size={14} aria-hidden />
+                </Button>
+                <Button
+                  variant="icon"
+                  size="sm"
                   className="row-action"
                   title="Novo movimento"
                   aria-label="Novo movimento"
@@ -408,14 +401,14 @@ export function StockModule() {
                     openMovementForm();
                   }}
                 >
-                  <ArrowDownUp size={14} />
-                </button>
+                  <ArrowDownUp size={14} aria-hidden />
+                </Button>
               </div>
             )}
           </div>
         ))}
         {summary && visibleStockRows.length === 0 && (
-          <p className="module-message">Nenhum equipamento encontrado para os filtros atuais.</p>
+          <Message>Nenhum equipamento encontrado para os filtros atuais.</Message>
         )}
       </div>
 
@@ -427,59 +420,32 @@ export function StockModule() {
         size="md"
         actions={
           <>
-            <button type="button" onClick={closeCatalogForm}>Cancelar</button>
-            <button type="submit" form="catalog-form" className="primary">
+            <Button variant="secondary" onClick={closeCatalogForm}>Cancelar</Button>
+            <Button type="submit" form="catalog-form">
               {editingCatalog ? 'Atualizar equipamento' : 'Gravar equipamento'}
-            </button>
+            </Button>
           </>
         }
       >
         <form id="catalog-form" className="client-form" onSubmit={saveCatalog}>
-          <label>
-            Tipo
-            <select value={catalogForm.type} onChange={(event) => updateCatalogForm('type', event.target.value)}>
-              <option value="cpe">CPE</option>
-              <option value="router">Router</option>
-              <option value="antena">Antena</option>
-              <option value="switch">Switch</option>
-              <option value="outro">Outro</option>
-            </select>
-          </label>
-          <label>
-            Marca
-            <input value={catalogForm.brand} onChange={(event) => updateCatalogForm('brand', event.target.value)} />
-          </label>
-          <label>
-            Modelo
-            <input required value={catalogForm.model} onChange={(event) => updateCatalogForm('model', event.target.value)} />
-          </label>
-          <label>
-            Fornecedor
-            <input value={catalogForm.supplier} onChange={(event) => updateCatalogForm('supplier', event.target.value)} />
-          </label>
-          <label>
-            Custo compra CVE
-            <input type="number" min="0" value={catalogForm.purchasePriceCve} onChange={(event) => updateCatalogForm('purchasePriceCve', event.target.value)} />
-          </label>
-          <label>
-            Preco venda CVE
-            <input type="number" min="0" value={catalogForm.sellingPriceCve} onChange={(event) => updateCatalogForm('sellingPriceCve', event.target.value)} />
-          </label>
-          <label>
-            Aluguer mensal CVE
-            <input type="number" min="0" value={catalogForm.rentalFeeCve} onChange={(event) => updateCatalogForm('rentalFeeCve', event.target.value)} />
-          </label>
-          <label>
-            {editingCatalog ? 'Stock atual' : 'Stock inicial'}
-            <input type="number" min="0" value={catalogForm.stockTotal} onChange={(event) => updateCatalogForm('stockTotal', event.target.value)} />
-          </label>
-          <label>
-            Estado
-            <select value={catalogForm.active} onChange={(event) => updateCatalogForm('active', event.target.value)}>
-              <option value="1">Ativo</option>
-              <option value="0">Inativo</option>
-            </select>
-          </label>
+          <Select label="Tipo" value={catalogForm.type} onChange={(event) => updateCatalogForm('type', event.target.value)}>
+            <option value="cpe">CPE</option>
+            <option value="router">Router</option>
+            <option value="antena">Antena</option>
+            <option value="switch">Switch</option>
+            <option value="outro">Outro</option>
+          </Select>
+          <Field label="Marca" value={catalogForm.brand} onChange={(event) => updateCatalogForm('brand', event.target.value)} />
+          <Field label="Modelo" required value={catalogForm.model} onChange={(event) => updateCatalogForm('model', event.target.value)} />
+          <Field label="Fornecedor" value={catalogForm.supplier} onChange={(event) => updateCatalogForm('supplier', event.target.value)} />
+          <Field label="Custo compra CVE" type="number" min={0} value={catalogForm.purchasePriceCve} onChange={(event) => updateCatalogForm('purchasePriceCve', event.target.value)} />
+          <Field label="Preco venda CVE" type="number" min={0} value={catalogForm.sellingPriceCve} onChange={(event) => updateCatalogForm('sellingPriceCve', event.target.value)} />
+          <Field label="Aluguer mensal CVE" type="number" min={0} value={catalogForm.rentalFeeCve} onChange={(event) => updateCatalogForm('rentalFeeCve', event.target.value)} />
+          <Field label={editingCatalog ? 'Stock atual' : 'Stock inicial'} type="number" min={0} value={catalogForm.stockTotal} onChange={(event) => updateCatalogForm('stockTotal', event.target.value)} />
+          <Select label="Estado" value={catalogForm.active} onChange={(event) => updateCatalogForm('active', event.target.value)}>
+            <option value="1">Ativo</option>
+            <option value="0">Inativo</option>
+          </Select>
         </form>
       </Dialog>
 
@@ -491,40 +457,22 @@ export function StockModule() {
         size="md"
         actions={
           <>
-            <button type="button" onClick={closeMovementForm}>Cancelar</button>
-            <button type="submit" form="movement-form" className="primary">Registar</button>
+            <Button variant="secondary" onClick={closeMovementForm}>Cancelar</Button>
+            <Button type="submit" form="movement-form">Registar</Button>
           </>
         }
       >
         <form id="movement-form" className="client-form" onSubmit={createMovement}>
-          <label>
-            Tipo
-            <select value={movementForm.type} onChange={(event) => updateMovementForm('type', event.target.value)}>
-              <option value="entrada">Entrada</option>
-              <option value="saida">Saida</option>
-              <option value="ajuste">Ajuste</option>
-            </select>
-          </label>
-          <label>
-            Quantidade
-            <input required type="number" value={movementForm.quantity} onChange={(event) => updateMovementForm('quantity', event.target.value)} />
-          </label>
-          <label>
-            Custo unitario CVE
-            <input type="number" min="0" value={movementForm.unitCostCve} onChange={(event) => updateMovementForm('unitCostCve', event.target.value)} />
-          </label>
-          <label>
-            Fornecedor
-            <input value={movementForm.supplier} onChange={(event) => updateMovementForm('supplier', event.target.value)} />
-          </label>
-          <label>
-            Referencia
-            <input value={movementForm.reference} onChange={(event) => updateMovementForm('reference', event.target.value)} />
-          </label>
-          <label className="wide-field">
-            Notas
-            <input value={movementForm.notes} onChange={(event) => updateMovementForm('notes', event.target.value)} />
-          </label>
+          <Select label="Tipo" value={movementForm.type} onChange={(event) => updateMovementForm('type', event.target.value)}>
+            <option value="entrada">Entrada</option>
+            <option value="saida">Saida</option>
+            <option value="ajuste">Ajuste</option>
+          </Select>
+          <Field label="Quantidade" required type="number" value={movementForm.quantity} onChange={(event) => updateMovementForm('quantity', event.target.value)} />
+          <Field label="Custo unitario CVE" type="number" min={0} value={movementForm.unitCostCve} onChange={(event) => updateMovementForm('unitCostCve', event.target.value)} />
+          <Field label="Fornecedor" value={movementForm.supplier} onChange={(event) => updateMovementForm('supplier', event.target.value)} />
+          <Field label="Referencia" value={movementForm.reference} onChange={(event) => updateMovementForm('reference', event.target.value)} />
+          <Field wide label="Notas" value={movementForm.notes} onChange={(event) => updateMovementForm('notes', event.target.value)} />
         </form>
       </Dialog>
     </section>

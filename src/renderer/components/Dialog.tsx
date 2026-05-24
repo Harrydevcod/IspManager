@@ -112,7 +112,7 @@ export function Dialog({
             aria-label="Fechar"
             title="Fechar"
           >
-            <X size={16} />
+            <X size={16} aria-hidden />
           </button>
         </header>
         <div className="dialog-body">{children}</div>

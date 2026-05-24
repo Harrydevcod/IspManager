@@ -1,5 +1,6 @@
 import { Activity, Banknote, Cable, MessageCircle, UsersRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Button, Field, FilterBar, Message } from '../components';
 import { authFetch } from '../lib/auth';
 import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
 import type { ReportsSummary, ReportView } from '../types';
@@ -145,32 +146,40 @@ export function ReportsModule() {
           <h2>Relatorios</h2>
         </div>
         <div className="inline-actions report-tabs">
-          <button className={view === 'revenue' ? 'active' : ''} type="button" onClick={() => changeView('revenue')}>Receita</button>
-          <button className={view === 'overdue' ? 'active' : ''} type="button" onClick={() => changeView('overdue')}>Atrasos</button>
-          <button className={view === 'stock' ? 'active' : ''} type="button" onClick={() => changeView('stock')}>Stock</button>
-          <button type="button" disabled={!summary} onClick={exportCsv}>Exportar CSV</button>
+          <Button variant="ghost" size="sm" className={view === 'revenue' ? 'active' : ''} onClick={() => changeView('revenue')}>Receita</Button>
+          <Button variant="ghost" size="sm" className={view === 'overdue' ? 'active' : ''} onClick={() => changeView('overdue')}>Atrasos</Button>
+          <Button variant="ghost" size="sm" className={view === 'stock' ? 'active' : ''} onClick={() => changeView('stock')}>Stock</Button>
+          <Button variant="secondary" size="sm" disabled={!summary} onClick={exportCsv}>
+            Exportar CSV
+          </Button>
         </div>
       </div>
 
-      <div className="filter-bar reports-filter-bar">
-        <label>
-          De
-          <input type="date" value={dateFrom} disabled={view === 'stock'} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} />
-        </label>
-        <label>
-          Ate
-          <input type="date" value={dateTo} disabled={view === 'stock'} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} />
-        </label>
-        <button type="button" disabled={view === 'stock' && !dateFrom && !dateTo} onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }}>
+      <FilterBar className="reports-filter-bar">
+        <Field
+          label="De"
+          type="date"
+          value={dateFrom}
+          disabled={view === 'stock'}
+          onChange={(event) => { setDateFrom(event.target.value); setPage(1); }}
+        />
+        <Field
+          label="Ate"
+          type="date"
+          value={dateTo}
+          disabled={view === 'stock'}
+          onChange={(event) => { setDateTo(event.target.value); setPage(1); }}
+        />
+        <Button variant="secondary" disabled={view === 'stock' && !dateFrom && !dateTo} onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }}>
           Limpar datas
-        </button>
+        </Button>
         <small>
           {view === 'stock' ? `${showingFrom}-${showingTo} de ${total} itens` : `${showingFrom}-${showingTo} de ${total} registos`}
         </small>
-      </div>
+      </FilterBar>
 
-      {error && <p className="module-message error">{error}</p>}
-      {whatsappStatus && <p className="module-message">{whatsappStatus}</p>}
+      {error && <Message tone="error">{error}</Message>}
+      {whatsappStatus && <Message>{whatsappStatus}</Message>}
 
       <section className="metric-grid compact" aria-label="Resumo de relatorios">
         <article className="metric-card">
@@ -219,10 +228,15 @@ export function ReportsModule() {
             </span>
             <small>{row.payments} cobrancas</small>
             <small>{row.amountCve.toLocaleString('pt-PT')} CVE</small>
-            <button type="button" disabled={!normalizeWhatsappPhone(row.phone)} onClick={() => void sendOverdueWhatsapp(row)}>
-              <MessageCircle size={16} />
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!normalizeWhatsappPhone(row.phone)}
+              leadingIcon={<MessageCircle size={16} />}
+              onClick={() => void sendOverdueWhatsapp(row)}
+            >
               WhatsApp
-            </button>
+            </Button>
           </div>
         ))}
         {view === 'stock' && summary?.stockRows.map((row) => (
@@ -236,23 +250,33 @@ export function ReportsModule() {
           </div>
         ))}
         {summary && view === 'revenue' && summary.revenueByMonth.length === 0 && (
-          <p className="module-message">Ainda nao existem pagamentos para reportar.</p>
+          <Message>Ainda nao existem pagamentos para reportar.</Message>
         )}
         {summary && view === 'overdue' && summary.overdueClients.length === 0 && (
-          <p className="module-message">Nao existem clientes em atraso.</p>
+          <Message>Nao existem clientes em atraso.</Message>
         )}
         {summary && view === 'stock' && summary.stockRows.length === 0 && (
-          <p className="module-message">Ainda nao existem equipamentos cadastrados.</p>
+          <Message>Ainda nao existem equipamentos cadastrados.</Message>
         )}
         {summary && total > PAGE_SIZE && (
           <div className="audit-pagination reports-pagination" aria-label="Paginacao dos relatorios">
-            <button type="button" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+            >
               Anterior
-            </button>
+            </Button>
             <span>Pagina {page} de {totalPages}</span>
-            <button type="button" disabled={page >= totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+            >
               Proxima
-            </button>
+            </Button>
           </div>
         )}
       </div>

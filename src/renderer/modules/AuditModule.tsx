@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Badge } from '../components';
+import { Badge, Button, Field, FilterBar, Message, Select } from '../components';
 import { authFetch } from '../lib/auth';
 
 type AuditLogRow = {
@@ -92,34 +92,37 @@ export function AuditModule() {
           <p className="eyebrow">Administracao</p>
           <h2>Auditoria</h2>
         </div>
-        <button type="button" onClick={() => void load()}>Atualizar</button>
+        <Button variant="secondary" size="sm" loading={loading} onClick={() => void load()}>
+          Atualizar
+        </Button>
       </div>
 
-      <div className="filter-bar">
-        <label>
-          Entidade
-          <select value={entityFilter} onChange={(event) => { setEntityFilter(event.target.value); setPage(1); }}>
-            <option value="all">Todas</option>
-            {entities.map((entity) => (
-              <option key={entity} value={entity}>{entity}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          De
-          <input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} />
-        </label>
-        <label>
-          Ate
-          <input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} />
-        </label>
-        <button type="button" onClick={() => { setEntityFilter('all'); setDateFrom(''); setDateTo(''); setPage(1); }}>
+      <FilterBar>
+        <Select label="Entidade" value={entityFilter} onChange={(event) => { setEntityFilter(event.target.value); setPage(1); }}>
+          <option value="all">Todas</option>
+          {entities.map((entity) => (
+            <option key={entity} value={entity}>{entity}</option>
+          ))}
+        </Select>
+        <Field
+          label="De"
+          type="date"
+          value={dateFrom}
+          onChange={(event) => { setDateFrom(event.target.value); setPage(1); }}
+        />
+        <Field
+          label="Ate"
+          type="date"
+          value={dateTo}
+          onChange={(event) => { setDateTo(event.target.value); setPage(1); }}
+        />
+        <Button variant="secondary" onClick={() => { setEntityFilter('all'); setDateFrom(''); setDateTo(''); setPage(1); }}>
           Limpar filtros
-        </button>
+        </Button>
         <small>{showingFrom}-{showingTo} de {total} eventos</small>
-      </div>
+      </FilterBar>
 
-      {loading && <p className="module-message">A carregar auditoria...</p>}
+      {loading && <Message>A carregar auditoria...</Message>}
       {!loading && (
         <div className="module-table">
           {rows.map((row) => (
@@ -134,16 +137,26 @@ export function AuditModule() {
               <small className="audit-row-entity">{row.entityType}{row.entityId ? ` #${row.entityId}` : ''}</small>
             </div>
           ))}
-          {rows.length === 0 && <p className="module-message">Sem eventos de auditoria.</p>}
+          {rows.length === 0 && <Message>Sem eventos de auditoria.</Message>}
           {total > PAGE_SIZE && (
             <div className="audit-pagination" aria-label="Paginacao da auditoria">
-              <button type="button" disabled={page <= 1 || loading} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={page <= 1 || loading}
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+              >
                 Anterior
-              </button>
+              </Button>
               <span>Pagina {page} de {totalPages}</span>
-              <button type="button" disabled={page >= totalPages || loading} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={page >= totalPages || loading}
+                onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+              >
                 Proxima
-              </button>
+              </Button>
             </div>
           )}
         </div>

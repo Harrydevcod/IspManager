@@ -1,7 +1,7 @@
 import { ClipboardList, Pencil, Plus, Trash2, X } from 'lucide-react';
 import type { CSSProperties, DragEvent, FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Dialog, useToast } from '../components';
+import { Button, Dialog, Field, Message, Select, Textarea, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import type {
   ServiceEventType,
@@ -296,13 +296,13 @@ export function WorkOrdersModule() {
           )}
         </div>
         <div className="inline-actions">
-          <button type="button" onClick={openCreate}>
-            <Plus size={14} aria-hidden /> Nova OS
-          </button>
+          <Button size="sm" leadingIcon={<Plus size={14} aria-hidden />} onClick={openCreate}>
+            Nova OS
+          </Button>
         </div>
       </div>
 
-      {!board && <p className="muted">A carregar...</p>}
+      {!board && <Message>A carregar...</Message>}
 
       {board && (
         <div className="kanban-board" role="list">
@@ -365,8 +365,9 @@ export function WorkOrdersModule() {
                             {PRIORITY_TAG[order.priority]}
                           </span>
                           {canDeleteWorkOrders && (
-                            <button
-                              type="button"
+                            <Button
+                              variant="icon"
+                              size="sm"
                               className="kanban-card-remove"
                               aria-label={`Eliminar ${osIdentifier(order.id)}`}
                               title="Eliminar"
@@ -376,7 +377,7 @@ export function WorkOrdersModule() {
                               }}
                             >
                               <X size={12} aria-hidden />
-                            </button>
+                            </Button>
                           )}
                         </div>
                         <h4 className="kanban-card-title">{order.title}</h4>
@@ -408,129 +409,68 @@ export function WorkOrdersModule() {
         actions={
           <>
             {editing && canDeleteWorkOrders && (
-              <button type="button" onClick={() => removeOrder(editing)}>
-                <Trash2 size={14} aria-hidden /> Eliminar
-              </button>
+              <Button variant="danger" leadingIcon={<Trash2 size={14} aria-hidden />} onClick={() => removeOrder(editing)}>
+                Eliminar
+              </Button>
             )}
-            <button type="button" onClick={closeForm}>Cancelar</button>
-            <button type="submit" form="work-order-form" className="primary" disabled={submitting}>
-              <Pencil size={14} aria-hidden /> {editing ? 'Guardar' : 'Criar'}
-            </button>
+            <Button variant="secondary" onClick={closeForm}>Cancelar</Button>
+            <Button type="submit" form="work-order-form" loading={submitting} leadingIcon={!submitting ? <Pencil size={14} aria-hidden /> : undefined}>
+              {editing ? 'Guardar' : 'Criar'}
+            </Button>
           </>
         }
       >
         <form id="work-order-form" onSubmit={submitForm} className="client-form">
-          <label>
-            <span>Titulo</span>
-            <input
-              type="text"
-              value={form.title}
-              onChange={(event) => setForm({ ...form, title: event.target.value })}
-              required
-              maxLength={140}
-            />
-          </label>
+          <Field label="Titulo" type="text" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required maxLength={140} />
 
-          <label className="wide-field">
-            <span>Descricao</span>
-            <textarea
-              rows={2}
-              value={form.description}
-              onChange={(event) => setForm({ ...form, description: event.target.value })}
-            />
-          </label>
+          <Textarea label="Descricao" rows={2} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
 
-          <label>
-            <span>Servico</span>
-            <select
-              value={form.serviceId}
-              onChange={(event) => setForm({ ...form, serviceId: event.target.value })}
-            >
-              <option value="">(sem servico associado)</option>
-              {services.map((service) => (
-                <option key={service.id} value={service.id}>
-                  #{service.id} - {service.clientName}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Select label="Servico" value={form.serviceId} onChange={(event) => setForm({ ...form, serviceId: event.target.value })}>
+            <option value="">(sem servico associado)</option>
+            {services.map((service) => (
+              <option key={service.id} value={service.id}>
+                #{service.id} - {service.clientName}
+              </option>
+            ))}
+          </Select>
 
-          <label>
-            <span>Tipo de evento</span>
-            <select
-              value={form.eventType}
-              onChange={(event) =>
-                setForm({ ...form, eventType: event.target.value as FormState['eventType'] })
-              }
-            >
-              <option value="">(nao definido)</option>
-              {(Object.keys(EVENT_LABEL) as ServiceEventType[]).map((type) => (
-                <option key={type} value={type}>
-                  {EVENT_LABEL[type]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Select label="Tipo de evento" value={form.eventType} onChange={(event) => setForm({ ...form, eventType: event.target.value as FormState['eventType'] })}>
+            <option value="">(nao definido)</option>
+            {(Object.keys(EVENT_LABEL) as ServiceEventType[]).map((type) => (
+              <option key={type} value={type}>
+                {EVENT_LABEL[type]}
+              </option>
+            ))}
+          </Select>
 
-          <label>
-            <span>Estado</span>
-            <select
-              value={form.status}
-              onChange={(event) => setForm({ ...form, status: event.target.value as WorkOrderStatus })}
-            >
-              {STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {STATUS_LABEL[status]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Select label="Estado" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as WorkOrderStatus })}>
+            {STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {STATUS_LABEL[status]}
+              </option>
+            ))}
+          </Select>
 
-          <label>
-            <span>Prioridade</span>
-            <select
-              value={form.priority}
-              onChange={(event) =>
-                setForm({ ...form, priority: event.target.value as WorkOrderPriority })
-              }
-            >
-              {(Object.keys(PRIORITY_LABEL) as WorkOrderPriority[]).map((priority) => (
-                <option key={priority} value={priority}>
-                  {PRIORITY_LABEL[priority]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Select label="Prioridade" value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value as WorkOrderPriority })}>
+            {(Object.keys(PRIORITY_LABEL) as WorkOrderPriority[]).map((priority) => (
+              <option key={priority} value={priority}>
+                {PRIORITY_LABEL[priority]}
+              </option>
+            ))}
+          </Select>
 
-          <label>
-            <span>Agenda</span>
-            <input
-              type="datetime-local"
-              value={form.scheduledAt}
-              onChange={(event) => setForm({ ...form, scheduledAt: event.target.value })}
-            />
-          </label>
+          <Field label="Agenda" type="datetime-local" value={form.scheduledAt} onChange={(event) => setForm({ ...form, scheduledAt: event.target.value })} />
 
-          <label>
-            <span>Tecnico</span>
-            <input
-              type="text"
-              value={form.assignedTo}
-              onChange={(event) => setForm({ ...form, assignedTo: event.target.value })}
-              placeholder="Nome do tecnico"
-            />
-          </label>
+          <Field label="Tecnico" type="text" value={form.assignedTo} onChange={(event) => setForm({ ...form, assignedTo: event.target.value })} placeholder="Nome do tecnico" />
 
           {editing && (
-            <label className="wide-field">
-              <span>Notas de conclusao</span>
-              <textarea
-                rows={2}
-                value={form.completionNotes}
-                onChange={(event) => setForm({ ...form, completionNotes: event.target.value })}
-                placeholder="Detalhes adicionais (passa para o registo tecnico quando concluida)"
-              />
-            </label>
+            <Textarea
+              label="Notas de conclusao"
+              rows={2}
+              value={form.completionNotes}
+              onChange={(event) => setForm({ ...form, completionNotes: event.target.value })}
+              placeholder="Detalhes adicionais (passa para o registo tecnico quando concluida)"
+            />
           )}
         </form>
       </Dialog>

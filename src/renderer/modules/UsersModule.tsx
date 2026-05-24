@@ -1,7 +1,7 @@
 import { KeyRound, Pencil, Plus, ShieldCheck, Trash2, UserCog, Wrench } from 'lucide-react';
 import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import { Badge, Dialog, useToast } from '../components';
+import { Badge, Button, Dialog, Field, Message, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import type { UserRole } from '../lib/auth';
 
@@ -221,13 +221,13 @@ export function UsersModule() {
           )}
         </div>
         <div className="inline-actions">
-          <button type="button" className="primary" onClick={openCreate}>
-            <Plus size={14} aria-hidden /> Novo utilizador
-          </button>
+          <Button size="sm" leadingIcon={<Plus size={14} aria-hidden />} onClick={openCreate}>
+            Novo utilizador
+          </Button>
         </div>
       </div>
 
-      {loading && <p className="muted">A carregar...</p>}
+      {loading && <Message>A carregar...</Message>}
 
       {!loading && (
         <div className="users-list">
@@ -257,34 +257,37 @@ export function UsersModule() {
                   <Badge tone={row.active ? 'success' : 'neutral'}>
                     {row.active ? 'Ativo' : 'Inativo'}
                   </Badge>
-                  <button
-                    type="button"
+                  <Button
+                    variant="icon"
+                    size="sm"
                     className="row-action"
                     title="Editar utilizador"
                     aria-label="Editar utilizador"
                     onClick={() => openEdit(row)}
                   >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    type="button"
+                    <Pencil size={14} aria-hidden />
+                  </Button>
+                  <Button
+                    variant="icon"
+                    size="sm"
                     className="row-action"
                     title="Reiniciar password"
                     aria-label="Reiniciar password"
                     onClick={() => openReset(row)}
                   >
-                    <KeyRound size={14} />
-                  </button>
+                    <KeyRound size={14} aria-hidden />
+                  </Button>
                   {!isSelf && (
-                    <button
-                      type="button"
+                    <Button
+                      variant="icon"
+                      size="sm"
                       className="row-action"
                       title="Eliminar utilizador"
                       aria-label="Eliminar utilizador"
                       onClick={() => void remove(row)}
                     >
-                      <Trash2 size={14} />
-                    </button>
+                      <Trash2 size={14} aria-hidden />
+                    </Button>
                   )}
                 </div>
               </article>
@@ -301,65 +304,26 @@ export function UsersModule() {
         size="md"
         actions={
           <>
-            <button type="button" onClick={closeForm}>Cancelar</button>
-            <button type="submit" form="user-form" className="primary" disabled={submitting}>
+            <Button variant="secondary" onClick={closeForm}>Cancelar</Button>
+            <Button type="submit" form="user-form" loading={submitting}>
               {editing ? 'Guardar' : 'Criar'}
-            </button>
+            </Button>
           </>
         }
       >
         <form id="user-form" className="client-form" onSubmit={submit}>
-          <label>
-            <span>Nome completo</span>
-            <input
-              type="text"
-              value={form.fullName}
-              onChange={(event) => setForm({ ...form, fullName: event.target.value })}
-              required
-            />
-          </label>
-          <label>
-            <span>Username</span>
-            <input
-              type="text"
-              value={form.username}
-              onChange={(event) => setForm({ ...form, username: event.target.value })}
-              required
-              minLength={2}
-              disabled={!!editing}
-            />
-          </label>
-          <label>
-            <span>Perfil</span>
-            <select
-              value={form.role}
-              onChange={(event) => setForm({ ...form, role: event.target.value as UserRole })}
-            >
-              <option value="admin">Admin — acesso total</option>
-              <option value="operator">Operadora — gestao corrente</option>
-              <option value="technician">Tecnico — campo + OS</option>
-            </select>
-          </label>
-          <label>
-            <span>Estado</span>
-            <select
-              value={form.active ? '1' : '0'}
-              onChange={(event) => setForm({ ...form, active: event.target.value === '1' })}
-            >
-              <option value="1">Ativo</option>
-              <option value="0">Inativo</option>
-            </select>
-          </label>
-          <label className="wide-field">
-            <span>{editing ? 'Nova password (deixa vazio para manter)' : 'Password (min. 8)'}</span>
-            <input
-              type="password"
-              value={form.password}
-              onChange={(event) => setForm({ ...form, password: event.target.value })}
-              minLength={editing ? 0 : 8}
-              autoComplete="new-password"
-            />
-          </label>
+          <Field label="Nome completo" type="text" value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} required />
+          <Field label="Username" type="text" value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} required minLength={2} disabled={!!editing} />
+          <Select label="Perfil" value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as UserRole })}>
+            <option value="admin">Admin - acesso total</option>
+            <option value="operator">Operadora - gestao corrente</option>
+            <option value="technician">Tecnico - campo + OS</option>
+          </Select>
+          <Select label="Estado" value={form.active ? '1' : '0'} onChange={(event) => setForm({ ...form, active: event.target.value === '1' })}>
+            <option value="1">Ativo</option>
+            <option value="0">Inativo</option>
+          </Select>
+          <Field wide label={editing ? 'Nova password (deixa vazio para manter)' : 'Password (min. 8)'} type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} minLength={editing ? 0 : 8} autoComplete="new-password" />
         </form>
       </Dialog>
 
@@ -371,25 +335,15 @@ export function UsersModule() {
         size="sm"
         actions={
           <>
-            <button type="button" onClick={closeReset}>Cancelar</button>
-            <button type="submit" form="reset-password-form" className="primary" disabled={submitting}>
+            <Button variant="secondary" onClick={closeReset}>Cancelar</Button>
+            <Button type="submit" form="reset-password-form" loading={submitting}>
               Reiniciar
-            </button>
+            </Button>
           </>
         }
       >
         <form id="reset-password-form" className="client-form" onSubmit={submitReset}>
-          <label className="wide-field">
-            Nova password
-            <input
-              type="password"
-              value={resetPassword}
-              onChange={(event) => setResetPassword(event.target.value)}
-              minLength={8}
-              autoComplete="new-password"
-              required
-            />
-          </label>
+          <Field wide label="Nova password" type="password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} minLength={8} autoComplete="new-password" required />
         </form>
       </Dialog>
     </section>

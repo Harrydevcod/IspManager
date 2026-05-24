@@ -1,7 +1,7 @@
 import { Pencil } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Badge, Dialog, useToast } from '../components';
+import { Badge, Button, Dialog, Field, FilterBar, Message, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { planActiveLabel, planActiveTone } from '../lib/status';
 import type { PlanRow } from '../types';
@@ -129,44 +129,35 @@ export function PlansModule() {
           <h2>Planos de internet</h2>
         </div>
         {canManagePlans && (
-          <button type="button" onClick={openCreate}>
+          <Button onClick={openCreate}>
             Novo plano
-          </button>
+          </Button>
         )}
       </div>
 
-      <div className="filter-bar">
-        <label>
-          Buscar
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nome ou velocidade" />
-        </label>
-        <label>
-          Tipo
-          <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | PlanRow['connectionType'])}>
-            <option value="all">Todos</option>
-            <option value="fibra">Fibra</option>
-            <option value="radio">Radio</option>
-            <option value="cabo">Cabo</option>
-            <option value="outro">Outro</option>
-          </select>
-        </label>
-        <label>
-          Estado
-          <select value={activeFilter} onChange={(event) => setActiveFilter(event.target.value as 'all' | 'active' | 'inactive')}>
-            <option value="all">Todos</option>
-            <option value="active">Ativos</option>
-            <option value="inactive">Inativos</option>
-          </select>
-        </label>
-        <button type="button" onClick={() => {
+      <FilterBar>
+        <Field type="search" label="Buscar" aria-label="Pesquisar planos" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nome ou velocidade" />
+        <Select label="Tipo" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | PlanRow['connectionType'])}>
+          <option value="all">Todos</option>
+          <option value="fibra">Fibra</option>
+          <option value="radio">Radio</option>
+          <option value="cabo">Cabo</option>
+          <option value="outro">Outro</option>
+        </Select>
+        <Select label="Estado" value={activeFilter} onChange={(event) => setActiveFilter(event.target.value as 'all' | 'active' | 'inactive')}>
+          <option value="all">Todos</option>
+          <option value="active">Ativos</option>
+          <option value="inactive">Inativos</option>
+        </Select>
+        <Button variant="secondary" onClick={() => {
           setSearch('');
           setTypeFilter('all');
           setActiveFilter('all');
         }}>
           Limpar filtros
-        </button>
+        </Button>
         <small>{visiblePlans.length} planos</small>
-      </div>
+      </FilterBar>
 
       <div className="module-table">
         {visiblePlans.map((plan) => (
@@ -191,8 +182,9 @@ export function PlansModule() {
             <Badge tone={planActiveTone(plan.active)}>{planActiveLabel(plan.active)}</Badge>
             {canManagePlans && (
               <div className="row-actions" onClick={(event) => event.stopPropagation()}>
-                <button
-                  type="button"
+                <Button
+                  variant="icon"
+                  size="sm"
                   className="row-action"
                   title="Editar plano"
                   aria-label="Editar plano"
@@ -201,14 +193,14 @@ export function PlansModule() {
                     editPlan(plan);
                   }}
                 >
-                  <Pencil size={14} />
-                </button>
+                  <Pencil size={14} aria-hidden />
+                </Button>
               </div>
             )}
           </div>
         ))}
         {visiblePlans.length === 0 && (
-          <p className="module-message">Nenhum plano encontrado para os filtros atuais.</p>
+          <Message>Nenhum plano encontrado para os filtros atuais.</Message>
         )}
       </div>
 
@@ -220,54 +212,30 @@ export function PlansModule() {
         size="md"
         actions={
           <>
-            <button type="button" onClick={closeForm}>Cancelar</button>
-            <button type="submit" form="plan-form" className="primary">
+            <Button variant="secondary" onClick={closeForm}>Cancelar</Button>
+            <Button type="submit" form="plan-form">
               {editingPlan ? 'Atualizar plano' : 'Gravar plano'}
-            </button>
+            </Button>
           </>
         }
       >
         <form id="plan-form" className="client-form" onSubmit={savePlan}>
-          <label>
-            Nome
-            <input required value={form.name} onChange={(event) => updateForm('name', event.target.value)} />
-          </label>
-          <label>
-            Tipo
-            <select value={form.connectionType} onChange={(event) => updateForm('connectionType', event.target.value)}>
-              <option value="fibra">Fibra</option>
-              <option value="radio">Radio</option>
-              <option value="cabo">Cabo</option>
-              <option value="outro">Outro</option>
-            </select>
-          </label>
-          <label>
-            Download
-            <input required value={form.downloadSpeed} onChange={(event) => updateForm('downloadSpeed', event.target.value)} />
-          </label>
-          <label>
-            Upload
-            <input required value={form.uploadSpeed} onChange={(event) => updateForm('uploadSpeed', event.target.value)} />
-          </label>
-          <label>
-            Mensalidade CVE
-            <input required type="number" min="0" value={form.monthlyPriceCve} onChange={(event) => updateForm('monthlyPriceCve', event.target.value)} />
-          </label>
-          <label>
-            Instalacao CVE
-            <input type="number" min="0" value={form.installationFeeCve} onChange={(event) => updateForm('installationFeeCve', event.target.value)} />
-          </label>
-          <label className="wide-field">
-            Descricao
-            <input value={form.description} onChange={(event) => updateForm('description', event.target.value)} />
-          </label>
-          <label>
-            Estado
-            <select value={form.active} onChange={(event) => updateForm('active', event.target.value)}>
-              <option value="1">Ativo</option>
-              <option value="0">Inativo</option>
-            </select>
-          </label>
+          <Field label="Nome" required value={form.name} onChange={(event) => updateForm('name', event.target.value)} />
+          <Select label="Tipo" value={form.connectionType} onChange={(event) => updateForm('connectionType', event.target.value)}>
+            <option value="fibra">Fibra</option>
+            <option value="radio">Radio</option>
+            <option value="cabo">Cabo</option>
+            <option value="outro">Outro</option>
+          </Select>
+          <Field label="Download" required value={form.downloadSpeed} onChange={(event) => updateForm('downloadSpeed', event.target.value)} />
+          <Field label="Upload" required value={form.uploadSpeed} onChange={(event) => updateForm('uploadSpeed', event.target.value)} />
+          <Field label="Mensalidade CVE" required type="number" min={0} value={form.monthlyPriceCve} onChange={(event) => updateForm('monthlyPriceCve', event.target.value)} />
+          <Field label="Instalacao CVE" type="number" min={0} value={form.installationFeeCve} onChange={(event) => updateForm('installationFeeCve', event.target.value)} />
+          <Field wide label="Descricao" value={form.description} onChange={(event) => updateForm('description', event.target.value)} />
+          <Select label="Estado" value={form.active} onChange={(event) => updateForm('active', event.target.value)}>
+            <option value="1">Ativo</option>
+            <option value="0">Inativo</option>
+          </Select>
         </form>
       </Dialog>
     </section>

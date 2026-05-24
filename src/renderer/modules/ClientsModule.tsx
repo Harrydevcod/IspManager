@@ -1,7 +1,7 @@
 import { MessageCircle, Pencil, Upload } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Badge, ClientImportDialog, Dialog, useToast } from '../components';
+import { Badge, Button, ClientImportDialog, Dialog, Field, FilterBar, Message, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import { statusLabel, statusTone } from '../lib/status';
@@ -232,12 +232,12 @@ export function ClientsModule() {
         </div>
         {canManageClients && (
           <div className="inline-actions">
-            <button type="button" onClick={() => setShowImport(true)}>
-              <Upload size={14} aria-hidden /> Importar
-            </button>
-            <button type="button" className="primary" onClick={openCreate}>
+            <Button variant="secondary" size="sm" leadingIcon={<Upload size={14} aria-hidden />} onClick={() => setShowImport(true)}>
+              Importar
+            </Button>
+            <Button size="sm" onClick={openCreate}>
               Novo cliente
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -248,33 +248,27 @@ export function ClientsModule() {
         onCompleted={() => { void loadClients(); }}
       />
 
-      {loading && <p className="module-message">A carregar clientes...</p>}
+      {loading && <Message>A carregar clientes...</Message>}
       {loadError && !loading && (
-        <p className="module-message error">{loadError}</p>
+        <Message tone="error">{loadError}</Message>
       )}
 
-      <div className="filter-bar">
-        <label>
-          Buscar
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nome, codigo ou telefone" />
-        </label>
-        <label>
-          Estado
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | Client['status'])}>
-            <option value="all">Todos</option>
-            <option value="active">Ativos</option>
-            <option value="suspended">Suspensos</option>
-            <option value="cancelled">Cancelados</option>
-          </select>
-        </label>
-        <button type="button" onClick={() => {
+      <FilterBar>
+        <Field type="search" label="Buscar" aria-label="Pesquisar clientes" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nome, codigo ou telefone" />
+        <Select label="Estado" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | Client['status'])}>
+          <option value="all">Todos</option>
+          <option value="active">Ativos</option>
+          <option value="suspended">Suspensos</option>
+          <option value="cancelled">Cancelados</option>
+        </Select>
+        <Button variant="secondary" onClick={() => {
           setSearch('');
           setStatusFilter('all');
         }}>
           Limpar filtros
-        </button>
+        </Button>
         <small>{visibleClients.length} clientes</small>
-      </div>
+      </FilterBar>
 
       {selectedClient && (
         <div className="client-detail">
@@ -289,12 +283,11 @@ export function ClientsModule() {
             <div><dt>Estado</dt><dd>{selectedClient.status}</dd></div>
           </dl>
           <div className="form-actions detail-actions">
-            <button type="button" onClick={() => setSelectedClient(null)}>Fechar detalhe</button>
-            <button type="button" disabled={!normalizeWhatsappPhone(selectedClient.phone)} onClick={() => void sendClientWhatsapp(selectedClient)}>
-              <MessageCircle size={16} />
+            <Button variant="secondary" onClick={() => setSelectedClient(null)}>Fechar detalhe</Button>
+            <Button variant="secondary" disabled={!normalizeWhatsappPhone(selectedClient.phone)} leadingIcon={<MessageCircle size={16} aria-hidden />} onClick={() => void sendClientWhatsapp(selectedClient)}>
               WhatsApp
-            </button>
-            {canManageClients && <button type="button" onClick={() => editClient(selectedClient)}>Editar cliente</button>}
+            </Button>
+            {canManageClients && <Button onClick={() => editClient(selectedClient)}>Editar cliente</Button>}
           </div>
 
           <section className="client-profitability">
@@ -307,10 +300,10 @@ export function ClientsModule() {
               )}
             </header>
 
-            {profitabilityLoading && <p className="module-message">A calcular rentabilidade...</p>}
+            {profitabilityLoading && <Message>A calcular rentabilidade...</Message>}
 
             {!profitabilityLoading && profitability && profitability.investments.length === 0 && (
-              <p className="module-message">Sem investimentos registados para este cliente.</p>
+              <Message>Sem investimentos registados para este cliente.</Message>
             )}
 
             {!profitabilityLoading && profitability && profitability.investments.length > 0 && (
@@ -409,8 +402,9 @@ export function ClientsModule() {
                 <Badge tone={statusTone(client.status)}>{statusLabel(client.status)}</Badge>
                 <div className="row-actions" onClick={(event) => event.stopPropagation()}>
                   {canManageClients && (
-                    <button
-                      type="button"
+                    <Button
+                      variant="icon"
+                      size="sm"
                       className="row-action"
                       title="Editar cliente"
                       aria-label="Editar cliente"
@@ -419,11 +413,12 @@ export function ClientsModule() {
                         editClient(client);
                       }}
                     >
-                      <Pencil size={14} />
-                    </button>
+                      <Pencil size={14} aria-hidden />
+                    </Button>
                   )}
-                  <button
-                    type="button"
+                  <Button
+                    variant="icon"
+                    size="sm"
                     className="row-action"
                     title={canWhatsapp ? 'Enviar WhatsApp' : 'Sem telefone valido'}
                     aria-label="Enviar WhatsApp"
@@ -433,14 +428,14 @@ export function ClientsModule() {
                       void sendClientWhatsapp(client);
                     }}
                   >
-                    <MessageCircle size={14} />
-                  </button>
+                    <MessageCircle size={14} aria-hidden />
+                  </Button>
                 </div>
               </div>
             );
           })}
           {visibleClients.length === 0 && (
-            <p className="module-message">Nenhum cliente encontrado para os filtros atuais.</p>
+            <Message>Nenhum cliente encontrado para os filtros atuais.</Message>
           )}
         </div>
       )}
@@ -453,46 +448,24 @@ export function ClientsModule() {
         size="md"
         actions={
           <>
-            <button type="button" onClick={closeForm}>Cancelar</button>
-            <button type="submit" form="client-form" className="primary" disabled={saving}>
+            <Button variant="secondary" onClick={closeForm}>Cancelar</Button>
+            <Button type="submit" form="client-form" loading={saving}>
               {saving ? 'A gravar...' : editingClient ? 'Atualizar cliente' : 'Gravar cliente'}
-            </button>
+            </Button>
           </>
         }
       >
         <form id="client-form" className="client-form" onSubmit={saveClient}>
-          <label>
-            Nome completo
-            <input
-              required
-              value={form.fullName}
-              onChange={(event) => updateForm('fullName', event.target.value)}
-            />
-          </label>
-          <label>
-            Telefone
-            <input value={form.phone} onChange={(event) => updateForm('phone', event.target.value)} />
-          </label>
-          <label>
-            Ilha
-            <input value={form.island} onChange={(event) => updateForm('island', event.target.value)} />
-          </label>
-          <label>
-            Zona
-            <input value={form.zone} onChange={(event) => updateForm('zone', event.target.value)} />
-          </label>
-          <label className="wide-field">
-            Morada
-            <input value={form.address} onChange={(event) => updateForm('address', event.target.value)} />
-          </label>
-          <label>
-            Estado
-            <select value={form.status} onChange={(event) => updateForm('status', event.target.value)}>
-              <option value="active">Ativo</option>
-              <option value="suspended">Suspenso</option>
-              <option value="cancelled">Cancelado</option>
-            </select>
-          </label>
+          <Field label="Nome completo" required value={form.fullName} onChange={(event) => updateForm('fullName', event.target.value)} />
+          <Field label="Telefone" type="tel" inputMode="tel" value={form.phone} onChange={(event) => updateForm('phone', event.target.value)} />
+          <Field label="Ilha" value={form.island} onChange={(event) => updateForm('island', event.target.value)} />
+          <Field label="Zona" value={form.zone} onChange={(event) => updateForm('zone', event.target.value)} />
+          <Field wide label="Morada" value={form.address} onChange={(event) => updateForm('address', event.target.value)} />
+          <Select label="Estado" value={form.status} onChange={(event) => updateForm('status', event.target.value)}>
+            <option value="active">Ativo</option>
+            <option value="suspended">Suspenso</option>
+            <option value="cancelled">Cancelado</option>
+          </Select>
         </form>
       </Dialog>
     </section>

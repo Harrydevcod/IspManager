@@ -1,21 +1,43 @@
-import type { SelectHTMLAttributes } from 'react';
+import { useId, type SelectHTMLAttributes } from 'react';
 
-type SelectProps = SelectHTMLAttributes<HTMLSelectElement> & { label?: string };
+type SelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
+  label?: string;
+  error?: string;
+  hint?: string;
+  wide?: boolean;
+};
 
-/**
- * Select control. The slice wraps selects in bare
- * `<label>Estado <select>…</select></label>`. When `label` is provided we
- * reuse the same `.field`/`.field-label` primitives as `Field` (added
- * additively to styles.css); otherwise the raw `<select>` is returned.
- */
-export function Select({ label, children, ...rest }: SelectProps) {
-  const el = <select {...rest}>{children}</select>;
-  return label ? (
-    <label className="field">
+/** Labelled select control. Reuses the `.field` shell from `Field` when `label` is provided. */
+export function Select({ label, error, hint, wide, id, className, children, ...rest }: SelectProps) {
+  const reactId = useId();
+  const selectId = id ?? `select-${reactId}`;
+  const errorId = `${selectId}-error`;
+  const hintId = hint ? `${selectId}-hint` : undefined;
+  const describedBy = error ? errorId : hintId;
+
+  const select = (
+    <select
+      id={selectId}
+      aria-invalid={error ? true : undefined}
+      aria-describedby={describedBy}
+      {...rest}
+    >
+      {children}
+    </select>
+  );
+
+  if (!label) return select;
+
+  const classes = ['field'];
+  if (wide) classes.push('wide-field');
+  if (className) classes.push(className);
+
+  return (
+    <label className={classes.join(' ')} htmlFor={selectId}>
       <span className="field-label">{label}</span>
-      {el}
+      {select}
+      {hint && !error ? <span id={hintId} className="field-hint">{hint}</span> : null}
+      {error ? <span id={errorId} className="field-error">{error}</span> : null}
     </label>
-  ) : (
-    el
   );
 }

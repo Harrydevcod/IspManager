@@ -1,7 +1,7 @@
 import { Cable, History, Pencil, Plus, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Badge, Combobox, Dialog, useToast } from '../components';
+import { Badge, Button, Combobox, Dialog, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { statusLabel, statusTone } from '../lib/status';
 import type { Client, DeviceAssignment, PlanRow, ServiceEvent, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
@@ -331,34 +331,28 @@ export function ServicesModule() {
           <h2>Servicos</h2>
         </div>
         {canManageServices && (
-          <button type="button" onClick={openCreate}>
+          <Button onClick={openCreate}>
             Novo servico
-          </button>
+          </Button>
         )}
       </div>
 
-      <div className="filter-bar">
-        <label>
-          Buscar
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente ou plano" />
-        </label>
-        <label>
-          Estado
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | ServiceRow['status'])}>
-            <option value="all">Todos</option>
-            <option value="active">Ativos</option>
-            <option value="suspended">Suspensos</option>
-            <option value="cancelled">Cancelados</option>
-          </select>
-        </label>
-        <button type="button" onClick={() => {
+      <FilterBar>
+        <Field type="search" label="Buscar" aria-label="Pesquisar servicos" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente ou plano" />
+        <Select label="Estado" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | ServiceRow['status'])}>
+          <option value="all">Todos</option>
+          <option value="active">Ativos</option>
+          <option value="suspended">Suspensos</option>
+          <option value="cancelled">Cancelados</option>
+        </Select>
+        <Button variant="secondary" onClick={() => {
           setSearch('');
           setStatusFilter('all');
         }}>
           Limpar filtros
-        </button>
+        </Button>
         <small>{visibleServices.length} servicos</small>
-      </div>
+      </FilterBar>
 
       {selectedService && (
         <div className="client-detail">
@@ -384,14 +378,14 @@ export function ServicesModule() {
                 </h3>
               </div>
               {canRecordTechnical && (
-                <button type="button" className="technical-add" onClick={openDeviceDialog}>
-                  <Plus size={14} /> Adicionar
-                </button>
+                <Button variant="secondary" size="sm" className="technical-add" leadingIcon={<Plus size={14} aria-hidden />} onClick={openDeviceDialog}>
+                  Adicionar
+                </Button>
               )}
             </header>
-            {historyLoading && !technicalHistory && <p className="module-message">A carregar historico...</p>}
+            {historyLoading && !technicalHistory && <Message>A carregar historico...</Message>}
             {technicalHistory && technicalHistory.assignments.length === 0 && (
-              <p className="module-message">Nenhum equipamento atribuido a este servico.</p>
+              <Message>Nenhum equipamento atribuido a este servico.</Message>
             )}
             {technicalHistory && technicalHistory.assignments.length > 0 && (
               <ul className="technical-list">
@@ -429,13 +423,13 @@ export function ServicesModule() {
                 <h3>{technicalHistory ? `${technicalHistory.events.length} evento(s)` : 'A carregar...'}</h3>
               </div>
               {canRecordTechnical && (
-                <button type="button" className="technical-add" onClick={openEventDialog}>
-                  <Wrench size={14} /> Registar
-                </button>
+                <Button variant="secondary" size="sm" className="technical-add" leadingIcon={<Wrench size={14} aria-hidden />} onClick={openEventDialog}>
+                  Registar
+                </Button>
               )}
             </header>
             {technicalHistory && technicalHistory.events.length === 0 && (
-              <p className="module-message">Sem eventos registados para este servico.</p>
+              <Message>Sem eventos registados para este servico.</Message>
             )}
             {technicalHistory && technicalHistory.events.length > 0 && (
               <ul className="technical-timeline">
@@ -456,8 +450,8 @@ export function ServicesModule() {
           </section>
 
           <div className="form-actions detail-actions">
-            <button type="button" onClick={() => setSelectedService(null)}>Fechar detalhe</button>
-            {canManageServices && <button type="button" onClick={() => editService(selectedService)}>Editar servico</button>}
+            <Button variant="secondary" onClick={() => setSelectedService(null)}>Fechar detalhe</Button>
+            {canManageServices && <Button onClick={() => editService(selectedService)}>Editar servico</Button>}
           </div>
         </div>
       )}
@@ -485,8 +479,9 @@ export function ServicesModule() {
             <Badge tone={statusTone(service.status)}>{statusLabel(service.status)}</Badge>
             {canManageServices && (
               <div className="row-actions" onClick={(event) => event.stopPropagation()}>
-                <button
-                  type="button"
+                <Button
+                  variant="icon"
+                  size="sm"
                   className="row-action"
                   title="Editar servico"
                   aria-label="Editar servico"
@@ -495,14 +490,14 @@ export function ServicesModule() {
                     editService(service);
                   }}
                 >
-                  <Pencil size={14} />
-                </button>
+                  <Pencil size={14} aria-hidden />
+                </Button>
               </div>
             )}
           </div>
         ))}
         {visibleServices.length === 0 && (
-          <p className="module-message">Nenhum servico encontrado para os filtros atuais.</p>
+          <Message>Nenhum servico encontrado para os filtros atuais.</Message>
         )}
       </div>
 
@@ -514,10 +509,10 @@ export function ServicesModule() {
         size="md"
         actions={
           <>
-            <button type="button" onClick={closeForm}>Cancelar</button>
-            <button type="submit" form="service-form" className="primary">
+            <Button variant="secondary" onClick={closeForm}>Cancelar</Button>
+            <Button type="submit" form="service-form">
               {editingService ? 'Atualizar servico' : 'Gravar servico'}
-            </button>
+            </Button>
           </>
         }
       >
@@ -535,39 +530,21 @@ export function ServicesModule() {
               placeholder="Selecionar cliente..."
             />
           </label>
-          <label>
-            Plano
-            <select value={form.planId} onChange={(event) => selectPlan(event.target.value)}>
-              <option value="">Sem plano</option>
-              {plans.map((plan) => (
-                <option key={plan.id} value={plan.id}>{plan.name} - {plan.monthlyPriceCve.toLocaleString('pt-PT')} CVE</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Mensalidade CVE
-            <input required type="number" min="0" value={form.monthlyValueCve} onChange={(event) => updateForm('monthlyValueCve', event.target.value)} />
-          </label>
-          <label>
-            Dia de vencimento
-            <input required type="number" min="1" max="31" value={form.dueDay} onChange={(event) => updateForm('dueDay', event.target.value)} />
-          </label>
-          <label>
-            Data de ativacao
-            <input type="date" value={form.activationDate} onChange={(event) => updateForm('activationDate', event.target.value)} />
-          </label>
-          <label>
-            Estado
-            <select value={form.status} onChange={(event) => updateForm('status', event.target.value)}>
-              <option value="active">Ativo</option>
-              <option value="suspended">Suspenso</option>
-              <option value="cancelled">Cancelado</option>
-            </select>
-          </label>
-          <label className="wide-field">
-            Notas tecnicas
-            <input value={form.technicalNotes} onChange={(event) => updateForm('technicalNotes', event.target.value)} />
-          </label>
+          <Select label="Plano" value={form.planId} onChange={(event) => selectPlan(event.target.value)}>
+            <option value="">Sem plano</option>
+            {plans.map((plan) => (
+              <option key={plan.id} value={plan.id}>{plan.name} - {plan.monthlyPriceCve.toLocaleString('pt-PT')} CVE</option>
+            ))}
+          </Select>
+          <Field label="Mensalidade CVE" required type="number" min={0} value={form.monthlyValueCve} onChange={(event) => updateForm('monthlyValueCve', event.target.value)} />
+          <Field label="Dia de vencimento" required type="number" min={1} max={31} value={form.dueDay} onChange={(event) => updateForm('dueDay', event.target.value)} />
+          <Field label="Data de ativacao" type="date" value={form.activationDate} onChange={(event) => updateForm('activationDate', event.target.value)} />
+          <Select label="Estado" value={form.status} onChange={(event) => updateForm('status', event.target.value)}>
+            <option value="active">Ativo</option>
+            <option value="suspended">Suspenso</option>
+            <option value="cancelled">Cancelado</option>
+          </Select>
+          <Field wide label="Notas tecnicas" value={form.technicalNotes} onChange={(event) => updateForm('technicalNotes', event.target.value)} />
         </form>
       </Dialog>
 
@@ -580,45 +557,27 @@ export function ServicesModule() {
         closeOnBackdrop={!submitting}
         actions={
           <>
-            <button type="button" onClick={closeDeviceDialog} disabled={submitting}>Cancelar</button>
-            <button type="submit" form="device-form" className="primary" disabled={submitting}>
+            <Button variant="secondary" onClick={closeDeviceDialog} disabled={submitting}>Cancelar</Button>
+            <Button type="submit" form="device-form" loading={submitting}>
               {submitting ? 'A gravar...' : 'Atribuir'}
-            </button>
+            </Button>
           </>
         }
       >
         <form id="device-form" className="client-form" onSubmit={submitDeviceAssignment}>
-          <label className="wide-field">
-            Modelo do equipamento
-            <select required value={deviceForm.catalogId} onChange={(event) => setDeviceForm((c) => ({ ...c, catalogId: event.target.value }))}>
-              <option value="">Selecionar modelo</option>
-              {catalogList.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} un.
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Serial
-            <input value={deviceForm.serialNumber} onChange={(event) => setDeviceForm((c) => ({ ...c, serialNumber: event.target.value }))} />
-          </label>
-          <label>
-            Asset tag
-            <input value={deviceForm.assetTag} onChange={(event) => setDeviceForm((c) => ({ ...c, assetTag: event.target.value }))} />
-          </label>
-          <label>
-            MAC
-            <input value={deviceForm.macAddress} onChange={(event) => setDeviceForm((c) => ({ ...c, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
-          </label>
-          <label>
-            IP
-            <input value={deviceForm.ipAddress} onChange={(event) => setDeviceForm((c) => ({ ...c, ipAddress: event.target.value }))} placeholder="192.168.X.Y" />
-          </label>
-          <label className="wide-field">
-            Notas
-            <input value={deviceForm.notes} onChange={(event) => setDeviceForm((c) => ({ ...c, notes: event.target.value }))} />
-          </label>
+          <Select wide label="Modelo do equipamento" required value={deviceForm.catalogId} onChange={(event) => setDeviceForm((c) => ({ ...c, catalogId: event.target.value }))}>
+            <option value="">Selecionar modelo</option>
+            {catalogList.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} un.
+              </option>
+            ))}
+          </Select>
+          <Field label="Serial" value={deviceForm.serialNumber} onChange={(event) => setDeviceForm((c) => ({ ...c, serialNumber: event.target.value }))} />
+          <Field label="Asset tag" value={deviceForm.assetTag} onChange={(event) => setDeviceForm((c) => ({ ...c, assetTag: event.target.value }))} />
+          <Field label="MAC" value={deviceForm.macAddress} onChange={(event) => setDeviceForm((c) => ({ ...c, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
+          <Field label="IP" value={deviceForm.ipAddress} onChange={(event) => setDeviceForm((c) => ({ ...c, ipAddress: event.target.value }))} placeholder="192.168.X.Y" />
+          <Field wide label="Notas" value={deviceForm.notes} onChange={(event) => setDeviceForm((c) => ({ ...c, notes: event.target.value }))} />
         </form>
       </Dialog>
 
@@ -631,31 +590,26 @@ export function ServicesModule() {
         closeOnBackdrop={!submitting}
         actions={
           <>
-            <button type="button" onClick={closeEventDialog} disabled={submitting}>Cancelar</button>
-            <button type="submit" form="event-form" className="primary" disabled={submitting}>
+            <Button variant="secondary" onClick={closeEventDialog} disabled={submitting}>Cancelar</Button>
+            <Button type="submit" form="event-form" loading={submitting}>
               {submitting ? 'A gravar...' : 'Registar'}
-            </button>
+            </Button>
           </>
         }
       >
         <form id="event-form" className="client-form" onSubmit={submitEvent}>
-          <label className="wide-field">
-            Tipo de evento
-            <select required value={eventForm.eventType} onChange={(event) => setEventForm((c) => ({ ...c, eventType: event.target.value as ServiceEventType }))}>
-              {(Object.keys(eventTypeLabel) as ServiceEventType[]).map((key) => (
-                <option key={key} value={key}>{eventTypeLabel[key]}</option>
-              ))}
-            </select>
-          </label>
-          <label className="wide-field">
-            Notas
-            <textarea
-              rows={4}
-              value={eventForm.notes}
-              onChange={(event) => setEventForm((c) => ({ ...c, notes: event.target.value }))}
-              placeholder="Detalhes da intervencao, observacoes, peca substituida..."
-            />
-          </label>
+          <Select wide label="Tipo de evento" required value={eventForm.eventType} onChange={(event) => setEventForm((c) => ({ ...c, eventType: event.target.value as ServiceEventType }))}>
+            {(Object.keys(eventTypeLabel) as ServiceEventType[]).map((key) => (
+              <option key={key} value={key}>{eventTypeLabel[key]}</option>
+            ))}
+          </Select>
+          <Textarea
+            label="Notas"
+            rows={4}
+            value={eventForm.notes}
+            onChange={(event) => setEventForm((c) => ({ ...c, notes: event.target.value }))}
+            placeholder="Detalhes da intervencao, observacoes, peca substituida..."
+          />
         </form>
       </Dialog>
     </section>

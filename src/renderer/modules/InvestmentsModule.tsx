@@ -1,7 +1,7 @@
 import { Download, FileText, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Combobox, DataList, Dialog, FilterBar, Message, useToast } from '../components';
+import { Badge, Button, Combobox, DataList, Dialog, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import type { Client, Investment, InvestmentItemType, InvestmentList, InvestmentStatus, InvestmentTimeline, InvestmentType } from '../types';
@@ -380,7 +380,7 @@ export function InvestmentsModule() {
           <h2>Investimentos e Rentabilidade ISP</h2>
         </div>
         <div className="inline-actions">
-          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} disabled={showAllMonths} />
+          <Field label="Mes" type="month" value={month} onChange={(e) => setMonth(e.target.value)} disabled={showAllMonths} />
           <a
             href="http://127.0.0.1:3001/api/investments/report.pdf"
             target="_blank"
@@ -397,9 +397,9 @@ export function InvestmentsModule() {
           >
             <Download size={14} /> Excel
           </a>
-          <button type="button" className="primary" onClick={openCreate}>
-            <Plus size={14} /> Novo investimento
-          </button>
+          <Button size="sm" leadingIcon={<Plus size={14} aria-hidden />} onClick={openCreate}>
+            Novo investimento
+          </Button>
         </div>
       </div>
 
@@ -494,26 +494,23 @@ export function InvestmentsModule() {
             ))}
           </div>
         ) : (
-          <p className="module-message">Registe investimentos para comparar capital aplicado e retorno anual.</p>
+          <Message>Registe investimentos para comparar capital aplicado e retorno anual.</Message>
         )}
       </section>
 
       <FilterBar>
-        <label>
-          Tipo
-          <select value={type} onChange={(e) => setType(e.target.value as InvestmentType | 'all')}>
-            <option value="all">Todos</option>
-            {TYPES.map((t) => (
-              <option key={t.value} value={t.value}>{t.label}</option>
-            ))}
-          </select>
-        </label>
-        <button type="button" onClick={() => setShowAllMonths((s) => !s)} className={showAllMonths ? 'active' : ''}>
+        <Select label="Tipo" value={type} onChange={(e) => setType(e.target.value as InvestmentType | 'all')}>
+          <option value="all">Todos</option>
+          {TYPES.map((t) => (
+            <option key={t.value} value={t.value}>{t.label}</option>
+          ))}
+        </Select>
+        <Button variant="secondary" onClick={() => setShowAllMonths((s) => !s)} className={showAllMonths ? 'active' : ''}>
           {showAllMonths ? 'Mes selecionado' : 'Todos os meses'}
-        </button>
-        <button type="button" onClick={() => { setType('all'); setMonth(currentMonth()); setShowAllMonths(false); }}>
+        </Button>
+        <Button variant="secondary" onClick={() => { setType('all'); setMonth(currentMonth()); setShowAllMonths(false); }}>
           Limpar filtros
-        </button>
+        </Button>
         <small>{showAllMonths ? 'Todos os meses' : month}</small>
       </FilterBar>
 
@@ -549,15 +546,15 @@ export function InvestmentsModule() {
           ]}
           actions={(investment) => (
             <>
-              <button type="button" title="Editar" onClick={() => openEdit(investment)}>
-                <Pencil size={16} />
-              </button>
-              <button type="button" title="Apagar" className="danger-ghost" onClick={() => void remove(investment)}>
-                <Trash2 size={16} />
-              </button>
+              <Button variant="icon" size="sm" title="Editar" onClick={() => openEdit(investment)}>
+                <Pencil size={16} aria-hidden />
+              </Button>
+              <Button variant="icon" size="sm" title="Apagar" className="danger-ghost" onClick={() => void remove(investment)}>
+                <Trash2 size={16} aria-hidden />
+              </Button>
             </>
           )}
-          empty={<p className="module-message">Sem investimentos neste filtro.</p>}
+          empty={<Message>Sem investimentos neste filtro.</Message>}
         />
 
         <aside className="investment-detail" aria-label="Detalhe do investimento">
@@ -710,7 +707,7 @@ export function InvestmentsModule() {
               )}
             </>
           ) : (
-            <p className="module-message">Selecione um investimento para ver ROI, custos e materiais.</p>
+            <Message>Selecione um investimento para ver ROI, custos e materiais.</Message>
           )}
         </aside>
       </div>
@@ -724,10 +721,10 @@ export function InvestmentsModule() {
         closeOnBackdrop={!submitting}
         actions={
           <>
-            <button type="button" onClick={closeDialog} disabled={submitting}>Cancelar</button>
-            <button type="submit" form="investment-form" className="primary" disabled={submitting}>
+            <Button variant="secondary" onClick={closeDialog} disabled={submitting}>Cancelar</Button>
+            <Button type="submit" form="investment-form" loading={submitting}>
               {submitting ? 'A guardar...' : editing ? 'Guardar alteracoes' : 'Registar'}
-            </button>
+            </Button>
           </>
         }
       >
@@ -736,22 +733,13 @@ export function InvestmentsModule() {
           <div className="investment-form-grid">
             <div className="investment-form-section investment-form-section-main">
               <h3>Dados</h3>
-              <label className="field-wide">
-                Nome do investimento
-                <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required maxLength={180} />
-              </label>
-              <label>
-                Tipo
-                <select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as InvestmentType }))}>
-                  {TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-              </label>
-              <label>
-                Estado
-                <select value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as InvestmentStatus }))}>
-                  {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
-              </label>
+              <Field wide label="Nome do investimento" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required maxLength={180} />
+              <Select label="Tipo" value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as InvestmentType }))}>
+                {TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </Select>
+              <Select label="Estado" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as InvestmentStatus }))}>
+                {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </Select>
             </div>
 
             <div className="investment-form-section">
@@ -768,67 +756,34 @@ export function InvestmentsModule() {
                   placeholder="Sem cliente"
                 />
               </label>
-              <label>
-                Zona / bairro
-                <input value={form.zone} onChange={(e) => setForm((f) => ({ ...f, zone: e.target.value }))} maxLength={120} />
-              </label>
-              <label>
-                Data
-                <input type="date" value={form.investmentDate} onChange={(e) => setForm((f) => ({ ...f, investmentDate: e.target.value }))} required />
-              </label>
-              <label>
-                Retorno mensal esperado
-                <input type="number" min="0" step="0.01" value={form.expectedMonthlyRevenueCve} onChange={(e) => setForm((f) => ({ ...f, expectedMonthlyRevenueCve: e.target.value }))} />
-              </label>
+              <Field label="Zona / bairro" value={form.zone} onChange={(e) => setForm((f) => ({ ...f, zone: e.target.value }))} maxLength={120} />
+              <Field label="Data" type="date" value={form.investmentDate} onChange={(e) => setForm((f) => ({ ...f, investmentDate: e.target.value }))} required />
+              <Field label="Retorno mensal esperado" type="number" min={0} step={0.01} value={form.expectedMonthlyRevenueCve} onChange={(e) => setForm((f) => ({ ...f, expectedMonthlyRevenueCve: e.target.value }))} />
             </div>
 
             <div className="investment-form-section">
               <h3>Rentabilidade</h3>
-              <label>
-                Clientes previstos
-                <input type="number" min="1" step="1" value={form.targetClients} onChange={(e) => setForm((f) => ({ ...f, targetClients: e.target.value }))} />
-              </label>
-              <label>
-                Clientes instalados
-                <input type="number" min="0" step="1" value={form.installedClients} onChange={(e) => setForm((f) => ({ ...f, installedClients: e.target.value }))} />
-              </label>
-              <label>
-                Retorno desejado (meses)
-                <input type="number" min="1" step="1" value={form.desiredPaybackMonths} onChange={(e) => setForm((f) => ({ ...f, desiredPaybackMonths: e.target.value }))} />
-              </label>
-              <label>
-                Margem desejada (%)
-                <input type="number" min="0" step="0.01" value={form.desiredMarginPct} onChange={(e) => setForm((f) => ({ ...f, desiredMarginPct: e.target.value }))} />
-              </label>
-              <label>
-                Custo operacional mensal
-                <input type="number" min="0" step="0.01" value={form.monthlyOperationalCostCve} onChange={(e) => setForm((f) => ({ ...f, monthlyOperationalCostCve: e.target.value }))} />
-              </label>
-              <label>
-                Receita acumulada
-                <input type="number" min="0" step="0.01" value={form.accumulatedRevenueCve} onChange={(e) => setForm((f) => ({ ...f, accumulatedRevenueCve: e.target.value }))} />
-              </label>
+              <Field label="Clientes previstos" type="number" min={1} step={1} value={form.targetClients} onChange={(e) => setForm((f) => ({ ...f, targetClients: e.target.value }))} />
+              <Field label="Clientes instalados" type="number" min={0} step={1} value={form.installedClients} onChange={(e) => setForm((f) => ({ ...f, installedClients: e.target.value }))} />
+              <Field label="Retorno desejado (meses)" type="number" min={1} step={1} value={form.desiredPaybackMonths} onChange={(e) => setForm((f) => ({ ...f, desiredPaybackMonths: e.target.value }))} />
+              <Field label="Margem desejada (%)" type="number" min={0} step={0.01} value={form.desiredMarginPct} onChange={(e) => setForm((f) => ({ ...f, desiredMarginPct: e.target.value }))} />
+              <Field label="Custo operacional mensal" type="number" min={0} step={0.01} value={form.monthlyOperationalCostCve} onChange={(e) => setForm((f) => ({ ...f, monthlyOperationalCostCve: e.target.value }))} />
+              <Field label="Receita acumulada" type="number" min={0} step={0.01} value={form.accumulatedRevenueCve} onChange={(e) => setForm((f) => ({ ...f, accumulatedRevenueCve: e.target.value }))} />
             </div>
 
             <div className="investment-form-section investment-form-section-notes">
               <h3>Informacoes</h3>
-              <label>
-                Fornecedor
-                <input value={form.supplier} onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))} maxLength={180} />
-              </label>
-              <label>
-                Descricao
-                <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={3} />
-              </label>
+              <Field label="Fornecedor" value={form.supplier} onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))} maxLength={180} />
+              <Textarea label="Descricao" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={3} />
             </div>
           </div>
 
           <div className="investment-items-editor">
             <div className="investment-items-editor-head">
               <strong>Custos do investimento</strong>
-              <button type="button" onClick={() => setForm((f) => ({ ...f, items: [...f.items, blankItem()] }))}>
-                <Plus size={14} /> Adicionar item
-              </button>
+              <Button variant="secondary" size="sm" leadingIcon={<Plus size={14} aria-hidden />} onClick={() => setForm((f) => ({ ...f, items: [...f.items, blankItem()] }))}>
+                Adicionar item
+              </Button>
             </div>
             <div className="investment-item-header" aria-hidden="true">
               <span>Tipo</span>
@@ -841,22 +796,23 @@ export function InvestmentsModule() {
             </div>
             {form.items.map((item, index) => (
               <div className="investment-item-row" key={index}>
-                <select value={item.itemType} onChange={(e) => updateItem(index, { itemType: e.target.value as InvestmentItemType })}>
+                <Select value={item.itemType} onChange={(e) => updateItem(index, { itemType: e.target.value as InvestmentItemType })}>
                   {ITEM_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-                <input value={item.itemName} onChange={(e) => updateItem(index, { itemName: e.target.value })} placeholder="Equipamento/material" required />
-                <input type="number" min="0.01" step="0.01" value={item.quantity} onChange={(e) => updateItem(index, { quantity: e.target.value })} aria-label="Quantidade" required />
-                <input type="number" min="0" step="0.01" value={item.quantityUsed} onChange={(e) => updateItem(index, { quantityUsed: e.target.value })} aria-label="Quantidade usada" required />
-                <input type="number" min="0" step="0.01" value={item.unitCostCve} onChange={(e) => updateItem(index, { unitCostCve: e.target.value })} aria-label="Custo unitario" required />
+                </Select>
+                <Field label="Equipamento / material" value={item.itemName} onChange={(e) => updateItem(index, { itemName: e.target.value })} placeholder="Equipamento/material" required />
+                <Field label="Qtd." type="number" min={0.01} step={0.01} value={item.quantity} onChange={(e) => updateItem(index, { quantity: e.target.value })} required />
+                <Field label="Usado" type="number" min={0} step={0.01} value={item.quantityUsed} onChange={(e) => updateItem(index, { quantityUsed: e.target.value })} required />
+                <Field label="Custo un." type="number" min={0} step={0.01} value={item.unitCostCve} onChange={(e) => updateItem(index, { unitCostCve: e.target.value })} required />
                 <strong title={`${itemRemaining(item)} restante`}>{formatCve(itemTotal(item))}</strong>
-                <button
-                  type="button"
+                <Button
+                  variant="icon"
+                  size="sm"
                   title="Remover item"
                   disabled={form.items.length === 1}
                   onClick={() => setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== index) }))}
                 >
-                  <Trash2 size={14} />
-                </button>
+                  <Trash2 size={14} aria-hidden />
+                </Button>
               </div>
             ))}
           </div>
@@ -870,10 +826,7 @@ export function InvestmentsModule() {
             <span>ROI atual: <strong>{formRoi === null ? '-' : `${formRoi.toFixed(1)}%`}</strong></span>
           </div>
 
-          <label className="investment-notes">
-            Observacoes
-            <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
-          </label>
+          <Textarea className="investment-notes" label="Observacoes" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
         </form>
       </Dialog>
     </section>

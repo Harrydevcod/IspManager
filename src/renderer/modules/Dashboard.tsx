@@ -1,7 +1,7 @@
 import { Activity, AlertTriangle, CalendarClock, MessageCircle, TrendingUp, UsersRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { Badge, Card, Message, MetricCard, MetricGrid } from '../components';
+import { Badge, Button, Card, Message, MetricCard, MetricGrid } from '../components';
 import { authFetch } from '../lib/auth';
 import type { DashboardSummary, RevenuePoint } from '../types';
 
@@ -550,9 +550,9 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
             </p>
           )}
           <div className="dashboard-card-footer">
-            <button type="button" className="dashboard-cta" onClick={onOpenClients}>
-              <UsersRound size={14} /> Abrir clientes
-            </button>
+            <Button variant="secondary" className="dashboard-cta" leadingIcon={<UsersRound size={14} aria-hidden />} onClick={onOpenClients}>
+              Abrir clientes
+            </Button>
           </div>
         </Card>
       </section>

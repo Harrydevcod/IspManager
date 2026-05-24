@@ -1,7 +1,7 @@
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-type DetailModalProps = {
+type DetailPanelProps = {
   title: ReactNode;
   onClose: () => void;
   children: ReactNode;
@@ -12,8 +12,13 @@ type DetailModalProps = {
   actionsClassName?: string;
 };
 
-/** Inline detail panel (the `client-detail` shell from PaymentsModule's `selectedPayment`), NOT a backdrop modal — the `DetailModal` name is retained per the plan/Task 6 contract. */
-export function DetailModal({ title, onClose, children, eyebrow, actions, className, id, actionsClassName }: DetailModalProps) {
+/**
+ * Inline detail panel rendered alongside a list (the `client-detail` shell
+ * from PaymentsModule's `selectedPayment`). This is NOT a backdrop modal -
+ * it has no focus trap, no scroll lock, no ESC handler. For overlay flows
+ * use `Dialog`.
+ */
+export function DetailPanel({ title, onClose, children, eyebrow, actions, className, id, actionsClassName }: DetailPanelProps) {
   return (
     <div className={className ? `client-detail ${className}` : 'client-detail'} id={id}>
       <div className="module-header">
@@ -24,7 +29,7 @@ export function DetailModal({ title, onClose, children, eyebrow, actions, classN
         <div className={actionsClassName ? `inline-actions ${actionsClassName}` : 'inline-actions'}>
           {actions}
           <button type="button" title="Fechar" aria-label="Fechar" onClick={onClose}>
-            <X size={16} />
+            <X size={16} aria-hidden />
           </button>
         </div>
       </div>

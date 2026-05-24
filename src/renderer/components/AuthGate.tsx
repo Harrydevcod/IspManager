@@ -94,6 +94,7 @@ function SetupScreen() {
               required
               minLength={2}
               autoComplete="username"
+              spellCheck={false}
               placeholder="admin"
             />
           </label>
@@ -180,6 +181,7 @@ function LoginScreen({ lastError }: { lastError?: string }) {
               onChange={(event) => setUsername(event.target.value)}
               required
               autoComplete="username"
+              spellCheck={false}
               autoFocus
             />
           </label>

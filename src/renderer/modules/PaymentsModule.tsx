@@ -1,10 +1,19 @@
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, Eye, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Undo2, X } from 'lucide-react';
-import { Badge, DataList, DetailModal, Dialog, FilterBar, Message, useToast } from '../components';
+import { Badge, Button, DataList, DetailPanel, Dialog, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
 import { formatCve } from '../lib/format';
 import { authFetch, useAuth } from '../lib/auth';
-import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
+import {
+  fallbackWhatsappInvoiceReadyTemplate,
+  fallbackWhatsappOverdueTemplate,
+  fallbackWhatsappReceiptTemplate,
+  fallbackWhatsappSuspensionTemplate,
+  fallbackWhatsappTemplate,
+  normalizeWhatsappPhone,
+  renderWhatsappMessage,
+  sendWhatsappViaUltraMsg
+} from '../lib/whatsapp';
 import type { PaymentRow } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -14,6 +23,7 @@ import type { PaymentRow } from '../types';
 type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
 type PaymentActionMode = 'pay' | 'cancel' | 'whatsapp';
 type PaymentSortMode = 'dueAsc' | 'dueDesc' | 'amountDesc' | 'clientAsc';
+type WhatsappNoticeType = 'overdue' | 'suspension';
 
 const CANCEL_REASON_CHIPS_PENDING = [
   'Cobranca duplicada',
@@ -131,6 +141,7 @@ export function PaymentsModule() {
   const [sortMode, setSortMode] = useState<PaymentSortMode>('dueAsc');
   const [pdfPreview, setPdfPreview] = useState<{ payment: PaymentRow; type: 'invoice' | 'receipt' } | null>(null);
   const [overduePreview, setOverduePreview] = useState<{
+    noticeType: WhatsappNoticeType;
     total: number;
     eligible: Array<{ paymentId: number; clientName: string; clientCode: string; phone: string | null; amountCve: number; dueDate: string; daysOverdue: number }>;
     skipped: Array<{ paymentId: number; clientName: string; reason?: string }>;
@@ -141,6 +152,11 @@ export function PaymentsModule() {
   const auth = useAuth();
   const [companyName, setCompanyName] = useState('ISPM');
   const [whatsappTemplate, setWhatsappTemplate] = useState(fallbackWhatsappTemplate);
+  const [whatsappInvoiceReadyTemplate, setWhatsappInvoiceReadyTemplate] = useState(fallbackWhatsappInvoiceReadyTemplate);
+  const [whatsappReceiptTemplate, setWhatsappReceiptTemplate] = useState(fallbackWhatsappReceiptTemplate);
+  const [whatsappOverdueTemplate, setWhatsappOverdueTemplate] = useState(fallbackWhatsappOverdueTemplate);
+  const [whatsappSuspensionTemplate, setWhatsappSuspensionTemplate] = useState(fallbackWhatsappSuspensionTemplate);
+  const [whatsappSuspensionNoticeDays, setWhatsappSuspensionNoticeDays] = useState(15);
   const [whatsappTick, setWhatsappTick] = useState(0);
 
   function loadPayments() {
@@ -164,10 +180,23 @@ export function PaymentsModule() {
     let cancelled = false;
     authFetch('http://127.0.0.1:3001/api/settings')
       .then((response) => response.ok ? response.json() : null)
-      .then((settings: { companyName?: string; whatsappTemplate?: string } | null) => {
+      .then((settings: {
+        companyName?: string;
+        whatsappTemplate?: string;
+        whatsappInvoiceReadyTemplate?: string;
+        whatsappReceiptTemplate?: string;
+        whatsappOverdueTemplate?: string;
+        whatsappSuspensionTemplate?: string;
+        whatsappSuspensionNoticeDays?: number;
+      } | null) => {
         if (cancelled || !settings) return;
         setCompanyName(settings.companyName || 'ISPM');
         setWhatsappTemplate(settings.whatsappTemplate || fallbackWhatsappTemplate);
+        setWhatsappInvoiceReadyTemplate(settings.whatsappInvoiceReadyTemplate || fallbackWhatsappInvoiceReadyTemplate);
+        setWhatsappReceiptTemplate(settings.whatsappReceiptTemplate || fallbackWhatsappReceiptTemplate);
+        setWhatsappOverdueTemplate(settings.whatsappOverdueTemplate || fallbackWhatsappOverdueTemplate);
+        setWhatsappSuspensionTemplate(settings.whatsappSuspensionTemplate || fallbackWhatsappSuspensionTemplate);
+        setWhatsappSuspensionNoticeDays(settings.whatsappSuspensionNoticeDays || 15);
       })
       .catch(() => { /* keep defaults */ });
     return () => { cancelled = true; };
@@ -215,14 +244,34 @@ export function PaymentsModule() {
   }
 
   function whatsappMessageFor(payment: PaymentRow) {
+    const daysOverdue = Math.max(0, Math.floor((Date.now() - new Date(`${payment.dueDate}T00:00:00`).getTime()) / 86_400_000));
+    const template = payment.status === 'paid'
+      ? whatsappReceiptTemplate
+      : payment.status === 'overdue' && daysOverdue >= whatsappSuspensionNoticeDays
+        ? whatsappSuspensionTemplate
+        : payment.status === 'overdue'
+          ? whatsappOverdueTemplate
+          : payment.invoiceNumber
+            ? whatsappInvoiceReadyTemplate
+            : whatsappTemplate;
+
     return renderWhatsappMessage(
-      whatsappTemplate,
+      template,
       {
         fullName: payment.clientName,
         clientCode: payment.clientCode || '',
         phone: payment.clientPhone
       },
-      companyName
+      companyName,
+      {
+        amountCve: payment.amountCve,
+        dueDate: payment.dueDate,
+        referenceMonth: payment.referenceMonth,
+        invoiceNumber: payment.invoiceNumber,
+        receiptNumber: payment.receiptNumber,
+        daysOverdue,
+        suspensionDays: whatsappSuspensionNoticeDays
+      }
     );
   }
 
@@ -234,9 +283,11 @@ export function PaymentsModule() {
     setSubmitting(true);
     try {
       await sendWhatsappViaUltraMsg(payment.clientPhone, whatsappMessageFor(payment));
-      markReminderSent(payment.id);
+      if (payment.status !== 'paid') {
+        markReminderSent(payment.id);
+      }
       setWhatsappTick((tick) => tick + 1);
-      setMessage(`Lembrete WhatsApp enviado para ${payment.clientName}.`);
+      setMessage(`WhatsApp enviado para ${payment.clientName}.`);
       closeActionForm();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Nao foi possivel enviar WhatsApp.');
@@ -458,13 +509,13 @@ export function PaymentsModule() {
     setPdfPreview({ payment, type });
   }
 
-  async function openOverduePreview() {
+  async function openOverduePreview(noticeType: WhatsappNoticeType = 'overdue') {
     setNotifyLoading(true);
     try {
       const response = await authFetch('http://127.0.0.1:3001/api/payments/notify-overdue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun: true })
+        body: JSON.stringify({ dryRun: true, noticeType })
       });
       if (!response.ok) {
         const result = await response.json() as { error?: string };
@@ -472,7 +523,7 @@ export function PaymentsModule() {
         return;
       }
       const data = await response.json() as Awaited<NonNullable<typeof overduePreview>> & { dryRun: boolean };
-      setOverduePreview({ total: data.total, eligible: data.eligible, skipped: data.skipped });
+      setOverduePreview({ noticeType, total: data.total, eligible: data.eligible, skipped: data.skipped });
     } catch {
       toast('Falha de rede ao consultar atrasados.', 'error');
     } finally {
@@ -492,7 +543,7 @@ export function PaymentsModule() {
       const response = await authFetch('http://127.0.0.1:3001/api/payments/notify-overdue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun: false })
+        body: JSON.stringify({ dryRun: false, noticeType: overduePreview.noticeType })
       });
       const data = await response.json() as { sent?: number; failed?: Array<{ clientName: string; reason?: string }>; error?: string };
       if (!response.ok) {
@@ -501,7 +552,7 @@ export function PaymentsModule() {
       }
       const failedCount = data.failed?.length || 0;
       if (failedCount === 0) {
-        toast(`Lembrete WhatsApp enviado a ${data.sent} cliente(s).`, 'success');
+        toast(`WhatsApp enviado a ${data.sent} cliente(s).`, 'success');
       } else {
         toast(`Enviadas ${data.sent}. Falharam ${failedCount}.`, failedCount === overduePreview.eligible.length ? 'error' : 'info');
       }
@@ -606,64 +657,59 @@ export function PaymentsModule() {
           <h2>Pagamentos</h2>
         </div>
         <div className="inline-actions">
-          <input type="month" value={referenceMonth} onChange={(event) => setReferenceMonth(event.target.value)} />
-          <button type="button" onClick={() => void openMonthlyPreview()} disabled={monthlyLoading}>
+          <Field label="Mes" type="month" value={referenceMonth} onChange={(event) => setReferenceMonth(event.target.value)} />
+          <Button variant="secondary" size="sm" onClick={() => void openMonthlyPreview()} disabled={monthlyLoading}>
             {monthlyLoading && !monthlyPreview ? 'A calcular...' : 'Gerar mensalidades'}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => void openReversePreview()}
             disabled={reverseLoading}
             title="Reverter mensalidades geradas para este mes"
           >
-            <RotateCcw size={14} />
+            <RotateCcw size={14} aria-hidden />
             {reverseLoading ? 'A consultar...' : 'Reverter mensalidades'}
-          </button>
-          <button type="button" onClick={() => void openOverduePreview()} disabled={notifyLoading}>
-            <Send size={14} />
+          </Button>
+          <Button variant="secondary" size="sm" leadingIcon={<Send size={14} aria-hidden />} onClick={() => void openOverduePreview()} disabled={notifyLoading}>
             {notifyLoading ? 'A consultar...' : 'Notificar atrasados'}
-          </button>
+          </Button>
+          <Button variant="secondary" size="sm" leadingIcon={<AlertTriangle size={14} aria-hidden />} onClick={() => void openOverduePreview('suspension')} disabled={notifyLoading}>
+            Avisar suspensao
+          </Button>
         </div>
       </div>
 
       {/* Message primitive — renders p.module-message, byte-identical to original */}
       {message && <Message>{message}</Message>}
 
-      {/* FilterBar primitive — renders div.filter-bar, byte-identical to original.
-          Children kept inline: Field renders label.field>span.field-label+input which
-          differs from original bare <label>Text<input/> and bare <input class="payments-search"/>.
-          Keeping children inline preserves byte-identical DOM. */}
       <FilterBar>
-        <input
+        <Field
           type="search"
+          label="Pesquisar"
+          aria-label="Pesquisar pagamentos"
           placeholder="Cliente, NIF, telefone, fatura ou recibo"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           className="payments-search"
         />
-        <label>
-          Estado
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | PaymentRow['status'])}>
-            <option value="all">Todos</option>
-            <option value="pending">Pendente</option>
-            <option value="overdue">Atraso</option>
-            <option value="paid">Pago</option>
-            <option value="cancelled">Anulado</option>
-          </select>
-        </label>
-        <label>
-          Ordenar
-          <select value={sortMode} onChange={(event) => setSortMode(event.target.value as PaymentSortMode)}>
-            <option value="dueAsc">Vencimento ↑</option>
-            <option value="dueDesc">Vencimento ↓</option>
-            <option value="amountDesc">Valor ↓</option>
-            <option value="clientAsc">Cliente A-Z</option>
-          </select>
-        </label>
-        <button type="button" onClick={() => setShowAllMonths((current) => !current)} className={showAllMonths ? 'active' : ''}>
+        <Select label="Estado" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | PaymentRow['status'])}>
+          <option value="all">Todos</option>
+          <option value="pending">Pendente</option>
+          <option value="overdue">Atraso</option>
+          <option value="paid">Pago</option>
+          <option value="cancelled">Anulado</option>
+        </Select>
+        <Select label="Ordenar" value={sortMode} onChange={(event) => setSortMode(event.target.value as PaymentSortMode)}>
+          <option value="dueAsc">Vencimento asc</option>
+          <option value="dueDesc">Vencimento desc</option>
+          <option value="amountDesc">Valor desc</option>
+          <option value="clientAsc">Cliente A-Z</option>
+        </Select>
+        <Button variant="secondary" onClick={() => setShowAllMonths((current) => !current)} className={showAllMonths ? 'active' : ''}>
           {showAllMonths ? 'Mês atual' : 'Todos os meses'}
-        </button>
-        <button type="button" onClick={() => {
+        </Button>
+        <Button variant="secondary" onClick={() => {
           setStatusFilter('all');
           setReferenceMonth(currentMonth);
           setShowAllMonths(false);
@@ -671,7 +717,7 @@ export function PaymentsModule() {
           setSortMode('dueAsc');
         }}>
           Limpar filtros
-        </button>
+        </Button>
         <small>{visiblePayments.length} cobrancas{showAllMonths ? ' (todos os meses)' : ` em ${referenceMonth}`}</small>
       </FilterBar>
 
@@ -702,16 +748,17 @@ export function PaymentsModule() {
               <h2>Mensalidades de {monthlyPreview.referenceMonth}</h2>
             </div>
             <div className="inline-actions">
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => void confirmMonthlyGenerate()}
                 disabled={monthlyLoading || monthlyPreview.toCreate.length === 0}
               >
                 {monthlyLoading ? 'A gerar...' : `Confirmar e gerar (${monthlyPreview.toCreate.length})`}
-              </button>
-              <button type="button" onClick={closeMonthlyPreview} disabled={monthlyLoading}>
+              </Button>
+              <Button variant="secondary" size="sm" onClick={closeMonthlyPreview} disabled={monthlyLoading}>
                 Cancelar
-              </button>
+              </Button>
             </div>
           </div>
           <div className="monthly-preview-summary">
@@ -750,15 +797,15 @@ export function PaymentsModule() {
               ))}
             </div>
           ) : (
-            <p className="module-message">
+            <Message>
               Nada a criar. Os {monthlyPreview.alreadyBilled} servicos ativos ja tem cobranca para este mes.
-            </p>
+            </Message>
           )}
         </div>
       )}
 
       {selectedPayment && (
-        <DetailModal
+        <DetailPanel
           eyebrow="Pre-visualizacao"
           title={selectedPayment.clientName}
           className="payment-preview"
@@ -768,45 +815,48 @@ export function PaymentsModule() {
           actions={
             <>
               {selectedPayment.status !== 'cancelled' && (
-                <button type="button" onClick={() => openPdf(selectedPayment, 'invoice')}>
-                  <FileText size={16} />
+                <Button variant="secondary" size="sm" leadingIcon={<FileText size={16} aria-hidden />} onClick={() => openPdf(selectedPayment, 'invoice')}>
                   Fatura PDF
-                </button>
+                </Button>
               )}
               {selectedPayment.status === 'paid' ? (
-                <button type="button" onClick={() => openPdf(selectedPayment, 'receipt')}>
-                  <ReceiptText size={16} />
+                <Button variant="secondary" size="sm" leadingIcon={<ReceiptText size={16} aria-hidden />} onClick={() => openPdf(selectedPayment, 'receipt')}>
                   Recibo PDF
-                </button>
+                </Button>
               ) : selectedPayment.status !== 'cancelled' ? (
-                <button type="button" onClick={() => openPayForm(selectedPayment)}>
-                  <CheckCircle2 size={16} />
+                <Button variant="secondary" size="sm" leadingIcon={<CheckCircle2 size={16} aria-hidden />} onClick={() => openPayForm(selectedPayment)}>
                   Registar pagamento
-                </button>
+                </Button>
               ) : null}
-              {selectedPayment.status !== 'paid' && selectedPayment.status !== 'cancelled' && normalizeWhatsappPhone(selectedPayment.clientPhone) && (
-                <button
-                  type="button"
+              {selectedPayment.status !== 'cancelled' && normalizeWhatsappPhone(selectedPayment.clientPhone) && (
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => openWhatsappForm(selectedPayment)}
-                  disabled={wasReminderSentToday(selectedPayment.id)}
-                  title={wasReminderSentToday(selectedPayment.id) ? 'Lembrete ja enviado hoje' : 'Enviar lembrete WhatsApp'}
+                  disabled={selectedPayment.status !== 'paid' && wasReminderSentToday(selectedPayment.id)}
+                  title={selectedPayment.status !== 'paid' && wasReminderSentToday(selectedPayment.id) ? 'Lembrete ja enviado hoje' : 'Enviar WhatsApp'}
                 >
-                  <MessageCircle size={16} />
-                  {wasReminderSentToday(selectedPayment.id) ? 'Enviado hoje' : 'WhatsApp'}
-                </button>
+                  <MessageCircle size={16} aria-hidden />
+                  {selectedPayment.status !== 'paid' && wasReminderSentToday(selectedPayment.id)
+                    ? 'Enviado hoje'
+                    : selectedPayment.status === 'paid'
+                      ? 'Recibo WhatsApp'
+                      : 'WhatsApp'}
+                </Button>
               )}
               {selectedPayment.status !== 'cancelled' && (
-                <button
-                  type="button"
+                <Button
+                  variant={selectedPayment.status === 'paid' ? 'danger' : 'secondary'}
+                  size="sm"
                   onClick={() => openCancelForm(selectedPayment)}
                   className={selectedPayment.status === 'paid' ? 'danger-ghost' : undefined}
                   title={selectedPayment.status === 'paid'
                     ? 'Anular pagamento ja registado (ex: erro de faturacao)'
                     : 'Anular cobranca'}
                 >
-                  <X size={16} />
+                  <X size={16} aria-hidden />
                   {selectedPayment.status === 'paid' ? 'Anular pago' : 'Anular'}
-                </button>
+                </Button>
               )}
             </>
           }
@@ -823,21 +873,15 @@ export function PaymentsModule() {
                 <p className="eyebrow">Registar pagamento</p>
                 <strong>{formatCve(selectedPayment.amountCve)}</strong>
               </div>
-              <label>
-                Metodo
-                <select value={payMethod} onChange={(event) => setPayMethod(event.target.value as PaymentMethod)} disabled={submitting}>
-                  <option value="numerario">Numerario</option>
-                  <option value="transferencia">Transferencia</option>
-                  <option value="outro">Outro</option>
-                </select>
-              </label>
-              <label>
-                Data
-                <input type="date" value={payDate} onChange={(event) => setPayDate(event.target.value)} max={todayIso()} disabled={submitting} required />
-              </label>
+              <Select label="Metodo" value={payMethod} onChange={(event) => setPayMethod(event.target.value as PaymentMethod)} disabled={submitting}>
+                <option value="numerario">Numerario</option>
+                <option value="transferencia">Transferencia</option>
+                <option value="outro">Outro</option>
+              </Select>
+              <Field label="Data" type="date" value={payDate} onChange={(event) => setPayDate(event.target.value)} max={todayIso()} disabled={submitting} required />
               <div className="inline-actions">
-                <button type="submit" disabled={submitting || !payDate}>Confirmar</button>
-                <button type="button" onClick={closeActionForm} disabled={submitting}>Cancelar</button>
+                <Button type="submit" disabled={submitting || !payDate}>Confirmar</Button>
+                <Button variant="secondary" onClick={closeActionForm} disabled={submitting}>Cancelar</Button>
               </div>
             </form>
           )}
@@ -869,26 +913,28 @@ export function PaymentsModule() {
                     <small>O pagamento e marcado anulado e o motivo fica registado nas notas.</small>
                   )}
                 </div>
-                <label>
-                  Motivo {wasPaid && <em className="payment-form-hint">(minimo 10 caracteres)</em>}
+                <div>
+                  <span className="field-label">Motivo {wasPaid && <em className="payment-form-hint">(minimo 10 caracteres)</em>}</span>
                   <div className="reason-chips" role="list" aria-label="Motivos sugeridos">
                     {(wasPaid ? CANCEL_REASON_CHIPS_PAID : CANCEL_REASON_CHIPS_PENDING).map((suggestion) => {
                       const active = cancelReason.trim() === suggestion;
                       return (
-                        <button
+                        <Button
                           key={suggestion}
-                          type="button"
+                          variant="secondary"
+                          size="sm"
                           role="listitem"
                           className={active ? 'reason-chip reason-chip-active' : 'reason-chip'}
                           onClick={() => setCancelReason(suggestion)}
                           disabled={submitting}
                         >
                           {suggestion}
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>
-                  <textarea
+                  <Textarea
+                    label="Motivo escrito"
                     value={cancelReason}
                     onChange={(event) => setCancelReason(event.target.value)}
                     rows={wasPaid ? 4 : 3}
@@ -899,16 +945,16 @@ export function PaymentsModule() {
                       : 'Escolhe um motivo acima ou escreve livremente.'}
                     disabled={submitting}
                   />
-                </label>
+                </div>
                 <div className="inline-actions">
-                  <button
+                  <Button
                     type="submit"
-                    className={wasPaid ? 'danger' : undefined}
+                    variant={wasPaid ? 'danger' : 'primary'}
                     disabled={submitting || cancelReason.trim().length < minLen}
                   >
                     {wasPaid ? 'Confirmar anulacao pos-pagamento' : 'Confirmar anulacao'}
-                  </button>
-                  <button type="button" onClick={closeActionForm} disabled={submitting}>Cancelar</button>
+                  </Button>
+                  <Button variant="secondary" onClick={closeActionForm} disabled={submitting}>Cancelar</Button>
                 </div>
               </form>
             );
@@ -923,25 +969,29 @@ export function PaymentsModule() {
               }}
             >
               <div>
-                <p className="eyebrow">Lembrete WhatsApp</p>
+                <p className="eyebrow">
+                  {selectedPayment.status === 'paid'
+                    ? 'Recibo WhatsApp'
+                    : selectedPayment.status === 'overdue'
+                      ? 'Aviso WhatsApp'
+                      : 'Fatura WhatsApp'}
+                </p>
                 <small>
                   Para <strong>{normalizeWhatsappPhone(selectedPayment.clientPhone) || '—'}</strong>{' '}
                   · template em Configuracoes
                 </small>
               </div>
-              <label>
-                Mensagem
-                <textarea
-                  value={whatsappMessageFor(selectedPayment)}
-                  readOnly
-                  rows={4}
-                />
-              </label>
+              <Textarea
+                label="Mensagem"
+                value={whatsappMessageFor(selectedPayment)}
+                readOnly
+                rows={4}
+              />
               <div className="inline-actions">
-                <button type="submit" disabled={submitting || !normalizeWhatsappPhone(selectedPayment.clientPhone)}>
+                <Button type="submit" disabled={submitting || !normalizeWhatsappPhone(selectedPayment.clientPhone)}>
                   {submitting ? 'A enviar...' : 'Enviar'}
-                </button>
-                <button type="button" onClick={closeActionForm} disabled={submitting}>Cancelar</button>
+                </Button>
+                <Button variant="secondary" onClick={closeActionForm} disabled={submitting}>Cancelar</Button>
               </div>
             </form>
           )}
@@ -960,7 +1010,7 @@ export function PaymentsModule() {
               src={documentUrl(selectedPayment, 'invoice', true)}
             />
           ) : (
-            <p className="module-message">Pagamento anulado. Nenhuma fatura ou recibo pode ser emitido.</p>
+            <Message>Pagamento anulado. Nenhuma fatura ou recibo pode ser emitido.</Message>
           )}
           <dl>
             <div><dt>Mes</dt><dd>{selectedPayment.referenceMonth}</dd></div>
@@ -971,7 +1021,7 @@ export function PaymentsModule() {
             <div><dt>Data pagamento</dt><dd>{selectedPayment.paymentDate?.slice(0, 10) || '-'}</dd></div>
             <div><dt>Estado</dt><dd>{selectedPayment.status}</dd></div>
           </dl>
-        </DetailModal>
+        </DetailPanel>
       )}
 
       <DataList
@@ -997,78 +1047,79 @@ export function PaymentsModule() {
         ]}
         actions={(p) => (
           <>
-            <button type="button" title="Pre-visualizar" onClick={() => previewPaymentDocument(p)}>
-              <Eye size={16} />
-            </button>
+            <Button variant="icon" size="sm" title="Pre-visualizar" onClick={() => previewPaymentDocument(p)}>
+              <Eye size={16} aria-hidden />
+            </Button>
             {p.status !== 'cancelled' && (
-              <button type="button" title="Fatura PDF" onClick={() => openPdf(p, 'invoice')}>
-                <FileText size={16} />
-              </button>
+              <Button variant="icon" size="sm" title="Fatura PDF" onClick={() => openPdf(p, 'invoice')}>
+                <FileText size={16} aria-hidden />
+              </Button>
             )}
             {p.status === 'pending' && (
-              <button type="button" title="Marcar atraso" onClick={() => void markOverdue(p)}>
-                <AlertTriangle size={16} />
-              </button>
+              <Button variant="icon" size="sm" title="Marcar atraso" onClick={() => void markOverdue(p)}>
+                <AlertTriangle size={16} aria-hidden />
+              </Button>
             )}
             {p.status === 'paid' ? (
-              <button type="button" title="Recibo PDF" onClick={() => openPdf(p, 'receipt')}>
-                <ReceiptText size={16} />
-              </button>
+              <Button variant="icon" size="sm" title="Recibo PDF" onClick={() => openPdf(p, 'receipt')}>
+                <ReceiptText size={16} aria-hidden />
+              </Button>
             ) : p.status !== 'cancelled' ? (
-              <button type="button" title="Registar pagamento" onClick={() => openPayForm(p)}>
-                <CheckCircle2 size={16} />
-              </button>
+              <Button variant="icon" size="sm" title="Registar pagamento" onClick={() => openPayForm(p)}>
+                <CheckCircle2 size={16} aria-hidden />
+              </Button>
             ) : null}
             {p.status !== 'paid' && p.status !== 'cancelled' && normalizeWhatsappPhone(p.clientPhone) && (
-              <button
-                type="button"
+              <Button
+                variant="icon"
+                size="sm"
                 title={wasReminderSentToday(p.id) ? 'Lembrete WhatsApp ja enviado hoje' : 'Lembrete WhatsApp'}
                 onClick={() => openWhatsappForm(p)}
                 disabled={wasReminderSentToday(p.id)}
               >
-                <MessageCircle size={16} />
-              </button>
+                <MessageCircle size={16} aria-hidden />
+              </Button>
             )}
             {p.status !== 'cancelled' && (
-              <button
-                type="button"
+              <Button
+                variant="icon"
+                size="sm"
                 title={p.status === 'paid'
                   ? 'Anular pagamento ja registado (erro de faturacao)'
                   : 'Anular cobranca'}
                 onClick={() => openCancelForm(p)}
                 className={p.status === 'paid' ? 'danger-ghost' : undefined}
               >
-                <X size={16} />
-              </button>
+                <X size={16} aria-hidden />
+              </Button>
             )}
             {(p.status === 'pending' || p.status === 'overdue') && (
-              <button
-                type="button"
+              <Button
+                variant="icon"
+                size="sm"
                 title="Reverter geracao (apaga a cobranca)"
                 onClick={() => openIndividualRevert(p)}
               >
-                <Undo2 size={16} />
-              </button>
+                <Undo2 size={16} aria-hidden />
+              </Button>
             )}
           </>
         )}
         onRowClick={(p) => previewPaymentDocument(p)}
-        empty={<p className="module-message">Nenhuma cobranca encontrada para os filtros atuais.</p>}
+        empty={<Message>Nenhuma cobranca encontrada para os filtros atuais.</Message>}
       />
 
       <Dialog
         open={!!overduePreview}
         onClose={closeOverduePreview}
         eyebrow="WhatsApp em massa"
-        title="Notificar atrasados"
+        title={overduePreview?.noticeType === 'suspension' ? 'Avisar suspensao' : 'Notificar atrasados'}
         size="md"
         closeOnBackdrop={!notifySending}
         actions={
           <>
-            <button type="button" onClick={closeOverduePreview} disabled={notifySending}>Cancelar</button>
-            <button
-              type="button"
-              className="primary"
+            <Button variant="secondary" onClick={closeOverduePreview} disabled={notifySending}>Cancelar</Button>
+            <Button
               onClick={() => void confirmNotifyOverdue()}
               disabled={notifySending || !overduePreview || overduePreview.eligible.length === 0}
             >
@@ -1077,14 +1128,17 @@ export function PaymentsModule() {
                 : overduePreview && overduePreview.eligible.length > 0
                   ? `Enviar para ${overduePreview.eligible.length}`
                   : 'Sem destinatarios'}
-            </button>
+            </Button>
           </>
         }
       >
         {overduePreview && (
           <div className="overdue-notify">
             <p className="overdue-notify-summary">
-              <strong>{overduePreview.total}</strong> pagamento(s) em atraso.{' '}
+              <strong>{overduePreview.total}</strong>{' '}
+              {overduePreview.noticeType === 'suspension'
+                ? `pagamento(s) com ${whatsappSuspensionNoticeDays}+ dias de atraso. `
+                : 'pagamento(s) em atraso. '}
               <strong>{overduePreview.eligible.length}</strong> elegivel(eis) para WhatsApp.{' '}
               {overduePreview.skipped.length > 0 && (
                 <span className="overdue-notify-skip">
@@ -1108,7 +1162,7 @@ export function PaymentsModule() {
                 ))}
               </ul>
             ) : (
-              <p className="module-message">Sem clientes elegiveis para envio em massa.</p>
+              <Message>Sem clientes elegiveis para envio em massa.</Message>
             )}
 
             {overduePreview.skipped.length > 0 && (
@@ -1136,10 +1190,8 @@ export function PaymentsModule() {
         closeOnBackdrop={!reverseSubmitting}
         actions={
           <>
-            <button type="button" onClick={closeReversePreview} disabled={reverseSubmitting}>Cancelar</button>
-            <button
-              type="button"
-              className="primary"
+            <Button variant="secondary" onClick={closeReversePreview} disabled={reverseSubmitting}>Cancelar</Button>
+            <Button
               onClick={() => void confirmReverseMonthly()}
               disabled={reverseSubmitting || !reversePreview || reversePreview.eligibleCount === 0}
             >
@@ -1148,7 +1200,7 @@ export function PaymentsModule() {
                 : reversePreview && reversePreview.eligibleCount > 0
                   ? `Reverter ${reversePreview.eligibleCount} cobranca(s)`
                   : 'Nada a reverter'}
-            </button>
+            </Button>
           </>
         }
       >
@@ -1184,9 +1236,9 @@ export function PaymentsModule() {
                 ))}
               </ul>
             ) : (
-              <p className="module-message">
+              <Message>
                 Sem cobrancas pendentes ou em atraso para reverter em {reversePreview.referenceMonth}.
-              </p>
+              </Message>
             )}
 
             {reversePreview.paidLockedCount > 0 && (
@@ -1214,15 +1266,13 @@ export function PaymentsModule() {
         closeOnBackdrop={!individualRevertSubmitting}
         actions={
           <>
-            <button type="button" onClick={closeIndividualRevert} disabled={individualRevertSubmitting}>Cancelar</button>
-            <button
-              type="button"
-              className="primary"
+            <Button variant="secondary" onClick={closeIndividualRevert} disabled={individualRevertSubmitting}>Cancelar</Button>
+            <Button
               onClick={() => void confirmIndividualRevert()}
               disabled={individualRevertSubmitting}
             >
               {individualRevertSubmitting ? 'A reverter...' : 'Confirmar reversao'}
-            </button>
+            </Button>
           </>
         }
       >
@@ -1251,15 +1301,14 @@ export function PaymentsModule() {
         size="lg"
         actions={
           <>
-            <button type="button" onClick={closePdfPreview}>Fechar</button>
+            <Button variant="secondary" onClick={closePdfPreview}>Fechar</Button>
             {pdfPreview && (
-              <button
-                type="button"
-                className="primary"
+              <Button
+                leadingIcon={<Download size={14} aria-hidden />}
                 onClick={() => downloadPdf(pdfPreview.payment, pdfPreview.type)}
               >
-                <Download size={14} /> Descarregar
-              </button>
+                Descarregar
+              </Button>
             )}
           </>
         }

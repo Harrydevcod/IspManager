@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Button, Field, Message } from '../components';
 import { authFetch } from '../lib/auth';
 
 type BackupItem = { file: string; createdAt: string; sizeBytes: number };
@@ -112,16 +113,16 @@ export function BackupsPanel() {
           <p className="backups-dir">{backupDir}</p>
         </div>
         <div className="backups-head-actions">
-          <button type="button" disabled={busy} onClick={() => void importBackup()}>
+          <Button variant="secondary" disabled={busy} onClick={() => void importBackup()}>
             Importar backup…
-          </button>
-          <button type="button" disabled={busy} onClick={() => void createNow()}>
+          </Button>
+          <Button variant="primary" loading={busy} onClick={() => void createNow()}>
             Criar backup agora
-          </button>
+          </Button>
         </div>
       </header>
 
-      {message && <p className="backups-msg">{message}</p>}
+      {message && <Message>{message}</Message>}
 
       <ul className="backups-list">
         {entries.map((e) => (
@@ -130,25 +131,35 @@ export function BackupsPanel() {
             <span>{formatBytes(e.sizeBytes)}</span>
             {confirmFile === e.file ? (
               <span className="backups-confirm">
-                <input
+                <Field
+                  label="Confirmar restauro"
                   placeholder="escreva RESTAURAR"
+                  aria-label="Confirmar restauro escrevendo RESTAURAR"
                   value={confirmText}
                   onChange={(ev) => setConfirmText(ev.target.value)}
                 />
-                <button
-                  type="button"
+                <Button
+                  variant="danger"
+                  size="sm"
                   className="backups-danger"
-                  disabled={busy || confirmText !== 'RESTAURAR'}
+                  disabled={confirmText !== 'RESTAURAR'}
+                  loading={busy}
                   onClick={() => void doRestore(e.file)}
                 >
                   Confirmar
-                </button>
-                <button type="button" onClick={() => { setConfirmFile(null); setConfirmText(''); }}>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setConfirmFile(null); setConfirmText(''); }}
+                >
                   Cancelar
-                </button>
+                </Button>
               </span>
             ) : (
-              <button type="button" onClick={() => setConfirmFile(e.file)}>Restaurar</button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirmFile(e.file)}>
+                Restaurar
+              </Button>
             )}
           </li>
         ))}

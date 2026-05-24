@@ -10,7 +10,7 @@ type MetricCardProps = { icon: LucideIcon; label: string; value: string; trend?:
 export function MetricCard({ icon: Icon, label, value, trend }: MetricCardProps) {
   return (
     <article className="metric-card">
-      <Icon size={20} />
+      <Icon size={20} aria-hidden />
       <span>{label}</span>
       <strong>{value}</strong>
       {trend ? <small>{trend}</small> : null}

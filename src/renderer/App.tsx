@@ -144,7 +144,7 @@ function AppShell() {
         label: `Ir para ${item.label}`,
         group: 'Navegacao',
         keywords: ['ir', 'abrir', item.label.toLowerCase()],
-        icon: <Icon size={14} />,
+        icon: <Icon size={14} aria-hidden />,
         action: () => setSection(item.id)
       };
     });

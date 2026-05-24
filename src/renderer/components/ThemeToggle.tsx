@@ -10,7 +10,6 @@ export function ThemeToggle() {
     const next = theme === 'dark' ? 'light' : 'dark';
     setTheme(next);
     document.documentElement.dataset.theme = next;
-    document.documentElement.style.background = next === 'light' ? '#F6F3EC' : '#16130F';
     try {
       localStorage.setItem('ispm-theme', next);
     } catch {

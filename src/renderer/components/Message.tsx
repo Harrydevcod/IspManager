@@ -9,5 +9,9 @@ type MessageProps = { tone?: 'error' | 'success' | 'neutral'; children: ReactNod
  */
 export function Message({ tone = 'neutral', children }: MessageProps) {
   const cls = tone === 'neutral' ? 'module-message' : `module-message ${tone}`;
-  return <p className={cls}>{children}</p>;
+  return (
+    <p className={cls} role={tone === 'error' ? 'alert' : 'status'} aria-live={tone === 'error' ? 'assertive' : 'polite'}>
+      {children}
+    </p>
+  );
 }

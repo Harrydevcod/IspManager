@@ -1,18 +1,18 @@
-import { useId, type InputHTMLAttributes } from 'react';
+import { useId, type TextareaHTMLAttributes } from 'react';
 
-type FieldProps = InputHTMLAttributes<HTMLInputElement> & {
+type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
   label: string;
   error?: string;
   hint?: string;
   wide?: boolean;
 };
 
-/** Labelled input with optional hint caption + inline error. */
-export function Field({ label, error, hint, wide, id, className, ...rest }: FieldProps) {
+/** Labelled textarea, parallel to `Field`. Defaults to `wide` because textareas usually span the full form row. */
+export function Textarea({ label, error, hint, wide = true, id, className, ...rest }: TextareaProps) {
   const reactId = useId();
-  const inputId = id ?? `field-${reactId}`;
-  const errorId = `${inputId}-error`;
-  const hintId = hint ? `${inputId}-hint` : undefined;
+  const textareaId = id ?? `textarea-${reactId}`;
+  const errorId = `${textareaId}-error`;
+  const hintId = hint ? `${textareaId}-hint` : undefined;
   const describedBy = error ? errorId : hintId;
 
   const classes = ['field'];
@@ -20,10 +20,10 @@ export function Field({ label, error, hint, wide, id, className, ...rest }: Fiel
   if (className) classes.push(className);
 
   return (
-    <label className={classes.join(' ')} htmlFor={inputId}>
+    <label className={classes.join(' ')} htmlFor={textareaId}>
       <span className="field-label">{label}</span>
-      <input
-        id={inputId}
+      <textarea
+        id={textareaId}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
         {...rest}
