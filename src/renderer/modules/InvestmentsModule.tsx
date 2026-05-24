@@ -1,7 +1,7 @@
-import { Download, FileText, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Download, FileText, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Combobox, DataList, Dialog, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
+import { Badge, Button, Combobox, DataList, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import type { Client, Investment, InvestmentItemType, InvestmentList, InvestmentStatus, InvestmentTimeline, InvestmentType } from '../types';
@@ -554,7 +554,13 @@ export function InvestmentsModule() {
               </Button>
             </>
           )}
-          empty={<Message>Sem investimentos neste filtro.</Message>}
+          empty={
+            <EmptyState
+              icon={Wallet}
+              title="Sem investimentos neste filtro"
+              description="Ajusta o intervalo de datas ou regista um novo investimento."
+            />
+          }
         />
 
         <aside className="investment-detail" aria-label="Detalhe do investimento">

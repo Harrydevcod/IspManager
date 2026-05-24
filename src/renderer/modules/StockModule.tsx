@@ -1,7 +1,7 @@
 import { Activity, ArrowDownUp, Banknote, Boxes, Gauge, Pencil, Users } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Badge, Button, Dialog, Field, FilterBar, Message, Select, useToast } from '../components';
+import { Badge, Button, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { stockLevelTone } from '../lib/status';
 import type { CatalogAssignments, StockCatalogRow, StockMovement, StockSummary } from '../types';
@@ -408,7 +408,11 @@ export function StockModule() {
           </div>
         ))}
         {summary && visibleStockRows.length === 0 && (
-          <Message>Nenhum equipamento encontrado para os filtros atuais.</Message>
+          <EmptyState
+            icon={Boxes}
+            title="Nenhum equipamento encontrado"
+            description="Ajusta os filtros ou cadastra um novo equipamento no catálogo."
+          />
         )}
       </div>
 

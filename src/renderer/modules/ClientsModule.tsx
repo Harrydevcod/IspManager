@@ -1,7 +1,7 @@
-import { MessageCircle, Pencil, Upload } from 'lucide-react';
+import { MessageCircle, Pencil, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Badge, Button, ClientImportDialog, Dialog, Field, FilterBar, Message, Select, useToast } from '../components';
+import { Badge, Button, ClientImportDialog, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import { statusLabel, statusTone } from '../lib/status';
@@ -303,7 +303,12 @@ export function ClientsModule() {
             {profitabilityLoading && <Message>A calcular rentabilidade...</Message>}
 
             {!profitabilityLoading && profitability && profitability.investments.length === 0 && (
-              <Message>Sem investimentos registados para este cliente.</Message>
+              <EmptyState
+                size="sm"
+                icon={Wallet}
+                title="Sem investimentos registados"
+                description="Este cliente ainda não tem investimentos lançados. Adiciona no módulo Investimentos."
+              />
             )}
 
             {!profitabilityLoading && profitability && profitability.investments.length > 0 && (
@@ -435,7 +440,11 @@ export function ClientsModule() {
             );
           })}
           {visibleClients.length === 0 && (
-            <Message>Nenhum cliente encontrado para os filtros atuais.</Message>
+            <EmptyState
+              icon={UsersRound}
+              title="Nenhum cliente encontrado"
+              description="Ajusta os filtros ou regista um novo cliente."
+            />
           )}
         </div>
       )}

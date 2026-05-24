@@ -1,7 +1,7 @@
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, Eye, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Undo2, X } from 'lucide-react';
-import { Badge, Button, DataList, DetailPanel, Dialog, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
+import { Badge, Button, DataList, DetailPanel, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
 import { formatCve } from '../lib/format';
 import { authFetch, useAuth } from '../lib/auth';
 import {
@@ -1106,7 +1106,13 @@ export function PaymentsModule() {
           </>
         )}
         onRowClick={(p) => previewPaymentDocument(p)}
-        empty={<Message>Nenhuma cobranca encontrada para os filtros atuais.</Message>}
+        empty={
+          <EmptyState
+            icon={ReceiptText}
+            title="Nenhuma cobrança encontrada"
+            description="Ajusta os filtros ou aguarda novos serviços para gerar cobranças."
+          />
+        }
       />
 
       <Dialog
@@ -1162,7 +1168,12 @@ export function PaymentsModule() {
                 ))}
               </ul>
             ) : (
-              <Message>Sem clientes elegiveis para envio em massa.</Message>
+              <EmptyState
+                size="sm"
+                icon={Send}
+                title="Sem clientes elegíveis"
+                description="Não há cobranças em atraso com telefone WhatsApp válido para envio em massa."
+              />
             )}
 
             {overduePreview.skipped.length > 0 && (

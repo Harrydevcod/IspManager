@@ -1,7 +1,7 @@
 import { Cable, History, Pencil, Plus, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Badge, Button, Combobox, Dialog, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
+import { Badge, Button, Combobox, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { statusLabel, statusTone } from '../lib/status';
 import type { Client, DeviceAssignment, PlanRow, ServiceEvent, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
@@ -385,7 +385,12 @@ export function ServicesModule() {
             </header>
             {historyLoading && !technicalHistory && <Message>A carregar historico...</Message>}
             {technicalHistory && technicalHistory.assignments.length === 0 && (
-              <Message>Nenhum equipamento atribuido a este servico.</Message>
+              <EmptyState
+                size="sm"
+                icon={Cable}
+                title="Sem equipamento atribuído"
+                description="Atribui hardware a este serviço para começar a registar histórico técnico."
+              />
             )}
             {technicalHistory && technicalHistory.assignments.length > 0 && (
               <ul className="technical-list">
@@ -429,7 +434,12 @@ export function ServicesModule() {
               )}
             </header>
             {technicalHistory && technicalHistory.events.length === 0 && (
-              <Message>Sem eventos registados para este servico.</Message>
+              <EmptyState
+                size="sm"
+                icon={History}
+                title="Sem eventos registados"
+                description="Quando criares ordens de serviço ou trocas de equipamento aparecem aqui."
+              />
             )}
             {technicalHistory && technicalHistory.events.length > 0 && (
               <ul className="technical-timeline">
@@ -497,7 +507,11 @@ export function ServicesModule() {
           </div>
         ))}
         {visibleServices.length === 0 && (
-          <Message>Nenhum servico encontrado para os filtros atuais.</Message>
+          <EmptyState
+            icon={Wrench}
+            title="Nenhum serviço encontrado"
+            description="Ajusta os filtros ou ativa um novo serviço para um cliente."
+          />
         )}
       </div>
 

@@ -1,7 +1,7 @@
-import { Pencil, Plus, Repeat, Trash2 } from 'lucide-react';
+import { FileText, Pencil, Plus, Repeat, Trash2 } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Combobox, DataTable, Dialog, Field, FilterBar, Message, Select, Textarea, Toggle, useToast } from '../components';
+import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import type { Client, Expense, ExpenseCategory, ExpenseList, ExpenseTemplate, ExpenseTemplateList, Investment, InvestmentList } from '../types';
@@ -729,7 +729,12 @@ export function ExpensesModule() {
           </form>
 
           {templates.rows.length === 0 ? (
-            <Message>Sem templates ainda. Adiciona um acima.</Message>
+            <EmptyState
+              size="sm"
+              icon={FileText}
+              title="Sem templates ainda"
+              description="Adiciona uma despesa recorrente acima para automatizar lançamentos mensais."
+            />
           ) : (
             <ul className="expense-template-list">
               {templates.rows.map((t) => (
