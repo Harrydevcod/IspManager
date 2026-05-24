@@ -6,6 +6,7 @@ import type { DragEvent } from 'react';
 import { Dialog } from './Dialog';
 import { useToast } from './Toaster';
 import { authFetch } from '../lib/auth';
+import './ClientImportDialog.css';
 
 type TargetField =
   | 'clientCode'

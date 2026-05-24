@@ -3,6 +3,7 @@ import type { CSSProperties, DragEvent, FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Dialog, Field, Message, Select, Textarea, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
+import './WorkOrdersModule.css';
 import type {
   ServiceEventType,
   ServiceRow,

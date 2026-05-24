@@ -141,7 +141,6 @@ export function BackupsPanel() {
                 <Button
                   variant="danger"
                   size="sm"
-                  className="backups-danger"
                   disabled={confirmText !== 'RESTAURAR'}
                   loading={busy}
                   onClick={() => void doRestore(e.file)}
