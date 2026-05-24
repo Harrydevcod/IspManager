@@ -43,7 +43,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
-    "electron": "^42.0.0",
+    "electron": "^41.7.0",
     "electron-builder": "^25.1.8",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
@@ -58,6 +58,11 @@
     "files": [
       "dist/**/*",
       "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node",
+      "**/node_modules/better-sqlite3/build/Release/**"
     ],
     "directories": {
       "buildResources": "assets",
