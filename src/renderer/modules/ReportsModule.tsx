@@ -1,6 +1,6 @@
-import { Activity, Banknote, Cable, MessageCircle, UsersRound } from 'lucide-react';
+import { Activity, Banknote, Cable, CheckCircle2, MessageCircle, UsersRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Button, Field, FilterBar, Message } from '../components';
+import { Button, EmptyState, Field, FilterBar, Message } from '../components';
 import { authFetch } from '../lib/auth';
 import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
 import type { ReportsSummary, ReportView } from '../types';
@@ -250,13 +250,25 @@ export function ReportsModule() {
           </div>
         ))}
         {summary && view === 'revenue' && summary.revenueByMonth.length === 0 && (
-          <Message>Ainda nao existem pagamentos para reportar.</Message>
+          <EmptyState
+            icon={Banknote}
+            title="Ainda sem receita"
+            description="Quando emitires e receberes pagamentos, aparecem aqui agrupados por mês."
+          />
         )}
         {summary && view === 'overdue' && summary.overdueClients.length === 0 && (
-          <Message>Nao existem clientes em atraso.</Message>
+          <EmptyState
+            icon={CheckCircle2}
+            title="Sem clientes em atraso"
+            description="Todas as cobranças estão em dia. Continua assim."
+          />
         )}
         {summary && view === 'stock' && summary.stockRows.length === 0 && (
-          <Message>Ainda nao existem equipamentos cadastrados.</Message>
+          <EmptyState
+            icon={Cable}
+            title="Ainda sem equipamentos"
+            description="Quando cadastrares equipamentos no Stock, aparecem aqui resumidos por tipo."
+          />
         )}
         {summary && total > PAGE_SIZE && (
           <div className="audit-pagination reports-pagination" aria-label="Paginacao dos relatorios">

@@ -1,5 +1,6 @@
+import { Inbox } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Badge, Button, Field, FilterBar, Message, Select } from '../components';
+import { Badge, Button, EmptyState, Field, FilterBar, Message, Select } from '../components';
 import { authFetch } from '../lib/auth';
 
 type AuditLogRow = {
@@ -137,7 +138,13 @@ export function AuditModule() {
               <small className="audit-row-entity">{row.entityType}{row.entityId ? ` #${row.entityId}` : ''}</small>
             </div>
           ))}
-          {rows.length === 0 && <Message>Sem eventos de auditoria.</Message>}
+          {rows.length === 0 && (
+            <EmptyState
+              icon={Inbox}
+              title="Sem eventos de auditoria"
+              description="Ainda não há registos. Ações sobre clientes, planos e faturação aparecem aqui assim que ocorrerem."
+            />
+          )}
           {total > PAGE_SIZE && (
             <div className="audit-pagination" aria-label="Paginacao da auditoria">
               <Button

@@ -2410,6 +2410,71 @@ label.field-toggle {
   line-height: 1.45;
 }
 
+/* EmptyState primitive - dedicated empty case, NOT a status message.
+   Editorial: dashed border for absence, generous whitespace, icon in a
+   pill chip that reads as deliberate placeholder rather than "nothing here". */
+.empty-state {
+  display: grid;
+  justify-items: center;
+  gap: var(--s3);
+  padding: var(--s7) var(--s5);
+  border: 1px dashed var(--border);
+  border-radius: var(--r2);
+  background: color-mix(in oklch, var(--surface) 40%, transparent);
+  text-align: center;
+}
+
+.empty-state-sm {
+  padding: var(--s5) var(--s4);
+  gap: var(--s2);
+}
+
+.empty-state-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--rpill);
+  background: var(--surface-2);
+  color: var(--text-3);
+  border: 1px solid var(--border);
+}
+
+.empty-state-sm .empty-state-icon {
+  width: 36px;
+  height: 36px;
+}
+
+.empty-state-body {
+  display: grid;
+  gap: 4px;
+  max-width: 42ch;
+}
+
+.empty-state-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text);
+}
+
+.empty-state-sm .empty-state-title {
+  font-size: var(--fs-base);
+}
+
+.empty-state-description {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+}
+
+.empty-state-action {
+  margin-top: var(--s2);
+}
+
 .module-message.success {
   color: var(--success);
 }

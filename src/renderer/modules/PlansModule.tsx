@@ -1,7 +1,7 @@
-import { Pencil } from 'lucide-react';
+import { Pencil, Wifi } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Badge, Button, Dialog, Field, FilterBar, Message, Select, useToast } from '../components';
+import { Badge, Button, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { planActiveLabel, planActiveTone } from '../lib/status';
 import type { PlanRow } from '../types';
@@ -200,7 +200,11 @@ export function PlansModule() {
           </div>
         ))}
         {visiblePlans.length === 0 && (
-          <Message>Nenhum plano encontrado para os filtros atuais.</Message>
+          <EmptyState
+            icon={Wifi}
+            title="Nenhum plano encontrado"
+            description="Ajusta os filtros ou cria um novo plano de internet."
+          />
         )}
       </div>
 
