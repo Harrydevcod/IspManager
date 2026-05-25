@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve } from '../lib/format';
+import './ExpensesModule.css';
 import type { Client, Expense, ExpenseCategory, ExpenseList, ExpenseTemplate, ExpenseTemplateList, Investment, InvestmentList } from '../types';
 
 type AllocationTarget = 'none' | 'investment' | 'zone' | 'client';

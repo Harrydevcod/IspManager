@@ -1,0 +1,685 @@
+/* =========================================================================
+   ExpensesModule — module-specific styles
+   Imported by src/renderer/modules/ExpensesModule.tsx
+   Moved from src/renderer/styles.css for colocation (2026-05-24).
+
+   The metrics block at the bottom is intentionally duplicated with
+   InvestmentsModule.css — both modules share the same metric-tile look
+   by design, and full independence is preferred over a _shared.css
+   indirection. If you change one, change the other.
+   ========================================================================= */
+
+.sparkline svg .expense-line {
+  opacity: 0.85;
+  filter: drop-shadow(0 0 1px color-mix(in oklch, var(--danger) 60%, transparent));
+}
+
+.sparkline svg .expense-dot {
+  transition: r 180ms ease;
+}
+
+.expenses-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Expenses (OPEX) module — editorial dark-first */
+.expenses-module {
+  overflow: hidden;
+}
+
+.expenses-module .module-header {
+  align-items: flex-start;
+}
+
+.expenses-module .module-header small {
+  display: block;
+  margin-top: var(--s2);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.expenses-module .module-header small strong {
+  color: var(--text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.expenses-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.expenses-filter-shell .filter-bar {
+  align-items: end;
+  margin-top: var(--s4);
+}
+
+.filter-bar .expenses-toggle-filter {
+  min-height: 40px;
+  align-content: center;
+  grid-template-columns: auto max-content;
+  gap: var(--s2);
+  padding: 0 var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+  color: var(--text-2);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.expenses-toggle-filter input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.expenses-toggle-filter span {
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+
+.expense-form {
+  display: grid;
+  gap: var(--s5);
+}
+
+.expense-form-section {
+  display: grid;
+  gap: var(--s3);
+}
+
+.expense-form-section-title {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-weight: 700;
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--border);
+}
+
+.expense-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  color: var(--text-3);
+  text-transform: none;
+  font-weight: 500;
+}
+
+.expense-form label > input,
+.expense-form label > select,
+.expense-form label > textarea {
+  color: var(--text);
+  font-weight: 400;
+}
+
+.expense-form .field-wide { width: 100%; }
+.expense-form-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--s3) var(--s4);
+}
+
+.expense-form-grid > .col-amount { grid-column: span 5; }
+.expense-form-grid > .col-date { grid-column: span 4; }
+
+.expense-form-grid > .col-category { grid-column: span 3; }
+.expense-form-grid > .col-supplier { grid-column: span 7; }
+
+.expense-form-grid > .col-doc { grid-column: span 5; }
+@media (max-width: 720px) {
+  .expense-form-grid > [class^="col-"] { grid-column: span 12; }
+}
+
+.expense-form input,
+.expense-form select,
+.expense-form textarea { width: 100%; }
+.expense-form-amount {
+  position: relative;
+}
+
+.expense-form-amount input {
+  padding-right: 44px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.expense-form-amount::after {
+  content: 'CVE';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(20%);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--text-3);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+/* Summary cards — mini-bar proporcional + % do total. */
+.expenses-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--s3);
+  margin: var(--s4) 0 var(--s5);
+}
+
+.expenses-summary-card {
+  --tone: var(--accent);
+  position: relative;
+  display: grid;
+  gap: var(--s2);
+  padding: var(--s4);
+  border-radius: var(--r2);
+  border: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-2) 96%, transparent), var(--surface-2));
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  overflow: hidden;
+}
+
+.expenses-summary-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: var(--tone);
+  opacity: 0.55;
+  transition: opacity 180ms ease, width 180ms ease;
+}
+
+.expenses-summary-card:hover {
+  border-color: color-mix(in oklch, var(--tone) 35%, var(--border));
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px -16px rgba(0, 0, 0, 0.55);
+}
+
+.expenses-summary-card:hover::before { opacity: 1; width: 3px; }
+.expenses-summary-card .badge { width: fit-content; }
+
+.expenses-summary-card.tone-accent { --tone: var(--accent); }
+.expenses-summary-card.tone-info { --tone: var(--info); }
+
+.expenses-summary-card.tone-success { --tone: var(--success); }
+.expenses-summary-card.tone-danger { --tone: var(--danger); }
+
+.expenses-summary-card.tone-neutral { --tone: var(--text-3); }
+.expenses-summary-card strong {
+  font-size: clamp(1.1rem, 1rem + 0.5vw, 1.35rem);
+  color: var(--text);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.expenses-summary-card small {
+  color: var(--text-3);
+  font-size: 11px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.expenses-summary-card .pct {
+  color: var(--text-2);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.expenses-summary-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--surface) 90%, transparent);
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.expenses-summary-bar > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--tone), color-mix(in oklch, var(--tone) 60%, transparent));
+  border-radius: 2px;
+}
+
+/* Expenses table polish — stable columns + subtle rateio pill. */
+.expenses-row-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.expenses-row-main strong,
+.expenses-row-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expenses-table .badge,
+.expenses-table .expenses-alloc-tag {
+  max-width: min(100%, 18rem);
+}
+
+.expenses-amount {
+  display: block;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.expenses-alloc-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: color-mix(in oklch, var(--surface-2) 88%, transparent);
+  border: 1px solid var(--border);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-theme="light"] .expenses-module {
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface) 94%, var(--accent) 3%), var(--surface));
+}
+
+:root[data-theme="light"] .expenses-summary-card {
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface) 94%, var(--tone) 4%), var(--surface));
+  border-color: color-mix(in oklch, var(--border) 78%, var(--tone) 12%);
+  box-shadow: 0 10px 28px -24px color-mix(in oklch, var(--tone) 28%, oklch(45% 0.02 72));
+}
+
+:root[data-theme="light"] .expenses-summary-card::before {
+  opacity: 0.72;
+}
+
+:root[data-theme="light"] .expenses-summary-bar {
+  background: color-mix(in oklch, var(--tone) 10%, var(--surface-3));
+}
+
+:root[data-theme="light"] .expenses-table .data-table-row {
+  background: color-mix(in oklch, var(--surface) 96%, var(--bg));
+  box-shadow: 0 10px 24px -24px oklch(48% 0.02 72 / 0.48);
+}
+
+:root[data-theme="light"] .expenses-table .data-table-row:hover {
+  background: color-mix(in oklch, var(--surface) 88%, var(--accent) 4%);
+}
+
+:root[data-theme="light"] .expenses-toggle-filter,
+:root[data-theme="light"] .expenses-alloc-tag {
+  background: color-mix(in oklch, var(--surface) 84%, var(--surface-3));
+}
+
+.expenses-table .data-table-align-center {
+  display: flex;
+  justify-content: center;
+  justify-self: stretch;
+}
+
+.expense-allocation {
+  margin: 0;
+  padding: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-2) 94%, transparent), color-mix(in oklch, var(--surface-2) 86%, transparent));
+  display: grid;
+  gap: var(--s3);
+}
+
+.expense-allocation legend {
+  padding: 0 8px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-weight: 700;
+}
+
+.expense-allocation > small {
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.expense-allocation-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+}
+
+.expense-allocation-tabs button {
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-3);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.expense-allocation-tabs button:hover {
+  color: var(--text);
+  background: color-mix(in oklch, var(--surface-2) 80%, transparent);
+}
+
+.expense-allocation-tabs button.active {
+  background: color-mix(in oklch, var(--accent) 14%, var(--surface-2));
+  border-color: color-mix(in oklch, var(--accent) 40%, var(--border));
+  color: var(--text);
+  font-weight: 600;
+}
+
+.dialog:has(.expense-templates) {
+  max-width: min(920px, calc(100vw - var(--s6)));
+}
+
+.dialog:has(.expense-templates) .dialog-body {
+  overflow-x: hidden;
+}
+
+.expense-templates {
+  display: grid;
+  gap: var(--s4);
+  min-width: 0;
+}
+
+.expense-templates-kpi {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s4);
+  border-radius: var(--r2);
+  border: 1px solid var(--border);
+  background:
+    linear-gradient(135deg, color-mix(in oklch, var(--accent) 8%, var(--surface-2)), var(--surface-2) 70%);
+}
+
+.expense-templates-kpi-label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-weight: 700;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.expense-templates-kpi-value {
+  font-size: 1.5rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+.expense-templates-kpi-meta {
+  color: var(--text-3);
+  font-size: 11px;
+  text-align: right;
+  line-height: 1.5;
+}
+
+.expense-templates > small {
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.expense-template-form {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  gap: var(--s3);
+  align-items: end;
+  padding: var(--s4);
+  border: 1px dashed var(--border);
+  border-radius: var(--r1);
+  background: color-mix(in oklch, var(--surface) 60%, transparent);
+}
+
+.expense-template-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-weight: 600;
+  min-width: 0;
+}
+
+.expense-template-form label.full {
+  grid-column: 1 / -1;
+}
+
+.expense-template-form input,
+.expense-template-form select {
+  width: 100%;
+  min-width: 0;
+}
+
+.expense-template-form button[type="submit"] {
+  white-space: nowrap;
+}
+
+.expense-template-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--s2);
+}
+
+.expense-template-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--s3);
+  align-items: center;
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+  transition: border-color 140ms ease, background 140ms ease;
+  min-width: 0;
+}
+
+.expense-template-meta { min-width: 0; }
+.expense-template-meta small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.expense-template-list li:hover {
+  border-color: var(--border-2);
+  background: color-mix(in oklch, var(--surface-2) 92%, transparent);
+}
+
+.expense-template-list li.inactive {
+  opacity: 0.55;
+  background: color-mix(in oklch, var(--surface) 50%, var(--surface-2));
+}
+
+.expense-template-day {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--accent) 14%, var(--surface));
+  border: 1px solid color-mix(in oklch, var(--accent) 38%, var(--border));
+  color: var(--text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  letter-spacing: -0.02em;
+}
+
+.expense-template-list li.inactive .expense-template-day {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text-3);
+}
+
+.expense-template-meta strong { color: var(--text); font-weight: 600; }
+.expense-template-meta small {
+  display: block;
+  color: var(--text-3);
+  font-size: 11px;
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.expense-template-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-left: 6px;
+}
+
+.expense-template-status.active {
+  color: var(--success);
+  background: color-mix(in oklch, var(--success) 12%, transparent);
+}
+
+.expense-template-status.paused {
+  color: var(--text-3);
+  background: color-mix(in oklch, var(--text-3) 14%, transparent);
+}
+
+.expense-template-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* --- shared metric tiles (duplicated with the other module's CSS) --- */
+
+.investment-metrics,
+.expenses-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s3);
+}
+
+.investment-metrics > div,
+.expenses-metrics > div {
+  padding: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-2) 82%, transparent), var(--surface-1));
+}
+
+.investment-metrics span,
+.expenses-metrics span {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: var(--s2);
+}
+
+.investment-metrics strong,
+.expenses-metrics strong {
+  color: var(--text-1);
+  font-size: clamp(1.1rem, 1.8vw, 1.55rem);
+  line-height: 1.1;
+}
+
+.expenses-metrics small,
+.investment-metrics small {
+  display: block;
+  margin-top: var(--s1);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+/* --- expense responsive overrides (moved from styles.css @media) --- */
+
+@media (max-width: 760px) {
+  .investment-metrics,
+  .expenses-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .expenses-module .module-header {
+    align-items: stretch;
+  }
+  .expenses-header-actions {
+    justify-content: stretch;
+  }
+  .expenses-header-actions button {
+    flex: 1 1 180px;
+  }
+  .expenses-filter-shell .filter-bar {
+    align-items: stretch;
+  }
+  .expenses-toggle-filter {
+    justify-content: start;
+  }
+  .expenses-summary {
+    grid-template-columns: 1fr;
+  }
+  .expenses-table .data-table-align-center {
+    justify-content: flex-start;
+  }
+  .expenses-amount {
+    display: block;
+    text-align: left;
+  }
+}
+
+@media (max-width: 520px) {
+  .expense-allocation-tabs { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 720px) {
+}
+
+@media (max-width: 720px) {
+  .expense-template-form { grid-template-columns: 1fr 1fr; }
+  .expense-template-form label.full { grid-column: 1 / -1; }
+  .expense-template-form button[type="submit"] { grid-column: 1 / -1; }
+}
+
+.button-link {
+}

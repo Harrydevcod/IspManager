@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Combobox, DataList, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve } from '../lib/format';
+import './InvestmentsModule.css';
 import type { Client, Investment, InvestmentItemType, InvestmentList, InvestmentStatus, InvestmentTimeline, InvestmentType } from '../types';
 
 const TYPES: { value: InvestmentType; label: string }[] = [

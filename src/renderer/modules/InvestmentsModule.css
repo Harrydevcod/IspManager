@@ -1,0 +1,677 @@
+/* =========================================================================
+   InvestmentsModule — module-specific styles
+   Imported by src/renderer/modules/InvestmentsModule.tsx
+   Moved from src/renderer/styles.css for colocation (2026-05-24).
+
+   The metrics block at the bottom is intentionally duplicated with
+   ExpensesModule.css — both modules share the same metric-tile look by
+   design, and full independence is preferred over a _shared.css
+   indirection. If you change one, change the other.
+   ========================================================================= */
+
+.dialog:has(.investment-form) {
+  max-width: min(1040px, calc(100vw - var(--s6)));
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-1) 94%, var(--accent) 6%), var(--surface));
+  border-color: color-mix(in oklch, var(--border) 72%, var(--accent));
+  box-shadow: 0 28px 90px -44px rgba(0, 0, 0, 0.75), 0 0 0 1px color-mix(in oklch, var(--accent) 10%, transparent);
+}
+
+.dialog:has(.investment-form) .dialog-header {
+  padding: var(--s5) var(--s6);
+  background:
+    linear-gradient(135deg, color-mix(in oklch, var(--surface-2) 92%, var(--accent) 8%), transparent 68%),
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-1) 96%, transparent), transparent);
+}
+
+.dialog:has(.investment-form) .dialog-header .eyebrow {
+  color: var(--accent);
+  font-weight: 750;
+}
+
+.dialog:has(.investment-form) .dialog-header h2 {
+  font-size: clamp(1.35rem, 2vw, 1.9rem);
+}
+
+.dialog:has(.investment-form) .dialog-body {
+  padding: var(--s5) var(--s6);
+}
+
+.dialog:has(.investment-form) .dialog-actions {
+  padding: var(--s4) var(--s6) var(--s5);
+  background: color-mix(in oklch, var(--surface-1) 88%, transparent);
+}
+
+.investment-alerts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.investment-alerts span {
+  padding: var(--s2) var(--s3);
+  border: 1px solid color-mix(in oklch, var(--danger) 44%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--danger) 10%, var(--surface-1));
+  color: var(--text-1);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.investment-return-panel {
+  display: grid;
+  gap: var(--s4);
+  padding: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-2) 82%, transparent), var(--surface-1));
+}
+
+.investment-return-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--s4);
+}
+
+.investment-return-head h3 {
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-xl);
+}
+
+.investment-return-head > span {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  text-align: right;
+}
+
+.investment-return-chart {
+  display: grid;
+  gap: var(--s3);
+}
+
+.investment-return-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.35fr) minmax(0, 1fr);
+  gap: var(--s4);
+  align-items: center;
+  padding: var(--s3);
+  border: 1px solid color-mix(in oklch, var(--border) 72%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--surface) 72%, transparent);
+}
+
+.investment-return-name {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.investment-return-name strong {
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.investment-return-name small {
+  color: var(--text-3);
+}
+
+.investment-return-bars {
+  display: grid;
+  gap: var(--s2);
+}
+
+.investment-return-barline {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr) 132px;
+  gap: var(--s3);
+  align-items: center;
+}
+
+.investment-return-barline span {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.investment-return-barline div {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--surface-3) 76%, transparent);
+}
+
+.investment-return-barline i {
+  display: block;
+  min-width: 2px;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.investment-return-barline b {
+  justify-self: end;
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.investment-detail {
+  position: sticky;
+  top: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: var(--s4);
+  background: var(--surface-1);
+}
+
+.investment-detail-head span {
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.investment-detail-head h3 {
+  margin: var(--s2) 0;
+  font-size: var(--fs-xl);
+}
+
+.investment-detail-head p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.investment-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s3);
+  margin: var(--s4) 0;
+}
+
+.investment-detail-grid div {
+  padding: var(--s3);
+  background: var(--surface-2);
+  border-radius: 6px;
+}
+
+.investment-detail-grid dt {
+  margin: 0 0 var(--s1);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.investment-detail-grid dd {
+  margin: 0;
+  color: var(--text-1);
+  font-weight: 700;
+}
+
+.investment-items-preview {
+  display: grid;
+  gap: var(--s2);
+}
+
+.investment-items-preview > div {
+  display: grid;
+  gap: 2px;
+  padding: var(--s3) 0;
+  border-top: 1px solid var(--border);
+}
+
+.investment-items-preview span,
+.investment-items-preview small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.investment-items-preview strong {
+  color: var(--text-1);
+}
+
+.investment-zone-summary {
+  display: grid;
+  gap: var(--s2);
+  margin-top: var(--s4);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--border);
+}
+
+.investment-zone-summary > strong {
+  color: var(--text-1);
+}
+
+.investment-zone-summary span {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.investment-opex-share {
+  display: grid;
+  gap: var(--s2);
+  margin-top: var(--s4);
+  padding: var(--s3) var(--s4);
+  border-radius: var(--r1);
+  background: color-mix(in oklch, var(--accent-2) 8%, var(--surface-2));
+  border: 1px solid color-mix(in oklch, var(--accent-2) 25%, var(--border));
+}
+
+.investment-opex-share > strong {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  letter-spacing: 0.01em;
+}
+
+.investment-opex-share span {
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.investment-form {
+  display: grid;
+  gap: var(--s5);
+}
+
+.investment-form-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--s4);
+}
+
+.investment-form label,
+.investment-notes {
+  display: grid;
+  align-content: start;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.investment-form input,
+.investment-form select,
+.investment-form textarea {
+  margin-top: var(--s2);
+  width: 100%;
+  min-height: 42px;
+  background: color-mix(in oklch, var(--surface-2) 86%, transparent);
+  border-color: color-mix(in oklch, var(--border) 82%, var(--text-3));
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.investment-form textarea {
+  resize: vertical;
+  min-height: 86px;
+}
+
+.investment-form input:focus-visible,
+.investment-form select:focus-visible,
+.investment-form textarea:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 18%, transparent);
+  outline: none;
+}
+
+.investment-form-span {
+  grid-column: 1 / -1;
+}
+
+.investment-form-section {
+  grid-column: span 6;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s3);
+  align-items: start;
+  padding: var(--s4);
+  border: 1px solid color-mix(in oklch, var(--border) 86%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--surface-1) 82%, transparent);
+}
+
+.investment-form-section-main,
+.investment-form-section-notes {
+  grid-column: 1 / -1;
+}
+
+.investment-form-section h3 {
+  grid-column: 1 / -1;
+  margin: 0 0 var(--s1);
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  letter-spacing: 0.02em;
+}
+
+.investment-form-section .field-wide,
+.investment-form-section-notes label {
+  grid-column: 1 / -1;
+}
+
+.investment-items-editor {
+  display: grid;
+  gap: var(--s3);
+  padding: var(--s4);
+  border: 1px solid color-mix(in oklch, var(--border) 78%, var(--accent));
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-2) 82%, transparent), color-mix(in oklch, var(--surface-1) 96%, transparent));
+}
+
+.investment-items-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.investment-items-editor-head strong {
+  color: var(--text-1);
+  font-size: var(--fs-md);
+}
+
+.investment-items-editor-head button {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--s2);
+  min-height: 34px;
+}
+
+.investment-item-header {
+  display: grid;
+  grid-template-columns: 124px minmax(190px, 1fr) 82px 82px 118px 118px 38px;
+  gap: var(--s2);
+  align-items: center;
+  padding: 0 var(--s2);
+  color: var(--text-3);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.investment-item-header span:nth-child(3),
+.investment-item-header span:nth-child(4),
+.investment-item-header span:nth-child(5),
+.investment-item-header span:nth-child(6) {
+  text-align: right;
+}
+
+.investment-item-row {
+  display: grid;
+  grid-template-columns: 124px minmax(190px, 1fr) 82px 82px 118px 118px 38px;
+  gap: var(--s2);
+  align-items: center;
+  padding: var(--s2);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--surface) 74%, transparent);
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.investment-item-row:hover {
+  border-color: var(--border);
+  background: color-mix(in oklch, var(--surface-2) 80%, transparent);
+}
+
+.investment-item-row input,
+.investment-item-row select {
+  margin-top: 0;
+  min-height: 38px;
+}
+
+.investment-item-row input[type="number"] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.investment-item-row strong {
+  justify-self: end;
+  font-size: var(--fs-sm);
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.investment-form-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s4);
+  justify-content: space-between;
+  padding: var(--s4);
+  border: 1px solid color-mix(in oklch, var(--accent) 42%, var(--border));
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, color-mix(in oklch, var(--accent) 14%, var(--surface-2)), var(--surface-2));
+}
+
+.investment-form-summary span {
+  color: var(--text-2);
+  min-width: 170px;
+}
+
+.investment-form-summary strong {
+  color: var(--text-1);
+  display: block;
+  margin-top: var(--s1);
+  font-size: var(--fs-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.investment-notes {
+  display: grid;
+  gap: var(--s2);
+}
+
+/* Fase 3 — analytics interno do módulo Rentabilidade */
+.investment-alerts span.alert-danger {
+  border-color: color-mix(in oklch, var(--danger) 60%, var(--border));
+  color: var(--danger);
+  background: color-mix(in oklch, var(--danger) 10%, transparent);
+}
+
+.investment-alerts span.alert-warning {
+  border-color: color-mix(in oklch, var(--accent-2) 60%, var(--border));
+  color: var(--accent-2);
+  background: color-mix(in oklch, var(--accent-2) 10%, transparent);
+}
+
+.investment-alerts span.alert-info {
+  border-color: color-mix(in oklch, var(--info) 50%, var(--border));
+  color: var(--info);
+  background: color-mix(in oklch, var(--info) 8%, transparent);
+}
+
+.investment-alerts span strong { font-weight: 700; margin-right: 4px; }
+
+
+.investment-equipment-top {
+  display: grid;
+  gap: var(--s3);
+  padding: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface-2);
+  margin-top: var(--s4);
+}
+
+.investment-equipment-top header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.investment-equipment-top header strong { color: var(--text); letter-spacing: 0.01em; }
+.investment-equipment-top header small { color: var(--text-3); font-size: var(--fs-xs); }
+
+.investment-equipment-top ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--s2);
+}
+
+.investment-equipment-top li { display: grid; gap: 3px; }
+.investment-equipment-top .row {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-sm);
+}
+
+.investment-equipment-top .row span { color: var(--text-2); text-transform: capitalize; }
+.investment-equipment-top .row strong { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.investment-equipment-top .bar {
+  height: 4px;
+  background: color-mix(in oklch, var(--surface) 90%, transparent);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.investment-equipment-top .bar > div {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+.investment-equipment-top small { color: var(--text-3); font-size: 11px; }
+
+
+.investment-timeline {
+  display: grid;
+  gap: var(--s2);
+  margin-top: var(--s4);
+  padding: var(--s3) var(--s4);
+  border-radius: var(--r1);
+  border: 1px solid var(--border);
+  background: color-mix(in oklch, var(--surface-2) 92%, transparent);
+}
+
+.investment-timeline-head { display: flex; justify-content: space-between; align-items: baseline; }
+.investment-timeline-head strong { color: var(--text); font-size: var(--fs-sm); }
+
+.investment-timeline-head small { color: var(--text-3); font-size: 11px; }
+.investment-timeline-svg { width: 100%; height: 70px; }
+
+.investment-timeline-footer {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.investment-timeline-footer .profit-positive { color: var(--success); }
+.investment-timeline-footer .profit-negative { color: var(--danger); }
+
+/* --- shared metric tiles (duplicated with the other module's CSS) --- */
+
+.investment-metrics,
+.expenses-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s3);
+}
+
+.investment-metrics > div,
+.expenses-metrics > div {
+  padding: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-2) 82%, transparent), var(--surface-1));
+}
+
+.investment-metrics span,
+.expenses-metrics span {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: var(--s2);
+}
+
+.investment-metrics strong,
+.expenses-metrics strong {
+  color: var(--text-1);
+  font-size: clamp(1.1rem, 1.8vw, 1.55rem);
+  line-height: 1.1;
+}
+
+.expenses-metrics small,
+.investment-metrics small {
+  display: block;
+  margin-top: var(--s1);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+/* --- investment responsive overrides (moved from styles.css @media) --- */
+
+@media (max-width: 760px) {
+  .investment-metrics,
+  .expenses-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 1120px) {
+  .investment-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .investments-layout { grid-template-columns: 1fr; }
+  .investment-detail { position: static; }
+  .investment-form-section { grid-column: 1 / -1; }
+  .investment-item-header,
+  .investment-item-row {
+    grid-template-columns: 112px minmax(150px, 1fr) 72px 72px 102px 102px 38px;
+  }
+}
+
+@media (max-width: 760px) {
+  .investment-metrics { grid-template-columns: 1fr; }
+  .investment-return-head,
+  .investment-return-head,
+  .investment-return-row {
+    grid-template-columns: 1fr;
+  }
+  .investment-return-head {
+    align-items: start;
+  }
+  .investment-return-head > span {
+    text-align: left;
+  }
+  .investment-return-barline {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+  .investment-return-barline b {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .investment-form-grid { grid-template-columns: 1fr; }
+  .investment-form-section {
+    grid-template-columns: 1fr;
+    grid-column: 1;
+  }
+  .investment-item-header { display: none; }
+  .investment-item-row {
+    grid-template-columns: 1fr;
+    padding: var(--s3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .investment-item-row strong { justify-self: start; }
+}
+
+/* Plan mix: per-type horizontal bars. */
+.plan-mix {
+}
