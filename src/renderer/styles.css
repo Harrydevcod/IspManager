@@ -4131,7 +4131,7 @@ label.field-toggle {
   .dashboard-card-list { min-height: 0; }
 }
 
-/* kanban + workorders + import — moved to colocated modules/WorkOrdersModule.css and components/ClientImportDialog.css */
+/* kanban + workorders + import — moved to colocated modules/WorkOrdersModule.css and modules/clients/import/ClientImportDialog.css */
 
 /* ---------------------------------------------------------
    Auth screens (setup + login) — editorial, centered, dark-first

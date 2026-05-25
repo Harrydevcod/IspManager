@@ -19,5 +19,4 @@ export * from './Dialog';
 export * from './ThemeToggle';
 export * from './Toaster';
 export * from './CommandPalette';
-export * from './ClientImportDialog';
 export * from './AuthGate';

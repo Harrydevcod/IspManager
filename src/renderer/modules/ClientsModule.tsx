@@ -1,7 +1,8 @@
 import { MessageCircle, Pencil, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useState } from 'react';
-import { Badge, Button, ClientImportDialog, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
+import { Badge, Button, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
+import { ClientImportDialog } from './clients/import';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import { statusLabel, statusTone } from '../lib/status';
