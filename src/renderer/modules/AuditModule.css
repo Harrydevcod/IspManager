@@ -1,0 +1,187 @@
+/* =========================================================================
+   AuditModule — bespoke event feed
+   Imported by src/renderer/modules/AuditModule.tsx
+   Polished version (2026-05-24) — replaces the generic .module-row layout
+   with an editorial three-column log: timestamp · event · actor.
+   ========================================================================= */
+
+/* Header subtitle: scan-counts beside the eyebrow + title. */
+.audit-header-subtitle {
+  margin: 4px 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
+}
+
+.audit-header-subtitle strong {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+/* Sticky filter so the scan controls stay reachable on long logs. */
+.audit-filter-sticky {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background: var(--bg);
+  padding-block: var(--s2);
+  margin-block: calc(-1 * var(--s2));
+}
+
+/* The feed itself: a stack of entries separated by hairlines, no per-row
+   borders. Reads as an editorial timeline rather than a generic data table. */
+.audit-feed {
+  margin-top: var(--s4);
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+
+.audit-entry {
+  display: grid;
+  grid-template-columns: 92px 24px minmax(0, 1fr) minmax(0, 220px);
+  align-items: center;
+  gap: var(--s4);
+  padding: var(--s3) var(--s2);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  transition: background var(--motion-fast) var(--ease-out);
+}
+
+.audit-entry:hover {
+  background: color-mix(in oklch, var(--surface) 50%, transparent);
+}
+
+.audit-entry-time {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
+}
+
+.audit-entry-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--rpill);
+  background: var(--surface-2);
+  color: var(--text-3);
+  border: 1px solid var(--border);
+}
+
+/* Tone variants — semantic icon chip color matches the badge tone. */
+.audit-entry-icon[data-tone="success"] {
+  background: var(--success-bg);
+  color: var(--success);
+  border-color: color-mix(in oklch, var(--success) 30%, var(--border));
+}
+
+.audit-entry-icon[data-tone="danger"] {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: color-mix(in oklch, var(--danger) 30%, var(--border));
+}
+
+.audit-entry-icon[data-tone="info"] {
+  background: var(--info-bg);
+  color: var(--info);
+  border-color: color-mix(in oklch, var(--info) 30%, var(--border));
+}
+
+.audit-entry-icon[data-tone="accent"] {
+  background: color-mix(in oklch, var(--accent) 18%, var(--surface-2));
+  color: var(--accent);
+  border-color: color-mix(in oklch, var(--accent) 35%, var(--border));
+}
+
+.audit-entry-event {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.audit-entry-event strong {
+  color: var(--text);
+  font-weight: 500;
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-entry-event-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  letter-spacing: 0.01em;
+}
+
+.audit-entry-event-meta .audit-action {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.audit-entry-event-meta .audit-action-sep {
+  color: color-mix(in oklch, var(--text-3) 40%, transparent);
+}
+
+.audit-entry-actor {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  justify-self: end;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
+}
+
+.audit-entry-actor-name {
+  color: var(--text-2);
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-entry-actor-id {
+  letter-spacing: 0.02em;
+  color: color-mix(in oklch, var(--text-3) 70%, var(--border));
+}
+
+/* Pagination — quieter than the generic version, baseline-aligned. */
+.audit-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s3);
+  padding: var(--s4) var(--s2) var(--s2);
+}
+
+.audit-pagination span {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
+}
+
+/* Mobile collapse — actor folds under the event column. */
+@media (max-width: 760px) {
+  .audit-entry {
+    grid-template-columns: 72px 24px minmax(0, 1fr);
+    row-gap: var(--s2);
+  }
+
+  .audit-entry-actor {
+    grid-column: 2 / -1;
+    justify-self: start;
+  }
+}
