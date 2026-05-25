@@ -1796,13 +1796,6 @@ h2 {
   margin-bottom: var(--s4);
 }
 
-.plan-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 140px 90px auto;
-  gap: var(--s3);
-  align-items: center;
-}
-
 .nested-form {
   margin-top: var(--s4);
 }

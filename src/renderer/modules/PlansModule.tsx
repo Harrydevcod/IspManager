@@ -1,10 +1,11 @@
-import { Pencil, Wifi } from 'lucide-react';
+import { Activity, Cable, Pencil, Wifi } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
-import { useEffect, useState } from 'react';
-import { Badge, Button, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
+import { useEffect, useMemo, useState } from 'react';
+import { Button, Dialog, EmptyState, Field, FilterBar, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
-import { planActiveLabel, planActiveTone } from '../lib/status';
 import type { PlanRow } from '../types';
+import './PlansModule.css';
 
 type PlanFormState = {
   name: string;
@@ -28,6 +29,31 @@ function emptyPlanForm(): PlanFormState {
     description: '',
     active: '1'
   };
+}
+
+function iconForType(type: PlanRow['connectionType']): LucideIcon {
+  switch (type) {
+    case 'fibra': return Cable;
+    case 'cabo':  return Cable;
+    case 'radio': return Wifi;
+    default:      return Activity;
+  }
+}
+
+function typeLabel(type: PlanRow['connectionType']): string {
+  switch (type) {
+    case 'fibra': return 'Fibra';
+    case 'cabo':  return 'Cabo';
+    case 'radio': return 'Radio';
+    default:      return 'Outro';
+  }
+}
+
+/** "100/50" → "100/50 Mbps"; keeps whatever unit the user typed if present. */
+function speedDisplay(down: string, up: string): { value: string; unit: string } {
+  const value = `${down}/${up}`;
+  const userSuppliedUnit = /[a-zA-Z]/.test(down + up);
+  return { value, unit: userSuppliedUnit ? '' : 'Mbps' };
 }
 
 export function PlansModule() {
@@ -108,7 +134,7 @@ export function PlansModule() {
     await loadPlans();
   }
 
-  const visiblePlans = plans.filter((plan) => {
+  const visiblePlans = useMemo(() => plans.filter((plan) => {
     const normalizedSearch = search.trim().toLowerCase();
     const matchesSearch = !normalizedSearch
       || plan.name.toLowerCase().includes(normalizedSearch)
@@ -119,7 +145,12 @@ export function PlansModule() {
       || (activeFilter === 'active' && !!plan.active)
       || (activeFilter === 'inactive' && !plan.active);
     return matchesSearch && matchesType && matchesActive;
-  });
+  }), [plans, search, typeFilter, activeFilter]);
+
+  const totals = useMemo(() => {
+    const active = plans.filter((p) => p.active).length;
+    return { active, inactive: plans.length - active, total: plans.length };
+  }, [plans]);
 
   return (
     <section className="module-panel">
@@ -127,6 +158,10 @@ export function PlansModule() {
         <div>
           <p className="eyebrow">Modulo</p>
           <h2>Planos de internet</h2>
+          <p className="plans-header-subtitle">
+            <strong>{totals.active}</strong> ativos
+            {totals.inactive > 0 && <> · <strong>{totals.inactive}</strong> inativos</>}
+          </p>
         </div>
         {canManagePlans && (
           <Button onClick={openCreate}>
@@ -135,78 +170,122 @@ export function PlansModule() {
         )}
       </div>
 
-      <FilterBar>
-        <Field type="search" label="Buscar" aria-label="Pesquisar planos" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nome ou velocidade" />
-        <Select label="Tipo" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | PlanRow['connectionType'])}>
-          <option value="all">Todos</option>
-          <option value="fibra">Fibra</option>
-          <option value="radio">Radio</option>
-          <option value="cabo">Cabo</option>
-          <option value="outro">Outro</option>
-        </Select>
-        <Select label="Estado" value={activeFilter} onChange={(event) => setActiveFilter(event.target.value as 'all' | 'active' | 'inactive')}>
-          <option value="all">Todos</option>
-          <option value="active">Ativos</option>
-          <option value="inactive">Inativos</option>
-        </Select>
-        <Button variant="secondary" onClick={() => {
-          setSearch('');
-          setTypeFilter('all');
-          setActiveFilter('all');
-        }}>
-          Limpar filtros
-        </Button>
-        <small>{visiblePlans.length} planos</small>
-      </FilterBar>
-
-      <div className="module-table">
-        {visiblePlans.map((plan) => (
-          <div
-            className="module-row plan-row interactive"
-            key={plan.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => { if (canManagePlans) editPlan(plan); }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                if (canManagePlans) editPlan(plan);
-              }
-            }}
-          >
-            <span>
-              <strong>{plan.name}</strong>
-              <small>{plan.connectionType} - {plan.downloadSpeed}/{plan.uploadSpeed}</small>
-            </span>
-            <small>{plan.monthlyPriceCve.toLocaleString('pt-PT')} CVE</small>
-            <Badge tone={planActiveTone(plan.active)}>{planActiveLabel(plan.active)}</Badge>
-            {canManagePlans && (
-              <div className="row-actions" onClick={(event) => event.stopPropagation()}>
-                <Button
-                  variant="icon"
-                  size="sm"
-                  className="row-action"
-                  title="Editar plano"
-                  aria-label="Editar plano"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    editPlan(plan);
-                  }}
-                >
-                  <Pencil size={14} aria-hidden />
-                </Button>
-              </div>
-            )}
-          </div>
-        ))}
-        {visiblePlans.length === 0 && (
-          <EmptyState
-            icon={Wifi}
-            title="Nenhum plano encontrado"
-            description="Ajusta os filtros ou cria um novo plano de internet."
+      <div className="plans-filter-sticky">
+        <FilterBar>
+          <Field
+            type="search"
+            label="Buscar"
+            aria-label="Pesquisar planos"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Nome ou velocidade"
           />
-        )}
+          <Select
+            label="Tipo"
+            value={typeFilter}
+            onChange={(event) => setTypeFilter(event.target.value as 'all' | PlanRow['connectionType'])}
+          >
+            <option value="all">Todos</option>
+            <option value="fibra">Fibra</option>
+            <option value="radio">Radio</option>
+            <option value="cabo">Cabo</option>
+            <option value="outro">Outro</option>
+          </Select>
+          <Select
+            label="Estado"
+            value={activeFilter}
+            onChange={(event) => setActiveFilter(event.target.value as 'all' | 'active' | 'inactive')}
+          >
+            <option value="all">Todos</option>
+            <option value="active">Ativos</option>
+            <option value="inactive">Inativos</option>
+          </Select>
+          <Button variant="secondary" onClick={() => { setSearch(''); setTypeFilter('all'); setActiveFilter('all'); }}>
+            Limpar filtros
+          </Button>
+          <small>{visiblePlans.length} {visiblePlans.length === 1 ? 'plano' : 'planos'}</small>
+        </FilterBar>
       </div>
+
+      {visiblePlans.length === 0 && (
+        <EmptyState
+          icon={Wifi}
+          title="Nenhum plano encontrado"
+          description="Ajusta os filtros ou cria um novo plano de internet."
+        />
+      )}
+
+      {visiblePlans.length > 0 && (
+        <div className="plans-list" role="list">
+          {visiblePlans.map((plan) => {
+            const Icon = iconForType(plan.connectionType);
+            const speed = speedDisplay(plan.downloadSpeed, plan.uploadSpeed);
+            const interactive = canManagePlans;
+            const classes = ['plan-item'];
+            if (interactive) classes.push('is-interactive');
+            if (!plan.active) classes.push('is-inactive');
+            return (
+              <div
+                role="listitem"
+                key={plan.id}
+                className={classes.join(' ')}
+                tabIndex={interactive ? 0 : undefined}
+                onClick={interactive ? () => editPlan(plan) : undefined}
+                onKeyDown={(event) => {
+                  if (!interactive) return;
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    editPlan(plan);
+                  }
+                }}
+              >
+                <span className="plan-item-icon" aria-hidden>
+                  <Icon size={16} strokeWidth={1.6} />
+                </span>
+                <div className="plan-item-main">
+                  <span className="plan-item-name">
+                    <span className="plan-item-state-dot" data-state={plan.active ? 'active' : 'inactive'} aria-hidden />
+                    {plan.name}
+                  </span>
+                  <span className="plan-item-meta">
+                    <span>{typeLabel(plan.connectionType)}</span>
+                    {!plan.active && (
+                      <>
+                        <span className="plan-item-meta-sep">·</span>
+                        <span className="plan-item-meta-state">Inativo</span>
+                      </>
+                    )}
+                  </span>
+                </div>
+                <div className="plan-item-speed">
+                  <span className="plan-item-speed-value">{speed.value}</span>
+                  {speed.unit && <span className="plan-item-speed-unit">{speed.unit} ↓/↑</span>}
+                </div>
+                <div className="plan-item-price">
+                  <span className="plan-item-price-value">{plan.monthlyPriceCve.toLocaleString('pt-PT')}</span>
+                  <span className="plan-item-price-currency">CVE / mês</span>
+                </div>
+                {interactive && (
+                  <div className="plan-item-actions" onClick={(event) => event.stopPropagation()}>
+                    <Button
+                      variant="icon"
+                      size="sm"
+                      title="Editar plano"
+                      aria-label={`Editar plano ${plan.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        editPlan(plan);
+                      }}
+                    >
+                      <Pencil size={14} aria-hidden />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <Dialog
         open={showForm}

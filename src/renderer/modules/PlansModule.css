@@ -1,0 +1,215 @@
+/* =========================================================================
+   PlansModule — bespoke plan catalog
+   Imported by src/renderer/modules/PlansModule.tsx
+   Polished 2026-05-24. Replaces the generic .module-row.plan-row layout
+   with a comparison-friendly row: type icon · name · speed · price · edit.
+   Price gets the strongest visual weight; it's the buying-decision axis.
+   ========================================================================= */
+
+.plans-header-subtitle {
+  margin: 4px 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
+}
+
+.plans-header-subtitle strong {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.plans-filter-sticky {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background: var(--bg);
+  padding-block: var(--s2);
+  margin-block: calc(-1 * var(--s2));
+}
+
+/* The list: hairline-separated rows, no per-row borders. */
+.plans-list {
+  margin-top: var(--s4);
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+
+.plan-item {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1.5fr) minmax(140px, 1fr) minmax(140px, max-content) auto;
+  align-items: center;
+  gap: var(--s4);
+  padding: var(--s3) var(--s2);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  transition: background var(--motion-fast) var(--ease-out);
+  cursor: default;
+}
+
+.plan-item.is-interactive {
+  cursor: pointer;
+}
+
+.plan-item.is-interactive:hover {
+  background: color-mix(in oklch, var(--surface) 50%, transparent);
+}
+
+.plan-item.is-interactive:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: color-mix(in oklch, var(--surface) 50%, transparent);
+}
+
+.plan-item.is-inactive {
+  opacity: 0.6;
+}
+
+.plan-item-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--rpill);
+  background: var(--surface-2);
+  color: var(--text-3);
+  border: 1px solid var(--border);
+}
+
+.plan-item-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.plan-item-name {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--text);
+  font-weight: 600;
+  font-size: var(--fs-base);
+  letter-spacing: var(--tracking-tight);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-item-state-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--rpill);
+  background: var(--text-3);
+  flex: 0 0 auto;
+}
+
+.plan-item-state-dot[data-state="active"] {
+  background: var(--success);
+}
+
+.plan-item-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.plan-item-meta-sep {
+  color: color-mix(in oklch, var(--text-3) 40%, transparent);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.plan-item-meta-state {
+  color: var(--text-3);
+  font-weight: 700;
+}
+
+.plan-item-speed {
+  display: grid;
+  gap: 1px;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
+}
+
+.plan-item-speed-value {
+  color: var(--text);
+  font-size: var(--fs-base);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+
+.plan-item-speed-unit {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.plan-item-price {
+  display: grid;
+  gap: 1px;
+  justify-items: end;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
+}
+
+.plan-item-price-value {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+}
+
+.plan-item-price-currency {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.plan-item-actions {
+  display: flex;
+  gap: var(--s2);
+}
+
+/* Tablet: collapse speed under name. */
+@media (max-width: 960px) {
+  .plan-item {
+    grid-template-columns: 36px minmax(0, 1fr) minmax(120px, max-content) auto;
+  }
+
+  .plan-item-speed {
+    grid-column: 2;
+    grid-row: 2;
+    flex-direction: row;
+  }
+
+  .plan-item-main {
+    grid-row: 1;
+  }
+}
+
+/* Mobile: price drops to its own row. */
+@media (max-width: 640px) {
+  .plan-item {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    row-gap: var(--s2);
+  }
+
+  .plan-item-price {
+    grid-column: 2 / -1;
+    grid-row: 3;
+    justify-items: start;
+    text-align: left;
+  }
+}
