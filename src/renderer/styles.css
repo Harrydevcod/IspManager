@@ -1804,12 +1804,6 @@ h2 {
   margin-top: var(--s4);
 }
 
-.stock-movement-row {
-  display: grid;
-  grid-template-columns: 120px 80px minmax(0, 1fr);
-  gap: var(--s3);
-}
-
 .report-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 170px 170px;
@@ -3098,13 +3092,6 @@ label.field-toggle {
 .service-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 140px 96px auto;
-  gap: var(--s3);
-  align-items: center;
-}
-
-.stock-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 100px auto;
   gap: var(--s3);
   align-items: center;
 }

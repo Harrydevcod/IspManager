@@ -1,0 +1,257 @@
+/* =========================================================================
+   StockModule — equipment catalog + movements
+   Imported by src/renderer/modules/StockModule.tsx
+   Polished 2026-05-24. Bespoke catalog row (type icon · name · stock · value)
+   and a refined movement chip list inside the selected-item detail panel.
+   ========================================================================= */
+
+.stock-header-subtitle {
+  margin: 4px 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
+}
+
+.stock-header-subtitle strong {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.stock-filter-sticky {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background: var(--bg);
+  padding-block: var(--s2);
+  margin-block: calc(-1 * var(--s2));
+}
+
+/* Catalog list — hairline rows, no per-row borders. */
+.stock-list {
+  margin-top: var(--s4);
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+
+.stock-item {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1.5fr) minmax(96px, max-content) minmax(120px, max-content) auto;
+  align-items: center;
+  gap: var(--s4);
+  padding: var(--s3) var(--s2);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  transition: background var(--motion-fast) var(--ease-out);
+}
+
+.stock-item.is-interactive {
+  cursor: pointer;
+}
+
+.stock-item.is-interactive:hover {
+  background: color-mix(in oklch, var(--surface) 50%, transparent);
+}
+
+.stock-item.is-interactive:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: color-mix(in oklch, var(--surface) 50%, transparent);
+}
+
+.stock-item.is-selected {
+  background: color-mix(in oklch, var(--accent) 6%, var(--surface));
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.stock-item-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--rpill);
+  background: var(--surface-2);
+  color: var(--text-3);
+  border: 1px solid var(--border);
+}
+
+.stock-item-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stock-item-name {
+  color: var(--text);
+  font-weight: 600;
+  font-size: var(--fs-base);
+  letter-spacing: var(--tracking-tight);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-item-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.stock-item-meta-sep {
+  color: color-mix(in oklch, var(--text-3) 40%, transparent);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.stock-item-meta-supplier {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Stock level — number prominent, tonal dot signals out/low/ok. */
+.stock-item-level {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  justify-self: end;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
+}
+
+.stock-item-level-dot {
+  align-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--rpill);
+  flex: 0 0 auto;
+  background: var(--text-3);
+}
+
+.stock-item-level-dot[data-tone="success"] { background: var(--success); }
+.stock-item-level-dot[data-tone="info"]    { background: var(--info); }
+.stock-item-level-dot[data-tone="danger"]  { background: var(--danger); }
+
+.stock-item-level-value {
+  color: var(--text);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+}
+
+.stock-item-level-unit {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.stock-item-value {
+  display: grid;
+  gap: 1px;
+  justify-items: end;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
+}
+
+.stock-item-value-amount {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.stock-item-value-label {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.stock-item-actions {
+  display: flex;
+  gap: var(--s2);
+}
+
+/* Movement chips inside the detail panel. */
+.stock-movements {
+  margin-top: var(--s4);
+  display: grid;
+  gap: var(--s1);
+}
+
+.stock-movement {
+  display: grid;
+  grid-template-columns: minmax(96px, max-content) 48px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+  font-size: var(--fs-sm);
+}
+
+.stock-movement-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.stock-movement-type[data-tone="success"] { color: var(--success); }
+.stock-movement-type[data-tone="danger"]  { color: var(--danger); }
+.stock-movement-type[data-tone="info"]    { color: var(--info); }
+
+.stock-movement-qty {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
+  font-weight: 600;
+  color: var(--text);
+  text-align: right;
+}
+
+.stock-movement-ref {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tablet: collapse value under name. */
+@media (max-width: 960px) {
+  .stock-item {
+    grid-template-columns: 36px minmax(0, 1fr) minmax(88px, max-content) auto;
+  }
+  .stock-item-value {
+    grid-column: 2;
+    grid-row: 2;
+    justify-items: start;
+    text-align: left;
+  }
+  .stock-item-main { grid-row: 1; }
+}
+
+@media (max-width: 640px) {
+  .stock-item {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+  }
+  .stock-item-level {
+    grid-column: 2 / -1;
+    grid-row: 2;
+    justify-self: start;
+  }
+}

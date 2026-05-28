@@ -1,10 +1,12 @@
-import { Activity, ArrowDownUp, Banknote, Boxes, Gauge, Pencil, Users } from 'lucide-react';
+import { Activity, ArrowDownUp, Banknote, Boxes, Gauge, HardDrive, Network, Pencil, Radio, Router, Users } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { stockLevelTone } from '../lib/status';
 import type { CatalogAssignments, StockCatalogRow, StockMovement, StockSummary } from '../types';
+import './StockModule.css';
 
 type StockFormState = {
   type: 'cpe' | 'router' | 'antena' | 'switch' | 'outro';
@@ -45,6 +47,22 @@ function emptyMovementForm(): StockMovementFormState {
   return { type: 'entrada', quantity: '1', unitCostCve: '', supplier: '', reference: '', notes: '' };
 }
 
+function iconForType(type: StockCatalogRow['type']): LucideIcon {
+  switch (type) {
+    case 'cpe':    return HardDrive;
+    case 'router': return Router;
+    case 'antena': return Radio;
+    case 'switch': return Network;
+    default:       return Boxes;
+  }
+}
+
+function movementTone(type: StockMovement['type']): 'success' | 'danger' | 'info' {
+  if (type === 'entrada') return 'success';
+  if (type === 'saida') return 'danger';
+  return 'info';
+}
+
 export function StockModule() {
   const { toast } = useToast();
   const auth = useAuth();
@@ -62,12 +80,12 @@ export function StockModule() {
   const [catalogForm, setCatalogForm] = useState<StockFormState>(emptyCatalogForm());
   const [movementForm, setMovementForm] = useState<StockMovementFormState>(emptyMovementForm());
 
-  function loadStock() {
+  const loadStock = useCallback(() => {
     return authFetch('http://127.0.0.1:3001/api/stock/summary')
       .then((response) => response.json() as Promise<StockSummary>)
       .then(setSummary)
       .catch(() => setSummary(null));
-  }
+  }, []);
 
   function loadMovements(catalog: StockCatalogRow) {
     return authFetch(`http://127.0.0.1:3001/api/stock?catalogId=${catalog.id}`)
@@ -92,7 +110,7 @@ export function StockModule() {
 
   useEffect(() => {
     void loadStock();
-  }, []);
+  }, [loadStock]);
 
   function updateCatalogForm(field: keyof StockFormState, value: string) {
     setCatalogForm((current) => ({ ...current, [field]: value }));
@@ -199,7 +217,7 @@ export function StockModule() {
   }
 
   const totals = summary?.totals;
-  const visibleStockRows = (summary?.rows || []).filter((item) => {
+  const visibleStockRows = useMemo(() => (summary?.rows || []).filter((item) => {
     const normalizedSearch = search.trim().toLowerCase();
     const label = `${item.brand || ''} ${item.model} ${item.supplier || ''}`.toLowerCase();
     const matchesSearch = !normalizedSearch || label.includes(normalizedSearch);
@@ -208,7 +226,7 @@ export function StockModule() {
       || (stockFilter === 'low' && item.stockTotal > 0 && item.stockTotal <= 3)
       || (stockFilter === 'out' && item.stockTotal <= 0);
     return matchesSearch && matchesType && matchesStock;
-  });
+  }), [summary, search, typeFilter, stockFilter]);
 
   return (
     <section className="module-panel">
@@ -216,6 +234,12 @@ export function StockModule() {
         <div>
           <p className="eyebrow">Modulo</p>
           <h2>Stock</h2>
+          {totals && (
+            <p className="stock-header-subtitle">
+              <strong>{totals.models}</strong> modelos · <strong>{totals.available}</strong> unidades
+              {totals.lowStock > 0 && <> · <strong>{totals.lowStock}</strong> em stock baixo</>}
+            </p>
+          )}
         </div>
         {canManageStock && (
           <Button onClick={openCreateCatalog}>
@@ -224,30 +248,28 @@ export function StockModule() {
         )}
       </div>
 
-      <FilterBar>
-        <Field type="search" label="Buscar" aria-label="Pesquisar stock" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Marca, modelo ou fornecedor" />
-        <Select label="Tipo" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | StockCatalogRow['type'])}>
-          <option value="all">Todos</option>
-          <option value="cpe">CPE</option>
-          <option value="router">Router</option>
-          <option value="antena">Antena</option>
-          <option value="switch">Switch</option>
-          <option value="outro">Outro</option>
-        </Select>
-        <Select label="Stock" value={stockFilter} onChange={(event) => setStockFilter(event.target.value as 'all' | 'low' | 'out')}>
-          <option value="all">Todos</option>
-          <option value="low">Baixo</option>
-          <option value="out">Esgotado</option>
-        </Select>
-        <Button variant="secondary" onClick={() => {
-          setSearch('');
-          setTypeFilter('all');
-          setStockFilter('all');
-        }}>
-          Limpar filtros
-        </Button>
-        <small>{visibleStockRows.length} modelos</small>
-      </FilterBar>
+      <div className="stock-filter-sticky">
+        <FilterBar>
+          <Field type="search" label="Buscar" aria-label="Pesquisar stock" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Marca, modelo ou fornecedor" />
+          <Select label="Tipo" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | StockCatalogRow['type'])}>
+            <option value="all">Todos</option>
+            <option value="cpe">CPE</option>
+            <option value="router">Router</option>
+            <option value="antena">Antena</option>
+            <option value="switch">Switch</option>
+            <option value="outro">Outro</option>
+          </Select>
+          <Select label="Stock" value={stockFilter} onChange={(event) => setStockFilter(event.target.value as 'all' | 'low' | 'out')}>
+            <option value="all">Todos</option>
+            <option value="low">Baixo</option>
+            <option value="out">Esgotado</option>
+          </Select>
+          <Button variant="secondary" onClick={() => { setSearch(''); setTypeFilter('all'); setStockFilter('all'); }}>
+            Limpar filtros
+          </Button>
+          <small>{visibleStockRows.length} {visibleStockRows.length === 1 ? 'modelo' : 'modelos'}</small>
+        </FilterBar>
+      </div>
 
       <section className="metric-grid compact" aria-label="Resumo de stock">
         <article className="metric-card">
@@ -342,79 +364,99 @@ export function StockModule() {
             )}
           </section>
 
-          <div className="module-table">
-            {movements.slice(0, 8).map((movement) => (
-              <div className="module-row stock-movement-row" key={movement.id}>
-                <strong>{movement.type}</strong>
-                <span>{movement.quantity}</span>
-                <small>{movement.reference || movement.notes || '-'}</small>
-              </div>
-            ))}
-          </div>
+          {movements.length > 0 && (
+            <div className="stock-movements" aria-label="Ultimos movimentos">
+              {movements.slice(0, 8).map((movement) => (
+                <div className="stock-movement" key={movement.id}>
+                  <span className="stock-movement-type" data-tone={movementTone(movement.type)}>
+                    <ArrowDownUp size={11} aria-hidden /> {movement.type}
+                  </span>
+                  <span className="stock-movement-qty">{movement.quantity}</span>
+                  <span className="stock-movement-ref">{movement.reference || movement.notes || '—'}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      <div className="module-table">
-        {visibleStockRows.map((item) => (
-          <div
-            className="module-row stock-row interactive"
-            key={item.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => selectCatalog(item)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                selectCatalog(item);
-              }
-            }}
-          >
-            <span>
-              <strong>{item.brand ? `${item.brand} ${item.model}` : item.model}</strong>
-              <small>{item.type} - {item.supplier || 'sem fornecedor'}</small>
-            </span>
-            <Badge tone={stockLevelTone(item.stockTotal)}>{item.stockTotal} un.</Badge>
-            {canManageStock && (
-              <div className="row-actions" onClick={(event) => event.stopPropagation()}>
-                <Button
-                  variant="icon"
-                  size="sm"
-                  className="row-action"
-                  title="Editar equipamento"
-                  aria-label="Editar equipamento"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    editCatalog(item);
-                  }}
-                >
-                  <Pencil size={14} aria-hidden />
-                </Button>
-                <Button
-                  variant="icon"
-                  size="sm"
-                  className="row-action"
-                  title="Novo movimento"
-                  aria-label="Novo movimento"
-                  onClick={(event) => {
-                    event.stopPropagation();
+      {visibleStockRows.length === 0 && summary && (
+        <EmptyState
+          icon={Boxes}
+          title="Nenhum equipamento encontrado"
+          description="Ajusta os filtros ou cadastra um novo equipamento no catálogo."
+        />
+      )}
+
+      {visibleStockRows.length > 0 && (
+        <div className="stock-list" role="list">
+          {visibleStockRows.map((item) => {
+            const Icon = iconForType(item.type);
+            const tone = stockLevelTone(item.stockTotal);
+            const interactive = true;
+            const classes = ['stock-item', 'is-interactive'];
+            if (selectedCatalog?.id === item.id) classes.push('is-selected');
+            return (
+              <div
+                role="listitem"
+                key={item.id}
+                className={classes.join(' ')}
+                tabIndex={interactive ? 0 : undefined}
+                onClick={() => selectCatalog(item)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
                     selectCatalog(item);
-                    openMovementForm();
-                  }}
-                >
-                  <ArrowDownUp size={14} aria-hidden />
-                </Button>
+                  }
+                }}
+              >
+                <span className="stock-item-icon" aria-hidden>
+                  <Icon size={16} strokeWidth={1.6} />
+                </span>
+                <div className="stock-item-main">
+                  <span className="stock-item-name">{item.brand ? `${item.brand} ${item.model}` : item.model}</span>
+                  <span className="stock-item-meta">
+                    <span>{item.type}</span>
+                    <span className="stock-item-meta-sep">·</span>
+                    <span className="stock-item-meta-supplier">{item.supplier || 'sem fornecedor'}</span>
+                  </span>
+                </div>
+                <span className="stock-item-level">
+                  <span className="stock-item-level-dot" data-tone={tone} aria-hidden />
+                  <span className="stock-item-level-value">{item.stockTotal}</span>
+                  <span className="stock-item-level-unit">un.</span>
+                </span>
+                <div className="stock-item-value">
+                  <span className="stock-item-value-amount">{item.sellingPriceCve.toLocaleString('pt-PT')}</span>
+                  <span className="stock-item-value-label">CVE venda</span>
+                </div>
+                {canManageStock && (
+                  <div className="stock-item-actions" onClick={(event) => event.stopPropagation()}>
+                    <Button
+                      variant="icon"
+                      size="sm"
+                      title="Editar equipamento"
+                      aria-label={`Editar ${item.model}`}
+                      onClick={(event) => { event.stopPropagation(); editCatalog(item); }}
+                    >
+                      <Pencil size={14} aria-hidden />
+                    </Button>
+                    <Button
+                      variant="icon"
+                      size="sm"
+                      title="Novo movimento"
+                      aria-label={`Novo movimento ${item.model}`}
+                      onClick={(event) => { event.stopPropagation(); selectCatalog(item); openMovementForm(); }}
+                    >
+                      <ArrowDownUp size={14} aria-hidden />
+                    </Button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ))}
-        {summary && visibleStockRows.length === 0 && (
-          <EmptyState
-            icon={Boxes}
-            title="Nenhum equipamento encontrado"
-            description="Ajusta os filtros ou cadastra um novo equipamento no catálogo."
-          />
-        )}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       <Dialog
         open={showCatalogForm}
