@@ -1,9 +1,10 @@
-import { KeyRound, Pencil, Plus, ShieldCheck, Trash2, UserCog, Wrench } from 'lucide-react';
+import { KeyRound, Pencil, Plus, ShieldCheck, Trash2, UserCog, UsersRound, Wrench } from 'lucide-react';
 import type { FormEvent, ReactNode } from 'react';
-import { useEffect, useState } from 'react';
-import { Badge, Button, Dialog, Field, Message, Select, useToast } from '../components';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Button, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import type { UserRole } from '../lib/auth';
+import './UsersModule.css';
 
 type UserRow = {
   id: number;
@@ -50,8 +51,11 @@ export function UsersModule() {
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
   const [submitting, setSubmitting] = useState(false);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
-  function load() {
+  const load = useCallback(() => {
     setLoading(true);
     return authFetch('http://127.0.0.1:3001/api/users')
       .then((res) => {
@@ -61,11 +65,11 @@ export function UsersModule() {
       .then(setUsers)
       .catch(() => setUsers([]))
       .finally(() => setLoading(false));
-  }
+  }, []);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   function openCreate() {
     setEditing(null);
@@ -194,8 +198,23 @@ export function UsersModule() {
     }
   }
 
-  const sortedUsers = [...users].sort((a, b) => Number(b.active) - Number(a.active));
-  const counts = users.reduce(
+  const visibleUsers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return users
+      .filter((u) => {
+        const matchesSearch = !q
+          || u.fullName.toLowerCase().includes(q)
+          || u.username.toLowerCase().includes(q);
+        const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+        const matchesActive = activeFilter === 'all'
+          || (activeFilter === 'active' && u.active)
+          || (activeFilter === 'inactive' && !u.active);
+        return matchesSearch && matchesRole && matchesActive;
+      })
+      .sort((a, b) => Number(b.active) - Number(a.active));
+  }, [users, search, roleFilter, activeFilter]);
+
+  const counts = useMemo(() => users.reduce(
     (acc, user) => {
       acc.total += 1;
       if (user.active) acc.active += 1;
@@ -203,7 +222,9 @@ export function UsersModule() {
       return acc;
     },
     { total: 0, active: 0, byRole: {} as Record<UserRole, number> }
-  );
+  ), [users]);
+
+  const hasFilter = !!search.trim() || roleFilter !== 'all' || activeFilter !== 'all';
 
   return (
     <section className="module-panel">
@@ -227,22 +248,80 @@ export function UsersModule() {
         </div>
       </div>
 
+      {counts.total > 3 && (
+        <div className="users-filter-sticky">
+          <FilterBar>
+            <Field
+              type="search"
+              label="Buscar"
+              aria-label="Pesquisar utilizadores"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Nome ou username"
+            />
+            <Select
+              label="Perfil"
+              value={roleFilter}
+              onChange={(event) => setRoleFilter(event.target.value as 'all' | UserRole)}
+            >
+              <option value="all">Todos</option>
+              <option value="admin">Admin</option>
+              <option value="operator">Operadora</option>
+              <option value="technician">Tecnico</option>
+            </Select>
+            <Select
+              label="Estado"
+              value={activeFilter}
+              onChange={(event) => setActiveFilter(event.target.value as 'all' | 'active' | 'inactive')}
+            >
+              <option value="all">Todos</option>
+              <option value="active">Ativos</option>
+              <option value="inactive">Inativos</option>
+            </Select>
+            {hasFilter && (
+              <Button
+                variant="secondary"
+                onClick={() => { setSearch(''); setRoleFilter('all'); setActiveFilter('all'); }}
+              >
+                Limpar filtros
+              </Button>
+            )}
+            <small>{visibleUsers.length} {visibleUsers.length === 1 ? 'utilizador' : 'utilizadores'}</small>
+          </FilterBar>
+        </div>
+      )}
+
       {loading && <Message>A carregar...</Message>}
 
-      {!loading && (
+      {!loading && visibleUsers.length === 0 && (
+        <EmptyState
+          icon={UsersRound}
+          title={hasFilter ? 'Nenhum utilizador encontrado' : 'Sem utilizadores ainda'}
+          description={hasFilter
+            ? 'Ajusta os filtros ou cria um novo utilizador.'
+            : 'Adiciona a equipa para começar a trabalhar em conjunto.'}
+        />
+      )}
+
+      {!loading && visibleUsers.length > 0 && (
         <div className="users-list">
-          {sortedUsers.map((row) => {
+          {visibleUsers.map((row) => {
             const isSelf = auth.user?.id === row.id;
+            const classes = ['user-row'];
+            if (!row.active) classes.push('is-inactive');
+            if (isSelf) classes.push('is-self');
             return (
-              <article
-                key={row.id}
-                className={`user-row${row.active ? '' : ' is-inactive'}`}
-              >
+              <article key={row.id} className={classes.join(' ')}>
                 <div className="user-row-main">
                   <div className="user-row-identity">
-                    <span className="user-row-mark">{row.fullName.charAt(0).toUpperCase()}</span>
-                    <div>
+                    <span className="user-row-mark" aria-hidden>{row.fullName.charAt(0).toUpperCase()}</span>
+                    <div className="user-row-identity-text">
                       <p className="user-row-name">
+                        <span
+                          className="user-row-state-dot"
+                          data-state={row.active ? 'active' : 'inactive'}
+                          aria-hidden
+                        />
                         {row.fullName}
                         {isSelf && <span className="user-row-self"> (tu)</span>}
                       </p>
@@ -254,15 +333,11 @@ export function UsersModule() {
                   </span>
                 </div>
                 <div className="user-row-meta">
-                  <Badge tone={row.active ? 'success' : 'neutral'}>
-                    {row.active ? 'Ativo' : 'Inativo'}
-                  </Badge>
                   <Button
                     variant="icon"
                     size="sm"
-                    className="row-action"
                     title="Editar utilizador"
-                    aria-label="Editar utilizador"
+                    aria-label={`Editar ${row.fullName}`}
                     onClick={() => openEdit(row)}
                   >
                     <Pencil size={14} aria-hidden />
@@ -270,9 +345,8 @@ export function UsersModule() {
                   <Button
                     variant="icon"
                     size="sm"
-                    className="row-action"
                     title="Reiniciar password"
-                    aria-label="Reiniciar password"
+                    aria-label={`Reiniciar password de ${row.fullName}`}
                     onClick={() => openReset(row)}
                   >
                     <KeyRound size={14} aria-hidden />
@@ -281,9 +355,8 @@ export function UsersModule() {
                     <Button
                       variant="icon"
                       size="sm"
-                      className="row-action"
                       title="Eliminar utilizador"
-                      aria-label="Eliminar utilizador"
+                      aria-label={`Eliminar ${row.fullName}`}
                       onClick={() => void remove(row)}
                     >
                       <Trash2 size={14} aria-hidden />

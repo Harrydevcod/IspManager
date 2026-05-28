@@ -243,6 +243,8 @@ a:hover {
   top: var(--s4);
   z-index: var(--z-skip);
   transform: translateY(calc(-100% - var(--s4)));
+  opacity: 0;
+  pointer-events: none;
   border: 1px solid var(--accent);
   border-radius: var(--r1);
   background: var(--accent);
@@ -251,11 +253,13 @@ a:hover {
   font-size: var(--fs-sm);
   font-weight: 700;
   box-shadow: var(--shadow-2);
-  transition: transform 140ms ease;
+  transition: opacity 140ms ease, transform 140ms ease;
 }
 
-.skip-link:focus-visible {
+:root[data-keyboard-navigation="true"] .skip-link:focus-visible {
   transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .sr-only {
@@ -3201,6 +3205,8 @@ label.field-toggle {
 .sparkline {
   display: block;
   position: relative;
+  --chart-paid: oklch(77% 0.13 166);
+  --chart-pending: oklch(69% 0.09 190);
 }
 .sparkline svg {
   width: 100%;
@@ -3244,7 +3250,7 @@ label.field-toggle {
   fill: var(--text-3);
 }
 .sparkline svg .bar-axis-current {
-  fill: var(--accent);
+  fill: var(--chart-paid);
   font-weight: 600;
 }
 .sparkline svg .bar-axis-future {
@@ -3319,8 +3325,8 @@ label.field-toggle {
   border-radius: 2px;
   display: inline-block;
 }
-.bar-tooltip-rows .dot-paid { background: var(--accent); }
-.bar-tooltip-rows .dot-pending { background: var(--info); opacity: 0.55; }
+.bar-tooltip-rows .dot-paid { background: var(--chart-paid); }
+.bar-tooltip-rows .dot-pending { background: var(--chart-pending); opacity: 0.62; }
 .bar-tooltip-rows .bar-tooltip-total {
   padding-top: 6px;
   margin-top: 2px;
@@ -3382,10 +3388,10 @@ label.field-toggle {
   height: 10px;
   border-radius: 2px;
 }
-.legend-paid::before { background: var(--accent); }
+.legend-paid::before { background: var(--chart-paid); }
 .legend-pending::before {
-  background: var(--info);
-  opacity: 0.45;
+  background: var(--chart-pending);
+  opacity: 0.62;
 }
 .legend-expense::before {
   background: var(--danger);
@@ -3823,150 +3829,6 @@ label.field-toggle {
   background: color-mix(in oklch, oklch(64% 0.18 25) 6%, transparent);
 }
 
-/* ---------------------------------------------------------
-   UsersModule — editorial list of accounts
-   --------------------------------------------------------- */
-.users-summary {
-  display: flex;
-  align-items: baseline;
-  gap: var(--s2);
-  margin: var(--s2) 0 0;
-  color: var(--text-3);
-  font-size: 11.5px;
-}
-
-.users-summary-figure {
-  font-family: var(--font-display, var(--font-ui));
-  font-size: clamp(28px, 3.6vw, 44px);
-  line-height: 1;
-  font-weight: 300;
-  letter-spacing: -0.03em;
-  color: var(--text-1);
-  font-variant-numeric: tabular-nums;
-}
-
-.users-summary-divider {
-  color: color-mix(in oklch, var(--text-3) 60%, transparent);
-}
-
-.users-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s2);
-  margin-top: var(--s4);
-}
-
-.user-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s4);
-  padding: var(--s3) var(--s4);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r1);
-  transition: border-color 140ms ease, background-color 140ms ease;
-}
-
-.user-row:hover {
-  border-color: color-mix(in oklch, var(--text-3) 50%, var(--border));
-}
-
-.user-row.is-inactive { opacity: 0.55; }
-
-.user-row-main {
-  display: flex;
-  align-items: center;
-  gap: var(--s4);
-  min-width: 0;
-}
-
-.user-row-identity {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  min-width: 0;
-}
-
-.user-row-mark {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  background: color-mix(in oklch, var(--accent) 18%, var(--surface));
-  color: var(--accent);
-  font-family: var(--font-display, var(--font-ui));
-  font-size: 16px;
-  font-weight: 500;
-}
-
-.user-row-name {
-  margin: 0;
-  font-size: 13.5px;
-  font-weight: 500;
-  color: var(--text-1);
-}
-
-.user-row-self {
-  font-size: 11px;
-  color: var(--text-3);
-  font-weight: 400;
-  font-style: italic;
-}
-
-.user-row-username {
-  margin: 1px 0 0;
-  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
-  font-size: 11px;
-  color: var(--text-3);
-  letter-spacing: 0.02em;
-}
-
-.user-role-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-.user-role-admin {
-  background: color-mix(in oklch, var(--accent) 14%, transparent);
-  color: var(--accent);
-}
-
-.user-role-operator {
-  background: color-mix(in oklch, oklch(72% 0.12 250) 14%, transparent);
-  color: oklch(72% 0.12 250);
-}
-
-.user-role-technician {
-  background: color-mix(in oklch, oklch(72% 0.13 155) 14%, transparent);
-  color: oklch(72% 0.13 155);
-}
-
-.user-row-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-}
-
-@media (max-width: 720px) {
-  .user-row {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--s3);
-  }
-  .user-row-meta { width: 100%; justify-content: space-between; }
-}
-
 /* Destructive-action affordances: paid-cancellation surface and ghost buttons.
    Used by PaymentsModule when anulling a payment that was already registered. */
 button.danger-ghost {
@@ -4168,6 +4030,13 @@ button.danger:disabled {
   border-radius: var(--r1);
   background: color-mix(in oklch, var(--surface-2) 90%, transparent);
   border: 1px solid var(--border);
+}
+.client-profitability-grid > .client-profitability-total {
+  background: color-mix(in oklch, var(--success) 9%, var(--surface-2));
+  border-color: color-mix(in oklch, var(--success) 30%, var(--border));
+}
+.client-profitability-grid > .client-profitability-total dd {
+  color: var(--success);
 }
 .client-profitability-grid dt {
   color: var(--text-3);
