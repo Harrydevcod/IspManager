@@ -276,9 +276,9 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
                   y={bar.pendingY}
                   width={bar.barWidth}
                   height={Math.max(1, bar.pendingH)}
-                  rx="1.5"
-                  fill="var(--info)"
-                  fillOpacity={isCurrent || isHovered ? '0.55' : '0.28'}
+                  rx="3"
+                  fill="var(--chart-pending)"
+                  fillOpacity={isCurrent || isHovered ? '0.62' : '0.34'}
                 />
               )}
               {bar.paidH > 0 && (
@@ -287,9 +287,9 @@ function RevenueBars({ points }: { points: RevenuePoint[] }) {
                   y={bar.paidY}
                   width={bar.barWidth}
                   height={Math.max(1, bar.paidH)}
-                  rx="1.5"
-                  fill="var(--accent)"
-                  fillOpacity={isCurrent || isHovered ? '1' : '0.78'}
+                  rx="3"
+                  fill="var(--chart-paid)"
+                  fillOpacity={isCurrent || isHovered ? '1' : '0.86'}
                 />
               )}
               {showValue && (

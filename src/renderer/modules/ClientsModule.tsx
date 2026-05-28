@@ -318,6 +318,11 @@ export function ClientsModule() {
             {!profitabilityLoading && profitability && profitability.investments.length > 0 && (
               <>
                 <dl className="client-profitability-grid">
+                  <div className="client-profitability-total">
+                    <dt>Faturamento total</dt>
+                    <dd>{formatCve(profitability.paidRevenueCve + profitability.pendingRevenueCve)}</dd>
+                    <small>pago + pendente</small>
+                  </div>
                   <div>
                     <dt>Custo de instalacao</dt>
                     <dd>{formatCve(profitability.installationCostCve)}</dd>
