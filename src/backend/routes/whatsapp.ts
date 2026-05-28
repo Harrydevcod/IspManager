@@ -2,6 +2,12 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { requireRole } from './auth';
+import {
+  fallbackWhatsappOverdueTemplate,
+  fallbackWhatsappSuspensionTemplate,
+  fallbackWhatsappTemplate,
+  renderWhatsappTemplate
+} from '../../shared/whatsapp';
 
 const sendWhatsappSchema = z.object({
   phone: z.string().trim().min(1),
@@ -9,10 +15,10 @@ const sendWhatsappSchema = z.object({
 });
 
 const notifyOverdueSchema = z.object({
-  dryRun: z.boolean().optional().default(false)
+  dryRun: z.boolean().optional().default(false),
+  noticeType: z.enum(['overdue', 'suspension']).optional().default('overdue')
 });
 
-const FALLBACK_TEMPLATE = 'Ola {nome}, lembrete da sua mensalidade junto da {empresa}. Por favor regularize quando possivel.';
 const SEND_INTERVAL_MS = 900;
 
 function normalizeUltraMsgPhone(phone: string) {
@@ -33,14 +39,6 @@ function getSetting(key: string) {
   const db = getSqliteDatabase();
   const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined;
   return row?.value.trim() || '';
-}
-
-function renderTemplate(template: string, name: string, code: string, company: string): string {
-  return template
-    .replace(/\{nome\}/gi, name || '-')
-    .replace(/\{cliente\}/gi, name || '-')
-    .replace(/\{codigo\}/gi, code || '-')
-    .replace(/\{empresa\}/gi, company || 'ISPM');
 }
 
 function delay(ms: number): Promise<void> {
@@ -85,6 +83,8 @@ type OverdueCandidate = {
   phone: string | null;
   amountCve: number;
   dueDate: string;
+  referenceMonth: string;
+  invoiceNumber: string | null;
   daysOverdue: number;
   whatsappOptOut: number;
 };
@@ -139,6 +139,8 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
         c.whatsapp_opt_out AS whatsappOptOut,
         py.amount_cve AS amountCve,
         py.due_date AS dueDate,
+        py.reference_month AS referenceMonth,
+        py.invoice_number AS invoiceNumber,
         CAST(julianday('now') - julianday(py.due_date) AS INTEGER) AS daysOverdue
       FROM payments py
       JOIN clients c ON c.id = py.client_id
@@ -147,13 +149,18 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
       ORDER BY py.due_date ASC
     `).all() as OverdueCandidate[];
 
-    const eligible = candidates.filter((row) => {
+    const suspensionDays = Number(getSetting('whatsappSuspensionNoticeDays')) || 15;
+    const candidatesForNotice = parsed.data.noticeType === 'suspension'
+      ? candidates.filter((row) => row.daysOverdue >= suspensionDays)
+      : candidates;
+
+    const eligible = candidatesForNotice.filter((row) => {
       if (row.whatsappOptOut) return false;
       const phone = normalizeUltraMsgPhone(row.phone || '');
       return phone.length > 0;
     });
 
-    const skipped: NotifyEntry[] = candidates
+    const skipped: NotifyEntry[] = candidatesForNotice
       .filter((row) => !eligible.some((e) => e.paymentId === row.paymentId))
       .map((row) => ({
         paymentId: row.paymentId,
@@ -165,7 +172,7 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
     if (parsed.data.dryRun) {
       return {
         dryRun: true,
-        total: candidates.length,
+        total: candidatesForNotice.length,
         eligible: eligible.map((row) => ({
           paymentId: row.paymentId,
           clientName: row.clientName,
@@ -180,7 +187,7 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
     }
 
     if (eligible.length === 0) {
-      return { dryRun: false, total: candidates.length, sent: 0, failed: [], skipped, details: [] };
+      return { dryRun: false, total: candidatesForNotice.length, sent: 0, failed: [], skipped, details: [] };
     }
 
     const instanceId = getSetting('ultraMsgInstanceId');
@@ -189,7 +196,9 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'UltraMsg nao configurado' });
     }
 
-    const template = getSetting('whatsappTemplate') || FALLBACK_TEMPLATE;
+    const template = parsed.data.noticeType === 'suspension'
+      ? getSetting('whatsappSuspensionTemplate') || fallbackWhatsappSuspensionTemplate
+      : getSetting('whatsappOverdueTemplate') || getSetting('whatsappTemplate') || fallbackWhatsappOverdueTemplate || fallbackWhatsappTemplate;
     const companyName = getSetting('companyName') || 'ISPM';
 
     const details: NotifyEntry[] = [...skipped];
@@ -199,7 +208,21 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
     for (let i = 0; i < eligible.length; i++) {
       const row = eligible[i];
       const to = normalizeUltraMsgPhone(row.phone || '');
-      const body = renderTemplate(template, row.clientName, row.clientCode, companyName);
+      const body = renderWhatsappTemplate(
+        template,
+        {
+          fullName: row.clientName,
+          clientCode: row.clientCode,
+          phone: row.phone,
+          amountCve: row.amountCve,
+          dueDate: row.dueDate,
+          referenceMonth: row.referenceMonth,
+          invoiceNumber: row.invoiceNumber,
+          daysOverdue: row.daysOverdue,
+          suspensionDays
+        },
+        companyName
+      );
       const result = await sendViaUltraMsg(instanceId, token, to, body);
       if (result.ok) {
         sent += 1;
@@ -216,7 +239,7 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
 
     return {
       dryRun: false,
-      total: candidates.length,
+      total: candidatesForNotice.length,
       sent,
       failed,
       skipped,

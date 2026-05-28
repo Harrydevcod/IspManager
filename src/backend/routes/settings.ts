@@ -4,6 +4,14 @@ import { existsSync, statSync, accessSync, constants } from 'node:fs';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
 import { requireRole } from './auth';
+import {
+  fallbackWhatsappInvoiceReadyTemplate,
+  fallbackWhatsappOverdueTemplate,
+  fallbackWhatsappReceiptTemplate,
+  fallbackWhatsappSuspensionTemplate,
+  fallbackWhatsappTemplate,
+  fallbackWhatsappTestTemplate
+} from '../../shared/whatsapp';
 
 const settingsSchema = z.object({
   companyName: z.string().trim().min(1),
@@ -22,6 +30,12 @@ const settingsSchema = z.object({
   printQrCode: z.coerce.boolean(),
   legalNotes: z.string().trim().max(500).optional().nullable(),
   whatsappTemplate: z.string().trim().max(500).optional().nullable(),
+  whatsappTestTemplate: z.string().trim().max(500).optional().nullable(),
+  whatsappInvoiceReadyTemplate: z.string().trim().max(700).optional().nullable(),
+  whatsappReceiptTemplate: z.string().trim().max(700).optional().nullable(),
+  whatsappOverdueTemplate: z.string().trim().max(700).optional().nullable(),
+  whatsappSuspensionTemplate: z.string().trim().max(700).optional().nullable(),
+  whatsappSuspensionNoticeDays: z.coerce.number().int().min(1).max(120).optional().default(15),
   ultraMsgInstanceId: z.string().trim().max(64).optional().nullable(),
   ultraMsgToken: z.string().trim().max(255).optional().nullable(),
   backupDir: z.string().trim().max(500).optional().nullable()
@@ -43,7 +57,13 @@ const defaultSettings = {
   showIva: false,
   printQrCode: false,
   legalNotes: '',
-  whatsappTemplate: 'Ola {nome}, somos da {empresa}. Entramos em contacto sobre o seu servico de internet.',
+  whatsappTemplate: fallbackWhatsappTemplate,
+  whatsappTestTemplate: fallbackWhatsappTestTemplate,
+  whatsappInvoiceReadyTemplate: fallbackWhatsappInvoiceReadyTemplate,
+  whatsappReceiptTemplate: fallbackWhatsappReceiptTemplate,
+  whatsappOverdueTemplate: fallbackWhatsappOverdueTemplate,
+  whatsappSuspensionTemplate: fallbackWhatsappSuspensionTemplate,
+  whatsappSuspensionNoticeDays: 15,
   ultraMsgInstanceId: '',
   ultraMsgToken: '',
   backupDir: ''
@@ -65,6 +85,9 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       } else if (row.key === 'ivaRate') {
         const n = Number(row.value);
         settings.ivaRate = Number.isFinite(n) ? n : defaultSettings.ivaRate;
+      } else if (row.key === 'whatsappSuspensionNoticeDays') {
+        const n = Number(row.value);
+        settings.whatsappSuspensionNoticeDays = Number.isFinite(n) ? n : defaultSettings.whatsappSuspensionNoticeDays;
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
       } else if (row.key === 'showIva' || row.key === 'printQrCode') {

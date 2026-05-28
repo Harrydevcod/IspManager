@@ -1,7 +1,14 @@
 import type { WhatsappMessageData } from '../types';
+export {
+  fallbackWhatsappInvoiceReadyTemplate,
+  fallbackWhatsappOverdueTemplate,
+  fallbackWhatsappReceiptTemplate,
+  fallbackWhatsappSuspensionTemplate,
+  fallbackWhatsappTemplate,
+  fallbackWhatsappTestTemplate
+} from '../../shared/whatsapp';
+import { renderWhatsappTemplate } from '../../shared/whatsapp';
 import { authFetch } from './auth';
-
-export const fallbackWhatsappTemplate = 'Ola {nome}, somos da {empresa}. Entramos em contacto sobre o seu servico de internet.';
 
 export function normalizeWhatsappPhone(phone: string | null) {
   const digits = (phone || '').replace(/\D/g, '');
@@ -17,12 +24,18 @@ export function normalizeWhatsappPhone(phone: string | null) {
   return digits;
 }
 
-export function renderWhatsappMessage(template: string, client: WhatsappMessageData, companyName: string) {
-  return template
-    .replace(/\{nome\}/g, client.fullName)
-    .replace(/\{codigo\}/g, client.clientCode)
-    .replace(/\{telefone\}/g, client.phone || '')
-    .replace(/\{empresa\}/g, companyName || 'ISPM');
+type WhatsappTemplateContext = {
+  amountCve?: number;
+  dueDate?: string;
+  referenceMonth?: string;
+  invoiceNumber?: string | null;
+  receiptNumber?: string | null;
+  daysOverdue?: number;
+  suspensionDays?: number;
+};
+
+export function renderWhatsappMessage(template: string, client: WhatsappMessageData, companyName: string, context: WhatsappTemplateContext = {}) {
+  return renderWhatsappTemplate(template, { ...context, ...client }, companyName);
 }
 
 export async function sendWhatsappViaUltraMsg(phone: string | null, body: string) {
