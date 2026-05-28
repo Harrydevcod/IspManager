@@ -23,6 +23,7 @@ import { registerWorkOrderRoutes } from './routes/work-orders';
 import { registerBackupRoutes } from './routes/backup';
 import { createBackup, pruneBackups } from './lib/backup';
 import { runMonthlyBillingIfDue } from './lib/auto-billing';
+import { runOverdueNoticesIfDue } from './lib/notices';
 
 let serverStarted = false;
 
@@ -90,6 +91,21 @@ export async function createBackendApp() {
   await registerWhatsappRoutes(app);
   await registerWorkOrderRoutes(app);
   await registerBackupRoutes(app);
+
+  // Automatic overdue/suspension WhatsApp notices — opt-in via the
+  // `autoNoticesEnabled` setting (off by default). Fire-and-forget: the send
+  // loop is rate-limited and must never block server boot.
+  if (process.env.ISPM_AUTO_NOTICES !== 'off') {
+    void runOverdueNoticesIfDue()
+      .then((result) => {
+        if ('ran' in result) {
+          app.log.info({ result }, 'auto notices executed');
+        }
+      })
+      .catch((err) => {
+        app.log.error({ err }, 'auto notices failed');
+      });
+  }
 
   return app;
 }

@@ -8,6 +8,7 @@ import {
   fallbackWhatsappTemplate,
   renderWhatsappTemplate
 } from '../../shared/whatsapp';
+import { normalizeUltraMsgPhone, sendViaUltraMsg } from '../lib/ultramsg';
 
 const sendWhatsappSchema = z.object({
   phone: z.string().trim().min(1),
@@ -21,20 +22,6 @@ const notifyOverdueSchema = z.object({
 
 const SEND_INTERVAL_MS = 900;
 
-function normalizeUltraMsgPhone(phone: string) {
-  const digits = phone.replace(/\D/g, '');
-  if (!digits) {
-    return '';
-  }
-  if (digits.startsWith('238')) {
-    return `+${digits}`;
-  }
-  if (digits.length === 7) {
-    return `+238${digits}`;
-  }
-  return `+${digits}`;
-}
-
 function getSetting(key: string) {
   const db = getSqliteDatabase();
   const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined;
@@ -45,39 +32,9 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => { setTimeout(resolve, ms); });
 }
 
-async function readUltraMsgResponse(response: Response) {
-  const text = await response.text();
-  if (!text) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return text;
-  }
-}
-
-async function sendViaUltraMsg(instanceId: string, token: string, to: string, body: string): Promise<{ ok: true; result: unknown } | { ok: false; reason: string; details?: unknown }> {
-  const payload = new URLSearchParams({ token, to, body });
-  try {
-    const response = await fetch(`https://api.ultramsg.com/${encodeURIComponent(instanceId)}/messages/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: payload
-    });
-    const result = await readUltraMsgResponse(response);
-    if (!response.ok) {
-      return { ok: false, reason: 'UltraMsg recusou o envio', details: result };
-    }
-    return { ok: true, result };
-  } catch {
-    return { ok: false, reason: 'Nao foi possivel contactar UltraMsg' };
-  }
-}
-
 type OverdueCandidate = {
   paymentId: number;
+  clientId: number;
   clientName: string;
   clientCode: string;
   phone: string | null;
@@ -133,6 +90,7 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
     const candidates = db.prepare(`
       SELECT
         py.id AS paymentId,
+        c.id AS clientId,
         c.full_name AS clientName,
         c.client_code AS clientCode,
         c.phone AS phone,
@@ -201,6 +159,11 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
       : getSetting('whatsappOverdueTemplate') || getSetting('whatsappTemplate') || fallbackWhatsappOverdueTemplate || fallbackWhatsappTemplate;
     const companyName = getSetting('companyName') || 'ISPM';
 
+    const logNotice = db.prepare(`
+      INSERT INTO whatsapp_notices (payment_id, client_id, notice_type, origin, phone, body, status, error)
+      VALUES (?, ?, ?, 'manual', ?, ?, ?, ?)
+    `);
+
     const details: NotifyEntry[] = [...skipped];
     const failed: NotifyEntry[] = [];
     let sent = 0;
@@ -226,8 +189,10 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
       const result = await sendViaUltraMsg(instanceId, token, to, body);
       if (result.ok) {
         sent += 1;
+        logNotice.run(row.paymentId, row.clientId, parsed.data.noticeType, to, body, 'sent', null);
         details.push({ paymentId: row.paymentId, clientName: row.clientName, status: 'sent' });
       } else {
+        logNotice.run(row.paymentId, row.clientId, parsed.data.noticeType, to, body, 'failed', result.reason);
         const entry: NotifyEntry = { paymentId: row.paymentId, clientName: row.clientName, status: 'failed', reason: result.reason };
         failed.push(entry);
         details.push(entry);

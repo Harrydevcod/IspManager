@@ -9,6 +9,7 @@ import m0007 from './0007_investment_profitability';
 import m0008 from './0008_expense_allocation';
 import m0009 from './0009_expense_categories';
 import m0010 from './0010_expense_templates';
+import m0011 from './0011_whatsapp_notices';
 
 /**
  * The migration chain, in the order new migrations are appended.
@@ -18,6 +19,6 @@ import m0010 from './0010_expense_templates';
  * the next version number and append it here. Never edit a shipped migration —
  * the runner enforces this via checksum drift detection.
  */
-export const migrations: Migration[] = [m0001, m0002, m0003, m0004, m0005, m0006, m0007, m0008, m0009, m0010];
+export const migrations: Migration[] = [m0001, m0002, m0003, m0004, m0005, m0006, m0007, m0008, m0009, m0010, m0011];
 
 export type { Migration } from './types';

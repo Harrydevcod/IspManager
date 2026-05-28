@@ -36,6 +36,8 @@ const settingsSchema = z.object({
   whatsappOverdueTemplate: z.string().trim().max(700).optional().nullable(),
   whatsappSuspensionTemplate: z.string().trim().max(700).optional().nullable(),
   whatsappSuspensionNoticeDays: z.coerce.number().int().min(1).max(120).optional().default(15),
+  autoNoticesEnabled: z.coerce.boolean().optional().default(false),
+  noticeCooldownDays: z.coerce.number().int().min(1).max(90).optional().default(7),
   ultraMsgInstanceId: z.string().trim().max(64).optional().nullable(),
   ultraMsgToken: z.string().trim().max(255).optional().nullable(),
   backupDir: z.string().trim().max(500).optional().nullable()
@@ -64,6 +66,8 @@ const defaultSettings = {
   whatsappOverdueTemplate: fallbackWhatsappOverdueTemplate,
   whatsappSuspensionTemplate: fallbackWhatsappSuspensionTemplate,
   whatsappSuspensionNoticeDays: 15,
+  autoNoticesEnabled: false,
+  noticeCooldownDays: 7,
   ultraMsgInstanceId: '',
   ultraMsgToken: '',
   backupDir: ''
@@ -88,9 +92,12 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       } else if (row.key === 'whatsappSuspensionNoticeDays') {
         const n = Number(row.value);
         settings.whatsappSuspensionNoticeDays = Number.isFinite(n) ? n : defaultSettings.whatsappSuspensionNoticeDays;
+      } else if (row.key === 'noticeCooldownDays') {
+        const n = Number(row.value);
+        settings.noticeCooldownDays = Number.isFinite(n) ? n : defaultSettings.noticeCooldownDays;
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
-      } else if (row.key === 'showIva' || row.key === 'printQrCode') {
+      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'autoNoticesEnabled') {
         settings[row.key] = row.value === 'true' || row.value === '1';
       } else if (row.key in settings) {
         settings[row.key] = row.value as never;

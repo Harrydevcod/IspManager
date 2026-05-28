@@ -26,6 +26,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   db.exec(`
+    DELETE FROM whatsapp_notices;
     DELETE FROM service_events;
     DELETE FROM service_device_assignments;
     DELETE FROM payments;
