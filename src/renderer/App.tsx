@@ -4,6 +4,7 @@ import { AuthGate, CommandPalette, PageHeader, ThemeToggle, ToastProvider } from
 import type { CommandPaletteItem } from './components';
 import { AuthProvider, authFetch, useAuth } from './lib/auth';
 import type { UserRole } from './lib/auth';
+import { installKeyboardNavigationIntent } from './lib/keyboardNavigation';
 import { Dashboard } from './modules/Dashboard';
 import { InvestmentsModule } from './modules/InvestmentsModule';
 import { ExpensesModule } from './modules/ExpensesModule';
@@ -94,6 +95,8 @@ function AppShell() {
   const [section, setSection] = useState<SectionId>(() => visibleSections[0]?.id ?? 'dashboard');
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+
+  useEffect(() => installKeyboardNavigationIntent(), []);
 
   useEffect(() => {
     if (!visibleSections.some((item) => item.id === section)) {
