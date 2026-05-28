@@ -48,6 +48,8 @@ type SettingsFormState = {
   whatsappOverdueTemplate: string;
   whatsappSuspensionTemplate: string;
   whatsappSuspensionNoticeDays: string;
+  autoNoticesEnabled: boolean;
+  noticeCooldownDays: string;
   ultraMsgInstanceId: string;
   ultraMsgToken: string;
 };
@@ -83,6 +85,8 @@ export function SettingsModule() {
     whatsappOverdueTemplate: fallbackWhatsappOverdueTemplate,
     whatsappSuspensionTemplate: fallbackWhatsappSuspensionTemplate,
     whatsappSuspensionNoticeDays: '15',
+    autoNoticesEnabled: false,
+    noticeCooldownDays: '7',
     ultraMsgInstanceId: '',
     ultraMsgToken: ''
   });
@@ -94,14 +98,15 @@ export function SettingsModule() {
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
         }
-        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'ivaRate' | 'whatsappSuspensionNoticeDays'> & { defaultDueDay: number; ivaRate: number; whatsappSuspensionNoticeDays: number }>;
+        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays'> & { defaultDueDay: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number }>;
       })
       .then((settings) => {
         const loadedForm = {
           ...settings,
           defaultDueDay: String(settings.defaultDueDay),
           ivaRate: String(settings.ivaRate),
-          whatsappSuspensionNoticeDays: String(settings.whatsappSuspensionNoticeDays)
+          whatsappSuspensionNoticeDays: String(settings.whatsappSuspensionNoticeDays),
+          noticeCooldownDays: String(settings.noticeCooldownDays)
         };
         setForm(loadedForm);
         setLastSavedForm(loadedForm);
@@ -160,7 +165,8 @@ export function SettingsModule() {
           ...form,
           defaultDueDay: Number(form.defaultDueDay),
           ivaRate: Number(form.ivaRate),
-          whatsappSuspensionNoticeDays: Number(form.whatsappSuspensionNoticeDays)
+          whatsappSuspensionNoticeDays: Number(form.whatsappSuspensionNoticeDays),
+          noticeCooldownDays: Number(form.noticeCooldownDays)
         })
       });
 
@@ -375,6 +381,20 @@ export function SettingsModule() {
               max={120}
               value={form.whatsappSuspensionNoticeDays}
               onChange={(event) => updateForm('whatsappSuspensionNoticeDays', event.target.value)}
+            />
+            <Toggle
+              title="Enviar avisos de atraso automaticamente"
+              description="Uma vez por dia, o sistema envia avisos de atraso/suspensao aos clientes elegiveis via WhatsApp. Desligado por defeito — liga so com consentimento dos clientes e UltraMsg configurado."
+              checked={form.autoNoticesEnabled}
+              onChange={(event) => setForm((current) => ({ ...current, autoNoticesEnabled: event.target.checked }))}
+            />
+            <Field
+              label="Nao repetir o mesmo aviso durante X dias"
+              type="number"
+              min={1}
+              max={90}
+              value={form.noticeCooldownDays}
+              onChange={(event) => updateForm('noticeCooldownDays', event.target.value)}
             />
             <Textarea
               className="whatsapp-template-field"
