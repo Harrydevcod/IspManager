@@ -424,6 +424,46 @@ describe('finance routes', () => {
     });
   });
 
+  test('GET /api/payments only exposes regeneration while an anulado slot is free', async () => {
+    const client = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status)
+      VALUES ('CLT-N002', 'Cliente Regeneravel', 'active')
+    `).run();
+    const service = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, activation_date, due_day, status)
+      VALUES (?, 4000, '2026-01-15', 15, 'active')
+    `).run(client.lastInsertRowid);
+    await app.inject({
+      method: 'POST',
+      url: '/api/billing/generate-monthly',
+      payload: { referenceMonth: '2026-08' }
+    });
+    const original = db.prepare('SELECT id FROM payments WHERE service_id = ?')
+      .get(service.lastInsertRowid) as { id: number };
+    await app.inject({
+      method: 'POST',
+      url: `/api/payments/${original.id}/cancel`,
+      payload: { reason: 'Cobranca gerada incorretamente' }
+    });
+
+    const before = await app.inject({ method: 'GET', url: '/api/payments' });
+    expect(before.json()).toEqual([
+      expect.objectContaining({ id: original.id, status: 'cancelled', canRegenerate: 1 })
+    ]);
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/payments/${original.id}/regenerate`
+    });
+
+    const after = await app.inject({ method: 'GET', url: '/api/payments' });
+    const rows = after.json() as Array<{ id: number; status: string; canRegenerate: number }>;
+    expect(rows.find((row) => row.id === original.id)).toMatchObject({
+      status: 'cancelled',
+      canRegenerate: 0
+    });
+  });
+
   test('preview-monthly returns counts without inserting rows', async () => {
     const client = db.prepare(`
       INSERT INTO clients (client_code, full_name, status)

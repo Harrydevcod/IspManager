@@ -177,9 +177,24 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         py.invoice_number AS invoiceNumber,
         py.invoice_date AS invoiceDate,
         py.receipt_number AS receiptNumber,
-        py.receipt_date AS receiptDate
+        py.receipt_date AS receiptDate,
+        CASE
+          WHEN py.status = 'cancelled'
+            AND s.status = 'active'
+            AND c.status != 'cancelled'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM payments active_py
+              WHERE active_py.service_id = py.service_id
+                AND active_py.reference_month = py.reference_month
+                AND active_py.status != 'cancelled'
+            )
+          THEN 1
+          ELSE 0
+        END AS canRegenerate
       FROM payments py
       JOIN clients c ON c.id = py.client_id
+      JOIN services s ON s.id = py.service_id
       ORDER BY py.reference_month DESC, c.full_name
     `).all();
   });

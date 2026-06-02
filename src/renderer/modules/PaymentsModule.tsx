@@ -882,7 +882,7 @@ export function PaymentsModule() {
                   {selectedPayment.status === 'paid' ? 'Anular pago' : 'Anular'}
                 </Button>
               )}
-              {selectedPayment.status === 'cancelled' && (
+              {selectedPayment.canRegenerate === 1 && (
                 <Button
                   variant="secondary"
                   size="sm"
@@ -1154,7 +1154,7 @@ export function PaymentsModule() {
                 <Undo2 size={16} aria-hidden />
               </Button>
             )}
-            {p.status === 'cancelled' && (
+            {p.canRegenerate === 1 && (
               <Button
                 variant="icon"
                 size="sm"

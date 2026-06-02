@@ -63,6 +63,7 @@ export type PaymentRow = {
   status: 'pending' | 'paid' | 'overdue' | 'cancelled';
   invoiceNumber: string | null;
   receiptNumber: string | null;
+  canRegenerate: number;
 };
 
 export type PlanRow = {
