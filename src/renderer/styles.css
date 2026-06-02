@@ -1423,6 +1423,19 @@ h2 {
   background: var(--accent-2);
 }
 
+/* Clientes detail-panel header actions — tightened to match the Pagamentos
+   slice. Scoped under .client-detail to win over the generic
+   `.client-detail button` rule regardless of source order. */
+.client-detail .client-preview-actions button {
+  min-height: 36px;
+  padding: 0 var(--s3);
+}
+.client-detail .client-preview-actions button:first-child:hover {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  color: var(--on-accent);
+}
+
 .document-preview {
   display: grid;
   gap: var(--s2);

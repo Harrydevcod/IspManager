@@ -1,7 +1,7 @@
 import { MessageCircle, Pencil, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useState } from 'react';
-import { Badge, Button, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
+import { Badge, Button, DetailPanel, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
 import { ClientImportDialog } from './clients/import';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
@@ -275,24 +275,37 @@ export function ClientsModule() {
       </FilterBar>
 
       {selectedClient && (
-        <div className="client-detail">
-          <div>
-            <p className="eyebrow entity-code">{selectedClient.clientCode}</p>
-            <h2>{selectedClient.fullName}</h2>
-          </div>
+        <DetailPanel
+          eyebrow={selectedClient.clientCode}
+          title={selectedClient.fullName}
+          actionsClassName="client-preview-actions"
+          onClose={() => setSelectedClient(null)}
+          actions={
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!normalizeWhatsappPhone(selectedClient.phone)}
+                leadingIcon={<MessageCircle size={16} aria-hidden />}
+                onClick={() => void sendClientWhatsapp(selectedClient)}
+              >
+                WhatsApp
+              </Button>
+              {canManageClients && (
+                <Button variant="secondary" size="sm" leadingIcon={<Pencil size={16} aria-hidden />} onClick={() => editClient(selectedClient)}>
+                  Editar
+                </Button>
+              )}
+            </>
+          }
+        >
           <dl>
             <div><dt>Telefone</dt><dd>{selectedClient.phone || 'Sem telefone'}</dd></div>
             <div><dt>Ilha</dt><dd>{selectedClient.island || '-'}</dd></div>
             <div><dt>Zona</dt><dd>{selectedClient.zone || '-'}</dd></div>
-            <div><dt>Estado</dt><dd>{selectedClient.status}</dd></div>
+            <div><dt>Morada</dt><dd>{selectedClient.address || '-'}</dd></div>
+            <div><dt>Estado</dt><dd><Badge tone={statusTone(selectedClient.status)}>{statusLabel(selectedClient.status)}</Badge></dd></div>
           </dl>
-          <div className="form-actions detail-actions">
-            <Button variant="secondary" onClick={() => setSelectedClient(null)}>Fechar detalhe</Button>
-            <Button variant="secondary" disabled={!normalizeWhatsappPhone(selectedClient.phone)} leadingIcon={<MessageCircle size={16} aria-hidden />} onClick={() => void sendClientWhatsapp(selectedClient)}>
-              WhatsApp
-            </Button>
-            {canManageClients && <Button onClick={() => editClient(selectedClient)}>Editar cliente</Button>}
-          </div>
 
           <section className="client-profitability">
             <header>
@@ -387,7 +400,7 @@ export function ClientsModule() {
               </>
             )}
           </section>
-        </div>
+        </DetailPanel>
       )}
 
       {!loading && !loadError && (
