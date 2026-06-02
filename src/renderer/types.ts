@@ -490,6 +490,37 @@ export type ReportsSummary = {
 
 export type ReportView = 'revenue' | 'overdue' | 'stock';
 
+export type DataQualityIncompleteFlag = 'noPhone' | 'noActiveService' | 'noAddress' | 'noNif';
+
+export type DataQualitySummary = {
+  incompleteCounts: {
+    noPhone: number;
+    noActiveService: number;
+    noAddress: number;
+    noNif: number;
+    total: number;
+  };
+  incompleteClients: Array<{
+    id: number;
+    clientCode: string;
+    fullName: string;
+    status: 'active' | 'suspended' | 'cancelled';
+    phone: string | null;
+    flags: DataQualityIncompleteFlag[];
+  }>;
+  duplicateGroups: Array<{
+    key: string;
+    reason: 'phone' | 'name';
+    clients: Array<{ id: number; clientCode: string; fullName: string; phone: string | null }>;
+  }>;
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
 export type WhatsappMessageData = {
   fullName: string;
   clientCode: string;
