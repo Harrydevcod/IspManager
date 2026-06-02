@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
-import { computeMonthlyBilling, generateMonthlyBilling } from '../lib/billing';
+import { computeMonthlyBilling, dueDateFromIssue, generateMonthlyBilling, todayIso } from '../lib/billing';
 import { nextDocumentNumber } from '../lib/numbering';
 import { recordAudit } from '../lib/audit';
 import { requireAuth, requireRole } from './auth';
@@ -352,6 +352,101 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     });
 
     return { id, reverted: true };
+  });
+
+  app.post('/api/payments/:id/regenerate', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Pagamento invalido' });
+    }
+
+    const db = getSqliteDatabase();
+    const payment = db.prepare(`
+      SELECT
+        py.id,
+        py.status,
+        py.client_id AS clientId,
+        py.service_id AS serviceId,
+        py.reference_month AS referenceMonth,
+        s.monthly_value_cve AS amountCve,
+        s.status AS serviceStatus,
+        c.status AS clientStatus
+      FROM payments py
+      JOIN services s ON s.id = py.service_id
+      JOIN clients c ON c.id = py.client_id
+      WHERE py.id = ?
+    `).get(id) as {
+      id: number;
+      status: 'pending' | 'paid' | 'overdue' | 'cancelled';
+      clientId: number;
+      serviceId: number;
+      referenceMonth: string;
+      amountCve: number;
+      serviceStatus: 'active' | 'suspended' | 'cancelled';
+      clientStatus: 'active' | 'suspended' | 'cancelled';
+    } | undefined;
+
+    if (!payment) {
+      return reply.status(404).send({ error: 'Pagamento nao encontrado' });
+    }
+    if (payment.status !== 'cancelled') {
+      return reply.status(400).send({ error: 'Apenas pagamentos anulados podem regenerar mensalidade' });
+    }
+    if (payment.serviceStatus !== 'active') {
+      return reply.status(400).send({ error: 'Servico cancelado nao pode regenerar mensalidade' });
+    }
+    if (payment.clientStatus === 'cancelled') {
+      return reply.status(400).send({ error: 'Cliente cancelado nao pode regenerar mensalidade' });
+    }
+
+    const activePayment = db.prepare(`
+      SELECT id
+      FROM payments
+      WHERE service_id = ? AND reference_month = ? AND status != 'cancelled'
+    `).get(payment.serviceId, payment.referenceMonth);
+    if (activePayment) {
+      return reply.status(400).send({ error: 'Ja existe uma mensalidade ativa para este servico e mes' });
+    }
+
+    const issueIso = todayIso();
+    const dueDate = dueDateFromIssue(issueIso);
+    const regenerated = db.transaction(() => {
+      const inserted = db.prepare(`
+        INSERT INTO payments (
+          client_id, service_id, reference_month, amount_cve, due_date,
+          status, invoice_number, invoice_date, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
+      `).run(payment.clientId, payment.serviceId, payment.referenceMonth, payment.amountCve, dueDate);
+      const regeneratedId = Number(inserted.lastInsertRowid);
+      const invoiceNumber = nextNumber('invoice', regeneratedId);
+      db.prepare('UPDATE payments SET invoice_number = ? WHERE id = ?').run(invoiceNumber, regeneratedId);
+      return { regeneratedId, invoiceNumber };
+    })();
+
+    recordAudit(request, {
+      action: 'regenerate',
+      entityType: 'payment',
+      entityId: regenerated.regeneratedId,
+      summary: `Regenerou mensalidade anulada ${id} como ${regenerated.regeneratedId}`,
+      metadata: {
+        regeneratedFromId: id,
+        referenceMonth: payment.referenceMonth,
+        serviceId: payment.serviceId,
+        amountCve: payment.amountCve,
+        invoiceNumber: regenerated.invoiceNumber
+      }
+    });
+
+    return reply.status(201).send({
+      id: regenerated.regeneratedId,
+      regeneratedFromId: id,
+      referenceMonth: payment.referenceMonth,
+      amountCve: payment.amountCve,
+      dueDate,
+      status: 'pending',
+      invoiceNumber: regenerated.invoiceNumber
+    });
   });
 
   app.post('/api/payments/:id/pay', billingWrite, async (request, reply) => {

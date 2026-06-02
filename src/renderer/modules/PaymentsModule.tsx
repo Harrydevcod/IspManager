@@ -505,6 +505,30 @@ export function PaymentsModule() {
     }
   }
 
+  async function regenerateMonthlyPayment(payment: PaymentRow) {
+    setSubmitting(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/payments/${payment.id}/regenerate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const result = await response.json().catch(() => ({})) as { id?: number; error?: string };
+      if (!response.ok || !result.id) {
+        toast(result.error || 'Nao foi possivel regenerar a mensalidade.', 'error');
+        return;
+      }
+      const refreshedPayments = await loadPayments();
+      const fresh = refreshedPayments.find((item) => item.id === result.id) || null;
+      setSelectedPayment(fresh);
+      closeActionForm();
+      toast(`Mensalidade de ${payment.clientName} (${payment.referenceMonth}) regenerada.`, 'success');
+    } catch {
+      toast('Falha de rede ao regenerar mensalidade.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   function openPdf(payment: PaymentRow, type: 'invoice' | 'receipt') {
     setPdfPreview({ payment, type });
   }
@@ -858,6 +882,18 @@ export function PaymentsModule() {
                   {selectedPayment.status === 'paid' ? 'Anular pago' : 'Anular'}
                 </Button>
               )}
+              {selectedPayment.status === 'cancelled' && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leadingIcon={<RotateCcw size={16} aria-hidden />}
+                  onClick={() => void regenerateMonthlyPayment(selectedPayment)}
+                  disabled={submitting}
+                  title="Criar uma nova fatura com o valor mensal atual do servico"
+                >
+                  {submitting ? 'A regenerar...' : 'Regenerar mensalidade'}
+                </Button>
+              )}
             </>
           }
         >
@@ -1116,6 +1152,17 @@ export function PaymentsModule() {
                 onClick={() => openIndividualRevert(p)}
               >
                 <Undo2 size={16} aria-hidden />
+              </Button>
+            )}
+            {p.status === 'cancelled' && (
+              <Button
+                variant="icon"
+                size="sm"
+                title="Regenerar mensalidade com o valor atual do servico"
+                onClick={() => void regenerateMonthlyPayment(p)}
+                disabled={submitting}
+              >
+                <RotateCcw size={16} aria-hidden />
               </Button>
             )}
           </>

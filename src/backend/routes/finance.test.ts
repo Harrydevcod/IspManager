@@ -570,6 +570,84 @@ describe('finance routes', () => {
     expect(rows[1].invoiceNumber).not.toBe(original.invoiceNumber);
   });
 
+  test('regenerates an anulado monthly payment with the current service value', async () => {
+    const client = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status)
+      VALUES ('CLT-R002', 'Cliente Regeneracao', 'active')
+    `).run();
+    const service = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, activation_date, due_day, status)
+      VALUES (?, 3000, '2026-01-15', 15, 'active')
+    `).run(client.lastInsertRowid);
+
+    await app.inject({ method: 'POST', url: '/api/billing/generate-monthly', payload: { referenceMonth: '2026-12' } });
+    const original = db.prepare('SELECT id, invoice_number AS invoiceNumber FROM payments WHERE service_id = ?')
+      .get(service.lastInsertRowid) as { id: number; invoiceNumber: string };
+    await app.inject({
+      method: 'POST',
+      url: `/api/payments/${original.id}/cancel`,
+      payload: { reason: 'Valor mensal incorreto' }
+    });
+    db.prepare('UPDATE services SET monthly_value_cve = 4500 WHERE id = ?').run(service.lastInsertRowid);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/payments/${original.id}/regenerate`
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      regeneratedFromId: original.id,
+      referenceMonth: '2026-12',
+      amountCve: 4500,
+      status: 'pending'
+    });
+
+    const rows = db.prepare(`
+      SELECT id, amount_cve AS amountCve, status, invoice_number AS invoiceNumber
+      FROM payments WHERE service_id = ? ORDER BY id
+    `).all(service.lastInsertRowid) as Array<{ id: number; amountCve: number; status: string; invoiceNumber: string }>;
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ id: original.id, amountCve: 3000, status: 'cancelled', invoiceNumber: original.invoiceNumber });
+    expect(rows[1]).toMatchObject({ amountCve: 4500, status: 'pending' });
+    expect(rows[1].invoiceNumber).toMatch(/^FT-\d{4}-\d{5}$/);
+    expect(rows[1].invoiceNumber).not.toBe(original.invoiceNumber);
+  });
+
+  test.each([
+    ['service', 'UPDATE services SET status = ? WHERE id = ?', 'Servico cancelado nao pode regenerar mensalidade'],
+    ['client', 'UPDATE clients SET status = ? WHERE id = ?', 'Cliente cancelado nao pode regenerar mensalidade']
+  ])('blocks regeneration when the %s is cancelled', async (_entity, sql, error) => {
+    const client = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status)
+      VALUES ('CLT-R003', 'Cliente Bloqueado', 'active')
+    `).run();
+    const service = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, activation_date, due_day, status)
+      VALUES (?, 3000, '2026-01-15', 15, 'active')
+    `).run(client.lastInsertRowid);
+
+    await app.inject({ method: 'POST', url: '/api/billing/generate-monthly', payload: { referenceMonth: '2027-01' } });
+    const original = db.prepare('SELECT id FROM payments WHERE service_id = ?')
+      .get(service.lastInsertRowid) as { id: number };
+    await app.inject({
+      method: 'POST',
+      url: `/api/payments/${original.id}/cancel`,
+      payload: { reason: 'Cobranca gerada incorretamente' }
+    });
+    db.prepare(sql).run('cancelled', _entity === 'service' ? service.lastInsertRowid : client.lastInsertRowid);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/payments/${original.id}/regenerate`
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error });
+    expect(db.prepare('SELECT count(*) AS count FROM payments WHERE service_id = ?').get(service.lastInsertRowid))
+      .toEqual({ count: 1 });
+  });
+
   test('the partial unique index blocks a second non-cancelled payment per month', () => {
     const client = db.prepare(`
       INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-U001', 'Cliente Unico', 'active')
