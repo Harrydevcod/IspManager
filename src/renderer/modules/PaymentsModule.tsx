@@ -996,22 +996,37 @@ export function PaymentsModule() {
             </form>
           )}
 
-          <div className="document-preview">
-            <span>{selectedPayment.invoiceNumber ? `Fatura ${selectedPayment.invoiceNumber}` : 'Fatura por emitir'}</span>
-            <strong>{formatCve(selectedPayment.amountCve)}</strong>
-            <small>
-              Mes {selectedPayment.referenceMonth} - vencimento {selectedPayment.dueDate} - {selectedPayment.status}
-            </small>
-          </div>
-          {selectedPayment.status !== 'cancelled' ? (
-            <iframe
-              className="payment-pdf-preview"
-              title={`Pre-visualizacao da fatura ${selectedPayment.invoiceNumber || selectedPayment.id}`}
-              src={documentUrl(selectedPayment, 'invoice', true)}
-            />
-          ) : (
-            <Message>Pagamento anulado. Nenhuma fatura ou recibo pode ser emitido.</Message>
-          )}
+          {(() => {
+            // Pago → o documento é o recibo emitido; pendente/atraso → a fatura.
+            // A fatura que deu origem ao recibo fica marcada como paga (Badge) e
+            // continua acessível via "Fatura PDF".
+            const previewType: 'invoice' | 'receipt' = selectedPayment.status === 'paid' ? 'receipt' : 'invoice';
+            const docLabel = previewType === 'receipt'
+              ? (selectedPayment.receiptNumber ? `Recibo ${selectedPayment.receiptNumber}` : 'Recibo emitido')
+              : (selectedPayment.invoiceNumber ? `Fatura ${selectedPayment.invoiceNumber}` : 'Fatura por emitir');
+            return (
+              <>
+                <div className="document-preview">
+                  <span>{docLabel}</span>
+                  <strong>{formatCve(selectedPayment.amountCve)}</strong>
+                  <small>
+                    Mes {selectedPayment.referenceMonth} - vencimento {selectedPayment.dueDate} - {selectedPayment.status}
+                  </small>
+                </div>
+                {selectedPayment.status !== 'cancelled' ? (
+                  <iframe
+                    className="payment-pdf-preview"
+                    title={previewType === 'receipt'
+                      ? `Pre-visualizacao do recibo ${selectedPayment.receiptNumber || selectedPayment.id}`
+                      : `Pre-visualizacao da fatura ${selectedPayment.invoiceNumber || selectedPayment.id}`}
+                    src={documentUrl(selectedPayment, previewType, true)}
+                  />
+                ) : (
+                  <Message>Pagamento anulado. Nenhuma fatura ou recibo pode ser emitido.</Message>
+                )}
+              </>
+            );
+          })()}
           <dl>
             <div><dt>Mes</dt><dd>{selectedPayment.referenceMonth}</dd></div>
             <div><dt>Valor</dt><dd>{formatCve(selectedPayment.amountCve)}</dd></div>
