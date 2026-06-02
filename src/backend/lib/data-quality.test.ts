@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { normalizeNameKey, normalizePhoneKey } from './data-quality';
+import { computeIncompleteFlags, findDuplicateGroups, normalizeNameKey, normalizePhoneKey, type DqClient } from './data-quality';
 
 describe('normalizePhoneKey', () => {
   test('keeps only digits', () => {
@@ -24,5 +24,69 @@ describe('normalizeNameKey', () => {
   test('returns null for empty input', () => {
     expect(normalizeNameKey('   ')).toBeNull();
     expect(normalizeNameKey(null)).toBeNull();
+  });
+});
+
+function client(over: Partial<DqClient>): DqClient {
+  return {
+    id: 1, clientCode: 'CLT-0001', fullName: 'Ana Lima',
+    phone: '9912233', nif: '123456789', address: 'Rua A',
+    island: 'Santiago', zone: 'Praia', status: 'active',
+    hasActiveService: 1, ...over
+  };
+}
+
+describe('computeIncompleteFlags', () => {
+  test('flags missing phone', () => {
+    expect(computeIncompleteFlags(client({ phone: null }))).toContain('noPhone');
+  });
+  test('flags active client with no active service', () => {
+    expect(computeIncompleteFlags(client({ hasActiveService: 0 }))).toContain('noActiveService');
+  });
+  test('does NOT flag cancelled client with no active service', () => {
+    expect(computeIncompleteFlags(client({ status: 'cancelled', hasActiveService: 0 })))
+      .not.toContain('noActiveService');
+  });
+  test('flags missing address when zone is empty', () => {
+    expect(computeIncompleteFlags(client({ zone: '' }))).toContain('noAddress');
+  });
+  test('flags missing nif', () => {
+    expect(computeIncompleteFlags(client({ nif: null }))).toContain('noNif');
+  });
+  test('complete client has no flags', () => {
+    expect(computeIncompleteFlags(client({}))).toEqual([]);
+  });
+});
+
+describe('findDuplicateGroups', () => {
+  test('groups by normalized phone', () => {
+    const groups = findDuplicateGroups([
+      client({ id: 1, phone: '991 22 33' }),
+      client({ id: 2, fullName: 'Outro Nome', phone: '+238 9912233' })
+    ], new Set());
+    const phoneGroup = groups.find((g) => g.reason === 'phone');
+    expect(phoneGroup?.clients.map((c) => c.id).sort()).toEqual([1, 2]);
+  });
+  test('groups by normalized name regardless of token order/accents', () => {
+    const groups = findDuplicateGroups([
+      client({ id: 1, fullName: 'João Silva', phone: '111' }),
+      client({ id: 2, fullName: 'Silva, joao', phone: '222' })
+    ], new Set());
+    const nameGroup = groups.find((g) => g.reason === 'name');
+    expect(nameGroup?.clients.map((c) => c.id).sort()).toEqual([1, 2]);
+  });
+  test('excludes a dismissed pair (2-client group disappears)', () => {
+    const groups = findDuplicateGroups([
+      client({ id: 1, phone: '991 22 33' }),
+      client({ id: 2, fullName: 'Outro', phone: '+238 9912233' })
+    ], new Set(['1-2']));
+    expect(groups.find((g) => g.reason === 'phone')).toBeUndefined();
+  });
+  test('ignores clients with no key', () => {
+    const groups = findDuplicateGroups([
+      client({ id: 1, phone: null, fullName: '' }),
+      client({ id: 2, phone: null, fullName: '' })
+    ], new Set());
+    expect(groups).toEqual([]);
   });
 });
