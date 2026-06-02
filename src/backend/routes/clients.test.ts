@@ -235,6 +235,67 @@ describe('POST /api/clients/bulk', () => {
   });
 });
 
+describe('PUT /api/clients/:id', () => {
+  test('cancelling a client cascades to cancel its active services', async () => {
+    const client = db.prepare(`
+      INSERT INTO clients (client_code, full_name, phone, status)
+      VALUES ('CLT-X001', 'Cliente Cascata', '9911111', 'active')
+    `).run();
+    const clientId = Number(client.lastInsertRowid);
+
+    const activeService = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
+      VALUES (?, 3500, 15, 'active')
+    `).run(clientId);
+    const suspendedService = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
+      VALUES (?, 3500, 15, 'suspended')
+    `).run(clientId);
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/clients/${clientId}`,
+      payload: { fullName: 'Cliente Cascata', phone: '9911111', island: '', zone: '', address: '', status: 'cancelled' }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ id: clientId, status: 'cancelled' });
+
+    const active = db.prepare('SELECT status FROM services WHERE id = ?').get(activeService.lastInsertRowid) as { status: string };
+    const suspended = db.prepare('SELECT status FROM services WHERE id = ?').get(suspendedService.lastInsertRowid) as { status: string };
+    // The 'active' service is cancelled; the 'suspended' one is left untouched.
+    expect(active.status).toBe('cancelled');
+    expect(suspended.status).toBe('suspended');
+
+    const audit = db.prepare(`
+      SELECT summary FROM audit_logs WHERE action = 'cancel' AND entity_type = 'service'
+    `).get() as { summary: string } | undefined;
+    expect(audit?.summary).toContain('1 servico');
+  });
+
+  test('a non-cancel update leaves services untouched', async () => {
+    const client = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status)
+      VALUES ('CLT-X002', 'Cliente Normal', 'active')
+    `).run();
+    const clientId = Number(client.lastInsertRowid);
+    const service = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
+      VALUES (?, 3500, 15, 'active')
+    `).run(clientId);
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/clients/${clientId}`,
+      payload: { fullName: 'Cliente Normal Editado', status: 'suspended' }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const svc = db.prepare('SELECT status FROM services WHERE id = ?').get(service.lastInsertRowid) as { status: string };
+    expect(svc.status).toBe('active');
+  });
+});
+
 describe('GET /api/clients/import-template.xlsx', () => {
   test('returns an XLSX buffer with the expected headers and disposition', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/clients/import-template.xlsx' });

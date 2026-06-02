@@ -58,6 +58,10 @@ export function computeMonthlyBilling(db: DatabaseType, referenceMonth: string):
     JOIN clients c ON c.id = s.client_id
     LEFT JOIN internet_plans p ON p.id = s.plan_id
     WHERE s.status = 'active'
+      -- Regra de negócio: clientes cancelados não geram mensalidades, mesmo
+      -- que um serviço tenha ficado 'active'. O cancelamento do cliente não
+      -- propaga automaticamente para os serviços, por isso filtramos aqui.
+      AND c.status != 'cancelled'
     ORDER BY c.full_name
   `).all() as Array<BillingPreviewRow & { dueDay: number }>;
 

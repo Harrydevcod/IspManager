@@ -337,6 +337,48 @@ describe('finance routes', () => {
     expect(db.prepare('SELECT count(*) AS count FROM payments').get()).toEqual({ count: 1 });
   });
 
+  test('skips billing for cancelled clients even if the service stayed active', async () => {
+    const plan = db.prepare(`
+      INSERT INTO internet_plans (
+        name, download_speed, upload_speed, connection_type, monthly_price_cve
+      )
+      VALUES ('Plano Cancelado', '50 Mbps', '20 Mbps', 'fibra', 3000)
+    `).run();
+
+    const cancelledClient = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status)
+      VALUES ('CLT-C001', 'Cliente Cancelado', 'cancelled')
+    `).run();
+    const activeClient = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status)
+      VALUES ('CLT-A001', 'Cliente Ativo', 'active')
+    `).run();
+
+    // Both services remain 'active' — only the client status differs.
+    db.prepare(`
+      INSERT INTO services (client_id, plan_id, monthly_value_cve, activation_date, due_day, status)
+      VALUES (?, ?, 3000, '2026-01-15', 15, 'active')
+    `).run(cancelledClient.lastInsertRowid, plan.lastInsertRowid);
+    db.prepare(`
+      INSERT INTO services (client_id, plan_id, monthly_value_cve, activation_date, due_day, status)
+      VALUES (?, ?, 3000, '2026-01-15', 15, 'active')
+    `).run(activeClient.lastInsertRowid, plan.lastInsertRowid);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/billing/generate-monthly',
+      payload: { referenceMonth: '2026-09' }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ referenceMonth: '2026-09', activeServices: 1, created: 1 });
+
+    const billed = db.prepare(`
+      SELECT client_id AS clientId FROM payments WHERE reference_month = '2026-09'
+    `).all() as Array<{ clientId: number }>;
+    expect(billed).toEqual([{ clientId: Number(activeClient.lastInsertRowid) }]);
+  });
+
   test('GET /api/payments exposes clientNif clientPhone and clientCode', async () => {
     const client = db.prepare(`
       INSERT INTO clients (client_code, full_name, nif, phone, status)

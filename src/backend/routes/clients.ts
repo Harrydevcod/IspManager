@@ -239,6 +239,24 @@ export async function registerClientRoutes(app: FastifyInstance) {
         summary: `Atualizou cliente ${client.fullName}`,
         metadata: { clientCode: client.clientCode, status: client.status }
       });
+
+      // Cascata fiscal: cancelar um cliente cancela os serviços ativos dele,
+      // mantendo o estado coerente (o filtro de faturação é a rede de
+      // segurança). Idempotente — só toca em serviços ainda 'active'.
+      if (client.status === 'cancelled') {
+        const cascade = getSqliteDatabase()
+          .prepare(`UPDATE services SET status = 'cancelled', updated_at = datetime('now') WHERE client_id = ? AND status = 'active'`)
+          .run(client.id);
+        if (cascade.changes > 0) {
+          recordAudit(request, {
+            action: 'cancel',
+            entityType: 'service',
+            entityId: client.id,
+            summary: `Cancelou ${cascade.changes} servico(s) em cascata do cliente ${client.fullName}`,
+            metadata: { clientCode: client.clientCode, cancelledServices: cascade.changes }
+          });
+        }
+      }
       return client;
     } catch {
       return reply.status(409).send({ error: 'Telefone ou NIF ja existe noutro cliente' });
