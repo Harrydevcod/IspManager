@@ -89,4 +89,14 @@ describe('findDuplicateGroups', () => {
     ], new Set());
     expect(groups).toEqual([]);
   });
+  test('keeps a 3-member group when only one pair is dismissed', () => {
+    const groups = findDuplicateGroups([
+      client({ id: 1, fullName: 'Joao Silva', phone: '111' }),
+      client({ id: 2, fullName: 'Silva Joao', phone: '222' }),
+      client({ id: 3, fullName: 'silva, joao', phone: '333' })
+    ], new Set(['1-2']));
+    const nameGroup = groups.find((g) => g.reason === 'name');
+    // pair (1,2) dismissed, but (1,3) and (2,3) are not → all three remain
+    expect(nameGroup?.clients.map((c) => c.id).sort()).toEqual([1, 2, 3]);
+  });
 });

@@ -1,6 +1,7 @@
 export function normalizePhoneKey(phone: string | null): string | null {
   if (!phone) return null;
   let digits = phone.replace(/\D/g, '');
+  // CV national numbers are 7 digits; only strip the 238 country code when extra digits remain.
   if (digits.startsWith('238') && digits.length > 7) {
     digits = digits.slice(3);
   }
@@ -11,7 +12,7 @@ export function normalizeNameKey(name: string | null): string | null {
   if (!name) return null;
   const cleaned = name
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
     .trim()
