@@ -24,7 +24,7 @@ function emptyClientForm(): ClientFormState {
   return { fullName: '', phone: '', island: '', zone: '', address: '', status: 'active' };
 }
 
-export function ClientsModule() {
+export function ClientsModule({ focusClientId, onFocusHandled }: { focusClientId?: number | null; onFocusHandled?: () => void } = {}) {
   const { toast } = useToast();
   const auth = useAuth();
   const canManageClients = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
@@ -93,6 +93,15 @@ export function ClientsModule() {
   useEffect(() => {
     void loadClients();
   }, [loadClients]);
+
+  useEffect(() => {
+    if (!focusClientId) return;
+    const existing = clients.find((c) => c.id === focusClientId);
+    if (existing) {
+      setSelectedClient(existing);
+      onFocusHandled?.();
+    }
+  }, [focusClientId, clients, onFocusHandled]);
 
   useEffect(() => {
     authFetch('http://127.0.0.1:3001/api/settings')
