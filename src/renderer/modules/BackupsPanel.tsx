@@ -1,5 +1,6 @@
+import { Archive } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Button, Field, Message, useConfirm } from '../components';
+import { Button, EmptyState, Field, Message, useConfirm } from '../components';
 import { authFetch } from '../lib/auth';
 
 type BackupItem = { file: string; createdAt: string; sizeBytes: number };
@@ -14,7 +15,7 @@ export function BackupsPanel() {
   const [entries, setEntries] = useState<BackupItem[]>([]);
   const [backupDir, setBackupDir] = useState('');
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState<{ text: string; tone?: 'error' | 'success' } | null>(null);
   const [confirmFile, setConfirmFile] = useState<string | null>(null);
   const [confirmText, setConfirmText] = useState('');
   const confirm = useConfirm();
@@ -26,7 +27,7 @@ export function BackupsPanel() {
       setEntries(data.entries);
       setBackupDir(data.backupDir);
     } catch {
-      setMessage('Nao foi possivel carregar a lista de backups.');
+      setMessage({ text: 'Não foi possível carregar a lista de backups.', tone: 'error' });
     }
   }
 
@@ -34,11 +35,11 @@ export function BackupsPanel() {
 
   async function createNow() {
     setBusy(true);
-    setMessage('');
+    setMessage(null);
     try {
       await authFetch('http://127.0.0.1:3001/api/backups', { method: 'POST' });
       await load();
-      setMessage('Backup criado.');
+      setMessage({ text: 'Backup criado.', tone: 'success' });
     } finally {
       setBusy(false);
     }
@@ -46,7 +47,7 @@ export function BackupsPanel() {
 
   async function importBackup() {
     if (!window.ispm?.chooseBackupFile) {
-      setMessage('Importação só disponível no Electron desktop.');
+      setMessage({ text: 'Importação só disponível no Electron desktop.' });
       return;
     }
     const picked = await window.ispm.chooseBackupFile();
@@ -60,7 +61,7 @@ export function BackupsPanel() {
       return;
     }
     setBusy(true);
-    setMessage('');
+    setMessage(null);
     try {
       const res = await authFetch('http://127.0.0.1:3001/api/backups/import', {
         method: 'POST',
@@ -69,13 +70,13 @@ export function BackupsPanel() {
       });
       if (!res.ok) {
         const e = await res.json();
-        setMessage(`Erro: ${e.error}`);
+        setMessage({ text: `Erro: ${e.error}`, tone: 'error' });
         return;
       }
       if (window.ispm?.relaunch) {
         await window.ispm.relaunch();
       } else {
-        setMessage('Importação concluída. Reabra a aplicação para carregar a base restaurada.');
+        setMessage({ text: 'Importação concluída. Reabra a aplicação para carregar a base restaurada.', tone: 'success' });
       }
     } finally {
       setBusy(false);
@@ -84,7 +85,7 @@ export function BackupsPanel() {
 
   async function doRestore(file: string) {
     setBusy(true);
-    setMessage('');
+    setMessage(null);
     try {
       const res = await authFetch('http://127.0.0.1:3001/api/backups/restore', {
         method: 'POST',
@@ -93,13 +94,13 @@ export function BackupsPanel() {
       });
       if (!res.ok) {
         const e = await res.json();
-        setMessage(`Erro: ${e.error}`);
+        setMessage({ text: `Erro: ${e.error}`, tone: 'error' });
         return;
       }
       if (window.ispm?.relaunch) {
         await window.ispm.relaunch();
       } else {
-        setMessage('Restauro concluido. Feche e reabra a aplicacao para carregar os dados restaurados.');
+        setMessage({ text: 'Restauro concluído. Feche e reabra a aplicação para carregar os dados restaurados.', tone: 'success' });
       }
     } finally {
       setBusy(false);
@@ -125,8 +126,16 @@ export function BackupsPanel() {
         </div>
       </header>
 
-      {message && <Message>{message}</Message>}
+      {message && <Message tone={message.tone}>{message.text}</Message>}
 
+      {entries.length === 0 ? (
+        <EmptyState
+          size="sm"
+          icon={Archive}
+          title="Sem backups ainda"
+          description="Cria o primeiro backup agora ou importa um ficheiro .sqlite existente."
+        />
+      ) : (
       <ul className="backups-list">
         {entries.map((e) => (
           <li key={e.file}>
@@ -165,8 +174,8 @@ export function BackupsPanel() {
             )}
           </li>
         ))}
-        {entries.length === 0 && <li className="backups-empty">Sem backups ainda.</li>}
       </ul>
+      )}
     </section>
   );
 }
