@@ -240,20 +240,23 @@ export async function registerClientRoutes(app: FastifyInstance) {
         metadata: { clientCode: client.clientCode, status: client.status }
       });
 
-      // Cascata fiscal: cancelar um cliente cancela os serviços ativos dele,
-      // mantendo o estado coerente (o filtro de faturação é a rede de
-      // segurança). Idempotente — só toca em serviços ainda 'active'.
-      if (client.status === 'cancelled') {
+      // Cascata fiscal: cancelar/suspender um cliente propaga o estado aos
+      // serviços ativos dele, mantendo a coerência. A faturação só cobra
+      // serviços 'active', por isso suspensos/cancelados deixam de gerar
+      // mensalidade. Idempotente — só toca em serviços ainda 'active', e nunca
+      // reativa um serviço já cancelado (estado mais terminal que suspenso).
+      if (client.status === 'cancelled' || client.status === 'suspended') {
         const cascade = getSqliteDatabase()
-          .prepare(`UPDATE services SET status = 'cancelled', updated_at = datetime('now') WHERE client_id = ? AND status = 'active'`)
-          .run(client.id);
+          .prepare(`UPDATE services SET status = ?, updated_at = datetime('now') WHERE client_id = ? AND status = 'active'`)
+          .run(client.status, client.id);
         if (cascade.changes > 0) {
+          const cancelled = client.status === 'cancelled';
           recordAudit(request, {
-            action: 'cancel',
+            action: cancelled ? 'cancel' : 'suspend',
             entityType: 'service',
             entityId: client.id,
-            summary: `Cancelou ${cascade.changes} servico(s) em cascata do cliente ${client.fullName}`,
-            metadata: { clientCode: client.clientCode, cancelledServices: cascade.changes }
+            summary: `${cancelled ? 'Cancelou' : 'Suspendeu'} ${cascade.changes} servico(s) em cascata do cliente ${client.fullName}`,
+            metadata: { clientCode: client.clientCode, status: client.status, affectedServices: cascade.changes }
           });
         }
       }

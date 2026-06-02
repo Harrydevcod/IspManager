@@ -273,10 +273,45 @@ describe('PUT /api/clients/:id', () => {
     expect(audit?.summary).toContain('1 servico');
   });
 
-  test('a non-cancel update leaves services untouched', async () => {
+  test('suspending a client cascades to suspend its active services', async () => {
     const client = db.prepare(`
       INSERT INTO clients (client_code, full_name, status)
-      VALUES ('CLT-X002', 'Cliente Normal', 'active')
+      VALUES ('CLT-X002', 'Cliente Suspenso', 'active')
+    `).run();
+    const clientId = Number(client.lastInsertRowid);
+
+    const activeService = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
+      VALUES (?, 3500, 15, 'active')
+    `).run(clientId);
+    const cancelledService = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
+      VALUES (?, 3500, 15, 'cancelled')
+    `).run(clientId);
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/clients/${clientId}`,
+      payload: { fullName: 'Cliente Suspenso', status: 'suspended' }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const active = db.prepare('SELECT status FROM services WHERE id = ?').get(activeService.lastInsertRowid) as { status: string };
+    const cancelled = db.prepare('SELECT status FROM services WHERE id = ?').get(cancelledService.lastInsertRowid) as { status: string };
+    // The 'active' service is suspended; an already-cancelled service is left untouched.
+    expect(active.status).toBe('suspended');
+    expect(cancelled.status).toBe('cancelled');
+
+    const audit = db.prepare(`
+      SELECT summary FROM audit_logs WHERE action = 'suspend' AND entity_type = 'service'
+    `).get() as { summary: string } | undefined;
+    expect(audit?.summary).toContain('1 servico');
+  });
+
+  test('a status-preserving update leaves services untouched', async () => {
+    const client = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status)
+      VALUES ('CLT-X003', 'Cliente Normal', 'active')
     `).run();
     const clientId = Number(client.lastInsertRowid);
     const service = db.prepare(`
@@ -287,7 +322,7 @@ describe('PUT /api/clients/:id', () => {
     const response = await app.inject({
       method: 'PUT',
       url: `/api/clients/${clientId}`,
-      payload: { fullName: 'Cliente Normal Editado', status: 'suspended' }
+      payload: { fullName: 'Cliente Normal Editado', status: 'active' }
     });
 
     expect(response.statusCode).toBe(200);
