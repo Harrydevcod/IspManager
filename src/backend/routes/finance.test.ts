@@ -514,6 +514,81 @@ describe('finance routes', () => {
     expect(db.prepare('SELECT count(*) AS count FROM payments').get()).toEqual({ count: 1 });
   });
 
+  test('re-issues a corrected invoice after a registered payment is anulado', async () => {
+    const client = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status)
+      VALUES ('CLT-R001', 'Cliente Reemissao', 'active')
+    `).run();
+    const plan = db.prepare(`
+      INSERT INTO internet_plans (
+        name, download_speed, upload_speed, connection_type, monthly_price_cve
+      )
+      VALUES ('Plano Reemissao', '100 Mbps', '50 Mbps', 'fibra', 5000)
+    `).run();
+    const service = db.prepare(`
+      INSERT INTO services (
+        client_id, plan_id, monthly_value_cve, activation_date, due_day, status
+      )
+      VALUES (?, ?, 5000, '2026-01-15', 15, 'active')
+    `).run(client.lastInsertRowid, plan.lastInsertRowid);
+
+    // 1. Generate the month, pay it, then anular the registered payment.
+    await app.inject({ method: 'POST', url: '/api/billing/generate-monthly', payload: { referenceMonth: '2026-10' } });
+    const original = db.prepare('SELECT id, invoice_number AS invoiceNumber FROM payments WHERE service_id = ?')
+      .get(service.lastInsertRowid) as { id: number; invoiceNumber: string };
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/payments/${original.id}/pay`,
+      payload: { paymentMethod: 'numerario', paymentDate: '2026-10-05' }
+    });
+    const cancel = await app.inject({
+      method: 'POST',
+      url: `/api/payments/${original.id}/cancel`,
+      payload: { reason: 'Valor faturado incorreto, reemitir corrigido' }
+    });
+    expect(cancel.statusCode).toBe(200);
+
+    // 2. The month now shows the service as billable again (cancelled row ignored).
+    const preview = await app.inject({ method: 'POST', url: '/api/billing/preview-monthly', payload: { referenceMonth: '2026-10' } });
+    expect(preview.json()).toMatchObject({ referenceMonth: '2026-10', activeServices: 1, alreadyBilled: 0 });
+    expect((preview.json() as { toCreate: unknown[] }).toCreate).toHaveLength(1);
+
+    // 3. Regenerate → a fresh corrected invoice, anulada row preserved.
+    const regen = await app.inject({ method: 'POST', url: '/api/billing/generate-monthly', payload: { referenceMonth: '2026-10' } });
+    expect(regen.json()).toMatchObject({ referenceMonth: '2026-10', created: 1 });
+
+    const rows = db.prepare(`
+      SELECT status, invoice_number AS invoiceNumber FROM payments WHERE service_id = ? ORDER BY id
+    `).all(service.lastInsertRowid) as Array<{ status: string; invoiceNumber: string }>;
+    expect(rows).toHaveLength(2);
+    // Original kept as the anulação record; its invoice number is frozen.
+    expect(rows[0]).toMatchObject({ status: 'cancelled', invoiceNumber: original.invoiceNumber });
+    // New corrected invoice is pending with a different, later sequential number.
+    expect(rows[1].status).toBe('pending');
+    expect(rows[1].invoiceNumber).toMatch(/^FT-\d{4}-\d{5}$/);
+    expect(rows[1].invoiceNumber).not.toBe(original.invoiceNumber);
+  });
+
+  test('the partial unique index blocks a second non-cancelled payment per month', () => {
+    const client = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-U001', 'Cliente Unico', 'active')
+    `).run();
+    const service = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 3000, 15, 'active')
+    `).run(client.lastInsertRowid);
+    const insert = db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+      VALUES (?, ?, '2026-11', 3000, '2026-11-30', ?)
+    `);
+
+    insert.run(client.lastInsertRowid, service.lastInsertRowid, 'pending');
+    // A second non-cancelled row for the same (service, month) must be rejected.
+    expect(() => insert.run(client.lastInsertRowid, service.lastInsertRowid, 'pending')).toThrow(/UNIQUE/i);
+    // But a cancelled row is allowed to coexist.
+    expect(() => insert.run(client.lastInsertRowid, service.lastInsertRowid, 'cancelled')).not.toThrow();
+  });
+
   test('registers payment with custom method and date and emits receipt', async () => {
     const client = db.prepare(`
       INSERT INTO clients (client_code, full_name, status)

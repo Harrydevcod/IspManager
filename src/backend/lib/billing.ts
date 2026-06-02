@@ -65,7 +65,10 @@ export function computeMonthlyBilling(db: DatabaseType, referenceMonth: string):
     ORDER BY c.full_name
   `).all() as Array<BillingPreviewRow & { dueDay: number }>;
 
-  const existsStmt = db.prepare('SELECT 1 AS hit FROM payments WHERE service_id = ? AND reference_month = ?');
+  // Só uma cobrança *não anulada* por serviço/mês bloqueia a geração. Uma
+  // cobrança anulada deixa o slot livre para reemitir a fatura corrigida — o
+  // registo anulado permanece (índice único parcial em payments permite-o).
+  const existsStmt = db.prepare(`SELECT 1 AS hit FROM payments WHERE service_id = ? AND reference_month = ? AND status != 'cancelled'`);
   const toCreate: BillingPreviewRow[] = [];
   let alreadyBilled = 0;
 
