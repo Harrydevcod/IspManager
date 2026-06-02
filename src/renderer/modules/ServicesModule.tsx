@@ -1,8 +1,9 @@
 import { Cable, History, Pencil, Plus, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Badge, Button, Combobox, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
+import { Badge, Button, Combobox, DetailPanel, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
+import { formatCve } from '../lib/format';
 import { statusLabel, statusTone } from '../lib/status';
 import type { Client, DeviceAssignment, PlanRow, ServiceEvent, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
 
@@ -355,16 +356,27 @@ export function ServicesModule() {
       </FilterBar>
 
       {selectedService && (
-        <div className="client-detail">
-          <div>
-            <p className="eyebrow">Servico selecionado</p>
-            <h2>{selectedService.clientName}</h2>
-          </div>
+        <DetailPanel
+          eyebrow="Servico"
+          title={selectedService.clientName}
+          actionsClassName="client-preview-actions"
+          onClose={() => setSelectedService(null)}
+          actions={
+            canManageServices
+              ? (
+                <Button variant="secondary" size="sm" leadingIcon={<Pencil size={16} aria-hidden />} onClick={() => editService(selectedService)}>
+                  Editar
+                </Button>
+              )
+              : undefined
+          }
+        >
           <dl>
             <div><dt>Plano</dt><dd>{selectedService.planName || '-'}</dd></div>
-            <div><dt>Mensalidade</dt><dd>{selectedService.monthlyValueCve.toLocaleString('pt-PT')} CVE</dd></div>
+            <div><dt>Mensalidade</dt><dd>{formatCve(selectedService.monthlyValueCve)}</dd></div>
             <div><dt>Vencimento</dt><dd>Dia {selectedService.dueDay}</dd></div>
-            <div><dt>Estado</dt><dd>{selectedService.status}</dd></div>
+            <div><dt>Ativado em</dt><dd>{formatDateOnly(selectedService.activationDate)}</dd></div>
+            <div><dt>Estado</dt><dd><Badge tone={statusTone(selectedService.status)}>{statusLabel(selectedService.status)}</Badge></dd></div>
           </dl>
 
           <section className="technical-section">
@@ -458,12 +470,7 @@ export function ServicesModule() {
               </ul>
             )}
           </section>
-
-          <div className="form-actions detail-actions">
-            <Button variant="secondary" onClick={() => setSelectedService(null)}>Fechar detalhe</Button>
-            {canManageServices && <Button onClick={() => editService(selectedService)}>Editar servico</Button>}
-          </div>
-        </div>
+        </DetailPanel>
       )}
 
       <div className="module-table">
@@ -485,7 +492,7 @@ export function ServicesModule() {
               <strong>{service.clientName}</strong>
               <small>{service.planName || 'Sem plano'} - dia {service.dueDay}</small>
             </span>
-            <small>{service.monthlyValueCve.toLocaleString('pt-PT')} CVE</small>
+            <small>{formatCve(service.monthlyValueCve)}</small>
             <Badge tone={statusTone(service.status)}>{statusLabel(service.status)}</Badge>
             {canManageServices && (
               <div className="row-actions" onClick={(event) => event.stopPropagation()}>
@@ -531,9 +538,10 @@ export function ServicesModule() {
         }
       >
         <form id="service-form" className="client-form" onSubmit={saveService}>
-          <label>
-            Cliente
+          <label className="field">
+            <span className="field-label">Cliente</span>
             <Combobox
+              ariaLabel="Cliente"
               options={clients}
               value={form.clientId ? Number(form.clientId) : null}
               onChange={(next) => updateForm('clientId', next == null ? '' : String(next))}
