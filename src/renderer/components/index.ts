@@ -16,6 +16,7 @@ export * from './DataTable';
 export * from './Combobox';
 export * from './DetailPanel';
 export * from './Dialog';
+export * from './ConfirmDialog';
 export * from './ThemeToggle';
 export * from './Toaster';
 export * from './CommandPalette';

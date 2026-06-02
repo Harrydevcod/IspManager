@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Field, Message } from '../components';
+import { Button, Field, Message, useConfirm } from '../components';
 import { authFetch } from '../lib/auth';
 
 type BackupItem = { file: string; createdAt: string; sizeBytes: number };
@@ -17,6 +17,7 @@ export function BackupsPanel() {
   const [message, setMessage] = useState('');
   const [confirmFile, setConfirmFile] = useState<string | null>(null);
   const [confirmText, setConfirmText] = useState('');
+  const confirm = useConfirm();
 
   async function load() {
     try {
@@ -50,10 +51,12 @@ export function BackupsPanel() {
     }
     const picked = await window.ispm.chooseBackupFile();
     if (!picked) return;
-    if (!window.confirm(
-      'Importar este backup vai SUBSTITUIR a base de dados actual. ' +
-      'Uma cópia da base actual será guardada em pre-restore-*.sqlite. Continuar?'
-    )) {
+    if (!(await confirm({
+      title: 'Importar backup',
+      message: 'Importar este backup vai SUBSTITUIR a base de dados actual. Uma cópia da base actual será guardada em pre-restore-*.sqlite. Continuar?',
+      tone: 'danger',
+      confirmLabel: 'Importar e substituir'
+    }))) {
       return;
     }
     setBusy(true);

@@ -2539,6 +2539,15 @@ label.field-toggle {
   border-top: 1px solid var(--border);
 }
 
+/* Confirm dialog body copy (useConfirm) — readable measure, muted tone. */
+.confirm-dialog-message {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-base);
+  line-height: 1.55;
+  max-width: 52ch;
+}
+
 @keyframes dialog-scrim-in {
   from { opacity: 0; }
   to { opacity: 1; }

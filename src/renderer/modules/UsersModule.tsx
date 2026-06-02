@@ -1,7 +1,7 @@
 import { KeyRound, Pencil, Plus, ShieldCheck, Trash2, UserCog, UsersRound, Wrench } from 'lucide-react';
 import type { FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
+import { Button, Dialog, EmptyState, Field, FilterBar, Message, Select, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import type { UserRole } from '../lib/auth';
 import './UsersModule.css';
@@ -42,6 +42,7 @@ function emptyForm(): FormState {
 
 export function UsersModule() {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const auth = useAuth();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -158,7 +159,12 @@ export function UsersModule() {
   }
 
   async function remove(row: UserRow) {
-    if (!confirm(`Eliminar ${row.fullName} (@${row.username})?`)) return;
+    if (!(await confirm({
+      title: 'Eliminar utilizador',
+      message: `Eliminar ${row.fullName} (@${row.username})? Esta ação não pode ser anulada.`,
+      tone: 'danger',
+      confirmLabel: 'Eliminar'
+    }))) return;
     const response = await authFetch(`http://127.0.0.1:3001/api/users/${row.id}`, {
       method: 'DELETE'
     });

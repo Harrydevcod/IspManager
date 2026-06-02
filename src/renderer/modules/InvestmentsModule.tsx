@@ -1,7 +1,7 @@
 import { Download, FileText, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Combobox, DataList, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
+import { Badge, Button, Combobox, DataList, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useConfirm, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import './InvestmentsModule.css';
@@ -183,6 +183,7 @@ export function InvestmentsModule() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const confirm = useConfirm();
 
   const selected = data.rows.find((row) => row.id === selectedId) || data.rows[0] || null;
   const statusMeta = useMemo(() => Object.fromEntries(STATUSES.map((s) => [s.value, s])), []);
@@ -362,7 +363,12 @@ export function InvestmentsModule() {
   }
 
   async function remove(investment: Investment) {
-    if (!window.confirm(`Apagar investimento "${investment.name}" (${formatCve(investment.totalCostCve)})?`)) return;
+    if (!(await confirm({
+      title: 'Apagar investimento',
+      message: `Apagar o investimento "${investment.name}" (${formatCve(investment.totalCostCve)})?`,
+      tone: 'danger',
+      confirmLabel: 'Apagar'
+    }))) return;
     const response = await authFetch(`http://127.0.0.1:3001/api/investments/${investment.id}`, { method: 'DELETE' });
     if (!response.ok) {
       const result = await response.json().catch(() => ({})) as { error?: string };

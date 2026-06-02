@@ -1,7 +1,7 @@
 import { FileText, Pencil, Plus, Repeat, Trash2 } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useToast } from '../components';
+import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useConfirm, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import './ExpensesModule.css';
@@ -92,6 +92,7 @@ function parseMoney(value: string): number {
 
 export function ExpensesModule() {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const [month, setMonth] = useState(currentMonth());
   const [showAllMonths, setShowAllMonths] = useState(false);
   const [category, setCategory] = useState<'all' | ExpenseCategory>('all');
@@ -177,7 +178,12 @@ export function ExpensesModule() {
   };
 
   const deleteTemplate = async (template: ExpenseTemplate) => {
-    if (!window.confirm(`Apagar template "${template.name}"?`)) return;
+    if (!(await confirm({
+      title: 'Apagar template',
+      message: `Apagar o template "${template.name}"?`,
+      tone: 'danger',
+      confirmLabel: 'Apagar'
+    }))) return;
     await authFetch(`http://127.0.0.1:3001/api/expense-templates/${template.id}`, { method: 'DELETE' });
     await loadTemplates();
   };
@@ -313,7 +319,12 @@ export function ExpensesModule() {
   };
 
   const remove = async (expense: Expense) => {
-    if (!window.confirm(`Apagar a despesa "${expense.description}"?`)) return;
+    if (!(await confirm({
+      title: 'Apagar despesa',
+      message: `Apagar a despesa "${expense.description}"?`,
+      tone: 'danger',
+      confirmLabel: 'Apagar'
+    }))) return;
     try {
       const response = await authFetch(`http://127.0.0.1:3001/api/expenses/${expense.id}`, { method: 'DELETE' });
       if (!response.ok) throw new Error('Nao foi possivel apagar');

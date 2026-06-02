@@ -1,6 +1,6 @@
 import { Activity, AlertTriangle, Banknote, Boxes, Cable, ClipboardList, FileText, Gauge, LogOut, Plus, Receipt, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AuthGate, CommandPalette, PageHeader, ThemeToggle, ToastProvider } from './components';
+import { AuthGate, CommandPalette, ConfirmProvider, PageHeader, ThemeToggle, ToastProvider } from './components';
 import type { CommandPaletteItem } from './components';
 import { AuthProvider, authFetch, useAuth } from './lib/auth';
 import type { UserRole } from './lib/auth';
@@ -75,9 +75,11 @@ export function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <AuthGate>
-          <AppShell />
-        </AuthGate>
+        <ConfirmProvider>
+          <AuthGate>
+            <AppShell />
+          </AuthGate>
+        </ConfirmProvider>
       </ToastProvider>
     </AuthProvider>
   );

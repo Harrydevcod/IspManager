@@ -1,7 +1,7 @@
 import { ClipboardList, Pencil, Plus, Trash2, X } from 'lucide-react';
 import type { CSSProperties, DragEvent, FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Dialog, Field, Message, Select, Textarea, useToast } from '../components';
+import { Button, Dialog, Field, Message, Select, Textarea, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import './WorkOrdersModule.css';
 import type {
@@ -109,6 +109,7 @@ function toFormState(order: WorkOrder): FormState {
 
 export function WorkOrdersModule() {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const auth = useAuth();
   const canDeleteWorkOrders = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
   const [board, setBoard] = useState<WorkOrderBoard | null>(null);
@@ -207,7 +208,12 @@ export function WorkOrdersModule() {
   }
 
   async function removeOrder(order: WorkOrder) {
-    if (!confirm(`Eliminar OS "${order.title}"?`)) return;
+    if (!(await confirm({
+      title: 'Eliminar OS',
+      message: `Eliminar a OS "${order.title}"? Esta ação não pode ser anulada.`,
+      tone: 'danger',
+      confirmLabel: 'Eliminar'
+    }))) return;
     const response = await authFetch(`http://127.0.0.1:3001/api/work-orders/${order.id}`, {
       method: 'DELETE'
     });
