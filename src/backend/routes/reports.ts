@@ -191,13 +191,17 @@ export async function registerReportRoutes(app: FastifyInstance) {
 
     const withFlags = rows.map((row) => ({ row, flags: computeIncompleteFlags(row) }));
 
-    const incompleteCounts = {
-      noPhone: withFlags.filter((x) => x.flags.includes('noPhone')).length,
-      noActiveService: withFlags.filter((x) => x.flags.includes('noActiveService')).length,
-      noAddress: withFlags.filter((x) => x.flags.includes('noAddress')).length,
-      noNif: withFlags.filter((x) => x.flags.includes('noNif')).length,
-      total: withFlags.filter((x) => x.flags.length > 0).length
-    };
+    const incompleteCounts = withFlags.reduce(
+      (acc, { flags }) => {
+        if (flags.includes('noPhone')) acc.noPhone++;
+        if (flags.includes('noActiveService')) acc.noActiveService++;
+        if (flags.includes('noAddress')) acc.noAddress++;
+        if (flags.includes('noNif')) acc.noNif++;
+        if (flags.length > 0) acc.total++;
+        return acc;
+      },
+      { noPhone: 0, noActiveService: 0, noAddress: 0, noNif: 0, total: 0 }
+    );
 
     const filtered = withFlags.filter((x) =>
       issue ? x.flags.includes(issue) : x.flags.length > 0
