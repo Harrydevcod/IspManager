@@ -1827,6 +1827,13 @@ h2 {
   grid-template-columns: minmax(0, 1fr) 140px 140px 118px;
 }
 
+/* Numeric/money columns right-align with tabular figures so digits line up
+   across rows — same treatment as client/service/stock/plan rows. */
+.report-row > small {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .report-row button {
   min-height: 38px;
   padding: 0 var(--s3);

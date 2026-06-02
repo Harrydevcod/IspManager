@@ -1,7 +1,8 @@
 import { Activity, Banknote, Cable, CheckCircle2, MessageCircle, UsersRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Button, EmptyState, Field, FilterBar, Message } from '../components';
+import { Button, EmptyState, Field, FilterBar, Message, MetricCard } from '../components';
 import { authFetch } from '../lib/auth';
+import { formatCve } from '../lib/format';
 import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
 import type { ReportsSummary, ReportView } from '../types';
 
@@ -182,30 +183,10 @@ export function ReportsModule() {
       {whatsappStatus && <Message>{whatsappStatus}</Message>}
 
       <section className="metric-grid compact" aria-label="Resumo de relatorios">
-        <article className="metric-card">
-          <UsersRound size={20} />
-          <span>Clientes</span>
-          <strong>{metrics ? metrics.totalClients : '...'}</strong>
-          <small>cadastros na base</small>
-        </article>
-        <article className="metric-card">
-          <Cable size={20} />
-          <span>Servicos ativos</span>
-          <strong>{metrics ? metrics.activeServices : '...'}</strong>
-          <small>contratos em operacao</small>
-        </article>
-        <article className="metric-card">
-          <Banknote size={20} />
-          <span>Receita paga</span>
-          <strong>{metrics ? metrics.paidAmountCve.toLocaleString('pt-PT') : '...'}</strong>
-          <small>CVE recebidos</small>
-        </article>
-        <article className="metric-card">
-          <Activity size={20} />
-          <span>Em atraso</span>
-          <strong>{metrics ? metrics.overdueAmountCve.toLocaleString('pt-PT') : '...'}</strong>
-          <small>{metrics ? `${metrics.overduePayments} cobrancas` : 'a carregar'}</small>
-        </article>
+        <MetricCard icon={UsersRound} label="Clientes" value={metrics ? String(metrics.totalClients) : '...'} trend="cadastros na base" />
+        <MetricCard icon={Cable} label="Servicos ativos" value={metrics ? String(metrics.activeServices) : '...'} trend="contratos em operacao" />
+        <MetricCard icon={Banknote} label="Receita paga" value={metrics ? formatCve(metrics.paidAmountCve) : '...'} trend="recebidos" />
+        <MetricCard icon={Activity} label="Em atraso" value={metrics ? formatCve(metrics.overdueAmountCve) : '...'} trend={metrics ? `${metrics.overduePayments} cobrancas` : 'a carregar'} />
       </section>
 
       <div className="module-table">
@@ -215,8 +196,8 @@ export function ReportsModule() {
               <strong>{row.referenceMonth}</strong>
               <small>{row.payments} cobrancas</small>
             </span>
-            <small>Pago: {row.paidCve.toLocaleString('pt-PT')} CVE</small>
-            <small>Pendente: {row.pendingCve.toLocaleString('pt-PT')} CVE</small>
+            <small>Pago: {formatCve(row.paidCve)}</small>
+            <small>Pendente: {formatCve(row.pendingCve)}</small>
           </div>
         ))}
         {view === 'overdue' && summary?.overdueClients.map((row) => (
@@ -227,7 +208,7 @@ export function ReportsModule() {
               <small>{row.phone || 'sem telefone'}</small>
             </span>
             <small>{row.payments} cobrancas</small>
-            <small>{row.amountCve.toLocaleString('pt-PT')} CVE</small>
+            <small>{formatCve(row.amountCve)}</small>
             <Button
               variant="ghost"
               size="sm"
@@ -246,7 +227,7 @@ export function ReportsModule() {
               <small>{row.type}</small>
             </span>
             <small>{row.stockTotal} un.</small>
-            <small>{row.valueCve.toLocaleString('pt-PT')} CVE</small>
+            <small>{formatCve(row.valueCve)}</small>
           </div>
         ))}
         {summary && view === 'revenue' && summary.revenueByMonth.length === 0 && (
