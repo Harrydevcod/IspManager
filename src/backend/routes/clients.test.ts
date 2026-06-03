@@ -50,6 +50,40 @@ afterAll(async () => {
   delete process.env.ISPM_AUTH;
 });
 
+describe('POST /api/clients (nif field)', () => {
+  test('persists a valid 9-digit NIF', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients',
+      payload: { fullName: 'Ana Lima', nif: '123456789' }
+    });
+    expect(response.statusCode).toBe(201);
+    const body = response.json() as { id: number; nif: string | null };
+    expect(body.nif).toBe('123456789');
+    const row = db.prepare('SELECT nif FROM clients WHERE id = ?').get(body.id) as { nif: string | null };
+    expect(row.nif).toBe('123456789');
+  });
+
+  test('treats an empty NIF as null', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients',
+      payload: { fullName: 'Bruno Sa', nif: '' }
+    });
+    expect(response.statusCode).toBe(201);
+    expect((response.json() as { nif: string | null }).nif).toBeNull();
+  });
+
+  test('rejects a malformed NIF (not 9 digits)', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients',
+      payload: { fullName: 'Carla Dias', nif: '12345' }
+    });
+    expect(response.statusCode).toBe(400);
+  });
+});
+
 describe('POST /api/clients/bulk', () => {
   test('inserts new rows and auto-generates clientCode when missing', async () => {
     const response = await app.inject({
