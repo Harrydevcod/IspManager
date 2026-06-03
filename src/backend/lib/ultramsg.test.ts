@@ -33,9 +33,9 @@ describe('sendDocumentViaUltraMsg', () => {
     const result = await sendDocumentViaUltraMsg('instance1', 'tok', '+2389912233', 'BASE64DATA', 'fatura.pdf', 'A sua fatura');
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.messageId).toBe('doc_1');
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain('/messages/document');
-    const sentBody = (init as { body: URLSearchParams }).body.toString();
+    const call = fetchMock.mock.calls[0] as unknown as [string, { body: URLSearchParams }];
+    expect(String(call[0])).toContain('/messages/document');
+    const sentBody = call[1].body.toString();
     expect(sentBody).toContain('filename=fatura.pdf');
     expect(sentBody).toContain('document=BASE64DATA');
   });
