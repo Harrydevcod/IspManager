@@ -18,6 +18,7 @@ function addMonthsIso(isoDate: string, months: number): string {
 const createClientSchema = z.object({
   fullName: z.string().trim().min(1),
   phone: z.string().trim().optional().nullable(),
+  nif: z.string().trim().regex(/^\d{9}$/).optional().nullable().or(z.literal('').transform(() => null)),
   island: z.string().trim().optional().nullable(),
   zone: z.string().trim().optional().nullable(),
   address: z.string().trim().optional().nullable(),
@@ -183,6 +184,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
         clientCode,
         fullName: parsed.data.fullName,
         phone: parsed.data.phone || null,
+        nif: parsed.data.nif || null,
         island: parsed.data.island || null,
         zone: parsed.data.zone || null,
         address: parsed.data.address || null,
@@ -219,6 +221,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
         .set({
           fullName: parsed.data.fullName,
           phone: parsed.data.phone || null,
+          nif: parsed.data.nif || null,
           island: parsed.data.island || null,
           zone: parsed.data.zone || null,
           address: parsed.data.address || null,

@@ -30,6 +30,7 @@ export type Client = {
   fullName: string;
   phone: string | null;
   email?: string | null;
+  nif?: string | null;
   address?: string | null;
   island: string | null;
   zone: string | null;

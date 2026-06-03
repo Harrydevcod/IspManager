@@ -12,6 +12,7 @@ import type { Client, ClientProfitability } from '../types';
 type ClientFormState = {
   fullName: string;
   phone: string;
+  nif: string;
   island: string;
   zone: string;
   address: string;
@@ -21,7 +22,7 @@ type ClientFormState = {
 type MessagingSettings = { companyName: string; whatsappTemplate: string };
 
 function emptyClientForm(): ClientFormState {
-  return { fullName: '', phone: '', island: '', zone: '', address: '', status: 'active' };
+  return { fullName: '', phone: '', nif: '', island: '', zone: '', address: '', status: 'active' };
 }
 
 export function ClientsModule({ focusClientId, onFocusHandled }: { focusClientId?: number | null; onFocusHandled?: () => void } = {}) {
@@ -144,6 +145,7 @@ export function ClientsModule({ focusClientId, onFocusHandled }: { focusClientId
     setForm({
       fullName: client.fullName,
       phone: client.phone || '',
+      nif: client.nif || '',
       island: client.island || '',
       zone: client.zone || '',
       address: client.address || '',
@@ -500,6 +502,7 @@ export function ClientsModule({ focusClientId, onFocusHandled }: { focusClientId
         <form id="client-form" className="client-form" onSubmit={saveClient}>
           <Field label="Nome completo" required value={form.fullName} onChange={(event) => updateForm('fullName', event.target.value)} />
           <Field label="Telefone" type="tel" inputMode="tel" value={form.phone} onChange={(event) => updateForm('phone', event.target.value)} />
+          <Field label="NIF" inputMode="numeric" maxLength={9} value={form.nif} onChange={(event) => updateForm('nif', event.target.value.replace(/\D/g, '').slice(0, 9))} placeholder="9 dígitos" />
           <Field label="Ilha" value={form.island} onChange={(event) => updateForm('island', event.target.value)} />
           <Field label="Zona" value={form.zone} onChange={(event) => updateForm('zone', event.target.value)} />
           <Field wide label="Morada" value={form.address} onChange={(event) => updateForm('address', event.target.value)} />
