@@ -25,6 +25,13 @@ function emptyClientForm(): ClientFormState {
   return { fullName: '', phone: '', nif: '', island: '', zone: '', address: '', status: 'active' };
 }
 
+// NIF de Cabo Verde: 9 dígitos, o primeiro identifica o tipo de contribuinte
+// (1 = pessoa singular, 2 = pessoa coletiva). Mesmo formato validado no backend.
+const CV_NIF_RE = /^[12]\d{8}$/;
+function cvNifError(nif: string): string | undefined {
+  return nif.length > 0 && !CV_NIF_RE.test(nif) ? 'NIF inválido — 9 dígitos a começar por 1 ou 2.' : undefined;
+}
+
 export function ClientsModule({ focusClientId, onFocusHandled }: { focusClientId?: number | null; onFocusHandled?: () => void } = {}) {
   const { toast } = useToast();
   const auth = useAuth();
@@ -493,7 +500,7 @@ export function ClientsModule({ focusClientId, onFocusHandled }: { focusClientId
         actions={
           <>
             <Button variant="secondary" onClick={closeForm}>Cancelar</Button>
-            <Button type="submit" form="client-form" loading={saving}>
+            <Button type="submit" form="client-form" loading={saving} disabled={cvNifError(form.nif) !== undefined}>
               {saving ? 'A gravar...' : editingClient ? 'Atualizar cliente' : 'Gravar cliente'}
             </Button>
           </>
@@ -502,7 +509,7 @@ export function ClientsModule({ focusClientId, onFocusHandled }: { focusClientId
         <form id="client-form" className="client-form" onSubmit={saveClient}>
           <Field label="Nome completo" required value={form.fullName} onChange={(event) => updateForm('fullName', event.target.value)} />
           <Field label="Telefone" type="tel" inputMode="tel" value={form.phone} onChange={(event) => updateForm('phone', event.target.value)} />
-          <Field label="NIF" inputMode="numeric" maxLength={9} value={form.nif} onChange={(event) => updateForm('nif', event.target.value.replace(/\D/g, '').slice(0, 9))} placeholder="9 dígitos" />
+          <Field label="NIF" inputMode="numeric" maxLength={9} value={form.nif} onChange={(event) => updateForm('nif', event.target.value.replace(/\D/g, '').slice(0, 9))} placeholder="9 dígitos (começa por 1 ou 2)" hint="1 = pessoa singular · 2 = pessoa coletiva" error={cvNifError(form.nif)} />
           <Field label="Ilha" value={form.island} onChange={(event) => updateForm('island', event.target.value)} />
           <Field label="Zona" value={form.zone} onChange={(event) => updateForm('zone', event.target.value)} />
           <Field wide label="Morada" value={form.address} onChange={(event) => updateForm('address', event.target.value)} />
