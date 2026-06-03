@@ -95,13 +95,15 @@ export function ClientsModule({ focusClientId, onFocusHandled }: { focusClientId
   }, [loadClients]);
 
   useEffect(() => {
-    if (!focusClientId) return;
+    if (!focusClientId || loading) return;
     const existing = clients.find((c) => c.id === focusClientId);
     if (existing) {
       setSelectedClient(existing);
-      onFocusHandled?.();
     }
-  }, [focusClientId, clients, onFocusHandled]);
+    // Clear focus once the list has loaded, whether or not the client was found,
+    // so a stale/removed id never leaves focusClientId stuck.
+    onFocusHandled?.();
+  }, [focusClientId, clients, loading, onFocusHandled]);
 
   useEffect(() => {
     authFetch('http://127.0.0.1:3001/api/settings')

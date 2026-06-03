@@ -206,7 +206,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
           <Button variant="ghost" size="sm" className={view === 'stock' ? 'active' : ''} onClick={() => changeView('stock')}>Stock</Button>
           <Button variant="ghost" size="sm" className={view === 'incomplete' ? 'active' : ''} onClick={() => changeView('incomplete')}>Incompletos</Button>
           <Button variant="ghost" size="sm" className={view === 'duplicates' ? 'active' : ''} onClick={() => changeView('duplicates')}>Duplicados</Button>
-          <Button variant="secondary" size="sm" disabled={!summary && !dq} onClick={exportCsv}>
+          <Button variant="secondary" size="sm" disabled={(view === 'incomplete' || view === 'duplicates') ? !dq : !summary} onClick={exportCsv}>
             Exportar CSV
           </Button>
         </div>
