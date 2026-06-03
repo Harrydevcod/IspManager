@@ -3,7 +3,6 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
-import type { NoticeSender } from './notices';
 
 let db: Database.Database;
 let dataDir: string;
@@ -22,7 +21,9 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  // Child-first: notices reference outbox; both reference payments.
   db.prepare('DELETE FROM whatsapp_notices').run();
+  db.prepare('DELETE FROM whatsapp_outbox').run();
   db.prepare('DELETE FROM payments').run();
   db.prepare('DELETE FROM services').run();
   db.prepare('DELETE FROM clients').run();
@@ -67,68 +68,61 @@ function insertOverdue(params: { code: string; name: string; phone: string | nul
   `).run(clientId, serviceId, `-${params.daysOverdue} days`, `FT-${params.code}`);
 }
 
-function recordingSender(): { send: NoticeSender; calls: Array<{ to: string; body: string }> } {
-  const calls: Array<{ to: string; body: string }> = [];
-  const send: NoticeSender = async (_instanceId, _token, to, body) => {
-    calls.push({ to, body });
-    return { ok: true, result: 'ok' };
-  };
-  return { send, calls };
-}
+const outboxCount = () => (db.prepare('SELECT COUNT(*) AS n FROM whatsapp_outbox').get() as { n: number }).n;
+const noticesCount = () => (db.prepare('SELECT COUNT(*) AS n FROM whatsapp_notices').get() as { n: number }).n;
 
 describe('runOverdueNoticesIfDue', () => {
   test('skips entirely when the toggle is disabled', async () => {
     insertOverdue({ code: 'A', name: 'Ana', phone: '9911111', daysOverdue: 20 });
-    const { send, calls } = recordingSender();
 
-    const result = await runOverdueNoticesIfDue(new Date(), send);
+    const result = await runOverdueNoticesIfDue(new Date());
 
     expect(result).toMatchObject({ skipped: true });
-    expect(calls).toHaveLength(0);
-    expect((db.prepare('SELECT COUNT(*) AS n FROM whatsapp_notices').get() as { n: number }).n).toBe(0);
+    expect(outboxCount()).toBe(0);
+    expect(noticesCount()).toBe(0);
   });
 
-  test('sends suspension past threshold, overdue below, logs both, skips opt-out and missing phone', async () => {
+  test('enqueues an outbox row per eligible candidate, logs the notice with outbox_id, skips opt-out and missing phone', async () => {
     enableNotices();
     insertOverdue({ code: 'OLD', name: 'Cliente Antigo', phone: '9910000', daysOverdue: 20 }); // suspension
     insertOverdue({ code: 'NEW', name: 'Cliente Recente', phone: '9920000', daysOverdue: 5 }); // overdue
     insertOverdue({ code: 'OPT', name: 'Opt Out', phone: '9930000', daysOverdue: 22, optOut: true }); // skip
     insertOverdue({ code: 'NOPH', name: 'Sem Telefone', phone: null, daysOverdue: 23 }); // skip
 
-    const { send, calls } = recordingSender();
-    const result = await runOverdueNoticesIfDue(new Date(), send);
+    const result = await runOverdueNoticesIfDue(new Date());
 
-    expect(result).toMatchObject({ ran: true, sent: 2, failed: 0, skipped: 2 });
-    expect(calls).toHaveLength(2);
+    expect(result).toMatchObject({ ran: true, enqueued: 2, skipped: 2 });
 
-    const notices = db.prepare('SELECT notice_type AS type, status, origin FROM whatsapp_notices ORDER BY id').all() as Array<{ type: string; status: string; origin: string }>;
+    const outbox = db.prepare('SELECT origin, kind FROM whatsapp_outbox').all() as Array<{ origin: string; kind: string }>;
+    expect(outbox).toHaveLength(2);
+    expect(outbox.every((r) => r.origin === 'auto' && r.kind === 'text')).toBe(true);
+
+    const notices = db.prepare('SELECT notice_type AS type, status, origin, outbox_id AS outboxId FROM whatsapp_notices ORDER BY id').all() as Array<{ type: string; status: string; origin: string; outboxId: number | null }>;
     expect(notices).toHaveLength(2);
     expect(notices.map((n) => n.type).sort()).toEqual(['overdue', 'suspension']);
-    expect(notices.every((n) => n.status === 'sent' && n.origin === 'auto')).toBe(true);
+    expect(notices.every((n) => n.status === 'sent' && n.origin === 'auto' && n.outboxId !== null)).toBe(true);
   });
 
   test('daily guard prevents a second run on the same calendar day', async () => {
     enableNotices();
     insertOverdue({ code: 'A', name: 'Ana', phone: '9911111', daysOverdue: 20 });
-    const { send } = recordingSender();
 
-    await runOverdueNoticesIfDue(new Date(), send);
-    const second = await runOverdueNoticesIfDue(new Date(), send);
+    await runOverdueNoticesIfDue(new Date());
+    const second = await runOverdueNoticesIfDue(new Date());
 
     expect(second).toMatchObject({ skipped: true });
   });
 
-  test('cooldown dedupe avoids re-sending the same notice type on a later day', async () => {
+  test('cooldown dedupe avoids enqueuing the same notice type again on a later day', async () => {
     enableNotices();
     insertOverdue({ code: 'A', name: 'Ana', phone: '9911111', daysOverdue: 20 });
-    const { send, calls } = recordingSender();
 
-    await runOverdueNoticesIfDue(new Date(), send); // day 1: sends 1
+    await runOverdueNoticesIfDue(new Date()); // day 1: enqueues 1
     const tomorrow = new Date(Date.now() + 86_400_000);
-    const result = await runOverdueNoticesIfDue(tomorrow, send); // day 2: deduped by cooldown
+    const result = await runOverdueNoticesIfDue(tomorrow); // day 2: deduped by cooldown
 
-    expect(result).toMatchObject({ ran: true, sent: 0, skipped: 1 });
-    expect(calls).toHaveLength(1);
-    expect((db.prepare('SELECT COUNT(*) AS n FROM whatsapp_notices').get() as { n: number }).n).toBe(1);
+    expect(result).toMatchObject({ ran: true, enqueued: 0, skipped: 1 });
+    expect(outboxCount()).toBe(1);
+    expect(noticesCount()).toBe(1);
   });
 });
