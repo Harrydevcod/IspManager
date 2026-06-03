@@ -61,8 +61,8 @@ async function postUltraMsg(
       return { ok: false, reason: 'UltraMsg recusou o envio', details: result };
     }
     return { ok: true, result, messageId: extractMessageId(result) };
-  } catch {
-    return { ok: false, reason: 'Nao foi possivel contactar UltraMsg' };
+  } catch (err) {
+    return { ok: false, reason: 'Nao foi possivel contactar UltraMsg', details: String(err) };
   }
 }
 
