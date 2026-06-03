@@ -104,7 +104,11 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
   }
 
   function csvValue(value: string | number | null) {
-    const text = String(value ?? '').replace(/"/g, '""');
+    const raw = String(value ?? '');
+    // Neutralize spreadsheet formula injection (CWE-1236): a cell that opens with
+    // =, +, -, @, tab or CR is treated as a formula by Excel/Sheets. Prefix with a
+    // single quote so it renders as literal text.
+    const text = (/^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw).replace(/"/g, '""');
     return `"${text}"`;
   }
 
@@ -236,12 +240,21 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
       {error && <Message tone="error">{error}</Message>}
       {whatsappStatus && <Message>{whatsappStatus}</Message>}
 
-      <section className="metric-grid compact" aria-label="Resumo de relatorios">
-        <MetricCard icon={UsersRound} label="Clientes" value={metrics ? String(metrics.totalClients) : '...'} trend="cadastros na base" />
-        <MetricCard icon={Cable} label="Servicos ativos" value={metrics ? String(metrics.activeServices) : '...'} trend="contratos em operacao" />
-        <MetricCard icon={Banknote} label="Receita paga" value={metrics ? formatCve(metrics.paidAmountCve) : '...'} trend="recebidos" />
-        <MetricCard icon={Activity} label="Em atraso" value={metrics ? formatCve(metrics.overdueAmountCve) : '...'} trend={metrics ? `${metrics.overduePayments} cobrancas` : 'a carregar'} />
-      </section>
+      {(view === 'incomplete' || view === 'duplicates') ? (
+        <section className="metric-grid compact" aria-label="Resumo de qualidade de dados">
+          <MetricCard icon={UsersRound} label="Incompletos" value={dq ? String(dq.incompleteCounts.total) : '...'} trend="com pelo menos uma lacuna" />
+          <MetricCard icon={MessageCircle} label="Sem telefone" value={dq ? String(dq.incompleteCounts.noPhone) : '...'} trend="sem contacto WhatsApp" />
+          <MetricCard icon={Cable} label="Sem servico ativo" value={dq ? String(dq.incompleteCounts.noActiveService) : '...'} trend="nao geram mensalidade" />
+          <MetricCard icon={CopyX} label="Grupos duplicados" value={dq ? String(dq.duplicateGroups.length) : '...'} trend="telefone ou nome repetido" />
+        </section>
+      ) : (
+        <section className="metric-grid compact" aria-label="Resumo de relatorios">
+          <MetricCard icon={UsersRound} label="Clientes" value={metrics ? String(metrics.totalClients) : '...'} trend="cadastros na base" />
+          <MetricCard icon={Cable} label="Servicos ativos" value={metrics ? String(metrics.activeServices) : '...'} trend="contratos em operacao" />
+          <MetricCard icon={Banknote} label="Receita paga" value={metrics ? formatCve(metrics.paidAmountCve) : '...'} trend="recebidos" />
+          <MetricCard icon={Activity} label="Em atraso" value={metrics ? formatCve(metrics.overdueAmountCve) : '...'} trend={metrics ? `${metrics.overduePayments} cobrancas` : 'a carregar'} />
+        </section>
+      )}
 
       <div className="module-table">
         {view === 'revenue' && summary?.revenueByMonth.map((row) => (
