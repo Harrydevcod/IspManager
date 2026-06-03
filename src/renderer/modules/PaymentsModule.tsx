@@ -304,11 +304,13 @@ export function PaymentsModule() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ kind })
       });
+      const data = await response.json().catch(() => ({})) as { error?: string; status?: string };
       if (!response.ok) {
-        const data = await response.json().catch(() => ({})) as { error?: string };
         throw new Error(data.error || 'Nao foi possivel enviar o documento por WhatsApp.');
       }
-      setMessage(`${kind === 'invoice' ? 'Fatura' : 'Recibo'} enviado por WhatsApp para ${payment.clientName}.`);
+      const doc = kind === 'invoice' ? 'Fatura' : 'Recibo';
+      const verb = data.status === 'sent' ? 'enviado' : 'em fila para envio';
+      setMessage(`${doc} ${verb} por WhatsApp para ${payment.clientName}.`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Nao foi possivel enviar o documento por WhatsApp.');
     } finally {
