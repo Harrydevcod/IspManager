@@ -5,12 +5,12 @@ import {
   fallbackWhatsappTemplate,
   renderWhatsappTemplate
 } from '../../shared/whatsapp';
-import { normalizeUltraMsgPhone, sendViaUltraMsg, type UltraMsgSendResult } from './ultramsg';
+import { normalizeUltraMsgPhone } from './ultramsg';
+import { enqueueWhatsapp } from './whatsapp-outbox';
 
 const LAST_RUN_KEY = 'lastOverdueNoticesDate';
 const DEFAULT_SUSPENSION_DAYS = 15;
 const DEFAULT_COOLDOWN_DAYS = 7;
-const SEND_INTERVAL_MS = 900;
 
 type NoticeType = 'overdue' | 'suspension';
 
@@ -28,12 +28,9 @@ type OverdueCandidate = {
   whatsappOptOut: number;
 };
 
-/** Sender seam — defaults to the real UltraMsg transport, injectable in tests. */
-export type NoticeSender = (instanceId: string, token: string, to: string, body: string) => Promise<UltraMsgSendResult>;
-
 export type OverdueNoticesRun =
   | { skipped: true; reason: string }
-  | { ran: true; date: string; sent: number; failed: number; skipped: number };
+  | { ran: true; date: string; enqueued: number; skipped: number };
 
 function getSetting(key: string): string {
   const db = getSqliteDatabase();
@@ -62,10 +59,6 @@ function templateFor(type: NoticeType): string {
   return getSetting('whatsappOverdueTemplate') || getSetting('whatsappTemplate') || fallbackWhatsappOverdueTemplate || fallbackWhatsappTemplate;
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => { setTimeout(resolve, ms); });
-}
-
 /**
  * Automatic counterpart to the manual `notify-overdue` route: sends WhatsApp
  * overdue/suspension notices once per day, opt-in via the `autoNoticesEnabled`
@@ -80,8 +73,7 @@ function delay(ms: number): Promise<void> {
  * configured day threshold, otherwise `overdue`. Safe to call on every boot.
  */
 export async function runOverdueNoticesIfDue(
-  now: Date = new Date(),
-  send: NoticeSender = sendViaUltraMsg
+  now: Date = new Date()
 ): Promise<OverdueNoticesRun> {
   if (!isEnabled()) {
     return { skipped: true, reason: 'avisos automaticos desativados' };
@@ -130,12 +122,11 @@ export async function runOverdueNoticesIfDue(
     LIMIT 1
   `);
   const logNotice = db.prepare(`
-    INSERT INTO whatsapp_notices (payment_id, client_id, notice_type, origin, phone, body, status, error)
-    VALUES (?, ?, ?, 'auto', ?, ?, ?, ?)
+    INSERT INTO whatsapp_notices (payment_id, client_id, notice_type, origin, phone, body, status, error, outbox_id)
+    VALUES (?, ?, ?, 'auto', ?, ?, 'sent', NULL, ?)
   `);
 
-  let sent = 0;
-  let failed = 0;
+  let enqueued = 0;
   let skipped = 0;
 
   const eligible = candidates.filter((row) => {
@@ -168,20 +159,11 @@ export async function runOverdueNoticesIfDue(
       companyName
     );
 
-    const result = await send(instanceId, token, to, body);
-    if (result.ok) {
-      sent += 1;
-      logNotice.run(row.paymentId, row.clientId, type, to, body, 'sent', null);
-    } else {
-      failed += 1;
-      logNotice.run(row.paymentId, row.clientId, type, to, body, 'failed', result.reason);
-    }
-
-    if (i < eligible.length - 1) {
-      await delay(SEND_INTERVAL_MS);
-    }
+    const outboxId = enqueueWhatsapp({ toPhone: to, kind: 'text', body, clientId: row.clientId, origin: 'auto' });
+    enqueued += 1;
+    logNotice.run(row.paymentId, row.clientId, type, to, body, outboxId);
   }
 
   writeSetting(LAST_RUN_KEY, todayIso);
-  return { ran: true, date: todayIso, sent, failed, skipped };
+  return { ran: true, date: todayIso, enqueued, skipped };
 }

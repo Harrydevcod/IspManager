@@ -9,6 +9,7 @@ import {
   renderWhatsappTemplate
 } from '../../shared/whatsapp';
 import { normalizeUltraMsgPhone, sendViaUltraMsg } from '../lib/ultramsg';
+import { enqueueWhatsapp, runWhatsappOutboxIfDue } from '../lib/whatsapp-outbox';
 
 const sendWhatsappSchema = z.object({
   phone: z.string().trim().min(1),
@@ -73,11 +74,51 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Telefone WhatsApp invalido' });
     }
 
-    const result = await sendViaUltraMsg(instanceId, token, to, parsed.data.body);
-    if (!result.ok) {
-      return reply.status(502).send({ error: result.reason, details: result.details });
+    const id = enqueueWhatsapp({ toPhone: to, kind: 'text', body: parsed.data.body, origin: 'manual' });
+    await runWhatsappOutboxIfDue(new Date(), undefined, { onlyId: id });
+    const row = getSqliteDatabase().prepare('SELECT status, last_error FROM whatsapp_outbox WHERE id = ?').get(id) as { status: string; last_error: string | null };
+    if (row.status === 'failed') {
+      return reply.status(502).send({ error: row.last_error || 'Falha no envio' });
     }
-    return { ok: true, provider: 'ultramsg', result: result.result };
+    return { ok: true, provider: 'ultramsg', id, status: row.status };
+  });
+
+  const sendDocumentSchema = z.object({ kind: z.enum(['invoice', 'receipt']) });
+
+  app.post('/api/payments/:id/whatsapp', canSendMessages, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const parsed = sendDocumentSchema.safeParse(request.body);
+    if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Pedido invalido' });
+    }
+    const instanceId = getSetting('ultraMsgInstanceId');
+    const token = getSetting('ultraMsgToken');
+    if (!instanceId || !token) {
+      return reply.status(400).send({ error: 'UltraMsg nao configurado' });
+    }
+    const payment = getSqliteDatabase().prepare(`
+      SELECT py.id AS id, c.id AS clientId, c.phone AS phone
+      FROM payments py JOIN clients c ON c.id = py.client_id
+      WHERE py.id = ?
+    `).get(id) as { id: number; clientId: number; phone: string | null } | undefined;
+    if (!payment) {
+      return reply.status(404).send({ error: 'Pagamento nao encontrado' });
+    }
+    const to = normalizeUltraMsgPhone(payment.phone || '');
+    if (!to) {
+      return reply.status(400).send({ error: 'Cliente sem telefone WhatsApp valido' });
+    }
+    const caption = parsed.data.kind === 'invoice' ? 'A sua fatura.' : 'O seu recibo.';
+    const outboxId = enqueueWhatsapp({
+      toPhone: to, kind: 'document', body: caption,
+      docPaymentId: payment.id, docKind: parsed.data.kind, clientId: payment.clientId, origin: 'manual'
+    });
+    await runWhatsappOutboxIfDue(new Date(), undefined, { onlyId: outboxId });
+    const row = getSqliteDatabase().prepare('SELECT status, last_error FROM whatsapp_outbox WHERE id = ?').get(outboxId) as { status: string; last_error: string | null };
+    if (row.status === 'failed') {
+      return reply.status(502).send({ error: row.last_error || 'Falha no envio do documento' });
+    }
+    return { ok: true, id: outboxId, status: row.status };
   });
 
   app.post('/api/payments/notify-overdue', canSendMessages, async (request, reply) => {
