@@ -5,7 +5,7 @@
  */
 
 export type UltraMsgSendResult =
-  | { ok: true; result: unknown }
+  | { ok: true; result: unknown; messageId?: string }
   | { ok: false; reason: string; details?: unknown };
 
 /** Normalize a raw phone to UltraMsg's `+<country><number>` form (Cabo Verde). */
@@ -35,15 +35,23 @@ async function readUltraMsgResponse(response: Response): Promise<unknown> {
   }
 }
 
-export async function sendViaUltraMsg(
+function extractMessageId(result: unknown): string | undefined {
+  if (result && typeof result === 'object') {
+    const id = (result as Record<string, unknown>).id;
+    if (typeof id === 'string' && id) return id;
+    if (typeof id === 'number') return String(id);
+  }
+  return undefined;
+}
+
+async function postUltraMsg(
   instanceId: string,
-  token: string,
-  to: string,
-  body: string
+  endpoint: 'chat' | 'document',
+  params: Record<string, string>
 ): Promise<UltraMsgSendResult> {
-  const payload = new URLSearchParams({ token, to, body });
+  const payload = new URLSearchParams(params);
   try {
-    const response = await fetch(`https://api.ultramsg.com/${encodeURIComponent(instanceId)}/messages/chat`, {
+    const response = await fetch(`https://api.ultramsg.com/${encodeURIComponent(instanceId)}/messages/${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: payload
@@ -52,8 +60,50 @@ export async function sendViaUltraMsg(
     if (!response.ok) {
       return { ok: false, reason: 'UltraMsg recusou o envio', details: result };
     }
-    return { ok: true, result };
+    return { ok: true, result, messageId: extractMessageId(result) };
   } catch {
     return { ok: false, reason: 'Nao foi possivel contactar UltraMsg' };
   }
+}
+
+export async function sendViaUltraMsg(instanceId: string, token: string, to: string, body: string): Promise<UltraMsgSendResult> {
+  return postUltraMsg(instanceId, 'chat', { token, to, body });
+}
+
+export async function sendDocumentViaUltraMsg(
+  instanceId: string, token: string, to: string, documentBase64: string, filename: string, caption = ''
+): Promise<UltraMsgSendResult> {
+  return postUltraMsg(instanceId, 'document', { token, to, filename, document: documentBase64, caption });
+}
+
+export type UltraMsgMessage = { id: string; ack: string | number };
+
+export async function fetchUltraMsgSentMessages(
+  instanceId: string, token: string, opts: { limit?: number; page?: number } = {}
+): Promise<UltraMsgMessage[]> {
+  const params = new URLSearchParams({
+    token, status: 'sent', sort: 'desc',
+    page: String(opts.page ?? 1), limit: String(opts.limit ?? 100)
+  });
+  try {
+    const response = await fetch(`https://api.ultramsg.com/${encodeURIComponent(instanceId)}/messages?${params.toString()}`);
+    const result = await readUltraMsgResponse(response);
+    if (!response.ok || !result || typeof result !== 'object') return [];
+    const list = (result as Record<string, unknown>).messages;
+    if (!Array.isArray(list)) return [];
+    return list
+      .filter((m): m is { id: unknown; ack: unknown } => !!m && typeof m === 'object')
+      .map((m) => ({ id: String((m as Record<string, unknown>).id ?? ''), ack: (m as Record<string, unknown>).ack as string | number }))
+      .filter((m) => m.id);
+  } catch {
+    return [];
+  }
+}
+
+export function mapAckToStatus(ack: string | number): 'sent' | 'delivered' | 'read' {
+  if (typeof ack === 'number') return ack >= 3 ? 'read' : ack === 2 ? 'delivered' : 'sent';
+  const v = ack.toLowerCase();
+  if (v.includes('read') || v.includes('played') || v.includes('viewed')) return 'read';
+  if (v.includes('device') || v.includes('delivered')) return 'delivered';
+  return 'sent';
 }
