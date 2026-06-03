@@ -82,6 +82,25 @@ describe('POST /api/clients (nif field)', () => {
     });
     expect(response.statusCode).toBe(400);
   });
+
+  test('rejects a 9-digit NIF that does not start with 1 or 2 (CV taxpayer type)', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients',
+      payload: { fullName: 'Diego Mota', nif: '923456789' }
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  test('accepts a NIF starting with 2 (pessoa coletiva)', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients',
+      payload: { fullName: 'Empresa Lda', nif: '234567891' }
+    });
+    expect(response.statusCode).toBe(201);
+    expect((response.json() as { nif: string | null }).nif).toBe('234567891');
+  });
 });
 
 describe('POST /api/clients/bulk', () => {
@@ -113,7 +132,7 @@ describe('POST /api/clients/bulk', () => {
   test('skips duplicates by clientCode, NIF, and phone without aborting the batch', async () => {
     db.prepare(`
       INSERT INTO clients (client_code, full_name, phone, nif, status)
-      VALUES ('CLT-EXIST', 'Existente', '9999999', '987654321', 'active')
+      VALUES ('CLT-EXIST', 'Existente', '9999999', '187654321', 'active')
     `).run();
 
     const response = await app.inject({
@@ -123,7 +142,7 @@ describe('POST /api/clients/bulk', () => {
         rows: [
           { fullName: 'Novo Cliente', phone: '9000001' },
           { fullName: 'Dup Code', clientCode: 'CLT-EXIST' },
-          { fullName: 'Dup NIF', nif: '987654321' },
+          { fullName: 'Dup NIF', nif: '187654321' },
           { fullName: 'Dup Phone', phone: '9999999' }
         ]
       }
