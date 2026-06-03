@@ -1164,6 +1164,17 @@ export function PaymentsModule() {
                 <MessageCircle size={16} aria-hidden />
               </Button>
             )}
+            {p.status !== 'cancelled' && normalizeWhatsappPhone(p.clientPhone) && (
+              <Button
+                variant="icon"
+                size="sm"
+                title={p.status === 'paid' ? 'Enviar recibo (PDF) por WhatsApp' : 'Enviar fatura (PDF) por WhatsApp'}
+                disabled={submitting}
+                onClick={() => void sendDocumentWhatsapp(p, p.status === 'paid' ? 'receipt' : 'invoice')}
+              >
+                <Send size={16} aria-hidden />
+              </Button>
+            )}
             {p.status !== 'cancelled' && (
               <Button
                 variant="icon"
