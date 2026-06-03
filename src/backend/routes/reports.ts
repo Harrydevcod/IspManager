@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { requireRole } from './auth';
+import { computeIncompleteFlags, findDuplicateGroups, type DqClient } from '../lib/data-quality';
+import { recordAudit } from '../lib/audit';
 
 type ReportMetricRow = {
   totalClients: number;
@@ -11,6 +13,17 @@ type ReportMetricRow = {
   paidAmountCve: number;
   stockValueCve: number;
 };
+
+const dataQualityQuerySchema = z.object({
+  issue: z.enum(['noPhone', 'noActiveService', 'noAddress', 'noNif']).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20)
+});
+
+const dismissDuplicateSchema = z.object({
+  clientIdA: z.coerce.number().int().positive(),
+  clientIdB: z.coerce.number().int().positive()
+});
 
 const querySchema = z.object({
   view: z.enum(['revenue', 'overdue', 'stock']).default('revenue'),
@@ -151,5 +164,99 @@ export async function registerReportRoutes(app: FastifyInstance) {
         totalPages: Math.max(1, Math.ceil(total / pageSize))
       }
     };
+  });
+
+  app.get('/api/reports/data-quality', { preHandler: requireRole(['admin', 'operator']) }, async (request, reply) => {
+    const parsed = dataQualityQuerySchema.safeParse(request.query || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Filtros invalidos' });
+    }
+    const { issue, page, pageSize } = parsed.data;
+    const db = getSqliteDatabase();
+
+    const rows = db.prepare(`
+      SELECT
+        c.id,
+        c.client_code AS clientCode,
+        c.full_name AS fullName,
+        c.phone,
+        c.nif,
+        c.address,
+        c.island,
+        c.zone,
+        c.status,
+        EXISTS(SELECT 1 FROM services s WHERE s.client_id = c.id AND s.status = 'active') AS hasActiveService
+      FROM clients c
+    `).all() as DqClient[];
+
+    const withFlags = rows.map((row) => ({ row, flags: computeIncompleteFlags(row) }));
+
+    const incompleteCounts = withFlags.reduce(
+      (acc, { flags }) => {
+        if (flags.includes('noPhone')) acc.noPhone++;
+        if (flags.includes('noActiveService')) acc.noActiveService++;
+        if (flags.includes('noAddress')) acc.noAddress++;
+        if (flags.includes('noNif')) acc.noNif++;
+        if (flags.length > 0) acc.total++;
+        return acc;
+      },
+      { noPhone: 0, noActiveService: 0, noAddress: 0, noNif: 0, total: 0 }
+    );
+
+    const filtered = withFlags.filter((x) =>
+      issue ? x.flags.includes(issue) : x.flags.length > 0
+    );
+    const total = filtered.length;
+    const offset = (page - 1) * pageSize;
+    const incompleteClients = filtered.slice(offset, offset + pageSize).map((x) => ({
+      id: x.row.id,
+      clientCode: x.row.clientCode,
+      fullName: x.row.fullName,
+      status: x.row.status,
+      phone: x.row.phone,
+      flags: x.flags
+    }));
+
+    const dismissedRows = db.prepare(`
+      SELECT client_id_low AS low, client_id_high AS high FROM client_duplicate_dismissals
+    `).all() as Array<{ low: number; high: number }>;
+    const dismissedPairs = new Set(dismissedRows.map((d) => `${d.low}-${d.high}`));
+    const duplicateGroups = findDuplicateGroups(rows, dismissedPairs);
+
+    return {
+      incompleteCounts,
+      incompleteClients,
+      duplicateGroups,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize))
+      }
+    };
+  });
+
+  app.post('/api/reports/data-quality/dismiss', { preHandler: requireRole(['admin', 'operator']) }, async (request, reply) => {
+    const parsed = dismissDuplicateSchema.safeParse(request.body);
+    if (!parsed.success || parsed.data.clientIdA === parsed.data.clientIdB) {
+      return reply.status(400).send({ error: 'Par invalido' });
+    }
+    const low = Math.min(parsed.data.clientIdA, parsed.data.clientIdB);
+    const high = Math.max(parsed.data.clientIdA, parsed.data.clientIdB);
+    const db = getSqliteDatabase();
+    db.prepare(`
+      INSERT OR IGNORE INTO client_duplicate_dismissals (client_id_low, client_id_high)
+      VALUES (?, ?)
+    `).run(low, high);
+
+    recordAudit(request, {
+      action: 'dismiss_duplicate',
+      entityType: 'client',
+      entityId: low,
+      summary: `Marcou os clientes ${low} e ${high} como nao duplicados`,
+      metadata: { low, high }
+    });
+
+    return reply.send({ ok: true });
   });
 }

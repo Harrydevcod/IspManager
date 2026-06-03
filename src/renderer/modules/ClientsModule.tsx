@@ -24,7 +24,7 @@ function emptyClientForm(): ClientFormState {
   return { fullName: '', phone: '', island: '', zone: '', address: '', status: 'active' };
 }
 
-export function ClientsModule() {
+export function ClientsModule({ focusClientId, onFocusHandled }: { focusClientId?: number | null; onFocusHandled?: () => void } = {}) {
   const { toast } = useToast();
   const auth = useAuth();
   const canManageClients = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
@@ -93,6 +93,17 @@ export function ClientsModule() {
   useEffect(() => {
     void loadClients();
   }, [loadClients]);
+
+  useEffect(() => {
+    if (!focusClientId || loading) return;
+    const existing = clients.find((c) => c.id === focusClientId);
+    if (existing) {
+      setSelectedClient(existing);
+    }
+    // Clear focus once the list has loaded, whether or not the client was found,
+    // so a stale/removed id never leaves focusClientId stuck.
+    onFocusHandled?.();
+  }, [focusClientId, clients, loading, onFocusHandled]);
 
   useEffect(() => {
     authFetch('http://127.0.0.1:3001/api/settings')

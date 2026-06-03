@@ -3673,6 +3673,57 @@ label.field-toggle {
   line-height: 1.15;
 }
 
+/* =========================================================================
+   Data-quality views (Incompletos + Duplicados) in ReportsModule
+   ========================================================================= */
+.dq-row {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: inherit;
+  cursor: pointer;
+}
+
+.dq-flags {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* Warn badge — uses --accent-2 (amber/gold heritage token), mirrors badge-accent pattern */
+.badge-warn {
+  background: color-mix(in oklch, var(--accent-2) 16%, transparent);
+  border-color: color-mix(in oklch, var(--accent-2) 35%, transparent);
+  color: var(--accent-2);
+  border-radius: var(--rpill);
+  padding: 2px 8px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-width: 1px;
+  border-style: solid;
+  display: inline-flex;
+  align-items: center;
+}
+
+.dq-issue-filter {
+  flex-wrap: wrap;
+  margin-bottom: var(--s2);
+}
+
+.dq-group-reason {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dq-group-clients {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .auth-lede {
   margin: var(--s2) 0 0;
   font-size: 13px;
