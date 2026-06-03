@@ -296,6 +296,26 @@ export function PaymentsModule() {
     }
   }
 
+  async function sendDocumentWhatsapp(payment: PaymentRow, kind: 'invoice' | 'receipt') {
+    setSubmitting(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/payments/${payment.id}/whatsapp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ kind })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error || 'Nao foi possivel enviar o documento por WhatsApp.');
+      }
+      setMessage(`${kind === 'invoice' ? 'Fatura' : 'Recibo'} enviado por WhatsApp para ${payment.clientName}.`);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Nao foi possivel enviar o documento por WhatsApp.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function openMonthlyPreview() {
     setMonthlyLoading(true);
     setMonthlyPreview(null);
@@ -841,6 +861,17 @@ export function PaymentsModule() {
               {selectedPayment.status !== 'cancelled' && (
                 <Button variant="secondary" size="sm" leadingIcon={<FileText size={16} aria-hidden />} onClick={() => openPdf(selectedPayment, 'invoice')}>
                   Fatura PDF
+                </Button>
+              )}
+              {selectedPayment.status !== 'cancelled' && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leadingIcon={<MessageCircle size={16} aria-hidden />}
+                  disabled={submitting || !normalizeWhatsappPhone(selectedPayment.clientPhone)}
+                  onClick={() => void sendDocumentWhatsapp(selectedPayment, selectedPayment.status === 'paid' ? 'receipt' : 'invoice')}
+                >
+                  Enviar PDF por WhatsApp
                 </Button>
               )}
               {selectedPayment.status === 'paid' ? (
