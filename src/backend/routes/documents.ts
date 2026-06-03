@@ -539,13 +539,53 @@ async function pdfBuffer(row: PaymentDocumentRow, kind: DocumentKind) {
   });
 }
 
-async function sendDocument(reply: any, row: PaymentDocumentRow, kind: DocumentKind, disposition: 'inline' | 'attachment' = 'attachment') {
+export class PaymentDocumentError extends Error {
+  constructor(public statusCode: number, message: string) {
+    super(message);
+    this.name = 'PaymentDocumentError';
+  }
+}
+
+/**
+ * Single source of truth for a payment's invoice/receipt PDF: validates the
+ * payment, enforces the same guards as the HTTP routes, assigns the document
+ * number if missing, and returns the rendered buffer + filename. Used by the
+ * HTTP routes and the WhatsApp outbox worker. Throws PaymentDocumentError with
+ * the HTTP status the routes should surface.
+ */
+export async function renderPaymentDocumentPdf(id: number, kind: DocumentKind): Promise<{ buffer: Buffer; filename: string }> {
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new PaymentDocumentError(400, 'Pagamento invalido');
+  }
+  const db = getSqliteDatabase();
+  let row = db.prepare(documentSelect).get(id) as PaymentDocumentRow | undefined;
+  if (!row) {
+    throw new PaymentDocumentError(404, 'Pagamento nao encontrado');
+  }
+  if (row.status === 'cancelled') {
+    throw new PaymentDocumentError(400, kind === 'invoice' ? 'Pagamento anulado nao pode gerar fatura' : 'Pagamento anulado nao pode gerar recibo');
+  }
+  if (kind === 'receipt' && row.status !== 'paid') {
+    throw new PaymentDocumentError(400, 'So e possivel gerar recibo depois do pagamento');
+  }
+  if (kind === 'invoice' && !hasDocumentNumber(row.invoiceNumber)) {
+    db.prepare(`
+      UPDATE payments
+      SET invoice_number = ?, invoice_date = COALESCE(invoice_date, date('now')), updated_at = datetime('now')
+      WHERE id = ?
+    `).run(nextDocumentNumber('invoice', id), id);
+    row = db.prepare(documentSelect).get(id) as PaymentDocumentRow;
+  }
+  if (kind === 'receipt' && !row.receiptNumber) {
+    db.prepare(`
+      UPDATE payments
+      SET receipt_number = ?, receipt_date = COALESCE(receipt_date, date('now')), updated_at = datetime('now')
+      WHERE id = ?
+    `).run(nextDocumentNumber('receipt', id), id);
+    row = db.prepare(documentSelect).get(id) as PaymentDocumentRow;
+  }
   const buffer = await pdfBuffer(row, kind);
-  const filename = documentFilename(kind, row);
-  reply
-    .header('Content-Type', 'application/pdf')
-    .header('Content-Disposition', `${disposition}; filename="${filenamePart(filename, 'documento.pdf')}"; filename*=UTF-8''${encodeURIComponent(filename)}`)
-    .send(buffer);
+  return { buffer, filename: documentFilename(kind, row) };
 }
 
 function dispositionFromQuery(query: unknown): 'inline' | 'attachment' {
@@ -561,58 +601,31 @@ export async function registerDocumentRoutes(app: FastifyInstance) {
 
   app.get('/api/payments/:id/invoice.pdf', canIssueDocuments, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
-    if (!Number.isInteger(id) || id <= 0) {
-      return reply.status(400).send({ error: 'Pagamento invalido' });
+    try {
+      const { buffer, filename } = await renderPaymentDocumentPdf(id, 'invoice');
+      const disposition = dispositionFromQuery(request.query);
+      return reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Disposition', `${disposition}; filename="${filenamePart(filename, 'documento.pdf')}"; filename*=UTF-8''${encodeURIComponent(filename)}`)
+        .send(buffer);
+    } catch (err) {
+      if (err instanceof PaymentDocumentError) return reply.status(err.statusCode).send({ error: err.message });
+      throw err;
     }
-
-    const db = getSqliteDatabase();
-    let row = db.prepare(documentSelect).get(id) as PaymentDocumentRow | undefined;
-    if (!row) {
-      return reply.status(404).send({ error: 'Pagamento nao encontrado' });
-    }
-    if (row.status === 'cancelled') {
-      return reply.status(400).send({ error: 'Pagamento anulado nao pode gerar fatura' });
-    }
-
-    if (!hasDocumentNumber(row.invoiceNumber)) {
-      db.prepare(`
-        UPDATE payments
-        SET invoice_number = ?, invoice_date = COALESCE(invoice_date, date('now')), updated_at = datetime('now')
-        WHERE id = ?
-      `).run(nextDocumentNumber('invoice', id), id);
-      row = db.prepare(documentSelect).get(id) as PaymentDocumentRow;
-    }
-
-    return sendDocument(reply, row, 'invoice', dispositionFromQuery(request.query));
   });
 
   app.get('/api/payments/:id/receipt.pdf', canIssueDocuments, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
-    if (!Number.isInteger(id) || id <= 0) {
-      return reply.status(400).send({ error: 'Pagamento invalido' });
+    try {
+      const { buffer, filename } = await renderPaymentDocumentPdf(id, 'receipt');
+      const disposition = dispositionFromQuery(request.query);
+      return reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Disposition', `${disposition}; filename="${filenamePart(filename, 'documento.pdf')}"; filename*=UTF-8''${encodeURIComponent(filename)}`)
+        .send(buffer);
+    } catch (err) {
+      if (err instanceof PaymentDocumentError) return reply.status(err.statusCode).send({ error: err.message });
+      throw err;
     }
-
-    const db = getSqliteDatabase();
-    let row = db.prepare(documentSelect).get(id) as PaymentDocumentRow | undefined;
-    if (!row) {
-      return reply.status(404).send({ error: 'Pagamento nao encontrado' });
-    }
-    if (row.status === 'cancelled') {
-      return reply.status(400).send({ error: 'Pagamento anulado nao pode gerar recibo' });
-    }
-    if (row.status !== 'paid') {
-      return reply.status(400).send({ error: 'So e possivel gerar recibo depois do pagamento' });
-    }
-
-    if (!row.receiptNumber) {
-      db.prepare(`
-        UPDATE payments
-        SET receipt_number = ?, receipt_date = COALESCE(receipt_date, date('now')), updated_at = datetime('now')
-        WHERE id = ?
-      `).run(nextDocumentNumber('receipt', id), id);
-      row = db.prepare(documentSelect).get(id) as PaymentDocumentRow;
-    }
-
-    return sendDocument(reply, row, 'receipt', dispositionFromQuery(request.query));
   });
 }
