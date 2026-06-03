@@ -24,6 +24,7 @@ import { registerBackupRoutes } from './routes/backup';
 import { createBackup, pruneBackups } from './lib/backup';
 import { runMonthlyBillingIfDue } from './lib/auto-billing';
 import { runOverdueNoticesIfDue } from './lib/notices';
+import { pollWhatsappDeliveryIfDue, runWhatsappOutboxIfDue } from './lib/whatsapp-outbox';
 
 let serverStarted = false;
 
@@ -105,6 +106,18 @@ export async function createBackendApp() {
       .catch((err) => {
         app.log.error({ err }, 'auto notices failed');
       });
+  }
+
+  // WhatsApp outbox: drain the send queue and poll delivery status on intervals.
+  // Opt-out with ISPM_WHATSAPP_OUTBOX=off. Errors are swallowed so a transient
+  // provider/network failure never crashes the backend. Timers are unref'd so
+  // they never keep the process alive on shutdown.
+  if (process.env.ISPM_WHATSAPP_OUTBOX !== 'off' && !process.env.VITEST) {
+    const drain = () => { void runWhatsappOutboxIfDue().catch(() => undefined); };
+    const poll = () => { void pollWhatsappDeliveryIfDue().catch(() => undefined); };
+    drain();
+    setInterval(drain, 60_000).unref();
+    setInterval(poll, 180_000).unref();
   }
 
   return app;
