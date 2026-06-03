@@ -106,6 +106,21 @@ describe('enqueueWhatsapp + runWhatsappOutboxIfDue', () => {
     expect(row.status).toBe('sent');
   });
 
+  test('a second overlapping run is skipped — no double-send', async () => {
+    outbox.enqueueWhatsapp({ toPhone: '+2389912233', kind: 'text', body: 'a' });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let calls = 0;
+    const slowSend = async (): Promise<UltraMsgSendResult> => { calls += 1; await gate; return { ok: true, result: {}, messageId: 'm' }; };
+    const deps = { sendText: slowSend, sendDocument: slowSend, renderPdf };
+    const inFlight = outbox.runWhatsappOutboxIfDue(new Date(), deps);
+    const second = await outbox.runWhatsappOutboxIfDue(new Date(), deps); // overlaps the first
+    expect(second.skipped).toBeDefined();
+    release();
+    await inFlight;
+    expect(calls).toBe(1);
+  });
+
   test('processes only the requested id when onlyId is given', async () => {
     const a = outbox.enqueueWhatsapp({ toPhone: '+2389912233', kind: 'text', body: 'a' });
     const b = outbox.enqueueWhatsapp({ toPhone: '+2389912234', kind: 'text', body: 'b' });

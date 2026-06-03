@@ -69,6 +69,13 @@ type OutboxRow = {
 
 export type OutboxRunResult = { skipped?: string; sent: number; failed: number; retried: number };
 
+// Single-process re-entrancy guard. The boot scheduler drains on an interval
+// and manual sends drain a single row inline; without this, an overlapping tick
+// (e.g. while a slow UltraMsg request is in flight) could select and re-send the
+// same pending row. One backend process makes a flag sufficient — true
+// multi-process safety would need a per-row claim.
+let outboxRunning = false;
+
 export async function runWhatsappOutboxIfDue(
   now: Date = new Date(),
   deps: OutboxDeps = defaultDeps,
@@ -79,7 +86,24 @@ export async function runWhatsappOutboxIfDue(
   if (!instanceId || !token) {
     return { skipped: 'UltraMsg nao configurado', sent: 0, failed: 0, retried: 0 };
   }
+  if (outboxRunning) {
+    return { skipped: 'drain ja em execucao', sent: 0, failed: 0, retried: 0 };
+  }
+  outboxRunning = true;
+  try {
+    return await drainOutbox(now, deps, opts, instanceId, token);
+  } finally {
+    outboxRunning = false;
+  }
+}
 
+async function drainOutbox(
+  now: Date,
+  deps: OutboxDeps,
+  opts: { batchSize?: number; onlyId?: number },
+  instanceId: string,
+  token: string
+): Promise<OutboxRunResult> {
   const db = getSqliteDatabase();
   const nowIso = now.toISOString().replace('T', ' ').slice(0, 19);
   const rows = db.prepare(`
