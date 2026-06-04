@@ -1,4 +1,5 @@
 import { Banknote, Building2, DatabaseBackup, MessageCircle, Smartphone } from 'lucide-react';
+import QRCode from 'qrcode';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { Button, Field, Message, Select, Textarea, Toggle } from '../components';
@@ -117,6 +118,7 @@ export function SettingsModule() {
   const [smsStatus, setSmsStatus] = useState<SmsStatus | null>(null);
   const [smsPairing, setSmsPairing] = useState<{ baseUrl: string; deviceName: string }>({ baseUrl: '', deviceName: '' });
   const [smsPairingBusy, setSmsPairingBusy] = useState(false);
+  const [smsQrDataUrl, setSmsQrDataUrl] = useState<string>('');
   const hasUnsavedChanges = !lastSavedForm || JSON.stringify(form) !== JSON.stringify(lastSavedForm);
 
   function loadSmsStatus() {
@@ -141,6 +143,14 @@ export function SettingsModule() {
       }
       setForm((current) => ({ ...current, smsCompanionEnabled: true, smsCompanionBaseUrl: smsPairing.baseUrl }));
       setMessage({ tone: 'success', text: `Pareamento gerado. Codigo de emparelhamento: ${data.qrPayload}`, placement: 'top' });
+      if (data.qrPayload) {
+        try {
+          const url = await QRCode.toDataURL(data.qrPayload, { width: 220, margin: 1 });
+          setSmsQrDataUrl(url);
+        } catch {
+          setSmsQrDataUrl('');
+        }
+      }
       await loadSmsStatus();
     } catch {
       setMessage({ tone: 'error', text: 'Falha de rede ao parear o Android SMS.', placement: 'top' });
@@ -579,6 +589,12 @@ export function SettingsModule() {
                   </Button>
                 )}
               </div>
+              {smsQrDataUrl && (
+                <div className="sms-pairing-qr">
+                  <img src={smsQrDataUrl} alt="QR Code de pareamento do Android SMS" width={220} height={220} />
+                  <span>Lê este QR no app ISPM SMS do telemóvel para parear.</span>
+                </div>
+              )}
             </div>
             {smsStatus && (
               <Message tone={smsStatus.counts.failed > 0 ? 'error' : 'neutral'}>
