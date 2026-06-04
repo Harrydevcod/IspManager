@@ -2,72 +2,74 @@ package cv.novatech.ispm.sms
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import cv.novatech.ispm.sms.state.CompanionStateHolder
+import cv.novatech.ispm.sms.state.PairingInfo
+import cv.novatech.ispm.sms.state.parsePairingPayload
+import cv.novatech.ispm.sms.ui.CompanionApp
+import cv.novatech.ispm.sms.ui.theme.IspmTheme
 
 class MainActivity : ComponentActivity() {
-  private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
   private lateinit var pairingStore: PairingStore
   private lateinit var requestStore: SmsRequestStore
+  private lateinit var holder: CompanionStateHolder
   private var server: CompanionServer? = null
+
+  private val permissionLauncher =
+    registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+      holder.setPermissionGranted(granted)
+    }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     pairingStore = PairingStore(this)
     requestStore = SmsRequestStore(this)
+    holder = CompanionStateHolder(
+      pairingStore = pairingStore,
+      requestStore = requestStore,
+      scope = lifecycleScope,
+      send = { req -> SmsSender.send(this, req.toPhone, req.body) }
+    )
+
     handlePairingIntent(intent)
 
-    server = CompanionServer(pairingStore, requestStore).also { it.start() }
+    server = CompanionServer(pairingStore, requestStore, onRequestsChanged = { runOnUiThread { holder.refresh() } })
+      .also { runCatching { it.start() } }
+    holder.setServerRunning(server != null)
+    holder.setPermissionGranted(
+      ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
+    )
 
     setContent {
-      var requests by remember { mutableStateOf(requestStore.list()) }
-      fun refresh() { requests = requestStore.list() }
-
-      MaterialTheme {
-        Column(modifier = Modifier.padding(24.dp)) {
-          Text("ISPM SMS Companion", style = MaterialTheme.typography.titleLarge)
-          Text(if (pairingStore.isPaired()) "Pareado: ${pairingStore.deviceName()}" else "Nao pareado")
-          Button(onClick = { permissionLauncher.launch(Manifest.permission.SEND_SMS) }) {
-            Text("Permitir envio de SMS")
-          }
-          Button(onClick = { refresh() }) { Text("Atualizar") }
-
-          LazyColumn {
-            items(requests.filter { it.status == "pending_approval" }) { item ->
-              Text("${item.toPhone} — ${item.body}")
-              Button(onClick = {
-                try {
-                  SmsSender.send(this@MainActivity, item.toPhone, item.body)
-                  requestStore.updateStatus(item.id, "sent", null)
-                } catch (e: Exception) {
-                  requestStore.updateStatus(item.id, "failed", e.message ?: "Falha no envio SMS")
-                }
-                refresh()
-              }) { Text("Aprovar e enviar") }
-              Button(onClick = {
-                requestStore.updateStatus(item.id, "rejected", "Rejeitado no Android")
-                refresh()
-              }) { Text("Rejeitar") }
-            }
-          }
-        }
+      IspmTheme {
+        val state by holder.state.collectAsStateWithLifecycle()
+        CompanionApp(
+          state = state,
+          onPaired = { holder.pair(it) },
+          onInvalidPairing = { toast("Código de pareamento inválido") },
+          onRequestPermission = { permissionLauncher.launch(Manifest.permission.SEND_SMS) },
+          onApprove = { id ->
+            if (state.smsPermissionGranted) holder.approve(id)
+            else permissionLauncher.launch(Manifest.permission.SEND_SMS)
+          },
+          onUndo = { holder.undoApprove(it) },
+          onReject = { holder.reject(it) }
+        )
       }
     }
+  }
+
+  override fun onResume() {
+    super.onResume()
+    if (::holder.isInitialized) holder.refresh()
   }
 
   override fun onNewIntent(intent: Intent) {
@@ -76,12 +78,12 @@ class MainActivity : ComponentActivity() {
   }
 
   private fun handlePairingIntent(intent: Intent?) {
-    val data = intent?.data ?: return
-    if (data.scheme != "ispm-sms" || data.host != "pair") return
-    val secret = data.getQueryParameter("secret") ?: return
-    val device = data.getQueryParameter("device") ?: "ISPM Desktop"
-    pairingStore.save(secret, device)
+    val data = intent?.dataString ?: return
+    val info: PairingInfo = parsePairingPayload(data) ?: return
+    if (::holder.isInitialized) holder.pair(info) else pairingStore.save(info.secret, info.deviceName)
   }
+
+  private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
   override fun onDestroy() {
     server?.stop()
