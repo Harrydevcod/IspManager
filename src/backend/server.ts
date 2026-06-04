@@ -19,12 +19,14 @@ import { registerSettingsRoutes } from './routes/settings';
 import { registerTechnicalRoutes } from './routes/technical';
 import { registerStockRoutes } from './routes/stock';
 import { registerWhatsappRoutes } from './routes/whatsapp';
+import { registerSmsRoutes } from './routes/sms';
 import { registerWorkOrderRoutes } from './routes/work-orders';
 import { registerBackupRoutes } from './routes/backup';
 import { createBackup, pruneBackups } from './lib/backup';
 import { runMonthlyBillingIfDue } from './lib/auto-billing';
 import { runOverdueNoticesIfDue } from './lib/notices';
 import { pollWhatsappDeliveryIfDue, runWhatsappOutboxIfDue } from './lib/whatsapp-outbox';
+import { pollSmsStatusIfDue, runSmsOutboxIfDue } from './lib/sms-outbox';
 
 let serverStarted = false;
 
@@ -90,6 +92,7 @@ export async function createBackendApp() {
   await registerReportRoutes(app);
   await registerSettingsRoutes(app);
   await registerWhatsappRoutes(app);
+  await registerSmsRoutes(app);
   await registerWorkOrderRoutes(app);
   await registerBackupRoutes(app);
 
@@ -118,6 +121,17 @@ export async function createBackendApp() {
     drain();
     setInterval(drain, 60_000).unref();
     setInterval(poll, 180_000).unref();
+  }
+
+  // SMS companion outbox: dispatch queued SMS to the paired Android phone and
+  // poll for approval/send status. Opt-out with ISPM_SMS_OUTBOX=off. Same
+  // swallow-errors + unref'd timer discipline as the WhatsApp outbox.
+  if (process.env.ISPM_SMS_OUTBOX !== 'off' && !process.env.VITEST) {
+    const drainSms = () => { void runSmsOutboxIfDue().catch(() => undefined); };
+    const pollSms = () => { void pollSmsStatusIfDue().catch(() => undefined); };
+    drainSms();
+    setInterval(drainSms, 60_000).unref();
+    setInterval(pollSms, 60_000).unref();
   }
 
   return app;
