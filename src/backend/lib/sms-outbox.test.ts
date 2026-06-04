@@ -161,4 +161,17 @@ describe('SMS outbox', () => {
     expect(row.status).toBe('sent');
     expect(row.sent_at).toBeTruthy();
   });
+
+  test('default transport includes clientName resolved from the client', async () => {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
+    const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('SMS-N','Ana Lopes','active')`).run().lastInsertRowid as number;
+    let body: any = null;
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      body = JSON.parse(String(init.body));
+      return { ok: true, status: 200, text: async () => JSON.stringify({ id: 'android-1' }) };
+    }));
+    enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste', clientId });
+    await runSmsOutboxIfDue(new Date());
+    expect(body.clientName).toBe('Ana Lopes');
+  });
 });

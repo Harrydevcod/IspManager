@@ -8,7 +8,7 @@ export type SmsDispatchResult = { ok: true; androidRequestId: string } | { ok: f
 export type SmsStatusResult = { status: SmsOutboxStatus; error?: string };
 
 export type SmsOutboxDeps = {
-  postRequest: (entry: { id: number; requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test' }) => Promise<SmsDispatchResult>;
+  postRequest: (entry: { id: number; requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test'; clientName: string | null }) => Promise<SmsDispatchResult>;
   fetchStatus: (androidRequestId: string) => Promise<SmsStatusResult>;
 };
 
@@ -76,7 +76,7 @@ async function signedFetch(path: string, method: 'GET' | 'POST', bodyObject?: un
   });
 }
 
-async function defaultPostRequest(entry: { requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test' }): Promise<SmsDispatchResult> {
+async function defaultPostRequest(entry: { requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test'; clientName: string | null }): Promise<SmsDispatchResult> {
   try {
     const response = await signedFetch('/requests', 'POST', entry);
     const json = await readJson(response);
@@ -114,10 +114,11 @@ export async function runSmsOutboxIfDue(
   const db = getSqliteDatabase();
   const nowIso = now.toISOString().replace('T', ' ').slice(0, 19);
   const rows = db.prepare(`
-    SELECT id, event_type AS eventType, to_phone AS toPhone, body, attempts, max_attempts AS maxAttempts
-    FROM sms_outbox
-    WHERE status='pending_dispatch' AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
-    ORDER BY id ASC LIMIT 20
+    SELECT s.id, s.event_type AS eventType, s.to_phone AS toPhone, s.body, s.attempts, s.max_attempts AS maxAttempts, c.full_name AS clientName
+    FROM sms_outbox s
+    LEFT JOIN clients c ON c.id = s.client_id
+    WHERE s.status='pending_dispatch' AND (s.next_attempt_at IS NULL OR s.next_attempt_at <= ?)
+    ORDER BY s.id ASC LIMIT 20
   `).all(nowIso) as Array<{
     id: number;
     eventType: SmsEventType | 'test';
@@ -125,6 +126,7 @@ export async function runSmsOutboxIfDue(
     body: string;
     attempts: number;
     maxAttempts: number;
+    clientName: string | null;
   }>;
 
   let dispatched = 0;
@@ -132,7 +134,7 @@ export async function runSmsOutboxIfDue(
 
   for (const row of rows) {
     const requestId = randomUUID();
-    const result = await deps.postRequest({ id: row.id, requestId, toPhone: row.toPhone, body: row.body, eventType: row.eventType });
+    const result = await deps.postRequest({ id: row.id, requestId, toPhone: row.toPhone, body: row.body, eventType: row.eventType, clientName: row.clientName });
     if (result.ok) {
       db.prepare(`
         UPDATE sms_outbox
