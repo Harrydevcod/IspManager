@@ -310,9 +310,13 @@ export function PaymentsModule() {
       }
       const doc = kind === 'invoice' ? 'Fatura' : 'Recibo';
       const verb = data.status === 'sent' ? 'enviado' : 'em fila para envio';
-      setMessage(`${doc} ${verb} por WhatsApp para ${payment.clientName}.`);
+      const successMessage = `${doc} ${verb} por WhatsApp para ${payment.clientName}.`;
+      setMessage(successMessage);
+      toast(successMessage, 'success');
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Nao foi possivel enviar o documento por WhatsApp.');
+      const errorMessage = err instanceof Error ? err.message : 'Nao foi possivel enviar o documento por WhatsApp.';
+      setMessage(errorMessage);
+      toast(errorMessage, 'error');
     } finally {
       setSubmitting(false);
     }

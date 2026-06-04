@@ -307,7 +307,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
           </div>
         )}
         {view === 'incomplete' && dq?.incompleteClients.map((row) => (
-          <button type="button" className="module-row report-row with-action dq-row" key={row.id} onClick={() => onOpenClient?.(row.id)}>
+          <Button variant="ghost" className="module-row report-row with-action dq-row" key={row.id} onClick={() => onOpenClient?.(row.id)}>
             <span>
               <small className="entity-code">{row.clientCode}</small>
               <strong>{row.fullName}</strong>
@@ -321,7 +321,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
               ))}
             </span>
             <UserCog size={16} aria-hidden />
-          </button>
+          </Button>
         ))}
         {view === 'duplicates' && dq?.duplicateGroups.map((group) => (
           <div className="module-row report-row dq-group" key={group.key}>

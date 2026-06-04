@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { requireRole } from './auth';
@@ -54,6 +54,22 @@ type NotifyEntry = {
   reason?: string;
 };
 
+type ManualOutboxStatus = { status: string; last_error: string | null };
+
+function replyWithManualOutboxResult(
+  reply: FastifyReply,
+  row: ManualOutboxStatus,
+  fallback: string
+) {
+  if (row.status === 'sent' || row.status === 'delivered' || row.status === 'read') {
+    return null;
+  }
+  return reply.status(502).send({
+    error: row.last_error || fallback,
+    status: row.status
+  });
+}
+
 export async function registerWhatsappRoutes(app: FastifyInstance) {
   const canSendMessages = { preHandler: requireRole(['admin', 'operator']) };
 
@@ -76,10 +92,9 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
 
     const id = enqueueWhatsapp({ toPhone: to, kind: 'text', body: parsed.data.body, origin: 'manual' });
     await runWhatsappOutboxIfDue(new Date(), undefined, { onlyId: id });
-    const row = getSqliteDatabase().prepare('SELECT status, last_error FROM whatsapp_outbox WHERE id = ?').get(id) as { status: string; last_error: string | null };
-    if (row.status === 'failed') {
-      return reply.status(502).send({ error: row.last_error || 'Falha no envio' });
-    }
+    const row = getSqliteDatabase().prepare('SELECT status, last_error FROM whatsapp_outbox WHERE id = ?').get(id) as ManualOutboxStatus;
+    const failed = replyWithManualOutboxResult(reply, row, 'Falha no envio');
+    if (failed) return failed;
     return { ok: true, provider: 'ultramsg', id, status: row.status };
   });
 
@@ -114,10 +129,9 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
       docPaymentId: payment.id, docKind: parsed.data.kind, clientId: payment.clientId, origin: 'manual'
     });
     await runWhatsappOutboxIfDue(new Date(), undefined, { onlyId: outboxId });
-    const row = getSqliteDatabase().prepare('SELECT status, last_error FROM whatsapp_outbox WHERE id = ?').get(outboxId) as { status: string; last_error: string | null };
-    if (row.status === 'failed') {
-      return reply.status(502).send({ error: row.last_error || 'Falha no envio do documento' });
-    }
+    const row = getSqliteDatabase().prepare('SELECT status, last_error FROM whatsapp_outbox WHERE id = ?').get(outboxId) as ManualOutboxStatus;
+    const failed = replyWithManualOutboxResult(reply, row, 'Falha no envio do documento');
+    if (failed) return failed;
     return { ok: true, id: outboxId, status: row.status };
   });
 

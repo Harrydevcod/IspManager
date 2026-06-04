@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -32,6 +32,10 @@ beforeEach(() => {
   db.prepare('DELETE FROM services').run();
   db.prepare('DELETE FROM clients').run();
   db.prepare('DELETE FROM app_settings').run();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 afterAll(async () => {
@@ -71,8 +75,17 @@ function insertOverdueClient(params: {
   return clientId;
 }
 
+function stubUltraMsg(status: number, body: unknown) {
+  vi.stubGlobal('fetch', vi.fn(async () => ({
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => (typeof body === 'string' ? body : JSON.stringify(body))
+  })));
+}
+
 describe('WhatsApp outbox routes', () => {
   test('POST /api/whatsapp/send enqueues and processes the row', async () => {
+    stubUltraMsg(200, { sent: 'true', id: 'msg-1' });
     db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgInstanceId','i1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
     db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgToken','t1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
 
@@ -86,6 +99,7 @@ describe('WhatsApp outbox routes', () => {
   });
 
   test('POST /api/payments/:id/whatsapp enqueues a document row', async () => {
+    stubUltraMsg(200, { sent: 'true', id: 'doc-1' });
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone, status) VALUES ('C0001','Ana','9912233','active')`).run().lastInsertRowid as number;
     const planId = db.prepare(`INSERT INTO internet_plans (name, monthly_price_cve) VALUES ('P50', 4500)`).run().lastInsertRowid as number;
     const serviceId = db.prepare(`INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status) VALUES (?, ?, 4500, 10, 'active')`).run(clientId, planId).lastInsertRowid as number;
@@ -105,6 +119,30 @@ describe('WhatsApp outbox routes', () => {
     expect(row.kind).toBe('document');
     expect(row.doc_payment_id).toBe(paymentId);
     expect(row.doc_kind).toBe('receipt');
+  });
+
+  test('POST /api/payments/:id/whatsapp reports provider rejection instead of masking it as queued', async () => {
+    stubUltraMsg(400, { error: 'invalid token' });
+    const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone, status) VALUES ('C0003','Provider Fail','9912233','active')`).run().lastInsertRowid as number;
+    const planId = db.prepare(`INSERT INTO internet_plans (name, monthly_price_cve) VALUES ('P50c', 4500)`).run().lastInsertRowid as number;
+    const serviceId = db.prepare(`INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status) VALUES (?, ?, 4500, 10, 'active')`).run(clientId, planId).lastInsertRowid as number;
+    const paymentId = db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+      VALUES (?, ?, '2026-05', 4500, '2026-05-10', 'paid')
+    `).run(clientId, serviceId).lastInsertRowid as number;
+    db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgInstanceId','i1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
+    db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgToken','bad',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
+
+    const response = await app.inject({
+      method: 'POST', url: `/api/payments/${paymentId}/whatsapp`,
+      payload: { kind: 'receipt' }
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({
+      error: 'UltraMsg recusou o envio: invalid token',
+      status: 'pending'
+    });
   });
 
   test('POST /api/payments/:id/whatsapp rejects a client without phone', async () => {

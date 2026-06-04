@@ -44,6 +44,25 @@ function extractMessageId(result: unknown): string | undefined {
   return undefined;
 }
 
+function describeUltraMsgFailure(result: unknown): string {
+  if (result && typeof result === 'object') {
+    const record = result as Record<string, unknown>;
+    for (const key of ['error', 'message', 'reason', 'status']) {
+      const value = record[key];
+      if (typeof value === 'string' && value.trim()) {
+        return `UltraMsg recusou o envio: ${value.trim()}`;
+      }
+      if (typeof value === 'number') {
+        return `UltraMsg recusou o envio: ${value}`;
+      }
+    }
+  }
+  if (typeof result === 'string' && result.trim()) {
+    return `UltraMsg recusou o envio: ${result.trim()}`;
+  }
+  return 'UltraMsg recusou o envio';
+}
+
 async function postUltraMsg(
   instanceId: string,
   endpoint: 'chat' | 'document',
@@ -58,7 +77,7 @@ async function postUltraMsg(
     });
     const result = await readUltraMsgResponse(response);
     if (!response.ok) {
-      return { ok: false, reason: 'UltraMsg recusou o envio', details: result };
+      return { ok: false, reason: describeUltraMsgFailure(result), details: result };
     }
     return { ok: true, result, messageId: extractMessageId(result) };
   } catch (err) {
