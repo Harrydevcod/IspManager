@@ -1,4 +1,4 @@
-import { Banknote, Building2, DatabaseBackup, MessageCircle } from 'lucide-react';
+import { Banknote, Building2, DatabaseBackup, MessageCircle, Smartphone } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { Button, Field, Message, Select, Textarea, Toggle } from '../components';
@@ -14,14 +14,22 @@ import {
   renderWhatsappMessage,
   sendWhatsappViaUltraMsg
 } from '../lib/whatsapp';
+import {
+  fallbackSmsInvoiceIssuedTemplate,
+  fallbackSmsPaymentOverdueTemplate,
+  fallbackSmsReceiptConfirmedTemplate,
+  fallbackSmsSuspensionNoticeTemplate
+} from '../../shared/sms';
+import type { SmsStatus } from '../types';
 import { BackupsPanel } from './BackupsPanel';
 
-type SettingsTab = 'company' | 'billing' | 'whatsapp' | 'backups';
+type SettingsTab = 'company' | 'billing' | 'whatsapp' | 'sms' | 'backups';
 
 const TABS: { id: SettingsTab; label: string; icon: typeof Building2 }[] = [
   { id: 'company', label: 'Empresa', icon: Building2 },
   { id: 'billing', label: 'Faturação', icon: Banknote },
   { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
+  { id: 'sms', label: 'SMS', icon: Smartphone },
   { id: 'backups', label: 'Backups', icon: DatabaseBackup }
 ];
 
@@ -52,6 +60,14 @@ type SettingsFormState = {
   noticeCooldownDays: string;
   ultraMsgInstanceId: string;
   ultraMsgToken: string;
+  smsCompanionEnabled: boolean;
+  smsCompanionBaseUrl: string;
+  smsDispatchIntervalSeconds: string;
+  smsRetryGraceMinutes: string;
+  smsInvoiceIssuedTemplate: string;
+  smsReceiptConfirmedTemplate: string;
+  smsPaymentOverdueTemplate: string;
+  smsSuspensionNoticeTemplate: string;
 };
 
 export function SettingsModule() {
@@ -88,17 +104,77 @@ export function SettingsModule() {
     autoNoticesEnabled: false,
     noticeCooldownDays: '7',
     ultraMsgInstanceId: '',
-    ultraMsgToken: ''
+    ultraMsgToken: '',
+    smsCompanionEnabled: false,
+    smsCompanionBaseUrl: '',
+    smsDispatchIntervalSeconds: '60',
+    smsRetryGraceMinutes: '5',
+    smsInvoiceIssuedTemplate: fallbackSmsInvoiceIssuedTemplate,
+    smsReceiptConfirmedTemplate: fallbackSmsReceiptConfirmedTemplate,
+    smsPaymentOverdueTemplate: fallbackSmsPaymentOverdueTemplate,
+    smsSuspensionNoticeTemplate: fallbackSmsSuspensionNoticeTemplate
   });
+  const [smsStatus, setSmsStatus] = useState<SmsStatus | null>(null);
+  const [smsPairing, setSmsPairing] = useState<{ baseUrl: string; deviceName: string }>({ baseUrl: '', deviceName: '' });
+  const [smsPairingBusy, setSmsPairingBusy] = useState(false);
   const hasUnsavedChanges = !lastSavedForm || JSON.stringify(form) !== JSON.stringify(lastSavedForm);
 
+  function loadSmsStatus() {
+    return authFetch('http://127.0.0.1:3001/api/sms/status')
+      .then((response) => (response.ok ? (response.json() as Promise<SmsStatus>) : null))
+      .then(setSmsStatus)
+      .catch(() => setSmsStatus(null));
+  }
+
+  async function createSmsPairing() {
+    setSmsPairingBusy(true);
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/sms/pairing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(smsPairing)
+      });
+      const data = (await response.json().catch(() => ({}))) as { error?: string; qrPayload?: string };
+      if (!response.ok) {
+        setMessage({ tone: 'error', text: data.error || 'Nao foi possivel parear o Android SMS.', placement: 'top' });
+        return;
+      }
+      setForm((current) => ({ ...current, smsCompanionEnabled: true, smsCompanionBaseUrl: smsPairing.baseUrl }));
+      setMessage({ tone: 'success', text: `Pareamento gerado. Codigo de emparelhamento: ${data.qrPayload}`, placement: 'top' });
+      await loadSmsStatus();
+    } catch {
+      setMessage({ tone: 'error', text: 'Falha de rede ao parear o Android SMS.', placement: 'top' });
+    } finally {
+      setSmsPairingBusy(false);
+    }
+  }
+
+  async function revokeSmsPairing() {
+    setSmsPairingBusy(true);
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/sms/pairing', { method: 'DELETE' });
+      if (!response.ok) {
+        setMessage({ tone: 'error', text: 'Nao foi possivel revogar o pareamento.', placement: 'top' });
+        return;
+      }
+      setForm((current) => ({ ...current, smsCompanionEnabled: false }));
+      setMessage({ tone: 'success', text: 'Pareamento Android revogado.', placement: 'top' });
+      await loadSmsStatus();
+    } catch {
+      setMessage({ tone: 'error', text: 'Falha de rede ao revogar o pareamento.', placement: 'top' });
+    } finally {
+      setSmsPairingBusy(false);
+    }
+  }
+
   useEffect(() => {
+    void loadSmsStatus();
     authFetch('http://127.0.0.1:3001/api/settings')
       .then((response) => {
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
         }
-        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays'> & { defaultDueDay: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number }>;
+        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes'> & { defaultDueDay: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number }>;
       })
       .then((settings) => {
         const loadedForm = {
@@ -106,7 +182,9 @@ export function SettingsModule() {
           defaultDueDay: String(settings.defaultDueDay),
           ivaRate: String(settings.ivaRate),
           whatsappSuspensionNoticeDays: String(settings.whatsappSuspensionNoticeDays),
-          noticeCooldownDays: String(settings.noticeCooldownDays)
+          noticeCooldownDays: String(settings.noticeCooldownDays),
+          smsDispatchIntervalSeconds: String(settings.smsDispatchIntervalSeconds),
+          smsRetryGraceMinutes: String(settings.smsRetryGraceMinutes)
         };
         setForm(loadedForm);
         setLastSavedForm(loadedForm);
@@ -166,7 +244,9 @@ export function SettingsModule() {
           defaultDueDay: Number(form.defaultDueDay),
           ivaRate: Number(form.ivaRate),
           whatsappSuspensionNoticeDays: Number(form.whatsappSuspensionNoticeDays),
-          noticeCooldownDays: Number(form.noticeCooldownDays)
+          noticeCooldownDays: Number(form.noticeCooldownDays),
+          smsDispatchIntervalSeconds: Number(form.smsDispatchIntervalSeconds),
+          smsRetryGraceMinutes: Number(form.smsRetryGraceMinutes)
         })
       });
 
@@ -458,6 +538,96 @@ export function SettingsModule() {
               rows={templateRows(form.whatsappSuspensionTemplate)}
               value={form.whatsappSuspensionTemplate}
               onChange={(event) => updateForm('whatsappSuspensionTemplate', event.target.value)}
+            />
+          </>
+        )}
+
+        {activeTab === 'sms' && (
+          <>
+            <Toggle
+              title="Ativar SMS via Android"
+              description="O desktop enfileira os SMS e o telemovel Android pareado pede aprovacao antes de enviar pelo cartao SIM. Ideal como canal de reforco quando o cliente nao tem WhatsApp."
+              checked={form.smsCompanionEnabled}
+              onChange={(event) => setForm((current) => ({ ...current, smsCompanionEnabled: event.target.checked }))}
+            />
+            <div className="settings-test-whatsapp" aria-label="Pareamento do Android SMS">
+              <span>{smsStatus?.paired ? `Pareado${smsStatus.deviceName ? `: ${smsStatus.deviceName}` : ''}${smsStatus.baseUrl ? ` (${smsStatus.baseUrl})` : ''}` : 'Android nao pareado'}</span>
+              <Field
+                label="Endereco do Android na rede local"
+                value={smsPairing.baseUrl}
+                onChange={(event) => setSmsPairing((current) => ({ ...current, baseUrl: event.target.value }))}
+                placeholder="http://192.168.1.50:8765"
+              />
+              <Field
+                label="Nome do dispositivo"
+                value={smsPairing.deviceName}
+                onChange={(event) => setSmsPairing((current) => ({ ...current, deviceName: event.target.value }))}
+                placeholder="Telemovel da loja"
+              />
+              <div className="form-actions">
+                <Button
+                  variant="secondary"
+                  onClick={() => void createSmsPairing()}
+                  disabled={!smsPairing.baseUrl || !smsPairing.deviceName}
+                  loading={smsPairingBusy}
+                >
+                  {smsStatus?.paired ? 'Gerar novo pareamento' : 'Gerar pareamento'}
+                </Button>
+                {smsStatus?.paired && (
+                  <Button variant="ghost" onClick={() => void revokeSmsPairing()} disabled={smsPairingBusy}>
+                    Revogar
+                  </Button>
+                )}
+              </div>
+            </div>
+            {smsStatus && (
+              <Message tone={smsStatus.counts.failed > 0 ? 'error' : 'neutral'}>
+                Fila SMS: {smsStatus.counts.pendingDispatch} por entregar, {smsStatus.counts.pendingApproval} a aguardar aprovacao no Android, {smsStatus.counts.failed} falhado(s).
+              </Message>
+            )}
+            <Field
+              label="Intervalo de envio SMS (segundos)"
+              type="number"
+              min={15}
+              max={3600}
+              value={form.smsDispatchIntervalSeconds}
+              onChange={(event) => updateForm('smsDispatchIntervalSeconds', event.target.value)}
+            />
+            <Field
+              label="Reenvio apos falha (minutos)"
+              type="number"
+              min={1}
+              max={1440}
+              value={form.smsRetryGraceMinutes}
+              onChange={(event) => updateForm('smsRetryGraceMinutes', event.target.value)}
+            />
+            <Textarea
+              className="whatsapp-template-field"
+              label="SMS — emissao de fatura"
+              rows={templateRows(form.smsInvoiceIssuedTemplate)}
+              value={form.smsInvoiceIssuedTemplate}
+              onChange={(event) => updateForm('smsInvoiceIssuedTemplate', event.target.value)}
+            />
+            <Textarea
+              className="whatsapp-template-field"
+              label="SMS — confirmacao de recibo"
+              rows={templateRows(form.smsReceiptConfirmedTemplate)}
+              value={form.smsReceiptConfirmedTemplate}
+              onChange={(event) => updateForm('smsReceiptConfirmedTemplate', event.target.value)}
+            />
+            <Textarea
+              className="whatsapp-template-field"
+              label="SMS — atraso de pagamento"
+              rows={templateRows(form.smsPaymentOverdueTemplate)}
+              value={form.smsPaymentOverdueTemplate}
+              onChange={(event) => updateForm('smsPaymentOverdueTemplate', event.target.value)}
+            />
+            <Textarea
+              className="whatsapp-template-field"
+              label="SMS — aviso de suspensao"
+              rows={templateRows(form.smsSuspensionNoticeTemplate)}
+              value={form.smsSuspensionNoticeTemplate}
+              onChange={(event) => updateForm('smsSuspensionNoticeTemplate', event.target.value)}
             />
           </>
         )}

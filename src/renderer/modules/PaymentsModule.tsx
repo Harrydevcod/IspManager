@@ -1,6 +1,6 @@
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Download, Eye, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Undo2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, Eye, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Smartphone, Undo2, X } from 'lucide-react';
 import { Badge, Button, DataList, DetailPanel, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
 import { formatCve } from '../lib/format';
 import { authFetch, useAuth } from '../lib/auth';
@@ -14,7 +14,7 @@ import {
   renderWhatsappMessage,
   sendWhatsappViaUltraMsg
 } from '../lib/whatsapp';
-import type { PaymentRow } from '../types';
+import type { PaymentRow, SmsEventType } from '../types';
 
 // ---------------------------------------------------------------------------
 // Payment-private types (local to this module)
@@ -315,6 +315,30 @@ export function PaymentsModule() {
       toast(successMessage, 'success');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Nao foi possivel enviar o documento por WhatsApp.';
+      setMessage(errorMessage);
+      toast(errorMessage, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function sendPaymentSms(payment: PaymentRow, eventType: SmsEventType) {
+    setSubmitting(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/payments/${payment.id}/sms`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ eventType })
+      });
+      const data = await response.json().catch(() => ({})) as { error?: string; status?: string };
+      if (!response.ok) {
+        throw new Error(data.error || 'Nao foi possivel enfileirar o SMS.');
+      }
+      const successMessage = `SMS criado e a aguardar aprovacao no Android para ${payment.clientName}.`;
+      setMessage(successMessage);
+      toast(successMessage, 'success');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Nao foi possivel enfileirar o SMS.';
       setMessage(errorMessage);
       toast(errorMessage, 'error');
     } finally {
@@ -1177,6 +1201,17 @@ export function PaymentsModule() {
                 onClick={() => void sendDocumentWhatsapp(p, p.status === 'paid' ? 'receipt' : 'invoice')}
               >
                 <Send size={16} aria-hidden />
+              </Button>
+            )}
+            {p.status !== 'cancelled' && normalizeWhatsappPhone(p.clientPhone) && (
+              <Button
+                variant="icon"
+                size="sm"
+                title={p.status === 'paid' ? 'Enviar recibo por SMS (Android)' : p.status === 'overdue' ? 'Enviar aviso de atraso por SMS (Android)' : 'Enviar fatura por SMS (Android)'}
+                disabled={submitting}
+                onClick={() => void sendPaymentSms(p, p.status === 'paid' ? 'receipt_confirmed' : p.status === 'overdue' ? 'payment_overdue' : 'invoice_issued')}
+              >
+                <Smartphone size={16} aria-hidden />
               </Button>
             )}
             {p.status !== 'cancelled' && (

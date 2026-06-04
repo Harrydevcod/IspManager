@@ -12,6 +12,49 @@ import {
   fallbackWhatsappTemplate,
   fallbackWhatsappTestTemplate
 } from '../../shared/whatsapp';
+import {
+  fallbackSmsInvoiceIssuedTemplate,
+  fallbackSmsPaymentOverdueTemplate,
+  fallbackSmsReceiptConfirmedTemplate,
+  fallbackSmsSuspensionNoticeTemplate
+} from '../../shared/sms';
+
+const strictOptionalBoolean = z.preprocess((value) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1') return true;
+    if (normalized === 'false' || normalized === '0') return false;
+  }
+  return value;
+}, z.boolean().optional().default(false));
+
+function isPrivateCompanionHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (host === 'localhost' || host === '::1' || host.endsWith('.local')) return true;
+  const parts = host.split('.');
+  if (parts.length !== 4) return false;
+  const octets = parts.map((part) => /^\d+$/.test(part) ? Number(part) : Number.NaN);
+  if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return false;
+  if (octets[0] === 127) return true;
+  if (octets[0] === 10) return true;
+  if (octets[0] === 192 && octets[1] === 168) return true;
+  return octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31;
+}
+
+const smsCompanionBaseUrlSchema = z.preprocess((value) => {
+  if (value == null) return '';
+  if (typeof value !== 'string') return value;
+  return value.trim().replace(/\/+$/, '');
+}, z.string().max(255).refine((value) => {
+  if (!value) return true;
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && isPrivateCompanionHost(url.hostname);
+  } catch {
+    return false;
+  }
+}, 'Endereco do Android SMS deve ser uma URL http(s) local ou LAN'));
 
 const settingsSchema = z.object({
   companyName: z.string().trim().min(1),
@@ -40,6 +83,14 @@ const settingsSchema = z.object({
   noticeCooldownDays: z.coerce.number().int().min(1).max(90).optional().default(7),
   ultraMsgInstanceId: z.string().trim().max(64).optional().nullable(),
   ultraMsgToken: z.string().trim().max(255).optional().nullable(),
+  smsCompanionEnabled: strictOptionalBoolean,
+  smsCompanionBaseUrl: smsCompanionBaseUrlSchema.optional().default(''),
+  smsDispatchIntervalSeconds: z.coerce.number().int().min(15).max(3600).optional().default(60),
+  smsRetryGraceMinutes: z.coerce.number().int().min(1).max(1440).optional().default(5),
+  smsInvoiceIssuedTemplate: z.string().trim().max(320).optional().nullable(),
+  smsReceiptConfirmedTemplate: z.string().trim().max(320).optional().nullable(),
+  smsPaymentOverdueTemplate: z.string().trim().max(320).optional().nullable(),
+  smsSuspensionNoticeTemplate: z.string().trim().max(320).optional().nullable(),
   backupDir: z.string().trim().max(500).optional().nullable()
 });
 
@@ -70,6 +121,14 @@ const defaultSettings = {
   noticeCooldownDays: 7,
   ultraMsgInstanceId: '',
   ultraMsgToken: '',
+  smsCompanionEnabled: false,
+  smsCompanionBaseUrl: '',
+  smsDispatchIntervalSeconds: 60,
+  smsRetryGraceMinutes: 5,
+  smsInvoiceIssuedTemplate: fallbackSmsInvoiceIssuedTemplate,
+  smsReceiptConfirmedTemplate: fallbackSmsReceiptConfirmedTemplate,
+  smsPaymentOverdueTemplate: fallbackSmsPaymentOverdueTemplate,
+  smsSuspensionNoticeTemplate: fallbackSmsSuspensionNoticeTemplate,
   backupDir: ''
 };
 
@@ -95,9 +154,15 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       } else if (row.key === 'noticeCooldownDays') {
         const n = Number(row.value);
         settings.noticeCooldownDays = Number.isFinite(n) ? n : defaultSettings.noticeCooldownDays;
+      } else if (row.key === 'smsDispatchIntervalSeconds') {
+        const n = Number(row.value);
+        settings.smsDispatchIntervalSeconds = Number.isFinite(n) ? n : defaultSettings.smsDispatchIntervalSeconds;
+      } else if (row.key === 'smsRetryGraceMinutes') {
+        const n = Number(row.value);
+        settings.smsRetryGraceMinutes = Number.isFinite(n) ? n : defaultSettings.smsRetryGraceMinutes;
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
-      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'autoNoticesEnabled') {
+      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled') {
         settings[row.key] = row.value === 'true' || row.value === '1';
       } else if (row.key in settings) {
         settings[row.key] = row.value as never;
