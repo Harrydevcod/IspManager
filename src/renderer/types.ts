@@ -67,6 +67,19 @@ export type PaymentRow = {
   canRegenerate: number;
 };
 
+export type SmsEventType = 'invoice_issued' | 'receipt_confirmed' | 'payment_overdue' | 'suspension_notice';
+
+export type SmsStatus = {
+  paired: boolean;
+  baseUrl: string;
+  deviceName: string;
+  counts: {
+    pendingDispatch: number;
+    pendingApproval: number;
+    failed: number;
+  };
+};
+
 export type PlanRow = {
   id: number;
   name: string;
