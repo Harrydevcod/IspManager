@@ -84,9 +84,10 @@ data class RequestUi(
 )
 ```
 
-> `clientName` is not currently sent to the phone (the desktop posts `requestId,toPhone,body,eventType`).
-> The card shows `clientName` when present and **falls back to `toPhone`** otherwise. Optionally the
-> desktop may include a `clientName` field in the `/requests` payload later; this UI must not require it.
+> The desktop dispatch now includes `clientName` in the `/requests` payload (resolved via a join on
+> the existing `sms_outbox.client_id` → `clients.full_name`; **no schema change**). The card shows
+> `clientName` when present and **falls back to `toPhone`** if absent (older/queued rows, or `test`
+> sends with no client).
 
 ## Screens & states
 
@@ -140,12 +141,19 @@ over HTTP (the `/requests/{id}` status endpoint keeps returning `pending_approva
 window). If the app is killed mid-window the request stays pending and is re-approved later
 (best-effort; acceptable).
 
-## Desktop addition (small, in-scope)
+## Desktop additions (small, in-scope)
 
-`src/renderer/modules/SettingsModule.tsx` SMS tab currently shows the `qrPayload` as text. Render
-it as a **QR code image** (the project already includes a QR package — reuse the same one used for
-fiscal QR) alongside the textual code (kept as the manual fallback). This enables pairing path A.
-No new backend route; the `qrPayload` already comes from `POST /api/sms/pairing`.
+1. **Render the pairing QR.** `src/renderer/modules/SettingsModule.tsx` SMS tab currently shows the
+   `qrPayload` as text. Render it as a **QR code image** using the `qrcode` package already in the
+   project (`qrcode@^1.5.4`, used for fiscal QR in `src/backend/routes/documents.ts`) — generate a
+   data URL with `QRCode.toDataURL(qrPayload)` and show it, keeping the textual code as the manual
+   fallback. This enables pairing path A. No new backend route; `qrPayload` already comes from
+   `POST /api/sms/pairing`.
+2. **Send `clientName` in the dispatch payload.** `src/backend/lib/sms-outbox.ts` `defaultPostRequest`
+   posts `{requestId,toPhone,body,eventType}`. Add the client's name so the phone can show it: the
+   dispatch query in `runSmsOutboxIfDue` joins `sms_outbox.client_id → clients.full_name` and passes
+   `clientName` (nullable) into the POST body. No schema change (`client_id` already exists). A
+   regression test asserts the posted body includes `clientName`.
 
 ## Design tokens (dark-first)
 
@@ -198,7 +206,8 @@ to dark surfaces.
 JVM unit tests (no device; run in existing CI `android.yml`):
 - `parsePairingPayload` — valid `ispm-sms://pair` extracts secret+device; rejects junk/missing secret.
 - `SmsRequestStore` reducer behaviors — `upsert`, `updateStatus`, undo path (sending → pending_approval).
-- State mapping — store rows → `CompanionUiState` (pending vs history partition, fallback name = phone, history cap).
+- State mapping — store rows → `CompanionUiState` (pending vs history partition, `clientName` carried through, fallback name = phone when null, history cap).
+- `CompanionServer` request parsing — a posted `/requests` body with `clientName` is stored on the `SmsRequest`; a body without it stores null.
 - Existing signature parity test retained.
 
 Instrumented/visual checks (manual, on-device — owed, needs a phone): pairing via QR and via
