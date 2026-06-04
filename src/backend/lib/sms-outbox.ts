@@ -1,0 +1,155 @@
+import { randomUUID } from 'node:crypto';
+import { getSqliteDatabase } from '../db/database';
+import type { SmsEventType } from '../../shared/sms';
+
+export type SmsOutboxStatus = 'pending_dispatch' | 'pending_approval' | 'approved' | 'sent' | 'failed' | 'rejected' | 'cancelled';
+export type SmsDispatchResult = { ok: true; androidRequestId: string } | { ok: false; error: string };
+export type SmsStatusResult = { status: SmsOutboxStatus; error?: string };
+
+export type SmsOutboxDeps = {
+  postRequest: (entry: { id: number; requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test' }) => Promise<SmsDispatchResult>;
+  fetchStatus: (androidRequestId: string) => Promise<SmsStatusResult>;
+};
+
+export type EnqueueSmsInput = {
+  clientId?: number | null;
+  paymentId?: number | null;
+  serviceId?: number | null;
+  eventType: SmsEventType | 'test';
+  toPhone: string;
+  body: string;
+};
+
+function getSetting(key: string): string {
+  const row = getSqliteDatabase().prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined;
+  return row?.value?.trim() || '';
+}
+
+function backoffMinutes(attempt: number) {
+  return [1, 5, 15, 60, 180][attempt - 1] ?? 360;
+}
+
+export function enqueueSmsNotification(input: EnqueueSmsInput): number {
+  const info = getSqliteDatabase().prepare(`
+    INSERT INTO sms_outbox (client_id, payment_id, service_id, event_type, to_phone, body)
+    VALUES (@clientId, @paymentId, @serviceId, @eventType, @toPhone, @body)
+  `).run({
+    clientId: input.clientId ?? null,
+    paymentId: input.paymentId ?? null,
+    serviceId: input.serviceId ?? null,
+    eventType: input.eventType,
+    toPhone: input.toPhone,
+    body: input.body
+  });
+  return info.lastInsertRowid as number;
+}
+
+async function defaultPostRequest(): Promise<SmsDispatchResult> {
+  return { ok: false, error: 'Transporte Android ainda nao configurado' };
+}
+
+async function defaultFetchStatus(): Promise<SmsStatusResult> {
+  return { status: 'pending_approval' };
+}
+
+const defaultDeps: SmsOutboxDeps = { postRequest: defaultPostRequest, fetchStatus: defaultFetchStatus };
+
+export async function runSmsOutboxIfDue(
+  now: Date = new Date(),
+  deps: SmsOutboxDeps = defaultDeps
+): Promise<{ dispatched: number; retried: number; skipped?: string }> {
+  if (getSetting('smsCompanionEnabled') !== 'true') {
+    return { dispatched: 0, retried: 0, skipped: 'SMS companion desativado' };
+  }
+
+  const db = getSqliteDatabase();
+  const nowIso = now.toISOString().replace('T', ' ').slice(0, 19);
+  const rows = db.prepare(`
+    SELECT id, event_type AS eventType, to_phone AS toPhone, body, attempts, max_attempts AS maxAttempts
+    FROM sms_outbox
+    WHERE status='pending_dispatch' AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+    ORDER BY id ASC LIMIT 20
+  `).all(nowIso) as Array<{
+    id: number;
+    eventType: SmsEventType | 'test';
+    toPhone: string;
+    body: string;
+    attempts: number;
+    maxAttempts: number;
+  }>;
+
+  let dispatched = 0;
+  let retried = 0;
+
+  for (const row of rows) {
+    const requestId = randomUUID();
+    const result = await deps.postRequest({ id: row.id, requestId, toPhone: row.toPhone, body: row.body, eventType: row.eventType });
+    if (result.ok) {
+      db.prepare(`
+        UPDATE sms_outbox
+        SET status='pending_approval', android_request_id=?, last_error=NULL, next_attempt_at=NULL, updated_at=datetime('now')
+        WHERE id=?
+      `).run(result.androidRequestId, row.id);
+      dispatched += 1;
+      continue;
+    }
+
+    const attemptsAfter = row.attempts + 1;
+    if (attemptsAfter >= row.maxAttempts) {
+      db.prepare(`
+        UPDATE sms_outbox SET status='failed', attempts=attempts+1, last_error=?, failed_at=datetime('now'), updated_at=datetime('now') WHERE id=?
+      `).run(result.error, row.id);
+    } else {
+      const next = new Date(now.getTime() + backoffMinutes(attemptsAfter) * 60_000).toISOString().replace('T', ' ').slice(0, 19);
+      db.prepare(`
+        UPDATE sms_outbox SET attempts=attempts+1, last_error=?, next_attempt_at=?, updated_at=datetime('now') WHERE id=?
+      `).run(result.error, next, row.id);
+    }
+    retried += 1;
+  }
+
+  return { dispatched, retried };
+}
+
+export async function pollSmsStatusIfDue(
+  _now: Date = new Date(),
+  deps: SmsOutboxDeps = defaultDeps
+): Promise<{ updated: number }> {
+  const db = getSqliteDatabase();
+  const rows = db.prepare(`
+    SELECT id, android_request_id AS androidRequestId
+    FROM sms_outbox
+    WHERE status IN ('pending_approval','approved') AND android_request_id IS NOT NULL
+  `).all() as Array<{ id: number; androidRequestId: string }>;
+
+  let updated = 0;
+  for (const row of rows) {
+    const result = await deps.fetchStatus(row.androidRequestId);
+    if (!['approved', 'sent', 'failed', 'rejected'].includes(result.status)) continue;
+
+    const column = result.status === 'sent'
+      ? 'sent_at'
+      : result.status === 'rejected'
+        ? 'rejected_at'
+        : result.status === 'approved'
+          ? 'approved_at'
+          : null;
+
+    if (column) {
+      db.prepare(`
+        UPDATE sms_outbox SET status=?, ${column}=datetime('now'), last_error=?, updated_at=datetime('now') WHERE id=?
+      `).run(result.status, result.error ?? null, row.id);
+    } else if (result.status === 'failed') {
+      db.prepare(`
+        UPDATE sms_outbox SET status='failed', failed_at=datetime('now'), last_error=?, updated_at=datetime('now') WHERE id=?
+      `).run(result.error ?? null, row.id);
+    } else {
+      db.prepare(`
+        UPDATE sms_outbox SET status=?, last_error=?, updated_at=datetime('now') WHERE id=?
+      `).run(result.status, result.error ?? null, row.id);
+    }
+    updated += 1;
+  }
+
+  return { updated };
+}

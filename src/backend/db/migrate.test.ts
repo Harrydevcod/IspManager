@@ -55,6 +55,8 @@ describe('runMigrations', () => {
     expect(tableExists(db, 'app_settings')).toBe(true);
     expect(tableExists(db, 'sms_outbox')).toBe(true);
     expect(tableExists(db, 'sms_companion_pairing')).toBe(true);
+    const smsOutboxColumns = (db.prepare('PRAGMA table_info(sms_outbox)').all() as Array<{ name: string }>).map((row) => row.name);
+    expect(smsOutboxColumns).toContain('failed_at');
   });
 
   test('is idempotent — running twice applies nothing the second time', () => {
