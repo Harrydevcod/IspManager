@@ -53,6 +53,8 @@ describe('runMigrations', () => {
     expect(tableExists(db, 'clients')).toBe(true);
     expect(tableExists(db, 'payments')).toBe(true);
     expect(tableExists(db, 'app_settings')).toBe(true);
+    expect(tableExists(db, 'sms_outbox')).toBe(true);
+    expect(tableExists(db, 'sms_companion_pairing')).toBe(true);
   });
 
   test('is idempotent — running twice applies nothing the second time', () => {
@@ -132,5 +134,21 @@ describe('runMigrations', () => {
       }>
     ).map((r) => r.version);
     expect(versions).toEqual([1, 2]);
+  });
+
+  test('sms companion pairing rejects active rows without key hash or base URL', () => {
+    const db = freshDb();
+
+    runMigrations(db);
+
+    expect(() => db.prepare(`
+      INSERT INTO sms_companion_pairing (id, device_name, paired_at)
+      VALUES (1, 'Android', datetime('now'))
+    `).run()).toThrow();
+
+    expect(() => db.prepare(`
+      INSERT INTO sms_companion_pairing (id, device_name, base_url, pairing_key_hash, paired_at)
+      VALUES (1, 'Android', 'http://192.168.1.50:8765', ?, datetime('now'))
+    `).run('a'.repeat(64))).not.toThrow();
   });
 });
