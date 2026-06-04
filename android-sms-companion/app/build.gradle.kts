@@ -35,6 +35,8 @@ dependencies {
   implementation("androidx.activity:activity-compose:1.9.3")
   implementation("androidx.compose.ui:ui:1.7.5")
   implementation("androidx.compose.material3:material3:1.3.1")
+  // Provides the XML theme referenced by AndroidManifest (Theme.Material3.DayNight.NoActionBar).
+  implementation("com.google.android.material:material:1.12.0")
   implementation("org.nanohttpd:nanohttpd:2.3.1")
   testImplementation("junit:junit:4.13.2")
 }
