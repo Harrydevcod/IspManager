@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getSqliteDatabase } from '../db/database';
+import { createSmsSignature } from './sms-signing';
 import type { SmsEventType } from '../../shared/sms';
 
 export type SmsOutboxStatus = 'pending_dispatch' | 'pending_approval' | 'approved' | 'sent' | 'failed' | 'rejected' | 'cancelled';
@@ -44,12 +45,60 @@ export function enqueueSmsNotification(input: EnqueueSmsInput): number {
   return info.lastInsertRowid as number;
 }
 
-async function defaultPostRequest(): Promise<SmsDispatchResult> {
-  return { ok: false, error: 'Transporte Android ainda nao configurado' };
+async function readJson(response: Response): Promise<Record<string, unknown>> {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return { error: text };
+  }
 }
 
-async function defaultFetchStatus(): Promise<SmsStatusResult> {
-  return { status: 'pending_approval' };
+async function signedFetch(path: string, method: 'GET' | 'POST', bodyObject?: unknown): Promise<Response> {
+  const baseUrl = getSetting('smsCompanionBaseUrl');
+  const secret = getSetting('smsCompanionPairingKey');
+  if (!baseUrl || !secret) throw new Error('Companion SMS nao pareado');
+  const body = bodyObject ? JSON.stringify(bodyObject) : '';
+  const timestamp = new Date().toISOString();
+  const nonce = randomUUID();
+  const signature = createSmsSignature({ secret, method, path, timestamp, nonce, body });
+  return fetch(`${baseUrl}${path}`, {
+    method,
+    headers: {
+      'content-type': 'application/json',
+      'x-ispm-timestamp': timestamp,
+      'x-ispm-nonce': nonce,
+      'x-ispm-signature': signature
+    },
+    body: method === 'POST' ? body : undefined
+  });
+}
+
+async function defaultPostRequest(entry: { requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test' }): Promise<SmsDispatchResult> {
+  try {
+    const response = await signedFetch('/requests', 'POST', entry);
+    const json = await readJson(response);
+    if (!response.ok) return { ok: false, error: String(json.error || `Android recusou SMS (${response.status})`) };
+    return { ok: true, androidRequestId: String(json.id || entry.requestId) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Android companion offline' };
+  }
+}
+
+async function defaultFetchStatus(androidRequestId: string): Promise<SmsStatusResult> {
+  try {
+    const response = await signedFetch(`/requests/${encodeURIComponent(androidRequestId)}`, 'GET');
+    const json = await readJson(response);
+    if (!response.ok) return { status: 'failed', error: String(json.error || `Android status falhou (${response.status})`) };
+    return {
+      status: String(json.status || 'pending_approval') as SmsOutboxStatus,
+      error: typeof json.error === 'string' ? json.error : undefined
+    };
+  } catch (err) {
+    return { status: 'pending_approval', error: err instanceof Error ? err.message : 'Android companion offline' };
+  }
 }
 
 const defaultDeps: SmsOutboxDeps = { postRequest: defaultPostRequest, fetchStatus: defaultFetchStatus };

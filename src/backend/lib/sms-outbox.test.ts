@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -23,6 +23,10 @@ beforeEach(() => {
   db.prepare('DELETE FROM app_settings').run();
   db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionEnabled','true')`).run();
   db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionBaseUrl','http://192.168.1.50:8765')`).run();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 afterAll(() => {
@@ -120,5 +124,41 @@ describe('SMS outbox', () => {
     expect(row.status).toBe('failed');
     expect(row.last_error).toBe('sem permissao SMS');
     expect(row.failed_at).toBeTruthy();
+  });
+
+  test('default transport posts signed request to Android companion', async () => {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return { ok: true, status: 200, text: async () => JSON.stringify({ id: 'android-1' }) };
+    }));
+
+    const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
+    await runSmsOutboxIfDue(new Date());
+
+    expect(calls[0].url).toBe('http://192.168.1.50:8765/requests');
+    expect((calls[0].init.headers as Record<string, string>)['x-ispm-signature']).toBeTruthy();
+    const row = db.prepare('SELECT status FROM sms_outbox WHERE id=?').get(id) as { status: string };
+    expect(row.status).toBe('pending_approval');
+  });
+
+  test('status poll calls the signed Android status endpoint', async () => {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return { ok: true, status: 200, text: async () => JSON.stringify({ status: 'sent' }) };
+    }));
+
+    const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
+    db.prepare(`UPDATE sms_outbox SET status='pending_approval', android_request_id='android-9' WHERE id=?`).run(id);
+    await pollSmsStatusIfDue(new Date());
+
+    expect(calls[0].url).toBe('http://192.168.1.50:8765/requests/android-9');
+    expect((calls[0].init.headers as Record<string, string>)['x-ispm-signature']).toBeTruthy();
+    const row = db.prepare('SELECT status, sent_at FROM sms_outbox WHERE id=?').get(id) as { status: string; sent_at: string | null };
+    expect(row.status).toBe('sent');
+    expect(row.sent_at).toBeTruthy();
   });
 });
