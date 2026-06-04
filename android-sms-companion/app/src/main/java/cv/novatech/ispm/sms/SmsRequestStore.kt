@@ -10,7 +10,8 @@ data class SmsRequest(
   val body: String,
   val eventType: String,
   val status: String,
-  val error: String?
+  val error: String?,
+  val clientName: String? = null
 )
 
 /**
@@ -31,7 +32,8 @@ class SmsRequestStore(context: Context) {
         obj.getString("body"),
         obj.getString("eventType"),
         obj.getString("status"),
-        obj.optString("error").ifBlank { null }
+        obj.optString("error").ifBlank { null },
+        if (obj.has("clientName") && !obj.isNull("clientName")) obj.optString("clientName").ifBlank { null } else null
       )
     }
   }
@@ -58,6 +60,7 @@ class SmsRequestStore(context: Context) {
           .put("eventType", it.eventType)
           .put("status", it.status)
           .put("error", it.error ?: "")
+          .put("clientName", it.clientName ?: "")
       )
     }
     prefs.edit().putString("rows", array.toString()).apply()
