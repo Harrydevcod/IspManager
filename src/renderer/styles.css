@@ -671,20 +671,14 @@ h2 {
   margin: 0;
 }
 
-.operations-brief-main h2 {
-  max-width: 12ch;
-  font-size: clamp(1.75rem, 1.25rem + 2vw, 3.6rem);
-  font-weight: 520;
-  line-height: 0.98;
-  letter-spacing: -0.032em;
-}
-
 .operations-brief-main p:last-child {
-  max-width: 56ch;
+  max-width: 48ch;
   margin: 0;
-  color: var(--text-2);
-  font-size: var(--fs-lg);
-  line-height: 1.5;
+  color: var(--text);
+  font-size: 1.45rem;
+  font-weight: 520;
+  line-height: 1.22;
+  letter-spacing: 0;
 }
 
 .operations-brief-rail {
@@ -3737,8 +3731,8 @@ label.field-toggle {
   .operations-brief {
     padding: var(--s5);
   }
-  .operations-brief-main h2 {
-    max-width: none;
+  .operations-brief-main p:last-child {
+    font-size: 1.25rem;
   }
   .operations-brief-rail {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3756,6 +3750,9 @@ label.field-toggle {
 }
 
 @media (max-width: 640px) {
+  .operations-brief-main p:last-child {
+    font-size: 1.1rem;
+  }
   .operations-brief-rail,
   .metric-grid {
     grid-template-columns: 1fr;
