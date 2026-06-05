@@ -17,6 +17,7 @@ const validSettings = {
   email: '',
   address: '',
   island: '',
+  bankAccounts: [],
   defaultDueDay: 1,
   currencyCode: 'CVE',
   invoicePrefix: 'FT',
@@ -121,5 +122,30 @@ describe('settings SMS validation', () => {
     expect(response.statusCode).toBe(200);
     const row = db.prepare(`SELECT value FROM app_settings WHERE key='smsCompanionBaseUrl'`).get() as { value: string };
     expect(row.value).toBe('http://192.168.1.50:8765');
+  });
+
+  test('persists company bank accounts as JSON and returns them from settings', async () => {
+    const bankAccounts = [
+      {
+        bankName: 'Banco Comercial do Atlantico',
+        accountName: 'ISPM Lda',
+        accountNumber: 'CV64 0000 0000 0000 0000 0000 0',
+        reference: 'Pagamentos mensais'
+      }
+    ];
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, bankAccounts }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const row = db.prepare(`SELECT value FROM app_settings WHERE key='bankAccounts'`).get() as { value: string };
+    expect(JSON.parse(row.value)).toEqual(bankAccounts);
+
+    const readResponse = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(readResponse.statusCode).toBe(200);
+    expect(readResponse.json().bankAccounts).toEqual(bankAccounts);
   });
 });
