@@ -56,6 +56,13 @@ const smsCompanionBaseUrlSchema = z.preprocess((value) => {
   }
 }, 'Endereco do Android SMS deve ser uma URL http(s) local ou LAN'));
 
+const bankAccountSchema = z.object({
+  bankName: z.string().trim().max(80).optional().default(''),
+  accountName: z.string().trim().max(120).optional().default(''),
+  accountNumber: z.string().trim().max(80).optional().default(''),
+  reference: z.string().trim().max(120).optional().default('')
+});
+
 const settingsSchema = z.object({
   companyName: z.string().trim().min(1),
   nif: z.string().trim().optional().nullable(),
@@ -63,6 +70,10 @@ const settingsSchema = z.object({
   email: z.string().trim().optional().nullable(),
   address: z.string().trim().optional().nullable(),
   island: z.string().trim().optional().nullable(),
+  bankAccounts: z.array(bankAccountSchema).max(8).optional().default([])
+    .transform((accounts) => accounts.filter((account) => (
+      account.bankName || account.accountName || account.accountNumber || account.reference
+    ))),
   defaultDueDay: z.coerce.number().int().min(1).max(31),
   currencyCode: z.string().trim().min(1).max(8),
   invoicePrefix: z.string().trim().min(1).max(8),
@@ -101,6 +112,7 @@ const defaultSettings = {
   email: '',
   address: '',
   island: '',
+  bankAccounts: [] as Array<{ bankName: string; accountName: string; accountNumber: string; reference: string }>,
   defaultDueDay: 1,
   currencyCode: 'CVE',
   invoicePrefix: 'FT',
@@ -164,6 +176,13 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
       } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled') {
         settings[row.key] = row.value === 'true' || row.value === '1';
+      } else if (row.key === 'bankAccounts') {
+        try {
+          const parsed = JSON.parse(row.value) as typeof defaultSettings.bankAccounts;
+          settings.bankAccounts = Array.isArray(parsed) ? parsed : defaultSettings.bankAccounts;
+        } catch {
+          settings.bankAccounts = defaultSettings.bankAccounts;
+        }
       } else if (row.key in settings) {
         settings[row.key] = row.value as never;
       }
@@ -228,7 +247,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
 
     const run = db.transaction(() => {
       for (const [key, value] of Object.entries(parsed.data)) {
-        save.run(key, String(value ?? ''));
+        save.run(key, key === 'bankAccounts' ? JSON.stringify(value ?? []) : String(value ?? ''));
       }
     });
 

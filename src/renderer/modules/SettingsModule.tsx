@@ -1,4 +1,4 @@
-import { Banknote, Building2, DatabaseBackup, MessageCircle, Smartphone } from 'lucide-react';
+import { Banknote, Building2, DatabaseBackup, MessageCircle, Plus, Smartphone, Trash2 } from 'lucide-react';
 import QRCode from 'qrcode';
 import type { FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -41,6 +41,7 @@ type SettingsFormState = {
   email: string;
   address: string;
   island: string;
+  bankAccounts: BankAccountForm[];
   defaultDueDay: string;
   currencyCode: string;
   invoicePrefix: string;
@@ -71,6 +72,20 @@ type SettingsFormState = {
   smsSuspensionNoticeTemplate: string;
 };
 
+type BankAccountForm = {
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  reference: string;
+};
+
+const emptyBankAccount: BankAccountForm = {
+  bankName: '',
+  accountName: '',
+  accountNumber: '',
+  reference: ''
+};
+
 export function SettingsModule() {
   const [message, setMessage] = useState<{ tone: 'neutral' | 'success' | 'error'; text: string; placement: 'top' | 'save' } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -86,6 +101,7 @@ export function SettingsModule() {
     email: '',
     address: '',
     island: '',
+    bankAccounts: [],
     defaultDueDay: '1',
     currencyCode: 'CVE',
     invoicePrefix: 'FT',
@@ -250,6 +266,7 @@ export function SettingsModule() {
       .then((settings) => {
         const loadedForm = {
           ...settings,
+          bankAccounts: Array.isArray(settings.bankAccounts) ? settings.bankAccounts : [],
           defaultDueDay: String(settings.defaultDueDay),
           ivaRate: String(settings.ivaRate),
           whatsappSuspensionNoticeDays: String(settings.whatsappSuspensionNoticeDays),
@@ -276,6 +293,31 @@ export function SettingsModule() {
 
   function updateForm(field: keyof SettingsFormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function addBankAccount() {
+    setForm((current) => ({
+      ...current,
+      bankAccounts: current.bankAccounts.length >= 8
+        ? current.bankAccounts
+        : [...current.bankAccounts, { ...emptyBankAccount }]
+    }));
+  }
+
+  function updateBankAccount(index: number, field: keyof BankAccountForm, value: string) {
+    setForm((current) => ({
+      ...current,
+      bankAccounts: current.bankAccounts.map((account, accountIndex) => (
+        accountIndex === index ? { ...account, [field]: value } : account
+      ))
+    }));
+  }
+
+  function removeBankAccount(index: number) {
+    setForm((current) => ({
+      ...current,
+      bankAccounts: current.bankAccounts.filter((_, accountIndex) => accountIndex !== index)
+    }));
   }
 
   function templateRows(value: string) {
@@ -311,17 +353,26 @@ export function SettingsModule() {
     setMessage({ tone: 'neutral', text: 'A gravar configuracoes...', placement: 'save' });
 
     try {
+      const normalizedBankAccounts = form.bankAccounts
+        .map((account) => ({
+          bankName: account.bankName.trim(),
+          accountName: account.accountName.trim(),
+          accountNumber: account.accountNumber.trim(),
+          reference: account.reference.trim()
+        }))
+        .filter((account) => account.bankName || account.accountName || account.accountNumber || account.reference);
+      const savedForm = { ...form, bankAccounts: normalizedBankAccounts };
       const response = await authFetch('http://127.0.0.1:3001/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...form,
-          defaultDueDay: Number(form.defaultDueDay),
-          ivaRate: Number(form.ivaRate),
-          whatsappSuspensionNoticeDays: Number(form.whatsappSuspensionNoticeDays),
-          noticeCooldownDays: Number(form.noticeCooldownDays),
-          smsDispatchIntervalSeconds: Number(form.smsDispatchIntervalSeconds),
-          smsRetryGraceMinutes: Number(form.smsRetryGraceMinutes)
+          ...savedForm,
+          defaultDueDay: Number(savedForm.defaultDueDay),
+          ivaRate: Number(savedForm.ivaRate),
+          whatsappSuspensionNoticeDays: Number(savedForm.whatsappSuspensionNoticeDays),
+          noticeCooldownDays: Number(savedForm.noticeCooldownDays),
+          smsDispatchIntervalSeconds: Number(savedForm.smsDispatchIntervalSeconds),
+          smsRetryGraceMinutes: Number(savedForm.smsRetryGraceMinutes)
         })
       });
 
@@ -331,7 +382,8 @@ export function SettingsModule() {
         return;
       }
 
-      setLastSavedForm(form);
+      setForm(savedForm);
+      setLastSavedForm(savedForm);
       setMessage({ tone: 'success', text: 'Configuracoes gravadas com sucesso.', placement: 'save' });
     } catch {
       setMessage({ tone: 'error', text: 'Falha de rede ao gravar configuracoes.', placement: 'save' });
@@ -439,6 +491,68 @@ export function SettingsModule() {
               value={form.address}
               onChange={(event) => updateForm('address', event.target.value)}
             />
+            <section className="settings-bank-accounts wide-field" aria-label="Contas bancarias da empresa">
+              <div className="settings-bank-accounts-head">
+                <div>
+                  <span className="field-label">Contas bancarias</span>
+                  <small>Dados usados como referencia de pagamento da empresa.</small>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leadingIcon={<Plus size={14} aria-hidden />}
+                  onClick={addBankAccount}
+                  disabled={form.bankAccounts.length >= 8}
+                >
+                  Adicionar conta
+                </Button>
+              </div>
+
+              {form.bankAccounts.length === 0 ? (
+                <p className="settings-bank-empty">Nenhuma conta bancaria registada.</p>
+              ) : (
+                <div className="settings-bank-list">
+                  {form.bankAccounts.map((account, index) => (
+                    <article className="settings-bank-item" key={index}>
+                      <Field
+                        label="Banco"
+                        value={account.bankName}
+                        onChange={(event) => updateBankAccount(index, 'bankName', event.target.value)}
+                        placeholder="BCA, Caixa, BCN..."
+                      />
+                      <Field
+                        label="Titular"
+                        value={account.accountName}
+                        onChange={(event) => updateBankAccount(index, 'accountName', event.target.value)}
+                        placeholder={form.companyName || 'Nome da empresa'}
+                      />
+                      <Field
+                        label="Numero / NIB / IBAN"
+                        value={account.accountNumber}
+                        onChange={(event) => updateBankAccount(index, 'accountNumber', event.target.value)}
+                        spellCheck={false}
+                      />
+                      <Field
+                        label="Referencia"
+                        value={account.reference}
+                        onChange={(event) => updateBankAccount(index, 'reference', event.target.value)}
+                        placeholder="Pagamentos, instalacoes..."
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="settings-bank-remove"
+                        leadingIcon={<Trash2 size={14} aria-hidden />}
+                        onClick={() => removeBankAccount(index)}
+                        aria-label={`Remover conta bancaria ${index + 1}`}
+                      >
+                        Remover
+                      </Button>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
           </>
         )}
 
