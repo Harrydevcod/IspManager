@@ -33,6 +33,11 @@ class CompanionStateHolder(
 
   fun approve(id: String) = undo.arm(id) { refresh() }
   fun undoApprove(id: String) = undo.cancel(id) { refresh() }
+
+  /** Arms every pending request so the whole queue sends after the undo window. */
+  fun approveAll() {
+    _state.value.pending.forEach { undo.arm(it.id) { refresh() } }
+  }
   fun reject(id: String) { requestStore.updateStatus(id, "rejected", "Rejeitado no Android"); refresh() }
 
   private suspend fun performSend(id: String) {

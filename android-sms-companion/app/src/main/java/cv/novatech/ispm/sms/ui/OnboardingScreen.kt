@@ -11,6 +11,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import cv.novatech.ispm.sms.PortraitCaptureActivity
 import cv.novatech.ispm.sms.state.PairingInfo
 import cv.novatech.ispm.sms.state.parsePairingPayload
 import cv.novatech.ispm.sms.ui.theme.AccentOrange
@@ -42,7 +43,13 @@ fun OnboardingScreen(onPaired: (PairingInfo) -> Unit, onInvalid: () -> Unit) {
     Spacer(Modifier.height(24.dp))
     Button(
       onClick = {
-        scanLauncher.launch(ScanOptions().setOrientationLocked(false).setBeepEnabled(false).setPrompt("Aponta ao QR do ISPM"))
+        scanLauncher.launch(
+          ScanOptions()
+            .setOrientationLocked(false)
+            .setBeepEnabled(false)
+            .setPrompt("Aponta ao QR do ISPM")
+            .setCaptureActivity(PortraitCaptureActivity::class.java)
+        )
       },
       modifier = Modifier.fillMaxWidth()
     ) { Text("Ler QR Code") }

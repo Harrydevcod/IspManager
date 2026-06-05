@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import { closeDatabaseForTests, getSqliteDatabase } from '../db/database';
-import { enqueueSmsNotification, pollSmsStatusIfDue, runSmsOutboxIfDue } from './sms-outbox';
+import { enqueueSmsNotification, pollSmsStatusIfDue, runSmsOutboxIfDue, verifyCompanionPairing } from './sms-outbox';
 
 let dataDir: string;
 let db: Database.Database;
@@ -173,5 +173,23 @@ describe('SMS outbox', () => {
     enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste', clientId });
     await runSmsOutboxIfDue(new Date());
     expect(body.clientName).toBe('Ana Lopes');
+  });
+
+  test('verifyCompanionPairing reports paired when the phone accepts the signature', async () => {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, text: async () => '{}' })));
+    expect(await verifyCompanionPairing()).toEqual({ reachable: true, paired: true });
+  });
+
+  test('verifyCompanionPairing reports not paired when the phone rejects the signature (401)', async () => {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 401, text: async () => '{}' })));
+    expect(await verifyCompanionPairing()).toEqual({ reachable: true, paired: false });
+  });
+
+  test('verifyCompanionPairing reports unreachable when the phone is offline', async () => {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+    expect(await verifyCompanionPairing()).toEqual({ reachable: false, paired: false });
   });
 });

@@ -5,11 +5,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cv.novatech.ispm.sms.state.CompanionUiState
 import cv.novatech.ispm.sms.ui.components.*
+import cv.novatech.ispm.sms.ui.theme.AccentBlue
 import cv.novatech.ispm.sms.ui.theme.TextMuted
 
 @Composable
@@ -17,6 +21,7 @@ fun MainScreen(
   state: CompanionUiState,
   onRequestPermission: () -> Unit,
   onApprove: (String) -> Unit,
+  onApproveAll: () -> Unit,
   onUndo: (String) -> Unit,
   onReject: (String) -> Unit
 ) {
@@ -29,7 +34,16 @@ fun MainScreen(
     if (!state.smsPermissionGranted) item { PermissionBanner(onRequestPermission) }
     item { StatusCard(state.deviceName, state.listenAddress, state.serverRunning, state.smsPermissionGranted) }
 
-    item { SectionLabel("Pendentes · ${state.pending.size}") }
+    item {
+      Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+        SectionLabel("Pendentes · ${state.pending.size}")
+        if (state.pending.size >= 2) {
+          TextButton(onClick = onApproveAll) {
+            Text("Aprovar todos", color = AccentBlue, fontWeight = FontWeight.SemiBold)
+          }
+        }
+      }
+    }
     if (state.pending.isEmpty()) {
       item { EmptyState(state.listenAddress) }
     } else {

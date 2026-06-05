@@ -56,7 +56,7 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
   }
 }
 
-async function signedFetch(path: string, method: 'GET' | 'POST', bodyObject?: unknown): Promise<Response> {
+async function signedFetch(path: string, method: 'GET' | 'POST', bodyObject?: unknown, timeoutMs?: number): Promise<Response> {
   const baseUrl = getSetting('smsCompanionBaseUrl');
   const secret = getSetting('smsCompanionPairingKey');
   if (!baseUrl || !secret) throw new Error('Companion SMS nao pareado');
@@ -72,8 +72,27 @@ async function signedFetch(path: string, method: 'GET' | 'POST', bodyObject?: un
       'x-ispm-nonce': nonce,
       'x-ispm-signature': signature
     },
-    body: method === 'POST' ? body : undefined
+    body: method === 'POST' ? body : undefined,
+    signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined
   });
+}
+
+/**
+ * Probes the paired phone to confirm it actually holds the current pairing
+ * secret. The phone's companion server verifies the HMAC signature before
+ * routing, so a `401` means the signature was rejected (phone has a different
+ * secret or none yet — i.e. it has not scanned this QR), while any other status
+ * (200/404) means the signature was accepted → the phone is paired. A network
+ * error/timeout means the phone is unreachable (wrong address or off-network).
+ */
+export async function verifyCompanionPairing(timeoutMs = 3500): Promise<{ reachable: boolean; paired: boolean }> {
+  try {
+    const response = await signedFetch('/ping', 'GET', undefined, timeoutMs);
+    if (response.status === 401) return { reachable: true, paired: false };
+    return { reachable: true, paired: true };
+  } catch {
+    return { reachable: false, paired: false };
+  }
 }
 
 async function defaultPostRequest(entry: { requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test'; clientName: string | null }): Promise<SmsDispatchResult> {

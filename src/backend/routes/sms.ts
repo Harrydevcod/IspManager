@@ -3,7 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { requireRole } from './auth';
-import { enqueueSmsNotification } from '../lib/sms-outbox';
+import { enqueueSmsNotification, verifyCompanionPairing } from '../lib/sms-outbox';
 import {
   fallbackSmsInvoiceIssuedTemplate,
   fallbackSmsPaymentOverdueTemplate,
@@ -70,6 +70,11 @@ export async function registerSmsRoutes(app: FastifyInstance) {
         failed: counts.failed ?? 0
       }
     };
+  });
+
+  app.get('/api/sms/pairing/verify', adminOnly, async () => {
+    const result = await verifyCompanionPairing();
+    return { ...result, deviceName: getSetting('smsCompanionDeviceName') };
   });
 
   app.post('/api/sms/pairing', adminOnly, async (request, reply) => {

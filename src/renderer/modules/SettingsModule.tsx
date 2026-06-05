@@ -1,7 +1,7 @@
 import { Banknote, Building2, DatabaseBackup, MessageCircle, Smartphone } from 'lucide-react';
 import QRCode from 'qrcode';
 import type { FormEvent } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button, Field, Message, Select, Textarea, Toggle } from '../components';
 import { authFetch } from '../lib/auth';
 import {
@@ -119,7 +119,55 @@ export function SettingsModule() {
   const [smsPairing, setSmsPairing] = useState<{ baseUrl: string; deviceName: string }>({ baseUrl: '', deviceName: '' });
   const [smsPairingBusy, setSmsPairingBusy] = useState(false);
   const [smsQrDataUrl, setSmsQrDataUrl] = useState<string>('');
+  const [smsVerifying, setSmsVerifying] = useState(false);
+  const pairingPollRef = useRef<{ cancelled: boolean } | null>(null);
   const hasUnsavedChanges = !lastSavedForm || JSON.stringify(form) !== JSON.stringify(lastSavedForm);
+
+  function stopPairingVerification() {
+    if (pairingPollRef.current) pairingPollRef.current.cancelled = true;
+    pairingPollRef.current = null;
+    setSmsVerifying(false);
+  }
+
+  // Polls the phone after a QR is shown: confirms it scanned the code (signature
+  // accepted) before declaring success, closes the QR, and surfaces a clear
+  // success/failure message. Keeps the QR open on failure so the user can retry.
+  async function startPairingVerification(deviceName: string) {
+    if (pairingPollRef.current) pairingPollRef.current.cancelled = true;
+    const token = { cancelled: false };
+    pairingPollRef.current = token;
+    setSmsVerifying(true);
+    const deadline = Date.now() + 60_000;
+    try {
+      while (!token.cancelled && Date.now() < deadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        if (token.cancelled) return;
+        try {
+          const response = await authFetch('http://127.0.0.1:3001/api/sms/pairing/verify');
+          const data = (await response.json().catch(() => ({}))) as { reachable?: boolean; paired?: boolean; deviceName?: string };
+          if (token.cancelled) return;
+          if (data.paired) {
+            setSmsQrDataUrl('');
+            setMessage({ tone: 'success', text: `Telemovel "${data.deviceName || deviceName}" pareado com sucesso.`, placement: 'top' });
+            await loadSmsStatus();
+            return;
+          }
+        } catch {
+          // Phone not reachable yet — keep polling until the deadline.
+        }
+      }
+      if (!token.cancelled) {
+        setMessage({
+          tone: 'error',
+          text: 'Nao foi possivel confirmar o pareamento. Confirma que o telemovel esta na mesma rede Wi-Fi, que o endereco esta correto e que leu o QR Code. Tenta novamente.',
+          placement: 'top'
+        });
+      }
+    } finally {
+      if (pairingPollRef.current === token) pairingPollRef.current = null;
+      setSmsVerifying(false);
+    }
+  }
 
   function loadSmsStatus() {
     return authFetch('http://127.0.0.1:3001/api/sms/status')
@@ -142,7 +190,7 @@ export function SettingsModule() {
         return;
       }
       setForm((current) => ({ ...current, smsCompanionEnabled: true, smsCompanionBaseUrl: smsPairing.baseUrl }));
-      setMessage({ tone: 'success', text: `Pareamento gerado. Codigo de emparelhamento: ${data.qrPayload}`, placement: 'top' });
+      setMessage({ tone: 'neutral', text: 'QR Code gerado. Le-o no telemovel — a aguardar confirmacao do pareamento...', placement: 'top' });
       if (data.qrPayload) {
         try {
           const url = await QRCode.toDataURL(data.qrPayload, { width: 220, margin: 1 });
@@ -152,6 +200,7 @@ export function SettingsModule() {
         }
       }
       await loadSmsStatus();
+      void startPairingVerification(smsPairing.deviceName);
     } catch {
       setMessage({ tone: 'error', text: 'Falha de rede ao parear o Android SMS.', placement: 'top' });
     } finally {
@@ -161,6 +210,7 @@ export function SettingsModule() {
 
   async function revokeSmsPairing() {
     setSmsPairingBusy(true);
+    stopPairingVerification();
     try {
       const response = await authFetch('http://127.0.0.1:3001/api/sms/pairing', { method: 'DELETE' });
       if (!response.ok) {
@@ -168,6 +218,7 @@ export function SettingsModule() {
         return;
       }
       setForm((current) => ({ ...current, smsCompanionEnabled: false }));
+      setSmsQrDataUrl('');
       setMessage({ tone: 'success', text: 'Pareamento Android revogado.', placement: 'top' });
       await loadSmsStatus();
     } catch {
@@ -207,6 +258,10 @@ export function SettingsModule() {
           placement: 'top'
         });
       });
+  }, []);
+
+  useEffect(() => () => {
+    if (pairingPollRef.current) pairingPollRef.current.cancelled = true;
   }, []);
 
   function updateForm(field: keyof SettingsFormState, value: string) {
@@ -561,7 +616,11 @@ export function SettingsModule() {
               onChange={(event) => setForm((current) => ({ ...current, smsCompanionEnabled: event.target.checked }))}
             />
             <div className="settings-test-whatsapp" aria-label="Pareamento do Android SMS">
-              <span>{smsStatus?.paired ? `Pareado${smsStatus.deviceName ? `: ${smsStatus.deviceName}` : ''}${smsStatus.baseUrl ? ` (${smsStatus.baseUrl})` : ''}` : 'Android nao pareado'}</span>
+              <span>{smsVerifying
+                ? 'A aguardar confirmacao do telemovel...'
+                : smsStatus?.paired
+                  ? `Pareado${smsStatus.deviceName ? `: ${smsStatus.deviceName}` : ''}${smsStatus.baseUrl ? ` (${smsStatus.baseUrl})` : ''}`
+                  : 'Android nao pareado'}</span>
               <Field
                 label="Endereco do Android na rede local"
                 value={smsPairing.baseUrl}
@@ -592,7 +651,9 @@ export function SettingsModule() {
               {smsQrDataUrl && (
                 <div className="sms-pairing-qr">
                   <img src={smsQrDataUrl} alt="QR Code de pareamento do Android SMS" width={220} height={220} />
-                  <span>Lê este QR no app ISPM SMS do telemóvel para parear.</span>
+                  <span>{smsVerifying
+                    ? 'Lê este QR no app ISPM SMS do telemóvel — a aguardar confirmação…'
+                    : 'Lê este QR no app ISPM SMS do telemóvel para parear.'}</span>
                 </div>
               )}
             </div>

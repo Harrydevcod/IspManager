@@ -16,6 +16,7 @@ fun CompanionApp(
   onInvalidPairing: () -> Unit,
   onRequestPermission: () -> Unit,
   onApprove: (String) -> Unit,
+  onApproveAll: () -> Unit,
   onUndo: (String) -> Unit,
   onReject: (String) -> Unit
 ) {
@@ -23,7 +24,7 @@ fun CompanionApp(
     if (!state.paired) {
       OnboardingScreen(onPaired = onPaired, onInvalid = onInvalidPairing)
     } else {
-      MainScreen(state, onRequestPermission, onApprove, onUndo, onReject)
+      MainScreen(state, onRequestPermission, onApprove, onApproveAll, onUndo, onReject)
     }
   }
 }
