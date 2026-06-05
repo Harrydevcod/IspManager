@@ -45,7 +45,7 @@ describe('renderSmsTemplate', () => {
       dueDate: '2026-06-10',
       referenceMonth: '2026-06',
       invoiceNumber: 'FT-2026-001'
-    }, 'ISPM')).toBe('Ola Ana Lopes, a sua fatura FT-2026-001 de 2026-06, no valor de 4500 CVE, foi emitida. Vencimento: 2026-06-10. ISPM');
+    }, 'ISPM')).toBe('Ola Ana Lopes, a sua fatura FT-2026-001 de 06/2026, no valor de 4500 CVE, foi emitida. Vencimento: 10/06/2026. ISPM');
   });
 
   test('renders overdue days', () => {

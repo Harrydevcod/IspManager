@@ -2,7 +2,7 @@ import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, Eye, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Smartphone, Undo2, X } from 'lucide-react';
 import { Badge, Button, DataList, DetailPanel, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
-import { formatCve } from '../lib/format';
+import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import { authFetch, useAuth } from '../lib/auth';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
@@ -416,7 +416,7 @@ export function PaymentsModule() {
         toast(result.error || 'Falha ao reverter mensalidades.', 'error');
         return;
       }
-      toast(`Revertidas ${result.reversed || 0} cobranca(s) de ${reversePreview.referenceMonth}.`, 'success');
+      toast(`Revertidas ${result.reversed || 0} cobranca(s) de ${formatPtMonth(reversePreview.referenceMonth)}.`, 'success');
       setReversePreview(null);
       await loadPayments();
     } catch {
@@ -448,7 +448,7 @@ export function PaymentsModule() {
         toast(result.error || 'Falha ao reverter pagamento.', 'error');
         return;
       }
-      toast(`Cobranca de ${individualRevert.clientName} (${individualRevert.referenceMonth}) revertida.`, 'success');
+      toast(`Cobranca de ${individualRevert.clientName} (${formatPtMonth(individualRevert.referenceMonth)}) revertida.`, 'success');
       setIndividualRevert(null);
       if (selectedPayment?.id === individualRevert.id) {
         setSelectedPayment(null);
@@ -571,7 +571,7 @@ export function PaymentsModule() {
       const fresh = refreshedPayments.find((item) => item.id === result.id) || null;
       setSelectedPayment(fresh);
       closeActionForm();
-      toast(`Mensalidade de ${payment.clientName} (${payment.referenceMonth}) regenerada.`, 'success');
+      toast(`Mensalidade de ${payment.clientName} (${formatPtMonth(payment.referenceMonth)}) regenerada.`, 'success');
     } catch {
       toast('Falha de rede ao regenerar mensalidade.', 'error');
     } finally {
@@ -792,7 +792,7 @@ export function PaymentsModule() {
         }}>
           Limpar filtros
         </Button>
-        <small>{visiblePayments.length} cobrancas{showAllMonths ? ' (todos os meses)' : ` em ${referenceMonth}`}</small>
+        <small>{visiblePayments.length} cobrancas{showAllMonths ? ' (todos os meses)' : ` em ${formatPtMonth(referenceMonth)}`}</small>
       </FilterBar>
 
       <div className="payments-totals" aria-label="Totais filtrados">
@@ -819,7 +819,7 @@ export function PaymentsModule() {
           <div className="module-header">
             <div>
               <p className="eyebrow">Pre-visualizacao da geracao</p>
-              <h2>Mensalidades de {monthlyPreview.referenceMonth}</h2>
+              <h2>Mensalidades de {formatPtMonth(monthlyPreview.referenceMonth)}</h2>
             </div>
             <div className="inline-actions">
               <Button
@@ -865,7 +865,7 @@ export function PaymentsModule() {
                 <div className="monthly-preview-row" role="row" key={row.serviceId}>
                   <span role="cell">{row.clientName}</span>
                   <span role="cell" className="monthly-preview-muted">{row.planName || '-'}</span>
-                  <span role="cell" className="monthly-preview-muted">{row.dueDate}</span>
+                  <span role="cell" className="monthly-preview-muted">{formatPtDate(row.dueDate)}</span>
                   <span role="cell" className="monthly-preview-amount">{formatCve(row.amountCve)}</span>
                 </div>
               ))}
@@ -1107,7 +1107,7 @@ export function PaymentsModule() {
                   <span>{docLabel}</span>
                   <strong>{formatCve(selectedPayment.amountCve)}</strong>
                   <small>
-                    Mes {selectedPayment.referenceMonth} - vencimento {selectedPayment.dueDate} - {selectedPayment.status}
+                    Mes {formatPtMonth(selectedPayment.referenceMonth)} - vencimento {formatPtDate(selectedPayment.dueDate)} - {selectedPayment.status}
                   </small>
                 </div>
                 {selectedPayment.status !== 'cancelled' ? (
@@ -1125,12 +1125,12 @@ export function PaymentsModule() {
             );
           })()}
           <dl>
-            <div><dt>Mes</dt><dd>{selectedPayment.referenceMonth}</dd></div>
+            <div><dt>Mes</dt><dd>{formatPtMonth(selectedPayment.referenceMonth)}</dd></div>
             <div><dt>Valor</dt><dd>{formatCve(selectedPayment.amountCve)}</dd></div>
             <div><dt>Fatura</dt><dd>{selectedPayment.invoiceNumber || '-'}</dd></div>
             <div><dt>Recibo</dt><dd>{selectedPayment.receiptNumber || '-'}</dd></div>
             <div><dt>Metodo</dt><dd>{selectedPayment.paymentMethod || '-'}</dd></div>
-            <div><dt>Data pagamento</dt><dd>{selectedPayment.paymentDate?.slice(0, 10) || '-'}</dd></div>
+            <div><dt>Data pagamento</dt><dd>{formatPtDate(selectedPayment.paymentDate)}</dd></div>
             <div><dt>Estado</dt><dd>{selectedPayment.status}</dd></div>
           </dl>
         </DetailPanel>
@@ -1146,7 +1146,7 @@ export function PaymentsModule() {
               <span>
                 <small className="entity-code">{p.clientCode || '—'}</small>
                 <strong>{p.clientName}</strong>
-                <small>{p.referenceMonth} · FT {p.invoiceNumber || '-'}</small>
+                <small>{formatPtMonth(p.referenceMonth)} · FT {p.invoiceNumber || '-'}</small>
               </span>
             )
           },
@@ -1341,7 +1341,7 @@ export function PaymentsModule() {
         open={!!reversePreview}
         onClose={closeReversePreview}
         eyebrow="Reverter geracao"
-        title={reversePreview ? `Mensalidades de ${reversePreview.referenceMonth}` : 'Reverter mensalidades'}
+        title={reversePreview ? `Mensalidades de ${formatPtMonth(reversePreview.referenceMonth)}` : 'Reverter mensalidades'}
         size="md"
         closeOnBackdrop={!reverseSubmitting}
         actions={
@@ -1363,7 +1363,7 @@ export function PaymentsModule() {
         {reversePreview && (
           <div className="overdue-notify">
             <p className="overdue-notify-summary">
-              <strong>{reversePreview.total}</strong> cobranca(s) em {reversePreview.referenceMonth}.{' '}
+              <strong>{reversePreview.total}</strong> cobranca(s) em {formatPtMonth(reversePreview.referenceMonth)}.{' '}
               <strong>{reversePreview.eligibleCount}</strong> serao apagadas ({formatCve(reversePreview.totalCve)}).{' '}
               {reversePreview.paidLockedCount > 0 && (
                 <span className="overdue-notify-skip">
@@ -1384,7 +1384,7 @@ export function PaymentsModule() {
                     <div className="overdue-notify-meta">
                       <small className="entity-code">{row.clientCode || '—'}</small>
                       <strong>{row.clientName}</strong>
-                      <small>FT {row.invoiceNumber || '-'} · venc. {row.dueDate}</small>
+                      <small>FT {row.invoiceNumber || '-'} · venc. {formatPtDate(row.dueDate)}</small>
                     </div>
                     <Badge tone={row.status === 'overdue' ? 'danger' : 'info'}>{row.status}</Badge>
                     <span className="overdue-notify-amount">{formatCve(row.amountCve)}</span>
@@ -1393,7 +1393,7 @@ export function PaymentsModule() {
               </ul>
             ) : (
               <Message>
-                Sem cobrancas pendentes ou em atraso para reverter em {reversePreview.referenceMonth}.
+                Sem cobrancas pendentes ou em atraso para reverter em {formatPtMonth(reversePreview.referenceMonth)}.
               </Message>
             )}
 
@@ -1417,7 +1417,7 @@ export function PaymentsModule() {
         open={!!individualRevert}
         onClose={closeIndividualRevert}
         eyebrow="Reverter cobranca"
-        title={individualRevert ? `${individualRevert.clientName} - ${individualRevert.referenceMonth}` : 'Reverter cobranca'}
+        title={individualRevert ? `${individualRevert.clientName} - ${formatPtMonth(individualRevert.referenceMonth)}` : 'Reverter cobranca'}
         size="sm"
         closeOnBackdrop={!individualRevertSubmitting}
         actions={

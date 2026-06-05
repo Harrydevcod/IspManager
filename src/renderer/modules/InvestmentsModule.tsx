@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Combobox, DataList, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useConfirm, useToast } from '../components';
 import { authFetch } from '../lib/auth';
-import { formatCve } from '../lib/format';
+import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './InvestmentsModule.css';
 import type { Client, Investment, InvestmentItemType, InvestmentList, InvestmentStatus, InvestmentTimeline, InvestmentType } from '../types';
 
@@ -518,7 +518,7 @@ export function InvestmentsModule() {
         <Button variant="secondary" onClick={() => { setType('all'); setMonth(currentMonth()); setShowAllMonths(false); }}>
           Limpar filtros
         </Button>
-        <small>{showAllMonths ? 'Todos os meses' : month}</small>
+        <small>{showAllMonths ? 'Todos os meses' : formatPtMonth(month)}</small>
       </FilterBar>
 
       <div className="investments-layout">
@@ -533,7 +533,7 @@ export function InvestmentsModule() {
                 <span>
                   <strong>{investment.name}</strong>
                   <small>
-                    {investment.investmentDate}
+                    {formatPtDate(investment.investmentDate)}
                     {investment.zone ? ` - ${investment.zone}` : ''}
                     {investment.clientName ? ` - ${investment.clientName}` : ''}
                   </small>
@@ -660,7 +660,7 @@ export function InvestmentsModule() {
                       <strong>Evolução do lucro acumulado</strong>
                       <small>
                         {timeline.recoveredAt
-                          ? `Recuperado em ${timeline.recoveredAt} (${timeline.monthsToRecovery} meses)`
+                          ? `Recuperado em ${formatPtMonth(timeline.recoveredAt)} (${timeline.monthsToRecovery} meses)`
                           : 'Ainda não recuperado'}
                       </small>
                     </div>

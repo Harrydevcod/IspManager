@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { Badge, Button, Combobox, DetailPanel, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
-import { formatCve } from '../lib/format';
+import { formatCve, formatPtDate, formatPtDateTime } from '../lib/format';
 import { statusLabel, statusTone } from '../lib/status';
 import type { Client, DeviceAssignment, PlanRow, ServiceEvent, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
 
@@ -43,17 +43,6 @@ function emptyDeviceForm(): DeviceFormState {
 
 function emptyEventForm(): EventFormState {
   return { eventType: 'visita', notes: '' };
-}
-
-function formatDateTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-function formatDateOnly(iso: string | null): string {
-  if (!iso) return '-';
-  return iso.slice(0, 10);
 }
 
 type ServiceFormState = {
@@ -375,7 +364,7 @@ export function ServicesModule() {
             <div><dt>Plano</dt><dd>{selectedService.planName || '-'}</dd></div>
             <div><dt>Mensalidade</dt><dd>{formatCve(selectedService.monthlyValueCve)}</dd></div>
             <div><dt>Vencimento</dt><dd>Dia {selectedService.dueDay}</dd></div>
-            <div><dt>Ativado em</dt><dd>{formatDateOnly(selectedService.activationDate)}</dd></div>
+            <div><dt>Ativado em</dt><dd>{formatPtDate(selectedService.activationDate)}</dd></div>
             <div><dt>Estado</dt><dd><Badge tone={statusTone(selectedService.status)}>{statusLabel(selectedService.status)}</Badge></dd></div>
           </dl>
 
@@ -422,8 +411,8 @@ export function ServicesModule() {
                         {assignment.macAddress && <div><dt>MAC</dt><dd>{assignment.macAddress}</dd></div>}
                         {assignment.ipAddress && <div><dt>IP</dt><dd>{assignment.ipAddress}</dd></div>}
                         {assignment.assetTag && <div><dt>Tag</dt><dd>{assignment.assetTag}</dd></div>}
-                        <div><dt>Inicio</dt><dd>{formatDateOnly(assignment.startDate)}</dd></div>
-                        {assignment.endDate && <div><dt>Fim</dt><dd>{formatDateOnly(assignment.endDate)}</dd></div>}
+                        <div><dt>Inicio</dt><dd>{formatPtDate(assignment.startDate)}</dd></div>
+                        {assignment.endDate && <div><dt>Fim</dt><dd>{formatPtDate(assignment.endDate)}</dd></div>}
                       </dl>
                       {assignment.notes && <p className="technical-item-notes">{assignment.notes}</p>}
                     </li>
@@ -459,7 +448,7 @@ export function ServicesModule() {
                   <li key={event.id} className="technical-event">
                     <div className="technical-event-head">
                       <Badge tone={eventTypeTone[event.eventType]}>{eventTypeLabel[event.eventType]}</Badge>
-                      <small>{formatDateTime(event.createdAt)}</small>
+                      <small>{formatPtDateTime(event.createdAt)}</small>
                     </div>
                     {event.notes && <p className="technical-event-notes">{event.notes}</p>}
                     {event.technicianName && (

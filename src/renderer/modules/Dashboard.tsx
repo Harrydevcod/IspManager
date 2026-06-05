@@ -3,22 +3,16 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Badge, Button, Card, Message, MetricCard, MetricGrid } from '../components';
 import { authFetch } from '../lib/auth';
+import { formatPtDate } from '../lib/format';
 import type { DashboardSummary, RevenuePoint } from '../types';
 
 const monthLabelFormatter = new Intl.DateTimeFormat('pt-PT', { month: 'short' });
 const currencyFormatter = new Intl.NumberFormat('pt-PT', { maximumFractionDigits: 0 });
-const dayMonthFormatter = new Intl.DateTimeFormat('pt-PT', { day: '2-digit', month: 'short' });
 
 function formatMonthLabel(referenceMonth: string): string {
   const [year, month] = referenceMonth.split('-');
   const date = new Date(Number(year), Number(month) - 1, 1);
   return monthLabelFormatter.format(date).replace('.', '');
-}
-
-function formatDayMonth(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return dayMonthFormatter.format(date).replace('.', '');
 }
 
 function formatCve(value: number): string {
@@ -456,7 +450,6 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
       >
         <div className="operations-brief-main">
           <p className="eyebrow">Comando operacional</p>
-          <h2>{briefNeedsAttention ? 'Foco nos bloqueios' : 'Operacao sob controlo'}</h2>
           <p>
             {summary
               ? briefNeedsAttention
@@ -546,7 +539,7 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
                   <div className="dashboard-list-meta">
                     <small className="entity-code">{due.clientCode}</small>
                     <strong>{due.clientName}</strong>
-                    <small>{formatDayMonth(due.dueDate)}</small>
+                    <small>{formatPtDate(due.dueDate)}</small>
                   </div>
                   <span className="dashboard-list-amount">{formatCve(due.amountCve)} CVE</span>
                 </li>

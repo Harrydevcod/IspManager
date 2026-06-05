@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import { getSqliteDatabase } from '../db/database';
 import { loadCompanyOpexContext } from './opex';
+import { formatPtDate, formatPtMonth } from '../../shared/date';
 
 const PDFDocument = require('pdfkit');
 
@@ -139,7 +140,7 @@ function formatCve(value: number, currency = 'CVE'): string {
 export async function buildProfitabilityPdf(): Promise<Buffer> {
   const company = loadCompany();
   const data = loadReportData();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = formatPtDate(new Date().toISOString().slice(0, 10));
 
   return new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 40, autoFirstPage: true, bufferPages: true });
@@ -278,7 +279,10 @@ export async function buildProfitabilityXlsx(): Promise<Buffer> {
     { header: 'Recuperado', key: 'isRecovered', width: 12 }
   ];
   inv.getRow(1).font = { bold: true };
-  data.investments.forEach((row) => inv.addRow(row));
+  data.investments.forEach((row) => inv.addRow({
+    ...row,
+    investmentDate: formatPtDate(row.investmentDate)
+  }));
 
   const exp = wb.addWorksheet('Despesas');
   exp.columns = [
@@ -294,7 +298,11 @@ export async function buildProfitabilityXlsx(): Promise<Buffer> {
     { header: 'Cliente', key: 'clientName', width: 22 }
   ];
   exp.getRow(1).font = { bold: true };
-  data.expenses.forEach((row) => exp.addRow(row));
+  data.expenses.forEach((row) => exp.addRow({
+    ...row,
+    expenseDate: formatPtDate(row.expenseDate),
+    referenceMonth: formatPtMonth(row.referenceMonth)
+  }));
 
   const buffer = await wb.xlsx.writeBuffer();
   return Buffer.from(buffer);
