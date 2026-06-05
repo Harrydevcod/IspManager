@@ -407,13 +407,19 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
   const revenueTrendPct = previousMonthRevenue > 0
     ? ((currentMonthRevenue - previousMonthRevenue) / previousMonthRevenue) * 100
     : null;
+  const attentionCount = summary
+    ? summary.overduePayments + summary.lowStockModels + summary.openWorkOrders
+    : 0;
+  const criticalOverdueCve = summary?.criticalOverdue.reduce((acc, overdue) => acc + overdue.amountCve, 0) || 0;
+  const briefNeedsAttention = attentionCount > 0;
 
   const metrics = [
     {
       label: 'Clientes ativos',
       value: summary ? String(summary.activeClients) : '...',
       trend: summary ? `${summary.totalClients} no total` : 'a carregar',
-      icon: UsersRound
+      icon: UsersRound,
+      tone: 'success' as const
     },
     {
       label: 'Receita do mes',
@@ -421,25 +427,101 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
       trend: revenueTrendPct === null
         ? 'sem comparacao'
         : `${revenueTrendPct >= 0 ? '+' : ''}${revenueTrendPct.toFixed(1)}% vs mes anterior`,
-      icon: TrendingUp
+      icon: TrendingUp,
+      tone: 'revenue' as const
     },
     {
       label: 'Em atraso',
       value: summary ? String(summary.overduePayments) : '...',
       trend: summary && summary.pendingPayments > 0 ? `${summary.pendingPayments} pendentes` : 'sem pendentes',
-      icon: AlertTriangle
+      icon: AlertTriangle,
+      tone: summary && summary.overduePayments > 0 ? 'danger' as const : 'neutral' as const
     },
     {
       label: 'Servicos ativos',
       value: summary ? String(summary.activeServices) : '...',
       trend: 'a faturar',
-      icon: Activity
+      icon: Activity,
+      tone: 'info' as const
     }
   ];
 
   return (
     <>
       {error && <Message tone="error">{error}</Message>}
+
+      <section
+        className={`operations-brief${briefNeedsAttention ? ' operations-brief-attention' : ''}`}
+        aria-label="Estado operacional"
+      >
+        <div className="operations-brief-main">
+          <p className="eyebrow">Comando operacional</p>
+          <h2>{briefNeedsAttention ? 'Foco nos bloqueios' : 'Operacao sob controlo'}</h2>
+          <p>
+            {summary
+              ? briefNeedsAttention
+                ? `${attentionCount} sinais pedem acao: cobrancas em atraso, stock baixo ou ordens abertas.`
+                : 'Sem alertas criticos neste momento. A equipa pode concentrar-se em crescimento e atendimento.'
+              : 'A carregar o estado da operacao.'}
+          </p>
+        </div>
+        <dl className="operations-brief-rail">
+          <div>
+            <dt>Receita mes</dt>
+            <dd>{summary ? formatCompactCve(summary.paidMonthCve) : '...'}</dd>
+          </div>
+          <div>
+            <dt>Vencimentos</dt>
+            <dd>{summary ? summary.upcomingDues.length : '...'}</dd>
+          </div>
+          <div>
+            <dt>Atraso critico</dt>
+            <dd>{summary ? formatCompactCve(criticalOverdueCve) : '...'}</dd>
+          </div>
+          <div>
+            <dt>Stock baixo</dt>
+            <dd>{summary ? summary.lowStockModels : '...'}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="dashboard-topline" aria-label="Resumo visual da operacao">
+        <Card
+          eyebrow="Receita mensal"
+          title={String(new Date().getFullYear())}
+          className="dashboard-card-chart"
+        >
+          {summary
+            ? <RevenueBars points={summary.revenueByMonth} />
+            : <p className="module-message">A carregar...</p>}
+        </Card>
+
+        <Card eyebrow="Distribuicao" title="Planos ativos" className="dashboard-card-distribution">
+          {summary && summary.planMix.length > 0 ? (
+            <ul className="plan-mix">
+              {summary.planMix.map((entry) => {
+                const pct = totalPlanCount > 0 ? (entry.count / totalPlanCount) * 100 : 0;
+                return (
+                  <li key={entry.connectionType}>
+                    <div className="plan-mix-row">
+                      <span>{planTypeLabel[entry.connectionType] || entry.connectionType}</span>
+                      <strong>{entry.count}</strong>
+                    </div>
+                    <div className="plan-mix-bar"><span style={{ width: `${pct}%` }} /></div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="module-message">Sem servicos ativos com plano atribuido.</p>
+          )}
+        </Card>
+      </section>
+
+      <div className="dashboard-section-label">
+        <p className="eyebrow">Dados do mes</p>
+        <span>Metricas filtradas pelo periodo atual</span>
+      </div>
 
       <MetricGrid label="Indicadores">
         {metrics.map((metric) => (
@@ -449,26 +531,12 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
             label={metric.label}
             value={metric.value}
             trend={metric.trend}
+            tone={metric.tone}
           />
         ))}
       </MetricGrid>
 
       <section className="dashboard-grid">
-        <Card
-          eyebrow="Receita anual"
-          title={String(new Date().getFullYear())}
-          className="dashboard-card-wide"
-        >
-          {summary
-            ? <RevenueBars points={summary.revenueByMonth} />
-            : <p className="module-message">A carregar...</p>}
-          <div className="sparkline-legend">
-            <span className="legend-item legend-paid">Receita paga</span>
-            <span className="legend-item legend-pending">Pendente</span>
-            <span className="legend-item legend-expense">Investimentos</span>
-          </div>
-        </Card>
-
         <Card eyebrow="Proximos 7 dias" title="Vencimentos" className="dashboard-card-list">
           {summary && summary.upcomingDues.length > 0 ? (
             <ul className="dashboard-list">
@@ -507,27 +575,6 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
             </ul>
           ) : (
             <p className="module-message">Sem atrasos com mais de 30 dias.</p>
-          )}
-        </Card>
-
-        <Card eyebrow="Mix" title="Planos ativos" className="dashboard-card-compact">
-          {summary && summary.planMix.length > 0 ? (
-            <ul className="plan-mix">
-              {summary.planMix.map((entry) => {
-                const pct = totalPlanCount > 0 ? (entry.count / totalPlanCount) * 100 : 0;
-                return (
-                  <li key={entry.connectionType}>
-                    <div className="plan-mix-row">
-                      <span>{planTypeLabel[entry.connectionType] || entry.connectionType}</span>
-                      <strong>{entry.count}</strong>
-                    </div>
-                    <div className="plan-mix-bar"><span style={{ width: `${pct}%` }} /></div>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="module-message">Sem servicos ativos com plano atribuido.</p>
           )}
         </Card>
 

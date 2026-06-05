@@ -80,3 +80,6 @@ app-builds/
 
 # Claude Code settings locais (por maquina)
 .claude/settings.local.json
+
+# Visual companion (brainstorming) scratch
+.superpowers/

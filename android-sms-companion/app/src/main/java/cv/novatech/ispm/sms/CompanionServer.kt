@@ -14,7 +14,8 @@ import kotlin.math.abs
 class CompanionServer(
   private val pairingStore: PairingStore,
   private val requestStore: SmsRequestStore,
-  port: Int = 8765
+  port: Int = 8765,
+  private val onRequestsChanged: () -> Unit = {}
 ) : NanoHTTPD(port) {
 
   override fun serve(session: IHTTPSession): Response {
@@ -34,14 +35,16 @@ class CompanionServer(
       val id = json.getString("requestId")
       requestStore.upsert(
         SmsRequest(
-          id,
-          json.getString("toPhone"),
-          json.getString("body"),
-          json.optString("eventType", "test"),
-          "pending_approval",
-          null
+          id = id,
+          toPhone = json.getString("toPhone"),
+          body = json.getString("body"),
+          eventType = json.optString("eventType", "test"),
+          status = "pending_approval",
+          error = null,
+          clientName = if (json.has("clientName") && !json.isNull("clientName")) json.optString("clientName").ifBlank { null } else null
         )
       )
+      onRequestsChanged()
       return json(Response.Status.OK, """{"id":"$id","status":"pending_approval"}""")
     }
 
