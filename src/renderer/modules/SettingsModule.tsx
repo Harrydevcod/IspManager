@@ -172,7 +172,17 @@ export function SettingsModule() {
   function loadSmsStatus() {
     return authFetch('http://127.0.0.1:3001/api/sms/status')
       .then((response) => (response.ok ? (response.json() as Promise<SmsStatus>) : null))
-      .then(setSmsStatus)
+      .then((data) => {
+        setSmsStatus(data);
+        // Hydrate the pairing form from the persisted settings so the IP and
+        // device name survive reloads. Keep anything the operator is mid-typing.
+        if (data) {
+          setSmsPairing((current) => ({
+            baseUrl: current.baseUrl || data.baseUrl || '',
+            deviceName: current.deviceName || data.deviceName || ''
+          }));
+        }
+      })
       .catch(() => setSmsStatus(null));
   }
 
