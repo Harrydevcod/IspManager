@@ -2,7 +2,7 @@ import { Activity, AlertTriangle, Banknote, Cable, CheckCircle2, CopyX, MessageC
 import { useEffect, useState } from 'react';
 import { Button, EmptyState, Field, FilterBar, Message, MetricCard } from '../components';
 import { authFetch } from '../lib/auth';
-import { formatCve } from '../lib/format';
+import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
 import type { DataQualityIncompleteFlag, DataQualitySummary, ReportsSummary, ReportView } from '../types';
 
@@ -121,12 +121,12 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
     if (view === 'revenue') {
       rows = [
         ['Mes', 'Pago CVE', 'Pendente CVE', 'Cobrancas'],
-        ...summary!.revenueByMonth.map((row) => [row.referenceMonth, row.paidCve, row.pendingCve, row.payments])
+        ...summary!.revenueByMonth.map((row) => [formatPtMonth(row.referenceMonth), row.paidCve, row.pendingCve, row.payments])
       ];
     } else if (view === 'overdue') {
       rows = [
         ['Cliente', 'Codigo', 'Telefone', 'Cobrancas', 'Valor CVE', 'Vencimento mais antigo'],
-        ...summary!.overdueClients.map((row) => [row.clientName, row.clientCode, row.phone || '', row.payments, row.amountCve, row.oldestDueDate])
+        ...summary!.overdueClients.map((row) => [row.clientName, row.clientCode, row.phone || '', row.payments, row.amountCve, formatPtDate(row.oldestDueDate)])
       ];
     } else if (view === 'stock') {
       rows = [
@@ -260,7 +260,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
         {view === 'revenue' && summary?.revenueByMonth.map((row) => (
           <div className="module-row report-row" key={row.referenceMonth}>
             <span>
-              <strong>{row.referenceMonth}</strong>
+              <strong>{formatPtMonth(row.referenceMonth)}</strong>
               <small>{row.payments} cobrancas</small>
             </span>
             <small>Pago: {formatCve(row.paidCve)}</small>

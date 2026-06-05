@@ -4,6 +4,7 @@ import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
+import { formatPtDate } from '../lib/format';
 import { stockLevelTone } from '../lib/status';
 import type { CatalogAssignments, StockCatalogRow, StockMovement, StockSummary } from '../types';
 import './StockModule.css';
@@ -352,9 +353,9 @@ export function StockModule() {
                         {row.assetTag && <div><dt>Asset</dt><dd>{row.assetTag}</dd></div>}
                         {row.macAddress && <div><dt>MAC</dt><dd>{row.macAddress}</dd></div>}
                         {row.ipAddress && <div><dt>IP</dt><dd>{row.ipAddress}</dd></div>}
-                        <div><dt>Desde</dt><dd>{new Date(row.startDate).toLocaleDateString('pt-PT')}</dd></div>
+                        <div><dt>Desde</dt><dd>{formatPtDate(row.startDate)}</dd></div>
                         {row.endDate && (
-                          <div><dt>Devolvido</dt><dd>{new Date(row.endDate).toLocaleDateString('pt-PT')}</dd></div>
+                          <div><dt>Devolvido</dt><dd>{formatPtDate(row.endDate)}</dd></div>
                         )}
                       </dl>
                     </li>

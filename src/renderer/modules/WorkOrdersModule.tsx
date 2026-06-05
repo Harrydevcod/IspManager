@@ -3,6 +3,7 @@ import type { CSSProperties, DragEvent, FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Dialog, Field, Message, Select, Textarea, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
+import { formatPtDate } from '../lib/format';
 import './WorkOrdersModule.css';
 import type {
   ServiceEventType,
@@ -45,9 +46,7 @@ const EVENT_LABEL: Record<ServiceEventType, string> = {
 
 function formatDate(value: string | null) {
   if (!value) return null;
-  const parsed = new Date(value.replace(' ', 'T'));
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit' });
+  return formatPtDate(value);
 }
 
 function formatRelative(value: string | null): string | null {
@@ -60,7 +59,7 @@ function formatRelative(value: string | null): string | null {
   if (diffDays === -1) return 'ontem';
   if (diffDays > 1 && diffDays <= 7) return `em ${diffDays} dias`;
   if (diffDays < -1 && diffDays >= -7) return `ha ${Math.abs(diffDays)} dias`;
-  return parsed.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit' });
+  return formatPtDate(value);
 }
 
 function osIdentifier(id: number): string {

@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { getSqliteDatabase } from '../db/database';
 import { nextDocumentNumber } from '../lib/numbering';
 import { requireRole } from './auth';
+import { formatPtMonth } from '../../shared/date';
 
 const PDFDocument = require('pdfkit');
 
@@ -71,12 +72,20 @@ type CompanyInfo = {
   email: string;
   address: string;
   island: string;
+  bankAccounts: BankAccountInfo[];
   currencyCode: string;
   ivaRate: number;
   fiscalRegime: 'normal' | 'rempe';
   showIva: boolean;
   printQrCode: boolean;
   legalNotes: string;
+};
+
+type BankAccountInfo = {
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  reference: string;
 };
 
 const COMPANY_KEYS = [
@@ -86,6 +95,7 @@ const COMPANY_KEYS = [
   'email',
   'address',
   'island',
+  'bankAccounts',
   'currencyCode',
   'ivaRate',
   'fiscalRegime',
@@ -107,6 +117,7 @@ function loadCompany(): CompanyInfo {
     email: '',
     address: '',
     island: '',
+    bankAccounts: [],
     currencyCode: 'CVE',
     ivaRate: 15,
     fiscalRegime: 'normal',
@@ -122,22 +133,55 @@ function loadCompany(): CompanyInfo {
       company.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
     } else if (row.key === 'showIva' || row.key === 'printQrCode') {
       company[row.key] = row.value === 'true' || row.value === '1';
+    } else if (row.key === 'bankAccounts') {
+      company.bankAccounts = parseBankAccounts(row.value);
     } else if ((COMPANY_KEYS as readonly string[]).includes(row.key)) {
-      (company as Record<string, string | number | boolean>)[row.key] = row.value || '';
+      (company as Record<string, string | number | boolean | BankAccountInfo[]>)[row.key] = row.value || '';
     }
   }
   return company;
+}
+
+function parseBankAccounts(value: string): BankAccountInfo[] {
+  try {
+    const parsed = JSON.parse(value) as BankAccountInfo[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((account) => ({
+        bankName: String(account?.bankName || '').trim(),
+        accountName: String(account?.accountName || '').trim(),
+        accountNumber: String(account?.accountNumber || '').trim(),
+        reference: String(account?.reference || '').trim()
+      }))
+      .filter((account) => account.bankName || account.accountNumber);
+  } catch {
+    return [];
+  }
+}
+
+export function formatBankAccountsForDocument(accounts: BankAccountInfo[]): string | null {
+  const lines = accounts
+    .filter((account) => account.bankName || account.accountNumber)
+    .map((account) => `${account.bankName || 'Banco'}: ${account.accountNumber || '-'}`);
+  return lines.length > 0 ? ['Bancos:', ...lines].join('\n') : null;
 }
 
 function formatCve(value: number, currencyCode = 'CVE') {
   return `${Number(value || 0).toLocaleString('pt-PT')} ${currencyCode}`;
 }
 
-function formatDate(value: string | null) {
+export function formatDate(value: string | null) {
   if (!value) {
     return '-';
   }
-  return value.slice(0, 10);
+  const [year, month, day] = value.slice(0, 10).split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  if (!Number.isFinite(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('pt-PT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  }).format(date);
 }
 
 function filenamePart(value: string | number | null | undefined, fallback: string) {
@@ -348,7 +392,7 @@ function buildDocument(
     doc.fillColor(PALETTE.ink).fontSize(11).font('Helvetica-Bold')
       .text(value, cx + 14, y + 24, { width: cellW - 16, lineBreak: false });
   };
-  writeMeta(M, 'REFERENCIA', row.referenceMonth || '-');
+  writeMeta(M, 'REFERENCIA', formatPtMonth(row.referenceMonth));
   doc.moveTo(M + cellW, y + 8).lineTo(M + cellW, y + stripH - 8).strokeColor(PALETTE.hairline).lineWidth(0.5).stroke();
   writeMeta(M + cellW, 'EMITIDO EM', formatDate(docDate));
   doc.moveTo(M + cellW * 2, y + 8).lineTo(M + cellW * 2, y + stripH - 8).strokeColor(PALETTE.hairline).lineWidth(0.5).stroke();
@@ -385,7 +429,7 @@ function buildDocument(
     .text(fitText(doc, planLine, descColW), M, y, { width: descColW, lineBreak: false });
   y += 12;
   doc.fillColor(PALETTE.light).fontSize(8.5).font('Helvetica')
-    .text(`Periodo de referencia ${row.referenceMonth || '-'}`, M, y, { width: descColW, lineBreak: false });
+    .text(`Periodo de referencia ${formatPtMonth(row.referenceMonth)}`, M, y, { width: descColW, lineBreak: false });
   y += 22;
 
   // === 5) FISCAL BREAKDOWN — Subtotal · IVA · Total (right-aligned mini table)
@@ -443,6 +487,10 @@ function buildDocument(
     observations.push(
       'Após a data limite de pagamento indicada, o serviço poderá ser suspenso por falta de regularização.'
     );
+    const bankAccountsNote = formatBankAccountsForDocument(company.bankAccounts);
+    if (bankAccountsNote) {
+      observations.push(bankAccountsNote);
+    }
   }
   if (isReceipt && row.paymentMethod) {
     observations.push(`Metodo de pagamento: ${row.paymentMethod}`);

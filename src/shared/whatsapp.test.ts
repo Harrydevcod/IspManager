@@ -20,7 +20,7 @@ describe('renderWhatsappTemplate', () => {
       'ISP CV'
     );
 
-    expect(message).toBe('Maria Lopes/Maria Lopes CLT-010 2389910000 ISP CV 2500 2026-05-10 2026-05 FT-2026-00010 RC-2026-00010 15/20');
+    expect(message).toBe('Maria Lopes/Maria Lopes CLT-010 2389910000 ISP CV 2500 10/05/2026 05/2026 FT-2026-00010 RC-2026-00010 15/20');
   });
 
   test('uses stable fallbacks for optional operational fields', () => {

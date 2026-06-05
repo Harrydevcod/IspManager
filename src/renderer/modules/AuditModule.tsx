@@ -3,6 +3,7 @@ import type { LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Button, EmptyState, Field, FilterBar, Message, Select } from '../components';
 import { authFetch } from '../lib/auth';
+import { formatPtDate, formatPtDateTime } from '../lib/format';
 import './AuditModule.css';
 
 type AuditLogRow = {
@@ -63,16 +64,11 @@ function relativeTime(iso: string): string {
   if (diffH < 24) return `há ${diffH}h`;
   const diffD = Math.floor(diffH / 24);
   if (diffD < 7) return `há ${diffD}d`;
-  return d.toLocaleDateString('pt-PT', { day: '2-digit', month: 'short' });
+  return formatPtDate(iso);
 }
 
 function absoluteTime(iso: string): string {
-  const d = parseDate(iso);
-  if (!d) return iso;
-  return d.toLocaleString('pt-PT', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  });
+  return formatPtDateTime(iso);
 }
 
 export function AuditModule() {

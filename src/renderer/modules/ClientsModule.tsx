@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, DetailPanel, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
 import { ClientImportDialog } from './clients/import';
 import { authFetch, useAuth } from '../lib/auth';
-import { formatCve } from '../lib/format';
+import { formatCve, formatPtDate } from '../lib/format';
 import { statusLabel, statusTone } from '../lib/status';
 import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
 import type { Client, ClientProfitability } from '../types';
@@ -393,7 +393,7 @@ export function ClientsModule({ focusClientId, onFocusHandled }: { focusClientId
                           : `${profitability.monthsToBreakeven.toFixed(profitability.monthsToBreakeven >= 10 ? 0 : 1)} meses`}
                     </dd>
                     {profitability.projectedBreakevenDate && !profitability.isRecovered && (
-                      <small>previsao: {profitability.projectedBreakevenDate}</small>
+                      <small>previsao: {formatPtDate(profitability.projectedBreakevenDate)}</small>
                     )}
                   </div>
                   <div>

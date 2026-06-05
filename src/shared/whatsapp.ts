@@ -1,3 +1,5 @@
+import { formatPtDate, formatPtMonth } from './date';
+
 export const fallbackWhatsappTemplate = 'Ola {nome}, somos da {empresa}. Entramos em contacto sobre o seu servico de internet.';
 export const fallbackWhatsappTestTemplate = 'Teste UltraMsg - {empresa}. Ola {nome}, esta mensagem confirma que a integracao WhatsApp esta ativa.';
 export const fallbackWhatsappInvoiceReadyTemplate = 'Ola {nome}, a sua fatura {fatura} de {mes} no valor de {valor} CVE ja esta pronta. Vencimento: {vencimento}. {empresa}';
@@ -26,8 +28,8 @@ export function renderWhatsappTemplate(template: string, data: WhatsappTemplateD
     .replace(/\{telefone\}/gi, data.phone || '')
     .replace(/\{empresa\}/gi, companyName || 'ISPM')
     .replace(/\{valor\}/gi, data.amountCve == null ? '-' : String(data.amountCve))
-    .replace(/\{vencimento\}/gi, data.dueDate || '-')
-    .replace(/\{mes\}/gi, data.referenceMonth || '-')
+    .replace(/\{vencimento\}/gi, formatPtDate(data.dueDate))
+    .replace(/\{mes\}/gi, formatPtMonth(data.referenceMonth))
     .replace(/\{fatura\}/gi, data.invoiceNumber || '-')
     .replace(/\{recibo\}/gi, data.receiptNumber || '-')
     .replace(/\{dias_atraso\}/gi, data.daysOverdue == null ? '-' : String(data.daysOverdue))

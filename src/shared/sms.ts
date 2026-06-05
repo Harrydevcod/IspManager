@@ -1,3 +1,5 @@
+import { formatPtDate, formatPtMonth } from './date';
+
 export type SmsEventType = 'invoice_issued' | 'receipt_confirmed' | 'payment_overdue' | 'suspension_notice';
 
 export const fallbackSmsInvoiceIssuedTemplate = 'Ola {nome}, a sua fatura {fatura} de {mes}, no valor de {valor} CVE, foi emitida. Vencimento: {vencimento}. {empresa}';
@@ -34,8 +36,8 @@ export function renderSmsTemplate(template: string, data: SmsTemplateData, compa
     telefone: data.phone || '',
     empresa: companyName || 'ISPM',
     valor: data.amountCve == null ? '-' : String(data.amountCve),
-    vencimento: data.dueDate || '-',
-    mes: data.referenceMonth || '-',
+    vencimento: formatPtDate(data.dueDate),
+    mes: formatPtMonth(data.referenceMonth),
     fatura: data.invoiceNumber || '-',
     recibo: data.receiptNumber || '-',
     dias_atraso: data.daysOverdue == null ? '-' : String(data.daysOverdue),

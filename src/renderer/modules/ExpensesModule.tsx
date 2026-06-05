@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useConfirm, useToast } from '../components';
 import { authFetch } from '../lib/auth';
-import { formatCve } from '../lib/format';
+import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './ExpensesModule.css';
 import type { Client, Expense, ExpenseCategory, ExpenseList, ExpenseTemplate, ExpenseTemplateList, Investment, InvestmentList } from '../types';
 
@@ -373,7 +373,7 @@ export function ExpensesModule() {
           <strong>{formatCve(data.totals.totalCve)}</strong>
           <small>
             {data.totals.count} {data.totals.count === 1 ? 'lançamento' : 'lançamentos'}
-            {showAllMonths ? ' · todos os meses' : ` · ${month}`}
+            {showAllMonths ? ' · todos os meses' : ` · ${formatPtMonth(month)}`}
           </small>
         </div>
       </div>
@@ -454,7 +454,7 @@ export function ExpensesModule() {
               <span className="expenses-row-main">
                 <strong>{expense.description}</strong>
                 <small>
-                  {expense.expenseDate}
+                  {formatPtDate(expense.expenseDate)}
                   {expense.supplier ? ` · ${expense.supplier}` : ''}
                   {expense.invoiceReference ? ` · ${expense.invoiceReference}` : ''}
                 </small>

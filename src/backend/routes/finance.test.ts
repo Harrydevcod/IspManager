@@ -261,7 +261,9 @@ describe('whatsapp routes', () => {
       payload: { dryRun: false, noticeType: 'overdue' }
     });
     expect(overdue.statusCode).toBe(200);
-    expect((fetchMock.mock.calls[0][1]?.body as URLSearchParams).get('body')).toContain('Atraso Cliente WhatsApp FT-001 2500 2026-04');
+    const overdueBody = (fetchMock.mock.calls[0][1]?.body as URLSearchParams).get('body') || '';
+    expect(overdueBody).toContain('Atraso Cliente WhatsApp FT-001 2500 04/2026');
+    expect(overdueBody).toMatch(/\d{2}\/\d{2}\/\d{4} ISP CV$/);
 
     fetchMock.mockClear();
     const suspension = await app.inject({

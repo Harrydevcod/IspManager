@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
+import { formatBankAccountsForDocument, formatDate } from './documents';
 
 let app: FastifyInstance;
 let db: Database.Database;
@@ -63,6 +64,33 @@ function seedPayment(status: 'pending' | 'paid' | 'overdue' | 'cancelled' = 'pai
 }
 
 describe('GET /api/payments/:id/invoice.pdf', () => {
+  test('formats document dates with pt-PT day/month/year order', () => {
+    expect(formatDate('2026-05-10')).toBe('10/05/2026');
+    expect(formatDate('2026-05-10 14:30:00')).toBe('10/05/2026');
+    expect(formatDate(null)).toBe('-');
+  });
+
+  test('formats bank accounts for invoice payment instructions', () => {
+    expect(formatBankAccountsForDocument([
+      {
+        bankName: 'BCA',
+        accountName: 'ISPM Lda',
+        accountNumber: 'CV64 0001 0000 0000 0000 0000 1',
+        reference: 'Mensalidades'
+      },
+      {
+        bankName: 'Caixa Economica',
+        accountName: 'ISPM Lda',
+        accountNumber: 'CV64 0002 0000 0000 0000 0000 2',
+        reference: 'Instalacoes'
+      }
+    ])).toBe([
+      'Bancos:',
+      'BCA: CV64 0001 0000 0000 0000 0000 1',
+      'Caixa Economica: CV64 0002 0000 0000 0000 0000 2'
+    ].join('\n'));
+  });
+
   test('rejects malformed id with 400', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/payments/abc/invoice.pdf' });
     expect(response.statusCode).toBe(400);
@@ -98,6 +126,30 @@ describe('GET /api/payments/:id/invoice.pdf', () => {
     expect(after.invoice_number).toBeTruthy();
     expect(after.invoice_number).not.toBe('PENDING');
     expect(after.invoice_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  test('returns a PDF buffer when invoice payment bank accounts are configured', async () => {
+    const id = seedPayment('pending');
+    db.prepare(`INSERT INTO app_settings (key, value) VALUES ('bankAccounts', ?)`).run(JSON.stringify([
+      {
+        bankName: 'BCA',
+        accountName: 'ISPM Lda',
+        accountNumber: 'CV64 0001 0000 0000 0000 0000 1',
+        reference: 'Mensalidades'
+      },
+      {
+        bankName: 'Caixa Economica',
+        accountName: 'ISPM Lda',
+        accountNumber: 'CV64 0002 0000 0000 0000 0000 2',
+        reference: 'Instalacoes'
+      }
+    ]));
+
+    const response = await app.inject({ method: 'GET', url: `/api/payments/${id}/invoice.pdf` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe('application/pdf');
+    expect(response.rawPayload.slice(0, 4).toString('ascii')).toBe('%PDF');
   });
 
   test('keeps existing invoice number on second hit (idempotent numbering)', async () => {

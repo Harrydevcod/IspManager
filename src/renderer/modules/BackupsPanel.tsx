@@ -2,6 +2,7 @@ import { Archive } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button, EmptyState, Field, Message, useConfirm } from '../components';
 import { authFetch } from '../lib/auth';
+import { formatPtDateTime } from '../lib/format';
 
 type BackupItem = { file: string; createdAt: string; sizeBytes: number };
 
@@ -139,7 +140,7 @@ export function BackupsPanel() {
       <ul className="backups-list">
         {entries.map((e) => (
           <li key={e.file}>
-            <span>{new Date(e.createdAt).toLocaleString('pt-PT')}</span>
+            <span>{formatPtDateTime(e.createdAt)}</span>
             <span>{formatBytes(e.sizeBytes)}</span>
             {confirmFile === e.file ? (
               <span className="backups-confirm">
