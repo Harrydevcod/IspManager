@@ -1,18 +1,42 @@
-function parseIsoDate(value: string | null | undefined): Date | null {
+// Single source of truth for pt-PT date formatting, shared by backend and
+// renderer. Parses date-only strings as local midnight (avoids the UTC
+// off-by-one of `new Date('YYYY-MM-DD')`) and passes datetime strings through
+// so timestamps keep their time component.
+function parseDate(value: string | null | undefined): Date | null {
   if (!value) return null;
-  const [year, month, day] = value.slice(0, 10).split('-').map(Number);
-  if (!year || !month || !day) return null;
-  const date = new Date(year, month - 1, day);
+  const source = value.includes('T') ? value : `${value.slice(0, 10)}T00:00:00`;
+  const date = new Date(source);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
 export function formatPtDate(value: string | null | undefined): string {
-  const date = parseIsoDate(value);
+  const date = parseDate(value);
   if (!date) return '-';
   return new Intl.DateTimeFormat('pt-PT', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric'
+  }).format(date);
+}
+
+export function formatPtDateTime(value: string | null | undefined): string {
+  const date = parseDate(value);
+  if (!date) return '-';
+  return new Intl.DateTimeFormat('pt-PT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
+}
+
+export function formatPtDayMonth(value: string | null | undefined): string {
+  const date = parseDate(value);
+  if (!date) return '-';
+  return new Intl.DateTimeFormat('pt-PT', {
+    day: '2-digit',
+    month: '2-digit'
   }).format(date);
 }
 
