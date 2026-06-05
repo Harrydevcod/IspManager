@@ -1,0 +1,34 @@
+schema: spec-driven
+
+context: |
+  ISPM is a desktop application for ISP operations in Cabo Verde.
+
+  Tech stack:
+  - Electron desktop shell
+  - React + TypeScript renderer
+  - Fastify backend
+  - SQLite with Drizzle
+  - Vitest for automated tests
+
+  Domain language:
+  - Clientes, Planos, Servicos, Pagamentos, Stock, Relatorios, Configuracoes
+  - Currency is CVE
+  - Operational geography uses ilha and zona
+  - WhatsApp is the primary communication channel
+  - UltraMsg is the external messaging provider
+
+  Engineering rules:
+  - Preserve terminology from CONTEXT.md.
+  - Keep security, auditability, and performance as design constraints.
+  - Prefer incremental changes that keep Electron, React, Fastify, SQLite, and Drizzle working together.
+  - Validate implementation with npm.cmd run typecheck, npm.cmd test, and npx.cmd tsc -p tsconfig.main.json.
+
+rules:
+  proposal:
+    - State the operational problem in ISPM domain terms.
+    - Include explicit non-goals when scope could expand into billing, technical history, stock, or WhatsApp workflows.
+    - Identify affected UI modules, backend routes, database tables, and audit/security implications.
+  tasks:
+    - Break work into independently verifiable increments.
+    - Include at least one validation task covering typecheck, tests, and any relevant UI/manual verification.
+    - Call out migration risk when SQLite schema or persisted settings change.
