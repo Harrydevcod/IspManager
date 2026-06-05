@@ -3,6 +3,7 @@ package cv.novatech.ispm.sms
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -29,6 +30,9 @@ class MainActivity : ComponentActivity() {
       holder.setPermissionGranted(granted)
     }
 
+  private val notificationPermissionLauncher =
+    registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* best-effort: alerts simply stay off if denied */ }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     pairingStore = PairingStore(this)
@@ -42,8 +46,13 @@ class MainActivity : ComponentActivity() {
 
     handlePairingIntent(intent)
 
-    server = CompanionServer(pairingStore, requestStore, onRequestsChanged = { runOnUiThread { holder.refresh() } })
-      .also { runCatching { it.start() } }
+    Notifications.ensureChannel(this)
+    requestNotificationPermission()
+
+    server = CompanionServer(pairingStore, requestStore, onRequestsChanged = { request ->
+      runOnUiThread { holder.refresh() }
+      Notifications.notifyNewRequest(this, request)
+    }).also { runCatching { it.start() } }
     holder.setServerRunning(server != null)
     holder.setPermissionGranted(
       ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
@@ -59,6 +68,10 @@ class MainActivity : ComponentActivity() {
           onRequestPermission = { permissionLauncher.launch(Manifest.permission.SEND_SMS) },
           onApprove = { id ->
             if (state.smsPermissionGranted) holder.approve(id)
+            else permissionLauncher.launch(Manifest.permission.SEND_SMS)
+          },
+          onApproveAll = {
+            if (state.smsPermissionGranted) holder.approveAll()
             else permissionLauncher.launch(Manifest.permission.SEND_SMS)
           },
           onUndo = { holder.undoApprove(it) },
@@ -82,6 +95,13 @@ class MainActivity : ComponentActivity() {
     val data = intent?.dataString ?: return
     val info: PairingInfo = parsePairingPayload(data) ?: return
     if (::holder.isInitialized) holder.pair(info) else pairingStore.save(info.secret, info.deviceName)
+  }
+
+  private fun requestNotificationPermission() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+    if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+      notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
   }
 
   private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()

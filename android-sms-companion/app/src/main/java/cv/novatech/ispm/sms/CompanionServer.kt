@@ -15,7 +15,7 @@ class CompanionServer(
   private val pairingStore: PairingStore,
   private val requestStore: SmsRequestStore,
   port: Int = 8765,
-  private val onRequestsChanged: () -> Unit = {}
+  private val onRequestsChanged: (SmsRequest) -> Unit = {}
 ) : NanoHTTPD(port) {
 
   override fun serve(session: IHTTPSession): Response {
@@ -33,18 +33,17 @@ class CompanionServer(
     if (session.method == Method.POST && session.uri == "/requests") {
       val json = org.json.JSONObject(body)
       val id = json.getString("requestId")
-      requestStore.upsert(
-        SmsRequest(
-          id = id,
-          toPhone = json.getString("toPhone"),
-          body = json.getString("body"),
-          eventType = json.optString("eventType", "test"),
-          status = "pending_approval",
-          error = null,
-          clientName = if (json.has("clientName") && !json.isNull("clientName")) json.optString("clientName").ifBlank { null } else null
-        )
+      val request = SmsRequest(
+        id = id,
+        toPhone = json.getString("toPhone"),
+        body = json.getString("body"),
+        eventType = json.optString("eventType", "test"),
+        status = "pending_approval",
+        error = null,
+        clientName = if (json.has("clientName") && !json.isNull("clientName")) json.optString("clientName").ifBlank { null } else null
       )
-      onRequestsChanged()
+      requestStore.upsert(request)
+      onRequestsChanged(request)
       return json(Response.Status.OK, """{"id":"$id","status":"pending_approval"}""")
     }
 
