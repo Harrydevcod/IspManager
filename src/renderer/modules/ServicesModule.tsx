@@ -1,7 +1,7 @@
 import { Cable, History, Pencil, Plus, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Badge, Button, Combobox, DetailPanel, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
+import { Badge, Button, Combobox, DetailPanel, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtDateTime } from '../lib/format';
 import { statusLabel, statusTone } from '../lib/status';
@@ -67,7 +67,13 @@ function emptyServiceForm(): ServiceFormState {
   };
 }
 
-export function ServicesModule() {
+export function ServicesModule({
+  focusClientId,
+  onFocusHandled
+}: {
+  focusClientId?: number | null;
+  onFocusHandled?: () => void;
+} = {}) {
   const { toast } = useToast();
   const auth = useAuth();
   const canManageServices = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
@@ -78,6 +84,8 @@ export function ServicesModule() {
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingService, setEditingService] = useState<ServiceRow | null>(null);
+  const [attachDevice, setAttachDevice] = useState(false);
+  const [newServiceDevice, setNewServiceDevice] = useState<DeviceFormState>(emptyDeviceForm());
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | ServiceRow['status']>('all');
   const [form, setForm] = useState<ServiceFormState>(emptyServiceForm());
@@ -126,7 +134,18 @@ export function ServicesModule() {
     setSelectedService(null);
     setEditingService(null);
     setForm(emptyServiceForm());
+    setAttachDevice(false);
+    setNewServiceDevice(emptyDeviceForm());
     setShowForm(true);
+  }
+
+  function toggleAttachDevice(next: boolean) {
+    setAttachDevice(next);
+    if (next) {
+      void ensureCatalogLoaded();
+    } else {
+      setNewServiceDevice(emptyDeviceForm());
+    }
   }
 
   function editService(service: ServiceRow) {
@@ -148,6 +167,8 @@ export function ServicesModule() {
     setEditingService(null);
     setShowForm(false);
     setForm(emptyServiceForm());
+    setAttachDevice(false);
+    setNewServiceDevice(emptyDeviceForm());
   }
 
   async function loadTechnicalHistory(serviceId: number) {
@@ -186,6 +207,19 @@ export function ServicesModule() {
     }
     void loadTechnicalHistory(selectedService.id);
   }, [selectedService]);
+
+  useEffect(() => {
+    if (!focusClientId || services.length === 0) return;
+    const clientServices = services.filter((service) => service.clientId === focusClientId);
+    if (clientServices.length > 0) {
+      setSearch(clientServices[0].clientName);
+      setStatusFilter('all');
+      if (clientServices.length === 1) {
+        setSelectedService(clientServices[0]);
+      }
+    }
+    onFocusHandled?.();
+  }, [focusClientId, services, onFocusHandled]);
 
   function openDeviceDialog() {
     setDeviceForm(emptyDeviceForm());
@@ -278,6 +312,13 @@ export function ServicesModule() {
 
   async function saveService(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    const installingDevice = !editingService && attachDevice;
+    if (installingDevice && !newServiceDevice.catalogId) {
+      toast('Seleciona o modelo do equipamento a instalar.', 'error');
+      return;
+    }
+
     const url = editingService ? `http://127.0.0.1:3001/api/services/${editingService.id}` : 'http://127.0.0.1:3001/api/services';
     const response = await authFetch(url, {
       method: editingService ? 'PUT' : 'POST',
@@ -289,7 +330,17 @@ export function ServicesModule() {
         dueDay: Number(form.dueDay),
         activationDate: form.activationDate,
         status: form.status,
-        technicalNotes: form.technicalNotes
+        technicalNotes: form.technicalNotes,
+        device: installingDevice
+          ? {
+              catalogId: Number(newServiceDevice.catalogId),
+              serialNumber: newServiceDevice.serialNumber || null,
+              assetTag: newServiceDevice.assetTag || null,
+              ipAddress: newServiceDevice.ipAddress || null,
+              macAddress: newServiceDevice.macAddress || null,
+              notes: newServiceDevice.notes || null
+            }
+          : undefined
       })
     });
 
@@ -299,7 +350,14 @@ export function ServicesModule() {
       return;
     }
 
-    toast(editingService ? 'Servico atualizado.' : 'Servico criado.', 'success');
+    toast(
+      editingService
+        ? 'Servico atualizado.'
+        : installingDevice
+          ? 'Servico criado e equipamento instalado.'
+          : 'Servico criado.',
+      'success'
+    );
     closeForm();
     await loadServices();
   }
@@ -556,6 +614,40 @@ export function ServicesModule() {
             <option value="cancelled">Cancelado</option>
           </Select>
           <Field wide label="Notas tecnicas" value={form.technicalNotes} onChange={(event) => updateForm('technicalNotes', event.target.value)} />
+
+          {!editingService && canRecordTechnical && (
+            <div className="service-equipment-section">
+              <Toggle
+                title="Instalar equipamento agora"
+                description="Atribui hardware ao serviço e abate o stock no momento da criação."
+                checked={attachDevice}
+                onChange={(event) => toggleAttachDevice(event.target.checked)}
+              />
+              {attachDevice && (
+                <>
+                  <Select
+                    wide
+                    label="Modelo do equipamento"
+                    required
+                    value={newServiceDevice.catalogId}
+                    onChange={(event) => setNewServiceDevice((c) => ({ ...c, catalogId: event.target.value }))}
+                  >
+                    <option value="">Selecionar modelo</option>
+                    {catalogList.map((item) => (
+                      <option key={item.id} value={item.id} disabled={item.stockTotal < 1}>
+                        {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} un.
+                      </option>
+                    ))}
+                  </Select>
+                  <Field label="Serial" value={newServiceDevice.serialNumber} onChange={(event) => setNewServiceDevice((c) => ({ ...c, serialNumber: event.target.value }))} />
+                  <Field label="Asset tag" value={newServiceDevice.assetTag} onChange={(event) => setNewServiceDevice((c) => ({ ...c, assetTag: event.target.value }))} />
+                  <Field label="MAC" value={newServiceDevice.macAddress} onChange={(event) => setNewServiceDevice((c) => ({ ...c, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
+                  <Field label="IP" value={newServiceDevice.ipAddress} onChange={(event) => setNewServiceDevice((c) => ({ ...c, ipAddress: event.target.value }))} placeholder="192.168.X.Y" />
+                  <Field wide label="Notas do equipamento" value={newServiceDevice.notes} onChange={(event) => setNewServiceDevice((c) => ({ ...c, notes: event.target.value }))} />
+                </>
+              )}
+            </div>
+          )}
         </form>
       </Dialog>
 

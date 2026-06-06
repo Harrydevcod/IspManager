@@ -4,6 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { computeMonthlyBilling, dueDateFromIssue, generateMonthlyBilling, todayIso } from '../lib/billing';
 import { nextDocumentNumber } from '../lib/numbering';
 import { recordAudit } from '../lib/audit';
+import { installDeviceWithinTx, mapInstallError, preflightDeviceInstall } from '../lib/deviceInstall';
 import { requireAuth, requireRole } from './auth';
 
 const monthSchema = z.object({
@@ -19,6 +20,16 @@ const cancelSchema = z.object({
   reason: z.string().trim().optional().nullable()
 });
 
+const deviceInstallSchema = z.object({
+  catalogId: z.coerce.number().int().positive(),
+  serialNumber: z.string().trim().optional().nullable(),
+  assetTag: z.string().trim().optional().nullable(),
+  ipAddress: z.string().trim().optional().nullable(),
+  macAddress: z.string().trim().optional().nullable(),
+  technicianId: z.coerce.number().int().positive().optional().nullable(),
+  notes: z.string().trim().optional().nullable()
+});
+
 const serviceSchema = z.object({
   clientId: z.coerce.number().int().positive(),
   planId: z.coerce.number().int().positive().optional().nullable(),
@@ -26,7 +37,8 @@ const serviceSchema = z.object({
   dueDay: z.coerce.number().int().min(1).max(31).default(1),
   activationDate: z.string().optional().nullable(),
   status: z.enum(['active', 'suspended', 'cancelled']).default('active'),
-  technicalNotes: z.string().trim().optional().nullable()
+  technicalNotes: z.string().trim().optional().nullable(),
+  device: deviceInstallSchema.optional().nullable()
 });
 
 const nextNumber = nextDocumentNumber;
@@ -62,7 +74,8 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     }
 
     const db = getSqliteDatabase();
-    const client = db.prepare('SELECT id FROM clients WHERE id = ?').get(parsed.data.clientId);
+    const client = db.prepare('SELECT id, full_name AS fullName FROM clients WHERE id = ?')
+      .get(parsed.data.clientId) as { id: number; fullName: string } | undefined;
     if (!client) {
       return reply.status(404).send({ error: 'Cliente nao encontrado' });
     }
@@ -74,30 +87,77 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       }
     }
 
-    const result = db.prepare(`
-      INSERT INTO services (
-        client_id, plan_id, monthly_value_cve, activation_date, due_day,
-        status, technical_notes, created_at, updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-    `).run(
-      parsed.data.clientId,
-      parsed.data.planId || null,
-      parsed.data.monthlyValueCve,
-      parsed.data.activationDate || null,
-      parsed.data.dueDay,
-      parsed.data.status,
-      parsed.data.technicalNotes || null
-    );
+    // Optional inline equipment install: validate before the transaction so a bad
+    // device never leaves a service behind, then commit both atomically.
+    const device = parsed.data.device ?? null;
+    if (device) {
+      const preflight = preflightDeviceInstall(db, device);
+      if (!preflight.ok) {
+        return reply.status(preflight.status).send({ error: preflight.error });
+      }
+    }
+
+    const run = db.transaction(() => {
+      const inserted = db.prepare(`
+        INSERT INTO services (
+          client_id, plan_id, monthly_value_cve, activation_date, due_day,
+          status, technical_notes, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      `).run(
+        parsed.data.clientId,
+        parsed.data.planId || null,
+        parsed.data.monthlyValueCve,
+        parsed.data.activationDate || null,
+        parsed.data.dueDay,
+        parsed.data.status,
+        parsed.data.technicalNotes || null
+      );
+      const serviceId = Number(inserted.lastInsertRowid);
+
+      const install = device
+        ? installDeviceWithinTx(db, {
+            serviceId,
+            clientName: client.fullName,
+            device,
+            userId: request.user?.id ?? null
+          })
+        : null;
+
+      return { serviceId, install };
+    });
+
+    let created: { serviceId: number; install: { assignmentId: string | number | bigint; eventId: string | number | bigint } | null };
+    try {
+      created = run();
+    } catch (error) {
+      const mapped = mapInstallError(error);
+      if (mapped) {
+        return reply.status(mapped.status).send({ error: mapped.error });
+      }
+      throw error;
+    }
 
     recordAudit(request, {
       action: 'create',
       entityType: 'service',
-      entityId: Number(result.lastInsertRowid),
+      entityId: created.serviceId,
       summary: `Criou servico para cliente ${parsed.data.clientId}`,
       metadata: { clientId: parsed.data.clientId, planId: parsed.data.planId ?? null, status: parsed.data.status }
     });
-    return reply.status(201).send({ id: result.lastInsertRowid });
+    if (created.install) {
+      recordAudit(request, {
+        action: 'assign_device',
+        entityType: 'service',
+        entityId: created.serviceId,
+        summary: `Instalou equipamento ao criar o servico ${created.serviceId}`,
+        metadata: { catalogId: device?.catalogId ?? null, assignmentId: created.install.assignmentId }
+      });
+    }
+    return reply.status(201).send({
+      id: created.serviceId,
+      ...(created.install ?? {})
+    });
   });
 
   app.put('/api/services/:id', billingWrite, async (request, reply) => {

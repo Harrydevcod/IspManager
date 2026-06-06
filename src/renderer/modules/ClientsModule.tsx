@@ -1,4 +1,4 @@
-import { MessageCircle, Pencil, Upload, UsersRound, Wallet } from 'lucide-react';
+import { Cable, MessageCircle, Pencil, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, DetailPanel, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
@@ -32,7 +32,15 @@ function cvNifError(nif: string): string | undefined {
   return nif.length > 0 && !CV_NIF_RE.test(nif) ? 'NIF inválido — 9 dígitos a começar por 1 ou 2.' : undefined;
 }
 
-export function ClientsModule({ focusClientId, onFocusHandled }: { focusClientId?: number | null; onFocusHandled?: () => void } = {}) {
+export function ClientsModule({
+  focusClientId,
+  onFocusHandled,
+  onOpenServicesForClient
+}: {
+  focusClientId?: number | null;
+  onFocusHandled?: () => void;
+  onOpenServicesForClient?: (clientId: number) => void;
+} = {}) {
   const { toast } = useToast();
   const auth = useAuth();
   const canManageClients = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
@@ -246,6 +254,9 @@ export function ClientsModule({ focusClientId, onFocusHandled }: { focusClientId
     const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+  const hasProfitabilityFootprint = profitability
+    ? profitability.investments.length > 0 || profitability.equipmentUsed.length > 0 || profitability.installationCostCve > 0
+    : false;
 
   return (
     <section className="module-panel">
@@ -311,6 +322,14 @@ export function ClientsModule({ focusClientId, onFocusHandled }: { focusClientId
               >
                 WhatsApp
               </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                leadingIcon={<Cable size={16} aria-hidden />}
+                onClick={() => onOpenServicesForClient?.(selectedClient.id)}
+              >
+                Instalar equipamento
+              </Button>
               {canManageClients && (
                 <Button variant="secondary" size="sm" leadingIcon={<Pencil size={16} aria-hidden />} onClick={() => editClient(selectedClient)}>
                   Editar
@@ -330,7 +349,7 @@ export function ClientsModule({ focusClientId, onFocusHandled }: { focusClientId
           <section className="client-profitability">
             <header>
               <strong>Rentabilidade</strong>
-              {profitability && profitability.investments.length > 0 && (
+              {profitability && hasProfitabilityFootprint && (
                 <Badge tone={profitability.isRecovered ? 'success' : profitability.netProfitCve < 0 ? 'danger' : 'info'}>
                   {profitability.isRecovered ? 'Recuperado' : profitability.netProfitCve < 0 ? 'Em prejuizo' : 'Em retorno'}
                 </Badge>
@@ -339,16 +358,16 @@ export function ClientsModule({ focusClientId, onFocusHandled }: { focusClientId
 
             {profitabilityLoading && <Message>A calcular rentabilidade...</Message>}
 
-            {!profitabilityLoading && profitability && profitability.investments.length === 0 && (
+            {!profitabilityLoading && profitability && !hasProfitabilityFootprint && (
               <EmptyState
                 size="sm"
                 icon={Wallet}
-                title="Sem investimentos registados"
-                description="Este cliente ainda não tem investimentos lançados. Adiciona no módulo Investimentos."
+                title="Sem custos de instalacao"
+                description="Instala equipamentos no servico ou adiciona investimentos para calcular a rentabilidade."
               />
             )}
 
-            {!profitabilityLoading && profitability && profitability.investments.length > 0 && (
+            {!profitabilityLoading && profitability && hasProfitabilityFootprint && (
               <>
                 <dl className="client-profitability-grid">
                   <div className="client-profitability-total">
