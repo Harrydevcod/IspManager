@@ -124,6 +124,20 @@ describe('technical routes', () => {
       eventType: 'instalacao',
       notes: 'Instalacao inicial'
     });
+
+    expect(db.prepare('SELECT stock_total AS stockTotal FROM equipment_catalog WHERE id = ?')
+      .get(catalog.lastInsertRowid)).toEqual({ stockTotal: 9 });
+    expect(db.prepare(`
+      SELECT type, quantity, unit_cost_cve AS unitCostCve, service_id AS serviceId, client_name AS clientName
+      FROM stock_movements
+      WHERE catalog_id = ?
+    `).get(catalog.lastInsertRowid)).toEqual({
+      type: 'saida',
+      quantity: 1,
+      unitCostCve: 1000,
+      serviceId: service.lastInsertRowid,
+      clientName: 'Cliente Tec'
+    });
   });
 
   test('replaces an active assignment in one transaction', async () => {
@@ -220,5 +234,23 @@ describe('technical routes', () => {
 
     expect(duplicate.statusCode).toBe(409);
     expect(duplicate.json()).toEqual({ error: 'Serial ja esta atribuido a outro equipamento ativo' });
+  });
+
+  test('rejects assignment when stock is not available', async () => {
+    const { catalog, service } = seedBaseService();
+    db.prepare('UPDATE equipment_catalog SET stock_total = 0 WHERE id = ?').run(catalog.lastInsertRowid);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/services/${service.lastInsertRowid}/device-assignments`,
+      payload: {
+        catalogId: catalog.lastInsertRowid,
+        serialNumber: 'SN-NOSTOCK'
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: 'Stock insuficiente. Disponivel: 0' });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM service_device_assignments').get()).toEqual({ n: 0 });
   });
 });
