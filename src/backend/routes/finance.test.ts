@@ -35,6 +35,7 @@ beforeEach(() => {
   db.exec(`
     DELETE FROM whatsapp_notices;
     DELETE FROM service_events;
+    DELETE FROM service_material_lines;
     DELETE FROM service_device_assignments;
     DELETE FROM payments;
     DELETE FROM stock_movements;
@@ -290,17 +291,15 @@ describe('finance routes', () => {
     expect(response.json()).toEqual({ error: 'Dados de servico invalidos' });
   });
 
-  test('creates a service and installs equipment in one transaction', async () => {
-    const client = db.prepare(`
-      INSERT INTO clients (client_code, full_name, status)
-      VALUES ('CLT-DEV', 'Cliente Device', 'active')
+  test('creates a service and installs multiple items (device + material) atomically', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-DEV','Cliente Device','active')`).run();
+    const router = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve, is_serialized, stock_total, active)
+      VALUES ('equipamento','router','MikroTik','hAP ax2', 6000, 400, 200, 0, 1, 5, 1)
     `).run();
-    const catalog = db.prepare(`
-      INSERT INTO equipment_catalog (
-        type, brand, model, purchase_price_cve, shipping_cost_cve,
-        customs_duty_cve, other_costs_cve, selling_price_cve, stock_total, active
-      )
-      VALUES ('router', 'MikroTik', 'hAP ax2', 6000, 400, 200, 0, 9000, 5, 1)
+    const cable = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_cve, stock_total, active)
+      VALUES ('material','cabo','Cabo UTP','metro', 0, 80, 305, 1)
     `).run();
 
     const response = await app.inject({
@@ -310,51 +309,28 @@ describe('finance routes', () => {
         clientId: client.lastInsertRowid,
         monthlyValueCve: 3500,
         dueDay: 10,
-        device: {
-          catalogId: catalog.lastInsertRowid,
-          serialNumber: 'SN-DEV-1',
-          macAddress: 'AA:BB:CC:00:11:22'
-        }
+        items: [
+          { catalogId: router.lastInsertRowid, serialNumber: 'SN-DEV-1' },
+          { catalogId: cable.lastInsertRowid, quantity: 30 }
+        ]
       }
     });
 
     expect(response.statusCode).toBe(201);
-    const body = response.json() as { id: number; assignmentId: number; eventId: number };
-    expect(body).toMatchObject({
-      id: expect.any(Number),
-      assignmentId: expect.any(Number),
-      eventId: expect.any(Number)
-    });
+    const body = response.json() as { id: number; assignmentIds: number[]; materialLineIds: number[]; eventId: number };
+    expect(body.assignmentIds).toHaveLength(1);
+    expect(body.materialLineIds).toHaveLength(1);
 
-    expect(db.prepare('SELECT stock_total AS stockTotal FROM equipment_catalog WHERE id = ?')
-      .get(catalog.lastInsertRowid)).toEqual({ stockTotal: 4 });
-    expect(db.prepare(`
-      SELECT service_id AS serviceId, serial_number AS serialNumber, end_date AS endDate
-      FROM service_device_assignments WHERE catalog_id = ?
-    `).get(catalog.lastInsertRowid)).toEqual({ serviceId: body.id, serialNumber: 'SN-DEV-1', endDate: null });
-    expect(db.prepare(`
-      SELECT type, quantity, unit_cost_cve AS unitCostCve, client_name AS clientName, service_id AS serviceId
-      FROM stock_movements WHERE catalog_id = ?
-    `).get(catalog.lastInsertRowid)).toEqual({
-      type: 'saida',
-      quantity: 1,
-      unitCostCve: 6600,
-      clientName: 'Cliente Device',
-      serviceId: body.id
-    });
-    expect(db.prepare('SELECT event_type AS eventType FROM service_events WHERE service_id = ?')
-      .get(body.id)).toEqual({ eventType: 'instalacao' });
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(router.lastInsertRowid)).toEqual({ s: 4 });
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(cable.lastInsertRowid)).toEqual({ s: 275 });
+    expect(db.prepare('SELECT quantity AS q, unit_cost_cve AS u FROM service_material_lines WHERE service_id = ?').get(body.id)).toEqual({ q: 30, u: 80 });
+    expect(db.prepare("SELECT count(*) AS n FROM service_events WHERE service_id = ? AND event_type = 'instalacao'").get(body.id)).toEqual({ n: 1 });
   });
 
-  test('rolls back the new service when equipment is out of stock', async () => {
-    const client = db.prepare(`
-      INSERT INTO clients (client_code, full_name, status)
-      VALUES ('CLT-NS', 'Cliente Sem Stock', 'active')
-    `).run();
-    const catalog = db.prepare(`
-      INSERT INTO equipment_catalog (type, model, purchase_price_cve, stock_total, active)
-      VALUES ('router', 'Zero Stock', 1000, 0, 1)
-    `).run();
+  test('rolls back the whole service when one item is out of stock', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-NS','Sem Stock','active')`).run();
+    const router = db.prepare(`INSERT INTO equipment_catalog (category, type, model, is_serialized, stock_total, active) VALUES ('equipamento','router','R1',1,5,1)`).run();
+    const cable = db.prepare(`INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, stock_total, active) VALUES ('material','cabo','UTP','metro',0,10,1)`).run();
 
     const response = await app.inject({
       method: 'POST',
@@ -363,15 +339,19 @@ describe('finance routes', () => {
         clientId: client.lastInsertRowid,
         monthlyValueCve: 3500,
         dueDay: 10,
-        device: { catalogId: catalog.lastInsertRowid }
+        items: [
+          { catalogId: router.lastInsertRowid, serialNumber: 'SN-OK' },
+          { catalogId: cable.lastInsertRowid, quantity: 50 }
+        ]
       }
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json()).toEqual({ error: 'Stock insuficiente. Disponivel: 0' });
-    expect(db.prepare('SELECT count(*) AS count FROM services WHERE client_id = ?')
-      .get(client.lastInsertRowid)).toEqual({ count: 0 });
-    expect(db.prepare('SELECT count(*) AS count FROM stock_movements').get()).toEqual({ count: 0 });
+    expect(response.json()).toEqual({ error: 'Stock insuficiente. Disponivel: 10' });
+    expect(db.prepare('SELECT count(*) AS n FROM services WHERE client_id = ?').get(client.lastInsertRowid)).toEqual({ n: 0 });
+    expect(db.prepare('SELECT count(*) AS n FROM service_device_assignments').get()).toEqual({ n: 0 });
+    expect(db.prepare('SELECT count(*) AS n FROM stock_movements').get()).toEqual({ n: 0 });
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(router.lastInsertRowid)).toEqual({ s: 5 });
   });
 
   test('generates monthly payments for active services once per month', async () => {

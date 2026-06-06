@@ -4,7 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { computeMonthlyBilling, dueDateFromIssue, generateMonthlyBilling, todayIso } from '../lib/billing';
 import { nextDocumentNumber } from '../lib/numbering';
 import { recordAudit } from '../lib/audit';
-import { installDeviceWithinTx, mapInstallError, preflightDeviceInstall } from '../lib/serviceInstall';
+import { installItemsWithinTx, mapInstallError, preflightItems, type ServiceItemInput } from '../lib/serviceInstall';
 import { requireAuth, requireRole } from './auth';
 
 const monthSchema = z.object({
@@ -20,8 +20,9 @@ const cancelSchema = z.object({
   reason: z.string().trim().optional().nullable()
 });
 
-const deviceInstallSchema = z.object({
+const serviceItemSchema = z.object({
   catalogId: z.coerce.number().int().positive(),
+  quantity: z.coerce.number().int().positive().optional().nullable(),
   serialNumber: z.string().trim().optional().nullable(),
   assetTag: z.string().trim().optional().nullable(),
   ipAddress: z.string().trim().optional().nullable(),
@@ -38,7 +39,7 @@ const serviceSchema = z.object({
   activationDate: z.string().optional().nullable(),
   status: z.enum(['active', 'suspended', 'cancelled']).default('active'),
   technicalNotes: z.string().trim().optional().nullable(),
-  device: deviceInstallSchema.optional().nullable()
+  items: z.array(serviceItemSchema).optional().nullable()
 });
 
 const nextNumber = nextDocumentNumber;
@@ -87,11 +88,9 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       }
     }
 
-    // Optional inline equipment install: validate before the transaction so a bad
-    // device never leaves a service behind, then commit both atomically.
-    const device = parsed.data.device ?? null;
-    if (device) {
-      const preflight = preflightDeviceInstall(db, device);
+    const items = (parsed.data.items ?? []) as ServiceItemInput[];
+    if (items.length > 0) {
+      const preflight = preflightItems(db, items);
       if (!preflight.ok) {
         return reply.status(preflight.status).send({ error: preflight.error });
       }
@@ -115,11 +114,11 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       );
       const serviceId = Number(inserted.lastInsertRowid);
 
-      const install = device
-        ? installDeviceWithinTx(db, {
+      const install = items.length > 0
+        ? installItemsWithinTx(db, {
             serviceId,
             clientName: client.fullName,
-            device,
+            items,
             userId: request.user?.id ?? null
           })
         : null;
@@ -127,7 +126,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       return { serviceId, install };
     });
 
-    let created: { serviceId: number; install: { assignmentId: string | number | bigint; eventId: string | number | bigint } | null };
+    let created: { serviceId: number; install: ReturnType<typeof installItemsWithinTx> | null };
     try {
       created = run();
     } catch (error) {
@@ -150,8 +149,8 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         action: 'assign_device',
         entityType: 'service',
         entityId: created.serviceId,
-        summary: `Instalou equipamento ao criar o servico ${created.serviceId}`,
-        metadata: { catalogId: device?.catalogId ?? null, assignmentId: created.install.assignmentId }
+        summary: `Instalou itens ao criar o servico ${created.serviceId}`,
+        metadata: { items: items.length }
       });
     }
     return reply.status(201).send({
