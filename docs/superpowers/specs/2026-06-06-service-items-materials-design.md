@@ -18,10 +18,11 @@ Schema atual relevante:
 
 ## Objetivos
 
-Capturar, por serviço, todos os equipamentos e materiais de uma instalação, alimentando:
-1. **Custo/rentabilidade** por cliente (custo real da instalação).
+Capturar, por serviço, todos os equipamentos, materiais **e custos não-stock** (mão de obra,
+e no futuro transporte/outros) de uma instalação, alimentando:
+1. **Custo/rentabilidade** por cliente (custo real da instalação = equipamentos + materiais + mão de obra).
 2. **Stock/inventário** exato (abate de tudo o que sai do armazém).
-3. **Folha de materiais (BOM)** documentada por serviço.
+3. **Folha de materiais (BOM)** documentada por serviço, com a mão de obra à parte.
 
 **Fora de âmbito nesta iteração** (modelo não o impede, construção futura): faturar materiais
 ao cliente (linhas faturáveis, preço de venda, integração com pagamentos/fatura).
@@ -33,6 +34,8 @@ ao cliente (linhas faturáveis, preço de venda, integração com pagamentos/fat
 | Catálogo | **Unificado** (estende `equipment_catalog`) | Um só sítio para stock, custos, preços; uma só UI |
 | Modelo de linhas | **Abordagem A — duas tabelas** | Cada tabela fiel ao seu ciclo de vida; zero churn na lógica de troca |
 | Quantidades | **Inteiras** (metros inteiros, unidades) | Suficiente para ISP CV; mantém `stock_total`/`quantity` INTEGER |
+| Mão de obra / custos não-stock | **Tabela `service_install_costs`** (com `kind`) | Modelo honesto e extensível (transporte/outros) sem refazer schema; só a mão de obra entra na UI agora |
+| Stock UI | **Duas abas: Equipamentos \| Materiais** | Catálogo unificado fica navegável, filtrado por `category` |
 | Faturação | **Desenhada, não construída** | YAGNI; adicionar colunas depois é migração barata, não rebuild |
 
 ## Arquitetura
@@ -73,6 +76,18 @@ são preservados na cópia; índices recriados (`idx_eq_catalog_type` + novos pa
   ```
   Sem `end_date` (material é consumido, não devolvido). Índices em `service_id` e `catalog_id`.
   Reversão de material (futuro): apagar/anular a linha + movimento `devolucao` compensatório — fora de âmbito.
+- **Nova** `service_install_costs` (migration `0018`) — custos não-stock da instalação:
+  ```
+  id INTEGER PK
+  service_id INTEGER NOT NULL REFERENCES services(id)
+  kind TEXT NOT NULL CHECK(kind IN ('mao_de_obra','transporte','outro'))
+  description TEXT
+  amount_cve REAL NOT NULL DEFAULT 0
+  created_by INTEGER REFERENCES users(id)
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  ```
+  Índice em `service_id`. Nesta iteração a UI só cria/mostra linhas `kind='mao_de_obra'`; os outros
+  tipos ficam disponíveis no schema sem trabalho extra de UI.
 
 ### 3. Motor de instalação partilhado — `lib/deviceInstall.ts` → `lib/serviceInstall.ts`
 
@@ -94,38 +109,42 @@ evento por equipamento). Menos ruído no histórico técnico.
 
 ### 4. Endpoints
 
-- `POST /api/services` — `device` (singular) → **`items?: Item[]`**. `Item = { catalogId, quantity?,
-  serialNumber?, assetTag?, ipAddress?, macAddress?, technicianId?, notes? }`. O backend ramifica por
-  `is_serialized` do catálogo: serializado → device assignment (qty forçada a 1); material → material line
-  com `quantity`. **Tudo numa transação** (rollback se qualquer linha falhar; `preflightItems` valida tudo
-  antes de abrir a transação para nunca deixar serviço órfão). Resposta inclui ids criados.
-- **Novo** `POST /api/services/:id/items` — instalação em lote (equipamentos + materiais) para um serviço
-  existente; usado pelo diálogo "Adicionar" pós-criação. Mesma validação/motor. **Substitui** o endpoint
-  single `POST /api/services/:id/device-assignments` (folded no batch; testes atualizados em conformidade).
+- `POST /api/services` — `device` (singular) → **`items?: Item[]`** + **`installCosts?: InstallCost[]`**.
+  `Item = { catalogId, quantity?, serialNumber?, assetTag?, ipAddress?, macAddress?, technicianId?, notes? }`;
+  `InstallCost = { kind, description?, amountCve }`. O backend ramifica por `is_serialized` do catálogo:
+  serializado → device assignment (qty forçada a 1); material → material line com `quantity`; e insere as
+  linhas de `service_install_costs`. **Tudo numa transação** (rollback se qualquer linha falhar;
+  `preflightItems` valida tudo antes de abrir a transação para nunca deixar serviço órfão). Resposta inclui ids criados.
+- **Novo** `POST /api/services/:id/items` — instalação em lote (equipamentos + materiais + custos) para um
+  serviço existente; usado pelo diálogo "Adicionar" pós-criação. Mesma validação/motor. **Substitui** o
+  endpoint single `POST /api/services/:id/device-assignments` (folded no batch; testes atualizados).
 - `POST /api/services/:id/device-replacement` (troca) — **mantém-se** para swaps de equipamento.
 
 **Itens serializados vs materiais:** numa linha serializada, `quantity` é sempre 1 (cada linha = uma
 unidade com o seu serial/MAC/IP). Para instalar 3 routers adicionam-se 3 linhas. O campo `quantity`
 aplica-se apenas a materiais.
-- `GET /api/services/:id/technical-history` — passa a devolver `{ serviceId, assignments, materials, events }`.
+- `GET /api/services/:id/technical-history` — passa a devolver `{ serviceId, assignments, materials, installCosts, events }`.
 
 ### 5. Rentabilidade — `routes/clients.ts`
 
 À query `installedEquipmentUsed` (já soma device assignments) junta-se `installedMaterialsUsed`
 (soma `service_material_lines × custo` por cliente, agrupado por item). Fundem-se em `equipmentUsed`
 (mantém o nome no contrato da API; passa a representar todos os itens). `installationCostCve` += custo
-dos materiais. BOM visível na rentabilidade e no histórico técnico.
+dos materiais **+ soma de `service_install_costs.amount_cve`** (mão de obra etc.). BOM e mão de obra
+visíveis na rentabilidade e no histórico técnico.
 
 ### 6. Frontend
 
-- **StockModule** — formulário do catálogo ganha `categoria` (equipamento/material), `unidade` e
-  `serializado`, permitindo criar itens como "Cabo UTP" (metro) ou "Conector RJ45" (un).
+- **StockModule** — **duas abas: Equipamentos | Materiais** (filtram o catálogo por `category`). O
+  formulário do catálogo ganha `categoria` (equipamento/material), `unidade` e `serializado`, permitindo
+  criar itens como "Cabo UTP" (metro) ou "Conector RJ45" (un). A aba pré-define a categoria ao criar.
 - **Builder de itens** — a secção de equipamento do formulário de criação **e** o diálogo "Adicionar"
   pós-criação passam a ser um construtor multi-linha: "Adicionar item" → escolhe item do catálogo;
   se serializado → campos serial/MAC/IP/asset (qty 1); se material → campo quantidade. Lista de linhas
-  com remover; submete `items[]`.
-- **Detalhe do serviço (ServicesModule)** — histórico técnico com dois grupos: **Equipamentos**
-  (assignments) e **Materiais** (linhas com qty + custo).
+  com remover; submete `items[]`. **Acrescenta um campo "Mão de obra (CVE)"** (e, opcionalmente, linhas de
+  custo adicionais) → submete `installCosts[]`.
+- **Detalhe do serviço (ServicesModule)** — histórico técnico com grupos: **Equipamentos** (assignments),
+  **Materiais** (linhas com qty + custo) e **Custos** (mão de obra etc.), além de um total de custo de instalação.
 - **Rentabilidade do cliente (ClientsModule)** — a lista `equipmentUsed` já renderiza; passa a incluir
   materiais (com qty/unidade).
 

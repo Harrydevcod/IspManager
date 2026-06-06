@@ -37,7 +37,7 @@ Cada Task produz uma mudança auto-contida e committável. Manter os 234 testes 
 - Modify: `src/backend/db/migrations/index.ts`
 - Test: `src/backend/routes/stock.test.ts` (criado nesta task)
 
-- [ ] **Step 1: Escrever a migração**
+- [x] **Step 1: Escrever a migração**
 
 Create `src/backend/db/migrations/0018_catalog_categories_materials.ts`:
 
@@ -120,13 +120,25 @@ const migration: Migration = {
 
     CREATE INDEX IF NOT EXISTS idx_service_material_lines_service ON service_material_lines(service_id);
     CREATE INDEX IF NOT EXISTS idx_service_material_lines_catalog ON service_material_lines(catalog_id);
+
+    CREATE TABLE IF NOT EXISTS service_install_costs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      service_id INTEGER NOT NULL REFERENCES services(id),
+      kind TEXT NOT NULL CHECK(kind IN ('mao_de_obra','transporte','outro')),
+      description TEXT,
+      amount_cve REAL NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_service_install_costs_service ON service_install_costs(service_id);
   `
 };
 
 export default migration;
 ```
 
-- [ ] **Step 2: Registar a migração no index**
+- [x] **Step 2: Registar a migração no index**
 
 Modify `src/backend/db/migrations/index.ts`:
 - Adicionar import após a linha do m0017:
@@ -138,7 +150,7 @@ Modify `src/backend/db/migrations/index.ts`:
   export const migrations: Migration[] = [m0001, m0002, m0003, m0004, m0005, m0006, m0007, m0008, m0009, m0010, m0011, m0012, m0013, m0014, m0015, m0016, m0017, m0018];
   ```
 
-- [ ] **Step 3: Escrever o teste de schema (falha primeiro)**
+- [x] **Step 3: Escrever o teste de schema (falha primeiro)**
 
 Create `src/backend/routes/stock.test.ts` (harness igual a finance.test.ts):
 
@@ -223,17 +235,17 @@ describe('catalog schema (0018)', () => {
 
 > Nota: o `beforeEach` apaga `service_material_lines` antes de `stock_movements`/`equipment_catalog` (ordem child→parent por causa das FK ON em runtime).
 
-- [ ] **Step 4: Correr o teste — deve falhar**
+- [x] **Step 4: Correr o teste — deve falhar**
 
 Run: `npm.cmd test -- --run --no-file-parallelism src/backend/routes/stock.test.ts`
 Expected: FAIL — colunas `category`/`unit_of_measure`/`is_serialized` ou tabela `service_material_lines` não existem (a migração ainda não está registada/buildada). Se o melhor-sqlite3 reclamar de binário, correr `npm.cmd rebuild better-sqlite3` antes (gotcha conhecido).
 
-- [ ] **Step 5: Correr os testes para passar (migração já criada nos steps 1-2)**
+- [x] **Step 5: Correr os testes para passar (migração já criada nos steps 1-2)**
 
 Run: `npm.cmd test -- --run --no-file-parallelism src/backend/routes/stock.test.ts`
 Expected: PASS (3 testes). Os Steps 1-2 já implementam o necessário; este step confirma.
 
-- [ ] **Step 6: Confirmar que a suite continua verde**
+- [x] **Step 6: Confirmar que a suite continua verde**
 
 Run: `npm.cmd test -- --run --no-file-parallelism`
 Expected: todos passam (234 + 3 novos). Se `migrate.test.ts` contar migrações, atualizar a contagem esperada para 18.
@@ -253,7 +265,7 @@ git commit -m "feat(db): catalogo unificado (categoria/unidade/serializado) + se
 - Modify: `src/backend/routes/stock.ts` (catalogSchema + INSERT + UPDATE + summary SELECT)
 - Test: `src/backend/routes/stock.test.ts`
 
-- [ ] **Step 1: Escrever o teste (falha primeiro)**
+- [x] **Step 1: Escrever o teste (falha primeiro)**
 
 Adicionar ao fim de `stock.test.ts`, antes do último `});` do ficheiro, um novo bloco:
 
@@ -296,12 +308,12 @@ describe('POST /api/equipment-catalog with materials', () => {
 });
 ```
 
-- [ ] **Step 2: Correr o teste — deve falhar**
+- [x] **Step 2: Correr o teste — deve falhar**
 
 Run: `npm.cmd test -- --run --no-file-parallelism src/backend/routes/stock.test.ts`
 Expected: FAIL — `catalogSchema` rejeita `category`/`unitOfMeasure`/`isSerialized` (campos desconhecidos são ignorados, mas a coluna não é gravada) e o summary não devolve esses campos.
 
-- [ ] **Step 3: Atualizar `catalogSchema`**
+- [x] **Step 3: Atualizar `catalogSchema`**
 
 In `src/backend/routes/stock.ts`, substituir o `catalogSchema` por:
 
@@ -326,7 +338,7 @@ const catalogSchema = z.object({
 });
 ```
 
-- [ ] **Step 4: Atualizar o INSERT (`POST /api/equipment-catalog`)**
+- [x] **Step 4: Atualizar o INSERT (`POST /api/equipment-catalog`)**
 
 Substituir o `db.prepare(...).run(...)` do POST por:
 
@@ -358,7 +370,7 @@ Substituir o `db.prepare(...).run(...)` do POST por:
     );
 ```
 
-- [ ] **Step 5: Atualizar o UPDATE (`PUT /api/equipment-catalog/:id`)**
+- [x] **Step 5: Atualizar o UPDATE (`PUT /api/equipment-catalog/:id`)**
 
 Substituir o `UPDATE equipment_catalog SET ...` e respetivo `.run(...)` por:
 
@@ -404,7 +416,7 @@ Substituir o `UPDATE equipment_catalog SET ...` e respetivo `.run(...)` por:
     );
 ```
 
-- [ ] **Step 6: Atualizar o SELECT do summary**
+- [x] **Step 6: Atualizar o SELECT do summary**
 
 No `GET /api/stock/summary`, acrescentar três colunas ao SELECT (logo após `id,`):
 
@@ -423,7 +435,7 @@ No `GET /api/stock/summary`, acrescentar três colunas ao SELECT (logo após `id
 
 (o resto das colunas mantém-se).
 
-- [ ] **Step 7: Correr o teste — deve passar**
+- [x] **Step 7: Correr o teste — deve passar**
 
 Run: `npm.cmd test -- --run --no-file-parallelism src/backend/routes/stock.test.ts`
 Expected: PASS (5 testes).
@@ -443,13 +455,13 @@ git commit -m "feat(stock): catalogo aceita categoria, unidade de medida e seria
 - Rename: `src/backend/lib/deviceInstall.ts` → `src/backend/lib/serviceInstall.ts`
 - Modify: `src/backend/routes/technical.ts`, `src/backend/routes/finance.ts` (imports)
 
-- [ ] **Step 1: Renomear o ficheiro (preservando histórico)**
+- [x] **Step 1: Renomear o ficheiro (preservando histórico)**
 
 ```bash
 git mv src/backend/lib/deviceInstall.ts src/backend/lib/serviceInstall.ts
 ```
 
-- [ ] **Step 2: Atualizar os imports**
+- [x] **Step 2: Atualizar os imports**
 
 Em `src/backend/routes/technical.ts` e `src/backend/routes/finance.ts`, mudar:
 ```typescript
@@ -460,12 +472,12 @@ para:
 from '../lib/serviceInstall'
 ```
 
-- [ ] **Step 3: Typecheck**
+- [x] **Step 3: Typecheck**
 
 Run: `npm.cmd run typecheck`
 Expected: limpo (sem referências a `deviceInstall`).
 
-- [ ] **Step 4: Correr os testes afetados**
+- [x] **Step 4: Correr os testes afetados**
 
 Run: `npm.cmd test -- --run --no-file-parallelism src/backend/routes/technical.test.ts src/backend/routes/finance.test.ts`
 Expected: PASS (sem regressão — só mudou o nome).
@@ -485,7 +497,7 @@ git commit -m "refactor(install): renomeia deviceInstall para serviceInstall"
 - Modify: `src/backend/lib/serviceInstall.ts`
 - Test: (coberto pelos testes de endpoint nas Tasks 5-6; este task só adiciona funções puras)
 
-- [ ] **Step 1: Adicionar tipos de item e o consumo de material**
+- [x] **Step 1: Adicionar tipos de item e o consumo de material**
 
 Em `src/backend/lib/serviceInstall.ts`, após o tipo `DeviceInput`, acrescentar:
 
@@ -512,7 +524,7 @@ export function loadCatalogKind(db: Database.Database, id: number): CatalogKind 
 }
 ```
 
-- [ ] **Step 2: Adicionar `consumeMaterialWithinTx`**
+- [x] **Step 2: Adicionar `consumeMaterialWithinTx`**
 
 No mesmo ficheiro, após `installDeviceWithinTx`, acrescentar:
 
@@ -555,7 +567,7 @@ export function consumeMaterialWithinTx(
 }
 ```
 
-- [ ] **Step 3: Adicionar `preflightItems` (valida um lote antes da transação)**
+- [x] **Step 3: Adicionar `preflightItems` (valida um lote antes da transação)**
 
 No mesmo ficheiro, após `preflightDeviceInstall`, acrescentar:
 
@@ -597,7 +609,7 @@ export function preflightItems(db: Database.Database, items: ServiceItemInput[])
 }
 ```
 
-- [ ] **Step 4: Adicionar `installItemsWithinTx` (aplica o lote + 1 evento)**
+- [x] **Step 4: Adicionar `installItemsWithinTx` (aplica o lote + 1 evento)**
 
 No mesmo ficheiro, no fim, acrescentar:
 
@@ -642,7 +654,7 @@ export function installItemsWithinTx(
 }
 ```
 
-- [ ] **Step 5: Tornar o evento opcional em `installDeviceWithinTx`**
+- [x] **Step 5: Tornar o evento opcional em `installDeviceWithinTx`**
 
 Para evitar 1 evento por equipamento quando chamado em lote, dar a `installDeviceWithinTx` um parâmetro `skipEvent`. Modificar a assinatura e o corpo:
 
@@ -663,12 +675,12 @@ Para evitar 1 evento por equipamento quando chamado em lote, dar a `installDevic
   ```
   (o `return` substitui o atual). Chamadores existentes (single device em finance/technical) não passam `skipEvent` → comportamento inalterado.
 
-- [ ] **Step 6: Typecheck**
+- [x] **Step 6: Typecheck**
 
 Run: `npm.cmd run typecheck`
 Expected: limpo.
 
-- [ ] **Step 7: Garantir testes existentes verdes**
+- [x] **Step 7: Garantir testes existentes verdes**
 
 Run: `npm.cmd test -- --run --no-file-parallelism src/backend/routes/technical.test.ts src/backend/routes/finance.test.ts`
 Expected: PASS (nada mudou no comportamento single-device; só adicionámos funções novas).
@@ -688,7 +700,7 @@ git commit -m "feat(install): motor de consumo de material e instalacao em lote"
 - Modify: `src/backend/routes/finance.ts`
 - Test: `src/backend/routes/finance.test.ts`
 
-- [ ] **Step 1: Escrever o teste (falha primeiro)**
+- [x] **Step 1: Escrever o teste (falha primeiro)**
 
 Substituir, em `finance.test.ts`, os dois testes `creates a service and installs equipment in one transaction` e `rolls back the new service when equipment is out of stock` por versões baseadas em `items`, e acrescentar um teste de material. Inserir este bloco no lugar deles (dentro do `describe('finance routes', ...)`):
 
@@ -758,12 +770,12 @@ Substituir, em `finance.test.ts`, os dois testes `creates a service and installs
   });
 ```
 
-- [ ] **Step 2: Correr o teste — deve falhar**
+- [x] **Step 2: Correr o teste — deve falhar**
 
 Run: `npm.cmd test -- --run --no-file-parallelism src/backend/routes/finance.test.ts`
 Expected: FAIL — `POST /api/services` ainda só conhece `device` (singular), não `items`.
 
-- [ ] **Step 3: Atualizar o schema e o handler em `finance.ts`**
+- [x] **Step 3: Atualizar o schema e o handler em `finance.ts`**
 
 Substituir o import do motor por:
 ```typescript
@@ -860,7 +872,7 @@ Substituir o bloco de preflight + transação do handler `POST /api/services` po
 
 > Garantir que `client` continua a ser obtido com `full_name AS fullName` (já está da Task PR#9). Remover o `deviceInstallSchema` agora não usado.
 
-- [ ] **Step 4: Correr o teste — deve passar**
+- [x] **Step 4: Correr o teste — deve passar**
 
 Run: `npm.cmd test -- --run --no-file-parallelism src/backend/routes/finance.test.ts`
 Expected: PASS.
@@ -880,7 +892,7 @@ git commit -m "feat(services): POST /api/services aceita lote de itens (equipame
 - Modify: `src/backend/routes/technical.ts`
 - Test: `src/backend/routes/technical.test.ts`
 
-- [ ] **Step 1: Escrever o teste (falha primeiro)**
+- [x] **Step 1: Escrever o teste (falha primeiro)**
 
 Em `technical.test.ts`, acrescentar dentro do `describe('technical routes', ...)`:
 
@@ -939,12 +951,12 @@ Em `technical.test.ts`, acrescentar dentro do `describe('technical routes', ...)
 
 O teste `replaces an active assignment in one transaction` mantém-se (usa `device-replacement`, inalterado).
 
-- [ ] **Step 2: Correr o teste — deve falhar**
+- [x] **Step 2: Correr o teste — deve falhar**
 
 Run: `npm.cmd test -- --run --no-file-parallelism src/backend/routes/technical.test.ts`
 Expected: FAIL — rota `/items` não existe.
 
-- [ ] **Step 3: Substituir o handler `device-assignments` por `items`**
+- [x] **Step 3: Substituir o handler `device-assignments` por `items`**
 
 Em `technical.ts`:
 - Atualizar o import do motor para incluir o lote:
@@ -1023,7 +1035,7 @@ Em `technical.ts`:
 
 > O handler de troca (`device-replacement`) e os seus imports (`installDeviceWithinTx`, `loadCatalogIdentity`, `preflightDeviceInstall`, `cleanValue`) mantêm-se. Remover imports que deixem de ser usados (verificar com typecheck/lint).
 
-- [ ] **Step 4: Correr os testes — devem passar**
+- [x] **Step 4: Correr os testes — devem passar**
 
 Run: `npm.cmd test -- --run --no-file-parallelism src/backend/routes/technical.test.ts`
 Expected: PASS.
@@ -1043,7 +1055,7 @@ git commit -m "feat(technical): endpoint /items em lote substitui device-assignm
 - Modify: `src/backend/routes/technical.ts` (handler `GET .../technical-history`)
 - Test: `src/backend/routes/technical.test.ts`
 
-- [ ] **Step 1: Escrever o teste (falha primeiro)**
+- [x] **Step 1: Escrever o teste (falha primeiro)**
 
 Em `technical.test.ts`, acrescentar:
 
@@ -1067,12 +1079,12 @@ Em `technical.test.ts`, acrescentar:
   });
 ```
 
-- [ ] **Step 2: Correr o teste — deve falhar**
+- [x] **Step 2: Correr o teste — deve falhar**
 
 Run: `npm.cmd test -- --run --no-file-parallelism src/backend/routes/technical.test.ts`
 Expected: FAIL — `materials` é `undefined`.
 
-- [ ] **Step 3: Adicionar a query de materiais ao handler**
+- [x] **Step 3: Adicionar a query de materiais ao handler**
 
 No handler `GET /api/services/:id/technical-history`, antes do `return`, acrescentar:
 
@@ -1104,7 +1116,7 @@ e mudar o `return` para:
     return { serviceId: service.id, assignments, materials, events };
 ```
 
-- [ ] **Step 4: Correr o teste — deve passar**
+- [x] **Step 4: Correr o teste — deve passar**
 
 Run: `npm.cmd test -- --run --no-file-parallelism src/backend/routes/technical.test.ts`
 Expected: PASS.
@@ -1124,7 +1136,7 @@ git commit -m "feat(technical): technical-history inclui materiais consumidos"
 - Modify: `src/backend/routes/clients.ts`
 - Test: `src/backend/routes/clients.test.ts`
 
-- [ ] **Step 1: Escrever o teste (falha primeiro)**
+- [x] **Step 1: Escrever o teste (falha primeiro)**
 
 Em `clients.test.ts`, acrescentar (a seguir ao teste de equipamento instalado já existente):
 
@@ -1145,12 +1157,12 @@ Em `clients.test.ts`, acrescentar (a seguir ao teste de equipamento instalado j�
   });
 ```
 
-- [ ] **Step 2: Correr o teste — deve falhar**
+- [x] **Step 2: Correr o teste — deve falhar**
 
 Run: `npm.cmd test -- --run --no-file-parallelism src/backend/routes/clients.test.ts`
 Expected: FAIL — materiais não contam para `installationCostCve`/`equipmentUsed`.
 
-- [ ] **Step 3: Adicionar a query de materiais à rentabilidade**
+- [x] **Step 3: Adicionar a query de materiais à rentabilidade**
 
 Em `clients.ts`, no handler de profitability, após o cálculo de `installedEquipmentUsed`, acrescentar:
 
@@ -1187,12 +1199,12 @@ E mudar o cálculo do custo:
     const installationCostCve = investmentCostCve + installedEquipmentCostCve + installedMaterialsCostCve;
 ```
 
-- [ ] **Step 4: Correr o teste — deve passar**
+- [x] **Step 4: Correr o teste — deve passar**
 
 Run: `npm.cmd test -- --run --no-file-parallelism src/backend/routes/clients.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Suite completa verde**
+- [x] **Step 5: Suite completa verde**
 
 Run: `npm.cmd test -- --run --no-file-parallelism`
 Expected: todos passam.
@@ -1211,7 +1223,7 @@ git commit -m "feat(clients): rentabilidade soma materiais consumidos por servic
 **Files:**
 - Modify: `src/renderer/types.ts`
 
-- [ ] **Step 1: Atualizar `StockCatalogRow`**
+- [x] **Step 1: Atualizar `StockCatalogRow`**
 
 Substituir o tipo `StockCatalogRow` por (adiciona `category`, `unitOfMeasure`, `isSerialized` e alarga `type`):
 
@@ -1235,7 +1247,7 @@ export type StockCatalogRow = {
 };
 ```
 
-- [ ] **Step 2: Adicionar `MaterialLine` e estender `TechnicalHistory`**
+- [x] **Step 2: Adicionar `MaterialLine` e estender `TechnicalHistory`**
 
 Após o tipo `DeviceAssignment`, acrescentar:
 
@@ -1265,7 +1277,7 @@ export type TechnicalHistory = {
 };
 ```
 
-- [ ] **Step 3: Typecheck (vai apontar consumidores a ajustar)**
+- [x] **Step 3: Typecheck (vai apontar consumidores a ajustar)**
 
 Run: `npm.cmd run typecheck`
 Expected: erros nos módulos que ainda não tratam os novos campos — resolvidos nas Tasks 10-12. Se preferes commit limpo, faz esta task junto com a 10.
@@ -1286,7 +1298,7 @@ git commit -m "feat(types): catalogo com categoria/unidade/serializado + linhas 
 
 > Sem harness de testes de renderer → verificação por `typecheck` + `lint` + smoke manual.
 
-- [ ] **Step 1: Adicionar `category`, `unitOfMeasure`, `isSerialized` ao formulário do catálogo**
+- [x] **Step 1: Adicionar `category`, `unitOfMeasure`, `isSerialized` ao formulário do catálogo**
 
 No estado do formulário do catálogo de `StockModule.tsx`, acrescentar os campos `category: 'equipamento'`, `unitOfMeasure: 'un'`, `isSerialized: true` (valores por defeito). No corpo do formulário:
 - Um `Select` "Categoria" (equipamento/material). Ao escolher `material`, pôr `isSerialized=false` por defeito.
@@ -1296,7 +1308,7 @@ No estado do formulário do catálogo de `StockModule.tsx`, acrescentar os campo
 
 No payload do POST/PUT, incluir `category`, `unitOfMeasure`, `isSerialized`. Carregar estes campos ao editar uma linha existente (a partir de `StockCatalogRow`).
 
-- [ ] **Step 2: Typecheck + lint**
+- [x] **Step 2: Typecheck + lint**
 
 Run: `npm.cmd run typecheck` e `npm.cmd run lint`
 Expected: limpos.
@@ -1316,7 +1328,7 @@ git commit -m "feat(stock-ui): formulario do catalogo cria materiais (categoria/
 - Modify: `src/renderer/modules/ServicesModule.tsx`
 - Modify: `src/renderer/styles.css`
 
-- [ ] **Step 1: Modelar o estado de linhas**
+- [x] **Step 1: Modelar o estado de linhas**
 
 Em `ServicesModule.tsx`, definir um tipo de linha de instalação e estado de lista (substitui `newServiceDevice`/`deviceForm` por um array reutilizável):
 
@@ -1338,11 +1350,11 @@ function emptyItemDraft(): ItemDraft {
 
 Estado: `const [itemDrafts, setItemDrafts] = useState<ItemDraft[]>([]);` (para o formulário de criação) e o mesmo para o diálogo "Adicionar".
 
-- [ ] **Step 2: UI do builder**
+- [x] **Step 2: UI do builder**
 
 Para cada `ItemDraft` renderizar uma linha: `Select` do catálogo (rotular `{model} · {type} · {stockTotal} {unitOfMeasure}`). Resolver o item escolhido em `catalogList` (já carregado via `ensureCatalogLoaded`). Se `item.isSerialized` → mostrar serial/MAC/IP/asset (quantidade fixa 1); senão → mostrar `Field` "Quantidade" (number, min 1, max `stockTotal`). Botão "Remover linha" e, abaixo da lista, "Adicionar item" (`setItemDrafts((d) => [...d, emptyItemDraft()])`). Envolver num contentor `.service-items-builder` (reutilizar/renomear o `.service-equipment-section` existente).
 
-- [ ] **Step 3: Construir o payload `items[]`**
+- [x] **Step 3: Construir o payload `items[]`**
 
 Função que converte `itemDrafts` válidos (com `catalogId`) em `items` para o backend:
 
@@ -1367,19 +1379,19 @@ function buildItemsPayload(drafts: ItemDraft[], catalog: StockCatalogRow[]) {
 }
 ```
 
-- [ ] **Step 4: Ligar à criação de serviço**
+- [x] **Step 4: Ligar à criação de serviço**
 
 Em `saveService`, ao criar (`!editingService`), substituir o antigo `device` por `items: buildItemsPayload(itemDrafts, catalogList)` (omitir a chave se vazio). Validar: se há rascunhos com `catalogId` mas algum material com quantidade < 1 → toast de erro. Mensagem de sucesso reflete itens instalados.
 
-- [ ] **Step 5: Ligar ao diálogo "Adicionar" (pós-criação)**
+- [x] **Step 5: Ligar ao diálogo "Adicionar" (pós-criação)**
 
 Substituir `submitDeviceAssignment` (que fazia POST a `device-assignments`) por um submit que faz `POST /api/services/:id/items` com `{ items: buildItemsPayload(addItemDrafts, catalogList) }`. Recarregar `loadTechnicalHistory` no sucesso. Renomear o botão/título do diálogo para "Adicionar itens".
 
-- [ ] **Step 6: Estilos**
+- [x] **Step 6: Estilos**
 
 Em `styles.css`, renomear `.service-equipment-section` → `.service-items-builder` (e a referência no JSX) e acrescentar regras para as linhas (cada linha em grelha, botão remover discreto, divisória entre linhas). Manter `grid-column: 1 / -1` no formulário.
 
-- [ ] **Step 7: Typecheck + lint**
+- [x] **Step 7: Typecheck + lint**
 
 Run: `npm.cmd run typecheck` e `npm.cmd run lint`
 Expected: limpos.
@@ -1398,11 +1410,11 @@ git commit -m "feat(services-ui): builder de itens (varios equipamentos + materi
 **Files:**
 - Modify: `src/renderer/modules/ServicesModule.tsx`
 
-- [ ] **Step 1: Renderizar o grupo "Materiais"**
+- [x] **Step 1: Renderizar o grupo "Materiais"**
 
 No painel de detalhe do serviço, abaixo da secção "Equipamentos", acrescentar uma secção "Materiais" que lista `technicalHistory.materials` (cada item: `{brand} {model}`, `{quantity} {unitOfMeasure}`, custo `formatCve(unitCostCve * quantity)`). Mostrar `EmptyState` "Sem materiais registados" quando vazio.
 
-- [ ] **Step 2: Typecheck + lint**
+- [x] **Step 2: Typecheck + lint**
 
 Run: `npm.cmd run typecheck` e `npm.cmd run lint`
 Expected: limpos.
@@ -1424,11 +1436,74 @@ git commit -m "feat(services-ui): histórico técnico mostra materiais consumido
 
 ---
 
+## Fase 2 — Custos de instalação (mão de obra) + abas do Stock
+
+> A migração 0018 **já criou** `service_install_costs` (committed). Falta ligá-la de ponta a ponta e separar o Stock em duas abas. Cada Task continua TDD-first e committável.
+
+### Task 13: Stock — abas Equipamentos | Materiais
+
+**Files:** `src/renderer/modules/StockModule.tsx` (typecheck/lint + smoke; sem harness de testes de renderer)
+
+- [ ] **Step 1:** Estado `stockTab: 'equipamento' | 'material'` (default `'equipamento'`). Renderizar um seletor de abas (mesmo padrão visual dos restantes módulos). Filtrar `catalogList` por `row.category === stockTab` para a tabela. O botão "Novo" pré-seleciona a `category` da aba ativa e ajusta `isSerialized` (equipamento→true, material→false) por defeito.
+- [ ] **Step 2:** Ajustar colunas por aba: materiais mostram **Unidade** e ocultam colunas só-de-equipamento que não façam sentido (ex.: serial). Manter contagem/realce de stock baixo nas duas.
+- [ ] **Step 3:** `npm.cmd run typecheck` + `npm.cmd run lint` limpos.
+- [ ] **Step 4:** Commit — `feat(stock-ui): abas Equipamentos e Materiais no catalogo`.
+
+### Task 14: Motor + endpoints aceitam `installCosts[]`
+
+**Files:** `src/backend/lib/serviceInstall.ts`, `src/backend/routes/finance.ts`, `src/backend/routes/technical.ts`, `finance.test.ts`, `technical.test.ts`
+
+- [ ] **Step 1 (teste falha):** Em `finance.test.ts`, `POST /api/services` com `installCosts: [{ kind:'mao_de_obra', amountCve: 2500 }]` grava 1 linha em `service_install_costs` (mesma transação; rollback se algo falhar). Em `technical.test.ts`, `POST /:id/items` com `installCosts` idem.
+- [ ] **Step 2:** Em `serviceInstall.ts` adicionar:
+  ```typescript
+  export type InstallCostInput = { kind?: 'mao_de_obra' | 'transporte' | 'outro'; description?: string | null; amountCve: number };
+
+  export function insertInstallCostsWithinTx(
+    db: Database.Database,
+    params: { serviceId: number; costs: InstallCostInput[]; userId: number | null }
+  ): { installCostIds: Array<number | bigint> } {
+    const ids: Array<number | bigint> = [];
+    for (const c of params.costs) {
+      const res = db.prepare(`
+        INSERT INTO service_install_costs (service_id, kind, description, amount_cve, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+      `).run(params.serviceId, c.kind ?? 'mao_de_obra', cleanValue(c.description), Number(c.amountCve || 0), params.userId);
+      ids.push(res.lastInsertRowid);
+    }
+    return { installCostIds: ids };
+  }
+  ```
+- [ ] **Step 3:** Schema Zod `installCostSchema` (`kind` enum default `mao_de_obra`, `description?`, `amountCve` ≥ 0) e campo `installCosts: z.array(...).optional().nullable()` em ambos os handlers. Chamar `insertInstallCostsWithinTx` **dentro da mesma transação** (após items, se houver). Custos são independentes de items — aceitar mesmo com `items` vazio (serviço só com mão de obra).
+- [ ] **Step 4:** Devolver `installCostIds` na resposta. Testes passam.
+- [ ] **Step 5:** Commit — `feat(install): endpoints aceitam custos de instalacao (mao de obra)`.
+
+### Task 15: technical-history + rentabilidade incluem custos de instalação
+
+**Files:** `src/backend/routes/technical.ts`, `src/backend/routes/clients.ts`, `technical.test.ts`, `clients.test.ts`
+
+- [ ] **Step 1 (teste falha):** `technical-history` devolve `installCosts: [{ kind, description, amountCve, createdAt }]`. Rentabilidade soma `service_install_costs.amount_cve` em `installationCostCve` (teste: 1 serviço com 2500 mão de obra → `installationCostCve` inclui 2500).
+- [ ] **Step 2:** Em `technical.ts` query `service_install_costs WHERE service_id = ?` e incluir no `return { serviceId, assignments, materials, installCosts, events }`.
+- [ ] **Step 3:** Em `clients.ts` profitability somar `SUM(amount_cve)` de `service_install_costs` (join via `services.client_id`) a `installationCostCve`. Manter `equipmentUsed` inalterado (mão de obra não é "item" físico — soma só ao custo).
+- [ ] **Step 4:** Testes passam; suite completa verde.
+- [ ] **Step 5:** Commit — `feat(clients): rentabilidade inclui mao de obra; historico expõe custos de instalacao`.
+
+### Task 16: Tipos + UI (campo "Mão de obra" + grupo Custos)
+
+**Files:** `src/renderer/types.ts`, `src/renderer/modules/ServicesModule.tsx`
+
+- [ ] **Step 1:** Em `types.ts`: `export type InstallCost = { id: number; kind: 'mao_de_obra'|'transporte'|'outro'; description: string | null; amountCve: number; createdAt: string };` e `TechnicalHistory.installCosts: InstallCost[]`.
+- [ ] **Step 2:** Na criação de serviço e no diálogo "Adicionar itens": campo **"Mão de obra (CVE)"** (number, ≥ 0). Se > 0, juntar `installCosts: [{ kind:'mao_de_obra', amountCve }]` ao payload. (Opcional: campo de descrição livre.)
+- [ ] **Step 3:** No detalhe do serviço, grupo **"Custos de instalação"** abaixo de Materiais: lista `technicalHistory.installCosts` (`{kind legível} · {description}` → `formatCve(amountCve)`) com total. `EmptyState` "Sem custos registados" quando vazio.
+- [ ] **Step 4:** `npm.cmd run typecheck` + `npm.cmd run lint` limpos.
+- [ ] **Step 5:** Commit — `feat(services-ui): mao de obra na instalacao + grupo de custos no detalhe`.
+
+---
+
 ## Verificação final
 
-- [ ] `npm.cmd run typecheck` limpo
-- [ ] `npm.cmd run lint` limpo
-- [ ] `npm.cmd test -- --run --no-file-parallelism` — todos verdes
+- [x] `npm.cmd run typecheck` limpo
+- [x] `npm.cmd run lint` limpo
+- [x] `npm.cmd test -- --run --no-file-parallelism` — todos verdes
 - [ ] Smoke manual (Task 12, Step 3) concluído
 - [ ] Atualizar memória do projeto: [[ispm-service-create-with-device]] passa a refletir lote de itens + materiais; nota do catálogo unificado e `service_material_lines`.
 
