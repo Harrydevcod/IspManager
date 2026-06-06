@@ -586,10 +586,19 @@ export type ServiceEvent = {
   createdAt: string;
 };
 
+export type InstallCost = {
+  id: number;
+  kind: 'mao_de_obra' | 'transporte' | 'outro';
+  description: string | null;
+  amountCve: number;
+  createdAt: string;
+};
+
 export type TechnicalHistory = {
   serviceId: number;
   assignments: DeviceAssignment[];
   materials: MaterialLine[];
+  installCosts: InstallCost[];
   events: ServiceEvent[];
 };
 

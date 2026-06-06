@@ -1,4 +1,4 @@
-import { Cable, History, Pencil, Plus, Wrench } from 'lucide-react';
+import { Cable, Coins, History, Pencil, Plus, Wrench } from 'lucide-react';
 import type { Dispatch, FormEvent, SetStateAction } from 'react';
 import { useEffect, useState } from 'react';
 import { Badge, Button, Combobox, DetailPanel, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useToast } from '../components';
@@ -21,6 +21,12 @@ const eventTypeTone: Record<ServiceEventType, 'success' | 'info' | 'neutral' | '
   troca_equipamento: 'info',
   visita: 'neutral',
   alteracao_servico: 'accent'
+};
+
+const INSTALL_COST_LABELS: Record<'mao_de_obra' | 'transporte' | 'outro', string> = {
+  mao_de_obra: 'Mao de obra',
+  transporte: 'Transporte',
+  outro: 'Outro'
 };
 
 type ItemDraft = {
@@ -87,6 +93,7 @@ export function ServicesModule({
   const [editingService, setEditingService] = useState<ServiceRow | null>(null);
   const [attachItems, setAttachItems] = useState(false);
   const [itemDrafts, setItemDrafts] = useState<ItemDraft[]>([]);
+  const [laborCve, setLaborCve] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | ServiceRow['status']>('all');
   const [form, setForm] = useState<ServiceFormState>(emptyServiceForm());
@@ -95,6 +102,7 @@ export function ServicesModule({
   const [catalogList, setCatalogList] = useState<StockCatalogRow[]>([]);
   const [showDeviceDialog, setShowDeviceDialog] = useState(false);
   const [addItemDrafts, setAddItemDrafts] = useState<ItemDraft[]>([]);
+  const [addLaborCve, setAddLaborCve] = useState('');
   const [showEventDialog, setShowEventDialog] = useState(false);
   const [eventForm, setEventForm] = useState<EventFormState>(emptyEventForm());
   const [submitting, setSubmitting] = useState(false);
@@ -137,6 +145,7 @@ export function ServicesModule({
     setForm(emptyServiceForm());
     setAttachItems(false);
     setItemDrafts([]);
+    setLaborCve('');
     setShowForm(true);
   }
 
@@ -147,6 +156,7 @@ export function ServicesModule({
       setItemDrafts((current) => current.length > 0 ? current : [emptyItemDraft()]);
     } else {
       setItemDrafts([]);
+      setLaborCve('');
     }
   }
 
@@ -171,6 +181,7 @@ export function ServicesModule({
     setForm(emptyServiceForm());
     setAttachItems(false);
     setItemDrafts([]);
+    setLaborCve('');
   }
 
   async function loadTechnicalHistory(serviceId: number) {
@@ -178,13 +189,13 @@ export function ServicesModule({
     try {
       const response = await authFetch(`http://127.0.0.1:3001/api/services/${serviceId}/technical-history`);
       if (!response.ok) {
-        setTechnicalHistory({ serviceId, assignments: [], materials: [], events: [] });
+        setTechnicalHistory({ serviceId, assignments: [], materials: [], installCosts: [], events: [] });
         return;
       }
       const data = await response.json() as TechnicalHistory;
       setTechnicalHistory(data);
     } catch {
-      setTechnicalHistory({ serviceId, assignments: [], materials: [], events: [] });
+      setTechnicalHistory({ serviceId, assignments: [], materials: [], installCosts: [], events: [] });
     } finally {
       setHistoryLoading(false);
     }
@@ -225,6 +236,7 @@ export function ServicesModule({
 
   function openDeviceDialog() {
     setAddItemDrafts([emptyItemDraft()]);
+    setAddLaborCve('');
     void ensureCatalogLoaded();
     setShowDeviceDialog(true);
   }
@@ -233,6 +245,7 @@ export function ServicesModule({
     if (submitting) return;
     setShowDeviceDialog(false);
     setAddItemDrafts([]);
+    setAddLaborCve('');
   }
 
   function updateItemDraft(setter: Dispatch<SetStateAction<ItemDraft[]>>, index: number, patch: Partial<ItemDraft>) {
@@ -266,6 +279,11 @@ export function ServicesModule({
       });
   }
 
+  function buildInstallCostsPayload(labor: string) {
+    const amount = Number(labor || 0);
+    return amount > 0 ? [{ kind: 'mao_de_obra' as const, amountCve: amount }] : [];
+  }
+
   function hasInvalidMaterialQuantity(drafts: ItemDraft[]) {
     return drafts.some((draft) => {
       if (!draft.catalogId) return false;
@@ -278,8 +296,9 @@ export function ServicesModule({
     event.preventDefault();
     if (!selectedService) return;
     const items = buildItemsPayload(addItemDrafts, catalogList);
-    if (items.length === 0) {
-      toast('Adiciona pelo menos um item.', 'error');
+    const installCosts = buildInstallCostsPayload(addLaborCve);
+    if (items.length === 0 && installCosts.length === 0) {
+      toast('Adiciona pelo menos um item ou mao de obra.', 'error');
       return;
     }
     if (hasInvalidMaterialQuantity(addItemDrafts)) {
@@ -291,7 +310,10 @@ export function ServicesModule({
       const response = await authFetch(`http://127.0.0.1:3001/api/services/${selectedService.id}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items })
+        body: JSON.stringify({
+          items: items.length > 0 ? items : undefined,
+          installCosts: installCosts.length > 0 ? installCosts : undefined
+        })
       });
       const data = await response.json() as { error?: string };
       if (!response.ok) {
@@ -301,6 +323,7 @@ export function ServicesModule({
       toast('Itens adicionados ao servico.', 'success');
       setShowDeviceDialog(false);
       setAddItemDrafts([]);
+      setAddLaborCve('');
       await loadTechnicalHistory(selectedService.id);
     } catch {
       toast('Falha de rede ao adicionar itens.', 'error');
@@ -353,8 +376,9 @@ export function ServicesModule({
     event.preventDefault();
 
     const items = !editingService && attachItems ? buildItemsPayload(itemDrafts, catalogList) : [];
-    if (!editingService && attachItems && items.length === 0) {
-      toast('Adiciona pelo menos um item a instalar.', 'error');
+    const installCosts = !editingService && attachItems ? buildInstallCostsPayload(laborCve) : [];
+    if (!editingService && attachItems && items.length === 0 && installCosts.length === 0) {
+      toast('Adiciona pelo menos um item ou mao de obra.', 'error');
       return;
     }
     if (!editingService && attachItems && hasInvalidMaterialQuantity(itemDrafts)) {
@@ -374,7 +398,8 @@ export function ServicesModule({
         activationDate: form.activationDate,
         status: form.status,
         technicalNotes: form.technicalNotes,
-        items: items.length > 0 ? items : undefined
+        items: items.length > 0 ? items : undefined,
+        installCosts: installCosts.length > 0 ? installCosts : undefined
       })
     });
 
@@ -387,8 +412,8 @@ export function ServicesModule({
     toast(
       editingService
         ? 'Servico atualizado.'
-        : items.length > 0
-          ? 'Servico criado e itens instalados.'
+        : items.length > 0 || installCosts.length > 0
+          ? 'Servico criado e instalacao registada.'
           : 'Servico criado.',
       'success'
     );
@@ -614,6 +639,43 @@ export function ServicesModule({
           <section className="technical-section">
             <header className="technical-section-head">
               <div>
+                <p className="eyebrow"><Coins size={12} /> Custos de instalacao</p>
+                <h3>
+                  {technicalHistory
+                    ? formatCve(technicalHistory.installCosts.reduce((sum, cost) => sum + cost.amountCve, 0))
+                    : 'A carregar...'}
+                </h3>
+              </div>
+            </header>
+            {technicalHistory && technicalHistory.installCosts.length === 0 && (
+              <EmptyState
+                size="sm"
+                icon={Coins}
+                title="Sem custos registados"
+                description="Mao de obra e outros custos da instalacao aparecem aqui."
+              />
+            )}
+            {technicalHistory && technicalHistory.installCosts.length > 0 && (
+              <ul className="technical-list">
+                {technicalHistory.installCosts.map((cost) => (
+                  <li key={cost.id} className="technical-item active">
+                    <div className="technical-item-head">
+                      <strong>{INSTALL_COST_LABELS[cost.kind]}</strong>
+                      <Badge tone="neutral">{formatCve(cost.amountCve)}</Badge>
+                    </div>
+                    <dl className="technical-item-meta">
+                      <div><dt>Registado</dt><dd>{formatPtDateTime(cost.createdAt)}</dd></div>
+                    </dl>
+                    {cost.description && <p className="technical-item-notes">{cost.description}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="technical-section">
+            <header className="technical-section-head">
+              <div>
                 <p className="eyebrow"><History size={12} /> Eventos tecnicos</p>
                 <h3>{technicalHistory ? `${technicalHistory.events.length} evento(s)` : 'A carregar...'}</h3>
               </div>
@@ -749,12 +811,26 @@ export function ServicesModule({
           {!editingService && canRecordTechnical && (
             <div className="service-items-builder">
               <Toggle
-                title="Instalar equipamento agora"
-                description="Atribui hardware ao serviço e abate o stock no momento da criação."
+                title="Registar instalacao agora"
+                description="Atribui equipamento/materiais, abate o stock e contabiliza a mão de obra no momento da criação."
                 checked={attachItems}
                 onChange={(event) => toggleAttachItems(event.target.checked)}
               />
-              {attachItems && renderItemDrafts(itemDrafts, setItemDrafts, 'Sem itens selecionados.')}
+              {attachItems && (
+                <>
+                  {renderItemDrafts(itemDrafts, setItemDrafts, 'Sem itens selecionados.')}
+                  <Field
+                    wide
+                    label="Mão de obra (CVE)"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="0"
+                    value={laborCve}
+                    onChange={(event) => setLaborCve(event.target.value)}
+                  />
+                </>
+              )}
             </div>
           )}
         </form>
@@ -778,6 +854,16 @@ export function ServicesModule({
       >
         <form id="device-form" className="client-form" onSubmit={submitItems}>
           {renderItemDrafts(addItemDrafts, setAddItemDrafts, 'Sem itens selecionados.')}
+          <Field
+            wide
+            label="Mão de obra (CVE)"
+            type="number"
+            min={0}
+            step="0.01"
+            placeholder="0"
+            value={addLaborCve}
+            onChange={(event) => setAddLaborCve(event.target.value)}
+          />
         </form>
       </Dialog>
 
