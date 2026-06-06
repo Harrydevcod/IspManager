@@ -1,4 +1,4 @@
-import { Activity, ArrowDownUp, Banknote, Boxes, Gauge, HardDrive, Network, Pencil, Radio, Router, Users } from 'lucide-react';
+import { Activity, ArrowDownUp, Banknote, Boxes, Cable, Gauge, HardDrive, Network, Pencil, Radio, Router, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -82,6 +82,7 @@ export function StockModule() {
   const [showMovementForm, setShowMovementForm] = useState(false);
   const [editingCatalog, setEditingCatalog] = useState<StockCatalogRow | null>(null);
   const [search, setSearch] = useState('');
+  const [stockTab, setStockTab] = useState<'equipamento' | 'material'>('equipamento');
   const [typeFilter, setTypeFilter] = useState<'all' | StockCatalogRow['type']>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out'>('all');
   const [catalogForm, setCatalogForm] = useState<StockFormState>(emptyCatalogForm());
@@ -137,7 +138,9 @@ export function StockModule() {
 
   function openCreateCatalog() {
     setEditingCatalog(null);
-    setCatalogForm(emptyCatalogForm());
+    setCatalogForm(stockTab === 'material'
+      ? { ...emptyCatalogForm(), category: 'material', isSerialized: '0', type: 'cabo', unitOfMeasure: 'metro' }
+      : emptyCatalogForm());
     setShowCatalogForm(true);
   }
 
@@ -236,16 +239,25 @@ export function StockModule() {
   }
 
   const totals = summary?.totals;
+  const tabCounts = useMemo(() => {
+    const rows = summary?.rows || [];
+    return {
+      equipamento: rows.filter((item) => item.category === 'equipamento').length,
+      material: rows.filter((item) => item.category === 'material').length
+    };
+  }, [summary]);
+
   const visibleStockRows = useMemo(() => (summary?.rows || []).filter((item) => {
     const normalizedSearch = search.trim().toLowerCase();
     const label = `${item.brand || ''} ${item.model} ${item.supplier || ''}`.toLowerCase();
     const matchesSearch = !normalizedSearch || label.includes(normalizedSearch);
+    const matchesTab = item.category === stockTab;
     const matchesType = typeFilter === 'all' || item.type === typeFilter;
     const matchesStock = stockFilter === 'all'
       || (stockFilter === 'low' && item.stockTotal > 0 && item.stockTotal <= 3)
       || (stockFilter === 'out' && item.stockTotal <= 0);
-    return matchesSearch && matchesType && matchesStock;
-  }), [summary, search, typeFilter, stockFilter]);
+    return matchesSearch && matchesTab && matchesType && matchesStock;
+  }), [summary, search, stockTab, typeFilter, stockFilter]);
 
   return (
     <section className="module-panel">
@@ -262,25 +274,58 @@ export function StockModule() {
         </div>
         {canManageStock && (
           <Button onClick={openCreateCatalog}>
-            Novo equipamento
+            {stockTab === 'material' ? 'Novo material' : 'Novo equipamento'}
           </Button>
         )}
       </div>
+
+      <nav className="segmented-tabs" role="tablist" aria-label="Categoria de stock">
+        <Button
+          variant="ghost"
+          role="tab"
+          aria-selected={stockTab === 'equipamento'}
+          className={`segmented-tab${stockTab === 'equipamento' ? ' is-active' : ''}`}
+          onClick={() => { setStockTab('equipamento'); setTypeFilter('all'); }}
+        >
+          <Boxes size={14} aria-hidden />
+          <span>Equipamentos</span>
+          <span className="segmented-tab-count">{tabCounts.equipamento}</span>
+        </Button>
+        <Button
+          variant="ghost"
+          role="tab"
+          aria-selected={stockTab === 'material'}
+          className={`segmented-tab${stockTab === 'material' ? ' is-active' : ''}`}
+          onClick={() => { setStockTab('material'); setTypeFilter('all'); }}
+        >
+          <Cable size={14} aria-hidden />
+          <span>Materiais</span>
+          <span className="segmented-tab-count">{tabCounts.material}</span>
+        </Button>
+      </nav>
 
       <div className="stock-filter-sticky">
         <FilterBar>
           <Field type="search" label="Buscar" aria-label="Pesquisar stock" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Marca, modelo ou fornecedor" />
           <Select label="Tipo" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | StockCatalogRow['type'])}>
             <option value="all">Todos</option>
-            <option value="cpe">CPE</option>
-            <option value="router">Router</option>
-            <option value="antena">Antena</option>
-            <option value="switch">Switch</option>
-            <option value="cabo">Cabo</option>
-            <option value="conector">Conector</option>
-            <option value="ficha">Ficha</option>
-            <option value="suporte">Suporte</option>
-            <option value="outro">Outro</option>
+            {stockTab === 'equipamento' ? (
+              <>
+                <option value="cpe">CPE</option>
+                <option value="router">Router</option>
+                <option value="antena">Antena</option>
+                <option value="switch">Switch</option>
+                <option value="outro">Outro</option>
+              </>
+            ) : (
+              <>
+                <option value="cabo">Cabo</option>
+                <option value="conector">Conector</option>
+                <option value="ficha">Ficha</option>
+                <option value="suporte">Suporte</option>
+                <option value="outro">Outro</option>
+              </>
+            )}
           </Select>
           <Select label="Stock" value={stockFilter} onChange={(event) => setStockFilter(event.target.value as 'all' | 'low' | 'out')}>
             <option value="all">Todos</option>
@@ -405,9 +450,11 @@ export function StockModule() {
 
       {visibleStockRows.length === 0 && summary && (
         <EmptyState
-          icon={Boxes}
-          title="Nenhum equipamento encontrado"
-          description="Ajusta os filtros ou cadastra um novo equipamento no catálogo."
+          icon={stockTab === 'material' ? Cable : Boxes}
+          title={stockTab === 'material' ? 'Nenhum material encontrado' : 'Nenhum equipamento encontrado'}
+          description={stockTab === 'material'
+            ? 'Ajusta os filtros ou cadastra um novo material (cabo, conector…) no catálogo.'
+            : 'Ajusta os filtros ou cadastra um novo equipamento no catálogo.'}
         />
       )}
 
@@ -447,7 +494,7 @@ export function StockModule() {
                 <span className="stock-item-level">
                   <span className="stock-item-level-dot" data-tone={tone} aria-hidden />
                   <span className="stock-item-level-value">{item.stockTotal}</span>
-                  <span className="stock-item-level-unit">un.</span>
+                  <span className="stock-item-level-unit">{item.unitOfMeasure || 'un.'}</span>
                 </span>
                 <div className="stock-item-value">
                   <span className="stock-item-value-amount">{item.sellingPriceCve.toLocaleString('pt-PT')}</span>

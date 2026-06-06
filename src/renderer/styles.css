@@ -4220,8 +4220,9 @@ button.danger:disabled {
   background: color-mix(in oklch, var(--danger) 8%, transparent);
 }
 
-/* Settings — horizontal segmented tabs */
-.settings-tabs {
+/* Horizontal segmented tabs (shared: Settings, Stock, …) */
+.settings-tabs,
+.segmented-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
@@ -4231,7 +4232,8 @@ button.danger:disabled {
   border-radius: var(--r1);
   background: var(--surface-2);
 }
-.settings-tab {
+.settings-tab,
+.segmented-tab {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -4245,25 +4247,37 @@ button.danger:disabled {
   cursor: pointer;
   transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
 }
-.settings-tab:hover {
+.settings-tab:hover,
+.segmented-tab:hover {
   color: var(--text);
   background: color-mix(in oklch, var(--surface) 70%, transparent);
 }
-.settings-tab.is-active {
+.settings-tab.is-active,
+.segmented-tab.is-active {
   background: color-mix(in oklch, var(--accent) 12%, var(--surface));
   border-color: color-mix(in oklch, var(--accent) 38%, var(--border));
   color: var(--text);
   font-weight: 600;
   box-shadow: 0 1px 0 color-mix(in oklch, var(--accent) 18%, transparent);
 }
-.settings-tab svg {
+.settings-tab svg,
+.segmented-tab svg {
   color: currentColor;
   opacity: 0.85;
 }
-.settings-tab.is-active svg { opacity: 1; }
+.settings-tab.is-active svg,
+.segmented-tab.is-active svg { opacity: 1; }
+.segmented-tab .segmented-tab-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+  font-weight: 500;
+}
+.segmented-tab.is-active .segmented-tab-count { color: var(--text-2); }
 @media (max-width: 640px) {
-  .settings-tab span { display: none; }
-  .settings-tab { padding: 9px 14px; }
+  .settings-tab span,
+  .segmented-tab span:not(.segmented-tab-count) { display: none; }
+  .settings-tab,
+  .segmented-tab { padding: 9px 14px; }
 }
 
 .settings-form {
