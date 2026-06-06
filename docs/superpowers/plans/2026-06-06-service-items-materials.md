@@ -1419,13 +1419,20 @@ No painel de detalhe do serviço, abaixo da secção "Equipamentos", acrescentar
 Run: `npm.cmd run typecheck` e `npm.cmd run lint`
 Expected: limpos.
 
-- [ ] **Step 3: Smoke manual (Electron)**
+- [x] **Step 3: Smoke manual (renderer + backend isolado)**
 
 Iniciar a app e verificar o fluxo end-to-end:
 1. Stock → criar um material "Cabo UTP" (categoria material, unidade metro, não serializado, stock 305).
 2. Serviços → Novo serviço → adicionar 1 router (com serial) + 30 m de cabo → gravar.
 3. Confirmar: stock do router −1, cabo −30; detalhe do serviço mostra Equipamentos + Materiais; rentabilidade do cliente inclui o custo do cabo.
 4. No detalhe, "Adicionar itens" → mais 1 material → confirmar abate e histórico.
+
+Concluído em 2026-06-06 com Chromium/Playwright contra uma base SQLite temporária:
+- router: stock `1 → 0`;
+- cabo: stock `305 → 275 → 270`;
+- histórico: `1` equipamento ativo, `2` linhas de material (`35 metro` no total);
+- mão de obra: `2.500 + 500 = 3.000 CVE`;
+- rentabilidade: `installationCostCve = 11.800` (equipamento `6.000` + material `2.800` + mão de obra `3.000`).
 
 - [ ] **Step 4: Commit**
 
@@ -1507,7 +1514,7 @@ git commit -m "feat(services-ui): histórico técnico mostra materiais consumido
 - [x] `npm.cmd run lint` limpo
 - [x] `npm.cmd test -- --run --no-file-parallelism` — todos verdes (249)
 - [x] Atualizar memória do projeto: [[ispm-service-create-with-device]] reflete lote de itens + materiais + mão de obra, catálogo unificado, abas do Stock, `service_material_lines`/`service_install_costs`.
-- [ ] Smoke manual (Task 12 Step 3 + fluxo de mão de obra/abas) concluído
+- [x] Smoke manual (Task 12 Step 3 + fluxo de mão de obra/abas) concluído
 
 ## Notas de execução
 
