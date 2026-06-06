@@ -265,6 +265,46 @@ describe('POST /api/clients/bulk', () => {
     expect(body.companyOpexShare.opexPerClientPerMonth).toBe(250);
   });
 
+  test('GET /api/clients/:id/profitability includes equipment installed on services', async () => {
+    const clientId = db.prepare(`
+      INSERT INTO clients (client_code, full_name, phone, status)
+      VALUES ('CLT-HW', 'Cliente Hardware', '9333333', 'active')
+    `).run().lastInsertRowid as number;
+    const serviceId = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
+      VALUES (?, 4500, 10, 'active')
+    `).run(clientId).lastInsertRowid as number;
+    const catalogId = db.prepare(`
+      INSERT INTO equipment_catalog (
+        type, brand, model, purchase_price_cve, shipping_cost_cve,
+        customs_duty_cve, other_costs_cve, stock_total, active
+      )
+      VALUES ('router', 'MikroTik', 'hAP ax2', 6500, 500, 250, 250, 3, 1)
+    `).run().lastInsertRowid as number;
+    db.prepare(`
+      INSERT INTO service_device_assignments (
+        service_id, catalog_id, serial_number, start_date, created_at, updated_at
+      )
+      VALUES (?, ?, 'HW-001', '2026-05-01', datetime('now'), datetime('now'))
+    `).run(serviceId, catalogId);
+
+    const response = await app.inject({ method: 'GET', url: `/api/clients/${clientId}/profitability` });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.investments).toEqual([]);
+    expect(body.installationCostCve).toBe(7500);
+    expect(body.equipmentUsed).toEqual([
+      {
+        itemType: 'router',
+        itemName: 'MikroTik hAP ax2',
+        quantity: 1,
+        quantityUsed: 1,
+        totalCostCve: 7500
+      }
+    ]);
+  });
+
   test('reports validation errors per row without rolling back valid inserts', async () => {
     const response = await app.inject({
       method: 'POST',

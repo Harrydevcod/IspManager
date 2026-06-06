@@ -72,9 +72,9 @@ export async function registerClientRoutes(app: FastifyInstance) {
       status: string; zone: string | null; totalCostCve: number;
     }>;
 
-    const installationCostCve = investmentRows.reduce((sum, r) => sum + Number(r.totalCostCve || 0), 0);
+    const investmentCostCve = investmentRows.reduce((sum, r) => sum + Number(r.totalCostCve || 0), 0);
 
-    const equipmentUsed = investmentRows.length === 0 ? [] : db.prepare(`
+    const investmentEquipmentUsed = investmentRows.length === 0 ? [] : db.prepare(`
       SELECT item_type AS itemType,
              item_name AS itemName,
              SUM(quantity) AS quantity,
@@ -87,6 +87,46 @@ export async function registerClientRoutes(app: FastifyInstance) {
     `).all(...investmentRows.map((r) => r.id)) as Array<{
       itemType: string; itemName: string; quantity: number; quantityUsed: number; totalCostCve: number;
     }>;
+
+    const installedEquipmentUsed = db.prepare(`
+      SELECT ec.type AS itemType,
+             TRIM(COALESCE(ec.brand || ' ', '') || ec.model) AS itemName,
+             COUNT(*) AS quantity,
+             SUM(CASE WHEN a.end_date IS NULL THEN 1 ELSE 0 END) AS quantityUsed,
+             SUM(ec.purchase_price_cve + ec.shipping_cost_cve + ec.customs_duty_cve + ec.other_costs_cve) AS totalCostCve
+      FROM service_device_assignments a
+      JOIN equipment_catalog ec ON ec.id = a.catalog_id
+      JOIN services s ON s.id = a.service_id
+      WHERE s.client_id = ?
+      GROUP BY ec.type, ec.brand, ec.model
+      ORDER BY totalCostCve DESC, itemName ASC
+    `).all(id) as Array<{
+      itemType: string; itemName: string; quantity: number; quantityUsed: number; totalCostCve: number;
+    }>;
+
+    const equipmentUsed = [...investmentEquipmentUsed, ...installedEquipmentUsed]
+      .reduce((items, row) => {
+        const existing = items.find((item) => item.itemType === row.itemType && item.itemName === row.itemName);
+        if (existing) {
+          existing.quantity += Number(row.quantity || 0);
+          existing.quantityUsed += Number(row.quantityUsed || 0);
+          existing.totalCostCve += Number(row.totalCostCve || 0);
+        } else {
+          items.push({
+            itemType: row.itemType,
+            itemName: row.itemName,
+            quantity: Number(row.quantity || 0),
+            quantityUsed: Number(row.quantityUsed || 0),
+            totalCostCve: Number(row.totalCostCve || 0)
+          });
+        }
+        return items;
+      }, [] as Array<{ itemType: string; itemName: string; quantity: number; quantityUsed: number; totalCostCve: number }>)
+      .sort((a, b) => b.totalCostCve - a.totalCostCve || a.itemName.localeCompare(b.itemName));
+
+    const installedEquipmentCostCve = installedEquipmentUsed
+      .reduce((sum, row) => sum + Number(row.totalCostCve || 0), 0);
+    const installationCostCve = investmentCostCve + installedEquipmentCostCve;
 
     const payments = db.prepare(`
       SELECT id, status, amount_cve AS amountCve, due_date AS dueDate,

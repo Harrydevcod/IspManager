@@ -2,6 +2,13 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
+import {
+  cleanValue,
+  installDeviceWithinTx,
+  loadCatalogIdentity,
+  mapInstallError,
+  preflightDeviceInstall
+} from '../lib/deviceInstall';
 import { requireAuth, requireRole } from './auth';
 
 const deviceAssignmentSchema = z.object({
@@ -20,19 +27,20 @@ const technicalEventSchema = z.object({
   technicianId: z.coerce.number().int().positive().optional().nullable()
 });
 
-function cleanValue(value: string | null | undefined) {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
-}
+type ServiceIdentity = {
+  id: number;
+  clientId: number;
+  clientName: string;
+};
 
 function loadService(id: number) {
   const db = getSqliteDatabase();
-  return db.prepare('SELECT id FROM services WHERE id = ?').get(id) as { id: number } | undefined;
-}
-
-function loadCatalog(id: number) {
-  const db = getSqliteDatabase();
-  return db.prepare('SELECT id FROM equipment_catalog WHERE id = ?').get(id) as { id: number } | undefined;
+  return db.prepare(`
+    SELECT s.id, s.client_id AS clientId, c.full_name AS clientName
+    FROM services s
+    JOIN clients c ON c.id = s.client_id
+    WHERE s.id = ?
+  `).get(id) as ServiceIdentity | undefined;
 }
 
 function loadUser(id: number) {
@@ -113,78 +121,33 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
     }
 
     const db = getSqliteDatabase();
-    if (!loadService(serviceId)) {
+    const service = loadService(serviceId);
+    if (!service) {
       return reply.status(404).send({ error: 'Servico nao encontrado' });
     }
-    if (!loadCatalog(parsed.data.catalogId)) {
-      return reply.status(404).send({ error: 'Modelo nao encontrado' });
-    }
-    if (parsed.data.technicianId && !loadUser(parsed.data.technicianId)) {
-      return reply.status(404).send({ error: 'Tecnico nao encontrado' });
+
+    const preflight = preflightDeviceInstall(db, parsed.data);
+    if (!preflight.ok) {
+      return reply.status(preflight.status).send({ error: preflight.error });
     }
 
-    const serialNumber = cleanValue(parsed.data.serialNumber);
-    const assetTag = cleanValue(parsed.data.assetTag);
-    const ipAddress = cleanValue(parsed.data.ipAddress);
-    const macAddress = cleanValue(parsed.data.macAddress);
-    const notes = cleanValue(parsed.data.notes);
+    const run = db.transaction(() => installDeviceWithinTx(db, {
+      serviceId,
+      clientName: service.clientName,
+      device: parsed.data,
+      userId: request.user?.id ?? null
+    }));
 
-    if (serialNumber) {
-      const duplicate = db.prepare(`
-        SELECT id
-        FROM service_device_assignments
-        WHERE serial_number = ? AND end_date IS NULL
-      `).get(serialNumber);
-      if (duplicate) {
-        return reply.status(409).send({ error: 'Serial ja esta atribuido a outro equipamento ativo' });
+    let result: { assignmentId: string | number | bigint; eventId: string | number | bigint };
+    try {
+      result = run();
+    } catch (error) {
+      const mapped = mapInstallError(error);
+      if (mapped) {
+        return reply.status(mapped.status).send({ error: mapped.error });
       }
+      throw error;
     }
-    if (assetTag) {
-      const duplicate = db.prepare(`
-        SELECT id
-        FROM service_device_assignments
-        WHERE asset_tag = ? AND end_date IS NULL
-      `).get(assetTag);
-      if (duplicate) {
-        return reply.status(409).send({ error: 'Asset tag ja esta atribuido a outro equipamento ativo' });
-      }
-    }
-
-    const run = db.transaction(() => {
-      const assignment = db.prepare(`
-        INSERT INTO service_device_assignments (
-          service_id, catalog_id, serial_number, asset_tag, ip_address, mac_address,
-          technician_id, notes, start_date, end_date, created_by, created_at, updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, date('now'), NULL, ?, datetime('now'), datetime('now'))
-      `).run(
-        serviceId,
-        parsed.data.catalogId,
-        serialNumber,
-        assetTag,
-        ipAddress,
-        macAddress,
-        parsed.data.technicianId || null,
-        notes,
-        parsed.data.technicianId || null
-      );
-
-      const event = db.prepare(`
-        INSERT INTO service_events (
-          service_id, event_type, notes, technician_id, created_by, created_at
-        )
-        VALUES (?, 'instalacao', ?, ?, ?, datetime('now'))
-      `).run(
-        serviceId,
-        notes,
-        parsed.data.technicianId || null,
-        parsed.data.technicianId || null
-      );
-
-      return { assignmentId: assignment.lastInsertRowid, eventId: event.lastInsertRowid };
-    });
-
-    const result = run();
     recordAudit(request, {
       action: 'assign_device',
       entityType: 'service',
@@ -218,8 +181,12 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
     if (!loadService(current.serviceId)) {
       return reply.status(404).send({ error: 'Servico nao encontrado' });
     }
-    if (!loadCatalog(parsed.data.catalogId)) {
+    const catalog = loadCatalogIdentity(db, parsed.data.catalogId);
+    if (!catalog) {
       return reply.status(404).send({ error: 'Modelo nao encontrado' });
+    }
+    if (catalog.stockTotal < 1) {
+      return reply.status(400).send({ error: `Stock insuficiente. Disponivel: ${catalog.stockTotal}` });
     }
     if (parsed.data.technicianId && !loadUser(parsed.data.technicianId)) {
       return reply.status(404).send({ error: 'Tecnico nao encontrado' });
@@ -253,6 +220,18 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
     }
 
     const run = db.transaction(() => {
+      const service = loadService(current.serviceId);
+      if (!service) {
+        throw new Error('service_missing');
+      }
+      const freshCatalog = loadCatalogIdentity(db, parsed.data.catalogId);
+      if (!freshCatalog) {
+        throw new Error('catalog_missing');
+      }
+      if (freshCatalog.stockTotal < 1) {
+        throw new Error(`stock_insufficient:${freshCatalog.stockTotal}`);
+      }
+
       db.prepare(`
         UPDATE service_device_assignments
         SET end_date = date('now'),
@@ -278,6 +257,28 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         parsed.data.technicianId || null
       );
 
+      db.prepare(`
+        INSERT INTO stock_movements (
+          catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
+        )
+        VALUES (?, 'saida', 1, ?, ?, ?, ?, ?, ?)
+      `).run(
+        parsed.data.catalogId,
+        freshCatalog.landedCostCve,
+        `Troca servico ${current.serviceId}`,
+        notes,
+        current.serviceId,
+        service.clientName,
+        request.user?.id || null
+      );
+
+      db.prepare(`
+        UPDATE equipment_catalog
+        SET stock_total = stock_total - 1,
+            updated_at = datetime('now')
+        WHERE id = ?
+      `).run(parsed.data.catalogId);
+
       const event = db.prepare(`
         INSERT INTO service_events (
           service_id, event_type, notes, technician_id, created_by, created_at
@@ -293,7 +294,18 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       return { assignmentId: replacement.lastInsertRowid, eventId: event.lastInsertRowid };
     });
 
-    const result = run();
+    let result: { assignmentId: string | number | bigint; eventId: string | number | bigint };
+    try {
+      result = run();
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('stock_insufficient:')) {
+        return reply.status(400).send({ error: `Stock insuficiente. Disponivel: ${error.message.split(':')[1]}` });
+      }
+      if (error instanceof Error && error.message === 'service_missing') {
+        return reply.status(404).send({ error: 'Servico nao encontrado' });
+      }
+      throw error;
+    }
     recordAudit(request, {
       action: 'replace_device',
       entityType: 'service_device_assignment',
