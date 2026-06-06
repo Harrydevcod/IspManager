@@ -140,11 +140,19 @@ export async function registerClientRoutes(app: FastifyInstance) {
       }, [] as Array<{ itemType: string; itemName: string; quantity: number; quantityUsed: number; totalCostCve: number }>)
       .sort((a, b) => b.totalCostCve - a.totalCostCve || a.itemName.localeCompare(b.itemName));
 
+    const installCostsRow = db.prepare(`
+      SELECT COALESCE(SUM(ic.amount_cve), 0) AS total
+      FROM service_install_costs ic
+      JOIN services s ON s.id = ic.service_id
+      WHERE s.client_id = ?
+    `).get(id) as { total: number };
+
     const installedEquipmentCostCve = installedEquipmentUsed
       .reduce((sum, row) => sum + Number(row.totalCostCve || 0), 0);
     const installedMaterialsCostCve = installedMaterialsUsed
       .reduce((sum, row) => sum + Number(row.totalCostCve || 0), 0);
-    const installationCostCve = investmentCostCve + installedEquipmentCostCve + installedMaterialsCostCve;
+    const installLabourCostCve = Number(installCostsRow.total || 0);
+    const installationCostCve = investmentCostCve + installedEquipmentCostCve + installedMaterialsCostCve + installLabourCostCve;
 
     const payments = db.prepare(`
       SELECT id, status, amount_cve AS amountCve, due_date AS dueDate,

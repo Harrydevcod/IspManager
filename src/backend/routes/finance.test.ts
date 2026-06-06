@@ -35,6 +35,7 @@ beforeEach(() => {
   db.exec(`
     DELETE FROM whatsapp_notices;
     DELETE FROM service_events;
+    DELETE FROM service_install_costs;
     DELETE FROM service_material_lines;
     DELETE FROM service_device_assignments;
     DELETE FROM payments;
@@ -352,6 +353,27 @@ describe('finance routes', () => {
     expect(db.prepare('SELECT count(*) AS n FROM service_device_assignments').get()).toEqual({ n: 0 });
     expect(db.prepare('SELECT count(*) AS n FROM stock_movements').get()).toEqual({ n: 0 });
     expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(router.lastInsertRowid)).toEqual({ s: 5 });
+  });
+
+  test('records installation labour cost when creating a service', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-LAB','Cliente Mao','active')`).run();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: {
+        clientId: client.lastInsertRowid,
+        monthlyValueCve: 3500,
+        dueDay: 10,
+        installCosts: [{ kind: 'mao_de_obra', description: 'Instalacao no cliente', amountCve: 2500 }]
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json() as { id: number; installCostIds: number[] };
+    expect(body.installCostIds).toHaveLength(1);
+    expect(db.prepare('SELECT kind, amount_cve AS amount FROM service_install_costs WHERE service_id = ?').get(body.id))
+      .toEqual({ kind: 'mao_de_obra', amount: 2500 });
   });
 
   test('generates monthly payments for active services once per month', async () => {

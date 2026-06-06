@@ -19,6 +19,12 @@ export type DeviceInput = {
 
 export type ServiceItemInput = DeviceInput & { quantity?: number | null };
 
+export type InstallCostInput = {
+  kind?: 'mao_de_obra' | 'transporte' | 'outro';
+  description?: string | null;
+  amountCve: number;
+};
+
 export type CatalogIdentity = {
   id: number;
   stockTotal: number;
@@ -314,6 +320,32 @@ export function installItemsWithinTx(
   `).run(serviceId, summary, technicianId, technicianId);
 
   return { assignmentIds, materialLineIds, eventId: event.lastInsertRowid };
+}
+
+/**
+ * Records the non-stock installation costs (labour, transport, …) for a service.
+ * MUST run inside the same transaction as the service/items so everything commits or
+ * rolls back together. Independent of items — a service may carry only labour.
+ */
+export function insertInstallCostsWithinTx(
+  db: Database.Database,
+  params: { serviceId: number; costs: InstallCostInput[]; userId: number | null }
+): { installCostIds: Array<number | bigint> } {
+  const installCostIds: Array<number | bigint> = [];
+  for (const cost of params.costs) {
+    const res = db.prepare(`
+      INSERT INTO service_install_costs (service_id, kind, description, amount_cve, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      params.serviceId,
+      cost.kind ?? 'mao_de_obra',
+      cleanValue(cost.description),
+      Number(cost.amountCve || 0),
+      params.userId
+    );
+    installCostIds.push(res.lastInsertRowid);
+  }
+  return { installCostIds };
 }
 
 /** Maps an error thrown by {@link installDeviceWithinTx} to a reply, or null if unrelated. */

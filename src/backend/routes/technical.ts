@@ -4,12 +4,14 @@ import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
 import {
   cleanValue,
+  insertInstallCostsWithinTx,
   installDeviceWithinTx,
   installItemsWithinTx,
   loadCatalogIdentity,
   mapInstallError,
   preflightDeviceInstall,
   preflightItems,
+  type InstallCostInput,
   type ServiceItemInput
 } from '../lib/serviceInstall';
 import { requireAuth, requireRole } from './auth';
@@ -34,8 +36,16 @@ const batchItemsSchema = z.object({
     macAddress: z.string().trim().optional().nullable(),
     technicianId: z.coerce.number().int().positive().optional().nullable(),
     notes: z.string().trim().optional().nullable()
-  })).min(1)
-});
+  })).optional().nullable(),
+  installCosts: z.array(z.object({
+    kind: z.enum(['mao_de_obra', 'transporte', 'outro']).default('mao_de_obra'),
+    description: z.string().trim().optional().nullable(),
+    amountCve: z.coerce.number().min(0)
+  })).optional().nullable()
+}).refine(
+  (data) => (data.items?.length ?? 0) > 0 || (data.installCosts?.length ?? 0) > 0,
+  { message: 'Indique pelo menos um item ou custo' }
+);
 
 const technicalEventSchema = z.object({
   eventType: z.enum(['instalacao', 'manutencao', 'troca_equipamento', 'visita', 'alteracao_servico']),
@@ -146,7 +156,22 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       ORDER BY ml.created_at DESC, ml.id DESC
     `).all(id);
 
-    return { serviceId: service.id, assignments, materials, events };
+    const installCosts = db.prepare(`
+      SELECT
+        ic.id,
+        ic.kind,
+        ic.description,
+        ic.amount_cve AS amountCve,
+        ic.created_by AS createdBy,
+        cu.full_name AS createdByName,
+        ic.created_at AS createdAt
+      FROM service_install_costs ic
+      LEFT JOIN users cu ON cu.id = ic.created_by
+      WHERE ic.service_id = ?
+      ORDER BY ic.created_at DESC, ic.id DESC
+    `).all(id);
+
+    return { serviceId: service.id, assignments, materials, installCosts, events };
   });
 
   app.post('/api/services/:id/items', canWriteTechnical, async (request, reply) => {
@@ -162,20 +187,31 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: 'Servico nao encontrado' });
     }
 
-    const items = parsed.data.items as ServiceItemInput[];
-    const preflight = preflightItems(db, items);
-    if (!preflight.ok) {
-      return reply.status(preflight.status).send({ error: preflight.error });
+    const items = (parsed.data.items ?? []) as ServiceItemInput[];
+    const installCosts = (parsed.data.installCosts ?? []) as InstallCostInput[];
+    if (items.length > 0) {
+      const preflight = preflightItems(db, items);
+      if (!preflight.ok) {
+        return reply.status(preflight.status).send({ error: preflight.error });
+      }
     }
 
-    const run = db.transaction(() => installItemsWithinTx(db, {
-      serviceId,
-      clientName: service.clientName,
-      items,
-      userId: request.user?.id ?? null
-    }));
+    const run = db.transaction(() => {
+      const install = items.length > 0
+        ? installItemsWithinTx(db, {
+            serviceId,
+            clientName: service.clientName,
+            items,
+            userId: request.user?.id ?? null
+          })
+        : { assignmentIds: [], materialLineIds: [], eventId: 0 as number | bigint };
+      const costs = installCosts.length > 0
+        ? insertInstallCostsWithinTx(db, { serviceId, costs: installCosts, userId: request.user?.id ?? null })
+        : { installCostIds: [] as Array<number | bigint> };
+      return { ...install, ...costs };
+    });
 
-    let result: ReturnType<typeof installItemsWithinTx>;
+    let result: ReturnType<typeof run>;
     try {
       result = run();
     } catch (error) {
@@ -189,8 +225,8 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       action: 'assign_device',
       entityType: 'service',
       entityId: serviceId,
-      summary: `Instalou ${items.length} item(s) no servico ${serviceId}`,
-      metadata: { items: items.length, eventId: result.eventId }
+      summary: `Instalou ${items.length} item(s) e ${installCosts.length} custo(s) no servico ${serviceId}`,
+      metadata: { items: items.length, installCosts: installCosts.length, eventId: result.eventId }
     });
     return reply.status(201).send(result);
   });

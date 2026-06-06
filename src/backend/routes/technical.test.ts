@@ -28,6 +28,7 @@ beforeEach(() => {
   db.exec(`
     DELETE FROM whatsapp_notices;
     DELETE FROM service_events;
+    DELETE FROM service_install_costs;
     DELETE FROM service_material_lines;
     DELETE FROM service_device_assignments;
     DELETE FROM payments;
@@ -327,5 +328,24 @@ describe('technical routes', () => {
     const body = history.json() as { materials: Array<{ model: string; quantity: number; unitOfMeasure: string }> };
     expect(body.materials).toHaveLength(1);
     expect(body.materials[0]).toMatchObject({ model: 'Cabo UTP', quantity: 20, unitOfMeasure: 'metro' });
+  });
+
+  test('adds installation labour cost via /items (no items needed)', async () => {
+    const { service } = seedBaseService();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/services/${service.lastInsertRowid}/items`,
+      payload: { installCosts: [{ kind: 'mao_de_obra', amountCve: 1800 }] }
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json() as { installCostIds: number[] };
+    expect(body.installCostIds).toHaveLength(1);
+
+    const history = await app.inject({ method: 'GET', url: `/api/services/${service.lastInsertRowid}/technical-history` });
+    const hist = history.json() as { installCosts: Array<{ kind: string; amountCve: number }> };
+    expect(hist.installCosts).toHaveLength(1);
+    expect(hist.installCosts[0]).toMatchObject({ kind: 'mao_de_obra', amountCve: 1800 });
   });
 });
