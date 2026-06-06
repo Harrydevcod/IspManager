@@ -278,7 +278,7 @@ export function StockModule() {
           <h2>Stock</h2>
           {totals && (
             <p className="stock-header-subtitle">
-              <strong>{totals.models}</strong> modelos · <strong>{totals.available}</strong> unidades
+              <strong>{totals.models}</strong> {stockTab === 'material' ? 'referencias' : 'modelos'} · <strong>{totals.available}</strong> unidades
               {totals.lowStock > 0 && <> · <strong>{totals.lowStock}</strong> em stock baixo</>}
             </p>
           )}
@@ -353,7 +353,7 @@ export function StockModule() {
       <section className="metric-grid compact" aria-label="Resumo de stock">
         <article className="metric-card">
           <Boxes size={20} />
-          <span>Modelos</span>
+          <span>{stockTab === 'material' ? 'Referencias' : 'Modelos'}</span>
           <strong>{totals ? totals.models : '...'}</strong>
           <small>catalogo ativo</small>
         </article>
