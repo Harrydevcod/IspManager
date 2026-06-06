@@ -4,7 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { computeMonthlyBilling, dueDateFromIssue, generateMonthlyBilling, todayIso } from '../lib/billing';
 import { nextDocumentNumber } from '../lib/numbering';
 import { recordAudit } from '../lib/audit';
-import { installDeviceWithinTx, mapInstallError, preflightDeviceInstall } from '../lib/deviceInstall';
+import { installDeviceWithinTx, mapInstallError, preflightDeviceInstall } from '../lib/serviceInstall';
 import { requireAuth, requireRole } from './auth';
 
 const monthSchema = z.object({

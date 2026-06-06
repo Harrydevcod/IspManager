@@ -8,7 +8,7 @@ import {
   loadCatalogIdentity,
   mapInstallError,
   preflightDeviceInstall
-} from '../lib/deviceInstall';
+} from '../lib/serviceInstall';
 import { requireAuth, requireRole } from './auth';
 
 const deviceAssignmentSchema = z.object({
