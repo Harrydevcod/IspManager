@@ -370,7 +370,7 @@ export function StockModule() {
         <div className="client-detail">
           <div className="module-header">
             <div>
-              <p className="eyebrow">Equipamento selecionado</p>
+              <p className="eyebrow">{selectedCatalog.category === 'material' ? 'Material selecionado' : 'Equipamento selecionado'}</p>
               <h2>{selectedCatalog.brand ? `${selectedCatalog.brand} ${selectedCatalog.model}` : selectedCatalog.model}</h2>
             </div>
             {canManageStock && (
@@ -380,15 +380,24 @@ export function StockModule() {
               </div>
             )}
           </div>
-          <dl>
-            <div><dt>Tipo</dt><dd>{selectedCatalog.type}</dd></div>
-            <div><dt>Stock</dt><dd>{selectedCatalog.stockTotal}</dd></div>
-            <div><dt>Atribuidos</dt><dd>{assignments ? assignments.activeCount : '-'}</dd></div>
-            <div><dt>Custo</dt><dd>{selectedCatalog.landedCostCve.toLocaleString('pt-PT')} CVE</dd></div>
-            <div><dt>Venda</dt><dd>{selectedCatalog.sellingPriceCve.toLocaleString('pt-PT')} CVE</dd></div>
-            <div><dt>Aluguer</dt><dd>{selectedCatalog.rentalFeeCve.toLocaleString('pt-PT')} CVE</dd></div>
-          </dl>
+          {selectedCatalog.category === 'material' ? (
+            <dl>
+              <div><dt>Tipo</dt><dd>{selectedCatalog.type}</dd></div>
+              <div><dt>Stock</dt><dd>{selectedCatalog.stockTotal} {selectedCatalog.unitOfMeasure}</dd></div>
+              <div><dt>Custo/{selectedCatalog.unitOfMeasure}</dt><dd>{selectedCatalog.landedCostCve.toLocaleString('pt-PT')} CVE</dd></div>
+            </dl>
+          ) : (
+            <dl>
+              <div><dt>Tipo</dt><dd>{selectedCatalog.type}</dd></div>
+              <div><dt>Stock</dt><dd>{selectedCatalog.stockTotal}</dd></div>
+              <div><dt>Atribuidos</dt><dd>{assignments ? assignments.activeCount : '-'}</dd></div>
+              <div><dt>Custo</dt><dd>{selectedCatalog.landedCostCve.toLocaleString('pt-PT')} CVE</dd></div>
+              <div><dt>Venda</dt><dd>{selectedCatalog.sellingPriceCve.toLocaleString('pt-PT')} CVE</dd></div>
+              <div><dt>Aluguer</dt><dd>{selectedCatalog.rentalFeeCve.toLocaleString('pt-PT')} CVE</dd></div>
+            </dl>
+          )}
 
+          {selectedCatalog.category !== 'material' && (
           <section className="technical-section">
             <header className="technical-section-head">
               <h3><Users size={14} aria-hidden /> Atribuido a</h3>
@@ -431,6 +440,7 @@ export function StockModule() {
               </ul>
             )}
           </section>
+          )}
 
           {movements.length > 0 && (
             <div className="stock-movements" aria-label="Ultimos movimentos">
@@ -531,50 +541,72 @@ export function StockModule() {
       <Dialog
         open={showCatalogForm}
         onClose={closeCatalogForm}
-        eyebrow={editingCatalog ? 'Editar equipamento' : 'Novo equipamento'}
-        title={editingCatalog ? (editingCatalog.brand ? `${editingCatalog.brand} ${editingCatalog.model}` : editingCatalog.model) : 'Equipamento'}
+        eyebrow={
+          catalogForm.category === 'material'
+            ? (editingCatalog ? 'Editar material' : 'Novo material')
+            : (editingCatalog ? 'Editar equipamento' : 'Novo equipamento')
+        }
+        title={editingCatalog ? (editingCatalog.brand ? `${editingCatalog.brand} ${editingCatalog.model}` : editingCatalog.model) : (catalogForm.category === 'material' ? 'Material' : 'Equipamento')}
         size="md"
         actions={
           <>
             <Button variant="secondary" onClick={closeCatalogForm}>Cancelar</Button>
             <Button type="submit" form="catalog-form">
-              {editingCatalog ? 'Atualizar equipamento' : 'Gravar equipamento'}
+              {editingCatalog
+                ? (catalogForm.category === 'material' ? 'Atualizar material' : 'Atualizar equipamento')
+                : (catalogForm.category === 'material' ? 'Gravar material' : 'Gravar equipamento')}
             </Button>
           </>
         }
       >
         <form id="catalog-form" className="client-form" onSubmit={saveCatalog}>
-          <Select label="Categoria" value={catalogForm.category} onChange={(event) => updateCatalogForm('category', event.target.value)}>
-            <option value="equipamento">Equipamento</option>
-            <option value="material">Material</option>
-          </Select>
-          <Select label="Tipo" value={catalogForm.type} onChange={(event) => updateCatalogForm('type', event.target.value)}>
-            <option value="cpe">CPE</option>
-            <option value="router">Router</option>
-            <option value="antena">Antena</option>
-            <option value="switch">Switch</option>
-            <option value="cabo">Cabo</option>
-            <option value="conector">Conector</option>
-            <option value="ficha">Ficha</option>
-            <option value="suporte">Suporte</option>
-            <option value="outro">Outro</option>
-          </Select>
-          <Field label="Marca" value={catalogForm.brand} onChange={(event) => updateCatalogForm('brand', event.target.value)} />
-          <Field label="Modelo" required value={catalogForm.model} onChange={(event) => updateCatalogForm('model', event.target.value)} />
-          <Field label="Fornecedor" value={catalogForm.supplier} onChange={(event) => updateCatalogForm('supplier', event.target.value)} />
-          <Field label="Unidade" required value={catalogForm.unitOfMeasure} onChange={(event) => updateCatalogForm('unitOfMeasure', event.target.value)} />
-          <Select label="Serializado" value={catalogForm.isSerialized} onChange={(event) => updateCatalogForm('isSerialized', event.target.value)}>
-            <option value="1">Sim</option>
-            <option value="0">Nao</option>
-          </Select>
-          <Field label="Custo compra CVE" type="number" min={0} value={catalogForm.purchasePriceCve} onChange={(event) => updateCatalogForm('purchasePriceCve', event.target.value)} />
-          <Field label="Preco venda CVE" type="number" min={0} value={catalogForm.sellingPriceCve} onChange={(event) => updateCatalogForm('sellingPriceCve', event.target.value)} />
-          <Field label="Aluguer mensal CVE" type="number" min={0} value={catalogForm.rentalFeeCve} onChange={(event) => updateCatalogForm('rentalFeeCve', event.target.value)} />
-          <Field label={editingCatalog ? 'Stock atual' : 'Stock inicial'} type="number" min={0} value={catalogForm.stockTotal} onChange={(event) => updateCatalogForm('stockTotal', event.target.value)} />
-          <Select label="Estado" value={catalogForm.active} onChange={(event) => updateCatalogForm('active', event.target.value)}>
-            <option value="1">Ativo</option>
-            <option value="0">Inativo</option>
-          </Select>
+          {catalogForm.category === 'material' ? (
+            <>
+              <Select label="Tipo" value={catalogForm.type} onChange={(event) => updateCatalogForm('type', event.target.value)}>
+                <option value="cabo">Cabo</option>
+                <option value="conector">Conector</option>
+                <option value="ficha">Ficha</option>
+                <option value="suporte">Suporte</option>
+                <option value="outro">Outro</option>
+              </Select>
+              <Field label="Designacao" required value={catalogForm.model} onChange={(event) => updateCatalogForm('model', event.target.value)} placeholder="Ex.: Cabo UTP Cat6" />
+              <Select label="Unidade de medida" value={catalogForm.unitOfMeasure} onChange={(event) => updateCatalogForm('unitOfMeasure', event.target.value)}>
+                <option value="metro">Metro</option>
+                <option value="un">Unidade</option>
+                <option value="caixa">Caixa</option>
+                <option value="rolo">Rolo</option>
+                <option value="par">Par</option>
+              </Select>
+              <Field label="Fornecedor" value={catalogForm.supplier} onChange={(event) => updateCatalogForm('supplier', event.target.value)} />
+              <Field label="Custo por unidade CVE" type="number" min={0} value={catalogForm.purchasePriceCve} onChange={(event) => updateCatalogForm('purchasePriceCve', event.target.value)} />
+              <Field label={editingCatalog ? `Stock atual (${catalogForm.unitOfMeasure})` : `Stock inicial (${catalogForm.unitOfMeasure})`} type="number" min={0} value={catalogForm.stockTotal} onChange={(event) => updateCatalogForm('stockTotal', event.target.value)} />
+              <Select label="Estado" value={catalogForm.active} onChange={(event) => updateCatalogForm('active', event.target.value)}>
+                <option value="1">Ativo</option>
+                <option value="0">Inativo</option>
+              </Select>
+            </>
+          ) : (
+            <>
+              <Select label="Tipo" value={catalogForm.type} onChange={(event) => updateCatalogForm('type', event.target.value)}>
+                <option value="cpe">CPE</option>
+                <option value="router">Router</option>
+                <option value="antena">Antena</option>
+                <option value="switch">Switch</option>
+                <option value="outro">Outro</option>
+              </Select>
+              <Field label="Marca" value={catalogForm.brand} onChange={(event) => updateCatalogForm('brand', event.target.value)} />
+              <Field label="Modelo" required value={catalogForm.model} onChange={(event) => updateCatalogForm('model', event.target.value)} />
+              <Field label="Fornecedor" value={catalogForm.supplier} onChange={(event) => updateCatalogForm('supplier', event.target.value)} />
+              <Field label="Custo compra CVE" type="number" min={0} value={catalogForm.purchasePriceCve} onChange={(event) => updateCatalogForm('purchasePriceCve', event.target.value)} />
+              <Field label="Preco venda CVE" type="number" min={0} value={catalogForm.sellingPriceCve} onChange={(event) => updateCatalogForm('sellingPriceCve', event.target.value)} />
+              <Field label="Aluguer mensal CVE" type="number" min={0} value={catalogForm.rentalFeeCve} onChange={(event) => updateCatalogForm('rentalFeeCve', event.target.value)} />
+              <Field label={editingCatalog ? 'Stock atual' : 'Stock inicial'} type="number" min={0} value={catalogForm.stockTotal} onChange={(event) => updateCatalogForm('stockTotal', event.target.value)} />
+              <Select label="Estado" value={catalogForm.active} onChange={(event) => updateCatalogForm('active', event.target.value)}>
+                <option value="1">Ativo</option>
+                <option value="0">Inativo</option>
+              </Select>
+            </>
+          )}
         </form>
       </Dialog>
 
