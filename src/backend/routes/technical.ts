@@ -5,9 +5,12 @@ import { recordAudit } from '../lib/audit';
 import {
   cleanValue,
   installDeviceWithinTx,
+  installItemsWithinTx,
   loadCatalogIdentity,
   mapInstallError,
-  preflightDeviceInstall
+  preflightDeviceInstall,
+  preflightItems,
+  type ServiceItemInput
 } from '../lib/serviceInstall';
 import { requireAuth, requireRole } from './auth';
 
@@ -19,6 +22,19 @@ const deviceAssignmentSchema = z.object({
   macAddress: z.string().trim().optional().nullable(),
   technicianId: z.coerce.number().int().positive().optional().nullable(),
   notes: z.string().trim().optional().nullable()
+});
+
+const batchItemsSchema = z.object({
+  items: z.array(z.object({
+    catalogId: z.coerce.number().int().positive(),
+    quantity: z.coerce.number().int().positive().optional().nullable(),
+    serialNumber: z.string().trim().optional().nullable(),
+    assetTag: z.string().trim().optional().nullable(),
+    ipAddress: z.string().trim().optional().nullable(),
+    macAddress: z.string().trim().optional().nullable(),
+    technicianId: z.coerce.number().int().positive().optional().nullable(),
+    notes: z.string().trim().optional().nullable()
+  })).min(1)
 });
 
 const technicalEventSchema = z.object({
@@ -113,11 +129,11 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
     return { serviceId: service.id, assignments, events };
   });
 
-  app.post('/api/services/:id/device-assignments', canWriteTechnical, async (request, reply) => {
+  app.post('/api/services/:id/items', canWriteTechnical, async (request, reply) => {
     const serviceId = Number((request.params as { id: string }).id);
-    const parsed = deviceAssignmentSchema.safeParse(request.body);
+    const parsed = batchItemsSchema.safeParse(request.body);
     if (!Number.isInteger(serviceId) || serviceId <= 0 || !parsed.success) {
-      return reply.status(400).send({ error: 'Dados de atribuicao invalidos' });
+      return reply.status(400).send({ error: 'Dados de instalacao invalidos' });
     }
 
     const db = getSqliteDatabase();
@@ -126,19 +142,20 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: 'Servico nao encontrado' });
     }
 
-    const preflight = preflightDeviceInstall(db, parsed.data);
+    const items = parsed.data.items as ServiceItemInput[];
+    const preflight = preflightItems(db, items);
     if (!preflight.ok) {
       return reply.status(preflight.status).send({ error: preflight.error });
     }
 
-    const run = db.transaction(() => installDeviceWithinTx(db, {
+    const run = db.transaction(() => installItemsWithinTx(db, {
       serviceId,
       clientName: service.clientName,
-      device: parsed.data,
+      items,
       userId: request.user?.id ?? null
     }));
 
-    let result: { assignmentId: string | number | bigint; eventId: string | number | bigint };
+    let result: ReturnType<typeof installItemsWithinTx>;
     try {
       result = run();
     } catch (error) {
@@ -152,8 +169,8 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       action: 'assign_device',
       entityType: 'service',
       entityId: serviceId,
-      summary: `Atribuiu equipamento ao servico ${serviceId}`,
-      metadata: { catalogId: parsed.data.catalogId, assignmentId: result.assignmentId }
+      summary: `Instalou ${items.length} item(s) no servico ${serviceId}`,
+      metadata: { items: items.length, eventId: result.eventId }
     });
     return reply.status(201).send(result);
   });

@@ -28,6 +28,7 @@ beforeEach(() => {
   db.exec(`
     DELETE FROM whatsapp_notices;
     DELETE FROM service_events;
+    DELETE FROM service_material_lines;
     DELETE FROM service_device_assignments;
     DELETE FROM payments;
     DELETE FROM stock_movements;
@@ -85,21 +86,23 @@ describe('technical routes', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: `/api/services/${service.lastInsertRowid}/device-assignments`,
+      url: `/api/services/${service.lastInsertRowid}/items`,
       payload: {
-        catalogId: catalog.lastInsertRowid,
-        serialNumber: 'SN-001',
-        assetTag: 'AST-001',
-        ipAddress: '192.168.1.10',
-        macAddress: 'AA:BB:CC:DD:EE:FF',
-        technicianId: user.lastInsertRowid,
-        notes: 'Instalacao inicial'
+        items: [{
+          catalogId: catalog.lastInsertRowid,
+          serialNumber: 'SN-001',
+          assetTag: 'AST-001',
+          ipAddress: '192.168.1.10',
+          macAddress: 'AA:BB:CC:DD:EE:FF',
+          technicianId: user.lastInsertRowid,
+          notes: 'Instalacao inicial'
+        }]
       }
     });
 
     expect(response.statusCode).toBe(201);
     expect(response.json()).toMatchObject({
-      assignmentId: expect.any(Number),
+      assignmentIds: [expect.any(Number)],
       eventId: expect.any(Number)
     });
 
@@ -122,7 +125,7 @@ describe('technical routes', () => {
     expect(body.events).toHaveLength(1);
     expect(body.events[0]).toMatchObject({
       eventType: 'instalacao',
-      notes: 'Instalacao inicial'
+      notes: 'Instalou 1 equipamento(s) e 0 material(is)'
     });
 
     expect(db.prepare('SELECT stock_total AS stockTotal FROM equipment_catalog WHERE id = ?')
@@ -144,17 +147,19 @@ describe('technical routes', () => {
     const { catalog, service, user } = seedBaseService();
     const first = await app.inject({
       method: 'POST',
-      url: `/api/services/${service.lastInsertRowid}/device-assignments`,
+      url: `/api/services/${service.lastInsertRowid}/items`,
       payload: {
-        catalogId: catalog.lastInsertRowid,
-        serialNumber: 'SN-OLD',
-        assetTag: 'AST-OLD',
-        technicianId: user.lastInsertRowid,
-        notes: 'Primeira instalacao'
+        items: [{
+          catalogId: catalog.lastInsertRowid,
+          serialNumber: 'SN-OLD',
+          assetTag: 'AST-OLD',
+          technicianId: user.lastInsertRowid,
+          notes: 'Primeira instalacao'
+        }]
       }
     });
 
-    const assignmentId = (first.json() as { assignmentId: number }).assignmentId;
+    const assignmentId = (first.json() as { assignmentIds: number[] }).assignmentIds[0];
 
     const replacement = await app.inject({
       method: 'POST',
@@ -207,10 +212,12 @@ describe('technical routes', () => {
     const { catalog, service } = seedBaseService();
     const first = await app.inject({
       method: 'POST',
-      url: `/api/services/${service.lastInsertRowid}/device-assignments`,
+      url: `/api/services/${service.lastInsertRowid}/items`,
       payload: {
-        catalogId: catalog.lastInsertRowid,
-        serialNumber: 'SN-DUP'
+        items: [{
+          catalogId: catalog.lastInsertRowid,
+          serialNumber: 'SN-DUP'
+        }]
       }
     });
 
@@ -225,10 +232,12 @@ describe('technical routes', () => {
 
     const duplicate = await app.inject({
       method: 'POST',
-      url: `/api/services/${secondService.lastInsertRowid}/device-assignments`,
+      url: `/api/services/${secondService.lastInsertRowid}/items`,
       payload: {
-        catalogId: catalog.lastInsertRowid,
-        serialNumber: 'SN-DUP'
+        items: [{
+          catalogId: catalog.lastInsertRowid,
+          serialNumber: 'SN-DUP'
+        }]
       }
     });
 
@@ -242,15 +251,63 @@ describe('technical routes', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: `/api/services/${service.lastInsertRowid}/device-assignments`,
+      url: `/api/services/${service.lastInsertRowid}/items`,
       payload: {
-        catalogId: catalog.lastInsertRowid,
-        serialNumber: 'SN-NOSTOCK'
+        items: [{
+          catalogId: catalog.lastInsertRowid,
+          serialNumber: 'SN-NOSTOCK'
+        }]
       }
     });
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({ error: 'Stock insuficiente. Disponivel: 0' });
     expect(db.prepare('SELECT COUNT(*) AS n FROM service_device_assignments').get()).toEqual({ n: 0 });
+  });
+
+  test('installs a batch of items (device + material) on an existing service', async () => {
+    const { catalog, service } = seedBaseService();
+    const cable = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_cve, stock_total, active)
+      VALUES ('material','cabo','UTP','metro',0,80,100,1)
+    `).run();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/services/${service.lastInsertRowid}/items`,
+      payload: {
+        items: [
+          { catalogId: catalog.lastInsertRowid, serialNumber: 'SN-B1' },
+          { catalogId: cable.lastInsertRowid, quantity: 25 }
+        ]
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json() as { assignmentIds: number[]; materialLineIds: number[]; eventId: number };
+    expect(body.assignmentIds).toHaveLength(1);
+    expect(body.materialLineIds).toHaveLength(1);
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(catalog.lastInsertRowid)).toEqual({ s: 9 });
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(cable.lastInsertRowid)).toEqual({ s: 75 });
+    expect(db.prepare("SELECT count(*) AS n FROM service_events WHERE service_id = ? AND event_type='instalacao'").get(service.lastInsertRowid)).toEqual({ n: 1 });
+  });
+
+  test('rejects the batch when material stock is insufficient (no side effects)', async () => {
+    const { service } = seedBaseService();
+    const cable = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, stock_total, active)
+      VALUES ('material','cabo','UTP','metro',0,5,1)
+    `).run();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/services/${service.lastInsertRowid}/items`,
+      payload: { items: [{ catalogId: cable.lastInsertRowid, quantity: 10 }] }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: 'Stock insuficiente. Disponivel: 5' });
+    expect(db.prepare('SELECT count(*) AS n FROM service_material_lines').get()).toEqual({ n: 0 });
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(cable.lastInsertRowid)).toEqual({ s: 5 });
   });
 });
