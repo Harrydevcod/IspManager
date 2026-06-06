@@ -126,7 +126,27 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       ORDER BY e.created_at DESC, e.id DESC
     `).all(id);
 
-    return { serviceId: service.id, assignments, events };
+    const materials = db.prepare(`
+      SELECT
+        ml.id,
+        ml.catalog_id AS catalogId,
+        ec.type AS catalogType,
+        ec.brand,
+        ec.model,
+        ec.unit_of_measure AS unitOfMeasure,
+        ml.quantity,
+        ml.unit_cost_cve AS unitCostCve,
+        ml.notes,
+        ml.created_at AS createdAt,
+        cu.full_name AS createdByName
+      FROM service_material_lines ml
+      JOIN equipment_catalog ec ON ec.id = ml.catalog_id
+      LEFT JOIN users cu ON cu.id = ml.created_by
+      WHERE ml.service_id = ?
+      ORDER BY ml.created_at DESC, ml.id DESC
+    `).all(id);
+
+    return { serviceId: service.id, assignments, materials, events };
   });
 
   app.post('/api/services/:id/items', canWriteTechnical, async (request, reply) => {

@@ -310,4 +310,22 @@ describe('technical routes', () => {
     expect(db.prepare('SELECT count(*) AS n FROM service_material_lines').get()).toEqual({ n: 0 });
     expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(cable.lastInsertRowid)).toEqual({ s: 5 });
   });
+
+  test('technical-history returns materials alongside assignments', async () => {
+    const { service } = seedBaseService();
+    const cable = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_cve, stock_total, active)
+      VALUES ('material','cabo','Cabo UTP','metro',0,80,100,1)
+    `).run();
+    await app.inject({
+      method: 'POST',
+      url: `/api/services/${service.lastInsertRowid}/items`,
+      payload: { items: [{ catalogId: cable.lastInsertRowid, quantity: 20 }] }
+    });
+
+    const history = await app.inject({ method: 'GET', url: `/api/services/${service.lastInsertRowid}/technical-history` });
+    const body = history.json() as { materials: Array<{ model: string; quantity: number; unitOfMeasure: string }> };
+    expect(body.materials).toHaveLength(1);
+    expect(body.materials[0]).toMatchObject({ model: 'Cabo UTP', quantity: 20, unitOfMeasure: 'metro' });
+  });
 });
