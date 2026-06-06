@@ -238,7 +238,6 @@ export function StockModule() {
     await loadMovements(selectedCatalog);
   }
 
-  const totals = summary?.totals;
   const tabCounts = useMemo(() => {
     const rows = summary?.rows || [];
     return {
@@ -246,6 +245,18 @@ export function StockModule() {
       material: rows.filter((item) => item.category === 'material').length
     };
   }, [summary]);
+
+  // Cards de resumo específicos da aba ativa (não o total global do catálogo).
+  const totals = useMemo(() => {
+    if (!summary) return undefined;
+    const rows = summary.rows.filter((item) => item.category === stockTab);
+    return {
+      models: rows.length,
+      available: rows.reduce((sum, item) => sum + item.stockTotal, 0),
+      lowStock: rows.filter((item) => item.stockTotal > 0 && item.stockTotal <= 3).length,
+      inventoryValueCve: rows.reduce((sum, item) => sum + item.landedCostCve * item.stockTotal, 0)
+    };
+  }, [summary, stockTab]);
 
   const visibleStockRows = useMemo(() => (summary?.rows || []).filter((item) => {
     const normalizedSearch = search.trim().toLowerCase();
