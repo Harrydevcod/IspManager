@@ -74,3 +74,40 @@ describe('catalog schema (0018)', () => {
     `).run(service, catalog)).toThrow();
   });
 });
+
+describe('POST /api/equipment-catalog with materials', () => {
+  test('creates a material item with unit and category', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/equipment-catalog',
+      payload: {
+        category: 'material',
+        type: 'cabo',
+        model: 'Cabo UTP Cat6',
+        unitOfMeasure: 'metro',
+        isSerialized: false,
+        purchasePriceCve: 80,
+        stockTotal: 305
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    const id = (response.json() as { id: number }).id;
+    expect(db.prepare(`
+      SELECT category, type, unit_of_measure AS unit, is_serialized AS serialized
+      FROM equipment_catalog WHERE id = ?
+    `).get(id)).toEqual({ category: 'material', type: 'cabo', unit: 'metro', serialized: 0 });
+  });
+
+  test('summary returns category, unit and isSerialized', async () => {
+    db.prepare(`
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, stock_total, active)
+      VALUES ('material','conector','RJ45','un',0,200,1)
+    `).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/stock/summary' });
+    const body = response.json() as { rows: Array<{ category: string; unitOfMeasure: string; isSerialized: number; model: string }> };
+    const row = body.rows.find((r) => r.model === 'RJ45');
+    expect(row).toMatchObject({ category: 'material', unitOfMeasure: 'un', isSerialized: 0 });
+  });
+});
