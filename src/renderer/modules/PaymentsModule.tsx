@@ -1,7 +1,7 @@
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, Eye, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Smartphone, Undo2, X } from 'lucide-react';
-import { Badge, Button, DataList, DetailPanel, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
+import { Badge, Button, DataList, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import { authFetch, useAuth } from '../lib/auth';
 import {
@@ -219,9 +219,6 @@ export function PaymentsModule() {
     setActionPaymentId(payment.id);
     setPayMethod((payment.paymentMethod as PaymentMethod | null) || 'numerario');
     setPayDate(payment.paymentDate?.slice(0, 10) || todayIso());
-    window.setTimeout(() => {
-      document.getElementById('payment-preview')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 0);
   }
 
   function openCancelForm(payment: PaymentRow) {
@@ -229,18 +226,12 @@ export function PaymentsModule() {
     setActionMode('cancel');
     setActionPaymentId(payment.id);
     setCancelReason('');
-    window.setTimeout(() => {
-      document.getElementById('payment-preview')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 0);
   }
 
   function openWhatsappForm(payment: PaymentRow) {
     setSelectedPayment(payment);
     setActionMode('whatsapp');
     setActionPaymentId(payment.id);
-    window.setTimeout(() => {
-      document.getElementById('payment-preview')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 0);
   }
 
   function whatsappMessageFor(payment: PaymentRow) {
@@ -665,9 +656,6 @@ export function PaymentsModule() {
   function previewPaymentDocument(payment: PaymentRow) {
     setSelectedPayment(payment);
     closeActionForm();
-    window.setTimeout(() => {
-      document.getElementById('payment-preview')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 0);
   }
 
   const normalizedSearch = search.trim().toLowerCase();
@@ -879,12 +867,11 @@ export function PaymentsModule() {
       )}
 
       {selectedPayment && (
-        <DetailPanel
+        <Dialog
+          open
+          size="xl"
           eyebrow="Pre-visualizacao"
           title={selectedPayment.clientName}
-          className="payment-preview"
-          id="payment-preview"
-          actionsClassName="payment-preview-actions"
           onClose={() => { setSelectedPayment(null); closeActionForm(); }}
           actions={
             <>
@@ -958,6 +945,7 @@ export function PaymentsModule() {
             </>
           }
         >
+          <div className="client-detail payment-preview">
           {showActionForm && actionMode === 'pay' && (
             <form
               className="payment-action-form"
@@ -1133,7 +1121,8 @@ export function PaymentsModule() {
             <div><dt>Data pagamento</dt><dd>{formatPtDate(selectedPayment.paymentDate)}</dd></div>
             <div><dt>Estado</dt><dd>{selectedPayment.status}</dd></div>
           </dl>
-        </DetailPanel>
+          </div>
+        </Dialog>
       )}
 
       <DataList

@@ -2675,6 +2675,17 @@ label.field-toggle {
 .dialog-sm { max-width: 400px; }
 .dialog-md { max-width: 520px; }
 .dialog-lg { max-width: 760px; }
+.dialog-xl { max-width: 920px; }
+
+/* Detail views rendered inside a Dialog reuse every `.client-detail *` rule
+   (dl grid, dt/dd, profitability, buttons) but shed the standalone panel
+   chrome — the dialog card already supplies border, surface and padding. */
+.dialog-body .client-detail {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
 
 .dialog-header {
   display: flex;
@@ -2726,6 +2737,7 @@ label.field-toggle {
 
 .dialog-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--s2);
   padding: var(--s4) var(--s5) var(--s5);
@@ -3194,6 +3206,12 @@ label.field-toggle {
   font-style: italic;
   padding-top: var(--s2);
   border-top: 1px dashed var(--border);
+}
+
+.technical-item-actions {
+  display: flex;
+  gap: var(--s2);
+  padding-top: var(--s2);
 }
 
 .technical-event {

@@ -1,7 +1,7 @@
 import { Cable, Coins, History, Pencil, Plus, Wrench } from 'lucide-react';
 import type { Dispatch, FormEvent, SetStateAction } from 'react';
 import { useEffect, useState } from 'react';
-import { Badge, Button, Combobox, DetailPanel, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useToast } from '../components';
+import { Badge, Button, Combobox, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtDateTime } from '../lib/format';
 import { statusLabel, statusTone } from '../lib/status';
@@ -83,6 +83,7 @@ export function ServicesModule({
   onFocusHandled?: () => void;
 } = {}) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const auth = useAuth();
   const canManageServices = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
   const canRecordTechnical = auth.isAuthBypassed || auth.hasRole('admin', 'operator', 'technician');
@@ -106,6 +107,8 @@ export function ServicesModule({
   const [addLaborCve, setAddLaborCve] = useState('');
   const [showEventDialog, setShowEventDialog] = useState(false);
   const [eventForm, setEventForm] = useState<EventFormState>(emptyEventForm());
+  const [replaceTarget, setReplaceTarget] = useState<DeviceAssignment | null>(null);
+  const [replaceDraft, setReplaceDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
   const [submitting, setSubmitting] = useState(false);
 
   function loadServices() {
@@ -332,6 +335,85 @@ export function ServicesModule({
     }
   }
 
+  async function returnDevice(assignment: DeviceAssignment) {
+    if (!selectedService) return;
+    const label = assignment.brand ? `${assignment.brand} ${assignment.model}` : assignment.model;
+    if (!(await confirm({
+      title: 'Remover equipamento',
+      message: `Remover ${label}${assignment.serialNumber ? ` (${assignment.serialNumber})` : ''} deste serviço? O stock será reposto.`,
+      tone: 'danger',
+      confirmLabel: 'Remover'
+    }))) return;
+    setSubmitting(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/service-device-assignments/${assignment.id}/return`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) {
+        toast(data.error || 'Nao foi possivel remover o equipamento.', 'error');
+        return;
+      }
+      toast('Equipamento removido e stock reposto.', 'success');
+      await loadTechnicalHistory(selectedService.id);
+    } catch {
+      toast('Falha de rede ao remover equipamento.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function openReplaceDialog(assignment: DeviceAssignment) {
+    setReplaceTarget(assignment);
+    setReplaceDraft(emptyItemDraft('equipamento'));
+    void ensureCatalogLoaded();
+  }
+
+  function closeReplaceDialog() {
+    if (submitting) return;
+    setReplaceTarget(null);
+    setReplaceDraft(emptyItemDraft('equipamento'));
+  }
+
+  async function submitReplace(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedService || !replaceTarget) return;
+    if (!replaceDraft.catalogId) {
+      toast('Selecione o equipamento de substituicao.', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/service-device-assignments/${replaceTarget.id}/replace`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          catalogId: Number(replaceDraft.catalogId),
+          serialNumber: replaceDraft.serialNumber || null,
+          assetTag: replaceDraft.assetTag || null,
+          ipAddress: replaceDraft.ipAddress || null,
+          macAddress: replaceDraft.macAddress || null,
+          notes: replaceDraft.notes || null
+        })
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) {
+        toast(data.error || 'Nao foi possivel substituir o equipamento.', 'error');
+        return;
+      }
+      toast('Equipamento substituido.', 'success');
+      setReplaceTarget(null);
+      setReplaceDraft(emptyItemDraft('equipamento'));
+      await loadTechnicalHistory(selectedService.id);
+    } catch {
+      toast('Falha de rede ao substituir equipamento.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   function openEventDialog() {
     setEventForm(emptyEventForm());
     setShowEventDialog(true);
@@ -541,10 +623,11 @@ export function ServicesModule({
       </FilterBar>
 
       {selectedService && (
-        <DetailPanel
+        <Dialog
+          open
+          size="xl"
           eyebrow="Servico"
           title={selectedService.clientName}
-          actionsClassName="client-preview-actions"
           onClose={() => setSelectedService(null)}
           actions={
             canManageServices
@@ -556,6 +639,7 @@ export function ServicesModule({
               : undefined
           }
         >
+          <div className="client-detail">
           <dl>
             <div><dt>Plano</dt><dd>{selectedService.planName || '-'}</dd></div>
             <div><dt>Mensalidade</dt><dd>{formatCve(selectedService.monthlyValueCve)}</dd></div>
@@ -611,6 +695,16 @@ export function ServicesModule({
                         {assignment.endDate && <div><dt>Fim</dt><dd>{formatPtDate(assignment.endDate)}</dd></div>}
                       </dl>
                       {assignment.notes && <p className="technical-item-notes">{assignment.notes}</p>}
+                      {active && canRecordTechnical && (
+                        <div className="technical-item-actions">
+                          <Button variant="secondary" size="sm" disabled={submitting} onClick={() => openReplaceDialog(assignment)}>
+                            Substituir
+                          </Button>
+                          <Button variant="danger" size="sm" disabled={submitting} onClick={() => void returnDevice(assignment)}>
+                            Remover
+                          </Button>
+                        </div>
+                      )}
                     </li>
                   );
                 })}
@@ -727,7 +821,8 @@ export function ServicesModule({
               </ul>
             )}
           </section>
-        </DetailPanel>
+          </div>
+        </Dialog>
       )}
 
       <div className="module-table">
@@ -913,6 +1008,50 @@ export function ServicesModule({
             onChange={(event) => setEventForm((c) => ({ ...c, notes: event.target.value }))}
             placeholder="Detalhes da intervencao, observacoes, peca substituida..."
           />
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={replaceTarget !== null}
+        onClose={closeReplaceDialog}
+        eyebrow="Substituir equipamento"
+        title={replaceTarget ? `Substituir ${replaceTarget.brand ? `${replaceTarget.brand} ${replaceTarget.model}` : replaceTarget.model}` : 'Substituir equipamento'}
+        size="md"
+        closeOnBackdrop={!submitting}
+        actions={
+          <>
+            <Button variant="secondary" onClick={closeReplaceDialog} disabled={submitting}>Cancelar</Button>
+            <Button type="submit" form="replace-form" loading={submitting}>
+              {submitting ? 'A gravar...' : 'Substituir'}
+            </Button>
+          </>
+        }
+      >
+        <form id="replace-form" className="client-form" onSubmit={submitReplace}>
+          {replaceTarget && (
+            <Message>
+              O equipamento atual ({replaceTarget.serialNumber || replaceTarget.model}) será encerrado e o novo passa a ativo.
+            </Message>
+          )}
+          <Select
+            wide
+            label="Novo equipamento"
+            required
+            value={replaceDraft.catalogId}
+            onChange={(event) => setReplaceDraft((current) => ({ ...current, catalogId: event.target.value }))}
+          >
+            <option value="">Selecionar equipamento</option>
+            {catalogList.filter((item) => item.category === 'equipamento').map((item) => (
+              <option key={item.id} value={item.id} disabled={item.stockTotal < 1}>
+                {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} {item.unitOfMeasure}
+              </option>
+            ))}
+          </Select>
+          <Field label="Serial" value={replaceDraft.serialNumber} onChange={(event) => setReplaceDraft((current) => ({ ...current, serialNumber: event.target.value }))} />
+          <Field label="Asset tag" value={replaceDraft.assetTag} onChange={(event) => setReplaceDraft((current) => ({ ...current, assetTag: event.target.value }))} />
+          <Field label="MAC" value={replaceDraft.macAddress} onChange={(event) => setReplaceDraft((current) => ({ ...current, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
+          <Field label="IP" value={replaceDraft.ipAddress} onChange={(event) => setReplaceDraft((current) => ({ ...current, ipAddress: event.target.value }))} placeholder="192.168.X.Y" />
+          <Field wide label="Notas" value={replaceDraft.notes} onChange={(event) => setReplaceDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Motivo da substituicao" />
         </form>
       </Dialog>
     </section>
