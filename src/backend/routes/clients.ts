@@ -104,7 +104,23 @@ export async function registerClientRoutes(app: FastifyInstance) {
       itemType: string; itemName: string; quantity: number; quantityUsed: number; totalCostCve: number;
     }>;
 
-    const equipmentUsed = [...investmentEquipmentUsed, ...installedEquipmentUsed]
+    const installedMaterialsUsed = db.prepare(`
+      SELECT 'material' AS itemType,
+             TRIM(COALESCE(ec.brand || ' ', '') || ec.model) AS itemName,
+             SUM(ml.quantity) AS quantity,
+             SUM(ml.quantity) AS quantityUsed,
+             SUM(ml.quantity * ml.unit_cost_cve) AS totalCostCve
+      FROM service_material_lines ml
+      JOIN equipment_catalog ec ON ec.id = ml.catalog_id
+      JOIN services s ON s.id = ml.service_id
+      WHERE s.client_id = ?
+      GROUP BY ec.id, ec.brand, ec.model
+      ORDER BY totalCostCve DESC, itemName ASC
+    `).all(id) as Array<{
+      itemType: string; itemName: string; quantity: number; quantityUsed: number; totalCostCve: number;
+    }>;
+
+    const equipmentUsed = [...investmentEquipmentUsed, ...installedEquipmentUsed, ...installedMaterialsUsed]
       .reduce((items, row) => {
         const existing = items.find((item) => item.itemType === row.itemType && item.itemName === row.itemName);
         if (existing) {
@@ -126,7 +142,9 @@ export async function registerClientRoutes(app: FastifyInstance) {
 
     const installedEquipmentCostCve = installedEquipmentUsed
       .reduce((sum, row) => sum + Number(row.totalCostCve || 0), 0);
-    const installationCostCve = investmentCostCve + installedEquipmentCostCve;
+    const installedMaterialsCostCve = installedMaterialsUsed
+      .reduce((sum, row) => sum + Number(row.totalCostCve || 0), 0);
+    const installationCostCve = investmentCostCve + installedEquipmentCostCve + installedMaterialsCostCve;
 
     const payments = db.prepare(`
       SELECT id, status, amount_cve AS amountCve, due_date AS dueDate,
