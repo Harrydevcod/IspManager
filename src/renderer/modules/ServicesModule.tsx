@@ -30,6 +30,7 @@ const INSTALL_COST_LABELS: Record<'mao_de_obra' | 'transporte' | 'outro', string
 };
 
 type ItemDraft = {
+  category: 'equipamento' | 'material';
   catalogId: string;
   quantity: string;
   serialNumber: string;
@@ -44,8 +45,8 @@ type EventFormState = {
   notes: string;
 };
 
-function emptyItemDraft(): ItemDraft {
-  return { catalogId: '', quantity: '1', serialNumber: '', assetTag: '', ipAddress: '', macAddress: '', notes: '' };
+function emptyItemDraft(category: 'equipamento' | 'material' = 'equipamento'): ItemDraft {
+  return { category, catalogId: '', quantity: '1', serialNumber: '', assetTag: '', ipAddress: '', macAddress: '', notes: '' };
 }
 
 function emptyEventForm(): EventFormState {
@@ -153,7 +154,6 @@ export function ServicesModule({
     setAttachItems(next);
     if (next) {
       void ensureCatalogLoaded();
-      setItemDrafts((current) => current.length > 0 ? current : [emptyItemDraft()]);
     } else {
       setItemDrafts([]);
       setLaborCve('');
@@ -235,7 +235,7 @@ export function ServicesModule({
   }, [focusClientId, services, onFocusHandled]);
 
   function openDeviceDialog() {
-    setAddItemDrafts([emptyItemDraft()]);
+    setAddItemDrafts([]);
     setAddLaborCve('');
     void ensureCatalogLoaded();
     setShowDeviceDialog(true);
@@ -421,44 +421,42 @@ export function ServicesModule({
     await loadServices();
   }
 
-  function renderItemDrafts(
+  function renderItemGroup(
     drafts: ItemDraft[],
     setter: Dispatch<SetStateAction<ItemDraft[]>>,
-    emptyLabel: string
+    category: 'equipamento' | 'material'
   ) {
-    if (drafts.length === 0) {
-      return <Message>{emptyLabel}</Message>;
-    }
+    const isMaterial = category === 'material';
+    const catalog = catalogList.filter((item) => item.category === category);
+    const rows = drafts
+      .map((draft, index) => ({ draft, index }))
+      .filter((row) => row.draft.category === category);
 
     return (
-      <div className="service-items-builder">
-        {drafts.map((draft, index) => {
-          const selectedItem = catalogList.find((item) => String(item.id) === draft.catalogId);
-          const serialized = selectedItem?.isSerialized !== 0;
+      <div className="service-items-group">
+        <p className="service-items-group-title">{isMaterial ? 'Materiais' : 'Equipamentos'}</p>
+        {rows.length === 0 && (
+          <Message>{isMaterial ? 'Sem materiais adicionados.' : 'Sem equipamentos adicionados.'}</Message>
+        )}
+        {rows.map(({ draft, index }) => {
+          const selectedItem = catalog.find((item) => String(item.id) === draft.catalogId);
           return (
             <div className="service-item-draft" key={index}>
               <Select
                 wide
-                label="Item"
+                label={isMaterial ? 'Material' : 'Equipamento'}
                 required
                 value={draft.catalogId}
                 onChange={(event) => updateItemDraft(setter, index, { catalogId: event.target.value })}
               >
-                <option value="">Selecionar item</option>
-                {catalogList.map((item) => (
+                <option value="">{isMaterial ? 'Selecionar material' : 'Selecionar equipamento'}</option>
+                {catalog.map((item) => (
                   <option key={item.id} value={item.id} disabled={item.stockTotal < 1}>
                     {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} {item.unitOfMeasure}
                   </option>
                 ))}
               </Select>
-              {serialized ? (
-                <>
-                  <Field label="Serial" value={draft.serialNumber} onChange={(event) => updateItemDraft(setter, index, { serialNumber: event.target.value })} />
-                  <Field label="Asset tag" value={draft.assetTag} onChange={(event) => updateItemDraft(setter, index, { assetTag: event.target.value })} />
-                  <Field label="MAC" value={draft.macAddress} onChange={(event) => updateItemDraft(setter, index, { macAddress: event.target.value })} placeholder="AA:BB:CC:DD:EE:FF" />
-                  <Field label="IP" value={draft.ipAddress} onChange={(event) => updateItemDraft(setter, index, { ipAddress: event.target.value })} placeholder="192.168.X.Y" />
-                </>
-              ) : (
+              {isMaterial ? (
                 <Field
                   label={`Quantidade${selectedItem ? ` (${selectedItem.unitOfMeasure})` : ''}`}
                   required
@@ -468,6 +466,13 @@ export function ServicesModule({
                   value={draft.quantity}
                   onChange={(event) => updateItemDraft(setter, index, { quantity: event.target.value })}
                 />
+              ) : (
+                <>
+                  <Field label="Serial" value={draft.serialNumber} onChange={(event) => updateItemDraft(setter, index, { serialNumber: event.target.value })} />
+                  <Field label="Asset tag" value={draft.assetTag} onChange={(event) => updateItemDraft(setter, index, { assetTag: event.target.value })} />
+                  <Field label="MAC" value={draft.macAddress} onChange={(event) => updateItemDraft(setter, index, { macAddress: event.target.value })} placeholder="AA:BB:CC:DD:EE:FF" />
+                  <Field label="IP" value={draft.ipAddress} onChange={(event) => updateItemDraft(setter, index, { ipAddress: event.target.value })} placeholder="192.168.X.Y" />
+                </>
               )}
               <Field wide label="Notas" value={draft.notes} onChange={(event) => updateItemDraft(setter, index, { notes: event.target.value })} />
               <Button type="button" variant="secondary" size="sm" onClick={() => removeItemDraft(setter, index)}>
@@ -476,9 +481,21 @@ export function ServicesModule({
             </div>
           );
         })}
-        <Button type="button" variant="secondary" size="sm" onClick={() => setter((current) => [...current, emptyItemDraft()])}>
-          Adicionar item
+        <Button type="button" variant="secondary" size="sm" onClick={() => setter((current) => [...current, emptyItemDraft(category)])}>
+          {isMaterial ? 'Adicionar material' : 'Adicionar equipamento'}
         </Button>
+      </div>
+    );
+  }
+
+  function renderItemDrafts(
+    drafts: ItemDraft[],
+    setter: Dispatch<SetStateAction<ItemDraft[]>>
+  ) {
+    return (
+      <div className="service-items-builder">
+        {renderItemGroup(drafts, setter, 'equipamento')}
+        {renderItemGroup(drafts, setter, 'material')}
       </div>
     );
   }
@@ -818,7 +835,7 @@ export function ServicesModule({
               />
               {attachItems && (
                 <>
-                  {renderItemDrafts(itemDrafts, setItemDrafts, 'Sem itens selecionados.')}
+                  {renderItemDrafts(itemDrafts, setItemDrafts)}
                   <Field
                     wide
                     label="Mão de obra (CVE)"
@@ -853,7 +870,7 @@ export function ServicesModule({
         }
       >
         <form id="device-form" className="client-form" onSubmit={submitItems}>
-          {renderItemDrafts(addItemDrafts, setAddItemDrafts, 'Sem itens selecionados.')}
+          {renderItemDrafts(addItemDrafts, setAddItemDrafts)}
           <Field
             wide
             label="Mão de obra (CVE)"
