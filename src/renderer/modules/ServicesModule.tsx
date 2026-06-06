@@ -1,5 +1,5 @@
 import { Cable, History, Pencil, Plus, Wrench } from 'lucide-react';
-import type { FormEvent } from 'react';
+import type { Dispatch, FormEvent, SetStateAction } from 'react';
 import { useEffect, useState } from 'react';
 import { Badge, Button, Combobox, DetailPanel, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
@@ -23,8 +23,9 @@ const eventTypeTone: Record<ServiceEventType, 'success' | 'info' | 'neutral' | '
   alteracao_servico: 'accent'
 };
 
-type DeviceFormState = {
+type ItemDraft = {
   catalogId: string;
+  quantity: string;
   serialNumber: string;
   assetTag: string;
   ipAddress: string;
@@ -37,8 +38,8 @@ type EventFormState = {
   notes: string;
 };
 
-function emptyDeviceForm(): DeviceFormState {
-  return { catalogId: '', serialNumber: '', assetTag: '', ipAddress: '', macAddress: '', notes: '' };
+function emptyItemDraft(): ItemDraft {
+  return { catalogId: '', quantity: '1', serialNumber: '', assetTag: '', ipAddress: '', macAddress: '', notes: '' };
 }
 
 function emptyEventForm(): EventFormState {
@@ -84,8 +85,8 @@ export function ServicesModule({
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingService, setEditingService] = useState<ServiceRow | null>(null);
-  const [attachDevice, setAttachDevice] = useState(false);
-  const [newServiceDevice, setNewServiceDevice] = useState<DeviceFormState>(emptyDeviceForm());
+  const [attachItems, setAttachItems] = useState(false);
+  const [itemDrafts, setItemDrafts] = useState<ItemDraft[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | ServiceRow['status']>('all');
   const [form, setForm] = useState<ServiceFormState>(emptyServiceForm());
@@ -93,7 +94,7 @@ export function ServicesModule({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [catalogList, setCatalogList] = useState<StockCatalogRow[]>([]);
   const [showDeviceDialog, setShowDeviceDialog] = useState(false);
-  const [deviceForm, setDeviceForm] = useState<DeviceFormState>(emptyDeviceForm());
+  const [addItemDrafts, setAddItemDrafts] = useState<ItemDraft[]>([]);
   const [showEventDialog, setShowEventDialog] = useState(false);
   const [eventForm, setEventForm] = useState<EventFormState>(emptyEventForm());
   const [submitting, setSubmitting] = useState(false);
@@ -134,17 +135,18 @@ export function ServicesModule({
     setSelectedService(null);
     setEditingService(null);
     setForm(emptyServiceForm());
-    setAttachDevice(false);
-    setNewServiceDevice(emptyDeviceForm());
+    setAttachItems(false);
+    setItemDrafts([]);
     setShowForm(true);
   }
 
-  function toggleAttachDevice(next: boolean) {
-    setAttachDevice(next);
+  function toggleAttachItems(next: boolean) {
+    setAttachItems(next);
     if (next) {
       void ensureCatalogLoaded();
+      setItemDrafts((current) => current.length > 0 ? current : [emptyItemDraft()]);
     } else {
-      setNewServiceDevice(emptyDeviceForm());
+      setItemDrafts([]);
     }
   }
 
@@ -167,8 +169,8 @@ export function ServicesModule({
     setEditingService(null);
     setShowForm(false);
     setForm(emptyServiceForm());
-    setAttachDevice(false);
-    setNewServiceDevice(emptyDeviceForm());
+    setAttachItems(false);
+    setItemDrafts([]);
   }
 
   async function loadTechnicalHistory(serviceId: number) {
@@ -222,7 +224,7 @@ export function ServicesModule({
   }, [focusClientId, services, onFocusHandled]);
 
   function openDeviceDialog() {
-    setDeviceForm(emptyDeviceForm());
+    setAddItemDrafts([emptyItemDraft()]);
     void ensureCatalogLoaded();
     setShowDeviceDialog(true);
   }
@@ -230,41 +232,78 @@ export function ServicesModule({
   function closeDeviceDialog() {
     if (submitting) return;
     setShowDeviceDialog(false);
-    setDeviceForm(emptyDeviceForm());
+    setAddItemDrafts([]);
   }
 
-  async function submitDeviceAssignment(event: FormEvent<HTMLFormElement>) {
+  function updateItemDraft(setter: Dispatch<SetStateAction<ItemDraft[]>>, index: number, patch: Partial<ItemDraft>) {
+    setter((current) => current.map((draft, i) => i === index ? { ...draft, ...patch } : draft));
+  }
+
+  function removeItemDraft(setter: Dispatch<SetStateAction<ItemDraft[]>>, index: number) {
+    setter((current) => current.filter((_, i) => i !== index));
+  }
+
+  function buildItemsPayload(drafts: ItemDraft[], catalog: StockCatalogRow[]) {
+    return drafts
+      .filter((draft) => draft.catalogId)
+      .map((draft) => {
+        const item = catalog.find((row) => String(row.id) === draft.catalogId);
+        const serialized = item?.isSerialized !== 0;
+        return serialized
+          ? {
+              catalogId: Number(draft.catalogId),
+              serialNumber: draft.serialNumber || null,
+              assetTag: draft.assetTag || null,
+              ipAddress: draft.ipAddress || null,
+              macAddress: draft.macAddress || null,
+              notes: draft.notes || null
+            }
+          : {
+              catalogId: Number(draft.catalogId),
+              quantity: Number(draft.quantity || 1),
+              notes: draft.notes || null
+            };
+      });
+  }
+
+  function hasInvalidMaterialQuantity(drafts: ItemDraft[]) {
+    return drafts.some((draft) => {
+      if (!draft.catalogId) return false;
+      const item = catalogList.find((row) => String(row.id) === draft.catalogId);
+      return item?.isSerialized === 0 && Number(draft.quantity || 0) < 1;
+    });
+  }
+
+  async function submitItems(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedService) return;
-    if (!deviceForm.catalogId) {
-      toast('Seleciona o modelo do equipamento.', 'error');
+    const items = buildItemsPayload(addItemDrafts, catalogList);
+    if (items.length === 0) {
+      toast('Adiciona pelo menos um item.', 'error');
+      return;
+    }
+    if (hasInvalidMaterialQuantity(addItemDrafts)) {
+      toast('Quantidade de material invalida.', 'error');
       return;
     }
     setSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/services/${selectedService.id}/device-assignments`, {
+      const response = await authFetch(`http://127.0.0.1:3001/api/services/${selectedService.id}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          catalogId: Number(deviceForm.catalogId),
-          serialNumber: deviceForm.serialNumber || null,
-          assetTag: deviceForm.assetTag || null,
-          ipAddress: deviceForm.ipAddress || null,
-          macAddress: deviceForm.macAddress || null,
-          notes: deviceForm.notes || null
-        })
+        body: JSON.stringify({ items })
       });
       const data = await response.json() as { error?: string };
       if (!response.ok) {
-        toast(data.error || 'Nao foi possivel atribuir o equipamento.', 'error');
+        toast(data.error || 'Nao foi possivel adicionar os itens.', 'error');
         return;
       }
-      toast('Equipamento atribuido ao servico.', 'success');
+      toast('Itens adicionados ao servico.', 'success');
       setShowDeviceDialog(false);
-      setDeviceForm(emptyDeviceForm());
+      setAddItemDrafts([]);
       await loadTechnicalHistory(selectedService.id);
     } catch {
-      toast('Falha de rede ao atribuir equipamento.', 'error');
+      toast('Falha de rede ao adicionar itens.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -313,9 +352,13 @@ export function ServicesModule({
   async function saveService(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const installingDevice = !editingService && attachDevice;
-    if (installingDevice && !newServiceDevice.catalogId) {
-      toast('Seleciona o modelo do equipamento a instalar.', 'error');
+    const items = !editingService && attachItems ? buildItemsPayload(itemDrafts, catalogList) : [];
+    if (!editingService && attachItems && items.length === 0) {
+      toast('Adiciona pelo menos um item a instalar.', 'error');
+      return;
+    }
+    if (!editingService && attachItems && hasInvalidMaterialQuantity(itemDrafts)) {
+      toast('Quantidade de material invalida.', 'error');
       return;
     }
 
@@ -331,16 +374,7 @@ export function ServicesModule({
         activationDate: form.activationDate,
         status: form.status,
         technicalNotes: form.technicalNotes,
-        device: installingDevice
-          ? {
-              catalogId: Number(newServiceDevice.catalogId),
-              serialNumber: newServiceDevice.serialNumber || null,
-              assetTag: newServiceDevice.assetTag || null,
-              ipAddress: newServiceDevice.ipAddress || null,
-              macAddress: newServiceDevice.macAddress || null,
-              notes: newServiceDevice.notes || null
-            }
-          : undefined
+        items: items.length > 0 ? items : undefined
       })
     });
 
@@ -353,13 +387,75 @@ export function ServicesModule({
     toast(
       editingService
         ? 'Servico atualizado.'
-        : installingDevice
-          ? 'Servico criado e equipamento instalado.'
+        : items.length > 0
+          ? 'Servico criado e itens instalados.'
           : 'Servico criado.',
       'success'
     );
     closeForm();
     await loadServices();
+  }
+
+  function renderItemDrafts(
+    drafts: ItemDraft[],
+    setter: Dispatch<SetStateAction<ItemDraft[]>>,
+    emptyLabel: string
+  ) {
+    if (drafts.length === 0) {
+      return <Message>{emptyLabel}</Message>;
+    }
+
+    return (
+      <div className="service-items-builder">
+        {drafts.map((draft, index) => {
+          const selectedItem = catalogList.find((item) => String(item.id) === draft.catalogId);
+          const serialized = selectedItem?.isSerialized !== 0;
+          return (
+            <div className="service-item-draft" key={index}>
+              <Select
+                wide
+                label="Item"
+                required
+                value={draft.catalogId}
+                onChange={(event) => updateItemDraft(setter, index, { catalogId: event.target.value })}
+              >
+                <option value="">Selecionar item</option>
+                {catalogList.map((item) => (
+                  <option key={item.id} value={item.id} disabled={item.stockTotal < 1}>
+                    {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} {item.unitOfMeasure}
+                  </option>
+                ))}
+              </Select>
+              {serialized ? (
+                <>
+                  <Field label="Serial" value={draft.serialNumber} onChange={(event) => updateItemDraft(setter, index, { serialNumber: event.target.value })} />
+                  <Field label="Asset tag" value={draft.assetTag} onChange={(event) => updateItemDraft(setter, index, { assetTag: event.target.value })} />
+                  <Field label="MAC" value={draft.macAddress} onChange={(event) => updateItemDraft(setter, index, { macAddress: event.target.value })} placeholder="AA:BB:CC:DD:EE:FF" />
+                  <Field label="IP" value={draft.ipAddress} onChange={(event) => updateItemDraft(setter, index, { ipAddress: event.target.value })} placeholder="192.168.X.Y" />
+                </>
+              ) : (
+                <Field
+                  label={`Quantidade${selectedItem ? ` (${selectedItem.unitOfMeasure})` : ''}`}
+                  required
+                  type="number"
+                  min={1}
+                  max={selectedItem?.stockTotal}
+                  value={draft.quantity}
+                  onChange={(event) => updateItemDraft(setter, index, { quantity: event.target.value })}
+                />
+              )}
+              <Field wide label="Notas" value={draft.notes} onChange={(event) => updateItemDraft(setter, index, { notes: event.target.value })} />
+              <Button type="button" variant="secondary" size="sm" onClick={() => removeItemDraft(setter, index)}>
+                Remover linha
+              </Button>
+            </div>
+          );
+        })}
+        <Button type="button" variant="secondary" size="sm" onClick={() => setter((current) => [...current, emptyItemDraft()])}>
+          Adicionar item
+        </Button>
+      </div>
+    );
   }
 
   const visibleServices = services.filter((service) => {
@@ -476,6 +572,41 @@ export function ServicesModule({
                     </li>
                   );
                 })}
+              </ul>
+            )}
+          </section>
+
+          <section className="technical-section">
+            <header className="technical-section-head">
+              <div>
+                <p className="eyebrow"><Cable size={12} /> Materiais</p>
+                <h3>{technicalHistory ? `${technicalHistory.materials.length} linha(s)` : 'A carregar...'}</h3>
+              </div>
+            </header>
+            {technicalHistory && technicalHistory.materials.length === 0 && (
+              <EmptyState
+                size="sm"
+                icon={Cable}
+                title="Sem materiais registados"
+                description="Materiais consumidos neste servico aparecem aqui."
+              />
+            )}
+            {technicalHistory && technicalHistory.materials.length > 0 && (
+              <ul className="technical-list">
+                {technicalHistory.materials.map((material) => (
+                  <li key={material.id} className="technical-item active">
+                    <div className="technical-item-head">
+                      <strong>{material.brand ? `${material.brand} ${material.model}` : material.model}</strong>
+                      <Badge tone="neutral">{material.catalogType}</Badge>
+                    </div>
+                    <dl className="technical-item-meta">
+                      <div><dt>Quantidade</dt><dd>{material.quantity} {material.unitOfMeasure}</dd></div>
+                      <div><dt>Custo</dt><dd>{formatCve(material.unitCostCve * material.quantity)}</dd></div>
+                      <div><dt>Registado</dt><dd>{formatPtDateTime(material.createdAt)}</dd></div>
+                    </dl>
+                    {material.notes && <p className="technical-item-notes">{material.notes}</p>}
+                  </li>
+                ))}
               </ul>
             )}
           </section>
@@ -616,36 +747,14 @@ export function ServicesModule({
           <Field wide label="Notas tecnicas" value={form.technicalNotes} onChange={(event) => updateForm('technicalNotes', event.target.value)} />
 
           {!editingService && canRecordTechnical && (
-            <div className="service-equipment-section">
+            <div className="service-items-builder">
               <Toggle
                 title="Instalar equipamento agora"
                 description="Atribui hardware ao serviço e abate o stock no momento da criação."
-                checked={attachDevice}
-                onChange={(event) => toggleAttachDevice(event.target.checked)}
+                checked={attachItems}
+                onChange={(event) => toggleAttachItems(event.target.checked)}
               />
-              {attachDevice && (
-                <>
-                  <Select
-                    wide
-                    label="Modelo do equipamento"
-                    required
-                    value={newServiceDevice.catalogId}
-                    onChange={(event) => setNewServiceDevice((c) => ({ ...c, catalogId: event.target.value }))}
-                  >
-                    <option value="">Selecionar modelo</option>
-                    {catalogList.map((item) => (
-                      <option key={item.id} value={item.id} disabled={item.stockTotal < 1}>
-                        {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} un.
-                      </option>
-                    ))}
-                  </Select>
-                  <Field label="Serial" value={newServiceDevice.serialNumber} onChange={(event) => setNewServiceDevice((c) => ({ ...c, serialNumber: event.target.value }))} />
-                  <Field label="Asset tag" value={newServiceDevice.assetTag} onChange={(event) => setNewServiceDevice((c) => ({ ...c, assetTag: event.target.value }))} />
-                  <Field label="MAC" value={newServiceDevice.macAddress} onChange={(event) => setNewServiceDevice((c) => ({ ...c, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
-                  <Field label="IP" value={newServiceDevice.ipAddress} onChange={(event) => setNewServiceDevice((c) => ({ ...c, ipAddress: event.target.value }))} placeholder="192.168.X.Y" />
-                  <Field wide label="Notas do equipamento" value={newServiceDevice.notes} onChange={(event) => setNewServiceDevice((c) => ({ ...c, notes: event.target.value }))} />
-                </>
-              )}
+              {attachItems && renderItemDrafts(itemDrafts, setItemDrafts, 'Sem itens selecionados.')}
             </div>
           )}
         </form>
@@ -654,33 +763,21 @@ export function ServicesModule({
       <Dialog
         open={showDeviceDialog}
         onClose={closeDeviceDialog}
-        eyebrow="Equipamento"
-        title={selectedService ? `Atribuir a ${selectedService.clientName}` : 'Atribuir equipamento'}
+        eyebrow="Itens"
+        title={selectedService ? `Adicionar a ${selectedService.clientName}` : 'Adicionar itens'}
         size="md"
         closeOnBackdrop={!submitting}
         actions={
           <>
             <Button variant="secondary" onClick={closeDeviceDialog} disabled={submitting}>Cancelar</Button>
             <Button type="submit" form="device-form" loading={submitting}>
-              {submitting ? 'A gravar...' : 'Atribuir'}
+              {submitting ? 'A gravar...' : 'Adicionar'}
             </Button>
           </>
         }
       >
-        <form id="device-form" className="client-form" onSubmit={submitDeviceAssignment}>
-          <Select wide label="Modelo do equipamento" required value={deviceForm.catalogId} onChange={(event) => setDeviceForm((c) => ({ ...c, catalogId: event.target.value }))}>
-            <option value="">Selecionar modelo</option>
-            {catalogList.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} un.
-              </option>
-            ))}
-          </Select>
-          <Field label="Serial" value={deviceForm.serialNumber} onChange={(event) => setDeviceForm((c) => ({ ...c, serialNumber: event.target.value }))} />
-          <Field label="Asset tag" value={deviceForm.assetTag} onChange={(event) => setDeviceForm((c) => ({ ...c, assetTag: event.target.value }))} />
-          <Field label="MAC" value={deviceForm.macAddress} onChange={(event) => setDeviceForm((c) => ({ ...c, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
-          <Field label="IP" value={deviceForm.ipAddress} onChange={(event) => setDeviceForm((c) => ({ ...c, ipAddress: event.target.value }))} placeholder="192.168.X.Y" />
-          <Field wide label="Notas" value={deviceForm.notes} onChange={(event) => setDeviceForm((c) => ({ ...c, notes: event.target.value }))} />
+        <form id="device-form" className="client-form" onSubmit={submitItems}>
+          {renderItemDrafts(addItemDrafts, setAddItemDrafts, 'Sem itens selecionados.')}
         </form>
       </Dialog>
 
