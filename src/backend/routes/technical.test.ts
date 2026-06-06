@@ -209,6 +209,93 @@ describe('technical routes', () => {
     });
   });
 
+  test('returns an active assignment and restores stock', async () => {
+    const { catalog, service, user } = seedBaseService();
+    const install = await app.inject({
+      method: 'POST',
+      url: `/api/services/${service.lastInsertRowid}/items`,
+      payload: {
+        items: [{
+          catalogId: catalog.lastInsertRowid,
+          serialNumber: 'SN-RET',
+          technicianId: user.lastInsertRowid,
+          notes: 'Instalacao inicial'
+        }]
+      }
+    });
+    const assignmentId = (install.json() as { assignmentIds: number[] }).assignmentIds[0];
+
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?')
+      .get(catalog.lastInsertRowid)).toEqual({ s: 9 });
+
+    const result = await app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${assignmentId}/return`,
+      payload: { notes: 'Cliente cancelou', technicianId: user.lastInsertRowid }
+    });
+
+    expect(result.statusCode).toBe(200);
+    expect(result.json()).toMatchObject({
+      assignmentId,
+      eventId: expect.any(Number)
+    });
+
+    expect(db.prepare('SELECT end_date AS endDate FROM service_device_assignments WHERE id = ?')
+      .get(assignmentId)).not.toEqual({ endDate: null });
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?')
+      .get(catalog.lastInsertRowid)).toEqual({ s: 10 });
+
+    expect(db.prepare(`
+      SELECT type, quantity FROM stock_movements
+      WHERE catalog_id = ? AND type = 'devolucao'
+    `).get(catalog.lastInsertRowid)).toEqual({ type: 'devolucao', quantity: 1 });
+
+    const events = db.prepare(`
+      SELECT event_type AS eventType, notes FROM service_events
+      WHERE service_id = ? ORDER BY id
+    `).all(service.lastInsertRowid) as Array<{ eventType: string; notes: string | null }>;
+    expect(events[events.length - 1]).toMatchObject({
+      eventType: 'alteracao_servico',
+      notes: 'Cliente cancelou'
+    });
+  });
+
+  test('rejects returning an already closed assignment', async () => {
+    const { catalog, service } = seedBaseService();
+    const install = await app.inject({
+      method: 'POST',
+      url: `/api/services/${service.lastInsertRowid}/items`,
+      payload: { items: [{ catalogId: catalog.lastInsertRowid, serialNumber: 'SN-X' }] }
+    });
+    const assignmentId = (install.json() as { assignmentIds: number[] }).assignmentIds[0];
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${assignmentId}/return`,
+      payload: {}
+    });
+    expect(first.statusCode).toBe(200);
+
+    const second = await app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${assignmentId}/return`,
+      payload: {}
+    });
+    expect(second.statusCode).toBe(400);
+    expect(second.json()).toEqual({ error: 'Atribuicao ja encerrada' });
+  });
+
+  test('returns 404 when returning an unknown assignment', async () => {
+    seedBaseService();
+    const result = await app.inject({
+      method: 'POST',
+      url: '/api/service-device-assignments/99999/return',
+      payload: {}
+    });
+    expect(result.statusCode).toBe(404);
+    expect(result.json()).toEqual({ error: 'Atribuicao nao encontrada' });
+  });
+
   test('rejects duplicate active serial numbers', async () => {
     const { catalog, service } = seedBaseService();
     const first = await app.inject({

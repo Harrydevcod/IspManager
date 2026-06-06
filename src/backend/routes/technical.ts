@@ -47,6 +47,11 @@ const batchItemsSchema = z.object({
   { message: 'Indique pelo menos um item ou custo' }
 );
 
+const deviceReturnSchema = z.object({
+  technicianId: z.coerce.number().int().positive().optional().nullable(),
+  notes: z.string().trim().optional().nullable()
+});
+
 const technicalEventSchema = z.object({
   eventType: z.enum(['instalacao', 'manutencao', 'troca_equipamento', 'visita', 'alteracao_servico']),
   notes: z.string().trim().optional().nullable(),
@@ -387,6 +392,104 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       metadata: { catalogId: parsed.data.catalogId, replacementAssignmentId: result.assignmentId }
     });
     return reply.status(201).send(result);
+  });
+
+  app.post('/api/service-device-assignments/:id/return', canWriteTechnical, async (request, reply) => {
+    const assignmentId = Number((request.params as { id: string }).id);
+    const parsed = deviceReturnSchema.safeParse(request.body ?? {});
+    if (!Number.isInteger(assignmentId) || assignmentId <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Dados de devolucao invalidos' });
+    }
+
+    const db = getSqliteDatabase();
+    const current = db.prepare(`
+      SELECT id, service_id AS serviceId, catalog_id AS catalogId, end_date AS endDate
+      FROM service_device_assignments
+      WHERE id = ?
+    `).get(assignmentId) as { id: number; serviceId: number; catalogId: number; endDate: string | null } | undefined;
+
+    if (!current) {
+      return reply.status(404).send({ error: 'Atribuicao nao encontrada' });
+    }
+    if (current.endDate) {
+      return reply.status(400).send({ error: 'Atribuicao ja encerrada' });
+    }
+    const service = loadService(current.serviceId);
+    if (!service) {
+      return reply.status(404).send({ error: 'Servico nao encontrado' });
+    }
+    if (parsed.data.technicianId && !loadUser(parsed.data.technicianId)) {
+      return reply.status(404).send({ error: 'Tecnico nao encontrado' });
+    }
+
+    const notes = cleanValue(parsed.data.notes);
+    const catalog = loadCatalogIdentity(db, current.catalogId);
+
+    const run = db.transaction(() => {
+      const updated = db.prepare(`
+        UPDATE service_device_assignments
+        SET end_date = date('now'),
+            updated_at = datetime('now')
+        WHERE id = ? AND end_date IS NULL
+      `).run(assignmentId);
+      if (updated.changes === 0) {
+        throw new Error('already_closed');
+      }
+
+      db.prepare(`
+        INSERT INTO stock_movements (
+          catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
+        )
+        VALUES (?, 'devolucao', 1, ?, ?, ?, ?, ?, ?)
+      `).run(
+        current.catalogId,
+        catalog?.landedCostCve ?? 0,
+        `Devolucao servico ${current.serviceId}`,
+        notes,
+        current.serviceId,
+        service.clientName,
+        request.user?.id || null
+      );
+
+      db.prepare(`
+        UPDATE equipment_catalog
+        SET stock_total = stock_total + 1,
+            updated_at = datetime('now')
+        WHERE id = ?
+      `).run(current.catalogId);
+
+      const event = db.prepare(`
+        INSERT INTO service_events (
+          service_id, event_type, notes, technician_id, created_by, created_at
+        )
+        VALUES (?, 'alteracao_servico', ?, ?, ?, datetime('now'))
+      `).run(
+        current.serviceId,
+        notes,
+        parsed.data.technicianId || null,
+        parsed.data.technicianId || null
+      );
+
+      return { eventId: event.lastInsertRowid };
+    });
+
+    let result: { eventId: string | number | bigint };
+    try {
+      result = run();
+    } catch (error) {
+      if (error instanceof Error && error.message === 'already_closed') {
+        return reply.status(400).send({ error: 'Atribuicao ja encerrada' });
+      }
+      throw error;
+    }
+    recordAudit(request, {
+      action: 'return_device',
+      entityType: 'service_device_assignment',
+      entityId: assignmentId,
+      summary: `Removeu equipamento atribuido ${assignmentId}`,
+      metadata: { catalogId: current.catalogId, serviceId: current.serviceId }
+    });
+    return reply.status(200).send({ assignmentId, eventId: result.eventId });
   });
 
   app.post('/api/services/:id/technical-events', canWriteTechnical, async (request, reply) => {
