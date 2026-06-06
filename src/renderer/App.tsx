@@ -96,6 +96,7 @@ function AppShell() {
   const [health, setHealth] = useState<HealthState>('checking');
   const [section, setSection] = useState<SectionId>(() => visibleSections[0]?.id ?? 'dashboard');
   const [focusClientId, setFocusClientId] = useState<number | null>(null);
+  const [focusServiceClientId, setFocusServiceClientId] = useState<number | null>(null);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
@@ -323,10 +324,22 @@ function AppShell() {
 
           {section === 'dashboard' && <Dashboard onOpenClients={() => setSection('clients')} />}
           {section === 'clients' && (
-            <ClientsModule focusClientId={focusClientId} onFocusHandled={() => setFocusClientId(null)} />
+            <ClientsModule
+              focusClientId={focusClientId}
+              onFocusHandled={() => setFocusClientId(null)}
+              onOpenServicesForClient={(id) => {
+                setFocusServiceClientId(id);
+                setSection('services');
+              }}
+            />
           )}
           {section === 'plans' && <PlansModule />}
-          {section === 'services' && <ServicesModule />}
+          {section === 'services' && (
+            <ServicesModule
+              focusClientId={focusServiceClientId}
+              onFocusHandled={() => setFocusServiceClientId(null)}
+            />
+          )}
           {section === 'payments' && <PaymentsModule />}
           {section === 'investments' && <InvestmentsModule />}
           {section === 'expenses' && <ExpensesModule />}
