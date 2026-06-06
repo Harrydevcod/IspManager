@@ -591,10 +591,6 @@ export function StockModule() {
               <Field label="Fornecedor" value={catalogForm.supplier} onChange={(event) => updateCatalogForm('supplier', event.target.value)} />
               <Field label="Custo por unidade CVE" type="number" min={0} value={catalogForm.purchasePriceCve} onChange={(event) => updateCatalogForm('purchasePriceCve', event.target.value)} />
               <Field label={editingCatalog ? `Stock atual (${catalogForm.unitOfMeasure})` : `Stock inicial (${catalogForm.unitOfMeasure})`} type="number" min={0} value={catalogForm.stockTotal} onChange={(event) => updateCatalogForm('stockTotal', event.target.value)} />
-              <Select label="Estado" value={catalogForm.active} onChange={(event) => updateCatalogForm('active', event.target.value)}>
-                <option value="1">Ativo</option>
-                <option value="0">Inativo</option>
-              </Select>
             </>
           ) : (
             <>
