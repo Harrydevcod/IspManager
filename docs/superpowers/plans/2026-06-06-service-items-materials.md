@@ -1438,7 +1438,9 @@ git commit -m "feat(services-ui): histórico técnico mostra materiais consumido
 
 ## Fase 2 — Custos de instalação (mão de obra) + abas do Stock
 
-> A migração 0018 **já criou** `service_install_costs` (committed). Falta ligá-la de ponta a ponta e separar o Stock em duas abas. Cada Task continua TDD-first e committável.
+> **Estado: implementada e committed** (commits `f515009`, `21238e3`, `72708e2`). 249 testes verdes, typecheck+lint limpos. Falta apenas o smoke manual no Electron. As Tasks 13–16 abaixo ficam como registo do que foi feito.
+>
+> A migração 0018 já tinha criado `service_install_costs`; ligámo-la de ponta a ponta (motor → endpoints → rentabilidade → tipos → UI) e separámos o Stock em duas abas. Cada Task foi TDD-first e committável.
 
 ### Task 13: Stock — abas Equipamentos | Materiais
 
@@ -1503,12 +1505,13 @@ git commit -m "feat(services-ui): histórico técnico mostra materiais consumido
 
 - [x] `npm.cmd run typecheck` limpo
 - [x] `npm.cmd run lint` limpo
-- [x] `npm.cmd test -- --run --no-file-parallelism` — todos verdes
-- [ ] Smoke manual (Task 12, Step 3) concluído
-- [ ] Atualizar memória do projeto: [[ispm-service-create-with-device]] passa a refletir lote de itens + materiais; nota do catálogo unificado e `service_material_lines`.
+- [x] `npm.cmd test -- --run --no-file-parallelism` — todos verdes (249)
+- [x] Atualizar memória do projeto: [[ispm-service-create-with-device]] reflete lote de itens + materiais + mão de obra, catálogo unificado, abas do Stock, `service_material_lines`/`service_install_costs`.
+- [ ] Smoke manual (Task 12 Step 3 + fluxo de mão de obra/abas) concluído
 
 ## Notas de execução
 
 - **better-sqlite3 binário:** se algum teste falhar com erro de binário nativo, correr `npm.cmd rebuild better-sqlite3` antes (gotcha conhecido após builds do electron-builder).
-- **Limpezas de teste FK-safe:** novas tabelas filhas (`service_material_lines`) têm de ser apagadas **antes** das pais nos `beforeEach` (FK ON em runtime).
+- **Limpezas de teste FK-safe:** novas tabelas filhas (`service_material_lines`, `service_install_costs`) têm de ser apagadas **antes** das pais nos `beforeEach` (FK ON em runtime).
 - **Contrato `device` → `items`:** qualquer chamada antiga a `device-assignments` single ou ao campo `device` foi substituída; garantir que nada no renderer ainda os usa (grep `device-assignments`, `device:` no payload).
+- **`installCosts[]` independente de `items`:** ambos os endpoints (`POST /api/services` e `/items`) aceitam custos sem itens (serviço só com mão de obra). Mão de obra soma ao `installationCostCve` mas **não** entra em `equipmentUsed` (não é item físico).
