@@ -94,10 +94,13 @@ export type PlanRow = {
 
 export type StockCatalogRow = {
   id: number;
-  type: 'cpe' | 'router' | 'antena' | 'switch' | 'outro';
+  category: 'equipamento' | 'material';
+  type: 'cpe' | 'router' | 'antena' | 'switch' | 'cabo' | 'conector' | 'ficha' | 'suporte' | 'outro';
   brand: string | null;
   model: string;
   supplier: string | null;
+  unitOfMeasure: string;
+  isSerialized: number;
   purchasePriceCve: number;
   sellingPriceCve: number;
   rentalFeeCve: number;
@@ -559,6 +562,19 @@ export type DeviceAssignment = {
   createdAt: string;
 };
 
+export type MaterialLine = {
+  id: number;
+  catalogId: number;
+  catalogType: string;
+  brand: string | null;
+  model: string;
+  unitOfMeasure: string;
+  quantity: number;
+  unitCostCve: number;
+  notes: string | null;
+  createdAt: string;
+};
+
 export type ServiceEventType = 'instalacao' | 'manutencao' | 'troca_equipamento' | 'visita' | 'alteracao_servico';
 
 export type ServiceEvent = {
@@ -573,6 +589,7 @@ export type ServiceEvent = {
 export type TechnicalHistory = {
   serviceId: number;
   assignments: DeviceAssignment[];
+  materials: MaterialLine[];
   events: ServiceEvent[];
 };
 

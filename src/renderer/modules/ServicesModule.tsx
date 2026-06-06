@@ -176,13 +176,13 @@ export function ServicesModule({
     try {
       const response = await authFetch(`http://127.0.0.1:3001/api/services/${serviceId}/technical-history`);
       if (!response.ok) {
-        setTechnicalHistory({ serviceId, assignments: [], events: [] });
+        setTechnicalHistory({ serviceId, assignments: [], materials: [], events: [] });
         return;
       }
       const data = await response.json() as TechnicalHistory;
       setTechnicalHistory(data);
     } catch {
-      setTechnicalHistory({ serviceId, assignments: [], events: [] });
+      setTechnicalHistory({ serviceId, assignments: [], materials: [], events: [] });
     } finally {
       setHistoryLoading(false);
     }

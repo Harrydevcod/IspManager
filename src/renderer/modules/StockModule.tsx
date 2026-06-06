@@ -10,10 +10,13 @@ import type { CatalogAssignments, StockCatalogRow, StockMovement, StockSummary }
 import './StockModule.css';
 
 type StockFormState = {
-  type: 'cpe' | 'router' | 'antena' | 'switch' | 'outro';
+  category: 'equipamento' | 'material';
+  type: StockCatalogRow['type'];
   brand: string;
   model: string;
   supplier: string;
+  unitOfMeasure: string;
+  isSerialized: '1' | '0';
   purchasePriceCve: string;
   sellingPriceCve: string;
   rentalFeeCve: string;
@@ -32,10 +35,13 @@ type StockMovementFormState = {
 
 function emptyCatalogForm(): StockFormState {
   return {
+    category: 'equipamento',
     type: 'router',
     brand: '',
     model: '',
     supplier: '',
+    unitOfMeasure: 'un',
+    isSerialized: '1',
     purchasePriceCve: '',
     sellingPriceCve: '',
     rentalFeeCve: '',
@@ -114,7 +120,15 @@ export function StockModule() {
   }, [loadStock]);
 
   function updateCatalogForm(field: keyof StockFormState, value: string) {
-    setCatalogForm((current) => ({ ...current, [field]: value }));
+    setCatalogForm((current) => {
+      if (field === 'category' && value === 'material') {
+        return { ...current, category: 'material', isSerialized: '0', type: current.type === 'outro' ? 'outro' : current.type };
+      }
+      if (field === 'category' && value === 'equipamento') {
+        return { ...current, category: 'equipamento', isSerialized: '1' };
+      }
+      return { ...current, [field]: value };
+    });
   }
 
   function updateMovementForm(field: keyof StockMovementFormState, value: string) {
@@ -130,10 +144,13 @@ export function StockModule() {
   function editCatalog(catalog: StockCatalogRow) {
     setEditingCatalog(catalog);
     setCatalogForm({
+      category: catalog.category,
       type: catalog.type,
       brand: catalog.brand || '',
       model: catalog.model,
       supplier: catalog.supplier || '',
+      unitOfMeasure: catalog.unitOfMeasure,
+      isSerialized: catalog.isSerialized ? '1' : '0',
       purchasePriceCve: String(catalog.purchasePriceCve),
       sellingPriceCve: String(catalog.sellingPriceCve),
       rentalFeeCve: String(catalog.rentalFeeCve),
@@ -171,6 +188,7 @@ export function StockModule() {
         sellingPriceCve: Number(catalogForm.sellingPriceCve || 0),
         rentalFeeCve: Number(catalogForm.rentalFeeCve || 0),
         stockTotal: Number(catalogForm.stockTotal || 0),
+        isSerialized: catalogForm.isSerialized === '1',
         active: catalogForm.active === '1'
       })
     });
@@ -258,6 +276,10 @@ export function StockModule() {
             <option value="router">Router</option>
             <option value="antena">Antena</option>
             <option value="switch">Switch</option>
+            <option value="cabo">Cabo</option>
+            <option value="conector">Conector</option>
+            <option value="ficha">Ficha</option>
+            <option value="suporte">Suporte</option>
             <option value="outro">Outro</option>
           </Select>
           <Select label="Stock" value={stockFilter} onChange={(event) => setStockFilter(event.target.value as 'all' | 'low' | 'out')}>
@@ -475,16 +497,29 @@ export function StockModule() {
         }
       >
         <form id="catalog-form" className="client-form" onSubmit={saveCatalog}>
+          <Select label="Categoria" value={catalogForm.category} onChange={(event) => updateCatalogForm('category', event.target.value)}>
+            <option value="equipamento">Equipamento</option>
+            <option value="material">Material</option>
+          </Select>
           <Select label="Tipo" value={catalogForm.type} onChange={(event) => updateCatalogForm('type', event.target.value)}>
             <option value="cpe">CPE</option>
             <option value="router">Router</option>
             <option value="antena">Antena</option>
             <option value="switch">Switch</option>
+            <option value="cabo">Cabo</option>
+            <option value="conector">Conector</option>
+            <option value="ficha">Ficha</option>
+            <option value="suporte">Suporte</option>
             <option value="outro">Outro</option>
           </Select>
           <Field label="Marca" value={catalogForm.brand} onChange={(event) => updateCatalogForm('brand', event.target.value)} />
           <Field label="Modelo" required value={catalogForm.model} onChange={(event) => updateCatalogForm('model', event.target.value)} />
           <Field label="Fornecedor" value={catalogForm.supplier} onChange={(event) => updateCatalogForm('supplier', event.target.value)} />
+          <Field label="Unidade" required value={catalogForm.unitOfMeasure} onChange={(event) => updateCatalogForm('unitOfMeasure', event.target.value)} />
+          <Select label="Serializado" value={catalogForm.isSerialized} onChange={(event) => updateCatalogForm('isSerialized', event.target.value)}>
+            <option value="1">Sim</option>
+            <option value="0">Nao</option>
+          </Select>
           <Field label="Custo compra CVE" type="number" min={0} value={catalogForm.purchasePriceCve} onChange={(event) => updateCatalogForm('purchasePriceCve', event.target.value)} />
           <Field label="Preco venda CVE" type="number" min={0} value={catalogForm.sellingPriceCve} onChange={(event) => updateCatalogForm('sellingPriceCve', event.target.value)} />
           <Field label="Aluguer mensal CVE" type="number" min={0} value={catalogForm.rentalFeeCve} onChange={(event) => updateCatalogForm('rentalFeeCve', event.target.value)} />
