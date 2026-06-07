@@ -1,7 +1,16 @@
 # Redesign: Rentabilidade & Capital Investido
 
+> ⚠️ **SUPERSEDED (2026-06-07).** Este design (modelo cash-recovery **por cliente**:
+> capital recuperável vs custo afundado, libs `lib/capital.ts` + `lib/profitability.ts`,
+> rateio CAPEX a espelhar OPEX, UI na ficha do cliente) **não foi implementado**. O
+> trabalho seguiu uma direção mais simples, ao nível da **empresa**, entregue na
+> consolidação da área **Financeiro** (commit `13870f0`): `totalInvestedCve` = stock
+> comprado + infraestrutura, `companyAccumulatedProfitCve` = recebido − investido − OPEX.
+> Mantido como registo histórico. O modelo por cliente pode ser retomado por cima do
+> redesign se houver necessidade.
+
 **Data:** 2026-06-06
-**Estado:** Design aprovado (a aguardar revisão do spec)
+**Estado:** SUPERSEDED pelo redesign Financeiro (ver banner acima) — originalmente "Design aprovado"
 **Âmbito:** Backend (cálculo de rentabilidade por cliente + total investido da empresa) e Frontend (Clientes, Investimentos).
 
 ---

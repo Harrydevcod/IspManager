@@ -1,5 +1,13 @@
 # Rentabilidade & Capital Investido — Implementation Plan
 
+> ⚠️ **SUPERSEDED (2026-06-07) — NÃO EXECUTAR.** Este plano (9 tasks TDD para o modelo
+> cash-recovery **por cliente**) foi abandonado a favor de um redesign mais simples ao
+> nível da **empresa**, entregue na consolidação da área **Financeiro** (commit `13870f0`):
+> nav única Financeiro com abas Lucro/Investimentos/Despesas, `RevenueBars` partilhado, e
+> `/api/investments` com `totalInvestedCve` = stock comprado + infraestrutura. As libs
+> `lib/capital.ts` / `lib/profitability.ts` aqui descritas **nunca foram criadas**. Mantido
+> como registo histórico; reabrir só se o modelo por cliente voltar a ser pedido.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Refazer o cálculo de rentabilidade por cliente (modelo cash-recovery, separando capital recuperável de custos afundados, com equipamento devolvido a sair do investido e CAPEX rateado como o OPEX) e o total investido da empresa (CAPEX + stock adquirido, OPEX à parte), a partir de uma fonte única de cálculo.
