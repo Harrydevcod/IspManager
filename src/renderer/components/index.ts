@@ -2,6 +2,7 @@ export * from './Message';
 export * from './MetricCard';
 export * from './MetricGrid';
 export * from './Card';
+export * from './RevenueBars';
 export * from './Button';
 export * from './Field';
 export * from './Select';

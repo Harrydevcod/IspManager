@@ -15,8 +15,7 @@ export type SectionId =
   | 'plans'
   | 'services'
   | 'payments'
-  | 'investments'
-  | 'expenses'
+  | 'finance'
   | 'work-orders'
   | 'stock'
   | 'reports'
@@ -353,6 +352,9 @@ export type InvestmentList = {
     totalCostCve: number;
     totalExpensesCve: number;
     totalInvestedCve: number;
+    ownInfrastructureCve: number;
+    totalReceivedCve: number;
+    companyAccumulatedProfitCve: number;
     investedByYear: Array<{ year: string; capexCve: number; opexCve: number; totalCve: number }>;
     monthlyNetProfitCve: number;
     accumulatedProfitCve: number;

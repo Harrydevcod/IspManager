@@ -268,11 +268,36 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
 
     const totalCostCve = rowsWithItems.reduce((sum, row) => sum + Number(row.totalCostCve || 0), 0);
     const totalExpensesCve = opexCtx.totalExpensesCve;
+    // "Total investido" = stock comprado + investimentos manuais (tabela investments).
+    //
+    // Stock comprado = valor do stock em maos (stock_total x custo landed) + stock que ja
+    // saiu/foi instalado (movimentos 'saida'). Cobre stock registado pelo formulario do
+    // catalogo (que nao gera movimento 'entrada') e o equipamento ja colocado em clientes.
+    // Sem dupla contagem: stock_total e o saldo atual; as saidas sao remocoes historicas.
+    const stockAcquiredRow = getSqliteDatabase()
+      .prepare(`
+        SELECT
+          (SELECT COALESCE(SUM(stock_total * (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve)), 0)
+             FROM equipment_catalog)
+          + (SELECT COALESCE(SUM(quantity * unit_cost_cve), 0)
+             FROM stock_movements WHERE type = 'saida')
+          AS totalCve
+      `)
+      .get() as { totalCve: number };
+    const stockAcquiredCve = Number(stockAcquiredRow.totalCve) || 0;
     const allTimeCapexRow = getSqliteDatabase()
       .prepare(`SELECT COALESCE(SUM(total_cost_cve), 0) AS totalCve FROM investments`)
       .get() as { totalCve: number };
     const allTimeCapexCve = Number(allTimeCapexRow.totalCve) || 0;
-    const totalInvestedCve = allTimeCapexCve + totalExpensesCve;
+    const totalInvestedCve = stockAcquiredCve + allTimeCapexCve;
+
+    // Lucro acumulado da empresa = faturacao recebida (pagamentos liquidados, todo o historico)
+    // menos todo o capital aplicado (infraestrutura + stock) menos as despesas (OPEX).
+    const receivedRow = getSqliteDatabase()
+      .prepare(`SELECT COALESCE(SUM(amount_cve), 0) AS totalCve FROM payments WHERE status = 'paid'`)
+      .get() as { totalCve: number };
+    const totalReceivedCve = Number(receivedRow.totalCve) || 0;
+    const companyAccumulatedProfitCve = totalReceivedCve - totalInvestedCve - totalExpensesCve;
     const byYearRows = getSqliteDatabase().prepare(`
       SELECT year, SUM(capexCve) AS capexCve, SUM(opexCve) AS opexCve
       FROM (
@@ -395,6 +420,9 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
         totalCostCve,
         totalExpensesCve,
         totalInvestedCve,
+        ownInfrastructureCve: allTimeCapexCve, // investido na infraestrutura propria (tabela investments), sem stock
+        totalReceivedCve,
+        companyAccumulatedProfitCve,
         investedByYear,
         monthlyNetProfitCve,
         accumulatedProfitCve,
