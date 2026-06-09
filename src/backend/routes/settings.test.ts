@@ -124,6 +124,30 @@ describe('settings SMS validation', () => {
     expect(row.value).toBe('http://192.168.1.50:8765');
   });
 
+  test('persists autoBillingDay and rejects values outside 1–31', async () => {
+    const ok = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, autoBillingDay: 30 }
+    });
+    expect(ok.statusCode).toBe(200);
+    const row = db.prepare(`SELECT value FROM app_settings WHERE key='autoBillingDay'`).get() as { value: string };
+    expect(row.value).toBe('30');
+
+    const bad = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, autoBillingDay: 40 }
+    });
+    expect(bad.statusCode).toBe(400);
+  });
+
+  test('defaults autoBillingDay to 30 when never set', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().autoBillingDay).toBe(30);
+  });
+
   test('persists company bank accounts as JSON and returns them from settings', async () => {
     const bankAccounts = [
       {

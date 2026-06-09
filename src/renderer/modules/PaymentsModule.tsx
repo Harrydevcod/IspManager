@@ -108,9 +108,15 @@ const statusLabel = (status: PaymentRow['status']): string => status;
 // ---------------------------------------------------------------------------
 
 export function PaymentsModule() {
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  // Competência por defeito = mês fechado: criada no início do mês → mês anterior;
+  // a partir do dia 30 → o mês que está a fechar (mesma regra da auto-faturação).
+  const defaultRefMonth = (() => {
+    const now = new Date();
+    const base = now.getDate() >= 30 ? now : new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}`;
+  })();
   const [payments, setPayments] = useState<PaymentRow[]>([]);
-  const [referenceMonth, setReferenceMonth] = useState(currentMonth);
+  const [referenceMonth, setReferenceMonth] = useState(defaultRefMonth);
   const [statusFilter, setStatusFilter] = useState<'all' | PaymentRow['status']>('all');
   const [message, setMessage] = useState<string | null>(null);
   const [selectedPayment, setSelectedPayment] = useState<PaymentRow | null>(null);
@@ -773,7 +779,7 @@ export function PaymentsModule() {
         </Button>
         <Button variant="secondary" onClick={() => {
           setStatusFilter('all');
-          setReferenceMonth(currentMonth);
+          setReferenceMonth(defaultRefMonth);
           setShowAllMonths(false);
           setSearch('');
           setSortMode('dueAsc');
