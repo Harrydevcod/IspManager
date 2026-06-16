@@ -1,7 +1,7 @@
 import { Banknote, Coins, Download, FileText, Percent, Wallet } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, Field, Message, MetricCard, MetricGrid, RevenueBars, formatCompactCve } from '../components';
-import { authFetch } from '../lib/auth';
+import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import './InvestmentsModule.css';
 import type { InvestmentList, RevenuePoint } from '../types';
@@ -25,6 +25,8 @@ function currentMonth() {
  * CRUD) lives in InvestmentsModule. Both read the same /api/investments endpoint independently.
  */
 export function ProfitModule() {
+  const auth = useAuth();
+  const reportQuery = auth.token ? `?token=${encodeURIComponent(auth.token)}` : '';
   const [data, setData] = useState<InvestmentList>(EMPTY_INVESTMENT_LIST);
   const [month, setMonth] = useState(currentMonth());
   const [showAllMonths, setShowAllMonths] = useState(false);
@@ -97,7 +99,7 @@ export function ProfitModule() {
             {showAllMonths ? 'Mes selecionado' : 'Todos os meses'}
           </Button>
           <a
-            href="http://127.0.0.1:3001/api/investments/report.pdf"
+            href={`http://127.0.0.1:3001/api/investments/report.pdf${reportQuery}`}
             target="_blank"
             rel="noreferrer"
             className="button-link"
@@ -106,7 +108,7 @@ export function ProfitModule() {
             <FileText size={14} /> PDF
           </a>
           <a
-            href="http://127.0.0.1:3001/api/investments/report.xlsx"
+            href={`http://127.0.0.1:3001/api/investments/report.xlsx${reportQuery}`}
             className="button-link"
             title="Exportar dados em Excel"
           >
