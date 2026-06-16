@@ -1,7 +1,7 @@
-import { Cable, History, Pencil, Plus, Wrench } from 'lucide-react';
-import type { FormEvent } from 'react';
+import { Cable, Coins, History, Pencil, Plus, Wrench } from 'lucide-react';
+import type { Dispatch, FormEvent, SetStateAction } from 'react';
 import { useEffect, useState } from 'react';
-import { Badge, Button, Combobox, DetailPanel, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useToast } from '../components';
+import { Badge, Button, Combobox, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtDateTime } from '../lib/format';
 import { statusLabel, statusTone } from '../lib/status';
@@ -23,8 +23,16 @@ const eventTypeTone: Record<ServiceEventType, 'success' | 'info' | 'neutral' | '
   alteracao_servico: 'accent'
 };
 
-type DeviceFormState = {
+const INSTALL_COST_LABELS: Record<'mao_de_obra' | 'transporte' | 'outro', string> = {
+  mao_de_obra: 'Mao de obra',
+  transporte: 'Transporte',
+  outro: 'Outro'
+};
+
+type ItemDraft = {
+  category: 'equipamento' | 'material';
   catalogId: string;
+  quantity: string;
   serialNumber: string;
   assetTag: string;
   ipAddress: string;
@@ -37,8 +45,8 @@ type EventFormState = {
   notes: string;
 };
 
-function emptyDeviceForm(): DeviceFormState {
-  return { catalogId: '', serialNumber: '', assetTag: '', ipAddress: '', macAddress: '', notes: '' };
+function emptyItemDraft(category: 'equipamento' | 'material' = 'equipamento'): ItemDraft {
+  return { category, catalogId: '', quantity: '1', serialNumber: '', assetTag: '', ipAddress: '', macAddress: '', notes: '' };
 }
 
 function emptyEventForm(): EventFormState {
@@ -75,6 +83,7 @@ export function ServicesModule({
   onFocusHandled?: () => void;
 } = {}) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const auth = useAuth();
   const canManageServices = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
   const canRecordTechnical = auth.isAuthBypassed || auth.hasRole('admin', 'operator', 'technician');
@@ -84,8 +93,9 @@ export function ServicesModule({
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingService, setEditingService] = useState<ServiceRow | null>(null);
-  const [attachDevice, setAttachDevice] = useState(false);
-  const [newServiceDevice, setNewServiceDevice] = useState<DeviceFormState>(emptyDeviceForm());
+  const [attachItems, setAttachItems] = useState(false);
+  const [itemDrafts, setItemDrafts] = useState<ItemDraft[]>([]);
+  const [laborCve, setLaborCve] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | ServiceRow['status']>('all');
   const [form, setForm] = useState<ServiceFormState>(emptyServiceForm());
@@ -93,9 +103,12 @@ export function ServicesModule({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [catalogList, setCatalogList] = useState<StockCatalogRow[]>([]);
   const [showDeviceDialog, setShowDeviceDialog] = useState(false);
-  const [deviceForm, setDeviceForm] = useState<DeviceFormState>(emptyDeviceForm());
+  const [addItemDrafts, setAddItemDrafts] = useState<ItemDraft[]>([]);
+  const [addLaborCve, setAddLaborCve] = useState('');
   const [showEventDialog, setShowEventDialog] = useState(false);
   const [eventForm, setEventForm] = useState<EventFormState>(emptyEventForm());
+  const [replaceTarget, setReplaceTarget] = useState<DeviceAssignment | null>(null);
+  const [replaceDraft, setReplaceDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
   const [submitting, setSubmitting] = useState(false);
 
   function loadServices() {
@@ -134,17 +147,19 @@ export function ServicesModule({
     setSelectedService(null);
     setEditingService(null);
     setForm(emptyServiceForm());
-    setAttachDevice(false);
-    setNewServiceDevice(emptyDeviceForm());
+    setAttachItems(false);
+    setItemDrafts([]);
+    setLaborCve('');
     setShowForm(true);
   }
 
-  function toggleAttachDevice(next: boolean) {
-    setAttachDevice(next);
+  function toggleAttachItems(next: boolean) {
+    setAttachItems(next);
     if (next) {
       void ensureCatalogLoaded();
     } else {
-      setNewServiceDevice(emptyDeviceForm());
+      setItemDrafts([]);
+      setLaborCve('');
     }
   }
 
@@ -167,8 +182,9 @@ export function ServicesModule({
     setEditingService(null);
     setShowForm(false);
     setForm(emptyServiceForm());
-    setAttachDevice(false);
-    setNewServiceDevice(emptyDeviceForm());
+    setAttachItems(false);
+    setItemDrafts([]);
+    setLaborCve('');
   }
 
   async function loadTechnicalHistory(serviceId: number) {
@@ -176,13 +192,13 @@ export function ServicesModule({
     try {
       const response = await authFetch(`http://127.0.0.1:3001/api/services/${serviceId}/technical-history`);
       if (!response.ok) {
-        setTechnicalHistory({ serviceId, assignments: [], events: [] });
+        setTechnicalHistory({ serviceId, assignments: [], materials: [], installCosts: [], events: [] });
         return;
       }
       const data = await response.json() as TechnicalHistory;
       setTechnicalHistory(data);
     } catch {
-      setTechnicalHistory({ serviceId, assignments: [], events: [] });
+      setTechnicalHistory({ serviceId, assignments: [], materials: [], installCosts: [], events: [] });
     } finally {
       setHistoryLoading(false);
     }
@@ -222,7 +238,8 @@ export function ServicesModule({
   }, [focusClientId, services, onFocusHandled]);
 
   function openDeviceDialog() {
-    setDeviceForm(emptyDeviceForm());
+    setAddItemDrafts([]);
+    setAddLaborCve('');
     void ensureCatalogLoaded();
     setShowDeviceDialog(true);
   }
@@ -230,41 +247,168 @@ export function ServicesModule({
   function closeDeviceDialog() {
     if (submitting) return;
     setShowDeviceDialog(false);
-    setDeviceForm(emptyDeviceForm());
+    setAddItemDrafts([]);
+    setAddLaborCve('');
   }
 
-  async function submitDeviceAssignment(event: FormEvent<HTMLFormElement>) {
+  function updateItemDraft(setter: Dispatch<SetStateAction<ItemDraft[]>>, index: number, patch: Partial<ItemDraft>) {
+    setter((current) => current.map((draft, i) => i === index ? { ...draft, ...patch } : draft));
+  }
+
+  function removeItemDraft(setter: Dispatch<SetStateAction<ItemDraft[]>>, index: number) {
+    setter((current) => current.filter((_, i) => i !== index));
+  }
+
+  function buildItemsPayload(drafts: ItemDraft[], catalog: StockCatalogRow[]) {
+    return drafts
+      .filter((draft) => draft.catalogId)
+      .map((draft) => {
+        const item = catalog.find((row) => String(row.id) === draft.catalogId);
+        const serialized = item?.isSerialized !== 0;
+        return serialized
+          ? {
+              catalogId: Number(draft.catalogId),
+              serialNumber: draft.serialNumber || null,
+              assetTag: draft.assetTag || null,
+              ipAddress: draft.ipAddress || null,
+              macAddress: draft.macAddress || null,
+              notes: draft.notes || null
+            }
+          : {
+              catalogId: Number(draft.catalogId),
+              quantity: Number(draft.quantity || 1),
+              notes: draft.notes || null
+            };
+      });
+  }
+
+  function buildInstallCostsPayload(labor: string) {
+    const amount = Number(labor || 0);
+    return amount > 0 ? [{ kind: 'mao_de_obra' as const, amountCve: amount }] : [];
+  }
+
+  function hasInvalidMaterialQuantity(drafts: ItemDraft[]) {
+    return drafts.some((draft) => {
+      if (!draft.catalogId) return false;
+      const item = catalogList.find((row) => String(row.id) === draft.catalogId);
+      return item?.isSerialized === 0 && Number(draft.quantity || 0) < 1;
+    });
+  }
+
+  async function submitItems(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedService) return;
-    if (!deviceForm.catalogId) {
-      toast('Seleciona o modelo do equipamento.', 'error');
+    const items = buildItemsPayload(addItemDrafts, catalogList);
+    const installCosts = buildInstallCostsPayload(addLaborCve);
+    if (items.length === 0 && installCosts.length === 0) {
+      toast('Adiciona pelo menos um item ou mao de obra.', 'error');
+      return;
+    }
+    if (hasInvalidMaterialQuantity(addItemDrafts)) {
+      toast('Quantidade de material invalida.', 'error');
       return;
     }
     setSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/services/${selectedService.id}/device-assignments`, {
+      const response = await authFetch(`http://127.0.0.1:3001/api/services/${selectedService.id}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          catalogId: Number(deviceForm.catalogId),
-          serialNumber: deviceForm.serialNumber || null,
-          assetTag: deviceForm.assetTag || null,
-          ipAddress: deviceForm.ipAddress || null,
-          macAddress: deviceForm.macAddress || null,
-          notes: deviceForm.notes || null
+          items: items.length > 0 ? items : undefined,
+          installCosts: installCosts.length > 0 ? installCosts : undefined
         })
       });
       const data = await response.json() as { error?: string };
       if (!response.ok) {
-        toast(data.error || 'Nao foi possivel atribuir o equipamento.', 'error');
+        toast(data.error || 'Nao foi possivel adicionar os itens.', 'error');
         return;
       }
-      toast('Equipamento atribuido ao servico.', 'success');
+      toast('Itens adicionados ao servico.', 'success');
       setShowDeviceDialog(false);
-      setDeviceForm(emptyDeviceForm());
+      setAddItemDrafts([]);
+      setAddLaborCve('');
       await loadTechnicalHistory(selectedService.id);
     } catch {
-      toast('Falha de rede ao atribuir equipamento.', 'error');
+      toast('Falha de rede ao adicionar itens.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function returnDevice(assignment: DeviceAssignment) {
+    if (!selectedService) return;
+    const label = assignment.brand ? `${assignment.brand} ${assignment.model}` : assignment.model;
+    if (!(await confirm({
+      title: 'Remover equipamento',
+      message: `Remover ${label}${assignment.serialNumber ? ` (${assignment.serialNumber})` : ''} deste serviço? O stock será reposto.`,
+      tone: 'danger',
+      confirmLabel: 'Remover'
+    }))) return;
+    setSubmitting(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/service-device-assignments/${assignment.id}/return`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) {
+        toast(data.error || 'Nao foi possivel remover o equipamento.', 'error');
+        return;
+      }
+      toast('Equipamento removido e stock reposto.', 'success');
+      await loadTechnicalHistory(selectedService.id);
+    } catch {
+      toast('Falha de rede ao remover equipamento.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function openReplaceDialog(assignment: DeviceAssignment) {
+    setReplaceTarget(assignment);
+    setReplaceDraft(emptyItemDraft('equipamento'));
+    void ensureCatalogLoaded();
+  }
+
+  function closeReplaceDialog() {
+    if (submitting) return;
+    setReplaceTarget(null);
+    setReplaceDraft(emptyItemDraft('equipamento'));
+  }
+
+  async function submitReplace(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedService || !replaceTarget) return;
+    if (!replaceDraft.catalogId) {
+      toast('Selecione o equipamento de substituicao.', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/service-device-assignments/${replaceTarget.id}/replace`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          catalogId: Number(replaceDraft.catalogId),
+          serialNumber: replaceDraft.serialNumber || null,
+          assetTag: replaceDraft.assetTag || null,
+          ipAddress: replaceDraft.ipAddress || null,
+          macAddress: replaceDraft.macAddress || null,
+          notes: replaceDraft.notes || null
+        })
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) {
+        toast(data.error || 'Nao foi possivel substituir o equipamento.', 'error');
+        return;
+      }
+      toast('Equipamento substituido.', 'success');
+      setReplaceTarget(null);
+      setReplaceDraft(emptyItemDraft('equipamento'));
+      await loadTechnicalHistory(selectedService.id);
+    } catch {
+      toast('Falha de rede ao substituir equipamento.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -313,9 +457,14 @@ export function ServicesModule({
   async function saveService(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const installingDevice = !editingService && attachDevice;
-    if (installingDevice && !newServiceDevice.catalogId) {
-      toast('Seleciona o modelo do equipamento a instalar.', 'error');
+    const items = !editingService && attachItems ? buildItemsPayload(itemDrafts, catalogList) : [];
+    const installCosts = !editingService && attachItems ? buildInstallCostsPayload(laborCve) : [];
+    if (!editingService && attachItems && items.length === 0 && installCosts.length === 0) {
+      toast('Adiciona pelo menos um item ou mao de obra.', 'error');
+      return;
+    }
+    if (!editingService && attachItems && hasInvalidMaterialQuantity(itemDrafts)) {
+      toast('Quantidade de material invalida.', 'error');
       return;
     }
 
@@ -331,16 +480,8 @@ export function ServicesModule({
         activationDate: form.activationDate,
         status: form.status,
         technicalNotes: form.technicalNotes,
-        device: installingDevice
-          ? {
-              catalogId: Number(newServiceDevice.catalogId),
-              serialNumber: newServiceDevice.serialNumber || null,
-              assetTag: newServiceDevice.assetTag || null,
-              ipAddress: newServiceDevice.ipAddress || null,
-              macAddress: newServiceDevice.macAddress || null,
-              notes: newServiceDevice.notes || null
-            }
-          : undefined
+        items: items.length > 0 ? items : undefined,
+        installCosts: installCosts.length > 0 ? installCosts : undefined
       })
     });
 
@@ -353,13 +494,92 @@ export function ServicesModule({
     toast(
       editingService
         ? 'Servico atualizado.'
-        : installingDevice
-          ? 'Servico criado e equipamento instalado.'
+        : items.length > 0 || installCosts.length > 0
+          ? 'Servico criado e instalacao registada.'
           : 'Servico criado.',
       'success'
     );
     closeForm();
     await loadServices();
+  }
+
+  function renderItemGroup(
+    drafts: ItemDraft[],
+    setter: Dispatch<SetStateAction<ItemDraft[]>>,
+    category: 'equipamento' | 'material'
+  ) {
+    const isMaterial = category === 'material';
+    const catalog = catalogList.filter((item) => item.category === category);
+    const rows = drafts
+      .map((draft, index) => ({ draft, index }))
+      .filter((row) => row.draft.category === category);
+
+    return (
+      <div className="service-items-group">
+        <p className="service-items-group-title">{isMaterial ? 'Materiais' : 'Equipamentos'}</p>
+        {rows.length === 0 && (
+          <Message>{isMaterial ? 'Sem materiais adicionados.' : 'Sem equipamentos adicionados.'}</Message>
+        )}
+        {rows.map(({ draft, index }) => {
+          const selectedItem = catalog.find((item) => String(item.id) === draft.catalogId);
+          return (
+            <div className="service-item-draft" key={index}>
+              <Select
+                wide
+                label={isMaterial ? 'Material' : 'Equipamento'}
+                required
+                value={draft.catalogId}
+                onChange={(event) => updateItemDraft(setter, index, { catalogId: event.target.value })}
+              >
+                <option value="">{isMaterial ? 'Selecionar material' : 'Selecionar equipamento'}</option>
+                {catalog.map((item) => (
+                  <option key={item.id} value={item.id} disabled={item.stockTotal < 1}>
+                    {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} {item.unitOfMeasure}
+                  </option>
+                ))}
+              </Select>
+              {isMaterial ? (
+                <Field
+                  label={`Quantidade${selectedItem ? ` (${selectedItem.unitOfMeasure})` : ''}`}
+                  required
+                  type="number"
+                  min={1}
+                  max={selectedItem?.stockTotal}
+                  value={draft.quantity}
+                  onChange={(event) => updateItemDraft(setter, index, { quantity: event.target.value })}
+                />
+              ) : (
+                <>
+                  <Field label="Serial" value={draft.serialNumber} onChange={(event) => updateItemDraft(setter, index, { serialNumber: event.target.value })} />
+                  <Field label="Asset tag" value={draft.assetTag} onChange={(event) => updateItemDraft(setter, index, { assetTag: event.target.value })} />
+                  <Field label="MAC" value={draft.macAddress} onChange={(event) => updateItemDraft(setter, index, { macAddress: event.target.value })} placeholder="AA:BB:CC:DD:EE:FF" />
+                  <Field label="IP" value={draft.ipAddress} onChange={(event) => updateItemDraft(setter, index, { ipAddress: event.target.value })} placeholder="192.168.X.Y" />
+                </>
+              )}
+              <Field wide label="Notas" value={draft.notes} onChange={(event) => updateItemDraft(setter, index, { notes: event.target.value })} />
+              <Button type="button" variant="secondary" size="sm" onClick={() => removeItemDraft(setter, index)}>
+                Remover linha
+              </Button>
+            </div>
+          );
+        })}
+        <Button type="button" variant="secondary" size="sm" onClick={() => setter((current) => [...current, emptyItemDraft(category)])}>
+          {isMaterial ? 'Adicionar material' : 'Adicionar equipamento'}
+        </Button>
+      </div>
+    );
+  }
+
+  function renderItemDrafts(
+    drafts: ItemDraft[],
+    setter: Dispatch<SetStateAction<ItemDraft[]>>
+  ) {
+    return (
+      <div className="service-items-builder">
+        {renderItemGroup(drafts, setter, 'equipamento')}
+        {renderItemGroup(drafts, setter, 'material')}
+      </div>
+    );
   }
 
   const visibleServices = services.filter((service) => {
@@ -403,10 +623,11 @@ export function ServicesModule({
       </FilterBar>
 
       {selectedService && (
-        <DetailPanel
+        <Dialog
+          open
+          size="xl"
           eyebrow="Servico"
           title={selectedService.clientName}
-          actionsClassName="client-preview-actions"
           onClose={() => setSelectedService(null)}
           actions={
             canManageServices
@@ -418,6 +639,7 @@ export function ServicesModule({
               : undefined
           }
         >
+          <div className="client-detail">
           <dl>
             <div><dt>Plano</dt><dd>{selectedService.planName || '-'}</dd></div>
             <div><dt>Mensalidade</dt><dd>{formatCve(selectedService.monthlyValueCve)}</dd></div>
@@ -473,9 +695,91 @@ export function ServicesModule({
                         {assignment.endDate && <div><dt>Fim</dt><dd>{formatPtDate(assignment.endDate)}</dd></div>}
                       </dl>
                       {assignment.notes && <p className="technical-item-notes">{assignment.notes}</p>}
+                      {active && canRecordTechnical && (
+                        <div className="technical-item-actions">
+                          <Button variant="secondary" size="sm" disabled={submitting} onClick={() => openReplaceDialog(assignment)}>
+                            Substituir
+                          </Button>
+                          <Button variant="danger" size="sm" disabled={submitting} onClick={() => void returnDevice(assignment)}>
+                            Remover
+                          </Button>
+                        </div>
+                      )}
                     </li>
                   );
                 })}
+              </ul>
+            )}
+          </section>
+
+          <section className="technical-section">
+            <header className="technical-section-head">
+              <div>
+                <p className="eyebrow"><Cable size={12} /> Materiais</p>
+                <h3>{technicalHistory ? `${technicalHistory.materials.length} linha(s)` : 'A carregar...'}</h3>
+              </div>
+            </header>
+            {technicalHistory && technicalHistory.materials.length === 0 && (
+              <EmptyState
+                size="sm"
+                icon={Cable}
+                title="Sem materiais registados"
+                description="Materiais consumidos neste servico aparecem aqui."
+              />
+            )}
+            {technicalHistory && technicalHistory.materials.length > 0 && (
+              <ul className="technical-list">
+                {technicalHistory.materials.map((material) => (
+                  <li key={material.id} className="technical-item active">
+                    <div className="technical-item-head">
+                      <strong>{material.brand ? `${material.brand} ${material.model}` : material.model}</strong>
+                      <Badge tone="neutral">{material.catalogType}</Badge>
+                    </div>
+                    <dl className="technical-item-meta">
+                      <div><dt>Quantidade</dt><dd>{material.quantity} {material.unitOfMeasure}</dd></div>
+                      <div><dt>Custo</dt><dd>{formatCve(material.unitCostCve * material.quantity)}</dd></div>
+                      <div><dt>Registado</dt><dd>{formatPtDateTime(material.createdAt)}</dd></div>
+                    </dl>
+                    {material.notes && <p className="technical-item-notes">{material.notes}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="technical-section">
+            <header className="technical-section-head">
+              <div>
+                <p className="eyebrow"><Coins size={12} /> Custos de instalacao</p>
+                <h3>
+                  {technicalHistory
+                    ? formatCve(technicalHistory.installCosts.reduce((sum, cost) => sum + cost.amountCve, 0))
+                    : 'A carregar...'}
+                </h3>
+              </div>
+            </header>
+            {technicalHistory && technicalHistory.installCosts.length === 0 && (
+              <EmptyState
+                size="sm"
+                icon={Coins}
+                title="Sem custos registados"
+                description="Mao de obra e outros custos da instalacao aparecem aqui."
+              />
+            )}
+            {technicalHistory && technicalHistory.installCosts.length > 0 && (
+              <ul className="technical-list">
+                {technicalHistory.installCosts.map((cost) => (
+                  <li key={cost.id} className="technical-item active">
+                    <div className="technical-item-head">
+                      <strong>{INSTALL_COST_LABELS[cost.kind]}</strong>
+                      <Badge tone="neutral">{formatCve(cost.amountCve)}</Badge>
+                    </div>
+                    <dl className="technical-item-meta">
+                      <div><dt>Registado</dt><dd>{formatPtDateTime(cost.createdAt)}</dd></div>
+                    </dl>
+                    {cost.description && <p className="technical-item-notes">{cost.description}</p>}
+                  </li>
+                ))}
               </ul>
             )}
           </section>
@@ -517,7 +821,8 @@ export function ServicesModule({
               </ul>
             )}
           </section>
-        </DetailPanel>
+          </div>
+        </Dialog>
       )}
 
       <div className="module-table">
@@ -616,34 +921,26 @@ export function ServicesModule({
           <Field wide label="Notas tecnicas" value={form.technicalNotes} onChange={(event) => updateForm('technicalNotes', event.target.value)} />
 
           {!editingService && canRecordTechnical && (
-            <div className="service-equipment-section">
+            <div className="service-items-builder">
               <Toggle
-                title="Instalar equipamento agora"
-                description="Atribui hardware ao serviço e abate o stock no momento da criação."
-                checked={attachDevice}
-                onChange={(event) => toggleAttachDevice(event.target.checked)}
+                title="Registar instalacao agora"
+                description="Atribui equipamento/materiais, abate o stock e contabiliza a mão de obra no momento da criação."
+                checked={attachItems}
+                onChange={(event) => toggleAttachItems(event.target.checked)}
               />
-              {attachDevice && (
+              {attachItems && (
                 <>
-                  <Select
+                  {renderItemDrafts(itemDrafts, setItemDrafts)}
+                  <Field
                     wide
-                    label="Modelo do equipamento"
-                    required
-                    value={newServiceDevice.catalogId}
-                    onChange={(event) => setNewServiceDevice((c) => ({ ...c, catalogId: event.target.value }))}
-                  >
-                    <option value="">Selecionar modelo</option>
-                    {catalogList.map((item) => (
-                      <option key={item.id} value={item.id} disabled={item.stockTotal < 1}>
-                        {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} un.
-                      </option>
-                    ))}
-                  </Select>
-                  <Field label="Serial" value={newServiceDevice.serialNumber} onChange={(event) => setNewServiceDevice((c) => ({ ...c, serialNumber: event.target.value }))} />
-                  <Field label="Asset tag" value={newServiceDevice.assetTag} onChange={(event) => setNewServiceDevice((c) => ({ ...c, assetTag: event.target.value }))} />
-                  <Field label="MAC" value={newServiceDevice.macAddress} onChange={(event) => setNewServiceDevice((c) => ({ ...c, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
-                  <Field label="IP" value={newServiceDevice.ipAddress} onChange={(event) => setNewServiceDevice((c) => ({ ...c, ipAddress: event.target.value }))} placeholder="192.168.X.Y" />
-                  <Field wide label="Notas do equipamento" value={newServiceDevice.notes} onChange={(event) => setNewServiceDevice((c) => ({ ...c, notes: event.target.value }))} />
+                    label="Mão de obra (CVE)"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="0"
+                    value={laborCve}
+                    onChange={(event) => setLaborCve(event.target.value)}
+                  />
                 </>
               )}
             </div>
@@ -654,33 +951,31 @@ export function ServicesModule({
       <Dialog
         open={showDeviceDialog}
         onClose={closeDeviceDialog}
-        eyebrow="Equipamento"
-        title={selectedService ? `Atribuir a ${selectedService.clientName}` : 'Atribuir equipamento'}
+        eyebrow="Itens"
+        title={selectedService ? `Adicionar a ${selectedService.clientName}` : 'Adicionar itens'}
         size="md"
         closeOnBackdrop={!submitting}
         actions={
           <>
             <Button variant="secondary" onClick={closeDeviceDialog} disabled={submitting}>Cancelar</Button>
             <Button type="submit" form="device-form" loading={submitting}>
-              {submitting ? 'A gravar...' : 'Atribuir'}
+              {submitting ? 'A gravar...' : 'Adicionar'}
             </Button>
           </>
         }
       >
-        <form id="device-form" className="client-form" onSubmit={submitDeviceAssignment}>
-          <Select wide label="Modelo do equipamento" required value={deviceForm.catalogId} onChange={(event) => setDeviceForm((c) => ({ ...c, catalogId: event.target.value }))}>
-            <option value="">Selecionar modelo</option>
-            {catalogList.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} un.
-              </option>
-            ))}
-          </Select>
-          <Field label="Serial" value={deviceForm.serialNumber} onChange={(event) => setDeviceForm((c) => ({ ...c, serialNumber: event.target.value }))} />
-          <Field label="Asset tag" value={deviceForm.assetTag} onChange={(event) => setDeviceForm((c) => ({ ...c, assetTag: event.target.value }))} />
-          <Field label="MAC" value={deviceForm.macAddress} onChange={(event) => setDeviceForm((c) => ({ ...c, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
-          <Field label="IP" value={deviceForm.ipAddress} onChange={(event) => setDeviceForm((c) => ({ ...c, ipAddress: event.target.value }))} placeholder="192.168.X.Y" />
-          <Field wide label="Notas" value={deviceForm.notes} onChange={(event) => setDeviceForm((c) => ({ ...c, notes: event.target.value }))} />
+        <form id="device-form" className="client-form" onSubmit={submitItems}>
+          {renderItemDrafts(addItemDrafts, setAddItemDrafts)}
+          <Field
+            wide
+            label="Mão de obra (CVE)"
+            type="number"
+            min={0}
+            step="0.01"
+            placeholder="0"
+            value={addLaborCve}
+            onChange={(event) => setAddLaborCve(event.target.value)}
+          />
         </form>
       </Dialog>
 
@@ -713,6 +1008,50 @@ export function ServicesModule({
             onChange={(event) => setEventForm((c) => ({ ...c, notes: event.target.value }))}
             placeholder="Detalhes da intervencao, observacoes, peca substituida..."
           />
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={replaceTarget !== null}
+        onClose={closeReplaceDialog}
+        eyebrow="Substituir equipamento"
+        title={replaceTarget ? `Substituir ${replaceTarget.brand ? `${replaceTarget.brand} ${replaceTarget.model}` : replaceTarget.model}` : 'Substituir equipamento'}
+        size="md"
+        closeOnBackdrop={!submitting}
+        actions={
+          <>
+            <Button variant="secondary" onClick={closeReplaceDialog} disabled={submitting}>Cancelar</Button>
+            <Button type="submit" form="replace-form" loading={submitting}>
+              {submitting ? 'A gravar...' : 'Substituir'}
+            </Button>
+          </>
+        }
+      >
+        <form id="replace-form" className="client-form" onSubmit={submitReplace}>
+          {replaceTarget && (
+            <Message>
+              O equipamento atual ({replaceTarget.serialNumber || replaceTarget.model}) será encerrado e o novo passa a ativo.
+            </Message>
+          )}
+          <Select
+            wide
+            label="Novo equipamento"
+            required
+            value={replaceDraft.catalogId}
+            onChange={(event) => setReplaceDraft((current) => ({ ...current, catalogId: event.target.value }))}
+          >
+            <option value="">Selecionar equipamento</option>
+            {catalogList.filter((item) => item.category === 'equipamento').map((item) => (
+              <option key={item.id} value={item.id} disabled={item.stockTotal < 1}>
+                {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} {item.unitOfMeasure}
+              </option>
+            ))}
+          </Select>
+          <Field label="Serial" value={replaceDraft.serialNumber} onChange={(event) => setReplaceDraft((current) => ({ ...current, serialNumber: event.target.value }))} />
+          <Field label="Asset tag" value={replaceDraft.assetTag} onChange={(event) => setReplaceDraft((current) => ({ ...current, assetTag: event.target.value }))} />
+          <Field label="MAC" value={replaceDraft.macAddress} onChange={(event) => setReplaceDraft((current) => ({ ...current, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
+          <Field label="IP" value={replaceDraft.ipAddress} onChange={(event) => setReplaceDraft((current) => ({ ...current, ipAddress: event.target.value }))} placeholder="192.168.X.Y" />
+          <Field wide label="Notas" value={replaceDraft.notes} onChange={(event) => setReplaceDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Motivo da substituicao" />
         </form>
       </Dialog>
     </section>

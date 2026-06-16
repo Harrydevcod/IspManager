@@ -2,10 +2,51 @@ import { getSqliteDatabase } from '../db/database';
 import { generateMonthlyBilling } from './billing';
 
 const LAST_RUN_KEY = 'lastAutoBillingMonth';
-const DEFAULT_DUE_DAY = 1;
+// Dia do mês a partir do qual o mês é considerado fechado e faturável.
+// A fatura emitida no fecho do mês (ou início do mês seguinte) tem como
+// competência o mês que terminou — modelo pós-pago (arrears).
+const DEFAULT_BILLING_DAY = 30;
 
-function currentMonthKey(now: Date = new Date()): string {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+function monthKey(year: number, month0: number): string {
+  return `${year}-${String(month0 + 1).padStart(2, '0')}`;
+}
+
+/**
+ * O mês fechado mais recente faturável à data `now`:
+ *  - se já chegámos ao `billingDay` deste mês → este mês está fechado;
+ *  - caso contrário → o último mês fechado é o anterior (ex.: emitir a 3 de Julho
+ *    fecha Junho, nunca Julho — "emitida no início do mês seguinte refere-se ao
+ *    mês anterior").
+ * Cobre Fevereiro (sem dia 30): a 27/Fev o alvo recai em Janeiro; Fevereiro é
+ * faturado já em Março (mês anterior a Março).
+ */
+function latestClosedBillableMonth(now: Date, billingDay: number): string {
+  if (now.getDate() >= billingDay) {
+    return monthKey(now.getFullYear(), now.getMonth());
+  }
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return monthKey(prev.getFullYear(), prev.getMonth());
+}
+
+/** Meses estritamente após `last` até `target` (inclusive), por ordem ascendente. */
+function monthsAfter(last: string, target: string): string[] {
+  const months: string[] = [];
+  const [ly, lm] = last.split('-').map(Number);
+  let year = ly;
+  let month0 = lm - 1; // 0-based; começamos no mês de `last` e avançamos antes de incluir
+  // Avança um mês de cada vez até alcançar `target`.
+  for (let guard = 0; guard < 600; guard += 1) {
+    month0 += 1;
+    if (month0 > 11) {
+      month0 = 0;
+      year += 1;
+    }
+    const key = monthKey(year, month0);
+    months.push(key);
+    if (key === target) return months;
+    if (key > target) break; // ultrapassou (last já estava à frente do alvo)
+  }
+  return [];
 }
 
 function readSetting(key: string): string | null {
@@ -25,40 +66,48 @@ function writeSetting(key: string, value: string): void {
 
 export type AutoBillingResult =
   | { skipped: true; reason: string }
-  | { ran: true; referenceMonth: string; created: number; activeServices: number };
+  | { ran: true; months: string[]; created: number; activeServices: number };
 
 /**
- * Auto-generates the current month's billing if:
- *  - today's day-of-month is >= the configured `defaultDueDay`, AND
- *  - this month hasn't been auto-billed yet (tracked in `lastAutoBillingMonth`).
+ * Gera automaticamente, no fecho do mês, as faturas do(s) mês(es) já fechado(s):
+ *  - calcula o mês fechado mais recente (`latestClosedBillableMonth`) a partir de
+ *    `autoBillingDay` (default 30);
+ *  - fatura todos os meses por faturar entre `lastAutoBillingMonth` e esse alvo,
+ *    por ordem ascendente — recupera meses perdidos (app desktop pode não abrir no
+ *    dia 30) sem deixar gaps;
+ *  - numa instalação nova (`lastAutoBillingMonth` nulo) fatura só o alvo, não
+ *    retroage histórico.
  *
- * Idempotent — uses the same insert path as the manual endpoint, which is
- * itself idempotent per (service_id, reference_month). Safe to call on every
- * backend boot.
+ * Idempotente: usa o mesmo caminho de inserção do endpoint manual, idempotente por
+ * `(service_id, reference_month)`. Seguro em cada arranque do backend.
  */
 export function runMonthlyBillingIfDue(now: Date = new Date()): AutoBillingResult {
-  const dueDayRaw = readSetting('defaultDueDay');
-  const dueDay = Number(dueDayRaw) > 0 ? Number(dueDayRaw) : DEFAULT_DUE_DAY;
-  const today = now.getDate();
+  const billingDayRaw = readSetting('autoBillingDay');
+  const billingDay = Number(billingDayRaw) > 0 ? Number(billingDayRaw) : DEFAULT_BILLING_DAY;
 
-  if (today < dueDay) {
-    return { skipped: true, reason: `dia ${today} ainda nao atingiu dueDay ${dueDay}` };
+  const target = latestClosedBillableMonth(now, billingDay);
+  const lastRun = readSetting(LAST_RUN_KEY);
+
+  if (lastRun === target) {
+    return { skipped: true, reason: `faturacao automatica ja executada ate ${target}` };
   }
 
-  const refMonth = currentMonthKey(now);
-  const lastRun = readSetting(LAST_RUN_KEY);
-  if (lastRun === refMonth) {
-    return { skipped: true, reason: `faturacao automatica de ${refMonth} ja executada` };
+  // Instalação nova: fatura apenas o alvo. Caso contrário, recupera o intervalo
+  // (last, target]. Se `last` já estiver à frente do alvo, `monthsAfter` devolve [].
+  const months = lastRun ? monthsAfter(lastRun, target) : [target];
+  if (months.length === 0) {
+    return { skipped: true, reason: `ultimo mes faturado (${lastRun}) ja a frente do alvo ${target}` };
   }
 
   const db = getSqliteDatabase();
-  const result = generateMonthlyBilling(db, refMonth);
-  writeSetting(LAST_RUN_KEY, refMonth);
+  let created = 0;
+  let activeServices = 0;
+  for (const month of months) {
+    const result = generateMonthlyBilling(db, month);
+    created += result.created;
+    activeServices = result.activeServices;
+  }
+  writeSetting(LAST_RUN_KEY, target);
 
-  return {
-    ran: true,
-    referenceMonth: refMonth,
-    created: result.created,
-    activeServices: result.activeServices
-  };
+  return { ran: true, months, created, activeServices };
 }

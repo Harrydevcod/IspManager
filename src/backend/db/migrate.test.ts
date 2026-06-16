@@ -59,6 +59,41 @@ describe('runMigrations', () => {
     expect(smsOutboxColumns).toContain('failed_at');
   });
 
+  test('catalog rebuild preserves referenced rows with foreign keys enabled', () => {
+    const db = freshDb();
+    const beforeCatalogMaterials = migrations.filter((migration) => migration.version < 18);
+    runMigrations(db, beforeCatalogMaterials);
+
+    const clientId = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status)
+      VALUES ('CLT-MIG', 'Cliente Migration', 'active')
+    `).run().lastInsertRowid;
+    const serviceId = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
+      VALUES (?, 3500, 10, 'active')
+    `).run(clientId).lastInsertRowid;
+    const catalogId = db.prepare(`
+      INSERT INTO equipment_catalog (type, model, stock_total, active)
+      VALUES ('router', 'Router Referenciado', 2, 1)
+    `).run().lastInsertRowid;
+
+    db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id, start_date)
+      VALUES (?, ?, '2026-06-06')
+    `).run(serviceId, catalogId);
+    db.prepare(`
+      INSERT INTO stock_movements (catalog_id, type, quantity, service_id)
+      VALUES (?, 'saida', 1, ?)
+    `).run(catalogId, serviceId);
+
+    db.pragma('foreign_keys = ON');
+
+    expect(() => runMigrations(db, migrations)).not.toThrow();
+    expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    expect(db.prepare('SELECT category, is_serialized AS isSerialized FROM equipment_catalog WHERE id = ?').get(catalogId))
+      .toEqual({ category: 'equipamento', isSerialized: 1 });
+  });
+
   test('is idempotent — running twice applies nothing the second time', () => {
     const db = freshDb();
 

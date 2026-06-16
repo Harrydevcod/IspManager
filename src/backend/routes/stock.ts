@@ -5,11 +5,14 @@ import { recordAudit } from '../lib/audit';
 import { requireAuth, requireRole } from './auth';
 
 const catalogSchema = z.object({
-  type: z.enum(['cpe', 'router', 'antena', 'switch', 'outro']),
+  category: z.enum(['equipamento', 'material']).default('equipamento'),
+  type: z.enum(['cpe', 'router', 'antena', 'switch', 'cabo', 'conector', 'ficha', 'suporte', 'outro']),
   brand: z.string().trim().optional().nullable(),
   model: z.string().trim().min(1),
   description: z.string().trim().optional().nullable(),
   supplier: z.string().trim().optional().nullable(),
+  unitOfMeasure: z.string().trim().min(1).default('un'),
+  isSerialized: z.coerce.boolean().default(true),
   purchasePriceCve: z.coerce.number().min(0).default(0),
   shippingCostCve: z.coerce.number().min(0).default(0),
   customsDutyCve: z.coerce.number().min(0).default(0),
@@ -45,11 +48,14 @@ export async function registerStockRoutes(app: FastifyInstance) {
     const rows = db.prepare(`
       SELECT
         id,
+        category,
         type,
         brand,
         model,
         description,
         supplier,
+        unit_of_measure AS unitOfMeasure,
+        is_serialized AS isSerialized,
         purchase_price_cve AS purchasePriceCve,
         shipping_cost_cve AS shippingCostCve,
         customs_duty_cve AS customsDutyCve,
@@ -91,17 +97,20 @@ export async function registerStockRoutes(app: FastifyInstance) {
     const db = getSqliteDatabase();
     const result = db.prepare(`
       INSERT INTO equipment_catalog (
-        type, brand, model, description, supplier, purchase_price_cve, shipping_cost_cve,
-        customs_duty_cve, other_costs_cve, selling_price_cve, rental_fee_cve,
-        stock_total, active, created_at, updated_at
+        category, type, brand, model, description, supplier, unit_of_measure, is_serialized,
+        purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve,
+        selling_price_cve, rental_fee_cve, stock_total, active, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     `).run(
+      parsed.data.category,
       parsed.data.type,
       parsed.data.brand || null,
       parsed.data.model,
       parsed.data.description || null,
       parsed.data.supplier || null,
+      parsed.data.unitOfMeasure,
+      parsed.data.isSerialized ? 1 : 0,
       parsed.data.purchasePriceCve,
       parsed.data.shippingCostCve,
       parsed.data.customsDutyCve,
@@ -132,11 +141,14 @@ export async function registerStockRoutes(app: FastifyInstance) {
     const db = getSqliteDatabase();
     const result = db.prepare(`
       UPDATE equipment_catalog
-      SET type = ?,
+      SET category = ?,
+          type = ?,
           brand = ?,
           model = ?,
           description = ?,
           supplier = ?,
+          unit_of_measure = ?,
+          is_serialized = ?,
           purchase_price_cve = ?,
           shipping_cost_cve = ?,
           customs_duty_cve = ?,
@@ -148,11 +160,14 @@ export async function registerStockRoutes(app: FastifyInstance) {
           updated_at = datetime('now')
       WHERE id = ?
     `).run(
+      parsed.data.category,
       parsed.data.type,
       parsed.data.brand || null,
       parsed.data.model,
       parsed.data.description || null,
       parsed.data.supplier || null,
+      parsed.data.unitOfMeasure,
+      parsed.data.isSerialized ? 1 : 0,
       parsed.data.purchasePriceCve,
       parsed.data.shippingCostCve,
       parsed.data.customsDutyCve,

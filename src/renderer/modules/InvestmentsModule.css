@@ -3,10 +3,9 @@
    Imported by src/renderer/modules/InvestmentsModule.tsx
    Moved from src/renderer/styles.css for colocation (2026-05-24).
 
-   The metrics block at the bottom is intentionally duplicated with
-   ExpensesModule.css — both modules share the same metric-tile look by
-   design, and full independence is preferred over a _shared.css
-   indirection. If you change one, change the other.
+   KPIs migrated to the MetricCard/MetricGrid primitives (2026-06-07); the old
+   `.investment-metrics` tile block was removed. ExpensesModule still keeps its
+   own `.expenses-metrics` tiles independently.
    ========================================================================= */
 
 .dialog:has(.investment-form) {
@@ -61,27 +60,11 @@
 .investment-return-panel {
   display: grid;
   gap: var(--s4);
-  padding: var(--s4);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, color-mix(in oklch, var(--surface-2) 82%, transparent), var(--surface-1));
 }
 
-.investment-return-head {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: var(--s4);
-}
-
-.investment-return-head h3 {
-  margin: 0;
-  color: var(--text-1);
-  font-size: var(--fs-xl);
-}
-
-.investment-return-head > span {
+.investment-return-caption {
+  margin-left: auto;
+  align-self: end;
   color: var(--text-3);
   font-size: var(--fs-xs);
   text-align: right;
@@ -494,24 +477,12 @@
 .investment-alerts span strong { font-weight: 700; margin-right: 4px; }
 
 
+/* equipment-top + return-panel are wrapped in the Card primitive (.primary-panel),
+   which provides padding/border/background. These rules add only inner layout. */
 .investment-equipment-top {
   display: grid;
   gap: var(--s3);
-  padding: var(--s4);
-  border: 1px solid var(--border);
-  border-radius: var(--r2);
-  background: var(--surface-2);
-  margin-top: var(--s4);
 }
-
-.investment-equipment-top header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-
-.investment-equipment-top header strong { color: var(--text); letter-spacing: 0.01em; }
-.investment-equipment-top header small { color: var(--text-3); font-size: var(--fs-xs); }
 
 .investment-equipment-top ul {
   list-style: none;
@@ -573,61 +544,30 @@
 .investment-timeline-footer .profit-positive { color: var(--success); }
 .investment-timeline-footer .profit-negative { color: var(--danger); }
 
-/* --- shared metric tiles (duplicated with the other module's CSS) --- */
+/* --- detail panel notes (replaces hard-coded inline styles) --- */
 
-.investment-metrics,
-.expenses-metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--s3);
-}
-
-.investment-metrics > div,
-.expenses-metrics > div {
-  padding: var(--s4);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, color-mix(in oklch, var(--surface-2) 82%, transparent), var(--surface-1));
-}
-
-.investment-metrics span,
-.expenses-metrics span {
+.investment-detail-note {
   display: block;
+  margin-top: 2px;
   color: var(--text-3);
-  font-size: var(--fs-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: var(--s2);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
-.investment-metrics strong,
-.expenses-metrics strong {
-  color: var(--text-1);
-  font-size: clamp(1.1rem, 1.8vw, 1.55rem);
-  line-height: 1.1;
+.investment-variance {
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
 }
 
-.expenses-metrics small,
-.investment-metrics small {
-  display: block;
-  margin-top: var(--s1);
-  color: var(--text-3);
-  font-size: var(--fs-xs);
-  line-height: 1.5;
-}
+.investment-variance.is-positive { color: var(--success); }
+.investment-variance.is-negative { color: var(--danger); }
+
+/* Flagship portfolio chart sits flush like the dashboard hero card. */
+.investment-flagship .sparkline { margin-top: var(--s2); }
 
 /* --- investment responsive overrides (moved from styles.css @media) --- */
 
-@media (max-width: 760px) {
-  .investment-metrics,
-  .expenses-metrics {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
 @media (max-width: 1120px) {
-  .investment-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .investments-layout { grid-template-columns: 1fr; }
   .investment-detail { position: static; }
   .investment-form-section { grid-column: 1 / -1; }
@@ -638,17 +578,12 @@
 }
 
 @media (max-width: 760px) {
-  .investment-metrics { grid-template-columns: 1fr; }
-  .investment-return-head,
-  .investment-return-head,
+  .investment-return-caption {
+    margin-left: 0;
+    text-align: left;
+  }
   .investment-return-row {
     grid-template-columns: 1fr;
-  }
-  .investment-return-head {
-    align-items: start;
-  }
-  .investment-return-head > span {
-    text-align: left;
   }
   .investment-return-barline {
     grid-template-columns: 76px minmax(0, 1fr);
@@ -670,8 +605,4 @@
     border-radius: 8px;
   }
   .investment-item-row strong { justify-self: start; }
-}
-
-/* Plan mix: per-type horizontal bars. */
-.plan-mix {
 }

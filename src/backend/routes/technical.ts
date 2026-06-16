@@ -4,11 +4,16 @@ import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
 import {
   cleanValue,
+  insertInstallCostsWithinTx,
   installDeviceWithinTx,
+  installItemsWithinTx,
   loadCatalogIdentity,
   mapInstallError,
-  preflightDeviceInstall
-} from '../lib/deviceInstall';
+  preflightDeviceInstall,
+  preflightItems,
+  type InstallCostInput,
+  type ServiceItemInput
+} from '../lib/serviceInstall';
 import { requireAuth, requireRole } from './auth';
 
 const deviceAssignmentSchema = z.object({
@@ -17,6 +22,32 @@ const deviceAssignmentSchema = z.object({
   assetTag: z.string().trim().optional().nullable(),
   ipAddress: z.string().trim().optional().nullable(),
   macAddress: z.string().trim().optional().nullable(),
+  technicianId: z.coerce.number().int().positive().optional().nullable(),
+  notes: z.string().trim().optional().nullable()
+});
+
+const batchItemsSchema = z.object({
+  items: z.array(z.object({
+    catalogId: z.coerce.number().int().positive(),
+    quantity: z.coerce.number().int().positive().optional().nullable(),
+    serialNumber: z.string().trim().optional().nullable(),
+    assetTag: z.string().trim().optional().nullable(),
+    ipAddress: z.string().trim().optional().nullable(),
+    macAddress: z.string().trim().optional().nullable(),
+    technicianId: z.coerce.number().int().positive().optional().nullable(),
+    notes: z.string().trim().optional().nullable()
+  })).optional().nullable(),
+  installCosts: z.array(z.object({
+    kind: z.enum(['mao_de_obra', 'transporte', 'outro']).default('mao_de_obra'),
+    description: z.string().trim().optional().nullable(),
+    amountCve: z.coerce.number().min(0)
+  })).optional().nullable()
+}).refine(
+  (data) => (data.items?.length ?? 0) > 0 || (data.installCosts?.length ?? 0) > 0,
+  { message: 'Indique pelo menos um item ou custo' }
+);
+
+const deviceReturnSchema = z.object({
   technicianId: z.coerce.number().int().positive().optional().nullable(),
   notes: z.string().trim().optional().nullable()
 });
@@ -110,14 +141,49 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       ORDER BY e.created_at DESC, e.id DESC
     `).all(id);
 
-    return { serviceId: service.id, assignments, events };
+    const materials = db.prepare(`
+      SELECT
+        ml.id,
+        ml.catalog_id AS catalogId,
+        ec.type AS catalogType,
+        ec.brand,
+        ec.model,
+        ec.unit_of_measure AS unitOfMeasure,
+        ml.quantity,
+        ml.unit_cost_cve AS unitCostCve,
+        ml.notes,
+        ml.created_at AS createdAt,
+        cu.full_name AS createdByName
+      FROM service_material_lines ml
+      JOIN equipment_catalog ec ON ec.id = ml.catalog_id
+      LEFT JOIN users cu ON cu.id = ml.created_by
+      WHERE ml.service_id = ?
+      ORDER BY ml.created_at DESC, ml.id DESC
+    `).all(id);
+
+    const installCosts = db.prepare(`
+      SELECT
+        ic.id,
+        ic.kind,
+        ic.description,
+        ic.amount_cve AS amountCve,
+        ic.created_by AS createdBy,
+        cu.full_name AS createdByName,
+        ic.created_at AS createdAt
+      FROM service_install_costs ic
+      LEFT JOIN users cu ON cu.id = ic.created_by
+      WHERE ic.service_id = ?
+      ORDER BY ic.created_at DESC, ic.id DESC
+    `).all(id);
+
+    return { serviceId: service.id, assignments, materials, installCosts, events };
   });
 
-  app.post('/api/services/:id/device-assignments', canWriteTechnical, async (request, reply) => {
+  app.post('/api/services/:id/items', canWriteTechnical, async (request, reply) => {
     const serviceId = Number((request.params as { id: string }).id);
-    const parsed = deviceAssignmentSchema.safeParse(request.body);
+    const parsed = batchItemsSchema.safeParse(request.body);
     if (!Number.isInteger(serviceId) || serviceId <= 0 || !parsed.success) {
-      return reply.status(400).send({ error: 'Dados de atribuicao invalidos' });
+      return reply.status(400).send({ error: 'Dados de instalacao invalidos' });
     }
 
     const db = getSqliteDatabase();
@@ -126,19 +192,31 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: 'Servico nao encontrado' });
     }
 
-    const preflight = preflightDeviceInstall(db, parsed.data);
-    if (!preflight.ok) {
-      return reply.status(preflight.status).send({ error: preflight.error });
+    const items = (parsed.data.items ?? []) as ServiceItemInput[];
+    const installCosts = (parsed.data.installCosts ?? []) as InstallCostInput[];
+    if (items.length > 0) {
+      const preflight = preflightItems(db, items);
+      if (!preflight.ok) {
+        return reply.status(preflight.status).send({ error: preflight.error });
+      }
     }
 
-    const run = db.transaction(() => installDeviceWithinTx(db, {
-      serviceId,
-      clientName: service.clientName,
-      device: parsed.data,
-      userId: request.user?.id ?? null
-    }));
+    const run = db.transaction(() => {
+      const install = items.length > 0
+        ? installItemsWithinTx(db, {
+            serviceId,
+            clientName: service.clientName,
+            items,
+            userId: request.user?.id ?? null
+          })
+        : { assignmentIds: [], materialLineIds: [], eventId: 0 as number | bigint };
+      const costs = installCosts.length > 0
+        ? insertInstallCostsWithinTx(db, { serviceId, costs: installCosts, userId: request.user?.id ?? null })
+        : { installCostIds: [] as Array<number | bigint> };
+      return { ...install, ...costs };
+    });
 
-    let result: { assignmentId: string | number | bigint; eventId: string | number | bigint };
+    let result: ReturnType<typeof run>;
     try {
       result = run();
     } catch (error) {
@@ -152,8 +230,8 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       action: 'assign_device',
       entityType: 'service',
       entityId: serviceId,
-      summary: `Atribuiu equipamento ao servico ${serviceId}`,
-      metadata: { catalogId: parsed.data.catalogId, assignmentId: result.assignmentId }
+      summary: `Instalou ${items.length} item(s) e ${installCosts.length} custo(s) no servico ${serviceId}`,
+      metadata: { items: items.length, installCosts: installCosts.length, eventId: result.eventId }
     });
     return reply.status(201).send(result);
   });
@@ -314,6 +392,104 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       metadata: { catalogId: parsed.data.catalogId, replacementAssignmentId: result.assignmentId }
     });
     return reply.status(201).send(result);
+  });
+
+  app.post('/api/service-device-assignments/:id/return', canWriteTechnical, async (request, reply) => {
+    const assignmentId = Number((request.params as { id: string }).id);
+    const parsed = deviceReturnSchema.safeParse(request.body ?? {});
+    if (!Number.isInteger(assignmentId) || assignmentId <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Dados de devolucao invalidos' });
+    }
+
+    const db = getSqliteDatabase();
+    const current = db.prepare(`
+      SELECT id, service_id AS serviceId, catalog_id AS catalogId, end_date AS endDate
+      FROM service_device_assignments
+      WHERE id = ?
+    `).get(assignmentId) as { id: number; serviceId: number; catalogId: number; endDate: string | null } | undefined;
+
+    if (!current) {
+      return reply.status(404).send({ error: 'Atribuicao nao encontrada' });
+    }
+    if (current.endDate) {
+      return reply.status(400).send({ error: 'Atribuicao ja encerrada' });
+    }
+    const service = loadService(current.serviceId);
+    if (!service) {
+      return reply.status(404).send({ error: 'Servico nao encontrado' });
+    }
+    if (parsed.data.technicianId && !loadUser(parsed.data.technicianId)) {
+      return reply.status(404).send({ error: 'Tecnico nao encontrado' });
+    }
+
+    const notes = cleanValue(parsed.data.notes);
+    const catalog = loadCatalogIdentity(db, current.catalogId);
+
+    const run = db.transaction(() => {
+      const updated = db.prepare(`
+        UPDATE service_device_assignments
+        SET end_date = date('now'),
+            updated_at = datetime('now')
+        WHERE id = ? AND end_date IS NULL
+      `).run(assignmentId);
+      if (updated.changes === 0) {
+        throw new Error('already_closed');
+      }
+
+      db.prepare(`
+        INSERT INTO stock_movements (
+          catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
+        )
+        VALUES (?, 'devolucao', 1, ?, ?, ?, ?, ?, ?)
+      `).run(
+        current.catalogId,
+        catalog?.landedCostCve ?? 0,
+        `Devolucao servico ${current.serviceId}`,
+        notes,
+        current.serviceId,
+        service.clientName,
+        request.user?.id || null
+      );
+
+      db.prepare(`
+        UPDATE equipment_catalog
+        SET stock_total = stock_total + 1,
+            updated_at = datetime('now')
+        WHERE id = ?
+      `).run(current.catalogId);
+
+      const event = db.prepare(`
+        INSERT INTO service_events (
+          service_id, event_type, notes, technician_id, created_by, created_at
+        )
+        VALUES (?, 'alteracao_servico', ?, ?, ?, datetime('now'))
+      `).run(
+        current.serviceId,
+        notes,
+        parsed.data.technicianId || null,
+        parsed.data.technicianId || null
+      );
+
+      return { eventId: event.lastInsertRowid };
+    });
+
+    let result: { eventId: string | number | bigint };
+    try {
+      result = run();
+    } catch (error) {
+      if (error instanceof Error && error.message === 'already_closed') {
+        return reply.status(400).send({ error: 'Atribuicao ja encerrada' });
+      }
+      throw error;
+    }
+    recordAudit(request, {
+      action: 'return_device',
+      entityType: 'service_device_assignment',
+      entityId: assignmentId,
+      summary: `Removeu equipamento atribuido ${assignmentId}`,
+      metadata: { catalogId: current.catalogId, serviceId: current.serviceId }
+    });
+    return reply.status(200).send({ assignmentId, eventId: result.eventId });
   });
 
   app.post('/api/services/:id/technical-events', canWriteTechnical, async (request, reply) => {

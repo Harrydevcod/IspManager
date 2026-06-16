@@ -28,6 +28,8 @@ beforeEach(() => {
   db.exec(`
     DELETE FROM whatsapp_notices;
     DELETE FROM service_events;
+    DELETE FROM service_install_costs;
+    DELETE FROM service_material_lines;
     DELETE FROM service_device_assignments;
     DELETE FROM payments;
     DELETE FROM stock_movements;
@@ -85,21 +87,23 @@ describe('technical routes', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: `/api/services/${service.lastInsertRowid}/device-assignments`,
+      url: `/api/services/${service.lastInsertRowid}/items`,
       payload: {
-        catalogId: catalog.lastInsertRowid,
-        serialNumber: 'SN-001',
-        assetTag: 'AST-001',
-        ipAddress: '192.168.1.10',
-        macAddress: 'AA:BB:CC:DD:EE:FF',
-        technicianId: user.lastInsertRowid,
-        notes: 'Instalacao inicial'
+        items: [{
+          catalogId: catalog.lastInsertRowid,
+          serialNumber: 'SN-001',
+          assetTag: 'AST-001',
+          ipAddress: '192.168.1.10',
+          macAddress: 'AA:BB:CC:DD:EE:FF',
+          technicianId: user.lastInsertRowid,
+          notes: 'Instalacao inicial'
+        }]
       }
     });
 
     expect(response.statusCode).toBe(201);
     expect(response.json()).toMatchObject({
-      assignmentId: expect.any(Number),
+      assignmentIds: [expect.any(Number)],
       eventId: expect.any(Number)
     });
 
@@ -122,7 +126,7 @@ describe('technical routes', () => {
     expect(body.events).toHaveLength(1);
     expect(body.events[0]).toMatchObject({
       eventType: 'instalacao',
-      notes: 'Instalacao inicial'
+      notes: 'Instalou 1 equipamento(s) e 0 material(is)'
     });
 
     expect(db.prepare('SELECT stock_total AS stockTotal FROM equipment_catalog WHERE id = ?')
@@ -144,17 +148,19 @@ describe('technical routes', () => {
     const { catalog, service, user } = seedBaseService();
     const first = await app.inject({
       method: 'POST',
-      url: `/api/services/${service.lastInsertRowid}/device-assignments`,
+      url: `/api/services/${service.lastInsertRowid}/items`,
       payload: {
-        catalogId: catalog.lastInsertRowid,
-        serialNumber: 'SN-OLD',
-        assetTag: 'AST-OLD',
-        technicianId: user.lastInsertRowid,
-        notes: 'Primeira instalacao'
+        items: [{
+          catalogId: catalog.lastInsertRowid,
+          serialNumber: 'SN-OLD',
+          assetTag: 'AST-OLD',
+          technicianId: user.lastInsertRowid,
+          notes: 'Primeira instalacao'
+        }]
       }
     });
 
-    const assignmentId = (first.json() as { assignmentId: number }).assignmentId;
+    const assignmentId = (first.json() as { assignmentIds: number[] }).assignmentIds[0];
 
     const replacement = await app.inject({
       method: 'POST',
@@ -203,14 +209,103 @@ describe('technical routes', () => {
     });
   });
 
+  test('returns an active assignment and restores stock', async () => {
+    const { catalog, service, user } = seedBaseService();
+    const install = await app.inject({
+      method: 'POST',
+      url: `/api/services/${service.lastInsertRowid}/items`,
+      payload: {
+        items: [{
+          catalogId: catalog.lastInsertRowid,
+          serialNumber: 'SN-RET',
+          technicianId: user.lastInsertRowid,
+          notes: 'Instalacao inicial'
+        }]
+      }
+    });
+    const assignmentId = (install.json() as { assignmentIds: number[] }).assignmentIds[0];
+
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?')
+      .get(catalog.lastInsertRowid)).toEqual({ s: 9 });
+
+    const result = await app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${assignmentId}/return`,
+      payload: { notes: 'Cliente cancelou', technicianId: user.lastInsertRowid }
+    });
+
+    expect(result.statusCode).toBe(200);
+    expect(result.json()).toMatchObject({
+      assignmentId,
+      eventId: expect.any(Number)
+    });
+
+    expect(db.prepare('SELECT end_date AS endDate FROM service_device_assignments WHERE id = ?')
+      .get(assignmentId)).not.toEqual({ endDate: null });
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?')
+      .get(catalog.lastInsertRowid)).toEqual({ s: 10 });
+
+    expect(db.prepare(`
+      SELECT type, quantity FROM stock_movements
+      WHERE catalog_id = ? AND type = 'devolucao'
+    `).get(catalog.lastInsertRowid)).toEqual({ type: 'devolucao', quantity: 1 });
+
+    const events = db.prepare(`
+      SELECT event_type AS eventType, notes FROM service_events
+      WHERE service_id = ? ORDER BY id
+    `).all(service.lastInsertRowid) as Array<{ eventType: string; notes: string | null }>;
+    expect(events[events.length - 1]).toMatchObject({
+      eventType: 'alteracao_servico',
+      notes: 'Cliente cancelou'
+    });
+  });
+
+  test('rejects returning an already closed assignment', async () => {
+    const { catalog, service } = seedBaseService();
+    const install = await app.inject({
+      method: 'POST',
+      url: `/api/services/${service.lastInsertRowid}/items`,
+      payload: { items: [{ catalogId: catalog.lastInsertRowid, serialNumber: 'SN-X' }] }
+    });
+    const assignmentId = (install.json() as { assignmentIds: number[] }).assignmentIds[0];
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${assignmentId}/return`,
+      payload: {}
+    });
+    expect(first.statusCode).toBe(200);
+
+    const second = await app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${assignmentId}/return`,
+      payload: {}
+    });
+    expect(second.statusCode).toBe(400);
+    expect(second.json()).toEqual({ error: 'Atribuicao ja encerrada' });
+  });
+
+  test('returns 404 when returning an unknown assignment', async () => {
+    seedBaseService();
+    const result = await app.inject({
+      method: 'POST',
+      url: '/api/service-device-assignments/99999/return',
+      payload: {}
+    });
+    expect(result.statusCode).toBe(404);
+    expect(result.json()).toEqual({ error: 'Atribuicao nao encontrada' });
+  });
+
   test('rejects duplicate active serial numbers', async () => {
     const { catalog, service } = seedBaseService();
     const first = await app.inject({
       method: 'POST',
-      url: `/api/services/${service.lastInsertRowid}/device-assignments`,
+      url: `/api/services/${service.lastInsertRowid}/items`,
       payload: {
-        catalogId: catalog.lastInsertRowid,
-        serialNumber: 'SN-DUP'
+        items: [{
+          catalogId: catalog.lastInsertRowid,
+          serialNumber: 'SN-DUP'
+        }]
       }
     });
 
@@ -225,10 +320,12 @@ describe('technical routes', () => {
 
     const duplicate = await app.inject({
       method: 'POST',
-      url: `/api/services/${secondService.lastInsertRowid}/device-assignments`,
+      url: `/api/services/${secondService.lastInsertRowid}/items`,
       payload: {
-        catalogId: catalog.lastInsertRowid,
-        serialNumber: 'SN-DUP'
+        items: [{
+          catalogId: catalog.lastInsertRowid,
+          serialNumber: 'SN-DUP'
+        }]
       }
     });
 
@@ -242,15 +339,100 @@ describe('technical routes', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: `/api/services/${service.lastInsertRowid}/device-assignments`,
+      url: `/api/services/${service.lastInsertRowid}/items`,
       payload: {
-        catalogId: catalog.lastInsertRowid,
-        serialNumber: 'SN-NOSTOCK'
+        items: [{
+          catalogId: catalog.lastInsertRowid,
+          serialNumber: 'SN-NOSTOCK'
+        }]
       }
     });
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({ error: 'Stock insuficiente. Disponivel: 0' });
     expect(db.prepare('SELECT COUNT(*) AS n FROM service_device_assignments').get()).toEqual({ n: 0 });
+  });
+
+  test('installs a batch of items (device + material) on an existing service', async () => {
+    const { catalog, service } = seedBaseService();
+    const cable = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_cve, stock_total, active)
+      VALUES ('material','cabo','UTP','metro',0,80,100,1)
+    `).run();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/services/${service.lastInsertRowid}/items`,
+      payload: {
+        items: [
+          { catalogId: catalog.lastInsertRowid, serialNumber: 'SN-B1' },
+          { catalogId: cable.lastInsertRowid, quantity: 25 }
+        ]
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json() as { assignmentIds: number[]; materialLineIds: number[]; eventId: number };
+    expect(body.assignmentIds).toHaveLength(1);
+    expect(body.materialLineIds).toHaveLength(1);
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(catalog.lastInsertRowid)).toEqual({ s: 9 });
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(cable.lastInsertRowid)).toEqual({ s: 75 });
+    expect(db.prepare("SELECT count(*) AS n FROM service_events WHERE service_id = ? AND event_type='instalacao'").get(service.lastInsertRowid)).toEqual({ n: 1 });
+  });
+
+  test('rejects the batch when material stock is insufficient (no side effects)', async () => {
+    const { service } = seedBaseService();
+    const cable = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, stock_total, active)
+      VALUES ('material','cabo','UTP','metro',0,5,1)
+    `).run();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/services/${service.lastInsertRowid}/items`,
+      payload: { items: [{ catalogId: cable.lastInsertRowid, quantity: 10 }] }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: 'Stock insuficiente. Disponivel: 5' });
+    expect(db.prepare('SELECT count(*) AS n FROM service_material_lines').get()).toEqual({ n: 0 });
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(cable.lastInsertRowid)).toEqual({ s: 5 });
+  });
+
+  test('technical-history returns materials alongside assignments', async () => {
+    const { service } = seedBaseService();
+    const cable = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_cve, stock_total, active)
+      VALUES ('material','cabo','Cabo UTP','metro',0,80,100,1)
+    `).run();
+    await app.inject({
+      method: 'POST',
+      url: `/api/services/${service.lastInsertRowid}/items`,
+      payload: { items: [{ catalogId: cable.lastInsertRowid, quantity: 20 }] }
+    });
+
+    const history = await app.inject({ method: 'GET', url: `/api/services/${service.lastInsertRowid}/technical-history` });
+    const body = history.json() as { materials: Array<{ model: string; quantity: number; unitOfMeasure: string }> };
+    expect(body.materials).toHaveLength(1);
+    expect(body.materials[0]).toMatchObject({ model: 'Cabo UTP', quantity: 20, unitOfMeasure: 'metro' });
+  });
+
+  test('adds installation labour cost via /items (no items needed)', async () => {
+    const { service } = seedBaseService();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/services/${service.lastInsertRowid}/items`,
+      payload: { installCosts: [{ kind: 'mao_de_obra', amountCve: 1800 }] }
+    });
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json() as { installCostIds: number[] };
+    expect(body.installCostIds).toHaveLength(1);
+
+    const history = await app.inject({ method: 'GET', url: `/api/services/${service.lastInsertRowid}/technical-history` });
+    const hist = history.json() as { installCosts: Array<{ kind: string; amountCve: number }> };
+    expect(hist.installCosts).toHaveLength(1);
+    expect(hist.installCosts[0]).toMatchObject({ kind: 'mao_de_obra', amountCve: 1800 });
   });
 });

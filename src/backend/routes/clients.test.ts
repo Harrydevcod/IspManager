@@ -28,6 +28,8 @@ beforeAll(async () => {
 beforeEach(() => {
   db.prepare('DELETE FROM work_orders').run();
   db.prepare('DELETE FROM service_events').run();
+  db.prepare('DELETE FROM service_install_costs').run();
+  db.prepare('DELETE FROM service_material_lines').run();
   db.prepare('DELETE FROM service_device_assignments').run();
   db.prepare('DELETE FROM expenses').run();
   db.prepare('DELETE FROM investment_items').run();
@@ -303,6 +305,31 @@ describe('POST /api/clients/bulk', () => {
         totalCostCve: 7500
       }
     ]);
+  });
+
+  test('profitability includes materials consumed on services', async () => {
+    const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone, status) VALUES ('CLT-MAT','Cliente Material','9444444','active')`).run().lastInsertRowid as number;
+    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 4500, 10, 'active')`).run(clientId).lastInsertRowid as number;
+    const cable = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_cve, stock_total, active)
+      VALUES ('material','cabo','Cabo UTP','metro',0,80,1000,1)
+    `).run().lastInsertRowid as number;
+    db.prepare(`INSERT INTO service_material_lines (service_id, catalog_id, quantity, unit_cost_cve) VALUES (?, ?, 50, 80)`).run(serviceId, cable);
+
+    const response = await app.inject({ method: 'GET', url: `/api/clients/${clientId}/profitability` });
+    const body = response.json() as { installationCostCve: number; equipmentUsed: Array<{ itemName: string; quantity: number; totalCostCve: number }> };
+    expect(body.installationCostCve).toBe(4000);
+    expect(body.equipmentUsed).toContainEqual(expect.objectContaining({ itemName: 'Cabo UTP', quantity: 50, totalCostCve: 4000 }));
+  });
+
+  test('profitability includes installation labour cost', async () => {
+    const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone, status) VALUES ('CLT-LAB','Cliente Mao','9555555','active')`).run().lastInsertRowid as number;
+    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 4500, 10, 'active')`).run(clientId).lastInsertRowid as number;
+    db.prepare(`INSERT INTO service_install_costs (service_id, kind, amount_cve) VALUES (?, 'mao_de_obra', 2500)`).run(serviceId);
+
+    const response = await app.inject({ method: 'GET', url: `/api/clients/${clientId}/profitability` });
+    const body = response.json() as { installationCostCve: number };
+    expect(body.installationCostCve).toBe(2500);
   });
 
   test('reports validation errors per row without rolling back valid inserts', async () => {

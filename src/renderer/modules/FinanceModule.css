@@ -1,0 +1,30 @@
+/* =========================================================================
+   FinanceModule — shell that nests Rentabilidade + Despesas under one entry.
+   Reuses the global .segmented-tabs primitive; adds only the header row.
+   ========================================================================= */
+
+.finance-shell {
+  display: grid;
+  gap: var(--s4);
+}
+
+.finance-tabs-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+
+.finance-tabs-row .eyebrow {
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .finance-tabs-row {
+    gap: var(--s2);
+  }
+
+  .finance-tabs-row .segmented-tabs {
+    width: 100%;
+  }
+}

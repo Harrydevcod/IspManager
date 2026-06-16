@@ -15,8 +15,7 @@ export type SectionId =
   | 'plans'
   | 'services'
   | 'payments'
-  | 'investments'
-  | 'expenses'
+  | 'finance'
   | 'work-orders'
   | 'stock'
   | 'reports'
@@ -94,10 +93,13 @@ export type PlanRow = {
 
 export type StockCatalogRow = {
   id: number;
-  type: 'cpe' | 'router' | 'antena' | 'switch' | 'outro';
+  category: 'equipamento' | 'material';
+  type: 'cpe' | 'router' | 'antena' | 'switch' | 'cabo' | 'conector' | 'ficha' | 'suporte' | 'outro';
   brand: string | null;
   model: string;
   supplier: string | null;
+  unitOfMeasure: string;
+  isSerialized: number;
   purchasePriceCve: number;
   sellingPriceCve: number;
   rentalFeeCve: number;
@@ -350,6 +352,9 @@ export type InvestmentList = {
     totalCostCve: number;
     totalExpensesCve: number;
     totalInvestedCve: number;
+    ownInfrastructureCve: number;
+    totalReceivedCve: number;
+    companyAccumulatedProfitCve: number;
     investedByYear: Array<{ year: string; capexCve: number; opexCve: number; totalCve: number }>;
     monthlyNetProfitCve: number;
     accumulatedProfitCve: number;
@@ -559,6 +564,19 @@ export type DeviceAssignment = {
   createdAt: string;
 };
 
+export type MaterialLine = {
+  id: number;
+  catalogId: number;
+  catalogType: string;
+  brand: string | null;
+  model: string;
+  unitOfMeasure: string;
+  quantity: number;
+  unitCostCve: number;
+  notes: string | null;
+  createdAt: string;
+};
+
 export type ServiceEventType = 'instalacao' | 'manutencao' | 'troca_equipamento' | 'visita' | 'alteracao_servico';
 
 export type ServiceEvent = {
@@ -570,9 +588,19 @@ export type ServiceEvent = {
   createdAt: string;
 };
 
+export type InstallCost = {
+  id: number;
+  kind: 'mao_de_obra' | 'transporte' | 'outro';
+  description: string | null;
+  amountCve: number;
+  createdAt: string;
+};
+
 export type TechnicalHistory = {
   serviceId: number;
   assignments: DeviceAssignment[];
+  materials: MaterialLine[];
+  installCosts: InstallCost[];
   events: ServiceEvent[];
 };
 

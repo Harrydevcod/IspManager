@@ -1,7 +1,7 @@
-import { Download, FileText, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
+import { Pencil, Plus, Trash2, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Combobox, DataList, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useConfirm, useToast } from '../components';
+import { Badge, Button, Card, Combobox, DataList, Dialog, EmptyState, Field, FilterBar, Message, MetricCard, MetricGrid, Select, Textarea, useConfirm, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './InvestmentsModule.css';
@@ -165,7 +165,7 @@ function formatMonths(value: number | null): string {
 export function InvestmentsModule() {
   const [data, setData] = useState<InvestmentList>({
     rows: [],
-    totals: { count: 0, totalCostCve: 0, totalExpensesCve: 0, totalInvestedCve: 0, investedByYear: [], monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalDirectOpexCve: 0, totalEffectiveOpexCve: 0, totalActualRevenueCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
+    totals: { count: 0, totalCostCve: 0, totalExpensesCve: 0, totalInvestedCve: 0, ownInfrastructureCve: 0, totalReceivedCve: 0, companyAccumulatedProfitCve: 0, investedByYear: [], monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalDirectOpexCve: 0, totalEffectiveOpexCve: 0, totalActualRevenueCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
     companyOpexShare: { totalExpensesCve: 0, totalAllocatedCve: 0, totalUnallocatedCve: 0, monthsWithExpenses: 0, monthsWithUnallocated: 0, avgMonthlyOpex: 0, avgMonthlyUnallocated: 0, totalInstalledActive: 0, opexPerClientPerMonth: 0, directByInvestment: {}, directByZone: {}, directByClient: {} },
     zoneSummary: [],
     equipmentTop: [],
@@ -202,24 +202,6 @@ export function InvestmentsModule() {
   const formRecommendedPlan = ((formCostPerClient / formPayback) + (formMonthlyOps / formInstalledClients)) * (1 + formMargin / 100);
   const formRecovery = formNetProfit > 0 ? formTotal / formNetProfit : null;
   const formRoi = formTotal > 0 ? ((formAccumulatedRevenue - formTotal) / formTotal) * 100 : null;
-  const investmentReturnRows = useMemo(() => {
-    const rows = data.rows
-      .map((investment) => ({
-        id: investment.id,
-        name: investment.name,
-        invested: investment.totalCostCve,
-        annualReturn: investment.monthlyNetProfitCve * 12,
-        roi: investment.annualRoiPct
-      }))
-      .sort((a, b) => Math.max(b.invested, b.annualReturn) - Math.max(a.invested, a.annualReturn))
-      .slice(0, 8);
-    const maxValue = Math.max(1, ...rows.flatMap((row) => [row.invested, Math.abs(row.annualReturn)]));
-    return rows.map((row) => ({
-      ...row,
-      investedPct: (row.invested / maxValue) * 100,
-      annualReturnPct: (Math.abs(row.annualReturn) / maxValue) * 100
-    }));
-  }, [data.rows]);
 
   const load = useCallback(() => {
     const params = new URLSearchParams();
@@ -235,7 +217,7 @@ export function InvestmentsModule() {
       })
       .catch(() => setData({
         rows: [],
-        totals: { count: 0, totalCostCve: 0, totalExpensesCve: 0, totalInvestedCve: 0, investedByYear: [], monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalDirectOpexCve: 0, totalEffectiveOpexCve: 0, totalActualRevenueCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
+        totals: { count: 0, totalCostCve: 0, totalExpensesCve: 0, totalInvestedCve: 0, ownInfrastructureCve: 0, totalReceivedCve: 0, companyAccumulatedProfitCve: 0, investedByYear: [], monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalDirectOpexCve: 0, totalEffectiveOpexCve: 0, totalActualRevenueCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
         companyOpexShare: { totalExpensesCve: 0, totalAllocatedCve: 0, totalUnallocatedCve: 0, monthsWithExpenses: 0, monthsWithUnallocated: 0, avgMonthlyOpex: 0, avgMonthlyUnallocated: 0, totalInstalledActive: 0, opexPerClientPerMonth: 0, directByInvestment: {}, directByZone: {}, directByClient: {} },
         zoneSummary: [],
         equipmentTop: [],
@@ -384,67 +366,28 @@ export function InvestmentsModule() {
       <div className="module-header">
         <div>
           <p className="eyebrow">Painel financeiro ISP</p>
-          <h2>Investimentos e Rentabilidade ISP</h2>
+          <h2>Investimentos</h2>
         </div>
         <div className="inline-actions">
           <Field label="Mes" type="month" value={month} onChange={(e) => setMonth(e.target.value)} disabled={showAllMonths} />
-          <a
-            href="http://127.0.0.1:3001/api/investments/report.pdf"
-            target="_blank"
-            rel="noreferrer"
-            className="button-link"
-            title="Exportar relatório PDF"
-          >
-            <FileText size={14} /> PDF
-          </a>
-          <a
-            href="http://127.0.0.1:3001/api/investments/report.xlsx"
-            className="button-link"
-            title="Exportar dados em Excel"
-          >
-            <Download size={14} /> Excel
-          </a>
           <Button size="sm" leadingIcon={<Plus size={14} aria-hidden />} onClick={openCreate}>
             Novo investimento
           </Button>
         </div>
       </div>
 
-      <div className="investment-metrics" aria-label="Indicadores de investimentos">
-        <div>
-          <span>Total investido</span>
-          <strong>{formatCve(data.totals.totalInvestedCve)}</strong>
-        </div>
-        <div>
-          <span>Lucro mensal liquido</span>
-          <strong>{formatCve(data.totals.monthlyNetProfitCve)}</strong>
-        </div>
-        <div>
-          <span>ROI medio</span>
-          <strong>{data.totals.averageRoiPct === null ? '-' : `${data.totals.averageRoiPct.toFixed(1)}%`}</strong>
-        </div>
-        <div>
-          <span>Lucro acumulado</span>
-          <strong>{formatCve(data.totals.accumulatedProfitCve)}</strong>
-        </div>
-      </div>
-
-      {data.alerts.length > 0 && (
-        <div className="investment-alerts">
-          {data.alerts.map((alert, idx) => (
-            <span key={`${alert.severity}-${alert.message}-${idx}`} className={`alert-${alert.severity}`}>
-              {alert.target && <strong>{alert.target.name}:</strong>} {alert.message}
-            </span>
-          ))}
-        </div>
-      )}
+      <MetricGrid label="Investimento próprio">
+        <MetricCard
+          icon={Wallet}
+          label="Investido na infraestrutura própria"
+          value={formatCve(data.totals.ownInfrastructureCve)}
+          trend="sem stock"
+          tone="info"
+        />
+      </MetricGrid>
 
       {data.equipmentTop.length > 0 && (
-        <section className="investment-equipment-top" aria-label="Top equipamentos">
-          <header>
-            <strong>Top equipamentos por custo</strong>
-            <small>Soma dos investimentos no filtro atual</small>
-          </header>
+        <Card eyebrow="Top equipamentos" title="Por custo" className="investment-equipment-top">
           <ul>
             {data.equipmentTop.map((eq) => {
               const max = data.equipmentTop[0].totalCostCve || 1;
@@ -461,49 +404,8 @@ export function InvestmentsModule() {
               );
             })}
           </ul>
-        </section>
+        </Card>
       )}
-
-      <section className="investment-return-panel" aria-label="Investimento versus retorno anual">
-        <div className="investment-return-head">
-          <div>
-            <p className="eyebrow">Analise anual</p>
-            <h3>Investimento x retorno anual</h3>
-          </div>
-          <span>Retorno anual = lucro mensal liquido x 12</span>
-        </div>
-        {investmentReturnRows.length > 0 ? (
-          <div className="investment-return-chart">
-            {investmentReturnRows.map((row) => (
-              <div className="investment-return-row" key={row.id}>
-                <div className="investment-return-name">
-                  <strong>{row.name}</strong>
-                  <small>{row.roi === null ? 'ROI sem dados' : `ROI anual ${row.roi.toFixed(1)}%`}</small>
-                </div>
-                <div className="investment-return-bars">
-                  <div className="investment-return-barline">
-                    <span>Investido</span>
-                    <div><i className="bar-invested" style={{ width: `${row.investedPct}%` }} /></div>
-                    <b>{formatCve(row.invested)}</b>
-                  </div>
-                  <div className="investment-return-barline">
-                    <span>Retorno ano</span>
-                    <div>
-                      <i
-                        className={row.annualReturn >= 0 ? 'bar-return-positive' : 'bar-return-negative'}
-                        style={{ width: `${row.annualReturnPct}%` }}
-                      />
-                    </div>
-                    <b>{formatCve(row.annualReturn)}</b>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <Message>Registe investimentos para comparar capital aplicado e retorno anual.</Message>
-        )}
-      </section>
 
       <FilterBar>
         <Select label="Tipo" value={type} onChange={(e) => setType(e.target.value as InvestmentType | 'all')}>
@@ -590,20 +492,14 @@ export function InvestmentsModule() {
                       ? formatCve(selected.actualMonthlyRevenueCve)
                       : formatCve(selected.expectedMonthlyRevenueCve)}
                     {selected.actualMonthlyRevenueCve != null && (
-                      <small style={{ display: 'block', color: 'var(--text-3)', fontSize: 11, marginTop: 2 }}>
+                      <small className="investment-detail-note">
                         {selected.revenueSource === 'global-share'
                           ? 'rateio'
                           : selected.revenueSource === 'zone'
                             ? 'real (zona)'
                             : 'real (cliente)'}; esperado {formatCve(selected.expectedMonthlyRevenueCve)}
                         {selected.revenueVarianceCve != null && (
-                          <span
-                            style={{
-                              marginLeft: 6,
-                              color: selected.revenueVarianceCve >= 0 ? 'var(--success)' : 'var(--danger)',
-                              fontVariantNumeric: 'tabular-nums'
-                            }}
-                          >
+                          <span className={`investment-variance ${selected.revenueVarianceCve >= 0 ? 'is-positive' : 'is-negative'}`}>
                             ({selected.revenueVarianceCve >= 0 ? '+' : ''}{formatCve(selected.revenueVarianceCve)})
                           </span>
                         )}
@@ -621,7 +517,7 @@ export function InvestmentsModule() {
                   <dt>OPEX mensal</dt>
                   <dd>
                     {formatCve(selected.effectiveMonthlyOpexCve)}
-                    <small style={{ display: 'block', color: 'var(--text-3)', fontSize: 11, marginTop: 2 }}>
+                    <small className="investment-detail-note">
                       directo {formatCve(selected.monthlyOperationalCostCve)} + rateio {formatCve(selected.imputedMonthlyOpexCve)}
                       {selected.directAllocatedOpexCve > 0 && ` + alocado ${formatCve(selected.directAllocatedOpexCve)}`}
                     </small>
@@ -705,7 +601,7 @@ export function InvestmentsModule() {
                 <div className="investment-opex-share">
                   <strong>Rateio OPEX da empresa</strong>
                   <span>OPEX médio: {formatCve(data.companyOpexShare.avgMonthlyOpex)} / mês ({data.companyOpexShare.monthsWithExpenses} {data.companyOpexShare.monthsWithExpenses === 1 ? 'mês' : 'meses'})</span>
-                  <span>Por cliente activo: {formatCve(data.companyOpexShare.opexPerClientPerMonth)} ({data.companyOpexShare.totalInstalledActive} clientes)</span>
+                  <span>Por cliente instalado: {formatCve(data.companyOpexShare.opexPerClientPerMonth)} ({data.companyOpexShare.totalInstalledActive} instalados em investimentos ativos)</span>
                 </div>
               )}
               {data.zoneSummary.length > 0 && (

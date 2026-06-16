@@ -50,8 +50,10 @@ export async function createBackendApp() {
     app.log.error({ err }, 'startup backup failed');
   }
 
-  // Auto-bill current month if today >= defaultDueDay and not yet billed
-  // this month. Idempotent + opt-out via ISPM_AUTO_BILLING=off (tests).
+  // Auto-bill the closed month(s) once today >= autoBillingDay (default 30),
+  // attributing each invoice to the month it closes and catching up any month
+  // missed (desktop app may not open on day 30). Idempotent + opt-out via
+  // ISPM_AUTO_BILLING=off (tests).
   if (process.env.ISPM_AUTO_BILLING !== 'off') {
     try {
       const result = runMonthlyBillingIfDue();

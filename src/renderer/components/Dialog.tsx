@@ -9,12 +9,18 @@ export type DialogProps = {
   eyebrow?: string;
   children: ReactNode;
   actions?: ReactNode;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   closeOnBackdrop?: boolean;
 };
 
 const FOCUSABLE_SELECTOR =
   'a[href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// Tracks stacked dialogs so only the topmost responds to ESC, Tab-trapping and
+// backdrop clicks. Without this, opening a dialog from inside another (e.g. the
+// "add items" dialog launched from the service detail modal) would let one ESC
+// press close both layers at once.
+const modalStack: string[] = [];
 
 export function Dialog({
   open,
@@ -28,6 +34,7 @@ export function Dialog({
 }: DialogProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  const stackId = useId();
   // Stash the latest onClose in a ref so the lifecycle effect can depend
   // solely on `open`. Otherwise a parent that re-renders on every keystroke
   // (passing a fresh inline `onClose`) would re-run the effect, snap focus
@@ -43,6 +50,9 @@ export function Dialog({
     const previouslyFocused = document.activeElement as HTMLElement | null;
     const root = cardRef.current;
 
+    modalStack.push(stackId);
+    const isTopmost = () => modalStack[modalStack.length - 1] === stackId;
+
     const firstFocusable = root?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
     (firstFocusable ?? root)?.focus();
 
@@ -50,6 +60,7 @@ export function Dialog({
     document.body.style.overflow = 'hidden';
 
     function onKey(event: KeyboardEvent) {
+      if (!isTopmost()) return;
       if (event.key === 'Escape') {
         event.stopPropagation();
         onCloseRef.current();
@@ -76,10 +87,12 @@ export function Dialog({
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
+      const idx = modalStack.lastIndexOf(stackId);
+      if (idx !== -1) modalStack.splice(idx, 1);
       document.body.style.overflow = prevOverflow;
       previouslyFocused?.focus?.();
     };
-  }, [open]);
+  }, [open, stackId]);
 
   if (!open) return null;
 
@@ -88,7 +101,13 @@ export function Dialog({
       className="dialog-scrim"
       role="presentation"
       onMouseDown={(event) => {
-        if (closeOnBackdrop && event.target === event.currentTarget) onClose();
+        if (
+          closeOnBackdrop
+          && event.target === event.currentTarget
+          && modalStack[modalStack.length - 1] === stackId
+        ) {
+          onClose();
+        }
       }}
     >
       <div

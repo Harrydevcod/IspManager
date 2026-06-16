@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, Banknote, Boxes, Cable, ClipboardList, FileText, Gauge, LogOut, Plus, Receipt, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
+import { Activity, AlertTriangle, Banknote, Boxes, Cable, ClipboardList, FileText, Gauge, LogOut, Plus, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AuthGate, CommandPalette, ConfirmProvider, PageHeader, ThemeToggle, ToastProvider } from './components';
 import type { CommandPaletteItem } from './components';
@@ -6,8 +6,7 @@ import { AuthProvider, authFetch, useAuth } from './lib/auth';
 import type { UserRole } from './lib/auth';
 import { installKeyboardNavigationIntent } from './lib/keyboardNavigation';
 import { Dashboard } from './modules/Dashboard';
-import { InvestmentsModule } from './modules/InvestmentsModule';
-import { ExpensesModule } from './modules/ExpensesModule';
+import { FinanceModule } from './modules/FinanceModule';
 import { PaymentsModule } from './modules/PaymentsModule';
 import { PlansModule } from './modules/PlansModule';
 import { ServicesModule } from './modules/ServicesModule';
@@ -33,8 +32,7 @@ const sections: SidebarItem[] = [
   { id: 'plans', label: 'Planos', icon: Wifi },
   { id: 'services', label: 'Servicos', icon: Cable },
   { id: 'payments', label: 'Pagamentos', icon: Banknote, roles: ['admin', 'operator'] },
-  { id: 'investments', label: 'Rentabilidade', icon: TrendingUp, roles: ['admin', 'operator'] },
-  { id: 'expenses', label: 'Despesas', icon: Receipt, roles: ['admin', 'operator'] },
+  { id: 'finance', label: 'Financeiro', icon: TrendingUp, roles: ['admin', 'operator'] },
   { id: 'work-orders', label: 'OS tecnicas', icon: ClipboardList },
   { id: 'stock', label: 'Stock', icon: Boxes },
   { id: 'reports', label: 'Relatorios', icon: FileText, roles: ['admin', 'operator'] },
@@ -341,8 +339,7 @@ function AppShell() {
             />
           )}
           {section === 'payments' && <PaymentsModule />}
-          {section === 'investments' && <InvestmentsModule />}
-          {section === 'expenses' && <ExpensesModule />}
+          {section === 'finance' && <FinanceModule />}
           {section === 'work-orders' && <WorkOrdersModule />}
           {section === 'stock' && <StockModule />}
           {section === 'reports' && (

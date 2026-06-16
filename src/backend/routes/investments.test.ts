@@ -25,11 +25,13 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  db.prepare('DELETE FROM stock_movements').run();
   db.prepare('DELETE FROM expenses').run();
   db.prepare('DELETE FROM investment_items').run();
   db.prepare('DELETE FROM investments').run();
   db.prepare('DELETE FROM payments').run();
   db.prepare('DELETE FROM services').run();
+  db.prepare('DELETE FROM equipment_catalog').run();
   db.prepare('DELETE FROM clients').run();
   db.prepare('DELETE FROM internet_plans').run();
 });
@@ -197,6 +199,43 @@ describe('investments CRUD', () => {
     expect(row.monthlyNetProfitCve).toBe(2250); // 5000 - 2750
   });
 
+  test('"Total investido" = stock comprado (em maos + consumido) + investimentos manuais', async () => {
+    // Custo landed = 1200+200+100 = 1500/unid; 10 unidades em armazem.
+    const catalogId = db.prepare(`INSERT INTO equipment_catalog
+                (type, model, purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve, stock_total)
+                VALUES ('router', 'hAP ax2', 1200, 200, 100, 0, 10)`).run().lastInsertRowid as number;
+    // 4 unidades ja sairam (instaladas), valorizadas ao custo landed.
+    db.prepare(`INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_cve) VALUES (?, 'saida', 4, 1500)`).run(catalogId);
+    // Investimento manual (tabela investments) que tambem entra no total.
+    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_cve, status)
+                VALUES ('Torre Achada', 'infraestrutura', '2026-05-01', '2026-05', 5000, 'ativo')`).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
+    expect(response.statusCode).toBe(200);
+    const payload = response.json() as { totals: { totalInvestedCve: number } };
+    // stock: em maos 10×1500=15000 + consumido 4×1500=6000 = 21000; + investimentos 5000 = 26000
+    expect(payload.totals.totalInvestedCve).toBe(26000);
+  });
+
+  test('lucro acumulado da empresa = recebido − investido (infra+stock) − despesas', async () => {
+    const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone) VALUES ('C001', 'Cliente Lucro', '5550001')`).run().lastInsertRowid as number;
+    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve) VALUES (?, 5000)`).run(clientId).lastInsertRowid as number;
+    // Faturacao recebida: 5000 pago (+ um pendente que NAO conta).
+    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status) VALUES (?, ?, '2026-04', 5000, '2026-04-10', 'paid')`).run(clientId, serviceId);
+    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status) VALUES (?, ?, '2026-05', 5000, '2026-05-10', 'pending')`).run(clientId, serviceId);
+    // Investido na infraestrutura: 3000 (sem stock neste teste).
+    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_cve, status) VALUES ('Torre', 'infraestrutura', '2026-05-01', '2026-05', 3000, 'ativo')`).run();
+    // Despesas: 800.
+    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month) VALUES ('infraestrutura', 'Aluguer', 800, '2026-05-05', '2026-05')`).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
+    expect(response.statusCode).toBe(200);
+    const payload = response.json() as { totals: { totalReceivedCve: number; companyAccumulatedProfitCve: number } };
+    expect(payload.totals.totalReceivedCve).toBe(5000);
+    // 5000 recebido − 3000 investido − 800 despesas = 1200
+    expect(payload.totals.companyAccumulatedProfitCve).toBe(1200);
+  });
+
   test('uses expenses created through the expenses module API in profitability calculations', async () => {
     const investmentId = db.prepare(`INSERT INTO investments
                 (name, type, investment_date, reference_month, total_cost_cve,
@@ -239,7 +278,8 @@ describe('investments CRUD', () => {
     expect(payload.totals).toMatchObject({
       totalCostCve: 20000,
       totalExpensesCve: 6500,
-      totalInvestedCve: 26500
+      // "Total investido" = stock comprado (0 aqui) + investimentos manuais (20000)
+      totalInvestedCve: 20000
     });
     expect(payload.companyOpexShare).toMatchObject({
       totalExpensesCve: 6500,

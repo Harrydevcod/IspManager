@@ -4,7 +4,14 @@ import { getSqliteDatabase } from '../db/database';
 import { computeMonthlyBilling, dueDateFromIssue, generateMonthlyBilling, todayIso } from '../lib/billing';
 import { nextDocumentNumber } from '../lib/numbering';
 import { recordAudit } from '../lib/audit';
-import { installDeviceWithinTx, mapInstallError, preflightDeviceInstall } from '../lib/deviceInstall';
+import {
+  insertInstallCostsWithinTx,
+  installItemsWithinTx,
+  mapInstallError,
+  preflightItems,
+  type InstallCostInput,
+  type ServiceItemInput
+} from '../lib/serviceInstall';
 import { requireAuth, requireRole } from './auth';
 
 const monthSchema = z.object({
@@ -20,14 +27,21 @@ const cancelSchema = z.object({
   reason: z.string().trim().optional().nullable()
 });
 
-const deviceInstallSchema = z.object({
+const serviceItemSchema = z.object({
   catalogId: z.coerce.number().int().positive(),
+  quantity: z.coerce.number().int().positive().optional().nullable(),
   serialNumber: z.string().trim().optional().nullable(),
   assetTag: z.string().trim().optional().nullable(),
   ipAddress: z.string().trim().optional().nullable(),
   macAddress: z.string().trim().optional().nullable(),
   technicianId: z.coerce.number().int().positive().optional().nullable(),
   notes: z.string().trim().optional().nullable()
+});
+
+const installCostSchema = z.object({
+  kind: z.enum(['mao_de_obra', 'transporte', 'outro']).default('mao_de_obra'),
+  description: z.string().trim().optional().nullable(),
+  amountCve: z.coerce.number().min(0)
 });
 
 const serviceSchema = z.object({
@@ -38,7 +52,8 @@ const serviceSchema = z.object({
   activationDate: z.string().optional().nullable(),
   status: z.enum(['active', 'suspended', 'cancelled']).default('active'),
   technicalNotes: z.string().trim().optional().nullable(),
-  device: deviceInstallSchema.optional().nullable()
+  items: z.array(serviceItemSchema).optional().nullable(),
+  installCosts: z.array(installCostSchema).optional().nullable()
 });
 
 const nextNumber = nextDocumentNumber;
@@ -87,15 +102,14 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       }
     }
 
-    // Optional inline equipment install: validate before the transaction so a bad
-    // device never leaves a service behind, then commit both atomically.
-    const device = parsed.data.device ?? null;
-    if (device) {
-      const preflight = preflightDeviceInstall(db, device);
+    const items = (parsed.data.items ?? []) as ServiceItemInput[];
+    if (items.length > 0) {
+      const preflight = preflightItems(db, items);
       if (!preflight.ok) {
         return reply.status(preflight.status).send({ error: preflight.error });
       }
     }
+    const installCosts = (parsed.data.installCosts ?? []) as InstallCostInput[];
 
     const run = db.transaction(() => {
       const inserted = db.prepare(`
@@ -115,19 +129,27 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       );
       const serviceId = Number(inserted.lastInsertRowid);
 
-      const install = device
-        ? installDeviceWithinTx(db, {
+      const install = items.length > 0
+        ? installItemsWithinTx(db, {
             serviceId,
             clientName: client.fullName,
-            device,
+            items,
             userId: request.user?.id ?? null
           })
         : null;
 
-      return { serviceId, install };
+      const costs = installCosts.length > 0
+        ? insertInstallCostsWithinTx(db, { serviceId, costs: installCosts, userId: request.user?.id ?? null })
+        : null;
+
+      return { serviceId, install, costs };
     });
 
-    let created: { serviceId: number; install: { assignmentId: string | number | bigint; eventId: string | number | bigint } | null };
+    let created: {
+      serviceId: number;
+      install: ReturnType<typeof installItemsWithinTx> | null;
+      costs: ReturnType<typeof insertInstallCostsWithinTx> | null;
+    };
     try {
       created = run();
     } catch (error) {
@@ -150,13 +172,14 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         action: 'assign_device',
         entityType: 'service',
         entityId: created.serviceId,
-        summary: `Instalou equipamento ao criar o servico ${created.serviceId}`,
-        metadata: { catalogId: device?.catalogId ?? null, assignmentId: created.install.assignmentId }
+        summary: `Instalou itens ao criar o servico ${created.serviceId}`,
+        metadata: { items: items.length }
       });
     }
     return reply.status(201).send({
       id: created.serviceId,
-      ...(created.install ?? {})
+      ...(created.install ?? {}),
+      ...(created.costs ?? {})
     });
   });
 

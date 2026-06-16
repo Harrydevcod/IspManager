@@ -56,14 +56,32 @@ export function runMigrations(
     'INSERT INTO schema_migrations (version, name, checksum) VALUES (?, ?, ?)',
   );
 
-  for (const m of ordered) {
-    if (applied.has(m.version)) {
-      continue;
+  const foreignKeysEnabled = Number(db.pragma('foreign_keys', { simple: true })) === 1;
+  if (foreignKeysEnabled) {
+    // Parent-table rebuilds cannot safely DROP/RENAME while FK enforcement is
+    // active, even with defer_foreign_keys. Disable enforcement outside the
+    // transaction, then validate the resulting graph before each COMMIT.
+    db.pragma('foreign_keys = OFF');
+  }
+
+  try {
+    for (const m of ordered) {
+      if (applied.has(m.version)) {
+        continue;
+      }
+      const apply = db.transaction(() => {
+        db.exec(m.sql);
+        const violations = db.prepare('PRAGMA foreign_key_check').all();
+        if (violations.length > 0) {
+          throw new Error(`Migration ${m.version} (${m.name}) deixou referencias invalidas`);
+        }
+        insert.run(m.version, m.name, checksum(m.sql));
+      });
+      apply();
     }
-    const apply = db.transaction(() => {
-      db.exec(m.sql);
-      insert.run(m.version, m.name, checksum(m.sql));
-    });
-    apply();
+  } finally {
+    if (foreignKeysEnabled) {
+      db.pragma('foreign_keys = ON');
+    }
   }
 }

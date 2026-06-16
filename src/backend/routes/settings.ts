@@ -75,6 +75,7 @@ const settingsSchema = z.object({
       account.bankName || account.accountName || account.accountNumber || account.reference
     ))),
   defaultDueDay: z.coerce.number().int().min(1).max(31),
+  autoBillingDay: z.coerce.number().int().min(1).max(31).optional().default(30),
   currencyCode: z.string().trim().min(1).max(8),
   invoicePrefix: z.string().trim().min(1).max(8),
   receiptPrefix: z.string().trim().min(1).max(8),
@@ -114,6 +115,7 @@ const defaultSettings = {
   island: '',
   bankAccounts: [] as Array<{ bankName: string; accountName: string; accountNumber: string; reference: string }>,
   defaultDueDay: 1,
+  autoBillingDay: 30,
   currencyCode: 'CVE',
   invoicePrefix: 'FT',
   receiptPrefix: 'RC',
@@ -157,6 +159,8 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     for (const row of rows) {
       if (row.key === 'defaultDueDay') {
         settings.defaultDueDay = Number(row.value) || defaultSettings.defaultDueDay;
+      } else if (row.key === 'autoBillingDay') {
+        settings.autoBillingDay = Number(row.value) || defaultSettings.autoBillingDay;
       } else if (row.key === 'ivaRate') {
         const n = Number(row.value);
         settings.ivaRate = Number.isFinite(n) ? n : defaultSettings.ivaRate;

@@ -344,40 +344,44 @@ function buildDocument(
   const leftColW = CW - rightColW - 20;
 
   let y = M;
-  // LEFT: brand
+  // LEFT: brand tag (o nome da empresa não vai aqui — figura no rodapé).
   doc.fillColor(PALETTE.accent).fontSize(6.5).font('Helvetica-Bold')
     .text('ISP - CABO VERDE', M, y, { width: leftColW, lineBreak: false, characterSpacing: 1.6 });
-  doc.fillColor(PALETTE.ink).fontSize(19).font('Helvetica-Bold')
-    .text(fitText(doc, company.companyName || 'ISPM', leftColW), M, y + 11, { width: leftColW, lineBreak: false });
 
   // RIGHT: doc info (FATURA / FT 004/2026-05 / Emitido em ...)
   doc.fillColor(PALETTE.muted).fontSize(6.5).font('Helvetica-Bold')
     .text(label, rightColX, y, { width: rightColW, lineBreak: false, characterSpacing: 1.6 });
-  doc.fillColor(PALETTE.accent).fontSize(17).font('Helvetica-Bold')
+  doc.fillColor(PALETTE.accent).fontSize(12).font('Helvetica-Bold')
     .text(fitText(doc, docNumber || '—', rightColW), rightColX, y + 11, { width: rightColW, lineBreak: false });
   doc.fillColor(PALETTE.muted).fontSize(8).font('Helvetica')
-    .text(`Emitido em ${formatDate(docDate)}`, rightColX, y + 35, { width: rightColW, lineBreak: false });
+    .text(`Emitido em ${formatDate(docDate)}`, rightColX, y + 28, { width: rightColW, lineBreak: false });
 
   // === 2) PARTY COLUMNS — EMITENTE abaixo do brand, CLIENTE abaixo da info do doc
+  // Nome da empresa como primeira linha (negrito) do bloco EMITENTE.
+  // Sem legendas (morada/ilha/telefone) — o valor fala por si. Mantemos só o
+  // prefixo "NIF" inline para não confundir o contribuinte com o telefone.
   const emitenteLines: PartyLine[] = [{ value: company.companyName || 'ISPM', bold: true }];
-  if (company.nif) emitenteLines.push({ label: 'NIF', value: company.nif });
-  if (company.address) emitenteLines.push({ label: 'Morada', value: company.address });
-  if (company.island) emitenteLines.push({ label: 'Ilha', value: company.island });
-  if (company.phone) emitenteLines.push({ label: 'Telefone', value: company.phone });
-  if (company.email) emitenteLines.push({ label: 'Email', value: company.email });
+  if (company.nif) emitenteLines.push({ value: `NIF ${company.nif}` });
+  if (company.address) emitenteLines.push({ value: company.address });
+  if (company.island) emitenteLines.push({ value: company.island });
+  if (company.phone) emitenteLines.push({ value: company.phone });
+  // Email do emitente vive só no rodapé (não duplicar aqui).
 
   // Bloco CLIENTE — apenas identificação (nome, código, NIF) + morada (sede/domicílio,
   // requisito Art. 32 nº5 CIVA). Telefone e Email são confidenciais e omitidos da fatura/recibo.
+  // Sem legendas — só os valores. Identificadores (NIF, código) ficam com
+  // prefixo inline para não serem ambíguos; morada e ilha falam por si.
   const clienteLines: PartyLine[] = [{ value: row.clientName, bold: true }];
-  if (row.clientCode) clienteLines.push({ label: 'Código', value: row.clientCode });
-  if (row.clientNif) clienteLines.push({ label: 'NIF', value: row.clientNif });
-  if (row.clientAddress) clienteLines.push({ label: 'Morada', value: row.clientAddress });
-  if (row.clientIsland) clienteLines.push({ label: 'Ilha', value: row.clientIsland });
+  if (row.clientCode) clienteLines.push({ value: `Cód. ${row.clientCode}` });
+  if (row.clientNif) clienteLines.push({ value: `NIF ${row.clientNif}` });
+  if (row.clientAddress) clienteLines.push({ value: row.clientAddress });
+  if (row.clientIsland) clienteLines.push({ value: row.clientIsland });
 
-  const leftPartyY = M + 38;   // 11 (eyebrow gap) + 19 (h1) + 8 (breathing) ≈ 38
-  const rightPartyY = M + 52;  // 11 + 17 + 16 (Emitido + breathing) + 8 ≈ 52
-  const emitenteEnd = writeParty(doc, M, leftPartyY, leftColW, 'EMITENTE', emitenteLines);
-  const clienteEnd = writeParty(doc, rightColX, rightPartyY, rightColW, 'CLIENTE', clienteLines);
+  // EMITENTE e CLIENTE arrancam no mesmo Y (paralelos), abaixo da info do
+  // documento na coluna direita: 11 (gap) + 12 (nº) + ~5 + 8 (Emitido) + breathing ≈ 44.
+  const partyY = M + 44;
+  const emitenteEnd = writeParty(doc, M, partyY, leftColW, 'EMITENTE', emitenteLines);
+  const clienteEnd = writeParty(doc, rightColX, partyY, rightColW, 'CLIENTE', clienteLines);
   y = Math.max(emitenteEnd, clienteEnd) + 14;
   doc.moveTo(M, y).lineTo(W - M, y).strokeColor(PALETTE.accent).lineWidth(1.2).stroke();
   y += 18;
@@ -540,16 +544,15 @@ function buildDocument(
       );
   }
 
-  // === 9) FOOTER
+  // === 9) FOOTER — apenas nome da empresa + email.
   const footerY = H - M - 14;
   doc.moveTo(M, footerY).lineTo(W - M, footerY).strokeColor(PALETTE.hairline).lineWidth(0.5).stroke();
-  const contactParts: string[] = [];
-  if (company.nif) contactParts.push(`NIF ${company.nif}`);
-  if (company.phone) contactParts.push(company.phone);
-  if (company.email) contactParts.push(company.email);
+  const footerText = company.email
+    ? `${company.companyName || 'ISPM'} · ${company.email}`
+    : (company.companyName || 'ISPM');
   doc.fillColor(PALETTE.muted).fontSize(7).font('Helvetica-Bold')
     .text(
-      fitText(doc, `${company.companyName || 'ISPM'}${contactParts.length ? ' · ' + contactParts.join(' · ') : ''}`, CW),
+      fitText(doc, footerText, CW),
       M,
       footerY + 2,
       { width: CW, align: 'center', lineBreak: false }

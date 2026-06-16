@@ -1,4 +1,4 @@
-import { Activity, ArrowDownUp, Banknote, Boxes, Gauge, HardDrive, Network, Pencil, Radio, Router, Users } from 'lucide-react';
+import { Activity, ArrowDownUp, Banknote, Boxes, Cable, Gauge, HardDrive, Network, Pencil, Radio, Router, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -10,10 +10,13 @@ import type { CatalogAssignments, StockCatalogRow, StockMovement, StockSummary }
 import './StockModule.css';
 
 type StockFormState = {
-  type: 'cpe' | 'router' | 'antena' | 'switch' | 'outro';
+  category: 'equipamento' | 'material';
+  type: StockCatalogRow['type'];
   brand: string;
   model: string;
   supplier: string;
+  unitOfMeasure: string;
+  isSerialized: '1' | '0';
   purchasePriceCve: string;
   sellingPriceCve: string;
   rentalFeeCve: string;
@@ -32,10 +35,13 @@ type StockMovementFormState = {
 
 function emptyCatalogForm(): StockFormState {
   return {
+    category: 'equipamento',
     type: 'router',
     brand: '',
     model: '',
     supplier: '',
+    unitOfMeasure: 'un',
+    isSerialized: '1',
     purchasePriceCve: '',
     sellingPriceCve: '',
     rentalFeeCve: '',
@@ -76,6 +82,7 @@ export function StockModule() {
   const [showMovementForm, setShowMovementForm] = useState(false);
   const [editingCatalog, setEditingCatalog] = useState<StockCatalogRow | null>(null);
   const [search, setSearch] = useState('');
+  const [stockTab, setStockTab] = useState<'equipamento' | 'material'>('equipamento');
   const [typeFilter, setTypeFilter] = useState<'all' | StockCatalogRow['type']>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out'>('all');
   const [catalogForm, setCatalogForm] = useState<StockFormState>(emptyCatalogForm());
@@ -114,7 +121,15 @@ export function StockModule() {
   }, [loadStock]);
 
   function updateCatalogForm(field: keyof StockFormState, value: string) {
-    setCatalogForm((current) => ({ ...current, [field]: value }));
+    setCatalogForm((current) => {
+      if (field === 'category' && value === 'material') {
+        return { ...current, category: 'material', isSerialized: '0', type: current.type === 'outro' ? 'outro' : current.type };
+      }
+      if (field === 'category' && value === 'equipamento') {
+        return { ...current, category: 'equipamento', isSerialized: '1' };
+      }
+      return { ...current, [field]: value };
+    });
   }
 
   function updateMovementForm(field: keyof StockMovementFormState, value: string) {
@@ -123,17 +138,22 @@ export function StockModule() {
 
   function openCreateCatalog() {
     setEditingCatalog(null);
-    setCatalogForm(emptyCatalogForm());
+    setCatalogForm(stockTab === 'material'
+      ? { ...emptyCatalogForm(), category: 'material', isSerialized: '0', type: 'cabo', unitOfMeasure: 'metro' }
+      : emptyCatalogForm());
     setShowCatalogForm(true);
   }
 
   function editCatalog(catalog: StockCatalogRow) {
     setEditingCatalog(catalog);
     setCatalogForm({
+      category: catalog.category,
       type: catalog.type,
       brand: catalog.brand || '',
       model: catalog.model,
       supplier: catalog.supplier || '',
+      unitOfMeasure: catalog.unitOfMeasure,
+      isSerialized: catalog.isSerialized ? '1' : '0',
       purchasePriceCve: String(catalog.purchasePriceCve),
       sellingPriceCve: String(catalog.sellingPriceCve),
       rentalFeeCve: String(catalog.rentalFeeCve),
@@ -171,6 +191,7 @@ export function StockModule() {
         sellingPriceCve: Number(catalogForm.sellingPriceCve || 0),
         rentalFeeCve: Number(catalogForm.rentalFeeCve || 0),
         stockTotal: Number(catalogForm.stockTotal || 0),
+        isSerialized: catalogForm.isSerialized === '1',
         active: catalogForm.active === '1'
       })
     });
@@ -217,17 +238,37 @@ export function StockModule() {
     await loadMovements(selectedCatalog);
   }
 
-  const totals = summary?.totals;
+  const tabCounts = useMemo(() => {
+    const rows = summary?.rows || [];
+    return {
+      equipamento: rows.filter((item) => item.category === 'equipamento').length,
+      material: rows.filter((item) => item.category === 'material').length
+    };
+  }, [summary]);
+
+  // Cards de resumo específicos da aba ativa (não o total global do catálogo).
+  const totals = useMemo(() => {
+    if (!summary) return undefined;
+    const rows = summary.rows.filter((item) => item.category === stockTab);
+    return {
+      models: rows.length,
+      available: rows.reduce((sum, item) => sum + item.stockTotal, 0),
+      lowStock: rows.filter((item) => item.stockTotal > 0 && item.stockTotal <= 3).length,
+      inventoryValueCve: rows.reduce((sum, item) => sum + item.landedCostCve * item.stockTotal, 0)
+    };
+  }, [summary, stockTab]);
+
   const visibleStockRows = useMemo(() => (summary?.rows || []).filter((item) => {
     const normalizedSearch = search.trim().toLowerCase();
     const label = `${item.brand || ''} ${item.model} ${item.supplier || ''}`.toLowerCase();
     const matchesSearch = !normalizedSearch || label.includes(normalizedSearch);
+    const matchesTab = item.category === stockTab;
     const matchesType = typeFilter === 'all' || item.type === typeFilter;
     const matchesStock = stockFilter === 'all'
       || (stockFilter === 'low' && item.stockTotal > 0 && item.stockTotal <= 3)
       || (stockFilter === 'out' && item.stockTotal <= 0);
-    return matchesSearch && matchesType && matchesStock;
-  }), [summary, search, typeFilter, stockFilter]);
+    return matchesSearch && matchesTab && matchesType && matchesStock;
+  }), [summary, search, stockTab, typeFilter, stockFilter]);
 
   return (
     <section className="module-panel">
@@ -237,28 +278,65 @@ export function StockModule() {
           <h2>Stock</h2>
           {totals && (
             <p className="stock-header-subtitle">
-              <strong>{totals.models}</strong> modelos · <strong>{totals.available}</strong> unidades
+              <strong>{totals.models}</strong> {stockTab === 'material' ? 'referencias' : 'modelos'} · <strong>{totals.available}</strong> unidades
               {totals.lowStock > 0 && <> · <strong>{totals.lowStock}</strong> em stock baixo</>}
             </p>
           )}
         </div>
         {canManageStock && (
           <Button onClick={openCreateCatalog}>
-            Novo equipamento
+            {stockTab === 'material' ? 'Novo material' : 'Novo equipamento'}
           </Button>
         )}
       </div>
+
+      <nav className="segmented-tabs" role="tablist" aria-label="Categoria de stock">
+        <Button
+          variant="ghost"
+          role="tab"
+          aria-selected={stockTab === 'equipamento'}
+          className={`segmented-tab${stockTab === 'equipamento' ? ' is-active' : ''}`}
+          onClick={() => { setStockTab('equipamento'); setTypeFilter('all'); }}
+        >
+          <Boxes size={14} aria-hidden />
+          <span>Equipamentos</span>
+          <span className="segmented-tab-count">{tabCounts.equipamento}</span>
+        </Button>
+        <Button
+          variant="ghost"
+          role="tab"
+          aria-selected={stockTab === 'material'}
+          className={`segmented-tab${stockTab === 'material' ? ' is-active' : ''}`}
+          onClick={() => { setStockTab('material'); setTypeFilter('all'); }}
+        >
+          <Cable size={14} aria-hidden />
+          <span>Materiais</span>
+          <span className="segmented-tab-count">{tabCounts.material}</span>
+        </Button>
+      </nav>
 
       <div className="stock-filter-sticky">
         <FilterBar>
           <Field type="search" label="Buscar" aria-label="Pesquisar stock" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Marca, modelo ou fornecedor" />
           <Select label="Tipo" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | StockCatalogRow['type'])}>
             <option value="all">Todos</option>
-            <option value="cpe">CPE</option>
-            <option value="router">Router</option>
-            <option value="antena">Antena</option>
-            <option value="switch">Switch</option>
-            <option value="outro">Outro</option>
+            {stockTab === 'equipamento' ? (
+              <>
+                <option value="cpe">CPE</option>
+                <option value="router">Router</option>
+                <option value="antena">Antena</option>
+                <option value="switch">Switch</option>
+                <option value="outro">Outro</option>
+              </>
+            ) : (
+              <>
+                <option value="cabo">Cabo</option>
+                <option value="conector">Conector</option>
+                <option value="ficha">Ficha</option>
+                <option value="suporte">Suporte</option>
+                <option value="outro">Outro</option>
+              </>
+            )}
           </Select>
           <Select label="Stock" value={stockFilter} onChange={(event) => setStockFilter(event.target.value as 'all' | 'low' | 'out')}>
             <option value="all">Todos</option>
@@ -275,7 +353,7 @@ export function StockModule() {
       <section className="metric-grid compact" aria-label="Resumo de stock">
         <article className="metric-card">
           <Boxes size={20} />
-          <span>Modelos</span>
+          <span>{stockTab === 'material' ? 'Referencias' : 'Modelos'}</span>
           <strong>{totals ? totals.models : '...'}</strong>
           <small>catalogo ativo</small>
         </article>
@@ -303,7 +381,7 @@ export function StockModule() {
         <div className="client-detail">
           <div className="module-header">
             <div>
-              <p className="eyebrow">Equipamento selecionado</p>
+              <p className="eyebrow">{selectedCatalog.category === 'material' ? 'Material selecionado' : 'Equipamento selecionado'}</p>
               <h2>{selectedCatalog.brand ? `${selectedCatalog.brand} ${selectedCatalog.model}` : selectedCatalog.model}</h2>
             </div>
             {canManageStock && (
@@ -313,15 +391,24 @@ export function StockModule() {
               </div>
             )}
           </div>
-          <dl>
-            <div><dt>Tipo</dt><dd>{selectedCatalog.type}</dd></div>
-            <div><dt>Stock</dt><dd>{selectedCatalog.stockTotal}</dd></div>
-            <div><dt>Atribuidos</dt><dd>{assignments ? assignments.activeCount : '-'}</dd></div>
-            <div><dt>Custo</dt><dd>{selectedCatalog.landedCostCve.toLocaleString('pt-PT')} CVE</dd></div>
-            <div><dt>Venda</dt><dd>{selectedCatalog.sellingPriceCve.toLocaleString('pt-PT')} CVE</dd></div>
-            <div><dt>Aluguer</dt><dd>{selectedCatalog.rentalFeeCve.toLocaleString('pt-PT')} CVE</dd></div>
-          </dl>
+          {selectedCatalog.category === 'material' ? (
+            <dl>
+              <div><dt>Tipo</dt><dd>{selectedCatalog.type}</dd></div>
+              <div><dt>Stock</dt><dd>{selectedCatalog.stockTotal} {selectedCatalog.unitOfMeasure}</dd></div>
+              <div><dt>Custo/{selectedCatalog.unitOfMeasure}</dt><dd>{selectedCatalog.landedCostCve.toLocaleString('pt-PT')} CVE</dd></div>
+            </dl>
+          ) : (
+            <dl>
+              <div><dt>Tipo</dt><dd>{selectedCatalog.type}</dd></div>
+              <div><dt>Stock</dt><dd>{selectedCatalog.stockTotal}</dd></div>
+              <div><dt>Atribuidos</dt><dd>{assignments ? assignments.activeCount : '-'}</dd></div>
+              <div><dt>Custo</dt><dd>{selectedCatalog.landedCostCve.toLocaleString('pt-PT')} CVE</dd></div>
+              <div><dt>Venda</dt><dd>{selectedCatalog.sellingPriceCve.toLocaleString('pt-PT')} CVE</dd></div>
+              <div><dt>Aluguer</dt><dd>{selectedCatalog.rentalFeeCve.toLocaleString('pt-PT')} CVE</dd></div>
+            </dl>
+          )}
 
+          {selectedCatalog.category !== 'material' && (
           <section className="technical-section">
             <header className="technical-section-head">
               <h3><Users size={14} aria-hidden /> Atribuido a</h3>
@@ -364,6 +451,7 @@ export function StockModule() {
               </ul>
             )}
           </section>
+          )}
 
           {movements.length > 0 && (
             <div className="stock-movements" aria-label="Ultimos movimentos">
@@ -383,9 +471,11 @@ export function StockModule() {
 
       {visibleStockRows.length === 0 && summary && (
         <EmptyState
-          icon={Boxes}
-          title="Nenhum equipamento encontrado"
-          description="Ajusta os filtros ou cadastra um novo equipamento no catálogo."
+          icon={stockTab === 'material' ? Cable : Boxes}
+          title={stockTab === 'material' ? 'Nenhum material encontrado' : 'Nenhum equipamento encontrado'}
+          description={stockTab === 'material'
+            ? 'Ajusta os filtros ou cadastra um novo material (cabo, conector…) no catálogo.'
+            : 'Ajusta os filtros ou cadastra um novo equipamento no catálogo.'}
         />
       )}
 
@@ -425,7 +515,7 @@ export function StockModule() {
                 <span className="stock-item-level">
                   <span className="stock-item-level-dot" data-tone={tone} aria-hidden />
                   <span className="stock-item-level-value">{item.stockTotal}</span>
-                  <span className="stock-item-level-unit">un.</span>
+                  <span className="stock-item-level-unit">{item.unitOfMeasure || 'un.'}</span>
                 </span>
                 <div className="stock-item-value">
                   <span className="stock-item-value-amount">{item.sellingPriceCve.toLocaleString('pt-PT')}</span>
@@ -462,37 +552,68 @@ export function StockModule() {
       <Dialog
         open={showCatalogForm}
         onClose={closeCatalogForm}
-        eyebrow={editingCatalog ? 'Editar equipamento' : 'Novo equipamento'}
-        title={editingCatalog ? (editingCatalog.brand ? `${editingCatalog.brand} ${editingCatalog.model}` : editingCatalog.model) : 'Equipamento'}
+        eyebrow={
+          catalogForm.category === 'material'
+            ? (editingCatalog ? 'Editar material' : 'Novo material')
+            : (editingCatalog ? 'Editar equipamento' : 'Novo equipamento')
+        }
+        title={editingCatalog ? (editingCatalog.brand ? `${editingCatalog.brand} ${editingCatalog.model}` : editingCatalog.model) : (catalogForm.category === 'material' ? 'Material' : 'Equipamento')}
         size="md"
         actions={
           <>
             <Button variant="secondary" onClick={closeCatalogForm}>Cancelar</Button>
             <Button type="submit" form="catalog-form">
-              {editingCatalog ? 'Atualizar equipamento' : 'Gravar equipamento'}
+              {editingCatalog
+                ? (catalogForm.category === 'material' ? 'Atualizar material' : 'Atualizar equipamento')
+                : (catalogForm.category === 'material' ? 'Gravar material' : 'Gravar equipamento')}
             </Button>
           </>
         }
       >
         <form id="catalog-form" className="client-form" onSubmit={saveCatalog}>
-          <Select label="Tipo" value={catalogForm.type} onChange={(event) => updateCatalogForm('type', event.target.value)}>
-            <option value="cpe">CPE</option>
-            <option value="router">Router</option>
-            <option value="antena">Antena</option>
-            <option value="switch">Switch</option>
-            <option value="outro">Outro</option>
-          </Select>
-          <Field label="Marca" value={catalogForm.brand} onChange={(event) => updateCatalogForm('brand', event.target.value)} />
-          <Field label="Modelo" required value={catalogForm.model} onChange={(event) => updateCatalogForm('model', event.target.value)} />
-          <Field label="Fornecedor" value={catalogForm.supplier} onChange={(event) => updateCatalogForm('supplier', event.target.value)} />
-          <Field label="Custo compra CVE" type="number" min={0} value={catalogForm.purchasePriceCve} onChange={(event) => updateCatalogForm('purchasePriceCve', event.target.value)} />
-          <Field label="Preco venda CVE" type="number" min={0} value={catalogForm.sellingPriceCve} onChange={(event) => updateCatalogForm('sellingPriceCve', event.target.value)} />
-          <Field label="Aluguer mensal CVE" type="number" min={0} value={catalogForm.rentalFeeCve} onChange={(event) => updateCatalogForm('rentalFeeCve', event.target.value)} />
-          <Field label={editingCatalog ? 'Stock atual' : 'Stock inicial'} type="number" min={0} value={catalogForm.stockTotal} onChange={(event) => updateCatalogForm('stockTotal', event.target.value)} />
-          <Select label="Estado" value={catalogForm.active} onChange={(event) => updateCatalogForm('active', event.target.value)}>
-            <option value="1">Ativo</option>
-            <option value="0">Inativo</option>
-          </Select>
+          {catalogForm.category === 'material' ? (
+            <>
+              <Select label="Tipo" value={catalogForm.type} onChange={(event) => updateCatalogForm('type', event.target.value)}>
+                <option value="cabo">Cabo</option>
+                <option value="conector">Conector</option>
+                <option value="ficha">Ficha</option>
+                <option value="suporte">Suporte</option>
+                <option value="outro">Outro</option>
+              </Select>
+              <Field label="Designacao" required value={catalogForm.model} onChange={(event) => updateCatalogForm('model', event.target.value)} placeholder="Ex.: Cabo UTP Cat6" />
+              <Select label="Unidade de medida" value={catalogForm.unitOfMeasure} onChange={(event) => updateCatalogForm('unitOfMeasure', event.target.value)}>
+                <option value="metro">Metro</option>
+                <option value="un">Unidade</option>
+                <option value="caixa">Caixa</option>
+                <option value="rolo">Rolo</option>
+                <option value="par">Par</option>
+              </Select>
+              <Field label="Fornecedor" value={catalogForm.supplier} onChange={(event) => updateCatalogForm('supplier', event.target.value)} />
+              <Field label="Custo por unidade CVE" type="number" min={0} value={catalogForm.purchasePriceCve} onChange={(event) => updateCatalogForm('purchasePriceCve', event.target.value)} />
+              <Field label={editingCatalog ? `Stock atual (${catalogForm.unitOfMeasure})` : `Stock inicial (${catalogForm.unitOfMeasure})`} type="number" min={0} value={catalogForm.stockTotal} onChange={(event) => updateCatalogForm('stockTotal', event.target.value)} />
+            </>
+          ) : (
+            <>
+              <Select label="Tipo" value={catalogForm.type} onChange={(event) => updateCatalogForm('type', event.target.value)}>
+                <option value="cpe">CPE</option>
+                <option value="router">Router</option>
+                <option value="antena">Antena</option>
+                <option value="switch">Switch</option>
+                <option value="outro">Outro</option>
+              </Select>
+              <Field label="Marca" value={catalogForm.brand} onChange={(event) => updateCatalogForm('brand', event.target.value)} />
+              <Field label="Modelo" required value={catalogForm.model} onChange={(event) => updateCatalogForm('model', event.target.value)} />
+              <Field label="Fornecedor" value={catalogForm.supplier} onChange={(event) => updateCatalogForm('supplier', event.target.value)} />
+              <Field label="Custo compra CVE" type="number" min={0} value={catalogForm.purchasePriceCve} onChange={(event) => updateCatalogForm('purchasePriceCve', event.target.value)} />
+              <Field label="Preco venda CVE" type="number" min={0} value={catalogForm.sellingPriceCve} onChange={(event) => updateCatalogForm('sellingPriceCve', event.target.value)} />
+              <Field label="Aluguer mensal CVE" type="number" min={0} value={catalogForm.rentalFeeCve} onChange={(event) => updateCatalogForm('rentalFeeCve', event.target.value)} />
+              <Field label={editingCatalog ? 'Stock atual' : 'Stock inicial'} type="number" min={0} value={catalogForm.stockTotal} onChange={(event) => updateCatalogForm('stockTotal', event.target.value)} />
+              <Select label="Estado" value={catalogForm.active} onChange={(event) => updateCatalogForm('active', event.target.value)}>
+                <option value="1">Ativo</option>
+                <option value="0">Inativo</option>
+              </Select>
+            </>
+          )}
         </form>
       </Dialog>
 

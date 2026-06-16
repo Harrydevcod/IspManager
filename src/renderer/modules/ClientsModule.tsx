@@ -1,7 +1,7 @@
 import { Cable, MessageCircle, Pencil, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useState } from 'react';
-import { Badge, Button, DetailPanel, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
+import { Badge, Button, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
 import { ClientImportDialog } from './clients/import';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
@@ -306,10 +306,11 @@ export function ClientsModule({
       </FilterBar>
 
       {selectedClient && (
-        <DetailPanel
+        <Dialog
+          open
+          size="xl"
           eyebrow={selectedClient.clientCode}
           title={selectedClient.fullName}
-          actionsClassName="client-preview-actions"
           onClose={() => setSelectedClient(null)}
           actions={
             <>
@@ -338,6 +339,7 @@ export function ClientsModule({
             </>
           }
         >
+          <div className="client-detail">
           <dl>
             <div><dt>Telefone</dt><dd>{selectedClient.phone || 'Sem telefone'}</dd></div>
             <div><dt>Ilha</dt><dd>{selectedClient.island || '-'}</dd></div>
@@ -439,7 +441,8 @@ export function ClientsModule({
               </>
             )}
           </section>
-        </DetailPanel>
+          </div>
+        </Dialog>
       )}
 
       {!loading && !loadError && (

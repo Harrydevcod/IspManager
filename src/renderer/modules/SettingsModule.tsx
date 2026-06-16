@@ -43,6 +43,7 @@ type SettingsFormState = {
   island: string;
   bankAccounts: BankAccountForm[];
   defaultDueDay: string;
+  autoBillingDay: string;
   currencyCode: string;
   invoicePrefix: string;
   receiptPrefix: string;
@@ -103,6 +104,7 @@ export function SettingsModule() {
     island: '',
     bankAccounts: [],
     defaultDueDay: '1',
+    autoBillingDay: '30',
     currencyCode: 'CVE',
     invoicePrefix: 'FT',
     receiptPrefix: 'RC',
@@ -261,13 +263,14 @@ export function SettingsModule() {
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
         }
-        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes'> & { defaultDueDay: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number }>;
+        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes'> & { defaultDueDay: number; autoBillingDay: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number }>;
       })
       .then((settings) => {
         const loadedForm = {
           ...settings,
           bankAccounts: Array.isArray(settings.bankAccounts) ? settings.bankAccounts : [],
           defaultDueDay: String(settings.defaultDueDay),
+          autoBillingDay: String(settings.autoBillingDay),
           ivaRate: String(settings.ivaRate),
           whatsappSuspensionNoticeDays: String(settings.whatsappSuspensionNoticeDays),
           noticeCooldownDays: String(settings.noticeCooldownDays),
@@ -368,6 +371,7 @@ export function SettingsModule() {
         body: JSON.stringify({
           ...savedForm,
           defaultDueDay: Number(savedForm.defaultDueDay),
+          autoBillingDay: Number(savedForm.autoBillingDay),
           ivaRate: Number(savedForm.ivaRate),
           whatsappSuspensionNoticeDays: Number(savedForm.whatsappSuspensionNoticeDays),
           noticeCooldownDays: Number(savedForm.noticeCooldownDays),
@@ -559,6 +563,16 @@ export function SettingsModule() {
         {activeTab === 'billing' && (
           <>
             <Field
+              label="Dia de geração automática das faturas"
+              required
+              type="number"
+              min={1}
+              max={31}
+              value={form.autoBillingDay}
+              onChange={(event) => updateForm('autoBillingDay', event.target.value)}
+              hint="Ao fechar o mês (dia 30), gera as faturas com competência desse mês. Recupera meses não abertos."
+            />
+            <Field
               label="Dia padrão de vencimento"
               required
               type="number"
@@ -566,6 +580,7 @@ export function SettingsModule() {
               max={31}
               value={form.defaultDueDay}
               onChange={(event) => updateForm('defaultDueDay', event.target.value)}
+              hint="Referência informativa. O vencimento real é a data de emissão + 30 dias."
             />
             <Field
               label="Moeda"
