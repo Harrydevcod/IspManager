@@ -1,7 +1,7 @@
 import { Banknote, Coins, Download, FileText, Percent, Wallet } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, Field, Message, MetricCard, MetricGrid, RevenueBars, formatCompactCve } from '../components';
-import { authFetch, useAuth } from '../lib/auth';
+import { authFetch } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import './InvestmentsModule.css';
 import type { InvestmentList, RevenuePoint } from '../types';
@@ -24,9 +24,23 @@ function currentMonth() {
  * RevenueBars chart, alerts and the invested-vs-annual-return analysis. Management (list +
  * CRUD) lives in InvestmentsModule. Both read the same /api/investments endpoint independently.
  */
+function filenameFromDisposition(value: string | null): string | null {
+  if (!value) return null;
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(value);
+  if (star) {
+    try {
+      return decodeURIComponent(star[1]);
+    } catch {
+      /* fall through to plain filename */
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(value);
+  return plain ? plain[1] : null;
+}
+
 export function ProfitModule() {
-  const auth = useAuth();
-  const reportQuery = auth.token ? `?token=${encodeURIComponent(auth.token)}` : '';
+  const [exportBusy, setExportBusy] = useState<'pdf' | 'xlsx' | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [data, setData] = useState<InvestmentList>(EMPTY_INVESTMENT_LIST);
   const [month, setMonth] = useState(currentMonth());
   const [showAllMonths, setShowAllMonths] = useState(false);
@@ -57,6 +71,30 @@ export function ProfitModule() {
         setRevenuePoints([]);
         setActiveClients(0);
       });
+  }, []);
+
+  const downloadReport = useCallback(async (format: 'pdf' | 'xlsx') => {
+    setExportBusy(format);
+    setExportError(null);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/investments/report.${format}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const fallback = `Rentabilidade-${new Date().toISOString().slice(0, 10)}.${format}`;
+      const filename = filenameFromDisposition(response.headers.get('content-disposition')) ?? fallback;
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+    } catch {
+      setExportError('Não foi possível gerar o relatório. Tenta novamente.');
+    } finally {
+      setExportBusy(null);
+    }
   }, []);
 
   const investmentReturnRows = useMemo(() => {
@@ -98,24 +136,26 @@ export function ProfitModule() {
           <Button variant="secondary" onClick={() => setShowAllMonths((s) => !s)} className={showAllMonths ? 'active' : ''}>
             {showAllMonths ? 'Mes selecionado' : 'Todos os meses'}
           </Button>
-          <a
-            href={`http://127.0.0.1:3001/api/investments/report.pdf${reportQuery}`}
-            target="_blank"
-            rel="noreferrer"
-            className="button-link"
+          <Button
+            variant="secondary"
+            onClick={() => void downloadReport('pdf')}
+            disabled={exportBusy !== null}
             title="Exportar relatório PDF"
           >
-            <FileText size={14} /> PDF
-          </a>
-          <a
-            href={`http://127.0.0.1:3001/api/investments/report.xlsx${reportQuery}`}
-            className="button-link"
+            <FileText size={14} /> {exportBusy === 'pdf' ? 'A gerar…' : 'PDF'}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => void downloadReport('xlsx')}
+            disabled={exportBusy !== null}
             title="Exportar dados em Excel"
           >
-            <Download size={14} /> Excel
-          </a>
+            <Download size={14} /> {exportBusy === 'xlsx' ? 'A gerar…' : 'Excel'}
+          </Button>
         </div>
       </div>
+
+      {exportError && <Message tone="error">{exportError}</Message>}
 
       <section
         className={`operations-brief${briefAttention ? ' operations-brief-attention' : ''}`}
