@@ -2,6 +2,7 @@ import { Banknote, Coins, Download, FileText, Percent, Wallet } from 'lucide-rea
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, Field, Message, MetricCard, MetricGrid, RevenueBars, formatCompactCve } from '../components';
 import { authFetch } from '../lib/auth';
+import { downloadAuthenticated } from '../lib/download';
 import { formatCve } from '../lib/format';
 import './InvestmentsModule.css';
 import type { InvestmentList, RevenuePoint } from '../types';
@@ -24,20 +25,6 @@ function currentMonth() {
  * RevenueBars chart, alerts and the invested-vs-annual-return analysis. Management (list +
  * CRUD) lives in InvestmentsModule. Both read the same /api/investments endpoint independently.
  */
-function filenameFromDisposition(value: string | null): string | null {
-  if (!value) return null;
-  const star = /filename\*=UTF-8''([^;]+)/i.exec(value);
-  if (star) {
-    try {
-      return decodeURIComponent(star[1]);
-    } catch {
-      /* fall through to plain filename */
-    }
-  }
-  const plain = /filename="?([^";]+)"?/i.exec(value);
-  return plain ? plain[1] : null;
-}
-
 export function ProfitModule() {
   const [exportBusy, setExportBusy] = useState<'pdf' | 'xlsx' | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -77,19 +64,8 @@ export function ProfitModule() {
     setExportBusy(format);
     setExportError(null);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/investments/report.${format}`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
       const fallback = `Rentabilidade-${new Date().toISOString().slice(0, 10)}.${format}`;
-      const filename = filenameFromDisposition(response.headers.get('content-disposition')) ?? fallback;
-      const anchor = document.createElement('a');
-      anchor.href = objectUrl;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+      await downloadAuthenticated(`http://127.0.0.1:3001/api/investments/report.${format}`, fallback);
     } catch {
       setExportError('Não foi possível gerar o relatório. Tenta novamente.');
     } finally {
