@@ -31,14 +31,11 @@ const setupSchema = z.object({
 });
 
 function bearerToken(request: FastifyRequest): string | null {
+  // Apenas o header Authorization. Nunca aceitar o token via query string: a URL
+  // vaza para o histórico do browser/Electron e para os logs de pedidos do backend.
   const header = request.headers.authorization;
   if (header?.startsWith('Bearer ')) {
     return header.slice(7).trim() || null;
-  }
-  const query = request.query;
-  if (query && typeof query === 'object' && 'token' in query) {
-    const token = (query as { token?: unknown }).token;
-    return typeof token === 'string' ? token.trim() || null : null;
   }
   return null;
 }

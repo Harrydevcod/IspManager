@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, Eye, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Smartphone, Undo2, X } from 'lucide-react';
 import { Badge, Button, DataList, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
-import { authFetch, useAuth } from '../lib/auth';
+import { authFetch } from '../lib/auth';
+import { downloadAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
   fallbackWhatsappOverdueTemplate,
@@ -155,7 +156,6 @@ export function PaymentsModule() {
   const [notifyLoading, setNotifyLoading] = useState(false);
   const [notifySending, setNotifySending] = useState(false);
   const { toast } = useToast();
-  const auth = useAuth();
   const [companyName, setCompanyName] = useState('ISPM');
   const [whatsappTemplate, setWhatsappTemplate] = useState(fallbackWhatsappTemplate);
   const [whatsappInvoiceReadyTemplate, setWhatsappInvoiceReadyTemplate] = useState(fallbackWhatsappInvoiceReadyTemplate);
@@ -640,23 +640,23 @@ export function PaymentsModule() {
     setPdfPreview(null);
   }
 
-  function documentUrl(payment: PaymentRow, type: 'invoice' | 'receipt', inline = false) {
+  // Endpoint do documento — o token NUNCA vai na URL; o header de auth é
+  // injetado pelo authFetch (download) ou pelo useAuthenticatedObjectUrl (iframe).
+  function documentEndpoint(paymentId: number, type: 'invoice' | 'receipt', inline = false) {
     const suffix = type === 'invoice' ? 'invoice.pdf' : 'receipt.pdf';
-    const params = new URLSearchParams();
-    if (inline) params.set('inline', '1');
-    if (auth.token) params.set('token', auth.token);
-    const query = params.toString();
-    return `http://127.0.0.1:3001/api/payments/${payment.id}/${suffix}${query ? `?${query}` : ''}`;
+    return `http://127.0.0.1:3001/api/payments/${paymentId}/${suffix}${inline ? '?inline=1' : ''}`;
   }
 
-  function downloadPdf(payment: PaymentRow, type: 'invoice' | 'receipt') {
-    const url = documentUrl(payment, type);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = '';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  async function downloadPdf(payment: PaymentRow, type: 'invoice' | 'receipt') {
+    const docLabel = type === 'invoice' ? 'Fatura' : 'Recibo';
+    const ref = type === 'invoice'
+      ? payment.invoiceNumber || payment.id
+      : payment.receiptNumber || payment.id;
+    try {
+      await downloadAuthenticated(documentEndpoint(payment.id, type), `${docLabel}-${ref}.pdf`);
+    } catch {
+      toast(`Nao foi possivel descarregar o ${docLabel.toLowerCase()}.`, 'error');
+    }
   }
 
   function previewPaymentDocument(payment: PaymentRow) {
@@ -716,6 +716,17 @@ export function PaymentsModule() {
   );
 
   const showActionForm = actionMode !== null && actionPaymentId !== null && selectedPayment?.id === actionPaymentId;
+
+  // Pago → o documento é o recibo emitido; pendente/atraso → a fatura.
+  const previewDocType: 'invoice' | 'receipt' = selectedPayment?.status === 'paid' ? 'receipt' : 'invoice';
+  const previewDoc = useAuthenticatedObjectUrl(
+    selectedPayment && selectedPayment.status !== 'cancelled'
+      ? documentEndpoint(selectedPayment.id, previewDocType, true)
+      : null
+  );
+  const pdfDialogDoc = useAuthenticatedObjectUrl(
+    pdfPreview ? documentEndpoint(pdfPreview.payment.id, pdfPreview.type, true) : null
+  );
 
   return (
     <section className="module-panel">
@@ -1088,11 +1099,9 @@ export function PaymentsModule() {
           )}
 
           {(() => {
-            // Pago → o documento é o recibo emitido; pendente/atraso → a fatura.
             // A fatura que deu origem ao recibo fica marcada como paga (Badge) e
             // continua acessível via "Fatura PDF".
-            const previewType: 'invoice' | 'receipt' = selectedPayment.status === 'paid' ? 'receipt' : 'invoice';
-            const docLabel = previewType === 'receipt'
+            const docLabel = previewDocType === 'receipt'
               ? (selectedPayment.receiptNumber ? `Recibo ${selectedPayment.receiptNumber}` : 'Recibo emitido')
               : (selectedPayment.invoiceNumber ? `Fatura ${selectedPayment.invoiceNumber}` : 'Fatura por emitir');
             return (
@@ -1104,16 +1113,20 @@ export function PaymentsModule() {
                     Mes {formatPtMonth(selectedPayment.referenceMonth)} - vencimento {formatPtDate(selectedPayment.dueDate)} - {selectedPayment.status}
                   </small>
                 </div>
-                {selectedPayment.status !== 'cancelled' ? (
+                {selectedPayment.status === 'cancelled' ? (
+                  <Message>Pagamento anulado. Nenhuma fatura ou recibo pode ser emitido.</Message>
+                ) : previewDoc.error ? (
+                  <Message tone="error">Nao foi possivel carregar o documento.</Message>
+                ) : previewDoc.objectUrl ? (
                   <iframe
                     className="payment-pdf-preview"
-                    title={previewType === 'receipt'
+                    title={previewDocType === 'receipt'
                       ? `Pre-visualizacao do recibo ${selectedPayment.receiptNumber || selectedPayment.id}`
                       : `Pre-visualizacao da fatura ${selectedPayment.invoiceNumber || selectedPayment.id}`}
-                    src={documentUrl(selectedPayment, previewType, true)}
+                    src={previewDoc.objectUrl}
                   />
                 ) : (
-                  <Message>Pagamento anulado. Nenhuma fatura ou recibo pode ser emitido.</Message>
+                  <Message>A carregar documento…</Message>
                 )}
               </>
             );
@@ -1456,7 +1469,7 @@ export function PaymentsModule() {
             {pdfPreview && (
               <Button
                 leadingIcon={<Download size={14} aria-hidden />}
-                onClick={() => downloadPdf(pdfPreview.payment, pdfPreview.type)}
+                onClick={() => void downloadPdf(pdfPreview.payment, pdfPreview.type)}
               >
                 Descarregar
               </Button>
@@ -1465,11 +1478,17 @@ export function PaymentsModule() {
         }
       >
         {pdfPreview && (
-          <iframe
-            className="pdf-dialog-frame"
-            title={pdfPreview.type === 'receipt' ? 'Pre-visualizacao do recibo' : 'Pre-visualizacao da fatura'}
-            src={documentUrl(pdfPreview.payment, pdfPreview.type, true)}
-          />
+          pdfDialogDoc.error ? (
+            <Message tone="error">Nao foi possivel carregar o documento.</Message>
+          ) : pdfDialogDoc.objectUrl ? (
+            <iframe
+              className="pdf-dialog-frame"
+              title={pdfPreview.type === 'receipt' ? 'Pre-visualizacao do recibo' : 'Pre-visualizacao da fatura'}
+              src={pdfDialogDoc.objectUrl}
+            />
+          ) : (
+            <Message>A carregar documento…</Message>
+          )
         )}
       </Dialog>
     </section>
