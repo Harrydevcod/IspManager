@@ -47,6 +47,16 @@ export type ServiceRow = {
   status: 'active' | 'suspended' | 'cancelled';
   activationDate: string | null;
   technicalNotes: string | null;
+  audiovisualMode: 'none' | 'monthly' | 'annual';
+  audiovisualMonthlyCve: number;
+  audiovisualAnnualCve: number;
+};
+
+export type AudiovisualConfig = {
+  enabled: boolean;
+  label: string;
+  monthlyCve: number;
+  annualCve: number;
 };
 
 export type PaymentRow = {

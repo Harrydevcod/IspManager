@@ -5,7 +5,7 @@ import { Badge, Button, Combobox, Dialog, EmptyState, Field, FilterBar, Message,
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtDateTime } from '../lib/format';
 import { statusLabel, statusTone } from '../lib/status';
-import type { Client, DeviceAssignment, PlanRow, ServiceEvent, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
+import type { AudiovisualConfig, Client, DeviceAssignment, PlanRow, ServiceEvent, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
 
 const eventTypeLabel: Record<ServiceEventType, string> = {
   instalacao: 'Instalacao',
@@ -61,6 +61,9 @@ type ServiceFormState = {
   activationDate: string;
   status: 'active' | 'suspended' | 'cancelled';
   technicalNotes: string;
+  audiovisualMode: 'none' | 'monthly' | 'annual';
+  audiovisualMonthlyCve: string;
+  audiovisualAnnualCve: string;
 };
 
 function emptyServiceForm(): ServiceFormState {
@@ -71,7 +74,10 @@ function emptyServiceForm(): ServiceFormState {
     dueDay: '1',
     activationDate: new Date().toISOString().slice(0, 10),
     status: 'active',
-    technicalNotes: ''
+    technicalNotes: '',
+    audiovisualMode: 'none',
+    audiovisualMonthlyCve: '',
+    audiovisualAnnualCve: ''
   };
 }
 
@@ -91,6 +97,7 @@ export function ServicesModule({
   const [selectedService, setSelectedService] = useState<ServiceRow | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [plans, setPlans] = useState<PlanRow[]>([]);
+  const [avConfig, setAvConfig] = useState<AudiovisualConfig | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingService, setEditingService] = useState<ServiceRow | null>(null);
   const [attachItems, setAttachItems] = useState(false);
@@ -128,6 +135,10 @@ export function ServicesModule({
       .then((response) => response.json() as Promise<PlanRow[]>)
       .then(setPlans)
       .catch(() => setPlans([]));
+    authFetch('http://127.0.0.1:3001/api/audiovisual-config')
+      .then((response) => response.ok ? response.json() as Promise<AudiovisualConfig> : null)
+      .then((config) => setAvConfig(config))
+      .catch(() => setAvConfig(null));
   }, []);
 
   function updateForm(field: keyof ServiceFormState, value: string) {
@@ -173,7 +184,10 @@ export function ServicesModule({
       dueDay: String(service.dueDay),
       activationDate: service.activationDate || new Date().toISOString().slice(0, 10),
       status: service.status,
-      technicalNotes: service.technicalNotes || ''
+      technicalNotes: service.technicalNotes || '',
+      audiovisualMode: service.audiovisualMode,
+      audiovisualMonthlyCve: service.audiovisualMonthlyCve ? String(service.audiovisualMonthlyCve) : '',
+      audiovisualAnnualCve: service.audiovisualAnnualCve ? String(service.audiovisualAnnualCve) : ''
     });
     setShowForm(true);
   }
@@ -480,6 +494,9 @@ export function ServicesModule({
         activationDate: form.activationDate,
         status: form.status,
         technicalNotes: form.technicalNotes,
+        audiovisualMode: form.audiovisualMode,
+        audiovisualMonthlyCve: form.audiovisualMode === 'monthly' ? Number(form.audiovisualMonthlyCve || 0) : 0,
+        audiovisualAnnualCve: form.audiovisualMode === 'annual' ? Number(form.audiovisualAnnualCve || 0) : 0,
         items: items.length > 0 ? items : undefined,
         installCosts: installCosts.length > 0 ? installCosts : undefined
       })
@@ -643,6 +660,16 @@ export function ServicesModule({
           <dl>
             <div><dt>Plano</dt><dd>{selectedService.planName || '-'}</dd></div>
             <div><dt>Mensalidade</dt><dd>{formatCve(selectedService.monthlyValueCve)}</dd></div>
+            {selectedService.audiovisualMode !== 'none' && (
+              <div>
+                <dt>{avConfig?.label || 'Conteúdos audiovisuais'}</dt>
+                <dd>
+                  {selectedService.audiovisualMode === 'monthly'
+                    ? `${formatCve(selectedService.audiovisualMonthlyCve)} / mês`
+                    : `${formatCve(selectedService.audiovisualAnnualCve)} / ano`}
+                </dd>
+              </div>
+            )}
             <div><dt>Vencimento</dt><dd>Dia {selectedService.dueDay}</dd></div>
             <div><dt>Ativado em</dt><dd>{formatPtDate(selectedService.activationDate)}</dd></div>
             <div><dt>Estado</dt><dd><Badge tone={statusTone(selectedService.status)}>{statusLabel(selectedService.status)}</Badge></dd></div>
@@ -919,6 +946,53 @@ export function ServicesModule({
             <option value="cancelled">Cancelado</option>
           </Select>
           <Field wide label="Notas tecnicas" value={form.technicalNotes} onChange={(event) => updateForm('technicalNotes', event.target.value)} />
+
+          {avConfig?.enabled && (
+            <div className="service-items-builder">
+              <Toggle
+                title={avConfig.label}
+                description="Mensal entra na fatura da internet; anual gera fatura própria."
+                checked={form.audiovisualMode !== 'none'}
+                onChange={(event) => setForm((current) => ({
+                  ...current,
+                  audiovisualMode: event.target.checked ? 'monthly' : 'none',
+                  audiovisualMonthlyCve: current.audiovisualMonthlyCve || String(avConfig.monthlyCve),
+                  audiovisualAnnualCve: current.audiovisualAnnualCve || String(avConfig.annualCve)
+                }))}
+              />
+              {form.audiovisualMode !== 'none' && (
+                <>
+                  <Select
+                    label="Modalidade"
+                    value={form.audiovisualMode}
+                    onChange={(event) => updateForm('audiovisualMode', event.target.value)}
+                  >
+                    <option value="monthly">Mensal — na fatura da internet</option>
+                    <option value="annual">Anual — fatura separada</option>
+                  </Select>
+                  {form.audiovisualMode === 'monthly' ? (
+                    <Field
+                      label="Valor mensal CVE"
+                      required
+                      type="number"
+                      min={0}
+                      value={form.audiovisualMonthlyCve}
+                      onChange={(event) => updateForm('audiovisualMonthlyCve', event.target.value)}
+                    />
+                  ) : (
+                    <Field
+                      label="Valor anual CVE"
+                      required
+                      type="number"
+                      min={0}
+                      value={form.audiovisualAnnualCve}
+                      onChange={(event) => updateForm('audiovisualAnnualCve', event.target.value)}
+                    />
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {!editingService && canRecordTechnical && (
             <div className="service-items-builder">

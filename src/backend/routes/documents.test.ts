@@ -27,6 +27,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  db.prepare('DELETE FROM payment_lines').run();
   db.prepare('DELETE FROM payments').run();
   db.prepare('DELETE FROM services').run();
   db.prepare('DELETE FROM internet_plans').run();
@@ -169,6 +170,27 @@ describe('GET /api/payments/:id/invoice.pdf', () => {
     const response = await app.inject({ method: 'GET', url: `/api/payments/${id}/invoice.pdf?inline=1` });
     expect(response.statusCode).toBe(200);
     expect(String(response.headers['content-disposition'])).toContain('inline');
+  });
+
+  test('renders a multi-line invoice (internet + audiovisual) without error', async () => {
+    const id = seedPayment('pending');
+    // Composição combinada: o pagamento traz duas linhas; a fatura percorre-as.
+    db.prepare(`INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order) VALUES (?, 'internet', 'Servico de Internet', 4500, 0)`).run(id);
+    db.prepare(`INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order) VALUES (?, 'audiovisual', 'Distribuição de Conteúdos Audiovisuais', 500, 1)`).run(id);
+    db.prepare('UPDATE payments SET amount_cve = 5000 WHERE id = ?').run(id);
+
+    const response = await app.inject({ method: 'GET', url: `/api/payments/${id}/invoice.pdf` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe('application/pdf');
+    expect(response.rawPayload.slice(0, 4).toString('ascii')).toBe('%PDF');
+  });
+
+  test('legacy payment without lines still renders the internet line', async () => {
+    const id = seedPayment('pending'); // sem payment_lines → fallback histórico
+    const response = await app.inject({ method: 'GET', url: `/api/payments/${id}/invoice.pdf` });
+    expect(response.statusCode).toBe(200);
+    expect(response.rawPayload.slice(0, 4).toString('ascii')).toBe('%PDF');
   });
 });
 

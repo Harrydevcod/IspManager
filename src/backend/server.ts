@@ -24,6 +24,7 @@ import { registerWorkOrderRoutes } from './routes/work-orders';
 import { registerBackupRoutes } from './routes/backup';
 import { createBackup, pruneBackups } from './lib/backup';
 import { runMonthlyBillingIfDue } from './lib/auto-billing';
+import { runAudiovisualAnnualIfDue } from './lib/audiovisual-billing';
 import { runOverdueNoticesIfDue } from './lib/notices';
 import { pollWhatsappDeliveryIfDue, runWhatsappOutboxIfDue } from './lib/whatsapp-outbox';
 import { pollSmsStatusIfDue, runSmsOutboxIfDue } from './lib/sms-outbox';
@@ -66,6 +67,17 @@ export async function createBackendApp() {
       }
     } catch (err) {
       app.log.error({ err }, 'auto billing failed');
+    }
+
+    // Anuidade audiovisual: fatura anual separada, gerada/renovada por ciclo.
+    // Idempotente; partilha o mesmo opt-out da faturação automática.
+    try {
+      const result = runAudiovisualAnnualIfDue();
+      if ('ran' in result) {
+        app.log.info({ result }, 'audiovisual annual billing executed');
+      }
+    } catch (err) {
+      app.log.error({ err }, 'audiovisual annual billing failed');
     }
   }
 

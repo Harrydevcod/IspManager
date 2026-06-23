@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { computeMonthlyBilling, dueDateFromIssue, generateMonthlyBilling, todayIso } from '../lib/billing';
 import { nextDocumentNumber } from '../lib/numbering';
+import { loadAudiovisualConfig } from '../lib/audiovisual';
+import { runAudiovisualAnnualIfDue } from '../lib/audiovisual-billing';
 import { recordAudit } from '../lib/audit';
 import {
   insertInstallCostsWithinTx,
@@ -52,9 +54,37 @@ const serviceSchema = z.object({
   activationDate: z.string().optional().nullable(),
   status: z.enum(['active', 'suspended', 'cancelled']).default('active'),
   technicalNotes: z.string().trim().optional().nullable(),
+  audiovisualMode: z.enum(['none', 'monthly', 'annual']).optional().default('none'),
+  audiovisualMonthlyCve: z.coerce.number().min(0).optional().default(0),
+  audiovisualAnnualCve: z.coerce.number().min(0).optional().default(0),
   items: z.array(serviceItemSchema).optional().nullable(),
   installCosts: z.array(installCostSchema).optional().nullable()
 });
+
+/**
+ * Regras do add-on audiovisual: a modalidade ativa exige o respetivo preço > 0; e
+ * um serviço não pode ficar vazio (sem mensalidade de internet nem audiovisual),
+ * caso contrário não geraria qualquer fatura. Devolve a mensagem de erro ou null.
+ */
+function validateServicePayload(data: {
+  monthlyValueCve: number;
+  audiovisualMode: 'none' | 'monthly' | 'annual';
+  audiovisualMonthlyCve: number;
+  audiovisualAnnualCve: number;
+}): string | null {
+  if (data.audiovisualMode === 'monthly' && data.audiovisualMonthlyCve <= 0) {
+    return 'Valor mensal de conteúdos audiovisuais deve ser superior a zero';
+  }
+  if (data.audiovisualMode === 'annual' && data.audiovisualAnnualCve <= 0) {
+    return 'Valor anual de conteúdos audiovisuais deve ser superior a zero';
+  }
+  const hasMonthlyCharge = data.monthlyValueCve > 0 || (data.audiovisualMode === 'monthly' && data.audiovisualMonthlyCve > 0);
+  const hasAnnualCharge = data.audiovisualMode === 'annual' && data.audiovisualAnnualCve > 0;
+  if (!hasMonthlyCharge && !hasAnnualCharge) {
+    return 'Serviço sem valor: defina a mensalidade ou ative os conteúdos audiovisuais';
+  }
+  return null;
+}
 
 const nextNumber = nextDocumentNumber;
 
@@ -74,7 +104,10 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         s.due_day AS dueDay,
         s.status,
         s.activation_date AS activationDate,
-        s.technical_notes AS technicalNotes
+        s.technical_notes AS technicalNotes,
+        s.audiovisual_mode AS audiovisualMode,
+        s.audiovisual_monthly_cve AS audiovisualMonthlyCve,
+        s.audiovisual_annual_cve AS audiovisualAnnualCve
       FROM services s
       JOIN clients c ON c.id = s.client_id
       LEFT JOIN internet_plans p ON p.id = s.plan_id
@@ -82,10 +115,21 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     `).all();
   });
 
+  // Config do produto audiovisual para o formulário de serviços (qualquer
+  // utilizador autenticado, ao contrário de /api/settings que é admin-only).
+  app.get('/api/audiovisual-config', { preHandler: requireAuth() }, async () => {
+    return loadAudiovisualConfig(getSqliteDatabase());
+  });
+
   app.post('/api/services', billingWrite, async (request, reply) => {
     const parsed = serviceSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Dados de servico invalidos' });
+    }
+
+    const validationError = validateServicePayload(parsed.data);
+    if (validationError) {
+      return reply.status(400).send({ error: validationError });
     }
 
     const db = getSqliteDatabase();
@@ -115,9 +159,10 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       const inserted = db.prepare(`
         INSERT INTO services (
           client_id, plan_id, monthly_value_cve, activation_date, due_day,
-          status, technical_notes, created_at, updated_at
+          status, technical_notes, audiovisual_mode, audiovisual_monthly_cve,
+          audiovisual_annual_cve, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
       `).run(
         parsed.data.clientId,
         parsed.data.planId || null,
@@ -125,7 +170,10 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         parsed.data.activationDate || null,
         parsed.data.dueDay,
         parsed.data.status,
-        parsed.data.technicalNotes || null
+        parsed.data.technicalNotes || null,
+        parsed.data.audiovisualMode,
+        parsed.data.audiovisualMonthlyCve,
+        parsed.data.audiovisualAnnualCve
       );
       const serviceId = Number(inserted.lastInsertRowid);
 
@@ -176,6 +224,15 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         metadata: { items: items.length }
       });
     }
+    // Adesão à anuidade audiovisual → emite já a fatura anual (idempotente). Best
+    // effort: o serviço já está criado; uma falha aqui é recuperada no arranque.
+    if (parsed.data.audiovisualMode === 'annual' && parsed.data.status === 'active') {
+      try {
+        runAudiovisualAnnualIfDue(new Date(), created.serviceId);
+      } catch {
+        /* o catch-up do arranque reemite */
+      }
+    }
     return reply.status(201).send({
       id: created.serviceId,
       ...(created.install ?? {}),
@@ -188,6 +245,11 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     const parsed = serviceSchema.safeParse(request.body);
     if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
       return reply.status(400).send({ error: 'Dados de servico invalidos' });
+    }
+
+    const validationError = validateServicePayload(parsed.data);
+    if (validationError) {
+      return reply.status(400).send({ error: validationError });
     }
 
     const db = getSqliteDatabase();
@@ -217,6 +279,9 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
           due_day = ?,
           status = ?,
           technical_notes = ?,
+          audiovisual_mode = ?,
+          audiovisual_monthly_cve = ?,
+          audiovisual_annual_cve = ?,
           updated_at = datetime('now')
       WHERE id = ?
     `).run(
@@ -227,8 +292,20 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       parsed.data.dueDay,
       parsed.data.status,
       parsed.data.technicalNotes || null,
+      parsed.data.audiovisualMode,
+      parsed.data.audiovisualMonthlyCve,
+      parsed.data.audiovisualAnnualCve,
       id
     );
+
+    // Passou a anuidade audiovisual (ou renovou) → garante a fatura do ciclo.
+    if (parsed.data.audiovisualMode === 'annual' && parsed.data.status === 'active') {
+      try {
+        runAudiovisualAnnualIfDue(new Date(), id);
+      } catch {
+        /* o catch-up do arranque reemite */
+      }
+    }
 
     recordAudit(request, {
       action: 'update',

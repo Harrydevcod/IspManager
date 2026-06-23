@@ -76,6 +76,10 @@ const settingsSchema = z.object({
     ))),
   defaultDueDay: z.coerce.number().int().min(1).max(31),
   autoBillingDay: z.coerce.number().int().min(1).max(31).optional().default(30),
+  audiovisualEnabled: z.coerce.boolean().optional().default(false),
+  audiovisualLabel: z.string().trim().min(1).max(120).optional().default('Distribuição de Conteúdos Audiovisuais'),
+  audiovisualMonthlyCve: z.coerce.number().min(0).max(1_000_000).optional().default(500),
+  audiovisualAnnualCve: z.coerce.number().min(0).max(10_000_000).optional().default(5000),
   currencyCode: z.string().trim().min(1).max(8),
   invoicePrefix: z.string().trim().min(1).max(8),
   receiptPrefix: z.string().trim().min(1).max(8),
@@ -116,6 +120,10 @@ const defaultSettings = {
   bankAccounts: [] as Array<{ bankName: string; accountName: string; accountNumber: string; reference: string }>,
   defaultDueDay: 1,
   autoBillingDay: 30,
+  audiovisualEnabled: false,
+  audiovisualLabel: 'Distribuição de Conteúdos Audiovisuais',
+  audiovisualMonthlyCve: 500,
+  audiovisualAnnualCve: 5000,
   currencyCode: 'CVE',
   invoicePrefix: 'FT',
   receiptPrefix: 'RC',
@@ -161,6 +169,12 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         settings.defaultDueDay = Number(row.value) || defaultSettings.defaultDueDay;
       } else if (row.key === 'autoBillingDay') {
         settings.autoBillingDay = Number(row.value) || defaultSettings.autoBillingDay;
+      } else if (row.key === 'audiovisualMonthlyCve') {
+        const n = Number(row.value);
+        settings.audiovisualMonthlyCve = Number.isFinite(n) && n >= 0 ? n : defaultSettings.audiovisualMonthlyCve;
+      } else if (row.key === 'audiovisualAnnualCve') {
+        const n = Number(row.value);
+        settings.audiovisualAnnualCve = Number.isFinite(n) && n >= 0 ? n : defaultSettings.audiovisualAnnualCve;
       } else if (row.key === 'ivaRate') {
         const n = Number(row.value);
         settings.ivaRate = Number.isFinite(n) ? n : defaultSettings.ivaRate;
@@ -178,7 +192,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         settings.smsRetryGraceMinutes = Number.isFinite(n) ? n : defaultSettings.smsRetryGraceMinutes;
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
-      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled') {
+      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'audiovisualEnabled') {
         settings[row.key] = row.value === 'true' || row.value === '1';
       } else if (row.key === 'bankAccounts') {
         try {

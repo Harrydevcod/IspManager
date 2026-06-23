@@ -44,6 +44,10 @@ type SettingsFormState = {
   bankAccounts: BankAccountForm[];
   defaultDueDay: string;
   autoBillingDay: string;
+  audiovisualEnabled: boolean;
+  audiovisualLabel: string;
+  audiovisualMonthlyCve: string;
+  audiovisualAnnualCve: string;
   currencyCode: string;
   invoicePrefix: string;
   receiptPrefix: string;
@@ -105,6 +109,10 @@ export function SettingsModule() {
     bankAccounts: [],
     defaultDueDay: '1',
     autoBillingDay: '30',
+    audiovisualEnabled: false,
+    audiovisualLabel: 'Distribuição de Conteúdos Audiovisuais',
+    audiovisualMonthlyCve: '500',
+    audiovisualAnnualCve: '5000',
     currencyCode: 'CVE',
     invoicePrefix: 'FT',
     receiptPrefix: 'RC',
@@ -263,7 +271,7 @@ export function SettingsModule() {
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
         }
-        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes'> & { defaultDueDay: number; autoBillingDay: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number }>;
+        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes'> & { defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number }>;
       })
       .then((settings) => {
         const loadedForm = {
@@ -271,6 +279,8 @@ export function SettingsModule() {
           bankAccounts: Array.isArray(settings.bankAccounts) ? settings.bankAccounts : [],
           defaultDueDay: String(settings.defaultDueDay),
           autoBillingDay: String(settings.autoBillingDay),
+          audiovisualMonthlyCve: String(settings.audiovisualMonthlyCve),
+          audiovisualAnnualCve: String(settings.audiovisualAnnualCve),
           ivaRate: String(settings.ivaRate),
           whatsappSuspensionNoticeDays: String(settings.whatsappSuspensionNoticeDays),
           noticeCooldownDays: String(settings.noticeCooldownDays),
@@ -372,6 +382,8 @@ export function SettingsModule() {
           ...savedForm,
           defaultDueDay: Number(savedForm.defaultDueDay),
           autoBillingDay: Number(savedForm.autoBillingDay),
+          audiovisualMonthlyCve: Number(savedForm.audiovisualMonthlyCve),
+          audiovisualAnnualCve: Number(savedForm.audiovisualAnnualCve),
           ivaRate: Number(savedForm.ivaRate),
           whatsappSuspensionNoticeDays: Number(savedForm.whatsappSuspensionNoticeDays),
           noticeCooldownDays: Number(savedForm.noticeCooldownDays),
@@ -637,6 +649,37 @@ export function SettingsModule() {
               checked={form.printQrCode}
               onChange={(event) => setForm((current) => ({ ...current, printQrCode: event.target.checked }))}
             />
+            <Toggle
+              title="Conteúdos audiovisuais"
+              description="Permite oferecer o serviço aos clientes. Mensal entra na fatura da internet; anual é faturado à parte."
+              checked={form.audiovisualEnabled}
+              onChange={(event) => setForm((current) => ({ ...current, audiovisualEnabled: event.target.checked }))}
+            />
+            {form.audiovisualEnabled && (
+              <>
+                <Field
+                  label="Denominação na fatura"
+                  required
+                  value={form.audiovisualLabel}
+                  onChange={(event) => updateForm('audiovisualLabel', event.target.value)}
+                  hint="Designação legal impressa nos documentos (evitar &quot;IPTV&quot;)."
+                />
+                <Field
+                  label="Valor mensal CVE"
+                  type="number"
+                  min={0}
+                  value={form.audiovisualMonthlyCve}
+                  onChange={(event) => updateForm('audiovisualMonthlyCve', event.target.value)}
+                />
+                <Field
+                  label="Valor anual CVE"
+                  type="number"
+                  min={0}
+                  value={form.audiovisualAnnualCve}
+                  onChange={(event) => updateForm('audiovisualAnnualCve', event.target.value)}
+                />
+              </>
+            )}
           </>
         )}
 

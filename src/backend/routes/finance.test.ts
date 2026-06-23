@@ -38,6 +38,7 @@ beforeEach(() => {
     DELETE FROM service_install_costs;
     DELETE FROM service_material_lines;
     DELETE FROM service_device_assignments;
+    DELETE FROM payment_lines;
     DELETE FROM payments;
     DELETE FROM stock_movements;
     DELETE FROM services;
@@ -290,6 +291,66 @@ describe('finance routes', () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({ error: 'Dados de servico invalidos' });
+  });
+
+  test('rejects an empty service (no monthly value and no audiovisual)', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-EMPTY','Vazio','active')`).run();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: { clientId: client.lastInsertRowid, monthlyValueCve: 0, dueDay: 10 }
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toMatch(/sem valor/i);
+  });
+
+  test('rejects monthly audiovisual without a price', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-AVBAD','AvBad','active')`).run();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: { clientId: client.lastInsertRowid, monthlyValueCve: 1000, dueDay: 10, audiovisualMode: 'monthly', audiovisualMonthlyCve: 0 }
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toMatch(/audiovisuais/i);
+  });
+
+  test('standalone annual audiovisual service emits the adhesion invoice', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-AVAN','AvAnnual','active')`).run();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: {
+        clientId: client.lastInsertRowid,
+        monthlyValueCve: 0,
+        dueDay: 10,
+        activationDate: '2026-06-10',
+        audiovisualMode: 'annual',
+        audiovisualAnnualCve: 5000
+      }
+    });
+    expect(response.statusCode).toBe(201);
+
+    const payment = db.prepare(`
+      SELECT reference_month AS ref, amount_cve AS amount FROM payments WHERE client_id = ?
+    `).get(client.lastInsertRowid) as { ref: string; amount: number } | undefined;
+    expect(payment).toBeTruthy();
+    expect(payment!.ref).toMatch(/^AV-\d{4}-\d{2}$/);
+    expect(payment!.amount).toBe(5000);
+
+    const line = db.prepare(`
+      SELECT kind, description FROM payment_lines WHERE payment_id = (SELECT id FROM payments WHERE client_id = ?)
+    `).get(client.lastInsertRowid) as { kind: string; description: string };
+    expect(line.kind).toBe('audiovisual');
+    expect(line.description).toBe('Distribuição de Conteúdos Audiovisuais');
+  });
+
+  test('GET /api/audiovisual-config returns the configured product', async () => {
+    db.prepare(`INSERT INTO app_settings (key, value) VALUES ('audiovisualEnabled','true')`).run();
+    db.prepare(`INSERT INTO app_settings (key, value) VALUES ('audiovisualMonthlyCve','750')`).run();
+    const response = await app.inject({ method: 'GET', url: '/api/audiovisual-config' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ enabled: true, monthlyCve: 750 });
   });
 
   test('creates a service and installs multiple items (device + material) atomically', async () => {
