@@ -803,6 +803,30 @@ describe('finance routes', () => {
     expect(rows[1].invoiceNumber).not.toBe(original.invoiceNumber);
   });
 
+  test('regenerated monthly payment keeps the audiovisual amount in the total', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-RAV','RegenAv','active')`).run();
+    const service = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, activation_date, due_day, status, audiovisual_mode, audiovisual_monthly_cve)
+      VALUES (?, 2500, '2026-01-15', 15, 'active', 'monthly', 500)
+    `).run(client.lastInsertRowid);
+
+    await app.inject({ method: 'POST', url: '/api/billing/generate-monthly', payload: { referenceMonth: '2026-12' } });
+    const original = db.prepare('SELECT id FROM payments WHERE service_id = ?').get(service.lastInsertRowid) as { id: number };
+    await app.inject({ method: 'POST', url: `/api/payments/${original.id}/cancel`, payload: { reason: 'teste' } });
+
+    const response = await app.inject({ method: 'POST', url: `/api/payments/${original.id}/regenerate` });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({ amountCve: 3000 }); // 2500 internet + 500 audiovisual
+
+    const regen = db.prepare(`SELECT id FROM payments WHERE service_id = ? AND status = 'pending'`).get(service.lastInsertRowid) as { id: number };
+    const lines = db.prepare(`SELECT kind, amount_cve AS amountCve FROM payment_lines WHERE payment_id = ? ORDER BY sort_order`).all(regen.id);
+    expect(lines).toEqual([
+      { kind: 'internet', amountCve: 2500 },
+      { kind: 'audiovisual', amountCve: 500 }
+    ]);
+  });
+
   test.each([
     ['service', 'UPDATE services SET status = ? WHERE id = ?', 'Servico cancelado nao pode regenerar mensalidade'],
     ['client', 'UPDATE clients SET status = ? WHERE id = ?', 'Cliente cancelado nao pode regenerar mensalidade']

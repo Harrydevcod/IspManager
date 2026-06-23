@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
-import { computeMonthlyBilling, dueDateFromIssue, generateMonthlyBilling, todayIso } from '../lib/billing';
+import { buildMonthlyServiceLines, computeMonthlyBilling, dueDateFromIssue, generateMonthlyBilling, sumLines, todayIso, type BillingLine } from '../lib/billing';
 import { nextDocumentNumber } from '../lib/numbering';
-import { loadAudiovisualConfig } from '../lib/audiovisual';
+import { isAudiovisualAnnualReference, loadAudiovisualConfig } from '../lib/audiovisual';
 import { runAudiovisualAnnualIfDue } from '../lib/audiovisual-billing';
 import { recordAudit } from '../lib/audit';
 import {
@@ -458,13 +458,21 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       FROM payments
       WHERE reference_month = ? AND status IN ('pending', 'overdue')
     `);
+    const deleteLinesStmt = db.prepare(`
+      DELETE FROM payment_lines WHERE payment_id IN (
+        SELECT id FROM payments WHERE reference_month = ? AND status IN ('pending', 'overdue')
+      )
+    `);
     const deleteStmt = db.prepare(`
       DELETE FROM payments
       WHERE reference_month = ? AND status IN ('pending', 'overdue')
     `);
 
     const eligibleRows = eligibleStmt.all(referenceMonth) as Array<{ id: number; invoiceNumber: string | null }>;
-    const result = db.transaction(() => deleteStmt.run(referenceMonth))();
+    const result = db.transaction(() => {
+      deleteLinesStmt.run(referenceMonth); // filhos primeiro (FK)
+      return deleteStmt.run(referenceMonth);
+    })();
 
     recordAudit(request, {
       action: 'reverse_monthly',
@@ -512,7 +520,10 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Pagamento ja esta anulado. Nada a reverter.' });
     }
 
-    db.prepare('DELETE FROM payments WHERE id = ?').run(id);
+    db.transaction(() => {
+      db.prepare('DELETE FROM payment_lines WHERE payment_id = ?').run(id); // filhos primeiro (FK)
+      db.prepare('DELETE FROM payments WHERE id = ?').run(id);
+    })();
 
     recordAudit(request, {
       action: 'revert',
@@ -543,7 +554,10 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         py.client_id AS clientId,
         py.service_id AS serviceId,
         py.reference_month AS referenceMonth,
-        s.monthly_value_cve AS amountCve,
+        s.monthly_value_cve AS monthlyValueCve,
+        s.audiovisual_mode AS audiovisualMode,
+        s.audiovisual_monthly_cve AS audiovisualMonthlyCve,
+        s.audiovisual_annual_cve AS audiovisualAnnualCve,
         s.status AS serviceStatus,
         c.status AS clientStatus
       FROM payments py
@@ -556,7 +570,10 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       clientId: number;
       serviceId: number;
       referenceMonth: string;
-      amountCve: number;
+      monthlyValueCve: number;
+      audiovisualMode: 'none' | 'monthly' | 'annual';
+      audiovisualMonthlyCve: number;
+      audiovisualAnnualCve: number;
       serviceStatus: 'active' | 'suspended' | 'cancelled';
       clientStatus: 'active' | 'suspended' | 'cancelled';
     } | undefined;
@@ -583,8 +600,27 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Ja existe uma mensalidade ativa para este servico e mes' });
     }
 
+    // Reconstrói a composição a partir do serviço — mensal (internet + audiovisual)
+    // ou anuidade audiovisual, conforme a competência. Mesma fonte da geração
+    // original, para o total regenerado nunca divergir.
+    const config = loadAudiovisualConfig(db);
+    const lines: BillingLine[] = isAudiovisualAnnualReference(payment.referenceMonth)
+      ? (() => {
+          const annual = payment.audiovisualAnnualCve > 0 ? payment.audiovisualAnnualCve : config.annualCve;
+          return annual > 0 ? [{ kind: 'audiovisual' as const, description: config.label, amountCve: annual }] : [];
+        })()
+      : buildMonthlyServiceLines(payment, config.label);
+    const amountCve = sumLines(lines);
+    if (amountCve <= 0) {
+      return reply.status(400).send({ error: 'Servico sem valor a regenerar' });
+    }
+
     const issueIso = todayIso();
     const dueDate = dueDateFromIssue(issueIso);
+    const insertLine = db.prepare(`
+      INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order)
+      VALUES (?, ?, ?, ?, ?)
+    `);
     const regenerated = db.transaction(() => {
       const inserted = db.prepare(`
         INSERT INTO payments (
@@ -592,10 +628,11 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
           status, invoice_number, invoice_date, created_at, updated_at
         )
         VALUES (?, ?, ?, ?, ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
-      `).run(payment.clientId, payment.serviceId, payment.referenceMonth, payment.amountCve, dueDate);
+      `).run(payment.clientId, payment.serviceId, payment.referenceMonth, amountCve, dueDate);
       const regeneratedId = Number(inserted.lastInsertRowid);
       const invoiceNumber = nextNumber('invoice', regeneratedId);
       db.prepare('UPDATE payments SET invoice_number = ? WHERE id = ?').run(invoiceNumber, regeneratedId);
+      lines.forEach((line, index) => insertLine.run(regeneratedId, line.kind, line.description, line.amountCve, index));
       return { regeneratedId, invoiceNumber };
     })();
 
@@ -608,7 +645,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         regeneratedFromId: id,
         referenceMonth: payment.referenceMonth,
         serviceId: payment.serviceId,
-        amountCve: payment.amountCve,
+        amountCve,
         invoiceNumber: regenerated.invoiceNumber
       }
     });
@@ -617,7 +654,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       id: regenerated.regeneratedId,
       regeneratedFromId: id,
       referenceMonth: payment.referenceMonth,
-      amountCve: payment.amountCve,
+      amountCve,
       dueDate,
       status: 'pending',
       invoiceNumber: regenerated.invoiceNumber

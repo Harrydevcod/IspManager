@@ -21,6 +21,30 @@ export type BillingPreviewRow = {
 
 const INTERNET_LINE_DESCRIPTION = 'Servico de Internet';
 
+/**
+ * Composição mensal de um serviço: linha de internet (se houver mensalidade) +
+ * linha audiovisual (se a modalidade for mensal). A anuidade NÃO entra aqui — é
+ * faturada à parte. Fonte única usada pela geração mensal e pela regeneração de
+ * uma mensalidade anulada, para que o total nunca divirja entre os dois caminhos.
+ */
+export function buildMonthlyServiceLines(
+  svc: { monthlyValueCve: number; audiovisualMode: 'none' | 'monthly' | 'annual'; audiovisualMonthlyCve: number },
+  audiovisualLabel: string
+): BillingLine[] {
+  const lines: BillingLine[] = [];
+  if (svc.monthlyValueCve > 0) {
+    lines.push({ kind: 'internet', description: INTERNET_LINE_DESCRIPTION, amountCve: svc.monthlyValueCve });
+  }
+  if (svc.audiovisualMode === 'monthly' && svc.audiovisualMonthlyCve > 0) {
+    lines.push({ kind: 'audiovisual', description: audiovisualLabel, amountCve: svc.audiovisualMonthlyCve });
+  }
+  return lines;
+}
+
+export function sumLines(lines: BillingLine[]): number {
+  return lines.reduce((total, line) => total + line.amountCve, 0);
+}
+
 export type BillingPreview = {
   referenceMonth: string;
   activeServices: number;
@@ -101,17 +125,8 @@ export function computeMonthlyBilling(db: DatabaseType, referenceMonth: string):
   const dueIso = dueDateFromIssue(issueIso, PAYMENT_DUE_DAYS);
 
   for (const svc of services) {
-    // Composição da fatura mensal: linha de internet (se houver mensalidade) +
-    // linha audiovisual (se a modalidade for mensal). A anuidade NÃO entra aqui —
-    // é faturada à parte (ver audiovisual-billing.ts).
-    const lines: BillingLine[] = [];
-    if (svc.monthlyValueCve > 0) {
-      lines.push({ kind: 'internet', description: INTERNET_LINE_DESCRIPTION, amountCve: svc.monthlyValueCve });
-    }
-    if (svc.audiovisualMode === 'monthly' && svc.audiovisualMonthlyCve > 0) {
-      lines.push({ kind: 'audiovisual', description: audiovisual.label, amountCve: svc.audiovisualMonthlyCve });
-    }
-    const total = lines.reduce((sum, line) => sum + line.amountCve, 0);
+    const lines = buildMonthlyServiceLines(svc, audiovisual.label);
+    const total = sumLines(lines);
     // Serviço sem valor mensal (ex.: standalone anual) não gera fatura mensal vazia.
     if (total <= 0) continue;
 
