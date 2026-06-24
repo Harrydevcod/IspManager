@@ -53,6 +53,16 @@ function emptyEventForm(): EventFormState {
   return { eventType: 'visita', notes: '' };
 }
 
+/**
+ * Mensalidade efetiva = internet + audiovisual mensal. A anuidade audiovisual é
+ * faturada à parte (fatura anual separada), por isso NÃO entra no valor mensal.
+ */
+function monthlyTotalCve(
+  service: Pick<ServiceRow, 'monthlyValueCve' | 'audiovisualMode' | 'audiovisualMonthlyCve'>
+): number {
+  return service.monthlyValueCve + (service.audiovisualMode === 'monthly' ? service.audiovisualMonthlyCve : 0);
+}
+
 type ServiceFormState = {
   clientId: string;
   planId: string;
@@ -696,14 +706,22 @@ export function ServicesModule({
           <div className="client-detail">
           <dl>
             <div><dt>Plano</dt><dd>{selectedService.planName || '-'}</dd></div>
-            <div><dt>Mensalidade</dt><dd>{formatCve(selectedService.monthlyValueCve)}</dd></div>
+            <div>
+              <dt>Mensalidade</dt>
+              <dd>
+                {formatCve(monthlyTotalCve(selectedService))}
+                {selectedService.audiovisualMode === 'monthly' && (
+                  <small className="muted"> (NET + TVM)</small>
+                )}
+              </dd>
+            </div>
             {selectedService.audiovisualMode !== 'none' && (
               <div>
                 <dt>{avConfig?.label || 'Conteúdos audiovisuais'}</dt>
                 <dd>
                   {selectedService.audiovisualMode === 'monthly'
-                    ? `${formatCve(selectedService.audiovisualMonthlyCve)} / mês`
-                    : `${formatCve(selectedService.audiovisualAnnualCve)} / ano`}
+                    ? `${formatCve(selectedService.audiovisualMonthlyCve)} / mês (incluído na mensalidade)`
+                    : `${formatCve(selectedService.audiovisualAnnualCve)} / ano (fatura separada)`}
                 </dd>
               </div>
             )}
@@ -908,7 +926,10 @@ export function ServicesModule({
               <strong>{service.clientName}</strong>
               <small>{service.planName || 'Sem plano'} - dia {service.dueDay}</small>
             </span>
-            <small>{formatCve(service.monthlyValueCve)}</small>
+            <small title={service.audiovisualMode === 'monthly' ? 'Mensalidade NET + TVM (canais e conteúdos audiovisuais)' : undefined}>
+              {formatCve(monthlyTotalCve(service))}
+              {service.audiovisualMode === 'monthly' && ' · NET + TVM'}
+            </small>
             <Badge tone={statusTone(service.status)}>{statusLabel(service.status)}</Badge>
             {canManageServices && (
               <div className="row-actions" onClick={(event) => event.stopPropagation()}>

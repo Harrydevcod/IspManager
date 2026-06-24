@@ -1872,6 +1872,11 @@ h2 {
   font-weight: 600;
 }
 
+/* Texto secundário (sufixos/anotações em linha). */
+.muted {
+  color: var(--muted);
+}
+
 .monthly-preview-amount {
   text-align: right;
 }
@@ -3331,9 +3336,14 @@ label.field-toggle {
 
 .service-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 140px 96px auto;
+  grid-template-columns: minmax(0, 1fr) 180px 96px auto;
   gap: var(--s3);
   align-items: center;
+}
+
+/* Coluna do valor mensal: mantém "1.500 CVE · NET + TVM" numa única linha. */
+.service-row > small {
+  white-space: nowrap;
 }
 
 /* Name+meta span style applied uniformly to all module rows. */
