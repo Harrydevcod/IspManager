@@ -1,4 +1,4 @@
-import { Cable, Coins, History, Pencil, Plus, Wrench } from 'lucide-react';
+import { Cable, Coins, History, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
 import type { Dispatch, FormEvent, SetStateAction } from 'react';
 import { useEffect, useState } from 'react';
 import { Badge, Button, Combobox, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useConfirm, useToast } from '../components';
@@ -349,6 +349,38 @@ export function ServicesModule({
     }
   }
 
+  // Apaga um serviço mal criado (bloqueado pelo backend se já houver faturas).
+  async function deleteService(service: ServiceRow) {
+    if (!(await confirm({
+      title: 'Apagar serviço',
+      message: `Apagar o serviço de ${service.clientName}? Esta ação é irreversível e o equipamento atribuído volta ao stock. Serviços já faturados não podem ser apagados — devem ser cancelados.`,
+      tone: 'danger',
+      confirmLabel: 'Apagar'
+    }))) return;
+    setSubmitting(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/services/${service.id}`, {
+        method: 'DELETE'
+      });
+      if (response.status === 409) {
+        const data = await response.json().catch(() => ({})) as { error?: string };
+        toast(data.error || 'Serviço com faturas: cancele em vez de apagar.', 'error');
+        return;
+      }
+      if (!response.ok) {
+        toast('Nao foi possivel apagar o servico.', 'error');
+        return;
+      }
+      toast('Servico apagado e stock reposto.', 'success');
+      setSelectedService(null);
+      await loadServices();
+    } catch {
+      toast('Falha de rede ao apagar o servico.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function returnDevice(assignment: DeviceAssignment) {
     if (!selectedService) return;
     const label = assignment.brand ? `${assignment.brand} ${assignment.model}` : assignment.model;
@@ -649,9 +681,14 @@ export function ServicesModule({
           actions={
             canManageServices
               ? (
-                <Button variant="secondary" size="sm" leadingIcon={<Pencil size={16} aria-hidden />} onClick={() => editService(selectedService)}>
-                  Editar
-                </Button>
+                <>
+                  <Button variant="secondary" size="sm" leadingIcon={<Pencil size={16} aria-hidden />} onClick={() => editService(selectedService)}>
+                    Editar
+                  </Button>
+                  <Button variant="danger" size="sm" disabled={submitting} leadingIcon={<Trash2 size={16} aria-hidden />} onClick={() => void deleteService(selectedService)}>
+                    Apagar
+                  </Button>
+                </>
               )
               : undefined
           }

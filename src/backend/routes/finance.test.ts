@@ -34,6 +34,7 @@ beforeAll(async () => {
 beforeEach(() => {
   db.exec(`
     DELETE FROM whatsapp_notices;
+    DELETE FROM work_orders;
     DELETE FROM service_events;
     DELETE FROM service_install_costs;
     DELETE FROM service_material_lines;
@@ -387,6 +388,103 @@ describe('finance routes', () => {
     expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(cable.lastInsertRowid)).toEqual({ s: 275 });
     expect(db.prepare('SELECT quantity AS q, unit_cost_cve AS u FROM service_material_lines WHERE service_id = ?').get(body.id)).toEqual({ q: 30, u: 80 });
     expect(db.prepare("SELECT count(*) AS n FROM service_events WHERE service_id = ? AND event_type = 'instalacao'").get(body.id)).toEqual({ n: 1 });
+  });
+
+  test('deletes a service without invoices and restores stock', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-DEL','Cliente Del','active')`).run();
+    const router = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_cve, is_serialized, stock_total, active)
+      VALUES ('equipamento','router','MikroTik','hAP', 6000, 1, 5, 1)
+    `).run();
+    const cable = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_cve, stock_total, active)
+      VALUES ('material','cabo','UTP','metro', 0, 80, 305, 1)
+    `).run();
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: {
+        clientId: client.lastInsertRowid,
+        monthlyValueCve: 3500,
+        dueDay: 10,
+        items: [
+          { catalogId: router.lastInsertRowid, serialNumber: 'SN-DEL-1' },
+          { catalogId: cable.lastInsertRowid, quantity: 30 }
+        ]
+      }
+    });
+    const serviceId = (created.json() as { id: number }).id;
+    // Sanidade: stock abatido pela instalação.
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(router.lastInsertRowid)).toEqual({ s: 4 });
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(cable.lastInsertRowid)).toEqual({ s: 275 });
+
+    const response = await app.inject({ method: 'DELETE', url: `/api/services/${serviceId}` });
+    expect(response.statusCode).toBe(204);
+
+    // Serviço e filhos operacionais removidos.
+    expect(db.prepare('SELECT count(*) AS n FROM services WHERE id = ?').get(serviceId)).toEqual({ n: 0 });
+    expect(db.prepare('SELECT count(*) AS n FROM service_device_assignments WHERE service_id = ?').get(serviceId)).toEqual({ n: 0 });
+    expect(db.prepare('SELECT count(*) AS n FROM service_material_lines WHERE service_id = ?').get(serviceId)).toEqual({ n: 0 });
+    expect(db.prepare('SELECT count(*) AS n FROM service_events WHERE service_id = ?').get(serviceId)).toEqual({ n: 0 });
+    expect(db.prepare('SELECT count(*) AS n FROM stock_movements WHERE service_id = ?').get(serviceId)).toEqual({ n: 0 });
+    // Stock reposto ao valor original.
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(router.lastInsertRowid)).toEqual({ s: 5 });
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(cable.lastInsertRowid)).toEqual({ s: 305 });
+  });
+
+  test('blocks deleting a service that already has an invoice (fiscal rule)', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-FIS','Cliente Fiscal','active')`).run();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: { clientId: client.lastInsertRowid, monthlyValueCve: 3500, dueDay: 10 }
+    });
+    const serviceId = (created.json() as { id: number }).id;
+    await app.inject({ method: 'POST', url: '/api/billing/generate-monthly', payload: { referenceMonth: '2026-06' } });
+    expect(db.prepare('SELECT count(*) AS n FROM payments WHERE service_id = ?').get(serviceId)).toEqual({ n: 1 });
+
+    const response = await app.inject({ method: 'DELETE', url: `/api/services/${serviceId}` });
+    expect(response.statusCode).toBe(409);
+    // Serviço e fatura intactos.
+    expect(db.prepare('SELECT count(*) AS n FROM services WHERE id = ?').get(serviceId)).toEqual({ n: 1 });
+    expect(db.prepare('SELECT count(*) AS n FROM payments WHERE service_id = ?').get(serviceId)).toEqual({ n: 1 });
+  });
+
+  test('blocks deleting a service whose only invoice is cancelled (numbering persists)', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-CAN','Cliente Cancel','active')`).run();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: { clientId: client.lastInsertRowid, monthlyValueCve: 3500, dueDay: 10 }
+    });
+    const serviceId = (created.json() as { id: number }).id;
+    await app.inject({ method: 'POST', url: '/api/billing/generate-monthly', payload: { referenceMonth: '2026-06' } });
+    db.prepare('UPDATE payments SET status = ? WHERE service_id = ?').run('cancelled', serviceId);
+
+    const response = await app.inject({ method: 'DELETE', url: `/api/services/${serviceId}` });
+    expect(response.statusCode).toBe(409);
+    expect(db.prepare('SELECT count(*) AS n FROM services WHERE id = ?').get(serviceId)).toEqual({ n: 1 });
+  });
+
+  test('returns 404 when deleting a non-existent service', async () => {
+    const response = await app.inject({ method: 'DELETE', url: '/api/services/999999' });
+    expect(response.statusCode).toBe(404);
+  });
+
+  test('preserves a linked work order (service_id set to NULL) when deleting a service', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-WO','Cliente WO','active')`).run();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: { clientId: client.lastInsertRowid, monthlyValueCve: 3500, dueDay: 10 }
+    });
+    const serviceId = (created.json() as { id: number }).id;
+    const wo = db.prepare(`INSERT INTO work_orders (service_id, title, status) VALUES (?, 'Instalar', 'aguarda')`).run(serviceId);
+
+    const response = await app.inject({ method: 'DELETE', url: `/api/services/${serviceId}` });
+    expect(response.statusCode).toBe(204);
+    expect(db.prepare('SELECT service_id AS s FROM work_orders WHERE id = ?').get(wo.lastInsertRowid)).toEqual({ s: null });
   });
 
   test('rolls back the whole service when one item is out of stock', async () => {

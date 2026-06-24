@@ -317,6 +317,79 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  // Apagar um serviço criado por engano. Regra fiscal absoluta: um serviço que já
+  // emitiu faturas (payments) NÃO pode ser apagado — a numeração sequencial e os
+  // documentos fiscais têm de permanecer (usar cancelamento). Sem faturas, é seguro
+  // reverter por completo a criação: devolve o stock dos equipamentos/materiais e
+  // remove os filhos operacionais (child-first, foreign_keys ON).
+  app.delete('/api/services/:id', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Servico invalido' });
+    }
+
+    const db = getSqliteDatabase();
+    const service = db.prepare(`
+      SELECT s.id, c.full_name AS clientName
+      FROM services s
+      JOIN clients c ON c.id = s.client_id
+      WHERE s.id = ?
+    `).get(id) as { id: number; clientName: string } | undefined;
+    if (!service) {
+      return reply.status(404).send({ error: 'Servico nao encontrado' });
+    }
+
+    // Pegada fiscal: qualquer payment (mesmo anulada) bloqueia o delete.
+    const billed = db.prepare('SELECT COUNT(*) AS total FROM payments WHERE service_id = ?').get(id) as { total: number };
+    if (billed.total > 0) {
+      return reply.status(409).send({
+        error: 'Este servico ja tem faturas emitidas. Cancele o servico em vez de o apagar.'
+      });
+    }
+
+    // Stock líquido a repor por catálogo: Σ(saida) − Σ(devolucao) deste serviço.
+    const restoreStock = db.prepare(`
+      SELECT catalog_id AS catalogId,
+             SUM(CASE WHEN type = 'saida' THEN quantity
+                      WHEN type = 'devolucao' THEN -quantity
+                      ELSE 0 END) AS delta
+      FROM stock_movements
+      WHERE service_id = ? AND catalog_id IS NOT NULL
+      GROUP BY catalog_id
+    `).all(id) as Array<{ catalogId: number; delta: number }>;
+
+    const run = db.transaction(() => {
+      for (const row of restoreStock) {
+        if (row.delta && row.delta !== 0) {
+          db.prepare(`
+            UPDATE equipment_catalog
+            SET stock_total = stock_total + ?,
+                updated_at = datetime('now')
+            WHERE id = ?
+          `).run(row.delta, row.catalogId);
+        }
+      }
+      db.prepare('DELETE FROM stock_movements WHERE service_id = ?').run(id);
+      db.prepare('UPDATE work_orders SET service_id = NULL WHERE service_id = ?').run(id);
+      db.prepare('UPDATE sms_outbox SET service_id = NULL WHERE service_id = ?').run(id);
+      db.prepare('DELETE FROM service_install_costs WHERE service_id = ?').run(id);
+      db.prepare('DELETE FROM service_material_lines WHERE service_id = ?').run(id);
+      db.prepare('DELETE FROM service_events WHERE service_id = ?').run(id);
+      db.prepare('DELETE FROM service_device_assignments WHERE service_id = ?').run(id);
+      db.prepare('DELETE FROM services WHERE id = ?').run(id);
+    });
+    run();
+
+    recordAudit(request, {
+      action: 'delete',
+      entityType: 'service',
+      entityId: id,
+      summary: `Apagou servico ${id} (${service.clientName})`,
+      metadata: { clientName: service.clientName, restoredStock: restoreStock }
+    });
+    return reply.status(204).send();
+  });
+
   app.get('/api/payments', { preHandler: requireRole(['admin', 'operator']) }, async () => {
     const db = getSqliteDatabase();
     return db.prepare(`
