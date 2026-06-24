@@ -1,11 +1,11 @@
-import { Cable, Coins, History, Pencil, Plus, Wrench } from 'lucide-react';
+import { Cable, Coins, History, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
 import type { Dispatch, FormEvent, SetStateAction } from 'react';
 import { useEffect, useState } from 'react';
 import { Badge, Button, Combobox, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtDateTime } from '../lib/format';
 import { statusLabel, statusTone } from '../lib/status';
-import type { Client, DeviceAssignment, PlanRow, ServiceEvent, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
+import type { AudiovisualConfig, Client, DeviceAssignment, PlanRow, ServiceEvent, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
 
 const eventTypeLabel: Record<ServiceEventType, string> = {
   instalacao: 'Instalacao',
@@ -53,6 +53,16 @@ function emptyEventForm(): EventFormState {
   return { eventType: 'visita', notes: '' };
 }
 
+/**
+ * Mensalidade efetiva = internet + audiovisual mensal. A anuidade audiovisual é
+ * faturada à parte (fatura anual separada), por isso NÃO entra no valor mensal.
+ */
+function monthlyTotalCve(
+  service: Pick<ServiceRow, 'monthlyValueCve' | 'audiovisualMode' | 'audiovisualMonthlyCve'>
+): number {
+  return service.monthlyValueCve + (service.audiovisualMode === 'monthly' ? service.audiovisualMonthlyCve : 0);
+}
+
 type ServiceFormState = {
   clientId: string;
   planId: string;
@@ -61,6 +71,9 @@ type ServiceFormState = {
   activationDate: string;
   status: 'active' | 'suspended' | 'cancelled';
   technicalNotes: string;
+  audiovisualMode: 'none' | 'monthly' | 'annual';
+  audiovisualMonthlyCve: string;
+  audiovisualAnnualCve: string;
 };
 
 function emptyServiceForm(): ServiceFormState {
@@ -71,7 +84,10 @@ function emptyServiceForm(): ServiceFormState {
     dueDay: '1',
     activationDate: new Date().toISOString().slice(0, 10),
     status: 'active',
-    technicalNotes: ''
+    technicalNotes: '',
+    audiovisualMode: 'none',
+    audiovisualMonthlyCve: '',
+    audiovisualAnnualCve: ''
   };
 }
 
@@ -91,6 +107,7 @@ export function ServicesModule({
   const [selectedService, setSelectedService] = useState<ServiceRow | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [plans, setPlans] = useState<PlanRow[]>([]);
+  const [avConfig, setAvConfig] = useState<AudiovisualConfig | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingService, setEditingService] = useState<ServiceRow | null>(null);
   const [attachItems, setAttachItems] = useState(false);
@@ -128,6 +145,10 @@ export function ServicesModule({
       .then((response) => response.json() as Promise<PlanRow[]>)
       .then(setPlans)
       .catch(() => setPlans([]));
+    authFetch('http://127.0.0.1:3001/api/audiovisual-config')
+      .then((response) => response.ok ? response.json() as Promise<AudiovisualConfig> : null)
+      .then((config) => setAvConfig(config))
+      .catch(() => setAvConfig(null));
   }, []);
 
   function updateForm(field: keyof ServiceFormState, value: string) {
@@ -173,7 +194,10 @@ export function ServicesModule({
       dueDay: String(service.dueDay),
       activationDate: service.activationDate || new Date().toISOString().slice(0, 10),
       status: service.status,
-      technicalNotes: service.technicalNotes || ''
+      technicalNotes: service.technicalNotes || '',
+      audiovisualMode: service.audiovisualMode,
+      audiovisualMonthlyCve: service.audiovisualMonthlyCve ? String(service.audiovisualMonthlyCve) : '',
+      audiovisualAnnualCve: service.audiovisualAnnualCve ? String(service.audiovisualAnnualCve) : ''
     });
     setShowForm(true);
   }
@@ -335,6 +359,38 @@ export function ServicesModule({
     }
   }
 
+  // Apaga um serviço mal criado (bloqueado pelo backend se já houver faturas).
+  async function deleteService(service: ServiceRow) {
+    if (!(await confirm({
+      title: 'Apagar serviço',
+      message: `Apagar o serviço de ${service.clientName}? Esta ação é irreversível e o equipamento atribuído volta ao stock. Serviços já faturados não podem ser apagados — devem ser cancelados.`,
+      tone: 'danger',
+      confirmLabel: 'Apagar'
+    }))) return;
+    setSubmitting(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/services/${service.id}`, {
+        method: 'DELETE'
+      });
+      if (response.status === 409) {
+        const data = await response.json().catch(() => ({})) as { error?: string };
+        toast(data.error || 'Serviço com faturas: cancele em vez de apagar.', 'error');
+        return;
+      }
+      if (!response.ok) {
+        toast('Nao foi possivel apagar o servico.', 'error');
+        return;
+      }
+      toast('Servico apagado e stock reposto.', 'success');
+      setSelectedService(null);
+      await loadServices();
+    } catch {
+      toast('Falha de rede ao apagar o servico.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function returnDevice(assignment: DeviceAssignment) {
     if (!selectedService) return;
     const label = assignment.brand ? `${assignment.brand} ${assignment.model}` : assignment.model;
@@ -480,6 +536,9 @@ export function ServicesModule({
         activationDate: form.activationDate,
         status: form.status,
         technicalNotes: form.technicalNotes,
+        audiovisualMode: form.audiovisualMode,
+        audiovisualMonthlyCve: form.audiovisualMode === 'monthly' ? Number(form.audiovisualMonthlyCve || 0) : 0,
+        audiovisualAnnualCve: form.audiovisualMode === 'annual' ? Number(form.audiovisualAnnualCve || 0) : 0,
         items: items.length > 0 ? items : undefined,
         installCosts: installCosts.length > 0 ? installCosts : undefined
       })
@@ -632,9 +691,14 @@ export function ServicesModule({
           actions={
             canManageServices
               ? (
-                <Button variant="secondary" size="sm" leadingIcon={<Pencil size={16} aria-hidden />} onClick={() => editService(selectedService)}>
-                  Editar
-                </Button>
+                <>
+                  <Button variant="secondary" size="sm" leadingIcon={<Pencil size={16} aria-hidden />} onClick={() => editService(selectedService)}>
+                    Editar
+                  </Button>
+                  <Button variant="danger" size="sm" disabled={submitting} leadingIcon={<Trash2 size={16} aria-hidden />} onClick={() => void deleteService(selectedService)}>
+                    Apagar
+                  </Button>
+                </>
               )
               : undefined
           }
@@ -642,7 +706,25 @@ export function ServicesModule({
           <div className="client-detail">
           <dl>
             <div><dt>Plano</dt><dd>{selectedService.planName || '-'}</dd></div>
-            <div><dt>Mensalidade</dt><dd>{formatCve(selectedService.monthlyValueCve)}</dd></div>
+            <div>
+              <dt>Mensalidade</dt>
+              <dd>
+                {formatCve(monthlyTotalCve(selectedService))}
+                {selectedService.audiovisualMode === 'monthly' && (
+                  <small className="muted"> (NET + TVM)</small>
+                )}
+              </dd>
+            </div>
+            {selectedService.audiovisualMode !== 'none' && (
+              <div>
+                <dt>{avConfig?.label || 'Conteúdos audiovisuais'}</dt>
+                <dd>
+                  {selectedService.audiovisualMode === 'monthly'
+                    ? `${formatCve(selectedService.audiovisualMonthlyCve)} / mês (incluído na mensalidade)`
+                    : `${formatCve(selectedService.audiovisualAnnualCve)} / ano (fatura separada)`}
+                </dd>
+              </div>
+            )}
             <div><dt>Vencimento</dt><dd>Dia {selectedService.dueDay}</dd></div>
             <div><dt>Ativado em</dt><dd>{formatPtDate(selectedService.activationDate)}</dd></div>
             <div><dt>Estado</dt><dd><Badge tone={statusTone(selectedService.status)}>{statusLabel(selectedService.status)}</Badge></dd></div>
@@ -844,7 +926,10 @@ export function ServicesModule({
               <strong>{service.clientName}</strong>
               <small>{service.planName || 'Sem plano'} - dia {service.dueDay}</small>
             </span>
-            <small>{formatCve(service.monthlyValueCve)}</small>
+            <small title={service.audiovisualMode === 'monthly' ? 'Mensalidade NET + TVM (canais e conteúdos audiovisuais)' : undefined}>
+              {formatCve(monthlyTotalCve(service))}
+              {service.audiovisualMode === 'monthly' && ' · NET + TVM'}
+            </small>
             <Badge tone={statusTone(service.status)}>{statusLabel(service.status)}</Badge>
             {canManageServices && (
               <div className="row-actions" onClick={(event) => event.stopPropagation()}>
@@ -919,6 +1004,53 @@ export function ServicesModule({
             <option value="cancelled">Cancelado</option>
           </Select>
           <Field wide label="Notas tecnicas" value={form.technicalNotes} onChange={(event) => updateForm('technicalNotes', event.target.value)} />
+
+          {avConfig?.enabled && (
+            <div className="service-items-builder">
+              <Toggle
+                title={avConfig.label}
+                description="Mensal entra na fatura da internet; anual gera fatura própria."
+                checked={form.audiovisualMode !== 'none'}
+                onChange={(event) => setForm((current) => ({
+                  ...current,
+                  audiovisualMode: event.target.checked ? 'monthly' : 'none',
+                  audiovisualMonthlyCve: current.audiovisualMonthlyCve || String(avConfig.monthlyCve),
+                  audiovisualAnnualCve: current.audiovisualAnnualCve || String(avConfig.annualCve)
+                }))}
+              />
+              {form.audiovisualMode !== 'none' && (
+                <>
+                  <Select
+                    label="Modalidade"
+                    value={form.audiovisualMode}
+                    onChange={(event) => updateForm('audiovisualMode', event.target.value)}
+                  >
+                    <option value="monthly">Mensal — na fatura da internet</option>
+                    <option value="annual">Anual — fatura separada</option>
+                  </Select>
+                  {form.audiovisualMode === 'monthly' ? (
+                    <Field
+                      label="Valor mensal CVE"
+                      required
+                      type="number"
+                      min={0}
+                      value={form.audiovisualMonthlyCve}
+                      onChange={(event) => updateForm('audiovisualMonthlyCve', event.target.value)}
+                    />
+                  ) : (
+                    <Field
+                      label="Valor anual CVE"
+                      required
+                      type="number"
+                      min={0}
+                      value={form.audiovisualAnnualCve}
+                      onChange={(event) => updateForm('audiovisualAnnualCve', event.target.value)}
+                    />
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {!editingService && canRecordTechnical && (
             <div className="service-items-builder">

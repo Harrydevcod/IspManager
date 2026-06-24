@@ -1,5 +1,12 @@
 import type { Database as DatabaseType } from 'better-sqlite3';
 import { nextDocumentNumber } from './numbering';
+import { loadAudiovisualConfig } from './audiovisual';
+
+export type BillingLine = {
+  kind: 'internet' | 'audiovisual';
+  description: string;
+  amountCve: number;
+};
 
 export type BillingPreviewRow = {
   serviceId: number;
@@ -8,7 +15,35 @@ export type BillingPreviewRow = {
   planName: string | null;
   amountCve: number;
   dueDate: string;
+  /** Composição da fatura (1+ linhas). O `amountCve` é a soma destas linhas. */
+  lines: BillingLine[];
 };
+
+const INTERNET_LINE_DESCRIPTION = 'Servico de Internet';
+
+/**
+ * Composição mensal de um serviço: linha de internet (se houver mensalidade) +
+ * linha audiovisual (se a modalidade for mensal). A anuidade NÃO entra aqui — é
+ * faturada à parte. Fonte única usada pela geração mensal e pela regeneração de
+ * uma mensalidade anulada, para que o total nunca divirja entre os dois caminhos.
+ */
+export function buildMonthlyServiceLines(
+  svc: { monthlyValueCve: number; audiovisualMode: 'none' | 'monthly' | 'annual'; audiovisualMonthlyCve: number },
+  audiovisualLabel: string
+): BillingLine[] {
+  const lines: BillingLine[] = [];
+  if (svc.monthlyValueCve > 0) {
+    lines.push({ kind: 'internet', description: INTERNET_LINE_DESCRIPTION, amountCve: svc.monthlyValueCve });
+  }
+  if (svc.audiovisualMode === 'monthly' && svc.audiovisualMonthlyCve > 0) {
+    lines.push({ kind: 'audiovisual', description: audiovisualLabel, amountCve: svc.audiovisualMonthlyCve });
+  }
+  return lines;
+}
+
+export function sumLines(lines: BillingLine[]): number {
+  return lines.reduce((total, line) => total + line.amountCve, 0);
+}
 
 export type BillingPreview = {
   referenceMonth: string;
@@ -46,13 +81,16 @@ export function dueDateFor(_referenceMonth: string, _dueDay: number): string {
  * preview endpoint and by the actual generator. No writes.
  */
 export function computeMonthlyBilling(db: DatabaseType, referenceMonth: string): BillingPreview {
+  const audiovisual = loadAudiovisualConfig(db);
   const services = db.prepare(`
     SELECT
       s.id AS serviceId,
       s.client_id AS clientId,
       c.full_name AS clientName,
       p.name AS planName,
-      s.monthly_value_cve AS amountCve,
+      s.monthly_value_cve AS monthlyValueCve,
+      s.audiovisual_mode AS audiovisualMode,
+      s.audiovisual_monthly_cve AS audiovisualMonthlyCve,
       s.due_day AS dueDay
     FROM services s
     JOIN clients c ON c.id = s.client_id
@@ -63,7 +101,16 @@ export function computeMonthlyBilling(db: DatabaseType, referenceMonth: string):
       -- propaga automaticamente para os serviços, por isso filtramos aqui.
       AND c.status != 'cancelled'
     ORDER BY c.full_name
-  `).all() as Array<BillingPreviewRow & { dueDay: number }>;
+  `).all() as Array<{
+    serviceId: number;
+    clientId: number;
+    clientName: string;
+    planName: string | null;
+    monthlyValueCve: number;
+    audiovisualMode: 'none' | 'monthly' | 'annual';
+    audiovisualMonthlyCve: number;
+    dueDay: number;
+  }>;
 
   // Só uma cobrança *não anulada* por serviço/mês bloqueia a geração. Uma
   // cobrança anulada deixa o slot livre para reemitir a fatura corrigida — o
@@ -78,6 +125,11 @@ export function computeMonthlyBilling(db: DatabaseType, referenceMonth: string):
   const dueIso = dueDateFromIssue(issueIso, PAYMENT_DUE_DAYS);
 
   for (const svc of services) {
+    const lines = buildMonthlyServiceLines(svc, audiovisual.label);
+    const total = sumLines(lines);
+    // Serviço sem valor mensal (ex.: standalone anual) não gera fatura mensal vazia.
+    if (total <= 0) continue;
+
     const hit = existsStmt.get(svc.serviceId, referenceMonth) as { hit: number } | undefined;
     if (hit) {
       alreadyBilled += 1;
@@ -88,8 +140,9 @@ export function computeMonthlyBilling(db: DatabaseType, referenceMonth: string):
       clientId: svc.clientId,
       clientName: svc.clientName,
       planName: svc.planName,
-      amountCve: svc.amountCve,
-      dueDate: dueIso
+      amountCve: total,
+      dueDate: dueIso,
+      lines
     });
   }
 
@@ -124,6 +177,10 @@ export function generateMonthlyBilling(db: DatabaseType, referenceMonth: string)
     VALUES (?, ?, ?, ?, ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
   `);
   const updateInvoice = db.prepare('UPDATE payments SET invoice_number = ? WHERE id = ? AND invoice_number IS NULL');
+  const insertLine = db.prepare(`
+    INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order)
+    VALUES (?, ?, ?, ?, ?)
+  `);
 
   const run = db.transaction(() => {
     for (const item of preview.toCreate) {
@@ -134,7 +191,11 @@ export function generateMonthlyBilling(db: DatabaseType, referenceMonth: string)
         item.amountCve,
         item.dueDate
       );
-      updateInvoice.run(nextDocumentNumber('invoice', Number(inserted.lastInsertRowid)), Number(inserted.lastInsertRowid));
+      const paymentId = Number(inserted.lastInsertRowid);
+      updateInvoice.run(nextDocumentNumber('invoice', paymentId), paymentId);
+      item.lines.forEach((line, index) => {
+        insertLine.run(paymentId, line.kind, line.description, line.amountCve, index);
+      });
     }
   });
 

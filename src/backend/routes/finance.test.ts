@@ -34,10 +34,12 @@ beforeAll(async () => {
 beforeEach(() => {
   db.exec(`
     DELETE FROM whatsapp_notices;
+    DELETE FROM work_orders;
     DELETE FROM service_events;
     DELETE FROM service_install_costs;
     DELETE FROM service_material_lines;
     DELETE FROM service_device_assignments;
+    DELETE FROM payment_lines;
     DELETE FROM payments;
     DELETE FROM stock_movements;
     DELETE FROM services;
@@ -292,6 +294,66 @@ describe('finance routes', () => {
     expect(response.json()).toEqual({ error: 'Dados de servico invalidos' });
   });
 
+  test('rejects an empty service (no monthly value and no audiovisual)', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-EMPTY','Vazio','active')`).run();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: { clientId: client.lastInsertRowid, monthlyValueCve: 0, dueDay: 10 }
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toMatch(/sem valor/i);
+  });
+
+  test('rejects monthly audiovisual without a price', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-AVBAD','AvBad','active')`).run();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: { clientId: client.lastInsertRowid, monthlyValueCve: 1000, dueDay: 10, audiovisualMode: 'monthly', audiovisualMonthlyCve: 0 }
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toMatch(/audiovisuais/i);
+  });
+
+  test('standalone annual audiovisual service emits the adhesion invoice', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-AVAN','AvAnnual','active')`).run();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: {
+        clientId: client.lastInsertRowid,
+        monthlyValueCve: 0,
+        dueDay: 10,
+        activationDate: '2026-06-10',
+        audiovisualMode: 'annual',
+        audiovisualAnnualCve: 5000
+      }
+    });
+    expect(response.statusCode).toBe(201);
+
+    const payment = db.prepare(`
+      SELECT reference_month AS ref, amount_cve AS amount FROM payments WHERE client_id = ?
+    `).get(client.lastInsertRowid) as { ref: string; amount: number } | undefined;
+    expect(payment).toBeTruthy();
+    expect(payment!.ref).toMatch(/^AV-\d{4}-\d{2}$/);
+    expect(payment!.amount).toBe(5000);
+
+    const line = db.prepare(`
+      SELECT kind, description FROM payment_lines WHERE payment_id = (SELECT id FROM payments WHERE client_id = ?)
+    `).get(client.lastInsertRowid) as { kind: string; description: string };
+    expect(line.kind).toBe('audiovisual');
+    expect(line.description).toBe('Distribuição de Conteúdos Audiovisuais');
+  });
+
+  test('GET /api/audiovisual-config returns the configured product', async () => {
+    db.prepare(`INSERT INTO app_settings (key, value) VALUES ('audiovisualEnabled','true')`).run();
+    db.prepare(`INSERT INTO app_settings (key, value) VALUES ('audiovisualMonthlyCve','750')`).run();
+    const response = await app.inject({ method: 'GET', url: '/api/audiovisual-config' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ enabled: true, monthlyCve: 750 });
+  });
+
   test('creates a service and installs multiple items (device + material) atomically', async () => {
     const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-DEV','Cliente Device','active')`).run();
     const router = db.prepare(`
@@ -326,6 +388,103 @@ describe('finance routes', () => {
     expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(cable.lastInsertRowid)).toEqual({ s: 275 });
     expect(db.prepare('SELECT quantity AS q, unit_cost_cve AS u FROM service_material_lines WHERE service_id = ?').get(body.id)).toEqual({ q: 30, u: 80 });
     expect(db.prepare("SELECT count(*) AS n FROM service_events WHERE service_id = ? AND event_type = 'instalacao'").get(body.id)).toEqual({ n: 1 });
+  });
+
+  test('deletes a service without invoices and restores stock', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-DEL','Cliente Del','active')`).run();
+    const router = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_cve, is_serialized, stock_total, active)
+      VALUES ('equipamento','router','MikroTik','hAP', 6000, 1, 5, 1)
+    `).run();
+    const cable = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_cve, stock_total, active)
+      VALUES ('material','cabo','UTP','metro', 0, 80, 305, 1)
+    `).run();
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: {
+        clientId: client.lastInsertRowid,
+        monthlyValueCve: 3500,
+        dueDay: 10,
+        items: [
+          { catalogId: router.lastInsertRowid, serialNumber: 'SN-DEL-1' },
+          { catalogId: cable.lastInsertRowid, quantity: 30 }
+        ]
+      }
+    });
+    const serviceId = (created.json() as { id: number }).id;
+    // Sanidade: stock abatido pela instalação.
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(router.lastInsertRowid)).toEqual({ s: 4 });
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(cable.lastInsertRowid)).toEqual({ s: 275 });
+
+    const response = await app.inject({ method: 'DELETE', url: `/api/services/${serviceId}` });
+    expect(response.statusCode).toBe(204);
+
+    // Serviço e filhos operacionais removidos.
+    expect(db.prepare('SELECT count(*) AS n FROM services WHERE id = ?').get(serviceId)).toEqual({ n: 0 });
+    expect(db.prepare('SELECT count(*) AS n FROM service_device_assignments WHERE service_id = ?').get(serviceId)).toEqual({ n: 0 });
+    expect(db.prepare('SELECT count(*) AS n FROM service_material_lines WHERE service_id = ?').get(serviceId)).toEqual({ n: 0 });
+    expect(db.prepare('SELECT count(*) AS n FROM service_events WHERE service_id = ?').get(serviceId)).toEqual({ n: 0 });
+    expect(db.prepare('SELECT count(*) AS n FROM stock_movements WHERE service_id = ?').get(serviceId)).toEqual({ n: 0 });
+    // Stock reposto ao valor original.
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(router.lastInsertRowid)).toEqual({ s: 5 });
+    expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(cable.lastInsertRowid)).toEqual({ s: 305 });
+  });
+
+  test('blocks deleting a service that already has an invoice (fiscal rule)', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-FIS','Cliente Fiscal','active')`).run();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: { clientId: client.lastInsertRowid, monthlyValueCve: 3500, dueDay: 10 }
+    });
+    const serviceId = (created.json() as { id: number }).id;
+    await app.inject({ method: 'POST', url: '/api/billing/generate-monthly', payload: { referenceMonth: '2026-06' } });
+    expect(db.prepare('SELECT count(*) AS n FROM payments WHERE service_id = ?').get(serviceId)).toEqual({ n: 1 });
+
+    const response = await app.inject({ method: 'DELETE', url: `/api/services/${serviceId}` });
+    expect(response.statusCode).toBe(409);
+    // Serviço e fatura intactos.
+    expect(db.prepare('SELECT count(*) AS n FROM services WHERE id = ?').get(serviceId)).toEqual({ n: 1 });
+    expect(db.prepare('SELECT count(*) AS n FROM payments WHERE service_id = ?').get(serviceId)).toEqual({ n: 1 });
+  });
+
+  test('blocks deleting a service whose only invoice is cancelled (numbering persists)', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-CAN','Cliente Cancel','active')`).run();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: { clientId: client.lastInsertRowid, monthlyValueCve: 3500, dueDay: 10 }
+    });
+    const serviceId = (created.json() as { id: number }).id;
+    await app.inject({ method: 'POST', url: '/api/billing/generate-monthly', payload: { referenceMonth: '2026-06' } });
+    db.prepare('UPDATE payments SET status = ? WHERE service_id = ?').run('cancelled', serviceId);
+
+    const response = await app.inject({ method: 'DELETE', url: `/api/services/${serviceId}` });
+    expect(response.statusCode).toBe(409);
+    expect(db.prepare('SELECT count(*) AS n FROM services WHERE id = ?').get(serviceId)).toEqual({ n: 1 });
+  });
+
+  test('returns 404 when deleting a non-existent service', async () => {
+    const response = await app.inject({ method: 'DELETE', url: '/api/services/999999' });
+    expect(response.statusCode).toBe(404);
+  });
+
+  test('preserves a linked work order (service_id set to NULL) when deleting a service', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-WO','Cliente WO','active')`).run();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: { clientId: client.lastInsertRowid, monthlyValueCve: 3500, dueDay: 10 }
+    });
+    const serviceId = (created.json() as { id: number }).id;
+    const wo = db.prepare(`INSERT INTO work_orders (service_id, title, status) VALUES (?, 'Instalar', 'aguarda')`).run(serviceId);
+
+    const response = await app.inject({ method: 'DELETE', url: `/api/services/${serviceId}` });
+    expect(response.statusCode).toBe(204);
+    expect(db.prepare('SELECT service_id AS s FROM work_orders WHERE id = ?').get(wo.lastInsertRowid)).toEqual({ s: null });
   });
 
   test('rolls back the whole service when one item is out of stock', async () => {
@@ -740,6 +899,30 @@ describe('finance routes', () => {
     expect(rows[1]).toMatchObject({ amountCve: 4500, status: 'pending' });
     expect(rows[1].invoiceNumber).toMatch(/^FT-\d{4}-\d{5}$/);
     expect(rows[1].invoiceNumber).not.toBe(original.invoiceNumber);
+  });
+
+  test('regenerated monthly payment keeps the audiovisual amount in the total', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-RAV','RegenAv','active')`).run();
+    const service = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, activation_date, due_day, status, audiovisual_mode, audiovisual_monthly_cve)
+      VALUES (?, 2500, '2026-01-15', 15, 'active', 'monthly', 500)
+    `).run(client.lastInsertRowid);
+
+    await app.inject({ method: 'POST', url: '/api/billing/generate-monthly', payload: { referenceMonth: '2026-12' } });
+    const original = db.prepare('SELECT id FROM payments WHERE service_id = ?').get(service.lastInsertRowid) as { id: number };
+    await app.inject({ method: 'POST', url: `/api/payments/${original.id}/cancel`, payload: { reason: 'teste' } });
+
+    const response = await app.inject({ method: 'POST', url: `/api/payments/${original.id}/regenerate` });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({ amountCve: 3000 }); // 2500 internet + 500 audiovisual
+
+    const regen = db.prepare(`SELECT id FROM payments WHERE service_id = ? AND status = 'pending'`).get(service.lastInsertRowid) as { id: number };
+    const lines = db.prepare(`SELECT kind, amount_cve AS amountCve FROM payment_lines WHERE payment_id = ? ORDER BY sort_order`).all(regen.id);
+    expect(lines).toEqual([
+      { kind: 'internet', amountCve: 2500 },
+      { kind: 'audiovisual', amountCve: 500 }
+    ]);
   });
 
   test.each([

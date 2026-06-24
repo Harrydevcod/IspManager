@@ -21,7 +21,8 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  // Child-first: payments reference services/clients.
+  // Child-first: payment_lines → payments → services/clients.
+  db.prepare('DELETE FROM payment_lines').run();
   db.prepare('DELETE FROM payments').run();
   db.prepare('DELETE FROM services').run();
   db.prepare('DELETE FROM clients').run();
@@ -184,6 +185,7 @@ describe('runMonthlyBillingIfDue — competência do mês fechado', () => {
     const onDay29 = runMonthlyBillingIfDue(new Date(2026, 5, 29)); // alvo = Maio
     expect(onDay29).toMatchObject({ ran: true, months: ['2026-05'] });
 
+    db.prepare('DELETE FROM payment_lines').run();
     db.prepare('DELETE FROM payments').run();
     db.prepare('DELETE FROM app_settings').run();
     seedActiveService('B');

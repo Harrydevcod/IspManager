@@ -148,6 +148,47 @@ describe('settings SMS validation', () => {
     expect(response.json().autoBillingDay).toBe(30);
   });
 
+  test('defaults audiovisual config when never set', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(response.statusCode).toBe(200);
+    const settings = response.json();
+    expect(settings.audiovisualEnabled).toBe(false);
+    expect(settings.audiovisualLabel).toBe('Distribuição de Conteúdos Audiovisuais');
+    expect(settings.audiovisualMonthlyCve).toBe(500);
+    expect(settings.audiovisualAnnualCve).toBe(5000);
+  });
+
+  test('persists audiovisual config and reads it back', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: {
+        ...validSettings,
+        audiovisualEnabled: true,
+        audiovisualLabel: 'Serviço de Televisão por Subscrição',
+        audiovisualMonthlyCve: 750,
+        audiovisualAnnualCve: 8000
+      }
+    });
+    expect(response.statusCode).toBe(200);
+
+    const read = await app.inject({ method: 'GET', url: '/api/settings' });
+    const settings = read.json();
+    expect(settings.audiovisualEnabled).toBe(true);
+    expect(settings.audiovisualLabel).toBe('Serviço de Televisão por Subscrição');
+    expect(settings.audiovisualMonthlyCve).toBe(750);
+    expect(settings.audiovisualAnnualCve).toBe(8000);
+  });
+
+  test('rejects negative audiovisual prices', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, audiovisualMonthlyCve: -1 }
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
   test('persists company bank accounts as JSON and returns them from settings', async () => {
     const bankAccounts = [
       {

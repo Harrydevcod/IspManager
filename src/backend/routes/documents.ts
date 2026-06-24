@@ -4,10 +4,29 @@ import { getSqliteDatabase } from '../db/database';
 import { nextDocumentNumber } from '../lib/numbering';
 import { requireRole } from './auth';
 import { formatPtMonth } from '../../shared/date';
+import { isAudiovisualAnnualReference } from '../lib/audiovisual';
 
 const PDFDocument = require('pdfkit');
 
 type DocumentKind = 'invoice' | 'receipt';
+
+type DocumentLine = {
+  kind: 'internet' | 'audiovisual';
+  description: string;
+  amountCve: number;
+};
+
+/**
+ * Rótulo da competência: mês (`MM/AAAA`) para faturas mensais; "Anuidade AAAA"
+ * para a anuidade audiovisual (cuja `reference_month` é `AV-AAAA-MM`, que
+ * `formatPtMonth` não sabe ler).
+ */
+function referenceLabel(reference: string): string {
+  if (isAudiovisualAnnualReference(reference)) {
+    return `Anuidade ${reference.slice(3, 7)}`;
+  }
+  return formatPtMonth(reference);
+}
 
 type PaymentDocumentRow = {
   id: number;
@@ -325,7 +344,8 @@ function buildDocument(
   company: CompanyInfo,
   kind: DocumentKind,
   totals: Totals,
-  qrPng: Buffer | null
+  qrPng: Buffer | null,
+  lines: DocumentLine[]
 ) {
   const isReceipt = kind === 'receipt';
   const label = isReceipt ? 'RECIBO' : 'FATURA';
@@ -396,7 +416,7 @@ function buildDocument(
     doc.fillColor(PALETTE.ink).fontSize(11).font('Helvetica-Bold')
       .text(value, cx + 14, y + 24, { width: cellW - 16, lineBreak: false });
   };
-  writeMeta(M, 'REFERENCIA', formatPtMonth(row.referenceMonth));
+  writeMeta(M, 'REFERENCIA', referenceLabel(row.referenceMonth));
   doc.moveTo(M + cellW, y + 8).lineTo(M + cellW, y + stripH - 8).strokeColor(PALETTE.hairline).lineWidth(0.5).stroke();
   writeMeta(M + cellW, 'EMITIDO EM', formatDate(docDate));
   doc.moveTo(M + cellW * 2, y + 8).lineTo(M + cellW * 2, y + stripH - 8).strokeColor(PALETTE.hairline).lineWidth(0.5).stroke();
@@ -419,21 +439,41 @@ function buildDocument(
   doc.moveTo(M, y).lineTo(W - M, y).strokeColor(PALETTE.hairline).lineWidth(0.4).stroke();
   y += 16;
 
-  doc.fillColor(PALETTE.ink).fontSize(12).font('Helvetica-Bold')
-    .text('Servico de Internet', M, y, { width: descColW, lineBreak: false });
-  if (!totals.isExempt) {
-    doc.fillColor(PALETTE.ink).fontSize(10).font('Helvetica')
-      .text(`${totals.ivaRate}%`, M + descColW + 4, y + 2, { width: ivaColW, align: 'right', lineBreak: false });
-  }
-  doc.fillColor(PALETTE.ink).fontSize(12).font('Helvetica-Bold')
-    .text(formatCve(totals.total, currency), W - M - valueColW, y, { width: valueColW, align: 'right', lineBreak: false });
-  y += 16;
   const planLine = `Plano: ${row.planName || '-'} - ${row.downloadSpeed || '-'} / ${row.uploadSpeed || '-'}`;
-  doc.fillColor(PALETTE.muted).fontSize(8.5).font('Helvetica')
-    .text(fitText(doc, planLine, descColW), M, y, { width: descColW, lineBreak: false });
-  y += 12;
+  const audiovisualSubline = isAudiovisualAnnualReference(row.referenceMonth) ? 'Subscricao anual' : 'Subscricao mensal';
+
+  // Uma linha por item do documento. O valor de cada linha é o seu montante
+  // (IVA incluído); a soma é o total (amount_cve). O detalhe Subtotal/IVA continua
+  // a ser calculado sobre o total na secção 5.
+  const renderItem = (description: string, amount: number, subline: string | null) => {
+    doc.fillColor(PALETTE.ink).fontSize(12).font('Helvetica-Bold')
+      .text(fitText(doc, description, descColW), M, y, { width: descColW, lineBreak: false });
+    if (!totals.isExempt) {
+      doc.fillColor(PALETTE.ink).fontSize(10).font('Helvetica')
+        .text(`${totals.ivaRate}%`, M + descColW + 4, y + 2, { width: ivaColW, align: 'right', lineBreak: false });
+    }
+    doc.fillColor(PALETTE.ink).fontSize(12).font('Helvetica-Bold')
+      .text(formatCve(amount, currency), W - M - valueColW, y, { width: valueColW, align: 'right', lineBreak: false });
+    y += 16;
+    if (subline) {
+      doc.fillColor(PALETTE.muted).fontSize(8.5).font('Helvetica')
+        .text(fitText(doc, subline, descColW), M, y, { width: descColW, lineBreak: false });
+      y += 12;
+    }
+  };
+
+  // Documentos com linhas (payment_lines) renderizam o que foi efetivamente
+  // faturado. Documentos antigos não têm linhas → fallback à linha única de
+  // internet histórica (nunca se reescreve um documento já emitido).
+  if (lines.length > 0) {
+    for (const line of lines) {
+      renderItem(line.description, line.amountCve, line.kind === 'internet' ? planLine : audiovisualSubline);
+    }
+  } else {
+    renderItem('Servico de Internet', totals.total, planLine);
+  }
   doc.fillColor(PALETTE.light).fontSize(8.5).font('Helvetica')
-    .text(`Periodo de referencia ${formatPtMonth(row.referenceMonth)}`, M, y, { width: descColW, lineBreak: false });
+    .text(`Periodo de referencia ${referenceLabel(row.referenceMonth)}`, M, y, { width: descColW, lineBreak: false });
   y += 22;
 
   // === 5) FISCAL BREAKDOWN — Subtotal · IVA · Total (right-aligned mini table)
@@ -559,7 +599,7 @@ function buildDocument(
     );
 }
 
-async function pdfBuffer(row: PaymentDocumentRow, kind: DocumentKind) {
+async function pdfBuffer(row: PaymentDocumentRow, kind: DocumentKind, lines: DocumentLine[]) {
   const company = loadCompany();
   const totals = computeTotals(row.amountCve, company);
   const qrPng: Buffer | null = company.printQrCode
@@ -585,7 +625,7 @@ async function pdfBuffer(row: PaymentDocumentRow, kind: DocumentKind) {
     doc.on('error', reject);
     doc.addPage({ size: 'A5', margin: 28 });
     doc.addPage = () => doc;
-    buildDocument(doc, row, company, kind, totals, qrPng);
+    buildDocument(doc, row, company, kind, totals, qrPng, lines);
     doc.end();
   });
 }
@@ -635,7 +675,13 @@ export async function renderPaymentDocumentPdf(id: number, kind: DocumentKind): 
     `).run(nextDocumentNumber('receipt', id), id);
     row = db.prepare(documentSelect).get(id) as PaymentDocumentRow;
   }
-  const buffer = await pdfBuffer(row, kind);
+  const lines = db.prepare(`
+    SELECT kind, description, amount_cve AS amountCve
+    FROM payment_lines
+    WHERE payment_id = ?
+    ORDER BY sort_order, id
+  `).all(id) as DocumentLine[];
+  const buffer = await pdfBuffer(row, kind, lines);
   return { buffer, filename: documentFilename(kind, row) };
 }
 
