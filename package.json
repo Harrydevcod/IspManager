@@ -1,6 +1,6 @@
 {
   "name": "ispm",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "ISP Manager desktop app",
   "private": true,
   "main": "dist/main/index.js",
@@ -12,7 +12,7 @@
     "import:clients": "node scripts/import-clients.cjs",
     "import:finance": "node scripts/import-finance.cjs",
     "import:stock": "node scripts/import-stock.cjs",
-    "build": "tsc --noEmit && vite build && tsc -p tsconfig.main.json && electron-builder",
+    "build": "tsc --noEmit && vite build && tsc -p tsconfig.main.json && electron-rebuild -f -w better-sqlite3 && electron-builder",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/renderer",
     "test": "vitest run --passWithNoTests"
@@ -60,6 +60,7 @@
     "productName": "ISPM",
     "icon": "assets/icon",
     "buildDependenciesFromSource": true,
+    "npmRebuild": false,
     "files": [
       "dist/**/*",
       "package.json"
