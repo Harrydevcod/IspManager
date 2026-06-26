@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Eye, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Smartphone, Undo2, X } from 'lucide-react';
-import { Badge, Button, DataList, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
-import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
+import { AlertTriangle, RotateCcw, Send } from 'lucide-react';
+import { Button, Field, FilterBar, Message, Select, useToast } from '../components';
+import { formatPtMonth } from '../lib/format';
 import { authFetch } from '../lib/auth';
 import { downloadAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
 import {
@@ -17,6 +17,7 @@ import {
 import type { PaymentRow, SmsEventType } from '../types';
 import { IndividualRevertDialog } from './payments/IndividualRevertDialog';
 import { PaymentDetailDialog, type PaymentActionMode, type PaymentMethod } from './payments/PaymentDetailDialog';
+import { PaymentsList } from './payments/PaymentsList';
 import { MonthlyBillingPreview, type BillingPreview } from './payments/MonthlyBillingPreview';
 import { OverdueNotifyDialog, type OverdueNotifyPreview, type WhatsappNoticeType } from './payments/OverdueNotifyDialog';
 import { PaymentsTotals } from './payments/PaymentsTotals';
@@ -56,21 +57,6 @@ function markReminderSent(paymentId: number) {
     /* localStorage unavailable — silent */
   }
 }
-
-// ---------------------------------------------------------------------------
-// Payment status helpers
-// ---------------------------------------------------------------------------
-
-const paymentStatusTone = (status: PaymentRow['status']): 'success' | 'info' | 'danger' | 'neutral' => {
-  switch (status) {
-    case 'paid': return 'success';
-    case 'pending': return 'info';
-    case 'overdue': return 'danger';
-    case 'cancelled': return 'neutral';
-  }
-};
-
-const statusLabel = (status: PaymentRow['status']): string => status;
 
 // ---------------------------------------------------------------------------
 // PaymentsModule
@@ -795,128 +781,21 @@ export function PaymentsModule() {
         />
       )}
 
-      <DataList
-        rows={visiblePayments}
-        rowKey={(p) => p.id}
-        activeKey={previewPayment?.id ?? null}
-        columns={[
-          {
-            cell: (p) => (
-              <span>
-                <small className="entity-code">{p.clientCode || '—'}</small>
-                <strong>{p.clientName}</strong>
-                <small>{formatPtMonth(p.referenceMonth)} · FT {p.invoiceNumber || '-'}</small>
-              </span>
-            )
-          },
-          {
-            cell: (p) => <Badge tone={paymentStatusTone(p.status)}>{statusLabel(p.status)}</Badge>
-          },
-          {
-            cell: (p) => <b>{formatCve(p.amountCve)}</b>
-          }
-        ]}
-        actions={(p) => (
-          <>
-            <Button variant="icon" size="sm" title="Pre-visualizar" onClick={() => previewPaymentDocument(p)}>
-              <Eye size={16} aria-hidden />
-            </Button>
-            {p.status !== 'cancelled' && (
-              <Button variant="icon" size="sm" title="Fatura PDF" onClick={() => openPdf(p, 'invoice')}>
-                <FileText size={16} aria-hidden />
-              </Button>
-            )}
-            {p.status === 'pending' && (
-              <Button variant="icon" size="sm" title="Marcar atraso" onClick={() => void markOverdue(p)}>
-                <AlertTriangle size={16} aria-hidden />
-              </Button>
-            )}
-            {p.status === 'paid' ? (
-              <Button variant="icon" size="sm" title="Recibo PDF" onClick={() => openPdf(p, 'receipt')}>
-                <ReceiptText size={16} aria-hidden />
-              </Button>
-            ) : p.status !== 'cancelled' ? (
-              <Button variant="icon" size="sm" title="Registar pagamento" onClick={() => openPayForm(p)}>
-                <CheckCircle2 size={16} aria-hidden />
-              </Button>
-            ) : null}
-            {p.status !== 'paid' && p.status !== 'cancelled' && normalizeWhatsappPhone(p.clientPhone) && (
-              <Button
-                variant="icon"
-                size="sm"
-                title={wasReminderSentToday(p.id) ? 'Lembrete WhatsApp ja enviado hoje' : 'Lembrete WhatsApp'}
-                onClick={() => openWhatsappForm(p)}
-                disabled={wasReminderSentToday(p.id)}
-              >
-                <MessageCircle size={16} aria-hidden />
-              </Button>
-            )}
-            {p.status !== 'cancelled' && normalizeWhatsappPhone(p.clientPhone) && (
-              <Button
-                variant="icon"
-                size="sm"
-                title={p.status === 'paid' ? 'Enviar recibo (PDF) por WhatsApp' : 'Enviar fatura (PDF) por WhatsApp'}
-                disabled={submitting}
-                onClick={() => void sendDocumentWhatsapp(p, p.status === 'paid' ? 'receipt' : 'invoice')}
-              >
-                <Send size={16} aria-hidden />
-              </Button>
-            )}
-            {p.status !== 'cancelled' && normalizeWhatsappPhone(p.clientPhone) && (
-              <Button
-                variant="icon"
-                size="sm"
-                title={p.status === 'paid' ? 'Enviar recibo por SMS (Android)' : p.status === 'overdue' ? 'Enviar aviso de atraso por SMS (Android)' : 'Enviar fatura por SMS (Android)'}
-                disabled={submitting}
-                onClick={() => void sendPaymentSms(p, p.status === 'paid' ? 'receipt_confirmed' : p.status === 'overdue' ? 'payment_overdue' : 'invoice_issued')}
-              >
-                <Smartphone size={16} aria-hidden />
-              </Button>
-            )}
-            {p.status !== 'cancelled' && (
-              <Button
-                variant="icon"
-                size="sm"
-                title={p.status === 'paid'
-                  ? 'Anular pagamento ja registado (erro de faturacao)'
-                  : 'Anular cobranca'}
-                onClick={() => openCancelForm(p)}
-                className={p.status === 'paid' ? 'danger-ghost' : undefined}
-              >
-                <X size={16} aria-hidden />
-              </Button>
-            )}
-            {(p.status === 'pending' || p.status === 'overdue') && (
-              <Button
-                variant="icon"
-                size="sm"
-                title="Reverter geracao (apaga a cobranca)"
-                onClick={() => openIndividualRevert(p)}
-              >
-                <Undo2 size={16} aria-hidden />
-              </Button>
-            )}
-            {p.canRegenerate === 1 && (
-              <Button
-                variant="icon"
-                size="sm"
-                title="Regenerar mensalidade com o valor atual do servico"
-                onClick={() => void regenerateMonthlyPayment(p)}
-                disabled={submitting}
-              >
-                <RotateCcw size={16} aria-hidden />
-              </Button>
-            )}
-          </>
-        )}
-        onRowClick={(p) => previewPaymentDocument(p)}
-        empty={
-          <EmptyState
-            icon={ReceiptText}
-            title="Nenhuma cobrança encontrada"
-            description="Ajusta os filtros ou aguarda novos serviços para gerar cobranças."
-          />
-        }
+      <PaymentsList
+        payments={visiblePayments}
+        activeId={previewPayment?.id ?? null}
+        submitting={submitting}
+        isReminderSentToday={wasReminderSentToday}
+        onPreview={previewPaymentDocument}
+        onOpenPdf={openPdf}
+        onMarkOverdue={(p) => void markOverdue(p)}
+        onOpenPayForm={openPayForm}
+        onOpenWhatsappForm={openWhatsappForm}
+        onSendDocumentWhatsapp={(p, kind) => void sendDocumentWhatsapp(p, kind)}
+        onSendSms={(p, eventType) => void sendPaymentSms(p, eventType)}
+        onOpenCancelForm={openCancelForm}
+        onRevert={openIndividualRevert}
+        onRegenerate={(p) => void regenerateMonthlyPayment(p)}
       />
 
       <OverdueNotifyDialog
