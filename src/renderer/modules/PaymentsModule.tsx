@@ -16,6 +16,8 @@ import {
   sendWhatsappViaUltraMsg
 } from '../lib/whatsapp';
 import type { PaymentRow, SmsEventType } from '../types';
+import { MonthlyBillingPreview, type BillingPreview } from './payments/MonthlyBillingPreview';
+import { PaymentsTotals } from './payments/PaymentsTotals';
 
 // ---------------------------------------------------------------------------
 // Payment-private types (local to this module)
@@ -43,23 +45,6 @@ const CANCEL_REASON_CHIPS_PAID = [
   'Mes de referencia incorrecto na fatura',
   'Plano errado aplicado na cobranca'
 ];
-
-type BillingPreviewRow = {
-  serviceId: number;
-  clientId: number;
-  clientName: string;
-  planName: string | null;
-  amountCve: number;
-  dueDate: string;
-};
-
-type BillingPreview = {
-  referenceMonth: string;
-  activeServices: number;
-  alreadyBilled: number;
-  toCreate: BillingPreviewRow[];
-  totalCve: number;
-};
 
 // ---------------------------------------------------------------------------
 // Reminder helpers (moved verbatim from App.tsx L694–L712)
@@ -800,87 +785,15 @@ export function PaymentsModule() {
         <small>{visiblePayments.length} cobrancas{showAllMonths ? ' (todos os meses)' : ` em ${formatPtMonth(referenceMonth)}`}</small>
       </FilterBar>
 
-      <div className="payments-totals" aria-label="Totais filtrados">
-        <span className="payments-totals-label">Totais (filtrados)</span>
-        <span className="payments-total-chip pending">
-          <small>Pendente</small>
-          <strong>{formatCve(totals.pending.sum)}</strong>
-          <em>{totals.pending.count}</em>
-        </span>
-        <span className="payments-total-chip overdue">
-          <small>Atraso</small>
-          <strong>{formatCve(totals.overdue.sum)}</strong>
-          <em>{totals.overdue.count}</em>
-        </span>
-        <span className="payments-total-chip paid">
-          <small>Pago</small>
-          <strong>{formatCve(totals.paid.sum)}</strong>
-          <em>{totals.paid.count}</em>
-        </span>
-      </div>
+      <PaymentsTotals totals={totals} />
 
       {monthlyPreview && (
-        <div className="monthly-preview" id="monthly-preview">
-          <div className="module-header">
-            <div>
-              <p className="eyebrow">Pre-visualizacao da geracao</p>
-              <h2>Mensalidades de {formatPtMonth(monthlyPreview.referenceMonth)}</h2>
-            </div>
-            <div className="inline-actions">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => void confirmMonthlyGenerate()}
-                disabled={monthlyLoading || monthlyPreview.toCreate.length === 0}
-              >
-                {monthlyLoading ? 'A gerar...' : `Confirmar e gerar (${monthlyPreview.toCreate.length})`}
-              </Button>
-              <Button variant="secondary" size="sm" onClick={closeMonthlyPreview} disabled={monthlyLoading}>
-                Cancelar
-              </Button>
-            </div>
-          </div>
-          <div className="monthly-preview-summary">
-            <span className="monthly-preview-chip">
-              <small>Servicos ativos</small>
-              <strong>{monthlyPreview.activeServices}</strong>
-            </span>
-            <span className="monthly-preview-chip">
-              <small>Ja cobrados</small>
-              <strong>{monthlyPreview.alreadyBilled}</strong>
-            </span>
-            <span className="monthly-preview-chip highlight">
-              <small>A criar</small>
-              <strong>{monthlyPreview.toCreate.length}</strong>
-            </span>
-            <span className="monthly-preview-chip highlight">
-              <small>Total</small>
-              <strong>{formatCve(monthlyPreview.totalCve)}</strong>
-            </span>
-          </div>
-          {monthlyPreview.toCreate.length > 0 ? (
-            <div className="monthly-preview-table" role="table" aria-label="Cobrancas a criar">
-              <div className="monthly-preview-row monthly-preview-row--head" role="row">
-                <span role="columnheader">Cliente</span>
-                <span role="columnheader">Plano</span>
-                <span role="columnheader">Vencimento</span>
-                <span role="columnheader" className="monthly-preview-amount">Valor</span>
-              </div>
-              {monthlyPreview.toCreate.map((row) => (
-                <div className="monthly-preview-row" role="row" key={row.serviceId}>
-                  <span role="cell">{row.clientName}</span>
-                  <span role="cell" className="monthly-preview-muted">{row.planName || '-'}</span>
-                  <span role="cell" className="monthly-preview-muted">{formatPtDate(row.dueDate)}</span>
-                  <span role="cell" className="monthly-preview-amount">{formatCve(row.amountCve)}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <Message>
-              Nada a criar. Os {monthlyPreview.alreadyBilled} servicos ativos ja tem cobranca para este mes.
-            </Message>
-          )}
-        </div>
+        <MonthlyBillingPreview
+          preview={monthlyPreview}
+          loading={monthlyLoading}
+          onConfirm={() => void confirmMonthlyGenerate()}
+          onClose={closeMonthlyPreview}
+        />
       )}
 
       {selectedPayment && (
