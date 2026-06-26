@@ -1,7 +1,6 @@
-import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Eye, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Smartphone, Undo2, X } from 'lucide-react';
-import { Badge, Button, DataList, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
+import { Badge, Button, DataList, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import { authFetch } from '../lib/auth';
 import { downloadAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
@@ -17,6 +16,7 @@ import {
 } from '../lib/whatsapp';
 import type { PaymentRow, SmsEventType } from '../types';
 import { IndividualRevertDialog } from './payments/IndividualRevertDialog';
+import { PaymentDetailDialog, type PaymentActionMode, type PaymentMethod } from './payments/PaymentDetailDialog';
 import { MonthlyBillingPreview, type BillingPreview } from './payments/MonthlyBillingPreview';
 import { OverdueNotifyDialog, type OverdueNotifyPreview, type WhatsappNoticeType } from './payments/OverdueNotifyDialog';
 import { PaymentsTotals } from './payments/PaymentsTotals';
@@ -27,26 +27,7 @@ import { ReverseMonthlyDialog, type ReverseMonthlyPreview } from './payments/Rev
 // Payment-private types (local to this module)
 // ---------------------------------------------------------------------------
 
-type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
-type PaymentActionMode = 'pay' | 'cancel' | 'whatsapp';
 type PaymentSortMode = 'dueAsc' | 'dueDesc' | 'amountDesc' | 'clientAsc';
-const CANCEL_REASON_CHIPS_PENDING = [
-  'Cobranca duplicada',
-  'Cliente cancelou o servico',
-  'Erro na geracao da mensalidade',
-  'Renegociacao com o cliente',
-  'Suspensao do servico no periodo',
-  'Plano alterado a meio do mes'
-];
-
-const CANCEL_REASON_CHIPS_PAID = [
-  'Valor cobrado errado - reemissao com o valor correcto',
-  'Pagamento duplicado - cobranca registada duas vezes',
-  'Servico nao prestado durante o periodo cobrado',
-  'Reembolso integral ao cliente',
-  'Mes de referencia incorrecto na fatura',
-  'Plano errado aplicado na cobranca'
-];
 
 // ---------------------------------------------------------------------------
 // Reminder helpers (moved verbatim from App.tsx L694–L712)
@@ -785,264 +766,33 @@ export function PaymentsModule() {
       )}
 
       {selectedPayment && (
-        <Dialog
-          open
-          size="xl"
-          eyebrow="Pre-visualizacao"
-          title={selectedPayment.clientName}
+        <PaymentDetailDialog
+          payment={selectedPayment}
+          submitting={submitting}
+          actionMode={actionMode}
+          showActionForm={showActionForm}
+          payMethod={payMethod}
+          payDate={payDate}
+          cancelReason={cancelReason}
+          previewDoc={previewDoc}
+          previewDocType={previewDocType}
+          whatsappMessage={whatsappMessageFor(selectedPayment)}
+          reminderSentToday={wasReminderSentToday(selectedPayment.id)}
           onClose={() => { setSelectedPayment(null); closeActionForm(); }}
-          actions={
-            <>
-              {selectedPayment.status !== 'cancelled' && (
-                <Button variant="secondary" size="sm" leadingIcon={<FileText size={16} aria-hidden />} onClick={() => openPdf(selectedPayment, 'invoice')}>
-                  Fatura PDF
-                </Button>
-              )}
-              {selectedPayment.status !== 'cancelled' && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  leadingIcon={<MessageCircle size={16} aria-hidden />}
-                  disabled={submitting || !normalizeWhatsappPhone(selectedPayment.clientPhone)}
-                  onClick={() => void sendDocumentWhatsapp(selectedPayment, selectedPayment.status === 'paid' ? 'receipt' : 'invoice')}
-                >
-                  Enviar PDF por WhatsApp
-                </Button>
-              )}
-              {selectedPayment.status === 'paid' ? (
-                <Button variant="secondary" size="sm" leadingIcon={<ReceiptText size={16} aria-hidden />} onClick={() => openPdf(selectedPayment, 'receipt')}>
-                  Recibo PDF
-                </Button>
-              ) : selectedPayment.status !== 'cancelled' ? (
-                <Button variant="secondary" size="sm" leadingIcon={<CheckCircle2 size={16} aria-hidden />} onClick={() => openPayForm(selectedPayment)}>
-                  Registar pagamento
-                </Button>
-              ) : null}
-              {selectedPayment.status !== 'cancelled' && normalizeWhatsappPhone(selectedPayment.clientPhone) && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => openWhatsappForm(selectedPayment)}
-                  disabled={selectedPayment.status !== 'paid' && wasReminderSentToday(selectedPayment.id)}
-                  title={selectedPayment.status !== 'paid' && wasReminderSentToday(selectedPayment.id) ? 'Lembrete ja enviado hoje' : 'Enviar WhatsApp'}
-                >
-                  <MessageCircle size={16} aria-hidden />
-                  {selectedPayment.status !== 'paid' && wasReminderSentToday(selectedPayment.id)
-                    ? 'Enviado hoje'
-                    : selectedPayment.status === 'paid'
-                      ? 'Recibo WhatsApp'
-                      : 'WhatsApp'}
-                </Button>
-              )}
-              {selectedPayment.status !== 'cancelled' && (
-                <Button
-                  variant={selectedPayment.status === 'paid' ? 'danger' : 'secondary'}
-                  size="sm"
-                  onClick={() => openCancelForm(selectedPayment)}
-                  className={selectedPayment.status === 'paid' ? 'danger-ghost' : undefined}
-                  title={selectedPayment.status === 'paid'
-                    ? 'Anular pagamento ja registado (ex: erro de faturacao)'
-                    : 'Anular cobranca'}
-                >
-                  <X size={16} aria-hidden />
-                  {selectedPayment.status === 'paid' ? 'Anular pago' : 'Anular'}
-                </Button>
-              )}
-              {selectedPayment.canRegenerate === 1 && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  leadingIcon={<RotateCcw size={16} aria-hidden />}
-                  onClick={() => void regenerateMonthlyPayment(selectedPayment)}
-                  disabled={submitting}
-                  title="Criar uma nova fatura com o valor mensal atual do servico"
-                >
-                  {submitting ? 'A regenerar...' : 'Regenerar mensalidade'}
-                </Button>
-              )}
-            </>
-          }
-        >
-          <div className="client-detail payment-preview">
-          {showActionForm && actionMode === 'pay' && (
-            <form
-              className="payment-action-form"
-              onSubmit={(event: FormEvent<HTMLFormElement>) => {
-                event.preventDefault();
-                void submitPayment(selectedPayment.id, payMethod, payDate);
-              }}
-            >
-              <div>
-                <p className="eyebrow">Registar pagamento</p>
-                <strong>{formatCve(selectedPayment.amountCve)}</strong>
-              </div>
-              <Select label="Metodo" value={payMethod} onChange={(event) => setPayMethod(event.target.value as PaymentMethod)} disabled={submitting}>
-                <option value="numerario">Numerario</option>
-                <option value="transferencia">Transferencia</option>
-                <option value="outro">Outro</option>
-              </Select>
-              <Field label="Data" type="date" value={payDate} onChange={(event) => setPayDate(event.target.value)} max={todayIso()} disabled={submitting} required />
-              <div className="inline-actions">
-                <Button type="submit" disabled={submitting || !payDate}>Confirmar</Button>
-                <Button variant="secondary" onClick={closeActionForm} disabled={submitting}>Cancelar</Button>
-              </div>
-            </form>
-          )}
-
-          {showActionForm && actionMode === 'cancel' && (() => {
-            const wasPaid = selectedPayment.status === 'paid';
-            const minLen = wasPaid ? 10 : 3;
-            return (
-              <form
-                className={`payment-action-form payment-action-form--cancel${wasPaid ? ' payment-action-form--cancel-paid' : ''}`}
-                onSubmit={(event: FormEvent<HTMLFormElement>) => {
-                  event.preventDefault();
-                  void submitCancel(selectedPayment.id, cancelReason);
-                }}
-              >
-                <div>
-                  <p className="eyebrow">
-                    {wasPaid ? 'Anular pagamento ja registado' : 'Anular pagamento'}
-                  </p>
-                  {wasPaid ? (
-                    <small>
-                      <strong>Atencao:</strong> anular um pagamento ja registado nao devolve dinheiro.
-                      Marca a cobranca <strong>FT {selectedPayment.invoiceNumber || '-'}</strong>
-                      {selectedPayment.receiptNumber ? ` / REC ${selectedPayment.receiptNumber}` : ''}
-                      {' '}como invalida, congela os numeros e regista a anulacao no audit log.
-                      Use para corrigir erros de faturacao no valor.
-                    </small>
-                  ) : (
-                    <small>O pagamento e marcado anulado e o motivo fica registado nas notas.</small>
-                  )}
-                </div>
-                <div>
-                  <span className="field-label">Motivo {wasPaid && <em className="payment-form-hint">(minimo 10 caracteres)</em>}</span>
-                  <div className="reason-chips" role="list" aria-label="Motivos sugeridos">
-                    {(wasPaid ? CANCEL_REASON_CHIPS_PAID : CANCEL_REASON_CHIPS_PENDING).map((suggestion) => {
-                      const active = cancelReason.trim() === suggestion;
-                      return (
-                        <Button
-                          key={suggestion}
-                          variant="secondary"
-                          size="sm"
-                          role="listitem"
-                          className={active ? 'reason-chip reason-chip-active' : 'reason-chip'}
-                          onClick={() => setCancelReason(suggestion)}
-                          disabled={submitting}
-                        >
-                          {suggestion}
-                        </Button>
-                      );
-                    })}
-                  </div>
-                  <Textarea
-                    label="Motivo escrito"
-                    value={cancelReason}
-                    onChange={(event) => setCancelReason(event.target.value)}
-                    rows={wasPaid ? 4 : 3}
-                    required
-                    minLength={minLen}
-                    placeholder={wasPaid
-                      ? 'Escolhe um motivo acima ou escreve: ex. valor cobrado 5500 em vez de 4500; cliente notificado.'
-                      : 'Escolhe um motivo acima ou escreve livremente.'}
-                    disabled={submitting}
-                  />
-                </div>
-                <div className="inline-actions">
-                  <Button
-                    type="submit"
-                    variant={wasPaid ? 'danger' : 'primary'}
-                    disabled={submitting || cancelReason.trim().length < minLen}
-                  >
-                    {wasPaid ? 'Confirmar anulacao pos-pagamento' : 'Confirmar anulacao'}
-                  </Button>
-                  <Button variant="secondary" onClick={closeActionForm} disabled={submitting}>Cancelar</Button>
-                </div>
-              </form>
-            );
-          })()}
-
-          {showActionForm && actionMode === 'whatsapp' && (
-            <form
-              className="payment-action-form payment-action-form--whatsapp"
-              onSubmit={(event: FormEvent<HTMLFormElement>) => {
-                event.preventDefault();
-                void submitWhatsapp(selectedPayment);
-              }}
-            >
-              <div>
-                <p className="eyebrow">
-                  {selectedPayment.status === 'paid'
-                    ? 'Recibo WhatsApp'
-                    : selectedPayment.status === 'overdue'
-                      ? 'Aviso WhatsApp'
-                      : 'Fatura WhatsApp'}
-                </p>
-                <small>
-                  Para <strong>{normalizeWhatsappPhone(selectedPayment.clientPhone) || '—'}</strong>{' '}
-                  · template em Configuracoes
-                </small>
-              </div>
-              <Textarea
-                label="Mensagem"
-                value={whatsappMessageFor(selectedPayment)}
-                readOnly
-                rows={4}
-              />
-              <div className="inline-actions">
-                <Button type="submit" disabled={submitting || !normalizeWhatsappPhone(selectedPayment.clientPhone)}>
-                  {submitting ? 'A enviar...' : 'Enviar'}
-                </Button>
-                <Button variant="secondary" onClick={closeActionForm} disabled={submitting}>Cancelar</Button>
-              </div>
-            </form>
-          )}
-
-          {(() => {
-            // A fatura que deu origem ao recibo fica marcada como paga (Badge) e
-            // continua acessível via "Fatura PDF".
-            const docLabel = previewDocType === 'receipt'
-              ? (selectedPayment.receiptNumber ? `Recibo ${selectedPayment.receiptNumber}` : 'Recibo emitido')
-              : (selectedPayment.invoiceNumber ? `Fatura ${selectedPayment.invoiceNumber}` : 'Fatura por emitir');
-            return (
-              <>
-                <div className="document-preview">
-                  <span>{docLabel}</span>
-                  <strong>{formatCve(selectedPayment.amountCve)}</strong>
-                  <small>
-                    Mes {formatPtMonth(selectedPayment.referenceMonth)} - vencimento {formatPtDate(selectedPayment.dueDate)} - {selectedPayment.status}
-                  </small>
-                </div>
-                {selectedPayment.status === 'cancelled' ? (
-                  <Message>Pagamento anulado. Nenhuma fatura ou recibo pode ser emitido.</Message>
-                ) : previewDoc.error ? (
-                  <Message tone="error">Nao foi possivel carregar o documento.</Message>
-                ) : previewDoc.objectUrl ? (
-                  <iframe
-                    className="payment-pdf-preview"
-                    title={previewDocType === 'receipt'
-                      ? `Pre-visualizacao do recibo ${selectedPayment.receiptNumber || selectedPayment.id}`
-                      : `Pre-visualizacao da fatura ${selectedPayment.invoiceNumber || selectedPayment.id}`}
-                    src={previewDoc.objectUrl}
-                  />
-                ) : (
-                  <Message>A carregar documento…</Message>
-                )}
-              </>
-            );
-          })()}
-          <dl>
-            <div><dt>Mes</dt><dd>{formatPtMonth(selectedPayment.referenceMonth)}</dd></div>
-            <div><dt>Valor</dt><dd>{formatCve(selectedPayment.amountCve)}</dd></div>
-            <div><dt>Fatura</dt><dd>{selectedPayment.invoiceNumber || '-'}</dd></div>
-            <div><dt>Recibo</dt><dd>{selectedPayment.receiptNumber || '-'}</dd></div>
-            <div><dt>Metodo</dt><dd>{selectedPayment.paymentMethod || '-'}</dd></div>
-            <div><dt>Data pagamento</dt><dd>{formatPtDate(selectedPayment.paymentDate)}</dd></div>
-            <div><dt>Estado</dt><dd>{selectedPayment.status}</dd></div>
-          </dl>
-          </div>
-        </Dialog>
+          onOpenPdf={openPdf}
+          onSendDocumentWhatsapp={(payment, kind) => void sendDocumentWhatsapp(payment, kind)}
+          onOpenPayForm={openPayForm}
+          onOpenWhatsappForm={openWhatsappForm}
+          onOpenCancelForm={openCancelForm}
+          onRegenerate={(payment) => void regenerateMonthlyPayment(payment)}
+          onCloseActionForm={closeActionForm}
+          onPayMethodChange={setPayMethod}
+          onPayDateChange={setPayDate}
+          onCancelReasonChange={setCancelReason}
+          onSubmitPay={() => void submitPayment(selectedPayment.id, payMethod, payDate)}
+          onSubmitCancel={() => void submitCancel(selectedPayment.id, cancelReason)}
+          onSubmitWhatsapp={() => void submitWhatsapp(selectedPayment)}
+        />
       )}
 
       <DataList
