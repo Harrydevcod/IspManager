@@ -1,5 +1,5 @@
 import { Pencil, Wrench } from 'lucide-react';
-import type { Dispatch, FormEvent, SetStateAction } from 'react';
+import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { Badge, Button, Combobox, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
@@ -7,26 +7,12 @@ import { formatCve } from '../lib/format';
 import { statusLabel, statusTone } from '../lib/status';
 import type { AudiovisualConfig, Client, DeviceAssignment, PlanRow, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
 import { ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
-
-type ItemDraft = {
-  category: 'equipamento' | 'material';
-  catalogId: string;
-  quantity: string;
-  serialNumber: string;
-  assetTag: string;
-  ipAddress: string;
-  macAddress: string;
-  notes: string;
-};
+import { ServiceItemDraftsBuilder, emptyItemDraft, type ItemDraft } from './services/ServiceItemDraftsBuilder';
 
 type EventFormState = {
   eventType: ServiceEventType;
   notes: string;
 };
-
-function emptyItemDraft(category: 'equipamento' | 'material' = 'equipamento'): ItemDraft {
-  return { category, catalogId: '', quantity: '1', serialNumber: '', assetTag: '', ipAddress: '', macAddress: '', notes: '' };
-}
 
 function emptyEventForm(): EventFormState {
   return { eventType: 'visita', notes: '' };
@@ -252,14 +238,6 @@ export function ServicesModule({
     setShowDeviceDialog(false);
     setAddItemDrafts([]);
     setAddLaborCve('');
-  }
-
-  function updateItemDraft(setter: Dispatch<SetStateAction<ItemDraft[]>>, index: number, patch: Partial<ItemDraft>) {
-    setter((current) => current.map((draft, i) => i === index ? { ...draft, ...patch } : draft));
-  }
-
-  function removeItemDraft(setter: Dispatch<SetStateAction<ItemDraft[]>>, index: number) {
-    setter((current) => current.filter((_, i) => i !== index));
   }
 
   function buildItemsPayload(drafts: ItemDraft[], catalog: StockCatalogRow[]) {
@@ -541,85 +519,6 @@ export function ServicesModule({
     await loadServices();
   }
 
-  function renderItemGroup(
-    drafts: ItemDraft[],
-    setter: Dispatch<SetStateAction<ItemDraft[]>>,
-    category: 'equipamento' | 'material'
-  ) {
-    const isMaterial = category === 'material';
-    const catalog = catalogList.filter((item) => item.category === category);
-    const rows = drafts
-      .map((draft, index) => ({ draft, index }))
-      .filter((row) => row.draft.category === category);
-
-    return (
-      <div className="service-items-group">
-        <p className="service-items-group-title">{isMaterial ? 'Materiais' : 'Equipamentos'}</p>
-        {rows.length === 0 && (
-          <Message>{isMaterial ? 'Sem materiais adicionados.' : 'Sem equipamentos adicionados.'}</Message>
-        )}
-        {rows.map(({ draft, index }) => {
-          const selectedItem = catalog.find((item) => String(item.id) === draft.catalogId);
-          return (
-            <div className="service-item-draft" key={index}>
-              <Select
-                wide
-                label={isMaterial ? 'Material' : 'Equipamento'}
-                required
-                value={draft.catalogId}
-                onChange={(event) => updateItemDraft(setter, index, { catalogId: event.target.value })}
-              >
-                <option value="">{isMaterial ? 'Selecionar material' : 'Selecionar equipamento'}</option>
-                {catalog.map((item) => (
-                  <option key={item.id} value={item.id} disabled={item.stockTotal < 1}>
-                    {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} {item.unitOfMeasure}
-                  </option>
-                ))}
-              </Select>
-              {isMaterial ? (
-                <Field
-                  label={`Quantidade${selectedItem ? ` (${selectedItem.unitOfMeasure})` : ''}`}
-                  required
-                  type="number"
-                  min={1}
-                  max={selectedItem?.stockTotal}
-                  value={draft.quantity}
-                  onChange={(event) => updateItemDraft(setter, index, { quantity: event.target.value })}
-                />
-              ) : (
-                <>
-                  <Field label="Serial" value={draft.serialNumber} onChange={(event) => updateItemDraft(setter, index, { serialNumber: event.target.value })} />
-                  <Field label="Asset tag" value={draft.assetTag} onChange={(event) => updateItemDraft(setter, index, { assetTag: event.target.value })} />
-                  <Field label="MAC" value={draft.macAddress} onChange={(event) => updateItemDraft(setter, index, { macAddress: event.target.value })} placeholder="AA:BB:CC:DD:EE:FF" />
-                  <Field label="IP" value={draft.ipAddress} onChange={(event) => updateItemDraft(setter, index, { ipAddress: event.target.value })} placeholder="192.168.X.Y" />
-                </>
-              )}
-              <Field wide label="Notas" value={draft.notes} onChange={(event) => updateItemDraft(setter, index, { notes: event.target.value })} />
-              <Button type="button" variant="secondary" size="sm" onClick={() => removeItemDraft(setter, index)}>
-                Remover linha
-              </Button>
-            </div>
-          );
-        })}
-        <Button type="button" variant="secondary" size="sm" onClick={() => setter((current) => [...current, emptyItemDraft(category)])}>
-          {isMaterial ? 'Adicionar material' : 'Adicionar equipamento'}
-        </Button>
-      </div>
-    );
-  }
-
-  function renderItemDrafts(
-    drafts: ItemDraft[],
-    setter: Dispatch<SetStateAction<ItemDraft[]>>
-  ) {
-    return (
-      <div className="service-items-builder">
-        {renderItemGroup(drafts, setter, 'equipamento')}
-        {renderItemGroup(drafts, setter, 'material')}
-      </div>
-    );
-  }
-
   const visibleServices = services.filter((service) => {
     const normalizedSearch = search.trim().toLowerCase();
     const matchesSearch = !normalizedSearch
@@ -835,7 +734,7 @@ export function ServicesModule({
               />
               {attachItems && (
                 <>
-                  {renderItemDrafts(itemDrafts, setItemDrafts)}
+                  <ServiceItemDraftsBuilder drafts={itemDrafts} catalog={catalogList} onChange={setItemDrafts} />
                   <Field
                     wide
                     label="Mão de obra (CVE)"
@@ -870,7 +769,7 @@ export function ServicesModule({
         }
       >
         <form id="device-form" className="client-form" onSubmit={submitItems}>
-          {renderItemDrafts(addItemDrafts, setAddItemDrafts)}
+          <ServiceItemDraftsBuilder drafts={addItemDrafts} catalog={catalogList} onChange={setAddItemDrafts} />
           <Field
             wide
             label="Mão de obra (CVE)"
