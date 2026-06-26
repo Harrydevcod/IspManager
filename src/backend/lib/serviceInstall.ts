@@ -58,7 +58,7 @@ export function loadCatalogIdentity(db: Database.Database, id: number): CatalogI
     SELECT
       id,
       stock_total AS stockTotal,
-      (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve) AS landedCostCve
+      (purchase_price_centavos + shipping_cost_centavos + customs_duty_centavos + other_costs_centavos) / 100.0 AS landedCostCve
     FROM equipment_catalog
     WHERE id = ?
   `).get(id) as CatalogIdentity | undefined;
@@ -70,7 +70,7 @@ export function loadCatalogKind(db: Database.Database, id: number): CatalogKind 
       id,
       is_serialized AS isSerialized,
       stock_total AS stockTotal,
-      (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve) AS landedCostCve
+      (purchase_price_centavos + shipping_cost_centavos + customs_duty_centavos + other_costs_centavos) / 100.0 AS landedCostCve
     FROM equipment_catalog
     WHERE id = ?
   `).get(id) as CatalogKind | undefined;
@@ -203,9 +203,9 @@ export function installDeviceWithinTx(
 
   db.prepare(`
     INSERT INTO stock_movements (
-      catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
+      catalog_id, type, quantity, unit_cost_centavos, reference, notes, service_id, client_name, created_by
     )
-    VALUES (?, 'saida', 1, ?, ?, ?, ?, ?, ?)
+    VALUES (?, 'saida', 1, CAST(ROUND(? * 100) AS INTEGER), ?, ?, ?, ?, ?)
   `).run(
     device.catalogId,
     freshCatalog.landedCostCve,
@@ -257,15 +257,15 @@ export function consumeMaterialWithinTx(
   }
 
   const line = db.prepare(`
-    INSERT INTO service_material_lines (service_id, catalog_id, quantity, unit_cost_cve, notes, created_by, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+    INSERT INTO service_material_lines (service_id, catalog_id, quantity, unit_cost_centavos, notes, created_by, created_at)
+    VALUES (?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), ?, ?, datetime('now'))
   `).run(serviceId, catalogId, quantity, fresh.landedCostCve, notes, userId);
 
   db.prepare(`
     INSERT INTO stock_movements (
-      catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
+      catalog_id, type, quantity, unit_cost_centavos, reference, notes, service_id, client_name, created_by
     )
-    VALUES (?, 'saida', ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, 'saida', ?, CAST(ROUND(? * 100) AS INTEGER), ?, ?, ?, ?, ?)
   `).run(catalogId, quantity, fresh.landedCostCve, `Instalacao servico ${serviceId}`, notes, serviceId, clientName, userId);
 
   db.prepare(`
@@ -334,8 +334,8 @@ export function insertInstallCostsWithinTx(
   const installCostIds: Array<number | bigint> = [];
   for (const cost of params.costs) {
     const res = db.prepare(`
-      INSERT INTO service_install_costs (service_id, kind, description, amount_cve, created_by, created_at)
-      VALUES (?, ?, ?, ?, ?, datetime('now'))
+      INSERT INTO service_install_costs (service_id, kind, description, amount_centavos, created_by, created_at)
+      VALUES (?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), ?, datetime('now'))
     `).run(
       params.serviceId,
       cost.kind ?? 'mao_de_obra',

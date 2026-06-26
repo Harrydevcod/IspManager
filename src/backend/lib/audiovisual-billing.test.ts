@@ -53,10 +53,10 @@ function seedService(clientId: number, opts: {
 }): number {
   return db.prepare(`
     INSERT INTO services (
-      client_id, monthly_value_cve, due_day, status, activation_date,
-      audiovisual_mode, audiovisual_monthly_cve, audiovisual_annual_cve
+      client_id, monthly_value_centavos, due_day, status, activation_date,
+      audiovisual_mode, audiovisual_monthly_centavos, audiovisual_annual_centavos
     )
-    VALUES (?, ?, 1, 'active', ?, ?, ?, ?)
+    VALUES (?, CAST(ROUND(? * 100) AS INTEGER), 1, 'active', ?, ?, CAST(ROUND(? * 100) AS INTEGER), CAST(ROUND(? * 100) AS INTEGER))
   `).run(
     clientId,
     opts.monthly ?? 0,
@@ -69,7 +69,7 @@ function seedService(clientId: number, opts: {
 
 const linesFor = (serviceId: number) =>
   db.prepare(`
-    SELECT pl.kind AS kind, pl.description AS description, pl.amount_cve AS amountCve
+    SELECT pl.kind AS kind, pl.description AS description, pl.amount_centavos / 100.0 AS amountCve
     FROM payment_lines pl
     JOIN payments p ON p.id = pl.payment_id
     WHERE p.service_id = ?
@@ -77,7 +77,7 @@ const linesFor = (serviceId: number) =>
   `).all(serviceId) as Array<{ kind: string; description: string; amountCve: number }>;
 
 const paymentsFor = (serviceId: number) =>
-  db.prepare('SELECT reference_month AS ref, amount_cve AS amount FROM payments WHERE service_id = ? ORDER BY ref')
+  db.prepare('SELECT reference_month AS ref, amount_centavos / 100.0 AS amount FROM payments WHERE service_id = ? ORDER BY ref')
     .all(serviceId) as Array<{ ref: string; amount: number }>;
 
 describe('audiovisual mensal — combinado na fatura da internet', () => {

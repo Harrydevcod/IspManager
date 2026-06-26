@@ -56,15 +56,15 @@ export async function registerStockRoutes(app: FastifyInstance) {
         supplier,
         unit_of_measure AS unitOfMeasure,
         is_serialized AS isSerialized,
-        purchase_price_cve AS purchasePriceCve,
-        shipping_cost_cve AS shippingCostCve,
-        customs_duty_cve AS customsDutyCve,
-        other_costs_cve AS otherCostsCve,
-        selling_price_cve AS sellingPriceCve,
-        rental_fee_cve AS rentalFeeCve,
+        purchase_price_centavos / 100.0 AS purchasePriceCve,
+        shipping_cost_centavos / 100.0 AS shippingCostCve,
+        customs_duty_centavos / 100.0 AS customsDutyCve,
+        other_costs_centavos / 100.0 AS otherCostsCve,
+        selling_price_centavos / 100.0 AS sellingPriceCve,
+        rental_fee_centavos / 100.0 AS rentalFeeCve,
         stock_total AS stockTotal,
         active,
-        (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve) AS landedCostCve,
+        (purchase_price_centavos + shipping_cost_centavos + customs_duty_centavos + other_costs_centavos) / 100.0 AS landedCostCve,
         (SELECT MAX(created_at) FROM stock_movements sm WHERE sm.catalog_id = equipment_catalog.id) AS lastMovementAt
       FROM equipment_catalog
       WHERE active = 1
@@ -98,10 +98,10 @@ export async function registerStockRoutes(app: FastifyInstance) {
     const result = db.prepare(`
       INSERT INTO equipment_catalog (
         category, type, brand, model, description, supplier, unit_of_measure, is_serialized,
-        purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve,
-        selling_price_cve, rental_fee_cve, stock_total, active, created_at, updated_at
+        purchase_price_centavos, shipping_cost_centavos, customs_duty_centavos, other_costs_centavos,
+        selling_price_centavos, rental_fee_centavos, stock_total, active, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), CAST(ROUND(? * 100) AS INTEGER), CAST(ROUND(? * 100) AS INTEGER), CAST(ROUND(? * 100) AS INTEGER), CAST(ROUND(? * 100) AS INTEGER), CAST(ROUND(? * 100) AS INTEGER), ?, ?, datetime('now'), datetime('now'))
     `).run(
       parsed.data.category,
       parsed.data.type,
@@ -149,12 +149,12 @@ export async function registerStockRoutes(app: FastifyInstance) {
           supplier = ?,
           unit_of_measure = ?,
           is_serialized = ?,
-          purchase_price_cve = ?,
-          shipping_cost_cve = ?,
-          customs_duty_cve = ?,
-          other_costs_cve = ?,
-          selling_price_cve = ?,
-          rental_fee_cve = ?,
+          purchase_price_centavos = CAST(ROUND(? * 100) AS INTEGER),
+          shipping_cost_centavos = CAST(ROUND(? * 100) AS INTEGER),
+          customs_duty_centavos = CAST(ROUND(? * 100) AS INTEGER),
+          other_costs_centavos = CAST(ROUND(? * 100) AS INTEGER),
+          selling_price_centavos = CAST(ROUND(? * 100) AS INTEGER),
+          rental_fee_centavos = CAST(ROUND(? * 100) AS INTEGER),
           stock_total = ?,
           active = ?,
           updated_at = datetime('now')
@@ -245,7 +245,7 @@ export async function registerStockRoutes(app: FastifyInstance) {
         brand,
         model,
         stock_total AS stockTotal,
-        (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve) AS landedCostCve
+        (purchase_price_centavos + shipping_cost_centavos + customs_duty_centavos + other_costs_centavos) / 100.0 AS landedCostCve
       FROM equipment_catalog
       WHERE id = ?
     `).get(catalogId);
@@ -260,7 +260,7 @@ export async function registerStockRoutes(app: FastifyInstance) {
         catalog_id AS catalogId,
         type,
         quantity,
-        unit_cost_cve AS unitCostCve,
+        unit_cost_centavos / 100.0 AS unitCostCve,
         supplier,
         reference,
         notes,
@@ -295,8 +295,8 @@ export async function registerStockRoutes(app: FastifyInstance) {
 
     const save = db.transaction(() => {
       db.prepare(`
-        INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_cve, supplier, reference, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_centavos, supplier, reference, notes)
+        VALUES (?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), ?, ?, ?)
       `).run(
         parsed.data.catalogId,
         parsed.data.type,

@@ -100,14 +100,14 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         c.full_name AS clientName,
         s.plan_id AS planId,
         p.name AS planName,
-        s.monthly_value_cve AS monthlyValueCve,
+        s.monthly_value_centavos / 100.0 AS monthlyValueCve,
         s.due_day AS dueDay,
         s.status,
         s.activation_date AS activationDate,
         s.technical_notes AS technicalNotes,
         s.audiovisual_mode AS audiovisualMode,
-        s.audiovisual_monthly_cve AS audiovisualMonthlyCve,
-        s.audiovisual_annual_cve AS audiovisualAnnualCve
+        s.audiovisual_monthly_centavos / 100.0 AS audiovisualMonthlyCve,
+        s.audiovisual_annual_centavos / 100.0 AS audiovisualAnnualCve
       FROM services s
       JOIN clients c ON c.id = s.client_id
       LEFT JOIN internet_plans p ON p.id = s.plan_id
@@ -158,11 +158,11 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     const run = db.transaction(() => {
       const inserted = db.prepare(`
         INSERT INTO services (
-          client_id, plan_id, monthly_value_cve, activation_date, due_day,
-          status, technical_notes, audiovisual_mode, audiovisual_monthly_cve,
-          audiovisual_annual_cve, created_at, updated_at
+          client_id, plan_id, monthly_value_centavos, activation_date, due_day,
+          status, technical_notes, audiovisual_mode, audiovisual_monthly_centavos,
+          audiovisual_annual_centavos, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        VALUES (?, ?, CAST(ROUND(? * 100) AS INTEGER), ?, ?, ?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), CAST(ROUND(? * 100) AS INTEGER), datetime('now'), datetime('now'))
       `).run(
         parsed.data.clientId,
         parsed.data.planId || null,
@@ -274,14 +274,14 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       UPDATE services
       SET client_id = ?,
           plan_id = ?,
-          monthly_value_cve = ?,
+          monthly_value_centavos = CAST(ROUND(? * 100) AS INTEGER),
           activation_date = ?,
           due_day = ?,
           status = ?,
           technical_notes = ?,
           audiovisual_mode = ?,
-          audiovisual_monthly_cve = ?,
-          audiovisual_annual_cve = ?,
+          audiovisual_monthly_centavos = CAST(ROUND(? * 100) AS INTEGER),
+          audiovisual_annual_centavos = CAST(ROUND(? * 100) AS INTEGER),
           updated_at = datetime('now')
       WHERE id = ?
     `).run(
@@ -402,7 +402,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         c.phone AS clientPhone,
         py.service_id AS serviceId,
         py.reference_month AS referenceMonth,
-        py.amount_cve AS amountCve,
+        py.amount_centavos / 100.0 AS amountCve,
         py.due_date AS dueDate,
         py.payment_date AS paymentDate,
         py.payment_method AS paymentMethod,
@@ -477,7 +477,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         py.client_id AS clientId,
         c.full_name AS clientName,
         c.client_code AS clientCode,
-        py.amount_cve AS amountCve,
+        py.amount_centavos / 100.0 AS amountCve,
         py.due_date AS dueDate,
         py.invoice_number AS invoiceNumber,
         py.status
@@ -627,10 +627,10 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         py.client_id AS clientId,
         py.service_id AS serviceId,
         py.reference_month AS referenceMonth,
-        s.monthly_value_cve AS monthlyValueCve,
+        s.monthly_value_centavos / 100.0 AS monthlyValueCve,
         s.audiovisual_mode AS audiovisualMode,
-        s.audiovisual_monthly_cve AS audiovisualMonthlyCve,
-        s.audiovisual_annual_cve AS audiovisualAnnualCve,
+        s.audiovisual_monthly_centavos / 100.0 AS audiovisualMonthlyCve,
+        s.audiovisual_annual_centavos / 100.0 AS audiovisualAnnualCve,
         s.status AS serviceStatus,
         c.status AS clientStatus
       FROM payments py
@@ -691,16 +691,16 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     const issueIso = todayIso();
     const dueDate = dueDateFromIssue(issueIso);
     const insertLine = db.prepare(`
-      INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO payment_lines (payment_id, kind, description, amount_centavos, sort_order)
+      VALUES (?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), ?)
     `);
     const regenerated = db.transaction(() => {
       const inserted = db.prepare(`
         INSERT INTO payments (
-          client_id, service_id, reference_month, amount_cve, due_date,
+          client_id, service_id, reference_month, amount_centavos, due_date,
           status, invoice_number, invoice_date, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
+        VALUES (?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
       `).run(payment.clientId, payment.serviceId, payment.referenceMonth, amountCve, dueDate);
       const regeneratedId = Number(inserted.lastInsertRowid);
       const invoiceNumber = nextNumber('invoice', regeneratedId);
@@ -817,7 +817,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     try {
       const db = getSqliteDatabase();
       const payment = db.prepare(`
-        SELECT id, status, notes, amount_cve AS amountCve, invoice_number AS invoiceNumber,
+        SELECT id, status, notes, amount_centavos / 100.0 AS amountCve, invoice_number AS invoiceNumber,
                receipt_number AS receiptNumber, reference_month AS referenceMonth
         FROM payments WHERE id = ?
       `).get(id) as {

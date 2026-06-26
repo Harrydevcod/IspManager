@@ -68,7 +68,7 @@ const documentSelect = `
     p.download_speed AS downloadSpeed,
     p.upload_speed AS uploadSpeed,
     py.reference_month AS referenceMonth,
-    py.amount_cve AS amountCve,
+    py.amount_centavos / 100.0 AS amountCve,
     py.due_date AS dueDate,
     py.payment_date AS paymentDate,
     py.payment_method AS paymentMethod,
@@ -447,7 +447,7 @@ function buildDocument(
   const audiovisualSubline = isAudiovisualAnnualReference(row.referenceMonth) ? 'Subscricao anual' : 'Subscricao mensal';
 
   // Uma linha por item do documento. O valor de cada linha é o seu montante
-  // (IVA incluído); a soma é o total (amount_cve). O detalhe Subtotal/IVA continua
+  // (IVA incluído); a soma é o total (amount_centavos). O detalhe Subtotal/IVA continua
   // a ser calculado sobre o total na secção 5.
   const renderItem = (description: string, amount: number, subline: string | null) => {
     doc.fillColor(PALETTE.ink).fontSize(12).font('Helvetica-Bold')
@@ -680,7 +680,7 @@ export async function renderPaymentDocumentPdf(id: number, kind: DocumentKind): 
     row = db.prepare(documentSelect).get(id) as PaymentDocumentRow;
   }
   const lines = db.prepare(`
-    SELECT kind, description, amount_cve AS amountCve
+    SELECT kind, description, amount_centavos / 100.0 AS amountCve
     FROM payment_lines
     WHERE payment_id = ?
     ORDER BY sort_order, id

@@ -88,9 +88,9 @@ export function computeMonthlyBilling(db: DatabaseType, referenceMonth: string):
       s.client_id AS clientId,
       c.full_name AS clientName,
       p.name AS planName,
-      s.monthly_value_cve AS monthlyValueCve,
+      s.monthly_value_centavos / 100.0 AS monthlyValueCve,
       s.audiovisual_mode AS audiovisualMode,
-      s.audiovisual_monthly_cve AS audiovisualMonthlyCve,
+      s.audiovisual_monthly_centavos / 100.0 AS audiovisualMonthlyCve,
       s.due_day AS dueDay
     FROM services s
     JOIN clients c ON c.id = s.client_id
@@ -171,15 +171,15 @@ export function generateMonthlyBilling(db: DatabaseType, referenceMonth: string)
 
   const insert = db.prepare(`
     INSERT INTO payments (
-      client_id, service_id, reference_month, amount_cve, due_date,
+      client_id, service_id, reference_month, amount_centavos, due_date,
       status, invoice_number, invoice_date, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
+    VALUES (?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
   `);
   const updateInvoice = db.prepare('UPDATE payments SET invoice_number = ? WHERE id = ? AND invoice_number IS NULL');
   const insertLine = db.prepare(`
-    INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO payment_lines (payment_id, kind, description, amount_centavos, sort_order)
+    VALUES (?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), ?)
   `);
 
   const run = db.transaction(() => {

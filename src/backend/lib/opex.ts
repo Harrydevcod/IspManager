@@ -45,14 +45,14 @@ export function loadCompanyOpexContext(): CompanyOpexContext {
 
   const totals = db.prepare(`
     SELECT
-      COALESCE(SUM(amount_cve), 0) AS totalExpensesCve,
+      COALESCE(SUM(amount_centavos), 0) / 100.0 AS totalExpensesCve,
       COUNT(DISTINCT reference_month) AS monthsWithExpenses
     FROM expenses
   `).get() as { totalExpensesCve: number; monthsWithExpenses: number };
 
   const unallocated = db.prepare(`
     SELECT
-      COALESCE(SUM(amount_cve), 0) AS totalUnallocatedCve,
+      COALESCE(SUM(amount_centavos), 0) / 100.0 AS totalUnallocatedCve,
       COUNT(DISTINCT reference_month) AS monthsWithUnallocated
     FROM expenses
     WHERE investment_id IS NULL AND zone IS NULL AND client_id IS NULL
@@ -63,7 +63,7 @@ export function loadCompanyOpexContext(): CompanyOpexContext {
       investment_id AS investmentId,
       zone,
       client_id AS clientId,
-      COALESCE(SUM(amount_cve), 0) AS totalCve,
+      COALESCE(SUM(amount_centavos), 0) / 100.0 AS totalCve,
       COUNT(DISTINCT reference_month) AS months
     FROM expenses
     WHERE investment_id IS NOT NULL OR zone IS NOT NULL OR client_id IS NOT NULL
@@ -126,7 +126,7 @@ export function loadCompanyOpexContext(): CompanyOpexContext {
  *   1. explicit `client_id` on the investment
  *   2. explicit `zone` on the investment (sums all clients in that zone)
  *   3. neither → returns null so the caller can fall back to the manual
- *      `expected_monthly_revenue_cve`
+ *      `expected_monthly_revenue_centavos`
  */
 export function loadActualMonthlyRevenue(target: { clientId: number | null; zone: string | null }): {
   cve: number;
@@ -136,7 +136,7 @@ export function loadActualMonthlyRevenue(target: { clientId: number | null; zone
   const db = getSqliteDatabase();
   if (target.clientId != null) {
     const row = db.prepare(`
-      SELECT COALESCE(SUM(amount_cve), 0) AS totalCve,
+      SELECT COALESCE(SUM(amount_centavos), 0) / 100.0 AS totalCve,
              COUNT(DISTINCT reference_month) AS months
       FROM payments
       WHERE client_id = ? AND status = 'paid'
@@ -147,7 +147,7 @@ export function loadActualMonthlyRevenue(target: { clientId: number | null; zone
   }
   if (target.zone) {
     const row = db.prepare(`
-      SELECT COALESCE(SUM(py.amount_cve), 0) AS totalCve,
+      SELECT COALESCE(SUM(py.amount_centavos), 0) / 100.0 AS totalCve,
              COUNT(DISTINCT py.reference_month) AS months
       FROM payments py
       JOIN clients c ON c.id = py.client_id

@@ -73,7 +73,7 @@ describe('stock routes', () => {
   test('blocks stock exit when quantity exceeds available stock', async () => {
     const catalog = db.prepare(`
       INSERT INTO equipment_catalog (
-        type, brand, model, purchase_price_cve, selling_price_cve, stock_total, active
+        type, brand, model, purchase_price_centavos, selling_price_centavos, stock_total, active
       )
       VALUES ('router', 'Teste', 'Router 1', 1000, 1500, 2, 1)
     `).run();
@@ -249,12 +249,12 @@ describe('whatsapp routes', () => {
       VALUES ('CLT-WA', 'Cliente WhatsApp', '9910000', 'active')
     `).run();
     const service = db.prepare(`
-      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
-      VALUES (?, 2500, 1, 'active')
+      INSERT INTO services (client_id, monthly_value_centavos, due_day, status)
+      VALUES (?, 250000, 1, 'active')
     `).run(client.lastInsertRowid);
     db.prepare(`
-      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status, invoice_number)
-      VALUES (?, ?, '2026-04', 2500, date('now', '-12 days'), 'overdue', 'FT-001')
+      INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, status, invoice_number)
+      VALUES (?, ?, '2026-04', 250000, date('now', '-12 days'), 'overdue', 'FT-001')
     `).run(client.lastInsertRowid, service.lastInsertRowid);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ sent: true }), { status: 200 }));
@@ -333,7 +333,7 @@ describe('finance routes', () => {
     expect(response.statusCode).toBe(201);
 
     const payment = db.prepare(`
-      SELECT reference_month AS ref, amount_cve AS amount FROM payments WHERE client_id = ?
+      SELECT reference_month AS ref, amount_centavos / 100.0 AS amount FROM payments WHERE client_id = ?
     `).get(client.lastInsertRowid) as { ref: string; amount: number } | undefined;
     expect(payment).toBeTruthy();
     expect(payment!.ref).toMatch(/^AV-\d{4}-\d{2}$/);
@@ -357,12 +357,12 @@ describe('finance routes', () => {
   test('creates a service and installs multiple items (device + material) atomically', async () => {
     const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-DEV','Cliente Device','active')`).run();
     const router = db.prepare(`
-      INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve, is_serialized, stock_total, active)
-      VALUES ('equipamento','router','MikroTik','hAP ax2', 6000, 400, 200, 0, 1, 5, 1)
+      INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_centavos, shipping_cost_centavos, customs_duty_centavos, other_costs_centavos, is_serialized, stock_total, active)
+      VALUES ('equipamento','router','MikroTik','hAP ax2', 600000, 40000, 20000, 0, 1, 5, 1)
     `).run();
     const cable = db.prepare(`
-      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_cve, stock_total, active)
-      VALUES ('material','cabo','Cabo UTP','metro', 0, 80, 305, 1)
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_centavos, stock_total, active)
+      VALUES ('material','cabo','Cabo UTP','metro', 0, 8000, 305, 1)
     `).run();
 
     const response = await app.inject({
@@ -386,18 +386,18 @@ describe('finance routes', () => {
 
     expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(router.lastInsertRowid)).toEqual({ s: 4 });
     expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(cable.lastInsertRowid)).toEqual({ s: 275 });
-    expect(db.prepare('SELECT quantity AS q, unit_cost_cve AS u FROM service_material_lines WHERE service_id = ?').get(body.id)).toEqual({ q: 30, u: 80 });
+    expect(db.prepare('SELECT quantity AS q, unit_cost_centavos / 100.0 AS u FROM service_material_lines WHERE service_id = ?').get(body.id)).toEqual({ q: 30, u: 80 });
     expect(db.prepare("SELECT count(*) AS n FROM service_events WHERE service_id = ? AND event_type = 'instalacao'").get(body.id)).toEqual({ n: 1 });
   });
 
   test('deletes a service without invoices and restores stock', async () => {
     const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-DEL','Cliente Del','active')`).run();
     const router = db.prepare(`
-      INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_cve, is_serialized, stock_total, active)
+      INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_centavos, is_serialized, stock_total, active)
       VALUES ('equipamento','router','MikroTik','hAP', 6000, 1, 5, 1)
     `).run();
     const cable = db.prepare(`
-      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_cve, stock_total, active)
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_centavos, stock_total, active)
       VALUES ('material','cabo','UTP','metro', 0, 80, 305, 1)
     `).run();
 
@@ -531,7 +531,7 @@ describe('finance routes', () => {
     expect(response.statusCode).toBe(201);
     const body = response.json() as { id: number; installCostIds: number[] };
     expect(body.installCostIds).toHaveLength(1);
-    expect(db.prepare('SELECT kind, amount_cve AS amount FROM service_install_costs WHERE service_id = ?').get(body.id))
+    expect(db.prepare('SELECT kind, amount_centavos / 100.0 AS amount FROM service_install_costs WHERE service_id = ?').get(body.id))
       .toEqual({ kind: 'mao_de_obra', amount: 2500 });
   });
 
@@ -542,16 +542,16 @@ describe('finance routes', () => {
     `).run();
     const plan = db.prepare(`
       INSERT INTO internet_plans (
-        name, download_speed, upload_speed, connection_type, monthly_price_cve
+        name, download_speed, upload_speed, connection_type, monthly_price_centavos
       )
-      VALUES ('Teste Fibra', '50 Mbps', '20 Mbps', 'fibra', 3500)
+      VALUES ('Teste Fibra', '50 Mbps', '20 Mbps', 'fibra', 350000)
     `).run();
 
     db.prepare(`
       INSERT INTO services (
-        client_id, plan_id, monthly_value_cve, activation_date, due_day, status
+        client_id, plan_id, monthly_value_centavos, activation_date, due_day, status
       )
-      VALUES (?, ?, 3500, '2026-01-15', 31, 'active')
+      VALUES (?, ?, 350000, '2026-01-15', 31, 'active')
     `).run(client.lastInsertRowid, plan.lastInsertRowid);
 
     const first = await app.inject({
@@ -571,7 +571,7 @@ describe('finance routes', () => {
     expect(second.json()).toMatchObject({ referenceMonth: '2026-02', activeServices: 1, created: 0 });
 
     const payment = db.prepare(`
-      SELECT amount_cve AS amountCve, due_date AS dueDate, status, invoice_number AS invoiceNumber
+      SELECT amount_centavos / 100.0 AS amountCve, due_date AS dueDate, status, invoice_number AS invoiceNumber
       FROM payments
     `).get() as { amountCve: number; dueDate: string; status: string; invoiceNumber: string };
 
@@ -587,7 +587,7 @@ describe('finance routes', () => {
   test('skips billing for cancelled clients even if the service stayed active', async () => {
     const plan = db.prepare(`
       INSERT INTO internet_plans (
-        name, download_speed, upload_speed, connection_type, monthly_price_cve
+        name, download_speed, upload_speed, connection_type, monthly_price_centavos
       )
       VALUES ('Plano Cancelado', '50 Mbps', '20 Mbps', 'fibra', 3000)
     `).run();
@@ -603,11 +603,11 @@ describe('finance routes', () => {
 
     // Both services remain 'active' — only the client status differs.
     db.prepare(`
-      INSERT INTO services (client_id, plan_id, monthly_value_cve, activation_date, due_day, status)
+      INSERT INTO services (client_id, plan_id, monthly_value_centavos, activation_date, due_day, status)
       VALUES (?, ?, 3000, '2026-01-15', 15, 'active')
     `).run(cancelledClient.lastInsertRowid, plan.lastInsertRowid);
     db.prepare(`
-      INSERT INTO services (client_id, plan_id, monthly_value_cve, activation_date, due_day, status)
+      INSERT INTO services (client_id, plan_id, monthly_value_centavos, activation_date, due_day, status)
       VALUES (?, ?, 3000, '2026-01-15', 15, 'active')
     `).run(activeClient.lastInsertRowid, plan.lastInsertRowid);
 
@@ -633,13 +633,13 @@ describe('finance routes', () => {
     `).run();
     const plan = db.prepare(`
       INSERT INTO internet_plans (
-        name, download_speed, upload_speed, connection_type, monthly_price_cve
+        name, download_speed, upload_speed, connection_type, monthly_price_centavos
       )
       VALUES ('Plano NIF', '50 Mbps', '20 Mbps', 'fibra', 4000)
     `).run();
     db.prepare(`
       INSERT INTO services (
-        client_id, plan_id, monthly_value_cve, activation_date, due_day, status
+        client_id, plan_id, monthly_value_centavos, activation_date, due_day, status
       )
       VALUES (?, ?, 4000, '2026-01-15', 15, 'active')
     `).run(client.lastInsertRowid, plan.lastInsertRowid);
@@ -677,7 +677,7 @@ describe('finance routes', () => {
       VALUES ('CLT-N002', 'Cliente Regeneravel', 'active')
     `).run();
     const service = db.prepare(`
-      INSERT INTO services (client_id, monthly_value_cve, activation_date, due_day, status)
+      INSERT INTO services (client_id, monthly_value_centavos, activation_date, due_day, status)
       VALUES (?, 4000, '2026-01-15', 15, 'active')
     `).run(client.lastInsertRowid);
     await app.inject({
@@ -718,15 +718,15 @@ describe('finance routes', () => {
     `).run();
     const plan = db.prepare(`
       INSERT INTO internet_plans (
-        name, download_speed, upload_speed, connection_type, monthly_price_cve
+        name, download_speed, upload_speed, connection_type, monthly_price_centavos
       )
-      VALUES ('Plano Preview', '50 Mbps', '20 Mbps', 'fibra', 3500)
+      VALUES ('Plano Preview', '50 Mbps', '20 Mbps', 'fibra', 350000)
     `).run();
     db.prepare(`
       INSERT INTO services (
-        client_id, plan_id, monthly_value_cve, activation_date, due_day, status
+        client_id, plan_id, monthly_value_centavos, activation_date, due_day, status
       )
-      VALUES (?, ?, 3500, '2026-01-15', 10, 'active')
+      VALUES (?, ?, 350000, '2026-01-15', 10, 'active')
     `).run(client.lastInsertRowid, plan.lastInsertRowid);
 
     const response = await app.inject({
@@ -767,13 +767,13 @@ describe('finance routes', () => {
     `).run();
     const plan = db.prepare(`
       INSERT INTO internet_plans (
-        name, download_speed, upload_speed, connection_type, monthly_price_cve
+        name, download_speed, upload_speed, connection_type, monthly_price_centavos
       )
       VALUES ('Plano Idempotente', '20 Mbps', '10 Mbps', 'fibra', 2000)
     `).run();
     db.prepare(`
       INSERT INTO services (
-        client_id, plan_id, monthly_value_cve, activation_date, due_day, status
+        client_id, plan_id, monthly_value_centavos, activation_date, due_day, status
       )
       VALUES (?, ?, 2000, '2026-01-15', 15, 'active')
     `).run(client.lastInsertRowid, plan.lastInsertRowid);
@@ -808,13 +808,13 @@ describe('finance routes', () => {
     `).run();
     const plan = db.prepare(`
       INSERT INTO internet_plans (
-        name, download_speed, upload_speed, connection_type, monthly_price_cve
+        name, download_speed, upload_speed, connection_type, monthly_price_centavos
       )
       VALUES ('Plano Reemissao', '100 Mbps', '50 Mbps', 'fibra', 5000)
     `).run();
     const service = db.prepare(`
       INSERT INTO services (
-        client_id, plan_id, monthly_value_cve, activation_date, due_day, status
+        client_id, plan_id, monthly_value_centavos, activation_date, due_day, status
       )
       VALUES (?, ?, 5000, '2026-01-15', 15, 'active')
     `).run(client.lastInsertRowid, plan.lastInsertRowid);
@@ -863,8 +863,8 @@ describe('finance routes', () => {
       VALUES ('CLT-R002', 'Cliente Regeneracao', 'active')
     `).run();
     const service = db.prepare(`
-      INSERT INTO services (client_id, monthly_value_cve, activation_date, due_day, status)
-      VALUES (?, 3000, '2026-01-15', 15, 'active')
+      INSERT INTO services (client_id, monthly_value_centavos, activation_date, due_day, status)
+      VALUES (?, 300000, '2026-01-15', 15, 'active')
     `).run(client.lastInsertRowid);
 
     await app.inject({ method: 'POST', url: '/api/billing/generate-monthly', payload: { referenceMonth: '2026-12' } });
@@ -875,7 +875,7 @@ describe('finance routes', () => {
       url: `/api/payments/${original.id}/cancel`,
       payload: { reason: 'Valor mensal incorreto' }
     });
-    db.prepare('UPDATE services SET monthly_value_cve = 4500 WHERE id = ?').run(service.lastInsertRowid);
+    db.prepare('UPDATE services SET monthly_value_centavos = 450000 WHERE id = ?').run(service.lastInsertRowid);
 
     const response = await app.inject({
       method: 'POST',
@@ -891,7 +891,7 @@ describe('finance routes', () => {
     });
 
     const rows = db.prepare(`
-      SELECT id, amount_cve AS amountCve, status, invoice_number AS invoiceNumber
+      SELECT id, amount_centavos / 100.0 AS amountCve, status, invoice_number AS invoiceNumber
       FROM payments WHERE service_id = ? ORDER BY id
     `).all(service.lastInsertRowid) as Array<{ id: number; amountCve: number; status: string; invoiceNumber: string }>;
     expect(rows).toHaveLength(2);
@@ -904,8 +904,8 @@ describe('finance routes', () => {
   test('regenerated monthly payment keeps the audiovisual amount in the total', async () => {
     const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-RAV','RegenAv','active')`).run();
     const service = db.prepare(`
-      INSERT INTO services (client_id, monthly_value_cve, activation_date, due_day, status, audiovisual_mode, audiovisual_monthly_cve)
-      VALUES (?, 2500, '2026-01-15', 15, 'active', 'monthly', 500)
+      INSERT INTO services (client_id, monthly_value_centavos, activation_date, due_day, status, audiovisual_mode, audiovisual_monthly_centavos)
+      VALUES (?, 250000, '2026-01-15', 15, 'active', 'monthly', 50000)
     `).run(client.lastInsertRowid);
 
     await app.inject({ method: 'POST', url: '/api/billing/generate-monthly', payload: { referenceMonth: '2026-12' } });
@@ -918,7 +918,7 @@ describe('finance routes', () => {
     expect(response.json()).toMatchObject({ amountCve: 3000 }); // 2500 internet + 500 audiovisual
 
     const regen = db.prepare(`SELECT id FROM payments WHERE service_id = ? AND status = 'pending'`).get(service.lastInsertRowid) as { id: number };
-    const lines = db.prepare(`SELECT kind, amount_cve AS amountCve FROM payment_lines WHERE payment_id = ? ORDER BY sort_order`).all(regen.id);
+    const lines = db.prepare(`SELECT kind, amount_centavos / 100.0 AS amountCve FROM payment_lines WHERE payment_id = ? ORDER BY sort_order`).all(regen.id);
     expect(lines).toEqual([
       { kind: 'internet', amountCve: 2500 },
       { kind: 'audiovisual', amountCve: 500 }
@@ -934,8 +934,8 @@ describe('finance routes', () => {
       VALUES ('CLT-R003', 'Cliente Bloqueado', 'active')
     `).run();
     const service = db.prepare(`
-      INSERT INTO services (client_id, monthly_value_cve, activation_date, due_day, status)
-      VALUES (?, 3000, '2026-01-15', 15, 'active')
+      INSERT INTO services (client_id, monthly_value_centavos, activation_date, due_day, status)
+      VALUES (?, 300000, '2026-01-15', 15, 'active')
     `).run(client.lastInsertRowid);
 
     await app.inject({ method: 'POST', url: '/api/billing/generate-monthly', payload: { referenceMonth: '2027-01' } });
@@ -964,10 +964,10 @@ describe('finance routes', () => {
       INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-U001', 'Cliente Unico', 'active')
     `).run();
     const service = db.prepare(`
-      INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 3000, 15, 'active')
+      INSERT INTO services (client_id, monthly_value_centavos, due_day, status) VALUES (?, 3000, 15, 'active')
     `).run(client.lastInsertRowid);
     const insert = db.prepare(`
-      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+      INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, status)
       VALUES (?, ?, '2026-11', 3000, '2026-11-30', ?)
     `);
 
@@ -985,13 +985,13 @@ describe('finance routes', () => {
     `).run();
     const plan = db.prepare(`
       INSERT INTO internet_plans (
-        name, download_speed, upload_speed, connection_type, monthly_price_cve
+        name, download_speed, upload_speed, connection_type, monthly_price_centavos
       )
       VALUES ('Plano Pago', '50 Mbps', '20 Mbps', 'fibra', 4000)
     `).run();
     const service = db.prepare(`
       INSERT INTO services (
-        client_id, plan_id, monthly_value_cve, activation_date, due_day, status
+        client_id, plan_id, monthly_value_centavos, activation_date, due_day, status
       )
       VALUES (?, ?, 4000, '2026-01-15', 15, 'active')
     `).run(client.lastInsertRowid, plan.lastInsertRowid);
@@ -1039,13 +1039,13 @@ describe('finance routes', () => {
     `).run();
     const plan = db.prepare(`
       INSERT INTO internet_plans (
-        name, download_speed, upload_speed, connection_type, monthly_price_cve
+        name, download_speed, upload_speed, connection_type, monthly_price_centavos
       )
       VALUES ('Plano Prefixo', '50 Mbps', '20 Mbps', 'fibra', 4500)
     `).run();
     const service = db.prepare(`
       INSERT INTO services (
-        client_id, plan_id, monthly_value_cve, activation_date, due_day, status
+        client_id, plan_id, monthly_value_centavos, activation_date, due_day, status
       )
       VALUES (?, ?, 4500, '2026-01-15', 15, 'active')
     `).run(client.lastInsertRowid, plan.lastInsertRowid);
@@ -1080,13 +1080,13 @@ describe('finance routes', () => {
     `).run();
     const plan = db.prepare(`
       INSERT INTO internet_plans (
-        name, download_speed, upload_speed, connection_type, monthly_price_cve
+        name, download_speed, upload_speed, connection_type, monthly_price_centavos
       )
       VALUES ('Plano Lock', '50 Mbps', '20 Mbps', 'fibra', 5000)
     `).run();
     db.prepare(`
       INSERT INTO services (
-        client_id, plan_id, monthly_value_cve, activation_date, due_day, status
+        client_id, plan_id, monthly_value_centavos, activation_date, due_day, status
       )
       VALUES (?, ?, 5000, '2026-01-15', 15, 'active')
     `).run(client.lastInsertRowid, plan.lastInsertRowid);
@@ -1151,14 +1151,14 @@ describe('finance routes', () => {
     `).run();
     const plan = db.prepare(`
       INSERT INTO internet_plans (
-        name, download_speed, upload_speed, connection_type, monthly_price_cve
+        name, download_speed, upload_speed, connection_type, monthly_price_centavos
       )
       VALUES ('Plano Cancelar', '20 Mbps', '10 Mbps', 'fibra', 2500)
     `).run();
 
     const service = db.prepare(`
       INSERT INTO services (
-        client_id, plan_id, monthly_value_cve, activation_date, due_day, status
+        client_id, plan_id, monthly_value_centavos, activation_date, due_day, status
       )
       VALUES (?, ?, 2500, '2026-01-15', 15, 'active')
     `).run(client.lastInsertRowid, plan.lastInsertRowid);
@@ -1205,13 +1205,13 @@ describe('finance routes', () => {
     `).run();
     const plan = db.prepare(`
       INSERT INTO internet_plans (
-        name, download_speed, upload_speed, connection_type, monthly_price_cve
+        name, download_speed, upload_speed, connection_type, monthly_price_centavos
       )
       VALUES ('Plano Pago', '20 Mbps', '10 Mbps', 'fibra', 4500)
     `).run();
     const service = db.prepare(`
       INSERT INTO services (
-        client_id, plan_id, monthly_value_cve, activation_date, due_day, status
+        client_id, plan_id, monthly_value_centavos, activation_date, due_day, status
       )
       VALUES (?, ?, 4500, '2026-01-01', 5, 'active')
     `).run(client.lastInsertRowid, plan.lastInsertRowid);

@@ -67,7 +67,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         (SELECT count(*) FROM services WHERE status = 'active') AS activeServices,
         (SELECT count(*) FROM work_orders WHERE status NOT IN ('concluida','cancelada')) AS openWorkOrders,
         COALESCE((
-          SELECT SUM(amount_cve) FROM payments
+          SELECT SUM(amount_centavos) / 100.0 FROM payments
           WHERE status = 'paid' AND reference_month = @currentMonth
         ), 0) AS paidMonthCve
     `).get({ currentMonth }) as DashboardMetricRow;
@@ -75,8 +75,8 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     const months = currentYearMonths();
     const revenueRows = db.prepare(`
       SELECT reference_month AS referenceMonth,
-             COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_cve ELSE 0 END), 0) AS paidCve,
-             COALESCE(SUM(CASE WHEN status IN ('pending','overdue') THEN amount_cve ELSE 0 END), 0) AS pendingCve
+             COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_centavos ELSE 0 END), 0) / 100.0 AS paidCve,
+             COALESCE(SUM(CASE WHEN status IN ('pending','overdue') THEN amount_centavos ELSE 0 END), 0) / 100.0 AS pendingCve
       FROM payments
       WHERE reference_month >= @from AND reference_month <= @to
       GROUP BY reference_month
@@ -84,7 +84,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     `).all({ from: months[0], to: months[11] }) as Array<Pick<RevenuePoint, 'referenceMonth' | 'paidCve' | 'pendingCve'>>;
     const investmentRows = db.prepare(`
       SELECT reference_month AS referenceMonth,
-             COALESCE(SUM(total_cost_cve), 0) AS expenseCve
+             COALESCE(SUM(total_cost_centavos), 0) / 100.0 AS expenseCve
       FROM investments
       WHERE reference_month >= @from AND reference_month <= @to
       GROUP BY reference_month
@@ -92,7 +92,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     `).all({ from: months[0], to: months[11] }) as InvestmentAggregate[];
     const expenseRows = db.prepare(`
       SELECT reference_month AS referenceMonth,
-             COALESCE(SUM(amount_cve), 0) AS opexCve
+             COALESCE(SUM(amount_centavos), 0) / 100.0 AS opexCve
       FROM expenses
       WHERE reference_month >= @from AND reference_month <= @to
       GROUP BY reference_month
@@ -120,7 +120,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
              clients.full_name AS clientName,
              clients.client_code AS clientCode,
              payments.due_date AS dueDate,
-             payments.amount_cve AS amountCve
+             payments.amount_centavos / 100.0 AS amountCve
       FROM payments
       JOIN clients ON clients.id = payments.client_id
       WHERE payments.status = 'pending'
@@ -136,7 +136,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
              clients.client_code AS clientCode,
              clients.phone AS clientPhone,
              payments.due_date AS dueDate,
-             payments.amount_cve AS amountCve,
+             payments.amount_centavos / 100.0 AS amountCve,
              CAST(julianday('now') - julianday(payments.due_date) AS INTEGER) AS daysOverdue
       FROM payments
       JOIN clients ON clients.id = payments.client_id

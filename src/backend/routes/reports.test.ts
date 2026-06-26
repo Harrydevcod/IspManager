@@ -81,20 +81,20 @@ function seedBasicScenario() {
   insertClient.run('CLT-0003', 'Carla Dias', '9333333', 'cancelled');
 
   const planId = db.prepare(`
-    INSERT INTO internet_plans (name, download_speed, upload_speed, connection_type, monthly_price_cve)
-    VALUES ('Plano 50', '50', '25', 'fibra', 4500)
+    INSERT INTO internet_plans (name, download_speed, upload_speed, connection_type, monthly_price_centavos)
+    VALUES ('Plano 50', '50', '25', 'fibra', 450000)
   `).run().lastInsertRowid as number;
 
   const insertService = db.prepare(`
-    INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO services (client_id, plan_id, monthly_value_centavos, due_day, status)
+    VALUES (?, ?, CAST(ROUND(? * 100) AS INTEGER), ?, ?)
   `);
   const anaService = insertService.run(ana, planId, 4500, 10, 'active').lastInsertRowid as number;
   const brunoService = insertService.run(bruno, planId, 4500, 10, 'active').lastInsertRowid as number;
 
   const insertPayment = db.prepare(`
-    INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, payment_date, status)
+    VALUES (?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), ?, ?, ?)
   `);
   insertPayment.run(ana, anaService, '2026-04', 4500, '2026-04-10', '2026-04-10', 'paid');
   insertPayment.run(ana, anaService, '2026-05', 4500, '2026-05-10', null, 'pending');
@@ -102,8 +102,8 @@ function seedBasicScenario() {
   insertPayment.run(bruno, brunoService, '2026-02', 4500, '2026-02-10', null, 'overdue');
 
   const insertEquipment = db.prepare(`
-    INSERT INTO equipment_catalog (type, brand, model, purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve, stock_total, active)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO equipment_catalog (type, brand, model, purchase_price_centavos, shipping_cost_centavos, customs_duty_centavos, other_costs_centavos, stock_total, active)
+    VALUES (?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), CAST(ROUND(? * 100) AS INTEGER), CAST(ROUND(? * 100) AS INTEGER), CAST(ROUND(? * 100) AS INTEGER), ?, ?)
   `);
   insertEquipment.run('cpe', 'Mikrotik', 'hAP ax2', 5000, 200, 100, 50, 10, 1);
   insertEquipment.run('router', 'TP-Link', 'Archer', 3000, 100, 50, 25, 2, 1);

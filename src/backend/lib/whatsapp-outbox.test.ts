@@ -36,10 +36,10 @@ beforeEach(() => {
     `INSERT INTO clients (client_code, full_name, phone, status) VALUES ('C001','Test Client','+2389900000','active')`
   ).run().lastInsertRowid as number;
   const serviceId = db.prepare(
-    `INSERT INTO services (client_id, monthly_value_cve, ip_address, status) VALUES (?, 2000, '10.0.0.1', 'active')`
+    `INSERT INTO services (client_id, monthly_value_centavos, ip_address, status) VALUES (?, 200000, '10.0.0.1', 'active')`
   ).run(clientId).lastInsertRowid as number;
   seededPaymentId = db.prepare(
-    `INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status) VALUES (?, ?, '2026-01', 2000, '2026-01-10', 'paid')`
+    `INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, status) VALUES (?, ?, '2026-01', 200000, '2026-01-10', 'paid')`
   ).run(clientId, serviceId).lastInsertRowid as number;
 });
 

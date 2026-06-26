@@ -50,7 +50,7 @@ export function runAudiovisualAnnualIfDue(now: Date = new Date(), onlyServiceId?
       s.client_id AS clientId,
       s.activation_date AS activationDate,
       s.created_at AS createdAt,
-      s.audiovisual_annual_cve AS annualCve
+      s.audiovisual_annual_centavos / 100.0 AS annualCve
     FROM services s
     JOIN clients c ON c.id = s.client_id
     WHERE s.status = 'active'
@@ -68,15 +68,15 @@ export function runAudiovisualAnnualIfDue(now: Date = new Date(), onlyServiceId?
   const existsStmt = db.prepare(`SELECT 1 AS hit FROM payments WHERE service_id = ? AND reference_month = ? AND status != 'cancelled'`);
   const insert = db.prepare(`
     INSERT INTO payments (
-      client_id, service_id, reference_month, amount_cve, due_date,
+      client_id, service_id, reference_month, amount_centavos, due_date,
       status, invoice_number, invoice_date, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
+    VALUES (?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
   `);
   const updateInvoice = db.prepare('UPDATE payments SET invoice_number = ? WHERE id = ? AND invoice_number IS NULL');
   const insertLine = db.prepare(`
-    INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order)
-    VALUES (?, 'audiovisual', ?, ?, 0)
+    INSERT INTO payment_lines (payment_id, kind, description, amount_centavos, sort_order)
+    VALUES (?, 'audiovisual', ?, CAST(ROUND(? * 100) AS INTEGER), 0)
   `);
 
   const dueIso = dueDateFromIssue(todayIso(), PAYMENT_DUE_DAYS);

@@ -44,8 +44,8 @@ afterAll(async () => {
 
 function seedPaidPayment() {
   const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone, status) VALUES ('C1','Ana','9912233','active')`).run().lastInsertRowid as number;
-  const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?,4500,10,'active')`).run(clientId).lastInsertRowid as number;
-  const paymentId = db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status, receipt_number) VALUES (?,?,'2026-06',4500,'2026-06-10','2026-06-04','paid','RC-1')`).run(clientId, serviceId).lastInsertRowid as number;
+  const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_centavos, due_day, status) VALUES (?,450000,10,'active')`).run(clientId).lastInsertRowid as number;
+  const paymentId = db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, payment_date, status, receipt_number) VALUES (?,?,'2026-06',450000,'2026-06-10','2026-06-04','paid','RC-1')`).run(clientId, serviceId).lastInsertRowid as number;
   return { clientId, serviceId, paymentId };
 }
 
@@ -85,16 +85,16 @@ describe('SMS routes', () => {
 
   test('POST /api/payments/:id/sms rejects a receipt for an unpaid payment', async () => {
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone, status) VALUES ('C2','Beto','9912244','active')`).run().lastInsertRowid as number;
-    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?,4500,10,'active')`).run(clientId).lastInsertRowid as number;
-    const paymentId = db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status) VALUES (?,?,'2026-06',4500,'2026-06-10','pending')`).run(clientId, serviceId).lastInsertRowid as number;
+    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_centavos, due_day, status) VALUES (?,450000,10,'active')`).run(clientId).lastInsertRowid as number;
+    const paymentId = db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, status) VALUES (?,?,'2026-06',450000,'2026-06-10','pending')`).run(clientId, serviceId).lastInsertRowid as number;
     const response = await app.inject({ method: 'POST', url: `/api/payments/${paymentId}/sms`, payload: { eventType: 'receipt_confirmed' } });
     expect(response.statusCode).toBe(400);
   });
 
   test('POST /api/payments/:id/sms rejects a client without phone', async () => {
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone, status) VALUES ('C3','Sem Fone', NULL,'active')`).run().lastInsertRowid as number;
-    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?,4500,10,'active')`).run(clientId).lastInsertRowid as number;
-    const paymentId = db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status) VALUES (?,?,'2026-06',4500,'2026-06-10','overdue')`).run(clientId, serviceId).lastInsertRowid as number;
+    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_centavos, due_day, status) VALUES (?,450000,10,'active')`).run(clientId).lastInsertRowid as number;
+    const paymentId = db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, status) VALUES (?,?,'2026-06',450000,'2026-06-10','overdue')`).run(clientId, serviceId).lastInsertRowid as number;
     const response = await app.inject({ method: 'POST', url: `/api/payments/${paymentId}/sms`, payload: { eventType: 'payment_overdue' } });
     expect(response.statusCode).toBe(400);
   });

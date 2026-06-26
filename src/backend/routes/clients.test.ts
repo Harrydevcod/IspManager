@@ -197,45 +197,45 @@ describe('POST /api/clients/bulk', () => {
     const investmentId = db.prepare(`
       INSERT INTO investments
         (name, type, client_id, investment_date, reference_month, status,
-         target_clients, installed_clients, total_cost_cve, expected_monthly_revenue_cve)
-      VALUES ('Instalacao VIP', 'cliente', ?, '2026-03-01', '2026-03', 'ativo', 1, 1, 12000, 5000)
+         target_clients, installed_clients, total_cost_centavos, expected_monthly_revenue_centavos)
+      VALUES ('Instalacao VIP', 'cliente', ?, '2026-03-01', '2026-03', 'ativo', 1, 1, 1200000, 500000)
     `).run(clientId).lastInsertRowid as number;
     db.prepare(`
-      INSERT INTO investment_items (investment_id, item_type, item_name, quantity, quantity_used, unit_cost_cve, total_cost_cve)
-      VALUES (?, 'cpe', 'CPE 5GHz', 1, 1, 7000, 7000)
+      INSERT INTO investment_items (investment_id, item_type, item_name, quantity, quantity_used, unit_cost_centavos, total_cost_centavos)
+      VALUES (?, 'cpe', 'CPE 5GHz', 1, 1, 700000, 700000)
     `).run(investmentId);
     db.prepare(`
-      INSERT INTO investment_items (investment_id, item_type, item_name, quantity, quantity_used, unit_cost_cve, total_cost_cve)
-      VALUES (?, 'mao_obra', 'Instalacao tecnica', 1, 1, 5000, 5000)
+      INSERT INTO investment_items (investment_id, item_type, item_name, quantity, quantity_used, unit_cost_centavos, total_cost_centavos)
+      VALUES (?, 'mao_obra', 'Instalacao tecnica', 1, 1, 500000, 500000)
     `).run(investmentId);
 
     // Another active investment for opex denominator (3 installed clients).
     db.prepare(`
       INSERT INTO investments
         (name, type, client_id, investment_date, reference_month, status,
-         target_clients, installed_clients, total_cost_cve, expected_monthly_revenue_cve)
-      VALUES ('Zona Achada', 'zona', NULL, '2026-02-01', '2026-02', 'ativo', 5, 3, 30000, 15000)
+         target_clients, installed_clients, total_cost_centavos, expected_monthly_revenue_centavos)
+      VALUES ('Zona Achada', 'zona', NULL, '2026-02-01', '2026-02', 'ativo', 5, 3, 3000000, 1500000)
     `).run();
 
     // Two months of OPEX → avg = 2000 / 2 = 1000; opexPerClient = 1000 / (1+3) = 250.
-    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month)
-                VALUES ('banda_internet', 'Upstream Marco', 1000, '2026-03-10', '2026-03')`).run();
-    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month)
-                VALUES ('banda_internet', 'Upstream Abril', 1000, '2026-04-10', '2026-04')`).run();
+    db.prepare(`INSERT INTO expenses (category, description, amount_centavos, expense_date, reference_month)
+                VALUES ('banda_internet', 'Upstream Marco', 100000, '2026-03-10', '2026-03')`).run();
+    db.prepare(`INSERT INTO expenses (category, description, amount_centavos, expense_date, reference_month)
+                VALUES ('banda_internet', 'Upstream Abril', 100000, '2026-04-10', '2026-04')`).run();
 
     // Payments: 2 paid + 1 overdue + 1 from another client (must NOT count).
-    db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 5000, 10, 'active')`).run(clientId);
-    db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 5000, 10, 'active')`).run(otherClientId);
+    db.prepare(`INSERT INTO services (client_id, monthly_value_centavos, due_day, status) VALUES (?, 500000, 10, 'active')`).run(clientId);
+    db.prepare(`INSERT INTO services (client_id, monthly_value_centavos, due_day, status) VALUES (?, 500000, 10, 'active')`).run(otherClientId);
     const serviceId = db.prepare('SELECT id FROM services WHERE client_id = ?').get(clientId) as { id: number };
     const otherServiceId = db.prepare('SELECT id FROM services WHERE client_id = ?').get(otherClientId) as { id: number };
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-                VALUES (?, ?, '2026-03', 5000, '2026-03-10', '2026-03-10', 'paid')`).run(clientId, serviceId.id);
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-                VALUES (?, ?, '2026-04', 5000, '2026-04-10', '2026-04-10', 'paid')`).run(clientId, serviceId.id);
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
-                VALUES (?, ?, '2026-05', 5000, '2026-05-10', 'overdue')`).run(clientId, serviceId.id);
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-                VALUES (?, ?, '2026-03', 5000, '2026-03-10', '2026-03-10', 'paid')`).run(otherClientId, otherServiceId.id);
+    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, payment_date, status)
+                VALUES (?, ?, '2026-03', 500000, '2026-03-10', '2026-03-10', 'paid')`).run(clientId, serviceId.id);
+    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, payment_date, status)
+                VALUES (?, ?, '2026-04', 500000, '2026-04-10', '2026-04-10', 'paid')`).run(clientId, serviceId.id);
+    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, status)
+                VALUES (?, ?, '2026-05', 500000, '2026-05-10', 'overdue')`).run(clientId, serviceId.id);
+    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, payment_date, status)
+                VALUES (?, ?, '2026-03', 500000, '2026-03-10', '2026-03-10', 'paid')`).run(otherClientId, otherServiceId.id);
 
     const response = await app.inject({ method: 'GET', url: `/api/clients/${clientId}/profitability` });
     expect(response.statusCode).toBe(200);
@@ -273,15 +273,15 @@ describe('POST /api/clients/bulk', () => {
       VALUES ('CLT-HW', 'Cliente Hardware', '9333333', 'active')
     `).run().lastInsertRowid as number;
     const serviceId = db.prepare(`
-      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
-      VALUES (?, 4500, 10, 'active')
+      INSERT INTO services (client_id, monthly_value_centavos, due_day, status)
+      VALUES (?, 450000, 10, 'active')
     `).run(clientId).lastInsertRowid as number;
     const catalogId = db.prepare(`
       INSERT INTO equipment_catalog (
-        type, brand, model, purchase_price_cve, shipping_cost_cve,
-        customs_duty_cve, other_costs_cve, stock_total, active
+        type, brand, model, purchase_price_centavos, shipping_cost_centavos,
+        customs_duty_centavos, other_costs_centavos, stock_total, active
       )
-      VALUES ('router', 'MikroTik', 'hAP ax2', 6500, 500, 250, 250, 3, 1)
+      VALUES ('router', 'MikroTik', 'hAP ax2', 650000, 50000, 25000, 25000, 3, 1)
     `).run().lastInsertRowid as number;
     db.prepare(`
       INSERT INTO service_device_assignments (
@@ -309,12 +309,12 @@ describe('POST /api/clients/bulk', () => {
 
   test('profitability includes materials consumed on services', async () => {
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone, status) VALUES ('CLT-MAT','Cliente Material','9444444','active')`).run().lastInsertRowid as number;
-    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 4500, 10, 'active')`).run(clientId).lastInsertRowid as number;
+    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_centavos, due_day, status) VALUES (?, 450000, 10, 'active')`).run(clientId).lastInsertRowid as number;
     const cable = db.prepare(`
-      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_cve, stock_total, active)
-      VALUES ('material','cabo','Cabo UTP','metro',0,80,1000,1)
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_centavos, stock_total, active)
+      VALUES ('material','cabo','Cabo UTP','metro',0,8000,1000,1)
     `).run().lastInsertRowid as number;
-    db.prepare(`INSERT INTO service_material_lines (service_id, catalog_id, quantity, unit_cost_cve) VALUES (?, ?, 50, 80)`).run(serviceId, cable);
+    db.prepare(`INSERT INTO service_material_lines (service_id, catalog_id, quantity, unit_cost_centavos) VALUES (?, ?, 50, 8000)`).run(serviceId, cable);
 
     const response = await app.inject({ method: 'GET', url: `/api/clients/${clientId}/profitability` });
     const body = response.json() as { installationCostCve: number; equipmentUsed: Array<{ itemName: string; quantity: number; totalCostCve: number }> };
@@ -324,8 +324,8 @@ describe('POST /api/clients/bulk', () => {
 
   test('profitability includes installation labour cost', async () => {
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone, status) VALUES ('CLT-LAB','Cliente Mao','9555555','active')`).run().lastInsertRowid as number;
-    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 4500, 10, 'active')`).run(clientId).lastInsertRowid as number;
-    db.prepare(`INSERT INTO service_install_costs (service_id, kind, amount_cve) VALUES (?, 'mao_de_obra', 2500)`).run(serviceId);
+    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_centavos, due_day, status) VALUES (?, 450000, 10, 'active')`).run(clientId).lastInsertRowid as number;
+    db.prepare(`INSERT INTO service_install_costs (service_id, kind, amount_centavos) VALUES (?, 'mao_de_obra', 250000)`).run(serviceId);
 
     const response = await app.inject({ method: 'GET', url: `/api/clients/${clientId}/profitability` });
     const body = response.json() as { installationCostCve: number };
@@ -364,12 +364,12 @@ describe('PUT /api/clients/:id', () => {
     const clientId = Number(client.lastInsertRowid);
 
     const activeService = db.prepare(`
-      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
-      VALUES (?, 3500, 15, 'active')
+      INSERT INTO services (client_id, monthly_value_centavos, due_day, status)
+      VALUES (?, 350000, 15, 'active')
     `).run(clientId);
     const suspendedService = db.prepare(`
-      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
-      VALUES (?, 3500, 15, 'suspended')
+      INSERT INTO services (client_id, monthly_value_centavos, due_day, status)
+      VALUES (?, 350000, 15, 'suspended')
     `).run(clientId);
 
     const response = await app.inject({
@@ -401,12 +401,12 @@ describe('PUT /api/clients/:id', () => {
     const clientId = Number(client.lastInsertRowid);
 
     const activeService = db.prepare(`
-      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
-      VALUES (?, 3500, 15, 'active')
+      INSERT INTO services (client_id, monthly_value_centavos, due_day, status)
+      VALUES (?, 350000, 15, 'active')
     `).run(clientId);
     const cancelledService = db.prepare(`
-      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
-      VALUES (?, 3500, 15, 'cancelled')
+      INSERT INTO services (client_id, monthly_value_centavos, due_day, status)
+      VALUES (?, 350000, 15, 'cancelled')
     `).run(clientId);
 
     const response = await app.inject({
@@ -435,8 +435,8 @@ describe('PUT /api/clients/:id', () => {
     `).run();
     const clientId = Number(client.lastInsertRowid);
     const service = db.prepare(`
-      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
-      VALUES (?, 3500, 15, 'active')
+      INSERT INTO services (client_id, monthly_value_centavos, due_day, status)
+      VALUES (?, 350000, 15, 'active')
     `).run(clientId);
 
     const response = await app.inject({

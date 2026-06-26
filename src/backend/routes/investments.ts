@@ -212,10 +212,10 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
         investments.installed_clients AS installedClients,
         investments.desired_payback_months AS desiredPaybackMonths,
         investments.desired_margin_pct AS desiredMarginPct,
-        investments.expected_monthly_revenue_cve AS expectedMonthlyRevenueCve,
-        investments.monthly_operational_cost_cve AS monthlyOperationalCostCve,
-        investments.accumulated_revenue_cve AS accumulatedRevenueCve,
-        investments.total_cost_cve AS totalCostCve,
+        investments.expected_monthly_revenue_centavos / 100.0 AS expectedMonthlyRevenueCve,
+        investments.monthly_operational_cost_centavos / 100.0 AS monthlyOperationalCostCve,
+        investments.accumulated_revenue_centavos / 100.0 AS accumulatedRevenueCve,
+        investments.total_cost_centavos / 100.0 AS totalCostCve,
         investments.notes,
         investments.created_at AS createdAt,
         investments.updated_at AS updatedAt
@@ -234,8 +234,8 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
         quantity,
         quantity_used AS quantityUsed,
         quantity - quantity_used AS quantityRemaining,
-        unit_cost_cve AS unitCostCve,
-        total_cost_cve AS totalCostCve
+        unit_cost_centavos / 100.0 AS unitCostCve,
+        total_cost_centavos / 100.0 AS totalCostCve
       FROM investment_items
       WHERE investment_id = ?
       ORDER BY id ASC
@@ -250,7 +250,7 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     // Company-wide paid revenue / months → average monthly company revenue,
     // used as fallback denominator for investments without client_id/zone.
     const revenueRow = getSqliteDatabase().prepare(`
-      SELECT COALESCE(SUM(amount_cve), 0) AS totalCve,
+      SELECT COALESCE(SUM(amount_centavos), 0) / 100.0 AS totalCve,
              COUNT(DISTINCT reference_month) AS months
       FROM payments
       WHERE status = 'paid'
@@ -277,16 +277,16 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     const stockAcquiredRow = getSqliteDatabase()
       .prepare(`
         SELECT
-          (SELECT COALESCE(SUM(stock_total * (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve)), 0)
+          ((SELECT COALESCE(SUM(stock_total * (purchase_price_centavos + shipping_cost_centavos + customs_duty_centavos + other_costs_centavos)), 0)
              FROM equipment_catalog)
-          + (SELECT COALESCE(SUM(quantity * unit_cost_cve), 0)
-             FROM stock_movements WHERE type = 'saida')
+          + (SELECT COALESCE(SUM(quantity * unit_cost_centavos), 0)
+             FROM stock_movements WHERE type = 'saida')) / 100.0
           AS totalCve
       `)
       .get() as { totalCve: number };
     const stockAcquiredCve = Number(stockAcquiredRow.totalCve) || 0;
     const allTimeCapexRow = getSqliteDatabase()
-      .prepare(`SELECT COALESCE(SUM(total_cost_cve), 0) AS totalCve FROM investments`)
+      .prepare(`SELECT COALESCE(SUM(total_cost_centavos), 0) / 100.0 AS totalCve FROM investments`)
       .get() as { totalCve: number };
     const allTimeCapexCve = Number(allTimeCapexRow.totalCve) || 0;
     const totalInvestedCve = stockAcquiredCve + allTimeCapexCve;
@@ -294,7 +294,7 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     // Lucro acumulado da empresa = faturacao recebida (pagamentos liquidados, todo o historico)
     // menos todo o capital aplicado (infraestrutura + stock) menos as despesas (OPEX).
     const receivedRow = getSqliteDatabase()
-      .prepare(`SELECT COALESCE(SUM(amount_cve), 0) AS totalCve FROM payments WHERE status = 'paid'`)
+      .prepare(`SELECT COALESCE(SUM(amount_centavos), 0) / 100.0 AS totalCve FROM payments WHERE status = 'paid'`)
       .get() as { totalCve: number };
     const totalReceivedCve = Number(receivedRow.totalCve) || 0;
     const companyAccumulatedProfitCve = totalReceivedCve - totalInvestedCve - totalExpensesCve;
@@ -302,14 +302,14 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       SELECT year, SUM(capexCve) AS capexCve, SUM(opexCve) AS opexCve
       FROM (
         SELECT substr(reference_month, 1, 4) AS year,
-               COALESCE(SUM(total_cost_cve), 0) AS capexCve,
+               COALESCE(SUM(total_cost_centavos), 0) / 100.0 AS capexCve,
                0 AS opexCve
         FROM investments
         GROUP BY year
         UNION ALL
         SELECT substr(reference_month, 1, 4) AS year,
                0 AS capexCve,
-               COALESCE(SUM(amount_cve), 0) AS opexCve
+               COALESCE(SUM(amount_centavos), 0) / 100.0 AS opexCve
         FROM expenses
         GROUP BY year
       )
@@ -468,7 +468,7 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     const db = getSqliteDatabase();
     const inv = db.prepare(`
       SELECT id, name, client_id AS clientId, zone, investment_date AS investmentDate,
-             total_cost_cve AS totalCostCve, desired_payback_months AS desiredPaybackMonths,
+             total_cost_centavos / 100.0 AS totalCostCve, desired_payback_months AS desiredPaybackMonths,
              installed_clients AS installedClients
       FROM investments WHERE id = ?
     `).get(id) as
@@ -501,14 +501,14 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     const revenueByMonth = new Map<string, number>();
     if (inv.clientId != null) {
       const rows = db.prepare(`
-        SELECT reference_month AS m, COALESCE(SUM(amount_cve), 0) AS cve
+        SELECT reference_month AS m, COALESCE(SUM(amount_centavos), 0) / 100.0 AS cve
         FROM payments WHERE client_id = ? AND status = 'paid'
         GROUP BY reference_month
       `).all(inv.clientId) as Array<{ m: string; cve: number }>;
       for (const r of rows) revenueByMonth.set(r.m, Number(r.cve) || 0);
     } else if (inv.zone) {
       const rows = db.prepare(`
-        SELECT py.reference_month AS m, COALESCE(SUM(py.amount_cve), 0) AS cve
+        SELECT py.reference_month AS m, COALESCE(SUM(py.amount_centavos), 0) / 100.0 AS cve
         FROM payments py JOIN clients c ON c.id = py.client_id
         WHERE c.zone = ? AND py.status = 'paid'
         GROUP BY py.reference_month
@@ -519,7 +519,7 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     // Direct OPEX allocated to this investment by month.
     const directOpexByMonth = new Map<string, number>(
       (db.prepare(`
-        SELECT reference_month AS m, COALESCE(SUM(amount_cve), 0) AS cve
+        SELECT reference_month AS m, COALESCE(SUM(amount_centavos), 0) / 100.0 AS cve
         FROM expenses WHERE investment_id = ? GROUP BY reference_month
       `).all(id) as Array<{ m: string; cve: number }>).map((r) => [r.m, Number(r.cve) || 0])
     );
@@ -570,11 +570,11 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
         INSERT INTO investments (
           name, type, client_id, zone, description, supplier, investment_date, reference_month,
           status, target_clients, installed_clients, desired_payback_months, desired_margin_pct,
-          expected_monthly_revenue_cve, monthly_operational_cost_cve, accumulated_revenue_cve,
-          total_cost_cve, notes,
+          expected_monthly_revenue_centavos, monthly_operational_cost_centavos, accumulated_revenue_centavos,
+          total_cost_centavos, notes,
           created_by, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), CAST(ROUND(? * 100) AS INTEGER), CAST(ROUND(? * 100) AS INTEGER), CAST(ROUND(? * 100) AS INTEGER), ?, ?, datetime('now'), datetime('now'))
       `).run(
         parsed.data.name,
         parsed.data.type,
@@ -598,8 +598,8 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       );
       const id = Number(result.lastInsertRowid);
       const insertItem = db.prepare(`
-        INSERT INTO investment_items (investment_id, item_type, item_name, quantity, quantity_used, unit_cost_cve, total_cost_cve)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO investment_items (investment_id, item_type, item_name, quantity, quantity_used, unit_cost_centavos, total_cost_centavos)
+        VALUES (?, ?, ?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), CAST(ROUND(? * 100) AS INTEGER))
       `);
       for (const item of items) {
         insertItem.run(id, item.itemType, item.itemName, item.quantity, item.quantityUsed, item.unitCostCve, item.totalCostCve);
@@ -646,10 +646,10 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
             installed_clients = ?,
             desired_payback_months = ?,
             desired_margin_pct = ?,
-            expected_monthly_revenue_cve = ?,
-            monthly_operational_cost_cve = ?,
-            accumulated_revenue_cve = ?,
-            total_cost_cve = ?,
+            expected_monthly_revenue_centavos = CAST(ROUND(? * 100) AS INTEGER),
+            monthly_operational_cost_centavos = CAST(ROUND(? * 100) AS INTEGER),
+            accumulated_revenue_centavos = CAST(ROUND(? * 100) AS INTEGER),
+            total_cost_centavos = CAST(ROUND(? * 100) AS INTEGER),
             notes = ?,
             updated_at = datetime('now')
         WHERE id = ?
@@ -678,8 +678,8 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
 
       db.prepare('DELETE FROM investment_items WHERE investment_id = ?').run(id);
       const insertItem = db.prepare(`
-        INSERT INTO investment_items (investment_id, item_type, item_name, quantity, quantity_used, unit_cost_cve, total_cost_cve)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO investment_items (investment_id, item_type, item_name, quantity, quantity_used, unit_cost_centavos, total_cost_centavos)
+        VALUES (?, ?, ?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), CAST(ROUND(? * 100) AS INTEGER))
       `);
       for (const item of items) {
         insertItem.run(id, item.itemType, item.itemName, item.quantity, item.quantityUsed, item.unitCostCve, item.totalCostCve);
@@ -708,7 +708,7 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     }
 
     const db = getSqliteDatabase();
-    const existing = db.prepare('SELECT name, total_cost_cve AS totalCostCve, reference_month AS referenceMonth FROM investments WHERE id = ?')
+    const existing = db.prepare('SELECT name, total_cost_centavos / 100.0 AS totalCostCve, reference_month AS referenceMonth FROM investments WHERE id = ?')
       .get(id) as { name: string; totalCostCve: number; referenceMonth: string } | undefined;
     if (!existing) {
       return reply.status(404).send({ error: 'Investimento nao encontrado' });

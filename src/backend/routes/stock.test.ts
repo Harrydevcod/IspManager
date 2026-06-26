@@ -53,8 +53,8 @@ describe('catalog schema (0018)', () => {
 
   test('accepts a material catalog row measured in metres', () => {
     const id = db.prepare(`
-      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_cve, stock_total, active)
-      VALUES ('material', 'cabo', 'Cabo UTP Cat6', 'metro', 0, 80, 305, 1)
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_centavos, stock_total, active)
+      VALUES ('material', 'cabo', 'Cabo UTP Cat6', 'metro', 0, 8000, 305, 1)
     `).run().lastInsertRowid as number;
 
     expect(db.prepare(`
@@ -65,12 +65,12 @@ describe('catalog schema (0018)', () => {
 
   test('service_material_lines rejects non-positive quantity', () => {
     const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-M','M','active')`).run().lastInsertRowid;
-    const service = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 3500, 10, 'active')`).run(client).lastInsertRowid;
+    const service = db.prepare(`INSERT INTO services (client_id, monthly_value_centavos, due_day, status) VALUES (?, 350000, 10, 'active')`).run(client).lastInsertRowid;
     const catalog = db.prepare(`INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, stock_total) VALUES ('material','cabo','UTP','metro',0,100)`).run().lastInsertRowid;
 
     expect(() => db.prepare(`
-      INSERT INTO service_material_lines (service_id, catalog_id, quantity, unit_cost_cve)
-      VALUES (?, ?, 0, 80)
+      INSERT INTO service_material_lines (service_id, catalog_id, quantity, unit_cost_centavos)
+      VALUES (?, ?, 0, 8000)
     `).run(service, catalog)).toThrow();
   });
 });

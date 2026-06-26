@@ -38,8 +38,8 @@ afterAll(() => {
 describe('SMS outbox', () => {
   test('enqueue creates pending_dispatch row', () => {
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('SMS-1', 'Cliente SMS', 'active')`).run().lastInsertRowid as number;
-    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 1000, 10, 'active')`).run(clientId).lastInsertRowid as number;
-    const paymentId = db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status) VALUES (?, ?, '2026-06', 1000, '2026-06-10', 'pending')`).run(clientId, serviceId).lastInsertRowid as number;
+    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_centavos, due_day, status) VALUES (?, 100000, 10, 'active')`).run(clientId).lastInsertRowid as number;
+    const paymentId = db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, status) VALUES (?, ?, '2026-06', 100000, '2026-06-10', 'pending')`).run(clientId, serviceId).lastInsertRowid as number;
     const id = enqueueSmsNotification({
       eventType: 'test',
       toPhone: '+2389912233',

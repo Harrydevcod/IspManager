@@ -64,12 +64,12 @@ function loadReportData() {
       c.full_name AS clientName,
       i.status,
       i.investment_date AS investmentDate,
-      i.total_cost_cve AS totalCostCve,
+      i.total_cost_centavos / 100.0 AS totalCostCve,
       i.installed_clients AS installedClients,
       i.target_clients AS targetClients,
-      i.expected_monthly_revenue_cve AS expectedMonthlyRevenueCve,
-      i.monthly_operational_cost_cve AS monthlyOperationalCostCve,
-      i.accumulated_revenue_cve AS accumulatedRevenueCve,
+      i.expected_monthly_revenue_centavos / 100.0 AS expectedMonthlyRevenueCve,
+      i.monthly_operational_cost_centavos / 100.0 AS monthlyOperationalCostCve,
+      i.accumulated_revenue_centavos / 100.0 AS accumulatedRevenueCve,
       i.desired_payback_months AS desiredPaybackMonths,
       i.client_id AS clientId
     FROM investments i
@@ -113,7 +113,7 @@ function loadReportData() {
   const expenses = db.prepare(`
     SELECT
       e.id, e.expense_date AS expenseDate, e.reference_month AS referenceMonth,
-      e.category, e.description, e.supplier, e.amount_cve AS amountCve,
+      e.category, e.description, e.supplier, e.amount_centavos / 100.0 AS amountCve,
       i.name AS investmentName, e.zone, c.full_name AS clientName
     FROM expenses e
     LEFT JOIN investments i ON i.id = e.investment_id

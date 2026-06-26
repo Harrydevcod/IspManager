@@ -48,8 +48,8 @@ function seedActiveService(code: string, amount = 2500): number {
     INSERT INTO clients (client_code, full_name, status) VALUES (?, ?, 'active')
   `).run(code, `Cliente ${code}`).lastInsertRowid as number;
   return db.prepare(`
-    INSERT INTO services (client_id, monthly_value_cve, due_day, status)
-    VALUES (?, ?, 1, 'active')
+    INSERT INTO services (client_id, monthly_value_centavos, due_day, status)
+    VALUES (?, CAST(ROUND(? * 100) AS INTEGER), 1, 'active')
   `).run(clientId, amount).lastInsertRowid as number;
 }
 
@@ -59,8 +59,8 @@ function seedCancelledClientWithActiveService(code: string): number {
     INSERT INTO clients (client_code, full_name, status) VALUES (?, ?, 'cancelled')
   `).run(code, `Cancelado ${code}`).lastInsertRowid as number;
   return db.prepare(`
-    INSERT INTO services (client_id, monthly_value_cve, due_day, status)
-    VALUES (?, 2500, 1, 'active')
+    INSERT INTO services (client_id, monthly_value_centavos, due_day, status)
+    VALUES (?, 250000, 1, 'active')
   `).run(clientId).lastInsertRowid as number;
 }
 

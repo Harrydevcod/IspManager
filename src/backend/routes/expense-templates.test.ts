@@ -77,14 +77,14 @@ describe('recurring expenses cron', () => {
     const { runRecurringExpensesIfDue } = await import('../lib/recurring-expenses');
     const now = new Date('2026-05-15T10:00:00Z');
 
-    db.prepare(`INSERT INTO expense_templates (name, category, amount_cve, day_of_month, active)
-                VALUES ('Salarios', 'salarios', 250000, 1, 1)`).run();
-    db.prepare(`INSERT INTO expense_templates (name, category, amount_cve, day_of_month, active)
-                VALUES ('Aluguer torre', 'aluguer', 15000, 5, 1)`).run();
-    db.prepare(`INSERT INTO expense_templates (name, category, amount_cve, day_of_month, active)
-                VALUES ('Combustivel pago dia 20', 'combustivel', 4000, 20, 1)`).run();
-    db.prepare(`INSERT INTO expense_templates (name, category, amount_cve, day_of_month, active)
-                VALUES ('Pausado', 'outros', 999, 1, 0)`).run();
+    db.prepare(`INSERT INTO expense_templates (name, category, amount_centavos, day_of_month, active)
+                VALUES ('Salarios', 'salarios', 25000000, 1, 1)`).run();
+    db.prepare(`INSERT INTO expense_templates (name, category, amount_centavos, day_of_month, active)
+                VALUES ('Aluguer torre', 'aluguer', 1500000, 5, 1)`).run();
+    db.prepare(`INSERT INTO expense_templates (name, category, amount_centavos, day_of_month, active)
+                VALUES ('Combustivel pago dia 20', 'combustivel', 400000, 20, 1)`).run();
+    db.prepare(`INSERT INTO expense_templates (name, category, amount_centavos, day_of_month, active)
+                VALUES ('Pausado', 'outros', 99900, 1, 0)`).run();
 
     const first = runRecurringExpensesIfDue(now);
     expect('ran' in first && first.ran).toBe(true);
@@ -93,7 +93,7 @@ describe('recurring expenses cron', () => {
       expect(first.month).toBe('2026-05');
     }
 
-    const rows = db.prepare(`SELECT category, amount_cve AS amountCve, reference_month AS rm FROM expenses ORDER BY id`).all() as Array<{ category: string; amountCve: number; rm: string }>;
+    const rows = db.prepare(`SELECT category, amount_centavos / 100.0 AS amountCve, reference_month AS rm FROM expenses ORDER BY id`).all() as Array<{ category: string; amountCve: number; rm: string }>;
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => r.rm === '2026-05')).toBe(true);
 

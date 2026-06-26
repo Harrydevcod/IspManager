@@ -104,7 +104,7 @@ export async function registerSmsRoutes(app: FastifyInstance) {
 
     const payment = getSqliteDatabase().prepare(`
       SELECT py.id, py.service_id AS serviceId, py.client_id AS clientId, py.reference_month AS referenceMonth,
-             py.amount_cve AS amountCve, py.due_date AS dueDate, py.invoice_number AS invoiceNumber,
+             py.amount_centavos / 100.0 AS amountCve, py.due_date AS dueDate, py.invoice_number AS invoiceNumber,
              py.receipt_number AS receiptNumber, py.status, c.full_name AS fullName,
              c.client_code AS clientCode, c.phone
       FROM payments py JOIN clients c ON c.id = py.client_id

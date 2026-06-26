@@ -63,7 +63,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
 
     const investmentRows = db.prepare(`
       SELECT id, name, type, investment_date AS investmentDate, reference_month AS referenceMonth,
-             status, zone, total_cost_cve AS totalCostCve
+             status, zone, total_cost_centavos / 100.0 AS totalCostCve
       FROM investments
       WHERE client_id = ?
       ORDER BY investment_date ASC, id ASC
@@ -79,7 +79,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
              item_name AS itemName,
              SUM(quantity) AS quantity,
              SUM(quantity_used) AS quantityUsed,
-             SUM(total_cost_cve) AS totalCostCve
+             SUM(total_cost_centavos) / 100.0 AS totalCostCve
       FROM investment_items
       WHERE investment_id IN (${investmentRows.map(() => '?').join(',')})
       GROUP BY item_type, item_name
@@ -93,7 +93,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
              TRIM(COALESCE(ec.brand || ' ', '') || ec.model) AS itemName,
              COUNT(*) AS quantity,
              SUM(CASE WHEN a.end_date IS NULL THEN 1 ELSE 0 END) AS quantityUsed,
-             SUM(ec.purchase_price_cve + ec.shipping_cost_cve + ec.customs_duty_cve + ec.other_costs_cve) AS totalCostCve
+             SUM(ec.purchase_price_centavos + ec.shipping_cost_centavos + ec.customs_duty_centavos + ec.other_costs_centavos) / 100.0 AS totalCostCve
       FROM service_device_assignments a
       JOIN equipment_catalog ec ON ec.id = a.catalog_id
       JOIN services s ON s.id = a.service_id
@@ -109,7 +109,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
              TRIM(COALESCE(ec.brand || ' ', '') || ec.model) AS itemName,
              SUM(ml.quantity) AS quantity,
              SUM(ml.quantity) AS quantityUsed,
-             SUM(ml.quantity * ml.unit_cost_cve) AS totalCostCve
+             SUM(ml.quantity * ml.unit_cost_centavos) / 100.0 AS totalCostCve
       FROM service_material_lines ml
       JOIN equipment_catalog ec ON ec.id = ml.catalog_id
       JOIN services s ON s.id = ml.service_id
@@ -141,7 +141,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
       .sort((a, b) => b.totalCostCve - a.totalCostCve || a.itemName.localeCompare(b.itemName));
 
     const installCostsRow = db.prepare(`
-      SELECT COALESCE(SUM(ic.amount_cve), 0) AS total
+      SELECT COALESCE(SUM(ic.amount_centavos), 0) / 100.0 AS total
       FROM service_install_costs ic
       JOIN services s ON s.id = ic.service_id
       WHERE s.client_id = ?
@@ -155,7 +155,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
     const installationCostCve = investmentCostCve + installedEquipmentCostCve + installedMaterialsCostCve + installLabourCostCve;
 
     const payments = db.prepare(`
-      SELECT id, status, amount_cve AS amountCve, due_date AS dueDate,
+      SELECT id, status, amount_centavos / 100.0 AS amountCve, due_date AS dueDate,
              payment_date AS paymentDate, reference_month AS referenceMonth
       FROM payments
       WHERE client_id = ?

@@ -150,7 +150,7 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         ec.model,
         ec.unit_of_measure AS unitOfMeasure,
         ml.quantity,
-        ml.unit_cost_cve AS unitCostCve,
+        ml.unit_cost_centavos / 100.0 AS unitCostCve,
         ml.notes,
         ml.created_at AS createdAt,
         cu.full_name AS createdByName
@@ -166,7 +166,7 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         ic.id,
         ic.kind,
         ic.description,
-        ic.amount_cve AS amountCve,
+        ic.amount_centavos / 100.0 AS amountCve,
         ic.created_by AS createdBy,
         cu.full_name AS createdByName,
         ic.created_at AS createdAt
@@ -337,9 +337,9 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
 
       db.prepare(`
         INSERT INTO stock_movements (
-          catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
+          catalog_id, type, quantity, unit_cost_centavos, reference, notes, service_id, client_name, created_by
         )
-        VALUES (?, 'saida', 1, ?, ?, ?, ?, ?, ?)
+        VALUES (?, 'saida', 1, CAST(ROUND(? * 100) AS INTEGER), ?, ?, ?, ?, ?)
       `).run(
         parsed.data.catalogId,
         freshCatalog.landedCostCve,
@@ -438,9 +438,9 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
 
       db.prepare(`
         INSERT INTO stock_movements (
-          catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
+          catalog_id, type, quantity, unit_cost_centavos, reference, notes, service_id, client_name, created_by
         )
-        VALUES (?, 'devolucao', 1, ?, ?, ?, ?, ?, ?)
+        VALUES (?, 'devolucao', 1, CAST(ROUND(? * 100) AS INTEGER), ?, ?, ?, ?, ?)
       `).run(
         current.catalogId,
         catalog?.landedCostCve ?? 0,

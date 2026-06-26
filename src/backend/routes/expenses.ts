@@ -126,7 +126,7 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
         e.id,
         e.category,
         e.description,
-        e.amount_cve AS amountCve,
+        e.amount_centavos / 100.0 AS amountCve,
         e.expense_date AS expenseDate,
         e.reference_month AS referenceMonth,
         e.supplier,
@@ -156,25 +156,25 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
     }, new Map<string, CategoryTotal>());
 
     const allExpenses = db.prepare(`
-      SELECT COALESCE(SUM(amount_cve), 0) AS totalCve, COUNT(*) AS count
+      SELECT COALESCE(SUM(amount_centavos), 0) / 100.0 AS totalCve, COUNT(*) AS count
       FROM expenses
     `).get() as { totalCve: number; count: number };
     const allInvestments = db.prepare(`
-      SELECT COALESCE(SUM(total_cost_cve), 0) AS totalCve, COUNT(*) AS count
+      SELECT COALESCE(SUM(total_cost_centavos), 0) / 100.0 AS totalCve, COUNT(*) AS count
       FROM investments
     `).get() as { totalCve: number; count: number };
     const byYearRows = db.prepare(`
       SELECT year, SUM(opexCve) AS opexCve, SUM(capexCve) AS capexCve
       FROM (
         SELECT substr(reference_month, 1, 4) AS year,
-               COALESCE(SUM(amount_cve), 0) AS opexCve,
+               COALESCE(SUM(amount_centavos), 0) / 100.0 AS opexCve,
                0 AS capexCve
         FROM expenses
         GROUP BY year
         UNION ALL
         SELECT substr(reference_month, 1, 4) AS year,
                0 AS opexCve,
-               COALESCE(SUM(total_cost_cve), 0) AS capexCve
+               COALESCE(SUM(total_cost_centavos), 0) / 100.0 AS capexCve
         FROM investments
         GROUP BY year
       )
@@ -222,10 +222,10 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
     const db = getSqliteDatabase();
     const info = db.prepare(`
       INSERT INTO expenses (
-        category, description, amount_cve, expense_date, reference_month,
+        category, description, amount_centavos, expense_date, reference_month,
         supplier, invoice_reference, notes, investment_id, zone, client_id, created_by
       )
-      VALUES (@category, @description, @amountCve, @expenseDate, @referenceMonth,
+      VALUES (@category, @description, CAST(ROUND(@amountCve * 100) AS INTEGER), @expenseDate, @referenceMonth,
               @supplier, @invoiceReference, @notes, @investmentId, @zone, @clientId, @createdBy)
     `).run({
       category: input.category,
@@ -271,7 +271,7 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
       UPDATE expenses SET
         category = @category,
         description = @description,
-        amount_cve = @amountCve,
+        amount_centavos = CAST(ROUND(@amountCve * 100) AS INTEGER),
         expense_date = @expenseDate,
         reference_month = @referenceMonth,
         supplier = @supplier,
@@ -320,7 +320,7 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
 
     const db = getSqliteDatabase();
     const existing = db.prepare(`
-      SELECT description, category, amount_cve AS amountCve, reference_month AS referenceMonth
+      SELECT description, category, amount_centavos / 100.0 AS amountCve, reference_month AS referenceMonth
       FROM expenses WHERE id = ?
     `).get(id) as
       | { description: string; category: string; amountCve: number; referenceMonth: string }

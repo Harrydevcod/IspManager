@@ -95,11 +95,11 @@ describe('GET /api/dashboard/summary', () => {
   test('aggregates paid revenue for the current month into paidMonthCve', async () => {
     db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('C001', 'Cliente Teste', 'active')`).run();
     const clientId = db.prepare(`SELECT id FROM clients WHERE client_code = 'C001'`).get() as { id: number };
-    db.prepare(`INSERT INTO internet_plans (name, connection_type, monthly_price_cve, active) VALUES ('Plano A', 'fibra', 3500, 1)`).run();
+    db.prepare(`INSERT INTO internet_plans (name, connection_type, monthly_price_centavos, active) VALUES ('Plano A', 'fibra', 350000, 1)`).run();
     const planId = db.prepare(`SELECT id FROM internet_plans WHERE name = 'Plano A'`).get() as { id: number };
     db.prepare(`
-      INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status)
-      VALUES (?, ?, 3500, 10, 'active')
+      INSERT INTO services (client_id, plan_id, monthly_value_centavos, due_day, status)
+      VALUES (?, ?, 350000, 10, 'active')
     `).run(clientId.id, planId.id);
     const serviceId = db.prepare(`SELECT id FROM services LIMIT 1`).get() as { id: number };
 
@@ -108,8 +108,8 @@ describe('GET /api/dashboard/summary', () => {
     const dueDate = `${currentMonth}-10`;
 
     db.prepare(`
-      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-      VALUES (?, ?, ?, 3500, ?, ?, 'paid')
+      INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, payment_date, status)
+      VALUES (?, ?, ?, 350000, ?, ?, 'paid')
     `).run(clientId.id, serviceId.id, currentMonth, dueDate, dueDate);
 
     const response = await app.inject({ method: 'GET', url: '/api/dashboard/summary' });
@@ -131,11 +131,11 @@ describe('GET /api/dashboard/summary', () => {
   test('flags critical overdue payments older than 30 days', async () => {
     db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('C002', 'Cliente Atrasado', 'active')`).run();
     const clientId = db.prepare(`SELECT id FROM clients WHERE client_code = 'C002'`).get() as { id: number };
-    db.prepare(`INSERT INTO internet_plans (name, connection_type, monthly_price_cve, active) VALUES ('Plano B', 'radio', 2000, 1)`).run();
+    db.prepare(`INSERT INTO internet_plans (name, connection_type, monthly_price_centavos, active) VALUES ('Plano B', 'radio', 200000, 1)`).run();
     const planId = db.prepare(`SELECT id FROM internet_plans WHERE name = 'Plano B'`).get() as { id: number };
     db.prepare(`
-      INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status)
-      VALUES (?, ?, 2000, 1, 'active')
+      INSERT INTO services (client_id, plan_id, monthly_value_centavos, due_day, status)
+      VALUES (?, ?, 200000, 1, 'active')
     `).run(clientId.id, planId.id);
     const serviceId = db.prepare(`SELECT id FROM services LIMIT 1`).get() as { id: number };
 
@@ -145,8 +145,8 @@ describe('GET /api/dashboard/summary', () => {
     const overdueMonth = overdueDate.slice(0, 7);
 
     db.prepare(`
-      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
-      VALUES (?, ?, ?, 2000, ?, 'overdue')
+      INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, status)
+      VALUES (?, ?, ?, 200000, ?, 'overdue')
     `).run(clientId.id, serviceId.id, overdueMonth, overdueDate);
 
     const response = await app.inject({ method: 'GET', url: '/api/dashboard/summary' });

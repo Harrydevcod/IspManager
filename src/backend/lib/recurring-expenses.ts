@@ -21,7 +21,7 @@ export function runRecurringExpensesIfDue(now: Date = new Date()): RecurringExpe
   const todayIso = `${monthKey}-${String(today).padStart(2, '0')}`;
 
   const templates = db.prepare(`
-    SELECT id, name, category, amount_cve AS amountCve, day_of_month AS dayOfMonth,
+    SELECT id, name, category, amount_centavos / 100.0 AS amountCve, day_of_month AS dayOfMonth,
            supplier, notes,
            investment_id AS investmentId, zone, client_id AS clientId,
            last_generated_month AS lastGeneratedMonth
@@ -40,9 +40,9 @@ export function runRecurringExpensesIfDue(now: Date = new Date()): RecurringExpe
 
   const insertExpense = db.prepare(`
     INSERT INTO expenses (
-      category, description, amount_cve, expense_date, reference_month,
+      category, description, amount_centavos, expense_date, reference_month,
       supplier, notes, investment_id, zone, client_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, CAST(ROUND(? * 100) AS INTEGER), ?, ?, ?, ?, ?, ?, ?)
   `);
   const markGenerated = db.prepare(`
     UPDATE expense_templates SET last_generated_month = ?, updated_at = datetime('now') WHERE id = ?

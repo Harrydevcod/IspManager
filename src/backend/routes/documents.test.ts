@@ -49,17 +49,17 @@ function seedPayment(status: 'pending' | 'paid' | 'overdue' | 'cancelled' = 'pai
     .prepare(`INSERT INTO clients (client_code, full_name, phone, nif, status) VALUES ('CLT-0001', 'Ana Lima', '9111111', '123456789', 'active')`)
     .run().lastInsertRowid as number;
   const planId = db
-    .prepare(`INSERT INTO internet_plans (name, download_speed, upload_speed, connection_type, monthly_price_cve) VALUES ('Plano 50', '50', '25', 'fibra', 4500)`)
+    .prepare(`INSERT INTO internet_plans (name, download_speed, upload_speed, connection_type, monthly_price_centavos) VALUES ('Plano 50', '50', '25', 'fibra', 450000)`)
     .run().lastInsertRowid as number;
   const serviceId = db
-    .prepare(`INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status) VALUES (?, ?, 4500, 10, 'active')`)
+    .prepare(`INSERT INTO services (client_id, plan_id, monthly_value_centavos, due_day, status) VALUES (?, ?, 450000, 10, 'active')`)
     .run(clientId, planId).lastInsertRowid as number;
   const paymentDate = status === 'paid' ? '2026-05-10' : null;
   const paymentMethod = status === 'paid' ? 'numerario' : null;
   return db
     .prepare(`
-      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, payment_method, status)
-      VALUES (?, ?, '2026-05', 4500, '2026-05-10', ?, ?, ?)
+      INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, payment_date, payment_method, status)
+      VALUES (?, ?, '2026-05', 450000, '2026-05-10', ?, ?, ?)
     `)
     .run(clientId, serviceId, paymentDate, paymentMethod, status).lastInsertRowid as number;
 }
@@ -175,9 +175,9 @@ describe('GET /api/payments/:id/invoice.pdf', () => {
   test('renders a multi-line invoice (internet + audiovisual) without error', async () => {
     const id = seedPayment('pending');
     // Composição combinada: o pagamento traz duas linhas; a fatura percorre-as.
-    db.prepare(`INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order) VALUES (?, 'internet', 'Servico de Internet', 4500, 0)`).run(id);
-    db.prepare(`INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order) VALUES (?, 'audiovisual', 'Distribuição de Conteúdos Audiovisuais', 500, 1)`).run(id);
-    db.prepare('UPDATE payments SET amount_cve = 5000 WHERE id = ?').run(id);
+    db.prepare(`INSERT INTO payment_lines (payment_id, kind, description, amount_centavos, sort_order) VALUES (?, 'internet', 'Servico de Internet', 450000, 0)`).run(id);
+    db.prepare(`INSERT INTO payment_lines (payment_id, kind, description, amount_centavos, sort_order) VALUES (?, 'audiovisual', 'Distribuição de Conteúdos Audiovisuais', 50000, 1)`).run(id);
+    db.prepare('UPDATE payments SET amount_centavos = 500000 WHERE id = ?').run(id);
 
     const response = await app.inject({ method: 'GET', url: `/api/payments/${id}/invoice.pdf` });
 

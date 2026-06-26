@@ -61,15 +61,15 @@ function insertOverdueClient(params: {
   `).run(params.code, params.name, params.phone, params.optOut ? 1 : 0).lastInsertRowid as number;
 
   const serviceId = db.prepare(`
-    INSERT INTO services (client_id, monthly_value_cve, due_day, status)
-    VALUES (?, 2500, 10, 'active')
+    INSERT INTO services (client_id, monthly_value_centavos, due_day, status)
+    VALUES (?, 250000, 10, 'active')
   `).run(clientId).lastInsertRowid as number;
 
   db.prepare(`
     INSERT INTO payments (
-      client_id, service_id, reference_month, amount_cve, due_date, status, invoice_number
+      client_id, service_id, reference_month, amount_centavos, due_date, status, invoice_number
     )
-    VALUES (?, ?, strftime('%Y-%m', 'now'), 2500, date('now', ?), 'overdue', ?)
+    VALUES (?, ?, strftime('%Y-%m', 'now'), 250000, date('now', ?), 'overdue', ?)
   `).run(clientId, serviceId, `-${params.daysOverdue} days`, `FT-${params.code}`);
 
   return clientId;
@@ -101,11 +101,11 @@ describe('WhatsApp outbox routes', () => {
   test('POST /api/payments/:id/whatsapp enqueues a document row', async () => {
     stubUltraMsg(200, { sent: 'true', id: 'doc-1' });
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone, status) VALUES ('C0001','Ana','9912233','active')`).run().lastInsertRowid as number;
-    const planId = db.prepare(`INSERT INTO internet_plans (name, monthly_price_cve) VALUES ('P50', 4500)`).run().lastInsertRowid as number;
-    const serviceId = db.prepare(`INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status) VALUES (?, ?, 4500, 10, 'active')`).run(clientId, planId).lastInsertRowid as number;
+    const planId = db.prepare(`INSERT INTO internet_plans (name, monthly_price_centavos) VALUES ('P50', 450000)`).run().lastInsertRowid as number;
+    const serviceId = db.prepare(`INSERT INTO services (client_id, plan_id, monthly_value_centavos, due_day, status) VALUES (?, ?, 450000, 10, 'active')`).run(clientId, planId).lastInsertRowid as number;
     const paymentId = db.prepare(`
-      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
-      VALUES (?, ?, '2026-05', 4500, '2026-05-10', 'paid')
+      INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, status)
+      VALUES (?, ?, '2026-05', 450000, '2026-05-10', 'paid')
     `).run(clientId, serviceId).lastInsertRowid as number;
     db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgInstanceId','i1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
     db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgToken','t1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
@@ -124,11 +124,11 @@ describe('WhatsApp outbox routes', () => {
   test('POST /api/payments/:id/whatsapp reports provider rejection instead of masking it as queued', async () => {
     stubUltraMsg(400, { error: 'invalid token' });
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone, status) VALUES ('C0003','Provider Fail','9912233','active')`).run().lastInsertRowid as number;
-    const planId = db.prepare(`INSERT INTO internet_plans (name, monthly_price_cve) VALUES ('P50c', 4500)`).run().lastInsertRowid as number;
-    const serviceId = db.prepare(`INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status) VALUES (?, ?, 4500, 10, 'active')`).run(clientId, planId).lastInsertRowid as number;
+    const planId = db.prepare(`INSERT INTO internet_plans (name, monthly_price_centavos) VALUES ('P50c', 450000)`).run().lastInsertRowid as number;
+    const serviceId = db.prepare(`INSERT INTO services (client_id, plan_id, monthly_value_centavos, due_day, status) VALUES (?, ?, 450000, 10, 'active')`).run(clientId, planId).lastInsertRowid as number;
     const paymentId = db.prepare(`
-      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
-      VALUES (?, ?, '2026-05', 4500, '2026-05-10', 'paid')
+      INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, status)
+      VALUES (?, ?, '2026-05', 450000, '2026-05-10', 'paid')
     `).run(clientId, serviceId).lastInsertRowid as number;
     db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgInstanceId','i1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
     db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgToken','bad',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
@@ -147,9 +147,9 @@ describe('WhatsApp outbox routes', () => {
 
   test('POST /api/payments/:id/whatsapp rejects a client without phone', async () => {
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone, status) VALUES ('C0002','Sem Fone', NULL,'active')`).run().lastInsertRowid as number;
-    const planId = db.prepare(`INSERT INTO internet_plans (name, monthly_price_cve) VALUES ('P50b', 4500)`).run().lastInsertRowid as number;
-    const serviceId = db.prepare(`INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status) VALUES (?, ?, 4500, 10, 'active')`).run(clientId, planId).lastInsertRowid as number;
-    const paymentId = db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status) VALUES (?, ?, '2026-05', 4500, '2026-05-10', 'paid')`).run(clientId, serviceId).lastInsertRowid as number;
+    const planId = db.prepare(`INSERT INTO internet_plans (name, monthly_price_centavos) VALUES ('P50b', 450000)`).run().lastInsertRowid as number;
+    const serviceId = db.prepare(`INSERT INTO services (client_id, plan_id, monthly_value_centavos, due_day, status) VALUES (?, ?, 450000, 10, 'active')`).run(clientId, planId).lastInsertRowid as number;
+    const paymentId = db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, status) VALUES (?, ?, '2026-05', 450000, '2026-05-10', 'paid')`).run(clientId, serviceId).lastInsertRowid as number;
     db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgInstanceId','i1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
     db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgToken','t1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
     const response = await app.inject({ method: 'POST', url: `/api/payments/${paymentId}/whatsapp`, payload: { kind: 'receipt' } });

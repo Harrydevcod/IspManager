@@ -58,13 +58,13 @@ function insertOverdue(params: { code: string; name: string; phone: string | nul
   `).run(params.code, params.name, params.phone, params.optOut ? 1 : 0).lastInsertRowid as number;
 
   const serviceId = db.prepare(`
-    INSERT INTO services (client_id, monthly_value_cve, due_day, status)
-    VALUES (?, 2500, 10, 'active')
+    INSERT INTO services (client_id, monthly_value_centavos, due_day, status)
+    VALUES (?, 250000, 10, 'active')
   `).run(clientId).lastInsertRowid as number;
 
   db.prepare(`
-    INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status, invoice_number)
-    VALUES (?, ?, strftime('%Y-%m', 'now'), 2500, date('now', ?), 'overdue', ?)
+    INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, status, invoice_number)
+    VALUES (?, ?, strftime('%Y-%m', 'now'), 250000, date('now', ?), 'overdue', ?)
   `).run(clientId, serviceId, `-${params.daysOverdue} days`, `FT-${params.code}`);
 }
 

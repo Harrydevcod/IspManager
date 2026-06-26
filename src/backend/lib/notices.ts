@@ -103,7 +103,7 @@ export async function runOverdueNoticesIfDue(
       c.client_code AS clientCode,
       c.phone AS phone,
       c.whatsapp_opt_out AS whatsappOptOut,
-      py.amount_cve AS amountCve,
+      py.amount_centavos / 100.0 AS amountCve,
       py.due_date AS dueDate,
       py.reference_month AS referenceMonth,
       py.invoice_number AS invoiceNumber,

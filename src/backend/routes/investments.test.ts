@@ -107,7 +107,7 @@ describe('investments CRUD', () => {
     });
     expect(update.statusCode).toBe(200);
 
-    const after = db.prepare('SELECT name, total_cost_cve AS totalCostCve FROM investments WHERE id = ?')
+    const after = db.prepare('SELECT name, total_cost_centavos / 100.0 AS totalCostCve FROM investments WHERE id = ?')
       .get(id) as { name: string; totalCostCve: number };
     expect(after).toEqual({ name: 'Cliente empresarial Palmarejo', totalCostCve: 9500 });
 
@@ -118,12 +118,12 @@ describe('investments CRUD', () => {
   });
 
   test('filters by month, type and zone', async () => {
-    db.prepare(`INSERT INTO investments (name, type, zone, investment_date, reference_month, total_cost_cve)
-                VALUES ('Zona Mar', 'zona', 'Vila Nova', '2026-03-01', '2026-03', 10)`).run();
-    db.prepare(`INSERT INTO investments (name, type, zone, investment_date, reference_month, total_cost_cve)
-                VALUES ('CPE Mar', 'equipamento', 'Vila Nova', '2026-03-15', '2026-03', 20)`).run();
-    db.prepare(`INSERT INTO investments (name, type, zone, investment_date, reference_month, total_cost_cve)
-                VALUES ('Zona Abr', 'zona', 'Palmarejo', '2026-04-01', '2026-04', 30)`).run();
+    db.prepare(`INSERT INTO investments (name, type, zone, investment_date, reference_month, total_cost_centavos)
+                VALUES ('Zona Mar', 'zona', 'Vila Nova', '2026-03-01', '2026-03', 1000)`).run();
+    db.prepare(`INSERT INTO investments (name, type, zone, investment_date, reference_month, total_cost_centavos)
+                VALUES ('CPE Mar', 'equipamento', 'Vila Nova', '2026-03-15', '2026-03', 2000)`).run();
+    db.prepare(`INSERT INTO investments (name, type, zone, investment_date, reference_month, total_cost_centavos)
+                VALUES ('Zona Abr', 'zona', 'Palmarejo', '2026-04-01', '2026-04', 3000)`).run();
 
     const march = await app.inject({ method: 'GET', url: '/api/investments?month=2026-03' });
     expect(march.json().rows).toHaveLength(2);
@@ -136,24 +136,24 @@ describe('investments CRUD', () => {
   test('imputes a pro-rata share of company OPEX based on installed clients', async () => {
     // Two active investments sharing 10 installed clients (6 + 4).
     db.prepare(`INSERT INTO investments
-                (name, type, investment_date, reference_month, total_cost_cve,
-                 target_clients, installed_clients, status, expected_monthly_revenue_cve, monthly_operational_cost_cve)
-                VALUES ('Backbone', 'infraestrutura', '2026-05-01', '2026-05', 60000, 10, 6, 'ativo', 30000, 0)`).run();
+                (name, type, investment_date, reference_month, total_cost_centavos,
+                 target_clients, installed_clients, status, expected_monthly_revenue_centavos, monthly_operational_cost_centavos)
+                VALUES ('Backbone', 'infraestrutura', '2026-05-01', '2026-05', 6000000, 10, 6, 'ativo', 3000000, 0)`).run();
     db.prepare(`INSERT INTO investments
-                (name, type, investment_date, reference_month, total_cost_cve,
-                 target_clients, installed_clients, status, expected_monthly_revenue_cve, monthly_operational_cost_cve)
-                VALUES ('Edge zona', 'zona', '2026-05-01', '2026-05', 20000, 4, 4, 'ativo', 16000, 0)`).run();
+                (name, type, investment_date, reference_month, total_cost_centavos,
+                 target_clients, installed_clients, status, expected_monthly_revenue_centavos, monthly_operational_cost_centavos)
+                VALUES ('Edge zona', 'zona', '2026-05-01', '2026-05', 2000000, 4, 4, 'ativo', 1600000, 0)`).run();
 
     // 30k of OPEX spread across two months → avg 15k/month.
     db.prepare(`INSERT INTO expenses
-                (category, description, amount_cve, expense_date, reference_month)
-                VALUES ('banda_internet', 'Upstream Abril', 12000, '2026-04-10', '2026-04')`).run();
+                (category, description, amount_centavos, expense_date, reference_month)
+                VALUES ('banda_internet', 'Upstream Abril', 1200000, '2026-04-10', '2026-04')`).run();
     db.prepare(`INSERT INTO expenses
-                (category, description, amount_cve, expense_date, reference_month)
-                VALUES ('banda_internet', 'Upstream Maio', 12000, '2026-05-10', '2026-05')`).run();
+                (category, description, amount_centavos, expense_date, reference_month)
+                VALUES ('banda_internet', 'Upstream Maio', 1200000, '2026-05-10', '2026-05')`).run();
     db.prepare(`INSERT INTO expenses
-                (category, description, amount_cve, expense_date, reference_month)
-                VALUES ('salarios', 'Salarios Maio', 6000, '2026-05-30', '2026-05')`).run();
+                (category, description, amount_centavos, expense_date, reference_month)
+                VALUES ('salarios', 'Salarios Maio', 600000, '2026-05-30', '2026-05')`).run();
     // avgMonthlyOpex = 30000 / 2 = 15000; opexPerClient = 15000 / 10 = 1500.
 
     const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
@@ -184,11 +184,11 @@ describe('investments CRUD', () => {
 
   test('combines direct OPEX with the imputed share', async () => {
     db.prepare(`INSERT INTO investments
-                (name, type, investment_date, reference_month, total_cost_cve,
-                 target_clients, installed_clients, status, expected_monthly_revenue_cve, monthly_operational_cost_cve)
-                VALUES ('Cliente VIP', 'cliente', '2026-05-01', '2026-05', 8000, 1, 1, 'ativo', 5000, 750)`).run();
-    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month)
-                VALUES ('infraestrutura', 'Aluguer torre', 2000, '2026-05-01', '2026-05')`).run();
+                (name, type, investment_date, reference_month, total_cost_centavos,
+                 target_clients, installed_clients, status, expected_monthly_revenue_centavos, monthly_operational_cost_centavos)
+                VALUES ('Cliente VIP', 'cliente', '2026-05-01', '2026-05', 800000, 1, 1, 'ativo', 500000, 75000)`).run();
+    db.prepare(`INSERT INTO expenses (category, description, amount_centavos, expense_date, reference_month)
+                VALUES ('infraestrutura', 'Aluguer torre', 200000, '2026-05-01', '2026-05')`).run();
 
     const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
     const row = (response.json() as { rows: Array<{ imputedMonthlyOpexCve: number; effectiveMonthlyOpexCve: number; monthlyNetProfitCve: number }> }).rows[0];
@@ -202,13 +202,13 @@ describe('investments CRUD', () => {
   test('"Total investido" = stock comprado (em maos + consumido) + investimentos manuais', async () => {
     // Custo landed = 1200+200+100 = 1500/unid; 10 unidades em armazem.
     const catalogId = db.prepare(`INSERT INTO equipment_catalog
-                (type, model, purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve, stock_total)
-                VALUES ('router', 'hAP ax2', 1200, 200, 100, 0, 10)`).run().lastInsertRowid as number;
+                (type, model, purchase_price_centavos, shipping_cost_centavos, customs_duty_centavos, other_costs_centavos, stock_total)
+                VALUES ('router', 'hAP ax2', 120000, 20000, 10000, 0, 10)`).run().lastInsertRowid as number;
     // 4 unidades ja sairam (instaladas), valorizadas ao custo landed.
-    db.prepare(`INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_cve) VALUES (?, 'saida', 4, 1500)`).run(catalogId);
+    db.prepare(`INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_centavos) VALUES (?, 'saida', 4, 150000)`).run(catalogId);
     // Investimento manual (tabela investments) que tambem entra no total.
-    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_cve, status)
-                VALUES ('Torre Achada', 'infraestrutura', '2026-05-01', '2026-05', 5000, 'ativo')`).run();
+    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_centavos, status)
+                VALUES ('Torre Achada', 'infraestrutura', '2026-05-01', '2026-05', 500000, 'ativo')`).run();
 
     const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
     expect(response.statusCode).toBe(200);
@@ -219,14 +219,14 @@ describe('investments CRUD', () => {
 
   test('lucro acumulado da empresa = recebido − investido (infra+stock) − despesas', async () => {
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone) VALUES ('C001', 'Cliente Lucro', '5550001')`).run().lastInsertRowid as number;
-    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve) VALUES (?, 5000)`).run(clientId).lastInsertRowid as number;
+    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_centavos) VALUES (?, 500000)`).run(clientId).lastInsertRowid as number;
     // Faturacao recebida: 5000 pago (+ um pendente que NAO conta).
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status) VALUES (?, ?, '2026-04', 5000, '2026-04-10', 'paid')`).run(clientId, serviceId);
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status) VALUES (?, ?, '2026-05', 5000, '2026-05-10', 'pending')`).run(clientId, serviceId);
+    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, status) VALUES (?, ?, '2026-04', 500000, '2026-04-10', 'paid')`).run(clientId, serviceId);
+    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, status) VALUES (?, ?, '2026-05', 500000, '2026-05-10', 'pending')`).run(clientId, serviceId);
     // Investido na infraestrutura: 3000 (sem stock neste teste).
-    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_cve, status) VALUES ('Torre', 'infraestrutura', '2026-05-01', '2026-05', 3000, 'ativo')`).run();
+    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_centavos, status) VALUES ('Torre', 'infraestrutura', '2026-05-01', '2026-05', 300000, 'ativo')`).run();
     // Despesas: 800.
-    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month) VALUES ('infraestrutura', 'Aluguer', 800, '2026-05-05', '2026-05')`).run();
+    db.prepare(`INSERT INTO expenses (category, description, amount_centavos, expense_date, reference_month) VALUES ('infraestrutura', 'Aluguer', 80000, '2026-05-05', '2026-05')`).run();
 
     const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
     expect(response.statusCode).toBe(200);
@@ -238,9 +238,9 @@ describe('investments CRUD', () => {
 
   test('uses expenses created through the expenses module API in profitability calculations', async () => {
     const investmentId = db.prepare(`INSERT INTO investments
-                (name, type, investment_date, reference_month, total_cost_cve,
-                 target_clients, installed_clients, status, expected_monthly_revenue_cve, monthly_operational_cost_cve)
-                VALUES ('Zona despesas API', 'zona', '2026-05-01', '2026-05', 20000, 4, 4, 'ativo', 16000, 0)`).run().lastInsertRowid as number;
+                (name, type, investment_date, reference_month, total_cost_centavos,
+                 target_clients, installed_clients, status, expected_monthly_revenue_centavos, monthly_operational_cost_centavos)
+                VALUES ('Zona despesas API', 'zona', '2026-05-01', '2026-05', 2000000, 4, 4, 'ativo', 1600000, 0)`).run().lastInsertRowid as number;
 
     const sharedExpense = await app.inject({
       method: 'POST',
@@ -296,11 +296,11 @@ describe('investments CRUD', () => {
   test('skips OPEX rateio when no installed clients are active', async () => {
     // Only planned investments with installed=0 → denominator is 0, imputed=0.
     db.prepare(`INSERT INTO investments
-                (name, type, investment_date, reference_month, total_cost_cve,
-                 target_clients, installed_clients, status, expected_monthly_revenue_cve, monthly_operational_cost_cve)
-                VALUES ('Futuro projecto', 'expansao', '2026-05-01', '2026-05', 50000, 20, 0, 'planeado', 0, 0)`).run();
-    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month)
-                VALUES ('outros', 'Despesa solta', 5000, '2026-05-01', '2026-05')`).run();
+                (name, type, investment_date, reference_month, total_cost_centavos,
+                 target_clients, installed_clients, status, expected_monthly_revenue_centavos, monthly_operational_cost_centavos)
+                VALUES ('Futuro projecto', 'expansao', '2026-05-01', '2026-05', 5000000, 20, 0, 'planeado', 0, 0)`).run();
+    db.prepare(`INSERT INTO expenses (category, description, amount_centavos, expense_date, reference_month)
+                VALUES ('outros', 'Despesa solta', 500000, '2026-05-01', '2026-05')`).run();
 
     const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
     const body = response.json() as {
@@ -316,20 +316,20 @@ describe('investments CRUD', () => {
 
   test('direct OPEX allocation via investment_id bypasses the pool', async () => {
     db.prepare(`INSERT INTO investments
-                (name, type, investment_date, reference_month, total_cost_cve,
-                 target_clients, installed_clients, status, expected_monthly_revenue_cve, monthly_operational_cost_cve)
-                VALUES ('Backbone', 'infraestrutura', '2026-05-01', '2026-05', 60000, 10, 6, 'ativo', 30000, 0)`).run();
+                (name, type, investment_date, reference_month, total_cost_centavos,
+                 target_clients, installed_clients, status, expected_monthly_revenue_centavos, monthly_operational_cost_centavos)
+                VALUES ('Backbone', 'infraestrutura', '2026-05-01', '2026-05', 6000000, 10, 6, 'ativo', 3000000, 0)`).run();
     const targetId = db.prepare(`INSERT INTO investments
-                (name, type, zone, investment_date, reference_month, total_cost_cve,
-                 target_clients, installed_clients, status, expected_monthly_revenue_cve, monthly_operational_cost_cve)
-                VALUES ('Edge zona', 'zona', 'Palmarejo', '2026-05-01', '2026-05', 20000, 4, 4, 'ativo', 16000, 0)`).run().lastInsertRowid as number;
+                (name, type, zone, investment_date, reference_month, total_cost_centavos,
+                 target_clients, installed_clients, status, expected_monthly_revenue_centavos, monthly_operational_cost_centavos)
+                VALUES ('Edge zona', 'zona', 'Palmarejo', '2026-05-01', '2026-05', 2000000, 4, 4, 'ativo', 1600000, 0)`).run().lastInsertRowid as number;
 
     // Aluguer de torre alocado 100% ao "Edge zona". Não entra no rateio.
-    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month, investment_id)
-                VALUES ('infraestrutura', 'Aluguer torre Palmarejo', 6000, '2026-05-01', '2026-05', ?)`).run(targetId);
+    db.prepare(`INSERT INTO expenses (category, description, amount_centavos, expense_date, reference_month, investment_id)
+                VALUES ('infraestrutura', 'Aluguer torre Palmarejo', 600000, '2026-05-01', '2026-05', ?)`).run(targetId);
     // OPEX não-alocado para o pool: 4000/mês.
-    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month)
-                VALUES ('banda_internet', 'Upstream Maio', 4000, '2026-05-10', '2026-05')`).run();
+    db.prepare(`INSERT INTO expenses (category, description, amount_centavos, expense_date, reference_month)
+                VALUES ('banda_internet', 'Upstream Maio', 400000, '2026-05-10', '2026-05')`).run();
 
     const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
     const body = response.json() as {
@@ -356,17 +356,17 @@ describe('investments CRUD', () => {
   test('actualMonthlyRevenue derives from paid payments of the linked client', async () => {
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, status)
                                  VALUES ('CLT-VIP', 'VIP', 'active')`).run().lastInsertRowid as number;
-    db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 5000, 10, 'active')`).run(clientId);
+    db.prepare(`INSERT INTO services (client_id, monthly_value_centavos, due_day, status) VALUES (?, 500000, 10, 'active')`).run(clientId);
     const serviceId = (db.prepare(`SELECT id FROM services WHERE client_id = ?`).get(clientId) as { id: number }).id;
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-                VALUES (?, ?, '2026-03', 5000, '2026-03-10', '2026-03-10', 'paid')`).run(clientId, serviceId);
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-                VALUES (?, ?, '2026-04', 5000, '2026-04-10', '2026-04-10', 'paid')`).run(clientId, serviceId);
+    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, payment_date, status)
+                VALUES (?, ?, '2026-03', 500000, '2026-03-10', '2026-03-10', 'paid')`).run(clientId, serviceId);
+    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, payment_date, status)
+                VALUES (?, ?, '2026-04', 500000, '2026-04-10', '2026-04-10', 'paid')`).run(clientId, serviceId);
 
     db.prepare(`INSERT INTO investments
-                (name, type, client_id, investment_date, reference_month, total_cost_cve,
-                 target_clients, installed_clients, status, expected_monthly_revenue_cve)
-                VALUES ('Instalacao VIP', 'cliente', ?, '2026-03-01', '2026-03', 8000, 1, 1, 'ativo', 3000)`)
+                (name, type, client_id, investment_date, reference_month, total_cost_centavos,
+                 target_clients, installed_clients, status, expected_monthly_revenue_centavos)
+                VALUES ('Instalacao VIP', 'cliente', ?, '2026-03-01', '2026-03', 800000, 1, 1, 'ativo', 300000)`)
       .run(clientId);
 
     const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-03' });
@@ -381,17 +381,17 @@ describe('investments CRUD', () => {
 
   test('GET /api/investments/:id/timeline returns monthly cumulative profit and recovery month', async () => {
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-T1', 'Cliente Timeline', 'active')`).run().lastInsertRowid as number;
-    db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 5000, 10, 'active')`).run(clientId);
+    db.prepare(`INSERT INTO services (client_id, monthly_value_centavos, due_day, status) VALUES (?, 500000, 10, 'active')`).run(clientId);
     const serviceId = (db.prepare('SELECT id FROM services WHERE client_id = ?').get(clientId) as { id: number }).id;
     // Pago em 4 meses consecutivos.
     for (const m of ['2026-02', '2026-03', '2026-04', '2026-05']) {
-      db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-                  VALUES (?, ?, ?, 5000, ?, ?, 'paid')`).run(clientId, serviceId, m, `${m}-10`, `${m}-10`);
+      db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_centavos, due_date, payment_date, status)
+                  VALUES (?, ?, ?, 500000, ?, ?, 'paid')`).run(clientId, serviceId, m, `${m}-10`, `${m}-10`);
     }
     const id = db.prepare(`INSERT INTO investments
-                (name, type, client_id, investment_date, reference_month, total_cost_cve,
-                 target_clients, installed_clients, status, expected_monthly_revenue_cve)
-                VALUES ('Instalacao timeline', 'cliente', ?, '2026-02-01', '2026-02', 10000, 1, 1, 'ativo', 5000)`).run(clientId).lastInsertRowid as number;
+                (name, type, client_id, investment_date, reference_month, total_cost_centavos,
+                 target_clients, installed_clients, status, expected_monthly_revenue_centavos)
+                VALUES ('Instalacao timeline', 'cliente', ?, '2026-02-01', '2026-02', 1000000, 1, 1, 'ativo', 500000)`).run(clientId).lastInsertRowid as number;
 
     const response = await app.inject({ method: 'GET', url: `/api/investments/${id}/timeline` });
     expect(response.statusCode).toBe(200);
@@ -410,9 +410,9 @@ describe('investments CRUD', () => {
 
   test('alerts surface per-investment danger when monthly profit is negative', async () => {
     db.prepare(`INSERT INTO investments
-                (name, type, investment_date, reference_month, total_cost_cve,
-                 target_clients, installed_clients, status, expected_monthly_revenue_cve, monthly_operational_cost_cve)
-                VALUES ('Cliente caro', 'cliente', '2026-05-01', '2026-05', 100000, 1, 1, 'ativo', 1000, 9000)`).run();
+                (name, type, investment_date, reference_month, total_cost_centavos,
+                 target_clients, installed_clients, status, expected_monthly_revenue_centavos, monthly_operational_cost_centavos)
+                VALUES ('Cliente caro', 'cliente', '2026-05-01', '2026-05', 10000000, 1, 1, 'ativo', 100000, 900000)`).run();
 
     const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
     const body = response.json() as { alerts: Array<{ severity: string; message: string; target?: { kind: string; name: string } }> };
@@ -423,8 +423,8 @@ describe('investments CRUD', () => {
   });
 
   test('GET /api/investments/report.pdf returns a PDF buffer', async () => {
-    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_cve, target_clients, installed_clients, status, expected_monthly_revenue_cve)
-                VALUES ('Backbone PDF', 'infraestrutura', '2026-05-01', '2026-05', 12000, 5, 3, 'ativo', 8000)`).run();
+    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_centavos, target_clients, installed_clients, status, expected_monthly_revenue_centavos)
+                VALUES ('Backbone PDF', 'infraestrutura', '2026-05-01', '2026-05', 1200000, 5, 3, 'ativo', 800000)`).run();
 
     const response = await app.inject({ method: 'GET', url: '/api/investments/report.pdf' });
     expect(response.statusCode).toBe(200);
@@ -435,10 +435,10 @@ describe('investments CRUD', () => {
   });
 
   test('GET /api/investments/report.xlsx returns an XLSX buffer', async () => {
-    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_cve, target_clients, installed_clients, status, expected_monthly_revenue_cve)
-                VALUES ('Edge zona XLSX', 'zona', '2026-05-01', '2026-05', 30000, 10, 6, 'ativo', 18000)`).run();
-    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month)
-                VALUES ('banda_internet', 'Upstream Maio', 8000, '2026-05-15', '2026-05')`).run();
+    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_centavos, target_clients, installed_clients, status, expected_monthly_revenue_centavos)
+                VALUES ('Edge zona XLSX', 'zona', '2026-05-01', '2026-05', 3000000, 10, 6, 'ativo', 1800000)`).run();
+    db.prepare(`INSERT INTO expenses (category, description, amount_centavos, expense_date, reference_month)
+                VALUES ('banda_internet', 'Upstream Maio', 800000, '2026-05-15', '2026-05')`).run();
 
     const response = await app.inject({ method: 'GET', url: '/api/investments/report.xlsx' });
     expect(response.statusCode).toBe(200);
@@ -451,10 +451,10 @@ describe('investments CRUD', () => {
   test('dashboard summary aggregates investment cost per month', async () => {
     const now = new Date();
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_cve)
-                VALUES ('Backbone corrente', 'infraestrutura', ?, ?, 15000)`).run(`${currentMonth}-01`, currentMonth);
-    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_cve)
-                VALUES ('Instalacao corrente', 'cliente', ?, ?, 5000)`).run(`${currentMonth}-02`, currentMonth);
+    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_centavos)
+                VALUES ('Backbone corrente', 'infraestrutura', ?, ?, 1500000)`).run(`${currentMonth}-01`, currentMonth);
+    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_centavos)
+                VALUES ('Instalacao corrente', 'cliente', ?, ?, 500000)`).run(`${currentMonth}-02`, currentMonth);
 
     const response = await app.inject({ method: 'GET', url: '/api/dashboard/summary' });
     expect(response.statusCode).toBe(200);

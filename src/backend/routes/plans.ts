@@ -26,14 +26,14 @@ export async function registerPlanRoutes(app: FastifyInstance) {
         download_speed AS downloadSpeed,
         upload_speed AS uploadSpeed,
         connection_type AS connectionType,
-        monthly_price_cve AS monthlyPriceCve,
-        installation_fee_cve AS installationFeeCve,
+        monthly_price_centavos / 100.0 AS monthlyPriceCve,
+        installation_fee_centavos / 100.0 AS installationFeeCve,
         description,
         active,
         created_at AS createdAt,
         updated_at AS updatedAt
       FROM internet_plans
-      ORDER BY active DESC, monthly_price_cve, name
+      ORDER BY active DESC, monthly_price_centavos, name
     `).all();
   });
 
@@ -47,8 +47,8 @@ export async function registerPlanRoutes(app: FastifyInstance) {
         download_speed AS downloadSpeed,
         upload_speed AS uploadSpeed,
         connection_type AS connectionType,
-        monthly_price_cve AS monthlyPriceCve,
-        installation_fee_cve AS installationFeeCve,
+        monthly_price_centavos / 100.0 AS monthlyPriceCve,
+        installation_fee_centavos / 100.0 AS installationFeeCve,
         description,
         active
       FROM internet_plans
@@ -71,10 +71,10 @@ export async function registerPlanRoutes(app: FastifyInstance) {
     const db = getSqliteDatabase();
     const result = db.prepare(`
       INSERT INTO internet_plans (
-        name, download_speed, upload_speed, connection_type, monthly_price_cve,
-        installation_fee_cve, description, active, created_at, updated_at
+        name, download_speed, upload_speed, connection_type, monthly_price_centavos,
+        installation_fee_centavos, description, active, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), CAST(ROUND(? * 100) AS INTEGER), ?, ?, datetime('now'), datetime('now'))
     `).run(
       parsed.data.name,
       parsed.data.downloadSpeed,
@@ -103,8 +103,8 @@ export async function registerPlanRoutes(app: FastifyInstance) {
           download_speed = ?,
           upload_speed = ?,
           connection_type = ?,
-          monthly_price_cve = ?,
-          installation_fee_cve = ?,
+          monthly_price_centavos = CAST(ROUND(? * 100) AS INTEGER),
+          installation_fee_centavos = CAST(ROUND(? * 100) AS INTEGER),
           description = ?,
           active = ?,
           updated_at = datetime('now')

@@ -15,16 +15,16 @@ function seedService(db: Database.Database) {
     VALUES ('CLT-BATCH', 'Cliente Batch', 'active')
   `).run();
   const service = db.prepare(`
-    INSERT INTO services (client_id, monthly_value_cve, due_day, status)
-    VALUES (?, 3500, 10, 'active')
+    INSERT INTO services (client_id, monthly_value_centavos, due_day, status)
+    VALUES (?, 350000, 10, 'active')
   `).run(client.lastInsertRowid);
   const router = db.prepare(`
-    INSERT INTO equipment_catalog (category, type, brand, model, is_serialized, purchase_price_cve, stock_total, active)
-    VALUES ('equipamento', 'router', 'MikroTik', 'hAP', 1, 6000, 2, 1)
+    INSERT INTO equipment_catalog (category, type, brand, model, is_serialized, purchase_price_centavos, stock_total, active)
+    VALUES ('equipamento', 'router', 'MikroTik', 'hAP', 1, 600000, 2, 1)
   `).run();
   const cable = db.prepare(`
-    INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_cve, stock_total, active)
-    VALUES ('material', 'cabo', 'Cabo UTP', 'metro', 0, 80, 100, 1)
+    INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_centavos, stock_total, active)
+    VALUES ('material', 'cabo', 'Cabo UTP', 'metro', 0, 8000, 100, 1)
   `).run();
 
   return {
@@ -77,7 +77,7 @@ describe('service install batch engine', () => {
       .toEqual({ stockTotal: 1 });
     expect(db.prepare('SELECT stock_total AS stockTotal FROM equipment_catalog WHERE id = ?').get(cableId))
       .toEqual({ stockTotal: 75 });
-    expect(db.prepare('SELECT quantity, unit_cost_cve AS unitCostCve FROM service_material_lines WHERE catalog_id = ?').get(cableId))
+    expect(db.prepare('SELECT quantity, unit_cost_centavos / 100.0 AS unitCostCve FROM service_material_lines WHERE catalog_id = ?').get(cableId))
       .toEqual({ quantity: 25, unitCostCve: 80 });
     expect(db.prepare('SELECT count(*) AS count FROM service_events WHERE service_id = ?').get(serviceId))
       .toEqual({ count: 1 });

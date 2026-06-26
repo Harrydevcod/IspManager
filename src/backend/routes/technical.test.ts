@@ -57,15 +57,15 @@ function seedBaseService() {
   `).run();
   const plan = db.prepare(`
     INSERT INTO internet_plans (
-      name, download_speed, upload_speed, connection_type, monthly_price_cve
+      name, download_speed, upload_speed, connection_type, monthly_price_centavos
     )
-    VALUES ('Plano Tec', '50 Mbps', '20 Mbps', 'fibra', 3500)
+    VALUES ('Plano Tec', '50 Mbps', '20 Mbps', 'fibra', 350000)
   `).run();
   const catalog = db.prepare(`
     INSERT INTO equipment_catalog (
-      type, brand, model, purchase_price_cve, selling_price_cve, stock_total, active
+      type, brand, model, purchase_price_centavos, selling_price_centavos, stock_total, active
     )
-    VALUES ('router', 'Teste', 'Router Tec', 1000, 1500, 10, 1)
+    VALUES ('router', 'Teste', 'Router Tec', 100000, 150000, 10, 1)
   `).run();
   const user = db.prepare(`
     INSERT INTO users (username, password_hash, role, full_name, active)
@@ -73,9 +73,9 @@ function seedBaseService() {
   `).run();
   const service = db.prepare(`
     INSERT INTO services (
-      client_id, plan_id, monthly_value_cve, activation_date, due_day, status
+      client_id, plan_id, monthly_value_centavos, activation_date, due_day, status
     )
-    VALUES (?, ?, 3500, '2026-01-15', 10, 'active')
+    VALUES (?, ?, 350000, '2026-01-15', 10, 'active')
   `).run(client.lastInsertRowid, plan.lastInsertRowid);
 
   return { client, plan, catalog, user, service };
@@ -132,7 +132,7 @@ describe('technical routes', () => {
     expect(db.prepare('SELECT stock_total AS stockTotal FROM equipment_catalog WHERE id = ?')
       .get(catalog.lastInsertRowid)).toEqual({ stockTotal: 9 });
     expect(db.prepare(`
-      SELECT type, quantity, unit_cost_cve AS unitCostCve, service_id AS serviceId, client_name AS clientName
+      SELECT type, quantity, unit_cost_centavos / 100.0 AS unitCostCve, service_id AS serviceId, client_name AS clientName
       FROM stock_movements
       WHERE catalog_id = ?
     `).get(catalog.lastInsertRowid)).toEqual({
@@ -314,8 +314,8 @@ describe('technical routes', () => {
     const clientId = (db.prepare('SELECT id FROM clients LIMIT 1').get() as { id: number }).id;
     const planId = (db.prepare('SELECT id FROM internet_plans LIMIT 1').get() as { id: number }).id;
     const secondService = db.prepare(`
-      INSERT INTO services (client_id, plan_id, monthly_value_cve, activation_date, due_day, status)
-      VALUES (?, ?, 3500, '2026-01-15', 10, 'active')
+      INSERT INTO services (client_id, plan_id, monthly_value_centavos, activation_date, due_day, status)
+      VALUES (?, ?, 350000, '2026-01-15', 10, 'active')
     `).run(clientId, planId);
 
     const duplicate = await app.inject({
@@ -356,8 +356,8 @@ describe('technical routes', () => {
   test('installs a batch of items (device + material) on an existing service', async () => {
     const { catalog, service } = seedBaseService();
     const cable = db.prepare(`
-      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_cve, stock_total, active)
-      VALUES ('material','cabo','UTP','metro',0,80,100,1)
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_centavos, stock_total, active)
+      VALUES ('material','cabo','UTP','metro',0,8000,100,1)
     `).run();
 
     const response = await app.inject({
@@ -402,8 +402,8 @@ describe('technical routes', () => {
   test('technical-history returns materials alongside assignments', async () => {
     const { service } = seedBaseService();
     const cable = db.prepare(`
-      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_cve, stock_total, active)
-      VALUES ('material','cabo','Cabo UTP','metro',0,80,100,1)
+      INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, purchase_price_centavos, stock_total, active)
+      VALUES ('material','cabo','Cabo UTP','metro',0,8000,100,1)
     `).run();
     await app.inject({
       method: 'POST',

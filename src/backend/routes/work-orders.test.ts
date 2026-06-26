@@ -54,12 +54,12 @@ function seedService() {
     VALUES ('CLT-WO1', 'Cliente OS', 'active')
   `).run();
   const plan = db.prepare(`
-    INSERT INTO internet_plans (name, download_speed, upload_speed, connection_type, monthly_price_cve)
-    VALUES ('Plano OS', '100', '50', 'fibra', 5000)
+    INSERT INTO internet_plans (name, download_speed, upload_speed, connection_type, monthly_price_centavos)
+    VALUES ('Plano OS', '100', '50', 'fibra', 500000)
   `).run();
   const service = db.prepare(`
-    INSERT INTO services (client_id, plan_id, monthly_value_cve, activation_date, due_day, status)
-    VALUES (?, ?, 5000, '2026-01-15', 10, 'active')
+    INSERT INTO services (client_id, plan_id, monthly_value_centavos, activation_date, due_day, status)
+    VALUES (?, ?, 500000, '2026-01-15', 10, 'active')
   `).run(client.lastInsertRowid, plan.lastInsertRowid);
   return { clientId: Number(client.lastInsertRowid), serviceId: Number(service.lastInsertRowid) };
 }

@@ -65,7 +65,7 @@ export async function registerExpenseTemplateRoutes(app: FastifyInstance) {
         t.id,
         t.name,
         t.category,
-        t.amount_cve AS amountCve,
+        t.amount_centavos / 100.0 AS amountCve,
         t.day_of_month AS dayOfMonth,
         t.supplier,
         t.notes,
@@ -100,9 +100,9 @@ export async function registerExpenseTemplateRoutes(app: FastifyInstance) {
     const db = getSqliteDatabase();
     const info = db.prepare(`
       INSERT INTO expense_templates (
-        name, category, amount_cve, day_of_month, supplier, notes,
+        name, category, amount_centavos, day_of_month, supplier, notes,
         investment_id, zone, client_id, active, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, CAST(ROUND(? * 100) AS INTEGER), ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       input.name,
       input.category,
@@ -136,7 +136,7 @@ export async function registerExpenseTemplateRoutes(app: FastifyInstance) {
     const db = getSqliteDatabase();
     const info = db.prepare(`
       UPDATE expense_templates SET
-        name = ?, category = ?, amount_cve = ?, day_of_month = ?,
+        name = ?, category = ?, amount_centavos = CAST(ROUND(? * 100) AS INTEGER), day_of_month = ?,
         supplier = ?, notes = ?, investment_id = ?, zone = ?, client_id = ?,
         active = ?, updated_at = datetime('now')
       WHERE id = ?
