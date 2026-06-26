@@ -29,6 +29,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  db.prepare('DELETE FROM login_throttle').run();
   db.prepare('DELETE FROM audit_logs').run();
   db.prepare('DELETE FROM work_orders').run();
   db.prepare('DELETE FROM service_events').run();
@@ -303,6 +304,75 @@ describe('auth flow', () => {
     const actions = logs.json().rows.map((row: any) => row.action);
     expect(actions).toContain('create');
     expect(actions).toContain('reset_password');
+  });
+
+  test('locks the account after repeated failures and rejects even the correct password', async () => {
+    await setupAdminToken();
+
+    // Five wrong passwords. Each is a 401; the fifth arms the lockout.
+    for (let i = 0; i < 5; i++) {
+      const bad = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { username: 'admin', password: 'wrong' }
+      });
+      expect(bad.statusCode).toBe(401);
+    }
+
+    // Now locked: the correct password is refused with 429 + Retry-After.
+    const locked = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: 'admin', password: 'supersecret' }
+    });
+    expect(locked.statusCode).toBe(429);
+    expect(Number(locked.headers['retry-after'])).toBeGreaterThan(0);
+    expect(locked.json().retryAfterSeconds).toBeGreaterThan(0);
+
+    // The throttle is auditable: failures and the lockout are recorded.
+    const actions = (db
+      .prepare('SELECT action FROM audit_logs')
+      .all() as Array<{ action: string }>).map((r) => r.action);
+    expect(actions).toContain('login_failed');
+    expect(actions).toContain('login_locked');
+  });
+
+  test('a successful login clears the failure counter and is audited', async () => {
+    await setupAdminToken();
+
+    // A few failures, but below the lockout threshold.
+    for (let i = 0; i < 3; i++) {
+      await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { username: 'admin', password: 'wrong' }
+      });
+    }
+    expect((db.prepare('SELECT COUNT(*) AS n FROM login_throttle').get() as { n: number }).n).toBeGreaterThan(0);
+
+    const ok = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: 'admin', password: 'supersecret' }
+    });
+    expect(ok.statusCode).toBe(200);
+
+    // Counter reset → table emptied for these identifiers.
+    expect((db.prepare('SELECT COUNT(*) AS n FROM login_throttle').get() as { n: number }).n).toBe(0);
+
+    // The success is recorded for the audit trail.
+    const success = db
+      .prepare(`SELECT action FROM audit_logs WHERE action = 'login_success'`)
+      .get() as { action: string } | undefined;
+    expect(success?.action).toBe('login_success');
+
+    // And the cleared counter tolerates more failures without an immediate lock.
+    const afterReset = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: 'admin', password: 'wrong' }
+    });
+    expect(afterReset.statusCode).toBe(401);
   });
 
   test('admin can page and filter audit logs by date', async () => {
