@@ -4,6 +4,7 @@ import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Dialog, EmptyState, Field, FilterBar, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
+import { formatCve } from '../lib/format';
 import type { PlanRow } from '../types';
 import './PlansModule.css';
 
@@ -262,8 +263,8 @@ export function PlansModule() {
                   {speed.unit && <span className="plan-item-speed-unit">{speed.unit} ↓/↑</span>}
                 </div>
                 <div className="plan-item-price">
-                  <span className="plan-item-price-value">{plan.monthlyPriceCve.toLocaleString('pt-PT')}</span>
-                  <span className="plan-item-price-currency">CVE / mês</span>
+                  <span className="plan-item-price-value">{formatCve(plan.monthlyPriceCve)}</span>
+                  <span className="plan-item-price-currency">/ mês</span>
                 </div>
                 {interactive && (
                   <div className="plan-item-actions" onClick={(event) => event.stopPropagation()}>

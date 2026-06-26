@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { RevenuePoint } from '../types';
+import { formatCompactEscudos } from '../../shared/money';
 
 const monthLabelFormatter = new Intl.DateTimeFormat('pt-PT', { month: 'short' });
 const longMonthFormatter = new Intl.DateTimeFormat('pt-PT', { month: 'long', year: 'numeric' });
@@ -17,17 +18,13 @@ function formatLongMonth(referenceMonth: string): string {
   return longMonthFormatter.format(date);
 }
 
+/**
+ * Compact money label for the chart axis/labels and tooltips. Delegates to the
+ * shared cifrão-aware formatter (`1,5M$`, `12k$`, `500$`); kept under this name
+ * so existing import sites (Dashboard, ProfitModule) stay unchanged.
+ */
 export function formatCompactCve(value: number): string {
-  if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
-  }
-  if (value >= 10_000) {
-    return `${Math.round(value / 1000)}k`;
-  }
-  if (value >= 1000) {
-    return `${(value / 1000).toFixed(1)}k`;
-  }
-  return String(Math.round(value));
+  return formatCompactEscudos(value);
 }
 
 /**
@@ -325,26 +322,26 @@ export function RevenueBars({ points, ariaLabel = 'Receita dos ultimos 12 meses'
           <dl className="bar-tooltip-rows">
             <div>
               <dt><span className="dot dot-paid" />Pago</dt>
-              <dd>{formatCompactCve(hoveredPoint.paidCve)} CVE</dd>
+              <dd>{formatCompactCve(hoveredPoint.paidCve)}</dd>
             </div>
             <div>
               <dt><span className="dot dot-pending" />Pendente</dt>
-              <dd>{formatCompactCve(hoveredPoint.pendingCve)} CVE</dd>
+              <dd>{formatCompactCve(hoveredPoint.pendingCve)}</dd>
             </div>
             <div>
               <dt><span className="dot dot-expense" />Investimentos</dt>
-              <dd>{formatCompactCve(hoveredPoint.expenseCve)} CVE</dd>
+              <dd>{formatCompactCve(hoveredPoint.expenseCve)}</dd>
             </div>
             <div>
               <dt><span className="dot dot-opex" />Despesas</dt>
-              <dd>{formatCompactCve(hoveredPoint.opexCve)} CVE</dd>
+              <dd>{formatCompactCve(hoveredPoint.opexCve)}</dd>
             </div>
             {(() => {
               const net = hoveredPoint.paidCve - hoveredPoint.expenseCve - hoveredPoint.opexCve;
               return (
                 <div className={`bar-tooltip-total ${net < 0 ? 'profit-negative' : 'profit-positive'}`}>
                   <dt>Lucro</dt>
-                  <dd>{net < 0 ? '-' : ''}{formatCompactCve(Math.abs(net))} CVE</dd>
+                  <dd>{formatCompactCve(net)}</dd>
                 </div>
               );
             })()}
