@@ -1,5 +1,5 @@
 import type { Database as DatabaseType } from 'better-sqlite3';
-import { nextDocumentNumber } from './numbering';
+import { allocateDocumentNumber } from './numbering';
 import { loadAudiovisualConfig } from './audiovisual';
 
 export type BillingLine = {
@@ -192,7 +192,7 @@ export function generateMonthlyBilling(db: DatabaseType, referenceMonth: string)
         item.dueDate
       );
       const paymentId = Number(inserted.lastInsertRowid);
-      updateInvoice.run(nextDocumentNumber('invoice', paymentId), paymentId);
+      updateInvoice.run(allocateDocumentNumber('invoice'), paymentId);
       item.lines.forEach((line, index) => {
         insertLine.run(paymentId, line.kind, line.description, line.amountCve, index);
       });

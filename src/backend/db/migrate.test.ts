@@ -173,6 +173,53 @@ describe('runMigrations', () => {
     expect(versions).toEqual([1, 2]);
   });
 
+  test('document_sequences seeds from legacy id-based numbers without collision', () => {
+    const db = freshDb();
+    // Apply everything up to (but not including) the sequences migration, then
+    // simulate a field database whose invoice/receipt numbers were produced by
+    // the old id-based scheme (with gaps and across two years).
+    const beforeSequences = migrations.filter((m) => m.version < 20);
+    runMigrations(db, beforeSequences);
+
+    const clientId = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-SEQ', 'Cliente Seq', 'active')
+    `).run().lastInsertRowid;
+    const serviceId = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 3500, 10, 'active')
+    `).run(clientId).lastInsertRowid;
+
+    const insertPayment = db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status, invoice_number, receipt_number)
+      VALUES (?, ?, ?, 3500, '2026-01-31', 'paid', ?, ?)
+    `);
+    insertPayment.run(clientId, serviceId, '2026-01', 'FT-2026-00005', 'RC-2026-00003');
+    insertPayment.run(clientId, serviceId, '2026-02', 'FT-2026-00009', null);
+    insertPayment.run(clientId, serviceId, '2027-01', 'FT-2027-00002', null);
+
+    runMigrations(db, migrations);
+
+    const seeded = db
+      .prepare('SELECT series, year, last_number FROM document_sequences ORDER BY series, year')
+      .all() as Array<{ series: string; year: number; last_number: number }>;
+    expect(seeded).toEqual([
+      { series: 'FT', year: 2026, last_number: 9 },
+      { series: 'FT', year: 2027, last_number: 2 },
+      { series: 'RC', year: 2026, last_number: 3 },
+    ]);
+
+    // The new uniqueness invariant is enforced at the schema level.
+    expect(() =>
+      insertPayment.run(clientId, serviceId, '2026-03', 'FT-2026-00009', null),
+    ).toThrow();
+  });
+
+  test('document_sequences starts empty on a fresh database', () => {
+    const db = freshDb();
+    runMigrations(db);
+    const count = db.prepare('SELECT COUNT(*) AS n FROM document_sequences').get() as { n: number };
+    expect(count.n).toBe(0);
+  });
+
   test('sms companion pairing rejects active rows without key hash or base URL', () => {
     const db = freshDb();
 

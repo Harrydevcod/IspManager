@@ -18,6 +18,7 @@ import m0016 from './0016_sms_companion';
 import m0017 from './0017_sms_outbox_failed_at';
 import m0018 from './0018_catalog_categories_materials';
 import m0019 from './0019_audiovisual_addon';
+import m0020 from './0020_document_sequences';
 
 /**
  * The migration chain, in the order new migrations are appended.
@@ -27,6 +28,6 @@ import m0019 from './0019_audiovisual_addon';
  * the next version number and append it here. Never edit a shipped migration —
  * the runner enforces this via checksum drift detection.
  */
-export const migrations: Migration[] = [m0001, m0002, m0003, m0004, m0005, m0006, m0007, m0008, m0009, m0010, m0011, m0012, m0013, m0014, m0015, m0016, m0017, m0018, m0019];
+export const migrations: Migration[] = [m0001, m0002, m0003, m0004, m0005, m0006, m0007, m0008, m0009, m0010, m0011, m0012, m0013, m0014, m0015, m0016, m0017, m0018, m0019, m0020];
 
 export type { Migration } from './types';

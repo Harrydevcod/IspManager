@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { buildMonthlyServiceLines, computeMonthlyBilling, dueDateFromIssue, generateMonthlyBilling, sumLines, todayIso, type BillingLine } from '../lib/billing';
-import { nextDocumentNumber } from '../lib/numbering';
+import { allocateDocumentNumber } from '../lib/numbering';
 import { isAudiovisualAnnualReference, loadAudiovisualConfig } from '../lib/audiovisual';
 import { runAudiovisualAnnualIfDue } from '../lib/audiovisual-billing';
 import { recordAudit } from '../lib/audit';
@@ -85,8 +85,6 @@ function validateServicePayload(data: {
   }
   return null;
 }
-
-const nextNumber = nextDocumentNumber;
 
 export async function registerFinanceRoutes(app: FastifyInstance) {
   const billingWrite = { preHandler: requireRole(['admin', 'operator']) };
@@ -703,7 +701,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         VALUES (?, ?, ?, ?, ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
       `).run(payment.clientId, payment.serviceId, payment.referenceMonth, amountCve, dueDate);
       const regeneratedId = Number(inserted.lastInsertRowid);
-      const invoiceNumber = nextNumber('invoice', regeneratedId);
+      const invoiceNumber = allocateDocumentNumber('invoice');
       db.prepare('UPDATE payments SET invoice_number = ? WHERE id = ?').run(invoiceNumber, regeneratedId);
       lines.forEach((line, index) => insertLine.run(regeneratedId, line.kind, line.description, line.amountCve, index));
       return { regeneratedId, invoiceNumber };
@@ -742,7 +740,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     }
 
     const db = getSqliteDatabase();
-    const payment = db.prepare('SELECT id, status FROM payments WHERE id = ?').get(id) as { id: number; status: 'pending' | 'paid' | 'overdue' | 'cancelled' } | undefined;
+    const payment = db.prepare('SELECT id, status, receipt_number AS receiptNumber FROM payments WHERE id = ?').get(id) as { id: number; status: 'pending' | 'paid' | 'overdue' | 'cancelled'; receiptNumber: string | null } | undefined;
     if (!payment) {
       return reply.status(404).send({ error: 'Pagamento nao encontrado' });
     }
@@ -750,17 +748,28 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Pagamento anulado nao pode ser pago' });
     }
 
-    const receiptNumber = nextNumber('receipt', id);
-    db.prepare(`
-      UPDATE payments
-      SET status = 'paid',
-          payment_method = ?,
-          payment_date = ?,
-          receipt_number = COALESCE(receipt_number, ?),
-          receipt_date = COALESCE(receipt_date, date('now')),
-          updated_at = datetime('now')
-      WHERE id = ?
-    `).run(parsed.data.paymentMethod, parsed.data.paymentDate || new Date().toISOString().slice(0, 10), receiptNumber, id);
+    const paymentDate = parsed.data.paymentDate || new Date().toISOString().slice(0, 10);
+    // Allocate a receipt number only when the payment doesn't already have one.
+    // Re-paying an already-paid row keeps its original receipt and must never
+    // burn a sequence number. Allocation + write share one transaction so a
+    // failure can't leave the counter advanced without a recorded number.
+    db.transaction(() => {
+      if (!payment.receiptNumber) {
+        const receiptNumber = allocateDocumentNumber('receipt');
+        db.prepare(`
+          UPDATE payments
+          SET status = 'paid', payment_method = ?, payment_date = ?,
+              receipt_number = ?, receipt_date = date('now'), updated_at = datetime('now')
+          WHERE id = ?
+        `).run(parsed.data.paymentMethod, paymentDate, receiptNumber, id);
+      } else {
+        db.prepare(`
+          UPDATE payments
+          SET status = 'paid', payment_method = ?, payment_date = ?, updated_at = datetime('now')
+          WHERE id = ?
+        `).run(parsed.data.paymentMethod, paymentDate, id);
+      }
+    })();
 
     recordAudit(request, {
       action: 'pay',

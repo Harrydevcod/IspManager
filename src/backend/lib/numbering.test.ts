@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase, closeDatabase } from '../db/database';
-import { readDocumentPrefix, nextDocumentNumber } from './numbering';
+import { readDocumentPrefix, allocateDocumentNumber } from './numbering';
 
 let dir: string;
 
@@ -63,25 +63,48 @@ describe('readDocumentPrefix', () => {
   });
 });
 
-describe('nextDocumentNumber', () => {
-  test('formats as PREFIX-YEAR-00000 with the default prefix', () => {
+describe('allocateDocumentNumber', () => {
+  test('allocates a contiguous, gap-free sequence per series', () => {
     freshDb();
     const year = new Date().getFullYear();
-    expect(nextDocumentNumber('invoice', 7)).toBe(`FT-${year}-00007`);
-    expect(nextDocumentNumber('receipt', 1)).toBe(`RC-${year}-00001`);
+    expect(allocateDocumentNumber('invoice')).toBe(`FT-${year}-00001`);
+    expect(allocateDocumentNumber('invoice')).toBe(`FT-${year}-00002`);
+    expect(allocateDocumentNumber('invoice')).toBe(`FT-${year}-00003`);
   });
 
-  test('uses the configured prefix from app_settings', () => {
+  test('invoice and receipt series count independently', () => {
+    freshDb();
+    const year = new Date().getFullYear();
+    expect(allocateDocumentNumber('invoice')).toBe(`FT-${year}-00001`);
+    expect(allocateDocumentNumber('receipt')).toBe(`RC-${year}-00001`);
+    expect(allocateDocumentNumber('invoice')).toBe(`FT-${year}-00002`);
+    expect(allocateDocumentNumber('receipt')).toBe(`RC-${year}-00002`);
+  });
+
+  test('uses the configured prefix as the series identity', () => {
     const db = freshDb();
     setPrefix(db, 'invoicePrefix', 'ACME');
     const year = new Date().getFullYear();
-    expect(nextDocumentNumber('invoice', 42)).toBe(`ACME-${year}-00042`);
+    expect(allocateDocumentNumber('invoice')).toBe(`ACME-${year}-00001`);
+    expect(allocateDocumentNumber('invoice')).toBe(`ACME-${year}-00002`);
   });
 
-  test('zero-pads to 5 digits and never truncates a longer id', () => {
-    freshDb();
+  test('changing the prefix mid-stream starts a fresh series', () => {
+    const db = freshDb();
     const year = new Date().getFullYear();
-    expect(nextDocumentNumber('invoice', 0)).toBe(`FT-${year}-00000`);
-    expect(nextDocumentNumber('invoice', 123456)).toBe(`FT-${year}-123456`);
+    expect(allocateDocumentNumber('invoice')).toBe(`FT-${year}-00001`);
+    expect(allocateDocumentNumber('invoice')).toBe(`FT-${year}-00002`);
+    setPrefix(db, 'invoicePrefix', 'FAT');
+    // New series, own counter — does not continue the old one.
+    expect(allocateDocumentNumber('invoice')).toBe(`FAT-${year}-00001`);
+  });
+
+  test('continues from a seeded last_number without reissuing it', () => {
+    const db = freshDb();
+    const year = new Date().getFullYear();
+    db.prepare(
+      'INSERT INTO document_sequences (series, year, last_number) VALUES (?, ?, ?)',
+    ).run('FT', year, 41);
+    expect(allocateDocumentNumber('invoice')).toBe(`FT-${year}-00042`);
   });
 });
