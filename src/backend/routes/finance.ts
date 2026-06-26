@@ -1,9 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
-import { buildMonthlyServiceLines, computeMonthlyBilling, dueDateFromIssue, generateMonthlyBilling, sumLines, todayIso, type BillingLine } from '../lib/billing';
-import { allocateDocumentNumber } from '../lib/numbering';
-import { isAudiovisualAnnualReference, loadAudiovisualConfig } from '../lib/audiovisual';
+import { computeMonthlyBilling, generateMonthlyBilling } from '../lib/billing';
+import { loadAudiovisualConfig } from '../lib/audiovisual';
 import { runAudiovisualAnnualIfDue } from '../lib/audiovisual-billing';
 import { recordAudit } from '../lib/audit';
 import {
@@ -14,6 +13,15 @@ import {
   type InstallCostInput,
   type ServiceItemInput
 } from '../lib/serviceInstall';
+import {
+  cancelPayment,
+  executeReverseMonthly,
+  markPaymentOverdue,
+  payPayment,
+  previewReverseMonthly,
+  regeneratePayment,
+  revertPayment
+} from '../lib/payments';
 import { requireAuth, requireRole } from './auth';
 
 const monthSchema = z.object({
@@ -466,54 +474,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Mes de referencia invalido' });
     }
-    const db = getSqliteDatabase();
-    const referenceMonth = parsed.data.referenceMonth;
-
-    const rows = db.prepare(`
-      SELECT
-        py.id,
-        py.client_id AS clientId,
-        c.full_name AS clientName,
-        c.client_code AS clientCode,
-        py.amount_cve AS amountCve,
-        py.due_date AS dueDate,
-        py.invoice_number AS invoiceNumber,
-        py.status
-      FROM payments py
-      JOIN clients c ON c.id = py.client_id
-      WHERE py.reference_month = ?
-      ORDER BY c.full_name
-    `).all(referenceMonth) as Array<{
-      id: number;
-      clientId: number;
-      clientName: string;
-      clientCode: string | null;
-      amountCve: number;
-      dueDate: string;
-      invoiceNumber: string | null;
-      status: 'pending' | 'paid' | 'overdue' | 'cancelled';
-    }>;
-
-    const eligible = rows.filter((r) => r.status === 'pending' || r.status === 'overdue');
-    const paidLocked = rows.filter((r) => r.status === 'paid');
-    const cancelledKept = rows.filter((r) => r.status === 'cancelled');
-
-    return {
-      referenceMonth,
-      total: rows.length,
-      eligibleCount: eligible.length,
-      paidLockedCount: paidLocked.length,
-      cancelledCount: cancelledKept.length,
-      totalCve: eligible.reduce((sum, r) => sum + r.amountCve, 0),
-      eligible,
-      paidLocked: paidLocked.map((r) => ({
-        id: r.id,
-        clientName: r.clientName,
-        clientCode: r.clientCode,
-        invoiceNumber: r.invoiceNumber,
-        amountCve: r.amountCve
-      }))
-    };
+    return previewReverseMonthly(getSqliteDatabase(), parsed.data.referenceMonth);
   });
 
   app.post('/api/billing/reverse-monthly', billingWrite, async (request, reply) => {
@@ -521,29 +482,8 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Mes de referencia invalido' });
     }
-    const db = getSqliteDatabase();
     const referenceMonth = parsed.data.referenceMonth;
-
-    const eligibleStmt = db.prepare(`
-      SELECT id, invoice_number AS invoiceNumber
-      FROM payments
-      WHERE reference_month = ? AND status IN ('pending', 'overdue')
-    `);
-    const deleteLinesStmt = db.prepare(`
-      DELETE FROM payment_lines WHERE payment_id IN (
-        SELECT id FROM payments WHERE reference_month = ? AND status IN ('pending', 'overdue')
-      )
-    `);
-    const deleteStmt = db.prepare(`
-      DELETE FROM payments
-      WHERE reference_month = ? AND status IN ('pending', 'overdue')
-    `);
-
-    const eligibleRows = eligibleStmt.all(referenceMonth) as Array<{ id: number; invoiceNumber: string | null }>;
-    const result = db.transaction(() => {
-      deleteLinesStmt.run(referenceMonth); // filhos primeiro (FK)
-      return deleteStmt.run(referenceMonth);
-    })();
+    const result = executeReverseMonthly(getSqliteDatabase(), referenceMonth);
 
     recordAudit(request, {
       action: 'reverse_monthly',
@@ -552,14 +492,14 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       summary: `Reverteu cobranca mensal ${referenceMonth}`,
       metadata: {
         referenceMonth,
-        reversed: result.changes,
-        invoiceNumbers: eligibleRows.map((r) => r.invoiceNumber).filter(Boolean)
+        reversed: result.reversed,
+        invoiceNumbers: result.invoiceNumbers
       }
     });
 
     return {
       referenceMonth,
-      reversed: result.changes
+      reversed: result.reversed
     };
   });
 
@@ -569,32 +509,10 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Pagamento invalido' });
     }
 
-    const db = getSqliteDatabase();
-    const payment = db.prepare(`
-      SELECT id, status, reference_month AS referenceMonth, invoice_number AS invoiceNumber, client_id AS clientId
-      FROM payments WHERE id = ?
-    `).get(id) as {
-      id: number;
-      status: 'pending' | 'paid' | 'overdue' | 'cancelled';
-      referenceMonth: string;
-      invoiceNumber: string | null;
-      clientId: number;
-    } | undefined;
-
-    if (!payment) {
-      return reply.status(404).send({ error: 'Pagamento nao encontrado' });
+    const result = revertPayment(getSqliteDatabase(), id);
+    if (!result.ok) {
+      return reply.status(result.status).send({ error: result.error });
     }
-    if (payment.status === 'paid') {
-      return reply.status(400).send({ error: 'Pagamento pago nao pode ser revertido. Use anular.' });
-    }
-    if (payment.status === 'cancelled') {
-      return reply.status(400).send({ error: 'Pagamento ja esta anulado. Nada a reverter.' });
-    }
-
-    db.transaction(() => {
-      db.prepare('DELETE FROM payment_lines WHERE payment_id = ?').run(id); // filhos primeiro (FK)
-      db.prepare('DELETE FROM payments WHERE id = ?').run(id);
-    })();
 
     recordAudit(request, {
       action: 'revert',
@@ -602,9 +520,9 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       entityId: id,
       summary: `Reverteu pagamento ${id}`,
       metadata: {
-        referenceMonth: payment.referenceMonth,
-        invoiceNumber: payment.invoiceNumber,
-        clientId: payment.clientId
+        referenceMonth: result.value.referenceMonth,
+        invoiceNumber: result.value.invoiceNumber,
+        clientId: result.value.clientId
       }
     });
 
@@ -617,118 +535,33 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Pagamento invalido' });
     }
 
-    const db = getSqliteDatabase();
-    const payment = db.prepare(`
-      SELECT
-        py.id,
-        py.status,
-        py.client_id AS clientId,
-        py.service_id AS serviceId,
-        py.reference_month AS referenceMonth,
-        s.monthly_value_cve AS monthlyValueCve,
-        s.audiovisual_mode AS audiovisualMode,
-        s.audiovisual_monthly_cve AS audiovisualMonthlyCve,
-        s.audiovisual_annual_cve AS audiovisualAnnualCve,
-        s.status AS serviceStatus,
-        c.status AS clientStatus
-      FROM payments py
-      JOIN services s ON s.id = py.service_id
-      JOIN clients c ON c.id = py.client_id
-      WHERE py.id = ?
-    `).get(id) as {
-      id: number;
-      status: 'pending' | 'paid' | 'overdue' | 'cancelled';
-      clientId: number;
-      serviceId: number;
-      referenceMonth: string;
-      monthlyValueCve: number;
-      audiovisualMode: 'none' | 'monthly' | 'annual';
-      audiovisualMonthlyCve: number;
-      audiovisualAnnualCve: number;
-      serviceStatus: 'active' | 'suspended' | 'cancelled';
-      clientStatus: 'active' | 'suspended' | 'cancelled';
-    } | undefined;
-
-    if (!payment) {
-      return reply.status(404).send({ error: 'Pagamento nao encontrado' });
+    const result = regeneratePayment(getSqliteDatabase(), id);
+    if (!result.ok) {
+      return reply.status(result.status).send({ error: result.error });
     }
-    if (payment.status !== 'cancelled') {
-      return reply.status(400).send({ error: 'Apenas pagamentos anulados podem regenerar mensalidade' });
-    }
-    if (payment.serviceStatus !== 'active') {
-      return reply.status(400).send({ error: 'Servico cancelado nao pode regenerar mensalidade' });
-    }
-    if (payment.clientStatus === 'cancelled') {
-      return reply.status(400).send({ error: 'Cliente cancelado nao pode regenerar mensalidade' });
-    }
-
-    const activePayment = db.prepare(`
-      SELECT id
-      FROM payments
-      WHERE service_id = ? AND reference_month = ? AND status != 'cancelled'
-    `).get(payment.serviceId, payment.referenceMonth);
-    if (activePayment) {
-      return reply.status(400).send({ error: 'Ja existe uma mensalidade ativa para este servico e mes' });
-    }
-
-    // Reconstrói a composição a partir do serviço — mensal (internet + audiovisual)
-    // ou anuidade audiovisual, conforme a competência. Mesma fonte da geração
-    // original, para o total regenerado nunca divergir.
-    const config = loadAudiovisualConfig(db);
-    const lines: BillingLine[] = isAudiovisualAnnualReference(payment.referenceMonth)
-      ? (() => {
-          const annual = payment.audiovisualAnnualCve > 0 ? payment.audiovisualAnnualCve : config.annualCve;
-          return annual > 0 ? [{ kind: 'audiovisual' as const, description: config.label, amountCve: annual }] : [];
-        })()
-      : buildMonthlyServiceLines(payment, config.label);
-    const amountCve = sumLines(lines);
-    if (amountCve <= 0) {
-      return reply.status(400).send({ error: 'Servico sem valor a regenerar' });
-    }
-
-    const issueIso = todayIso();
-    const dueDate = dueDateFromIssue(issueIso);
-    const insertLine = db.prepare(`
-      INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    const regenerated = db.transaction(() => {
-      const inserted = db.prepare(`
-        INSERT INTO payments (
-          client_id, service_id, reference_month, amount_cve, due_date,
-          status, invoice_number, invoice_date, created_at, updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
-      `).run(payment.clientId, payment.serviceId, payment.referenceMonth, amountCve, dueDate);
-      const regeneratedId = Number(inserted.lastInsertRowid);
-      const invoiceNumber = allocateDocumentNumber('invoice');
-      db.prepare('UPDATE payments SET invoice_number = ? WHERE id = ?').run(invoiceNumber, regeneratedId);
-      lines.forEach((line, index) => insertLine.run(regeneratedId, line.kind, line.description, line.amountCve, index));
-      return { regeneratedId, invoiceNumber };
-    })();
 
     recordAudit(request, {
       action: 'regenerate',
       entityType: 'payment',
-      entityId: regenerated.regeneratedId,
-      summary: `Regenerou mensalidade anulada ${id} como ${regenerated.regeneratedId}`,
+      entityId: result.value.regeneratedId,
+      summary: `Regenerou mensalidade anulada ${id} como ${result.value.regeneratedId}`,
       metadata: {
         regeneratedFromId: id,
-        referenceMonth: payment.referenceMonth,
-        serviceId: payment.serviceId,
-        amountCve,
-        invoiceNumber: regenerated.invoiceNumber
+        referenceMonth: result.value.referenceMonth,
+        serviceId: result.value.serviceId,
+        amountCve: result.value.amountCve,
+        invoiceNumber: result.value.invoiceNumber
       }
     });
 
     return reply.status(201).send({
-      id: regenerated.regeneratedId,
+      id: result.value.regeneratedId,
       regeneratedFromId: id,
-      referenceMonth: payment.referenceMonth,
-      amountCve,
-      dueDate,
+      referenceMonth: result.value.referenceMonth,
+      amountCve: result.value.amountCve,
+      dueDate: result.value.dueDate,
       status: 'pending',
-      invoiceNumber: regenerated.invoiceNumber
+      invoiceNumber: result.value.invoiceNumber
     });
   });
 
@@ -739,37 +572,10 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Pagamento invalido' });
     }
 
-    const db = getSqliteDatabase();
-    const payment = db.prepare('SELECT id, status, receipt_number AS receiptNumber FROM payments WHERE id = ?').get(id) as { id: number; status: 'pending' | 'paid' | 'overdue' | 'cancelled'; receiptNumber: string | null } | undefined;
-    if (!payment) {
-      return reply.status(404).send({ error: 'Pagamento nao encontrado' });
+    const result = payPayment(getSqliteDatabase(), id, parsed.data);
+    if (!result.ok) {
+      return reply.status(result.status).send({ error: result.error });
     }
-    if (payment.status === 'cancelled') {
-      return reply.status(400).send({ error: 'Pagamento anulado nao pode ser pago' });
-    }
-
-    const paymentDate = parsed.data.paymentDate || new Date().toISOString().slice(0, 10);
-    // Allocate a receipt number only when the payment doesn't already have one.
-    // Re-paying an already-paid row keeps its original receipt and must never
-    // burn a sequence number. Allocation + write share one transaction so a
-    // failure can't leave the counter advanced without a recorded number.
-    db.transaction(() => {
-      if (!payment.receiptNumber) {
-        const receiptNumber = allocateDocumentNumber('receipt');
-        db.prepare(`
-          UPDATE payments
-          SET status = 'paid', payment_method = ?, payment_date = ?,
-              receipt_number = ?, receipt_date = date('now'), updated_at = datetime('now')
-          WHERE id = ?
-        `).run(parsed.data.paymentMethod, paymentDate, receiptNumber, id);
-      } else {
-        db.prepare(`
-          UPDATE payments
-          SET status = 'paid', payment_method = ?, payment_date = ?, updated_at = datetime('now')
-          WHERE id = ?
-        `).run(parsed.data.paymentMethod, paymentDate, id);
-      }
-    })();
 
     recordAudit(request, {
       action: 'pay',
@@ -778,7 +584,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       summary: `Marcou pagamento ${id} como pago`,
       metadata: { paymentMethod: parsed.data.paymentMethod }
     });
-    return db.prepare('SELECT * FROM payments WHERE id = ?').get(id);
+    return result.value;
   });
 
   app.post('/api/payments/:id/overdue', billingWrite, async (request, reply) => {
@@ -787,25 +593,10 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Pagamento invalido' });
     }
 
-    const db = getSqliteDatabase();
-    const payment = db.prepare('SELECT id, status FROM payments WHERE id = ?')
-      .get(id) as { id: number; status: 'pending' | 'paid' | 'overdue' | 'cancelled' } | undefined;
-    if (!payment) {
-      return reply.status(404).send({ error: 'Pagamento nao encontrado' });
+    const result = markPaymentOverdue(getSqliteDatabase(), id);
+    if (!result.ok) {
+      return reply.status(result.status).send({ error: result.error });
     }
-    if (payment.status === 'paid') {
-      return reply.status(400).send({ error: 'Pagamento pago nao pode ser marcado em atraso' });
-    }
-    if (payment.status === 'cancelled') {
-      return reply.status(400).send({ error: 'Pagamento anulado nao pode ser marcado em atraso' });
-    }
-
-    db.prepare(`
-      UPDATE payments
-      SET status = 'overdue',
-          updated_at = datetime('now')
-      WHERE id = ?
-    `).run(id);
 
     recordAudit(request, {
       action: 'mark_overdue',
@@ -813,7 +604,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       entityId: id,
       summary: `Marcou pagamento ${id} em atraso`
     });
-    return db.prepare('SELECT * FROM payments WHERE id = ?').get(id);
+    return result.value;
   });
 
   app.post('/api/payments/:id/cancel', billingWrite, async (request, reply) => {
@@ -824,69 +615,29 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     }
 
     try {
-      const db = getSqliteDatabase();
-      const payment = db.prepare(`
-        SELECT id, status, notes, amount_cve AS amountCve, invoice_number AS invoiceNumber,
-               receipt_number AS receiptNumber, reference_month AS referenceMonth
-        FROM payments WHERE id = ?
-      `).get(id) as {
-        id: number;
-        status: 'pending' | 'paid' | 'overdue' | 'cancelled';
-        notes: string | null;
-        amountCve: number;
-        invoiceNumber: string | null;
-        receiptNumber: string | null;
-        referenceMonth: string;
-      } | undefined;
-      if (!payment) {
-        return reply.status(404).send({ error: 'Pagamento nao encontrado' });
+      const result = cancelPayment(getSqliteDatabase(), id, parsed.data.reason);
+      if (!result.ok) {
+        return reply.status(result.status).send({ error: result.error });
       }
-      if (payment.status === 'cancelled') {
-        return reply.status(400).send({ error: 'Pagamento ja esta anulado' });
-      }
-
-      const reason = parsed.data.reason?.trim() || '';
-      const wasPaid = payment.status === 'paid';
-      if (wasPaid && reason.length < 10) {
-        return reply.status(400).send({
-          error: 'Anular pagamento ja registado exige um motivo detalhado (minimo 10 caracteres).'
-        });
-      }
-
-      const stampedReason = reason
-        ? wasPaid
-          ? `[ANULACAO POS-PAGAMENTO] ${reason}`
-          : reason
-        : '';
-      const notes = stampedReason
-        ? [payment.notes?.trim(), stampedReason].filter(Boolean).join('\n')
-        : payment.notes;
-
-      db.prepare(`
-        UPDATE payments
-        SET status = 'cancelled',
-            notes = ?,
-            updated_at = datetime('now')
-        WHERE id = ?
-      `).run(notes || null, id);
+      const { payment, wasPaid, reason, priorStatus, invoiceNumber, receiptNumber, amountCve, referenceMonth } = result.value;
 
       recordAudit(request, {
         action: wasPaid ? 'cancel_paid' : 'cancel',
         entityType: 'payment',
         entityId: id,
         summary: wasPaid
-          ? `Anulou pagamento ja registado ${id} (FT ${payment.invoiceNumber || '-'}, REC ${payment.receiptNumber || '-'})`
+          ? `Anulou pagamento ja registado ${id} (FT ${invoiceNumber || '-'}, REC ${receiptNumber || '-'})`
           : `Anulou pagamento ${id}`,
         metadata: {
           reason,
-          priorStatus: payment.status,
-          invoiceNumber: payment.invoiceNumber,
-          receiptNumber: payment.receiptNumber,
-          amountCve: payment.amountCve,
-          referenceMonth: payment.referenceMonth
+          priorStatus,
+          invoiceNumber,
+          receiptNumber,
+          amountCve,
+          referenceMonth
         }
       });
-      return db.prepare('SELECT * FROM payments WHERE id = ?').get(id);
+      return payment;
     } catch (err) {
       request.log.error({ err, paymentId: id }, 'cancel payment failed');
       return reply.status(500).send({
