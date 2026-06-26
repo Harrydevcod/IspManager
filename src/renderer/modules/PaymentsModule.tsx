@@ -1,6 +1,6 @@
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Download, Eye, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Smartphone, Undo2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Eye, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Smartphone, Undo2, X } from 'lucide-react';
 import { Badge, Button, DataList, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, useToast } from '../components';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import { authFetch } from '../lib/auth';
@@ -16,8 +16,12 @@ import {
   sendWhatsappViaUltraMsg
 } from '../lib/whatsapp';
 import type { PaymentRow, SmsEventType } from '../types';
+import { IndividualRevertDialog } from './payments/IndividualRevertDialog';
 import { MonthlyBillingPreview, type BillingPreview } from './payments/MonthlyBillingPreview';
+import { OverdueNotifyDialog, type OverdueNotifyPreview, type WhatsappNoticeType } from './payments/OverdueNotifyDialog';
 import { PaymentsTotals } from './payments/PaymentsTotals';
+import { PdfPreviewDialog } from './payments/PdfPreviewDialog';
+import { ReverseMonthlyDialog, type ReverseMonthlyPreview } from './payments/ReverseMonthlyDialog';
 
 // ---------------------------------------------------------------------------
 // Payment-private types (local to this module)
@@ -26,8 +30,6 @@ import { PaymentsTotals } from './payments/PaymentsTotals';
 type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
 type PaymentActionMode = 'pay' | 'cancel' | 'whatsapp';
 type PaymentSortMode = 'dueAsc' | 'dueDesc' | 'amountDesc' | 'clientAsc';
-type WhatsappNoticeType = 'overdue' | 'suspension';
-
 const CANCEL_REASON_CHIPS_PENDING = [
   'Cobranca duplicada',
   'Cliente cancelou o servico',
@@ -114,16 +116,7 @@ export function PaymentsModule() {
   const [submitting, setSubmitting] = useState(false);
   const [monthlyPreview, setMonthlyPreview] = useState<BillingPreview | null>(null);
   const [monthlyLoading, setMonthlyLoading] = useState(false);
-  const [reversePreview, setReversePreview] = useState<{
-    referenceMonth: string;
-    total: number;
-    eligibleCount: number;
-    paidLockedCount: number;
-    cancelledCount: number;
-    totalCve: number;
-    eligible: Array<{ id: number; clientName: string; clientCode: string | null; invoiceNumber: string | null; amountCve: number; dueDate: string; status: 'pending' | 'overdue' }>;
-    paidLocked: Array<{ id: number; clientName: string; clientCode: string | null; invoiceNumber: string | null; amountCve: number }>;
-  } | null>(null);
+  const [reversePreview, setReversePreview] = useState<ReverseMonthlyPreview | null>(null);
   const [reverseLoading, setReverseLoading] = useState(false);
   const [reverseSubmitting, setReverseSubmitting] = useState(false);
   const [individualRevert, setIndividualRevert] = useState<PaymentRow | null>(null);
@@ -132,12 +125,7 @@ export function PaymentsModule() {
   const [showAllMonths, setShowAllMonths] = useState(false);
   const [sortMode, setSortMode] = useState<PaymentSortMode>('dueAsc');
   const [pdfPreview, setPdfPreview] = useState<{ payment: PaymentRow; type: 'invoice' | 'receipt' } | null>(null);
-  const [overduePreview, setOverduePreview] = useState<{
-    noticeType: WhatsappNoticeType;
-    total: number;
-    eligible: Array<{ paymentId: number; clientName: string; clientCode: string; phone: string | null; amountCve: number; dueDate: string; daysOverdue: number }>;
-    skipped: Array<{ paymentId: number; clientName: string; reason?: string }>;
-  } | null>(null);
+  const [overduePreview, setOverduePreview] = useState<OverdueNotifyPreview | null>(null);
   const [notifyLoading, setNotifyLoading] = useState(false);
   const [notifySending, setNotifySending] = useState(false);
   const { toast } = useToast();
@@ -1181,229 +1169,34 @@ export function PaymentsModule() {
         }
       />
 
-      <Dialog
-        open={!!overduePreview}
+      <OverdueNotifyDialog
+        preview={overduePreview}
+        suspensionNoticeDays={whatsappSuspensionNoticeDays}
+        sending={notifySending}
         onClose={closeOverduePreview}
-        eyebrow="WhatsApp em massa"
-        title={overduePreview?.noticeType === 'suspension' ? 'Avisar suspensao' : 'Notificar atrasados'}
-        size="md"
-        closeOnBackdrop={!notifySending}
-        actions={
-          <>
-            <Button variant="secondary" onClick={closeOverduePreview} disabled={notifySending}>Cancelar</Button>
-            <Button
-              onClick={() => void confirmNotifyOverdue()}
-              disabled={notifySending || !overduePreview || overduePreview.eligible.length === 0}
-            >
-              {notifySending
-                ? 'A enviar...'
-                : overduePreview && overduePreview.eligible.length > 0
-                  ? `Enviar para ${overduePreview.eligible.length}`
-                  : 'Sem destinatarios'}
-            </Button>
-          </>
-        }
-      >
-        {overduePreview && (
-          <div className="overdue-notify">
-            <p className="overdue-notify-summary">
-              <strong>{overduePreview.total}</strong>{' '}
-              {overduePreview.noticeType === 'suspension'
-                ? `pagamento(s) com ${whatsappSuspensionNoticeDays}+ dias de atraso. `
-                : 'pagamento(s) em atraso. '}
-              <strong>{overduePreview.eligible.length}</strong> elegivel(eis) para WhatsApp.{' '}
-              {overduePreview.skipped.length > 0 && (
-                <span className="overdue-notify-skip">
-                  {overduePreview.skipped.length} ignorado(s) (opt-out ou sem telefone).
-                </span>
-              )}
-            </p>
+        onConfirm={() => void confirmNotifyOverdue()}
+      />
 
-            {overduePreview.eligible.length > 0 ? (
-              <ul className="overdue-notify-list">
-                {overduePreview.eligible.map((row) => (
-                  <li key={row.paymentId}>
-                    <div className="overdue-notify-meta">
-                      <small className="entity-code">{row.clientCode}</small>
-                      <strong>{row.clientName}</strong>
-                      <small>{row.phone}</small>
-                    </div>
-                    <Badge tone="danger">{row.daysOverdue}d</Badge>
-                    <span className="overdue-notify-amount">{formatCve(row.amountCve)}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <EmptyState
-                size="sm"
-                icon={Send}
-                title="Sem clientes elegíveis"
-                description="Não há cobranças em atraso com telefone WhatsApp válido para envio em massa."
-              />
-            )}
-
-            {overduePreview.skipped.length > 0 && (
-              <details className="overdue-notify-skipped">
-                <summary>Ignorados ({overduePreview.skipped.length})</summary>
-                <ul>
-                  {overduePreview.skipped.map((row) => (
-                    <li key={row.paymentId}>
-                      {row.clientName} <small>({row.reason})</small>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </div>
-        )}
-      </Dialog>
-
-      <Dialog
-        open={!!reversePreview}
+      <ReverseMonthlyDialog
+        preview={reversePreview}
+        submitting={reverseSubmitting}
         onClose={closeReversePreview}
-        eyebrow="Reverter geracao"
-        title={reversePreview ? `Mensalidades de ${formatPtMonth(reversePreview.referenceMonth)}` : 'Reverter mensalidades'}
-        size="md"
-        closeOnBackdrop={!reverseSubmitting}
-        actions={
-          <>
-            <Button variant="secondary" onClick={closeReversePreview} disabled={reverseSubmitting}>Cancelar</Button>
-            <Button
-              onClick={() => void confirmReverseMonthly()}
-              disabled={reverseSubmitting || !reversePreview || reversePreview.eligibleCount === 0}
-            >
-              {reverseSubmitting
-                ? 'A reverter...'
-                : reversePreview && reversePreview.eligibleCount > 0
-                  ? `Reverter ${reversePreview.eligibleCount} cobranca(s)`
-                  : 'Nada a reverter'}
-            </Button>
-          </>
-        }
-      >
-        {reversePreview && (
-          <div className="overdue-notify">
-            <p className="overdue-notify-summary">
-              <strong>{reversePreview.total}</strong> cobranca(s) em {formatPtMonth(reversePreview.referenceMonth)}.{' '}
-              <strong>{reversePreview.eligibleCount}</strong> serao apagadas ({formatCve(reversePreview.totalCve)}).{' '}
-              {reversePreview.paidLockedCount > 0 && (
-                <span className="overdue-notify-skip">
-                  {reversePreview.paidLockedCount} pagas ficam intactas (anular se necessario).
-                </span>
-              )}
-              {reversePreview.cancelledCount > 0 && (
-                <span className="overdue-notify-skip">
-                  {' '}{reversePreview.cancelledCount} ja anuladas.
-                </span>
-              )}
-            </p>
+        onConfirm={() => void confirmReverseMonthly()}
+      />
 
-            {reversePreview.eligibleCount > 0 ? (
-              <ul className="overdue-notify-list">
-                {reversePreview.eligible.map((row) => (
-                  <li key={row.id}>
-                    <div className="overdue-notify-meta">
-                      <small className="entity-code">{row.clientCode || '—'}</small>
-                      <strong>{row.clientName}</strong>
-                      <small>FT {row.invoiceNumber || '-'} · venc. {formatPtDate(row.dueDate)}</small>
-                    </div>
-                    <Badge tone={row.status === 'overdue' ? 'danger' : 'info'}>{row.status}</Badge>
-                    <span className="overdue-notify-amount">{formatCve(row.amountCve)}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <Message>
-                Sem cobrancas pendentes ou em atraso para reverter em {formatPtMonth(reversePreview.referenceMonth)}.
-              </Message>
-            )}
-
-            {reversePreview.paidLockedCount > 0 && (
-              <details className="overdue-notify-skipped">
-                <summary>Pagas ({reversePreview.paidLockedCount}) - nao serao apagadas</summary>
-                <ul>
-                  {reversePreview.paidLocked.map((row) => (
-                    <li key={row.id}>
-                      {row.clientName} <small>(FT {row.invoiceNumber || '-'} - {formatCve(row.amountCve)})</small>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </div>
-        )}
-      </Dialog>
-
-      <Dialog
-        open={!!individualRevert}
+      <IndividualRevertDialog
+        payment={individualRevert}
+        submitting={individualRevertSubmitting}
         onClose={closeIndividualRevert}
-        eyebrow="Reverter cobranca"
-        title={individualRevert ? `${individualRevert.clientName} - ${formatPtMonth(individualRevert.referenceMonth)}` : 'Reverter cobranca'}
-        size="sm"
-        closeOnBackdrop={!individualRevertSubmitting}
-        actions={
-          <>
-            <Button variant="secondary" onClick={closeIndividualRevert} disabled={individualRevertSubmitting}>Cancelar</Button>
-            <Button
-              onClick={() => void confirmIndividualRevert()}
-              disabled={individualRevertSubmitting}
-            >
-              {individualRevertSubmitting ? 'A reverter...' : 'Confirmar reversao'}
-            </Button>
-          </>
-        }
-      >
-        {individualRevert && (
-          <div className="overdue-notify">
-            <p className="overdue-notify-summary">
-              Vai apagar a cobranca <strong>FT {individualRevert.invoiceNumber || individualRevert.id}</strong>{' '}
-              de <strong>{individualRevert.clientName}</strong> ({formatCve(individualRevert.amountCve)}).
-              Esta accao nao pode ser desfeita. Se a cobranca foi enviada ao cliente, considere anular em vez de reverter.
-            </p>
-          </div>
-        )}
-      </Dialog>
+        onConfirm={() => void confirmIndividualRevert()}
+      />
 
-      <Dialog
-        open={!!pdfPreview}
+      <PdfPreviewDialog
+        preview={pdfPreview}
+        document={pdfDialogDoc}
         onClose={closePdfPreview}
-        eyebrow={pdfPreview?.type === 'receipt' ? 'Recibo' : 'Fatura'}
-        title={
-          pdfPreview
-            ? pdfPreview.type === 'receipt'
-              ? `Recibo ${pdfPreview.payment.receiptNumber || pdfPreview.payment.id}`
-              : `Fatura ${pdfPreview.payment.invoiceNumber || pdfPreview.payment.id}`
-            : ''
-        }
-        size="lg"
-        actions={
-          <>
-            <Button variant="secondary" onClick={closePdfPreview}>Fechar</Button>
-            {pdfPreview && (
-              <Button
-                leadingIcon={<Download size={14} aria-hidden />}
-                onClick={() => void downloadPdf(pdfPreview.payment, pdfPreview.type)}
-              >
-                Descarregar
-              </Button>
-            )}
-          </>
-        }
-      >
-        {pdfPreview && (
-          pdfDialogDoc.error ? (
-            <Message tone="error">Nao foi possivel carregar o documento.</Message>
-          ) : pdfDialogDoc.objectUrl ? (
-            <iframe
-              className="pdf-dialog-frame"
-              title={pdfPreview.type === 'receipt' ? 'Pre-visualizacao do recibo' : 'Pre-visualizacao da fatura'}
-              src={pdfDialogDoc.objectUrl}
-            />
-          ) : (
-            <Message>A carregar documento…</Message>
-          )
-        )}
-      </Dialog>
+        onDownload={(payment, type) => void downloadPdf(payment, type)}
+      />
     </section>
   );
 }
