@@ -1,6 +1,6 @@
 // src/backend/lib/whatsapp-outbox.ts
 import { getSqliteDatabase } from '../db/database';
-import { renderPaymentDocumentPdf } from '../routes/documents';
+import { renderPaymentDocumentPdf } from './documents';
 import { fetchUltraMsgSentMessages, mapAckToStatus, sendDocumentViaUltraMsg, sendViaUltraMsg, type UltraMsgMessage, type UltraMsgSendResult } from './ultramsg';
 
 export type WhatsappOutboxEntry = {
