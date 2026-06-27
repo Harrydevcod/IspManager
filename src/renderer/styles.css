@@ -2177,6 +2177,44 @@ h2 {
   color: var(--text);
 }
 
+.job-health-panel {
+  margin-top: var(--s5);
+  border-top: 1px solid var(--border);
+  padding-top: var(--s4);
+}
+
+.job-health-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--s3) 0 0;
+}
+
+.job-health-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.job-health-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.job-health-meta small {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.job-health-summary {
+  color: var(--text-2);
+  word-break: break-word;
+}
+
 /* =========================================================================
    Responsive
    ========================================================================= */

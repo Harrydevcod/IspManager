@@ -22,12 +22,14 @@ import { registerWhatsappRoutes } from './routes/whatsapp';
 import { registerSmsRoutes } from './routes/sms';
 import { registerWorkOrderRoutes } from './routes/work-orders';
 import { registerBackupRoutes } from './routes/backup';
+import { registerJobRoutes } from './routes/jobs';
 import { createBackup, pruneBackups } from './lib/backup';
 import { runMonthlyBillingIfDue } from './lib/auto-billing';
 import { runAudiovisualAnnualIfDue } from './lib/audiovisual-billing';
 import { runOverdueNoticesIfDue } from './lib/notices';
 import { pollWhatsappDeliveryIfDue, runWhatsappOutboxIfDue } from './lib/whatsapp-outbox';
 import { pollSmsStatusIfDue, runSmsOutboxIfDue } from './lib/sms-outbox';
+import { runJob, runJobSync } from './lib/jobRuns';
 
 let serverStarted = false;
 
@@ -61,7 +63,7 @@ export async function createBackendApp() {
   // ISPM_AUTO_BILLING=off (tests).
   if (process.env.ISPM_AUTO_BILLING !== 'off') {
     try {
-      const result = runMonthlyBillingIfDue();
+      const result = runJobSync('auto_billing', runMonthlyBillingIfDue);
       if ('ran' in result) {
         app.log.info({ result }, 'auto billing executed');
       }
@@ -72,7 +74,7 @@ export async function createBackendApp() {
     // Anuidade audiovisual: fatura anual separada, gerada/renovada por ciclo.
     // Idempotente; partilha o mesmo opt-out da faturação automática.
     try {
-      const result = runAudiovisualAnnualIfDue();
+      const result = runJobSync('audiovisual_annual', runAudiovisualAnnualIfDue);
       if ('ran' in result) {
         app.log.info({ result }, 'audiovisual annual billing executed');
       }
@@ -84,7 +86,7 @@ export async function createBackendApp() {
   // Generate recurring expenses for any due templates. Idempotent.
   if (process.env.ISPM_RECURRING_EXPENSES !== 'off') {
     try {
-      const result = runRecurringExpensesIfDue();
+      const result = runJobSync('recurring_expenses', runRecurringExpensesIfDue);
       if ('ran' in result) {
         app.log.info({ result }, 'recurring expenses generated');
       }
@@ -113,12 +115,13 @@ export async function createBackendApp() {
   await registerSmsRoutes(app);
   await registerWorkOrderRoutes(app);
   await registerBackupRoutes(app);
+  await registerJobRoutes(app);
 
   // Automatic overdue/suspension WhatsApp notices — opt-in via the
   // `autoNoticesEnabled` setting (off by default). Fire-and-forget: the send
   // loop is rate-limited and must never block server boot.
   if (process.env.ISPM_AUTO_NOTICES !== 'off') {
-    void runOverdueNoticesIfDue()
+    void runJob('overdue_notices', runOverdueNoticesIfDue)
       .then((result) => {
         if ('ran' in result) {
           app.log.info({ result }, 'auto notices executed');
@@ -134,8 +137,8 @@ export async function createBackendApp() {
   // provider/network failure never crashes the backend. Timers are unref'd so
   // they never keep the process alive on shutdown.
   if (process.env.ISPM_WHATSAPP_OUTBOX !== 'off' && !process.env.VITEST) {
-    const drain = () => { void runWhatsappOutboxIfDue().catch(() => undefined); };
-    const poll = () => { void pollWhatsappDeliveryIfDue().catch(() => undefined); };
+    const drain = () => { void runJob('whatsapp_drain', runWhatsappOutboxIfDue).catch(() => undefined); };
+    const poll = () => { void runJob('whatsapp_poll', pollWhatsappDeliveryIfDue).catch(() => undefined); };
     drain();
     setInterval(drain, 60_000).unref();
     setInterval(poll, 180_000).unref();
@@ -145,8 +148,8 @@ export async function createBackendApp() {
   // poll for approval/send status. Opt-out with ISPM_SMS_OUTBOX=off. Same
   // swallow-errors + unref'd timer discipline as the WhatsApp outbox.
   if (process.env.ISPM_SMS_OUTBOX !== 'off' && !process.env.VITEST) {
-    const drainSms = () => { void runSmsOutboxIfDue().catch(() => undefined); };
-    const pollSms = () => { void pollSmsStatusIfDue().catch(() => undefined); };
+    const drainSms = () => { void runJob('sms_drain', runSmsOutboxIfDue).catch(() => undefined); };
+    const pollSms = () => { void runJob('sms_poll', pollSmsStatusIfDue).catch(() => undefined); };
     drainSms();
     setInterval(drainSms, 60_000).unref();
     setInterval(pollSms, 60_000).unref();
