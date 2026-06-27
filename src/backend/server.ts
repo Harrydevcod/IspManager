@@ -149,7 +149,7 @@ export async function createBackendApp() {
   // o último (idempotente, catch-up). Verifica de hora a hora; opt-out com
   // ISPM_SCHEDULED_BACKUP=off. Mesma disciplina de timer unref'd + erros engolidos.
   if (process.env.ISPM_SCHEDULED_BACKUP !== 'off' && !process.env.VITEST) {
-    const backupTick = () => { void runScheduledBackupIfDue().catch((err) => app.log.error({ err }, 'scheduled backup failed')); };
+    const backupTick = () => { void runJob('scheduled_backup', runScheduledBackupIfDue).catch((err) => app.log.error({ err }, 'scheduled backup failed')); };
     setInterval(backupTick, 3_600_000).unref();
   }
 
