@@ -1,10 +1,37 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'node:path';
+import { autoUpdater } from 'electron-updater';
 import { startBackend } from '../backend/server';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
 
 let mainWindow: BrowserWindow | null = null;
+
+/**
+ * Auto-update via GitHub Releases (feed em `build.publish`). Descarrega em
+ * silêncio e, quando pronto, pergunta se reinicia. Só em produção — em dev o
+ * electron-updater não tem `app-update.yml`. Qualquer falha (offline, sem
+ * release) é registada e ignorada: nunca pode impedir o uso da app.
+ */
+function initAutoUpdater() {
+  autoUpdater.autoDownload = true;
+  autoUpdater.on('update-downloaded', async (info) => {
+    const { response } = await dialog.showMessageBox({
+      type: 'info',
+      buttons: ['Reiniciar agora', 'Mais tarde'],
+      defaultId: 0,
+      cancelId: 1,
+      title: 'Atualização disponível',
+      message: `ISPM ${info.version} está pronto para instalar.`,
+      detail: 'A aplicação reinicia para concluir a atualização.'
+    });
+    if (response === 0) autoUpdater.quitAndInstall();
+  });
+  autoUpdater.on('error', (err) => {
+    console.error('[updater]', err instanceof Error ? err.message : err);
+  });
+  void autoUpdater.checkForUpdates();
+}
 
 async function createWindow() {
   const iconPath = isDevelopment
@@ -59,6 +86,10 @@ app.whenReady().then(async () => {
   });
 
   await createWindow();
+
+  if (!isDevelopment) {
+    initAutoUpdater();
+  }
 });
 
 app.on('activate', () => {

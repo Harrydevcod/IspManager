@@ -1,6 +1,6 @@
 {
   "name": "ispm",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "ISP Manager desktop app",
   "private": true,
   "main": "dist/main/index.js",
@@ -24,6 +24,7 @@
     "better-sqlite3": "^12.0.0",
     "drizzle-orm": "^0.43.0",
     "electron-is-dev": "^3.0.1",
+    "electron-updater": "^6.8.9",
     "exceljs": "^4.4.0",
     "fastify": "^5.8.5",
     "lucide-react": "^0.468.0",
@@ -76,6 +77,13 @@
     },
     "win": {
       "target": "nsis"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Harrydevcod",
+        "repo": "IspManager"
+      }
+    ]
   }
 }
