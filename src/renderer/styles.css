@@ -2125,6 +2125,20 @@ h2 {
   margin: var(--s2) 0;
 }
 
+.backups-config {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s3);
+  margin: var(--s3) 0;
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--border);
+}
+
+.backups-config > :first-child {
+  flex: 1 1 280px;
+}
+
 .backups-list {
   list-style: none;
   padding: 0;

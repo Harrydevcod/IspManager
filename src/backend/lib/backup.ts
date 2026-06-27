@@ -116,6 +116,11 @@ export function resolveBackupDir(): string {
   return dir;
 }
 
+/** Pasta configurada em bruto (vazio = usar a predefinição) — para o formulário. */
+export function readConfiguredBackupDir(): string {
+  return settingsBackupDir() ?? '';
+}
+
 function stamp(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return (

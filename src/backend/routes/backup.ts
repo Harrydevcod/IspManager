@@ -7,6 +7,7 @@ import {
   listBackups,
   pruneBackups,
   readBackupIntervalHours,
+  readConfiguredBackupDir,
   resolveBackupDir,
   restoreBackup,
   validateBackup,
@@ -32,7 +33,12 @@ export async function registerBackupRoutes(app: FastifyInstance) {
   const adminOnly = { preHandler: requireRole(['admin']) };
 
   app.get('/api/backups', adminOnly, async () => {
-    return { backupDir: resolveBackupDir(), intervalHours: readBackupIntervalHours(), entries: listBackups() };
+    return {
+      backupDir: resolveBackupDir(),
+      configuredBackupDir: readConfiguredBackupDir(),
+      intervalHours: readBackupIntervalHours(),
+      entries: listBackups()
+    };
   });
 
   // Configuração de backups: pasta de destino (ex.: pasta sincronizada

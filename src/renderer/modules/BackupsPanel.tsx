@@ -15,6 +15,9 @@ function formatBytes(n: number): string {
 export function BackupsPanel() {
   const [entries, setEntries] = useState<BackupItem[]>([]);
   const [backupDir, setBackupDir] = useState('');
+  const [dirInput, setDirInput] = useState('');
+  const [intervalInput, setIntervalInput] = useState('0');
+  const [savingConfig, setSavingConfig] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; tone?: 'error' | 'success' } | null>(null);
   const [confirmFile, setConfirmFile] = useState<string | null>(null);
@@ -27,12 +30,37 @@ export function BackupsPanel() {
       const data = await res.json();
       setEntries(data.entries);
       setBackupDir(data.backupDir);
+      setDirInput(data.configuredBackupDir ?? '');
+      setIntervalInput(String(data.intervalHours ?? 0));
     } catch {
       setMessage({ text: 'Não foi possível carregar a lista de backups.', tone: 'error' });
     }
   }
 
   useEffect(() => { void load(); }, []);
+
+  async function saveConfig() {
+    setSavingConfig(true);
+    setMessage(null);
+    try {
+      const res = await authFetch('http://127.0.0.1:3001/api/backups/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backupDir: dirInput.trim(), intervalHours: Number(intervalInput) || 0 })
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        setMessage({ text: e.error || 'Não foi possível guardar a configuração.', tone: 'error' });
+        return;
+      }
+      await load();
+      setMessage({ text: 'Configuração de backups guardada.', tone: 'success' });
+    } catch {
+      setMessage({ text: 'Falha de rede ao guardar a configuração.', tone: 'error' });
+    } finally {
+      setSavingConfig(false);
+    }
+  }
 
   async function createNow() {
     setBusy(true);
@@ -128,6 +156,27 @@ export function BackupsPanel() {
       </header>
 
       {message && <Message tone={message.tone}>{message.text}</Message>}
+
+      <div className="backups-config">
+        <Field
+          label="Pasta de destino (vazio = predefinição)"
+          placeholder="ex: D:\\Dropbox\\ISPM-backups (pasta sincronizada para backup externo)"
+          value={dirInput}
+          spellCheck={false}
+          onChange={(ev) => setDirInput(ev.target.value)}
+        />
+        <Field
+          label="Backup automático a cada (horas, 0 = desligado)"
+          type="number"
+          min={0}
+          max={168}
+          value={intervalInput}
+          onChange={(ev) => setIntervalInput(ev.target.value)}
+        />
+        <Button variant="secondary" loading={savingConfig} onClick={() => void saveConfig()}>
+          Guardar configuração
+        </Button>
+      </div>
 
       {entries.length === 0 ? (
         <EmptyState
