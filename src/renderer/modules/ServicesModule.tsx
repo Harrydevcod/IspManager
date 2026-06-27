@@ -1,53 +1,18 @@
-import { Cable, Coins, History, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
-import type { Dispatch, FormEvent, SetStateAction } from 'react';
+import { Pencil, Wrench } from 'lucide-react';
+import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { Badge, Button, Combobox, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
-import { formatCve, formatPtDate, formatPtDateTime } from '../lib/format';
+import { formatCve } from '../lib/format';
 import { statusLabel, statusTone } from '../lib/status';
-import type { AudiovisualConfig, Client, DeviceAssignment, PlanRow, ServiceEvent, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
-
-const eventTypeLabel: Record<ServiceEventType, string> = {
-  instalacao: 'Instalacao',
-  manutencao: 'Manutencao',
-  troca_equipamento: 'Troca de equipamento',
-  visita: 'Visita tecnica',
-  alteracao_servico: 'Alteracao de servico'
-};
-
-const eventTypeTone: Record<ServiceEventType, 'success' | 'info' | 'neutral' | 'accent'> = {
-  instalacao: 'success',
-  manutencao: 'info',
-  troca_equipamento: 'info',
-  visita: 'neutral',
-  alteracao_servico: 'accent'
-};
-
-const INSTALL_COST_LABELS: Record<'mao_de_obra' | 'transporte' | 'outro', string> = {
-  mao_de_obra: 'Mao de obra',
-  transporte: 'Transporte',
-  outro: 'Outro'
-};
-
-type ItemDraft = {
-  category: 'equipamento' | 'material';
-  catalogId: string;
-  quantity: string;
-  serialNumber: string;
-  assetTag: string;
-  ipAddress: string;
-  macAddress: string;
-  notes: string;
-};
+import type { AudiovisualConfig, Client, DeviceAssignment, PlanRow, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
+import { ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
+import { ServiceItemDraftsBuilder, emptyItemDraft, type ItemDraft } from './services/ServiceItemDraftsBuilder';
 
 type EventFormState = {
   eventType: ServiceEventType;
   notes: string;
 };
-
-function emptyItemDraft(category: 'equipamento' | 'material' = 'equipamento'): ItemDraft {
-  return { category, catalogId: '', quantity: '1', serialNumber: '', assetTag: '', ipAddress: '', macAddress: '', notes: '' };
-}
 
 function emptyEventForm(): EventFormState {
   return { eventType: 'visita', notes: '' };
@@ -273,14 +238,6 @@ export function ServicesModule({
     setShowDeviceDialog(false);
     setAddItemDrafts([]);
     setAddLaborCve('');
-  }
-
-  function updateItemDraft(setter: Dispatch<SetStateAction<ItemDraft[]>>, index: number, patch: Partial<ItemDraft>) {
-    setter((current) => current.map((draft, i) => i === index ? { ...draft, ...patch } : draft));
-  }
-
-  function removeItemDraft(setter: Dispatch<SetStateAction<ItemDraft[]>>, index: number) {
-    setter((current) => current.filter((_, i) => i !== index));
   }
 
   function buildItemsPayload(drafts: ItemDraft[], catalog: StockCatalogRow[]) {
@@ -562,85 +519,6 @@ export function ServicesModule({
     await loadServices();
   }
 
-  function renderItemGroup(
-    drafts: ItemDraft[],
-    setter: Dispatch<SetStateAction<ItemDraft[]>>,
-    category: 'equipamento' | 'material'
-  ) {
-    const isMaterial = category === 'material';
-    const catalog = catalogList.filter((item) => item.category === category);
-    const rows = drafts
-      .map((draft, index) => ({ draft, index }))
-      .filter((row) => row.draft.category === category);
-
-    return (
-      <div className="service-items-group">
-        <p className="service-items-group-title">{isMaterial ? 'Materiais' : 'Equipamentos'}</p>
-        {rows.length === 0 && (
-          <Message>{isMaterial ? 'Sem materiais adicionados.' : 'Sem equipamentos adicionados.'}</Message>
-        )}
-        {rows.map(({ draft, index }) => {
-          const selectedItem = catalog.find((item) => String(item.id) === draft.catalogId);
-          return (
-            <div className="service-item-draft" key={index}>
-              <Select
-                wide
-                label={isMaterial ? 'Material' : 'Equipamento'}
-                required
-                value={draft.catalogId}
-                onChange={(event) => updateItemDraft(setter, index, { catalogId: event.target.value })}
-              >
-                <option value="">{isMaterial ? 'Selecionar material' : 'Selecionar equipamento'}</option>
-                {catalog.map((item) => (
-                  <option key={item.id} value={item.id} disabled={item.stockTotal < 1}>
-                    {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} {item.unitOfMeasure}
-                  </option>
-                ))}
-              </Select>
-              {isMaterial ? (
-                <Field
-                  label={`Quantidade${selectedItem ? ` (${selectedItem.unitOfMeasure})` : ''}`}
-                  required
-                  type="number"
-                  min={1}
-                  max={selectedItem?.stockTotal}
-                  value={draft.quantity}
-                  onChange={(event) => updateItemDraft(setter, index, { quantity: event.target.value })}
-                />
-              ) : (
-                <>
-                  <Field label="Serial" value={draft.serialNumber} onChange={(event) => updateItemDraft(setter, index, { serialNumber: event.target.value })} />
-                  <Field label="Asset tag" value={draft.assetTag} onChange={(event) => updateItemDraft(setter, index, { assetTag: event.target.value })} />
-                  <Field label="MAC" value={draft.macAddress} onChange={(event) => updateItemDraft(setter, index, { macAddress: event.target.value })} placeholder="AA:BB:CC:DD:EE:FF" />
-                  <Field label="IP" value={draft.ipAddress} onChange={(event) => updateItemDraft(setter, index, { ipAddress: event.target.value })} placeholder="192.168.X.Y" />
-                </>
-              )}
-              <Field wide label="Notas" value={draft.notes} onChange={(event) => updateItemDraft(setter, index, { notes: event.target.value })} />
-              <Button type="button" variant="secondary" size="sm" onClick={() => removeItemDraft(setter, index)}>
-                Remover linha
-              </Button>
-            </div>
-          );
-        })}
-        <Button type="button" variant="secondary" size="sm" onClick={() => setter((current) => [...current, emptyItemDraft(category)])}>
-          {isMaterial ? 'Adicionar material' : 'Adicionar equipamento'}
-        </Button>
-      </div>
-    );
-  }
-
-  function renderItemDrafts(
-    drafts: ItemDraft[],
-    setter: Dispatch<SetStateAction<ItemDraft[]>>
-  ) {
-    return (
-      <div className="service-items-builder">
-        {renderItemGroup(drafts, setter, 'equipamento')}
-        {renderItemGroup(drafts, setter, 'material')}
-      </div>
-    );
-  }
-
   const visibleServices = services.filter((service) => {
     const normalizedSearch = search.trim().toLowerCase();
     const matchesSearch = !normalizedSearch
@@ -682,229 +560,23 @@ export function ServicesModule({
       </FilterBar>
 
       {selectedService && (
-        <Dialog
-          open
-          size="xl"
-          eyebrow="Servico"
-          title={selectedService.clientName}
+        <ServiceDetailDialog
+          service={selectedService}
+          technicalHistory={technicalHistory}
+          historyLoading={historyLoading}
+          monthlyTotalCve={monthlyTotalCve(selectedService)}
+          audiovisualLabel={avConfig?.label}
+          canManage={canManageServices}
+          canRecordTechnical={canRecordTechnical}
+          submitting={submitting}
           onClose={() => setSelectedService(null)}
-          actions={
-            canManageServices
-              ? (
-                <>
-                  <Button variant="secondary" size="sm" leadingIcon={<Pencil size={16} aria-hidden />} onClick={() => editService(selectedService)}>
-                    Editar
-                  </Button>
-                  <Button variant="danger" size="sm" disabled={submitting} leadingIcon={<Trash2 size={16} aria-hidden />} onClick={() => void deleteService(selectedService)}>
-                    Apagar
-                  </Button>
-                </>
-              )
-              : undefined
-          }
-        >
-          <div className="client-detail">
-          <dl>
-            <div><dt>Plano</dt><dd>{selectedService.planName || '-'}</dd></div>
-            <div>
-              <dt>Mensalidade</dt>
-              <dd>
-                {formatCve(monthlyTotalCve(selectedService))}
-                {selectedService.audiovisualMode === 'monthly' && (
-                  <small className="muted"> (NET + TVM)</small>
-                )}
-              </dd>
-            </div>
-            {selectedService.audiovisualMode !== 'none' && (
-              <div>
-                <dt>{avConfig?.label || 'Conteúdos audiovisuais'}</dt>
-                <dd>
-                  {selectedService.audiovisualMode === 'monthly'
-                    ? `${formatCve(selectedService.audiovisualMonthlyCve)} / mês (incluído na mensalidade)`
-                    : `${formatCve(selectedService.audiovisualAnnualCve)} / ano (fatura separada)`}
-                </dd>
-              </div>
-            )}
-            <div><dt>Vencimento</dt><dd>Dia {selectedService.dueDay}</dd></div>
-            <div><dt>Ativado em</dt><dd>{formatPtDate(selectedService.activationDate)}</dd></div>
-            <div><dt>Estado</dt><dd><Badge tone={statusTone(selectedService.status)}>{statusLabel(selectedService.status)}</Badge></dd></div>
-          </dl>
-
-          <section className="technical-section">
-            <header className="technical-section-head">
-              <div>
-                <p className="eyebrow"><Cable size={12} /> Equipamentos</p>
-                <h3>
-                  {technicalHistory
-                    ? `${technicalHistory.assignments.filter((a) => !a.endDate).length} ativo(s) / ${technicalHistory.assignments.length} total`
-                    : 'A carregar...'}
-                </h3>
-              </div>
-              {canRecordTechnical && (
-                <Button variant="secondary" size="sm" className="technical-add" leadingIcon={<Plus size={14} aria-hidden />} onClick={openDeviceDialog}>
-                  Adicionar
-                </Button>
-              )}
-            </header>
-            {historyLoading && !technicalHistory && <Message>A carregar historico...</Message>}
-            {technicalHistory && technicalHistory.assignments.length === 0 && (
-              <EmptyState
-                size="sm"
-                icon={Cable}
-                title="Sem equipamento atribuído"
-                description="Atribui hardware a este serviço para começar a registar histórico técnico."
-              />
-            )}
-            {technicalHistory && technicalHistory.assignments.length > 0 && (
-              <ul className="technical-list">
-                {technicalHistory.assignments.map((assignment: DeviceAssignment) => {
-                  const active = !assignment.endDate;
-                  return (
-                    <li key={assignment.id} className={active ? 'technical-item active' : 'technical-item past'}>
-                      <div className="technical-item-head">
-                        <strong>
-                          {assignment.brand ? `${assignment.brand} ${assignment.model}` : assignment.model}
-                          <span className="technical-item-type"> · {assignment.catalogType}</span>
-                        </strong>
-                        <Badge tone={active ? 'success' : 'neutral'}>{active ? 'Ativo' : 'Removido'}</Badge>
-                      </div>
-                      <dl className="technical-item-meta">
-                        {assignment.serialNumber && <div><dt>Serial</dt><dd>{assignment.serialNumber}</dd></div>}
-                        {assignment.macAddress && <div><dt>MAC</dt><dd>{assignment.macAddress}</dd></div>}
-                        {assignment.ipAddress && <div><dt>IP</dt><dd>{assignment.ipAddress}</dd></div>}
-                        {assignment.assetTag && <div><dt>Tag</dt><dd>{assignment.assetTag}</dd></div>}
-                        <div><dt>Inicio</dt><dd>{formatPtDate(assignment.startDate)}</dd></div>
-                        {assignment.endDate && <div><dt>Fim</dt><dd>{formatPtDate(assignment.endDate)}</dd></div>}
-                      </dl>
-                      {assignment.notes && <p className="technical-item-notes">{assignment.notes}</p>}
-                      {active && canRecordTechnical && (
-                        <div className="technical-item-actions">
-                          <Button variant="secondary" size="sm" disabled={submitting} onClick={() => openReplaceDialog(assignment)}>
-                            Substituir
-                          </Button>
-                          <Button variant="danger" size="sm" disabled={submitting} onClick={() => void returnDevice(assignment)}>
-                            Remover
-                          </Button>
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-
-          <section className="technical-section">
-            <header className="technical-section-head">
-              <div>
-                <p className="eyebrow"><Cable size={12} /> Materiais</p>
-                <h3>{technicalHistory ? `${technicalHistory.materials.length} linha(s)` : 'A carregar...'}</h3>
-              </div>
-            </header>
-            {technicalHistory && technicalHistory.materials.length === 0 && (
-              <EmptyState
-                size="sm"
-                icon={Cable}
-                title="Sem materiais registados"
-                description="Materiais consumidos neste servico aparecem aqui."
-              />
-            )}
-            {technicalHistory && technicalHistory.materials.length > 0 && (
-              <ul className="technical-list">
-                {technicalHistory.materials.map((material) => (
-                  <li key={material.id} className="technical-item active">
-                    <div className="technical-item-head">
-                      <strong>{material.brand ? `${material.brand} ${material.model}` : material.model}</strong>
-                      <Badge tone="neutral">{material.catalogType}</Badge>
-                    </div>
-                    <dl className="technical-item-meta">
-                      <div><dt>Quantidade</dt><dd>{material.quantity} {material.unitOfMeasure}</dd></div>
-                      <div><dt>Custo</dt><dd>{formatCve(material.unitCostCve * material.quantity)}</dd></div>
-                      <div><dt>Registado</dt><dd>{formatPtDateTime(material.createdAt)}</dd></div>
-                    </dl>
-                    {material.notes && <p className="technical-item-notes">{material.notes}</p>}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="technical-section">
-            <header className="technical-section-head">
-              <div>
-                <p className="eyebrow"><Coins size={12} /> Custos de instalacao</p>
-                <h3>
-                  {technicalHistory
-                    ? formatCve(technicalHistory.installCosts.reduce((sum, cost) => sum + cost.amountCve, 0))
-                    : 'A carregar...'}
-                </h3>
-              </div>
-            </header>
-            {technicalHistory && technicalHistory.installCosts.length === 0 && (
-              <EmptyState
-                size="sm"
-                icon={Coins}
-                title="Sem custos registados"
-                description="Mao de obra e outros custos da instalacao aparecem aqui."
-              />
-            )}
-            {technicalHistory && technicalHistory.installCosts.length > 0 && (
-              <ul className="technical-list">
-                {technicalHistory.installCosts.map((cost) => (
-                  <li key={cost.id} className="technical-item active">
-                    <div className="technical-item-head">
-                      <strong>{INSTALL_COST_LABELS[cost.kind]}</strong>
-                      <Badge tone="neutral">{formatCve(cost.amountCve)}</Badge>
-                    </div>
-                    <dl className="technical-item-meta">
-                      <div><dt>Registado</dt><dd>{formatPtDateTime(cost.createdAt)}</dd></div>
-                    </dl>
-                    {cost.description && <p className="technical-item-notes">{cost.description}</p>}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="technical-section">
-            <header className="technical-section-head">
-              <div>
-                <p className="eyebrow"><History size={12} /> Eventos tecnicos</p>
-                <h3>{technicalHistory ? `${technicalHistory.events.length} evento(s)` : 'A carregar...'}</h3>
-              </div>
-              {canRecordTechnical && (
-                <Button variant="secondary" size="sm" className="technical-add" leadingIcon={<Wrench size={14} aria-hidden />} onClick={openEventDialog}>
-                  Registar
-                </Button>
-              )}
-            </header>
-            {technicalHistory && technicalHistory.events.length === 0 && (
-              <EmptyState
-                size="sm"
-                icon={History}
-                title="Sem eventos registados"
-                description="Quando criares ordens de serviço ou trocas de equipamento aparecem aqui."
-              />
-            )}
-            {technicalHistory && technicalHistory.events.length > 0 && (
-              <ul className="technical-timeline">
-                {technicalHistory.events.map((event: ServiceEvent) => (
-                  <li key={event.id} className="technical-event">
-                    <div className="technical-event-head">
-                      <Badge tone={eventTypeTone[event.eventType]}>{eventTypeLabel[event.eventType]}</Badge>
-                      <small>{formatPtDateTime(event.createdAt)}</small>
-                    </div>
-                    {event.notes && <p className="technical-event-notes">{event.notes}</p>}
-                    {event.technicianName && (
-                      <small className="technical-event-tech">Tecnico: {event.technicianName}</small>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-          </div>
-        </Dialog>
+          onEdit={editService}
+          onDelete={(service) => void deleteService(service)}
+          onAddDevice={openDeviceDialog}
+          onReplaceDevice={openReplaceDialog}
+          onReturnDevice={(assignment) => void returnDevice(assignment)}
+          onAddEvent={openEventDialog}
+        />
       )}
 
       <div className="module-table">
@@ -1062,7 +734,7 @@ export function ServicesModule({
               />
               {attachItems && (
                 <>
-                  {renderItemDrafts(itemDrafts, setItemDrafts)}
+                  <ServiceItemDraftsBuilder drafts={itemDrafts} catalog={catalogList} onChange={setItemDrafts} />
                   <Field
                     wide
                     label="Mão de obra (CVE)"
@@ -1097,7 +769,7 @@ export function ServicesModule({
         }
       >
         <form id="device-form" className="client-form" onSubmit={submitItems}>
-          {renderItemDrafts(addItemDrafts, setAddItemDrafts)}
+          <ServiceItemDraftsBuilder drafts={addItemDrafts} catalog={catalogList} onChange={setAddItemDrafts} />
           <Field
             wide
             label="Mão de obra (CVE)"

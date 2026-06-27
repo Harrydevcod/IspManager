@@ -1,8 +1,8 @@
-import { Banknote, Building2, DatabaseBackup, MessageCircle, Plus, Smartphone, Trash2 } from 'lucide-react';
+import { Banknote, Building2, DatabaseBackup, MessageCircle, Smartphone } from 'lucide-react';
 import QRCode from 'qrcode';
 import type { FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { Button, Field, Message, Select, Textarea, Toggle } from '../components';
+import { Button, Message } from '../components';
 import { authFetch } from '../lib/auth';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
@@ -23,6 +23,11 @@ import {
 } from '../../shared/sms';
 import type { SmsStatus } from '../types';
 import { BackupsPanel } from './BackupsPanel';
+import { BillingTab } from './settings/BillingTab';
+import { CompanyTab } from './settings/CompanyTab';
+import { SmsTab } from './settings/SmsTab';
+import { WhatsappTab } from './settings/WhatsappTab';
+import { emptyBankAccount, type BankAccountForm, type SettingsFormState } from './settings/settingsForm';
 
 type SettingsTab = 'company' | 'billing' | 'whatsapp' | 'sms' | 'backups';
 
@@ -33,63 +38,6 @@ const TABS: { id: SettingsTab; label: string; icon: typeof Building2 }[] = [
   { id: 'sms', label: 'SMS', icon: Smartphone },
   { id: 'backups', label: 'Backups', icon: DatabaseBackup }
 ];
-
-type SettingsFormState = {
-  companyName: string;
-  nif: string;
-  phone: string;
-  email: string;
-  address: string;
-  island: string;
-  bankAccounts: BankAccountForm[];
-  defaultDueDay: string;
-  autoBillingDay: string;
-  audiovisualEnabled: boolean;
-  audiovisualLabel: string;
-  audiovisualMonthlyCve: string;
-  audiovisualAnnualCve: string;
-  currencyCode: string;
-  invoicePrefix: string;
-  receiptPrefix: string;
-  ivaRate: string;
-  fiscalRegime: 'normal' | 'rempe';
-  showIva: boolean;
-  printQrCode: boolean;
-  legalNotes: string;
-  whatsappTemplate: string;
-  whatsappTestTemplate: string;
-  whatsappInvoiceReadyTemplate: string;
-  whatsappReceiptTemplate: string;
-  whatsappOverdueTemplate: string;
-  whatsappSuspensionTemplate: string;
-  whatsappSuspensionNoticeDays: string;
-  autoNoticesEnabled: boolean;
-  noticeCooldownDays: string;
-  ultraMsgInstanceId: string;
-  ultraMsgToken: string;
-  smsCompanionEnabled: boolean;
-  smsCompanionBaseUrl: string;
-  smsDispatchIntervalSeconds: string;
-  smsRetryGraceMinutes: string;
-  smsInvoiceIssuedTemplate: string;
-  smsReceiptConfirmedTemplate: string;
-  smsPaymentOverdueTemplate: string;
-  smsSuspensionNoticeTemplate: string;
-};
-
-type BankAccountForm = {
-  bankName: string;
-  accountName: string;
-  accountNumber: string;
-  reference: string;
-};
-
-const emptyBankAccount: BankAccountForm = {
-  bankName: '',
-  accountName: '',
-  accountNumber: '',
-  reference: ''
-};
 
 export function SettingsModule() {
   const [message, setMessage] = useState<{ tone: 'neutral' | 'success' | 'error'; text: string; placement: 'top' | 'save' } | null>(null);
@@ -308,6 +256,10 @@ export function SettingsModule() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  function toggleForm(field: keyof SettingsFormState, value: boolean) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
   function addBankAccount() {
     setForm((current) => ({
       ...current,
@@ -331,12 +283,6 @@ export function SettingsModule() {
       ...current,
       bankAccounts: current.bankAccounts.filter((_, accountIndex) => accountIndex !== index)
     }));
-  }
-
-  function templateRows(value: string) {
-    const explicitLines = value.split('\n').length;
-    const wrappedLines = Math.ceil(value.length / 92);
-    return Math.min(4, Math.max(2, explicitLines, wrappedLines));
   }
 
   useEffect(() => {
@@ -468,427 +414,46 @@ export function SettingsModule() {
       {activeTab !== 'backups' && (
       <form className="client-form settings-form" onSubmit={saveSettings}>
         {activeTab === 'company' && (
-          <>
-            <Field
-              label="Nome da empresa"
-              required
-              value={form.companyName}
-              onChange={(event) => updateForm('companyName', event.target.value)}
-            />
-            <Field
-              label="NIF"
-              value={form.nif}
-              onChange={(event) => updateForm('nif', event.target.value)}
-            />
-            <Field
-              label="Telefone"
-              type="tel"
-              autoComplete="tel"
-              inputMode="tel"
-              value={form.phone}
-              onChange={(event) => updateForm('phone', event.target.value)}
-            />
-            <Field
-              label="Email"
-              type="email"
-              autoComplete="email"
-              spellCheck={false}
-              value={form.email}
-              onChange={(event) => updateForm('email', event.target.value)}
-            />
-            <Field
-              label="Ilha"
-              value={form.island}
-              onChange={(event) => updateForm('island', event.target.value)}
-            />
-            <Field
-              wide
-              label="Morada"
-              value={form.address}
-              onChange={(event) => updateForm('address', event.target.value)}
-            />
-            <section className="settings-bank-accounts wide-field" aria-label="Contas bancarias da empresa">
-              <div className="settings-bank-accounts-head">
-                <div>
-                  <span className="field-label">Contas bancarias</span>
-                  <small>Dados usados como referencia de pagamento da empresa.</small>
-                </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  leadingIcon={<Plus size={14} aria-hidden />}
-                  onClick={addBankAccount}
-                  disabled={form.bankAccounts.length >= 8}
-                >
-                  Adicionar conta
-                </Button>
-              </div>
-
-              {form.bankAccounts.length === 0 ? (
-                <p className="settings-bank-empty">Nenhuma conta bancaria registada.</p>
-              ) : (
-                <div className="settings-bank-list">
-                  {form.bankAccounts.map((account, index) => (
-                    <article className="settings-bank-item" key={index}>
-                      <Field
-                        label="Banco"
-                        value={account.bankName}
-                        onChange={(event) => updateBankAccount(index, 'bankName', event.target.value)}
-                        placeholder="BCA, Caixa, BCN..."
-                      />
-                      <Field
-                        label="Titular"
-                        value={account.accountName}
-                        onChange={(event) => updateBankAccount(index, 'accountName', event.target.value)}
-                        placeholder={form.companyName || 'Nome da empresa'}
-                      />
-                      <Field
-                        label="Numero / NIB / IBAN"
-                        value={account.accountNumber}
-                        onChange={(event) => updateBankAccount(index, 'accountNumber', event.target.value)}
-                        spellCheck={false}
-                      />
-                      <Field
-                        label="Referencia"
-                        value={account.reference}
-                        onChange={(event) => updateBankAccount(index, 'reference', event.target.value)}
-                        placeholder="Pagamentos, instalacoes..."
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="settings-bank-remove"
-                        leadingIcon={<Trash2 size={14} aria-hidden />}
-                        onClick={() => removeBankAccount(index)}
-                        aria-label={`Remover conta bancaria ${index + 1}`}
-                      >
-                        Remover
-                      </Button>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
-          </>
+          <CompanyTab
+            form={form}
+            onUpdate={updateForm}
+            onAddBankAccount={addBankAccount}
+            onUpdateBankAccount={updateBankAccount}
+            onRemoveBankAccount={removeBankAccount}
+          />
         )}
 
         {activeTab === 'billing' && (
-          <>
-            <Field
-              label="Dia de geração automática das faturas"
-              required
-              type="number"
-              min={1}
-              max={31}
-              value={form.autoBillingDay}
-              onChange={(event) => updateForm('autoBillingDay', event.target.value)}
-              hint="Ao fechar o mês (dia 30), gera as faturas com competência desse mês. Recupera meses não abertos."
-            />
-            <Field
-              label="Dia padrão de vencimento"
-              required
-              type="number"
-              min={1}
-              max={31}
-              value={form.defaultDueDay}
-              onChange={(event) => updateForm('defaultDueDay', event.target.value)}
-              hint="Referência informativa. O vencimento real é a data de emissão + 30 dias."
-            />
-            <Field
-              label="Moeda"
-              required
-              value={form.currencyCode}
-              onChange={(event) => updateForm('currencyCode', event.target.value)}
-            />
-            <Field
-              label="Prefixo fatura"
-              required
-              value={form.invoicePrefix}
-              onChange={(event) => updateForm('invoicePrefix', event.target.value)}
-            />
-            <Field
-              label="Prefixo recibo"
-              required
-              value={form.receiptPrefix}
-              onChange={(event) => updateForm('receiptPrefix', event.target.value)}
-            />
-            <Select
-              label="Regime fiscal"
-              value={form.fiscalRegime}
-              onChange={(event) => updateForm('fiscalRegime', event.target.value as 'normal' | 'rempe')}
-            >
-              <option value="normal">Regime Normal (com IVA)</option>
-              <option value="rempe">REMPE (isento IVA)</option>
-            </Select>
-            <Field
-              label="Taxa de IVA (%)"
-              required
-              type="number"
-              min={0}
-              max={100}
-              step={0.5}
-              value={form.ivaRate}
-              onChange={(event) => updateForm('ivaRate', event.target.value)}
-            />
-            <Textarea
-              label="Observações no documento"
-              rows={3}
-              value={form.legalNotes}
-              onChange={(event) => updateForm('legalNotes', event.target.value)}
-              placeholder="Texto opcional que aparece no rodapé de cada fatura/recibo (ex: termos, IBAN, agradecimento)"
-            />
-            <Toggle
-              title="Mostrar linha de IVA nos documentos"
-              description="Quando desligado, fatura/recibo mostram apenas o total (serviço informal). Liga quando estiveres com contabilidade organizada."
-              checked={form.showIva}
-              onChange={(event) => setForm((current) => ({ ...current, showIva: event.target.checked }))}
-            />
-            <Toggle
-              title="Imprimir QR Code fiscal nos documentos"
-              description="QR no formato Portaria 47/2021 (preparatório para e-Fatura). Liga quando estiveres preparado para credenciação na DNRE."
-              checked={form.printQrCode}
-              onChange={(event) => setForm((current) => ({ ...current, printQrCode: event.target.checked }))}
-            />
-            <Toggle
-              title="Conteúdos audiovisuais"
-              description="Permite oferecer o serviço aos clientes. Mensal entra na fatura da internet; anual é faturado à parte."
-              checked={form.audiovisualEnabled}
-              onChange={(event) => setForm((current) => ({ ...current, audiovisualEnabled: event.target.checked }))}
-            />
-            {form.audiovisualEnabled && (
-              <>
-                <Field
-                  label="Denominação na fatura"
-                  required
-                  value={form.audiovisualLabel}
-                  onChange={(event) => updateForm('audiovisualLabel', event.target.value)}
-                  hint="Designação legal impressa nos documentos (evitar &quot;IPTV&quot;)."
-                />
-                <Field
-                  label="Valor mensal CVE"
-                  type="number"
-                  min={0}
-                  value={form.audiovisualMonthlyCve}
-                  onChange={(event) => updateForm('audiovisualMonthlyCve', event.target.value)}
-                />
-                <Field
-                  label="Valor anual CVE"
-                  type="number"
-                  min={0}
-                  value={form.audiovisualAnnualCve}
-                  onChange={(event) => updateForm('audiovisualAnnualCve', event.target.value)}
-                />
-              </>
-            )}
-          </>
+          <BillingTab form={form} onUpdate={updateForm} onToggle={toggleForm} />
         )}
 
         {activeTab === 'whatsapp' && (
-          <>
-            <Field
-              label="UltraMsg instance ID"
-              autoComplete="off"
-              spellCheck={false}
-              value={form.ultraMsgInstanceId}
-              onChange={(event) => updateForm('ultraMsgInstanceId', event.target.value)}
-              placeholder="instance00000"
-            />
-            <Field
-              label="UltraMsg token"
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              value={form.ultraMsgToken}
-              onChange={(event) => updateForm('ultraMsgToken', event.target.value)}
-            />
-            <Field
-              label="Avisar suspensao apos X dias"
-              type="number"
-              min={1}
-              max={120}
-              value={form.whatsappSuspensionNoticeDays}
-              onChange={(event) => updateForm('whatsappSuspensionNoticeDays', event.target.value)}
-            />
-            <Toggle
-              title="Enviar avisos de atraso automaticamente"
-              description="Uma vez por dia, o sistema envia avisos de atraso/suspensao aos clientes elegiveis via WhatsApp. Desligado por defeito — liga so com consentimento dos clientes e UltraMsg configurado."
-              checked={form.autoNoticesEnabled}
-              onChange={(event) => setForm((current) => ({ ...current, autoNoticesEnabled: event.target.checked }))}
-            />
-            <Field
-              label="Nao repetir o mesmo aviso durante X dias"
-              type="number"
-              min={1}
-              max={90}
-              value={form.noticeCooldownDays}
-              onChange={(event) => updateForm('noticeCooldownDays', event.target.value)}
-            />
-            <Textarea
-              className="whatsapp-template-field"
-              label="Mensagem de teste"
-              rows={templateRows(form.whatsappTestTemplate)}
-              value={form.whatsappTestTemplate}
-              onChange={(event) => updateForm('whatsappTestTemplate', event.target.value)}
-            />
-            <Field
-              label="Telefone para teste"
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              value={testPhone}
-              onChange={(event) => setTestPhone(event.target.value)}
-              placeholder="9910000 ou 2389910000"
-            />
-            <div className="settings-test-whatsapp" aria-label="Enviar mensagem de teste">
-              <span>Envio de teste</span>
-              {testMessage && <Message tone={testMessage.tone}>{testMessage.text}</Message>}
-              <Button
-                variant="secondary"
-                onClick={() => void sendTestWhatsapp()}
-                disabled={!normalizeWhatsappPhone(testPhone)}
-                loading={testSending}
-              >
-                {testSending ? 'A enviar teste...' : 'Enviar teste'}
-              </Button>
-            </div>
-            <Textarea
-              className="whatsapp-template-field"
-              label="Mensagem geral WhatsApp"
-              rows={templateRows(form.whatsappTemplate)}
-              value={form.whatsappTemplate}
-              onChange={(event) => updateForm('whatsappTemplate', event.target.value)}
-            />
-            <Textarea
-              className="whatsapp-template-field"
-              label="Fatura do mes pronta"
-              rows={templateRows(form.whatsappInvoiceReadyTemplate)}
-              value={form.whatsappInvoiceReadyTemplate}
-              onChange={(event) => updateForm('whatsappInvoiceReadyTemplate', event.target.value)}
-            />
-            <Textarea
-              className="whatsapp-template-field"
-              label="Confirmacao de recebimento e recibo"
-              rows={templateRows(form.whatsappReceiptTemplate)}
-              value={form.whatsappReceiptTemplate}
-              onChange={(event) => updateForm('whatsappReceiptTemplate', event.target.value)}
-            />
-            <Textarea
-              className="whatsapp-template-field"
-              label="Fatura em atraso"
-              rows={templateRows(form.whatsappOverdueTemplate)}
-              value={form.whatsappOverdueTemplate}
-              onChange={(event) => updateForm('whatsappOverdueTemplate', event.target.value)}
-            />
-            <Textarea
-              className="whatsapp-template-field"
-              label="Aviso de corte/suspensao"
-              rows={templateRows(form.whatsappSuspensionTemplate)}
-              value={form.whatsappSuspensionTemplate}
-              onChange={(event) => updateForm('whatsappSuspensionTemplate', event.target.value)}
-            />
-          </>
+          <WhatsappTab
+            form={form}
+            onUpdate={updateForm}
+            onToggle={toggleForm}
+            testPhone={testPhone}
+            onTestPhoneChange={setTestPhone}
+            testMessage={testMessage}
+            testSending={testSending}
+            onSendTest={() => void sendTestWhatsapp()}
+          />
         )}
 
         {activeTab === 'sms' && (
-          <>
-            <Toggle
-              title="Ativar SMS via Android"
-              description="O desktop enfileira os SMS e o telemovel Android pareado pede aprovacao antes de enviar pelo cartao SIM. Ideal como canal de reforco quando o cliente nao tem WhatsApp."
-              checked={form.smsCompanionEnabled}
-              onChange={(event) => setForm((current) => ({ ...current, smsCompanionEnabled: event.target.checked }))}
-            />
-            <div className="settings-test-whatsapp" aria-label="Pareamento do Android SMS">
-              <span>{smsVerifying
-                ? 'A aguardar confirmacao do telemovel...'
-                : smsStatus?.paired
-                  ? `Pareado${smsStatus.deviceName ? `: ${smsStatus.deviceName}` : ''}${smsStatus.baseUrl ? ` (${smsStatus.baseUrl})` : ''}`
-                  : 'Android nao pareado'}</span>
-              <Field
-                label="Endereco do Android na rede local"
-                value={smsPairing.baseUrl}
-                onChange={(event) => setSmsPairing((current) => ({ ...current, baseUrl: event.target.value }))}
-                placeholder="http://192.168.1.50:8765"
-              />
-              <Field
-                label="Nome do dispositivo"
-                value={smsPairing.deviceName}
-                onChange={(event) => setSmsPairing((current) => ({ ...current, deviceName: event.target.value }))}
-                placeholder="Telemovel da loja"
-              />
-              <div className="form-actions">
-                <Button
-                  variant="secondary"
-                  onClick={() => void createSmsPairing()}
-                  disabled={!smsPairing.baseUrl || !smsPairing.deviceName}
-                  loading={smsPairingBusy}
-                >
-                  {smsStatus?.paired ? 'Gerar novo pareamento' : 'Gerar pareamento'}
-                </Button>
-                {smsStatus?.paired && (
-                  <Button variant="ghost" onClick={() => void revokeSmsPairing()} disabled={smsPairingBusy}>
-                    Revogar
-                  </Button>
-                )}
-              </div>
-              {smsQrDataUrl && (
-                <div className="sms-pairing-qr">
-                  <img src={smsQrDataUrl} alt="QR Code de pareamento do Android SMS" width={220} height={220} />
-                  <span>{smsVerifying
-                    ? 'Lê este QR no app ISPM SMS do telemóvel — a aguardar confirmação…'
-                    : 'Lê este QR no app ISPM SMS do telemóvel para parear.'}</span>
-                </div>
-              )}
-            </div>
-            {smsStatus && (
-              <Message tone={smsStatus.counts.failed > 0 ? 'error' : 'neutral'}>
-                Fila SMS: {smsStatus.counts.pendingDispatch} por entregar, {smsStatus.counts.pendingApproval} a aguardar aprovacao no Android, {smsStatus.counts.failed} falhado(s).
-              </Message>
-            )}
-            <Field
-              label="Intervalo de envio SMS (segundos)"
-              type="number"
-              min={15}
-              max={3600}
-              value={form.smsDispatchIntervalSeconds}
-              onChange={(event) => updateForm('smsDispatchIntervalSeconds', event.target.value)}
-            />
-            <Field
-              label="Reenvio apos falha (minutos)"
-              type="number"
-              min={1}
-              max={1440}
-              value={form.smsRetryGraceMinutes}
-              onChange={(event) => updateForm('smsRetryGraceMinutes', event.target.value)}
-            />
-            <Textarea
-              className="whatsapp-template-field"
-              label="SMS — emissao de fatura"
-              rows={templateRows(form.smsInvoiceIssuedTemplate)}
-              value={form.smsInvoiceIssuedTemplate}
-              onChange={(event) => updateForm('smsInvoiceIssuedTemplate', event.target.value)}
-            />
-            <Textarea
-              className="whatsapp-template-field"
-              label="SMS — confirmacao de recibo"
-              rows={templateRows(form.smsReceiptConfirmedTemplate)}
-              value={form.smsReceiptConfirmedTemplate}
-              onChange={(event) => updateForm('smsReceiptConfirmedTemplate', event.target.value)}
-            />
-            <Textarea
-              className="whatsapp-template-field"
-              label="SMS — atraso de pagamento"
-              rows={templateRows(form.smsPaymentOverdueTemplate)}
-              value={form.smsPaymentOverdueTemplate}
-              onChange={(event) => updateForm('smsPaymentOverdueTemplate', event.target.value)}
-            />
-            <Textarea
-              className="whatsapp-template-field"
-              label="SMS — aviso de suspensao"
-              rows={templateRows(form.smsSuspensionNoticeTemplate)}
-              value={form.smsSuspensionNoticeTemplate}
-              onChange={(event) => updateForm('smsSuspensionNoticeTemplate', event.target.value)}
-            />
-          </>
+          <SmsTab
+            form={form}
+            onUpdate={updateForm}
+            onToggle={toggleForm}
+            smsStatus={smsStatus}
+            smsPairing={smsPairing}
+            onPairingChange={(field, value) => setSmsPairing((current) => ({ ...current, [field]: value }))}
+            smsVerifying={smsVerifying}
+            smsPairingBusy={smsPairingBusy}
+            smsQrDataUrl={smsQrDataUrl}
+            onCreatePairing={() => void createSmsPairing()}
+            onRevokePairing={() => void revokeSmsPairing()}
+          />
         )}
 
         <div className="form-actions">
