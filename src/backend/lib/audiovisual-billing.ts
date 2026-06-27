@@ -1,6 +1,6 @@
 import { getSqliteDatabase } from '../db/database';
 import { dueDateFromIssue, todayIso, PAYMENT_DUE_DAYS } from './billing';
-import { nextDocumentNumber } from './numbering';
+import { allocateDocumentNumber } from './numbering';
 import { audiovisualAnnualReference, loadAudiovisualConfig } from './audiovisual';
 
 type AnnualServiceRow = {
@@ -94,7 +94,7 @@ export function runAudiovisualAnnualIfDue(now: Date = new Date(), onlyServiceId?
 
       const inserted = insert.run(svc.clientId, svc.serviceId, reference, amount, dueIso);
       const paymentId = Number(inserted.lastInsertRowid);
-      updateInvoice.run(nextDocumentNumber('invoice', paymentId), paymentId);
+      updateInvoice.run(allocateDocumentNumber('invoice'), paymentId);
       insertLine.run(paymentId, config.label, amount);
       references.push(reference);
       created += 1;

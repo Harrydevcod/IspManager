@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import QRCode from 'qrcode';
 import { getSqliteDatabase } from '../db/database';
-import { nextDocumentNumber } from '../lib/numbering';
+import { allocateDocumentNumber } from '../lib/numbering';
 import { requireRole } from './auth';
 import { formatPtMonth } from '../../shared/date';
 import { isAudiovisualAnnualReference } from '../lib/audiovisual';
@@ -660,19 +660,25 @@ export async function renderPaymentDocumentPdf(id: number, kind: DocumentKind): 
     throw new PaymentDocumentError(400, 'So e possivel gerar recibo depois do pagamento');
   }
   if (kind === 'invoice' && !hasDocumentNumber(row.invoiceNumber)) {
-    db.prepare(`
-      UPDATE payments
-      SET invoice_number = ?, invoice_date = COALESCE(invoice_date, date('now')), updated_at = datetime('now')
-      WHERE id = ?
-    `).run(nextDocumentNumber('invoice', id), id);
+    // Allocation + write share one transaction so the sequence counter never
+    // advances without the number landing on the row.
+    db.transaction(() => {
+      db.prepare(`
+        UPDATE payments
+        SET invoice_number = ?, invoice_date = COALESCE(invoice_date, date('now')), updated_at = datetime('now')
+        WHERE id = ?
+      `).run(allocateDocumentNumber('invoice'), id);
+    })();
     row = db.prepare(documentSelect).get(id) as PaymentDocumentRow;
   }
   if (kind === 'receipt' && !row.receiptNumber) {
-    db.prepare(`
-      UPDATE payments
-      SET receipt_number = ?, receipt_date = COALESCE(receipt_date, date('now')), updated_at = datetime('now')
-      WHERE id = ?
-    `).run(nextDocumentNumber('receipt', id), id);
+    db.transaction(() => {
+      db.prepare(`
+        UPDATE payments
+        SET receipt_number = ?, receipt_date = COALESCE(receipt_date, date('now')), updated_at = datetime('now')
+        WHERE id = ?
+      `).run(allocateDocumentNumber('receipt'), id);
+    })();
     row = db.prepare(documentSelect).get(id) as PaymentDocumentRow;
   }
   const lines = db.prepare(`
