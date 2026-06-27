@@ -2,14 +2,8 @@ import { Activity, AlertTriangle, CalendarClock, MessageCircle, TrendingUp, User
 import { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Card, Message, MetricCard, MetricGrid, RevenueBars, formatCompactCve } from '../components';
 import { authFetch } from '../lib/auth';
-import { formatPtDate } from '../lib/format';
+import { formatCve, formatPtDate } from '../lib/format';
 import type { DashboardSummary } from '../types';
-
-const currencyFormatter = new Intl.NumberFormat('pt-PT', { maximumFractionDigits: 0 });
-
-function formatCve(value: number): string {
-  return currencyFormatter.format(value);
-}
 
 const planTypeLabel: Record<string, string> = {
   fibra: 'Fibra',
@@ -64,7 +58,7 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
     },
     {
       label: 'Receita do mes',
-      value: summary ? `${formatCve(summary.paidMonthCve)} CVE` : '...',
+      value: summary ? formatCve(summary.paidMonthCve) : '...',
       trend: revenueTrendPct === null
         ? 'sem comparacao'
         : `${revenueTrendPct >= 0 ? '+' : ''}${revenueTrendPct.toFixed(1)}% vs mes anterior`,
@@ -188,7 +182,7 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
                     <strong>{due.clientName}</strong>
                     <small>{formatPtDate(due.dueDate)}</small>
                   </div>
-                  <span className="dashboard-list-amount">{formatCve(due.amountCve)} CVE</span>
+                  <span className="dashboard-list-amount">{formatCve(due.amountCve)}</span>
                 </li>
               ))}
             </ul>
@@ -209,7 +203,7 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
                     {overdue.clientPhone && <small>{overdue.clientPhone}</small>}
                   </div>
                   <Badge tone="danger">{overdue.daysOverdue}d</Badge>
-                  <span className="dashboard-list-amount">{formatCve(overdue.amountCve)} CVE</span>
+                  <span className="dashboard-list-amount">{formatCve(overdue.amountCve)}</span>
                 </li>
               ))}
             </ul>

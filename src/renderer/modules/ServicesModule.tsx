@@ -992,7 +992,7 @@ export function ServicesModule({
           <Select label="Plano" value={form.planId} onChange={(event) => selectPlan(event.target.value)}>
             <option value="">Sem plano</option>
             {plans.map((plan) => (
-              <option key={plan.id} value={plan.id}>{plan.name} - {plan.monthlyPriceCve.toLocaleString('pt-PT')} CVE</option>
+              <option key={plan.id} value={plan.id}>{plan.name} - {formatCve(plan.monthlyPriceCve)}</option>
             ))}
           </Select>
           <Field label="Mensalidade CVE" required type="number" min={0} value={form.monthlyValueCve} onChange={(event) => updateForm('monthlyValueCve', event.target.value)} />

@@ -4,6 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { allocateDocumentNumber } from '../lib/numbering';
 import { requireRole } from './auth';
 import { formatPtMonth } from '../../shared/date';
+import { formatEscudos } from '../../shared/money';
 import { isAudiovisualAnnualReference } from '../lib/audiovisual';
 
 const PDFDocument = require('pdfkit');
@@ -185,8 +186,11 @@ export function formatBankAccountsForDocument(accounts: BankAccountInfo[]): stri
   return lines.length > 0 ? ['Bancos:', ...lines].join('\n') : null;
 }
 
-function formatCve(value: number, currencyCode = 'CVE') {
-  return `${Number(value || 0).toLocaleString('pt-PT')} ${currencyCode}`;
+// Money on documents uses the Cape Verde cifrão convention (3.500$00). The
+// company `currencyCode` is still surfaced as a "Moeda" label, but amounts are
+// always rendered in escudos — this is a CV-only system.
+function formatCve(value: number) {
+  return formatEscudos(value);
 }
 
 export function formatDate(value: string | null) {
@@ -453,7 +457,7 @@ function buildDocument(
         .text(`${totals.ivaRate}%`, M + descColW + 4, y + 2, { width: ivaColW, align: 'right', lineBreak: false });
     }
     doc.fillColor(PALETTE.ink).fontSize(12).font('Helvetica-Bold')
-      .text(formatCve(amount, currency), W - M - valueColW, y, { width: valueColW, align: 'right', lineBreak: false });
+      .text(formatCve(amount), W - M - valueColW, y, { width: valueColW, align: 'right', lineBreak: false });
     y += 16;
     if (subline) {
       doc.fillColor(PALETTE.muted).fontSize(8.5).font('Helvetica')
@@ -487,9 +491,9 @@ function buildDocument(
   };
 
   if (!totals.isExempt) {
-    writeBreakdownRow(y, 'Subtotal', formatCve(totals.subtotal, currency), { muted: true });
+    writeBreakdownRow(y, 'Subtotal', formatCve(totals.subtotal), { muted: true });
     y += 14;
-    writeBreakdownRow(y, `IVA ${totals.ivaRate}%`, formatCve(totals.iva, currency), { muted: true });
+    writeBreakdownRow(y, `IVA ${totals.ivaRate}%`, formatCve(totals.iva), { muted: true });
     y += 18;
     doc.moveTo(breakdownX, y).lineTo(breakdownX + breakdownW, y).strokeColor(PALETTE.hairline).lineWidth(0.4).stroke();
     y += 8;
@@ -520,7 +524,7 @@ function buildDocument(
   doc.fillColor(statusColor).fontSize(7).font('Helvetica-Bold')
     .text(statusLabel, W - M - 200 - 2, y + 14, { width: 200, align: 'right', lineBreak: false, characterSpacing: 1.6 });
   doc.fillColor(PALETTE.accent).fontSize(22).font('Helvetica-Bold')
-    .text(formatCve(totals.total, currency), W - M - 200 - 2, y + 26, { width: 200, align: 'right', lineBreak: false });
+    .text(formatCve(totals.total), W - M - 200 - 2, y + 26, { width: 200, align: 'right', lineBreak: false });
 
   y += totalH + 22;
 

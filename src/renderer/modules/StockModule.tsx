@@ -4,7 +4,7 @@ import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
-import { formatPtDate } from '../lib/format';
+import { formatCve, formatPtDate } from '../lib/format';
 import { stockLevelTone } from '../lib/status';
 import type { CatalogAssignments, StockCatalogRow, StockMovement, StockSummary } from '../types';
 import './StockModule.css';
@@ -372,8 +372,8 @@ export function StockModule() {
         <article className="metric-card">
           <Banknote size={20} />
           <span>Valor</span>
-          <strong>{totals ? totals.inventoryValueCve.toLocaleString('pt-PT') : '...'}</strong>
-          <small>CVE em stock</small>
+          <strong>{totals ? formatCve(totals.inventoryValueCve) : '...'}</strong>
+          <small>em stock</small>
         </article>
       </section>
 
@@ -395,16 +395,16 @@ export function StockModule() {
             <dl>
               <div><dt>Tipo</dt><dd>{selectedCatalog.type}</dd></div>
               <div><dt>Stock</dt><dd>{selectedCatalog.stockTotal} {selectedCatalog.unitOfMeasure}</dd></div>
-              <div><dt>Custo/{selectedCatalog.unitOfMeasure}</dt><dd>{selectedCatalog.landedCostCve.toLocaleString('pt-PT')} CVE</dd></div>
+              <div><dt>Custo/{selectedCatalog.unitOfMeasure}</dt><dd>{formatCve(selectedCatalog.landedCostCve)}</dd></div>
             </dl>
           ) : (
             <dl>
               <div><dt>Tipo</dt><dd>{selectedCatalog.type}</dd></div>
               <div><dt>Stock</dt><dd>{selectedCatalog.stockTotal}</dd></div>
               <div><dt>Atribuidos</dt><dd>{assignments ? assignments.activeCount : '-'}</dd></div>
-              <div><dt>Custo</dt><dd>{selectedCatalog.landedCostCve.toLocaleString('pt-PT')} CVE</dd></div>
-              <div><dt>Venda</dt><dd>{selectedCatalog.sellingPriceCve.toLocaleString('pt-PT')} CVE</dd></div>
-              <div><dt>Aluguer</dt><dd>{selectedCatalog.rentalFeeCve.toLocaleString('pt-PT')} CVE</dd></div>
+              <div><dt>Custo</dt><dd>{formatCve(selectedCatalog.landedCostCve)}</dd></div>
+              <div><dt>Venda</dt><dd>{formatCve(selectedCatalog.sellingPriceCve)}</dd></div>
+              <div><dt>Aluguer</dt><dd>{formatCve(selectedCatalog.rentalFeeCve)}</dd></div>
             </dl>
           )}
 
@@ -518,8 +518,8 @@ export function StockModule() {
                   <span className="stock-item-level-unit">{item.unitOfMeasure || 'un.'}</span>
                 </span>
                 <div className="stock-item-value">
-                  <span className="stock-item-value-amount">{item.sellingPriceCve.toLocaleString('pt-PT')}</span>
-                  <span className="stock-item-value-label">CVE venda</span>
+                  <span className="stock-item-value-amount">{formatCve(item.sellingPriceCve)}</span>
+                  <span className="stock-item-value-label">venda</span>
                 </div>
                 {canManageStock && (
                   <div className="stock-item-actions" onClick={(event) => event.stopPropagation()}>
