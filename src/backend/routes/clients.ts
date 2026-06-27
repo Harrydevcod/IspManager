@@ -232,6 +232,25 @@ export async function registerClientRoutes(app: FastifyInstance) {
     };
   });
 
+  app.get('/api/clients/:id/notices', { preHandler: requireAuth() }, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Id invalido' });
+    }
+    const db = getSqliteDatabase();
+    // Timeline do funil de cobrança do cliente (avisos automáticos + manuais).
+    return db.prepare(`
+      SELECT n.id, n.notice_type AS noticeType, n.origin, n.status, n.sent_at AS sentAt,
+             n.payment_id AS paymentId, p.reference_month AS referenceMonth,
+             p.invoice_number AS invoiceNumber, p.amount_cve AS amountCve, p.due_date AS dueDate
+      FROM whatsapp_notices n
+      LEFT JOIN payments p ON p.id = n.payment_id
+      WHERE n.client_id = ?
+      ORDER BY n.sent_at DESC, n.id DESC
+      LIMIT 100
+    `).all(id);
+  });
+
   app.post('/api/clients', canWriteClients, async (request, reply) => {
     const parsed = createClientSchema.safeParse(request.body);
 

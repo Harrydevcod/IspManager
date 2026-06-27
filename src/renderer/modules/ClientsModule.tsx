@@ -21,6 +21,30 @@ type ClientFormState = {
 
 type MessagingSettings = { companyName: string; whatsappTemplate: string };
 
+type ClientNotice = {
+  id: number;
+  noticeType: 'reminder' | 'overdue' | 'warning' | 'suspension';
+  origin: 'auto' | 'manual';
+  status: 'sent' | 'failed';
+  sentAt: string;
+  referenceMonth: string | null;
+  invoiceNumber: string | null;
+  amountCve: number | null;
+};
+
+const NOTICE_LABELS: Record<ClientNotice['noticeType'], string> = {
+  reminder: 'Lembrete',
+  overdue: 'Vencido',
+  warning: 'Aviso',
+  suspension: 'Suspensão'
+};
+const NOTICE_TONES: Record<ClientNotice['noticeType'], 'info' | 'accent' | 'danger'> = {
+  reminder: 'info',
+  overdue: 'accent',
+  warning: 'accent',
+  suspension: 'danger'
+};
+
 function emptyClientForm(): ClientFormState {
   return { fullName: '', phone: '', nif: '', island: '', zone: '', address: '', status: 'active' };
 }
@@ -61,6 +85,7 @@ export function ClientsModule({
   const [form, setForm] = useState<ClientFormState>(emptyClientForm());
   const [profitability, setProfitability] = useState<ClientProfitability | null>(null);
   const [profitabilityLoading, setProfitabilityLoading] = useState(false);
+  const [notices, setNotices] = useState<ClientNotice[]>([]);
 
   const loadClients = useCallback(() => {
     setLoading(true);
@@ -86,6 +111,7 @@ export function ClientsModule({
   useEffect(() => {
     if (!selectedClient) {
       setProfitability(null);
+      setNotices([]);
       return;
     }
     let cancelled = false;
@@ -100,6 +126,14 @@ export function ClientsModule({
       })
       .finally(() => {
         if (!cancelled) setProfitabilityLoading(false);
+      });
+    authFetch(`http://127.0.0.1:3001/api/clients/${selectedClient.id}/notices`)
+      .then((response) => response.ok ? response.json() as Promise<ClientNotice[]> : [])
+      .then((data) => {
+        if (!cancelled) setNotices(data);
+      })
+      .catch(() => {
+        if (!cancelled) setNotices([]);
       });
     return () => {
       cancelled = true;
@@ -441,6 +475,27 @@ export function ClientsModule({
               </>
             )}
           </section>
+
+          {notices.length > 0 && (
+            <section className="client-dunning">
+              <header><strong>Cobrança</strong><small>{notices.length} aviso(s)</small></header>
+              <ul className="client-dunning-timeline">
+                {notices.map((n) => (
+                  <li key={n.id}>
+                    <Badge tone={NOTICE_TONES[n.noticeType]}>{NOTICE_LABELS[n.noticeType]}</Badge>
+                    <span>
+                      <strong>{n.invoiceNumber || n.referenceMonth || '-'}</strong>
+                      <small>
+                        {formatPtDate(n.sentAt)} · {n.origin === 'auto' ? 'automático' : 'manual'}
+                        {n.amountCve != null && ` · ${formatCve(n.amountCve)}`}
+                        {n.status === 'failed' && ' · falhou'}
+                      </small>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           </div>
         </Dialog>
       )}

@@ -4,7 +4,9 @@ export const fallbackWhatsappTemplate = 'Ola {nome}, somos da {empresa}. Entramo
 export const fallbackWhatsappTestTemplate = 'Teste UltraMsg - {empresa}. Ola {nome}, esta mensagem confirma que a integracao WhatsApp esta ativa.';
 export const fallbackWhatsappInvoiceReadyTemplate = 'Ola {nome}, a sua fatura {fatura} de {mes} no valor de {valor} CVE ja esta pronta. Vencimento: {vencimento}. {empresa}';
 export const fallbackWhatsappReceiptTemplate = 'Ola {nome}, confirmamos o recebimento de {valor} CVE referente a {mes}. O seu recibo {recibo} foi emitido. Obrigado, {empresa}.';
+export const fallbackWhatsappReminderTemplate = 'Ola {nome}, lembramos que a sua fatura {fatura} de {mes}, no valor de {valor} CVE, vence a {vencimento}. {empresa}';
 export const fallbackWhatsappOverdueTemplate = 'Ola {nome}, a sua fatura {fatura} de {mes}, no valor de {valor} CVE, esta em atraso desde {vencimento}. Por favor regularize para evitar constrangimentos. {empresa}';
+export const fallbackWhatsappWarningTemplate = 'Ola {nome}, a sua fatura {fatura} de {mes} continua por regularizar ha {dias_atraso} dia(s). Pedimos que efetue o pagamento o quanto antes para manter o servico ativo. {empresa}';
 export const fallbackWhatsappSuspensionTemplate = 'Ola {nome}, a sua fatura {fatura} continua em atraso ha {dias_atraso} dia(s). O servico podera ser suspenso apos {dias_suspensao} dia(s) de atraso. Regularize para evitar corte. {empresa}';
 
 export type WhatsappTemplateData = {
