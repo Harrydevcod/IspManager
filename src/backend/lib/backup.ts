@@ -7,6 +7,8 @@ import {
   existsSync,
   copyFileSync,
   renameSync,
+  accessSync,
+  constants,
 } from 'node:fs';
 import path from 'node:path';
 import { getSqliteDatabase, closeDatabase } from '../db/database';
@@ -114,6 +116,11 @@ export function resolveBackupDir(): string {
   return dir;
 }
 
+/** Pasta configurada em bruto (vazio = usar a predefinição) — para o formulário. */
+export function readConfiguredBackupDir(): string {
+  return settingsBackupDir() ?? '';
+}
+
 function stamp(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return (
@@ -136,8 +143,61 @@ function parseStamp(file: string): Date | null {
   );
 }
 
+/**
+ * Valida uma pasta de destino de backups (ex.: pasta sincronizada Drive/Dropbox/
+ * OneDrive = "destino externo"). Vazio = usar a pasta por defeito (válido).
+ * Devolve a mensagem de erro ou null. Partilhado pelo PUT /api/settings e pelo
+ * endpoint de configuração de backups.
+ */
+export function validateBackupDir(dir: string): string | null {
+  const trimmed = dir.trim();
+  if (trimmed.length === 0) return null;
+  try {
+    if (!existsSync(trimmed) || !statSync(trimmed).isDirectory()) {
+      return 'Pasta de backups inexistente';
+    }
+    accessSync(trimmed, constants.W_OK);
+  } catch {
+    return 'Pasta de backups sem permissão de escrita';
+  }
+  return null;
+}
+
+const BACKUP_INTERVAL_KEY = 'backupIntervalHours';
+
+/** Intervalo de backup automático em horas; 0 (ou ausente) = agendamento desligado. */
+export function readBackupIntervalHours(): number {
+  const row = getSqliteDatabase()
+    .prepare('SELECT value FROM app_settings WHERE key = ?')
+    .get(BACKUP_INTERVAL_KEY) as { value: string } | undefined;
+  const n = Number(row?.value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * Backup agendado idempotente (mesmo padrão "IfDue" da auto-faturação): cria um
+ * backup apenas se já passou `backupIntervalHours` desde o último backup `ispm-*`.
+ * O arranque já garante um backup por sessão; este cobre sessões longas. Os
+ * snapshots `pre-restore-*` (recuperação) não contam para a cadência.
+ */
+export async function runScheduledBackupIfDue(
+  now: Date = new Date(),
+): Promise<{ ran: true; file: string } | { skipped: string }> {
+  const intervalHours = readBackupIntervalHours();
+  if (intervalHours <= 0) {
+    return { skipped: 'agendamento desligado' };
+  }
+  const newest = listBackups().find((e) => e.file.startsWith('ispm-'));
+  if (newest && now.getTime() - newest.createdAt.getTime() < intervalHours * 3_600_000) {
+    return { skipped: 'ainda dentro do intervalo' };
+  }
+  const entry = await createBackup('scheduled');
+  pruneBackups();
+  return { ran: true, file: entry.file };
+}
+
 export async function createBackup(
-  reason: 'startup' | 'manual',
+  reason: 'startup' | 'manual' | 'scheduled',
 ): Promise<BackupEntry> {
   void reason; // kept for future audit-log divergence; retention is uniform
   const dir = resolveBackupDir();

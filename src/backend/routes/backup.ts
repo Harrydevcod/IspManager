@@ -6,15 +6,23 @@ import {
   createBackup,
   listBackups,
   pruneBackups,
+  readBackupIntervalHours,
+  readConfiguredBackupDir,
   resolveBackupDir,
   restoreBackup,
   validateBackup,
+  validateBackupDir,
 } from '../lib/backup';
+import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
 import { requireRole } from './auth';
 
 const restoreSchema = z.object({ file: z.string().trim().min(1) });
 const importSchema = z.object({ path: z.string().trim().min(1) });
+const configSchema = z.object({
+  backupDir: z.string().trim().max(500).optional().default(''),
+  intervalHours: z.coerce.number().int().min(0).max(168).optional().default(0)
+});
 
 function importedStamp(d = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -25,7 +33,45 @@ export async function registerBackupRoutes(app: FastifyInstance) {
   const adminOnly = { preHandler: requireRole(['admin']) };
 
   app.get('/api/backups', adminOnly, async () => {
-    return { backupDir: resolveBackupDir(), entries: listBackups() };
+    return {
+      backupDir: resolveBackupDir(),
+      configuredBackupDir: readConfiguredBackupDir(),
+      intervalHours: readBackupIntervalHours(),
+      entries: listBackups()
+    };
+  });
+
+  // Configuração de backups: pasta de destino (ex.: pasta sincronizada
+  // Drive/Dropbox/OneDrive = backup externo) e intervalo do backup automático.
+  app.put('/api/backups/config', adminOnly, async (request, reply) => {
+    const parsed = configSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Configuração inválida' });
+    }
+    const backupDir = parsed.data.backupDir.trim();
+    const dirError = validateBackupDir(backupDir);
+    if (dirError) {
+      return reply.status(400).send({ error: dirError });
+    }
+
+    const db = getSqliteDatabase();
+    const save = db.prepare(`
+      INSERT INTO app_settings (key, value, updated_at)
+      VALUES (?, ?, datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
+    `);
+    db.transaction(() => {
+      save.run('backupDir', backupDir);
+      save.run('backupIntervalHours', String(parsed.data.intervalHours));
+    })();
+
+    recordAudit(request, {
+      action: 'update',
+      entityType: 'backup',
+      summary: 'Atualizou configuração de backups',
+      metadata: { backupDir: backupDir || '(default)', intervalHours: parsed.data.intervalHours }
+    });
+    return { backupDir: resolveBackupDir(), intervalHours: parsed.data.intervalHours };
   });
 
   app.post('/api/backups', adminOnly, async (request) => {

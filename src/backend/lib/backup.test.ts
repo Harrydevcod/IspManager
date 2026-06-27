@@ -17,7 +17,9 @@ import {
   listBackups,
   pruneBackups,
   validateBackup,
+  validateBackupDir,
   restoreBackup,
+  runScheduledBackupIfDue,
   type BackupEntry,
 } from './backup';
 import { runMigrations } from '../db/migrate';
@@ -155,6 +157,82 @@ describe('backup engine IO', () => {
     await createBackup('manual');
     expect(listBackups().length).toBeGreaterThanOrEqual(1);
     expect(() => pruneBackups()).not.toThrow();
+    cleanup();
+  });
+});
+
+describe('validateBackupDir', () => {
+  test('empty string is valid (use default dir)', () => {
+    expect(validateBackupDir('')).toBeNull();
+    expect(validateBackupDir('   ')).toBeNull();
+  });
+
+  test('an existing writable directory is valid', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'ispm-bkd-'));
+    expect(validateBackupDir(dir)).toBeNull();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('a non-existent path is rejected', () => {
+    expect(validateBackupDir(path.join(tmpdir(), 'definitely-not-here-xyz'))).toMatch(/inexistente/i);
+  });
+});
+
+describe('runScheduledBackupIfDue', () => {
+  let dir: string;
+
+  function setData(): void {
+    dir = mkdtempSync(path.join(tmpdir(), 'ispm-sched-'));
+    process.env.ISPM_DATA_DIR = dir;
+    const db = new Database(path.join(dir, 'ispm.sqlite'));
+    runMigrations(db);
+    db.close();
+  }
+
+  function setInterval(hours: number): void {
+    getSqliteDatabase()
+      .prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('backupIntervalHours', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .run(String(hours));
+  }
+
+  function cleanup(): void {
+    closeDatabase();
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  test('skips when scheduling is disabled (interval 0)', async () => {
+    setData();
+    const result = await runScheduledBackupIfDue(new Date());
+    expect(result).toEqual({ skipped: 'agendamento desligado' });
+    expect(listBackups()).toHaveLength(0);
+    cleanup();
+  });
+
+  test('runs when no backup exists yet', async () => {
+    setData();
+    setInterval(24);
+    const result = await runScheduledBackupIfDue(new Date());
+    expect('ran' in result).toBe(true);
+    expect(listBackups().some((e) => e.file.startsWith('ispm-'))).toBe(true);
+    cleanup();
+  });
+
+  test('skips while still inside the interval', async () => {
+    setData();
+    setInterval(24);
+    await createBackup('manual'); // backup recente
+    const result = await runScheduledBackupIfDue(new Date());
+    expect(result).toEqual({ skipped: 'ainda dentro do intervalo' });
+    cleanup();
+  });
+
+  test('runs again once the interval has elapsed', async () => {
+    setData();
+    setInterval(24);
+    const first = await createBackup('manual');
+    const later = new Date(first.createdAt.getTime() + 25 * 3_600_000);
+    const result = await runScheduledBackupIfDue(later);
+    expect('ran' in result).toBe(true);
     cleanup();
   });
 });

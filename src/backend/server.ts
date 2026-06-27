@@ -23,7 +23,7 @@ import { registerSmsRoutes } from './routes/sms';
 import { registerWorkOrderRoutes } from './routes/work-orders';
 import { registerBackupRoutes } from './routes/backup';
 import { registerJobRoutes } from './routes/jobs';
-import { createBackup, pruneBackups } from './lib/backup';
+import { createBackup, pruneBackups, runScheduledBackupIfDue } from './lib/backup';
 import { runMonthlyBillingIfDue } from './lib/auto-billing';
 import { runAudiovisualAnnualIfDue } from './lib/audiovisual-billing';
 import { runOverdueNoticesIfDue } from './lib/notices';
@@ -142,6 +142,15 @@ export async function createBackendApp() {
     drain();
     setInterval(drain, 60_000).unref();
     setInterval(poll, 180_000).unref();
+  }
+
+  // Scheduled backups: o arranque já faz um backup por sessão; este tick cobre
+  // sessões longas, criando um backup quando passou `backupIntervalHours` desde
+  // o último (idempotente, catch-up). Verifica de hora a hora; opt-out com
+  // ISPM_SCHEDULED_BACKUP=off. Mesma disciplina de timer unref'd + erros engolidos.
+  if (process.env.ISPM_SCHEDULED_BACKUP !== 'off' && !process.env.VITEST) {
+    const backupTick = () => { void runJob('scheduled_backup', runScheduledBackupIfDue).catch((err) => app.log.error({ err }, 'scheduled backup failed')); };
+    setInterval(backupTick, 3_600_000).unref();
   }
 
   // SMS companion outbox: dispatch queued SMS to the paired Android phone and
