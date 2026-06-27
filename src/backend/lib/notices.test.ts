@@ -68,6 +68,24 @@ function insertOverdue(params: { code: string; name: string; phone: string | nul
   `).run(clientId, serviceId, `-${params.daysOverdue} days`, `FT-${params.code}`);
 }
 
+// daysFromDue = dias de atraso: negativo = vence no futuro (reminder), positivo = em atraso.
+function insertPayment(params: { code: string; name: string; phone: string | null; daysFromDue: number; status: 'pending' | 'overdue' }) {
+  const clientId = db.prepare(`
+    INSERT INTO clients (client_code, full_name, phone, status, whatsapp_opt_out)
+    VALUES (?, ?, ?, 'active', 0)
+  `).run(params.code, params.name, params.phone).lastInsertRowid as number;
+
+  const serviceId = db.prepare(`
+    INSERT INTO services (client_id, monthly_value_cve, due_day, status)
+    VALUES (?, 2500, 10, 'active')
+  `).run(clientId).lastInsertRowid as number;
+
+  db.prepare(`
+    INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status, invoice_number)
+    VALUES (?, ?, strftime('%Y-%m', 'now'), 2500, date('now', ?), ?, ?)
+  `).run(clientId, serviceId, `${-params.daysFromDue} days`, params.status, `FT-${params.code}`);
+}
+
 const outboxCount = () => (db.prepare('SELECT COUNT(*) AS n FROM whatsapp_outbox').get() as { n: number }).n;
 const noticesCount = () => (db.prepare('SELECT COUNT(*) AS n FROM whatsapp_notices').get() as { n: number }).n;
 
@@ -124,5 +142,18 @@ describe('runOverdueNoticesIfDue', () => {
     expect(result).toMatchObject({ ran: true, enqueued: 0, skipped: 1 });
     expect(outboxCount()).toBe(1);
     expect(noticesCount()).toBe(1);
+  });
+
+  test('funnel: reminder before due date, warning between overdue and suspension', async () => {
+    enableNotices();
+    insertPayment({ code: 'REM', name: 'A Vencer', phone: '9911111', daysFromDue: -2, status: 'pending' }); // reminder (D-2, within D-3 window)
+    insertPayment({ code: 'WRN', name: 'Em Aviso', phone: '9922222', daysFromDue: 10, status: 'overdue' }); // warning (>=7, <15)
+    insertPayment({ code: 'FUT', name: 'Longe', phone: '9933333', daysFromDue: -10, status: 'pending' }); // too early, no stage
+
+    const result = await runOverdueNoticesIfDue(new Date());
+
+    expect(result).toMatchObject({ ran: true, enqueued: 2 });
+    const notices = db.prepare('SELECT notice_type AS type FROM whatsapp_notices ORDER BY type').all() as Array<{ type: string }>;
+    expect(notices.map((n) => n.type)).toEqual(['reminder', 'warning']);
   });
 });

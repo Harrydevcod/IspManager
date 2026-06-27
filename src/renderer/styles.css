@@ -4585,6 +4585,41 @@ button.danger:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+.client-dunning {
+  margin-top: var(--s4);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: var(--s3);
+}
+.client-dunning > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s3);
+}
+.client-dunning > header strong { color: var(--text); letter-spacing: 0.01em; }
+.client-dunning > header small { color: var(--text-3); font-size: var(--fs-xs); }
+.client-dunning-timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--s2);
+}
+.client-dunning-timeline li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+}
+.client-dunning-timeline li > span { display: grid; gap: 2px; }
+.client-dunning-timeline li strong { color: var(--text); font-size: var(--fs-sm); }
+.client-dunning-timeline li small { color: var(--text-3); font-size: 11px; }
+
 .sms-pairing-qr { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 12px; }
 .sms-pairing-qr img { border-radius: 12px; background: #fff; padding: 8px; }
 .sms-pairing-qr span { font-size: 0.8rem; color: var(--text-secondary, #9aa6b8); text-align: center; }

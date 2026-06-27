@@ -1,18 +1,53 @@
 import { getSqliteDatabase } from '../db/database';
 import {
   fallbackWhatsappOverdueTemplate,
+  fallbackWhatsappReminderTemplate,
   fallbackWhatsappSuspensionTemplate,
   fallbackWhatsappTemplate,
+  fallbackWhatsappWarningTemplate,
   renderWhatsappTemplate
 } from '../../shared/whatsapp';
 import { normalizeUltraMsgPhone } from './ultramsg';
 import { enqueueWhatsapp } from './whatsapp-outbox';
 
 const LAST_RUN_KEY = 'lastOverdueNoticesDate';
+const DEFAULT_REMINDER_DAYS = 3;
+const DEFAULT_OVERDUE_DAYS = 1;
+const DEFAULT_WARNING_DAYS = 7;
 const DEFAULT_SUSPENSION_DAYS = 15;
 const DEFAULT_COOLDOWN_DAYS = 7;
 
-type NoticeType = 'overdue' | 'suspension';
+type NoticeType = 'reminder' | 'overdue' | 'warning' | 'suspension';
+
+type FunnelStage = { stage: NoticeType; threshold: number };
+
+/**
+ * Funil de cobrança configurável, por dias relativos ao vencimento (negativo =
+ * antes). Reutiliza `whatsappSuspensionNoticeDays` para a etapa de suspensão.
+ * Devolve as etapas ordenadas por threshold crescente.
+ */
+function loadFunnel(): FunnelStage[] {
+  const reminderDays = Number(getSetting('dunningReminderDays')) || DEFAULT_REMINDER_DAYS;
+  const overdueDays = Number(getSetting('dunningOverdueDays')) || DEFAULT_OVERDUE_DAYS;
+  const warningDays = Number(getSetting('dunningWarningDays')) || DEFAULT_WARNING_DAYS;
+  const suspensionDays = Number(getSetting('whatsappSuspensionNoticeDays')) || DEFAULT_SUSPENSION_DAYS;
+  const stages: FunnelStage[] = [
+    { stage: 'reminder', threshold: -Math.abs(reminderDays) },
+    { stage: 'overdue', threshold: overdueDays },
+    { stage: 'warning', threshold: warningDays },
+    { stage: 'suspension', threshold: suspensionDays }
+  ];
+  return stages.sort((a, b) => a.threshold - b.threshold);
+}
+
+/** Etapa atual = a de maior threshold <= dias de atraso; null se ainda cedo demais. */
+function stageFor(funnel: FunnelStage[], daysOverdue: number): NoticeType | null {
+  let current: NoticeType | null = null;
+  for (const s of funnel) {
+    if (s.threshold <= daysOverdue) current = s.stage;
+  }
+  return current;
+}
 
 type OverdueCandidate = {
   paymentId: number;
@@ -53,10 +88,16 @@ function isEnabled(): boolean {
 }
 
 function templateFor(type: NoticeType): string {
-  if (type === 'suspension') {
-    return getSetting('whatsappSuspensionTemplate') || fallbackWhatsappSuspensionTemplate;
+  switch (type) {
+    case 'reminder':
+      return getSetting('whatsappReminderTemplate') || fallbackWhatsappReminderTemplate;
+    case 'warning':
+      return getSetting('whatsappWarningTemplate') || fallbackWhatsappWarningTemplate;
+    case 'suspension':
+      return getSetting('whatsappSuspensionTemplate') || fallbackWhatsappSuspensionTemplate;
+    default:
+      return getSetting('whatsappOverdueTemplate') || getSetting('whatsappTemplate') || fallbackWhatsappOverdueTemplate || fallbackWhatsappTemplate;
   }
-  return getSetting('whatsappOverdueTemplate') || getSetting('whatsappTemplate') || fallbackWhatsappOverdueTemplate || fallbackWhatsappTemplate;
 }
 
 /**
@@ -69,8 +110,9 @@ function templateFor(type: NoticeType): string {
  *  - per-payment dedupe against `whatsapp_notices` inside the cooldown window,
  *    which also covers manual sends since the route logs there too.
  *
- * Notice type is derived per payment: `suspension` once it crosses the
- * configured day threshold, otherwise `overdue`. Safe to call on every boot.
+ * A etapa do funil é derivada por pagamento a partir dos dias de atraso
+ * (`reminder` antes do vencimento → `overdue` → `warning` → `suspension`),
+ * via {@link loadFunnel}/{@link stageFor}. Safe to call on every boot.
  */
 export async function runOverdueNoticesIfDue(
   now: Date = new Date()
@@ -91,9 +133,12 @@ export async function runOverdueNoticesIfDue(
   }
 
   const db = getSqliteDatabase();
+  const funnel = loadFunnel();
   const suspensionDays = Number(getSetting('whatsappSuspensionNoticeDays')) || DEFAULT_SUSPENSION_DAYS;
   const cooldownDays = Number(getSetting('noticeCooldownDays')) || DEFAULT_COOLDOWN_DAYS;
   const companyName = getSetting('companyName') || 'ISPM';
+  // Janela de antecipação = etapa mais cedo do funil (reminder, threshold negativo).
+  const reminderWindow = Math.max(0, -funnel[0].threshold);
 
   const candidates = db.prepare(`
     SELECT
@@ -111,9 +156,9 @@ export async function runOverdueNoticesIfDue(
     FROM payments py
     JOIN clients c ON c.id = py.client_id
     WHERE (py.status = 'overdue'
-           OR (py.status = 'pending' AND py.due_date < date('now')))
+           OR (py.status = 'pending' AND py.due_date <= date('now', '+' || ? || ' days')))
     ORDER BY py.due_date ASC
-  `).all() as OverdueCandidate[];
+  `).all(reminderWindow) as OverdueCandidate[];
 
   const recentlyNotified = db.prepare(`
     SELECT 1 FROM whatsapp_notices
@@ -137,7 +182,8 @@ export async function runOverdueNoticesIfDue(
 
   for (let i = 0; i < eligible.length; i++) {
     const row = eligible[i];
-    const type: NoticeType = row.daysOverdue >= suspensionDays ? 'suspension' : 'overdue';
+    const type = stageFor(funnel, row.daysOverdue);
+    if (!type) { skipped += 1; continue; }
 
     const alreadySent = recentlyNotified.get(row.paymentId, type, `-${cooldownDays} days`);
     if (alreadySent) { skipped += 1; continue; }
