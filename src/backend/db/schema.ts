@@ -373,6 +373,36 @@ export const smsCompanionPairing = sqliteTable('sms_companion_pairing', {
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
 });
 
+// Contador sequencial por série/ano dos documentos (migration 0020). A PK real é
+// composta (series, year); o guarda de drift compara a flag PK por coluna, por
+// isso modela-se `series` como PK — a tabela é só acedida por SQL cru em
+// numbering.ts, nunca pelo query builder. ponytail: PK composta como single-col,
+// suficiente porque é uma tabela-contador congelada.
+export const documentSequences = sqliteTable('document_sequences', {
+  series: text('series').primaryKey(),
+  year: integer('year').notNull(),
+  lastNumber: integer('last_number').notNull().default(0)
+});
+
+// Rate-limit / lockout do login (migration 0022).
+export const loginThrottle = sqliteTable('login_throttle', {
+  identifier: text('identifier').primaryKey(),
+  failCount: integer('fail_count').notNull().default(0),
+  firstFailedAt: text('first_failed_at').notNull().default('CURRENT_TIMESTAMP'),
+  lastFailedAt: text('last_failed_at').notNull().default('CURRENT_TIMESTAMP'),
+  lockedUntil: text('locked_until')
+});
+
+// Observabilidade dos jobs in-process (migration 0023).
+export const jobRuns = sqliteTable('job_runs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  job: text('job').notNull(),
+  status: text('status').notNull(),
+  ranAt: text('ran_at').notNull().default('CURRENT_TIMESTAMP'),
+  durationMs: integer('duration_ms'),
+  summaryJson: text('summary_json')
+});
+
 /**
  * Inferred row types — one `select` (read) and `insert` (write) per table.
  * Prefer these over hand-written `as { ... }` casts in raw queries: renaming a
@@ -424,3 +454,7 @@ export type NewWhatsappOutboxRow = typeof whatsappOutbox.$inferInsert;
 export type SmsOutboxRow = typeof smsOutbox.$inferSelect;
 export type NewSmsOutboxRow = typeof smsOutbox.$inferInsert;
 export type SmsCompanionPairing = typeof smsCompanionPairing.$inferSelect;
+export type DocumentSequence = typeof documentSequences.$inferSelect;
+export type LoginThrottleRow = typeof loginThrottle.$inferSelect;
+export type JobRun = typeof jobRuns.$inferSelect;
+export type NewJobRun = typeof jobRuns.$inferInsert;
