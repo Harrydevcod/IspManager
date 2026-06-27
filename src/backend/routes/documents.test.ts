@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
-import { formatBankAccountsForDocument, formatDate } from './documents';
+import { formatBankAccountsForDocument, formatDate } from '../lib/documents';
 
 let app: FastifyInstance;
 let db: Database.Database;
