@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { existsSync, statSync, accessSync, constants } from 'node:fs';
 import { getSqliteDatabase } from '../db/database';
+import { validateBackupDir } from '../lib/backup';
 import { recordAudit } from '../lib/audit';
 import { requireRole } from './auth';
 import {
@@ -244,15 +244,9 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     }
 
     const wantedBackupDir = (parsed.data.backupDir ?? '').trim();
-    if (wantedBackupDir.length > 0) {
-      try {
-        if (!existsSync(wantedBackupDir) || !statSync(wantedBackupDir).isDirectory()) {
-          return reply.status(400).send({ error: 'Pasta de backups inexistente' });
-        }
-        accessSync(wantedBackupDir, constants.W_OK);
-      } catch {
-        return reply.status(400).send({ error: 'Pasta de backups sem permissão de escrita' });
-      }
+    const backupDirError = validateBackupDir(wantedBackupDir);
+    if (backupDirError) {
+      return reply.status(400).send({ error: backupDirError });
     }
 
     const save = db.prepare(`
