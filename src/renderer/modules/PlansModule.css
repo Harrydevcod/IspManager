@@ -24,13 +24,13 @@
   top: 0;
   z-index: var(--z-sticky);
   background: var(--bg);
-  padding-block: var(--s2);
-  margin-block: calc(-1 * var(--s2));
+  padding-block: var(--space-2);
+  margin-block: calc(-1 * var(--space-2));
 }
 
 /* The list: hairline-separated rows, no per-row borders. */
 .plans-list {
-  margin-top: var(--s4);
+  margin-top: var(--space-4);
   display: grid;
   border-top: 1px solid var(--border);
 }
@@ -39,8 +39,8 @@
   display: grid;
   grid-template-columns: 36px minmax(0, 1.5fr) minmax(140px, 1fr) minmax(140px, max-content) auto;
   align-items: center;
-  gap: var(--s4);
-  padding: var(--s3) var(--s2);
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-2);
   border-bottom: 1px solid var(--border);
   color: var(--text-2);
   transition: background var(--motion-fast) var(--ease-out);
@@ -85,7 +85,7 @@
 .plan-item-name {
   display: flex;
   align-items: center;
-  gap: var(--s2);
+  gap: var(--space-2);
   color: var(--text);
   font-weight: 600;
   font-size: var(--fs-base);
@@ -111,7 +111,7 @@
 .plan-item-meta {
   display: flex;
   align-items: center;
-  gap: var(--s2);
+  gap: var(--space-2);
   font-size: var(--fs-xs);
   color: var(--text-3);
   text-transform: uppercase;
@@ -179,7 +179,7 @@
 
 .plan-item-actions {
   display: flex;
-  gap: var(--s2);
+  gap: var(--space-2);
 }
 
 /* Tablet: collapse speed under name. */
@@ -203,7 +203,7 @@
 @media (max-width: 640px) {
   .plan-item {
     grid-template-columns: 36px minmax(0, 1fr) auto;
-    row-gap: var(--s2);
+    row-gap: var(--space-2);
   }
 
   .plan-item-price {

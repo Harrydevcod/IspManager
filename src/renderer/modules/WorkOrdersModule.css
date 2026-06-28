@@ -14,7 +14,7 @@
   display: grid;
   grid-template-columns: 1.1fr 1.1fr 1.15fr 0.85fr 0.7fr;
   gap: clamp(var(--space-2-5), 1.4vw, var(--space-4));
-  margin-top: var(--s5);
+  margin-top: var(--space-6);
   align-items: start;
 }
 
@@ -41,10 +41,10 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--s2);
-  padding: 0 var(--s2) var(--s3);
+  gap: var(--space-2);
+  padding: 0 var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border);
-  margin-bottom: var(--s3);
+  margin-bottom: var(--space-3);
 }
 
 .kanban-head h3 {
@@ -84,8 +84,8 @@
 .kanban-body {
   display: flex;
   flex-direction: column;
-  gap: var(--s2);
-  padding: 0 var(--s2);
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
   flex: 1;
 }
 
@@ -94,9 +94,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--s2);
+  gap: var(--space-2);
   min-height: 92px;
-  padding: var(--s4) var(--s3);
+  padding: var(--space-4) var(--space-3);
   border: 1px dashed color-mix(in oklch, var(--border) 65%, transparent);
   border-radius: var(--r1);
   color: var(--text-3);
@@ -135,7 +135,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: var(--s3) var(--s3) calc(var(--s3) + var(--space-0-5));
+  padding: var(--space-3) var(--space-3) calc(var(--space-3) + var(--space-0-5));
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r1);
@@ -179,7 +179,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: var(--s2);
+  gap: var(--space-2);
   margin-bottom: var(--space-0-5);
   min-height: 14px;
 }
@@ -260,7 +260,7 @@
   color: var(--text-2);
   display: flex;
   align-items: baseline;
-  gap: var(--s2);
+  gap: var(--space-2);
 }
 
 .kanban-card-client-name {
@@ -310,8 +310,8 @@
 .workorders-summary {
   display: flex;
   align-items: baseline;
-  gap: var(--s2);
-  margin: var(--s2) 0 0;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
   color: var(--text-3);
   font-size: 11.5px;
   letter-spacing: 0.01em;

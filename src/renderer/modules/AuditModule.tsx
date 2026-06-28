@@ -1,7 +1,7 @@
 import { Activity, Banknote, Inbox, KeyRound, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { Button, EmptyState, Field, FilterBar, Message, Select } from '../components';
+import { Button, EmptyState, Field, FilterBar, Select, SkeletonList } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatPtDate, formatPtDateTime } from '../lib/format';
 import './AuditModule.css';
@@ -169,7 +169,7 @@ export function AuditModule() {
         </FilterBar>
       </div>
 
-      {loading && <Message>A carregar auditoria...</Message>}
+      {loading && <SkeletonList rows={6} />}
 
       {!loading && rows.length === 0 && (
         <EmptyState

@@ -9,7 +9,7 @@
    ========================================================================= */
 
 .dialog:has(.investment-form) {
-  max-width: min(1040px, calc(100vw - var(--s6)));
+  max-width: min(1040px, calc(100vw - var(--space-8)));
   background:
     linear-gradient(180deg, color-mix(in oklch, var(--surface-1) 94%, var(--accent) 6%), var(--surface));
   border-color: color-mix(in oklch, var(--border) 72%, var(--accent));
@@ -17,7 +17,7 @@
 }
 
 .dialog:has(.investment-form) .dialog-header {
-  padding: var(--s5) var(--s6);
+  padding: var(--space-6) var(--space-8);
   background:
     linear-gradient(135deg, color-mix(in oklch, var(--surface-2) 92%, var(--accent) 8%), transparent 68%),
     linear-gradient(180deg, color-mix(in oklch, var(--surface-1) 96%, transparent), transparent);
@@ -33,22 +33,22 @@
 }
 
 .dialog:has(.investment-form) .dialog-body {
-  padding: var(--s5) var(--s6);
+  padding: var(--space-6) var(--space-8);
 }
 
 .dialog:has(.investment-form) .dialog-actions {
-  padding: var(--s4) var(--s6) var(--s5);
+  padding: var(--space-4) var(--space-8) var(--space-6);
   background: color-mix(in oklch, var(--surface-1) 88%, transparent);
 }
 
 .investment-alerts {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s2);
+  gap: var(--space-2);
 }
 
 .investment-alerts span {
-  padding: var(--s2) var(--s3);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid color-mix(in oklch, var(--danger) 44%, var(--border));
   border-radius: 8px;
   background: color-mix(in oklch, var(--danger) 10%, var(--surface-1));
@@ -59,7 +59,7 @@
 
 .investment-return-panel {
   display: grid;
-  gap: var(--s4);
+  gap: var(--space-4);
 }
 
 .investment-return-caption {
@@ -72,15 +72,15 @@
 
 .investment-return-chart {
   display: grid;
-  gap: var(--s3);
+  gap: var(--space-3);
 }
 
 .investment-return-row {
   display: grid;
   grid-template-columns: minmax(180px, 0.35fr) minmax(0, 1fr);
-  gap: var(--s4);
+  gap: var(--space-4);
   align-items: center;
-  padding: var(--s3);
+  padding: var(--space-3);
   border: 1px solid color-mix(in oklch, var(--border) 72%, transparent);
   border-radius: 8px;
   background: color-mix(in oklch, var(--surface) 72%, transparent);
@@ -105,13 +105,13 @@
 
 .investment-return-bars {
   display: grid;
-  gap: var(--s2);
+  gap: var(--space-2);
 }
 
 .investment-return-barline {
   display: grid;
   grid-template-columns: 86px minmax(0, 1fr) 132px;
-  gap: var(--s3);
+  gap: var(--space-3);
   align-items: center;
 }
 
@@ -146,10 +146,10 @@
 
 .investment-detail {
   position: sticky;
-  top: var(--s4);
+  top: var(--space-4);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: var(--s4);
+  padding: var(--space-4);
   background: var(--surface-1);
 }
 
@@ -162,7 +162,7 @@
 }
 
 .investment-detail-head h3 {
-  margin: var(--s2) 0;
+  margin: var(--space-2) 0;
   font-size: var(--fs-xl);
 }
 
@@ -175,18 +175,18 @@
 .investment-detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s3);
-  margin: var(--s4) 0;
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
 }
 
 .investment-detail-grid div {
-  padding: var(--s3);
+  padding: var(--space-3);
   background: var(--surface-2);
   border-radius: 6px;
 }
 
 .investment-detail-grid dt {
-  margin: 0 0 var(--s1);
+  margin: 0 0 var(--space-1);
   color: var(--text-3);
   font-size: var(--fs-xs);
 }
@@ -199,13 +199,13 @@
 
 .investment-items-preview {
   display: grid;
-  gap: var(--s2);
+  gap: var(--space-2);
 }
 
 .investment-items-preview > div {
   display: grid;
   gap: var(--space-0-5);
-  padding: var(--s3) 0;
+  padding: var(--space-3) 0;
   border-top: 1px solid var(--border);
 }
 
@@ -221,9 +221,9 @@
 
 .investment-zone-summary {
   display: grid;
-  gap: var(--s2);
-  margin-top: var(--s4);
-  padding-top: var(--s4);
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
   border-top: 1px solid var(--border);
 }
 
@@ -238,9 +238,9 @@
 
 .investment-opex-share {
   display: grid;
-  gap: var(--s2);
-  margin-top: var(--s4);
-  padding: var(--s3) var(--s4);
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--r1);
   background: color-mix(in oklch, var(--accent-2) 8%, var(--surface-2));
   border: 1px solid color-mix(in oklch, var(--accent-2) 25%, var(--border));
@@ -260,13 +260,13 @@
 
 .investment-form {
   display: grid;
-  gap: var(--s5);
+  gap: var(--space-6);
 }
 
 .investment-form-grid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: var(--s4);
+  gap: var(--space-4);
 }
 
 .investment-form label,
@@ -283,7 +283,7 @@
 .investment-form input,
 .investment-form select,
 .investment-form textarea {
-  margin-top: var(--s2);
+  margin-top: var(--space-2);
   width: 100%;
   min-height: 42px;
   background: color-mix(in oklch, var(--surface-2) 86%, transparent);
@@ -315,9 +315,9 @@
   grid-column: span 6;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s3);
+  gap: var(--space-3);
   align-items: start;
-  padding: var(--s4);
+  padding: var(--space-4);
   border: 1px solid color-mix(in oklch, var(--border) 86%, transparent);
   border-radius: 8px;
   background: color-mix(in oklch, var(--surface-1) 82%, transparent);
@@ -330,7 +330,7 @@
 
 .investment-form-section h3 {
   grid-column: 1 / -1;
-  margin: 0 0 var(--s1);
+  margin: 0 0 var(--space-1);
   color: var(--text-1);
   font-size: var(--fs-sm);
   letter-spacing: 0.02em;
@@ -343,8 +343,8 @@
 
 .investment-items-editor {
   display: grid;
-  gap: var(--s3);
-  padding: var(--s4);
+  gap: var(--space-3);
+  padding: var(--space-4);
   border: 1px solid color-mix(in oklch, var(--border) 78%, var(--accent));
   border-radius: 8px;
   background:
@@ -355,7 +355,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--s3);
+  gap: var(--space-3);
 }
 
 .investment-items-editor-head strong {
@@ -366,16 +366,16 @@
 .investment-items-editor-head button {
   align-items: center;
   display: inline-flex;
-  gap: var(--s2);
+  gap: var(--space-2);
   min-height: 34px;
 }
 
 .investment-item-header {
   display: grid;
   grid-template-columns: 124px minmax(190px, 1fr) 82px 82px 118px 118px 38px;
-  gap: var(--s2);
+  gap: var(--space-2);
   align-items: center;
-  padding: 0 var(--s2);
+  padding: 0 var(--space-2);
   color: var(--text-3);
   font-size: 0.68rem;
   font-weight: 700;
@@ -393,9 +393,9 @@
 .investment-item-row {
   display: grid;
   grid-template-columns: 124px minmax(190px, 1fr) 82px 82px 118px 118px 38px;
-  gap: var(--s2);
+  gap: var(--space-2);
   align-items: center;
-  padding: var(--s2);
+  padding: var(--space-2);
   border: 1px solid transparent;
   border-radius: 8px;
   background: color-mix(in oklch, var(--surface) 74%, transparent);
@@ -428,9 +428,9 @@
 .investment-form-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s4);
+  gap: var(--space-4);
   justify-content: space-between;
-  padding: var(--s4);
+  padding: var(--space-4);
   border: 1px solid color-mix(in oklch, var(--accent) 42%, var(--border));
   border-radius: 8px;
   background:
@@ -445,14 +445,14 @@
 .investment-form-summary strong {
   color: var(--text-1);
   display: block;
-  margin-top: var(--s1);
+  margin-top: var(--space-1);
   font-size: var(--fs-lg);
   font-variant-numeric: tabular-nums;
 }
 
 .investment-notes {
   display: grid;
-  gap: var(--s2);
+  gap: var(--space-2);
 }
 
 /* Fase 3 — analytics interno do módulo Rentabilidade */
@@ -481,7 +481,7 @@
    which provides padding/border/background. These rules add only inner layout. */
 .investment-equipment-top {
   display: grid;
-  gap: var(--s3);
+  gap: var(--space-3);
 }
 
 .investment-equipment-top ul {
@@ -489,7 +489,7 @@
   padding: 0;
   margin: 0;
   display: grid;
-  gap: var(--s2);
+  gap: var(--space-2);
 }
 
 .investment-equipment-top li { display: grid; gap: var(--space-1); }
@@ -519,9 +519,9 @@
 
 .investment-timeline {
   display: grid;
-  gap: var(--s2);
-  margin-top: var(--s4);
-  padding: var(--s3) var(--s4);
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--r1);
   border: 1px solid var(--border);
   background: color-mix(in oklch, var(--surface-2) 92%, transparent);
@@ -563,7 +563,7 @@
 .investment-variance.is-negative { color: var(--danger); }
 
 /* Flagship portfolio chart sits flush like the dashboard hero card. */
-.investment-flagship .sparkline { margin-top: var(--s2); }
+.investment-flagship .sparkline { margin-top: var(--space-2); }
 
 /* --- investment responsive overrides (moved from styles.css @media) --- */
 
@@ -600,7 +600,7 @@
   .investment-item-header { display: none; }
   .investment-item-row {
     grid-template-columns: 1fr;
-    padding: var(--s3);
+    padding: var(--space-3);
     border: 1px solid var(--border);
     border-radius: 8px;
   }

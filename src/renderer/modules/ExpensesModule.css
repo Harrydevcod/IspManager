@@ -33,7 +33,7 @@
 
 .expenses-module .module-header small {
   display: block;
-  margin-top: var(--s2);
+  margin-top: var(--space-2);
   color: var(--text-3);
   font-size: var(--fs-sm);
 }
@@ -47,22 +47,22 @@
 .expenses-header-actions {
   display: flex;
   align-items: center;
-  gap: var(--s2);
+  gap: var(--space-2);
   flex-wrap: wrap;
   justify-content: flex-end;
 }
 
 .expenses-filter-shell .filter-bar {
   align-items: end;
-  margin-top: var(--s4);
+  margin-top: var(--space-4);
 }
 
 .filter-bar .expenses-toggle-filter {
   min-height: 40px;
   align-content: center;
   grid-template-columns: auto max-content;
-  gap: var(--s2);
-  padding: 0 var(--s3);
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--r1);
   background: var(--surface-2);
@@ -85,12 +85,12 @@
 
 .expense-form {
   display: grid;
-  gap: var(--s5);
+  gap: var(--space-6);
 }
 
 .expense-form-section {
   display: grid;
-  gap: var(--s3);
+  gap: var(--space-3);
 }
 
 .expense-form-section-title {
@@ -99,7 +99,7 @@
   text-transform: uppercase;
   color: var(--text-3);
   font-weight: 700;
-  padding-bottom: var(--s2);
+  padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--border);
 }
 
@@ -124,7 +124,7 @@
 .expense-form-grid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: var(--s3) var(--s4);
+  gap: var(--space-3) var(--space-4);
 }
 
 .expense-form-grid > .col-amount { grid-column: span 5; }
@@ -169,16 +169,16 @@
 .expenses-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: var(--s3);
-  margin: var(--s4) 0 var(--s5);
+  gap: var(--space-3);
+  margin: var(--space-4) 0 var(--space-6);
 }
 
 .expenses-summary-card {
   --tone: var(--accent);
   position: relative;
   display: grid;
-  gap: var(--s2);
-  padding: var(--s4);
+  gap: var(--space-2);
+  padding: var(--space-4);
   border-radius: var(--r2);
   border: 1px solid var(--border);
   background:
@@ -338,13 +338,13 @@
 
 .expense-allocation {
   margin: 0;
-  padding: var(--s4);
+  padding: var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--r2);
   background:
     linear-gradient(180deg, color-mix(in oklch, var(--surface-2) 94%, transparent), color-mix(in oklch, var(--surface-2) 86%, transparent));
   display: grid;
-  gap: var(--s3);
+  gap: var(--space-3);
 }
 
 .expense-allocation legend {
@@ -397,7 +397,7 @@
 }
 
 .dialog:has(.expense-templates) {
-  max-width: min(920px, calc(100vw - var(--s6)));
+  max-width: min(920px, calc(100vw - var(--space-8)));
 }
 
 .dialog:has(.expense-templates) .dialog-body {
@@ -406,7 +406,7 @@
 
 .expense-templates {
   display: grid;
-  gap: var(--s4);
+  gap: var(--space-4);
   min-width: 0;
 }
 
@@ -414,8 +414,8 @@
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
-  gap: var(--s3);
-  padding: var(--s4);
+  gap: var(--space-3);
+  padding: var(--space-4);
   border-radius: var(--r2);
   border: 1px solid var(--border);
   background:
@@ -456,9 +456,9 @@
 .expense-template-form {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr auto;
-  gap: var(--s3);
+  gap: var(--space-3);
   align-items: end;
-  padding: var(--s4);
+  padding: var(--space-4);
   border: 1px dashed var(--border);
   border-radius: var(--r1);
   background: color-mix(in oklch, var(--surface) 60%, transparent);
@@ -494,15 +494,15 @@
   padding: 0;
   margin: 0;
   display: grid;
-  gap: var(--s2);
+  gap: var(--space-2);
 }
 
 .expense-template-list li {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: var(--s3);
+  gap: var(--space-3);
   align-items: center;
-  padding: var(--s3) var(--s4);
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--r1);
   background: var(--surface-2);
@@ -593,12 +593,12 @@
 .expenses-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--s3);
+  gap: var(--space-3);
 }
 
 .investment-metrics > div,
 .expenses-metrics > div {
-  padding: var(--s4);
+  padding: var(--space-4);
   border: 1px solid var(--border);
   border-radius: 8px;
   background:
@@ -612,7 +612,7 @@
   font-size: var(--fs-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  margin-bottom: var(--s2);
+  margin-bottom: var(--space-2);
 }
 
 .investment-metrics strong,
@@ -625,7 +625,7 @@
 .expenses-metrics small,
 .investment-metrics small {
   display: block;
-  margin-top: var(--s1);
+  margin-top: var(--space-1);
   color: var(--text-3);
   font-size: var(--fs-xs);
   line-height: 1.5;

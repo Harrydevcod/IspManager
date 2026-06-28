@@ -1,7 +1,7 @@
 import { Cable, MessageCircle, Pencil, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useState } from 'react';
-import { Badge, Button, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
+import { Badge, Button, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, Select, SkeletonList, useToast } from '../components';
 import { ClientImportDialog } from './clients/import';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
@@ -317,9 +317,9 @@ export function ClientsModule({
         onCompleted={() => { void loadClients(); }}
       />
 
-      {loading && <Message>A carregar clientes...</Message>}
+      {loading && <SkeletonList rows={6} />}
       {loadError && !loading && (
-        <Message tone="error">{loadError}</Message>
+        <ErrorRetry message={loadError} onRetry={() => { void loadClients(); }} />
       )}
 
       <FilterBar>
