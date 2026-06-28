@@ -141,6 +141,7 @@ export const equipmentCatalog = sqliteTable('equipment_catalog', {
   rentalFeeCve: real('rental_fee_cve').notNull().default(0),
   stockTotal: integer('stock_total').notNull().default(0),
   active: integer('active', { mode: 'boolean' }).notNull().default(true),
+  isBackbone: integer('is_backbone', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
 });

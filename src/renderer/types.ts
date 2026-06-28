@@ -115,6 +115,7 @@ export type StockCatalogRow = {
   rentalFeeCve: number;
   stockTotal: number;
   active: number;
+  isBackbone: number;
   landedCostCve: number;
   lastMovementAt: string | null;
 };
@@ -362,6 +363,7 @@ export type InvestmentList = {
     totalCostCve: number;
     totalExpensesCve: number;
     totalInvestedCve: number;
+    backboneStockCve: number;
     ownInfrastructureCve: number;
     totalReceivedCve: number;
     companyAccumulatedProfitCve: number;

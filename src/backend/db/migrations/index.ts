@@ -22,6 +22,7 @@ import m0020 from './0020_document_sequences';
 import m0022 from './0022_login_throttle';
 import m0023 from './0023_job_runs';
 import m0024 from './0024_dunning_funnel_notice_types';
+import m0025 from './0025_catalog_backbone_flag';
 
 /**
  * The migration chain, in the order new migrations are appended.
@@ -32,6 +33,6 @@ import m0024 from './0024_dunning_funnel_notice_types';
  * the runner enforces this via checksum drift detection.
  */
 // 0021 (money_centavos) ficou por usar — o runner ordena por versão e tolera o gap.
-export const migrations: Migration[] = [m0001, m0002, m0003, m0004, m0005, m0006, m0007, m0008, m0009, m0010, m0011, m0012, m0013, m0014, m0015, m0016, m0017, m0018, m0019, m0020, m0022, m0023, m0024];
+export const migrations: Migration[] = [m0001, m0002, m0003, m0004, m0005, m0006, m0007, m0008, m0009, m0010, m0011, m0012, m0013, m0014, m0015, m0016, m0017, m0018, m0019, m0020, m0022, m0023, m0024, m0025];
 
 export type { Migration } from './types';
