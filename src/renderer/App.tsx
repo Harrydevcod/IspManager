@@ -107,11 +107,14 @@ function AppShell() {
   }, [visibleSections, section]);
 
   useEffect(() => {
-    fetch('http://127.0.0.1:3001/health')
-      .then((response) => {
-        setHealth(response.ok ? 'online' : 'offline');
-      })
-      .catch(() => setHealth('offline'));
+    const check = () => {
+      fetch('http://127.0.0.1:3001/health')
+        .then((response) => setHealth(response.ok ? 'online' : 'offline'))
+        .catch(() => setHealth('offline'));
+    };
+    check();
+    const id = setInterval(check, 15000); // reverifica a cada 15s; sem flicker (nunca volta a 'checking')
+    return () => clearInterval(id);
   }, []);
 
   const refreshSummary = useCallback(() => {
