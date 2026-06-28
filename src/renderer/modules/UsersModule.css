@@ -97,7 +97,7 @@
 
 .user-row-identity-text {
   display: grid;
-  gap: 1px;
+  gap: var(--space-px);
   min-width: 0;
 }
 
@@ -142,8 +142,8 @@
 .user-role-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--rpill);
   font-size: var(--fs-xs);
   font-weight: 600;

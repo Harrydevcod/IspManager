@@ -7,7 +7,7 @@
    ========================================================================= */
 
 .plans-header-subtitle {
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
   color: var(--text-3);
   font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
@@ -78,7 +78,7 @@
 
 .plan-item-main {
   display: grid;
-  gap: 2px;
+  gap: var(--space-0-5);
   min-width: 0;
 }
 
@@ -132,7 +132,7 @@
 
 .plan-item-speed {
   display: grid;
-  gap: 1px;
+  gap: var(--space-px);
   font-variant-numeric: tabular-nums;
   font-feature-settings: var(--font-feature-ui), "tnum";
 }
@@ -154,7 +154,7 @@
 
 .plan-item-price {
   display: grid;
-  gap: 1px;
+  gap: var(--space-px);
   justify-items: end;
   text-align: right;
   font-variant-numeric: tabular-nums;

@@ -7,7 +7,7 @@
 
 /* Header subtitle: scan-counts beside the eyebrow + title. */
 .audit-header-subtitle {
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
   color: var(--text-3);
   font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
@@ -99,7 +99,7 @@
 
 .audit-entry-event {
   display: grid;
-  gap: 2px;
+  gap: var(--space-0-5);
   min-width: 0;
 }
 

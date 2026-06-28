@@ -105,7 +105,7 @@
 
 .expense-form label {
   display: grid;
-  gap: 6px;
+  gap: var(--space-1-5);
   font-size: 12px;
   letter-spacing: 0.01em;
   color: var(--text-3);
@@ -146,7 +146,7 @@
 }
 
 .expense-form-amount input {
-  padding-right: 44px;
+  padding-right: var(--space-11);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   font-size: 1.05rem;
@@ -241,7 +241,7 @@
   border-radius: 2px;
   background: color-mix(in oklch, var(--surface) 90%, transparent);
   overflow: hidden;
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
 }
 
 .expenses-summary-bar > span {
@@ -254,7 +254,7 @@
 /* Expenses table polish — stable columns + subtle rateio pill. */
 .expenses-row-main {
   display: grid;
-  gap: 3px;
+  gap: var(--space-1);
   min-width: 0;
 }
 
@@ -282,7 +282,7 @@
 .expenses-alloc-tag {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   border-radius: 999px;
   font-size: 10px;
   letter-spacing: 0.08em;
@@ -348,7 +348,7 @@
 }
 
 .expense-allocation legend {
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -365,15 +365,15 @@
 .expense-allocation-tabs {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
-  padding: 3px;
+  gap: var(--space-1);
+  padding: var(--space-1);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r1);
 }
 
 .expense-allocation-tabs button {
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-3);
@@ -429,7 +429,7 @@
   color: var(--text-3);
   font-weight: 700;
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .expense-templates-kpi-value {
@@ -466,7 +466,7 @@
 
 .expense-template-form label {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -554,7 +554,7 @@
   display: block;
   color: var(--text-3);
   font-size: 11px;
-  margin-top: 3px;
+  margin-top: var(--space-1);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
 }
@@ -562,13 +562,13 @@
 .expense-template-status {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  padding: var(--space-0-5) var(--space-2);
   border-radius: 999px;
   font-size: 9px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   font-weight: 700;
-  margin-left: 6px;
+  margin-left: var(--space-1-5);
 }
 
 .expense-template-status.active {
@@ -583,7 +583,7 @@
 
 .expense-template-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: center;
 }
 

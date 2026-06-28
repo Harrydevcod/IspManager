@@ -88,7 +88,7 @@
 
 .investment-return-name {
   display: grid;
-  gap: 3px;
+  gap: var(--space-1);
   min-width: 0;
 }
 
@@ -204,7 +204,7 @@
 
 .investment-items-preview > div {
   display: grid;
-  gap: 2px;
+  gap: var(--space-0-5);
   padding: var(--s3) 0;
   border-top: 1px solid var(--border);
 }
@@ -474,7 +474,7 @@
   background: color-mix(in oklch, var(--info) 8%, transparent);
 }
 
-.investment-alerts span strong { font-weight: 700; margin-right: 4px; }
+.investment-alerts span strong { font-weight: 700; margin-right: var(--space-1); }
 
 
 /* equipment-top + return-panel are wrapped in the Card primitive (.primary-panel),
@@ -492,7 +492,7 @@
   gap: var(--s2);
 }
 
-.investment-equipment-top li { display: grid; gap: 3px; }
+.investment-equipment-top li { display: grid; gap: var(--space-1); }
 .investment-equipment-top .row {
   display: flex;
   justify-content: space-between;
@@ -548,14 +548,14 @@
 
 .investment-detail-note {
   display: block;
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
   color: var(--text-3);
   font-size: 11px;
   line-height: 1.45;
 }
 
 .investment-variance {
-  margin-left: 6px;
+  margin-left: var(--space-1-5);
   font-variant-numeric: tabular-nums;
 }
 

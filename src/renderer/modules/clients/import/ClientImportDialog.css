@@ -19,7 +19,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--s3);
-  padding: clamp(40px, 7vw, 64px) var(--s5);
+  padding: clamp(var(--space-10), 7vw, var(--space-16)) var(--s5);
   border: 1.5px dashed color-mix(in oklch, var(--border) 80%, transparent);
   border-radius: var(--r2);
   background: color-mix(in oklch, var(--surface) 50%, transparent);
@@ -182,8 +182,8 @@
 .import-file-reset {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
+  gap: var(--space-1);
+  padding: var(--space-0-5) var(--space-2);
   background: transparent;
   border: 1px solid var(--border);
   border-radius: 3px;
@@ -210,7 +210,7 @@
 .import-counter {
   display: inline-flex;
   align-items: baseline;
-  gap: 4px;
+  gap: var(--space-1);
   color: var(--text-3);
 }
 
@@ -234,7 +234,7 @@
 
 .import-mapping label {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: 11px;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -250,7 +250,7 @@
   background: var(--surface);
   color: var(--text-1);
   font-size: 12px;
-  padding: 6px 8px;
+  padding: var(--space-1-5) var(--space-2);
   cursor: pointer;
   text-transform: none;
   letter-spacing: 0;
@@ -288,7 +288,7 @@
 
 .import-table th {
   text-align: left;
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-2-5);
   border-bottom: 1px solid var(--border);
   color: var(--text-3);
   font-weight: 500;
@@ -301,7 +301,7 @@
 .import-table th:nth-child(2) { width: 28%; }
 
 .import-table td {
-  padding: 7px 10px;
+  padding: var(--space-2) var(--space-2-5);
   border-bottom: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
   color: var(--text-2);
   vertical-align: top;
@@ -318,7 +318,7 @@
 
 .import-table .is-ok .import-status-cell { color: oklch(72% 0.13 155); }
 .import-table .is-ok .import-status-cell::before {
-  content: '●'; margin-right: 6px; font-size: 9px; vertical-align: middle;
+  content: '●'; margin-right: var(--space-1-5); font-size: 9px; vertical-align: middle;
 }
 
 .import-table .is-conflict { background: color-mix(in oklch, oklch(74% 0.12 80) 4%, transparent); }
@@ -374,7 +374,7 @@
   margin: 0;
 }
 
-.import-result-grid > div { display: flex; flex-direction: column; gap: 4px; }
+.import-result-grid > div { display: flex; flex-direction: column; gap: var(--space-1); }
 
 .import-result-grid dt {
   font-size: 10px;
@@ -412,7 +412,7 @@
 }
 
 .import-result-detail li {
-  padding: 2px 0;
+  padding: var(--space-0-5) 0;
   font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
   font-size: 11px;
 }
