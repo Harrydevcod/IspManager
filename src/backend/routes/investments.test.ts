@@ -217,24 +217,23 @@ describe('investments CRUD', () => {
     expect(payload.totals.totalInvestedCve).toBe(26000);
   });
 
-  test('backboneStockCve isola o stock de transmissao sem alterar o total investido', async () => {
-    // Antena de backbone: landed 6000/unid, 2 em maos + 1 ja instalada (saida).
-    const backboneId = db.prepare(`INSERT INTO equipment_catalog
-                (type, model, purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve, stock_total, is_backbone)
-                VALUES ('antena', 'TP-Link CPE710', 5500, 300, 200, 0, 2, 1)`).run().lastInsertRowid as number;
-    db.prepare(`INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_cve) VALUES (?, 'saida', 1, 6000)`).run(backboneId);
-    // Equipamento de cliente: landed 1500/unid, 4 em maos. NAO conta como backbone.
+  test('backboneStockCve = unidades backbone × landed, modelo dividido, sem alterar total investido', async () => {
+    // Modelo dividido: landed 6000/unid, 5 em maos, mas só 2 unidades sao backbone.
     db.prepare(`INSERT INTO equipment_catalog
-                (type, model, purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve, stock_total, is_backbone)
+                (type, model, purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve, stock_total, backbone_qty)
+                VALUES ('cpe', 'TL-S5-5KM', 5500, 300, 200, 0, 5, 2)`).run();
+    // Equipamento sem backbone: landed 1500/unid, 4 em maos.
+    db.prepare(`INSERT INTO equipment_catalog
+                (type, model, purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve, stock_total, backbone_qty)
                 VALUES ('cpe', 'CPE cliente', 1200, 200, 100, 0, 4, 0)`).run();
 
     const response = await app.inject({ method: 'GET', url: '/api/investments' });
     expect(response.statusCode).toBe(200);
     const payload = response.json() as { totals: { backboneStockCve: number; totalInvestedCve: number } };
-    // backbone: em maos 2×6000=12000 + instalada 1×6000=6000 = 18000
-    expect(payload.totals.backboneStockCve).toBe(18000);
-    // total investido conta backbone + cliente: 18000 + (4×1500=6000) = 24000 (flag nao altera)
-    expect(payload.totals.totalInvestedCve).toBe(24000);
+    // backbone: 2 unidades × 6000 = 12000 (as outras 3 do mesmo modelo NAO contam)
+    expect(payload.totals.backboneStockCve).toBe(12000);
+    // total investido conta o stock todo: 5×6000 + 4×1500 = 36000 (backbone_qty nao altera)
+    expect(payload.totals.totalInvestedCve).toBe(36000);
   });
 
   test('lucro acumulado da empresa = recebido − investido (infra+stock) − despesas', async () => {

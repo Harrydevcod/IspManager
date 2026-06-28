@@ -5,7 +5,7 @@
 > por cliente.
 
 **Data:** 2026-06-28
-**Estado:** Aprovado (design)
+**Estado:** Implementado — ver nota de revisão no fim.
 
 ---
 
@@ -131,3 +131,22 @@ catálogo com `is_backbone=1` e stock conhecido + um item de cliente. Assertar:
 | `src/renderer/types.ts` | `isBackbone` + `backboneStockCve` |
 | `src/renderer/modules/StockModule.tsx` | toggle + badge + filtro |
 | `src/renderer/modules/ProfitModule.tsx` | MetricCard backbone |
+
+---
+
+## Nota de revisão (2026-06-28, após smoke)
+
+O smoke com dados reais mostrou um furo: o **mesmo modelo** pode ter unidades no
+backbone **e** em clientes (ex.: TL-S5-5KM — 2 backbone, 6 instaladas). Uma flag
+booleana por entrada de catálogo é tudo-ou-nada e marcaria as 8 como backbone.
+
+**Correção (migration 0026 + PR seguinte):** a flag `is_backbone` é substituída
+por uma **quantidade** `backbone_qty INTEGER` (quantas unidades do modelo são
+backbone). As instaladas em clientes continuam rastreadas pelos assignments.
+
+- `backboneStockCve = Σ(backbone_qty × custo landed)` — só visibilidade, não
+  altera `totalInvestedCve`.
+- UI: o toggle "Uso" passa a um campo numérico **"Unidades backbone"**; o badge
+  mostra **"Backbone ×N"**; o filtro fica Com/Sem backbone.
+- 0025 mantém-se imutável (já aplicada); 0026 adiciona `backbone_qty`, migra
+  `is_backbone=1 → backbone_qty=stock_total`, e faz DROP da coluna booleana.

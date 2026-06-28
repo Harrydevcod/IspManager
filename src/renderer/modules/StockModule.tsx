@@ -22,7 +22,7 @@ type StockFormState = {
   rentalFeeCve: string;
   stockTotal: string;
   active: '1' | '0';
-  isBackbone: '1' | '0';
+  backboneQty: string;
 };
 
 type StockMovementFormState = {
@@ -48,7 +48,7 @@ function emptyCatalogForm(): StockFormState {
     rentalFeeCve: '',
     stockTotal: '0',
     active: '1',
-    isBackbone: '0'
+    backboneQty: '0'
   };
 }
 
@@ -162,7 +162,7 @@ export function StockModule() {
       rentalFeeCve: String(catalog.rentalFeeCve),
       stockTotal: String(catalog.stockTotal),
       active: catalog.active ? '1' : '0',
-      isBackbone: catalog.isBackbone ? '1' : '0'
+      backboneQty: String(catalog.backboneQty ?? 0)
     });
     setShowCatalogForm(true);
   }
@@ -195,9 +195,9 @@ export function StockModule() {
         sellingPriceCve: Number(catalogForm.sellingPriceCve || 0),
         rentalFeeCve: Number(catalogForm.rentalFeeCve || 0),
         stockTotal: Number(catalogForm.stockTotal || 0),
+        backboneQty: Number(catalogForm.backboneQty || 0),
         isSerialized: catalogForm.isSerialized === '1',
-        active: catalogForm.active === '1',
-        isBackbone: catalogForm.isBackbone === '1'
+        active: catalogForm.active === '1'
       })
     });
 
@@ -273,8 +273,8 @@ export function StockModule() {
       || (stockFilter === 'low' && item.stockTotal > 0 && item.stockTotal <= 3)
       || (stockFilter === 'out' && item.stockTotal <= 0);
     const matchesBackbone = backboneFilter === 'all'
-      || (backboneFilter === 'backbone' && !!item.isBackbone)
-      || (backboneFilter === 'cliente' && !item.isBackbone);
+      || (backboneFilter === 'backbone' && item.backboneQty > 0)
+      || (backboneFilter === 'cliente' && item.backboneQty <= 0);
     return matchesSearch && matchesTab && matchesType && matchesStock && matchesBackbone;
   }), [summary, search, stockTab, typeFilter, stockFilter, backboneFilter]);
 
@@ -353,8 +353,8 @@ export function StockModule() {
           </Select>
           <Select label="Uso" value={backboneFilter} onChange={(event) => setBackboneFilter(event.target.value as 'all' | 'backbone' | 'cliente')}>
             <option value="all">Todos</option>
-            <option value="backbone">Backbone</option>
-            <option value="cliente">Cliente</option>
+            <option value="backbone">Com backbone</option>
+            <option value="cliente">Sem backbone</option>
           </Select>
           <Button variant="secondary" onClick={() => { setSearch(''); setTypeFilter('all'); setStockFilter('all'); setBackboneFilter('all'); }}>
             Limpar filtros
@@ -520,7 +520,7 @@ export function StockModule() {
                 <div className="stock-item-main">
                   <span className="stock-item-name">
                     {item.brand ? `${item.brand} ${item.model}` : item.model}
-                    {!!item.isBackbone && <Badge tone="info">Backbone</Badge>}
+                    {item.backboneQty > 0 && <Badge tone="info">Backbone ×{item.backboneQty}</Badge>}
                   </span>
                   <span className="stock-item-meta">
                     <span>{item.type}</span>
@@ -628,10 +628,7 @@ export function StockModule() {
                 <option value="1">Ativo</option>
                 <option value="0">Inativo</option>
               </Select>
-              <Select label="Uso" value={catalogForm.isBackbone} onChange={(event) => updateCatalogForm('isBackbone', event.target.value)}>
-                <option value="0">Cliente</option>
-                <option value="1">Backbone (transmissão)</option>
-              </Select>
+              <Field label="Unidades backbone" type="number" min={0} value={catalogForm.backboneQty} onChange={(event) => updateCatalogForm('backboneQty', event.target.value)} />
             </>
           )}
         </form>

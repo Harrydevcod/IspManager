@@ -115,7 +115,7 @@ export type StockCatalogRow = {
   rentalFeeCve: number;
   stockTotal: number;
   active: number;
-  isBackbone: number;
+  backboneQty: number;
   landedCostCve: number;
   lastMovementAt: string | null;
 };
