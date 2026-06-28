@@ -1,7 +1,7 @@
 import { FileText, Pencil, Plus, Repeat, Trash2 } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useConfirm, useToast } from '../components';
+import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, Field, FilterBar, Message, Select, SkeletonList, Textarea, Toggle, useConfirm, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './ExpensesModule.css';
@@ -442,9 +442,9 @@ export function ExpensesModule() {
         actionsHeader="Ações"
         actionsWidth="92px"
         empty={
-          <div className="module-message">
-            {loading ? 'A carregar...' : 'Sem despesas registadas para os filtros atuais.'}
-          </div>
+          loading
+            ? <SkeletonList rows={4} />
+            : <div className="module-message">Sem despesas registadas para os filtros atuais.</div>
         }
         columns={[
           {

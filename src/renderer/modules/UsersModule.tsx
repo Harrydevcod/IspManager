@@ -1,7 +1,7 @@
 import { KeyRound, Pencil, Plus, ShieldCheck, Trash2, UserCog, UsersRound, Wrench } from 'lucide-react';
 import type { FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Dialog, EmptyState, Field, FilterBar, Message, Select, useConfirm, useToast } from '../components';
+import { Button, Dialog, EmptyState, Field, FilterBar, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import type { UserRole } from '../lib/auth';
 import './UsersModule.css';
@@ -297,7 +297,7 @@ export function UsersModule() {
         </div>
       )}
 
-      {loading && <Message>A carregar...</Message>}
+      {loading && <SkeletonList rows={5} />}
 
       {!loading && visibleUsers.length === 0 && (
         <EmptyState

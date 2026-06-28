@@ -1,6 +1,6 @@
 import { Activity, AlertTriangle, CalendarClock, MessageCircle, TrendingUp, UsersRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Card, Message, MetricCard, MetricGrid, RevenueBars, formatCompactCve } from '../components';
+import { Badge, Button, Card, Message, MetricCard, MetricGrid, RevenueBars, Skeleton, formatCompactCve } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
 import type { DashboardSummary } from '../types';
@@ -127,7 +127,7 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
         >
           {summary
             ? <RevenueBars points={summary.revenueByMonth} />
-            : <p className="module-message">A carregar...</p>}
+            : <Skeleton height={180} radius={12} />}
         </Card>
 
         <Card eyebrow="Distribuicao" title="Planos ativos" className="dashboard-card-distribution">

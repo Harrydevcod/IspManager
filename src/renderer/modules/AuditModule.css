@@ -25,14 +25,14 @@
   top: 0;
   z-index: var(--z-sticky);
   background: var(--bg);
-  padding-block: var(--s2);
-  margin-block: calc(-1 * var(--s2));
+  padding-block: var(--space-2);
+  margin-block: calc(-1 * var(--space-2));
 }
 
 /* The feed itself: a stack of entries separated by hairlines, no per-row
    borders. Reads as an editorial timeline rather than a generic data table. */
 .audit-feed {
-  margin-top: var(--s4);
+  margin-top: var(--space-4);
   display: grid;
   border-top: 1px solid var(--border);
 }
@@ -41,8 +41,8 @@
   display: grid;
   grid-template-columns: 92px 24px minmax(0, 1fr) minmax(0, 220px);
   align-items: center;
-  gap: var(--s4);
-  padding: var(--s3) var(--s2);
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-2);
   border-bottom: 1px solid var(--border);
   color: var(--text-2);
   transition: background var(--motion-fast) var(--ease-out);
@@ -115,7 +115,7 @@
 .audit-entry-event-meta {
   display: flex;
   align-items: center;
-  gap: var(--s2);
+  gap: var(--space-2);
   font-size: var(--fs-xs);
   color: var(--text-3);
   letter-spacing: 0.01em;
@@ -134,7 +134,7 @@
 .audit-entry-actor {
   display: flex;
   align-items: center;
-  gap: var(--s2);
+  gap: var(--space-2);
   justify-self: end;
   min-width: 0;
   color: var(--text-3);
@@ -162,8 +162,8 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--s3);
-  padding: var(--s4) var(--s2) var(--s2);
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-2) var(--space-2);
 }
 
 .audit-pagination span {
@@ -177,7 +177,7 @@
 @media (max-width: 760px) {
   .audit-entry {
     grid-template-columns: 72px 24px minmax(0, 1fr);
-    row-gap: var(--s2);
+    row-gap: var(--space-2);
   }
 
   .audit-entry-actor {

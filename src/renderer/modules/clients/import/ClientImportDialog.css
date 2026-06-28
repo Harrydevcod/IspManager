@@ -10,7 +10,7 @@
 .import-upload {
   display: flex;
   flex-direction: column;
-  gap: var(--s4);
+  gap: var(--space-4);
 }
 
 .import-dropzone {
@@ -18,8 +18,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--s3);
-  padding: clamp(var(--space-10), 7vw, var(--space-16)) var(--s5);
+  gap: var(--space-3);
+  padding: clamp(var(--space-10), 7vw, var(--space-16)) var(--space-6);
   border: 1.5px dashed color-mix(in oklch, var(--border) 80%, transparent);
   border-radius: var(--r2);
   background: color-mix(in oklch, var(--surface) 50%, transparent);
@@ -63,7 +63,7 @@
 
 .import-error {
   margin: 0;
-  padding: var(--s3) var(--s4);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--r1);
   border-left: 2px solid oklch(64% 0.18 25);
   background: color-mix(in oklch, oklch(64% 0.18 25) 7%, transparent);
@@ -74,15 +74,15 @@
 .import-template-row {
   display: flex;
   align-items: center;
-  gap: var(--s3);
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
 .import-template-button {
   display: inline-flex;
   align-items: center;
-  gap: var(--s2);
-  padding: var(--s2) var(--s3);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--r1);
   border: 1px solid var(--border);
   background: var(--surface-2);
@@ -131,7 +131,7 @@
   color: var(--text-2);
   font-weight: 500;
   list-style: none;
-  padding: var(--s2) 0;
+  padding: var(--space-2) 0;
 }
 
 .import-help summary::before {
@@ -143,7 +143,7 @@
 .import-help[open] summary::before { content: '− '; }
 
 .import-help p {
-  margin: var(--s2) 0 0;
+  margin: var(--space-2) 0 0;
   line-height: 1.6;
 }
 
@@ -158,22 +158,22 @@
 .import-preview {
   display: flex;
   flex-direction: column;
-  gap: var(--s4);
+  gap: var(--space-4);
 }
 
 .import-preview-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--s4);
-  padding-bottom: var(--s3);
+  gap: var(--space-4);
+  padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border);
 }
 
 .import-file {
   display: flex;
   align-items: center;
-  gap: var(--s2);
+  gap: var(--space-2);
   font-size: 13px;
   color: var(--text-1);
   font-weight: 500;
@@ -201,7 +201,7 @@
 .import-counters {
   display: flex;
   align-items: baseline;
-  gap: var(--s3);
+  gap: var(--space-3);
   font-size: 11px;
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
@@ -227,8 +227,8 @@
 .import-mapping {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: var(--s2) var(--s3);
-  padding: var(--s3) 0;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -328,7 +328,7 @@
 .import-table .is-error .import-status-cell { color: oklch(70% 0.14 25); }
 
 .import-table-more {
-  margin: var(--s3) 0 0;
+  margin: var(--space-3) 0 0;
   font-size: 11px;
   color: var(--text-3);
   text-align: center;
@@ -339,15 +339,15 @@
 .import-result {
   display: flex;
   flex-direction: column;
-  gap: var(--s5);
+  gap: var(--space-6);
 }
 
 .import-result-figure {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--s2);
-  padding: var(--s4) 0;
+  gap: var(--space-2);
+  padding: var(--space-4) 0;
   border-bottom: 1px solid var(--border);
   color: oklch(72% 0.13 155);
 }
@@ -370,7 +370,7 @@
 .import-result-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: var(--s4);
+  gap: var(--space-4);
   margin: 0;
 }
 
@@ -394,7 +394,7 @@
 
 .import-result-detail {
   border-top: 1px solid var(--border);
-  padding-top: var(--s3);
+  padding-top: var(--space-3);
   font-size: 12px;
   color: var(--text-3);
 }
@@ -407,8 +407,8 @@
 }
 
 .import-result-detail ul {
-  margin: var(--s2) 0 0;
-  padding: 0 0 0 var(--s4);
+  margin: var(--space-2) 0 0;
+  padding: 0 0 0 var(--space-4);
 }
 
 .import-result-detail li {
