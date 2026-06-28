@@ -20,7 +20,8 @@ const catalogSchema = z.object({
   sellingPriceCve: z.coerce.number().min(0).default(0),
   rentalFeeCve: z.coerce.number().min(0).default(0),
   stockTotal: z.coerce.number().int().min(0).default(0),
-  active: z.coerce.boolean().default(true)
+  active: z.coerce.boolean().default(true),
+  isBackbone: z.coerce.boolean().default(false)
 });
 
 const movementSchema = z.object({
@@ -64,6 +65,7 @@ export async function registerStockRoutes(app: FastifyInstance) {
         rental_fee_cve AS rentalFeeCve,
         stock_total AS stockTotal,
         active,
+        is_backbone AS isBackbone,
         (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve) AS landedCostCve,
         (SELECT MAX(created_at) FROM stock_movements sm WHERE sm.catalog_id = equipment_catalog.id) AS lastMovementAt
       FROM equipment_catalog
@@ -99,9 +101,9 @@ export async function registerStockRoutes(app: FastifyInstance) {
       INSERT INTO equipment_catalog (
         category, type, brand, model, description, supplier, unit_of_measure, is_serialized,
         purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve,
-        selling_price_cve, rental_fee_cve, stock_total, active, created_at, updated_at
+        selling_price_cve, rental_fee_cve, stock_total, active, is_backbone, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     `).run(
       parsed.data.category,
       parsed.data.type,
@@ -118,7 +120,8 @@ export async function registerStockRoutes(app: FastifyInstance) {
       parsed.data.sellingPriceCve,
       parsed.data.rentalFeeCve,
       parsed.data.stockTotal,
-      parsed.data.active ? 1 : 0
+      parsed.data.active ? 1 : 0,
+      parsed.data.isBackbone ? 1 : 0
     );
 
     recordAudit(request, {
@@ -157,6 +160,7 @@ export async function registerStockRoutes(app: FastifyInstance) {
           rental_fee_cve = ?,
           stock_total = ?,
           active = ?,
+          is_backbone = ?,
           updated_at = datetime('now')
       WHERE id = ?
     `).run(
@@ -176,6 +180,7 @@ export async function registerStockRoutes(app: FastifyInstance) {
       parsed.data.rentalFeeCve,
       parsed.data.stockTotal,
       parsed.data.active ? 1 : 0,
+      parsed.data.isBackbone ? 1 : 0,
       id
     );
 

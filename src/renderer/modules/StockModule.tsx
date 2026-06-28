@@ -22,6 +22,7 @@ type StockFormState = {
   rentalFeeCve: string;
   stockTotal: string;
   active: '1' | '0';
+  isBackbone: '1' | '0';
 };
 
 type StockMovementFormState = {
@@ -46,7 +47,8 @@ function emptyCatalogForm(): StockFormState {
     sellingPriceCve: '',
     rentalFeeCve: '',
     stockTotal: '0',
-    active: '1'
+    active: '1',
+    isBackbone: '0'
   };
 }
 
@@ -85,6 +87,7 @@ export function StockModule() {
   const [stockTab, setStockTab] = useState<'equipamento' | 'material'>('equipamento');
   const [typeFilter, setTypeFilter] = useState<'all' | StockCatalogRow['type']>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out'>('all');
+  const [backboneFilter, setBackboneFilter] = useState<'all' | 'backbone' | 'cliente'>('all');
   const [catalogForm, setCatalogForm] = useState<StockFormState>(emptyCatalogForm());
   const [movementForm, setMovementForm] = useState<StockMovementFormState>(emptyMovementForm());
 
@@ -158,7 +161,8 @@ export function StockModule() {
       sellingPriceCve: String(catalog.sellingPriceCve),
       rentalFeeCve: String(catalog.rentalFeeCve),
       stockTotal: String(catalog.stockTotal),
-      active: catalog.active ? '1' : '0'
+      active: catalog.active ? '1' : '0',
+      isBackbone: catalog.isBackbone ? '1' : '0'
     });
     setShowCatalogForm(true);
   }
@@ -192,7 +196,8 @@ export function StockModule() {
         rentalFeeCve: Number(catalogForm.rentalFeeCve || 0),
         stockTotal: Number(catalogForm.stockTotal || 0),
         isSerialized: catalogForm.isSerialized === '1',
-        active: catalogForm.active === '1'
+        active: catalogForm.active === '1',
+        isBackbone: catalogForm.isBackbone === '1'
       })
     });
 
@@ -267,8 +272,11 @@ export function StockModule() {
     const matchesStock = stockFilter === 'all'
       || (stockFilter === 'low' && item.stockTotal > 0 && item.stockTotal <= 3)
       || (stockFilter === 'out' && item.stockTotal <= 0);
-    return matchesSearch && matchesTab && matchesType && matchesStock;
-  }), [summary, search, stockTab, typeFilter, stockFilter]);
+    const matchesBackbone = backboneFilter === 'all'
+      || (backboneFilter === 'backbone' && !!item.isBackbone)
+      || (backboneFilter === 'cliente' && !item.isBackbone);
+    return matchesSearch && matchesTab && matchesType && matchesStock && matchesBackbone;
+  }), [summary, search, stockTab, typeFilter, stockFilter, backboneFilter]);
 
   return (
     <section className="module-panel">
@@ -343,7 +351,12 @@ export function StockModule() {
             <option value="low">Baixo</option>
             <option value="out">Esgotado</option>
           </Select>
-          <Button variant="secondary" onClick={() => { setSearch(''); setTypeFilter('all'); setStockFilter('all'); }}>
+          <Select label="Uso" value={backboneFilter} onChange={(event) => setBackboneFilter(event.target.value as 'all' | 'backbone' | 'cliente')}>
+            <option value="all">Todos</option>
+            <option value="backbone">Backbone</option>
+            <option value="cliente">Cliente</option>
+          </Select>
+          <Button variant="secondary" onClick={() => { setSearch(''); setTypeFilter('all'); setStockFilter('all'); setBackboneFilter('all'); }}>
             Limpar filtros
           </Button>
           <small>{visibleStockRows.length} {visibleStockRows.length === 1 ? 'modelo' : 'modelos'}</small>
@@ -505,7 +518,10 @@ export function StockModule() {
                   <Icon size={16} strokeWidth={1.6} />
                 </span>
                 <div className="stock-item-main">
-                  <span className="stock-item-name">{item.brand ? `${item.brand} ${item.model}` : item.model}</span>
+                  <span className="stock-item-name">
+                    {item.brand ? `${item.brand} ${item.model}` : item.model}
+                    {!!item.isBackbone && <Badge tone="info">Backbone</Badge>}
+                  </span>
                   <span className="stock-item-meta">
                     <span>{item.type}</span>
                     <span className="stock-item-meta-sep">·</span>
@@ -611,6 +627,10 @@ export function StockModule() {
               <Select label="Estado" value={catalogForm.active} onChange={(event) => updateCatalogForm('active', event.target.value)}>
                 <option value="1">Ativo</option>
                 <option value="0">Inativo</option>
+              </Select>
+              <Select label="Uso" value={catalogForm.isBackbone} onChange={(event) => updateCatalogForm('isBackbone', event.target.value)}>
+                <option value="0">Cliente</option>
+                <option value="1">Backbone (transmissão)</option>
               </Select>
             </>
           )}
