@@ -5,7 +5,7 @@ import { Badge, Button, Card, Combobox, DataList, Dialog, EmptyState, Field, Fil
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './InvestmentsModule.css';
-import type { Client, Investment, InvestmentItemType, InvestmentList, InvestmentStatus, InvestmentTimeline, InvestmentType } from '../types';
+import { EMPTY_INVESTMENT_LIST, type Client, type Investment, type InvestmentItemType, type InvestmentList, type InvestmentStatus, type InvestmentTimeline, type InvestmentType } from '../types';
 
 const TYPES: { value: InvestmentType; label: string }[] = [
   { value: 'cliente', label: 'Cliente' },
@@ -163,14 +163,7 @@ function formatMonths(value: number | null): string {
 }
 
 export function InvestmentsModule() {
-  const [data, setData] = useState<InvestmentList>({
-    rows: [],
-    totals: { count: 0, totalCostCve: 0, totalExpensesCve: 0, totalInvestedCve: 0, backboneStockCve: 0, ownInfrastructureCve: 0, totalReceivedCve: 0, companyAccumulatedProfitCve: 0, investedByYear: [], monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalDirectOpexCve: 0, totalEffectiveOpexCve: 0, totalActualRevenueCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
-    companyOpexShare: { totalExpensesCve: 0, totalAllocatedCve: 0, totalUnallocatedCve: 0, monthsWithExpenses: 0, monthsWithUnallocated: 0, avgMonthlyOpex: 0, avgMonthlyUnallocated: 0, totalInstalledActive: 0, opexPerClientPerMonth: 0, directByInvestment: {}, directByZone: {}, directByClient: {} },
-    zoneSummary: [],
-    equipmentTop: [],
-    alerts: []
-  });
+  const [data, setData] = useState<InvestmentList>(EMPTY_INVESTMENT_LIST);
   const [clients, setClients] = useState<Client[]>([]);
   const [month, setMonth] = useState(currentMonth());
   const [type, setType] = useState<InvestmentType | 'all'>('all');
@@ -215,14 +208,7 @@ export function InvestmentsModule() {
           ? current
           : payload.rows[0]?.id ?? null);
       })
-      .catch(() => setData({
-        rows: [],
-        totals: { count: 0, totalCostCve: 0, totalExpensesCve: 0, totalInvestedCve: 0, backboneStockCve: 0, ownInfrastructureCve: 0, totalReceivedCve: 0, companyAccumulatedProfitCve: 0, investedByYear: [], monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalDirectOpexCve: 0, totalEffectiveOpexCve: 0, totalActualRevenueCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
-        companyOpexShare: { totalExpensesCve: 0, totalAllocatedCve: 0, totalUnallocatedCve: 0, monthsWithExpenses: 0, monthsWithUnallocated: 0, avgMonthlyOpex: 0, avgMonthlyUnallocated: 0, totalInstalledActive: 0, opexPerClientPerMonth: 0, directByInvestment: {}, directByZone: {}, directByClient: {} },
-        zoneSummary: [],
-        equipmentTop: [],
-        alerts: []
-      }));
+      .catch(() => setData(EMPTY_INVESTMENT_LIST));
   }, [month, type, showAllMonths]);
 
   useEffect(() => {

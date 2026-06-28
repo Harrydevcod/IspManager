@@ -5,16 +5,7 @@ import { authFetch } from '../lib/auth';
 import { downloadAuthenticated } from '../lib/download';
 import { formatCve } from '../lib/format';
 import './InvestmentsModule.css';
-import type { InvestmentList, RevenuePoint } from '../types';
-
-const EMPTY_INVESTMENT_LIST: InvestmentList = {
-  rows: [],
-  totals: { count: 0, totalCostCve: 0, totalExpensesCve: 0, totalInvestedCve: 0, backboneStockCve: 0, ownInfrastructureCve: 0, totalReceivedCve: 0, companyAccumulatedProfitCve: 0, investedByYear: [], monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalDirectOpexCve: 0, totalEffectiveOpexCve: 0, totalActualRevenueCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
-  companyOpexShare: { totalExpensesCve: 0, totalAllocatedCve: 0, totalUnallocatedCve: 0, monthsWithExpenses: 0, monthsWithUnallocated: 0, avgMonthlyOpex: 0, avgMonthlyUnallocated: 0, totalInstalledActive: 0, opexPerClientPerMonth: 0, directByInvestment: {}, directByZone: {}, directByClient: {} },
-  zoneSummary: [],
-  equipmentTop: [],
-  alerts: []
-};
+import { EMPTY_INVESTMENT_LIST, type InvestmentList, type RevenuePoint } from '../types';
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7);
