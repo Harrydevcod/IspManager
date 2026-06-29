@@ -53,8 +53,11 @@ export function Dialog({
     modalStack.push(stackId);
     const isTopmost = () => modalStack[modalStack.length - 1] === stackId;
 
-    const firstFocusable = root?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
-    (firstFocusable ?? root)?.focus();
+    // Foca o 1º campo do corpo do diálogo (não o botão X do header, que vem
+    // antes em ordem DOM). Cai para o corpo/card se não houver campos.
+    const body = root?.querySelector<HTMLElement>('.dialog-body');
+    const firstInBody = body?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+    (firstInBody ?? root?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR) ?? root)?.focus();
 
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
