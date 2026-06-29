@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, RotateCcw, Send } from 'lucide-react';
-import { Button, ErrorRetry, Field, FilterBar, Message, Select, useToast } from '../components';
+import { Button, ErrorRetry, Field, FilterBar, Message, PaginationControls, Select, useToast } from '../components';
 import { formatPtMonth } from '../lib/format';
 import { authFetch } from '../lib/auth';
 import { downloadAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
+import { compareNumber, compareText, paginateRows, sortRows, type SortState } from '../lib/listView';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
   fallbackWhatsappOverdueTemplate,
@@ -28,7 +29,9 @@ import { ReverseMonthlyDialog, type ReverseMonthlyPreview } from './payments/Rev
 // Payment-private types (local to this module)
 // ---------------------------------------------------------------------------
 
-type PaymentSortMode = 'dueAsc' | 'dueDesc' | 'amountDesc' | 'clientAsc';
+type PaymentSortKey = 'dueDate' | 'clientName' | 'status' | 'amountCve';
+const DEFAULT_PAYMENT_SORT: SortState<PaymentSortKey> = { key: 'dueDate', direction: 'asc' };
+const DEFAULT_PAYMENT_PAGE_SIZE = 10;
 
 // ---------------------------------------------------------------------------
 // Reminder helpers (moved verbatim from App.tsx L694–L712)
@@ -97,7 +100,9 @@ export function PaymentsModule({
   const [individualRevertSubmitting, setIndividualRevertSubmitting] = useState(false);
   const [search, setSearch] = useState('');
   const [showAllMonths, setShowAllMonths] = useState(false);
-  const [sortMode, setSortMode] = useState<PaymentSortMode>('dueAsc');
+  const [sortState, setSortState] = useState<SortState<PaymentSortKey>>(DEFAULT_PAYMENT_SORT);
+  const [paymentPage, setPaymentPage] = useState(1);
+  const [paymentPageSize, setPaymentPageSize] = useState(DEFAULT_PAYMENT_PAGE_SIZE);
   const [pdfPreview, setPdfPreview] = useState<{ payment: PaymentRow; type: 'invoice' | 'receipt' } | null>(null);
   const [overduePreview, setOverduePreview] = useState<OverdueNotifyPreview | null>(null);
   const [notifyLoading, setNotifyLoading] = useState(false);
@@ -623,8 +628,7 @@ export function PaymentsModule({
   }
 
   const normalizedSearch = search.trim().toLowerCase();
-  const visiblePayments = payments
-    .filter((payment) => {
+  const filteredPayments = useMemo(() => payments.filter((payment) => {
       const monthMatches = showAllMonths || payment.referenceMonth === referenceMonth;
       const statusMatches = statusFilter === 'all' || payment.status === statusFilter;
       const searchMatches = !normalizedSearch
@@ -635,21 +639,23 @@ export function PaymentsModule({
         || (payment.clientPhone || '').toLowerCase().includes(normalizedSearch)
         || (payment.clientCode || '').toLowerCase().includes(normalizedSearch);
       return monthMatches && statusMatches && searchMatches;
-    })
-    .sort((a, b) => {
-      switch (sortMode) {
-        case 'dueDesc':
-          return b.dueDate.localeCompare(a.dueDate) || a.clientName.localeCompare(b.clientName);
-        case 'amountDesc':
-          return b.amountCve - a.amountCve;
-        case 'clientAsc':
-          return a.clientName.localeCompare(b.clientName);
-        case 'dueAsc':
-        default:
-          return a.dueDate.localeCompare(b.dueDate) || a.clientName.localeCompare(b.clientName);
-      }
-    });
-  const previewPayment = selectedPayment || visiblePayments[0] || null;
+    }), [payments, normalizedSearch, referenceMonth, showAllMonths, statusFilter]);
+  const visiblePayments = useMemo(() => sortRows(filteredPayments, sortState, {
+    dueDate: (a, b) => a.dueDate.localeCompare(b.dueDate) || compareText(a.clientName, b.clientName),
+    clientName: (a, b) => compareText(a.clientName, b.clientName) || a.dueDate.localeCompare(b.dueDate),
+    status: (a, b) => compareText(a.status, b.status) || a.dueDate.localeCompare(b.dueDate),
+    amountCve: (a, b) => compareNumber(a.amountCve, b.amountCve) || a.dueDate.localeCompare(b.dueDate)
+  }), [filteredPayments, sortState]);
+  const pagedPayments = useMemo(
+    () => paginateRows(visiblePayments, { page: paymentPage, pageSize: paymentPageSize }),
+    [paymentPage, paymentPageSize, visiblePayments]
+  );
+
+  useEffect(() => {
+    setPaymentPage(1);
+  }, [normalizedSearch, referenceMonth, showAllMonths, statusFilter, sortState, paymentPageSize]);
+
+  const previewPayment = selectedPayment || pagedPayments.rows[0] || null;
   void whatsappTick; // re-render when reminder flag changes
 
   const totals = visiblePayments.reduce(
@@ -737,12 +743,6 @@ export function PaymentsModule({
           <option value="paid">Pago</option>
           <option value="cancelled">Anulado</option>
         </Select>
-        <Select label="Ordenar" value={sortMode} onChange={(event) => setSortMode(event.target.value as PaymentSortMode)}>
-          <option value="dueAsc">Vencimento asc</option>
-          <option value="dueDesc">Vencimento desc</option>
-          <option value="amountDesc">Valor desc</option>
-          <option value="clientAsc">Cliente A-Z</option>
-        </Select>
         <Button variant="secondary" onClick={() => setShowAllMonths((current) => !current)} className={showAllMonths ? 'active' : ''}>
           {showAllMonths ? 'Mês atual' : 'Todos os meses'}
         </Button>
@@ -751,7 +751,8 @@ export function PaymentsModule({
           setReferenceMonth(defaultRefMonth);
           setShowAllMonths(false);
           setSearch('');
-          setSortMode('dueAsc');
+          setSortState(DEFAULT_PAYMENT_SORT);
+          setPaymentPage(1);
         }}>
           Limpar filtros
         </Button>
@@ -802,8 +803,10 @@ export function PaymentsModule({
       {loadError && payments.length === 0 && <ErrorRetry message={loadError} onRetry={() => { void loadPayments(); }} />}
 
       <PaymentsList
-        payments={visiblePayments}
+        payments={pagedPayments.rows}
         activeId={previewPayment?.id ?? null}
+        sort={sortState}
+        onSortChange={setSortState}
         submitting={submitting}
         isReminderSentToday={wasReminderSentToday}
         onPreview={previewPaymentDocument}
@@ -816,6 +819,17 @@ export function PaymentsModule({
         onOpenCancelForm={openCancelForm}
         onRevert={openIndividualRevert}
         onRegenerate={(p) => void regenerateMonthlyPayment(p)}
+      />
+
+      <PaginationControls
+        page={pagedPayments.page}
+        pageSize={pagedPayments.pageSize}
+        total={pagedPayments.total}
+        totalPages={pagedPayments.totalPages}
+        start={pagedPayments.start}
+        end={pagedPayments.end}
+        onPageChange={setPaymentPage}
+        onPageSizeChange={setPaymentPageSize}
       />
 
       <OverdueNotifyDialog

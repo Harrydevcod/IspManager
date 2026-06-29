@@ -34,6 +34,14 @@
   border-top: 1px solid var(--border);
 }
 
+.stock-table-model {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
 .stock-item {
   display: grid;
   grid-template-columns: 36px minmax(0, 1.5fr) minmax(96px, max-content) minmax(120px, max-content) auto;

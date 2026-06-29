@@ -2,9 +2,10 @@ import { Activity, ArrowDownUp, Banknote, Boxes, Cable, Gauge, HardDrive, Networ
 import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, Select, useToast } from '../components';
+import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, PaginationControls, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
+import { compareNumber, compareText, paginateRows, sortRows, type SortState } from '../lib/listView';
 import { stockLevelTone } from '../lib/status';
 import type { CatalogAssignments, StockCatalogRow, StockMovement, StockSummary } from '../types';
 import './StockModule.css';
@@ -33,6 +34,11 @@ type StockMovementFormState = {
   reference: string;
   notes: string;
 };
+
+type StockSortKey = 'model' | 'type' | 'stockTotal' | 'sellingPriceCve' | 'backboneQty';
+
+const DEFAULT_STOCK_SORT: SortState<StockSortKey> = { key: 'model', direction: 'asc' };
+const DEFAULT_STOCK_PAGE_SIZE = 10;
 
 function emptyCatalogForm(): StockFormState {
   return {
@@ -97,6 +103,9 @@ export function StockModule({
   const [backboneFilter, setBackboneFilter] = useState<'all' | 'backbone' | 'cliente'>('all');
   const [catalogForm, setCatalogForm] = useState<StockFormState>(emptyCatalogForm());
   const [movementForm, setMovementForm] = useState<StockMovementFormState>(emptyMovementForm());
+  const [sortState, setSortState] = useState<SortState<StockSortKey>>(DEFAULT_STOCK_SORT);
+  const [stockPage, setStockPage] = useState(1);
+  const [stockPageSize, setStockPageSize] = useState(DEFAULT_STOCK_PAGE_SIZE);
 
   // Atalho vindo do Dashboard ("Stock baixo"): pré-filtra por stock baixo.
   useEffect(() => {
@@ -278,7 +287,7 @@ export function StockModule({
     };
   }, [summary, stockTab]);
 
-  const visibleStockRows = useMemo(() => (summary?.rows || []).filter((item) => {
+  const filteredStockRows = useMemo(() => (summary?.rows || []).filter((item) => {
     const normalizedSearch = search.trim().toLowerCase();
     const label = `${item.brand || ''} ${item.model} ${item.supplier || ''}`.toLowerCase();
     const matchesSearch = !normalizedSearch || label.includes(normalizedSearch);
@@ -292,6 +301,21 @@ export function StockModule({
       || (backboneFilter === 'cliente' && item.backboneQty <= 0);
     return matchesSearch && matchesTab && matchesType && matchesStock && matchesBackbone;
   }), [summary, search, stockTab, typeFilter, stockFilter, backboneFilter]);
+  const visibleStockRows = useMemo(() => sortRows(filteredStockRows, sortState, {
+    model: (a, b) => compareText(`${a.brand || ''} ${a.model}`, `${b.brand || ''} ${b.model}`),
+    type: (a, b) => compareText(a.type, b.type) || compareText(a.model, b.model),
+    stockTotal: (a, b) => compareNumber(a.stockTotal, b.stockTotal) || compareText(a.model, b.model),
+    sellingPriceCve: (a, b) => compareNumber(a.sellingPriceCve, b.sellingPriceCve) || compareText(a.model, b.model),
+    backboneQty: (a, b) => compareNumber(a.backboneQty, b.backboneQty) || compareText(a.model, b.model)
+  }), [filteredStockRows, sortState]);
+  const pagedStockRows = useMemo(
+    () => paginateRows(visibleStockRows, { page: stockPage, pageSize: stockPageSize }),
+    [stockPage, stockPageSize, visibleStockRows]
+  );
+
+  useEffect(() => {
+    setStockPage(1);
+  }, [search, stockTab, typeFilter, stockFilter, backboneFilter, sortState, stockPageSize]);
 
   return (
     <section className="module-panel">
@@ -373,7 +397,7 @@ export function StockModule({
             <option value="backbone">Com backbone</option>
             <option value="cliente">Sem backbone</option>
           </Select>
-          <Button variant="secondary" onClick={() => { setSearch(''); setTypeFilter('all'); setStockFilter('all'); setBackboneFilter('all'); }}>
+          <Button variant="secondary" onClick={() => { setSearch(''); setTypeFilter('all'); setStockFilter('all'); setBackboneFilter('all'); setSortState(DEFAULT_STOCK_SORT); setStockPage(1); }}>
             Limpar filtros
           </Button>
           <small>{visibleStockRows.length} {visibleStockRows.length === 1 ? 'modelo' : 'modelos'}</small>
@@ -499,87 +523,119 @@ export function StockModule({
         </div>
       )}
 
-      {visibleStockRows.length === 0 && summary && (
-        <EmptyState
-          icon={stockTab === 'material' ? Cable : Boxes}
-          title={stockTab === 'material' ? 'Nenhum material encontrado' : 'Nenhum equipamento encontrado'}
-          description={stockTab === 'material'
-            ? 'Ajusta os filtros ou cadastra um novo material (cabo, conector…) no catálogo.'
-            : 'Ajusta os filtros ou cadastra um novo equipamento no catálogo.'}
-        />
-      )}
-
-      {visibleStockRows.length > 0 && (
-        <div className="stock-list" role="list">
-          {visibleStockRows.map((item) => {
-            const Icon = iconForType(item.type);
-            const tone = stockLevelTone(item.stockTotal);
-            const interactive = true;
-            const classes = ['stock-item', 'is-interactive'];
-            if (selectedCatalog?.id === item.id) classes.push('is-selected');
-            return (
-              <div
-                role="listitem"
-                key={item.id}
-                className={classes.join(' ')}
-                tabIndex={interactive ? 0 : undefined}
-                onClick={() => selectCatalog(item)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    selectCatalog(item);
-                  }
-                }}
-              >
-                <span className="stock-item-icon" aria-hidden>
-                  <Icon size={16} strokeWidth={1.6} />
-                </span>
-                <div className="stock-item-main">
-                  <span className="stock-item-name">
-                    {item.brand ? `${item.brand} ${item.model}` : item.model}
-                    {item.backboneQty > 0 && <Badge tone="info">Backbone ×{item.backboneQty}</Badge>}
-                  </span>
-                  <span className="stock-item-meta">
-                    <span>{item.type}</span>
-                    <span className="stock-item-meta-sep">·</span>
-                    <span className="stock-item-meta-supplier">{item.supplier || 'sem fornecedor'}</span>
-                  </span>
-                </div>
-                <span className="stock-item-level">
-                  <span className="stock-item-level-dot" data-tone={tone} aria-hidden />
-                  <span className="stock-item-level-value">{item.stockTotal}</span>
-                  <span className="stock-item-level-unit">{item.unitOfMeasure || 'un.'}</span>
-                </span>
-                <div className="stock-item-value">
-                  <span className="stock-item-value-amount">{formatCve(item.sellingPriceCve)}</span>
-                  <span className="stock-item-value-label">venda</span>
-                </div>
-                {canManageStock && (
-                  <div className="stock-item-actions" onClick={(event) => event.stopPropagation()}>
-                    <Button
-                      variant="icon"
-                      size="sm"
-                      title="Editar equipamento"
-                      aria-label={`Editar ${item.model}`}
-                      onClick={(event) => { event.stopPropagation(); editCatalog(item); }}
-                    >
-                      <Pencil size={14} aria-hidden />
-                    </Button>
-                    <Button
-                      variant="icon"
-                      size="sm"
-                      title="Novo movimento"
-                      aria-label={`Novo movimento ${item.model}`}
-                      onClick={(event) => { event.stopPropagation(); selectCatalog(item); openMovementForm(); }}
-                    >
-                      <ArrowDownUp size={14} aria-hidden />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+      {summary && (
+        <>
+          <DataTable
+            rows={pagedStockRows.rows}
+            rowKey={(item) => item.id}
+            activeKey={selectedCatalog?.id ?? null}
+            stickyHeader
+            sort={sortState}
+            onSortChange={setSortState}
+            onRowClick={selectCatalog}
+            gridTemplateColumns="minmax(260px, 1.4fr) 112px 112px 132px 118px"
+            actionsWidth="92px"
+            columns={[
+              {
+                header: stockTab === 'material' ? 'Material' : 'Modelo',
+                sortKey: 'model',
+                cell: (item) => {
+                  const Icon = iconForType(item.type);
+                  return (
+                    <span className="stock-table-model">
+                      <span className="stock-item-icon" aria-hidden>
+                        <Icon size={16} strokeWidth={1.6} />
+                      </span>
+                      <span className="stock-item-main">
+                        <span className="stock-item-name">
+                          {item.brand ? `${item.brand} ${item.model}` : item.model}
+                          {item.backboneQty > 0 && <Badge tone="info">Backbone ×{item.backboneQty}</Badge>}
+                        </span>
+                        <span className="stock-item-meta-supplier">{item.supplier || 'sem fornecedor'}</span>
+                      </span>
+                    </span>
+                  );
+                }
+              },
+              {
+                header: 'Tipo',
+                sortKey: 'type',
+                cell: (item) => <span>{item.type}</span>
+              },
+              {
+                header: 'Stock',
+                sortKey: 'stockTotal',
+                defaultDirection: 'desc',
+                align: 'end',
+                cell: (item) => {
+                  const tone = stockLevelTone(item.stockTotal);
+                  return (
+                    <span className="stock-item-level">
+                      <span className="stock-item-level-dot" data-tone={tone} aria-hidden />
+                      <span className="stock-item-level-value">{item.stockTotal}</span>
+                      <span className="stock-item-level-unit">{item.unitOfMeasure || 'un.'}</span>
+                    </span>
+                  );
+                }
+              },
+              {
+                header: 'Venda',
+                sortKey: 'sellingPriceCve',
+                defaultDirection: 'desc',
+                align: 'end',
+                cell: (item) => <span className="stock-item-value-amount">{formatCve(item.sellingPriceCve)}</span>
+              },
+              {
+                header: 'Backbone',
+                sortKey: 'backboneQty',
+                defaultDirection: 'desc',
+                align: 'center',
+                cell: (item) => item.backboneQty > 0 ? <Badge tone="info">{item.backboneQty}</Badge> : <span>-</span>
+              }
+            ]}
+            actions={canManageStock ? (item) => (
+              <>
+                <Button
+                  variant="icon"
+                  size="sm"
+                  title="Editar equipamento"
+                  aria-label={`Editar ${item.model}`}
+                  onClick={() => editCatalog(item)}
+                >
+                  <Pencil size={14} aria-hidden />
+                </Button>
+                <Button
+                  variant="icon"
+                  size="sm"
+                  title="Novo movimento"
+                  aria-label={`Novo movimento ${item.model}`}
+                  onClick={() => { selectCatalog(item); openMovementForm(); }}
+                >
+                  <ArrowDownUp size={14} aria-hidden />
+                </Button>
+              </>
+            ) : undefined}
+            empty={
+              <EmptyState
+                icon={stockTab === 'material' ? Cable : Boxes}
+                title={stockTab === 'material' ? 'Nenhum material encontrado' : 'Nenhum equipamento encontrado'}
+                description={stockTab === 'material'
+                  ? 'Ajusta os filtros ou cadastra um novo material (cabo, conector…) no catálogo.'
+                  : 'Ajusta os filtros ou cadastra um novo equipamento no catálogo.'}
+              />
+            }
+          />
+          <PaginationControls
+            page={pagedStockRows.page}
+            pageSize={pagedStockRows.pageSize}
+            total={pagedStockRows.total}
+            totalPages={pagedStockRows.totalPages}
+            start={pagedStockRows.start}
+            end={pagedStockRows.end}
+            onPageChange={setStockPage}
+            onPageSizeChange={setStockPageSize}
+          />
+        </>
       )}
 
       <Dialog

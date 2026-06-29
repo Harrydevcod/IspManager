@@ -1,8 +1,11 @@
 import { AlertTriangle, CheckCircle2, Eye, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Smartphone, Undo2, X } from 'lucide-react';
-import { Badge, Button, DataList, EmptyState } from '../../components';
-import { formatCve, formatPtMonth } from '../../lib/format';
+import { Badge, Button, DataTable, EmptyState } from '../../components';
+import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
+import type { SortState } from '../../lib/listView';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
 import type { PaymentRow, SmsEventType } from '../../types';
+
+type PaymentSortKey = 'dueDate' | 'clientName' | 'status' | 'amountCve';
 
 const paymentStatusTone = (status: PaymentRow['status']): 'success' | 'info' | 'danger' | 'neutral' => {
   switch (status) {
@@ -18,6 +21,8 @@ const statusLabel = (status: PaymentRow['status']): string => status;
 type PaymentsListProps = {
   payments: PaymentRow[];
   activeId: number | null;
+  sort: SortState<PaymentSortKey>;
+  onSortChange: (sort: SortState<PaymentSortKey>) => void;
   submitting: boolean;
   isReminderSentToday: (paymentId: number) => boolean;
   onPreview: (payment: PaymentRow) => void;
@@ -35,6 +40,8 @@ type PaymentsListProps = {
 export function PaymentsList({
   payments,
   activeId,
+  sort,
+  onSortChange,
   submitting,
   isReminderSentToday,
   onPreview,
@@ -49,12 +56,20 @@ export function PaymentsList({
   onRegenerate
 }: PaymentsListProps) {
   return (
-    <DataList
+    <DataTable
       rows={payments}
       rowKey={(p) => p.id}
       activeKey={activeId}
+      stickyHeader
+      sort={sort}
+      onSortChange={onSortChange}
+      onRowClick={(p) => onPreview(p)}
+      gridTemplateColumns="minmax(220px, 1.6fr) 132px 108px 132px"
+      actionsWidth="minmax(292px, max-content)"
       columns={[
         {
+          header: 'Cliente',
+          sortKey: 'clientName',
           cell: (p) => (
             <span>
               <small className="entity-code">{p.clientCode || '—'}</small>
@@ -64,9 +79,21 @@ export function PaymentsList({
           )
         },
         {
+          header: 'Vencimento',
+          sortKey: 'dueDate',
+          cell: (p) => <span>{formatPtDate(p.dueDate)}</span>
+        },
+        {
+          header: 'Estado',
+          sortKey: 'status',
+          align: 'center',
           cell: (p) => <Badge tone={paymentStatusTone(p.status)}>{statusLabel(p.status)}</Badge>
         },
         {
+          header: 'Valor',
+          sortKey: 'amountCve',
+          defaultDirection: 'desc',
+          align: 'end',
           cell: (p) => <b>{formatCve(p.amountCve)}</b>
         }
       ]}
@@ -163,7 +190,6 @@ export function PaymentsList({
           )}
         </>
       )}
-      onRowClick={(p) => onPreview(p)}
       empty={
         <EmptyState
           icon={ReceiptText}
