@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, RotateCcw, Send } from 'lucide-react';
-import { BulkActionBar, Button, ErrorRetry, Field, FilterBar, Message, PaginationControls, Select, useConfirm, useToast } from '../components';
+import { BulkActionBar, Button, ErrorRetry, Field, FilterBar, Message, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { formatPtMonth } from '../lib/format';
 import { authFetch } from '../lib/auth';
 import { downloadAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
@@ -83,6 +83,7 @@ export function PaymentsModule({
     return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}`;
   })();
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [referenceMonth, setReferenceMonth] = useState(defaultRefMonth);
   const [statusFilter, setStatusFilter] = useState<'all' | PaymentRow['status']>('all');
@@ -134,6 +135,7 @@ export function PaymentsModule({
   const [whatsappTick, setWhatsappTick] = useState(0);
 
   function loadPayments() {
+    setLoading(true);
     return authFetch('http://127.0.0.1:3001/api/payments')
       .then((response) => response.json() as Promise<PaymentRow[]>)
       .then((data) => {
@@ -145,7 +147,8 @@ export function PaymentsModule({
         setPayments([]);
         setLoadError('Não foi possível carregar os pagamentos.');
         return [];
-      });
+      })
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => {
@@ -904,48 +907,54 @@ export function PaymentsModule({
 
       {loadError && payments.length === 0 && <ErrorRetry message={loadError} onRetry={() => { void loadPayments(); }} />}
 
-      <BulkActionBar count={selection.count} onClear={selection.clear} noun={{ one: 'cobrança selecionada', many: 'cobranças selecionadas' }}>
-        <Button variant="secondary" size="sm" leadingIcon={<Send size={14} aria-hidden />} disabled={bulkSubmitting} onClick={() => void runBulkNotify()}>
-          Notificar WhatsApp
-        </Button>
-        <Button variant="secondary" size="sm" disabled={bulkSubmitting} onClick={() => setBulkMode('pay')}>
-          Registar pago
-        </Button>
-        <Button variant="danger" size="sm" disabled={bulkSubmitting} onClick={() => setBulkMode('cancel')}>
-          Anular
-        </Button>
-      </BulkActionBar>
+      {loading && payments.length === 0 ? (
+        <SkeletonList rows={6} />
+      ) : (
+        <>
+          <BulkActionBar count={selection.count} onClear={selection.clear} noun={{ one: 'cobrança selecionada', many: 'cobranças selecionadas' }}>
+            <Button variant="secondary" size="sm" leadingIcon={<Send size={14} aria-hidden />} disabled={bulkSubmitting} onClick={() => void runBulkNotify()}>
+              Notificar WhatsApp
+            </Button>
+            <Button variant="secondary" size="sm" disabled={bulkSubmitting} onClick={() => setBulkMode('pay')}>
+              Registar pago
+            </Button>
+            <Button variant="danger" size="sm" disabled={bulkSubmitting} onClick={() => setBulkMode('cancel')}>
+              Anular
+            </Button>
+          </BulkActionBar>
 
-      <PaymentsList
-        payments={pagedPayments.rows}
-        activeId={previewPayment?.id ?? null}
-        selection={tableSelection}
-        sort={sortState}
-        onSortChange={setSortState}
-        submitting={submitting}
-        isReminderSentToday={wasReminderSentToday}
-        onPreview={previewPaymentDocument}
-        onOpenPdf={openPdf}
-        onMarkOverdue={(p) => void markOverdue(p)}
-        onOpenPayForm={openPayForm}
-        onOpenWhatsappForm={openWhatsappForm}
-        onSendDocumentWhatsapp={(p, kind) => void sendDocumentWhatsapp(p, kind)}
-        onSendSms={(p, eventType) => void sendPaymentSms(p, eventType)}
-        onOpenCancelForm={openCancelForm}
-        onRevert={openIndividualRevert}
-        onRegenerate={(p) => void regenerateMonthlyPayment(p)}
-      />
+          <PaymentsList
+            payments={pagedPayments.rows}
+            activeId={previewPayment?.id ?? null}
+            selection={tableSelection}
+            sort={sortState}
+            onSortChange={setSortState}
+            submitting={submitting}
+            isReminderSentToday={wasReminderSentToday}
+            onPreview={previewPaymentDocument}
+            onOpenPdf={openPdf}
+            onMarkOverdue={(p) => void markOverdue(p)}
+            onOpenPayForm={openPayForm}
+            onOpenWhatsappForm={openWhatsappForm}
+            onSendDocumentWhatsapp={(p, kind) => void sendDocumentWhatsapp(p, kind)}
+            onSendSms={(p, eventType) => void sendPaymentSms(p, eventType)}
+            onOpenCancelForm={openCancelForm}
+            onRevert={openIndividualRevert}
+            onRegenerate={(p) => void regenerateMonthlyPayment(p)}
+          />
 
-      <PaginationControls
-        page={pagedPayments.page}
-        pageSize={pagedPayments.pageSize}
-        total={pagedPayments.total}
-        totalPages={pagedPayments.totalPages}
-        start={pagedPayments.start}
-        end={pagedPayments.end}
-        onPageChange={setPaymentPage}
-        onPageSizeChange={setPaymentPageSize}
-      />
+          <PaginationControls
+            page={pagedPayments.page}
+            pageSize={pagedPayments.pageSize}
+            total={pagedPayments.total}
+            totalPages={pagedPayments.totalPages}
+            start={pagedPayments.start}
+            end={pagedPayments.end}
+            onPageChange={setPaymentPage}
+            onPageSizeChange={setPaymentPageSize}
+          />
+        </>
+      )}
 
       <OverdueNotifyDialog
         preview={overduePreview}
