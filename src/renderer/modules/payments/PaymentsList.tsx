@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, Eye, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Smartphone, Undo2, X } from 'lucide-react';
-import { Badge, Button, DataTable, EmptyState } from '../../components';
+import { Badge, Button, DataTable, EmptyState, type DataTableSelection } from '../../components';
 import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
 import type { SortState } from '../../lib/listView';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
@@ -21,6 +21,7 @@ const statusLabel = (status: PaymentRow['status']): string => status;
 type PaymentsListProps = {
   payments: PaymentRow[];
   activeId: number | null;
+  selection?: DataTableSelection;
   sort: SortState<PaymentSortKey>;
   onSortChange: (sort: SortState<PaymentSortKey>) => void;
   submitting: boolean;
@@ -40,6 +41,7 @@ type PaymentsListProps = {
 export function PaymentsList({
   payments,
   activeId,
+  selection,
   sort,
   onSortChange,
   submitting,
@@ -60,6 +62,7 @@ export function PaymentsList({
       rows={payments}
       rowKey={(p) => p.id}
       activeKey={activeId}
+      selection={selection}
       stickyHeader
       sort={sort}
       onSortChange={onSortChange}

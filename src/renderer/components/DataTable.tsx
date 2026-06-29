@@ -1,8 +1,35 @@
 import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
 import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
 import type { SortDirection, SortState } from '../lib/listView';
+import type { SelectAllState } from '../lib/useRowSelection';
 
 type DataTableAlign = 'start' | 'center' | 'end';
+
+export type DataTableSelection = {
+  isSelected: (key: string | number) => boolean;
+  onToggleRow: (key: string | number) => void;
+  headerState: SelectAllState;
+  onToggleAll: () => void;
+};
+
+function SelectCheckbox({ checked, indeterminate, onChange, label }: {
+  checked: boolean;
+  indeterminate?: boolean;
+  onChange: () => void;
+  label: string;
+}) {
+  return (
+    <input
+      type="checkbox"
+      className="data-table-check"
+      checked={checked}
+      aria-label={label}
+      ref={(node) => { if (node) node.indeterminate = Boolean(indeterminate); }}
+      onChange={onChange}
+      onClick={(event) => event.stopPropagation()}
+    />
+  );
+}
 
 type DataTableColumn<T, K extends string = string> = {
   header: string;
@@ -28,6 +55,7 @@ type DataTableProps<T, K extends string = string> = {
   onSortChange?: (sort: SortState<K>) => void;
   onRowClick?: (row: T) => void;
   activeKey?: string | number | null;
+  selection?: DataTableSelection;
 };
 
 function alignClass(align: DataTableAlign = 'start') {
@@ -54,11 +82,13 @@ export function DataTable<T, K extends string = string>({
   sort,
   onSortChange,
   onRowClick,
-  activeKey
+  activeKey,
+  selection
 }: DataTableProps<T, K>) {
   if (!rows.length) return <>{empty}</>;
 
-  const template = actions ? `${gridTemplateColumns} ${actionsWidth}` : gridTemplateColumns;
+  const selectColumn = selection ? '44px ' : '';
+  const template = `${selectColumn}${actions ? `${gridTemplateColumns} ${actionsWidth}` : gridTemplateColumns}`;
   const gridStyle: CSSProperties = { gridTemplateColumns: template };
   const classes = ['data-table'];
   if (stickyHeader) classes.push('has-sticky-head');
@@ -79,6 +109,16 @@ export function DataTable<T, K extends string = string>({
   return (
     <div className={classes.join(' ')} role="table">
       <div className="data-table-head" role="row" style={gridStyle}>
+        {selection && (
+          <span className="data-table-heading data-table-check-cell" role="columnheader">
+            <SelectCheckbox
+              checked={selection.headerState === 'all'}
+              indeterminate={selection.headerState === 'some'}
+              onChange={selection.onToggleAll}
+              label="Selecionar tudo nesta página"
+            />
+          </span>
+        )}
         {columns.map((column) => {
           const isSorted = Boolean(column.sortKey && sort && sort.key === column.sortKey);
           return (
@@ -112,16 +152,28 @@ export function DataTable<T, K extends string = string>({
           </span>
         )}
       </div>
-      {rows.map((row) => (
+      {rows.map((row) => {
+        const key = rowKey(row);
+        const isRowSelected = selection ? selection.isSelected(key) : false;
+        return (
         <div
-          className={`data-table-row${onRowClick ? ' is-interactive' : ''}${activeKey != null && rowKey(row) === activeKey ? ' is-active' : ''}`}
+          className={`data-table-row${onRowClick ? ' is-interactive' : ''}${activeKey != null && key === activeKey ? ' is-active' : ''}${isRowSelected ? ' is-selected' : ''}`}
           role="row"
           style={gridStyle}
-          key={rowKey(row)}
+          key={key}
           tabIndex={onRowClick ? 0 : undefined}
           onClick={onRowClick ? () => activateRow(row) : undefined}
           onKeyDown={(event) => handleRowKeyDown(event, row)}
         >
+          {selection && (
+            <div className="data-table-cell data-table-check-cell" role="cell">
+              <SelectCheckbox
+                checked={isRowSelected}
+                onChange={() => selection.onToggleRow(key)}
+                label="Selecionar linha"
+              />
+            </div>
+          )}
           {columns.map((column) => (
             <div
               className={`data-table-cell ${alignClass(column.align)}${column.className ? ` ${column.className}` : ''}`}
@@ -144,7 +196,8 @@ export function DataTable<T, K extends string = string>({
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
