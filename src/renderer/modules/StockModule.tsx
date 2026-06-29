@@ -38,7 +38,7 @@ type StockMovementFormState = {
 type StockSortKey = 'model' | 'type' | 'stockTotal' | 'sellingPriceCve' | 'backboneQty';
 
 const DEFAULT_STOCK_SORT: SortState<StockSortKey> = { key: 'model', direction: 'asc' };
-const DEFAULT_STOCK_PAGE_SIZE = 10;
+const DEFAULT_STOCK_PAGE_SIZE = 25;
 
 function emptyCatalogForm(): StockFormState {
   return {
