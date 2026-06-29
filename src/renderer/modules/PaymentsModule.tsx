@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, RotateCcw, Send } from 'lucide-react';
-import { Button, ErrorRetry, Field, FilterBar, Message, PaginationControls, Select, useToast } from '../components';
+import { BulkActionBar, Button, ErrorRetry, Field, FilterBar, Message, PaginationControls, Select, useConfirm, useToast } from '../components';
 import { formatPtMonth } from '../lib/format';
 import { authFetch } from '../lib/auth';
 import { downloadAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
 import { compareNumber, compareText, paginateRows, sortRows, type SortState } from '../lib/listView';
+import { runBulk, summarizeBulk } from '../lib/bulkRun';
+import { useRowSelection } from '../lib/useRowSelection';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
   fallbackWhatsappOverdueTemplate,
@@ -24,6 +26,7 @@ import { OverdueNotifyDialog, type OverdueNotifyPreview, type WhatsappNoticeType
 import { PaymentsTotals } from './payments/PaymentsTotals';
 import { PdfPreviewDialog } from './payments/PdfPreviewDialog';
 import { ReverseMonthlyDialog, type ReverseMonthlyPreview } from './payments/ReverseMonthlyDialog';
+import { BulkPaymentDialog, type BulkPaymentMode } from './payments/BulkPaymentDialog';
 
 // ---------------------------------------------------------------------------
 // Payment-private types (local to this module)
@@ -107,7 +110,11 @@ export function PaymentsModule({
   const [overduePreview, setOverduePreview] = useState<OverdueNotifyPreview | null>(null);
   const [notifyLoading, setNotifyLoading] = useState(false);
   const [notifySending, setNotifySending] = useState(false);
+  const [bulkMode, setBulkMode] = useState<BulkPaymentMode | null>(null);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const selection = useRowSelection<number>();
   const { toast } = useToast();
+  const confirm = useConfirm();
 
   // Atalho vindo do Dashboard: foca o estado pedido (atraso varre todos os meses).
   useEffect(() => {
@@ -603,6 +610,90 @@ export function PaymentsModule({
     setPdfPreview(null);
   }
 
+  // --- Ações em massa (selecionadas na lista) -----------------------------
+  function selectedPaymentRows() {
+    return visiblePayments.filter((payment) => selection.isSelected(payment.id));
+  }
+
+  async function runBulkNotify() {
+    const targets = selectedPaymentRows().filter(
+      (payment) => payment.status !== 'paid' && payment.status !== 'cancelled' && normalizeWhatsappPhone(payment.clientPhone)
+    );
+    if (targets.length === 0) {
+      toast('Nenhuma cobrança selecionada com telefone válido para notificar.', 'error');
+      return;
+    }
+    if (!(await confirm({
+      title: `Notificar ${targets.length} cliente(s) por WhatsApp?`,
+      message: 'Envia o lembrete de cobrança a cada cliente selecionado com telefone válido.',
+      confirmLabel: 'Enviar'
+    }))) return;
+    setBulkSubmitting(true);
+    try {
+      const result = await runBulk(targets, async (payment) => {
+        await sendWhatsappViaUltraMsg(payment.clientPhone, whatsappMessageFor(payment));
+        markReminderSent(payment.id);
+      });
+      setWhatsappTick((tick) => tick + 1);
+      toast(summarizeBulk(result, 'notificados'), result.failed ? 'info' : 'success');
+      selection.clear();
+    } finally {
+      setBulkSubmitting(false);
+    }
+  }
+
+  async function confirmBulkPay(method: PaymentMethod, date: string) {
+    const targets = selectedPaymentRows().filter((payment) => payment.status === 'pending' || payment.status === 'overdue');
+    if (targets.length === 0) {
+      toast('Nenhuma cobrança selecionada por liquidar.', 'error');
+      setBulkMode(null);
+      return;
+    }
+    setBulkSubmitting(true);
+    try {
+      const result = await runBulk(targets, async (payment) => {
+        const response = await authFetch(`http://127.0.0.1:3001/api/payments/${payment.id}/pay`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentMethod: method, paymentDate: date })
+        });
+        if (!response.ok) throw new Error('pay failed');
+      });
+      toast(summarizeBulk(result, 'pagamentos registados'), result.failed ? 'info' : 'success');
+      setBulkMode(null);
+      selection.clear();
+      await loadPayments();
+    } finally {
+      setBulkSubmitting(false);
+    }
+  }
+
+  async function confirmBulkCancel(reason: string) {
+    const targets = selectedPaymentRows().filter((payment) => payment.status !== 'cancelled');
+    if (targets.length === 0) {
+      toast('Nenhuma cobrança selecionada para anular.', 'error');
+      setBulkMode(null);
+      return;
+    }
+    setBulkSubmitting(true);
+    try {
+      const result = await runBulk(targets, async (payment) => {
+        const response = await authFetch(`http://127.0.0.1:3001/api/payments/${payment.id}/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason })
+        });
+        if (!response.ok) throw new Error('cancel failed');
+      });
+      toast(summarizeBulk(result, 'cobranças anuladas'), result.failed ? 'info' : 'success');
+      setBulkMode(null);
+      selection.clear();
+      await loadPayments();
+    } finally {
+      setBulkSubmitting(false);
+    }
+  }
+
   // Endpoint do documento — o token NUNCA vai na URL; o header de auth é
   // injetado pelo authFetch (download) ou pelo useAuthenticatedObjectUrl (iframe).
   function documentEndpoint(paymentId: number, type: 'invoice' | 'receipt', inline = false) {
@@ -654,6 +745,17 @@ export function PaymentsModule({
   useEffect(() => {
     setPaymentPage(1);
   }, [normalizedSearch, referenceMonth, showAllMonths, statusFilter, sortState, paymentPageSize]);
+
+  // Mantém a seleção em massa restrita ao que está visível no filtro atual.
+  const visibleIds = useMemo(() => visiblePayments.map((payment) => payment.id), [visiblePayments]);
+  useEffect(() => { selection.retain(visibleIds); }, [visibleIds, selection]);
+  const pageIds = useMemo(() => pagedPayments.rows.map((payment) => payment.id), [pagedPayments]);
+  const tableSelection = {
+    isSelected: (key: string | number) => selection.isSelected(Number(key)),
+    onToggleRow: (key: string | number) => selection.toggle(Number(key)),
+    headerState: selection.visibleState(pageIds),
+    onToggleAll: () => selection.toggleVisible(pageIds)
+  };
 
   const previewPayment = selectedPayment || pagedPayments.rows[0] || null;
   void whatsappTick; // re-render when reminder flag changes
@@ -802,9 +904,22 @@ export function PaymentsModule({
 
       {loadError && payments.length === 0 && <ErrorRetry message={loadError} onRetry={() => { void loadPayments(); }} />}
 
+      <BulkActionBar count={selection.count} onClear={selection.clear} noun={{ one: 'cobrança selecionada', many: 'cobranças selecionadas' }}>
+        <Button variant="secondary" size="sm" leadingIcon={<Send size={14} aria-hidden />} disabled={bulkSubmitting} onClick={() => void runBulkNotify()}>
+          Notificar WhatsApp
+        </Button>
+        <Button variant="secondary" size="sm" disabled={bulkSubmitting} onClick={() => setBulkMode('pay')}>
+          Registar pago
+        </Button>
+        <Button variant="danger" size="sm" disabled={bulkSubmitting} onClick={() => setBulkMode('cancel')}>
+          Anular
+        </Button>
+      </BulkActionBar>
+
       <PaymentsList
         payments={pagedPayments.rows}
         activeId={previewPayment?.id ?? null}
+        selection={tableSelection}
         sort={sortState}
         onSortChange={setSortState}
         submitting={submitting}
@@ -859,6 +974,15 @@ export function PaymentsModule({
         document={pdfDialogDoc}
         onClose={closePdfPreview}
         onDownload={(payment, type) => void downloadPdf(payment, type)}
+      />
+
+      <BulkPaymentDialog
+        mode={bulkMode}
+        count={selection.count}
+        submitting={bulkSubmitting}
+        onClose={() => { if (!bulkSubmitting) setBulkMode(null); }}
+        onConfirmPay={(method, date) => void confirmBulkPay(method, date)}
+        onConfirmCancel={(reason) => void confirmBulkCancel(reason)}
       />
     </section>
   );
