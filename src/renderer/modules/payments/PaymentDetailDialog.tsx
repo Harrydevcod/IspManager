@@ -303,9 +303,10 @@ export function PaymentDetailDialog({
       {(() => {
         // A fatura que deu origem ao recibo fica marcada como paga (Badge) e
         // continua acessível via "Fatura PDF".
+        // O número já traz a série (FT/RC) — não repetir "Fatura"/"Recibo".
         const docLabel = previewDocType === 'receipt'
-          ? (payment.receiptNumber ? `Recibo ${payment.receiptNumber}` : 'Recibo emitido')
-          : (payment.invoiceNumber ? `Fatura ${payment.invoiceNumber}` : 'Fatura por emitir');
+          ? (payment.receiptNumber || 'Recibo emitido')
+          : (payment.invoiceNumber || 'Fatura por emitir');
         return (
           <>
             <div className="document-preview">
