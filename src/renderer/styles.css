@@ -1274,6 +1274,27 @@ h2 {
   font-feature-settings: var(--font-feature-ui), "tnum";
 }
 
+/* Célula de identidade empilhada (código / nome / meta). Reproduz dentro da
+   DataTable a stack que as antigas `.client-row span` davam — sem isto os
+   três elementos ficam inline e colam ("C0026Anderson Delgado5824326"). */
+.data-table-cell > span:has(> strong) {
+  display: grid;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.data-table-cell > span:has(> strong) > strong,
+.data-table-cell > span:has(> strong) > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-table-cell > span:has(> strong) > small {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
 .data-table-align-start {
   justify-self: stretch;
   text-align: left;
