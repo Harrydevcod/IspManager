@@ -1,6 +1,6 @@
-import { Activity, AlertTriangle, Banknote, Boxes, Cable, ClipboardList, FileText, Gauge, LogOut, Plus, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
+import { Activity, AlertTriangle, Banknote, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, LogOut, Plus, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AuthGate, CommandPalette, ConfirmProvider, PageHeader, ThemeToggle, ToastProvider } from './components';
+import { AuthGate, CommandPalette, ConfirmProvider, PageHeader, ShortcutsDialog, ThemeToggle, ToastProvider } from './components';
 import type { CommandPaletteItem } from './components';
 import { AuthProvider, authFetch, useAuth } from './lib/auth';
 import type { UserRole } from './lib/auth';
@@ -99,6 +99,7 @@ function AppShell() {
   const [stockLowFocus, setStockLowFocus] = useState(false);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   useEffect(() => installKeyboardNavigationIntent(), []);
 
@@ -136,10 +137,22 @@ function AppShell() {
   }, [refreshSummary]);
 
   useEffect(() => {
+    function isTypingTarget(target: EventTarget | null) {
+      const el = target as HTMLElement | null;
+      if (!el) return false;
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+    }
     function onKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         setPaletteOpen((open) => !open);
+        return;
+      }
+      // "?" abre o cheat-sheet de atalhos (não enquanto se escreve num campo).
+      if (event.key === '?' && !event.metaKey && !event.ctrlKey && !event.altKey && !isTypingTarget(event.target)) {
+        event.preventDefault();
+        setShortcutsOpen((open) => !open);
       }
     }
     window.addEventListener('keydown', onKeyDown);
@@ -229,7 +242,16 @@ function AppShell() {
           action: () => auth.logout()
         }]
       : [];
-    return [...alerts, ...nav, ...quickActions, ...sessionActions];
+    const helpActions: CommandPaletteItem[] = [{
+      id: 'show-shortcuts',
+      label: 'Atalhos de teclado',
+      hint: '?',
+      group: 'Ajuda',
+      keywords: ['atalhos', 'teclado', 'shortcuts', 'ajuda', 'help'],
+      icon: <Keyboard size={14} />,
+      action: () => setShortcutsOpen(true)
+    }];
+    return [...alerts, ...nav, ...quickActions, ...sessionActions, ...helpActions];
   }, [summary, visibleSections, auth]);
 
   const roleLabel: Record<UserRole, string> = {
@@ -372,6 +394,8 @@ function AppShell() {
           onClose={() => setPaletteOpen(false)}
           items={paletteItems}
         />
+
+        <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       </main>
     </>
   );
