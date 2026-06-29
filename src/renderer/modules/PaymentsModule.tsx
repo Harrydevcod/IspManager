@@ -711,6 +711,7 @@ export function PaymentsModule({
       : payment.receiptNumber || payment.id;
     try {
       await downloadAuthenticated(documentEndpoint(payment.id, type), `${docLabel}-${ref}.pdf`);
+      toast(`${docLabel} ${ref} guardado em Transferências.`, 'success');
     } catch {
       toast(`Nao foi possivel descarregar o ${docLabel.toLowerCase()}.`, 'error');
     }
