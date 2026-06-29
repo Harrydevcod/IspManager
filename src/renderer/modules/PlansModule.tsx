@@ -2,7 +2,7 @@ import { Activity, Cable, Pencil, Wifi } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Select, useToast } from '../components';
+import { Button, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Select, SkeletonList, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import type { PlanRow } from '../types';
@@ -62,6 +62,7 @@ export function PlansModule() {
   const auth = useAuth();
   const canManagePlans = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
   const [plans, setPlans] = useState<PlanRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingPlan, setEditingPlan] = useState<PlanRow | null>(null);
@@ -71,10 +72,12 @@ export function PlansModule() {
   const [form, setForm] = useState<PlanFormState>(emptyPlanForm());
 
   function loadPlans() {
+    setLoading(true);
     return authFetch('http://127.0.0.1:3001/api/plans')
       .then((response) => response.json() as Promise<PlanRow[]>)
       .then((data) => { setPlans(data); setLoadError(null); })
-      .catch(() => { setPlans([]); setLoadError('Não foi possível carregar os planos.'); });
+      .catch(() => { setPlans([]); setLoadError('Não foi possível carregar os planos.'); })
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => {
@@ -210,7 +213,9 @@ export function PlansModule() {
         </FilterBar>
       </div>
 
-      {visiblePlans.length === 0 && (
+      {loading && plans.length === 0 && <SkeletonList rows={6} />}
+
+      {!loading && visiblePlans.length === 0 && (
         <EmptyState
           icon={Wifi}
           title="Nenhum plano encontrado"

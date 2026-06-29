@@ -1,7 +1,7 @@
 import { Pencil, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Badge, Button, Combobox, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, Select, Textarea, Toggle, useConfirm, useToast } from '../components';
+import { Badge, Button, Combobox, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, Select, SkeletonList, Textarea, Toggle, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import { statusLabel, statusTone } from '../lib/status';
@@ -69,6 +69,7 @@ export function ServicesModule({
   const canManageServices = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
   const canRecordTechnical = auth.isAuthBypassed || auth.hasRole('admin', 'operator', 'technician');
   const [services, setServices] = useState<ServiceRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedService, setSelectedService] = useState<ServiceRow | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
@@ -95,10 +96,12 @@ export function ServicesModule({
   const [submitting, setSubmitting] = useState(false);
 
   function loadServices() {
+    setLoading(true);
     return authFetch('http://127.0.0.1:3001/api/services')
       .then((response) => response.json() as Promise<ServiceRow[]>)
       .then((data) => { setServices(data); setLoadError(null); })
-      .catch(() => { setServices([]); setLoadError('Não foi possível carregar os serviços.'); });
+      .catch(() => { setServices([]); setLoadError('Não foi possível carregar os serviços.'); })
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => {
@@ -582,6 +585,7 @@ export function ServicesModule({
       )}
 
       <div className="module-table">
+        {loading && services.length === 0 && <SkeletonList rows={6} />}
         {visibleServices.map((service) => (
           <div
             className="module-row service-row interactive"
@@ -624,7 +628,7 @@ export function ServicesModule({
             )}
           </div>
         ))}
-        {visibleServices.length === 0 && (
+        {!loading && visibleServices.length === 0 && (
           <EmptyState
             icon={Wrench}
             title="Nenhum serviço encontrado"

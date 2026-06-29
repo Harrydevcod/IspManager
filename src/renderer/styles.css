@@ -1322,6 +1322,9 @@ h2 {
   }
 
   .data-table-row {
+    /* !important necessário: DataTable define grid-template-columns inline
+       (style), e inline vence especificidade — sem isto o layout de 1 coluna
+       no telemóvel não se aplica. */
     grid-template-columns: 1fr !important;
     gap: var(--space-2);
   }

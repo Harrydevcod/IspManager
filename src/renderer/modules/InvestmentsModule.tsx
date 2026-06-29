@@ -1,7 +1,7 @@
 import { Pencil, Plus, Trash2, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Card, Combobox, DataList, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, MetricGrid, Select, Textarea, useConfirm, useToast } from '../components';
+import { Badge, Button, Card, Combobox, DataList, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, MetricGrid, Select, SkeletonList, Textarea, useConfirm, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './InvestmentsModule.css';
@@ -164,6 +164,7 @@ function formatMonths(value: number | null): string {
 
 export function InvestmentsModule() {
   const [data, setData] = useState<InvestmentList>(EMPTY_INVESTMENT_LIST);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [month, setMonth] = useState(currentMonth());
@@ -198,6 +199,7 @@ export function InvestmentsModule() {
   const formRoi = formTotal > 0 ? ((formAccumulatedRevenue - formTotal) / formTotal) * 100 : null;
 
   const load = useCallback(() => {
+    setLoading(true);
     const params = new URLSearchParams();
     if (!showAllMonths) params.set('month', month);
     if (type !== 'all') params.set('type', type);
@@ -210,7 +212,8 @@ export function InvestmentsModule() {
           ? current
           : payload.rows[0]?.id ?? null);
       })
-      .catch(() => { setData(EMPTY_INVESTMENT_LIST); setLoadError('Não foi possível carregar os investimentos.'); });
+      .catch(() => { setData(EMPTY_INVESTMENT_LIST); setLoadError('Não foi possível carregar os investimentos.'); })
+      .finally(() => setLoading(false));
   }, [month, type, showAllMonths]);
 
   useEffect(() => {
@@ -414,6 +417,9 @@ export function InvestmentsModule() {
       </FilterBar>
 
       <div className="investments-layout">
+        {loading && data.rows.length === 0 ? (
+          <SkeletonList rows={5} />
+        ) : (
         <DataList
           rows={data.rows}
           rowKey={(investment) => investment.id}
@@ -461,6 +467,7 @@ export function InvestmentsModule() {
             />
           }
         />
+        )}
 
         <aside className="investment-detail" aria-label="Detalhe do investimento">
           {selected ? (
