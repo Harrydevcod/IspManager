@@ -79,8 +79,7 @@ export function PaymentsModule({
   // a partir do dia 30 → o mês que está a fechar (mesma regra da auto-faturação).
   const defaultRefMonth = (() => {
     const now = new Date();
-    const base = now.getDate() >= 30 ? now : new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}`;
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   })();
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
