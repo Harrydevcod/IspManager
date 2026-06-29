@@ -733,6 +733,20 @@ h2 {
   font-variant-numeric: tabular-nums;
 }
 
+.operations-brief-rail .brief-tile-action[role='button'] {
+  cursor: pointer;
+  transition: background var(--motion-fast, 120ms) ease;
+}
+
+.operations-brief-rail .brief-tile-action[role='button']:hover {
+  background: color-mix(in oklch, var(--surface-2) 88%, var(--bg));
+}
+
+.operations-brief-rail .brief-tile-action[role='button']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .metric-card,
 .primary-panel,
 .side-panel,
@@ -768,6 +782,17 @@ h2 {
 .metric-card-revenue { --metric-tone: var(--info); }
 .metric-card-danger { --metric-tone: var(--danger); }
 .metric-card-info { --metric-tone: var(--info); }
+
+.metric-card-clickable { cursor: pointer; }
+
+.metric-card-clickable:hover {
+  border-color: var(--metric-tone);
+}
+
+.metric-card-clickable:focus-visible {
+  outline: 2px solid var(--metric-tone);
+  outline-offset: 2px;
+}
 
 .metric-card:hover {
   border-color: var(--border-2);

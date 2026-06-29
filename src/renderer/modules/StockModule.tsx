@@ -72,7 +72,13 @@ function movementTone(type: StockMovement['type']): 'success' | 'danger' | 'info
   return 'info';
 }
 
-export function StockModule() {
+export function StockModule({
+  focusLowStock,
+  onFocusHandled
+}: {
+  focusLowStock?: boolean;
+  onFocusHandled?: () => void;
+} = {}) {
   const { toast } = useToast();
   const auth = useAuth();
   const canManageStock = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
@@ -91,6 +97,14 @@ export function StockModule() {
   const [backboneFilter, setBackboneFilter] = useState<'all' | 'backbone' | 'cliente'>('all');
   const [catalogForm, setCatalogForm] = useState<StockFormState>(emptyCatalogForm());
   const [movementForm, setMovementForm] = useState<StockMovementFormState>(emptyMovementForm());
+
+  // Atalho vindo do Dashboard ("Stock baixo"): pré-filtra por stock baixo.
+  useEffect(() => {
+    if (!focusLowStock) return;
+    setStockFilter('low');
+    onFocusHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadStock = useCallback(() => {
     return authFetch('http://127.0.0.1:3001/api/stock/summary')
