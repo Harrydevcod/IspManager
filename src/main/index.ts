@@ -20,15 +20,24 @@ let mainWindow: BrowserWindow | null = null;
  */
 function initDownloads() {
   session.defaultSession.on('will-download', (_event, item) => {
-    const suggested = item.getFilename() || 'documento.pdf';
-    const dir = app.getPath('downloads');
-    const ext = path.extname(suggested);
-    const base = path.basename(suggested, ext);
-    let target = path.join(dir, suggested);
+    // Path-traversal hardening: nunca confiar no nome sugerido — reduzir a
+    // basename (sem separadores) e confirmar que o destino fica dentro de
+    // Transferências antes de gravar.
+    const raw = item.getFilename() || 'documento.pdf';
+    const safe = path.basename(raw).replace(/[/\\]/g, '_') || 'documento.pdf';
+    const dir = path.resolve(app.getPath('downloads'));
+    const ext = path.extname(safe);
+    const base = path.basename(safe, ext);
+    let target = path.join(dir, safe);
     for (let n = 1; fs.existsSync(target); n += 1) {
       target = path.join(dir, `${base} (${n})${ext}`);
     }
-    item.setSavePath(target);
+    const resolved = path.resolve(target);
+    if (resolved !== dir && !resolved.startsWith(dir + path.sep)) {
+      item.cancel();
+      return;
+    }
+    item.setSavePath(resolved);
   });
 }
 
