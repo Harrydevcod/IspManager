@@ -1,6 +1,6 @@
 import { Activity, AlertTriangle, CalendarClock, MessageCircle, TrendingUp, UsersRound } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Card, Message, MetricCard, MetricGrid, RevenueBars, Skeleton, formatCompactCve } from '../components';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Badge, Button, Card, ErrorRetry, MetricCard, MetricGrid, RevenueBars, Skeleton, formatCompactCve } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
 import type { DashboardSummary } from '../types';
@@ -16,8 +16,8 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    authFetch('http://127.0.0.1:3001/api/dashboard/summary')
+  const loadSummary = useCallback(() => {
+    return authFetch('http://127.0.0.1:3001/api/dashboard/summary')
       .then((response) => {
         if (!response.ok) throw new Error('Nao foi possivel carregar o dashboard');
         return response.json() as Promise<DashboardSummary>;
@@ -30,6 +30,8 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
         setError(err instanceof Error ? err.message : 'Erro ao carregar dashboard');
       });
   }, []);
+
+  useEffect(() => { void loadSummary(); }, [loadSummary]);
 
   const totalPlanCount = summary?.planMix.reduce((acc, entry) => acc + entry.count, 0) || 0;
   const currentMonthKey = useMemo(() => {
@@ -83,7 +85,7 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
 
   return (
     <>
-      {error && <Message tone="error">{error}</Message>}
+      {error && !summary && <ErrorRetry message={error} onRetry={() => { void loadSummary(); }} />}
 
       <section
         className={`operations-brief${briefNeedsAttention ? ' operations-brief-attention' : ''}`}

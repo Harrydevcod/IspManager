@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, RotateCcw, Send } from 'lucide-react';
-import { Button, Field, FilterBar, Message, Select, useToast } from '../components';
+import { Button, ErrorRetry, Field, FilterBar, Message, Select, useToast } from '../components';
 import { formatPtMonth } from '../lib/format';
 import { authFetch } from '../lib/auth';
 import { downloadAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
@@ -71,6 +71,7 @@ export function PaymentsModule() {
     return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}`;
   })();
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [referenceMonth, setReferenceMonth] = useState(defaultRefMonth);
   const [statusFilter, setStatusFilter] = useState<'all' | PaymentRow['status']>('all');
   const [message, setMessage] = useState<string | null>(null);
@@ -110,10 +111,12 @@ export function PaymentsModule() {
       .then((response) => response.json() as Promise<PaymentRow[]>)
       .then((data) => {
         setPayments(data);
+        setLoadError(null);
         return data;
       })
       .catch(() => {
         setPayments([]);
+        setLoadError('Não foi possível carregar os pagamentos.');
         return [];
       });
   }
@@ -780,6 +783,8 @@ export function PaymentsModule() {
           onSubmitWhatsapp={() => void submitWhatsapp(selectedPayment)}
         />
       )}
+
+      {loadError && payments.length === 0 && <ErrorRetry message={loadError} onRetry={() => { void loadPayments(); }} />}
 
       <PaymentsList
         payments={visiblePayments}

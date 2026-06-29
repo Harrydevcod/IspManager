@@ -1,7 +1,7 @@
 import { FileText, Pencil, Plus, Repeat, Trash2 } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, Field, FilterBar, Message, Select, SkeletonList, Textarea, Toggle, useConfirm, useToast } from '../components';
+import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Select, SkeletonList, Textarea, Toggle, useConfirm, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './ExpensesModule.css';
@@ -404,7 +404,7 @@ export function ExpensesModule() {
         </FilterBar>
       </div>
 
-      {error && <Message tone="error">{error}</Message>}
+      {error && !loading && <ErrorRetry message={error} onRetry={() => { void load(); }} />}
 
       {data.totals.byCategory.length > 0 && (() => {
         const maxTotal = Math.max(1, ...data.totals.byCategory.map((c) => c.totalCve));

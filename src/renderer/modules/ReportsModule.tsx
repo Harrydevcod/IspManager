@@ -1,6 +1,6 @@
 import { Activity, AlertTriangle, Banknote, Cable, CheckCircle2, CopyX, MessageCircle, UserCog, UsersRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Button, EmptyState, Field, FilterBar, Message, MetricCard } from '../components';
+import { Button, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
@@ -20,6 +20,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
   const [whatsappStatus, setWhatsappStatus] = useState<string | null>(null);
   const [messagingSettings, setMessagingSettings] = useState<MessagingSettings>({
     companyName: 'ISPM',
@@ -52,7 +53,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Erro ao carregar relatorios');
       });
-  }, [view, dateFrom, dateTo, page]);
+  }, [view, dateFrom, dateTo, page, reloadTick]);
 
   useEffect(() => {
     if (view !== 'incomplete' && view !== 'duplicates') return;
@@ -66,7 +67,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
       })
       .then((data) => { setDq(data); setError(null); })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Erro ao carregar qualidade de dados'));
-  }, [view, issue, page]);
+  }, [view, issue, page, reloadTick]);
 
   useEffect(() => {
     authFetch('http://127.0.0.1:3001/api/settings')
@@ -237,7 +238,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
         </FilterBar>
       )}
 
-      {error && <Message tone="error">{error}</Message>}
+      {error && <ErrorRetry message={error} onRetry={() => setReloadTick((t) => t + 1)} />}
       {whatsappStatus && <Message>{whatsappStatus}</Message>}
 
       {(view === 'incomplete' || view === 'duplicates') ? (

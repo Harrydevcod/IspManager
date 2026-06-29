@@ -1,7 +1,7 @@
 import { Activity, Banknote, Inbox, KeyRound, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { Button, EmptyState, Field, FilterBar, Select, SkeletonList } from '../components';
+import { Button, EmptyState, ErrorRetry, Field, FilterBar, Select, SkeletonList } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatPtDate, formatPtDateTime } from '../lib/format';
 import './AuditModule.css';
@@ -81,6 +81,7 @@ export function AuditModule() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -102,11 +103,13 @@ export function AuditModule() {
         setTotal(data.total);
         setTotalPages(data.totalPages);
         if (data.page !== page) setPage(data.page);
+        setLoadError(null);
       })
       .catch(() => {
         setRows([]);
         setTotal(0);
         setTotalPages(1);
+        setLoadError('Não foi possível carregar a auditoria.');
       })
       .finally(() => setLoading(false));
   }, [page, entityFilter, dateFrom, dateTo]);
@@ -170,6 +173,7 @@ export function AuditModule() {
       </div>
 
       {loading && <SkeletonList rows={6} />}
+      {loadError && !loading && <ErrorRetry message={loadError} onRetry={() => { void load(); }} />}
 
       {!loading && rows.length === 0 && (
         <EmptyState

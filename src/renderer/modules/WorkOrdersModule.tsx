@@ -1,7 +1,7 @@
 import { ClipboardList, Pencil, Plus, Trash2, X } from 'lucide-react';
 import type { CSSProperties, DragEvent, FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Dialog, Field, Message, Select, Textarea, useConfirm, useToast } from '../components';
+import { Button, Dialog, ErrorRetry, Field, Message, Select, Textarea, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatPtDate } from '../lib/format';
 import './WorkOrdersModule.css';
@@ -112,6 +112,7 @@ export function WorkOrdersModule() {
   const auth = useAuth();
   const canDeleteWorkOrders = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
   const [board, setBoard] = useState<WorkOrderBoard | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [services, setServices] = useState<ServiceRow[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<WorkOrder | null>(null);
@@ -123,8 +124,8 @@ export function WorkOrdersModule() {
   function loadBoard() {
     return authFetch('http://127.0.0.1:3001/api/work-orders/board')
       .then((res) => res.json() as Promise<WorkOrderBoard>)
-      .then(setBoard)
-      .catch(() => setBoard(null));
+      .then((data) => { setBoard(data); setLoadError(null); })
+      .catch(() => { setBoard(null); setLoadError('Não foi possível carregar as ordens de trabalho.'); });
   }
 
   function ensureServicesLoaded() {
@@ -308,7 +309,9 @@ export function WorkOrdersModule() {
         </div>
       </div>
 
-      {!board && <Message>A carregar...</Message>}
+      {!board && (loadError
+        ? <ErrorRetry message={loadError} onRetry={() => { void loadBoard(); }} />
+        : <Message>A carregar...</Message>)}
 
       {board && (
         <div className="kanban-board" role="list">
