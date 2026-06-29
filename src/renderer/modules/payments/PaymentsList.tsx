@@ -77,7 +77,7 @@ export function PaymentsList({
             <span>
               <small className="entity-code">{p.clientCode || '—'}</small>
               <strong>{p.clientName}</strong>
-              <small>{formatPtMonth(p.referenceMonth)} · FT {p.invoiceNumber || '-'}</small>
+              <small>{formatPtMonth(p.referenceMonth)} · {p.invoiceNumber || 'sem fatura'}</small>
             </span>
           )
         },
