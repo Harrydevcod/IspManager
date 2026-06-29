@@ -1,11 +1,13 @@
 import { Cable, MessageCircle, Pencil, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, PaginationControls, Select, SkeletonList, useToast } from '../components';
+import { Badge, BulkActionBar, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { ClientImportDialog } from './clients/import';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
 import { compareText, paginateRows, sortRows, type SortState } from '../lib/listView';
+import { runBulk, summarizeBulk } from '../lib/bulkRun';
+import { useRowSelection } from '../lib/useRowSelection';
 import { statusLabel, statusTone } from '../lib/status';
 import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
 import type { Client, ClientProfitability } from '../types';
@@ -94,6 +96,11 @@ export function ClientsModule({
   const [sortState, setSortState] = useState<SortState<ClientSortKey>>(DEFAULT_CLIENT_SORT);
   const [clientPage, setClientPage] = useState(1);
   const [clientPageSize, setClientPageSize] = useState(DEFAULT_CLIENT_PAGE_SIZE);
+  const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState<Client['status']>('suspended');
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const selection = useRowSelection<number>();
+  const confirm = useConfirm();
 
   const loadClients = useCallback(() => {
     setLoading(true);
@@ -312,6 +319,79 @@ export function ClientsModule({
     setClientPage(1);
   }, [search, statusFilter, sortState, clientPageSize]);
 
+  // Seleção em massa restrita ao filtro atual.
+  const visibleIds = useMemo(() => visibleClients.map((client) => client.id), [visibleClients]);
+  useEffect(() => { selection.retain(visibleIds); }, [visibleIds, selection]);
+  const pageIds = useMemo(() => pagedClients.rows.map((client) => client.id), [pagedClients]);
+  const tableSelection = {
+    isSelected: (key: string | number) => selection.isSelected(Number(key)),
+    onToggleRow: (key: string | number) => selection.toggle(Number(key)),
+    headerState: selection.visibleState(pageIds),
+    onToggleAll: () => selection.toggleVisible(pageIds)
+  };
+
+  function selectedClientRows() {
+    return visibleClients.filter((client) => selection.isSelected(client.id));
+  }
+
+  async function runBulkNotify() {
+    const targets = selectedClientRows().filter((client) => normalizeWhatsappPhone(client.phone));
+    if (targets.length === 0) {
+      toast('Nenhum cliente selecionado com telefone válido.', 'error');
+      return;
+    }
+    if (!(await confirm({
+      title: `Notificar ${targets.length} cliente(s) por WhatsApp?`,
+      message: 'Envia a mensagem padrão a cada cliente selecionado com telefone válido.',
+      confirmLabel: 'Enviar'
+    }))) return;
+    setBulkSubmitting(true);
+    try {
+      const result = await runBulk(targets, async (client) => {
+        const message = renderWhatsappMessage(messagingSettings.whatsappTemplate, client, messagingSettings.companyName);
+        await sendWhatsappViaUltraMsg(client.phone, message);
+      });
+      toast(summarizeBulk(result, 'notificados'), result.failed ? 'info' : 'success');
+      selection.clear();
+    } finally {
+      setBulkSubmitting(false);
+    }
+  }
+
+  async function confirmBulkStatus() {
+    const targets = selectedClientRows().filter((client) => client.status !== bulkStatus);
+    if (targets.length === 0) {
+      toast('Nenhum cliente selecionado com estado diferente.', 'error');
+      setBulkStatusOpen(false);
+      return;
+    }
+    setBulkSubmitting(true);
+    try {
+      const result = await runBulk(targets, async (client) => {
+        const response = await authFetch(`http://127.0.0.1:3001/api/clients/${client.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fullName: client.fullName,
+            phone: client.phone || '',
+            nif: client.nif || '',
+            island: client.island || '',
+            zone: client.zone || '',
+            address: client.address || '',
+            status: bulkStatus
+          })
+        });
+        if (!response.ok) throw new Error('status update failed');
+      });
+      toast(summarizeBulk(result, `clientes → ${statusLabel(bulkStatus)}`), result.failed ? 'info' : 'success');
+      setBulkStatusOpen(false);
+      selection.clear();
+      loadClients();
+    } finally {
+      setBulkSubmitting(false);
+    }
+  }
+
   const hasProfitabilityFootprint = profitability
     ? profitability.investments.length > 0 || profitability.equipmentUsed.length > 0 || profitability.installationCostCve > 0
     : false;
@@ -528,9 +608,20 @@ export function ClientsModule({
 
       {!loading && !loadError && (
         <>
+          {canManageClients && (
+            <BulkActionBar count={selection.count} onClear={selection.clear} noun={{ one: 'cliente selecionado', many: 'clientes selecionados' }}>
+              <Button variant="secondary" size="sm" leadingIcon={<MessageCircle size={14} aria-hidden />} disabled={bulkSubmitting} onClick={() => void runBulkNotify()}>
+                Notificar WhatsApp
+              </Button>
+              <Button variant="secondary" size="sm" disabled={bulkSubmitting} onClick={() => setBulkStatusOpen(true)}>
+                Mudar estado
+              </Button>
+            </BulkActionBar>
+          )}
           <DataTable
             rows={pagedClients.rows}
             rowKey={(client) => client.id}
+            selection={canManageClients ? tableSelection : undefined}
             stickyHeader
             sort={sortState}
             onSortChange={setSortState}
@@ -645,6 +736,39 @@ export function ClientsModule({
             <option value="cancelled">Cancelado</option>
           </Select>
         </form>
+      </Dialog>
+
+      <Dialog
+        open={bulkStatusOpen}
+        onClose={() => { if (!bulkSubmitting) setBulkStatusOpen(false); }}
+        eyebrow="Ações em massa"
+        title={`Mudar estado · ${selection.count} cliente(s)`}
+        size="sm"
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setBulkStatusOpen(false)} disabled={bulkSubmitting}>Cancelar</Button>
+            <Button
+              variant={bulkStatus === 'cancelled' ? 'danger' : 'primary'}
+              loading={bulkSubmitting}
+              onClick={() => void confirmBulkStatus()}
+            >
+              Aplicar estado
+            </Button>
+          </>
+        }
+      >
+        <div className="overdue-notify">
+          {bulkStatus === 'cancelled' && (
+            <Message tone="error">
+              Cancelar clientes propaga o cancelamento aos respetivos serviços. Esta ação afeta a faturação.
+            </Message>
+          )}
+          <Select label="Novo estado" value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value as Client['status'])} disabled={bulkSubmitting}>
+            <option value="active">Ativo</option>
+            <option value="suspended">Suspenso</option>
+            <option value="cancelled">Cancelado</option>
+          </Select>
+        </div>
       </Dialog>
     </section>
   );
