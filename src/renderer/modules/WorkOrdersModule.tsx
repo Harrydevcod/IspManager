@@ -1,7 +1,7 @@
 import { ClipboardList, Pencil, Plus, Trash2, X } from 'lucide-react';
 import type { CSSProperties, DragEvent, FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Dialog, ErrorRetry, Field, Message, Select, Textarea, useConfirm, useToast } from '../components';
+import { Button, Dialog, ErrorRetry, Field, Select, Skeleton, Textarea, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatPtDate } from '../lib/format';
 import './WorkOrdersModule.css';
@@ -311,7 +311,23 @@ export function WorkOrdersModule() {
 
       {!board && (loadError
         ? <ErrorRetry message={loadError} onRetry={() => { void loadBoard(); }} />
-        : <Message>A carregar...</Message>)}
+        : (
+          <div className="kanban-board" role="status" aria-label="A carregar">
+            {Array.from({ length: 4 }).map((_, col) => (
+              <div className="kanban-column" key={col}>
+                <header className="kanban-head">
+                  <Skeleton width={88} height={13} />
+                  <Skeleton width={20} height={13} />
+                </header>
+                <div className="kanban-body">
+                  {Array.from({ length: 3 }).map((_, card) => (
+                    <Skeleton key={card} height={72} radius={14} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
 
       {board && (
         <div className="kanban-board" role="list">

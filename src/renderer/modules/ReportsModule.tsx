@@ -1,6 +1,6 @@
 import { Activity, AlertTriangle, Banknote, Cable, CheckCircle2, CopyX, MessageCircle, UserCog, UsersRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Button, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard } from '../components';
+import { Button, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, SkeletonList } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
@@ -258,6 +258,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
       )}
 
       <div className="module-table">
+        {!error && ((view === 'incomplete' || view === 'duplicates') ? !dq : !summary) && <SkeletonList rows={5} />}
         {view === 'revenue' && summary?.revenueByMonth.map((row) => (
           <div className="module-row report-row" key={row.referenceMonth}>
             <span>
