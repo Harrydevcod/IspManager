@@ -24,4 +24,5 @@ export * from './ConfirmDialog';
 export * from './ThemeToggle';
 export * from './Toaster';
 export * from './CommandPalette';
+export * from './ShortcutsDialog';
 export * from './AuthGate';
