@@ -1,7 +1,7 @@
 import { Pencil, Plus, Trash2, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Card, Combobox, DataList, Dialog, EmptyState, Field, FilterBar, Message, MetricCard, MetricGrid, Select, Textarea, useConfirm, useToast } from '../components';
+import { Badge, Button, Card, Combobox, DataList, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, MetricGrid, Select, Textarea, useConfirm, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './InvestmentsModule.css';
@@ -164,6 +164,7 @@ function formatMonths(value: number | null): string {
 
 export function InvestmentsModule() {
   const [data, setData] = useState<InvestmentList>(EMPTY_INVESTMENT_LIST);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [month, setMonth] = useState(currentMonth());
   const [type, setType] = useState<InvestmentType | 'all'>('all');
@@ -204,11 +205,12 @@ export function InvestmentsModule() {
       .then((response) => response.json() as Promise<InvestmentList>)
       .then((payload) => {
         setData(payload);
+        setLoadError(null);
         setSelectedId((current) => current && payload.rows.some((row) => row.id === current)
           ? current
           : payload.rows[0]?.id ?? null);
       })
-      .catch(() => setData(EMPTY_INVESTMENT_LIST));
+      .catch(() => { setData(EMPTY_INVESTMENT_LIST); setLoadError('Não foi possível carregar os investimentos.'); });
   }, [month, type, showAllMonths]);
 
   useEffect(() => {
@@ -392,6 +394,8 @@ export function InvestmentsModule() {
           </ul>
         </Card>
       )}
+
+      {loadError && data.rows.length === 0 && <ErrorRetry message={loadError} onRetry={() => { void load(); }} />}
 
       <FilterBar>
         <Select label="Tipo" value={type} onChange={(e) => setType(e.target.value as InvestmentType | 'all')}>

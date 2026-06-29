@@ -1,7 +1,7 @@
 import { Pencil, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Badge, Button, Combobox, Dialog, EmptyState, Field, FilterBar, Message, Select, Textarea, Toggle, useConfirm, useToast } from '../components';
+import { Badge, Button, Combobox, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, Select, Textarea, Toggle, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import { statusLabel, statusTone } from '../lib/status';
@@ -69,6 +69,7 @@ export function ServicesModule({
   const canManageServices = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
   const canRecordTechnical = auth.isAuthBypassed || auth.hasRole('admin', 'operator', 'technician');
   const [services, setServices] = useState<ServiceRow[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedService, setSelectedService] = useState<ServiceRow | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [plans, setPlans] = useState<PlanRow[]>([]);
@@ -96,8 +97,8 @@ export function ServicesModule({
   function loadServices() {
     return authFetch('http://127.0.0.1:3001/api/services')
       .then((response) => response.json() as Promise<ServiceRow[]>)
-      .then(setServices)
-      .catch(() => setServices([]));
+      .then((data) => { setServices(data); setLoadError(null); })
+      .catch(() => { setServices([]); setLoadError('Não foi possível carregar os serviços.'); });
   }
 
   useEffect(() => {
@@ -542,6 +543,7 @@ export function ServicesModule({
         )}
       </div>
 
+      {loadError && services.length === 0 && <ErrorRetry message={loadError} onRetry={() => { void loadServices(); }} />}
       <FilterBar>
         <Field type="search" label="Buscar" aria-label="Pesquisar servicos" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente ou plano" />
         <Select label="Estado" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | ServiceRow['status'])}>

@@ -1,7 +1,7 @@
 import { KeyRound, Pencil, Plus, ShieldCheck, Trash2, UserCog, UsersRound, Wrench } from 'lucide-react';
 import type { FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Dialog, EmptyState, Field, FilterBar, Select, SkeletonList, useConfirm, useToast } from '../components';
+import { Button, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import type { UserRole } from '../lib/auth';
 import './UsersModule.css';
@@ -46,6 +46,7 @@ export function UsersModule() {
   const auth = useAuth();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [resetting, setResetting] = useState<UserRow | null>(null);
   const [resetPassword, setResetPassword] = useState('');
@@ -63,8 +64,8 @@ export function UsersModule() {
         if (!res.ok) throw new Error('load failed');
         return res.json() as Promise<UserRow[]>;
       })
-      .then(setUsers)
-      .catch(() => setUsers([]))
+      .then((data) => { setUsers(data); setLoadError(null); })
+      .catch(() => { setUsers([]); setLoadError('Não foi possível carregar os utilizadores.'); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -298,6 +299,7 @@ export function UsersModule() {
       )}
 
       {loading && <SkeletonList rows={5} />}
+      {loadError && !loading && <ErrorRetry message={loadError} onRetry={() => { void load(); }} />}
 
       {!loading && visibleUsers.length === 0 && (
         <EmptyState

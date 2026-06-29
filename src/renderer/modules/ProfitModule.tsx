@@ -1,6 +1,6 @@
 import { Banknote, Coins, Download, FileText, Percent, RadioTower, Wallet } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Card, Field, Message, MetricCard, MetricGrid, RevenueBars, formatCompactCve } from '../components';
+import { Button, Card, ErrorRetry, Field, Message, MetricCard, MetricGrid, RevenueBars, formatCompactCve } from '../components';
 import { authFetch } from '../lib/auth';
 import { downloadAuthenticated } from '../lib/download';
 import { formatCve } from '../lib/format';
@@ -20,6 +20,7 @@ export function ProfitModule() {
   const [exportBusy, setExportBusy] = useState<'pdf' | 'xlsx' | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [data, setData] = useState<InvestmentList>(EMPTY_INVESTMENT_LIST);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [month, setMonth] = useState(currentMonth());
   const [showAllMonths, setShowAllMonths] = useState(false);
   const [revenuePoints, setRevenuePoints] = useState<RevenuePoint[]>([]);
@@ -30,8 +31,8 @@ export function ProfitModule() {
     if (!showAllMonths) params.set('month', month);
     return authFetch(`http://127.0.0.1:3001/api/investments?${params}`)
       .then((response) => response.json() as Promise<InvestmentList>)
-      .then(setData)
-      .catch(() => setData(EMPTY_INVESTMENT_LIST));
+      .then((payload) => { setData(payload); setLoadError(null); })
+      .catch(() => { setData(EMPTY_INVESTMENT_LIST); setLoadError('Não foi possível carregar a rentabilidade.'); });
   }, [month, showAllMonths]);
 
   useEffect(() => {
@@ -123,6 +124,7 @@ export function ProfitModule() {
       </div>
 
       {exportError && <Message tone="error">{exportError}</Message>}
+      {loadError && data.totals.count === 0 && <ErrorRetry message={loadError} onRetry={() => { void load(); }} />}
 
       <section
         className={`operations-brief${briefAttention ? ' operations-brief-attention' : ''}`}

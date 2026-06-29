@@ -2,7 +2,7 @@ import { Activity, ArrowDownUp, Banknote, Boxes, Cable, Gauge, HardDrive, Networ
 import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Dialog, EmptyState, Field, FilterBar, Message, Select, useToast } from '../components';
+import { Badge, Button, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
 import { stockLevelTone } from '../lib/status';
@@ -77,6 +77,7 @@ export function StockModule() {
   const auth = useAuth();
   const canManageStock = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
   const [summary, setSummary] = useState<StockSummary | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedCatalog, setSelectedCatalog] = useState<StockCatalogRow | null>(null);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [assignments, setAssignments] = useState<CatalogAssignments | null>(null);
@@ -94,8 +95,8 @@ export function StockModule() {
   const loadStock = useCallback(() => {
     return authFetch('http://127.0.0.1:3001/api/stock/summary')
       .then((response) => response.json() as Promise<StockSummary>)
-      .then(setSummary)
-      .catch(() => setSummary(null));
+      .then((data) => { setSummary(data); setLoadError(null); })
+      .catch(() => { setSummary(null); setLoadError('Não foi possível carregar o stock.'); });
   }, []);
 
   function loadMovements(catalog: StockCatalogRow) {
@@ -322,6 +323,8 @@ export function StockModule() {
           <span className="segmented-tab-count">{tabCounts.material}</span>
         </Button>
       </nav>
+
+      {loadError && !summary && <ErrorRetry message={loadError} onRetry={() => { void loadStock(); }} />}
 
       <div className="stock-filter-sticky">
         <FilterBar>

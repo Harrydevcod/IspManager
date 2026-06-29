@@ -2,7 +2,7 @@ import { Activity, Cable, Pencil, Wifi } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Dialog, EmptyState, Field, FilterBar, Select, useToast } from '../components';
+import { Button, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import type { PlanRow } from '../types';
@@ -62,6 +62,7 @@ export function PlansModule() {
   const auth = useAuth();
   const canManagePlans = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
   const [plans, setPlans] = useState<PlanRow[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingPlan, setEditingPlan] = useState<PlanRow | null>(null);
   const [search, setSearch] = useState('');
@@ -72,8 +73,8 @@ export function PlansModule() {
   function loadPlans() {
     return authFetch('http://127.0.0.1:3001/api/plans')
       .then((response) => response.json() as Promise<PlanRow[]>)
-      .then(setPlans)
-      .catch(() => setPlans([]));
+      .then((data) => { setPlans(data); setLoadError(null); })
+      .catch(() => { setPlans([]); setLoadError('Não foi possível carregar os planos.'); });
   }
 
   useEffect(() => {
@@ -172,6 +173,7 @@ export function PlansModule() {
       </div>
 
       <div className="plans-filter-sticky">
+        {loadError && plans.length === 0 && <ErrorRetry message={loadError} onRetry={() => { void loadPlans(); }} />}
         <FilterBar>
           <Field
             type="search"
