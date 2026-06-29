@@ -1162,6 +1162,15 @@ h2 {
   gap: var(--space-2);
 }
 
+.data-table.has-sticky-head .data-table-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: color-mix(in oklch, var(--bg) 86%, transparent);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+
 .data-table-head,
 .data-table-row {
   display: grid;
@@ -1182,6 +1191,41 @@ h2 {
   text-transform: uppercase;
 }
 
+.data-table-sort {
+  display: inline-flex;
+  align-items: center;
+  justify-content: inherit;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.data-table-sort:hover,
+.data-table-sort.is-active {
+  color: var(--text);
+}
+
+.data-table-align-center .data-table-sort {
+  justify-content: center;
+}
+
+.data-table-align-end .data-table-sort {
+  justify-content: flex-end;
+}
+
+.data-table-sort svg {
+  color: var(--text-3);
+  flex: 0 0 auto;
+}
+
 .data-table-row {
   min-height: 58px;
   border: 1px solid var(--border);
@@ -1196,9 +1240,24 @@ h2 {
   background: var(--surface-2);
 }
 
+.data-table-row.is-interactive {
+  cursor: pointer;
+}
+
+.data-table-row.is-active {
+  border-color: color-mix(in oklch, var(--accent) 42%, var(--border));
+  background: color-mix(in oklch, var(--accent) 7%, var(--surface));
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
 .data-table-cell {
   min-width: 0;
   color: var(--text);
+}
+
+.data-table-cell b {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
 }
 
 .data-table-align-start {
@@ -1273,6 +1332,56 @@ h2 {
 
   .data-table-actions {
     justify-content: flex-start;
+  }
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  color: var(--text-3);
+}
+
+.pagination-range,
+.pagination-page {
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
+}
+
+.pagination-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pagination-size {
+  min-width: 112px;
+}
+
+.pagination-size .field-label {
+  color: var(--text-3);
+}
+
+.pagination-size select {
+  min-height: 34px;
+}
+
+@media (max-width: 640px) {
+  .pagination-controls,
+  .pagination-actions {
+    align-items: stretch;
+  }
+
+  .pagination-controls {
+    flex-direction: column;
+  }
+
+  .pagination-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 }
 

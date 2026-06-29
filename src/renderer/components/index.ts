@@ -16,6 +16,7 @@ export * from './Badge';
 export * from './FilterBar';
 export * from './DataList';
 export * from './DataTable';
+export * from './PaginationControls';
 export * from './Combobox';
 export * from './Dialog';
 export * from './ConfirmDialog';

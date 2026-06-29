@@ -1,10 +1,11 @@
 import { Cable, MessageCircle, Pencil, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
-import { useCallback, useEffect, useState } from 'react';
-import { Badge, Button, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, Select, SkeletonList, useToast } from '../components';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, PaginationControls, Select, SkeletonList, useToast } from '../components';
 import { ClientImportDialog } from './clients/import';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
+import { compareText, paginateRows, sortRows, type SortState } from '../lib/listView';
 import { statusLabel, statusTone } from '../lib/status';
 import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
 import type { Client, ClientProfitability } from '../types';
@@ -20,6 +21,10 @@ type ClientFormState = {
 };
 
 type MessagingSettings = { companyName: string; whatsappTemplate: string };
+type ClientSortKey = 'fullName' | 'clientCode' | 'status' | 'island' | 'zone';
+
+const DEFAULT_CLIENT_SORT: SortState<ClientSortKey> = { key: 'fullName', direction: 'asc' };
+const DEFAULT_CLIENT_PAGE_SIZE = 10;
 
 type ClientNotice = {
   id: number;
@@ -86,6 +91,9 @@ export function ClientsModule({
   const [profitability, setProfitability] = useState<ClientProfitability | null>(null);
   const [profitabilityLoading, setProfitabilityLoading] = useState(false);
   const [notices, setNotices] = useState<ClientNotice[]>([]);
+  const [sortState, setSortState] = useState<SortState<ClientSortKey>>(DEFAULT_CLIENT_SORT);
+  const [clientPage, setClientPage] = useState(1);
+  const [clientPageSize, setClientPageSize] = useState(DEFAULT_CLIENT_PAGE_SIZE);
 
   const loadClients = useCallback(() => {
     setLoading(true);
@@ -279,7 +287,7 @@ export function ClientsModule({
     }
   }
 
-  const visibleClients = clients.filter((client) => {
+  const filteredClients = useMemo(() => clients.filter((client) => {
     const normalizedSearch = search.trim().toLowerCase();
     const matchesSearch = !normalizedSearch
       || client.fullName.toLowerCase().includes(normalizedSearch)
@@ -287,7 +295,23 @@ export function ClientsModule({
       || (client.phone || '').toLowerCase().includes(normalizedSearch);
     const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
     return matchesSearch && matchesStatus;
-  });
+  }), [clients, search, statusFilter]);
+  const visibleClients = useMemo(() => sortRows(filteredClients, sortState, {
+    fullName: (a, b) => compareText(a.fullName, b.fullName) || compareText(a.clientCode, b.clientCode),
+    clientCode: (a, b) => compareText(a.clientCode, b.clientCode),
+    status: (a, b) => compareText(a.status, b.status) || compareText(a.fullName, b.fullName),
+    island: (a, b) => compareText(a.island, b.island) || compareText(a.fullName, b.fullName),
+    zone: (a, b) => compareText(a.zone, b.zone) || compareText(a.fullName, b.fullName)
+  }), [filteredClients, sortState]);
+  const pagedClients = useMemo(
+    () => paginateRows(visibleClients, { page: clientPage, pageSize: clientPageSize }),
+    [clientPage, clientPageSize, visibleClients]
+  );
+
+  useEffect(() => {
+    setClientPage(1);
+  }, [search, statusFilter, sortState, clientPageSize]);
+
   const hasProfitabilityFootprint = profitability
     ? profitability.investments.length > 0 || profitability.equipmentUsed.length > 0 || profitability.installationCostCve > 0
     : false;
@@ -333,6 +357,8 @@ export function ClientsModule({
         <Button variant="secondary" onClick={() => {
           setSearch('');
           setStatusFilter('all');
+          setSortState(DEFAULT_CLIENT_SORT);
+          setClientPage(1);
         }}>
           Limpar filtros
         </Button>
@@ -501,30 +527,49 @@ export function ClientsModule({
       )}
 
       {!loading && !loadError && (
-        <div className="module-table">
-          {visibleClients.map((client) => {
-            const canWhatsapp = !!normalizeWhatsappPhone(client.phone);
-            return (
-              <div
-                className="module-row client-row interactive"
-                key={client.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedClient(client)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    setSelectedClient(client);
-                  }
-                }}
-              >
-                <span>
-                  <small className="entity-code">{client.clientCode}</small>
-                  <strong>{client.fullName}</strong>
-                  <small>{client.phone || 'sem telefone'}</small>
-                </span>
-                <Badge tone={statusTone(client.status)}>{statusLabel(client.status)}</Badge>
-                <div className="row-actions" onClick={(event) => event.stopPropagation()}>
+        <>
+          <DataTable
+            rows={pagedClients.rows}
+            rowKey={(client) => client.id}
+            stickyHeader
+            sort={sortState}
+            onSortChange={setSortState}
+            onRowClick={setSelectedClient}
+            gridTemplateColumns="minmax(240px, 1.5fr) 136px 136px 126px"
+            actionsWidth="92px"
+            columns={[
+              {
+                header: 'Cliente',
+                sortKey: 'fullName',
+                cell: (client) => (
+                  <span>
+                    <small className="entity-code">{client.clientCode}</small>
+                    <strong>{client.fullName}</strong>
+                    <small>{client.phone || 'sem telefone'}</small>
+                  </span>
+                )
+              },
+              {
+                header: 'Ilha',
+                sortKey: 'island',
+                cell: (client) => <span>{client.island || '-'}</span>
+              },
+              {
+                header: 'Zona',
+                sortKey: 'zone',
+                cell: (client) => <span>{client.zone || '-'}</span>
+              },
+              {
+                header: 'Estado',
+                sortKey: 'status',
+                align: 'center',
+                cell: (client) => <Badge tone={statusTone(client.status)}>{statusLabel(client.status)}</Badge>
+              }
+            ]}
+            actions={(client) => {
+              const canWhatsapp = !!normalizeWhatsappPhone(client.phone);
+              return (
+                <>
                   {canManageClients && (
                     <Button
                       variant="icon"
@@ -532,10 +577,7 @@ export function ClientsModule({
                       className="row-action"
                       title="Editar cliente"
                       aria-label="Editar cliente"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        editClient(client);
-                      }}
+                      onClick={() => editClient(client)}
                     >
                       <Pencil size={14} aria-hidden />
                     </Button>
@@ -547,25 +589,32 @@ export function ClientsModule({
                     title={canWhatsapp ? 'Enviar WhatsApp' : 'Sem telefone valido'}
                     aria-label="Enviar WhatsApp"
                     disabled={!canWhatsapp}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void sendClientWhatsapp(client);
-                    }}
+                    onClick={() => void sendClientWhatsapp(client)}
                   >
                     <MessageCircle size={14} aria-hidden />
                   </Button>
-                </div>
-              </div>
-            );
-          })}
-          {visibleClients.length === 0 && (
-            <EmptyState
-              icon={UsersRound}
-              title="Nenhum cliente encontrado"
-              description="Ajusta os filtros ou regista um novo cliente."
-            />
-          )}
-        </div>
+                </>
+              );
+            }}
+            empty={
+              <EmptyState
+                icon={UsersRound}
+                title="Nenhum cliente encontrado"
+                description="Ajusta os filtros ou regista um novo cliente."
+              />
+            }
+          />
+          <PaginationControls
+            page={pagedClients.page}
+            pageSize={pagedClients.pageSize}
+            total={pagedClients.total}
+            totalPages={pagedClients.totalPages}
+            start={pagedClients.start}
+            end={pagedClients.end}
+            onPageChange={setClientPage}
+            onPageSizeChange={setClientPageSize}
+          />
+        </>
       )}
 
       <Dialog
