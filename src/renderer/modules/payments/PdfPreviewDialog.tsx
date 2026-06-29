@@ -28,8 +28,8 @@ export function PdfPreviewDialog({ preview, document, onClose, onDownload }: Pdf
       title={
         preview
           ? preview.type === 'receipt'
-            ? `Recibo ${preview.payment.receiptNumber || preview.payment.id}`
-            : `Fatura ${preview.payment.invoiceNumber || preview.payment.id}`
+            ? (preview.payment.receiptNumber || `Recibo #${preview.payment.id}`)
+            : (preview.payment.invoiceNumber || `Fatura #${preview.payment.id}`)
           : ''
       }
       size="lg"

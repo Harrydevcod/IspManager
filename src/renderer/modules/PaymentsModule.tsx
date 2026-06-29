@@ -706,12 +706,12 @@ export function PaymentsModule({
 
   async function downloadPdf(payment: PaymentRow, type: 'invoice' | 'receipt') {
     const docLabel = type === 'invoice' ? 'Fatura' : 'Recibo';
-    const ref = type === 'invoice'
-      ? payment.invoiceNumber || payment.id
-      : payment.receiptNumber || payment.id;
+    const number = type === 'invoice' ? payment.invoiceNumber : payment.receiptNumber;
+    // O número já traz a série (FT/RC); só se cai no id é que precisa do rótulo.
+    const ref = number || `${docLabel} #${payment.id}`;
     try {
-      await downloadAuthenticated(documentEndpoint(payment.id, type), `${docLabel}-${ref}.pdf`);
-      toast(`${docLabel} ${ref} guardado em Transferências.`, 'success');
+      await downloadAuthenticated(documentEndpoint(payment.id, type), `${number || `${docLabel}-${payment.id}`}.pdf`);
+      toast(`${ref} guardado em Transferências.`, 'success');
     } catch {
       toast(`Nao foi possivel descarregar o ${docLabel.toLowerCase()}.`, 'error');
     }
