@@ -1,5 +1,5 @@
-import { Activity, AlertTriangle, CalendarClock, MessageCircle, TrendingUp, UsersRound } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Activity, AlertTriangle, CalendarClock, MessageCircle, TrendingUp, UsersRound, Wrench } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { Badge, Button, Card, ErrorRetry, MetricCard, MetricGrid, RevenueBars, Skeleton, formatCompactCve } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
@@ -12,7 +12,36 @@ const planTypeLabel: Record<string, string> = {
   outro: 'Outro'
 };
 
-export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
+type DashboardProps = {
+  onOpenClients: () => void;
+  onOpenOverdue: () => void;
+  onOpenPending: () => void;
+  onOpenLowStock: () => void;
+  onOpenWorkOrders: () => void;
+};
+
+// Torna um tile/elemento informativo acionável por teclado (Enter/Espaço) e rato.
+function activatable(onActivate: () => void) {
+  return {
+    role: 'button',
+    tabIndex: 0,
+    onClick: onActivate,
+    onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        onActivate();
+      }
+    }
+  };
+}
+
+export function Dashboard({
+  onOpenClients,
+  onOpenOverdue,
+  onOpenPending,
+  onOpenLowStock,
+  onOpenWorkOrders
+}: DashboardProps) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,7 +85,8 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
       value: summary ? String(summary.activeClients) : '...',
       trend: summary ? `${summary.totalClients} no total` : 'a carregar',
       icon: UsersRound,
-      tone: 'success' as const
+      tone: 'success' as const,
+      onActivate: onOpenClients
     },
     {
       label: 'Receita do mes',
@@ -65,21 +95,24 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
         ? 'sem comparacao'
         : `${revenueTrendPct >= 0 ? '+' : ''}${revenueTrendPct.toFixed(1)}% vs mes anterior`,
       icon: TrendingUp,
-      tone: 'revenue' as const
+      tone: 'revenue' as const,
+      onActivate: undefined as (() => void) | undefined
     },
     {
       label: 'Em atraso',
       value: summary ? String(summary.overduePayments) : '...',
       trend: summary && summary.pendingPayments > 0 ? `${summary.pendingPayments} pendentes` : 'sem pendentes',
       icon: AlertTriangle,
-      tone: summary && summary.overduePayments > 0 ? 'danger' as const : 'neutral' as const
+      tone: summary && summary.overduePayments > 0 ? 'danger' as const : 'neutral' as const,
+      onActivate: onOpenOverdue
     },
     {
       label: 'Servicos ativos',
       value: summary ? String(summary.activeServices) : '...',
       trend: 'a faturar',
       icon: Activity,
-      tone: 'info' as const
+      tone: 'info' as const,
+      onActivate: undefined as (() => void) | undefined
     }
   ];
 
@@ -106,15 +139,15 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
             <dt>Receita mes</dt>
             <dd>{summary ? formatCompactCve(summary.paidMonthCve) : '...'}</dd>
           </div>
-          <div>
+          <div className="brief-tile-action" {...(summary ? activatable(onOpenPending) : {})}>
             <dt>Vencimentos</dt>
             <dd>{summary ? summary.upcomingDues.length : '...'}</dd>
           </div>
-          <div>
+          <div className="brief-tile-action" {...(summary ? activatable(onOpenOverdue) : {})}>
             <dt>Atraso critico</dt>
             <dd>{summary ? formatCompactCve(criticalOverdueCve) : '...'}</dd>
           </div>
-          <div>
+          <div className="brief-tile-action" {...(summary ? activatable(onOpenLowStock) : {})}>
             <dt>Stock baixo</dt>
             <dd>{summary ? summary.lowStockModels : '...'}</dd>
           </div>
@@ -168,6 +201,7 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
             value={metric.value}
             trend={metric.trend}
             tone={metric.tone}
+            onActivate={summary ? metric.onActivate : undefined}
           />
         ))}
       </MetricGrid>
@@ -233,6 +267,9 @@ export function Dashboard({ onOpenClients }: { onOpenClients: () => void }) {
             </p>
           )}
           <div className="dashboard-card-footer">
+            <Button variant="secondary" className="dashboard-cta" leadingIcon={<Wrench size={14} aria-hidden />} onClick={onOpenWorkOrders}>
+              Abrir ordens
+            </Button>
             <Button variant="secondary" className="dashboard-cta" leadingIcon={<UsersRound size={14} aria-hidden />} onClick={onOpenClients}>
               Abrir clientes
             </Button>

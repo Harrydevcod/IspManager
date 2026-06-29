@@ -95,6 +95,8 @@ function AppShell() {
   const [section, setSection] = useState<SectionId>(() => visibleSections[0]?.id ?? 'dashboard');
   const [focusClientId, setFocusClientId] = useState<number | null>(null);
   const [focusServiceClientId, setFocusServiceClientId] = useState<number | null>(null);
+  const [paymentsFocus, setPaymentsFocus] = useState<'overdue' | 'pending' | null>(null);
+  const [stockLowFocus, setStockLowFocus] = useState(false);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
@@ -323,7 +325,15 @@ function AppShell() {
             }
           />
 
-          {section === 'dashboard' && <Dashboard onOpenClients={() => setSection('clients')} />}
+          {section === 'dashboard' && (
+            <Dashboard
+              onOpenClients={() => setSection('clients')}
+              onOpenOverdue={() => { setPaymentsFocus('overdue'); setSection('payments'); }}
+              onOpenPending={() => { setPaymentsFocus('pending'); setSection('payments'); }}
+              onOpenLowStock={() => { setStockLowFocus(true); setSection('stock'); }}
+              onOpenWorkOrders={() => setSection('work-orders')}
+            />
+          )}
           {section === 'clients' && (
             <ClientsModule
               focusClientId={focusClientId}
@@ -341,10 +351,14 @@ function AppShell() {
               onFocusHandled={() => setFocusServiceClientId(null)}
             />
           )}
-          {section === 'payments' && <PaymentsModule />}
+          {section === 'payments' && (
+            <PaymentsModule focusStatus={paymentsFocus} onFocusHandled={() => setPaymentsFocus(null)} />
+          )}
           {section === 'finance' && <FinanceModule />}
           {section === 'work-orders' && <WorkOrdersModule />}
-          {section === 'stock' && <StockModule />}
+          {section === 'stock' && (
+            <StockModule focusLowStock={stockLowFocus} onFocusHandled={() => setStockLowFocus(false)} />
+          )}
           {section === 'reports' && (
             <ReportsModule onOpenClient={(id) => { setFocusClientId(id); setSection('clients'); }} />
           )}

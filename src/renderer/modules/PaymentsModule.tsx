@@ -62,7 +62,13 @@ function markReminderSent(paymentId: number) {
 // PaymentsModule
 // ---------------------------------------------------------------------------
 
-export function PaymentsModule() {
+export function PaymentsModule({
+  focusStatus,
+  onFocusHandled
+}: {
+  focusStatus?: 'overdue' | 'pending' | null;
+  onFocusHandled?: () => void;
+} = {}) {
   // Competência por defeito = mês fechado: criada no início do mês → mês anterior;
   // a partir do dia 30 → o mês que está a fechar (mesma regra da auto-faturação).
   const defaultRefMonth = (() => {
@@ -97,6 +103,15 @@ export function PaymentsModule() {
   const [notifyLoading, setNotifyLoading] = useState(false);
   const [notifySending, setNotifySending] = useState(false);
   const { toast } = useToast();
+
+  // Atalho vindo do Dashboard: foca o estado pedido (atraso varre todos os meses).
+  useEffect(() => {
+    if (!focusStatus) return;
+    setStatusFilter(focusStatus);
+    if (focusStatus === 'overdue') setShowAllMonths(true);
+    onFocusHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [companyName, setCompanyName] = useState('ISPM');
   const [whatsappTemplate, setWhatsappTemplate] = useState(fallbackWhatsappTemplate);
   const [whatsappInvoiceReadyTemplate, setWhatsappInvoiceReadyTemplate] = useState(fallbackWhatsappInvoiceReadyTemplate);
