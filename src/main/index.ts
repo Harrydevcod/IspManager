@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 import { autoUpdater } from 'electron-updater';
 import { startBackend } from '../backend/server';
@@ -6,6 +7,30 @@ import { startBackend } from '../backend/server';
 const isDevelopment = process.env.NODE_ENV === 'development';
 
 let mainWindow: BrowserWindow | null = null;
+
+/**
+ * Downloads (faturas/recibos/backups) guardam-se logo na pasta Transferências
+ * com o nome informativo do documento — não um UUID aleatório.
+ *
+ * O fluxo da app descarrega via `blob:` + `<a download>`; a Chromium passa esse
+ * nome em `item.getFilename()`. Sem este handler o Electron mostra diálogo (ou,
+ * no visualizador de PDF embutido, grava o blob com um nome aleatório). Aqui
+ * forçamos o save path para Downloads e de-duplicamos ("nome (1).pdf") em vez de
+ * sobrescrever.
+ */
+function initDownloads() {
+  session.defaultSession.on('will-download', (_event, item) => {
+    const suggested = item.getFilename() || 'documento.pdf';
+    const dir = app.getPath('downloads');
+    const ext = path.extname(suggested);
+    const base = path.basename(suggested, ext);
+    let target = path.join(dir, suggested);
+    for (let n = 1; fs.existsSync(target); n += 1) {
+      target = path.join(dir, `${base} (${n})${ext}`);
+    }
+    item.setSavePath(target);
+  });
+}
 
 /**
  * Auto-update via GitHub Releases (feed em `build.publish`). Descarrega em
@@ -84,6 +109,8 @@ app.whenReady().then(async () => {
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
   });
+
+  initDownloads();
 
   await createWindow();
 
