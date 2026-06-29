@@ -26,7 +26,7 @@ type MessagingSettings = { companyName: string; whatsappTemplate: string };
 type ClientSortKey = 'fullName' | 'clientCode' | 'status' | 'island' | 'zone';
 
 const DEFAULT_CLIENT_SORT: SortState<ClientSortKey> = { key: 'fullName', direction: 'asc' };
-const DEFAULT_CLIENT_PAGE_SIZE = 10;
+const DEFAULT_CLIENT_PAGE_SIZE = 25;
 
 type ClientNotice = {
   id: number;

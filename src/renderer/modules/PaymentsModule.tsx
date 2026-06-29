@@ -34,7 +34,7 @@ import { BulkPaymentDialog, type BulkPaymentMode } from './payments/BulkPaymentD
 
 type PaymentSortKey = 'dueDate' | 'clientName' | 'status' | 'amountCve';
 const DEFAULT_PAYMENT_SORT: SortState<PaymentSortKey> = { key: 'dueDate', direction: 'asc' };
-const DEFAULT_PAYMENT_PAGE_SIZE = 10;
+const DEFAULT_PAYMENT_PAGE_SIZE = 25;
 
 // ---------------------------------------------------------------------------
 // Reminder helpers (moved verbatim from App.tsx L694–L712)
