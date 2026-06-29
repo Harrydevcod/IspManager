@@ -208,8 +208,8 @@ export function PaymentDetailDialog({
               {wasPaid ? (
                 <small>
                   <strong>Atencao:</strong> anular um pagamento ja registado nao devolve dinheiro.
-                  Marca a cobranca <strong>FT {payment.invoiceNumber || '-'}</strong>
-                  {payment.receiptNumber ? ` / REC ${payment.receiptNumber}` : ''}
+                  Marca a cobranca <strong>{payment.invoiceNumber || '-'}</strong>
+                  {payment.receiptNumber ? ` / ${payment.receiptNumber}` : ''}
                   {' '}como invalida, congela os numeros e regista a anulacao no audit log.
                   Use para corrigir erros de faturacao no valor.
                 </small>
