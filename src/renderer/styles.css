@@ -609,6 +609,10 @@ h2 {
   margin-bottom: var(--space-3);
 }
 
+.metric-grid.metric-grid-6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
 .dashboard-topline {
   display: grid;
   grid-template-columns: 1fr;

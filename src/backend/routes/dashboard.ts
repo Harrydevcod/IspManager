@@ -14,6 +14,7 @@ type DashboardMetricRow = {
   openWorkOrders: number;
   paidMonthCve: number;
   pendingMonthCve: number;
+  pendingPreviousCve: number;
 };
 
 type RevenuePoint = {
@@ -74,7 +75,11 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         COALESCE((
           SELECT SUM(amount_cve) FROM payments
           WHERE status IN ('pending','overdue') AND reference_month = @currentMonth
-        ), 0) AS pendingMonthCve
+        ), 0) AS pendingMonthCve,
+        COALESCE((
+          SELECT SUM(amount_cve) FROM payments
+          WHERE status IN ('pending','overdue') AND reference_month < @currentMonth
+        ), 0) AS pendingPreviousCve
     `).get({ currentMonth }) as DashboardMetricRow;
 
     const months = currentYearMonths();
@@ -188,6 +193,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       openWorkOrders: summary.openWorkOrders ?? 0,
       paidMonthCve: Number(summary.paidMonthCve) || 0,
       pendingMonthCve: Number(summary.pendingMonthCve) || 0,
+      pendingPreviousCve: Number(summary.pendingPreviousCve) || 0,
       revenueByMonth,
       upcomingDues,
       criticalOverdue,

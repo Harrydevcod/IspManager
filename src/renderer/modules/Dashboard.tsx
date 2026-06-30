@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, CalendarClock, MessageCircle, TrendingUp, UsersRound, Wrench } from 'lucide-react';
+import { Activity, AlertTriangle, CalendarClock, Layers, MessageCircle, TrendingUp, UsersRound, Wrench } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { Badge, Button, Card, ErrorRetry, MetricCard, MetricGrid, RevenueBars, Skeleton, formatCompactCve } from '../components';
 import { authFetch } from '../lib/auth';
@@ -98,13 +98,21 @@ export function Dashboard({
       onActivate: undefined as (() => void) | undefined
     },
     {
-      label: 'Receita pendente',
+      label: 'Pendente do mes',
       value: summary ? formatCve(summary.pendingMonthCve) : '...',
       trend: openPaymentCount > 0
         ? `${openPaymentCount} cobrancas por receber`
         : 'sem cobrancas pendentes',
       icon: CalendarClock,
       tone: summary && summary.pendingMonthCve > 0 ? 'warning' as const : 'neutral' as const,
+      onActivate: onOpenPending
+    },
+    {
+      label: 'Pendente acumulado',
+      value: summary ? formatCve(summary.pendingPreviousCve) : '...',
+      trend: 'meses anteriores',
+      icon: Layers,
+      tone: summary && summary.pendingPreviousCve > 0 ? 'danger' as const : 'neutral' as const,
       onActivate: onOpenPending
     },
     {
@@ -190,7 +198,7 @@ export function Dashboard({
         <span>Metricas filtradas pelo periodo atual</span>
       </div>
 
-      <MetricGrid label="Indicadores">
+      <MetricGrid label="Indicadores" className="metric-grid-6">
         {metrics.map((metric) => (
           <MetricCard
             key={metric.label}

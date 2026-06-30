@@ -69,7 +69,8 @@ describe('GET /api/dashboard/summary', () => {
       lowStockModels: 0,
       activeServices: 0,
       paidMonthCve: 0,
-      pendingMonthCve: 0
+      pendingMonthCve: 0,
+      pendingPreviousCve: 0
     });
 
     expect(Array.isArray(body.revenueByMonth)).toBe(true);
@@ -158,6 +159,32 @@ describe('GET /api/dashboard/summary', () => {
       (p: { referenceMonth: string }) => p.referenceMonth === currentMonth
     );
     expect(currentPoint?.pendingCve).toBe(4200);
+  });
+
+  test('accumulates pending revenue from previous months into pendingPreviousCve', async () => {
+    db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('C004', 'Cliente Backlog', 'active')`).run();
+    const clientId = db.prepare(`SELECT id FROM clients WHERE client_code = 'C004'`).get() as { id: number };
+    db.prepare(`INSERT INTO internet_plans (name, connection_type, monthly_price_cve, active) VALUES ('Plano B', 'fibra', 5000, 1)`).run();
+    const planId = db.prepare(`SELECT id FROM internet_plans WHERE name = 'Plano B'`).get() as { id: number };
+    db.prepare(`
+      INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status)
+      VALUES (?, ?, 5000, 5, 'active')
+    `).run(clientId.id, planId.id);
+    const serviceId = db.prepare(`SELECT id FROM services LIMIT 1`).get() as { id: number };
+
+    // December of last year is always lexically before the current month.
+    const previousMonth = `${new Date().getFullYear() - 1}-12`;
+    db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+      VALUES (?, ?, ?, 5000, ?, 'overdue')
+    `).run(clientId.id, serviceId.id, previousMonth, `${previousMonth}-05`);
+
+    const response = await app.inject({ method: 'GET', url: '/api/dashboard/summary' });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+
+    expect(body.pendingPreviousCve).toBe(5000);
+    expect(body.pendingMonthCve).toBe(0);
   });
 
   test('flags critical overdue payments older than 30 days', async () => {
