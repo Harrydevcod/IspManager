@@ -609,10 +609,6 @@ h2 {
   margin-bottom: var(--space-3);
 }
 
-.metric-grid.metric-grid-6 {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-}
-
 .dashboard-topline {
   display: grid;
   grid-template-columns: 1fr;
@@ -751,7 +747,7 @@ h2 {
 
 .operations-brief-rail {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   align-content: end;
   gap: var(--space-px);
   margin: 0;
@@ -3893,7 +3889,7 @@ label.field-toggle {
 
 @media (max-width: 1280px) {
   .operations-brief-rail {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
   .operations-brief-rail > div {
     min-height: 104px;
