@@ -482,6 +482,7 @@ export type DashboardSummary = {
   activeServices: number;
   openWorkOrders: number;
   paidMonthCve: number;
+  pendingMonthCve: number;
   revenueByMonth: RevenuePoint[];
   upcomingDues: UpcomingDue[];
   criticalOverdue: CriticalOverdue[];

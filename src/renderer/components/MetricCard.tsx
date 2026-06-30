@@ -1,7 +1,7 @@
 import type { KeyboardEvent } from 'react';
 import type { LucideIcon } from 'lucide-react';
 
-type MetricCardTone = 'neutral' | 'success' | 'revenue' | 'danger' | 'info';
+type MetricCardTone = 'neutral' | 'success' | 'revenue' | 'danger' | 'info' | 'warning';
 type MetricCardProps = {
   icon: LucideIcon;
   label: string;
