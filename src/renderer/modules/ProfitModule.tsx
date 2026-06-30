@@ -87,7 +87,7 @@ export function ProfitModule() {
   const notRecovered = data.totals.notRecoveredCount;
   const briefAttention = notRecovered > 0;
   const briefSentence = data.totals.count === 0
-    ? 'Sem investimentos registados no filtro atual. Regista o primeiro para acompanhar retorno e rentabilidade.'
+    ? 'Sem investimentos no período selecionado.'
     : briefAttention
       ? `${notRecovered} ${notRecovered === 1 ? 'investimento ainda não recuperou' : 'investimentos ainda não recuperaram'} o capital aplicado. Acompanha o lucro mensal para encurtar o payback.`
       : 'Todos os investimentos no filtro já recuperaram o capital. O portfólio está a gerar retorno líquido.';
