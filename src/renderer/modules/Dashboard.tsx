@@ -108,6 +108,14 @@ export function Dashboard({
       onActivate: onOpenPending
     },
     {
+      label: 'Pendente acumulado',
+      value: summary ? formatCve(summary.pendingPreviousCve) : '...',
+      trend: 'meses anteriores',
+      icon: Layers,
+      tone: summary && summary.pendingPreviousCve > 0 ? 'danger' as const : 'neutral' as const,
+      onActivate: onOpenPending
+    },
+    {
       label: 'Em atraso',
       value: summary ? String(summary.overduePayments) : '...',
       trend: summary && summary.pendingPayments > 0 ? `${summary.pendingPayments} pendentes` : 'sem pendentes',
@@ -152,18 +160,6 @@ export function Dashboard({
           ) : (
             <p className="operations-brief-clear">A carregar o estado da operacao.</p>
           )}
-          {summary && (
-            <div
-              className="brief-accumulated"
-              data-alert={summary.pendingPreviousCve > 0 ? 'danger' : undefined}
-              {...activatable(onOpenPending)}
-            >
-              <Layers size={16} aria-hidden />
-              <span className="brief-accumulated-label">Pendente acumulado</span>
-              <strong>{formatCve(summary.pendingPreviousCve)}</strong>
-              <span className="brief-accumulated-hint">meses anteriores</span>
-            </div>
-          )}
         </div>
         <dl className="operations-brief-rail">
           <div>
@@ -202,7 +198,7 @@ export function Dashboard({
         <span>Metricas filtradas pelo periodo atual</span>
       </div>
 
-      <MetricGrid label="Indicadores">
+      <MetricGrid label="Indicadores" className="metric-grid-6">
         {metrics.map((metric) => (
           <MetricCard
             key={metric.label}
