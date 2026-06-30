@@ -640,9 +640,8 @@ h2 {
 .operations-brief {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(420px, 0.72fr);
-  gap: var(--space-6);
-  align-items: stretch;
+  grid-template-columns: 1fr;
+  gap: var(--space-5);
   margin-bottom: var(--space-4);
   padding: clamp(var(--space-6), 3vw, var(--space-8));
   overflow: hidden;
@@ -3899,9 +3898,6 @@ label.field-toggle {
 
 @media (max-width: 1280px) {
   .dashboard-topline { grid-template-columns: 1fr; }
-  .operations-brief {
-    grid-template-columns: 1fr;
-  }
   .operations-brief-rail {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
