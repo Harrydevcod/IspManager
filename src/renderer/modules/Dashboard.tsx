@@ -155,8 +155,8 @@ export function Dashboard({
         </div>
         <dl className="operations-brief-rail">
           <div>
-            <dt>Receita mes</dt>
-            <dd>{summary ? formatCompactCve(summary.paidMonthCve) : '...'}</dd>
+            <dt>Receita acumulada</dt>
+            <dd>{summary ? formatCompactCve(summary.paidTotalCve) : '...'}</dd>
           </div>
           <div className="brief-tile-action" data-alert={summary && summary.pendingPreviousCve > 0 ? 'danger' : undefined} {...(summary ? activatable(onOpenPending) : {})}>
             <dt>Pendente acumulado</dt>
