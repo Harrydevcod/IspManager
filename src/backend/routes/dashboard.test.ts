@@ -68,7 +68,8 @@ describe('GET /api/dashboard/summary', () => {
       pendingPayments: 0,
       lowStockModels: 0,
       activeServices: 0,
-      paidMonthCve: 0
+      paidMonthCve: 0,
+      pendingMonthCve: 0
     });
 
     expect(Array.isArray(body.revenueByMonth)).toBe(true);
@@ -126,6 +127,37 @@ describe('GET /api/dashboard/summary', () => {
       (p: { referenceMonth: string }) => p.referenceMonth === currentMonth
     );
     expect(currentPoint?.paidCve).toBe(3500);
+  });
+
+  test('aggregates pending revenue for the current month into pendingMonthCve', async () => {
+    db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('C003', 'Cliente Pendente', 'active')`).run();
+    const clientId = db.prepare(`SELECT id FROM clients WHERE client_code = 'C003'`).get() as { id: number };
+    db.prepare(`INSERT INTO internet_plans (name, connection_type, monthly_price_cve, active) VALUES ('Plano P', 'fibra', 4200, 1)`).run();
+    const planId = db.prepare(`SELECT id FROM internet_plans WHERE name = 'Plano P'`).get() as { id: number };
+    db.prepare(`
+      INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status)
+      VALUES (?, ?, 4200, 15, 'active')
+    `).run(clientId.id, planId.id);
+    const serviceId = db.prepare(`SELECT id FROM services LIMIT 1`).get() as { id: number };
+
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const dueDate = `${currentMonth}-15`;
+
+    db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+      VALUES (?, ?, ?, 4200, ?, 'pending')
+    `).run(clientId.id, serviceId.id, currentMonth, dueDate);
+
+    const response = await app.inject({ method: 'GET', url: '/api/dashboard/summary' });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+
+    expect(body.pendingMonthCve).toBe(4200);
+    const currentPoint = body.revenueByMonth.find(
+      (p: { referenceMonth: string }) => p.referenceMonth === currentMonth
+    );
+    expect(currentPoint?.pendingCve).toBe(4200);
   });
 
   test('flags critical overdue payments older than 30 days', async () => {

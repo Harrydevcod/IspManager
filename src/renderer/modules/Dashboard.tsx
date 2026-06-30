@@ -78,6 +78,14 @@ export function Dashboard({
     : 0;
   const criticalOverdueCve = summary?.criticalOverdue.reduce((acc, overdue) => acc + overdue.amountCve, 0) || 0;
   const briefNeedsAttention = attentionCount > 0;
+  const openPaymentCount = summary ? summary.pendingPayments + summary.overduePayments : 0;
+  const alertSignals = summary
+    ? [
+        { label: 'Atraso', value: summary.overduePayments, tone: 'danger' },
+        { label: 'Stock', value: summary.lowStockModels, tone: 'warning' },
+        { label: 'Ordens', value: summary.openWorkOrders, tone: 'info' }
+      ].filter((signal) => signal.value > 0)
+    : [];
 
   const metrics = [
     {
@@ -97,6 +105,16 @@ export function Dashboard({
       icon: TrendingUp,
       tone: 'revenue' as const,
       onActivate: undefined as (() => void) | undefined
+    },
+    {
+      label: 'Receita pendente',
+      value: summary ? formatCve(summary.pendingMonthCve) : '...',
+      trend: openPaymentCount > 0
+        ? `${openPaymentCount} cobrancas por receber`
+        : 'sem cobrancas pendentes',
+      icon: CalendarClock,
+      tone: summary && summary.pendingMonthCve > 0 ? 'warning' as const : 'neutral' as const,
+      onActivate: onOpenPending
     },
     {
       label: 'Em atraso',
@@ -126,13 +144,23 @@ export function Dashboard({
       >
         <div className="operations-brief-main">
           <p className="eyebrow">Comando operacional</p>
-          <p>
-            {summary
-              ? briefNeedsAttention
-                ? `${attentionCount} sinais pedem acao: cobrancas em atraso, stock baixo ou ordens abertas.`
-                : 'Sem alertas criticos neste momento. A equipa pode concentrar-se em crescimento e atendimento.'
-              : 'A carregar o estado da operacao.'}
-          </p>
+          {summary ? (
+            briefNeedsAttention ? (
+              <div className="operations-alert-strip" aria-label={`${attentionCount} sinais operacionais`}>
+                {alertSignals.map((signal) => (
+                  <span className="operations-alert-chip" data-tone={signal.tone} key={signal.label}>
+                    <span aria-hidden>!</span>
+                    <strong>{signal.value}</strong>
+                    {signal.label}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="operations-brief-clear">Sem alertas criticos</p>
+            )
+          ) : (
+            <p className="operations-brief-clear">A carregar o estado da operacao.</p>
+          )}
         </div>
         <dl className="operations-brief-rail">
           <div>
@@ -143,11 +171,11 @@ export function Dashboard({
             <dt>Vencimentos</dt>
             <dd>{summary ? summary.upcomingDues.length : '...'}</dd>
           </div>
-          <div className="brief-tile-action" {...(summary ? activatable(onOpenOverdue) : {})}>
+          <div className="brief-tile-action" data-alert={summary && criticalOverdueCve > 0 ? 'danger' : undefined} {...(summary ? activatable(onOpenOverdue) : {})}>
             <dt>Atraso critico</dt>
             <dd>{summary ? formatCompactCve(criticalOverdueCve) : '...'}</dd>
           </div>
-          <div className="brief-tile-action" {...(summary ? activatable(onOpenLowStock) : {})}>
+          <div className="brief-tile-action" data-alert={summary && summary.lowStockModels > 0 ? 'warning' : undefined} {...(summary ? activatable(onOpenLowStock) : {})}>
             <dt>Stock baixo</dt>
             <dd>{summary ? summary.lowStockModels : '...'}</dd>
           </div>
