@@ -611,7 +611,7 @@ h2 {
 
 .dashboard-topline {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.72fr);
+  grid-template-columns: 1fr;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
 }
@@ -3887,17 +3887,7 @@ label.field-toggle {
   height: 156px;
 }
 
-.dashboard-card-distribution .plan-mix {
-  display: grid;
-  gap: var(--space-3);
-}
-
-.dashboard-card-distribution .plan-mix-bar {
-  height: 8px;
-}
-
 @media (max-width: 1280px) {
-  .dashboard-topline { grid-template-columns: 1fr; }
   .operations-brief-rail {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }

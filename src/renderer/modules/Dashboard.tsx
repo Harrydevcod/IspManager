@@ -5,13 +5,6 @@ import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
 import type { DashboardSummary } from '../types';
 
-const planTypeLabel: Record<string, string> = {
-  fibra: 'Fibra',
-  radio: 'Radio',
-  cabo: 'Cabo',
-  outro: 'Outro'
-};
-
 type DashboardProps = {
   onOpenClients: () => void;
   onOpenOverdue: () => void;
@@ -62,7 +55,6 @@ export function Dashboard({
 
   useEffect(() => { void loadSummary(); }, [loadSummary]);
 
-  const totalPlanCount = summary?.planMix.reduce((acc, entry) => acc + entry.count, 0) || 0;
   const currentMonthKey = useMemo(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -190,27 +182,6 @@ export function Dashboard({
           {summary
             ? <RevenueBars points={summary.revenueByMonth} />
             : <Skeleton height={180} radius={12} />}
-        </Card>
-
-        <Card eyebrow="Distribuicao" title="Planos ativos" className="dashboard-card-distribution">
-          {summary && summary.planMix.length > 0 ? (
-            <ul className="plan-mix">
-              {summary.planMix.map((entry) => {
-                const pct = totalPlanCount > 0 ? (entry.count / totalPlanCount) * 100 : 0;
-                return (
-                  <li key={entry.connectionType}>
-                    <div className="plan-mix-row">
-                      <span>{planTypeLabel[entry.connectionType] || entry.connectionType}</span>
-                      <strong>{entry.count}</strong>
-                    </div>
-                    <div className="plan-mix-bar"><span style={{ width: `${pct}%` }} /></div>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="module-message">Sem servicos ativos com plano atribuido.</p>
-          )}
         </Card>
       </section>
 
