@@ -74,7 +74,7 @@ export function Dashboard({
     ? ((currentMonthRevenue - previousMonthRevenue) / previousMonthRevenue) * 100
     : null;
   const attentionCount = summary
-    ? summary.overduePayments + summary.lowStockModels + summary.openWorkOrders
+    ? summary.overduePayments + summary.openWorkOrders
     : 0;
   const criticalOverdueCve = summary?.criticalOverdue.reduce((acc, overdue) => acc + overdue.amountCve, 0) || 0;
   const briefNeedsAttention = attentionCount > 0;
@@ -82,7 +82,6 @@ export function Dashboard({
   const alertSignals = summary
     ? [
         { label: 'Atraso', value: summary.overduePayments, tone: 'danger' },
-        { label: 'Stock', value: summary.lowStockModels, tone: 'warning' },
         { label: 'Ordens', value: summary.openWorkOrders, tone: 'info' }
       ].filter((signal) => signal.value > 0)
     : [];
