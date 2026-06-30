@@ -1,14 +1,14 @@
 import type { ReactNode } from 'react';
 
-type MetricGridProps = { label: string; children: ReactNode; className?: string };
+type MetricGridProps = { label: string; children: ReactNode };
 
 /**
  * Source of truth: Dashboard —
  * `<section className="metric-grid" aria-label="Indicadores">`.
  */
-export function MetricGrid({ label, children, className }: MetricGridProps) {
+export function MetricGrid({ label, children }: MetricGridProps) {
   return (
-    <section className={className ? `metric-grid ${className}` : 'metric-grid'} aria-label={label}>
+    <section className="metric-grid" aria-label={label}>
       {children}
     </section>
   );
