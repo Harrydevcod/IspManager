@@ -1,0 +1,20 @@
+/* =========================================================================
+   Entity code label (código sempre antes do nome)
+   ========================================================================= */
+
+.entity-code {
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+}
+
+.eyebrow.entity-code {
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  margin-bottom: var(--space-1);
+}
+

@@ -1,0 +1,539 @@
+/* =========================================================================
+   Dashboard bespoke layout — sparkline + plan mix + upcoming/overdue lists.
+   ========================================================================= */
+/* Dashboard grid: 3 cols desktop, 2 cols tablet, 1 col mobile.
+   Dense auto-flow packs short cards into gaps; align-items:start lets
+   each card take its intrinsic height so neighbours never stretch. */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  grid-auto-flow: dense;
+  align-items: start;
+}
+.dashboard-card-wide { grid-column: 1 / -1; }
+.dashboard-card-list { min-height: 170px; }
+/* Compact card matches the height of its row neighbours (lists with
+   min-height 200px), but keeps its slim plan-mix density by stretching
+   into a flex column and distributing the bar rows evenly. */
+.dashboard-card-compact {
+  min-height: 170px;
+  display: flex;
+  flex-direction: column;
+}
+.dashboard-card-compact .plan-mix {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: var(--space-2);
+}
+.dashboard-card-compact .plan-mix-row { font-size: var(--fs-xs); }
+.dashboard-card-compact .plan-mix-bar { height: 4px; margin-top: var(--space-1); }
+
+.dashboard-card-chart .sparkline svg {
+  height: 156px;
+}
+
+@media (max-width: 1280px) {
+  .operations-brief-rail {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .operations-brief-rail > div {
+    min-height: 104px;
+  }
+  .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-card-compact { grid-column: 1 / -1; }
+}
+
+/* Revenue chart: stacked vertical bars (paid base + pending top).
+   Current month rendered with full opacity; previous months recede.
+   Hover surfaces a floating tooltip with exact paid/pending/total and
+   MoM delta; non-hovered bars dim. Average paid line + year breaks
+   give analytical context without colour candy. */
+.sparkline {
+  display: block;
+  position: relative;
+  --chart-paid: oklch(67% 0.17 252);
+  --chart-pending: oklch(82% 0.19 92);
+}
+.sparkline svg {
+  width: 100%;
+  height: 156px;
+  display: block;
+  overflow: visible;
+}
+.sparkline svg .bar rect {
+  transition: fill-opacity 180ms ease, transform 220ms ease;
+}
+.sparkline svg .bar.bar-dim rect {
+  fill-opacity: 0.35;
+}
+.sparkline svg .bar:not(.bar-current):not(.bar-hovered):hover rect {
+  fill-opacity: 1;
+}
+.sparkline svg .bar {
+  cursor: default;
+  animation: bar-grow-in 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 32ms);
+}
+@keyframes bar-grow-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.sparkline svg .bar rect:not(.bar-hitbox) {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: bar-rect-rise 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 32ms);
+}
+@keyframes bar-rect-rise {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+.sparkline svg .bar-axis {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  fill: var(--text-3);
+}
+.sparkline svg .bar-axis-current {
+  fill: var(--chart-paid);
+  font-weight: 600;
+}
+.sparkline svg .bar-axis-future {
+  fill-opacity: 0.4;
+}
+.sparkline svg .bar-axis-meta {
+  fill: var(--text-3);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Floating hover tooltip with breakdown + month-over-month delta.
+   Positioned absolutely over the chart in % of viewBox so it tracks
+   the bar regardless of how the SVG scales horizontally. */
+.bar-tooltip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 12px));
+  min-width: 180px;
+  padding: var(--space-2-5) var(--space-3);
+  background: color-mix(in oklch, var(--surface-2) 92%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px -16px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: var(--z-base);
+  animation: bar-tooltip-in 140ms ease-out;
+}
+@keyframes bar-tooltip-in {
+  from { opacity: 0; transform: translate(-50%, calc(-100% - 4px)); }
+  to   { opacity: 1; transform: translate(-50%, calc(-100% - 12px)); }
+}
+.bar-tooltip-month {
+  margin: 0 0 var(--space-1-5);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.bar-tooltip-rows {
+  margin: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+.bar-tooltip-rows > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.bar-tooltip-rows dt {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+.bar-tooltip-rows dd {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1);
+}
+.bar-tooltip-rows .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.bar-tooltip-rows .dot-paid { background: var(--chart-paid); }
+.bar-tooltip-rows .dot-pending { background: var(--chart-pending); opacity: 0.62; }
+.bar-tooltip-rows .bar-tooltip-total {
+  padding-top: var(--space-1-5);
+  margin-top: var(--space-0-5);
+  border-top: 1px dashed var(--border);
+}
+.bar-tooltip-rows .bar-tooltip-total dt {
+  font-weight: 600;
+  color: var(--text-1);
+}
+.bar-tooltip-rows .bar-tooltip-total dd {
+  font-weight: 600;
+}
+.bar-tooltip-delta {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.02em;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-variant-numeric: tabular-nums;
+}
+.bar-tooltip-delta.positive { color: var(--success); }
+.bar-tooltip-delta.negative { color: var(--danger); }
+.sparkline svg .bar-value {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.sparkline svg .bar-value-inside {
+  fill: var(--bg);
+  font-weight: 600;
+}
+.sparkline svg .bar-value-above {
+  fill: var(--text-2);
+}
+.sparkline-empty {
+  height: 156px;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+.sparkline-legend {
+  display: inline-flex;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.legend-item::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.legend-paid::before { background: var(--chart-paid); }
+.legend-pending::before {
+  background: var(--chart-pending);
+  opacity: 0.62;
+}
+.legend-expense::before {
+  background: var(--danger);
+  height: 2px;
+  width: 14px;
+  border-radius: 999px;
+}
+
+.bar-tooltip-rows .dot-expense {
+  background: var(--danger);
+  opacity: 0.7;
+}
+.sparkline svg .opex-line {
+  filter: drop-shadow(0 0 1px color-mix(in oklch, var(--accent-2) 60%, transparent));
+  opacity: 0.85;
+}
+.sparkline svg .opex-dot {
+  transition: r 180ms ease;
+  opacity: 0.85;
+}
+.bar-tooltip-rows .dot-opex {
+  background: var(--accent-2);
+  opacity: 0.8;
+}
+.bar-tooltip-rows .profit-positive dd { color: var(--success); }
+.bar-tooltip-rows .profit-negative dd { color: var(--danger); }
+
+/* Investments module: operational finance cockpit. */
+.investments-panel {
+  display: grid;
+  gap: var(--space-4);
+}
+.bar-invested {
+  background: var(--accent);
+}
+.bar-return-positive {
+  background: var(--success);
+}
+.bar-return-negative {
+  background: var(--danger);
+}
+.investments-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+.plan-mix-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.plan-mix-row strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.plan-mix-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--surface-3) 74%, var(--bg));
+  overflow: hidden;
+  margin-top: var(--space-1);
+}
+.plan-mix-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--info), var(--accent-2));
+  transition: width 240ms ease;
+}
+
+/* Dashboard lists (upcoming/overdue/work queue): icon + meta + amount. */
+.dashboard-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.dashboard-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2-5) var(--space-3);
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--surface-2) 70%, var(--bg));
+  border: 1px solid var(--border);
+}
+.dashboard-list li > svg { color: var(--text-3); }
+.dashboard-list-meta {
+  display: grid;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+.dashboard-list-meta strong {
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dashboard-list-meta small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dashboard-list-amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.dashboard-list-queue li {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.dashboard-card-footer {
+  margin-top: var(--space-4);
+  display: flex;
+  justify-content: flex-end;
+}
+.dashboard-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--accent);
+  color: var(--on-accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--r1);
+  padding: 0 var(--space-4);
+  min-height: 36px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+.dashboard-cta:hover { background: var(--accent-2); }
+
+@media (max-width: 960px) {
+  .operations-brief {
+    padding: var(--space-6);
+  }
+  .operations-brief-main p:last-child {
+    font-size: 1.25rem;
+  }
+  .operations-brief-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .operations-brief-rail > div {
+    min-height: 96px;
+  }
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dashboard-grid { grid-template-columns: 1fr; }
+  .dashboard-card-wide { grid-column: auto; }
+  .dashboard-card-compact { grid-column: auto; }
+  .dashboard-card-list { min-height: 0; }
+}
+
+@media (max-width: 640px) {
+  .operations-brief-main p:last-child {
+    font-size: 1.1rem;
+  }
+  .operations-brief-rail,
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* kanban + workorders + import — moved to colocated modules/WorkOrdersModule.css and modules/clients/import/ClientImportDialog.css */
+
+/* ---------------------------------------------------------
+   Auth screens (setup + login) — editorial, centered, dark-first
+   --------------------------------------------------------- */
+.auth-shell {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse at top left,
+      color-mix(in oklch, var(--accent) 6%, transparent), transparent 55%),
+    radial-gradient(ellipse at bottom right,
+      color-mix(in oklch, var(--accent) 4%, transparent), transparent 50%);
+  padding: var(--space-6);
+  z-index: var(--z-auth);
+}
+
+.auth-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: color-mix(in oklch, var(--surface) 96%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  padding: clamp(var(--space-7), 4vw, var(--space-11));
+  box-shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  animation: auth-card-in 380ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes auth-card-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-card { animation: none; }
+}
+
+.auth-card-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-4);
+}
+
+.auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.auth-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--bg);
+  font-family: var(--font-display, var(--font-ui));
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.02em;
+}
+
+.auth-brand-word {
+  font-family: var(--font-display, var(--font-ui));
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+  text-transform: uppercase;
+}
+
+.auth-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.auth-card h1 {
+  margin: 0;
+  font-family: var(--font-display, var(--font-ui));
+  font-size: clamp(22px, 3vw, 28px);
+  font-weight: 400;
+  letter-spacing: -0.022em;
+  color: var(--text-1);
+  line-height: 1.15;
+}
+

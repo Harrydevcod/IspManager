@@ -1,0 +1,483 @@
+/* =========================================================================
+   Generic module surfaces
+   ========================================================================= */
+
+.module-panel {
+  padding: var(--space-6);
+}
+
+.module-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.inline-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.inline-actions input,
+.filter-bar input,
+.filter-bar select,
+.payments-search,
+.payment-action-form select,
+.payment-action-form input,
+.payment-action-form textarea,
+.client-form input,
+.client-form select,
+.client-form textarea,
+.action-panel input,
+.action-panel select {
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 0 var(--space-3);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.inline-actions input:focus-visible,
+.filter-bar input:focus-visible,
+.filter-bar select:focus-visible,
+.payments-search:focus-visible,
+.payment-action-form select:focus-visible,
+.payment-action-form input:focus-visible,
+.payment-action-form textarea:focus-visible,
+.client-form input:focus-visible,
+.client-form select:focus-visible,
+.client-form textarea:focus-visible,
+.action-panel input:focus-visible,
+.action-panel select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+::placeholder {
+  color: var(--text-3);
+}
+
+.filter-bar {
+  display: flex;
+  align-items: end;
+  gap: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.filter-bar label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.filter-bar button {
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0 var(--space-3);
+  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+}
+
+.filter-bar button:hover {
+  border-color: var(--border-2);
+  color: var(--text);
+}
+
+.filter-bar button:disabled,
+.filter-bar input:disabled,
+.filter-bar select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.filter-bar small {
+  margin-left: auto;
+  color: var(--accent);
+  font-weight: 700;
+  align-self: center;
+}
+
+.report-tabs button {
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0 var(--space-4);
+}
+
+.module-table {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.module-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 56px;
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 var(--space-4);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.module-row:hover {
+  border-color: var(--border-2);
+  background: var(--surface-2);
+}
+
+.module-row small {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.module-message {
+  color: var(--text-3);
+}
+
+.module-message.error {
+  color: var(--danger);
+}
+
+/* Loading skeletons */
+.skeleton {
+  display: block;
+  background: var(--panel-2, var(--panel));
+  position: relative;
+  overflow: hidden;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--text-1) 8%, transparent), transparent);
+  animation: skeleton-sweep 1.3s ease-in-out infinite;
+}
+@keyframes skeleton-sweep {
+  100% { transform: translateX(100%); }
+}
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r3, 16px);
+}
+.skeleton-row-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after { animation: none; }
+  .skeleton { opacity: 0.7; }
+}
+
+/* Load error with retry */
+.error-retry {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.data-table {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.data-table.has-sticky-head .data-table-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: color-mix(in oklch, var(--bg) 86%, transparent);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table-head,
+.data-table-row {
+  display: grid;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.data-table-head {
+  padding: 0 var(--space-4);
+  min-height: 32px;
+}
+
+.data-table-heading {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.data-table-sort {
+  display: inline-flex;
+  align-items: center;
+  justify-content: inherit;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.data-table-sort:hover,
+.data-table-sort.is-active {
+  color: var(--text);
+}
+
+.data-table-align-center .data-table-sort {
+  justify-content: center;
+}
+
+.data-table-align-end .data-table-sort {
+  justify-content: flex-end;
+}
+
+.data-table-sort svg {
+  color: var(--text-3);
+  flex: 0 0 auto;
+}
+
+.data-table-row {
+  min-height: 58px;
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface);
+  padding: var(--space-3) var(--space-4);
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.data-table-row:hover {
+  border-color: var(--border-2);
+  background: var(--surface-2);
+}
+
+.data-table-row.is-interactive {
+  cursor: pointer;
+}
+
+.data-table-row.is-active {
+  border-color: color-mix(in oklch, var(--accent) 42%, var(--border));
+  background: color-mix(in oklch, var(--accent) 7%, var(--surface));
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.data-table-cell {
+  min-width: 0;
+  color: var(--text);
+}
+
+.data-table-check-cell {
+  justify-self: center;
+  align-self: center;
+  justify-content: center;
+}
+
+.data-table-check {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.data-table-cell b {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
+}
+
+/* Célula de identidade empilhada (código / nome / meta). Reproduz dentro da
+   DataTable a stack que as antigas `.client-row span` davam — sem isto os
+   três elementos ficam inline e colam ("C0026Anderson Delgado5824326"). */
+.data-table-cell > span:has(> strong) {
+  display: grid;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.data-table-cell > span:has(> strong) > strong,
+.data-table-cell > span:has(> strong) > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-table-cell > span:has(> strong) > small {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.data-table-align-start {
+  justify-self: stretch;
+  text-align: left;
+}
+
+.data-table-align-center {
+  justify-self: center;
+  text-align: center;
+}
+
+.data-table-align-end {
+  justify-self: end;
+  text-align: right;
+}
+
+.data-table-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+}
+
+.data-table-actions button {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  width: 36px;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+}
+
+.data-table-actions button:hover {
+  border-color: var(--border-2);
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+@media (max-width: 760px) {
+  .data-table-head {
+    display: none;
+  }
+
+  .data-table-row {
+    /* !important necessário: DataTable define grid-template-columns inline
+       (style), e inline vence especificidade — sem isto o layout de 1 coluna
+       no telemóvel não se aplica. */
+    grid-template-columns: 1fr !important;
+    gap: var(--space-2);
+  }
+
+  .data-table-cell,
+  .data-table-actions {
+    justify-self: stretch;
+    text-align: left;
+  }
+
+  .data-table-cell::before,
+  .data-table-actions::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: var(--space-1);
+    color: var(--text-3);
+    font-size: var(--fs-xs);
+    font-weight: 750;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .data-table-actions {
+    justify-content: flex-start;
+  }
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  color: var(--text-3);
+}
+
+.pagination-range,
+.pagination-page {
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
+}
+
+.pagination-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pagination-size {
+  min-width: 112px;
+}
+
+.pagination-size .field-label {
+  color: var(--text-3);
+}
+
+.pagination-size select {
+  min-height: 34px;
+}
+
+@media (max-width: 640px) {
+  .pagination-controls,
+  .pagination-actions {
+    align-items: stretch;
+  }
+
+  .pagination-controls {
+    flex-direction: column;
+  }
+
+  .pagination-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+

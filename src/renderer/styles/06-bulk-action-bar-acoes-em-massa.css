@@ -1,0 +1,35 @@
+/* =========================================================================
+   Bulk action bar (ações em massa)
+   ========================================================================= */
+
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--accent) 38%, var(--border));
+  border-radius: var(--r2);
+  background: color-mix(in oklch, var(--accent) 9%, var(--surface));
+}
+
+.bulk-action-count {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.bulk-action-count strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
+}
+
+.bulk-action-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+

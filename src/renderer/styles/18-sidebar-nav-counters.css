@@ -1,0 +1,331 @@
+/* =========================================================================
+   Sidebar nav counters — pill at end of nav row.
+   ========================================================================= */
+.nav-list button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.nav-list button .nav-label {
+  flex: 1;
+  text-align: left;
+}
+.nav-counter {
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 var(--space-1-5);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.nav-counter-danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.nav-counter-info {
+  background: var(--info-bg);
+  color: var(--info);
+}
+.nav-counter-neutral {
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+
+/* Technical history (devices + events) inside ServicesModule detail panel. */
+.technical-section {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: var(--space-3);
+}
+.technical-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+.technical-section-head .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-1);
+  color: var(--text-3);
+}
+.technical-section-head h3 {
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+}
+.technical-add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  padding: 0 var(--space-3);
+  height: 30px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+.technical-add:hover { border-color: var(--border-2); color: var(--text); }
+
+.technical-list,
+.technical-timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.technical-item {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface-2);
+  display: grid;
+  gap: var(--space-2);
+}
+.technical-item.past {
+  opacity: 0.7;
+  background: var(--surface);
+}
+.technical-item.active {
+  border-color: color-mix(in oklch, var(--success) 35%, var(--border));
+}
+.technical-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.technical-item-head strong {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.technical-item-type {
+  font-weight: 400;
+  color: var(--text-3);
+  text-transform: capitalize;
+}
+.technical-item-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+}
+.technical-item-meta > div { display: grid; gap: var(--space-0-5); }
+.technical-item-meta dt {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+.technical-item-meta dd {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.technical-item-notes {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  font-style: italic;
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border);
+}
+
+.technical-item-actions {
+  display: flex;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+.technical-event {
+  padding: var(--space-3);
+  border-left: 2px solid var(--accent);
+  background: var(--surface-2);
+  border-radius: 0 var(--r1) var(--r1) 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.technical-event-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+}
+.technical-event-head small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.technical-event-notes {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  line-height: 1.5;
+}
+.technical-event-tech {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+/* Overdue notify dialog — list + summary + skipped collapse. */
+.overdue-notify { display: grid; gap: var(--space-4); }
+.overdue-notify-summary {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.overdue-notify-summary strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.overdue-notify-skip { color: var(--text-3); }
+.overdue-notify-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-2);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.overdue-notify-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+}
+.overdue-notify-meta { display: grid; gap: var(--space-0-5); min-width: 0; }
+.overdue-notify-meta strong {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.overdue-notify-meta small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.overdue-notify-amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.overdue-notify-skipped {
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+.overdue-notify-skipped summary {
+  cursor: pointer;
+  padding: var(--space-2) 0;
+}
+.overdue-notify-skipped ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+.overdue-notify-skipped small { color: var(--text-3); margin-left: var(--space-1-5); }
+
+/* PDF preview iframe inside a Dialog: full-width, tall, no native border. */
+.dialog-lg .dialog-body { padding: 0; }
+.pdf-dialog-frame {
+  width: 100%;
+  height: min(72vh, 720px);
+  border: 0;
+  display: block;
+  background: var(--surface-2);
+}
+
+/* Tabular column alignment per CRUD module. Each module has its own row
+   class so widths can be tuned to the content (status text vs CVE values
+   vs unit counts). Name span keeps the 2-line stacked layout. */
+.client-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px auto;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.service-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px 96px auto;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+/* Coluna do valor mensal: mantém "1.500 CVE · NET + TVM" numa única linha. */
+.service-row > small {
+  white-space: nowrap;
+}
+
+/* Name+meta span style applied uniformly to all module rows. */
+.client-row span,
+.service-row span,
+.stock-row span,
+.plan-row span {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.client-row span strong,
+.service-row span strong,
+.stock-row span strong,
+.plan-row span strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.client-row span small,
+.service-row span small,
+.stock-row span small,
+.plan-row span small {
+  color: var(--text-3);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Numeric/status columns: right-aligned with tabular figures so digits
+   align decimal-to-decimal across rows. Color comes from the existing
+   .module-row small rule (accent gold). */
+.client-row > small,
+.service-row > small,
+.stock-row > small,
+.plan-row > small {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Badges sitting directly in a row grid cell justify to the end so the
+   coloured pill aligns with the right edge of its column. */
+.client-row > .badge,
+.service-row > .badge,
+.stock-row > .badge,
+.plan-row > .badge {
+  justify-self: end;
+}
+

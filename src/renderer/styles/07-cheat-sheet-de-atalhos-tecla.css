@@ -1,0 +1,46 @@
+/* =========================================================================
+   Cheat-sheet de atalhos (tecla ?)
+   ========================================================================= */
+
+.shortcuts { display: grid; gap: var(--space-5); }
+
+.shortcuts-group-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+}
+
+.shortcuts-list { margin: 0; display: grid; gap: var(--space-1-5); }
+
+.shortcuts-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.shortcuts-keys {
+  display: inline-flex;
+  gap: var(--space-1);
+  flex: 0 0 auto;
+}
+
+.shortcuts-keys kbd {
+  font-size: var(--fs-xs);
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  color: var(--text-2);
+  padding: var(--space-0-5) var(--space-1-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+}
+
+.shortcuts-desc {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  text-align: right;
+}
+

@@ -1,0 +1,45 @@
+/* =========================================================================
+   Buttons — primary (accent) / secondary (surface) / danger
+   ========================================================================= */
+
+.side-panel button,
+.module-header button,
+.report-tabs button.active,
+.filter-bar button.active,
+.payment-preview-actions button:first-child,
+.payment-action-form button[type="submit"],
+.form-actions button:last-child,
+.report-row button {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--space-2);
+  justify-content: center;
+  min-height: 40px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r1);
+  background: var(--accent);
+  color: var(--on-accent);
+  cursor: pointer;
+  font-weight: 650;
+  padding: 0 var(--space-4);
+  transition: background 150ms ease, transform 120ms ease;
+}
+
+.side-panel button {
+  width: 100%;
+  min-height: 44px;
+}
+
+.side-panel button:hover,
+.module-header button:hover,
+.payment-action-form button[type="submit"]:hover,
+.form-actions button:last-child:hover,
+.report-row button:hover {
+  background: var(--accent-2);
+}
+
+.side-panel button:active,
+.module-header button:active {
+  transform: translateY(1px);
+}
+

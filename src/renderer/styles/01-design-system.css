@@ -1,0 +1,374 @@
+/* =========================================================================
+   ISPM — Design system (dark-first, editorial)
+   Type: Inter Variable (single family, weight contrast). Color: OKLCH, warm
+   neutrals tinted toward the heritage gold (hue ~72). Depth via lighter
+   surfaces + hairline borders — no glow. Two token layers + legacy aliases
+   so non-slice modules stay coherent until they get their own pass.
+   ========================================================================= */
+
+:root {
+  color-scheme: dark;
+
+  /* neutrals — warm-tinted, never pure black/white */
+  --bg: oklch(11% 0.012 115);
+  --surface: oklch(14.5% 0.014 115);
+  --surface-2: oklch(18% 0.016 112);
+  --surface-3: oklch(23% 0.018 108);
+  --border: oklch(25% 0.018 108);
+  --border-2: oklch(36% 0.024 104);
+
+  --text: oklch(92.5% 0.012 102);
+  --text-2: oklch(72% 0.018 104);
+  --text-3: oklch(55% 0.02 104);
+
+  /* accent — heritage gold, slightly desaturated for dark */
+  --accent: oklch(75% 0.14 82);
+  --accent-2: oklch(70% 0.13 38);
+  --on-accent: oklch(16% 0.018 82);
+
+  /* semantic — paired surface tints for dark legibility */
+  --success: oklch(77% 0.16 148);
+  --success-bg: oklch(22% 0.07 148);
+  --danger: oklch(70% 0.18 24);
+  --danger-bg: oklch(22% 0.075 24);
+  --info: oklch(72% 0.12 212);
+  --info-bg: oklch(22% 0.045 212);
+
+  --ring: color-mix(in oklch, var(--accent) 62%, transparent);
+  --shadow-1: 0 1px 2px oklch(0% 0 0 / 0.45);
+  --shadow-2: 0 18px 42px -26px oklch(0% 0 0 / 0.82);
+
+  /* radius / space / type scales */
+  --r1: 7px;
+  --r2: 11px;
+  --r3: 16px;
+  --rpill: 999px;
+  --fs-xs: 0.6875rem;
+  --fs-sm: 0.8125rem;
+  --fs-base: 0.9375rem;
+  --fs-lg: 1.0625rem;
+  --fs-xl: 1.375rem;
+  --fs-2xl: clamp(1.9rem, 1.4rem + 1.8vw, 2.6rem);
+
+  /* spacing scale (base 2px) — layout rhythm for padding/margin/gap */
+  --space-0: 0;
+  --space-px: 1px;
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-2-5: 10px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-11: 44px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  --font-ui: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-feature-ui: "cv11", "ss01", "ss03", "calt", "kern";
+  --tracking-tight: -0.018em;
+  --tracking-tighter: -0.024em;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 280ms;
+
+  /* z-index scale - name every cross-component layer.
+     Local intra-component stacking (sticky <thead>) stays at literal 1. */
+  --z-base: 1;
+  --z-sticky: 40;     /* sidebar, in-shell popovers */
+  --z-dialog: 100;    /* modal scrim */
+  --z-palette: 105;   /* command palette (above dialog) */
+  --z-toast: 110;     /* always above modals */
+  --z-skip: 200;      /* skip-link wins over toast for a11y */
+  --z-auth: 1000;     /* full-screen auth overlay */
+
+  /* breakpoint scale - for future use; existing @media queries migrate progressively. */
+  --bp-sm: 640px;
+  --bp-md: 960px;
+  --bp-lg: 1280px;
+
+  /* legacy aliases - keep non-slice modules coherent */
+  --ink: var(--text);
+  --muted: var(--text-3);
+  --paper: var(--bg);
+  --panel: var(--surface);
+  --line: var(--border);
+  --green: var(--success);
+  --red: var(--danger);
+  --blue: var(--info);
+  --gold: var(--accent);
+
+  color: var(--text);
+  background: var(--bg);
+  font-family: var(--font-ui);
+  font-feature-settings: var(--font-feature-ui);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Display headings: single family with weight + tracking contrast.
+   Inter naturally tightens at large sizes; we nudge it further so big
+   numbers and titles read editorial without needing a second typeface. */
+h1, h2, h3, .display, [data-display] {
+  letter-spacing: var(--tracking-tight);
+  font-feature-settings: var(--font-feature-ui);
+}
+h1, .display-xl { letter-spacing: var(--tracking-tighter); }
+
+/* Tabular figures wherever numbers are compared in columns: metrics,
+   money columns, payment rows, data lists. Keeps decimals aligned. */
+.metric-card .value,
+.metric-value,
+.payment-item,
+.data-list .row,
+.amount,
+.money,
+table {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-feature-ui), "tnum";
+}
+
+/* Light theme — editorial warm off-white, NOT the old cream ERP.
+   Only primitives are redefined; the legacy aliases inherit. Light
+   mode earns depth from soft shadows (dark mode used lighter surfaces). */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: oklch(96.5% 0.005 72);
+  --surface: oklch(99.4% 0.003 72);
+  --surface-2: oklch(97.6% 0.004 72);
+  --surface-3: oklch(95% 0.006 72);
+  --border: oklch(89% 0.008 72);
+  --border-2: oklch(79% 0.013 72);
+
+  --text: oklch(27% 0.013 72);
+  --text-2: oklch(45% 0.013 72);
+  --text-3: oklch(48% 0.013 72);
+
+  --accent: oklch(48% 0.135 65);
+  --accent-2: oklch(42% 0.13 65);
+  --on-accent: oklch(99% 0.012 80);
+
+  --success: oklch(46% 0.14 158);
+  --success-bg: oklch(94.5% 0.045 158);
+  --danger: oklch(46% 0.19 26);
+  --danger-bg: oklch(94.5% 0.055 26);
+  --info: oklch(46% 0.13 240);
+  --info-bg: oklch(94.5% 0.045 240);
+
+  --ring: color-mix(in oklch, var(--accent) 55%, transparent);
+  --shadow-1: 0 1px 2px oklch(60% 0.02 72 / 0.12);
+  --shadow-2: 0 16px 38px -16px oklch(50% 0.03 72 / 0.24);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--fs-base);
+  line-height: 1.55;
+  font-weight: 380;
+  letter-spacing: -0.003em;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  max-width: 100%;
+}
+
+textarea {
+  resize: vertical;
+}
+
+button,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+::selection {
+  background: color-mix(in oklch, var(--accent) 30%, transparent);
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--r1);
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border: 3px solid var(--bg);
+  border-radius: var(--rpill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-2);
+}
+
+.skip-link {
+  position: fixed;
+  left: var(--space-4);
+  top: var(--space-4);
+  z-index: var(--z-skip);
+  transform: translateY(calc(-100% - var(--space-4)));
+  opacity: 0;
+  pointer-events: none;
+  border: 1px solid var(--accent);
+  border-radius: var(--r1);
+  background: var(--accent);
+  color: var(--on-accent);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  box-shadow: var(--shadow-2);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+:root[data-keyboard-navigation="true"] .skip-link:focus-visible {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* A11y baseline — every interactive element gets a visible focus ring */
+:where(button, [role="button"], a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+/* Skip-link anchors should not be hidden under sticky headers when focused */
+:root {
+  scroll-padding-top: 80px;
+}
+
+/* Touch targets: every interactive surface ≥ 44×44 on coarse pointers */
+@media (pointer: coarse) {
+  button:not(.toast-close):not(.combobox-clear):not(.import-file-reset),
+  [role="button"],
+  a.button-link,
+  .nav-list button,
+  .row-action,
+  .data-table-actions button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    min-height: 44px;
+  }
+}
+
+#app-content:focus-visible {
+  outline: none;
+}
+
+/* prefers-contrast: more — strengthen borders + focus ring */
+@media (prefers-contrast: more) {
+  :root {
+    --border: oklch(48% 0.014 72);
+    --border-2: oklch(58% 0.016 72);
+  }
+  :root[data-theme="light"] {
+    --border: oklch(70% 0.012 72);
+    --border-2: oklch(58% 0.016 72);
+  }
+  :where(button, [role="button"], a, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline-width: 3px;
+  }
+}
+
+/* Windows High Contrast / forced colors — keep boundaries readable */
+@media (forced-colors: active) {
+  .badge,
+  .data-table-row,
+  .module-row,
+  .combobox-trigger,
+  .toast,
+  .dialog,
+  .palette {
+    border: 1px solid CanvasText;
+  }
+
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+
+/* numeric data aligns — money is everywhere in this app */
+.metric-card strong,
+.payment-summary-button b,
+.payments-total-chip strong,
+.payments-total-chip em,
+.monthly-preview-chip strong,
+.monthly-preview-amount,
+.document-preview strong,
+.client-detail dd {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "ss01" 1;
+}
+

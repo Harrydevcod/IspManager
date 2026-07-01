@@ -1,0 +1,274 @@
+/* =========================================================================
+   Thin primitives (Task 3 — additive only)
+   Classes the polished slice never named explicitly. Modelled exactly on
+   the slice's canonical treatments (primary action button line ~536,
+   .filter-bar label line ~649, .payment-status line ~792, .module-message
+   line ~724) using existing tokens only. No existing rule/token changed.
+   ========================================================================= */
+
+.btn {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--space-2);
+  justify-content: center;
+  min-height: 40px;
+  border-radius: var(--r1);
+  cursor: pointer;
+  font-weight: 650;
+  padding: 0 var(--space-4);
+  transition: background 150ms ease, transform 120ms ease;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.btn-primary:hover {
+  background: var(--accent-2);
+}
+
+.btn-ghost {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.btn-ghost:hover {
+  background: var(--surface-3);
+}
+
+.btn-icon {
+  min-height: 40px;
+  width: 40px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.btn-icon:hover {
+  background: var(--surface-3);
+}
+
+.btn-secondary {
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.btn-secondary:hover {
+  background: var(--surface-3);
+  border-color: var(--border-2);
+}
+
+.btn-danger {
+  border: 1px solid var(--danger);
+  background: var(--danger);
+  color: var(--on-accent);
+}
+
+.btn-danger:hover {
+  filter: brightness(1.05);
+}
+
+.btn-sm {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  font-size: var(--fs-sm);
+}
+
+.btn-lg {
+  min-height: 48px;
+  padding: 0 var(--space-6);
+  font-size: var(--fs-lg);
+}
+
+.btn-loading {
+  cursor: progress;
+}
+
+.btn-spinner {
+  animation: spin 720ms linear infinite;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.field-label {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.field-error {
+  color: var(--danger);
+  font-size: var(--fs-xs);
+}
+
+.field-hint {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+/* Toggle primitive - checkbox with adjacent title + optional caption.
+   label.field-toggle wins specificity over .client-form label without
+   needing !important. */
+label.field-toggle {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: var(--space-3);
+  align-items: start;
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.field-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: var(--space-1);
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.field-toggle > span {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.field-toggle small {
+  font-weight: 500;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+/* EmptyState primitive - dedicated empty case, NOT a status message.
+   Editorial: dashed border for absence, generous whitespace, icon in a
+   pill chip that reads as deliberate placeholder rather than "nothing here". */
+.empty-state {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  padding: var(--space-12) var(--space-6);
+  border: 1px dashed var(--border);
+  border-radius: var(--r2);
+  background: color-mix(in oklch, var(--surface) 40%, transparent);
+  text-align: center;
+}
+
+.empty-state-sm {
+  padding: var(--space-6) var(--space-4);
+  gap: var(--space-2);
+}
+
+.empty-state-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--rpill);
+  background: var(--surface-2);
+  color: var(--text-3);
+  border: 1px solid var(--border);
+}
+
+.empty-state-sm .empty-state-icon {
+  width: 36px;
+  height: 36px;
+}
+
+.empty-state-body {
+  display: grid;
+  gap: var(--space-1);
+  max-width: 42ch;
+}
+
+.empty-state-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text);
+}
+
+.empty-state-sm .empty-state-title {
+  font-size: var(--fs-base);
+}
+
+.empty-state-description {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+}
+
+.empty-state-action {
+  margin-top: var(--space-2);
+}
+
+.module-message.success {
+  color: var(--success);
+}
+
+.badge {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--rpill);
+  color: var(--text-3);
+  display: inline-flex;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  justify-content: center;
+  min-height: 26px;
+  padding: var(--space-1) var(--space-2-5);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.badge-success {
+  background: var(--success-bg);
+  border-color: color-mix(in oklch, var(--success) 35%, transparent);
+  color: var(--success);
+}
+
+.badge-danger {
+  background: var(--danger-bg);
+  border-color: color-mix(in oklch, var(--danger) 35%, transparent);
+  color: var(--danger);
+}
+
+.badge-info {
+  background: var(--info-bg);
+  border-color: color-mix(in oklch, var(--info) 35%, transparent);
+  color: var(--info);
+}
+
+.badge-accent {
+  background: color-mix(in oklch, var(--accent) 16%, transparent);
+  border-color: color-mix(in oklch, var(--accent) 35%, transparent);
+  color: var(--accent);
+}
+
+.badge-neutral {
+  background: var(--surface-3);
+  border-color: var(--border);
+  color: var(--text-3);
+}
+

@@ -1,0 +1,456 @@
+/* =========================================================================
+   Pagamentos
+   ========================================================================= */
+
+.payments-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.payment-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 162px;
+  align-items: center;
+  gap: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface);
+  padding: var(--space-3);
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.payment-item:hover {
+  border-color: var(--border-2);
+  background: var(--surface-2);
+}
+
+.payment-item.active {
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 8%, var(--surface));
+}
+
+.payment-summary-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px 132px;
+  align-items: center;
+  gap: var(--space-4);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.payment-summary-button span:first-child {
+  display: grid;
+  gap: var(--space-1);
+  font-weight: 560;
+}
+
+.payment-summary-button small {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.payment-summary-button b {
+  text-align: right;
+  font-weight: 700;
+}
+
+.payment-status {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--rpill);
+  color: var(--text-3);
+  display: inline-flex;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  justify-content: center;
+  justify-self: stretch;
+  min-height: 26px;
+  padding: var(--space-1) var(--space-2-5);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.payment-status.paid {
+  background: var(--success-bg);
+  border-color: color-mix(in oklch, var(--success) 35%, transparent);
+  color: var(--success);
+}
+
+.payment-status.overdue {
+  background: var(--danger-bg);
+  border-color: color-mix(in oklch, var(--danger) 35%, transparent);
+  color: var(--danger);
+}
+
+.payment-status.cancelled {
+  background: var(--surface-3);
+  border-color: var(--border);
+  color: var(--text-3);
+}
+
+.payment-status.pending {
+  background: var(--info-bg);
+  border-color: color-mix(in oklch, var(--info) 35%, transparent);
+  color: var(--info);
+}
+
+.payment-quick-actions,
+.payment-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.payment-quick-actions {
+  justify-content: flex-end;
+  width: 162px;
+}
+
+.payment-quick-actions button,
+.payment-preview-actions button {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--space-2);
+  justify-content: center;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0 var(--space-3);
+  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+}
+
+.payment-quick-actions button:hover,
+.payment-preview-actions button:hover {
+  border-color: var(--border-2);
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+.payment-quick-actions button {
+  width: 36px;
+  padding: 0;
+}
+
+.payment-preview {
+  display: grid;
+  gap: var(--space-4);
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 6%, var(--surface));
+}
+
+.payment-preview .module-header {
+  margin-bottom: 0;
+}
+
+.payment-preview-actions button:first-child:hover {
+  background: var(--accent-2);
+}
+
+/* Clientes detail-panel header actions — tightened to match the Pagamentos
+   slice. Scoped under .client-detail to win over the generic
+   `.client-detail button` rule regardless of source order. */
+.client-detail .client-preview-actions button {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+}
+.client-detail .client-preview-actions button:first-child:hover {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  color: var(--on-accent);
+}
+
+.document-preview {
+  display: grid;
+  gap: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface-2);
+  padding: var(--space-4);
+}
+
+.document-preview span,
+.document-preview small {
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+.document-preview strong {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 1.9rem;
+  font-weight: 540;
+  letter-spacing: -0.01em;
+}
+
+.payment-pdf-preview {
+  width: 100%;
+  min-height: 460px;
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface-2);
+}
+
+.payments-totals {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-3);
+  margin: var(--space-2) 0 var(--space-3);
+  flex-wrap: wrap;
+}
+
+.payments-totals-label {
+  align-self: center;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.payments-total-chip {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface);
+  padding: var(--space-3) var(--space-4);
+  min-width: 220px;
+}
+
+.payments-total-chip small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.payments-total-chip strong {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 540;
+}
+
+.payments-total-chip em {
+  color: var(--text-3);
+  font-style: normal;
+  font-weight: 600;
+}
+
+.payments-total-chip.pending {
+  box-shadow: inset 3px 0 0 var(--info);
+}
+
+.payments-total-chip.overdue {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.payments-total-chip.paid {
+  box-shadow: inset 3px 0 0 var(--success);
+}
+
+.payment-action-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) minmax(160px, 1fr) auto;
+  gap: var(--space-3);
+  align-items: end;
+  border: 1px solid var(--accent);
+  border-radius: var(--r2);
+  background: color-mix(in oklch, var(--accent) 6%, var(--surface));
+  padding: var(--space-4) var(--space-4);
+}
+
+.payment-action-form--cancel {
+  grid-template-columns: minmax(180px, 1fr) minmax(260px, 2fr) auto;
+}
+
+.payment-action-form--whatsapp {
+  grid-template-columns: minmax(220px, 1fr) minmax(320px, 2fr) auto;
+}
+
+.payment-action-form--whatsapp textarea {
+  background: var(--surface-2);
+}
+
+.payments-search {
+  flex: 1;
+  min-width: 220px;
+  font-weight: 500;
+}
+
+.filter-bar button.active:hover {
+  background: var(--accent-2);
+}
+
+.payment-action-form > div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.payment-action-form strong {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 540;
+}
+
+.payment-action-form label {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.payment-action-form select,
+.payment-action-form input,
+.payment-action-form textarea {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: var(--space-2) var(--space-3);
+}
+
+.payment-action-form textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+.payment-action-form .inline-actions {
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.payment-action-form button[type="submit"] {
+  font-weight: 700;
+  padding: var(--space-2) var(--space-4);
+}
+
+.payment-action-form button[type="submit"]:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.payment-action-form button[type="button"] {
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  font-weight: 600;
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+
+.payment-action-form button[type="button"]:hover {
+  border-color: var(--border-2);
+  color: var(--text);
+}
+
+.monthly-preview {
+  display: grid;
+  gap: var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--r2);
+  background: color-mix(in oklch, var(--accent) 6%, var(--surface));
+  padding: var(--space-4) var(--space-6);
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.monthly-preview .module-header {
+  margin-bottom: 0;
+}
+
+.monthly-preview-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.monthly-preview-chip {
+  display: grid;
+  gap: var(--space-0-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface);
+  padding: var(--space-2) var(--space-4);
+  min-width: 150px;
+}
+
+.monthly-preview-chip small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.monthly-preview-chip strong {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 540;
+}
+
+.monthly-preview-chip.highlight {
+  border-color: color-mix(in oklch, var(--accent) 45%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.monthly-preview-table {
+  display: grid;
+  gap: var(--space-px);
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  overflow: hidden;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.monthly-preview-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 110px 140px;
+  gap: var(--space-3);
+  align-items: center;
+  background: var(--surface);
+  padding: var(--space-2) var(--space-3);
+  font-weight: 500;
+}
+
+.monthly-preview-row--head {
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.monthly-preview-muted {
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+/* Texto secundário (sufixos/anotações em linha). */
+.muted {
+  color: var(--muted);
+}
+
+.monthly-preview-amount {
+  text-align: right;
+}
+

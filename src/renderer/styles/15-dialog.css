@@ -1,0 +1,210 @@
+/* =========================================================================
+   Dialog — true overlay modal (Stripe-checkout style). Portal-mounted scrim
+   + centered card. Used by edit/create flows in CRUD modules.
+   ========================================================================= */
+.dialog-scrim {
+  position: fixed;
+  inset: 0;
+  background: oklch(0% 0 0 / 0.62);
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  display: grid;
+  place-items: center;
+  z-index: var(--z-dialog);
+  padding: var(--space-6);
+  animation: dialog-scrim-in 140ms ease-out;
+  overscroll-behavior: contain;
+}
+
+.dialog {
+  width: 100%;
+  max-width: 520px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r3);
+  box-shadow: var(--shadow-2);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - var(--space-12));
+  animation: dialog-card-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.dialog-sm { max-width: 400px; }
+.dialog-md { max-width: 520px; }
+.dialog-lg { max-width: 760px; }
+.dialog-xl { max-width: 920px; }
+
+/* Detail views rendered inside a Dialog reuse every `.client-detail *` rule
+   (dl grid, dt/dd, profitability, buttons) but shed the standalone panel
+   chrome — the dialog card already supplies border, surface and padding. */
+.dialog-body .client-detail {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-6) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.dialog-header > div { min-width: 0; }
+.dialog-header .eyebrow {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+  margin: 0 0 var(--space-1);
+}
+.dialog-header h2 {
+  margin: 0;
+  font-size: var(--fs-xl);
+  letter-spacing: var(--tracking-tight);
+  font-family: var(--font-display);
+}
+
+.dialog-close {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r1);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 80ms ease, color 80ms ease, border-color 80ms ease;
+  flex-shrink: 0;
+}
+.dialog-close:hover {
+  background: var(--surface-2);
+  border-color: var(--border-2);
+  color: var(--text);
+}
+
+.dialog-body {
+  padding: var(--space-6);
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-6) var(--space-6);
+  border-top: 1px solid var(--border);
+}
+
+/* Confirm dialog body copy (useConfirm) — readable measure, muted tone. */
+.confirm-dialog-message {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-base);
+  line-height: 1.55;
+  max-width: 52ch;
+}
+
+@keyframes dialog-scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes dialog-card-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dialog-scrim, .dialog { animation: none; }
+}
+
+/* Forms inside Dialog: shed the standalone-card chrome since the Dialog
+   already provides border/background/padding. Keep the 2-col grid. */
+.dialog-body .client-form {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
+
+/* Dialog action buttons: same shape as form-actions, with accent variant
+   for the submit/primary action (matches .form-actions button:last-child). */
+.dialog-actions button {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--space-2);
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  border-radius: var(--r1);
+  cursor: pointer;
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+}
+.dialog-actions button:hover {
+  border-color: var(--border-2);
+  color: var(--text);
+}
+.dialog-actions button.primary,
+.dialog-actions button[type="submit"] {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+  font-weight: 650;
+}
+.dialog-actions button.primary:hover,
+.dialog-actions button[type="submit"]:hover {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+}
+.dialog-actions button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+/* Module row inline actions (Linear/Stripe-style icon buttons per row).
+   Used when the row is a <div role="button"> with stopPropagation on
+   each action so the inline actions don't trigger the row click. */
+.module-row.interactive {
+  cursor: pointer;
+  user-select: none;
+}
+.module-row.interactive:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.row-actions {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.row-action {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r1);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 80ms ease, color 80ms ease, border-color 80ms ease;
+}
+.row-action:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text);
+  border-color: var(--border-2);
+}
+.row-action:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+

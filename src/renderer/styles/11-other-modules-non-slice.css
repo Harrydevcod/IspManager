@@ -1,0 +1,207 @@
+/* =========================================================================
+   Other modules (non-slice) — coherent via tokens, refined next pass
+   ========================================================================= */
+
+.client-row span {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.client-row span small {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.client-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface);
+  padding: var(--space-6);
+  margin-bottom: var(--space-4);
+}
+
+.client-form label {
+  display: grid;
+  gap: var(--space-1-5);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.client-form textarea {
+  min-height: 92px;
+  padding: var(--space-3);
+  resize: vertical;
+}
+
+.wide-field,
+.form-actions {
+  grid-column: 1 / -1;
+}
+
+.service-items-builder {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding-top: var(--space-4);
+  margin-top: var(--space-1);
+  border-top: 1px solid var(--border);
+}
+
+.service-items-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.service-items-group-title {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.service-item-draft {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.service-item-draft:last-of-type {
+  border-bottom: 0;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.form-actions button,
+.client-detail button {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--space-2);
+  justify-content: center;
+  min-height: 40px;
+  border: 0;
+  border-radius: var(--r1);
+  padding: 0 var(--space-4);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.form-actions button:first-child,
+.client-detail button {
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  transition: border-color 150ms ease, color 150ms ease;
+}
+
+.form-actions button:first-child:hover,
+.client-detail button:hover {
+  border-color: var(--border-2);
+  color: var(--text);
+}
+
+.form-actions button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.client-detail {
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface);
+  padding: var(--space-6);
+  margin-bottom: var(--space-4);
+}
+
+.metric-grid.compact {
+  margin-bottom: var(--space-4);
+}
+
+.nested-form {
+  margin-top: var(--space-4);
+}
+
+.report-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 170px 170px;
+  gap: var(--space-3);
+}
+
+.report-row.with-action {
+  grid-template-columns: minmax(0, 1fr) 140px 140px 118px;
+}
+
+/* Numeric/money columns right-align with tabular figures so digits line up
+   across rows — same treatment as client/service/stock/plan rows. */
+.report-row > small {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.report-row button {
+  min-height: 38px;
+  padding: 0 var(--space-3);
+}
+
+.report-row button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.action-panel {
+  display: grid;
+  gap: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface);
+  padding: var(--space-6);
+  margin-bottom: var(--space-4);
+}
+
+.action-panel p {
+  color: var(--text-3);
+  margin: var(--space-2) 0 0;
+}
+
+.action-panel label {
+  display: grid;
+  gap: var(--space-1-5);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.client-detail dl {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.client-detail dt {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.client-detail dd {
+  margin: var(--space-1) 0 0;
+  color: var(--text);
+}
+

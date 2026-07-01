@@ -1,0 +1,141 @@
+/* =========================================================================
+   Backups panel
+   ========================================================================= */
+
+.backups-panel {
+  margin-top: var(--space-6);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-4);
+}
+
+.backups-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.backups-head-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.backups-dir {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  word-break: break-all;
+  margin: var(--space-1) 0 0;
+}
+
+.backups-msg {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  margin: var(--space-2) 0;
+}
+
+.backups-config {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.backups-config > :first-child {
+  flex: 1 1 280px;
+}
+
+.backups-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-3) 0 0;
+}
+
+.backups-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+
+.backups-list li > span:first-child {
+  flex: 1;
+}
+
+.backups-confirm {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.backups-confirm input {
+  width: 150px;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 0 var(--space-2);
+}
+
+.backups-list button {
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0 var(--space-3);
+  transition: border-color 150ms ease, color 150ms ease;
+}
+
+.backups-list button:hover {
+  border-color: var(--border-2);
+  color: var(--text);
+}
+
+.job-health-panel {
+  margin-top: var(--space-6);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-4);
+}
+
+.job-health-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-3) 0 0;
+}
+
+.job-health-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.job-health-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.job-health-meta small {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.job-health-summary {
+  color: var(--text-2);
+  word-break: break-word;
+}
+
