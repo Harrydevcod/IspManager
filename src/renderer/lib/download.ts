@@ -33,7 +33,16 @@ export async function downloadAuthenticated(url: string, fallbackName: string): 
   const response = await authFetch(url);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const blob = await response.blob();
-  const objectUrl = URL.createObjectURL(blob);
+  // Na app empacotada a janela corre em file://, e um blob application/pdf é
+  // capturado pelo visualizador de PDF embutido do Chromium (abre inline) em
+  // vez de disparar o download → o will-download do main nunca grava o ficheiro.
+  // Reetiquetar como octet-stream tira o blob das mãos do viewer; o atributo
+  // `download` passa a ganhar e o will-download grava em Transferências. Só os
+  // PDFs precisam disto (CSV/xlsx já descarregam bem).
+  const downloadBlob = blob.type === 'application/pdf'
+    ? blob.slice(0, blob.size, 'application/octet-stream')
+    : blob;
+  const objectUrl = URL.createObjectURL(downloadBlob);
   try {
     const filename = filenameFromContentDisposition(response.headers.get('content-disposition')) ?? fallbackName;
     const anchor = document.createElement('a');
