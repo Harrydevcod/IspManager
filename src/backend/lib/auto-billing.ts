@@ -1,11 +1,12 @@
 import { getSqliteDatabase } from '../db/database';
 import { generateMonthlyBilling } from './billing';
+import { DEFAULT_POSTPAID_BILLING_DAY, defaultPostpaidReferenceMonth } from '../../shared/billing-period';
 
 const LAST_RUN_KEY = 'lastAutoBillingMonth';
 // Dia do mês a partir do qual o mês é considerado fechado e faturável.
 // A fatura emitida no fecho do mês (ou início do mês seguinte) tem como
 // competência o mês que terminou — modelo pós-pago (arrears).
-const DEFAULT_BILLING_DAY = 30;
+const DEFAULT_BILLING_DAY = DEFAULT_POSTPAID_BILLING_DAY;
 
 function monthKey(year: number, month0: number): string {
   return `${year}-${String(month0 + 1).padStart(2, '0')}`;
@@ -20,13 +21,7 @@ function monthKey(year: number, month0: number): string {
  * Cobre Fevereiro (sem dia 30): a 27/Fev o alvo recai em Janeiro; Fevereiro é
  * faturado já em Março (mês anterior a Março).
  */
-function latestClosedBillableMonth(now: Date, billingDay: number): string {
-  if (now.getDate() >= billingDay) {
-    return monthKey(now.getFullYear(), now.getMonth());
-  }
-  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return monthKey(prev.getFullYear(), prev.getMonth());
-}
+const latestClosedBillableMonth = defaultPostpaidReferenceMonth;
 
 /** Meses estritamente após `last` até `target` (inclusive), por ordem ascendente. */
 function monthsAfter(last: string, target: string): string[] {

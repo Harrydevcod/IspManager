@@ -7,6 +7,7 @@ import { downloadAuthenticated, printAuthenticated, useAuthenticatedObjectUrl } 
 import { compareNumber, compareText, paginateRows, sortRows, type SortState } from '../lib/listView';
 import { runBulk, summarizeBulk } from '../lib/bulkRun';
 import { useRowSelection } from '../lib/useRowSelection';
+import { defaultPostpaidReferenceMonth } from '../../shared/billing-period';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
   fallbackWhatsappOverdueTemplate,
@@ -77,10 +78,7 @@ export function PaymentsModule({
 } = {}) {
   // Competência por defeito = mês fechado: criada no início do mês → mês anterior;
   // a partir do dia 30 → o mês que está a fechar (mesma regra da auto-faturação).
-  const defaultRefMonth = (() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  })();
+  const defaultRefMonth = defaultPostpaidReferenceMonth();
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
