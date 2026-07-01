@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { autoUpdater } from 'electron-updater';
@@ -9,35 +9,80 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 let mainWindow: BrowserWindow | null = null;
 
 /**
- * Downloads (faturas/recibos/backups) guardam-se logo na pasta Transferências
- * com o nome informativo do documento — não um UUID aleatório.
+ * Guardar documentos (faturas/recibos/relatórios PDF/CSV) com diálogo nativo
+ * "Guardar como". O renderer manda os bytes já obtidos (com o header de auth) e
+ * o nome informativo; aqui escolhemos o local e escrevemos.
  *
- * O fluxo da app descarrega via `blob:` + `<a download>`; a Chromium passa esse
- * nome em `item.getFilename()`. Sem este handler o Electron mostra diálogo (ou,
- * no visualizador de PDF embutido, grava o blob com um nome aleatório). Aqui
- * forçamos o save path para Downloads e de-duplicamos ("nome (1).pdf") em vez de
- * sobrescrever.
+ * Substitui o antigo `will-download` sobre `blob:`: nesse fluxo o Electron
+ * ignorava o nome (`getFilename()` devolvia um UUID) e o visualizador de PDF
+ * embutido chegava a capturar o blob em vez de o descarregar. Passar os bytes
+ * por IPC é determinista e dá ao utilizador controlo do destino.
  */
-function initDownloads() {
-  session.defaultSession.on('will-download', (_event, item) => {
-    // Path-traversal hardening: nunca confiar no nome sugerido — reduzir a
-    // basename (sem separadores) e confirmar que o destino fica dentro de
-    // Transferências antes de gravar.
-    const raw = item.getFilename() || 'documento.pdf';
+function registerDocumentSave() {
+  ipcMain.handle('documents:save', async (_event, payload: { filename?: string; data?: Uint8Array }) => {
+    const data = payload?.data;
+    if (!data || !ArrayBuffer.isView(data)) {
+      return { saved: false, error: 'sem dados' as const };
+    }
+    // Nunca confiar no nome: reduzir a basename e limpar separadores.
+    const raw = typeof payload?.filename === 'string' && payload.filename ? payload.filename : 'documento.pdf';
     const safe = path.basename(raw).replace(/[/\\]/g, '_') || 'documento.pdf';
-    const dir = path.resolve(app.getPath('downloads'));
-    const ext = path.extname(safe);
-    const base = path.basename(safe, ext);
-    let target = path.join(dir, safe);
-    for (let n = 1; fs.existsSync(target); n += 1) {
-      target = path.join(dir, `${base} (${n})${ext}`);
+    const ext = path.extname(safe).replace('.', '') || 'pdf';
+
+    const win = mainWindow ?? BrowserWindow.getFocusedWindow();
+    const options = {
+      title: 'Guardar documento',
+      defaultPath: path.join(app.getPath('downloads'), safe),
+      filters: [{ name: ext.toUpperCase(), extensions: [ext] }, { name: 'Todos os ficheiros', extensions: ['*'] }]
+    };
+    const { canceled, filePath } = win
+      ? await dialog.showSaveDialog(win, options)
+      : await dialog.showSaveDialog(options);
+    if (canceled || !filePath) return { saved: false, canceled: true as const };
+
+    await fs.promises.writeFile(filePath, Buffer.from(data.buffer, data.byteOffset, data.byteLength));
+    return { saved: true as const, path: filePath };
+  });
+}
+
+function registerDocumentPrint() {
+  ipcMain.handle('documents:print', async (_event, payload: { data?: Uint8Array }) => {
+    const data = payload?.data;
+    if (!data || !ArrayBuffer.isView(data)) {
+      return { printed: false, error: 'sem dados' as const };
     }
-    const resolved = path.resolve(target);
-    if (resolved !== dir && !resolved.startsWith(dir + path.sep)) {
-      item.cancel();
-      return;
+
+    const tempDir = await fs.promises.mkdtemp(path.join(app.getPath('temp'), 'ispm-print-'));
+    const filePath = path.join(tempDir, 'documento.pdf');
+    const printWindow = new BrowserWindow({
+      show: false,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false
+      }
+    });
+
+    try {
+      await fs.promises.writeFile(filePath, Buffer.from(data.buffer, data.byteOffset, data.byteLength));
+      await printWindow.loadFile(filePath);
+      const result = await new Promise<{ printed: boolean; canceled?: boolean; error?: string }>((resolve) => {
+        printWindow.webContents.print({ silent: false, printBackground: true }, (success, failureReason) => {
+          if (success) {
+            resolve({ printed: true });
+            return;
+          }
+          resolve({
+            printed: false,
+            canceled: /cancel/i.test(failureReason || ''),
+            error: failureReason || 'Nao foi possivel imprimir o documento'
+          });
+        });
+      });
+      return result;
+    } finally {
+      if (!printWindow.isDestroyed()) printWindow.close();
+      await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
     }
-    item.setSavePath(resolved);
   });
 }
 
@@ -81,10 +126,19 @@ async function createWindow() {
     backgroundColor: '#16130F',
     icon: iconPath,
     webPreferences: {
-      preload: isDevelopment ? undefined : path.join(__dirname, 'preload.js'),
+      // Em dev o main corre via tsx a partir de src/main, mas o preload tem de ser
+      // JS compilado: dev:main faz `tsc -p tsconfig.preload.json` → dist/main/preload.js
+      // (relativo a __dirname = src/main, não a process.cwd() que pode variar).
+      preload: isDevelopment
+        ? path.join(__dirname, '..', '..', 'dist', 'main', 'preload.js')
+        : path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false
     }
+  });
+
+  mainWindow.webContents.on('preload-error', (_e, preloadPath, error) => {
+    console.error('[preload-error]', preloadPath, error);
   });
 
   if (isDevelopment) {
@@ -119,7 +173,8 @@ app.whenReady().then(async () => {
     return result.filePaths[0];
   });
 
-  initDownloads();
+  registerDocumentSave();
+  registerDocumentPrint();
 
   await createWindow();
 

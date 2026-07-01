@@ -218,7 +218,12 @@ export function filenamePart(value: string | number | null | undefined, fallback
 function documentFilename(kind: DocumentKind, row: PaymentDocumentRow) {
   const label = kind === 'invoice' ? 'Fatura' : 'Recibo';
   const number = kind === 'invoice' ? row.invoiceNumber : row.receiptNumber;
-  return `${label} - ${filenamePart(row.clientName, 'cliente')} - ${filenamePart(number, String(row.id))}.pdf`;
+  const parts = [
+    label,
+    filenamePart(row.clientName, 'cliente'),
+    filenamePart(number, String(row.id))
+  ].filter(Boolean);
+  return `${parts.join(' - ')}.pdf`;
 }
 
 function hasDocumentNumber(value: string | null) {

@@ -127,6 +127,7 @@ describe('GET /api/payments/:id/invoice.pdf', () => {
     expect(after.invoice_number).toBeTruthy();
     expect(after.invoice_number).not.toBe('PENDING');
     expect(after.invoice_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(String(response.headers['content-disposition'])).toContain(`filename*=UTF-8''${encodeURIComponent(`Fatura - Ana Lima - ${after.invoice_number}.pdf`)}`);
   });
 
   test('returns a PDF buffer when invoice payment bank accounts are configured', async () => {
@@ -170,6 +171,31 @@ describe('GET /api/payments/:id/invoice.pdf', () => {
     const response = await app.inject({ method: 'GET', url: `/api/payments/${id}/invoice.pdf?inline=1` });
     expect(response.statusCode).toBe(200);
     expect(String(response.headers['content-disposition'])).toContain('inline');
+  });
+
+  test('exposes Content-Disposition to the renderer origin', async () => {
+    const id = seedPayment('pending');
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/payments/${id}/invoice.pdf`,
+      headers: { origin: 'http://127.0.0.1:5173' }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(String(response.headers['access-control-expose-headers']).toLowerCase()).toContain('content-disposition');
+  });
+
+  test('exposes Content-Disposition to the packaged Electron origin', async () => {
+    const id = seedPayment('pending');
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/payments/${id}/invoice.pdf`,
+      headers: { origin: 'null' }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['access-control-allow-origin']).toBe('null');
+    expect(String(response.headers['access-control-expose-headers']).toLowerCase()).toContain('content-disposition');
   });
 
   test('renders a multi-line invoice (internet + audiovisual) without error', async () => {
@@ -227,5 +253,6 @@ describe('GET /api/payments/:id/receipt.pdf', () => {
     const after = db.prepare('SELECT receipt_number, receipt_date FROM payments WHERE id = ?').get(id) as { receipt_number: string; receipt_date: string };
     expect(after.receipt_number).toBeTruthy();
     expect(after.receipt_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(String(response.headers['content-disposition'])).toContain(`filename*=UTF-8''${encodeURIComponent(`Recibo - Ana Lima - ${after.receipt_number}.pdf`)}`);
   });
 });

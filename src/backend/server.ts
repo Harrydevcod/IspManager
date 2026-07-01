@@ -39,10 +39,18 @@ export async function createBackendApp() {
   });
 
   await app.register(cors, {
-    origin: ['http://127.0.0.1:5173'],
+    origin: (origin, callback) => {
+      const allowed =
+        !origin ||
+        origin === 'http://127.0.0.1:5173' ||
+        origin === 'null' ||
+        origin.startsWith('file://');
+      callback(null, allowed);
+    },
     // Content-Disposition nao e CORS-safelisted: sem isto o fetch do renderer nao
     // consegue ler o nome do ficheiro (ex.: "Recibo - Sandra - RC-2026-00077.pdf")
-    // e os downloads via blob caem no fallback generico.
+    // e os downloads via blob caem no fallback generico. A app empacotada corre
+    // em file://, que o Chromium serializa como origin opaco "null".
     exposedHeaders: ['Content-Disposition']
   });
 

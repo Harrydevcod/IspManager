@@ -4,6 +4,13 @@ declare global {
       platform: string;
       relaunch?: () => Promise<void>;
       chooseBackupFile?: () => Promise<string | null>;
+      saveDocument?: (
+        filename: string,
+        data: Uint8Array
+      ) => Promise<{ saved: boolean; path?: string; canceled?: boolean; error?: string }>;
+      printDocument?: (
+        data: Uint8Array
+      ) => Promise<{ printed: boolean; canceled?: boolean; error?: string }>;
     };
   }
 }
