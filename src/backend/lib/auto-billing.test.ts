@@ -104,6 +104,17 @@ describe('runMonthlyBillingIfDue — competência do mês fechado', () => {
     expect(result).toMatchObject({ ran: true, months: ['2026-07'] });
   });
 
+  test('no dia 30 recupera o mes anterior em falta antes de faturar o mes que fecha', () => {
+    seedActiveService('A');
+    setSetting('autoBillingDay', '30');
+    setSetting('lastAutoBillingMonth', '2026-05');
+
+    const result = runMonthlyBillingIfDue(new Date(2026, 6, 30)); // 30 Jul
+
+    expect(result).toMatchObject({ ran: true, months: ['2026-06', '2026-07'], created: 2 });
+    expect(billedMonths()).toEqual(['2026-06', '2026-07']);
+  });
+
   test('recupera meses em falta sem gaps (catch-up)', () => {
     seedActiveService('A');
     setSetting('autoBillingDay', '30');
