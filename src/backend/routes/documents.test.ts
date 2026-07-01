@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
-import { formatBankAccountsForDocument, formatDate } from '../lib/documents';
+import { formatBankAccountsForDocument, formatDate, formatReferenceForDocument } from '../lib/documents';
 
 let app: FastifyInstance;
 let db: Database.Database;
@@ -69,6 +69,11 @@ describe('GET /api/payments/:id/invoice.pdf', () => {
     expect(formatDate('2026-05-10')).toBe('10/05/2026');
     expect(formatDate('2026-05-10 14:30:00')).toBe('10/05/2026');
     expect(formatDate(null)).toBe('-');
+  });
+
+  test('formats monthly document reference with month name and year', () => {
+    expect(formatReferenceForDocument('2026-07')).toBe('Julho/2026');
+    expect(formatReferenceForDocument('AV-2026-07')).toBe('Anuidade 2026');
   });
 
   test('formats bank accounts for invoice payment instructions', () => {
