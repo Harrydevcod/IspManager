@@ -54,7 +54,10 @@ export function PdfPreviewDialog({ preview, document, onClose, onDownload }: Pdf
           <iframe
             className="pdf-dialog-frame"
             title={preview.type === 'receipt' ? 'Pre-visualizacao do recibo' : 'Pre-visualizacao da fatura'}
-            src={document.objectUrl}
+            // #toolbar=0 esconde a barra do visualizador de PDF embutido do Chromium,
+            // cujo próprio botão de download grava o blob com nome UUID aleatório. Fica
+            // só o botão "Descarregar" da app abaixo, que nomeia o ficheiro corretamente.
+            src={`${document.objectUrl}#toolbar=0`}
           />
         ) : (
           <Message>A carregar documento…</Message>
