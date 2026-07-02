@@ -1,9 +1,9 @@
 import type { FormEvent } from 'react';
-import { CheckCircle2, FileText, MessageCircle, ReceiptText, RotateCcw, X } from 'lucide-react';
+import { CheckCircle2, Download, FileText, MessageCircle, Printer, ReceiptText, RotateCcw, X } from 'lucide-react';
 import { Button, Dialog, Field, Message, Select, Textarea } from '../../components';
 import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
-import type { PaymentRow } from '../../types';
+import { paymentStatusLabel, type PaymentRow } from '../../types';
 
 export type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
 export type PaymentActionMode = 'pay' | 'cancel' | 'whatsapp';
@@ -44,6 +44,8 @@ type PaymentDetailDialogProps = {
   reminderSentToday: boolean;
   onClose: () => void;
   onOpenPdf: (payment: PaymentRow, type: 'invoice' | 'receipt') => void;
+  onDownloadPdf: (payment: PaymentRow, type: 'invoice' | 'receipt') => void;
+  onPrintPdf: (payment: PaymentRow, type: 'invoice' | 'receipt') => void;
   onSendDocumentWhatsapp: (payment: PaymentRow, kind: 'invoice' | 'receipt') => void;
   onOpenPayForm: (payment: PaymentRow) => void;
   onOpenWhatsappForm: (payment: PaymentRow) => void;
@@ -72,6 +74,8 @@ export function PaymentDetailDialog({
   reminderSentToday,
   onClose,
   onOpenPdf,
+  onDownloadPdf,
+  onPrintPdf,
   onSendDocumentWhatsapp,
   onOpenPayForm,
   onOpenWhatsappForm,
@@ -313,7 +317,7 @@ export function PaymentDetailDialog({
               <span>{docLabel}</span>
               <strong>{formatCve(payment.amountCve)}</strong>
               <small>
-                Mes {formatPtMonth(payment.referenceMonth)} - vencimento {formatPtDate(payment.dueDate)} - {payment.status}
+                Mes {formatPtMonth(payment.referenceMonth)} - vencimento {formatPtDate(payment.dueDate)} - {paymentStatusLabel(payment.status)}
               </small>
             </div>
             {payment.status === 'cancelled' ? (
@@ -321,13 +325,33 @@ export function PaymentDetailDialog({
             ) : previewDoc.error ? (
               <Message tone="error">Nao foi possivel carregar o documento.</Message>
             ) : previewDoc.objectUrl ? (
-              <iframe
-                className="payment-pdf-preview"
-                title={previewDocType === 'receipt'
-                  ? `Pre-visualizacao do recibo ${payment.receiptNumber || payment.id}`
-                  : `Pre-visualizacao da fatura ${payment.invoiceNumber || payment.id}`}
-                src={previewDoc.objectUrl}
-              />
+              <div className="pdf-preview-shell">
+                <div className="pdf-preview-toolbar" aria-label="Acoes do documento">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leadingIcon={<Download size={14} aria-hidden />}
+                    onClick={() => onDownloadPdf(payment, previewDocType)}
+                  >
+                    Descarregar
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leadingIcon={<Printer size={14} aria-hidden />}
+                    onClick={() => onPrintPdf(payment, previewDocType)}
+                  >
+                    Imprimir
+                  </Button>
+                </div>
+                <iframe
+                  className="payment-pdf-preview"
+                  title={previewDocType === 'receipt'
+                    ? `Pre-visualizacao do recibo ${payment.receiptNumber || payment.id}`
+                    : `Pre-visualizacao da fatura ${payment.invoiceNumber || payment.id}`}
+                  src={`${previewDoc.objectUrl}#toolbar=0`}
+                />
+              </div>
             ) : (
               <Message>A carregar documento…</Message>
             )}
@@ -341,7 +365,7 @@ export function PaymentDetailDialog({
         <div><dt>Recibo</dt><dd>{payment.receiptNumber || '-'}</dd></div>
         <div><dt>Metodo</dt><dd>{payment.paymentMethod || '-'}</dd></div>
         <div><dt>Data pagamento</dt><dd>{formatPtDate(payment.paymentDate)}</dd></div>
-        <div><dt>Estado</dt><dd>{payment.status}</dd></div>
+        <div><dt>Estado</dt><dd>{paymentStatusLabel(payment.status)}</dd></div>
       </dl>
       </div>
     </Dialog>

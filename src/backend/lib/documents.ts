@@ -1,11 +1,25 @@
 import QRCode from 'qrcode';
 import { getSqliteDatabase } from '../db/database';
 import { allocateDocumentNumber } from './numbering';
-import { formatPtMonth } from '../../shared/date';
 import { formatEscudos } from '../../shared/money';
 import { isAudiovisualAnnualReference } from './audiovisual';
 
 const PDFDocument = require('pdfkit');
+
+const DOCUMENT_MONTH_NAMES = [
+  'Janeiro',
+  'Fevereiro',
+  'Março',
+  'Abril',
+  'Maio',
+  'Junho',
+  'Julho',
+  'Agosto',
+  'Setembro',
+  'Outubro',
+  'Novembro',
+  'Dezembro'
+];
 
 export type DocumentKind = 'invoice' | 'receipt';
 
@@ -16,15 +30,16 @@ type DocumentLine = {
 };
 
 /**
- * Rótulo da competência: mês (`MM/AAAA`) para faturas mensais; "Anuidade AAAA"
- * para a anuidade audiovisual (cuja `reference_month` é `AV-AAAA-MM`, que
- * `formatPtMonth` não sabe ler).
+ * Rótulo da competência: mês por extenso (`Julho/2026`) para faturas mensais;
+ * "Anuidade AAAA" para a anuidade audiovisual.
  */
-function referenceLabel(reference: string): string {
+export function formatReferenceForDocument(reference: string): string {
   if (isAudiovisualAnnualReference(reference)) {
     return `Anuidade ${reference.slice(3, 7)}`;
   }
-  return formatPtMonth(reference);
+  const [year, month] = reference.slice(0, 7).split('-').map(Number);
+  if (!year || !month || month < 1 || month > 12) return '-';
+  return `${DOCUMENT_MONTH_NAMES[month - 1]}/${year}`;
 }
 
 type PaymentDocumentRow = {
@@ -202,7 +217,7 @@ export function formatDate(value: string | null) {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric'
-  }).format(date);
+  }).format(date).replace(/\//g, '-');
 }
 
 export function filenamePart(value: string | number | null | undefined, fallback: string) {
@@ -218,7 +233,12 @@ export function filenamePart(value: string | number | null | undefined, fallback
 function documentFilename(kind: DocumentKind, row: PaymentDocumentRow) {
   const label = kind === 'invoice' ? 'Fatura' : 'Recibo';
   const number = kind === 'invoice' ? row.invoiceNumber : row.receiptNumber;
-  return `${label} - ${filenamePart(row.clientName, 'cliente')} - ${filenamePart(number, String(row.id))}.pdf`;
+  const parts = [
+    label,
+    filenamePart(row.clientName, 'cliente'),
+    filenamePart(number, String(row.id))
+  ].filter(Boolean);
+  return `${parts.join(' - ')}.pdf`;
 }
 
 function hasDocumentNumber(value: string | null) {
@@ -418,7 +438,7 @@ function buildDocument(
     doc.fillColor(PALETTE.ink).fontSize(11).font('Helvetica-Bold')
       .text(value, cx + 14, y + 24, { width: cellW - 16, lineBreak: false });
   };
-  writeMeta(M, 'REFERENCIA', referenceLabel(row.referenceMonth));
+  writeMeta(M, 'REFERENCIA', formatReferenceForDocument(row.referenceMonth));
   doc.moveTo(M + cellW, y + 8).lineTo(M + cellW, y + stripH - 8).strokeColor(PALETTE.hairline).lineWidth(0.5).stroke();
   writeMeta(M + cellW, 'EMITIDO EM', formatDate(docDate));
   doc.moveTo(M + cellW * 2, y + 8).lineTo(M + cellW * 2, y + stripH - 8).strokeColor(PALETTE.hairline).lineWidth(0.5).stroke();
@@ -475,7 +495,7 @@ function buildDocument(
     renderItem('Servico de Internet', totals.total, planLine);
   }
   doc.fillColor(PALETTE.light).fontSize(8.5).font('Helvetica')
-    .text(`Periodo de referencia ${referenceLabel(row.referenceMonth)}`, M, y, { width: descColW, lineBreak: false });
+    .text(`Periodo de referencia ${formatReferenceForDocument(row.referenceMonth)}`, M, y, { width: descColW, lineBreak: false });
   y += 22;
 
   // === 5) FISCAL BREAKDOWN — Subtotal · IVA · Total (right-aligned mini table)

@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, RotateCcw, Send } from 'lucide-react';
 import { BulkActionBar, Button, ErrorRetry, Field, FilterBar, Message, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { formatPtMonth } from '../lib/format';
 import { authFetch } from '../lib/auth';
-import { downloadAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
+import { downloadAuthenticated, printAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
 import { compareNumber, compareText, paginateRows, sortRows, type SortState } from '../lib/listView';
 import { runBulk, summarizeBulk } from '../lib/bulkRun';
 import { useRowSelection } from '../lib/useRowSelection';
+import { defaultPostpaidReferenceMonth } from '../../shared/billing-period';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
   fallbackWhatsappOverdueTemplate,
@@ -77,10 +78,7 @@ export function PaymentsModule({
 } = {}) {
   // Competência por defeito = mês fechado: criada no início do mês → mês anterior;
   // a partir do dia 30 → o mês que está a fechar (mesma regra da auto-faturação).
-  const defaultRefMonth = (() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  })();
+  const defaultRefMonth = defaultPostpaidReferenceMonth();
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -133,7 +131,7 @@ export function PaymentsModule({
   const [whatsappSuspensionNoticeDays, setWhatsappSuspensionNoticeDays] = useState(15);
   const [whatsappTick, setWhatsappTick] = useState(0);
 
-  function loadPayments() {
+  const loadPayments = useCallback(() => {
     setLoading(true);
     return authFetch('http://127.0.0.1:3001/api/payments')
       .then((response) => response.json() as Promise<PaymentRow[]>)
@@ -148,11 +146,11 @@ export function PaymentsModule({
         return [];
       })
       .finally(() => setLoading(false));
-  }
+  }, []);
 
   useEffect(() => {
     void loadPayments();
-  }, []);
+  }, [loadPayments]);
 
   useEffect(() => {
     let cancelled = false;
@@ -703,16 +701,45 @@ export function PaymentsModule({
     return `http://127.0.0.1:3001/api/payments/${paymentId}/${suffix}${inline ? '?inline=1' : ''}`;
   }
 
+  function documentNumber(payment: PaymentRow, type: 'invoice' | 'receipt') {
+    return type === 'invoice' ? payment.invoiceNumber : payment.receiptNumber;
+  }
+
+  const refreshPaymentAfterDocumentIssue = useCallback(async (paymentId: number) => {
+    const refreshedPayments = await loadPayments();
+    const fresh = refreshedPayments.find((item) => item.id === paymentId) || null;
+    if (!fresh) return null;
+
+    setSelectedPayment((current) => current?.id === paymentId ? fresh : current);
+    setPdfPreview((current) => current?.payment.id === paymentId ? { ...current, payment: fresh } : current);
+    return fresh;
+  }, [loadPayments]);
+
   async function downloadPdf(payment: PaymentRow, type: 'invoice' | 'receipt') {
     const docLabel = type === 'invoice' ? 'Fatura' : 'Recibo';
-    const number = type === 'invoice' ? payment.invoiceNumber : payment.receiptNumber;
-    // O número já traz a série (FT/RC); só se cai no id é que precisa do rótulo.
-    const ref = number || `${docLabel} #${payment.id}`;
+    const number = documentNumber(payment, type);
     try {
-      await downloadAuthenticated(documentEndpoint(payment.id, type), `${number || `${docLabel}-${payment.id}`}.pdf`);
-      toast(`${ref} guardado em Transferências.`, 'success');
+      const fallbackName = `${docLabel} - ${payment.clientName} - ${number || payment.id}.pdf`;
+      const result = await downloadAuthenticated(documentEndpoint(payment.id, type), fallbackName);
+      if (result.canceled) return;
+      const fresh = await refreshPaymentAfterDocumentIssue(payment.id);
+      const freshNumber = fresh ? documentNumber(fresh, type) : number;
+      const ref = freshNumber || result.filename || `${docLabel} #${payment.id}`;
+      toast(`${ref} guardado.`, 'success');
     } catch {
       toast(`Nao foi possivel descarregar o ${docLabel.toLowerCase()}.`, 'error');
+    }
+  }
+
+  async function printPdf(payment: PaymentRow, type: 'invoice' | 'receipt') {
+    const docLabel = type === 'invoice' ? 'fatura' : 'recibo';
+    try {
+      const result = await printAuthenticated(documentEndpoint(payment.id, type, true));
+      if (result.canceled) return;
+      await refreshPaymentAfterDocumentIssue(payment.id);
+      toast(`${docLabel === 'fatura' ? 'Fatura' : 'Recibo'} enviado para impressao.`, 'success');
+    } catch {
+      toast(`Nao foi possivel imprimir o ${docLabel}.`, 'error');
     }
   }
 
@@ -796,6 +823,21 @@ export function PaymentsModule({
   const pdfDialogDoc = useAuthenticatedObjectUrl(
     pdfPreview ? documentEndpoint(pdfPreview.payment.id, pdfPreview.type, true) : null
   );
+  const selectedPaymentId = selectedPayment?.id ?? null;
+  const selectedPaymentStatus = selectedPayment?.status ?? null;
+  const pdfPreviewPaymentId = pdfPreview?.payment.id ?? null;
+  const previewDocNumber = selectedPayment ? documentNumber(selectedPayment, previewDocType) : null;
+  const pdfDialogDocNumber = pdfPreview ? documentNumber(pdfPreview.payment, pdfPreview.type) : null;
+
+  useEffect(() => {
+    if (!selectedPaymentId || selectedPaymentStatus === 'cancelled' || previewDoc.error || !previewDoc.objectUrl || previewDocNumber) return;
+    void refreshPaymentAfterDocumentIssue(selectedPaymentId);
+  }, [previewDoc.objectUrl, previewDoc.error, previewDocNumber, selectedPaymentId, selectedPaymentStatus, refreshPaymentAfterDocumentIssue]);
+
+  useEffect(() => {
+    if (!pdfPreviewPaymentId || pdfDialogDoc.error || !pdfDialogDoc.objectUrl || pdfDialogDocNumber) return;
+    void refreshPaymentAfterDocumentIssue(pdfPreviewPaymentId);
+  }, [pdfDialogDoc.objectUrl, pdfDialogDoc.error, pdfDialogDocNumber, pdfPreviewPaymentId, refreshPaymentAfterDocumentIssue]);
 
   return (
     <section className="module-panel">
@@ -890,6 +932,8 @@ export function PaymentsModule({
           reminderSentToday={wasReminderSentToday(selectedPayment.id)}
           onClose={() => { setSelectedPayment(null); closeActionForm(); }}
           onOpenPdf={openPdf}
+          onDownloadPdf={(payment, type) => void downloadPdf(payment, type)}
+          onPrintPdf={(payment, type) => void printPdf(payment, type)}
           onSendDocumentWhatsapp={(payment, kind) => void sendDocumentWhatsapp(payment, kind)}
           onOpenPayForm={openPayForm}
           onOpenWhatsappForm={openWhatsappForm}
@@ -983,6 +1027,7 @@ export function PaymentsModule({
         document={pdfDialogDoc}
         onClose={closePdfPreview}
         onDownload={(payment, type) => void downloadPdf(payment, type)}
+        onPrint={(payment, type) => void printPdf(payment, type)}
       />
 
       <BulkPaymentDialog

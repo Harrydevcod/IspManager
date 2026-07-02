@@ -23,7 +23,7 @@ const monthSchema = z.object({
 
 const paySchema = z.object({
   paymentMethod: z.enum(['numerario', 'transferencia', 'outro']).default('numerario'),
-  paymentDate: z.string().optional()
+  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
 });
 
 const cancelSchema = z.object({

@@ -1,5 +1,6 @@
 import { Badge, Button, Dialog, Message } from '../../components';
 import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
+import { paymentStatusLabel } from '../../types';
 
 export type ReverseMonthlyPreview = {
   referenceMonth: string;
@@ -70,7 +71,7 @@ export function ReverseMonthlyDialog({ preview, submitting, onClose, onConfirm }
                     <strong>{row.clientName}</strong>
                     <small>FT {row.invoiceNumber || '-'} · venc. {formatPtDate(row.dueDate)}</small>
                   </div>
-                  <Badge tone={row.status === 'overdue' ? 'danger' : 'info'}>{row.status}</Badge>
+                  <Badge tone={row.status === 'overdue' ? 'danger' : 'info'}>{paymentStatusLabel(row.status)}</Badge>
                   <span className="overdue-notify-amount">{formatCve(row.amountCve)}</span>
                 </li>
               ))}

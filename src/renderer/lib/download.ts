@@ -28,14 +28,35 @@ export function filenameFromContentDisposition(value: string | null): string | n
   return plain ? plain[1] : null;
 }
 
-/** Fetches `url` with the auth header and triggers a file download client-side. */
-export async function downloadAuthenticated(url: string, fallbackName: string): Promise<void> {
+export type DownloadResult = { saved: boolean; path?: string; canceled?: boolean; error?: string; filename?: string };
+export type PrintResult = { printed: boolean; canceled?: boolean; error?: string };
+
+/**
+ * Fetches `url` with the auth header and saves the bytes to disk.
+ *
+ * No Electron (preload presente) passa os bytes ao main, que abre o diálogo
+ * nativo "Guardar como" com o nome correto e escreve o ficheiro — determinista,
+ * com o utilizador a escolher o destino. Fora do Electron (web/sem preload) cai
+ * no `blob:` + `<a download>` habitual.
+ */
+export async function downloadAuthenticated(url: string, fallbackName: string): Promise<DownloadResult> {
   const response = await authFetch(url);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const blob = await response.blob();
+  const filename = filenameFromContentDisposition(response.headers.get('content-disposition')) ?? fallbackName;
+
+  const save = window.ispm?.saveDocument;
+  if (save) {
+    const data = new Uint8Array(await blob.arrayBuffer());
+    const result = await save(filename, data);
+    if (!result.saved && !result.canceled) {
+      throw new Error(result.error || 'Nao foi possivel guardar o ficheiro');
+    }
+    return { ...result, filename };
+  }
+
   const objectUrl = URL.createObjectURL(blob);
   try {
-    const filename = filenameFromContentDisposition(response.headers.get('content-disposition')) ?? fallbackName;
     const anchor = document.createElement('a');
     anchor.href = objectUrl;
     anchor.download = filename;
@@ -45,6 +66,47 @@ export async function downloadAuthenticated(url: string, fallbackName: string): 
   } finally {
     setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
   }
+  return { saved: true, filename };
+}
+
+/** Fetches `url` with auth and prints it without exposing the token in a URL. */
+export async function printAuthenticated(url: string): Promise<PrintResult> {
+  const response = await authFetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const blob = await response.blob();
+
+  const print = window.ispm?.printDocument;
+  if (print) {
+    const data = new Uint8Array(await blob.arrayBuffer());
+    const result = await print(data);
+    if (!result.printed && !result.canceled) {
+      throw new Error(result.error || 'Nao foi possivel imprimir o documento');
+    }
+    return result;
+  }
+
+  const objectUrl = URL.createObjectURL(blob);
+  const frame = document.createElement('iframe');
+  frame.style.position = 'fixed';
+  frame.style.right = '0';
+  frame.style.bottom = '0';
+  frame.style.width = '0';
+  frame.style.height = '0';
+  frame.style.border = '0';
+  frame.src = objectUrl;
+  document.body.appendChild(frame);
+
+  await new Promise<void>((resolve, reject) => {
+    frame.onload = () => resolve();
+    frame.onerror = () => reject(new Error('Nao foi possivel carregar o documento para impressao'));
+  });
+  frame.contentWindow?.focus();
+  frame.contentWindow?.print();
+  setTimeout(() => {
+    frame.remove();
+    URL.revokeObjectURL(objectUrl);
+  }, 10_000);
+  return { printed: true };
 }
 
 /**

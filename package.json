@@ -8,7 +8,7 @@
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:backend\" \"npm:dev:main\"",
     "dev:renderer": "vite --host 127.0.0.1 --port 5173",
     "dev:backend": "tsx watch src/backend/standalone.ts",
-    "dev:main": "wait-on tcp:5173 && cross-env NODE_ENV=development electron --require tsx/cjs electron/dev.cjs",
+    "dev:main": "tsc -p tsconfig.preload.json && wait-on tcp:5173 && cross-env NODE_ENV=development electron --require tsx/cjs electron/dev.cjs",
     "import:clients": "node scripts/import-clients.cjs",
     "import:finance": "node scripts/import-finance.cjs",
     "import:stock": "node scripts/import-stock.cjs",

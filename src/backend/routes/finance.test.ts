@@ -266,8 +266,8 @@ describe('whatsapp routes', () => {
     });
     expect(overdue.statusCode).toBe(200);
     const overdueBody = (fetchMock.mock.calls[0][1]?.body as URLSearchParams).get('body') || '';
-    expect(overdueBody).toContain('Atraso Cliente WhatsApp FT-001 2500 04/2026');
-    expect(overdueBody).toMatch(/\d{2}\/\d{2}\/\d{4} ISP CV$/);
+    expect(overdueBody).toContain('Atraso Cliente WhatsApp FT-001 2500 04-2026');
+    expect(overdueBody).toMatch(/\d{2}-\d{2}-\d{4} ISP CV$/);
 
     fetchMock.mockClear();
     const suspension = await app.inject({
@@ -1005,10 +1005,13 @@ describe('finance routes', () => {
     const payment = db.prepare('SELECT id FROM payments WHERE service_id = ?')
       .get(service.lastInsertRowid) as { id: number };
 
+    // A emissão é carimbada hoje (date('now')); a data de pagamento não pode
+    // ser anterior à emissão, por isso paga-se com uma data >= hoje.
+    const payDate = new Date().toISOString().slice(0, 10);
     const response = await app.inject({
       method: 'POST',
       url: `/api/payments/${payment.id}/pay`,
-      payload: { paymentMethod: 'transferencia', paymentDate: '2026-03-05' }
+      payload: { paymentMethod: 'transferencia', paymentDate: payDate }
     });
 
     expect(response.statusCode).toBe(200);
@@ -1024,9 +1027,37 @@ describe('finance routes', () => {
     expect(persisted).toMatchObject({
       status: 'paid',
       paymentMethod: 'transferencia',
-      paymentDate: '2026-03-05'
+      paymentDate: payDate
     });
     expect(persisted.receiptNumber).toMatch(/^RC-\d{4}-\d{5}$/);
+  });
+
+  test('rejects a payment dated before the invoice emission', async () => {
+    const client = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-DT01', 'Cliente Data', 'active')
+    `).run();
+    const plan = db.prepare(`
+      INSERT INTO internet_plans (name, download_speed, upload_speed, connection_type, monthly_price_cve)
+      VALUES ('Plano Data', '50', '25', 'fibra', 4000)
+    `).run();
+    const service = db.prepare(`
+      INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status)
+      VALUES (?, ?, 4000, 15, 'active')
+    `).run(client.lastInsertRowid, plan.lastInsertRowid);
+    await app.inject({ method: 'POST', url: '/api/billing/generate-monthly', payload: { referenceMonth: '2026-06' } });
+    const payment = db.prepare('SELECT id FROM payments WHERE service_id = ?')
+      .get(service.lastInsertRowid) as { id: number };
+
+    // Emissão carimbada hoje; pagar a 2020-01-01 é anterior à emissão → 400.
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/payments/${payment.id}/pay`,
+      payload: { paymentMethod: 'numerario', paymentDate: '2020-01-01' }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect((response.json() as { error: string }).error).toContain('não pode ser anterior à data de emissão');
+    expect((db.prepare('SELECT status FROM payments WHERE id = ?').get(payment.id) as { status: string }).status).toBe('pending');
   });
 
   test('invoice and receipt numbers respect configured prefixes', async () => {
@@ -1225,10 +1256,11 @@ describe('finance routes', () => {
     const payment = db.prepare('SELECT id FROM payments WHERE service_id = ?')
       .get(service.lastInsertRowid) as { id: number };
 
+    // paymentDate omitido → assume hoje (não pode ser anterior à emissão).
     await app.inject({
       method: 'POST',
       url: `/api/payments/${payment.id}/pay`,
-      payload: { paymentMethod: 'numerario', paymentDate: '2026-03-05' }
+      payload: { paymentMethod: 'numerario' }
     });
 
     const paid = db.prepare('SELECT status FROM payments WHERE id = ?')
