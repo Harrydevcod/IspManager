@@ -1,6 +1,6 @@
 import { Activity, AlertTriangle, CalendarClock, MessageCircle, TrendingUp, UsersRound, Wrench } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
-import { Badge, Button, Card, ErrorRetry, MetricCard, MetricGrid, RevenueBars, Skeleton, formatCompactCve } from '../components';
+import { Badge, Button, Card, ErrorRetry, MetricCard, MetricGrid, RevenueBars, Skeleton } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
 import type { DashboardSummary } from '../types';
@@ -156,11 +156,11 @@ export function Dashboard({
         <dl className="operations-brief-rail">
           <div>
             <dt>Receita acumulada</dt>
-            <dd>{summary ? formatCompactCve(summary.paidTotalCve) : '...'}</dd>
+            <dd>{summary ? formatCve(summary.paidTotalCve) : '...'}</dd>
           </div>
           <div className="brief-tile-action" data-alert={summary && summary.pendingPreviousCve > 0 ? 'danger' : undefined} {...(summary ? activatable(onOpenPending) : {})}>
             <dt>Pendente acumulado</dt>
-            <dd>{summary ? formatCompactCve(summary.pendingPreviousCve) : '...'}</dd>
+            <dd>{summary ? formatCve(summary.pendingPreviousCve) : '...'}</dd>
           </div>
           <div className="brief-tile-action" {...(summary ? activatable(onOpenPending) : {})}>
             <dt>Vencimentos</dt>
@@ -168,7 +168,7 @@ export function Dashboard({
           </div>
           <div className="brief-tile-action" data-alert={summary && criticalOverdueCve > 0 ? 'danger' : undefined} {...(summary ? activatable(onOpenOverdue) : {})}>
             <dt>Atraso critico</dt>
-            <dd>{summary ? formatCompactCve(criticalOverdueCve) : '...'}</dd>
+            <dd>{summary ? formatCve(criticalOverdueCve) : '...'}</dd>
           </div>
           <div className="brief-tile-action" data-alert={summary && summary.lowStockModels > 0 ? 'warning' : undefined} {...(summary ? activatable(onOpenLowStock) : {})}>
             <dt>Stock baixo</dt>
