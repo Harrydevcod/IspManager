@@ -217,7 +217,7 @@ export function formatDate(value: string | null) {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric'
-  }).format(date);
+  }).format(date).replace(/\//g, '-');
 }
 
 export function filenamePart(value: string | number | null | undefined, fallback: string) {

@@ -2,6 +2,7 @@ import type { Database } from 'better-sqlite3';
 import { buildMonthlyServiceLines, dueDateFromIssue, sumLines, todayIso, type BillingLine } from './billing';
 import { isAudiovisualAnnualReference, loadAudiovisualConfig } from './audiovisual';
 import { allocateDocumentNumber } from './numbering';
+import { validatePaymentDates } from '../../shared/payment-dates';
 
 type PaymentStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';
 type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
@@ -261,7 +262,7 @@ export function payPayment(
   id: number,
   input: { paymentMethod: PaymentMethod; paymentDate?: string }
 ): PaymentOpResult<PaymentRecord> {
-  const payment = db.prepare('SELECT id, status, receipt_number AS receiptNumber FROM payments WHERE id = ?').get(id) as { id: number; status: PaymentStatus; receiptNumber: string | null } | undefined;
+  const payment = db.prepare('SELECT id, status, invoice_date AS invoiceDate, receipt_number AS receiptNumber FROM payments WHERE id = ?').get(id) as { id: number; status: PaymentStatus; invoiceDate: string | null; receiptNumber: string | null } | undefined;
   if (!payment) {
     return { ok: false, status: 404, error: 'Pagamento nao encontrado' };
   }
@@ -270,6 +271,11 @@ export function payPayment(
   }
 
   const paymentDate = input.paymentDate || todayIso();
+  // A data de pagamento não pode ser anterior à emissão da fatura.
+  const { errors } = validatePaymentDates({ dataEmissao: payment.invoiceDate, dataPagamento: paymentDate });
+  if (errors.length) {
+    return { ok: false, status: 400, error: errors.join(' ') };
+  }
   // Aloca o recibo só quando ainda não existe. Repagar uma linha já paga mantém
   // o recibo original e nunca queima um número de série — allocateDocumentNumber
   // incrementa o contador a cada chamada, logo chamá-lo à toa criaria gaps.

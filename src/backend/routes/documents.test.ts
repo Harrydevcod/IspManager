@@ -66,8 +66,8 @@ function seedPayment(status: 'pending' | 'paid' | 'overdue' | 'cancelled' = 'pai
 
 describe('GET /api/payments/:id/invoice.pdf', () => {
   test('formats document dates with pt-PT day/month/year order', () => {
-    expect(formatDate('2026-05-10')).toBe('10/05/2026');
-    expect(formatDate('2026-05-10 14:30:00')).toBe('10/05/2026');
+    expect(formatDate('2026-05-10')).toBe('10-05-2026');
+    expect(formatDate('2026-05-10 14:30:00')).toBe('10-05-2026');
     expect(formatDate(null)).toBe('-');
   });
 

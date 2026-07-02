@@ -83,6 +83,18 @@ export type PaymentRow = {
   canRegenerate: number;
 };
 
+export type PaymentStatus = PaymentRow['status'];
+
+/** Rótulos pt-PT do estado de pagamento — fonte única para badges/detalhes. */
+export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  pending: 'Pendente',
+  paid: 'Pago',
+  overdue: 'Em atraso',
+  cancelled: 'Anulado'
+};
+
+export const paymentStatusLabel = (status: PaymentStatus): string => PAYMENT_STATUS_LABELS[status];
+
 export type SmsEventType = 'invoice_issued' | 'receipt_confirmed' | 'payment_overdue' | 'suspension_notice';
 
 export type SmsStatus = {

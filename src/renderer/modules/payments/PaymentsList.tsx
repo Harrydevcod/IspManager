@@ -3,7 +3,7 @@ import { Badge, Button, DataTable, EmptyState, type DataTableSelection } from '.
 import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
 import type { SortState } from '../../lib/listView';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
-import type { PaymentRow, SmsEventType } from '../../types';
+import { paymentStatusLabel, type PaymentRow, type SmsEventType } from '../../types';
 
 type PaymentSortKey = 'dueDate' | 'clientName' | 'status' | 'amountCve';
 
@@ -16,7 +16,6 @@ const paymentStatusTone = (status: PaymentRow['status']): 'success' | 'info' | '
   }
 };
 
-const statusLabel = (status: PaymentRow['status']): string => status;
 
 type PaymentsListProps = {
   payments: PaymentRow[];
@@ -90,7 +89,7 @@ export function PaymentsList({
           header: 'Estado',
           sortKey: 'status',
           align: 'center',
-          cell: (p) => <Badge tone={paymentStatusTone(p.status)}>{statusLabel(p.status)}</Badge>
+          cell: (p) => <Badge tone={paymentStatusTone(p.status)}>{paymentStatusLabel(p.status)}</Badge>
         },
         {
           header: 'Valor',

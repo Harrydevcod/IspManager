@@ -1,7 +1,8 @@
 // Single source of truth for pt-PT date formatting, shared by backend and
 // renderer. Parses date-only strings as local midnight (avoids the UTC
 // off-by-one of `new Date('YYYY-MM-DD')`) and passes datetime strings through
-// so timestamps keep their time component.
+// so timestamps keep their time component. Separador dia-mês-ano é o hífen
+// (dd-mm-aaaa), não a barra pt-PT por defeito.
 function parseDate(value: string | null | undefined): Date | null {
   if (!value) return null;
   const source = value.includes('T') ? value : `${value.slice(0, 10)}T00:00:00`;
@@ -16,7 +17,7 @@ export function formatPtDate(value: string | null | undefined): string {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric'
-  }).format(date);
+  }).format(date).replace(/\//g, '-');
 }
 
 export function formatPtDateTime(value: string | null | undefined): string {
@@ -28,7 +29,7 @@ export function formatPtDateTime(value: string | null | undefined): string {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit'
-  }).format(date);
+  }).format(date).replace(/\//g, '-');
 }
 
 export function formatPtDayMonth(value: string | null | undefined): string {
@@ -37,7 +38,7 @@ export function formatPtDayMonth(value: string | null | undefined): string {
   return new Intl.DateTimeFormat('pt-PT', {
     day: '2-digit',
     month: '2-digit'
-  }).format(date);
+  }).format(date).replace(/\//g, '-');
 }
 
 export function formatPtMonth(value: string | null | undefined): string {
@@ -49,5 +50,5 @@ export function formatPtMonth(value: string | null | undefined): string {
   return new Intl.DateTimeFormat('pt-PT', {
     month: '2-digit',
     year: 'numeric'
-  }).format(date);
+  }).format(date).replace(/\//g, '-');
 }

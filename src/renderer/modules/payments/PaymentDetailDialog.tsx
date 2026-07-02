@@ -3,7 +3,7 @@ import { CheckCircle2, Download, FileText, MessageCircle, Printer, ReceiptText, 
 import { Button, Dialog, Field, Message, Select, Textarea } from '../../components';
 import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
-import type { PaymentRow } from '../../types';
+import { paymentStatusLabel, type PaymentRow } from '../../types';
 
 export type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
 export type PaymentActionMode = 'pay' | 'cancel' | 'whatsapp';
@@ -317,7 +317,7 @@ export function PaymentDetailDialog({
               <span>{docLabel}</span>
               <strong>{formatCve(payment.amountCve)}</strong>
               <small>
-                Mes {formatPtMonth(payment.referenceMonth)} - vencimento {formatPtDate(payment.dueDate)} - {payment.status}
+                Mes {formatPtMonth(payment.referenceMonth)} - vencimento {formatPtDate(payment.dueDate)} - {paymentStatusLabel(payment.status)}
               </small>
             </div>
             {payment.status === 'cancelled' ? (
@@ -365,7 +365,7 @@ export function PaymentDetailDialog({
         <div><dt>Recibo</dt><dd>{payment.receiptNumber || '-'}</dd></div>
         <div><dt>Metodo</dt><dd>{payment.paymentMethod || '-'}</dd></div>
         <div><dt>Data pagamento</dt><dd>{formatPtDate(payment.paymentDate)}</dd></div>
-        <div><dt>Estado</dt><dd>{payment.status}</dd></div>
+        <div><dt>Estado</dt><dd>{paymentStatusLabel(payment.status)}</dd></div>
       </dl>
       </div>
     </Dialog>
