@@ -4547,6 +4547,42 @@ label.field-toggle {
 .auth-submit:active { transform: translateY(1px); }
 .auth-submit:disabled { opacity: 0.55; cursor: progress; }
 
+/* Primeiro arranque — alternativa "importar backup" abaixo do form de setup. */
+.auth-setup-import {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.auth-setup-import p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.auth-setup-import-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.auth-setup-import-btn:hover { border-color: var(--accent); background: color-mix(in oklch, var(--accent) 8%, transparent); }
+.auth-setup-import-btn:disabled { opacity: 0.55; cursor: progress; }
+
 /* Make the sidebar a flex column so the user identity pill pins to bottom. */
 .sidebar {
   display: flex;

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import path from 'node:path';
 import { copyFileSync, existsSync, statSync } from 'node:fs';
@@ -14,6 +14,7 @@ import {
   validateBackupDir,
 } from '../lib/backup';
 import { getSqliteDatabase } from '../db/database';
+import { isSetupComplete } from '../lib/auth';
 import { recordAudit } from '../lib/audit';
 import { requireRole } from './auth';
 
@@ -26,7 +27,9 @@ const configSchema = z.object({
 
 function importedStamp(d = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  // Sufixo de ms: dois imports no mesmo segundo não podem partilhar o nome do
+  // ficheiro (o segundo copyFileSync sobrescreveria o primeiro a meio do restauro).
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-${String(d.getMilliseconds()).padStart(3, '0')}`;
 }
 
 export async function registerBackupRoutes(app: FastifyInstance) {
@@ -87,7 +90,11 @@ export async function registerBackupRoutes(app: FastifyInstance) {
     return entry;
   });
 
-  app.post('/api/backups/import', adminOnly, async (request, reply) => {
+  // Handler partilhado: valida o ficheiro indicado, copia-o para o backupDir
+  // como 'imported-*' (fica na lista e segue a retenção habitual) e restaura a
+  // partir da cópia (não toca no original). Usado pelo import autenticado e
+  // pelo import de primeiro arranque.
+  async function handleImport(request: FastifyRequest, reply: FastifyReply, audited: boolean) {
     const parsed = importSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Pedido inválido' });
@@ -104,8 +111,6 @@ export async function registerBackupRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: `Backup inválido: ${check.reason}` });
     }
 
-    // Copia para o backupDir como 'imported-*' para que fique na lista e siga
-    // a retenção habitual; depois restaura a partir da cópia (não toca no original).
     const imported = `imported-${importedStamp()}.sqlite`;
     const dest = path.join(resolveBackupDir(), imported);
     try {
@@ -114,13 +119,17 @@ export async function registerBackupRoutes(app: FastifyInstance) {
       return reply.status(500).send({ error: `Falha ao copiar para a pasta de backups: ${(e as Error).message}` });
     }
 
-    recordAudit(request, {
-      action: 'restore',
-      entityType: 'backup',
-      entityId: imported,
-      summary: `Importou e restaurou backup ${imported}`,
-      metadata: { sourcePath: src }
-    });
+    // No primeiro arranque não há utilizador para atribuir o audit — e a linha
+    // seria substituída pelo restore de qualquer forma.
+    if (audited) {
+      recordAudit(request, {
+        action: 'restore',
+        entityType: 'backup',
+        entityId: imported,
+        summary: `Importou e restaurou backup ${imported}`,
+        metadata: { sourcePath: src }
+      });
+    }
 
     try {
       const result = await restoreBackup(dest);
@@ -128,6 +137,24 @@ export async function registerBackupRoutes(app: FastifyInstance) {
     } catch (e) {
       return reply.status(400).send({ error: (e as Error).message });
     }
+  }
+
+  app.post('/api/backups/import', adminOnly, async (request, reply) => {
+    return handleImport(request, reply, true);
+  });
+
+  // Primeiro arranque (BD sem utilizadores): permite restaurar um backup antes
+  // de existir qualquer conta — a alternativa a criar o admin do zero. Fecha-se
+  // sozinho: assim que o restore traz utilizadores, isSetupComplete() passa a
+  // true e a rota devolve 409 para sempre.
+  app.post('/api/backups/setup-import', async (request, reply) => {
+    if (isSetupComplete()) {
+      return reply.status(409).send({ error: 'Setup ja foi concluido' });
+    }
+    // Sem utilizador para o audit (e a linha morreria no swap da BD) — o log do
+    // processo é o único rasto durável de que a BD foi substituída no 1.º arranque.
+    request.log.warn({ body: request.body }, 'setup-import: restauro de BD no primeiro arranque');
+    return handleImport(request, reply, false);
   });
 
   app.post('/api/backups/restore', adminOnly, async (request, reply) => {

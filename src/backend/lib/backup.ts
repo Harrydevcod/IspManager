@@ -302,7 +302,25 @@ export function validateBackup(file: string): { ok: boolean; reason?: string } {
  *  recover from the snapshot if needed. Post-close fs failures (sidecar
  *  removal, temp cleanup, copy, rename) are rethrown wrapped with the
  *  snapshotPath location and original error as `cause` for operator recovery. */
+// ponytail: exclusão mútua por flag de módulo — um restauro de cada vez chega
+// para uma app single-process; sem fila, o segundo pedido falha com erro claro.
+let restoreInFlight = false;
+
 export async function restoreBackup(
+  file: string,
+): Promise<{ restartRequired: true; snapshotPath?: string }> {
+  if (restoreInFlight) {
+    throw new Error('Já existe um restauro em curso. Aguarde que termine.');
+  }
+  restoreInFlight = true;
+  try {
+    return await doRestoreBackup(file);
+  } finally {
+    restoreInFlight = false;
+  }
+}
+
+async function doRestoreBackup(
   file: string,
 ): Promise<{ restartRequired: true; snapshotPath?: string }> {
   const check = validateBackup(file);

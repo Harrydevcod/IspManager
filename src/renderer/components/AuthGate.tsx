@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
-import { AlertCircle, ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
+import { AlertCircle, ArrowRight, DatabaseBackup, Loader2, ShieldCheck } from 'lucide-react';
 import { useAuth, setAuthFetchToken } from '../lib/auth';
 
 export function AuthGate({ children }: { children: ReactNode }) {
@@ -35,6 +35,7 @@ function SetupScreen() {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -55,6 +56,36 @@ function SetupScreen() {
       setError(err instanceof Error ? err.message : 'Setup falhou.');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  // Primeiro arranque com um backup de outra máquina: restaura a BD antes de
+  // existir qualquer conta (rota gated no backend por "sem utilizadores") e
+  // relança a app — no arranque seguinte entra-se com as credenciais do backup.
+  async function importBackup() {
+    if (importing) return;
+    setError(null);
+    const filePath = await window.ispm?.chooseBackupFile?.();
+    if (!filePath) return;
+    setImporting(true);
+    try {
+      const response = await fetch('http://127.0.0.1:3001/api/backups/setup-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: filePath })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error || 'Importação falhou.');
+      }
+      if (window.ispm?.relaunch) {
+        await window.ispm.relaunch();
+      } else {
+        await auth.refresh();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Importação falhou.');
+      setImporting(false);
     }
   }
 
@@ -132,6 +163,21 @@ function SetupScreen() {
             {!submitting && <ArrowRight size={14} aria-hidden />}
           </button>
         </form>
+
+        {window.ispm?.chooseBackupFile && (
+          <div className="auth-setup-import">
+            <p>Já usavas o ISPM noutra máquina? Restaura a base de dados a partir de um backup em vez de começar do zero.</p>
+            <button
+              type="button"
+              className="auth-setup-import-btn"
+              disabled={submitting || importing}
+              onClick={() => void importBackup()}
+            >
+              <DatabaseBackup size={14} aria-hidden />
+              {importing ? 'A restaurar...' : 'Importar backup da base de dados…'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

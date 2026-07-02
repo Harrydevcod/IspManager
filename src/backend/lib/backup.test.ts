@@ -290,6 +290,28 @@ describe('restoreBackup', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test('rejects a second restore while one is in flight (mutex)', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'ispm-rs4-'));
+    process.env.ISPM_DATA_DIR = dir;
+    getSqliteDatabase(); // BD viva → o restore faz snapshot (await) e mantém-se in-flight
+
+    const fresh = new Database(path.join(dir, 'src.sqlite'));
+    runMigrations(fresh);
+    fresh.close();
+    const bdir = path.join(dir, 'backups');
+    mkdirSync(bdir, { recursive: true });
+    const backupFile = path.join(bdir, 'ispm-20260101-000001.sqlite');
+    copyFileSync(path.join(dir, 'src.sqlite'), backupFile);
+
+    // Arranca o primeiro sem await; o segundo dispara síncrono contra o flag.
+    const first = restoreBackup(backupFile);
+    await expect(restoreBackup(backupFile)).rejects.toThrow('restauro em curso');
+    await expect(first).resolves.toMatchObject({ restartRequired: true });
+
+    closeDatabase();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test('pre-restore snapshot is consistent and contains writes made just before restore', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'ispm-rs3-'));
     process.env.ISPM_DATA_DIR = dir;
