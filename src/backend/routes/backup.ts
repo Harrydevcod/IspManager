@@ -27,7 +27,9 @@ const configSchema = z.object({
 
 function importedStamp(d = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  // Sufixo de ms: dois imports no mesmo segundo não podem partilhar o nome do
+  // ficheiro (o segundo copyFileSync sobrescreveria o primeiro a meio do restauro).
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-${String(d.getMilliseconds()).padStart(3, '0')}`;
 }
 
 export async function registerBackupRoutes(app: FastifyInstance) {
@@ -149,6 +151,9 @@ export async function registerBackupRoutes(app: FastifyInstance) {
     if (isSetupComplete()) {
       return reply.status(409).send({ error: 'Setup ja foi concluido' });
     }
+    // Sem utilizador para o audit (e a linha morreria no swap da BD) — o log do
+    // processo é o único rasto durável de que a BD foi substituída no 1.º arranque.
+    request.log.warn({ body: request.body }, 'setup-import: restauro de BD no primeiro arranque');
     return handleImport(request, reply, false);
   });
 
