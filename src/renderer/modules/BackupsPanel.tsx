@@ -1,6 +1,6 @@
-import { Archive } from 'lucide-react';
+import { Archive, FolderOpen, FolderSearch, HardDriveDownload, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Button, EmptyState, Field, Message, useConfirm } from '../components';
+import { Badge, Button, Card, EmptyState, Field, Message, Select, SkeletonList, useConfirm } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatPtDateTime } from '../lib/format';
 
@@ -12,8 +12,38 @@ function formatBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+const rtf = new Intl.RelativeTimeFormat('pt', { numeric: 'auto' });
+
+/** "há 2 horas" / "ontem" — para leitura rápida na lista e no estado. */
+function relativePt(iso: string, now = Date.now()): string {
+  const mins = Math.round((new Date(iso).getTime() - now) / 60_000);
+  if (Math.abs(mins) < 60) return rtf.format(mins, 'minute');
+  const hours = Math.round(mins / 60);
+  if (Math.abs(hours) < 24) return rtf.format(hours, 'hour');
+  const days = Math.round(hours / 24);
+  if (Math.abs(days) < 30) return rtf.format(days, 'day');
+  return rtf.format(Math.round(days / 30), 'month');
+}
+
+/** Origem derivada do prefixo do ficheiro; backups normais não levam badge. */
+function backupKind(file: string): { label: string; tone: 'info' | 'neutral' } | null {
+  if (file.startsWith('imported-')) return { label: 'Importado', tone: 'info' };
+  if (file.startsWith('pre-restore-')) return { label: 'Pré-restauro', tone: 'neutral' };
+  return null;
+}
+
+const INTERVAL_PRESETS = [
+  { value: 0, label: 'Desligado' },
+  { value: 6, label: 'A cada 6 horas' },
+  { value: 12, label: 'A cada 12 horas' },
+  { value: 24, label: 'Diário' },
+  { value: 48, label: 'A cada 2 dias' },
+  { value: 168, label: 'Semanal' }
+];
+
 export function BackupsPanel() {
   const [entries, setEntries] = useState<BackupItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [backupDir, setBackupDir] = useState('');
   const [dirInput, setDirInput] = useState('');
   const [intervalInput, setIntervalInput] = useState('0');
@@ -34,6 +64,8 @@ export function BackupsPanel() {
       setIntervalInput(String(data.intervalHours ?? 0));
     } catch {
       setMessage({ text: 'Não foi possível carregar a lista de backups.', tone: 'error' });
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -60,6 +92,12 @@ export function BackupsPanel() {
     } finally {
       setSavingConfig(false);
     }
+  }
+
+  async function pickDir() {
+    if (!window.ispm?.chooseBackupDir) return;
+    const picked = await window.ispm.chooseBackupDir();
+    if (picked) setDirInput(picked);
   }
 
   async function createNow() {
@@ -138,18 +176,24 @@ export function BackupsPanel() {
     }
   }
 
+  const latest = entries[0] ?? null;
+  const intervalHours = Number(intervalInput) || 0;
+  const hasCustomInterval = intervalHours > 0 && !INTERVAL_PRESETS.some((p) => p.value === intervalHours);
+
   return (
     <section className="backups-panel">
       <header className="backups-head">
         <div>
           <h3>Backups</h3>
-          <p className="backups-dir">{backupDir}</p>
+          <p className="backups-dir">
+            Cópias completas da base de dados. Restaurar substitui os dados atuais e reinicia a aplicação.
+          </p>
         </div>
         <div className="backups-head-actions">
-          <Button variant="secondary" disabled={busy} onClick={() => void importBackup()}>
+          <Button variant="secondary" disabled={busy} leadingIcon={<Upload size={14} aria-hidden />} onClick={() => void importBackup()}>
             Importar backup…
           </Button>
-          <Button variant="primary" loading={busy} onClick={() => void createNow()}>
+          <Button variant="primary" loading={busy} leadingIcon={<HardDriveDownload size={14} aria-hidden />} onClick={() => void createNow()}>
             Criar backup agora
           </Button>
         </div>
@@ -157,75 +201,137 @@ export function BackupsPanel() {
 
       {message && <Message tone={message.tone}>{message.text}</Message>}
 
-      <div className="backups-config">
-        <Field
-          label="Pasta de destino (vazio = predefinição)"
-          placeholder="ex: D:\\Dropbox\\ISPM-backups (pasta sincronizada para backup externo)"
-          value={dirInput}
-          spellCheck={false}
-          onChange={(ev) => setDirInput(ev.target.value)}
-        />
-        <Field
-          label="Backup automático a cada (horas, 0 = desligado)"
-          type="number"
-          min={0}
-          max={168}
-          value={intervalInput}
-          onChange={(ev) => setIntervalInput(ev.target.value)}
-        />
-        <Button variant="secondary" loading={savingConfig} onClick={() => void saveConfig()}>
-          Guardar configuração
-        </Button>
+      <div className="backups-stats">
+        <div className="backups-stat">
+          <span>Último backup</span>
+          <strong>{loading ? '—' : latest ? relativePt(latest.createdAt) : 'Nunca'}</strong>
+          <small>{latest ? formatPtDateTime(latest.createdAt) : 'Cria o primeiro para proteger os dados'}</small>
+        </div>
+        <div className="backups-stat">
+          <span>Automático</span>
+          <strong>{intervalHours > 0 ? `A cada ${intervalHours} h` : 'Desligado'}</strong>
+          <small>{intervalHours > 0 ? 'Corre em segundo plano com a app aberta' : 'Ativa abaixo na configuração'}</small>
+        </div>
+        <div className="backups-stat">
+          <span>Retenção</span>
+          <strong>14 dias + 8 semanas</strong>
+          <small>Um por dia; mais antigos, um por semana</small>
+        </div>
       </div>
 
-      {entries.length === 0 ? (
-        <EmptyState
-          size="sm"
-          icon={Archive}
-          title="Sem backups ainda"
-          description="Cria o primeiro backup agora ou importa um ficheiro .sqlite existente."
-        />
-      ) : (
-      <ul className="backups-list">
-        {entries.map((e) => (
-          <li key={e.file}>
-            <span>{formatPtDateTime(e.createdAt)}</span>
-            <span>{formatBytes(e.sizeBytes)}</span>
-            {confirmFile === e.file ? (
-              <span className="backups-confirm">
-                <Field
-                  label="Confirmar restauro"
-                  placeholder="escreva RESTAURAR"
-                  aria-label="Confirmar restauro escrevendo RESTAURAR"
-                  value={confirmText}
-                  onChange={(ev) => setConfirmText(ev.target.value)}
-                />
-                <Button
-                  variant="danger"
-                  size="sm"
-                  disabled={confirmText !== 'RESTAURAR'}
-                  loading={busy}
-                  onClick={() => void doRestore(e.file)}
-                >
-                  Confirmar
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => { setConfirmFile(null); setConfirmText(''); }}
-                >
-                  Cancelar
-                </Button>
-              </span>
-            ) : (
-              <Button variant="ghost" size="sm" onClick={() => setConfirmFile(e.file)}>
-                Restaurar
+      <Card eyebrow="Configuração" className="backups-card">
+        <div className="backups-config">
+          <div className="backups-config-dir">
+            <Field
+              label="Pasta de destino"
+              placeholder="Predefinição da aplicação"
+              value={dirInput}
+              spellCheck={false}
+              onChange={(ev) => setDirInput(ev.target.value)}
+            />
+            {window.ispm?.chooseBackupDir && (
+              <Button variant="secondary" leadingIcon={<FolderSearch size={14} aria-hidden />} onClick={() => void pickDir()}>
+                Escolher…
               </Button>
             )}
-          </li>
-        ))}
-      </ul>
-      )}
+          </div>
+          <Select
+            label="Backup automático"
+            value={intervalInput}
+            onChange={(ev) => setIntervalInput(ev.target.value)}
+          >
+            {INTERVAL_PRESETS.map((p) => (
+              <option key={p.value} value={String(p.value)}>{p.label}</option>
+            ))}
+            {hasCustomInterval && <option value={String(intervalHours)}>A cada {intervalHours} h</option>}
+          </Select>
+          <Button variant="secondary" loading={savingConfig} onClick={() => void saveConfig()}>
+            Guardar
+          </Button>
+        </div>
+        <p className="backups-config-hint">
+          Deixa a pasta vazia para usar a predefinição. Uma pasta sincronizada (Drive, Dropbox, OneDrive) funciona como backup externo.
+        </p>
+        <p className="backups-effective">
+          <span>A guardar em</span>
+          <code title={backupDir}>{backupDir || '—'}</code>
+          {window.ispm?.openBackupDir && backupDir && (
+            <Button
+              variant="ghost"
+              size="sm"
+              leadingIcon={<FolderOpen size={13} aria-hidden />}
+              onClick={() => void window.ispm?.openBackupDir?.(backupDir)}
+            >
+              Abrir pasta
+            </Button>
+          )}
+        </p>
+      </Card>
+
+      <Card
+        eyebrow="Histórico"
+        className="backups-card"
+        actions={!loading && entries.length > 0 ? <span className="backups-count">{entries.length} ficheiros</span> : undefined}
+      >
+        {loading ? (
+          <SkeletonList rows={4} />
+        ) : entries.length === 0 ? (
+          <EmptyState
+            size="sm"
+            icon={Archive}
+            title="Sem backups ainda"
+            description="Cria o primeiro backup agora ou importa um ficheiro .sqlite existente."
+          />
+        ) : (
+          <ul className="backups-list">
+            {entries.map((e, i) => {
+              const kind = backupKind(e.file);
+              return (
+                <li key={e.file}>
+                  <div className="backups-item-meta">
+                    <strong>{formatPtDateTime(e.createdAt)}</strong>
+                    <small>{relativePt(e.createdAt)} · {formatBytes(e.sizeBytes)}</small>
+                  </div>
+                  {i === 0 && <Badge tone="success">Mais recente</Badge>}
+                  {kind && <Badge tone={kind.tone}>{kind.label}</Badge>}
+                  {confirmFile === e.file ? (
+                    <span className="backups-confirm">
+                      <Field
+                        label="Confirmar restauro"
+                        placeholder="escreva RESTAURAR"
+                        aria-label="Confirmar restauro escrevendo RESTAURAR"
+                        autoFocus
+                        value={confirmText}
+                        onChange={(ev) => setConfirmText(ev.target.value)}
+                      />
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        disabled={confirmText !== 'RESTAURAR'}
+                        loading={busy}
+                        onClick={() => void doRestore(e.file)}
+                      >
+                        Confirmar
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => { setConfirmFile(null); setConfirmText(''); }}
+                      >
+                        Cancelar
+                      </Button>
+                    </span>
+                  ) : (
+                    <Button variant="ghost" size="sm" onClick={() => { setConfirmFile(e.file); setConfirmText(''); }}>
+                      Restaurar
+                    </Button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
     </section>
   );
 }

@@ -1,5 +1,6 @@
 import { Plus, Trash2 } from 'lucide-react';
-import { Button, Field } from '../../components';
+import { Button, Field, Select } from '../../components';
+import { CV_ISLANDS, isKnownIsland } from '../../lib/islands';
 import type { BankAccountForm, SettingsFormState, UpdateField } from './settingsForm';
 
 type CompanyTabProps = {
@@ -40,11 +41,19 @@ export function CompanyTab({ form, onUpdate, onAddBankAccount, onUpdateBankAccou
         value={form.email}
         onChange={(event) => onUpdate('email', event.target.value)}
       />
-      <Field
+      <Select
         label="Ilha"
         value={form.island}
         onChange={(event) => onUpdate('island', event.target.value)}
-      />
+      >
+        <option value="">—</option>
+        {CV_ISLANDS.map((island) => (
+          <option key={island} value={island}>{island}</option>
+        ))}
+        {form.island !== '' && !isKnownIsland(form.island) && (
+          <option value={form.island}>{form.island} (grafia antiga)</option>
+        )}
+      </Select>
       <Field
         wide
         label="Morada"

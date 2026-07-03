@@ -9,30 +9,32 @@
 :root {
   color-scheme: dark;
 
-  /* neutrals — warm-tinted, never pure black/white */
-  --bg: oklch(11% 0.012 115);
-  --surface: oklch(14.5% 0.014 115);
-  --surface-2: oklch(18% 0.016 112);
-  --surface-3: oklch(23% 0.018 108);
-  --border: oklch(25% 0.018 108);
-  --border-2: oklch(36% 0.024 104);
+  /* neutrals — grafite frio ~19%, tintado ao hue do accent Windows do dono
+     (#0078D4 ≈ oklch 56.8% 0.167 251, capturado do registry em 2026-07-03).
+     Escuro q.b. para trabalho noturno sem ler como preto absoluto. */
+  --bg: oklch(19% 0.01 251);
+  --surface: oklch(22.5% 0.011 251);
+  --surface-2: oklch(26% 0.012 251);
+  --surface-3: oklch(30% 0.013 249);
+  --border: oklch(33% 0.014 249);
+  --border-2: oklch(43% 0.016 247);
 
-  --text: oklch(92.5% 0.012 102);
-  --text-2: oklch(72% 0.018 104);
-  --text-3: oklch(55% 0.02 104);
+  --text: oklch(93% 0.006 251);
+  --text-2: oklch(74% 0.01 251);
+  --text-3: oklch(60% 0.012 251);
 
-  /* accent — heritage gold, slightly desaturated for dark */
-  --accent: oklch(75% 0.14 82);
-  --accent-2: oklch(70% 0.13 38);
-  --on-accent: oklch(16% 0.018 82);
+  /* accent — azul Windows do sistema do dono, elevado para legibilidade em dark */
+  --accent: oklch(68% 0.15 251);
+  --accent-2: oklch(61% 0.16 251);
+  --on-accent: oklch(16% 0.02 251);
 
   /* semantic — paired surface tints for dark legibility */
   --success: oklch(77% 0.16 148);
-  --success-bg: oklch(22% 0.07 148);
+  --success-bg: oklch(27% 0.07 148);
   --danger: oklch(70% 0.18 24);
-  --danger-bg: oklch(22% 0.075 24);
+  --danger-bg: oklch(27% 0.075 24);
   --info: oklch(72% 0.12 212);
-  --info-bg: oklch(22% 0.045 212);
+  --info-bg: oklch(27% 0.045 212);
 
   --ring: color-mix(in oklch, var(--accent) 62%, transparent);
   --shadow-1: 0 1px 2px oklch(0% 0 0 / 0.45);
@@ -2515,9 +2517,9 @@ h2 {
    ========================================================================= */
 
 .backups-panel {
-  margin-top: var(--space-6);
-  border-top: 1px solid var(--border);
-  padding-top: var(--space-4);
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
 }
 
 .backups-head {
@@ -2539,78 +2541,170 @@ h2 {
   color: var(--text-3);
   word-break: break-all;
   margin: var(--space-1) 0 0;
+  max-width: 58ch;
 }
 
-.backups-msg {
-  font-size: var(--fs-sm);
-  color: var(--text-2);
-  margin: var(--space-2) 0;
+/* Faixa de estado: pares rótulo/valor separados por hairlines, sem métrica-herói. */
+.backups-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  background: color-mix(in oklch, var(--surface) 92%, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
 
+.backups-stat {
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+  padding: var(--space-3) var(--space-4);
+}
+
+.backups-stat + .backups-stat {
+  border-left: 1px solid var(--border);
+}
+
+.backups-stat > span {
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.backups-stat > strong {
+  font-size: var(--fs-base);
+  font-weight: 650;
+  letter-spacing: -0.006em;
+  font-variant-numeric: tabular-nums;
+}
+
+.backups-stat > small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+}
+
+.backups-card .section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.backups-count {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Campos sem hint interno (a nota vive em .backups-config-hint), para que
+   flex-end alinhe botões e inputs pela mesma linha de base. */
 .backups-config {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--space-3);
-  margin: var(--space-3) 0;
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--border);
 }
 
-.backups-config > :first-child {
-  flex: 1 1 280px;
+.backups-config-dir {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+/* Caminhos longos deslizam dentro do input; o caminho efetivo completo
+   aparece por extenso na linha "A guardar em" abaixo. */
+.backups-config-dir .field {
+  width: 260px;
+}
+
+.backups-config-hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  max-width: 72ch;
+}
+
+.backups-effective {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.backups-effective code {
+  font-family: inherit;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  padding: 2px var(--space-2);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 
 .backups-list {
   list-style: none;
   padding: 0;
-  margin: var(--space-3) 0 0;
+  margin: 0;
 }
 
 .backups-list li {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--border);
+  padding: var(--space-2-5) 0;
   font-size: var(--fs-sm);
 }
 
-.backups-list li > span:first-child {
+.backups-list li + li {
+  border-top: 1px solid var(--border);
+}
+
+.backups-item-meta {
   flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.backups-item-meta strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.006em;
+}
+
+.backups-item-meta small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .backups-confirm {
   display: flex;
   gap: var(--space-2);
-  align-items: center;
+  align-items: flex-end;
+  flex-wrap: wrap;
 }
 
-.backups-confirm input {
-  width: 150px;
-  min-height: 34px;
-  border: 1px solid var(--border);
-  border-radius: var(--r1);
-  background: var(--surface-2);
-  color: var(--text);
-  padding: 0 var(--space-2);
+.backups-confirm .field {
+  width: 170px;
 }
 
-.backups-list button {
-  min-height: 34px;
-  border: 1px solid var(--border);
-  border-radius: var(--r1);
-  background: var(--surface-2);
-  color: var(--text-2);
-  cursor: pointer;
-  font-weight: 600;
-  padding: 0 var(--space-3);
-  transition: border-color 150ms ease, color 150ms ease;
-}
+@media (max-width: 760px) {
+  .backups-stats {
+    grid-template-columns: 1fr;
+  }
 
-.backups-list button:hover {
-  border-color: var(--border-2);
-  color: var(--text);
+  .backups-stat + .backups-stat {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
 }
 
 .job-health-panel {
@@ -2962,6 +3056,35 @@ h2 {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+/* Inputs numéricos curtos (segundos, minutos, dias): a caixa acompanha o
+   tamanho do valor esperado em vez de esticar pela célula do grid. */
+.field-short input {
+  max-width: 60px;
+}
+
+/* Onboarding de tema (1.º arranque) */
+.theme-onboarding-lead {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.theme-onboarding-options {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.theme-onboarding-options button {
+  justify-content: flex-start;
+}
+
+.theme-onboarding-note {
+  margin: var(--space-3) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  max-width: 46ch;
 }
 
 .field-error {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, BulkActionBar, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { ClientImportDialog } from './clients/import';
 import { authFetch, useAuth } from '../lib/auth';
+import { CV_ISLANDS, DEFAULT_ISLAND, isKnownIsland } from '../lib/islands';
 import { formatCve, formatPtDate } from '../lib/format';
 import { compareText, paginateRows, sortRows, type SortState } from '../lib/listView';
 import { runBulk, summarizeBulk } from '../lib/bulkRun';
@@ -53,7 +54,7 @@ const NOTICE_TONES: Record<ClientNotice['noticeType'], 'info' | 'accent' | 'dang
 };
 
 function emptyClientForm(): ClientFormState {
-  return { fullName: '', phone: '', nif: '', island: '', zone: '', address: '', status: 'active' };
+  return { fullName: '', phone: '', nif: '', island: DEFAULT_ISLAND, zone: '', address: '', status: 'active' };
 }
 
 // NIF de Cabo Verde: 9 dígitos, o primeiro identifica o tipo de contribuinte
@@ -727,7 +728,15 @@ export function ClientsModule({
           <Field label="Nome completo" required value={form.fullName} onChange={(event) => updateForm('fullName', event.target.value)} />
           <Field label="Telefone" type="tel" inputMode="tel" value={form.phone} onChange={(event) => updateForm('phone', event.target.value)} />
           <Field label="NIF" inputMode="numeric" maxLength={9} value={form.nif} onChange={(event) => updateForm('nif', event.target.value.replace(/\D/g, '').slice(0, 9))} placeholder="9 dígitos (começa por 1 ou 2)" hint="1 = pessoa singular · 2 = pessoa coletiva" error={cvNifError(form.nif)} />
-          <Field label="Ilha" value={form.island} onChange={(event) => updateForm('island', event.target.value)} />
+          <Select label="Ilha" value={form.island} onChange={(event) => updateForm('island', event.target.value)}>
+            <option value="">—</option>
+            {CV_ISLANDS.map((island) => (
+              <option key={island} value={island}>{island}</option>
+            ))}
+            {form.island !== '' && !isKnownIsland(form.island) && (
+              <option value={form.island}>{form.island} (grafia antiga)</option>
+            )}
+          </Select>
           <Field label="Zona" value={form.zone} onChange={(event) => updateForm('zone', event.target.value)} />
           <Field wide label="Morada" value={form.address} onChange={(event) => updateForm('address', event.target.value)} />
           <Select label="Estado" value={form.status} onChange={(event) => updateForm('status', event.target.value)}>
