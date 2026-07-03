@@ -220,6 +220,33 @@ describe('GET /api/dashboard/summary', () => {
     expect(body.paidMonthCve).toBe(2000);
   });
 
+  test('paidMonthCve é regime de caixa: competência antiga paga este mês conta', async () => {
+    db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('C009', 'Cliente Caixa', 'active')`).run();
+    const clientId = db.prepare(`SELECT id FROM clients WHERE client_code = 'C009'`).get() as { id: number };
+    db.prepare(`INSERT INTO internet_plans (name, connection_type, monthly_price_cve, active) VALUES ('Plano X', 'fibra', 2500, 1)`).run();
+    const planId = db.prepare(`SELECT id FROM internet_plans WHERE name = 'Plano X'`).get() as { id: number };
+    db.prepare(`
+      INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status)
+      VALUES (?, ?, 2500, 5, 'active')
+    `).run(clientId.id, planId.id);
+    const serviceId = db.prepare(`SELECT id FROM services LIMIT 1`).get() as { id: number };
+
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const previousMonth = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+
+    // Pós-pago: fatura da competência do mês fechado, paga só este mês.
+    db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
+      VALUES (?, ?, ?, 2500, ?, ?, 'paid')
+    `).run(clientId.id, serviceId.id, previousMonth, `${previousMonth}-05`, `${currentMonth}-03`);
+
+    const body = (await app.inject({ method: 'GET', url: '/api/dashboard/summary' })).json();
+    expect(body.paidMonthCve).toBe(2500);
+    expect(body.paidPrevMonthCve).toBe(0);
+  });
+
   test('flags critical overdue payments older than 30 days', async () => {
     db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('C002', 'Cliente Atrasado', 'active')`).run();
     const clientId = db.prepare(`SELECT id FROM clients WHERE client_code = 'C002'`).get() as { id: number };

@@ -1,5 +1,5 @@
 import { Activity, AlertTriangle, CalendarClock, MessageCircle, TrendingUp, UsersRound, Wrench } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 import { Badge, Button, Card, ErrorRetry, MetricCard, MetricGrid, RevenueBars, Skeleton } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
@@ -55,15 +55,12 @@ export function Dashboard({
 
   useEffect(() => { void loadSummary(); }, [loadSummary]);
 
-  const currentMonthKey = useMemo(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  }, []);
-  const currentMonthIndex = summary?.revenueByMonth.findIndex((point) => point.referenceMonth === currentMonthKey) ?? -1;
-  const currentMonthRevenue = currentMonthIndex >= 0 ? summary?.revenueByMonth[currentMonthIndex]?.paidCve || 0 : 0;
-  const previousMonthRevenue = currentMonthIndex > 0 ? summary?.revenueByMonth[currentMonthIndex - 1]?.paidCve || 0 : 0;
+  // Tendência caixa-com-caixa: o tile "Receita do mes" é regime de caixa
+  // (recebido no mês), por isso compara com o recebido no mês anterior — a
+  // série revenueByMonth é por competência e serve o gráfico, não este tile.
+  const previousMonthRevenue = summary?.paidPrevMonthCve || 0;
   const revenueTrendPct = previousMonthRevenue > 0
-    ? ((currentMonthRevenue - previousMonthRevenue) / previousMonthRevenue) * 100
+    ? (((summary?.paidMonthCve || 0) - previousMonthRevenue) / previousMonthRevenue) * 100
     : null;
   const attentionCount = summary
     ? summary.overduePayments + summary.openWorkOrders
