@@ -35,6 +35,7 @@
   --danger-bg: oklch(29% 0.075 24);
   --info: oklch(72% 0.12 212);
   --info-bg: oklch(29% 0.045 212);
+  --warn: oklch(80% 0.13 85);
 
   --ring: color-mix(in oklch, var(--accent) 62%, transparent);
   --shadow-1: 0 1px 2px oklch(0% 0 0 / 0.45);
@@ -171,6 +172,7 @@ table {
   --danger-bg: oklch(94.5% 0.055 26);
   --info: oklch(46% 0.13 240);
   --info-bg: oklch(94.5% 0.045 240);
+  --warn: oklch(50% 0.12 75);
 
   --ring: color-mix(in oklch, var(--accent) 55%, transparent);
   --shadow-1: 0 1px 2px oklch(60% 0.02 72 / 0.12);
@@ -4543,25 +4545,73 @@ label.field-toggle {
 /* =========================================================================
    Data-quality views (Incompletos + Duplicados) in ReportsModule
    ========================================================================= */
+/* Linha de cliente incompleto: é um <Button> (a11y/teclado), mas o layout é
+   o de uma row-card do módulo — este bloco vem depois de .btn no cascade e
+   substitui o inline-flex centrado por um grid identidade|lacunas|chevron. */
 .dq-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 16px;
+  align-items: center;
+  justify-items: start;
+  gap: var(--space-3);
   width: 100%;
+  min-height: 56px;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface);
+  color: var(--text);
   text-align: left;
-  background: none;
-  border: inherit;
+  font-weight: 380;
   cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.dq-row:hover {
+  border-color: var(--border-2);
+  background: var(--surface-2);
+}
+
+.dq-row > svg {
+  justify-self: end;
+  color: var(--text-3);
+}
+
+.dq-row:hover > svg {
+  color: var(--text-2);
+}
+
+.dq-row-id {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dq-row-id strong {
+  font-weight: 600;
+  letter-spacing: -0.006em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dq-row-id small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
 }
 
 .dq-flags {
   display: inline-flex;
   gap: var(--space-1);
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
-/* Warn badge — uses --accent-2 (amber/gold heritage token), mirrors badge-accent pattern */
+/* Warn badge — lacunas de dados: âmbar próprio (--warn), independente do accent */
 .badge-warn {
-  background: color-mix(in oklch, var(--accent-2) 16%, transparent);
-  border-color: color-mix(in oklch, var(--accent-2) 35%, transparent);
-  color: var(--accent-2);
+  background: color-mix(in oklch, var(--warn) 14%, transparent);
+  border-color: color-mix(in oklch, var(--warn) 38%, transparent);
+  color: var(--warn);
   border-radius: var(--rpill);
   padding: var(--space-0-5) var(--space-2);
   font-size: var(--fs-xs);
@@ -4576,7 +4626,16 @@ label.field-toggle {
 
 .dq-issue-filter {
   flex-wrap: wrap;
+  gap: var(--space-2);
   margin-bottom: var(--space-2);
+}
+
+/* Chip de filtro selecionado: tinta accent discreta, mantém a altura sm. */
+.dq-issue-filter button.active {
+  border-color: color-mix(in oklch, var(--accent) 55%, transparent);
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-weight: 650;
 }
 
 .dq-group-reason {

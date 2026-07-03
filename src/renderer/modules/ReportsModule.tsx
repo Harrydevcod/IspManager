@@ -309,8 +309,8 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
           </div>
         )}
         {view === 'incomplete' && dq?.incompleteClients.map((row) => (
-          <Button variant="ghost" className="module-row report-row with-action dq-row" key={row.id} onClick={() => onOpenClient?.(row.id)}>
-            <span>
+          <Button variant="ghost" className="dq-row" key={row.id} onClick={() => onOpenClient?.(row.id)}>
+            <span className="dq-row-id">
               <small className="entity-code">{row.clientCode}</small>
               <strong>{row.fullName}</strong>
               <small>{row.phone || 'sem telefone'}</small>
