@@ -87,6 +87,7 @@ export function SmsTab({
         </Message>
       )}
       <Field
+        className="field-short"
         label="Intervalo de envio SMS (segundos)"
         type="number"
         min={15}
@@ -95,6 +96,7 @@ export function SmsTab({
         onChange={(event) => onUpdate('smsDispatchIntervalSeconds', event.target.value)}
       />
       <Field
+        className="field-short"
         label="Reenvio apos falha (minutos)"
         type="number"
         min={1}

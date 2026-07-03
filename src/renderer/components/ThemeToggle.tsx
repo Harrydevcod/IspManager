@@ -1,20 +1,25 @@
 import { Moon, Sun } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { applyThemePref } from '../lib/theme';
 
 export function ThemeToggle() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() =>
     document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'
   );
 
+  // O tema também muda fora deste botão (onboarding de 1.º arranque, modo
+  // 'system' a seguir o Windows) — observa o data-theme para não ficar stale.
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, []);
+
   function toggle() {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setTheme(next);
-    document.documentElement.dataset.theme = next;
-    try {
-      localStorage.setItem('ispm-theme', next);
-    } catch {
-      /* localStorage indisponivel — preferencia nao persiste, sem impacto funcional */
-    }
+    // Escolha explícita fixa o tema (substitui um eventual 'system' guardado).
+    applyThemePref(theme === 'dark' ? 'light' : 'dark');
   }
 
   return (

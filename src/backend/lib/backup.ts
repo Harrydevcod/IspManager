@@ -92,7 +92,9 @@ export function selectForRetention(entries: BackupEntry[], now: Date): BackupEnt
   return managed.filter((e) => !keep.has(e));
 }
 
-const FILE_RE = /^(?:ispm|pre-restore)-(\d{8})-(\d{6})\.sqlite$/;
+// imported-* leva sufixo de milissegundos (ver importedStamp em routes/backup.ts);
+// tem de constar aqui para aparecer na lista e seguir a retenção habitual.
+const FILE_RE = /^(?:ispm|pre-restore|imported)-(\d{8})-(\d{6})(?:-\d{3})?\.sqlite$/;
 
 function settingsBackupDir(): string | null {
   const db = getSqliteDatabase();

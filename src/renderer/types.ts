@@ -4,6 +4,8 @@ declare global {
       platform: string;
       relaunch?: () => Promise<void>;
       chooseBackupFile?: () => Promise<string | null>;
+      chooseBackupDir?: () => Promise<string | null>;
+      openBackupDir?: (dir: string) => Promise<void>;
       saveDocument?: (
         filename: string,
         data: Uint8Array

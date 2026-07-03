@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { autoUpdater } from 'electron-updater';
@@ -123,7 +123,7 @@ async function createWindow() {
     minWidth: 1080,
     minHeight: 680,
     title: 'ISPM',
-    backgroundColor: '#16130F',
+    backgroundColor: '#101418',
     icon: iconPath,
     webPreferences: {
       // Em dev o main corre via tsx a partir de src/main, mas o preload tem de ser
@@ -171,6 +171,20 @@ app.whenReady().then(async () => {
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
+  });
+
+  ipcMain.handle('dialog:choose-backup-dir', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Pasta de destino dos backups',
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle('backups:open-dir', async (_event, dir: string) => {
+    if (typeof dir !== 'string' || dir.length === 0) return;
+    await shell.openPath(dir);
   });
 
   registerDocumentSave();

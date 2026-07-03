@@ -1,10 +1,11 @@
 import { Activity, AlertTriangle, Banknote, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, LogOut, Plus, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AuthGate, CommandPalette, ConfirmProvider, PageHeader, ShortcutsDialog, ThemeToggle, ToastProvider } from './components';
+import { AuthGate, CommandPalette, ConfirmProvider, PageHeader, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider } from './components';
 import type { CommandPaletteItem } from './components';
 import { AuthProvider, authFetch, useAuth } from './lib/auth';
 import type { UserRole } from './lib/auth';
 import { installKeyboardNavigationIntent } from './lib/keyboardNavigation';
+import { watchSystemTheme } from './lib/theme';
 import { Dashboard } from './modules/Dashboard';
 import { FinanceModule } from './modules/FinanceModule';
 import { PaymentsModule } from './modules/PaymentsModule';
@@ -102,6 +103,7 @@ function AppShell() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   useEffect(() => installKeyboardNavigationIntent(), []);
+  useEffect(() => watchSystemTheme(), []);
 
   useEffect(() => {
     if (!visibleSections.some((item) => item.id === section)) {
@@ -396,6 +398,8 @@ function AppShell() {
         />
 
         <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+        <ThemeOnboarding />
       </main>
     </>
   );

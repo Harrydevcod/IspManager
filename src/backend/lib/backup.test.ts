@@ -159,6 +159,18 @@ describe('backup engine IO', () => {
     expect(() => pruneBackups()).not.toThrow();
     cleanup();
   });
+
+  test('listBackups inclui ficheiros imported-* (com sufixo de ms)', async () => {
+    setData();
+    const e = await createBackup('manual');
+    const backupsDir = path.join(dir, 'backups');
+    copyFileSync(
+      path.join(backupsDir, e.file),
+      path.join(backupsDir, 'imported-20260101-120000-042.sqlite'),
+    );
+    expect(listBackups().some((x) => x.file.startsWith('imported-'))).toBe(true);
+    cleanup();
+  });
 });
 
 describe('validateBackupDir', () => {

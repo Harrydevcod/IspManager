@@ -22,6 +22,7 @@ export * from './Combobox';
 export * from './Dialog';
 export * from './ConfirmDialog';
 export * from './ThemeToggle';
+export * from './ThemeOnboarding';
 export * from './Toaster';
 export * from './CommandPalette';
 export * from './ShortcutsDialog';
