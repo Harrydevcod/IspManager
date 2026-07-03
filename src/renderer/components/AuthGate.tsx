@@ -94,7 +94,7 @@ function SetupScreen() {
       <div className="auth-card">
         <header className="auth-card-head">
           <span className="auth-brand">
-            <span className="auth-brand-mark">I</span>
+            <img className="auth-brand-mark" src="./favicon.png" alt="" />
             <span className="auth-brand-word">ISPM</span>
           </span>
           <p className="auth-eyebrow">Primeira execucao</p>
@@ -209,7 +209,7 @@ function LoginScreen({ lastError }: { lastError?: string }) {
       <div className="auth-card">
         <header className="auth-card-head">
           <span className="auth-brand">
-            <span className="auth-brand-mark">I</span>
+            <img className="auth-brand-mark" src="./favicon.png" alt="" />
             <span className="auth-brand-word">ISPM</span>
           </span>
           <p className="auth-eyebrow">
