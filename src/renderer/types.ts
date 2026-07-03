@@ -503,6 +503,7 @@ export type DashboardSummary = {
   activeServices: number;
   openWorkOrders: number;
   paidMonthCve: number;
+  paidPrevMonthCve: number;
   pendingMonthCve: number;
   pendingPreviousCve: number;
   paidTotalCve: number;

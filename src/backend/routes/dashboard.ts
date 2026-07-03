@@ -13,6 +13,7 @@ type DashboardMetricRow = {
   activeServices: number;
   openWorkOrders: number;
   paidMonthCve: number;
+  paidPrevMonthCve: number;
   pendingMonthCve: number;
   pendingPreviousCve: number;
   paidTotalCve: number;
@@ -44,6 +45,12 @@ function currentMonthKey(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function previousMonthKey(): string {
+  const now = new Date();
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+}
+
 function currentYearMonths(): string[] {
   const months: string[] = [];
   const year = new Date().getFullYear();
@@ -70,9 +77,16 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         (SELECT count(*) FROM services WHERE status = 'active') AS activeServices,
         (SELECT count(*) FROM work_orders WHERE status NOT IN ('concluida','cancelada')) AS openWorkOrders,
         COALESCE((
+          -- Regime de caixa: o que ENTROU este mês, seja qual for a competência.
+          -- Com faturação pós-paga a competência corrente nem existe até dia 30,
+          -- por isso somar por reference_month mostrava 0 o mês inteiro.
           SELECT SUM(amount_cve) FROM payments
-          WHERE status = 'paid' AND reference_month = @currentMonth
+          WHERE status = 'paid' AND substr(payment_date, 1, 7) = @currentMonth
         ), 0) AS paidMonthCve,
+        COALESCE((
+          SELECT SUM(amount_cve) FROM payments
+          WHERE status = 'paid' AND substr(payment_date, 1, 7) = @previousMonth
+        ), 0) AS paidPrevMonthCve,
         COALESCE((
           SELECT SUM(amount_cve) FROM payments
           WHERE status IN ('pending','overdue') AND reference_month = @currentMonth
@@ -84,7 +98,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         COALESCE((
           SELECT SUM(amount_cve) FROM payments WHERE status = 'paid'
         ), 0) AS paidTotalCve
-    `).get({ currentMonth }) as DashboardMetricRow;
+    `).get({ currentMonth, previousMonth: previousMonthKey() }) as DashboardMetricRow;
 
     const months = currentYearMonths();
     const revenueRows = db.prepare(`
@@ -196,6 +210,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       activeServices: summary.activeServices ?? 0,
       openWorkOrders: summary.openWorkOrders ?? 0,
       paidMonthCve: Number(summary.paidMonthCve) || 0,
+      paidPrevMonthCve: Number(summary.paidPrevMonthCve) || 0,
       pendingMonthCve: Number(summary.pendingMonthCve) || 0,
       pendingPreviousCve: Number(summary.pendingPreviousCve) || 0,
       paidTotalCve: Number(summary.paidTotalCve) || 0,
