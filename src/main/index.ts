@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { autoUpdater } from 'electron-updater';
@@ -95,15 +95,25 @@ function registerDocumentPrint() {
 function initAutoUpdater() {
   autoUpdater.autoDownload = true;
   autoUpdater.on('update-downloaded', async (info) => {
-    const { response } = await dialog.showMessageBox({
-      type: 'info',
-      buttons: ['Reiniciar agora', 'Mais tarde'],
+    const options = {
+      type: 'info' as const,
+      buttons: ['Reiniciar e instalar agora', 'Instalar ao fechar a aplicação'],
       defaultId: 0,
       cancelId: 1,
-      title: 'Atualização disponível',
-      message: `ISPM ${info.version} está pronto para instalar.`,
-      detail: 'A aplicação reinicia para concluir a atualização.'
-    });
+      noLink: true,
+      icon: nativeImage.createFromPath(path.join(__dirname, '../renderer/favicon.png')),
+      title: 'Atualização do ISPM',
+      message: `Nova atualização detetada — ISPM ${info.version}`,
+      detail:
+        `Versão instalada: ${app.getVersion()}\n` +
+        `Nova versão: ${info.version}\n\n` +
+        'Deseja reiniciar e instalar a atualização agora? Se preferir continuar a trabalhar, ' +
+        'a atualização é instalada automaticamente quando fechar a aplicação.'
+    };
+    // Modal sobre a janela principal quando existe — não fica perdido atrás.
+    const { response } = mainWindow && !mainWindow.isDestroyed()
+      ? await dialog.showMessageBox(mainWindow, options)
+      : await dialog.showMessageBox(options);
     if (response === 0) autoUpdater.quitAndInstall();
   });
   autoUpdater.on('error', (err) => {
