@@ -25,6 +25,9 @@ export function applyThemePref(pref: ThemePref): void {
   const resolved = resolveTheme(pref);
   document.documentElement.dataset.theme = resolved;
   document.documentElement.style.colorScheme = resolved;
+  // O bootstrap FOUC (index.html) fixa um background inline do tema do
+  // arranque; com o body transparente ele venceria o CSS ao trocar de tema.
+  document.documentElement.style.background = '';
   try {
     localStorage.setItem(STORAGE_KEY, pref);
   } catch {

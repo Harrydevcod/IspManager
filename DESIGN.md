@@ -17,27 +17,29 @@ Scene that forces dark default: *the owner reconciles monthly payments at 22:30 
 **Strategy:** Restrained. Warm-tinted neutrals (hue 72) + one heritage-gold accent at ≤10% coverage. Semantic colors are paired surface tints for dark legibility.
 
 ```
---bg: oklch(19% 0.01 251)         /* grafite frio — NÃO near-black (feedback do dono, 2026-07-03) */
---surface: oklch(22.5% 0.011 251)
---surface-2: oklch(26% 0.012 251)
---surface-3: oklch(30% 0.013 249)
---border: oklch(33% 0.014 249)    /* hairline */
---border-2: oklch(43% 0.016 247)
+--bg: oklch(21.5% 0.01 251)       /* grafite frio — NÃO near-black (feedback do dono, 2026-07-03) */
+--surface: oklch(25% 0.011 251)
+--surface-2: oklch(28.5% 0.012 251)
+--surface-3: oklch(32.5% 0.013 249)
+--border: oklch(35.5% 0.014 249)  /* hairline */
+--border-2: oklch(45% 0.016 247)
 
 --text: oklch(93% 0.006 251)
 --text-2: oklch(74% 0.01 251)
---text-3: oklch(60% 0.012 251)    /* muted captions */
+--text-3: oklch(62% 0.012 251)    /* muted captions */
 
 --accent: oklch(68% 0.15 251)     /* azul Windows do dono (#0078D4 elevado p/ dark) */
 --accent-2: oklch(61% 0.16 251)
 --on-accent: oklch(16% 0.02 251)
 
---success: oklch(77% 0.16 148) + --success-bg: oklch(27% 0.07 148)
---danger:  oklch(70% 0.18 24)  + --danger-bg:  oklch(27% 0.075 24)
---info:    oklch(72% 0.12 212) + --info-bg:   oklch(27% 0.045 212)
+--success: oklch(77% 0.16 148) + --success-bg: oklch(29% 0.07 148)
+--danger:  oklch(70% 0.18 24)  + --danger-bg:  oklch(29% 0.075 24)
+--info:    oklch(72% 0.12 212) + --info-bg:   oklch(29% 0.045 212)
 ```
 
-O accent dark é o **accent do Windows do dono** (#0078D4, capturado do registry `HKCU\...\DWM\AccentColor` em 2026-07-03) — pedido explícito; o tema claro mantém o dourado heritage. FOUC bootstrap (`index.html`) + `BrowserWindow.backgroundColor` (`src/main/index.ts`) devem espelhar `--bg` em hex: `#101418`.
+O accent dark é o **accent do Windows do dono** (#0078D4, capturado do registry `HKCU\...\DWM\AccentColor` em 2026-07-03) — pedido explícito; o tema claro mantém o dourado heritage.
+
+**Acrílico (2026-07-03, pedido do dono):** a janela Electron usa `backgroundMaterial: 'acrylic'` + `backgroundColor: '#00000000'`; o `:root` em dark pinta um véu `color-mix(var(--bg) 82%, transparent)` e o `body` é transparente (o material aparece através). A sidebar leva translucidez extra (mix 90%). O tema claro fica opaco (`background: var(--bg)` no bloco light). O bootstrap FOUC usa `#161A1ED1` (dark, com alpha) e `applyThemePref` limpa o inline ao trocar de tema — não remover essa limpeza. Meta theme-color dark: `#161A1E`. Exceção consciente ao ban de glassmorphism: é material do SO, não blur decorativo em cards.
 
 Light theme: `--bg: oklch(96.5% 0.005 72)`, `--accent: oklch(48% 0.135 65)` (darker gold for AA contrast).
 

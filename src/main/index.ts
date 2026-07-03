@@ -123,7 +123,12 @@ async function createWindow() {
     minWidth: 1080,
     minHeight: 680,
     title: 'ISPM',
-    backgroundColor: '#101418',
+    // Acrílico Win11: o fundo da janela é o material do sistema e o CSS pinta
+    // um véu escuro semi-transparente por cima (:root). backgroundColor com
+    // alpha 00 para não tapar o material; onde não houver suporte o véu
+    // assenta sobre a cor de fallback do compositor.
+    backgroundColor: '#00000000',
+    backgroundMaterial: 'acrylic',
     icon: iconPath,
     webPreferences: {
       // Em dev o main corre via tsx a partir de src/main, mas o preload tem de ser
