@@ -268,7 +268,7 @@ function AppShell() {
       <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">I</span>
+          <img className="brand-mark" src="./favicon.png" alt="" />
           <div>
             <strong>ISPM</strong>
             <span>Operacao ISP</span>

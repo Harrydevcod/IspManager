@@ -411,17 +411,13 @@ a:hover {
   margin-bottom: var(--space-6);
 }
 
+/* Ícone da app (favicon.png, com fundo próprio) no lugar da antiga letra. */
 .brand-mark {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 44px;
   height: 44px;
   border-radius: 8px;
-  background: var(--accent);
-  color: var(--on-accent);
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 1.4rem;
+  object-fit: cover;
 }
 
 .brand strong,
@@ -4497,18 +4493,11 @@ label.field-toggle {
 }
 
 .auth-brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-block;
   width: 26px;
   height: 26px;
   border-radius: 6px;
-  background: var(--accent);
-  color: var(--bg);
-  font-family: var(--font-display, var(--font-ui));
-  font-weight: 600;
-  font-size: 14px;
-  letter-spacing: -0.02em;
+  object-fit: cover;
 }
 
 .auth-brand-word {
