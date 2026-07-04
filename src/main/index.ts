@@ -36,6 +36,51 @@ async function showAboutDialog() {
   }
 }
 
+/**
+ * Novidades da versão instalada, num diálogo nativo — o cliente vê o que mudou
+ * sem nunca abrir o browser nem conhecer o repositório. As notas vêm da release
+ * do GitHub correspondente à versão a correr (API pública, só leitura de dados).
+ */
+async function showReleaseNotesDialog() {
+  let notes = 'Não foi possível obter as notas desta versão. Verifica a ligação à internet.';
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/Harrydevcod/IspManager/releases/tags/v${app.getVersion()}`,
+      { headers: { accept: 'application/vnd.github+json' } }
+    );
+    if (response.ok) {
+      const body = ((await response.json()) as { body?: string }).body;
+      if (body) {
+        // As notas são markdown curto e virado ao utilizador; limpar a sintaxe
+        // para texto simples de messageBox (títulos, negrito, código, links).
+        notes = body
+          .replace(/^#+\s*/gm, '')
+          .replace(/\*\*/g, '')
+          .replace(/`/g, '')
+          .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+          .replace(/^🤖.*$/m, '')
+          .trim();
+      }
+    }
+  } catch {
+    // offline — fica a mensagem de fallback
+  }
+  const options = {
+    type: 'info' as const,
+    buttons: ['Fechar'],
+    noLink: true,
+    icon: nativeImage.createFromPath(appIconPath()),
+    title: 'Novidades',
+    message: `Novidades do ISPM ${app.getVersion()}`,
+    detail: notes
+  };
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    await dialog.showMessageBox(mainWindow, options);
+  } else {
+    await dialog.showMessageBox(options);
+  }
+}
+
 /** Menu pt-PT com secção Sobre no topo — a versão fica visível sem cliques. */
 function buildAppMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
@@ -80,7 +125,8 @@ function buildAppMenu() {
       submenu: [
         { label: `ISPM ${app.getVersion()}`, enabled: false },
         { type: 'separator' },
-        { label: 'Sobre o ISPM…', click: () => void showAboutDialog() }
+        { label: 'Sobre o ISPM…', click: () => void showAboutDialog() },
+        { label: 'Novidades desta versão', click: () => void showReleaseNotesDialog() }
       ]
     }
   ]));
