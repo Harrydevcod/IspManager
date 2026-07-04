@@ -15,6 +15,7 @@ type DashboardMetricRow = {
   paidMonthCve: number;
   paidPrevMonthCve: number;
   pendingMonthCve: number;
+  pendingMonthCount: number;
   pendingPreviousCve: number;
   paidTotalCve: number;
 };
@@ -95,6 +96,10 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
           SELECT SUM(amount_cve) FROM payments
           WHERE status IN ('pending','overdue') AND substr(due_date, 1, 7) = @currentMonth
         ), 0) AS pendingMonthCve,
+        (
+          SELECT count(*) FROM payments
+          WHERE status IN ('pending','overdue') AND substr(due_date, 1, 7) = @currentMonth
+        ) AS pendingMonthCount,
         COALESCE((
           SELECT SUM(amount_cve) FROM payments
           WHERE status IN ('pending','overdue') AND reference_month < @currentMonth
@@ -216,6 +221,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       paidMonthCve: Number(summary.paidMonthCve) || 0,
       paidPrevMonthCve: Number(summary.paidPrevMonthCve) || 0,
       pendingMonthCve: Number(summary.pendingMonthCve) || 0,
+      pendingMonthCount: Number(summary.pendingMonthCount) || 0,
       pendingPreviousCve: Number(summary.pendingPreviousCve) || 0,
       paidTotalCve: Number(summary.paidTotalCve) || 0,
       revenueByMonth,

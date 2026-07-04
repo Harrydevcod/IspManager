@@ -67,7 +67,6 @@ export function Dashboard({
     : 0;
   const criticalOverdueCve = summary?.criticalOverdue.reduce((acc, overdue) => acc + overdue.amountCve, 0) || 0;
   const briefNeedsAttention = attentionCount > 0;
-  const openPaymentCount = summary ? summary.pendingPayments + summary.overduePayments : 0;
   const alertSignals = summary
     ? [
         { label: 'Atraso', value: summary.overduePayments, tone: 'danger' },
@@ -97,9 +96,9 @@ export function Dashboard({
     {
       label: 'Pendente do mes',
       value: summary ? formatCve(summary.pendingMonthCve) : '...',
-      trend: openPaymentCount > 0
-        ? `${openPaymentCount} cobrancas por receber`
-        : 'sem cobrancas pendentes',
+      trend: summary && summary.pendingMonthCount > 0
+        ? `${summary.pendingMonthCount} ${summary.pendingMonthCount === 1 ? 'cobranca vence' : 'cobrancas vencem'} este mes`
+        : 'sem cobrancas a vencer este mes',
       icon: CalendarClock,
       tone: summary && summary.pendingMonthCve > 0 ? 'warning' as const : 'neutral' as const,
       onActivate: onOpenPending

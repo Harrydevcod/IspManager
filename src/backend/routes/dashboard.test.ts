@@ -188,6 +188,7 @@ describe('GET /api/dashboard/summary', () => {
     const body = response.json();
 
     expect(body.pendingMonthCve).toBe(3000);
+    expect(body.pendingMonthCount).toBe(1);
     expect(body.pendingPreviousCve).toBe(3000);
   });
 
@@ -215,6 +216,7 @@ describe('GET /api/dashboard/summary', () => {
 
     expect(body.pendingPreviousCve).toBe(5000);
     expect(body.pendingMonthCve).toBe(0);
+    expect(body.pendingMonthCount).toBe(0);
   });
 
   test('sums all paid payments across months into paidTotalCve', async () => {
