@@ -505,6 +505,7 @@ export type DashboardSummary = {
   paidMonthCve: number;
   paidPrevMonthCve: number;
   pendingMonthCve: number;
+  pendingMonthCount: number;
   pendingPreviousCve: number;
   paidTotalCve: number;
   revenueByMonth: RevenuePoint[];
