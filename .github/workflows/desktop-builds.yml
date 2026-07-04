@@ -1,0 +1,107 @@
+# Builds desktop multiplataforma do ISPM — macOS (DMG arm64 + Intel x64) e
+# Linux (AppImage x64) em runners do GitHub, anexados à release da tag.
+# O instalador Windows continua a ser gerado localmente (fluxo manual).
+#
+# Porquê electron-rebuild por arquitetura: o package.json tem npmRebuild:false
+# (o electron-builder empacota o better_sqlite3.node tal como está em
+# node_modules), por isso cada arquitetura tem de ser recompilada
+# imediatamente antes do seu empacotamento — senão o DMG Intel levava o
+# binário arm64 e crashava (mesma classe do bug de ABI da v0.2.0 no Windows).
+#
+# macOS sem assinatura Apple (CSC_IDENTITY_AUTO_DISCOVERY=false): assinatura
+# ad-hoc (obrigatória em Apple Silicon), Gatekeeper pede clique-direito →
+# Abrir na primeira execução, e o auto-update fica desativado (Squirrel.Mac
+# exige Developer ID) — o latest-mac.yml não é publicado de propósito.
+# Linux AppImage: auto-update do electron-updater funciona SEM assinatura →
+# o latest-linux.yml é publicado.
+name: Desktop builds
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag da release onde anexar os artefactos (ex: v1.4.6)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      # Sem ref explícito: em push de tag o checkout já é a tag; no dispatch
+      # compila o main (tags antigas não têm a config mac/linux) e o input
+      # `tag` serve só como release de destino do upload.
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Compilar renderer + main
+        run: npx tsc --noEmit && npx vite build && npx tsc -p tsconfig.main.json
+
+      - name: Empacotar arm64 (Apple Silicon)
+        run: |
+          npx electron-rebuild -f -w better-sqlite3 --arch arm64
+          npx electron-builder --mac --arm64 --publish never
+
+      - name: Empacotar x64 (Intel)
+        run: |
+          npx electron-rebuild -f -w better-sqlite3 --arch x64
+          npx electron-builder --mac --x64 --publish never
+
+      - name: Anexar DMG à release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Via env, não interpolado no shell — input de dispatch é untrusted.
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: gh release upload "$TAG" release/*.dmg --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mac-dmg
+          path: release/*.dmg
+          if-no-files-found: ignore
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Compilar renderer + main
+        run: npx tsc --noEmit && npx vite build && npx tsc -p tsconfig.main.json
+
+      - name: Empacotar AppImage x64
+        run: |
+          npx electron-rebuild -f -w better-sqlite3 --arch x64
+          npx electron-builder --linux --x64 --publish never
+
+      - name: Anexar AppImage + feed de update à release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: gh release upload "$TAG" release/*.AppImage release/latest-linux.yml --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-appimage
+          path: release/*.AppImage
+          if-no-files-found: ignore

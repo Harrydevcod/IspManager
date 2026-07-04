@@ -83,6 +83,12 @@
       "category": "public.app-category.business",
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon-512.png",
+      "category": "Office",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
     "publish": [
       {
         "provider": "github",
