@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { autoUpdater } from 'electron-updater';
@@ -7,6 +7,88 @@ import { startBackend } from '../backend/server';
 const isDevelopment = process.env.NODE_ENV === 'development';
 
 let mainWindow: BrowserWindow | null = null;
+
+/** Ícone da app (favicon.png do renderer) — janela, updater e diálogo Sobre. */
+function appIconPath(): string {
+  return isDevelopment
+    ? path.join(__dirname, '../renderer/public/favicon.png')
+    : path.join(__dirname, '../renderer/favicon.png');
+}
+
+async function showAboutDialog() {
+  const options = {
+    type: 'info' as const,
+    buttons: ['Fechar'],
+    noLink: true,
+    icon: nativeImage.createFromPath(appIconPath()),
+    title: 'Sobre o ISPM',
+    message: `ISPM ${app.getVersion()}`,
+    detail:
+      'Gestão de operações ISP — Cabo Verde\n\n' +
+      `Versão: ${app.getVersion()}\n` +
+      `Electron: ${process.versions.electron}\n` +
+      `Chromium: ${process.versions.chrome}`
+  };
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    await dialog.showMessageBox(mainWindow, options);
+  } else {
+    await dialog.showMessageBox(options);
+  }
+}
+
+/** Menu pt-PT com secção Sobre no topo — a versão fica visível sem cliques. */
+function buildAppMenu() {
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    {
+      label: 'Ficheiro',
+      submenu: [{ role: 'quit', label: 'Sair' }]
+    },
+    {
+      label: 'Editar',
+      submenu: [
+        { role: 'undo', label: 'Anular' },
+        { role: 'redo', label: 'Refazer' },
+        { type: 'separator' },
+        { role: 'cut', label: 'Cortar' },
+        { role: 'copy', label: 'Copiar' },
+        { role: 'paste', label: 'Colar' },
+        { role: 'selectAll', label: 'Selecionar tudo' }
+      ]
+    },
+    {
+      label: 'Ver',
+      submenu: [
+        { role: 'reload', label: 'Recarregar' },
+        { role: 'toggleDevTools', label: 'Ferramentas de programador' },
+        { type: 'separator' },
+        { role: 'resetZoom', label: 'Zoom 100%' },
+        { role: 'zoomIn', label: 'Aumentar zoom' },
+        { role: 'zoomOut', label: 'Diminuir zoom' },
+        { type: 'separator' },
+        { role: 'togglefullscreen', label: 'Ecrã inteiro' }
+      ]
+    },
+    {
+      label: 'Janela',
+      submenu: [
+        { role: 'minimize', label: 'Minimizar' },
+        { role: 'close', label: 'Fechar' }
+      ]
+    },
+    {
+      label: 'Sobre',
+      submenu: [
+        { label: `ISPM ${app.getVersion()}`, enabled: false },
+        { type: 'separator' },
+        { label: 'Sobre o ISPM…', click: () => void showAboutDialog() },
+        {
+          label: 'Notas das versões',
+          click: () => void shell.openExternal('https://github.com/Harrydevcod/IspManager/releases')
+        }
+      ]
+    }
+  ]));
+}
 
 /**
  * Guardar documentos (faturas/recibos/relatórios PDF/CSV) com diálogo nativo
@@ -95,15 +177,25 @@ function registerDocumentPrint() {
 function initAutoUpdater() {
   autoUpdater.autoDownload = true;
   autoUpdater.on('update-downloaded', async (info) => {
-    const { response } = await dialog.showMessageBox({
-      type: 'info',
-      buttons: ['Reiniciar agora', 'Mais tarde'],
+    const options = {
+      type: 'info' as const,
+      buttons: ['Reiniciar e instalar agora', 'Instalar ao fechar a aplicação'],
       defaultId: 0,
       cancelId: 1,
-      title: 'Atualização disponível',
-      message: `ISPM ${info.version} está pronto para instalar.`,
-      detail: 'A aplicação reinicia para concluir a atualização.'
-    });
+      noLink: true,
+      icon: nativeImage.createFromPath(appIconPath()),
+      title: 'Atualização do ISPM',
+      message: `Nova atualização detetada — ISPM ${info.version}`,
+      detail:
+        `Versão instalada: ${app.getVersion()}\n` +
+        `Nova versão: ${info.version}\n\n` +
+        'Deseja reiniciar e instalar a atualização agora? Se preferir continuar a trabalhar, ' +
+        'a atualização é instalada automaticamente quando fechar a aplicação.'
+    };
+    // Modal sobre a janela principal quando existe — não fica perdido atrás.
+    const { response } = mainWindow && !mainWindow.isDestroyed()
+      ? await dialog.showMessageBox(mainWindow, options)
+      : await dialog.showMessageBox(options);
     if (response === 0) autoUpdater.quitAndInstall();
   });
   autoUpdater.on('error', (err) => {
@@ -113,9 +205,7 @@ function initAutoUpdater() {
 }
 
 async function createWindow() {
-  const iconPath = isDevelopment
-    ? path.join(__dirname, '../renderer/public/favicon.png')
-    : path.join(__dirname, '../renderer/favicon.png');
+  const iconPath = appIconPath();
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -156,6 +246,8 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  buildAppMenu();
+
   if (!isDevelopment) {
     await startBackend();
   }
