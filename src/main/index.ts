@@ -238,9 +238,12 @@ async function createWindow() {
     // Acrílico Win11: o fundo da janela é o material do sistema e o CSS pinta
     // um véu escuro semi-transparente por cima (:root). backgroundColor com
     // alpha 00 para não tapar o material; onde não houver suporte o véu
-    // assenta sobre a cor de fallback do compositor.
-    backgroundColor: '#00000000',
-    backgroundMaterial: 'acrylic',
+    // assenta sobre a cor de fallback do compositor. Fora do Windows não há
+    // backgroundMaterial e alpha 00 daria janela transparente → fundo opaco
+    // igual ao theme-color dark do index.html.
+    ...(process.platform === 'win32'
+      ? { backgroundColor: '#00000000', backgroundMaterial: 'acrylic' as const }
+      : { backgroundColor: '#161A1E' }),
     icon: iconPath,
     webPreferences: {
       // Em dev o main corre via tsx a partir de src/main, mas o preload tem de ser
