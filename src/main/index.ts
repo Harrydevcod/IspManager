@@ -80,11 +80,7 @@ function buildAppMenu() {
       submenu: [
         { label: `ISPM ${app.getVersion()}`, enabled: false },
         { type: 'separator' },
-        { label: 'Sobre o ISPM…', click: () => void showAboutDialog() },
-        {
-          label: 'Notas das versões',
-          click: () => void shell.openExternal('https://github.com/Harrydevcod/IspManager/releases')
-        }
+        { label: 'Sobre o ISPM…', click: () => void showAboutDialog() }
       ]
     }
   ]));
