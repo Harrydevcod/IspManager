@@ -753,7 +753,9 @@ h2 {
 
 .operations-brief-rail {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  /* auto-fit: os tiles quebram linha conforme a largura real da janela;
+     150px é o mínimo em que "999.999$00" ainda cabe com a fonte em cqi. */
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   align-content: end;
   gap: var(--space-px);
   margin: 0;
@@ -771,6 +773,8 @@ h2 {
   min-height: 128px;
   padding: var(--space-4);
   background: color-mix(in oklch, var(--surface) 92%, transparent);
+  /* container para o dd escalar com a largura do tile (cqi) */
+  container-type: inline-size;
 }
 
 .operations-brief-rail > div[data-alert] {
@@ -811,7 +815,8 @@ h2 {
   margin: var(--space-2) 0 0;
   color: var(--text);
   font-family: var(--font-display);
-  font-size: clamp(1.45rem, 1rem + 1.5vw, 2.35rem);
+  /* cqi = largura do tile, não do ecrã: o número encolhe até caber */
+  font-size: clamp(1.05rem, 14cqi, 2.35rem);
   font-weight: 560;
   letter-spacing: -0.024em;
   line-height: 1;
@@ -854,6 +859,7 @@ h2 {
   padding: var(--space-4);
   position: relative;
   overflow: hidden;
+  container-type: inline-size;
   transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
 }
 
@@ -914,7 +920,8 @@ h2 {
   display: block;
   font-family: var(--font-display);
   font-optical-sizing: auto;
-  font-size: clamp(1.35rem, 1rem + 1vw, 1.8rem);
+  /* escala com a largura do próprio card, não do ecrã */
+  font-size: clamp(1.05rem, 13cqi, 1.8rem);
   font-weight: 650;
   letter-spacing: -0.02em;
   line-height: 1;
@@ -4039,11 +4046,11 @@ label.field-toggle {
 }
 
 @media (max-width: 1280px) {
-  .operations-brief-rail {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
   .operations-brief-rail > div {
     min-height: 104px;
+  }
+  .metric-grid {
+    grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
   }
   .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-card-compact { grid-column: 1 / -1; }
@@ -4393,14 +4400,8 @@ label.field-toggle {
   .operations-brief-main p:last-child {
     font-size: 1.25rem;
   }
-  .operations-brief-rail {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .operations-brief-rail > div {
     min-height: 96px;
-  }
-  .metric-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .dashboard-grid { grid-template-columns: 1fr; }
   .dashboard-card-wide { grid-column: auto; }
@@ -4411,10 +4412,6 @@ label.field-toggle {
 @media (max-width: 640px) {
   .operations-brief-main p:last-child {
     font-size: 1.1rem;
-  }
-  .operations-brief-rail,
-  .metric-grid {
-    grid-template-columns: 1fr;
   }
 }
 
