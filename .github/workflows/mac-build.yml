@@ -33,9 +33,10 @@ jobs:
   mac:
     runs-on: macos-latest
     steps:
+      # Sem ref explícito: em push de tag o checkout já é a tag; no dispatch
+      # compila o main (tags antigas não têm a config mac) e o input `tag`
+      # serve só como release de destino do upload.
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.tag || github.ref_name }}
 
       - uses: actions/setup-node@v4
         with:
@@ -60,9 +61,9 @@ jobs:
       - name: Anexar DMG à release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          gh release upload "$TAG" release/*.dmg --clobber
+          # Via env, não interpolado no shell — input de dispatch é untrusted.
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: gh release upload "$TAG" release/*.dmg --clobber
 
       - uses: actions/upload-artifact@v4
         if: always()
