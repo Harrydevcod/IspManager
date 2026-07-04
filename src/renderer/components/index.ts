@@ -26,4 +26,5 @@ export * from './ThemeOnboarding';
 export * from './Toaster';
 export * from './CommandPalette';
 export * from './ShortcutsDialog';
+export * from './ReleaseNotesDialog';
 export * from './AuthGate';

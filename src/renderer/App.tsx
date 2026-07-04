@@ -1,6 +1,6 @@
 import { Activity, AlertTriangle, Banknote, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, LogOut, Plus, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AuthGate, CommandPalette, ConfirmProvider, PageHeader, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider } from './components';
+import { AuthGate, CommandPalette, ConfirmProvider, PageHeader, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider } from './components';
 import type { CommandPaletteItem } from './components';
 import { AuthProvider, authFetch, useAuth } from './lib/auth';
 import type { UserRole } from './lib/auth';
@@ -101,9 +101,12 @@ function AppShell() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [releaseNotesVersion, setReleaseNotesVersion] = useState<string | null>(null);
 
   useEffect(() => installKeyboardNavigationIntent(), []);
   useEffect(() => watchSystemTheme(), []);
+  // Menu Sobre → "Novidades desta versão" (IPC do processo main).
+  useEffect(() => window.ispm?.onShowReleaseNotes?.(setReleaseNotesVersion), []);
 
   useEffect(() => {
     if (!visibleSections.some((item) => item.id === section)) {
@@ -398,6 +401,10 @@ function AppShell() {
         />
 
         <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+        {releaseNotesVersion && (
+          <ReleaseNotesDialog version={releaseNotesVersion} onClose={() => setReleaseNotesVersion(null)} />
+        )}
 
         <ThemeOnboarding />
       </main>

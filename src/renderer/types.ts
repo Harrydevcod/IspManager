@@ -2,6 +2,7 @@ declare global {
   interface Window {
     ispm?: {
       platform: string;
+      onShowReleaseNotes?: (callback: (version: string) => void) => () => void;
       relaunch?: () => Promise<void>;
       chooseBackupFile?: () => Promise<string | null>;
       chooseBackupDir?: () => Promise<string | null>;
