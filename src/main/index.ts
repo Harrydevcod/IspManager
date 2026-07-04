@@ -15,6 +15,20 @@ function appIconPath(): string {
     : path.join(__dirname, '../renderer/favicon.png');
 }
 
+/**
+ * Versão da app fiável em dev e produção. Em dev o entry é electron/dev.cjs e o
+ * Electron não encontra o package.json → app.getVersion() devolve a versão do
+ * PRÓPRIO Electron (41.7.0); ler o package.json da raiz resolve.
+ */
+function appVersion(): string {
+  if (!isDevelopment) return app.getVersion();
+  try {
+    return (require('../../package.json') as { version: string }).version;
+  } catch {
+    return app.getVersion();
+  }
+}
+
 async function showAboutDialog() {
   const options = {
     type: 'info' as const,
@@ -22,10 +36,10 @@ async function showAboutDialog() {
     noLink: true,
     icon: nativeImage.createFromPath(appIconPath()),
     title: 'Sobre o ISPM',
-    message: `ISPM ${app.getVersion()}`,
+    message: `ISPM ${appVersion()}`,
     detail:
       'Gestão de operações ISP — Cabo Verde\n\n' +
-      `Versão: ${app.getVersion()}\n` +
+      `Versão: ${appVersion()}\n` +
       `Electron: ${process.versions.electron}\n` +
       `Chromium: ${process.versions.chrome}`
   };
@@ -37,47 +51,13 @@ async function showAboutDialog() {
 }
 
 /**
- * Novidades da versão instalada, num diálogo nativo — o cliente vê o que mudou
- * sem nunca abrir o browser nem conhecer o repositório. As notas vêm da release
- * do GitHub correspondente à versão a correr (API pública, só leitura de dados).
+ * Novidades da versão instalada — o menu só avisa o renderer, que mostra as
+ * notas num diálogo do design system (busca-as diretamente à API do GitHub,
+ * só dados; o cliente nunca vê o repositório).
  */
-async function showReleaseNotesDialog() {
-  let notes = 'Não foi possível obter as notas desta versão. Verifica a ligação à internet.';
-  try {
-    const response = await fetch(
-      `https://api.github.com/repos/Harrydevcod/IspManager/releases/tags/v${app.getVersion()}`,
-      { headers: { accept: 'application/vnd.github+json' } }
-    );
-    if (response.ok) {
-      const body = ((await response.json()) as { body?: string }).body;
-      if (body) {
-        // As notas são markdown curto e virado ao utilizador; limpar a sintaxe
-        // para texto simples de messageBox (títulos, negrito, código, links).
-        notes = body
-          .replace(/^#+\s*/gm, '')
-          .replace(/\*\*/g, '')
-          .replace(/`/g, '')
-          .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-          .replace(/^🤖.*$/m, '')
-          .trim();
-      }
-    }
-  } catch {
-    // offline — fica a mensagem de fallback
-  }
-  const options = {
-    type: 'info' as const,
-    buttons: ['Fechar'],
-    noLink: true,
-    icon: nativeImage.createFromPath(appIconPath()),
-    title: 'Novidades',
-    message: `Novidades do ISPM ${app.getVersion()}`,
-    detail: notes
-  };
+function showReleaseNotes() {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    await dialog.showMessageBox(mainWindow, options);
-  } else {
-    await dialog.showMessageBox(options);
+    mainWindow.webContents.send('app:show-release-notes', appVersion());
   }
 }
 
@@ -123,10 +103,10 @@ function buildAppMenu() {
     {
       label: 'Sobre',
       submenu: [
-        { label: `ISPM ${app.getVersion()}`, enabled: false },
+        { label: `ISPM ${appVersion()}`, enabled: false },
         { type: 'separator' },
         { label: 'Sobre o ISPM…', click: () => void showAboutDialog() },
-        { label: 'Novidades desta versão', click: () => void showReleaseNotesDialog() }
+        { label: 'Novidades desta versão', click: () => showReleaseNotes() }
       ]
     }
   ]));
@@ -229,7 +209,7 @@ function initAutoUpdater() {
       title: 'Atualização do ISPM',
       message: `Nova atualização detetada — ISPM ${info.version}`,
       detail:
-        `Versão instalada: ${app.getVersion()}\n` +
+        `Versão instalada: ${appVersion()}\n` +
         `Nova versão: ${info.version}\n\n` +
         'Deseja reiniciar e instalar a atualização agora? Se preferir continuar a trabalhar, ' +
         'a atualização é instalada automaticamente quando fechar a aplicação.'

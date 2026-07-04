@@ -1,7 +1,14 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 
 contextBridge.exposeInMainWorld('ispm', {
   platform: process.platform,
+  onShowReleaseNotes: (callback: (version: string) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, version: string) => callback(version);
+    ipcRenderer.on('app:show-release-notes', listener);
+    return () => {
+      ipcRenderer.removeListener('app:show-release-notes', listener);
+    };
+  },
   relaunch: () => ipcRenderer.invoke('app:relaunch'),
   chooseBackupFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:choose-backup-file'),
   chooseBackupDir: (): Promise<string | null> => ipcRenderer.invoke('dialog:choose-backup-dir'),
