@@ -162,6 +162,35 @@ describe('GET /api/dashboard/summary', () => {
     expect(currentPoint?.pendingCve).toBe(4200);
   });
 
+  test('counts post-paid pendings due this month into pendingMonthCve (competence in closed month)', async () => {
+    db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('C007', 'Cliente Pos-pago', 'active')`).run();
+    const clientId = db.prepare(`SELECT id FROM clients WHERE client_code = 'C007'`).get() as { id: number };
+    db.prepare(`INSERT INTO internet_plans (name, connection_type, monthly_price_cve, active) VALUES ('Plano PP', 'fibra', 3000, 1)`).run();
+    const planId = db.prepare(`SELECT id FROM internet_plans WHERE name = 'Plano PP'`).get() as { id: number };
+    db.prepare(`
+      INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status)
+      VALUES (?, ?, 3000, 10, 'active')
+    `).run(clientId.id, planId.id);
+    const serviceId = db.prepare(`SELECT id FROM services LIMIT 1`).get() as { id: number };
+
+    // Forma real pós-paga: competência do mês fechado, vencimento no mês corrente.
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const previousMonth = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+    db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+      VALUES (?, ?, ?, 3000, ?, 'pending')
+    `).run(clientId.id, serviceId.id, previousMonth, `${currentMonth}-10`);
+
+    const response = await app.inject({ method: 'GET', url: '/api/dashboard/summary' });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+
+    expect(body.pendingMonthCve).toBe(3000);
+    expect(body.pendingPreviousCve).toBe(3000);
+  });
+
   test('accumulates pending revenue from previous months into pendingPreviousCve', async () => {
     db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('C004', 'Cliente Backlog', 'active')`).run();
     const clientId = db.prepare(`SELECT id FROM clients WHERE client_code = 'C004'`).get() as { id: number };
