@@ -88,8 +88,12 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
           WHERE status = 'paid' AND substr(payment_date, 1, 7) = @previousMonth
         ), 0) AS paidPrevMonthCve,
         COALESCE((
+          -- Base de vencimento: o que VENCE este mês por receber. Com faturação
+          -- pós-paga os pendentes têm competência do mês fechado (reference_month
+          -- anterior) e vencimento no mês corrente — somar por reference_month
+          -- mostrava 0 o mês inteiro (mesmo bug da Receita do mês, v1.4.1).
           SELECT SUM(amount_cve) FROM payments
-          WHERE status IN ('pending','overdue') AND reference_month = @currentMonth
+          WHERE status IN ('pending','overdue') AND substr(due_date, 1, 7) = @currentMonth
         ), 0) AS pendingMonthCve,
         COALESCE((
           SELECT SUM(amount_cve) FROM payments
