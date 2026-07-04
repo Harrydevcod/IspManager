@@ -1,6 +1,6 @@
 {
   "name": "ispm",
-  "version": "1.4.5",
+  "version": "1.4.6",
   "description": "ISP Manager desktop app",
   "private": true,
   "main": "dist/main/index.js",
