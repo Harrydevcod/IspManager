@@ -1,26 +1,36 @@
-import { Receipt, TrendingUp, Wallet } from 'lucide-react';
+import { Banknote, Receipt, TrendingUp, Wallet } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../components';
 import { ExpensesModule } from './ExpensesModule';
 import { InvestmentsModule } from './InvestmentsModule';
+import { PaymentsModule } from './PaymentsModule';
 import { ProfitModule } from './ProfitModule';
 import './FinanceModule.css';
 
-type FinanceTab = 'lucro' | 'investimentos' | 'despesas';
+type FinanceTab = 'pagamentos' | 'lucro' | 'investimentos' | 'despesas';
 
 const TABS: { id: FinanceTab; label: string; icon: typeof TrendingUp }[] = [
+  { id: 'pagamentos', label: 'Pagamentos', icon: Banknote },
   { id: 'lucro', label: 'Lucro', icon: TrendingUp },
   { id: 'investimentos', label: 'Investimentos', icon: Wallet },
   { id: 'despesas', label: 'Despesas', icon: Receipt }
 ];
 
 /**
- * Financeiro shell: groups Lucro (ProfitModule), Investimentos (InvestmentsModule) and
- * Despesas (ExpensesModule) under one sidebar entry with segmented sub-tabs. Each child keeps
- * its own toolbar/header; this shell only owns the page label + tab switching.
+ * Financeiro shell: groups Pagamentos (PaymentsModule), Lucro (ProfitModule), Investimentos
+ * (InvestmentsModule) and Despesas (ExpensesModule) under one sidebar entry with segmented
+ * sub-tabs. Each child keeps its own toolbar/header; this shell only owns the page label + tab
+ * switching. Pagamentos is the landing tab; the dashboard's overdue/pending deep-link flows
+ * through `paymentsFocus`, consumed by PaymentsModule on mount.
  */
-export function FinanceModule() {
-  const [tab, setTab] = useState<FinanceTab>('lucro');
+export function FinanceModule({
+  paymentsFocus,
+  onPaymentsFocusHandled
+}: {
+  paymentsFocus?: 'overdue' | 'pending' | null;
+  onPaymentsFocusHandled?: () => void;
+} = {}) {
+  const [tab, setTab] = useState<FinanceTab>('pagamentos');
 
   return (
     <div className="finance-shell">
@@ -43,6 +53,9 @@ export function FinanceModule() {
         </nav>
       </div>
 
+      {tab === 'pagamentos' && (
+        <PaymentsModule focusStatus={paymentsFocus} onFocusHandled={onPaymentsFocusHandled} />
+      )}
       {tab === 'lucro' && <ProfitModule />}
       {tab === 'investimentos' && <InvestmentsModule />}
       {tab === 'despesas' && <ExpensesModule />}

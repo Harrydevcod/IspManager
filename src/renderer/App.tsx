@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, Banknote, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, LogOut, Plus, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
+import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, LogOut, Plus, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AuthGate, CommandPalette, ConfirmProvider, PageHeader, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider } from './components';
 import type { CommandPaletteItem } from './components';
@@ -8,7 +8,6 @@ import { installKeyboardNavigationIntent } from './lib/keyboardNavigation';
 import { watchSystemTheme } from './lib/theme';
 import { Dashboard } from './modules/Dashboard';
 import { FinanceModule } from './modules/FinanceModule';
-import { PaymentsModule } from './modules/PaymentsModule';
 import { PlansModule } from './modules/PlansModule';
 import { ServicesModule } from './modules/ServicesModule';
 import { StockModule } from './modules/StockModule';
@@ -32,7 +31,6 @@ const sections: SidebarItem[] = [
   { id: 'clients', label: 'Clientes', icon: UsersRound },
   { id: 'plans', label: 'Planos', icon: Wifi },
   { id: 'services', label: 'Servicos', icon: Cable },
-  { id: 'payments', label: 'Pagamentos', icon: Banknote, roles: ['admin', 'operator'] },
   { id: 'finance', label: 'Financeiro', icon: TrendingUp, roles: ['admin', 'operator'] },
   { id: 'work-orders', label: 'OS tecnicas', icon: ClipboardList },
   { id: 'stock', label: 'Stock', icon: Boxes },
@@ -51,7 +49,7 @@ function counterFor(id: SectionId, summary: DashboardSummary | null): SidebarCou
       return summary.workQueue.length > 0
         ? { count: summary.workQueue.length, tone: 'info' }
         : null;
-    case 'payments':
+    case 'finance':
       return summary.overduePayments > 0
         ? { count: summary.overduePayments, tone: 'danger' }
         : null;
@@ -185,7 +183,7 @@ function AppShell() {
         group: 'Alertas',
         keywords: ['atraso', 'overdue', 'cobranca'],
         icon: <AlertTriangle size={14} />,
-        action: () => setSection('payments')
+        action: () => { setPaymentsFocus('overdue'); setSection('finance'); }
       });
     }
     if (summary && summary.lowStockModels > 0) {
@@ -355,8 +353,8 @@ function AppShell() {
           {section === 'dashboard' && (
             <Dashboard
               onOpenClients={() => setSection('clients')}
-              onOpenOverdue={() => { setPaymentsFocus('overdue'); setSection('payments'); }}
-              onOpenPending={() => { setPaymentsFocus('pending'); setSection('payments'); }}
+              onOpenOverdue={() => { setPaymentsFocus('overdue'); setSection('finance'); }}
+              onOpenPending={() => { setPaymentsFocus('pending'); setSection('finance'); }}
               onOpenLowStock={() => { setStockLowFocus(true); setSection('stock'); }}
               onOpenWorkOrders={() => setSection('work-orders')}
             />
@@ -378,10 +376,12 @@ function AppShell() {
               onFocusHandled={() => setFocusServiceClientId(null)}
             />
           )}
-          {section === 'payments' && (
-            <PaymentsModule focusStatus={paymentsFocus} onFocusHandled={() => setPaymentsFocus(null)} />
+          {section === 'finance' && (
+            <FinanceModule
+              paymentsFocus={paymentsFocus}
+              onPaymentsFocusHandled={() => setPaymentsFocus(null)}
+            />
           )}
-          {section === 'finance' && <FinanceModule />}
           {section === 'work-orders' && <WorkOrdersModule />}
           {section === 'stock' && (
             <StockModule focusLowStock={stockLowFocus} onFocusHandled={() => setStockLowFocus(false)} />

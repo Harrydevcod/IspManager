@@ -24,7 +24,6 @@ export type SectionId =
   | 'clients'
   | 'plans'
   | 'services'
-  | 'payments'
   | 'finance'
   | 'work-orders'
   | 'stock'
