@@ -297,6 +297,8 @@ export type Investment = {
   type: InvestmentType;
   clientId: number | null;
   clientName: string | null;
+  /** Associação exata a vários clientes (tabela investment_clients). */
+  clients: Array<{ id: number; name: string }>;
   zone: string | null;
   description: string | null;
   supplier: string | null;

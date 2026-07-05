@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
-import { ACTIVE_INVESTMENT_STATUSES, loadActualMonthlyRevenue, loadCompanyOpexContext, monthsSpanInclusive, type CompanyOpexContext } from '../lib/opex';
+import { ACTIVE_INVESTMENT_STATUSES, loadCompanyOpexContext, loadRevenueAttribution, type CompanyOpexContext, type RevenueAttribution } from '../lib/opex';
 import { buildProfitabilityPdf, buildProfitabilityXlsx } from '../lib/profitability-export';
 import { requireAuth, requireRole } from './auth';
 
@@ -40,6 +40,9 @@ const investmentSchema = z.object({
   name: z.string().trim().min(1).max(180),
   type: investmentType.default('outro'),
   clientId: z.coerce.number().int().positive().optional().nullable(),
+  // Associação exata a vários clientes (antena de transmissão que serve um
+  // conjunto específico). Complementa clientId legado e zona.
+  clientIds: z.array(z.coerce.number().int().positive()).max(500).optional().default([]),
   zone: z.string().trim().max(120).optional().nullable(),
   description: z.string().trim().max(500).optional().nullable(),
   supplier: z.string().trim().max(180).optional().nullable(),
@@ -98,43 +101,45 @@ type InvestmentBaseRow = {
   investmentDate: string;
 };
 
-function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext, unattributedMonthlyRevenueCve: number) {
+function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext, revenueAttr: RevenueAttribution) {
   const activeClients = Math.max(1, row.installedClients || row.targetClients || 1);
   const targetClients = Math.max(1, row.targetClients || 1);
   const imputedMonthlyOpexCve = opexCtx.opexPerClientPerMonth * (Number(row.installedClients) || 0);
   // OPEX direto de zona/cliente é dividido pelos investimentos que o partilham —
   // sem o divisor, dois investimentos na mesma zona absorviam cada um 100% da
-  // mesma despesa e o agregado contava-a duas vezes.
+  // mesma despesa e o agregado contava-a duas vezes. Os clientes reclamados
+  // vêm do conjunto completo (client_id legado ∪ investment_clients).
+  const claimedClients = opexCtx.claimsByInvestment[row.id] ?? [];
   const zoneSharers = row.zone ? Math.max(1, opexCtx.sharersByZone[row.zone] || 1) : 1;
-  const clientSharers = row.clientId != null ? Math.max(1, opexCtx.sharersByClient[row.clientId] || 1) : 1;
+  const clientShareOf = (map: Record<number, number>) =>
+    claimedClients.reduce(
+      (sum, clientId) => sum + (map[clientId] || 0) / Math.max(1, opexCtx.sharersByClient[clientId] || 1),
+      0
+    );
   const directAllocatedOpexCve =
     (opexCtx.directByInvestment[row.id] || 0)
-    + (row.clientId != null ? (opexCtx.directByClient[row.clientId] || 0) / clientSharers : 0)
+    + clientShareOf(opexCtx.directByClient)
     + (row.zone ? (opexCtx.directByZone[row.zone] || 0) / zoneSharers : 0);
   const effectiveMonthlyOpexCve =
     (Number(row.monthlyOperationalCostCve) || 0) + imputedMonthlyOpexCve + directAllocatedOpexCve;
 
-  const linked = loadActualMonthlyRevenue({ clientId: row.clientId, zone: row.zone });
-
-  // Fallback global pro-rata: investimentos sem client_id/zone recebem uma quota
-  // do pool NÃO-ATRIBUÍDO (receita da empresa menos a receita já contada pelos
-  // investimentos ligados a cliente/zona) proporcional aos seus installed_clients
-  // dentro da base instalada não-ligada. Assim a soma da receita atribuída nunca
-  // excede a receita real.
+  // Receita atribuída pelo waterfall (clientes reclamados > zona > pool) —
+  // cada escudo pago entra exatamente uma vez em toda a carteira.
+  const attributed = revenueAttr.byInvestment[row.id] ?? null;
   const canUseGlobalShare =
-    linked === null
-    && row.clientId == null
+    attributed === null
+    && claimedClients.length === 0
     && (!row.zone)
     && opexCtx.totalInstalledUnlinkedActive > 0
     && (Number(row.installedClients) || 0) > 0
-    && unattributedMonthlyRevenueCve > 0;
+    && revenueAttr.unattributedMonthlyCve > 0;
   const globalShareCve = canUseGlobalShare
-    ? unattributedMonthlyRevenueCve * ((Number(row.installedClients) || 0) / opexCtx.totalInstalledUnlinkedActive)
+    ? revenueAttr.unattributedMonthlyCve * ((Number(row.installedClients) || 0) / opexCtx.totalInstalledUnlinkedActive)
     : null;
 
-  const actualMonthlyRevenueCve = linked?.cve ?? globalShareCve;
+  const actualMonthlyRevenueCve = attributed?.monthlyCve ?? globalShareCve;
   const revenueSource: 'client' | 'zone' | 'global-share' | null =
-    linked?.source ?? (globalShareCve !== null ? 'global-share' : null);
+    attributed?.source ?? (globalShareCve !== null ? 'global-share' : null);
   const revenueVarianceCve = actualMonthlyRevenueCve != null
     ? actualMonthlyRevenueCve - row.expectedMonthlyRevenueCve
     : null;
@@ -154,7 +159,7 @@ function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext, unat
   // despesas REAIS desde o início do investimento) menos o capital. A "Receita
   // acumulada" manual só entra como fallback sem cliente/zona com pagamentos.
   const startMonth = row.investmentDate.slice(0, 7);
-  const actualAccumulatedRevenueCve = linked !== null ? linked.cve * linked.months : null;
+  const actualAccumulatedRevenueCve = attributed !== null ? attributed.totalCve : null;
   const accumulatedRevenueBaseCve = actualAccumulatedRevenueCve ?? (Number(row.accumulatedRevenueCve) || 0);
   // Imputado exato: despesas não-alocadas dos meses >= início, rateadas — não
   // uma média retroativa que cobrava OPEX de meses em que ele não existiu.
@@ -166,7 +171,7 @@ function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext, unat
     : 0;
   const accumulatedOpexCve =
     (opexCtx.directTotalsByInvestment[row.id] || 0)
-    + (row.clientId != null ? (opexCtx.directTotalsByClient[row.clientId] || 0) / clientSharers : 0)
+    + clientShareOf(opexCtx.directTotalsByClient)
     + (row.zone ? (opexCtx.directTotalsByZone[row.zone] || 0) / zoneSharers : 0)
     + accumulatedImputedCve;
   const accumulatedProfitCve = accumulatedRevenueBaseCve - accumulatedOpexCve - row.totalCostCve;
@@ -281,30 +286,27 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     // the company-wide installed base, independent of this query's filter.
     const opexCtx = loadCompanyOpexContext();
 
-    // Pool de receita para o global-share: receita paga da empresa MENOS a dos
-    // clientes já atribuídos a investimentos via client_id/zone — senão os
-    // investimentos sem ligação recebiam quota de receita já contada pelos
-    // ligados e a soma atribuída excedia a receita real (dupla contagem).
-    const revenueRow = getSqliteDatabase().prepare(`
-      SELECT COALESCE(SUM(amount_cve), 0) AS totalCve,
-             COALESCE(SUM(CASE WHEN client_id IN (
-               SELECT id FROM clients
-               WHERE id IN (SELECT client_id FROM investments WHERE client_id IS NOT NULL)
-                  OR zone IN (SELECT zone FROM investments WHERE zone IS NOT NULL)
-             ) THEN amount_cve ELSE 0 END), 0) AS attributedCve,
-             MIN(reference_month) AS firstMonth,
-             MAX(reference_month) AS lastMonth
-      FROM payments
-      WHERE status = 'paid'
-    `).get() as { totalCve: number; attributedCve: number; firstMonth: string | null; lastMonth: string | null };
-    const unattributedMonthlyRevenueCve = revenueRow.firstMonth
-      ? Math.max(0, Number(revenueRow.totalCve) - Number(revenueRow.attributedCve))
-        / monthsSpanInclusive(revenueRow.firstMonth, revenueRow.lastMonth)
-      : 0;
+    // Waterfall de receita por cliente (claims diretos > zona > pool) — fonte
+    // única para linhas e global-share, sem dupla contagem.
+    const revenueAttr = loadRevenueAttribution(opexCtx);
+
+    // Clientes associados por investimento (junção + legado), com nomes para a UI.
+    const junctionNames = getSqliteDatabase().prepare(`
+      SELECT ic.investment_id AS investmentId, c.id, c.full_name AS name
+      FROM investment_clients ic JOIN clients c ON c.id = ic.client_id
+      ORDER BY c.full_name
+    `).all() as Array<{ investmentId: number; id: number; name: string }>;
+    const clientsByInvestment = new Map<number, Array<{ id: number; name: string }>>();
+    for (const r of junctionNames) {
+      const list = clientsByInvestment.get(r.investmentId) ?? [];
+      list.push({ id: r.id, name: r.name });
+      clientsByInvestment.set(r.investmentId, list);
+    }
 
     const rowsWithItems = rows.map((row) => ({
       ...row,
-      ...profitability(row, opexCtx, unattributedMonthlyRevenueCve),
+      ...profitability(row, opexCtx, revenueAttr),
+      clients: clientsByInvestment.get(row.id) ?? [],
       items: items.all(row.id)
     }));
 
@@ -575,26 +577,35 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       }
     }
 
-    // Revenue by month — paid payments tied to clientId or zone; sem ligação,
-    // quota mensal do pool NÃO-atribuído (a mesma atribuição da lista — antes
-    // um investimento sem ligação mostrava "nunca recupera" no gráfico
-    // enquanto a lista lhe atribuía global-share).
+    // Revenue by month — o mesmo waterfall da lista: clientes reclamados
+    // (client_id ∪ investment_clients, com divisão por sharers) > zona (sem os
+    // clientes já reclamados por outros investimentos) > quota do pool.
+    const claimedClients = opexCtx.claimsByInvestment[id] ?? [];
     const revenueByMonth = new Map<string, number>();
-    if (inv.clientId != null) {
+    if (claimedClients.length > 0) {
+      const placeholders = claimedClients.map(() => '?').join(',');
       const rows = db.prepare(`
-        SELECT reference_month AS m, COALESCE(SUM(amount_cve), 0) AS cve
-        FROM payments WHERE client_id = ? AND status = 'paid'
-        GROUP BY reference_month
-      `).all(inv.clientId) as Array<{ m: string; cve: number }>;
-      for (const r of rows) revenueByMonth.set(r.m, Number(r.cve) || 0);
+        SELECT client_id AS clientId, reference_month AS m, COALESCE(SUM(amount_cve), 0) AS cve
+        FROM payments WHERE status = 'paid' AND client_id IN (${placeholders})
+        GROUP BY client_id, reference_month
+      `).all(...claimedClients) as Array<{ clientId: number; m: string; cve: number }>;
+      for (const r of rows) {
+        const share = 1 / Math.max(1, opexCtx.sharersByClient[r.clientId] || 1);
+        revenueByMonth.set(r.m, (revenueByMonth.get(r.m) ?? 0) + (Number(r.cve) || 0) * share);
+      }
     } else if (inv.zone) {
       const rows = db.prepare(`
         SELECT py.reference_month AS m, COALESCE(SUM(py.amount_cve), 0) AS cve
         FROM payments py JOIN clients c ON c.id = py.client_id
         WHERE c.zone = ? AND py.status = 'paid'
+          AND py.client_id NOT IN (
+            SELECT client_id FROM investment_clients
+            UNION SELECT client_id FROM investments WHERE client_id IS NOT NULL
+          )
         GROUP BY py.reference_month
       `).all(inv.zone) as Array<{ m: string; cve: number }>;
-      for (const r of rows) revenueByMonth.set(r.m, Number(r.cve) || 0);
+      const zoneSharers = Math.max(1, opexCtx.sharersByZone[inv.zone] || 1);
+      for (const r of rows) revenueByMonth.set(r.m, (Number(r.cve) || 0) / zoneSharers);
     } else if (opexCtx.totalInstalledUnlinkedActive > 0 && installed > 0) {
       const share = installed / opexCtx.totalInstalledUnlinkedActive;
       const rows = db.prepare(`
@@ -603,6 +614,7 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
         WHERE status = 'paid' AND client_id NOT IN (
           SELECT id FROM clients
           WHERE id IN (SELECT client_id FROM investments WHERE client_id IS NOT NULL)
+             OR id IN (SELECT client_id FROM investment_clients)
              OR zone IN (SELECT zone FROM investments WHERE zone IS NOT NULL)
         )
         GROUP BY reference_month
@@ -611,7 +623,7 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     }
 
     // Direct OPEX by month: pinado ao investimento a 100% + fração das
-    // despesas pinadas ao cliente/zona (divididas pelos sharers, como na lista).
+    // despesas pinadas aos clientes reclamados/zona (divididas pelos sharers).
     const directOpexByMonth = new Map<string, number>();
     const addDirect = (rows: Array<{ m: string; cve: number }>, divisor: number) => {
       for (const r of rows) {
@@ -622,11 +634,11 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       SELECT reference_month AS m, COALESCE(SUM(amount_cve), 0) AS cve
       FROM expenses WHERE investment_id = ? GROUP BY reference_month
     `).all(id) as Array<{ m: string; cve: number }>, 1);
-    if (inv.clientId != null) {
+    for (const clientId of claimedClients) {
       addDirect(db.prepare(`
         SELECT reference_month AS m, COALESCE(SUM(amount_cve), 0) AS cve
         FROM expenses WHERE client_id = ? AND investment_id IS NULL GROUP BY reference_month
-      `).all(inv.clientId) as Array<{ m: string; cve: number }>, Math.max(1, opexCtx.sharersByClient[inv.clientId] || 1));
+      `).all(clientId) as Array<{ m: string; cve: number }>, Math.max(1, opexCtx.sharersByClient[clientId] || 1));
     }
     if (inv.zone) {
       addDirect(db.prepare(`
@@ -719,10 +731,20 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       for (const item of items) {
         insertItem.run(id, item.itemType, item.itemName, item.quantity, item.quantityUsed, item.unitCostCve, item.totalCostCve);
       }
+      const insertClient = db.prepare(`INSERT OR IGNORE INTO investment_clients (investment_id, client_id) VALUES (?, ?)`);
+      for (const clientId of parsed.data.clientIds) insertClient.run(id, clientId);
       return id;
     });
 
-    const id = create();
+    let id: number;
+    try {
+      id = create();
+    } catch (err) {
+      if (err instanceof Error && /FOREIGN KEY/i.test(err.message)) {
+        return reply.status(400).send({ error: 'Cliente associado invalido' });
+      }
+      throw err;
+    }
     recordAudit(request, {
       action: 'create',
       entityType: 'investment',
@@ -799,10 +821,22 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       for (const item of items) {
         insertItem.run(id, item.itemType, item.itemName, item.quantity, item.quantityUsed, item.unitCostCve, item.totalCostCve);
       }
+      db.prepare('DELETE FROM investment_clients WHERE investment_id = ?').run(id);
+      const insertClient = db.prepare(`INSERT OR IGNORE INTO investment_clients (investment_id, client_id) VALUES (?, ?)`);
+      for (const clientId of parsed.data.clientIds) insertClient.run(id, clientId);
       return true;
     });
 
-    if (!update()) {
+    let updated: boolean;
+    try {
+      updated = update();
+    } catch (err) {
+      if (err instanceof Error && /FOREIGN KEY/i.test(err.message)) {
+        return reply.status(400).send({ error: 'Cliente associado invalido' });
+      }
+      throw err;
+    }
+    if (!updated) {
       return reply.status(404).send({ error: 'Investimento nao encontrado' });
     }
 

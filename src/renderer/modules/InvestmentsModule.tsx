@@ -1,4 +1,4 @@
-import { Pencil, Plus, Trash2, Wallet } from 'lucide-react';
+import { Pencil, Plus, Trash2, Wallet, X } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Card, Combobox, DataList, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, MetricGrid, Select, SkeletonList, Textarea, useConfirm, useToast } from '../components';
@@ -57,6 +57,7 @@ type FormState = {
   name: string;
   type: InvestmentType;
   clientId: string;
+  clientIds: number[];
   zone: string;
   description: string;
   supplier: string;
@@ -90,6 +91,7 @@ function emptyForm(): FormState {
     name: '',
     type: 'cliente',
     clientId: '',
+    clientIds: [],
     zone: '',
     description: '',
     supplier: '',
@@ -111,7 +113,12 @@ function fromInvestment(investment: Investment): FormState {
   return {
     name: investment.name,
     type: investment.type,
-    clientId: investment.clientId ? String(investment.clientId) : '',
+    clientId: '',
+    // Chips = junção ∪ client_id legado; ao guardar migra tudo para a junção.
+    clientIds: [...new Set([
+      ...(investment.clients ?? []).map((c) => c.id),
+      ...(investment.clientId ? [investment.clientId] : [])
+    ])],
     zone: investment.zone || '',
     description: investment.description || '',
     supplier: investment.supplier || '',
@@ -307,7 +314,8 @@ export function InvestmentsModule() {
         body: JSON.stringify({
           name: form.name.trim(),
           type: form.type,
-          clientId: form.clientId ? Number(form.clientId) : null,
+          clientId: null,
+          clientIds: form.clientIds,
           zone: form.zone.trim() || null,
           description: form.description.trim() || null,
           supplier: form.supplier.trim() || null,
@@ -444,7 +452,9 @@ export function InvestmentsModule() {
                   <small>
                     {formatPtDate(investment.investmentDate)}
                     {investment.zone ? ` - ${investment.zone}` : ''}
-                    {investment.clientName ? ` - ${investment.clientName}` : ''}
+                    {investment.clients.length > 0
+                      ? ` - ${investment.clients[0].name}${investment.clients.length > 1 ? ` +${investment.clients.length - 1}` : ''}`
+                      : investment.clientName ? ` - ${investment.clientName}` : ''}
                   </small>
                 </span>
               )
@@ -662,15 +672,20 @@ export function InvestmentsModule() {
             <div className="investment-form-section">
               <h3>Associacao</h3>
               <label className="col-4">
-                <span className="field-label">Cliente</span>
+                <span className="field-label">Clientes associados</span>
                 <Combobox
-                  options={clients}
-                  value={form.clientId ? Number(form.clientId) : null}
-                  onChange={(next) => setForm((f) => ({ ...f, clientId: next == null ? '' : String(next) }))}
+                  options={clients.filter((client) => !form.clientIds.includes(client.id))}
+                  value={null}
+                  onChange={(next) => {
+                    if (next == null) return;
+                    const id = Number(next);
+                    setForm((f) => (f.clientIds.includes(id) ? f : { ...f, clientIds: [...f.clientIds, id] }));
+                  }}
                   rowKey={(client) => client.id}
                   rowCode={(client) => client.clientCode}
                   rowLabel={(client) => client.fullName}
-                  placeholder="Sem cliente"
+                  placeholder="Adicionar cliente…"
+                  allowClear={false}
                 />
               </label>
               <Field className="col-3" label="Zona / bairro" list="investment-zones" value={form.zone} onChange={(e) => setForm((f) => ({ ...f, zone: e.target.value }))} maxLength={120} />
@@ -679,7 +694,49 @@ export function InvestmentsModule() {
               </datalist>
               <Field className="col-2" label="Data" type="date" value={form.investmentDate} onChange={(e) => setForm((f) => ({ ...f, investmentDate: e.target.value }))} required />
               <Field className="col-3" label="Receita esperada/mês" type="number" min={0} step={0.01} value={form.expectedMonthlyRevenueCve} onChange={(e) => setForm((f) => ({ ...f, expectedMonthlyRevenueCve: e.target.value }))} />
-              <p className="investment-form-caption">Zona: grafias diferentes contam como zonas diferentes — escolhe uma existente da lista.</p>
+              <div className="investment-client-chips">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  title="Associar todos os clientes ativos (ex.: antena que serve toda a rede)"
+                  onClick={() => {
+                    const activeIds = clients.filter((c) => c.status === 'active').map((c) => c.id);
+                    setForm((f) => ({ ...f, clientIds: [...new Set([...f.clientIds, ...activeIds])] }));
+                  }}
+                >
+                  <Plus size={12} aria-hidden /> Todos os ativos
+                </Button>
+                {form.clientIds.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    title="Remover todos os clientes associados"
+                    onClick={() => setForm((f) => ({ ...f, clientIds: [] }))}
+                  >
+                    Limpar ({form.clientIds.length})
+                  </Button>
+                )}
+                {form.clientIds.map((id) => {
+                  const client = clients.find((c) => c.id === id);
+                  return (
+                    <span className="investment-client-chip" key={id}>
+                      {client ? client.fullName : `Cliente #${id}`}
+                      <Button
+                        variant="icon"
+                        size="sm"
+                        title={`Remover ${client?.fullName ?? `cliente #${id}`}`}
+                        onClick={() => setForm((f) => ({ ...f, clientIds: f.clientIds.filter((x) => x !== id) }))}
+                      >
+                        <X size={11} aria-hidden />
+                      </Button>
+                    </span>
+                  );
+                })}
+              </div>
+              <p className="investment-form-caption">
+                Vários clientes = a receita deles é atribuída a este investimento (ex.: antena que serve um conjunto).
+                Zona = todos os clientes da zona; grafias diferentes contam como zonas diferentes.
+              </p>
             </div>
 
             <div className="investment-form-section">

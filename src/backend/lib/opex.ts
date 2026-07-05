@@ -46,6 +46,8 @@ export type CompanyOpexContext = {
   rateioDenominator: number;
   /** Despesas não-alocadas por mês (AAAA-MM) — para OPEX imputado exato na recuperação/timeline. */
   unallocatedByMonth: Record<string, number>;
+  /** Clientes reclamados por cada investimento (client_id legado ∪ investment_clients). */
+  claimsByInvestment: Record<number, number[]>;
 };
 
 export const ACTIVE_INVESTMENT_STATUSES = new Set(['ativo', 'em_execucao', 'recuperado']);
@@ -111,8 +113,20 @@ export function loadCompanyOpexContext(): CompanyOpexContext {
   `).all() as DirectRow[];
 
   const investmentRows = db.prepare(`
-    SELECT installed_clients AS installedClients, status, client_id AS clientId, zone FROM investments
-  `).all() as Array<{ installedClients: number; status: string; clientId: number | null; zone: string | null }>;
+    SELECT id, installed_clients AS installedClients, status, client_id AS clientId, zone FROM investments
+  `).all() as Array<{ id: number; installedClients: number; status: string; clientId: number | null; zone: string | null }>;
+
+  // client_id legado ∪ tabela de junção — o conjunto de clientes de cada investimento.
+  const junctionRows = db.prepare(`
+    SELECT investment_id AS investmentId, client_id AS clientId FROM investment_clients
+  `).all() as Array<{ investmentId: number; clientId: number }>;
+  const claimsByInvestment: Record<number, number[]> = {};
+  const addClaim = (invId: number, clientId: number) => {
+    const list = claimsByInvestment[invId] ?? (claimsByInvestment[invId] = []);
+    if (!list.includes(clientId)) list.push(clientId);
+  };
+  for (const r of junctionRows) addClaim(r.investmentId, r.clientId);
+  for (const r of investmentRows) if (r.clientId != null) addClaim(r.id, r.clientId);
 
   const totalExpensesCve = Number(totals.totalExpensesCve) || 0;
   const monthsWithExpenses = monthsSpanInclusive(totals.firstMonth, totals.lastMonth);
@@ -125,7 +139,7 @@ export function loadCompanyOpexContext(): CompanyOpexContext {
   const activeRows = investmentRows.filter((r) => ACTIVE_INVESTMENT_STATUSES.has(r.status));
   const totalInstalledActive = activeRows.reduce((sum, r) => sum + (Number(r.installedClients) || 0), 0);
   const totalInstalledUnlinkedActive = activeRows
-    .filter((r) => r.clientId == null && !r.zone)
+    .filter((r) => !(claimsByInvestment[r.id]?.length) && !r.zone)
     .reduce((sum, r) => sum + (Number(r.installedClients) || 0), 0);
   // Denominador REAL: serviços ativos (26 clientes reais valem mais do que o
   // installed_clients manual dos investimentos, que deriva). Fallback para a
@@ -142,7 +156,11 @@ export function loadCompanyOpexContext(): CompanyOpexContext {
   const sharersByClient: Record<number, number> = {};
   for (const r of investmentRows) {
     if (r.zone) sharersByZone[r.zone] = (sharersByZone[r.zone] || 0) + 1;
-    if (r.clientId != null) sharersByClient[r.clientId] = (sharersByClient[r.clientId] || 0) + 1;
+  }
+  for (const [, clientIds] of Object.entries(claimsByInvestment)) {
+    for (const clientId of clientIds) {
+      sharersByClient[clientId] = (sharersByClient[clientId] || 0) + 1;
+    }
   }
 
   const directByInvestment: Record<number, number> = {};
@@ -188,49 +206,103 @@ export function loadCompanyOpexContext(): CompanyOpexContext {
     sharersByZone,
     sharersByClient,
     rateioDenominator,
-    unallocatedByMonth
+    unallocatedByMonth,
+    claimsByInvestment
   };
 }
 
 /**
- * Average actual monthly revenue derived from paid payments of the clients
- * tied to an investment. Targets are resolved in this order:
+ * Atribuição de receita paga por investimento — waterfall por cliente:
  *
- *   1. explicit `client_id` on the investment
- *   2. explicit `zone` on the investment (sums all clients in that zone)
- *   3. neither → returns null so the caller can fall back to the manual
- *      `expected_monthly_revenue_cve`
+ *   1. cliente reclamado diretamente (client_id ∪ investment_clients) →
+ *      a receita dele divide-se pelos investimentos que o reclamam;
+ *   2. senão, cliente numa zona com investimentos → divide-se pelos
+ *      investimentos dessa zona;
+ *   3. senão → pool não-atribuído (global-share por installed_clients).
+ *
+ * Cada escudo pago entra exatamente uma vez — a soma da receita atribuída
+ * nunca excede a receita real da empresa.
  */
-export function loadActualMonthlyRevenue(target: { clientId: number | null; zone: string | null }): {
-  cve: number;
-  source: 'client' | 'zone';
-  months: number;
-} | null {
+export type RevenueAttribution = {
+  byInvestment: Record<number, { monthlyCve: number; totalCve: number; months: number; source: 'client' | 'zone' }>;
+  unattributedMonthlyCve: number;
+};
+
+export function loadRevenueAttribution(opexCtx: CompanyOpexContext): RevenueAttribution {
   const db = getSqliteDatabase();
-  if (target.clientId != null) {
-    const row = db.prepare(`
-      SELECT COALESCE(SUM(amount_cve), 0) AS totalCve,
-             MIN(reference_month) AS firstMonth,
-             MAX(reference_month) AS lastMonth
-      FROM payments
-      WHERE client_id = ? AND status = 'paid'
-    `).get(target.clientId) as { totalCve: number; firstMonth: string | null; lastMonth: string | null };
-    if (!row.firstMonth) return null;
-    const months = monthsSpanInclusive(row.firstMonth, row.lastMonth);
-    return { cve: Number(row.totalCve) / months, source: 'client', months };
+
+  const investmentRows = db.prepare(`SELECT id, zone FROM investments`).all() as Array<{ id: number; zone: string | null }>;
+  const invsByZone: Record<string, number[]> = {};
+  for (const r of investmentRows) {
+    if (r.zone) (invsByZone[r.zone] ?? (invsByZone[r.zone] = [])).push(r.id);
   }
-  if (target.zone) {
-    const row = db.prepare(`
-      SELECT COALESCE(SUM(py.amount_cve), 0) AS totalCve,
-             MIN(py.reference_month) AS firstMonth,
-             MAX(py.reference_month) AS lastMonth
-      FROM payments py
-      JOIN clients c ON c.id = py.client_id
-      WHERE c.zone = ? AND py.status = 'paid'
-    `).get(target.zone) as { totalCve: number; firstMonth: string | null; lastMonth: string | null };
-    if (!row.firstMonth) return null;
-    const months = monthsSpanInclusive(row.firstMonth, row.lastMonth);
-    return { cve: Number(row.totalCve) / months, source: 'zone', months };
+  const invsByClient: Record<number, number[]> = {};
+  for (const [invId, clientIds] of Object.entries(opexCtx.claimsByInvestment)) {
+    for (const clientId of clientIds) {
+      (invsByClient[clientId] ?? (invsByClient[clientId] = [])).push(Number(invId));
+    }
   }
-  return null;
+
+  const clientRows = db.prepare(`
+    SELECT py.client_id AS clientId, c.zone,
+           COALESCE(SUM(py.amount_cve), 0) AS totalCve,
+           MIN(py.reference_month) AS firstMonth,
+           MAX(py.reference_month) AS lastMonth
+    FROM payments py
+    JOIN clients c ON c.id = py.client_id
+    WHERE py.status = 'paid'
+    GROUP BY py.client_id
+  `).all() as Array<{ clientId: number; zone: string | null; totalCve: number; firstMonth: string; lastMonth: string }>;
+
+  const acc: Record<number, { totalCve: number; firstMonth: string; lastMonth: string; source: 'client' | 'zone' }> = {};
+  const credit = (invId: number, share: number, row: { firstMonth: string; lastMonth: string }, source: 'client' | 'zone') => {
+    const cur = acc[invId];
+    if (!cur) {
+      acc[invId] = { totalCve: share, firstMonth: row.firstMonth, lastMonth: row.lastMonth, source };
+      return;
+    }
+    cur.totalCve += share;
+    if (row.firstMonth < cur.firstMonth) cur.firstMonth = row.firstMonth;
+    if (row.lastMonth > cur.lastMonth) cur.lastMonth = row.lastMonth;
+    // Claims diretos dominam a proveniência quando há mistura zona+clientes.
+    if (source === 'client') cur.source = 'client';
+  };
+
+  let poolCve = 0;
+  let poolFirst: string | null = null;
+  let poolLast: string | null = null;
+  for (const row of clientRows) {
+    const total = Number(row.totalCve) || 0;
+    const direct = invsByClient[row.clientId];
+    if (direct?.length) {
+      for (const invId of direct) credit(invId, total / direct.length, row, 'client');
+      continue;
+    }
+    const zoned = row.zone ? invsByZone[row.zone] : undefined;
+    if (zoned?.length) {
+      for (const invId of zoned) credit(invId, total / zoned.length, row, 'zone');
+      continue;
+    }
+    poolCve += total;
+    if (!poolFirst || row.firstMonth < poolFirst) poolFirst = row.firstMonth;
+    if (!poolLast || row.lastMonth > poolLast) poolLast = row.lastMonth;
+  }
+
+  const byInvestment: RevenueAttribution['byInvestment'] = {};
+  for (const [invId, entry] of Object.entries(acc)) {
+    if (entry.totalCve <= 0) continue;
+    const months = monthsSpanInclusive(entry.firstMonth, entry.lastMonth);
+    byInvestment[Number(invId)] = {
+      monthlyCve: entry.totalCve / months,
+      totalCve: entry.totalCve,
+      months,
+      source: entry.source
+    };
+  }
+
+  return {
+    byInvestment,
+    unattributedMonthlyCve: poolCve > 0 ? poolCve / monthsSpanInclusive(poolFirst, poolLast) : 0
+  };
 }
+

@@ -27,6 +27,7 @@ beforeAll(async () => {
 beforeEach(() => {
   db.prepare('DELETE FROM stock_movements').run();
   db.prepare('DELETE FROM expenses').run();
+  db.prepare('DELETE FROM investment_clients').run();
   db.prepare('DELETE FROM investment_items').run();
   db.prepare('DELETE FROM investments').run();
   db.prepare('DELETE FROM payments').run();
@@ -581,6 +582,84 @@ describe('investments CRUD', () => {
     expect(danger).toBeDefined();
     expect(danger!.target!.name).toBe('Cliente caro');
     expect(danger!.message.toLowerCase()).toContain('lucro');
+  });
+
+  test('associação exata a vários clientes: receita do conjunto, com divisão por sharers', async () => {
+    // Antena de transmissão que serve os clientes A e B; C fica de fora.
+    const ids: number[] = [];
+    for (const code of ['CLT-MA', 'CLT-MB', 'CLT-MC']) {
+      const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES (?, ?, 'active')`)
+        .run(code, `Cliente ${code}`).lastInsertRowid as number;
+      const svcId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, status) VALUES (?, 4000, 'active')`)
+        .run(clientId).lastInsertRowid as number;
+      db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+                  VALUES (?, ?, '2026-03', 4000, '2026-03-10', 'paid')`).run(clientId, svcId);
+      ids.push(clientId);
+    }
+    const [a, b, c] = ids;
+
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/investments',
+      payload: {
+        name: 'Antena Norte',
+        type: 'infraestrutura',
+        clientIds: [a, b],
+        investmentDate: '2026-03-01',
+        targetClients: 2,
+        installedClients: 2,
+        expectedMonthlyRevenueCve: 0,
+        items: [{ itemType: 'antena', itemName: 'Setorial 5GHz', quantity: 1, unitCostCve: 6000 }]
+      }
+    });
+    expect(create.statusCode).toBe(201);
+    const antennaId = create.json().id as number;
+
+    const list = await app.inject({ method: 'GET', url: '/api/investments' });
+    const row = (list.json() as { rows: Array<{ id: number; actualMonthlyRevenueCve: number; revenueSource: string; accumulatedProfitCve: number; isRecovered: boolean; clients: Array<{ id: number }> }> })
+      .rows.find((r) => r.id === antennaId)!;
+
+    // Receita = A + B (8000), C não conta; recuperação: 8000 − 6000 = 2000.
+    expect(row.clients.map((cl) => cl.id).sort()).toEqual([a, b].sort());
+    expect(row.revenueSource).toBe('client');
+    expect(row.actualMonthlyRevenueCve).toBe(8000);
+    expect(row.accumulatedProfitCve).toBe(2000);
+    expect(row.isRecovered).toBe(true);
+
+    // Segundo investimento a reclamar o cliente A: a receita de A divide-se.
+    db.prepare(`INSERT INTO investments (name, type, client_id, investment_date, reference_month, total_cost_cve,
+                target_clients, installed_clients, status, expected_monthly_revenue_cve)
+                VALUES ('Instalacao A', 'cliente', ?, '2026-03-01', '2026-03', 1000, 1, 1, 'ativo', 0)`).run(a);
+    const after = await app.inject({ method: 'GET', url: '/api/investments' });
+    const antenna = (after.json() as { rows: Array<{ id: number; actualMonthlyRevenueCve: number }> })
+      .rows.find((r) => r.id === antennaId)!;
+    // A: 4000/2 = 2000 + B: 4000 = 6000 — sem dupla contagem entre investimentos.
+    expect(antenna.actualMonthlyRevenueCve).toBe(6000);
+
+    // Timeline usa a mesma atribuição.
+    const timeline = await app.inject({ method: 'GET', url: `/api/investments/${antennaId}/timeline` });
+    const march = (timeline.json() as { points: Array<{ month: string; paidRevenueCve: number }> })
+      .points.find((p) => p.month === '2026-03')!;
+    expect(march.paidRevenueCve).toBe(6000);
+
+    // PUT substitui o conjunto.
+    const update = await app.inject({
+      method: 'PUT',
+      url: `/api/investments/${antennaId}`,
+      payload: {
+        name: 'Antena Norte',
+        type: 'infraestrutura',
+        clientIds: [c],
+        investmentDate: '2026-03-01',
+        targetClients: 2,
+        installedClients: 2,
+        expectedMonthlyRevenueCve: 0,
+        items: [{ itemType: 'antena', itemName: 'Setorial 5GHz', quantity: 1, unitCostCve: 6000 }]
+      }
+    });
+    expect(update.statusCode).toBe(200);
+    const junction = db.prepare('SELECT client_id AS clientId FROM investment_clients WHERE investment_id = ?').all(antennaId) as Array<{ clientId: number }>;
+    expect(junction.map((j) => j.clientId)).toEqual([c]);
   });
 
   test('alerta quando o estado manual contradiz a recuperação calculada', async () => {
