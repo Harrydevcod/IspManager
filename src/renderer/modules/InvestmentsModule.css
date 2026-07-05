@@ -8,37 +8,15 @@
    own `.expenses-metrics` tiles independently.
    ========================================================================= */
 
+/* Chrome standard do Dialog — só a largura é especial (tabela de custos).
+   O padding do body volta aqui porque o global `.dialog-lg .dialog-body`
+   é 0 (full-bleed do preview de PDF, regra demasiado larga). */
 .dialog:has(.investment-form) {
   max-width: min(1040px, calc(100vw - var(--space-8)));
-  background:
-    linear-gradient(180deg, color-mix(in oklch, var(--surface-1) 94%, var(--accent) 6%), var(--surface));
-  border-color: color-mix(in oklch, var(--border) 72%, var(--accent));
-  box-shadow: 0 28px 90px -44px rgba(0, 0, 0, 0.75), 0 0 0 1px color-mix(in oklch, var(--accent) 10%, transparent);
-}
-
-.dialog:has(.investment-form) .dialog-header {
-  padding: var(--space-6) var(--space-8);
-  background:
-    linear-gradient(135deg, color-mix(in oklch, var(--surface-2) 92%, var(--accent) 8%), transparent 68%),
-    linear-gradient(180deg, color-mix(in oklch, var(--surface-1) 96%, transparent), transparent);
-}
-
-.dialog:has(.investment-form) .dialog-header .eyebrow {
-  color: var(--accent);
-  font-weight: 750;
-}
-
-.dialog:has(.investment-form) .dialog-header h2 {
-  font-size: clamp(1.35rem, 2vw, 1.9rem);
 }
 
 .dialog:has(.investment-form) .dialog-body {
-  padding: var(--space-6) var(--space-8);
-}
-
-.dialog:has(.investment-form) .dialog-actions {
-  padding: var(--space-4) var(--space-8) var(--space-6);
-  background: color-mix(in oklch, var(--surface-1) 88%, transparent);
+  padding: var(--space-6);
 }
 
 .investment-alerts {
@@ -258,97 +236,102 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Formulário no padrão canónico da app (o mesmo das Despesas): labels e
+   inputs standard, secções sem caixa com título sublinhado, grelha de 12
+   colunas com larguras por tipo de campo — numéricos curtos, texto largo. */
 .investment-form {
   display: grid;
-  gap: var(--space-6);
+  gap: var(--space-5);
 }
 
 .investment-form-grid {
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: var(--space-4);
+  gap: var(--space-5);
 }
 
-.investment-form label,
-.investment-notes {
+.investment-form label {
   display: grid;
-  align-content: start;
-  color: var(--text-2);
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  gap: var(--space-1-5);
+  /* Labels de larguras diferentes quebram linha; ancorar o conteúdo em baixo
+     mantém todos os inputs da mesma linha alinhados entre si. */
+  align-content: end;
 }
 
+/* Recipe canónico de inputs da app (o mesmo de .client-form/.filter-bar). */
 .investment-form input,
 .investment-form select,
 .investment-form textarea {
-  margin-top: var(--space-2);
   width: 100%;
-  min-height: 42px;
-  background: color-mix(in oklch, var(--surface-2) 86%, transparent);
-  border-color: color-mix(in oklch, var(--border) 82%, var(--text-3));
-  font-size: var(--fs-sm);
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: none;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 0 var(--space-3);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .investment-form textarea {
-  resize: vertical;
-  min-height: 86px;
+  min-height: 84px;
+  padding: var(--space-2) var(--space-3);
 }
 
 .investment-form input:focus-visible,
 .investment-form select:focus-visible,
 .investment-form textarea:focus-visible {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 18%, transparent);
   outline: none;
-}
-
-.investment-form-span {
-  grid-column: 1 / -1;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
 }
 
 .investment-form-section {
-  grid-column: span 6;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
   align-items: start;
-  padding: var(--space-4);
-  border: 1px solid color-mix(in oklch, var(--border) 86%, transparent);
-  border-radius: 8px;
-  background: color-mix(in oklch, var(--surface-1) 82%, transparent);
-}
-
-.investment-form-section-main,
-.investment-form-section-notes {
-  grid-column: 1 / -1;
 }
 
 .investment-form-section h3 {
   grid-column: 1 / -1;
-  margin: 0 0 var(--space-1);
-  color: var(--text-1);
-  font-size: var(--fs-sm);
-  letter-spacing: 0.02em;
+  margin: 0;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
-.investment-form-section .field-wide,
-.investment-form-section-notes label {
+.investment-form-section .col-2 { grid-column: span 2; }
+.investment-form-section .col-3 { grid-column: span 3; }
+.investment-form-section .col-4 { grid-column: span 4; }
+.investment-form-section .col-6 { grid-column: span 6; }
+.investment-form-section .col-8 { grid-column: span 8; }
+
+.investment-form-caption {
   grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+@media (max-width: 860px) {
+  .investment-form-section .col-2,
+  .investment-form-section .col-3 { grid-column: span 6; }
+  .investment-form-section .col-4,
+  .investment-form-section .col-6,
+  .investment-form-section .col-8 { grid-column: 1 / -1; }
 }
 
 .investment-items-editor {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4);
-  border: 1px solid color-mix(in oklch, var(--border) 78%, var(--accent));
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background:
-    linear-gradient(180deg, color-mix(in oklch, var(--surface-2) 82%, transparent), color-mix(in oklch, var(--surface-1) 96%, transparent));
+  background: color-mix(in oklch, var(--surface-2) 55%, transparent);
 }
 
 .investment-items-editor-head {
@@ -413,6 +396,17 @@
   min-height: 38px;
 }
 
+/* O cabeçalho da tabela já nomeia as colunas — os labels por célula ficam
+   só para leitores de ecrã (visualmente duplicavam e desalinhavam a linha). */
+.investment-item-row .field-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .investment-item-row input[type="number"] {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -428,18 +422,24 @@
 .investment-form-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-4);
+  gap: var(--space-2) var(--space-4);
   justify-content: space-between;
-  padding: var(--space-4);
-  border: 1px solid color-mix(in oklch, var(--accent) 42%, var(--border));
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in oklch, var(--accent) 28%, var(--border));
   border-radius: 8px;
-  background:
-    linear-gradient(135deg, color-mix(in oklch, var(--accent) 14%, var(--surface-2)), var(--surface-2));
+  background: color-mix(in oklch, var(--accent) 6%, var(--surface-2));
 }
 
 .investment-form-summary span {
-  color: var(--text-2);
-  min-width: 170px;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  min-width: 150px;
+}
+
+.investment-form-summary strong {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 .investment-form-summary strong {
@@ -592,12 +592,23 @@
     grid-column: 2;
     justify-self: start;
   }
-  .investment-form-grid { grid-template-columns: 1fr; }
-  .investment-form-section {
-    grid-template-columns: 1fr;
-    grid-column: 1;
+  .investment-form-section .col-2,
+  .investment-form-section .col-3,
+  .investment-form-section .col-4,
+  .investment-form-section .col-6,
+  .investment-form-section .col-8 {
+    grid-column: 1 / -1;
   }
   .investment-item-header { display: none; }
+  /* Sem cabeçalho, os labels por célula voltam a ser visíveis. */
+  .investment-item-row .field-label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+  }
   .investment-item-row {
     grid-template-columns: 1fr;
     padding: var(--space-3);

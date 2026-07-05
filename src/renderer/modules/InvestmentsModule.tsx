@@ -648,21 +648,21 @@ export function InvestmentsModule() {
         <form id="investment-form" className="investment-form" onSubmit={submit}>
           {error && <Message tone="error">{error}</Message>}
           <div className="investment-form-grid">
-            <div className="investment-form-section investment-form-section-main">
+            <div className="investment-form-section">
               <h3>Dados</h3>
-              <Field wide label="Nome do investimento" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required maxLength={180} />
-              <Select label="Tipo" value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as InvestmentType }))}>
+              <Field className="col-6" label="Nome do investimento" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required maxLength={180} />
+              <Select className="col-3" label="Tipo" value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as InvestmentType }))}>
                 {TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </Select>
-              <Select label="Estado" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as InvestmentStatus }))}>
+              <Select className="col-3" label="Estado" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as InvestmentStatus }))}>
                 {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </Select>
             </div>
 
             <div className="investment-form-section">
               <h3>Associacao</h3>
-              <label>
-                Cliente
+              <label className="col-4">
+                <span className="field-label">Cliente</span>
                 <Combobox
                   options={clients}
                   value={form.clientId ? Number(form.clientId) : null}
@@ -673,28 +673,30 @@ export function InvestmentsModule() {
                   placeholder="Sem cliente"
                 />
               </label>
-              <Field label="Zona / bairro" list="investment-zones" value={form.zone} onChange={(e) => setForm((f) => ({ ...f, zone: e.target.value }))} maxLength={120} hint="Escolhe uma zona existente — grafias diferentes partem a atribuição de receita/OPEX" />
+              <Field className="col-3" label="Zona / bairro" list="investment-zones" value={form.zone} onChange={(e) => setForm((f) => ({ ...f, zone: e.target.value }))} maxLength={120} />
               <datalist id="investment-zones">
                 {zoneOptions.map((z) => <option key={z} value={z} />)}
               </datalist>
-              <Field label="Data" type="date" value={form.investmentDate} onChange={(e) => setForm((f) => ({ ...f, investmentDate: e.target.value }))} required />
-              <Field label="Retorno mensal esperado" type="number" min={0} step={0.01} value={form.expectedMonthlyRevenueCve} onChange={(e) => setForm((f) => ({ ...f, expectedMonthlyRevenueCve: e.target.value }))} />
+              <Field className="col-2" label="Data" type="date" value={form.investmentDate} onChange={(e) => setForm((f) => ({ ...f, investmentDate: e.target.value }))} required />
+              <Field className="col-3" label="Receita esperada/mês" type="number" min={0} step={0.01} value={form.expectedMonthlyRevenueCve} onChange={(e) => setForm((f) => ({ ...f, expectedMonthlyRevenueCve: e.target.value }))} />
+              <p className="investment-form-caption">Zona: grafias diferentes contam como zonas diferentes — escolhe uma existente da lista.</p>
             </div>
 
             <div className="investment-form-section">
               <h3>Rentabilidade</h3>
-              <Field label="Clientes previstos" type="number" min={1} step={1} value={form.targetClients} onChange={(e) => setForm((f) => ({ ...f, targetClients: e.target.value }))} />
-              <Field label="Clientes instalados" type="number" min={0} step={1} value={form.installedClients} onChange={(e) => setForm((f) => ({ ...f, installedClients: e.target.value }))} />
-              <Field label="Retorno desejado (meses)" type="number" min={1} step={1} value={form.desiredPaybackMonths} onChange={(e) => setForm((f) => ({ ...f, desiredPaybackMonths: e.target.value }))} />
-              <Field label="Margem desejada (%)" type="number" min={0} step={0.01} value={form.desiredMarginPct} onChange={(e) => setForm((f) => ({ ...f, desiredMarginPct: e.target.value }))} />
-              <Field label="Custo operacional mensal" type="number" min={0} step={0.01} value={form.monthlyOperationalCostCve} onChange={(e) => setForm((f) => ({ ...f, monthlyOperationalCostCve: e.target.value }))} />
-              <Field label="Receita acumulada" type="number" min={0} step={0.01} value={form.accumulatedRevenueCve} onChange={(e) => setForm((f) => ({ ...f, accumulatedRevenueCve: e.target.value }))} hint="Só usada sem cliente/zona ligados — com pagamentos reais o cálculo é automático" />
+              <Field className="col-2" label="Clientes previstos" type="number" min={1} step={1} value={form.targetClients} onChange={(e) => setForm((f) => ({ ...f, targetClients: e.target.value }))} />
+              <Field className="col-2" label="Clientes instalados" type="number" min={0} step={1} value={form.installedClients} onChange={(e) => setForm((f) => ({ ...f, installedClients: e.target.value }))} />
+              <Field className="col-2" label="Payback (meses)" type="number" min={1} step={1} value={form.desiredPaybackMonths} onChange={(e) => setForm((f) => ({ ...f, desiredPaybackMonths: e.target.value }))} />
+              <Field className="col-2" label="Margem (%)" type="number" min={0} step={0.01} value={form.desiredMarginPct} onChange={(e) => setForm((f) => ({ ...f, desiredMarginPct: e.target.value }))} />
+              <Field className="col-2" label="Custo op./mês" type="number" min={0} step={0.01} value={form.monthlyOperationalCostCve} onChange={(e) => setForm((f) => ({ ...f, monthlyOperationalCostCve: e.target.value }))} />
+              <Field className="col-2" label="Receita acumulada" type="number" min={0} step={0.01} value={form.accumulatedRevenueCve} onChange={(e) => setForm((f) => ({ ...f, accumulatedRevenueCve: e.target.value }))} />
+              <p className="investment-form-caption">Receita acumulada: só é usada quando o investimento não tem cliente/zona ligados — com pagamentos reais o cálculo é automático.</p>
             </div>
 
-            <div className="investment-form-section investment-form-section-notes">
+            <div className="investment-form-section">
               <h3>Informacoes</h3>
-              <Field label="Fornecedor" value={form.supplier} onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))} maxLength={180} />
-              <Textarea label="Descricao" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={3} />
+              <Field className="col-4" label="Fornecedor" value={form.supplier} onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))} maxLength={180} />
+              <Textarea className="col-8" label="Descricao" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={3} />
             </div>
           </div>
 
