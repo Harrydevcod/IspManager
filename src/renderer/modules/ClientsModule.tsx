@@ -91,6 +91,13 @@ export function ClientsModule({
     whatsappTemplate: fallbackWhatsappTemplate
   });
   const [form, setForm] = useState<ClientFormState>(emptyClientForm());
+  // Zonas já usadas — datalist contra grafias divergentes ("Palmarejo" vs
+  // "palmarejo"), que partem a atribuição de receita/OPEX no Financeiro.
+  const zoneOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const client of clients) if (client.zone) set.add(client.zone);
+    return [...set].sort((a, b) => a.localeCompare(b, 'pt'));
+  }, [clients]);
   const [profitability, setProfitability] = useState<ClientProfitability | null>(null);
   const [profitabilityLoading, setProfitabilityLoading] = useState(false);
   const [notices, setNotices] = useState<ClientNotice[]>([]);
@@ -737,7 +744,10 @@ export function ClientsModule({
               <option value={form.island}>{form.island} (grafia antiga)</option>
             )}
           </Select>
-          <Field label="Zona" value={form.zone} onChange={(event) => updateForm('zone', event.target.value)} />
+          <Field label="Zona" list="client-zones" value={form.zone} onChange={(event) => updateForm('zone', event.target.value)} />
+          <datalist id="client-zones">
+            {zoneOptions.map((zone) => <option key={zone} value={zone} />)}
+          </datalist>
           <Field wide label="Morada" value={form.address} onChange={(event) => updateForm('address', event.target.value)} />
           <Select label="Estado" value={form.status} onChange={(event) => updateForm('status', event.target.value)}>
             <option value="active">Ativo</option>

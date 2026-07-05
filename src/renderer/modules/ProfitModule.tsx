@@ -22,7 +22,9 @@ export function ProfitModule() {
   const [data, setData] = useState<InvestmentList>(EMPTY_INVESTMENT_LIST);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [month, setMonth] = useState(currentMonth());
-  const [showAllMonths, setShowAllMonths] = useState(false);
+  // Default "Todos os meses": investimentos são esporádicos — o mês corrente
+  // aterrava a aba Lucro vazia na maioria dos meses.
+  const [showAllMonths, setShowAllMonths] = useState(true);
   const [revenuePoints, setRevenuePoints] = useState<RevenuePoint[]>([]);
   const [activeClients, setActiveClients] = useState(0);
 

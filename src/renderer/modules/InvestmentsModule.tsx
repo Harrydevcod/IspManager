@@ -169,7 +169,9 @@ export function InvestmentsModule() {
   const [clients, setClients] = useState<Client[]>([]);
   const [month, setMonth] = useState(currentMonth());
   const [type, setType] = useState<InvestmentType | 'all'>('all');
-  const [showAllMonths, setShowAllMonths] = useState(false);
+  // Default "Todos os meses": investimentos são esporádicos — filtrar pelo mês
+  // corrente aterrava a página vazia na maioria dos meses.
+  const [showAllMonths, setShowAllMonths] = useState(true);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [timeline, setTimeline] = useState<InvestmentTimeline | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -178,6 +180,15 @@ export function InvestmentsModule() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // Zonas já usadas (investimentos + clientes) — datalist contra typos que
+  // partem silenciosamente a atribuição de receita/OPEX por zona.
+  const zoneOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of data.rows) if (row.zone) set.add(row.zone);
+    for (const client of clients) if (client.zone) set.add(client.zone);
+    return [...set].sort((a, b) => a.localeCompare(b, 'pt'));
+  }, [data.rows, clients]);
   const confirm = useConfirm();
 
   const selected = data.rows.find((row) => row.id === selectedId) || data.rows[0] || null;
@@ -410,7 +421,7 @@ export function InvestmentsModule() {
         <Button variant="secondary" onClick={() => setShowAllMonths((s) => !s)} className={showAllMonths ? 'active' : ''}>
           {showAllMonths ? 'Mes selecionado' : 'Todos os meses'}
         </Button>
-        <Button variant="secondary" onClick={() => { setType('all'); setMonth(currentMonth()); setShowAllMonths(false); }}>
+        <Button variant="secondary" onClick={() => { setType('all'); setMonth(currentMonth()); setShowAllMonths(true); }}>
           Limpar filtros
         </Button>
         <small>{showAllMonths ? 'Todos os meses' : formatPtMonth(month)}</small>
@@ -662,7 +673,10 @@ export function InvestmentsModule() {
                   placeholder="Sem cliente"
                 />
               </label>
-              <Field label="Zona / bairro" value={form.zone} onChange={(e) => setForm((f) => ({ ...f, zone: e.target.value }))} maxLength={120} />
+              <Field label="Zona / bairro" list="investment-zones" value={form.zone} onChange={(e) => setForm((f) => ({ ...f, zone: e.target.value }))} maxLength={120} hint="Escolhe uma zona existente — grafias diferentes partem a atribuição de receita/OPEX" />
+              <datalist id="investment-zones">
+                {zoneOptions.map((z) => <option key={z} value={z} />)}
+              </datalist>
               <Field label="Data" type="date" value={form.investmentDate} onChange={(e) => setForm((f) => ({ ...f, investmentDate: e.target.value }))} required />
               <Field label="Retorno mensal esperado" type="number" min={0} step={0.01} value={form.expectedMonthlyRevenueCve} onChange={(e) => setForm((f) => ({ ...f, expectedMonthlyRevenueCve: e.target.value }))} />
             </div>

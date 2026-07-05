@@ -441,6 +441,20 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
           target: { kind: 'investment', id: row.id, name: row.name }
         });
       }
+      // Estado manual dessincronizado do cálculo real de recuperação.
+      if (row.isRecovered && (row.status === 'ativo' || row.status === 'em_execucao')) {
+        alerts.push({
+          severity: 'info',
+          message: 'Capital recuperado — atualiza o estado para "Recuperado"',
+          target: { kind: 'investment', id: row.id, name: row.name }
+        });
+      } else if (!row.isRecovered && row.status === 'recuperado') {
+        alerts.push({
+          severity: 'warning',
+          message: 'Estado "Recuperado" mas os números indicam capital por recuperar',
+          target: { kind: 'investment', id: row.id, name: row.name }
+        });
+      }
     }
     for (const zone of zoneSummary) {
       if (zone.monthlyNetProfitCve < 0) {

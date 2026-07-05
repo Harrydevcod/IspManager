@@ -583,6 +583,36 @@ describe('investments CRUD', () => {
     expect(danger!.message.toLowerCase()).toContain('lucro');
   });
 
+  test('alerta quando o estado manual contradiz a recuperação calculada', async () => {
+    // Recuperado nos números (pagamentos > capital) mas estado ainda 'ativo'.
+    const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-M', 'Mismatch', 'active')`).run().lastInsertRowid as number;
+    const svcId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, status) VALUES (?, 5000, 'active')`).run(clientId).lastInsertRowid as number;
+    for (const m of ['2026-02', '2026-03']) {
+      db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+                  VALUES (?, ?, ?, 5000, ?, 'paid')`).run(clientId, svcId, m, `${m}-10`);
+    }
+    db.prepare(`INSERT INTO investments
+                (name, type, client_id, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve)
+                VALUES ('Ja recuperou', 'cliente', ?, '2026-02-01', '2026-02', 6000, 1, 1, 'ativo', 5000)`).run(clientId);
+    // Estado diz recuperado, números dizem que não (sem pagamentos, capital alto).
+    db.prepare(`INSERT INTO investments
+                (name, type, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve)
+                VALUES ('Otimista', 'infraestrutura', '2026-02-01', '2026-02', 90000, 5, 0, 'recuperado', 0)`).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments' });
+    const alerts = (response.json() as { alerts: Array<{ severity: string; message: string; target?: { name: string } }> }).alerts;
+
+    const sync = alerts.find((a) => a.target?.name === 'Ja recuperou' && a.severity === 'info');
+    expect(sync).toBeDefined();
+    expect(sync!.message).toContain('atualiza o estado');
+
+    const optimist = alerts.find((a) => a.target?.name === 'Otimista' && a.message.includes('capital por recuperar'));
+    expect(optimist).toBeDefined();
+    expect(optimist!.severity).toBe('warning');
+  });
+
   test('GET /api/investments/report.pdf returns a PDF buffer', async () => {
     db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_cve, target_clients, installed_clients, status, expected_monthly_revenue_cve)
                 VALUES ('Backbone PDF', 'infraestrutura', '2026-05-01', '2026-05', 12000, 5, 3, 'ativo', 8000)`).run();
