@@ -87,7 +87,8 @@ describe('investments CRUD', () => {
     expect(body.rows[0].items[1].quantityRemaining).toBe(28);
     expect(body.rows[0].recommendedPlanCve).toBeCloseTo(1256.67, 2);
     expect(body.rows[0].roiPct).toBeCloseTo(-30.769, 2);
-    expect(body.rows[0].annualRoiPct).toBeCloseTo(1284.615, 2);
+    // ROI anual convencional: (15000×12)/13000 — retorno anualizado sobre o capital.
+    expect(body.rows[0].annualRoiPct).toBeCloseTo(1384.615, 2);
 
     const update = await app.inject({
       method: 'PUT',
@@ -482,6 +483,61 @@ describe('investments CRUD', () => {
     expect(row.accumulatedProfitCve).toBe(1000);
     expect(row.isRecovered).toBe(true);
     expect(row.roiPct).toBeCloseTo(12.5, 3);
+  });
+
+  test('médias por span de calendário: meses vazios no meio contam (run-rate não inflaciona)', async () => {
+    const c1 = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-S1', 'S1', 'active')`).run().lastInsertRowid as number;
+    const c2 = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-S2', 'S2', 'active')`).run().lastInsertRowid as number;
+    db.prepare(`INSERT INTO services (client_id, monthly_value_cve, status) VALUES (?, 3000, 'active')`).run(c1);
+    db.prepare(`INSERT INTO services (client_id, monthly_value_cve, status) VALUES (?, 3000, 'active')`).run(c2);
+
+    // Despesas em janeiro e abril — fevereiro/março vazios TÊM de contar:
+    // span 01..04 = 4 meses → 6000/4 = 1500 (por "meses com registos" dava 3000).
+    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month)
+                VALUES ('banda_internet', 'Upstream Jan', 3000, '2026-01-10', '2026-01')`).run();
+    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month)
+                VALUES ('banda_internet', 'Upstream Abr', 3000, '2026-04-10', '2026-04')`).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments' });
+    const share = (response.json() as { companyOpexShare: { avgMonthlyUnallocated: number; opexPerClientPerMonth: number; rateioDenominator: number } }).companyOpexShare;
+
+    expect(share.avgMonthlyUnallocated).toBe(1500);
+    // Denominador = serviços ativos REAIS (2), não installed_clients manual.
+    expect(share.rateioDenominator).toBe(2);
+    expect(share.opexPerClientPerMonth).toBe(750);
+  });
+
+  test('timeline de investimento sem cliente/zona usa o global-share por mês e OPEX real do mês', async () => {
+    const clientB = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-GS', 'Solto Pagador', 'active')`).run().lastInsertRowid as number;
+    const svcB = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, status) VALUES (?, 4000, 'active')`).run(clientB).lastInsertRowid as number;
+    for (const m of ['2026-03', '2026-04']) {
+      db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+                  VALUES (?, ?, ?, 4000, ?, 'paid')`).run(clientB, svcB, m, `${m}-10`);
+    }
+    // OPEX não-alocado só em abril: imputado aparece SÓ nesse mês da timeline
+    // (antes a média de hoje era aplicada retroativamente a todos os meses).
+    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month)
+                VALUES ('energia', 'Energia Abr', 1000, '2026-04-05', '2026-04')`).run();
+
+    const invId = db.prepare(`INSERT INTO investments
+                (name, type, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve)
+                VALUES ('Solto', 'infraestrutura', '2026-03-01', '2026-03', 6000, 2, 2, 'ativo', 4000)`).run().lastInsertRowid as number;
+
+    const response = await app.inject({ method: 'GET', url: `/api/investments/${invId}/timeline` });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { points: Array<{ month: string; paidRevenueCve: number; imputedOpexCve: number }>; recoveredAt: string | null };
+
+    // Único investimento não-ligado → recebe 100% do pool não-atribuído.
+    // (Antes: receita 0 em todos os meses → "nunca recupera" no gráfico.)
+    const march = body.points.find((p) => p.month === '2026-03')!;
+    const april = body.points.find((p) => p.month === '2026-04')!;
+    expect(march.paidRevenueCve).toBe(4000);
+    expect(march.imputedOpexCve).toBe(0);
+    expect(april.paidRevenueCve).toBe(4000);
+    expect(april.imputedOpexCve).toBe(2000); // 1000 do mês / 1 serviço ativo × 2 instalados
+    // 4000 + (4000−2000) = 6000 = capital → recupera em abril.
+    expect(body.recoveredAt).toBe('2026-04');
   });
 
   test('GET /api/investments/:id/timeline returns monthly cumulative profit and recovery month', async () => {

@@ -6,11 +6,16 @@ import { getSqliteDatabase } from '../db/database';
  * Expense rows can optionally pin themselves to one specific target via
  * `investment_id`, `zone`, or `client_id`. When set, the amount is attributed
  * 100% to that target and excluded from the company-wide pool. Whatever
- * remains (no target) is spread across active investments by installed
- * clients:
+ * remains (no target) is spread by client:
  *
- *   unallocatedAvg/m = SUM(unallocated.amount) / months_with_unallocated_data
- *   opexPerClient/m  = unallocatedAvg / SUM(installed_clients of active investments)
+ *   unallocatedAvg/m = SUM(unallocated.amount) / meses de calendário MIN..MAX
+ *   opexPerClient/m  = unallocatedAvg / rateioDenominator
+ *
+ * Médias por SPAN de calendário (não por "meses com registos"): registar
+ * despesas de 3 em 3 meses já não triplica o run-rate — os meses vazios no
+ * meio contam. O denominador do rateio é a contagem REAL de serviços ativos
+ * (fallback: installed_clients dos investimentos, mantido à mão, quando ainda
+ * não há serviços).
  *
  * Both the investments route and the client profitability endpoint use this
  * single source so the math stays consistent across the app.
@@ -37,16 +42,29 @@ export type CompanyOpexContext = {
   /** Nº de investimentos que partilham cada zona/cliente — divisor do OPEX direto partilhado. */
   sharersByZone: Record<string, number>;
   sharersByClient: Record<number, number>;
+  /** Denominador do rateio: serviços ativos reais; fallback installed_clients. */
+  rateioDenominator: number;
+  /** Despesas não-alocadas por mês (AAAA-MM) — para OPEX imputado exato na recuperação/timeline. */
+  unallocatedByMonth: Record<string, number>;
 };
 
 export const ACTIVE_INVESTMENT_STATUSES = new Set(['ativo', 'em_execucao', 'recuperado']);
+
+/** Meses de calendário entre dois AAAA-MM, inclusive (mín. 1). */
+export function monthsSpanInclusive(startMonth: string | null, endMonth: string | null): number {
+  if (!startMonth || !endMonth) return 1;
+  const [sy, sm] = startMonth.split('-').map(Number);
+  const [ey, em] = endMonth.split('-').map(Number);
+  return Math.max(1, (ey - sy) * 12 + (em - sm) + 1);
+}
 
 type DirectRow = {
   investmentId: number | null;
   zone: string | null;
   clientId: number | null;
   totalCve: number;
-  months: number;
+  firstMonth: string | null;
+  lastMonth: string | null;
 };
 
 export function loadCompanyOpexContext(): CompanyOpexContext {
@@ -55,17 +73,29 @@ export function loadCompanyOpexContext(): CompanyOpexContext {
   const totals = db.prepare(`
     SELECT
       COALESCE(SUM(amount_cve), 0) AS totalExpensesCve,
-      COUNT(DISTINCT reference_month) AS monthsWithExpenses
+      MIN(reference_month) AS firstMonth,
+      MAX(reference_month) AS lastMonth
     FROM expenses
-  `).get() as { totalExpensesCve: number; monthsWithExpenses: number };
+  `).get() as { totalExpensesCve: number; firstMonth: string | null; lastMonth: string | null };
 
   const unallocated = db.prepare(`
     SELECT
       COALESCE(SUM(amount_cve), 0) AS totalUnallocatedCve,
-      COUNT(DISTINCT reference_month) AS monthsWithUnallocated
+      MIN(reference_month) AS firstMonth,
+      MAX(reference_month) AS lastMonth
     FROM expenses
     WHERE investment_id IS NULL AND zone IS NULL AND client_id IS NULL
-  `).get() as { totalUnallocatedCve: number; monthsWithUnallocated: number };
+  `).get() as { totalUnallocatedCve: number; firstMonth: string | null; lastMonth: string | null };
+
+  const unallocatedByMonth: Record<string, number> = {};
+  for (const r of db.prepare(`
+    SELECT reference_month AS m, COALESCE(SUM(amount_cve), 0) AS cve
+    FROM expenses
+    WHERE investment_id IS NULL AND zone IS NULL AND client_id IS NULL
+    GROUP BY reference_month
+  `).all() as Array<{ m: string; cve: number }>) {
+    unallocatedByMonth[r.m] = Number(r.cve) || 0;
+  }
 
   const directRows = db.prepare(`
     SELECT
@@ -73,7 +103,8 @@ export function loadCompanyOpexContext(): CompanyOpexContext {
       zone,
       client_id AS clientId,
       COALESCE(SUM(amount_cve), 0) AS totalCve,
-      COUNT(DISTINCT reference_month) AS months
+      MIN(reference_month) AS firstMonth,
+      MAX(reference_month) AS lastMonth
     FROM expenses
     WHERE investment_id IS NOT NULL OR zone IS NOT NULL OR client_id IS NOT NULL
     GROUP BY investment_id, zone, client_id
@@ -84,10 +115,10 @@ export function loadCompanyOpexContext(): CompanyOpexContext {
   `).all() as Array<{ installedClients: number; status: string; clientId: number | null; zone: string | null }>;
 
   const totalExpensesCve = Number(totals.totalExpensesCve) || 0;
-  const monthsWithExpenses = Math.max(1, Number(totals.monthsWithExpenses) || 0);
+  const monthsWithExpenses = monthsSpanInclusive(totals.firstMonth, totals.lastMonth);
 
   const totalUnallocatedCve = Number(unallocated.totalUnallocatedCve) || 0;
-  const monthsWithUnallocated = Math.max(1, Number(unallocated.monthsWithUnallocated) || 0);
+  const monthsWithUnallocated = monthsSpanInclusive(unallocated.firstMonth, unallocated.lastMonth);
   const avgMonthlyOpex = totalExpensesCve / monthsWithExpenses;
   const avgMonthlyUnallocated = totalUnallocatedCve / monthsWithUnallocated;
 
@@ -96,7 +127,13 @@ export function loadCompanyOpexContext(): CompanyOpexContext {
   const totalInstalledUnlinkedActive = activeRows
     .filter((r) => r.clientId == null && !r.zone)
     .reduce((sum, r) => sum + (Number(r.installedClients) || 0), 0);
-  const opexPerClientPerMonth = totalInstalledActive > 0 ? avgMonthlyUnallocated / totalInstalledActive : 0;
+  // Denominador REAL: serviços ativos (26 clientes reais valem mais do que o
+  // installed_clients manual dos investimentos, que deriva). Fallback para a
+  // base instalada declarada quando ainda não há serviços registados.
+  const servicesActive = Number((db.prepare(`SELECT COUNT(*) AS n FROM services WHERE status = 'active'`)
+    .get() as { n: number }).n) || 0;
+  const rateioDenominator = servicesActive > 0 ? servicesActive : totalInstalledActive;
+  const opexPerClientPerMonth = rateioDenominator > 0 ? avgMonthlyUnallocated / rateioDenominator : 0;
 
   // Divisores para OPEX direto partilhado: todos os investimentos que apontam
   // para a mesma zona/cliente dividem a despesa entre si (senão cada um
@@ -117,7 +154,7 @@ export function loadCompanyOpexContext(): CompanyOpexContext {
   let totalAllocatedCve = 0;
   for (const row of directRows) {
     const total = Number(row.totalCve);
-    const monthly = total / Math.max(1, Number(row.months) || 1);
+    const monthly = total / monthsSpanInclusive(row.firstMonth, row.lastMonth);
     totalAllocatedCve += total;
     if (row.investmentId != null) {
       directByInvestment[row.investmentId] = (directByInvestment[row.investmentId] || 0) + monthly;
@@ -149,7 +186,9 @@ export function loadCompanyOpexContext(): CompanyOpexContext {
     directTotalsByZone,
     directTotalsByClient,
     sharersByZone,
-    sharersByClient
+    sharersByClient,
+    rateioDenominator,
+    unallocatedByMonth
   };
 }
 
@@ -171,24 +210,26 @@ export function loadActualMonthlyRevenue(target: { clientId: number | null; zone
   if (target.clientId != null) {
     const row = db.prepare(`
       SELECT COALESCE(SUM(amount_cve), 0) AS totalCve,
-             COUNT(DISTINCT reference_month) AS months
+             MIN(reference_month) AS firstMonth,
+             MAX(reference_month) AS lastMonth
       FROM payments
       WHERE client_id = ? AND status = 'paid'
-    `).get(target.clientId) as { totalCve: number; months: number };
-    const months = Math.max(0, Number(row.months) || 0);
-    if (months === 0) return null;
+    `).get(target.clientId) as { totalCve: number; firstMonth: string | null; lastMonth: string | null };
+    if (!row.firstMonth) return null;
+    const months = monthsSpanInclusive(row.firstMonth, row.lastMonth);
     return { cve: Number(row.totalCve) / months, source: 'client', months };
   }
   if (target.zone) {
     const row = db.prepare(`
       SELECT COALESCE(SUM(py.amount_cve), 0) AS totalCve,
-             COUNT(DISTINCT py.reference_month) AS months
+             MIN(py.reference_month) AS firstMonth,
+             MAX(py.reference_month) AS lastMonth
       FROM payments py
       JOIN clients c ON c.id = py.client_id
       WHERE c.zone = ? AND py.status = 'paid'
-    `).get(target.zone) as { totalCve: number; months: number };
-    const months = Math.max(0, Number(row.months) || 0);
-    if (months === 0) return null;
+    `).get(target.zone) as { totalCve: number; firstMonth: string | null; lastMonth: string | null };
+    if (!row.firstMonth) return null;
+    const months = monthsSpanInclusive(row.firstMonth, row.lastMonth);
     return { cve: Number(row.totalCve) / months, source: 'zone', months };
   }
   return null;

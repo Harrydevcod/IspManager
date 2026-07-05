@@ -674,7 +674,7 @@ export function InvestmentsModule() {
               <Field label="Retorno desejado (meses)" type="number" min={1} step={1} value={form.desiredPaybackMonths} onChange={(e) => setForm((f) => ({ ...f, desiredPaybackMonths: e.target.value }))} />
               <Field label="Margem desejada (%)" type="number" min={0} step={0.01} value={form.desiredMarginPct} onChange={(e) => setForm((f) => ({ ...f, desiredMarginPct: e.target.value }))} />
               <Field label="Custo operacional mensal" type="number" min={0} step={0.01} value={form.monthlyOperationalCostCve} onChange={(e) => setForm((f) => ({ ...f, monthlyOperationalCostCve: e.target.value }))} />
-              <Field label="Receita acumulada" type="number" min={0} step={0.01} value={form.accumulatedRevenueCve} onChange={(e) => setForm((f) => ({ ...f, accumulatedRevenueCve: e.target.value }))} />
+              <Field label="Receita acumulada" type="number" min={0} step={0.01} value={form.accumulatedRevenueCve} onChange={(e) => setForm((f) => ({ ...f, accumulatedRevenueCve: e.target.value }))} hint="Só usada sem cliente/zona ligados — com pagamentos reais o cálculo é automático" />
             </div>
 
             <div className="investment-form-section investment-form-section-notes">
