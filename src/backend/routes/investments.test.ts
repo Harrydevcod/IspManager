@@ -398,6 +398,92 @@ describe('investments CRUD', () => {
     expect(row.monthlyNetProfitCve).toBe(5000);
   });
 
+  test('global-share usa só o pool NÃO-atribuído (sem dupla contagem de receita)', async () => {
+    // Cliente A ligado a um investimento; cliente B sem ligação.
+    const clientA = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-A', 'Ligado', 'active')`).run().lastInsertRowid as number;
+    const clientB = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-B', 'Solto', 'active')`).run().lastInsertRowid as number;
+    const svcA = db.prepare(`INSERT INTO services (client_id, monthly_value_cve) VALUES (?, 5000)`).run(clientA).lastInsertRowid as number;
+    const svcB = db.prepare(`INSERT INTO services (client_id, monthly_value_cve) VALUES (?, 4000)`).run(clientB).lastInsertRowid as number;
+    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+                VALUES (?, ?, '2026-03', 5000, '2026-03-10', 'paid')`).run(clientA, svcA);
+    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+                VALUES (?, ?, '2026-03', 4000, '2026-03-10', 'paid')`).run(clientB, svcB);
+    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+                VALUES (?, ?, '2026-04', 4000, '2026-04-10', 'paid')`).run(clientB, svcB);
+
+    db.prepare(`INSERT INTO investments
+                (name, type, client_id, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve)
+                VALUES ('Ligado', 'cliente', ?, '2026-03-01', '2026-03', 8000, 1, 1, 'ativo', 3000)`).run(clientA);
+    db.prepare(`INSERT INTO investments
+                (name, type, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve)
+                VALUES ('Solto', 'infraestrutura', '2026-03-01', '2026-03', 8000, 4, 4, 'ativo', 3000)`).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-03' });
+    const body = response.json() as { rows: Array<{ name: string; actualMonthlyRevenueCve: number; revenueSource: string }> };
+    const linked = body.rows.find((r) => r.name === 'Ligado')!;
+    const unlinked = body.rows.find((r) => r.name === 'Solto')!;
+
+    expect(linked.revenueSource).toBe('client');
+    expect(linked.actualMonthlyRevenueCve).toBe(5000);
+    // Pool não-atribuído = (13000 total − 5000 do cliente A) / 2 meses = 4000.
+    // O "Solto" é a única base instalada não-ligada → recebe 100% do pool.
+    // (Antes: 13000/2 × 4/5 = 5200 — receita do A contada duas vezes.)
+    expect(unlinked.revenueSource).toBe('global-share');
+    expect(unlinked.actualMonthlyRevenueCve).toBe(4000);
+  });
+
+  test('OPEX direto de zona partilhada divide-se entre os investimentos (sem dupla contagem)', async () => {
+    db.prepare(`INSERT INTO investments
+                (name, type, zone, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve)
+                VALUES ('Norte A', 'zona', 'Norte', '2026-05-01', '2026-05', 10000, 2, 2, 'ativo', 8000)`).run();
+    db.prepare(`INSERT INTO investments
+                (name, type, zone, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve)
+                VALUES ('Norte B', 'zona', 'Norte', '2026-05-01', '2026-05', 10000, 2, 2, 'ativo', 8000)`).run();
+    // Despesa alocada à ZONA (não a um investimento): 6000/mês.
+    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month, zone)
+                VALUES ('energia', 'Energia repetidor Norte', 6000, '2026-05-01', '2026-05', 'Norte')`).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
+    const body = response.json() as { rows: Array<{ name: string; directAllocatedOpexCve: number }>; totals: { totalDirectOpexCve: number } };
+
+    // Cada investimento absorve metade; o agregado é a despesa real (6000),
+    // não 12000 como antes do divisor.
+    expect(body.rows.find((r) => r.name === 'Norte A')!.directAllocatedOpexCve).toBe(3000);
+    expect(body.rows.find((r) => r.name === 'Norte B')!.directAllocatedOpexCve).toBe(3000);
+    expect(body.totals.totalDirectOpexCve).toBe(6000);
+  });
+
+  test('recuperação deriva dos pagamentos reais quando há cliente ligado (não do campo manual)', async () => {
+    const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-R', 'Recuperado', 'active')`).run().lastInsertRowid as number;
+    const svcId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve) VALUES (?, 5000)`).run(clientId).lastInsertRowid as number;
+    for (const m of ['2026-02', '2026-03']) {
+      db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+                  VALUES (?, ?, ?, 5000, ?, 'paid')`).run(clientId, svcId, m, `${m}-10`);
+    }
+    const invId = db.prepare(`INSERT INTO investments
+                (name, type, client_id, investment_date, reference_month, total_cost_cve,
+                 target_clients, installed_clients, status, expected_monthly_revenue_cve, accumulated_revenue_cve)
+                VALUES ('Instalacao R', 'cliente', ?, '2026-02-01', '2026-02', 8000, 1, 1, 'ativo', 5000, 0)`).run(clientId).lastInsertRowid as number;
+    // Despesa direta ao investimento: entra no OPEX acumulado da recuperação.
+    db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month, investment_id)
+                VALUES ('manutencao', 'Deslocacao', 1000, '2026-03-05', '2026-03', ?)`).run(invId);
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-02' });
+    const row = (response.json() as { rows: Array<{ isRecovered: boolean; accumulatedProfitCve: number; roiPct: number; accumulatedRevenueSource: string }> }).rows[0];
+
+    // 10000 pagos − 1000 OPEX direto − 8000 capital = 1000 → recuperado,
+    // apesar de accumulated_revenue_cve manual estar a 0 (antes: −100% ROI
+    // e "não recuperado" para sempre até alguém atualizar o campo à mão).
+    expect(row.accumulatedRevenueSource).toBe('payments');
+    expect(row.accumulatedProfitCve).toBe(1000);
+    expect(row.isRecovered).toBe(true);
+    expect(row.roiPct).toBeCloseTo(12.5, 3);
+  });
+
   test('GET /api/investments/:id/timeline returns monthly cumulative profit and recovery month', async () => {
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-T1', 'Cliente Timeline', 'active')`).run().lastInsertRowid as number;
     db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 5000, 10, 'active')`).run(clientId);
