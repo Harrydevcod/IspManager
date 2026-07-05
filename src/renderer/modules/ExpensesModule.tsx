@@ -567,6 +567,9 @@ export function ExpensesModule() {
                 label="Categoria"
                 value={form.category}
                 onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as ExpenseCategory }))}
+                hint={form.category === 'equipamento' || form.category === 'infraestrutura'
+                  ? 'Compra de equipamento/obra é CAPEX — regista no Stock ou em Investimentos para não contar duas vezes. Aqui só custos operacionais (aluguer, manutenção…).'
+                  : undefined}
               >
                 {CATEGORIES.map((c) => (
                   <option key={c.value} value={c.value}>{c.label}</option>

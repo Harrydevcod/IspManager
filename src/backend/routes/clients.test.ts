@@ -217,7 +217,9 @@ describe('POST /api/clients/bulk', () => {
       VALUES ('Zona Achada', 'zona', NULL, '2026-02-01', '2026-02', 'ativo', 5, 3, 30000, 15000)
     `).run();
 
-    // Two months of OPEX → avg = 2000 / 2 = 1000; opexPerClient = 1000 / (1+3) = 250.
+    // Two months of OPEX → avg = 2000 / 2 = 1000; opexPerClient = 1000 / 2
+    // serviços ativos REAIS = 500 (o denominador passou a ser a contagem de
+    // serviços ativos, não o installed_clients manual dos investimentos).
     db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month)
                 VALUES ('banda_internet', 'Upstream Marco', 1000, '2026-03-10', '2026-03')`).run();
     db.prepare(`INSERT INTO expenses (category, description, amount_cve, expense_date, reference_month)
@@ -256,15 +258,15 @@ describe('POST /api/clients/bulk', () => {
     expect(body.paidMonths).toBe(2);
     expect(body.monthlyAverageRevenueCve).toBe(5000);
 
-    expect(body.imputedMonthlyOpexCve).toBe(250); // opex/cliente
-    expect(body.cumulativeOpexCve).toBe(750); // 250 × 3 months
-    expect(body.monthlyNetProfitCve).toBe(4750); // 5000 - 250
-    expect(body.netProfitCve).toBe(-2750); // 10000 - 12000 - 750
-    expect(body.profitabilityPct).toBeCloseTo(-22.917, 2);
+    expect(body.imputedMonthlyOpexCve).toBe(500); // opex/cliente (1000 / 2 serviços ativos)
+    expect(body.cumulativeOpexCve).toBe(1500); // 500 × 3 months
+    expect(body.monthlyNetProfitCve).toBe(4500); // 5000 - 500
+    expect(body.netProfitCve).toBe(-3500); // 10000 - 12000 - 1500
+    expect(body.profitabilityPct).toBeCloseTo(-29.167, 2);
     expect(body.isRecovered).toBe(false);
-    expect(body.monthsToBreakeven).toBeCloseTo(2.526, 2); // 12000 / 4750
+    expect(body.monthsToBreakeven).toBeCloseTo(2.667, 2); // 12000 / 4500
     expect(body.projectedBreakevenDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(body.companyOpexShare.opexPerClientPerMonth).toBe(250);
+    expect(body.companyOpexShare.opexPerClientPerMonth).toBe(500);
   });
 
   test('GET /api/clients/:id/profitability includes equipment installed on services', async () => {

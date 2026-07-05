@@ -262,6 +262,15 @@ export const investmentItems = sqliteTable('investment_items', {
   quantityUsed: real('quantity_used').notNull().default(0)
 });
 
+// Associação exata investimento ↔ vários clientes (antena de transmissão que
+// serve um conjunto específico de clientes, migração 0027).
+export const investmentClients = sqliteTable('investment_clients', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  investmentId: integer('investment_id').notNull(),
+  clientId: integer('client_id').notNull(),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
 export const expenses = sqliteTable('expenses', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   category: text('category').notNull().default('outros'),
