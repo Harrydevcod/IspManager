@@ -24,10 +24,19 @@ export type CompanyOpexContext = {
   avgMonthlyOpex: number;
   avgMonthlyUnallocated: number;
   totalInstalledActive: number;
+  /** Base instalada dos investimentos ativos SEM client_id/zone — denominador do global-share de receita. */
+  totalInstalledUnlinkedActive: number;
   opexPerClientPerMonth: number;
   directByInvestment: Record<number, number>;
   directByZone: Record<string, number>;
   directByClient: Record<number, number>;
+  /** Totais acumulados (não médias mensais) das despesas alocadas — para o lucro acumulado. */
+  directTotalsByInvestment: Record<number, number>;
+  directTotalsByZone: Record<string, number>;
+  directTotalsByClient: Record<number, number>;
+  /** Nº de investimentos que partilham cada zona/cliente — divisor do OPEX direto partilhado. */
+  sharersByZone: Record<string, number>;
+  sharersByClient: Record<number, number>;
 };
 
 export const ACTIVE_INVESTMENT_STATUSES = new Set(['ativo', 'em_execucao', 'recuperado']);
@@ -71,8 +80,8 @@ export function loadCompanyOpexContext(): CompanyOpexContext {
   `).all() as DirectRow[];
 
   const investmentRows = db.prepare(`
-    SELECT installed_clients AS installedClients, status FROM investments
-  `).all() as Array<{ installedClients: number; status: string }>;
+    SELECT installed_clients AS installedClients, status, client_id AS clientId, zone FROM investments
+  `).all() as Array<{ installedClients: number; status: string; clientId: number | null; zone: string | null }>;
 
   const totalExpensesCve = Number(totals.totalExpensesCve) || 0;
   const monthsWithExpenses = Math.max(1, Number(totals.monthsWithExpenses) || 0);
@@ -82,24 +91,43 @@ export function loadCompanyOpexContext(): CompanyOpexContext {
   const avgMonthlyOpex = totalExpensesCve / monthsWithExpenses;
   const avgMonthlyUnallocated = totalUnallocatedCve / monthsWithUnallocated;
 
-  const totalInstalledActive = investmentRows
-    .filter((r) => ACTIVE_INVESTMENT_STATUSES.has(r.status))
+  const activeRows = investmentRows.filter((r) => ACTIVE_INVESTMENT_STATUSES.has(r.status));
+  const totalInstalledActive = activeRows.reduce((sum, r) => sum + (Number(r.installedClients) || 0), 0);
+  const totalInstalledUnlinkedActive = activeRows
+    .filter((r) => r.clientId == null && !r.zone)
     .reduce((sum, r) => sum + (Number(r.installedClients) || 0), 0);
   const opexPerClientPerMonth = totalInstalledActive > 0 ? avgMonthlyUnallocated / totalInstalledActive : 0;
+
+  // Divisores para OPEX direto partilhado: todos os investimentos que apontam
+  // para a mesma zona/cliente dividem a despesa entre si (senão cada um
+  // absorvia 100% e o agregado contava a mesma despesa N vezes).
+  const sharersByZone: Record<string, number> = {};
+  const sharersByClient: Record<number, number> = {};
+  for (const r of investmentRows) {
+    if (r.zone) sharersByZone[r.zone] = (sharersByZone[r.zone] || 0) + 1;
+    if (r.clientId != null) sharersByClient[r.clientId] = (sharersByClient[r.clientId] || 0) + 1;
+  }
 
   const directByInvestment: Record<number, number> = {};
   const directByZone: Record<string, number> = {};
   const directByClient: Record<number, number> = {};
+  const directTotalsByInvestment: Record<number, number> = {};
+  const directTotalsByZone: Record<string, number> = {};
+  const directTotalsByClient: Record<number, number> = {};
   let totalAllocatedCve = 0;
   for (const row of directRows) {
-    const monthly = Number(row.totalCve) / Math.max(1, Number(row.months) || 1);
-    totalAllocatedCve += Number(row.totalCve);
+    const total = Number(row.totalCve);
+    const monthly = total / Math.max(1, Number(row.months) || 1);
+    totalAllocatedCve += total;
     if (row.investmentId != null) {
       directByInvestment[row.investmentId] = (directByInvestment[row.investmentId] || 0) + monthly;
+      directTotalsByInvestment[row.investmentId] = (directTotalsByInvestment[row.investmentId] || 0) + total;
     } else if (row.clientId != null) {
       directByClient[row.clientId] = (directByClient[row.clientId] || 0) + monthly;
+      directTotalsByClient[row.clientId] = (directTotalsByClient[row.clientId] || 0) + total;
     } else if (row.zone) {
       directByZone[row.zone] = (directByZone[row.zone] || 0) + monthly;
+      directTotalsByZone[row.zone] = (directTotalsByZone[row.zone] || 0) + total;
     }
   }
 
@@ -112,10 +140,16 @@ export function loadCompanyOpexContext(): CompanyOpexContext {
     avgMonthlyOpex,
     avgMonthlyUnallocated,
     totalInstalledActive,
+    totalInstalledUnlinkedActive,
     opexPerClientPerMonth,
     directByInvestment,
     directByZone,
-    directByClient
+    directByClient,
+    directTotalsByInvestment,
+    directTotalsByZone,
+    directTotalsByClient,
+    sharersByZone,
+    sharersByClient
   };
 }
 

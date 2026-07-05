@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
-import { loadActualMonthlyRevenue, loadCompanyOpexContext, type CompanyOpexContext } from '../lib/opex';
+import { ACTIVE_INVESTMENT_STATUSES, loadActualMonthlyRevenue, loadCompanyOpexContext, type CompanyOpexContext } from '../lib/opex';
 import { buildProfitabilityPdf, buildProfitabilityXlsx } from '../lib/profitability-export';
 import { requireAuth, requireRole } from './auth';
 
@@ -95,33 +95,53 @@ type InvestmentBaseRow = {
   desiredMarginPct: number;
   clientId: number | null;
   zone: string | null;
+  investmentDate: string;
 };
 
-function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext, companyMonthlyRevenue: number) {
+/** Meses de calendário decorridos entre dois AAAA-MM, inclusive (mín. 1). */
+function monthsElapsedInclusive(startMonth: string, endMonth: string): number {
+  const [sy, sm] = startMonth.split('-').map(Number);
+  const [ey, em] = endMonth.split('-').map(Number);
+  return Math.max(1, (ey - sy) * 12 + (em - sm) + 1);
+}
+
+function currentMonthKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext, unattributedMonthlyRevenueCve: number) {
   const activeClients = Math.max(1, row.installedClients || row.targetClients || 1);
   const targetClients = Math.max(1, row.targetClients || 1);
   const imputedMonthlyOpexCve = opexCtx.opexPerClientPerMonth * (Number(row.installedClients) || 0);
+  // OPEX direto de zona/cliente é dividido pelos investimentos que o partilham —
+  // sem o divisor, dois investimentos na mesma zona absorviam cada um 100% da
+  // mesma despesa e o agregado contava-a duas vezes.
+  const zoneSharers = row.zone ? Math.max(1, opexCtx.sharersByZone[row.zone] || 1) : 1;
+  const clientSharers = row.clientId != null ? Math.max(1, opexCtx.sharersByClient[row.clientId] || 1) : 1;
   const directAllocatedOpexCve =
     (opexCtx.directByInvestment[row.id] || 0)
-    + (row.clientId != null ? (opexCtx.directByClient[row.clientId] || 0) : 0)
-    + (row.zone ? (opexCtx.directByZone[row.zone] || 0) : 0);
+    + (row.clientId != null ? (opexCtx.directByClient[row.clientId] || 0) / clientSharers : 0)
+    + (row.zone ? (opexCtx.directByZone[row.zone] || 0) / zoneSharers : 0);
   const effectiveMonthlyOpexCve =
     (Number(row.monthlyOperationalCostCve) || 0) + imputedMonthlyOpexCve + directAllocatedOpexCve;
 
   const linked = loadActualMonthlyRevenue({ clientId: row.clientId, zone: row.zone });
 
-  // Fallback global pro-rata: when the investment has no client_id/zone but contributes
-  // installed_clients to the active pool, attribute a share of the company-wide paid
-  // revenue proportional to its installed clients. Mirrors the OPEX rateio logic.
+  // Fallback global pro-rata: investimentos sem client_id/zone recebem uma quota
+  // do pool NÃO-ATRIBUÍDO (receita da empresa menos a receita já contada pelos
+  // investimentos ligados a cliente/zona) proporcional aos seus installed_clients
+  // dentro da base instalada não-ligada. Assim a soma da receita atribuída nunca
+  // excede a receita real.
   const canUseGlobalShare =
     linked === null
     && row.clientId == null
     && (!row.zone)
-    && opexCtx.totalInstalledActive > 0
+    && opexCtx.totalInstalledUnlinkedActive > 0
     && (Number(row.installedClients) || 0) > 0
-    && companyMonthlyRevenue > 0;
+    && unattributedMonthlyRevenueCve > 0;
   const globalShareCve = canUseGlobalShare
-    ? companyMonthlyRevenue * ((Number(row.installedClients) || 0) / opexCtx.totalInstalledActive)
+    ? unattributedMonthlyRevenueCve * ((Number(row.installedClients) || 0) / opexCtx.totalInstalledUnlinkedActive)
     : null;
 
   const actualMonthlyRevenueCve = linked?.cve ?? globalShareCve;
@@ -140,7 +160,21 @@ function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext, comp
   const baseRecoveryPrice = costPerClientCve / Math.max(1, row.desiredPaybackMonths || 1);
   const recommendedPlanCve = (baseRecoveryPrice + operationalCostPerClientCve)
     * (1 + Math.max(0, row.desiredMarginPct || 0) / 100);
-  const accumulatedProfitCve = row.accumulatedRevenueCve - row.totalCostCve;
+
+  // Recuperação — UMA definição, a mesma da timeline: receita real acumulada
+  // (pagamentos do cliente/zona) menos OPEX acumulado (direto + imputado ×
+  // meses decorridos) menos o capital. A "Receita acumulada" manual só entra
+  // como fallback quando o investimento não tem cliente/zona com pagamentos.
+  const monthsElapsed = monthsElapsedInclusive(row.investmentDate.slice(0, 7), currentMonthKey());
+  const actualAccumulatedRevenueCve = linked !== null ? linked.cve * linked.months : null;
+  const accumulatedRevenueBaseCve = actualAccumulatedRevenueCve ?? (Number(row.accumulatedRevenueCve) || 0);
+  const accumulatedOpexCve =
+    (opexCtx.directTotalsByInvestment[row.id] || 0)
+    + (row.clientId != null ? (opexCtx.directTotalsByClient[row.clientId] || 0) / clientSharers : 0)
+    + (row.zone ? (opexCtx.directTotalsByZone[row.zone] || 0) / zoneSharers : 0)
+    + imputedMonthlyOpexCve * monthsElapsed;
+  const accumulatedProfitCve = accumulatedRevenueBaseCve - accumulatedOpexCve - row.totalCostCve;
+
   return {
     costPerClientCve,
     operationalCostPerClientCve,
@@ -153,6 +187,8 @@ function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext, comp
     revenueVarianceCve,
     monthlyNetProfitCve,
     accumulatedProfitCve,
+    accumulatedOpexCve,
+    accumulatedRevenueSource: actualAccumulatedRevenueCve !== null ? 'payments' as const : 'manual' as const,
     recoveryMonths: monthlyNetProfitCve > 0 ? row.totalCostCve / monthlyNetProfitCve : null,
     roiPct: row.totalCostCve > 0 ? (accumulatedProfitCve / row.totalCostCve) * 100 : null,
     annualRoiPct: row.totalCostCve > 0 ? (((monthlyNetProfitCve * 12) - row.totalCostCve) / row.totalCostCve) * 100 : null,
@@ -247,22 +283,29 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     // the company-wide installed base, independent of this query's filter.
     const opexCtx = loadCompanyOpexContext();
 
-    // Company-wide paid revenue / months → average monthly company revenue,
-    // used as fallback denominator for investments without client_id/zone.
+    // Pool de receita para o global-share: receita paga da empresa MENOS a dos
+    // clientes já atribuídos a investimentos via client_id/zone — senão os
+    // investimentos sem ligação recebiam quota de receita já contada pelos
+    // ligados e a soma atribuída excedia a receita real (dupla contagem).
     const revenueRow = getSqliteDatabase().prepare(`
       SELECT COALESCE(SUM(amount_cve), 0) AS totalCve,
+             COALESCE(SUM(CASE WHEN client_id IN (
+               SELECT id FROM clients
+               WHERE id IN (SELECT client_id FROM investments WHERE client_id IS NOT NULL)
+                  OR zone IN (SELECT zone FROM investments WHERE zone IS NOT NULL)
+             ) THEN amount_cve ELSE 0 END), 0) AS attributedCve,
              COUNT(DISTINCT reference_month) AS months
       FROM payments
       WHERE status = 'paid'
-    `).get() as { totalCve: number; months: number };
+    `).get() as { totalCve: number; attributedCve: number; months: number };
     const revenueMonths = Math.max(0, Number(revenueRow.months) || 0);
-    const companyMonthlyRevenue = revenueMonths > 0
-      ? Number(revenueRow.totalCve) / revenueMonths
+    const unattributedMonthlyRevenueCve = revenueMonths > 0
+      ? Math.max(0, Number(revenueRow.totalCve) - Number(revenueRow.attributedCve)) / revenueMonths
       : 0;
 
     const rowsWithItems = rows.map((row) => ({
       ...row,
-      ...profitability(row, opexCtx, companyMonthlyRevenue),
+      ...profitability(row, opexCtx, unattributedMonthlyRevenueCve),
       items: items.all(row.id)
     }));
 
@@ -371,7 +414,13 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
           message: `Lucro mensal negativo (${Math.round(row.monthlyNetProfitCve)} CVE/mês)`,
           target: { kind: 'investment', id: row.id, name: row.name }
         });
-      } else if (row.roiPct !== null && row.roiPct < 0 && row.monthlyNetProfitCve <= 0) {
+      } else if (
+        ACTIVE_INVESTMENT_STATUSES.has(row.status)
+        && row.roiPct !== null && row.roiPct < 0 && row.monthlyNetProfitCve === 0
+      ) {
+        // Estagnado: investimento ATIVO com capital por recuperar e lucro mensal
+        // zero (sem receita atribuída nem OPEX). O ramo < 0 já é danger acima;
+        // planeados ficam de fora — ainda não era suposto renderem.
         alerts.push({
           severity: 'warning',
           message: `ROI ${row.roiPct.toFixed(1)}% sem lucro mensal`,

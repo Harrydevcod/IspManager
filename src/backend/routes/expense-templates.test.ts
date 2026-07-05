@@ -115,6 +115,32 @@ describe('recurring expenses cron', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM expenses').get()).toEqual({ n: 6 });
   });
 
+  test('catch-up: meses sem abrir a app geram as despesas em falta, sem gaps', async () => {
+    const { runRecurringExpensesIfDue } = await import('../lib/recurring-expenses');
+
+    // Gerado pela última vez em maio; a app só volta a abrir a 3 de agosto.
+    db.prepare(`INSERT INTO expense_templates (name, category, amount_cve, day_of_month, active, last_generated_month)
+                VALUES ('Aluguer torre', 'aluguer', 15000, 5, 1, '2026-05')`).run();
+
+    // Dia 3 < day_of_month 5 → junho e julho geram (fechados), agosto ainda não.
+    const early = runRecurringExpensesIfDue(new Date('2026-08-03T10:00:00Z'));
+    expect('ran' in early && early.ran).toBe(true);
+    if ('ran' in early) expect(early.generated).toBe(2);
+    const months = db.prepare(`SELECT reference_month AS m FROM expenses ORDER BY m`).all() as Array<{ m: string }>;
+    expect(months.map((r) => r.m)).toEqual(['2026-06', '2026-07']);
+
+    // Dia 6 → agosto passa a elegível; junho/julho não duplicam.
+    const due = runRecurringExpensesIfDue(new Date('2026-08-06T10:00:00Z'));
+    expect('ran' in due && due.ran).toBe(true);
+    if ('ran' in due) expect(due.generated).toBe(1);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM expenses').get()).toEqual({ n: 3 });
+
+    // Idempotente.
+    const again = runRecurringExpensesIfDue(new Date('2026-08-06T12:00:00Z'));
+    expect('skipped' in again).toBe(true);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM expenses').get()).toEqual({ n: 3 });
+  });
+
   test('skips cleanly when there are no active templates', async () => {
     const { runRecurringExpensesIfDue } = await import('../lib/recurring-expenses');
     const result = runRecurringExpensesIfDue(new Date('2026-05-15T10:00:00Z'));
