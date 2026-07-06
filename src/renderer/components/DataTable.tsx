@@ -147,7 +147,7 @@ export function DataTable<T, K extends string = string>({
           );
         })}
         {actions && (
-          <span className="data-table-heading data-table-align-end" role="columnheader">
+          <span className="data-table-heading data-table-align-end data-table-actions-heading" role="columnheader">
             {actionsHeader}
           </span>
         )}

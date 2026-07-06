@@ -1413,6 +1413,14 @@ h2 {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-2);
+  /* Puxa o strip para a borda direita do cartão: anula todo o padding-right
+     (space-4) da linha, deixando o kebab (⋯) encostado à borda. */
+  margin-right: calc(var(--space-4) * -1);
+}
+
+/* Cabeçalho da coluna Ações encostado à mesma borda que os botões abaixo. */
+.data-table-actions-heading {
+  margin-right: calc(var(--space-4) * -1);
 }
 
 .data-table-actions button {
@@ -1433,6 +1441,98 @@ h2 {
   border-color: var(--border-2);
   color: var(--text);
   background: var(--surface-3);
+}
+
+/* Row overflow menu ("⋯") — kebab + dropdown panel of grouped actions. */
+.row-actions-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.row-actions-menu-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: var(--z-sticky);
+  min-width: 232px;
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  box-shadow: var(--shadow-2);
+  text-align: left;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Abre para cima quando não há espaço em baixo (linhas no fundo da lista). */
+.row-actions-menu-panel.is-up {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.row-actions-menu-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.row-actions-menu-group + .row-actions-menu-group {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--border);
+}
+
+.row-actions-menu-label {
+  padding: var(--space-1) var(--space-2) 2px;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Override the 36px icon-button sizing that .data-table-actions button imposes. */
+.data-table-actions .row-actions-menu-item {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--r1);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.data-table-actions .row-actions-menu-item:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.data-table-actions .row-actions-menu-item.is-danger {
+  color: var(--danger);
+}
+
+.data-table-actions .row-actions-menu-item.is-danger:hover:not(:disabled) {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.data-table-actions .row-actions-menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.row-actions-menu-item svg {
+  flex: 0 0 auto;
 }
 
 @media (max-width: 760px) {
@@ -1468,6 +1568,7 @@ h2 {
 
   .data-table-actions {
     justify-content: flex-start;
+    margin-right: 0;
   }
 }
 
