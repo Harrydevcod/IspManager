@@ -1,10 +1,14 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import os, { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import { closeDatabaseForTests, getSqliteDatabase } from '../db/database';
-import { enqueueSmsNotification, pollSmsStatusIfDue, runSmsOutboxIfDue, verifyCompanionPairing } from './sms-outbox';
+import { discoverCompanionHosts, enqueueSmsNotification, findPairedCompanion, pollSmsStatusIfDue, runSmsOutboxIfDue, smsDispatchIntervalMs, verifyCompanionPairing } from './sms-outbox';
+
+const oneWifiInterface = {
+  wifi: [{ address: '192.168.1.220', family: 'IPv4', internal: false, netmask: '255.255.255.0', mac: '', cidr: null }]
+} as unknown as ReturnType<typeof os.networkInterfaces>;
 
 let dataDir: string;
 let db: Database.Database;
@@ -27,6 +31,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 afterAll(() => {
@@ -83,6 +88,36 @@ describe('SMS outbox', () => {
     expect(row.attempts).toBe(1);
     expect(row.next_attempt_at).toBeTruthy();
     expect(row.last_error).toBe('offline');
+  });
+
+  test('retry uses the configured smsRetryGraceMinutes for next_attempt_at', async () => {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsRetryGraceMinutes','10')`).run();
+    const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
+    await runSmsOutboxIfDue(new Date('2026-06-04T12:00:00Z'), {
+      postRequest: async () => ({ ok: false, error: 'offline' }),
+      fetchStatus: async () => ({ status: 'pending_approval' })
+    });
+    const row = db.prepare('SELECT next_attempt_at FROM sms_outbox WHERE id = ?').get(id) as { next_attempt_at: string };
+    expect(row.next_attempt_at).toBe('2026-06-04 12:10:00');
+  });
+
+  test('retry falls back to 5 minutes when smsRetryGraceMinutes is unset', async () => {
+    const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
+    await runSmsOutboxIfDue(new Date('2026-06-04T12:00:00Z'), {
+      postRequest: async () => ({ ok: false, error: 'offline' }),
+      fetchStatus: async () => ({ status: 'pending_approval' })
+    });
+    const row = db.prepare('SELECT next_attempt_at FROM sms_outbox WHERE id = ?').get(id) as { next_attempt_at: string };
+    expect(row.next_attempt_at).toBe('2026-06-04 12:05:00');
+  });
+
+  test('smsDispatchIntervalMs honours the setting and clamps invalid values', () => {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsDispatchIntervalSeconds','120')`).run();
+    expect(smsDispatchIntervalMs()).toBe(120_000);
+    db.prepare(`UPDATE app_settings SET value='2' WHERE key='smsDispatchIntervalSeconds'`).run();
+    expect(smsDispatchIntervalMs()).toBe(60_000); // below the 15s floor → default
+    db.prepare(`DELETE FROM app_settings WHERE key='smsDispatchIntervalSeconds'`).run();
+    expect(smsDispatchIntervalMs()).toBe(60_000); // unset → default
   });
 
   test('max attempts marks failed with failure timestamp', async () => {
@@ -191,5 +226,34 @@ describe('SMS outbox', () => {
     db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
     expect(await verifyCompanionPairing()).toEqual({ reachable: false, paired: false });
+  });
+});
+
+describe('SMS companion discovery', () => {
+  test('discoverCompanionHosts returns only hosts that answer on the companion port', async () => {
+    vi.spyOn(os, 'networkInterfaces').mockReturnValue(oneWifiInterface);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.startsWith('http://192.168.1.55:8765')) return { status: 401 } as Response;
+      throw new Error('offline');
+    }));
+    const hosts = await discoverCompanionHosts({ timeoutMs: 50 });
+    expect(hosts).toEqual(['http://192.168.1.55:8765']);
+  });
+
+  test('findPairedCompanion picks the host that accepts our signed ping', async () => {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      // Only .77 accepts our secret (non-401); .55 is some other server on :8765.
+      if (url.startsWith('http://192.168.1.77:8765')) return { status: 200 } as Response;
+      return { status: 401 } as Response;
+    }));
+    const found = await findPairedCompanion(['http://192.168.1.55:8765', 'http://192.168.1.77:8765'], 50);
+    expect(found).toBe('http://192.168.1.77:8765');
+  });
+
+  test('findPairedCompanion returns null when nothing holds the secret', async () => {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ status: 401 } as Response)));
+    expect(await findPairedCompanion(['http://192.168.1.55:8765'], 50)).toBeNull();
   });
 });

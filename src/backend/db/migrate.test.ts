@@ -235,4 +235,14 @@ describe('runMigrations', () => {
       VALUES (1, 'Android', 'http://192.168.1.50:8765', ?, datetime('now'))
     `).run('a'.repeat(64))).not.toThrow();
   });
+
+  test('creates the SMS monthly report index', () => {
+    const db = freshDb();
+    runMigrations(db, migrations);
+
+    const indexes = db.prepare(`PRAGMA index_list('sms_outbox')`).all() as Array<{ name: string }>;
+    expect(indexes.map((index) => index.name)).toContain('idx_sms_outbox_created_status');
+
+    db.close();
+  });
 });

@@ -21,7 +21,8 @@ import {
   fallbackSmsReceiptConfirmedTemplate,
   fallbackSmsSuspensionNoticeTemplate
 } from '../../shared/sms';
-import type { SmsStatus } from '../types';
+import { currentSmsReportMonth } from '../../shared/sms-report';
+import type { SmsMonthlyReport, SmsStatus } from '../types';
 import { BackupsPanel } from './BackupsPanel';
 import { BillingTab } from './settings/BillingTab';
 import { CompanyTab } from './settings/CompanyTab';
@@ -92,11 +93,16 @@ export function SettingsModule() {
     smsSuspensionNoticeTemplate: fallbackSmsSuspensionNoticeTemplate
   });
   const [smsStatus, setSmsStatus] = useState<SmsStatus | null>(null);
+  const [smsReportMonth, setSmsReportMonth] = useState(currentSmsReportMonth);
+  const [smsReport, setSmsReport] = useState<SmsMonthlyReport | null>(null);
+  const [smsReportLoading, setSmsReportLoading] = useState(false);
   const [smsPairing, setSmsPairing] = useState<{ baseUrl: string; deviceName: string }>({ baseUrl: '', deviceName: '' });
   const [smsPairingBusy, setSmsPairingBusy] = useState(false);
+  const [smsDetecting, setSmsDetecting] = useState(false);
   const [smsQrDataUrl, setSmsQrDataUrl] = useState<string>('');
   const [smsVerifying, setSmsVerifying] = useState(false);
   const pairingPollRef = useRef<{ cancelled: boolean } | null>(null);
+  const smsReportRequestRef = useRef(0);
   const hasUnsavedChanges = !lastSavedForm || JSON.stringify(form) !== JSON.stringify(lastSavedForm);
 
   function stopPairingVerification() {
@@ -114,6 +120,10 @@ export function SettingsModule() {
     pairingPollRef.current = token;
     setSmsVerifying(true);
     const deadline = Date.now() + 60_000;
+    // Remember the last thing the phone told us so a timeout can explain *why*:
+    // never reachable → wrong IP / off-network; reachable but never paired →
+    // the QR was not read (or an old one was).
+    let everReachable = false;
     try {
       while (!token.cancelled && Date.now() < deadline) {
         await new Promise((resolve) => window.setTimeout(resolve, 2000));
@@ -122,6 +132,7 @@ export function SettingsModule() {
           const response = await authFetch('http://127.0.0.1:3001/api/sms/pairing/verify');
           const data = (await response.json().catch(() => ({}))) as { reachable?: boolean; paired?: boolean; deviceName?: string };
           if (token.cancelled) return;
+          if (data.reachable) everReachable = true;
           if (data.paired) {
             setSmsQrDataUrl('');
             setMessage({ tone: 'success', text: `Telemovel "${data.deviceName || deviceName}" pareado com sucesso.`, placement: 'top' });
@@ -135,7 +146,9 @@ export function SettingsModule() {
       if (!token.cancelled) {
         setMessage({
           tone: 'error',
-          text: 'Nao foi possivel confirmar o pareamento. Confirma que o telemovel esta na mesma rede Wi-Fi, que o endereco esta correto e que leu o QR Code. Tenta novamente.',
+          text: everReachable
+            ? `O telemovel "${deviceName}" respondeu mas nao aceitou o pareamento. Le o QR Code atual (nao um antigo) no app ISPM SMS e tenta de novo.`
+            : `O telemovel "${deviceName}" nao respondeu em ${smsPairing.baseUrl || 'endereco guardado'}. Confirma que o app ISPM SMS esta aberto, na mesma rede Wi-Fi, e que o endereco/IP esta correto (usa "Detetar telemovel na rede").`,
           placement: 'top'
         });
       }
@@ -160,6 +173,64 @@ export function SettingsModule() {
         }
       })
       .catch(() => setSmsStatus(null));
+  }
+
+  async function loadSmsReport(month: string) {
+    const requestId = ++smsReportRequestRef.current;
+    setSmsReportLoading(true);
+    setSmsReport(null);
+    try {
+      const response = await authFetch(
+        `http://127.0.0.1:3001/api/sms/report?month=${encodeURIComponent(month)}`
+      );
+      const data = (await response.json().catch(() => ({}))) as SmsMonthlyReport | { error?: string };
+      if (requestId !== smsReportRequestRef.current) return;
+      if (!response.ok || !('counts' in data)) {
+        throw new Error(
+          'error' in data && data.error
+            ? data.error
+            : 'Não foi possível carregar o relatório SMS.'
+        );
+      }
+      setSmsReport(data);
+    } catch (error) {
+      if (requestId !== smsReportRequestRef.current) return;
+      setSmsReport(null);
+      setMessage({
+        tone: 'error',
+        text: error instanceof Error ? error.message : 'Não foi possível carregar o relatório SMS.',
+        placement: 'top'
+      });
+    } finally {
+      if (requestId === smsReportRequestRef.current) {
+        setSmsReportLoading(false);
+      }
+    }
+  }
+
+  async function detectSmsPhone() {
+    setSmsDetecting(true);
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/sms/discover', { method: 'POST' });
+      const data = (await response.json().catch(() => ({}))) as { baseUrl?: string | null; candidates?: string[] };
+      if (!response.ok) {
+        setMessage({ tone: 'error', text: 'Nao foi possivel procurar o telemovel na rede.', placement: 'top' });
+        return;
+      }
+      if (data.baseUrl) {
+        setSmsPairing((current) => ({ ...current, baseUrl: data.baseUrl as string }));
+        setMessage({ tone: 'success', text: `Telemovel encontrado em ${data.baseUrl}. Confirma o nome e gera o pareamento.`, placement: 'top' });
+      } else if (data.candidates && data.candidates.length > 1) {
+        setSmsPairing((current) => ({ ...current, baseUrl: data.candidates![0] }));
+        setMessage({ tone: 'neutral', text: `Varios dispositivos respondem na porta do companion (${data.candidates.join(', ')}). Confirma qual e o telemovel.`, placement: 'top' });
+      } else {
+        setMessage({ tone: 'error', text: 'Nenhum telemovel encontrado na rede local. Confirma que o app ISPM SMS esta aberto no telemovel e na mesma rede Wi-Fi.', placement: 'top' });
+      }
+    } catch {
+      setMessage({ tone: 'error', text: 'Falha de rede ao procurar o telemovel.', placement: 'top' });
+    } finally {
+      setSmsDetecting(false);
+    }
   }
 
   async function createSmsPairing() {
@@ -252,7 +323,16 @@ export function SettingsModule() {
 
   useEffect(() => () => {
     if (pairingPollRef.current) pairingPollRef.current.cancelled = true;
+    smsReportRequestRef.current += 1;
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'sms') void loadSmsStatus();
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'sms') void loadSmsReport(smsReportMonth);
+  }, [activeTab, smsReportMonth]);
 
   function updateForm(field: keyof SettingsFormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -448,11 +528,17 @@ export function SettingsModule() {
             onUpdate={updateForm}
             onToggle={toggleForm}
             smsStatus={smsStatus}
+            smsReportMonth={smsReportMonth}
+            smsReport={smsReport}
+            smsReportLoading={smsReportLoading}
+            onSmsReportMonthChange={setSmsReportMonth}
             smsPairing={smsPairing}
             onPairingChange={(field, value) => setSmsPairing((current) => ({ ...current, [field]: value }))}
             smsVerifying={smsVerifying}
             smsPairingBusy={smsPairingBusy}
+            smsDetecting={smsDetecting}
             smsQrDataUrl={smsQrDataUrl}
+            onDetectPhone={() => void detectSmsPhone()}
             onCreatePairing={() => void createSmsPairing()}
             onRevokePairing={() => void revokeSmsPairing()}
           />

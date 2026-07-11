@@ -627,6 +627,7 @@ export function ClientsModule({
             </BulkActionBar>
           )}
           <DataTable
+            className="clients-table"
             rows={pagedClients.rows}
             rowKey={(client) => client.id}
             selection={canManageClients ? tableSelection : undefined}

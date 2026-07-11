@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import os from 'node:os';
 import { getSqliteDatabase } from '../db/database';
 import { createSmsSignature } from './sms-signing';
 import type { SmsEventType } from '../../shared/sms';
+
+const DEFAULT_COMPANION_PORT = 8765;
 
 export type SmsOutboxStatus = 'pending_dispatch' | 'pending_approval' | 'approved' | 'sent' | 'failed' | 'rejected' | 'cancelled';
 export type SmsDispatchResult = { ok: true; androidRequestId: string } | { ok: false; error: string };
@@ -26,8 +29,26 @@ function getSetting(key: string): string {
   return row?.value?.trim() || '';
 }
 
-function backoffMinutes(attempt: number) {
-  return [1, 5, 15, 60, 180][attempt - 1] ?? 360;
+function setSetting(key: string, value: string) {
+  getSqliteDatabase().prepare(`
+    INSERT INTO app_settings (key,value,updated_at) VALUES (?,?,datetime('now'))
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')
+  `).run(key, value);
+}
+
+// "Reenvio apos falha (minutos)" — flat grace before the next retry, straight
+// from settings (validated 1..1440; falls back to 5 if unset/garbage).
+function retryGraceMinutes(): number {
+  const n = Number(getSetting('smsRetryGraceMinutes'));
+  return Number.isFinite(n) && n >= 1 && n <= 1440 ? n : 5;
+}
+
+// "Intervalo de envio SMS (segundos)" — how often the outbox is drained.
+// Read per tick by the server scheduler so changes apply without a restart.
+export function smsDispatchIntervalMs(): number {
+  const n = Number(getSetting('smsDispatchIntervalSeconds'));
+  const seconds = Number.isFinite(n) && n >= 15 && n <= 3600 ? n : 60;
+  return seconds * 1000;
 }
 
 export function enqueueSmsNotification(input: EnqueueSmsInput): number {
@@ -56,8 +77,8 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
   }
 }
 
-async function signedFetch(path: string, method: 'GET' | 'POST', bodyObject?: unknown, timeoutMs?: number): Promise<Response> {
-  const baseUrl = getSetting('smsCompanionBaseUrl');
+async function signedFetch(path: string, method: 'GET' | 'POST', bodyObject?: unknown, timeoutMs?: number, baseUrlOverride?: string): Promise<Response> {
+  const baseUrl = baseUrlOverride || getSetting('smsCompanionBaseUrl');
   const secret = getSetting('smsCompanionPairingKey');
   if (!baseUrl || !secret) throw new Error('Companion SMS nao pareado');
   const body = bodyObject ? JSON.stringify(bodyObject) : '';
@@ -93,6 +114,101 @@ export async function verifyCompanionPairing(timeoutMs = 3500): Promise<{ reacha
   } catch {
     return { reachable: false, paired: false };
   }
+}
+
+function isPrivateIpv4(ip: string): boolean {
+  const [a, b] = ip.split('.').map(Number);
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}
+
+// LAN /24 prefixes of this machine's private IPv4 interfaces (skips loopback,
+// APIPA and VPN/public ranges like Radmin so we only sweep the real local net).
+function localIpv4Prefixes(): string[] {
+  const prefixes = new Set<string>();
+  for (const iface of Object.values(os.networkInterfaces())) {
+    for (const net of iface ?? []) {
+      if (net.family !== 'IPv4' || net.internal || !isPrivateIpv4(net.address)) continue;
+      const [a, b, c] = net.address.split('.');
+      prefixes.add(`${a}.${b}.${c}`);
+    }
+  }
+  return [...prefixes];
+}
+
+function companionPort(): number {
+  const saved = getSetting('smsCompanionBaseUrl');
+  if (saved) {
+    try { return Number(new URL(saved).port) || DEFAULT_COMPANION_PORT; } catch { /* fall through */ }
+  }
+  return DEFAULT_COMPANION_PORT;
+}
+
+async function respondsAsCompanion(baseUrl: string, timeoutMs: number): Promise<boolean> {
+  try {
+    // Any HTTP reply (even 401 for a missing/wrong signature) means a companion
+    // server is listening here; a network error/timeout means nothing is.
+    await fetch(`${baseUrl}/ping`, { signal: AbortSignal.timeout(timeoutMs) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sweeps the local /24(s) for hosts running the companion server on its port.
+ * ponytail: /24 + port from the saved address (default 8765), ~700ms probes at
+ * 48-wide concurrency. Covers home/office LANs; a /16 or custom port still uses
+ * the manual address field.
+ */
+export async function discoverCompanionHosts(opts?: { timeoutMs?: number; concurrency?: number }): Promise<string[]> {
+  const port = companionPort();
+  const timeoutMs = opts?.timeoutMs ?? 700;
+  const targets: string[] = [];
+  for (const prefix of localIpv4Prefixes()) {
+    for (let host = 1; host <= 254; host++) targets.push(`http://${prefix}.${host}:${port}`);
+  }
+  if (targets.length === 0) return [];
+  const concurrency = Math.min(opts?.concurrency ?? 48, targets.length);
+  const found: string[] = [];
+  let cursor = 0;
+  async function worker() {
+    while (cursor < targets.length) {
+      const url = targets[cursor++];
+      if (await respondsAsCompanion(url, timeoutMs)) found.push(url);
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, worker));
+  return found;
+}
+
+/**
+ * Among LAN hosts running a companion, the one that accepts our pairing secret
+ * (signed `/ping` ≠ 401) is uniquely our paired phone — so this recovers the
+ * phone after its DHCP address changes. Pass a precomputed host list to avoid a
+ * second sweep. Returns null if none matches (phone off-network / not paired).
+ */
+export async function findPairedCompanion(hosts?: string[], timeoutMs = 700): Promise<string | null> {
+  const secret = getSetting('smsCompanionPairingKey');
+  if (!secret) return null;
+  const candidates = hosts ?? (await discoverCompanionHosts({ timeoutMs }));
+  for (const baseUrl of candidates) {
+    try {
+      const response = await signedFetch('/ping', 'GET', undefined, timeoutMs, baseUrl);
+      if (response.status !== 401) return baseUrl;
+    } catch { /* went away mid-sweep — skip */ }
+  }
+  return null;
+}
+
+// Adopts the phone's new address when the saved one stops answering. Only sweeps
+// when the companion is actually down, so a healthy setup pays a single /ping.
+async function selfHealCompanionAddress(): Promise<void> {
+  const current = getSetting('smsCompanionBaseUrl');
+  if (!current || !getSetting('smsCompanionPairingKey')) return;
+  const { reachable, paired } = await verifyCompanionPairing(1500);
+  if (reachable && paired) return;
+  const found = await findPairedCompanion();
+  if (found && found !== current) setSetting('smsCompanionBaseUrl', found);
 }
 
 async function defaultPostRequest(entry: { requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test'; clientName: string | null }): Promise<SmsDispatchResult> {
@@ -148,6 +264,12 @@ export async function runSmsOutboxIfDue(
     clientName: string | null;
   }>;
 
+  // Adopt the phone's new address before dispatching if the saved one went
+  // stale. Skipped under test (like the server timers) to avoid a live LAN sweep.
+  if (rows.length > 0 && !process.env.VITEST) {
+    await selfHealCompanionAddress();
+  }
+
   let dispatched = 0;
   let retried = 0;
 
@@ -170,7 +292,7 @@ export async function runSmsOutboxIfDue(
         UPDATE sms_outbox SET status='failed', attempts=attempts+1, last_error=?, failed_at=datetime('now'), updated_at=datetime('now') WHERE id=?
       `).run(result.error, row.id);
     } else {
-      const next = new Date(now.getTime() + backoffMinutes(attemptsAfter) * 60_000).toISOString().replace('T', ' ').slice(0, 19);
+      const next = new Date(now.getTime() + retryGraceMinutes() * 60_000).toISOString().replace('T', ' ').slice(0, 19);
       db.prepare(`
         UPDATE sms_outbox SET attempts=attempts+1, last_error=?, next_attempt_at=?, updated_at=datetime('now') WHERE id=?
       `).run(result.error, next, row.id);

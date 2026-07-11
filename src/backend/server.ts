@@ -28,7 +28,7 @@ import { runMonthlyBillingIfDue } from './lib/auto-billing';
 import { runAudiovisualAnnualIfDue } from './lib/audiovisual-billing';
 import { runOverdueNoticesIfDue } from './lib/notices';
 import { pollWhatsappDeliveryIfDue, runWhatsappOutboxIfDue } from './lib/whatsapp-outbox';
-import { pollSmsStatusIfDue, runSmsOutboxIfDue } from './lib/sms-outbox';
+import { pollSmsStatusIfDue, runSmsOutboxIfDue, smsDispatchIntervalMs } from './lib/sms-outbox';
 import { runJob, runJobSync } from './lib/jobRuns';
 
 let serverStarted = false;
@@ -167,8 +167,13 @@ export async function createBackendApp() {
   if (process.env.ISPM_SMS_OUTBOX !== 'off' && !process.env.VITEST) {
     const drainSms = () => { void runJob('sms_drain', runSmsOutboxIfDue).catch(() => undefined); };
     const pollSms = () => { void runJob('sms_poll', pollSmsStatusIfDue).catch(() => undefined); };
+    // Self-rescheduling so "Intervalo de envio SMS (segundos)" applies live —
+    // each tick re-reads the setting instead of pinning a fixed setInterval.
+    const scheduleDrain = () => {
+      setTimeout(() => { drainSms(); scheduleDrain(); }, smsDispatchIntervalMs()).unref();
+    };
     drainSms();
-    setInterval(drainSms, 60_000).unref();
+    scheduleDrain();
     setInterval(pollSms, 60_000).unref();
   }
 
