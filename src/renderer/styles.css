@@ -5197,6 +5197,7 @@ button.danger:disabled {
 .sms-delivery-report {
   container-type: inline-size;
   display: grid;
+  grid-column: 1 / -1;
   gap: 0;
   margin: var(--space-2) 0;
   overflow: hidden;

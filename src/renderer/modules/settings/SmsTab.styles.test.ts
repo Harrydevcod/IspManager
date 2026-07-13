@@ -14,6 +14,9 @@ describe('SMS report card styles', () => {
     expect(declarations('.sms-delivery-report')).toMatch(
       /container-type:\s*inline-size/
     );
+    expect(declarations('.sms-delivery-report')).toMatch(
+      /grid-column:\s*1\s*\/\s*-1/
+    );
     expect(declarations('.sms-delivery-report-head')).toMatch(
       /justify-content:\s*space-between/
     );
