@@ -5192,89 +5192,93 @@ button.danger:disabled {
   width: fit-content;
 }
 
-/* Fila SMS: contadores por estado, cada chip com acento semantico na aresta. */
-/* Relatorio de entrega: painel titulado sobre a faixa de stats. Cabecalho com
-   titulo editorial + seletor de mes, regua hairline a separar dos numeros. */
+/* Relatório SMS: superfície editorial compacta. O cabeçalho e os estados
+   respondem à largura do próprio painel, não à viewport da aplicação. */
 .sms-delivery-report {
+  container-type: inline-size;
   display: grid;
-  gap: var(--space-2);
+  gap: 0;
   margin: var(--space-2) 0;
-  padding: var(--space-3);
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--r2);
-  background: color-mix(in oklch, var(--surface-2) 55%, transparent);
+  background: color-mix(in oklch, var(--surface-2) 58%, var(--surface));
 }
 
 .sms-delivery-report-head {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
-  justify-content: flex-start;
-  gap: var(--space-2) var(--space-4);
-  padding-bottom: var(--space-2);
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border);
 }
 
 .sms-delivery-report-head > div:first-child {
   display: grid;
-  gap: 3px;
+  gap: var(--space-0-5);
+  min-width: 0;
 }
 
 .sms-delivery-report-eyebrow {
+  color: var(--text-3);
   font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-3);
 }
 
 .sms-delivery-report h3 {
   margin: 0;
-  color: var(--text-1);
+  color: var(--text);
   font-size: var(--fs-lg);
   font-weight: 600;
   letter-spacing: var(--tracking-tight);
-  line-height: 1.15;
+  line-height: 1.2;
 }
 
 .sms-report-month {
-  width: min(11rem, 100%);
+  flex: 0 0 10.5rem;
+  width: min(10.5rem, 100%);
   margin-inline: 0;
 }
 
 .sms-report-loading {
-  min-height: var(--space-5);
+  display: flex;
+  align-items: center;
+  min-height: 4.5rem;
+  padding: var(--space-3) var(--space-4);
   color: var(--text-3);
   font-size: var(--fs-sm);
 }
 
 .sms-queue {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: var(--space-3) 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
   margin: 0;
+  background: var(--border);
 }
 
 .sms-queue-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 0 var(--space-3);
-  border-inline-start: 1px solid var(--border);
-}
-
-.sms-queue-stat:first-child {
-  padding-inline-start: 0;
-  border-inline-start: 0;
+  display: grid;
+  align-content: center;
+  gap: var(--space-1);
+  min-width: 0;
+  min-height: 4.5rem;
+  padding: var(--space-3) var(--space-4);
+  background: color-mix(in oklch, var(--surface-2) 58%, var(--surface));
 }
 
 .sms-queue-stat-value {
-  font-size: var(--fs-base);
+  color: var(--text-2);
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-tight);
   line-height: 1;
-  color: var(--text-2);
 }
 
 .sms-queue-stat[data-tone='warn'] .sms-queue-stat-value { color: var(--warn); }
@@ -5282,13 +5286,50 @@ button.danger:disabled {
 .sms-queue-stat[data-tone='danger'] .sms-queue-stat-value { color: var(--danger); }
 
 .sms-queue-stat-label {
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--text-3);
-  white-space: nowrap;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+@container (max-width: 32rem) {
+  .sms-delivery-report-head {
+    align-items: stretch;
+  }
+
+  .sms-report-month {
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .sms-queue {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .sms-queue-stat {
+    grid-column: span 2;
+  }
+
+  .sms-queue-stat:nth-last-child(-n + 2) {
+    grid-column: span 3;
+  }
+}
+
+@container (max-width: 22rem) {
+  .sms-queue {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sms-queue-stat,
+  .sms-queue-stat:nth-last-child(-n + 2) {
+    grid-column: auto;
+  }
+
+  .sms-queue-stat:last-child {
+    grid-column: 1 / -1;
+  }
 }
 
 .settings-bank-accounts {
