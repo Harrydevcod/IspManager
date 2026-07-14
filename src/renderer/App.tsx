@@ -95,6 +95,7 @@ function AppShell() {
   const [focusClientId, setFocusClientId] = useState<number | null>(null);
   const [focusServiceClientId, setFocusServiceClientId] = useState<number | null>(null);
   const [paymentsFocus, setPaymentsFocus] = useState<'overdue' | 'pending' | null>(null);
+  const [paymentsMonth, setPaymentsMonth] = useState<string | null>(null);
   const [stockLowFocus, setStockLowFocus] = useState(false);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -357,6 +358,7 @@ function AppShell() {
               onOpenPending={() => { setPaymentsFocus('pending'); setSection('finance'); }}
               onOpenLowStock={() => { setStockLowFocus(true); setSection('stock'); }}
               onOpenWorkOrders={() => setSection('work-orders')}
+              onOpenMonth={(month) => { setPaymentsMonth(month); setSection('finance'); }}
             />
           )}
           {section === 'clients' && (
@@ -379,7 +381,8 @@ function AppShell() {
           {section === 'finance' && (
             <FinanceModule
               paymentsFocus={paymentsFocus}
-              onPaymentsFocusHandled={() => setPaymentsFocus(null)}
+              paymentsMonth={paymentsMonth}
+              onPaymentsFocusHandled={() => { setPaymentsFocus(null); setPaymentsMonth(null); }}
             />
           )}
           {section === 'work-orders' && <WorkOrdersModule />}

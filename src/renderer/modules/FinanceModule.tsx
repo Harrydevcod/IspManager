@@ -25,9 +25,11 @@ const TABS: { id: FinanceTab; label: string; icon: typeof TrendingUp }[] = [
  */
 export function FinanceModule({
   paymentsFocus,
+  paymentsMonth,
   onPaymentsFocusHandled
 }: {
   paymentsFocus?: 'overdue' | 'pending' | null;
+  paymentsMonth?: string | null;
   onPaymentsFocusHandled?: () => void;
 } = {}) {
   const [tab, setTab] = useState<FinanceTab>('pagamentos');
@@ -54,7 +56,7 @@ export function FinanceModule({
       </div>
 
       {tab === 'pagamentos' && (
-        <PaymentsModule focusStatus={paymentsFocus} onFocusHandled={onPaymentsFocusHandled} />
+        <PaymentsModule focusStatus={paymentsFocus} focusMonth={paymentsMonth} onFocusHandled={onPaymentsFocusHandled} />
       )}
       {tab === 'lucro' && <ProfitModule />}
       {tab === 'investimentos' && <InvestmentsModule />}

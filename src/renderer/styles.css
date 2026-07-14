@@ -4249,6 +4249,9 @@ label.field-toggle {
   animation: bar-grow-in 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
   animation-delay: calc(var(--i, 0) * 32ms);
 }
+.sparkline svg .bar.bar-clickable {
+  cursor: pointer;
+}
 @keyframes bar-grow-in {
   from { opacity: 0; }
   to   { opacity: 1; }
