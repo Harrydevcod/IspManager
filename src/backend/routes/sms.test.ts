@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -25,6 +25,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  vi.unstubAllGlobals();
   db.prepare('DELETE FROM sms_outbox').run();
   db.prepare('DELETE FROM payments').run();
   db.prepare('DELETE FROM services').run();
@@ -49,14 +50,96 @@ function seedPaidPayment() {
   return { clientId, serviceId, paymentId };
 }
 
+function seedSmsReportRow(status: string, createdAt: string) {
+  db.prepare(`
+    INSERT INTO sms_outbox
+      (event_type, to_phone, body, status, created_at, updated_at)
+    VALUES ('test', '+2389912233', 'teste', ?, ?, ?)
+  `).run(status, createdAt, createdAt);
+}
+
 describe('SMS routes', () => {
-  test('GET /api/sms/status returns pairing and queue counts', async () => {
+  test('GET /api/sms/status returns pairing and connectivity without report counts', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/sms/status' });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ paired: false, counts: { pendingDispatch: 0, pendingApproval: 0 } });
+    expect(response.json()).toEqual({
+      configured: false,
+      paired: false,
+      reachable: false,
+      active: false,
+      baseUrl: '',
+      deviceName: ''
+    });
   });
 
-  test('POST /api/sms/pairing creates a pairing payload and marks paired', async () => {
+  test('GET /api/sms/status reports saved pairing as inactive when Android is unreachable', async () => {
+    db.prepare(`
+      INSERT INTO app_settings (key,value) VALUES
+      ('smsCompanionEnabled','true'),
+      ('smsCompanionBaseUrl','http://192.168.1.50:8765'),
+      ('smsCompanionDeviceName','Android A'),
+      ('smsCompanionPairingKey','secret')
+    `).run();
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+
+    const response = await app.inject({ method: 'GET', url: '/api/sms/status' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      configured: true,
+      paired: false,
+      reachable: false,
+      active: false,
+      baseUrl: 'http://192.168.1.50:8765',
+      deviceName: 'Android A'
+    });
+  });
+
+  test.each(['/api/sms/report', '/api/sms/report?month=2026-13'])(
+    'GET %s rejects an invalid month',
+    async (url) => {
+      const response = await app.inject({ method: 'GET', url });
+      expect(response.statusCode).toBe(400);
+    }
+  );
+
+  test('GET /api/sms/report returns zero counts for an empty month', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/sms/report?month=2026-07' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      month: '2026-07',
+      timezone: 'Atlantic/Cape_Verde',
+      counts: {
+        pendingDispatch: 0,
+        pendingApproval: 0,
+        sent: 0,
+        failed: 0,
+        rejected: 0
+      }
+    });
+  });
+
+  test('GET /api/sms/report uses Cape Verde creation-month boundaries', async () => {
+    seedSmsReportRow('pending_dispatch', '2026-07-01 00:59:59');
+    seedSmsReportRow('pending_approval', '2026-07-01 01:00:00');
+    seedSmsReportRow('sent', '2026-07-15 12:00:00');
+    seedSmsReportRow('failed', '2026-08-01 00:30:00');
+    seedSmsReportRow('rejected', '2026-08-01 01:00:00');
+
+    const response = await app.inject({ method: 'GET', url: '/api/sms/report?month=2026-07' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().counts).toEqual({
+      pendingDispatch: 0,
+      pendingApproval: 1,
+      sent: 1,
+      failed: 1,
+      rejected: 0
+    });
+  });
+
+  test('POST /api/sms/pairing creates a pairing payload and stores the pairing config', async () => {
     const response = await app.inject({ method: 'POST', url: '/api/sms/pairing', payload: { baseUrl: 'http://192.168.1.50:8765', deviceName: 'Android A' } });
     expect(response.statusCode).toBe(200);
     const body = response.json();
@@ -64,7 +147,7 @@ describe('SMS routes', () => {
     expect(body.secret).toBeTruthy();
 
     const status = await app.inject({ method: 'GET', url: '/api/sms/status' });
-    expect(status.json()).toMatchObject({ paired: true });
+    expect(status.json()).toMatchObject({ configured: true });
   });
 
   test('DELETE /api/sms/pairing revokes the companion', async () => {

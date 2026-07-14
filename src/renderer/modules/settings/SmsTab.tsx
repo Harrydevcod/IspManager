@@ -1,5 +1,6 @@
-import { Button, Field, Message, Textarea, Toggle } from '../../components';
-import type { SmsStatus } from '../../types';
+import { QrCode, RotateCcw, Unlink, Wifi } from 'lucide-react';
+import { Button, Field, Textarea, Toggle } from '../../components';
+import type { SmsMonthlyReport, SmsStatus } from '../../types';
 import { templateRows, type SettingsFormState, type ToggleField, type UpdateField } from './settingsForm';
 
 type SmsPairing = { baseUrl: string; deviceName: string };
@@ -9,11 +10,17 @@ type SmsTabProps = {
   onUpdate: UpdateField;
   onToggle: ToggleField;
   smsStatus: SmsStatus | null;
+  smsReportMonth: string;
+  smsReport: SmsMonthlyReport | null;
+  smsReportLoading: boolean;
+  onSmsReportMonthChange: (month: string) => void;
   smsPairing: SmsPairing;
   onPairingChange: (field: keyof SmsPairing, value: string) => void;
   smsVerifying: boolean;
   smsPairingBusy: boolean;
+  smsDetecting: boolean;
   smsQrDataUrl: string;
+  onDetectPhone: () => void;
   onCreatePairing: () => void;
   onRevokePairing: () => void;
 };
@@ -23,14 +30,35 @@ export function SmsTab({
   onUpdate,
   onToggle,
   smsStatus,
+  smsReportMonth,
+  smsReport,
+  smsReportLoading,
+  onSmsReportMonthChange,
   smsPairing,
   onPairingChange,
   smsVerifying,
   smsPairingBusy,
+  smsDetecting,
   smsQrDataUrl,
+  onDetectPhone,
   onCreatePairing,
   onRevokePairing
 }: SmsTabProps) {
+  const pairingLabel = smsVerifying
+    ? 'A aguardar confirmacao do telemovel...'
+    : smsStatus?.active
+      ? `Ativo${smsStatus.deviceName ? `: ${smsStatus.deviceName}` : ''}${smsStatus.baseUrl ? ` (${smsStatus.baseUrl})` : ''}`
+      : smsStatus?.configured
+        ? smsStatus.reachable
+          ? `Inativo: ${smsStatus.deviceName || 'Android'} responde, mas nao aceitou este pareamento. Repareia o telemovel.`
+          : `Inativo: ${smsStatus.deviceName || 'Android'} nao responde em ${smsStatus.baseUrl || 'endereco guardado'}. O IP pode ter mudado.`
+        : 'Android nao pareado';
+  const createPairingLabel = smsStatus?.configured && !smsStatus.active
+    ? 'Voltar atras e reparear'
+    : smsStatus?.configured
+      ? 'Gerar novo pareamento'
+      : 'Gerar pareamento';
+
   return (
     <>
       <Toggle
@@ -40,17 +68,22 @@ export function SmsTab({
         onChange={(event) => onToggle('smsCompanionEnabled', event.target.checked)}
       />
       <div className="settings-test-whatsapp" aria-label="Pareamento do Android SMS">
-        <span>{smsVerifying
-          ? 'A aguardar confirmacao do telemovel...'
-          : smsStatus?.paired
-            ? `Pareado${smsStatus.deviceName ? `: ${smsStatus.deviceName}` : ''}${smsStatus.baseUrl ? ` (${smsStatus.baseUrl})` : ''}`
-            : 'Android nao pareado'}</span>
+        <span>{pairingLabel}</span>
         <Field
           label="Endereco do Android na rede local"
           value={smsPairing.baseUrl}
           onChange={(event) => onPairingChange('baseUrl', event.target.value)}
           placeholder="http://192.168.1.50:8765"
         />
+        <Button
+          variant="ghost"
+          onClick={onDetectPhone}
+          loading={smsDetecting}
+          disabled={smsPairingBusy}
+          leadingIcon={<Wifi size={14} aria-hidden />}
+        >
+          Detetar telemovel na rede
+        </Button>
         <Field
           label="Nome do dispositivo"
           value={smsPairing.deviceName}
@@ -63,11 +96,17 @@ export function SmsTab({
             onClick={onCreatePairing}
             disabled={!smsPairing.baseUrl || !smsPairing.deviceName}
             loading={smsPairingBusy}
+            leadingIcon={<QrCode size={14} aria-hidden />}
           >
-            {smsStatus?.paired ? 'Gerar novo pareamento' : 'Gerar pareamento'}
+            {createPairingLabel}
           </Button>
-          {smsStatus?.paired && (
-            <Button variant="ghost" onClick={onRevokePairing} disabled={smsPairingBusy}>
+          {smsStatus?.configured && (
+            <Button
+              variant="ghost"
+              onClick={onRevokePairing}
+              disabled={smsPairingBusy}
+              leadingIcon={smsStatus.active ? <Unlink size={14} aria-hidden /> : <RotateCcw size={14} aria-hidden />}
+            >
               Revogar
             </Button>
           )}
@@ -81,11 +120,41 @@ export function SmsTab({
           </div>
         )}
       </div>
-      {smsStatus && (
-        <Message tone={smsStatus.counts.failed > 0 ? 'error' : 'neutral'}>
-          Fila SMS: {smsStatus.counts.pendingDispatch} por entregar, {smsStatus.counts.pendingApproval} a aguardar aprovacao no Android, {smsStatus.counts.failed} falhado(s).
-        </Message>
-      )}
+      <section className="sms-delivery-report" aria-labelledby="sms-delivery-report-title">
+        <div className="sms-delivery-report-head">
+          <div>
+            <span className="sms-delivery-report-eyebrow">Canal SMS</span>
+            <h3 id="sms-delivery-report-title">Relatório de entrega de SMS</h3>
+          </div>
+          <Field
+            className="sms-report-month"
+            label="Mês"
+            type="month"
+            value={smsReportMonth}
+            onChange={(event) => {
+              if (event.target.value) onSmsReportMonthChange(event.target.value);
+            }}
+          />
+        </div>
+        {smsReportLoading ? (
+          <span className="sms-report-loading" role="status">A carregar relatório…</span>
+        ) : smsReport?.month === smsReportMonth ? (
+          <div className="sms-queue" role="group" aria-label="Fila SMS">
+            {([
+              { key: 'pendingDispatch', label: 'por entregar', tone: 'warn' },
+              { key: 'pendingApproval', label: 'por aprovar', tone: 'neutral' },
+              { key: 'sent', label: 'enviados', tone: 'success' },
+              { key: 'failed', label: 'falhados', tone: 'danger' },
+              { key: 'rejected', label: 'rejeitados', tone: 'danger' }
+            ] as const).map(({ key, label, tone }) => (
+              <div key={key} className="sms-queue-stat" data-tone={tone}>
+                <span className="sms-queue-stat-value">{smsReport.counts[key]}</span>
+                <span className="sms-queue-stat-label">{label}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </section>
       <Field
         className="field-short"
         label="Intervalo de envio SMS (segundos)"

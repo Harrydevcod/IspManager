@@ -3,7 +3,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { requireRole } from './auth';
-import { enqueueSmsNotification, verifyCompanionPairing } from '../lib/sms-outbox';
+import { discoverCompanionHosts, enqueueSmsNotification, findPairedCompanion, verifyCompanionPairing } from '../lib/sms-outbox';
+import { SMS_REPORT_TIMEZONE, smsReportMonthUtcRange } from '../../shared/sms-report';
 import {
   fallbackSmsInvoiceIssuedTemplate,
   fallbackSmsPaymentOverdueTemplate,
@@ -22,6 +23,18 @@ const pairingSchema = z.object({
 const paymentSmsSchema = z.object({
   eventType: z.enum(['invoice_issued', 'receipt_confirmed', 'payment_overdue', 'suspension_notice'])
 });
+
+const reportQuerySchema = z.object({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+});
+
+type SmsReportCounts = {
+  pendingDispatch: number | null;
+  pendingApproval: number | null;
+  sent: number | null;
+  failed: number | null;
+  rejected: number | null;
+};
 
 function getSetting(key: string): string {
   const row = getSqliteDatabase().prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined;
@@ -51,23 +64,55 @@ export async function registerSmsRoutes(app: FastifyInstance) {
   const canSend = { preHandler: requireRole(['admin', 'operator']) };
 
   app.get('/api/sms/status', adminOnly, async () => {
-    const db = getSqliteDatabase();
-    const paired = db.prepare(`SELECT COUNT(*) AS n FROM app_settings WHERE key='smsCompanionPairingKey' AND value <> ''`).get() as { n: number };
-    const counts = db.prepare(`
+    const enabled = getSetting('smsCompanionEnabled') === 'true';
+    const baseUrl = getSetting('smsCompanionBaseUrl');
+    const deviceName = getSetting('smsCompanionDeviceName');
+    const pairingKey = getSetting('smsCompanionPairingKey');
+    const configured = Boolean(baseUrl && pairingKey);
+    const verification = configured
+      ? await verifyCompanionPairing(1200)
+      : { reachable: false, paired: false };
+    return {
+      configured,
+      reachable: verification.reachable,
+      paired: verification.paired,
+      active: enabled && verification.reachable && verification.paired,
+      baseUrl,
+      deviceName
+    };
+  });
+
+  app.get('/api/sms/report', adminOnly, async (request, reply) => {
+    const parsed = reportQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Mes do relatorio SMS invalido' });
+    }
+
+    const range = smsReportMonthUtcRange(parsed.data.month);
+    if (!range) {
+      return reply.status(400).send({ error: 'Mes do relatorio SMS invalido' });
+    }
+
+    const counts = getSqliteDatabase().prepare(`
       SELECT
         SUM(CASE WHEN status='pending_dispatch' THEN 1 ELSE 0 END) AS pendingDispatch,
         SUM(CASE WHEN status='pending_approval' THEN 1 ELSE 0 END) AS pendingApproval,
-        SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed
+        SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) AS sent,
+        SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,
+        SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) AS rejected
       FROM sms_outbox
-    `).get() as { pendingDispatch: number | null; pendingApproval: number | null; failed: number | null };
+      WHERE created_at >= ? AND created_at < ?
+    `).get(range.startUtc, range.endUtc) as SmsReportCounts;
+
     return {
-      paired: paired.n > 0,
-      baseUrl: getSetting('smsCompanionBaseUrl'),
-      deviceName: getSetting('smsCompanionDeviceName'),
+      month: parsed.data.month,
+      timezone: SMS_REPORT_TIMEZONE,
       counts: {
         pendingDispatch: counts.pendingDispatch ?? 0,
         pendingApproval: counts.pendingApproval ?? 0,
-        failed: counts.failed ?? 0
+        sent: counts.sent ?? 0,
+        failed: counts.failed ?? 0,
+        rejected: counts.rejected ?? 0
       }
     };
   });
@@ -75,6 +120,18 @@ export async function registerSmsRoutes(app: FastifyInstance) {
   app.get('/api/sms/pairing/verify', adminOnly, async () => {
     const result = await verifyCompanionPairing();
     return { ...result, deviceName: getSetting('smsCompanionDeviceName') };
+  });
+
+  // Locates the phone on the LAN so the operator doesn't have to hunt for its IP.
+  // If already paired, pinpoints the exact device by pairing secret; otherwise
+  // returns whichever host(s) answer on the companion port.
+  app.post('/api/sms/discover', adminOnly, async () => {
+    const hosts = await discoverCompanionHosts();
+    let baseUrl: string | null = getSetting('smsCompanionPairingKey')
+      ? await findPairedCompanion(hosts)
+      : null;
+    if (!baseUrl && hosts.length === 1) baseUrl = hosts[0];
+    return { candidates: hosts, baseUrl };
   });
 
   app.post('/api/sms/pairing', adminOnly, async (request, reply) => {

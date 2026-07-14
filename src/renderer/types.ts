@@ -100,13 +100,23 @@ export const paymentStatusLabel = (status: PaymentStatus): string => PAYMENT_STA
 export type SmsEventType = 'invoice_issued' | 'receipt_confirmed' | 'payment_overdue' | 'suspension_notice';
 
 export type SmsStatus = {
+  configured: boolean;
   paired: boolean;
+  reachable: boolean;
+  active: boolean;
   baseUrl: string;
   deviceName: string;
+};
+
+export type SmsMonthlyReport = {
+  month: string;
+  timezone: 'Atlantic/Cape_Verde';
   counts: {
     pendingDispatch: number;
     pendingApproval: number;
+    sent: number;
     failed: number;
+    rejected: number;
   };
 };
 
