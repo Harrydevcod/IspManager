@@ -71,9 +71,11 @@ function markReminderSent(paymentId: number) {
 
 export function PaymentsModule({
   focusStatus,
+  focusMonth,
   onFocusHandled
 }: {
   focusStatus?: 'overdue' | 'pending' | null;
+  focusMonth?: string | null;
   onFocusHandled?: () => void;
 } = {}) {
   // Competência por defeito = mês fechado: criada no início do mês → mês anterior;
@@ -114,11 +116,18 @@ export function PaymentsModule({
   const { toast } = useToast();
   const confirm = useConfirm();
 
-  // Atalho vindo do Dashboard: foca o estado pedido (atraso varre todos os meses).
+  // Atalho vindo do Dashboard: foca o estado pedido (atraso varre todos os meses)
+  // e/ou o mês clicado no gráfico de receita.
   useEffect(() => {
-    if (!focusStatus) return;
-    setStatusFilter(focusStatus);
-    if (focusStatus === 'overdue') setShowAllMonths(true);
+    if (!focusStatus && !focusMonth) return;
+    if (focusStatus) {
+      setStatusFilter(focusStatus);
+      if (focusStatus === 'overdue') setShowAllMonths(true);
+    }
+    if (focusMonth) {
+      setReferenceMonth(focusMonth);
+      setShowAllMonths(false);
+    }
     onFocusHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

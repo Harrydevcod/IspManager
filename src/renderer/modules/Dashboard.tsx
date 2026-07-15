@@ -11,6 +11,7 @@ type DashboardProps = {
   onOpenPending: () => void;
   onOpenLowStock: () => void;
   onOpenWorkOrders: () => void;
+  onOpenMonth: (referenceMonth: string) => void;
 };
 
 // Torna um tile/elemento informativo acionável por teclado (Enter/Espaço) e rato.
@@ -33,7 +34,8 @@ export function Dashboard({
   onOpenOverdue,
   onOpenPending,
   onOpenLowStock,
-  onOpenWorkOrders
+  onOpenWorkOrders,
+  onOpenMonth
 }: DashboardProps) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -180,7 +182,7 @@ export function Dashboard({
           className="dashboard-card-chart"
         >
           {summary
-            ? <RevenueBars points={summary.revenueByMonth} />
+            ? <RevenueBars points={summary.revenueByMonth} onSelectMonth={onOpenMonth} />
             : <Skeleton height={180} radius={12} />}
         </Card>
       </section>

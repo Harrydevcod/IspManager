@@ -33,7 +33,15 @@ export function formatCompactCve(value: number): string {
  * Lucro = pago - investimentos - despesas. Shared by Dashboard and Rentabilidade so both
  * tell the same profitability story from one implementation.
  */
-export function RevenueBars({ points, ariaLabel = 'Receita dos ultimos 12 meses' }: { points: RevenuePoint[]; ariaLabel?: string }) {
+export function RevenueBars({
+  points,
+  ariaLabel = 'Receita dos ultimos 12 meses',
+  onSelectMonth
+}: {
+  points: RevenuePoint[];
+  ariaLabel?: string;
+  onSelectMonth?: (referenceMonth: string) => void;
+}) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
   const layout = useMemo(() => {
@@ -242,13 +250,16 @@ export function RevenueBars({ points, ariaLabel = 'Receita dos ultimos 12 meses'
           if (isCurrent) groupClass += ' bar-current';
           if (isHovered) groupClass += ' bar-hovered';
           if (dim) groupClass += ' bar-dim';
+          if (onSelectMonth) groupClass += ' bar-clickable';
           return (
             <g
               key={bar.key}
               className={groupClass}
               style={{ ['--i' as never]: idx } as CSSProperties}
               onMouseEnter={() => setHoveredIdx(idx)}
+              onClick={onSelectMonth ? () => onSelectMonth(bar.referenceMonth) : undefined}
             >
+              {onSelectMonth && <title>Ver pagamentos de {formatLongMonth(bar.referenceMonth)}</title>}
               <rect
                 className="bar-hitbox"
                 x={layout.padding.left + layout.slot * idx}
