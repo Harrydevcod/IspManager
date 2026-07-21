@@ -66,7 +66,7 @@ export function PaymentsList({
       sort={sort}
       onSortChange={onSortChange}
       onRowClick={(p) => onPreview(p)}
-      gridTemplateColumns="minmax(200px, 0.6fr) 116px 100px 128px"
+      gridTemplateColumns="minmax(200px, 1fr) 116px 100px 128px"
       actionsWidth="104px"
       columns={[
         {

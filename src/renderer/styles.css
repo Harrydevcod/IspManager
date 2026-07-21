@@ -1413,24 +1413,14 @@ h2 {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-2);
-  /* Puxa o strip para a borda direita do cartão: anula todo o padding-right
-     (space-4) da linha, deixando o kebab (⋯) encostado à borda. */
-  margin-right: calc(var(--space-4) * -1);
-}
-
-/* Cabeçalho da coluna Ações encostado à mesma borda que os botões abaixo. */
-.data-table-actions-heading {
-  margin-right: calc(var(--space-4) * -1);
 }
 
 .clients-table .data-table-actions {
-  margin-right: 0;
   justify-content: center;
 }
 
 .clients-table .data-table-actions-heading {
   justify-self: center;
-  margin-right: 0;
   text-align: center;
 }
 
@@ -1579,7 +1569,6 @@ h2 {
 
   .data-table-actions {
     justify-content: flex-start;
-    margin-right: 0;
   }
 }
 
