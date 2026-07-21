@@ -158,6 +158,21 @@ describe('settings SMS validation', () => {
     expect(settings.audiovisualAnnualCve).toBe(5000);
   });
 
+  test('defaults installation fee to 0 and persists a new value', async () => {
+    const before = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(before.json().installationFeeCve).toBe(0);
+
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, installationFeeCve: 4500 }
+    });
+    expect(put.statusCode).toBe(200);
+
+    const after = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(after.json().installationFeeCve).toBe(4500);
+  });
+
   test('persists audiovisual config and reads it back', async () => {
     const response = await app.inject({
       method: 'PUT',

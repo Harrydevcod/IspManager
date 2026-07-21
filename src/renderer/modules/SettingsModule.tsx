@@ -64,6 +64,7 @@ export function SettingsModule() {
     audiovisualLabel: 'Distribuição de Conteúdos Audiovisuais',
     audiovisualMonthlyCve: '500',
     audiovisualAnnualCve: '5000',
+    installationFeeCve: '0',
     currencyCode: 'CVE',
     invoicePrefix: 'FT',
     receiptPrefix: 'RC',
@@ -292,7 +293,7 @@ export function SettingsModule() {
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
         }
-        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes'> & { defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number }>;
+        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes'> & { defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number }>;
       })
       .then((settings) => {
         const loadedForm = {
@@ -302,6 +303,7 @@ export function SettingsModule() {
           autoBillingDay: String(settings.autoBillingDay),
           audiovisualMonthlyCve: String(settings.audiovisualMonthlyCve),
           audiovisualAnnualCve: String(settings.audiovisualAnnualCve),
+          installationFeeCve: String(settings.installationFeeCve),
           ivaRate: String(settings.ivaRate),
           whatsappSuspensionNoticeDays: String(settings.whatsappSuspensionNoticeDays),
           noticeCooldownDays: String(settings.noticeCooldownDays),
@@ -412,6 +414,7 @@ export function SettingsModule() {
           autoBillingDay: Number(savedForm.autoBillingDay),
           audiovisualMonthlyCve: Number(savedForm.audiovisualMonthlyCve),
           audiovisualAnnualCve: Number(savedForm.audiovisualAnnualCve),
+          installationFeeCve: Number(savedForm.installationFeeCve),
           ivaRate: Number(savedForm.ivaRate),
           whatsappSuspensionNoticeDays: Number(savedForm.whatsappSuspensionNoticeDays),
           noticeCooldownDays: Number(savedForm.noticeCooldownDays),

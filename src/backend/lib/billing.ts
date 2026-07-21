@@ -45,6 +45,27 @@ export function sumLines(lines: BillingLine[]): number {
   return lines.reduce((total, line) => total + line.amountCve, 0);
 }
 
+/**
+ * Chave de competência da fatura de instalação: fixa (não é `YYYY-MM` nem
+ * `AV-...`), porque a instalação acontece uma única vez por serviço. Torna a
+ * geração idempotente via o mesmo padrão de `UNIQUE(service_id, reference_month)`.
+ */
+export const INSTALLATION_FEE_REFERENCE = 'INSTALACAO';
+const INSTALLATION_LINE_DESCRIPTION = 'Instalacao';
+
+/**
+ * Preço de instalação configurável (Configurações › Faturação), lido de
+ * `app_settings`. É o valor por defeito usado quando o plano não define um
+ * override próprio — para que mudar as condições comerciais seja uma edição
+ * num único sítio, sem tocar em cada plano.
+ */
+export function loadInstallationFeeCve(db: DatabaseType): number {
+  const row = db.prepare(`SELECT value FROM app_settings WHERE key = 'installationFeeCve'`)
+    .get() as { value: string } | undefined;
+  const n = Number(row?.value);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
 export type BillingPreview = {
   referenceMonth: string;
   activeServices: number;
@@ -207,4 +228,41 @@ export function generateMonthlyBilling(db: DatabaseType, referenceMonth: string)
     created: preview.toCreate.length,
     preview
   };
+}
+
+/**
+ * Emite a fatura da taxa de instalação (preço do plano) no momento em que o
+ * serviço é criado. Idempotente por `(service_id, INSTALLATION_FEE_REFERENCE)` —
+ * chamar duas vezes para o mesmo serviço não duplica a cobrança. MUST run inside
+ * the same transaction as a criação do serviço.
+ */
+export function insertInstallationFeeIfDue(
+  db: DatabaseType,
+  params: { serviceId: number; clientId: number; amountCve: number }
+): { paymentId: number } | null {
+  if (params.amountCve <= 0) return null;
+
+  const exists = db.prepare(`
+    SELECT 1 FROM payments WHERE service_id = ? AND reference_month = ? AND status != 'cancelled'
+  `).get(params.serviceId, INSTALLATION_FEE_REFERENCE);
+  if (exists) return null;
+
+  const dueIso = dueDateFromIssue(todayIso());
+  const inserted = db.prepare(`
+    INSERT INTO payments (
+      client_id, service_id, reference_month, amount_cve, due_date,
+      status, invoice_number, invoice_date, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
+  `).run(params.clientId, params.serviceId, INSTALLATION_FEE_REFERENCE, params.amountCve, dueIso);
+  const paymentId = Number(inserted.lastInsertRowid);
+
+  db.prepare('UPDATE payments SET invoice_number = ? WHERE id = ? AND invoice_number IS NULL')
+    .run(allocateDocumentNumber('invoice'), paymentId);
+  db.prepare(`
+    INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order)
+    VALUES (?, 'instalacao', ?, ?, 0)
+  `).run(paymentId, INSTALLATION_LINE_DESCRIPTION, params.amountCve);
+
+  return { paymentId };
 }

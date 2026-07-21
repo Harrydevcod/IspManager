@@ -8,6 +8,7 @@ import {
   type InstallCostInput,
   type ServiceItemInput
 } from './serviceInstall';
+import { insertInstallationFeeIfDue, loadInstallationFeeCve } from './billing';
 
 const serviceItemSchema = z.object({
   catalogId: z.coerce.number().int().positive(),
@@ -74,6 +75,7 @@ export function createService(db: Database, data: ServiceInput, userId: number |
   serviceId: number;
   install: ReturnType<typeof installItemsWithinTx> | null;
   costs: ReturnType<typeof insertInstallCostsWithinTx> | null;
+  installationFee: ReturnType<typeof insertInstallationFeeIfDue>;
   installedItems: number;
 }> {
   const validationError = validateServicePayload(data);
@@ -87,12 +89,21 @@ export function createService(db: Database, data: ServiceInput, userId: number |
     return { ok: false, status: 404, error: 'Cliente nao encontrado' };
   }
 
+  // Preço de instalação: o override do plano (se > 0) tem precedência sobre o
+  // valor global das Configurações; assim mudar condições comerciais é uma
+  // edição única, mas um plano pode ter um preço específico.
+  let planInstallationFeeOverride = 0;
   if (data.planId) {
-    const plan = db.prepare('SELECT id FROM internet_plans WHERE id = ?').get(data.planId);
+    const plan = db.prepare('SELECT id, installation_fee_cve AS installationFeeCve FROM internet_plans WHERE id = ?')
+      .get(data.planId) as { id: number; installationFeeCve: number } | undefined;
     if (!plan) {
       return { ok: false, status: 404, error: 'Plano nao encontrado' };
     }
+    planInstallationFeeOverride = plan.installationFeeCve;
   }
+  const installationFeeCve = planInstallationFeeOverride > 0
+    ? planInstallationFeeOverride
+    : loadInstallationFeeCve(db);
 
   const items = (data.items ?? []) as ServiceItemInput[];
   if (items.length > 0) {
@@ -133,7 +144,11 @@ export function createService(db: Database, data: ServiceInput, userId: number |
       ? insertInstallCostsWithinTx(db, { serviceId, costs: installCosts, userId })
       : null;
 
-    return { serviceId, install, costs };
+    const installationFee = data.status !== 'cancelled'
+      ? insertInstallationFeeIfDue(db, { serviceId, clientId: data.clientId, amountCve: installationFeeCve })
+      : null;
+
+    return { serviceId, install, costs, installationFee };
   });
 
   try {

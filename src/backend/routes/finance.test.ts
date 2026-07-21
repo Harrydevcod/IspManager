@@ -346,6 +346,93 @@ describe('finance routes', () => {
     expect(line.description).toBe('Distribuição de Conteúdos Audiovisuais');
   });
 
+  test('creating a service for a plan with an installation fee bills it once', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-INST','Instalacao','active')`).run();
+    const plan = db.prepare(`
+      INSERT INTO internet_plans (name, monthly_price_cve, installation_fee_cve, active)
+      VALUES ('Fibra 50M', 3500, 6000, 1)
+    `).run();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: { clientId: client.lastInsertRowid, planId: plan.lastInsertRowid, monthlyValueCve: 3500, dueDay: 10 }
+    });
+    expect(response.statusCode).toBe(201);
+    const body = response.json() as { paymentId: number };
+    expect(body.paymentId).toBeTruthy();
+
+    // A mensalidade so e gerada pelo billing mensal (cron/manual) - a criacao do
+    // servico so emite a fatura de instalacao.
+    const rows = db.prepare(`
+      SELECT reference_month AS ref, amount_cve AS amount FROM payments WHERE client_id = ?
+    `).all(client.lastInsertRowid) as Array<{ ref: string; amount: number }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({ ref: 'INSTALACAO', amount: 6000 });
+
+    const line = db.prepare(`
+      SELECT kind, description, amount_cve AS amount FROM payment_lines WHERE payment_id = ?
+    `).get(body.paymentId) as { kind: string; description: string; amount: number };
+    expect(line).toEqual({ kind: 'instalacao', description: 'Instalacao', amount: 6000 });
+  });
+
+  test('uses the global installation fee from settings when the plan has no override', async () => {
+    db.prepare(`INSERT INTO app_settings (key, value) VALUES ('installationFeeCve','4500')`).run();
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-GINST','GlobalInst','active')`).run();
+    const plan = db.prepare(`
+      INSERT INTO internet_plans (name, monthly_price_cve, installation_fee_cve, active)
+      VALUES ('Radio 10M', 2000, 0, 1)
+    `).run();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: { clientId: client.lastInsertRowid, planId: plan.lastInsertRowid, monthlyValueCve: 2000, dueDay: 10 }
+    });
+    expect(response.statusCode).toBe(201);
+    const row = db.prepare(`
+      SELECT amount_cve AS amount FROM payments WHERE client_id = ? AND reference_month = 'INSTALACAO'
+    `).get(client.lastInsertRowid) as { amount: number } | undefined;
+    expect(row?.amount).toBe(4500);
+  });
+
+  test('plan installation fee overrides the global setting', async () => {
+    db.prepare(`INSERT INTO app_settings (key, value) VALUES ('installationFeeCve','4500')`).run();
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-OVR','Override','active')`).run();
+    const plan = db.prepare(`
+      INSERT INTO internet_plans (name, monthly_price_cve, installation_fee_cve, active)
+      VALUES ('Fibra 100M', 5000, 8000, 1)
+    `).run();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: { clientId: client.lastInsertRowid, planId: plan.lastInsertRowid, monthlyValueCve: 5000, dueDay: 10 }
+    });
+    expect(response.statusCode).toBe(201);
+    const row = db.prepare(`
+      SELECT amount_cve AS amount FROM payments WHERE client_id = ? AND reference_month = 'INSTALACAO'
+    `).get(client.lastInsertRowid) as { amount: number } | undefined;
+    expect(row?.amount).toBe(8000);
+  });
+
+  test('does not bill an installation fee when neither plan nor settings define one', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-NOINST','SemInstalacao','active')`).run();
+    const plan = db.prepare(`
+      INSERT INTO internet_plans (name, monthly_price_cve, installation_fee_cve, active)
+      VALUES ('Fibra 20M', 2000, 0, 1)
+    `).run();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: { clientId: client.lastInsertRowid, planId: plan.lastInsertRowid, monthlyValueCve: 2000, dueDay: 10 }
+    });
+    expect(response.statusCode).toBe(201);
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM payments WHERE client_id = ?`).get(client.lastInsertRowid))
+      .toEqual({ n: 0 });
+  });
+
   test('GET /api/audiovisual-config returns the configured product', async () => {
     db.prepare(`INSERT INTO app_settings (key, value) VALUES ('audiovisualEnabled','true')`).run();
     db.prepare(`INSERT INTO app_settings (key, value) VALUES ('audiovisualMonthlyCve','750')`).run();

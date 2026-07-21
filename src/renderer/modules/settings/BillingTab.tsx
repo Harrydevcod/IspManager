@@ -31,6 +31,14 @@ export function BillingTab({ form, onUpdate, onToggle }: BillingTabProps) {
         hint="Referência informativa. O vencimento real é a data de emissão + 30 dias."
       />
       <Field
+        label="Preço de instalação CVE"
+        type="number"
+        min={0}
+        value={form.installationFeeCve}
+        onChange={(event) => onUpdate('installationFeeCve', event.target.value)}
+        hint="Faturado uma vez ao criar um serviço. Um plano com preço de instalação próprio (> 0) tem precedência sobre este valor."
+      />
+      <Field
         label="Moeda"
         required
         value={form.currencyCode}

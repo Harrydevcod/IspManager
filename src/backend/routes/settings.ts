@@ -80,6 +80,7 @@ const settingsSchema = z.object({
   audiovisualLabel: z.string().trim().min(1).max(120).optional().default('Distribuição de Conteúdos Audiovisuais'),
   audiovisualMonthlyCve: z.coerce.number().min(0).max(1_000_000).optional().default(500),
   audiovisualAnnualCve: z.coerce.number().min(0).max(10_000_000).optional().default(5000),
+  installationFeeCve: z.coerce.number().min(0).max(10_000_000).optional().default(0),
   currencyCode: z.string().trim().min(1).max(8),
   invoicePrefix: z.string().trim().min(1).max(8),
   receiptPrefix: z.string().trim().min(1).max(8),
@@ -124,6 +125,7 @@ const defaultSettings = {
   audiovisualLabel: 'Distribuição de Conteúdos Audiovisuais',
   audiovisualMonthlyCve: 500,
   audiovisualAnnualCve: 5000,
+  installationFeeCve: 0,
   currencyCode: 'CVE',
   invoicePrefix: 'FT',
   receiptPrefix: 'RC',
@@ -175,6 +177,9 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       } else if (row.key === 'audiovisualAnnualCve') {
         const n = Number(row.value);
         settings.audiovisualAnnualCve = Number.isFinite(n) && n >= 0 ? n : defaultSettings.audiovisualAnnualCve;
+      } else if (row.key === 'installationFeeCve') {
+        const n = Number(row.value);
+        settings.installationFeeCve = Number.isFinite(n) && n >= 0 ? n : defaultSettings.installationFeeCve;
       } else if (row.key === 'ivaRate') {
         const n = Number(row.value);
         settings.ivaRate = Number.isFinite(n) ? n : defaultSettings.ivaRate;

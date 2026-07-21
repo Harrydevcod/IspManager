@@ -91,6 +91,15 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         metadata: { items: created.installedItems }
       });
     }
+    if (created.installationFee) {
+      recordAudit(request, {
+        action: 'create',
+        entityType: 'payment',
+        entityId: created.installationFee.paymentId,
+        summary: `Emitiu fatura de instalacao do servico ${created.serviceId}`,
+        metadata: { serviceId: created.serviceId, paymentId: created.installationFee.paymentId }
+      });
+    }
     // Adesão à anuidade audiovisual → emite já a fatura anual (idempotente). Best
     // effort: o serviço já está criado; uma falha aqui é recuperada no arranque.
     if (parsed.data.audiovisualMode === 'annual' && parsed.data.status === 'active') {
@@ -103,7 +112,8 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     return reply.status(201).send({
       id: created.serviceId,
       ...(created.install ?? {}),
-      ...(created.costs ?? {})
+      ...(created.costs ?? {}),
+      ...(created.installationFee ?? {})
     });
   });
 

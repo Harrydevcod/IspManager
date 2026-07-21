@@ -19,6 +19,7 @@ export type SettingsFormState = {
   audiovisualLabel: string;
   audiovisualMonthlyCve: string;
   audiovisualAnnualCve: string;
+  installationFeeCve: string;
   currencyCode: string;
   invoicePrefix: string;
   receiptPrefix: string;
