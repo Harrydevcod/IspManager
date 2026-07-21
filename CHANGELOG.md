@@ -4,273 +4,216 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## [1.6.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.6.0) — 2026-07-21
 
-### Novidades
+### Adicionado
 
-- **Taxa de instalação automática.** Define um preço de instalação em Configurações › Faturação e ele passa a ser faturado uma única vez, no momento em que crias cada serviço. Um plano pode ter o seu próprio preço de instalação, que tem precedência sobre o valor global.
-- **Gráfico do dashboard clicável.** Clicar num mês do gráfico de receita abre diretamente os Pagamentos desse mês.
-- **Tabela de Pagamentos mais limpa.** Mais espaço para a descrição e ações alinhadas à borda do cartão.
+- **financeiro:** Taxa de instalação faturada ao criar serviço
+- **dashboard:** Clique num mês do gráfico abre Pagamentos desse mês (#79)
+
+### Alterado
+
+- **financeiro:** Coluna Ações encostada à borda sem hack de margem
 
 ## [1.5.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.5.0) — 2026-07-14
 
-### Alterações
-- feat(sms): relatório mensal de entregas de SMS
+### Adicionado
+
+- **sms:** Relatório mensal de entregas de SMS (#78)
 
 ## [1.4.9](https://github.com/Harrydevcod/IspManager/releases/tag/v1.4.9) — 2026-07-06
 
-### Financeiro — Pagamentos com ações num só menu
+### Adicionado
 
-As ações de cada cobrança deixam de ser uma fila de até **11 ícones** lado a lado e passam a viver num **único menu `⋯`** por linha, encostado à direita. Mais limpo, mais rápido, e sem o risco de clicar por engano numa ação destrutiva.
-
-Ao abrir o menu, as ações aparecem **agrupadas** e só as válidas para o estado da cobrança:
-
-- **Ação** — Registar pagamento + Lembrete WhatsApp (pendente/atraso), ou Recibo PDF (pago)
-- **Documentos** — Fatura PDF
-- **Comunicação** — Enviar por WhatsApp · Enviar por SMS · Recibo por WhatsApp
-- **Gestão** — Marcar atraso · Anular · Reverter geração · Regenerar mensalidade
-
-Detalhes que fazem a diferença:
-
-- O menu **abre para cima** quando a linha está no fundo da lista, e ganha scroll interno se ficar apertado — nunca ficas sem ver uma ação.
-- As ações de **Anular** e **Reverter** continuam a passar pelos diálogos de confirmação de sempre — nada destrutivo fica a um clique.
-- Uma cobrança **anulada** não mostra menu; clicar na linha continua a abrir a pré-visualização.
-
-Sem alterações fiscais nem de base de dados — é uma melhoria de interface do dia-a-dia em Financeiro → Pagamentos.
+- **financeiro:** Ações de Pagamentos colapsadas num menu ⋯ por linha
 
 ## [1.4.8](https://github.com/Harrydevcod/IspManager/releases/tag/v1.4.8) — 2026-07-06
 
-### Financeiro — Pagamentos passa a ser a primeira aba
+### Adicionado
 
-O módulo **Pagamentos** deixa de ser uma entrada isolada na sidebar e passa a viver **dentro do Financeiro** como a **primeira** sub-aba (aba de aterragem). Uma só área financeira coerente:
-
-**Pagamentos · Lucro · Investimentos · Despesas**
-
-- Abrir **Financeiro** aterra diretamente em Pagamentos — o ecrã do dia-a-dia à frente.
-- Os atalhos do Dashboard (pagamentos em atraso / pendentes) continuam a funcionar, agora a abrir Financeiro na aba Pagamentos com o filtro correto.
-- O aviso de atraso passa a aparecer na entrada **Financeiro** da sidebar.
-
-Atualização automática a partir de versões anteriores (Windows e Linux).
+- **financeiro:** Pagamentos passa a primeira aba do módulo Financeiro (#77)
 
 ## [1.4.7](https://github.com/Harrydevcod/IspManager/releases/tag/v1.4.7) — 2026-07-05
 
-### Financeiro — auditoria de regras de negócio + associação multi-cliente
+### Adicionado
 
-**Associação exata de investimento a vários clientes**
-- Uma antena de transmissão pode agora ligar-se a um conjunto exato de clientes (ex.: Starlink que serve toda a rede).
-- Botão **"Todos os ativos"** associa todos os clientes ativos de uma vez; **"Limpar (N)"** remove todos. Chips individuais para adicionar/remover cliente a cliente.
-- Motor de atribuição em waterfall: a receita de cada cliente vai aos investimentos que o reclamam (dividida quando partilhado), senão à zona, senão ao pool — cada escudo contado uma única vez.
+- **financeiro:** Auditoria leva 2 — laranja (médias/rateio/ROI/timeline) + amarelos (zonas/CAPEX/defaults/sync) (#76)
+- **build:** App multiplataforma — Linux AppImage no pipeline de builds (#74)
+- **build:** Build macOS via GitHub Actions (DMG arm64 + Intel) (#72)
 
-**Correções da auditoria (laranja + amarelo)**
-- Médias de OPEX passam a usar meses com dados (não o span do calendário).
-- Rateio usa denominador de serviços reais; ROI anual honesto (lucro×12/capital); média de ROI ponderada por capital.
-- Timeline distribui OPEX pelo mês real e aplica quota global aos não-ligados.
-- Datalists de zonas, aviso de CAPEX na categoria errada, defaults e sincronização estado↔recuperação.
+### Corrigido
 
-**Design**
-- Diálogo "Novo investimento / editar" redesenhado: grid de 12 colunas, campos alinhados, larguras e cores corrigidas.
-
-Atualização automática a partir de versões anteriores.
+- **financeiro:** Motor de atribuição sem dupla contagem + recuperação real + catch-up de despesas (#75)
+- **ci:** Dispatch do build mac compila main + tag via env (injection) (#73)
 
 ## [1.4.6](https://github.com/Harrydevcod/IspManager/releases/tag/v1.4.6) — 2026-07-04
 
-### ISPM 1.4.6
+### Adicionado
 
-- **Novidades desta versão dentro da aplicação**: o menu Sobre mostra as notas de cada versão num diálogo com o visual da app — secções, destaques e modo escuro — em vez da janela cinzenta do sistema.
-- **Notas das versões privadas**: removido o link que abria a página pública no browser; as novidades agora vivem só dentro da aplicação.
-- **Versão correta em desenvolvimento**: o menu mostrava a versão do Electron em vez da versão do ISPM quando corrido em modo dev.
+- **app:** Novidades desta versão no design system + versão correta em dev (#71)
+- **app:** Notas das versões privadas — link removido + Novidades in-app (#70)
 
 ## [1.4.5](https://github.com/Harrydevcod/IspManager/releases/tag/v1.4.5) — 2026-07-04
 
-### ISPM 1.4.5
+### Adicionado
 
-- **Pendente do mês — legenda coerente**: o tile passa a contar as cobranças que **vencem no mês corrente** ("N cobranças vencem este mês"), o mesmo critério do valor somado, em vez da contagem global de pendentes.
+- **dashboard:** Contagem do Pendente do mês por vencimento (#69)
 
 ## [1.4.4](https://github.com/Harrydevcod/IspManager/releases/tag/v1.4.4) — 2026-07-04
 
-### ISPM 1.4.4
+### Corrigido
 
-- **Pendente do mês corrigido**: o tile passa a somar o que **vence** este mês por receber (base de vencimento). Com faturação pós-paga a competência do mês corrente só é gerada ao dia 30, pelo que o tile mostrava 0 o mês inteiro — mesma classe de bug da Receita do mês (v1.4.1).
+- **dashboard:** Pendente do mês em base de vencimento (#68)
 
 ## [1.4.3](https://github.com/Harrydevcod/IspManager/releases/tag/v1.4.3) — 2026-07-04
 
-### ISPM 1.4.3
+### Adicionado
 
-- **Diálogo de atualização profissional**: mensagem específica com versão instalada vs nova, ícone da app, botões "Reiniciar e instalar agora" / "Instalar ao fechar a aplicação".
-- **Menu da aplicação em pt-PT** (Ficheiro, Editar, Ver, Janela, Sobre) com a **versão sempre visível** no menu Sobre, diálogo "Sobre o ISPM" e link para as notas das versões.
-- **Dashboard responsivo**: tiles do comando operacional e indicadores adaptam-se ao tamanho da janela — valores como 141.500$00 encaixam em qualquer ecrã (colunas auto-fit + fontes em unidades de container).
+- **app:** Diálogo de atualização profissional + menu Sobre com versão visível (#67)
 
 ## [1.4.2](https://github.com/Harrydevcod/IspManager/releases/tag/v1.4.2) — 2026-07-03
 
-### ISPM 1.4.2
+### Adicionado
 
-### Melhorias
-- **Marca**: o ícone da app substitui a letra "I" na sidebar e no ecrã de autenticação.
+- **ui:** Ícone da app no lugar da letra I (sidebar + auth) (#66)
 
 ## [1.4.1](https://github.com/Harrydevcod/IspManager/releases/tag/v1.4.1) — 2026-07-03
 
-### ISPM 1.4.1
+### Corrigido
 
-### Correções
-- **Dashboard — Receita do mês**: o tile passa a regime de caixa (soma o que foi recebido no mês pela data de pagamento). Com a faturação pós-paga, a soma por competência mostrava 0$00 durante o mês inteiro mesmo com pagamentos recebidos. A tendência "% vs mês anterior" também compara agora caixa-com-caixa; o gráfico de receita mantém a visão por competência.
+- **dashboard:** Receita do mês em regime de caixa (#65)
 
 ## [1.4.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.4.0) — 2026-07-03
 
-### ISPM 1.4.0
+### Adicionado
 
-### Tema
-- Dark mode renovado: grafite mais claro tintado ao azul Windows, com efeito acrílico nativo do Windows 11 (tema claro permanece opaco)
-- Novo modo "Acompanhar o Windows": a app segue o tema do sistema em tempo real; onboarding de primeiro arranque sugere a escolha
+- **theme:** Dark mais claro + acrílico Win11 (#63)
+- **ui:** Redesign backups, tema Windows-aware e ilhas fechadas (#62)
 
-### Backups (Configurações)
-- Painel redesenhado: estado do último backup, automático e retenção; histórico com badges e tempo relativo
-- Seletor nativo de pasta de destino e atalho para abrir a pasta no Explorer
-- Intervalo do backup automático com presets (Diário, Semanal, …)
-- Correção: backups importados agora aparecem na lista e seguem a retenção
+### Corrigido
 
-### Clientes e formulários
-- Campo Ilha passa a lista fechada das 9 ilhas de Cabo Verde, com São Vicente pré-selecionada
-- Relatórios → Incompletos arrumado: linhas alinhadas, badges de lacunas âmbar e filtros com estado visível
-- Campos numéricos compactos (SMS, backups)
+- **reports:** Arruma e estiliza a secção Incompletos (#64)
 
 ## [1.3.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.3.0) — 2026-07-02
 
-### Novidades
-- **Primeiro arranque numa máquina nova:** o ecrã de configuração passa a oferecer duas vias — criar a conta de administrador **ou importar um backup da base de dados** (diálogo nativo; valida, restaura com cópia de segurança e relança a app; entra-se com as credenciais do backup).
+### Adicionado
 
-### Robustez
-- Restauros de backup serializados (mutex): dois restauros em simultâneo já não podem corromper a base de dados.
-- Nomes de ficheiros importados com precisão de milissegundos (sem colisões/sobrescritas).
-- Restauro de primeiro arranque registado no log do processo.
+- **setup:** Primeiro arranque permite restaurar backup em vez de criar admin (#61)
 
 ## [1.2.1](https://github.com/Harrydevcod/IspManager/releases/tag/v1.2.1) — 2026-07-02
 
-### Correções
-- Dashboard: tiles do rail (Receita acumulada, Pendente acumulado, Atraso crítico) mostram o valor por extenso com três zeros de milhares — **131.000$00** em vez de `131k$`.
+### Corrigido
+
+- **dashboard:** Tiles do rail com valor por extenso (131.000$00, não 131k$) (#60)
 
 ## [1.2.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.2.0) — 2026-07-02
 
-### Documentos PDF (faturas/recibos)
-- Descarregar volta a funcionar na app instalada (deixou de abrir no visualizador embutido).
-- Guardar via diálogo nativo "Guardar como", com o nome correto do documento (ex.: `Fatura - Cliente - FT-2026-00001.pdf`).
-- Novo botão **Imprimir** nas pré-visualizações (fluxo autenticado, sem expor token).
-- Toolbar do visualizador de PDF escondida; ações passam pelos botões da app.
-- Mês de referência no PDF por extenso (ex.: "Junho/2026").
+### Corrigido
 
-### Faturação pós-paga
-- Faturação manual assume por defeito o **mês fechado** (mesma regra da auto-faturação, dia 30).
-- Catch-up de fim de mês recupera meses em falta sem gaps.
-
-### Validação de datas
-- Registar pagamento com data anterior à emissão da fatura é bloqueado com mensagem clara.
-- Novo validador de coerência cronológica (referência ≤ emissão ≤ vencimento/pagamento).
-
-### Localização pt-PT
-- Datas em **dd-mm-aaaa** em toda a app, incluindo PDFs.
-- Estados de pagamento em português (Pendente / Pago / Em atraso / Anulado).
-
-### Manutenção
-- Script one-off `scripts/fix-postpaid-reference-shift.cjs` para corrigir competências históricas desviadas +1 mês (dry-run por defeito, backup automático, guarda anti-rerun).
+- **payments:** Downloads/impressão de PDF, faturação de mês fechado e validação de datas (#59)
 
 ## [1.1.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.1.0) — 2026-06-30
 
-### Novidades
-- **Comando operacional** do Dashboard redesenhado: banner empilhado com chips de sinais (Atraso, Ordens) e tiles **Receita acumulada** e **Pendente acumulado** lado a lado, entre Receita e Vencimentos.
-- Novos indicadores de cobrança: **Pendente do mês** (card) e **Pendente acumulado** (meses anteriores); **Receita acumulada** total no comando operacional.
-- Removido o card "Planos ativos"; o gráfico de receita passa a ocupar a largura toda.
+### Adicionado
 
-### Correções
-- Stock baixo deixou de aparecer **duplicado** no Dashboard.
-- Texto de estado vazio em **Financeiro/Lucro** encurtado.
-- **Pagamentos**: colunas sempre alinhadas e agrupadas junto ao Cliente.
+- **ui:** Tile do rail mostra receita acumulada total (#57)
+- **ui:** Pendente acumulado como tile do comando operacional (#56)
+- **ui:** Pendente acumulado movido para comando operacional (#54)
+- **ui:** Card "Pendente acumulado" no dashboard (meses anteriores) (#53)
+- **ui:** Dashboard com Receita pendente e brief operacional com sinais (#48)
+
+### Corrigido
+
+- **ui:** Remove card "Planos ativos" do dashboard (#52)
+- **ui:** Remove duplicação do alerta de stock baixo no dashboard (#51)
+- **ui:** Brief operacional empilha banner em cima e tiles em baixo (#50)
+- **ui:** Encurta texto de estado vazio em Financeiro/Lucro (#49)
 
 ## [1.0.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.0.0) — 2026-06-29
 
-ISPM 1.0.0
+### Adicionado
 
-Release estavel do ISPM para operacao desktop.
+- **ui:** Polish #8 — estados de carregamento nos módulos restantes (#39)
+- **ui:** Skeleton de carregamento nos módulos de lista (+ nota #9) (#38)
+- **ui:** Cheat-sheet de atalhos de teclado (tecla ?) (#37)
+- **ui:** Ações em massa nos clientes (notificar / mudar estado) (#36)
+- **ui:** Ações em massa nos pagamentos (seleção múltipla) (#35)
+- **ui:** Tabelas com ordenação, header sticky e paginação (#34)
+- **dashboard:** KPIs e alertas viram atalhos navegáveis (#33)
+- **ui:** Autofocus no 1º campo ao abrir diálogos
+- **ui:** Rollout do ErrorRetry a todos os módulos de dados
+- **ui:** Skeletons de loading + erro com retry; consolida escala de espaçamento
+- **ui:** Escala de espaçamento --space-* e normalização
+- **ui:** Reverifica a saúde da API a cada 15s
 
-Inclui:
-- Versao da aplicacao atualizada para 1.0.0.
-- Build Windows NSIS gerada com electron-builder.
-- Ajuste final de layout na lista de pagamentos para preservar alinhamento das colunas e area de acoes.
+### Corrigido
 
-Validacao:
-- npm.cmd run lint
-- npm.cmd run typecheck
-- npx.cmd tsc -p tsconfig.main.json
-- npm.cmd test -- --pool=forks --poolOptions.forks.minForks=1 --poolOptions.forks.maxForks=1
-- npm.cmd run build
+- **ui:** Colunas dos Pagamentos sempre alinhadas (ações largura fixa) (#47)
+- **ui:** Não repetir "Fatura"/"Recibo" quando o número já traz FT/RC (#44)
+- **security:** Endurece o save path do download contra path traversal (#43)
+- **download:** Documentos guardam com nome informativo, não UUID aleatório (#42)
+- **ui:** Número de fatura/recibo aparecia com prefixo duplicado (#41)
+- **ui:** Célula de identidade na tabela voltava a colar código/nome/meta (#40)
 
 ## [0.4.0](https://github.com/Harrydevcod/IspManager/releases/tag/v0.4.0) — 2026-06-28
 
-_Sem notas._
+### Adicionado
+
+- **stock:** Backbone por quantidade em vez de flag booleana
+- **stock:** Distingue equipamento de backbone do de cliente
 
 ## [0.3.1](https://github.com/Harrydevcod/IspManager/releases/tag/v0.3.1) — 2026-06-27
 
-Release v0.3.1 — ativa o auto-update.
+### Adicionado
 
-### O que muda
-- **Auto-update via GitHub Releases** (electron-updater): a app passa a verificar atualizações no arranque, descarrega em silêncio e pergunta se reinicia para instalar.
-- Esta é a **primeira release auto-updatável** — instalações a partir da v0.3.1 recebem futuras versões automaticamente. (A v0.3.0 não contém o updater e não se auto-atualiza.)
-
-### ⚠️ Aviso de segurança
-Os builds **não estão assinados** (sem certificado de code-signing). O Windows SmartScreen vai avisar na instalação (Mais informações → Executar mesmo assim). O canal de auto-update valida o SHA512 do binário sobre HTTPS, mas sem assinatura não há verificação do publisher — proteger a conta GitHub (2FA) é essencial.
-
-### Instalação
-Descarregar **`ISPM Setup 0.3.1.exe`** e executar.
+- **updater:** Auto-update via GitHub Releases + build.publish
 
 ## [0.3.0](https://github.com/Harrydevcod/IspManager/releases/tag/v0.3.0) — 2026-06-27
 
-Release v0.3.0 — integra 9 melhorias estruturais e funcionais.
+### Adicionado
 
-### Destaques
-- **Numeração sequencial** real por série/ano dos documentos fiscais (sem gaps).
-- **Dinheiro em centavos** internamente + formatação cifrão (`1.500$00`).
-- **Segurança no login** — rate-limiting e lockout exponencial.
-- **Schema Drizzle completo** + guarda de drift contra as migrations.
-- **Renderer modular** — módulos monolíticos quebrados em sub-componentes.
-- **Regra de negócio em libs de domínio** (handlers HTTP finos).
-- **Observabilidade dos jobs** in-process (tabela `job_runs` + painel Automatismos).
-- **Backups agendados** + pasta de destino configurável (Drive/Dropbox/OneDrive).
-- **Funil de cobrança** configurável (lembrete → vencido → aviso → suspensão) com timeline no cliente.
+- **db:** Cobre tabelas 0020/0022/0023 no schema Drizzle
+- **db:** Schema Drizzle completo + guarda de drift contra as migrations
+- **dunning:** Funil de cobrança configurável com timeline no cliente
+- **backup:** Observabilidade do backup agendado via runJob
+- **backup:** Configuração de backups no ecrã (pasta + agendamento)
+- **backup:** Backups agendados + pasta de destino configurável
+- **jobs:** Painel de saúde dos automatismos nas Configurações
+- **jobs:** Regista execuções dos jobs in-process (tabela job_runs)
+- **auth:** Rate-limiting e lockout exponencial no login
+- **money:** Modulo partilhado de dinheiro + formatacao cifrao (1.500$00)
+- **faturacao:** Numeracao sequencial real por serie/ano dos documentos
 
-### Instalação
-Descarregar **`ISPM Setup 0.3.0.exe`** e executar. O build não está assinado — o Windows SmartScreen poderá avisar (Mais informações → Executar mesmo assim).
+### Alterado
 
-### Notas técnicas
-- 363 testes verdes · typecheck backend + renderer limpos.
-- `latest.yml` + `.blockmap` incluídos para futuro auto-update (electron-updater).
+- **renderer:** Extrai abas de configuracoes em componentes
+- **renderer:** Extrai ServiceItemDraftsBuilder de servicos
+- **renderer:** Extrai ServiceDetailDialog de servicos
+- **renderer:** Extrai PaymentsList de pagamentos
+- **renderer:** Extrai PaymentDetailDialog de pagamentos
+- **renderer:** Extrai dialogs de pagamentos
+- **renderer:** Extrai componentes de pagamentos
+- **documents:** Move geração de PDF para lib/documents
+- **finance:** Extrai regra de serviços para lib/services
+- **finance:** Extrai regra do ciclo de pagamentos para lib/payments
 
 ## [0.2.1](https://github.com/Harrydevcod/IspManager/releases/tag/v0.2.1) — 2026-06-25
 
-### 🔧 Hotfix crítico
+### Corrigido
 
-A **v0.2.0 instalava mas não abria**. O instalador empacotava o `better-sqlite3` na ABI do Node em vez da do Electron, pelo que o backend falhava no arranque e a janela nunca era criada.
-
-Esta versão corrige o build (`electron-rebuild` forçado para a ABI do Electron + `npmRebuild: false`) e está verificada a abrir corretamente.
-
-**⚠️ Não usar a v0.2.0 — substituída por esta.**
-
-Inclui também as funcionalidades da v0.2.0:
-- Apagar serviço mal criado (bloqueio fiscal se já houver faturas + reposição de stock)
-- Mensalidade mostra total NET + TVM numa linha
+- **build:** Empacota better-sqlite3 na ABI do Electron (app não abria)
 
 ## [0.2.0](https://github.com/Harrydevcod/IspManager/releases/tag/v0.2.0) — 2026-06-24
 
-### ⚠️ Esta versão está OBSOLETA
+### Adicionado
 
-O instalador da v0.2.0 **não abria** (módulo nativo empacotado na ABI errada). Os ficheiros foram removidos.
+- **servicos:** Mensalidade mostra total NET + TVM numa linha
+- **servicos:** Apagar serviço mal criado (bloqueio fiscal + reposição de stock)
+- **servicos:** Serviço de Distribuição de Conteúdos Audiovisuais (add-on + standalone)
 
-👉 **Usar a [v0.2.1](https://github.com/Harrydevcod/IspManager/releases/tag/v0.2.1)**, que corrige o problema e mantém todas as funcionalidades.
+### Corrigido
+
+- **faturacao:** Regenerar mensalidade preserva o valor audiovisual no total
+- **build:** Compila deps nativas do fonte e fixa Electron 41.7.0
 
 ## [0.1.1](https://github.com/Harrydevcod/IspManager/releases/tag/v0.1.1) — 2026-06-18
 
-### Correções
-
-### Segurança
-- Token de autenticação deixa de viajar nas URLs. Downloads e pré-visualização de PDF (fatura/recibo) passam a usar `authFetch` + `blob:` — o token vai no header `Authorization`, nunca na query string (que vazava para histórico e logs).
-- `bearerToken()` endurecido: aceita apenas o header `Authorization`, rejeita `?token=`.
-
-### Correção de download
-- Nome do ficheiro restaurado para o formato completo `Recibo - <Cliente> - RC-2026-00077.pdf` (CORS passa a expor `Content-Disposition`).
-
----
+- **Versão inicial** do ISPM.
