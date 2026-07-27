@@ -4106,30 +4106,63 @@ label.field-toggle {
   align-items: center;
 }
 
-/* Atribuição de IPs em massa: uma linha por equipamento instalado, com o campo
-   à direita alinhado em coluna para se percorrer a lista só com Tab. */
-.bulk-ip-list {
+/* Atribuição de IPs em massa. Tabela densa, não cards: são dezenas de linhas
+   percorridas só com Tab, e cada moldura extra rouba largura ao que interessa —
+   o nome do cliente e o campo. Separadores hairline em vez de caixas. */
+.bulk-ip {
   display: grid;
-  gap: var(--space-2);
-  margin: var(--space-4) 0 0;
-  padding: 0;
-  list-style: none;
+  gap: var(--space-4);
+}
+
+.bulk-ip-intro {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.bulk-ip-intro strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.bulk-ip-table {
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+
+/* Colunas partilhadas pelo cabeçalho e pelas linhas: o campo tem largura fixa
+   para os IPs alinharem entre si e `minmax(0, 1fr)` deixa o nome encolher em vez
+   de empurrar o input para fora da caixa. */
+.bulk-ip-head,
+.bulk-ip-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 168px;
+  gap: var(--space-5);
+  align-items: center;
+}
+
+.bulk-ip-head {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-base);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .bulk-ip-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 180px;
-  gap: var(--space-4);
-  align-items: center;
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--r2);
-  background: var(--surface);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
 }
 
 .bulk-ip-device {
   display: grid;
-  gap: var(--space-1);
+  gap: 2px;
   min-width: 0;
 }
 
@@ -4142,10 +4175,19 @@ label.field-toggle {
 
 .bulk-ip-device small {
   color: var(--text-3);
+  font-size: var(--fs-sm);
   font-weight: 500;
 }
 
+/* O input tem largura intrínseca própria (~20 caracteres): sem estas duas
+   declarações transborda a coluna e sai fora do diálogo. */
+.bulk-ip-row .field {
+  min-width: 0;
+}
+
 .bulk-ip-row input {
+  width: 100%;
+  min-width: 0;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
 }

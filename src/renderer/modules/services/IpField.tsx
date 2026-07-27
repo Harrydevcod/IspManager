@@ -7,6 +7,8 @@ type IpFieldProps = {
   prefix: string;
   /** Nome acessível quando "IP" sozinho não chega — listas com um campo por equipamento. */
   ariaLabel?: string;
+  /** Em tabelas, o cabeçalho já diz "IP": o label fica só para leitores de ecrã. */
+  hideLabel?: boolean;
 };
 
 /**
@@ -14,10 +16,11 @@ type IpFieldProps = {
  * para só faltar o último octeto, e desiste dela se o utilizador sair sem escrever
  * nada. É sugestão, não regra — o campo continua livre para outra faixa ou classe.
  */
-export function IpField({ value, onChange, prefix, ariaLabel }: IpFieldProps) {
+export function IpField({ value, onChange, prefix, ariaLabel, hideLabel }: IpFieldProps) {
   return (
     <Field
       label="IP"
+      hideLabel={hideLabel}
       aria-label={ariaLabel}
       value={value}
       placeholder={`${prefix}10`}

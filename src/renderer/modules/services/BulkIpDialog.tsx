@@ -77,7 +77,7 @@ export function BulkIpDialog({ onClose, onSaved }: BulkIpDialogProps) {
       });
       const data = await response.json() as { error?: string; updated?: number };
       if (!response.ok) {
-        toast(data.error || 'Nao foi possivel gravar os IPs.', 'error');
+        toast(data.error || 'Não foi possível gravar os IPs.', 'error');
         return;
       }
       toast(`${data.updated} IP(s) gravado(s).`, 'success');
@@ -94,7 +94,7 @@ export function BulkIpDialog({ onClose, onSaved }: BulkIpDialogProps) {
     <Dialog
       open
       size="xl"
-      eyebrow="Manutencao remota"
+      eyebrow="Manutenção remota"
       title="Atribuir IPs aos equipamentos"
       onClose={submitting ? () => undefined : onClose}
       closeOnBackdrop={!submitting}
@@ -114,35 +114,40 @@ export function BulkIpDialog({ onClose, onSaved }: BulkIpDialogProps) {
           size="sm"
           icon={Cable}
           title="Sem equipamento instalado"
-          description="Assim que instalares equipamento nos servicos, aparece aqui para atribuir IP."
+          description="Assim que instalares equipamento nos serviços, aparece aqui para atribuir IP."
         />
       )}
       {!loading && rows.length > 0 && (
-        <>
-          <Message>
-            {filled} de {rows.length} com IP. O prefixo <strong>{prefix}</strong> vem sugerido da tua rede — escreve so o
-            ultimo numero, ou reescreve a linha para usar outra faixa.
-          </Message>
-          <ul className="bulk-ip-list">
+        <div className="bulk-ip">
+          <p className="bulk-ip-intro">
+            <strong>{filled}</strong> de {rows.length} com IP. Escreve só o número final; para outra faixa, reescreve a
+            linha inteira.
+          </p>
+          <div className="bulk-ip-table">
+            <div className="bulk-ip-head">
+              <span>Cliente e equipamento</span>
+              <span>IP</span>
+            </div>
             {rows.map((row) => (
-              <li key={row.id} className="bulk-ip-row">
+              <div key={row.id} className="bulk-ip-row">
                 <span className="bulk-ip-device">
                   <strong>{row.clientName}</strong>
                   <small>
-                    {row.brand ? `${row.brand} ${row.model}` : row.model} · {row.catalogType}
+                    {row.brand ? `${row.brand} ${row.model}` : row.model}
                     {row.serialNumber ? ` · ${row.serialNumber}` : ''}
                   </small>
                 </span>
                 <IpField
-                  ariaLabel={`IP de ${row.clientName} — ${row.model}`}
+                  hideLabel
+                  ariaLabel={`IP de ${row.clientName}, ${row.model}`}
                   value={drafts[row.id] ?? ''}
                   prefix={prefix}
                   onChange={(ipAddress) => setDrafts((current) => ({ ...current, [row.id]: ipAddress }))}
                 />
-              </li>
+              </div>
             ))}
-          </ul>
-        </>
+          </div>
+        </div>
       )}
     </Dialog>
   );

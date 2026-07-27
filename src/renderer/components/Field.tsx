@@ -5,10 +5,15 @@ type FieldProps = InputHTMLAttributes<HTMLInputElement> & {
   error?: string;
   hint?: string;
   wide?: boolean;
+  /**
+   * Mantém o label só para leitores de ecrã. Para colunas de tabela, onde o
+   * cabeçalho já nomeia o campo e repetir o label em cada linha é ruído.
+   */
+  hideLabel?: boolean;
 };
 
 /** Labelled input with optional hint caption + inline error. */
-export function Field({ label, error, hint, wide, id, className, ...rest }: FieldProps) {
+export function Field({ label, error, hint, wide, hideLabel, id, className, ...rest }: FieldProps) {
   const reactId = useId();
   const inputId = id ?? `field-${reactId}`;
   const errorId = `${inputId}-error`;
@@ -21,7 +26,7 @@ export function Field({ label, error, hint, wide, id, className, ...rest }: Fiel
 
   return (
     <label className={classes.join(' ')} htmlFor={inputId}>
-      <span className="field-label">{label}</span>
+      <span className={hideLabel ? 'sr-only' : 'field-label'}>{label}</span>
       <input
         id={inputId}
         aria-invalid={error ? true : undefined}
