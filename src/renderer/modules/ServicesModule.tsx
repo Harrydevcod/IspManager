@@ -1,11 +1,13 @@
 import { Pencil, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Combobox, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, Select, SkeletonList, Textarea, Toggle, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
+import { suggestIpPrefix } from '../lib/ip';
 import { statusLabel, statusTone } from '../lib/status';
 import type { AudiovisualConfig, Client, DeviceAssignment, PlanRow, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
+import { IpField } from './services/IpField';
 import { ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
 import { ServiceItemDraftsBuilder, emptyItemDraft, type ItemDraft } from './services/ServiceItemDraftsBuilder';
 
@@ -96,6 +98,8 @@ export function ServicesModule({
   const [editTarget, setEditTarget] = useState<DeviceAssignment | null>(null);
   const [editDraft, setEditDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
   const [submitting, setSubmitting] = useState(false);
+  // Sugestão de faixa vinda da própria rede instalada, não fixa no código.
+  const ipPrefix = useMemo(() => suggestIpPrefix(services.map((service) => service.deviceIps)), [services]);
 
   function loadServices() {
     setLoading(true);
@@ -803,7 +807,7 @@ export function ServicesModule({
               />
               {attachItems && (
                 <>
-                  <ServiceItemDraftsBuilder drafts={itemDrafts} catalog={catalogList} onChange={setItemDrafts} />
+                  <ServiceItemDraftsBuilder drafts={itemDrafts} catalog={catalogList} onChange={setItemDrafts} ipPrefix={ipPrefix} />
                   <Field
                     wide
                     label="Mão de obra (CVE)"
@@ -838,7 +842,7 @@ export function ServicesModule({
         }
       >
         <form id="device-form" className="client-form" onSubmit={submitItems}>
-          <ServiceItemDraftsBuilder drafts={addItemDrafts} catalog={catalogList} onChange={setAddItemDrafts} />
+          <ServiceItemDraftsBuilder drafts={addItemDrafts} catalog={catalogList} onChange={setAddItemDrafts} ipPrefix={ipPrefix} />
           <Field
             wide
             label="Mão de obra (CVE)"
@@ -923,7 +927,7 @@ export function ServicesModule({
           <Field label="Serial" value={replaceDraft.serialNumber} onChange={(event) => setReplaceDraft((current) => ({ ...current, serialNumber: event.target.value }))} />
           <Field label="Asset tag" value={replaceDraft.assetTag} onChange={(event) => setReplaceDraft((current) => ({ ...current, assetTag: event.target.value }))} />
           <Field label="MAC" value={replaceDraft.macAddress} onChange={(event) => setReplaceDraft((current) => ({ ...current, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
-          <Field label="IP" value={replaceDraft.ipAddress} onChange={(event) => setReplaceDraft((current) => ({ ...current, ipAddress: event.target.value }))} placeholder="192.168.X.Y" />
+          <IpField value={replaceDraft.ipAddress} prefix={ipPrefix} onChange={(ipAddress) => setReplaceDraft((current) => ({ ...current, ipAddress }))} />
           <Field wide label="Notas" value={replaceDraft.notes} onChange={(event) => setReplaceDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Motivo da substituicao" />
         </form>
       </Dialog>
@@ -948,7 +952,7 @@ export function ServicesModule({
           <Message>
             Corrige a identificação do equipamento instalado. O stock não é alterado e a atribuição mantém-se ativa.
           </Message>
-          <Field label="IP" value={editDraft.ipAddress} onChange={(event) => setEditDraft((current) => ({ ...current, ipAddress: event.target.value }))} placeholder="192.168.X.Y" />
+          <IpField value={editDraft.ipAddress} prefix={ipPrefix} onChange={(ipAddress) => setEditDraft((current) => ({ ...current, ipAddress }))} />
           <Field label="MAC" value={editDraft.macAddress} onChange={(event) => setEditDraft((current) => ({ ...current, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
           <Field label="Serial" value={editDraft.serialNumber} onChange={(event) => setEditDraft((current) => ({ ...current, serialNumber: event.target.value }))} />
           <Field label="Asset tag" value={editDraft.assetTag} onChange={(event) => setEditDraft((current) => ({ ...current, assetTag: event.target.value }))} />

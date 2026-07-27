@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { Button, Field, Message, Select } from '../../components';
 import type { StockCatalogRow } from '../../types';
+import { IpField } from './IpField';
 
 export type ItemDraft = {
   category: 'equipamento' | 'material';
@@ -21,9 +22,11 @@ type ServiceItemDraftsBuilderProps = {
   drafts: ItemDraft[];
   catalog: StockCatalogRow[];
   onChange: Dispatch<SetStateAction<ItemDraft[]>>;
+  /** Prefixo de IP sugerido, derivado dos equipamentos já instalados. */
+  ipPrefix: string;
 };
 
-export function ServiceItemDraftsBuilder({ drafts, catalog, onChange }: ServiceItemDraftsBuilderProps) {
+export function ServiceItemDraftsBuilder({ drafts, catalog, onChange, ipPrefix }: ServiceItemDraftsBuilderProps) {
   const update = (index: number, patch: Partial<ItemDraft>) =>
     onChange((current) => current.map((draft, i) => i === index ? { ...draft, ...patch } : draft));
   const remove = (index: number) =>
@@ -77,7 +80,7 @@ export function ServiceItemDraftsBuilder({ drafts, catalog, onChange }: ServiceI
                   <Field label="Serial" value={draft.serialNumber} onChange={(event) => update(index, { serialNumber: event.target.value })} />
                   <Field label="Asset tag" value={draft.assetTag} onChange={(event) => update(index, { assetTag: event.target.value })} />
                   <Field label="MAC" value={draft.macAddress} onChange={(event) => update(index, { macAddress: event.target.value })} placeholder="AA:BB:CC:DD:EE:FF" />
-                  <Field label="IP" value={draft.ipAddress} onChange={(event) => update(index, { ipAddress: event.target.value })} placeholder="192.168.X.Y" />
+                  <IpField value={draft.ipAddress} prefix={ipPrefix} onChange={(ipAddress) => update(index, { ipAddress })} />
                 </>
               )}
               <Field wide label="Notas" value={draft.notes} onChange={(event) => update(index, { notes: event.target.value })} />
