@@ -79,6 +79,12 @@ export function loadCatalogKind(db: Database.Database, id: number): CatalogKind 
 
 const IPV4 = z.string().ip({ version: 'v4' });
 
+export const IP_FORMAT_ERROR = 'IP invalido. Use o formato IPv4, ex.: 192.168.1.10';
+
+export function isIpv4(value: string): boolean {
+  return IPV4.safeParse(value).success;
+}
+
 const IDENTITY_FIELDS = [
   { key: 'serialNumber', column: 'serial_number', label: 'Serial' },
   { key: 'assetTag', column: 'asset_tag', label: 'Asset tag' },
@@ -105,8 +111,8 @@ export function checkDeviceIdentity(
   excludeAssignmentId?: number | null
 ): IdentityIssue | null {
   const ipAddress = cleanValue(device.ipAddress);
-  if (ipAddress && !IPV4.safeParse(ipAddress).success) {
-    return { status: 400, error: 'IP invalido. Use o formato IPv4, ex.: 192.168.1.10' };
+  if (ipAddress && !isIpv4(ipAddress)) {
+    return { status: 400, error: IP_FORMAT_ERROR };
   }
 
   for (const field of IDENTITY_FIELDS) {

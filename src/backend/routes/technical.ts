@@ -3,9 +3,11 @@ import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
 import {
+  IP_FORMAT_ERROR,
   checkDeviceIdentity,
   cleanValue,
   insertInstallCostsWithinTx,
+  isIpv4,
   installDeviceWithinTx,
   installItemsWithinTx,
   loadCatalogIdentity,
@@ -58,6 +60,14 @@ const deviceIdentitySchema = z.object({
   ipAddress: z.string().trim().optional().nullable(),
   macAddress: z.string().trim().optional().nullable(),
   notes: z.string().trim().optional().nullable()
+});
+
+/** Atribuição de IPs em massa: só o par (id, IP), para o ecrã de preenchimento. */
+const bulkIpSchema = z.object({
+  items: z.array(z.object({
+    id: z.coerce.number().int().positive(),
+    ipAddress: z.string().trim().optional().nullable()
+  })).min(1).max(1000)
 });
 
 const deviceReturnSchema = z.object({
@@ -247,6 +257,97 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       metadata: { items: items.length, installCosts: installCosts.length, eventId: result.eventId }
     });
     return reply.status(201).send(result);
+  });
+
+  /** Equipamentos ativos de todos os servicos — base do ecra de atribuicao de IPs. */
+  app.get('/api/service-device-assignments', { preHandler: requireAuth() }, async () => {
+    const db = getSqliteDatabase();
+    return db.prepare(`
+      SELECT
+        a.id,
+        a.service_id AS serviceId,
+        c.id AS clientId,
+        c.full_name AS clientName,
+        e.brand,
+        e.model,
+        e.type AS catalogType,
+        a.serial_number AS serialNumber,
+        a.ip_address AS ipAddress
+      FROM service_device_assignments a
+      JOIN services s ON s.id = a.service_id
+      JOIN clients c ON c.id = s.client_id
+      JOIN equipment_catalog e ON e.id = a.catalog_id
+      WHERE a.end_date IS NULL
+      ORDER BY c.full_name, a.id
+    `).all();
+  });
+
+  /**
+   * Atribui IPs a varios equipamentos de uma vez, tudo ou nada. Valida o estado FINAL
+   * em vez de linha a linha, para que trocar dois IPs entre equipamentos passe em vez
+   * de colidir consigo proprio.
+   */
+  app.patch('/api/service-device-assignments', canWriteTechnical, async (request, reply) => {
+    const parsed = bulkIpSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Dados de atribuicao invalidos' });
+    }
+
+    const db = getSqliteDatabase();
+    const active = new Map((db.prepare(`
+      SELECT id, ip_address AS ipAddress
+      FROM service_device_assignments
+      WHERE end_date IS NULL
+    `).all() as Array<{ id: number; ipAddress: string | null }>).map((row) => [row.id, row.ipAddress]));
+
+    const changes: Array<{ id: number; ipAddress: string | null }> = [];
+    for (const item of parsed.data.items) {
+      if (!active.has(item.id)) {
+        return reply.status(404).send({ error: `Equipamento ${item.id} nao encontrado ou ja removido` });
+      }
+      const ipAddress = cleanValue(item.ipAddress);
+      if (ipAddress && !isIpv4(ipAddress)) {
+        return reply.status(400).send({ error: IP_FORMAT_ERROR });
+      }
+      if (ipAddress !== active.get(item.id)) {
+        changes.push({ id: item.id, ipAddress });
+      }
+      active.set(item.id, ipAddress);
+    }
+
+    // Estado final: nenhum IP pode ficar em dois equipamentos ativos.
+    const seen = new Map<string, number>();
+    for (const [id, ipAddress] of active) {
+      if (!ipAddress) {
+        continue;
+      }
+      if (seen.has(ipAddress)) {
+        return reply.status(409).send({ error: `IP ${ipAddress} ficaria em dois equipamentos ativos` });
+      }
+      seen.set(ipAddress, id);
+    }
+
+    db.transaction(() => {
+      const update = db.prepare(`
+        UPDATE service_device_assignments
+        SET ip_address = ?, updated_at = datetime('now')
+        WHERE id = ? AND end_date IS NULL
+      `);
+      for (const change of changes) {
+        update.run(change.ipAddress, change.id);
+      }
+    })();
+
+    if (changes.length > 0) {
+      recordAudit(request, {
+        action: 'update_device',
+        entityType: 'service_device_assignment',
+        entityId: changes[0].id,
+        summary: `Atribuiu IP a ${changes.length} equipamento(s)`,
+        metadata: { changes }
+      });
+    }
+    return reply.status(200).send({ updated: changes.length });
   });
 
   /**

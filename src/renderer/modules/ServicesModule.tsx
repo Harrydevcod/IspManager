@@ -7,6 +7,7 @@ import { formatCve } from '../lib/format';
 import { suggestIpPrefix } from '../lib/ip';
 import { statusLabel, statusTone } from '../lib/status';
 import type { AudiovisualConfig, Client, DeviceAssignment, PlanRow, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
+import { BulkIpDialog } from './services/BulkIpDialog';
 import { IpField } from './services/IpField';
 import { ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
 import { ServiceItemDraftsBuilder, emptyItemDraft, type ItemDraft } from './services/ServiceItemDraftsBuilder';
@@ -98,6 +99,7 @@ export function ServicesModule({
   const [editTarget, setEditTarget] = useState<DeviceAssignment | null>(null);
   const [editDraft, setEditDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
   const [submitting, setSubmitting] = useState(false);
+  const [showBulkIp, setShowBulkIp] = useState(false);
   // Sugestão de faixa vinda da própria rede instalada, não fixa no código.
   const ipPrefix = useMemo(() => suggestIpPrefix(services.map((service) => service.deviceIps)), [services]);
 
@@ -602,12 +604,26 @@ export function ServicesModule({
           <p className="eyebrow">Modulo</p>
           <h2>Servicos</h2>
         </div>
-        {canManageServices && (
-          <Button onClick={openCreate}>
-            Novo servico
-          </Button>
-        )}
+        <div className="inline-actions">
+          {canRecordTechnical && (
+            <Button variant="secondary" onClick={() => setShowBulkIp(true)}>
+              Atribuir IPs
+            </Button>
+          )}
+          {canManageServices && (
+            <Button onClick={openCreate}>
+              Novo servico
+            </Button>
+          )}
+        </div>
       </div>
+
+      {showBulkIp && (
+        <BulkIpDialog
+          onClose={() => setShowBulkIp(false)}
+          onSaved={() => { void loadServices(); }}
+        />
+      )}
 
       {loadError && services.length === 0 && <ErrorRetry message={loadError} onRetry={() => { void loadServices(); }} />}
       <FilterBar>

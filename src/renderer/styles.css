@@ -1070,6 +1070,7 @@ h2 {
 .client-form input,
 .client-form select,
 .client-form textarea,
+.bulk-ip-row input,
 .action-panel input,
 .action-panel select {
   min-height: 40px;
@@ -1091,6 +1092,7 @@ h2 {
 .client-form input:focus-visible,
 .client-form select:focus-visible,
 .client-form textarea:focus-visible,
+.bulk-ip-row input:focus-visible,
 .action-panel input:focus-visible,
 .action-panel select:focus-visible {
   outline: none;
@@ -4102,6 +4104,50 @@ label.field-toggle {
   grid-template-columns: minmax(0, 1fr) 150px 180px 96px auto;
   gap: var(--space-3);
   align-items: center;
+}
+
+/* Atribuição de IPs em massa: uma linha por equipamento instalado, com o campo
+   à direita alinhado em coluna para se percorrer a lista só com Tab. */
+.bulk-ip-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bulk-ip-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface);
+}
+
+.bulk-ip-device {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.bulk-ip-device strong,
+.bulk-ip-device small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bulk-ip-device small {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.bulk-ip-row input {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
 }
 
 /* IP dos equipamentos ativos: informação técnica, tom secundário e dígitos

@@ -600,6 +600,139 @@ describe('device identity (IP fixo)', () => {
     expect(response.statusCode).toBe(201);
   });
 
+  test('lists active assignments across services for bulk IP assignment', async () => {
+    const { catalog, service } = seedBaseService();
+    const kept = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-A', ipAddress: '192.168.1.10' });
+    const returned = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-B' });
+    await app.inject({ method: 'POST', url: `/api/service-device-assignments/${returned.assignmentId}/return`, payload: {} });
+
+    const response = await app.inject({ method: 'GET', url: '/api/service-device-assignments' });
+
+    expect(response.statusCode).toBe(200);
+    const rows = response.json() as Array<{ id: number; clientName: string; model: string; serialNumber: string | null; ipAddress: string | null }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: kept.assignmentId,
+      clientName: 'Cliente Tec',
+      model: 'Router Tec',
+      serialNumber: 'SN-A',
+      ipAddress: '192.168.1.10'
+    });
+  });
+
+  test('bulk assigns IPs to several devices at once', async () => {
+    const { catalog, service } = seedBaseService();
+    const a = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-A' });
+    const b = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-B' });
+    const before = counts(catalog.lastInsertRowid);
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/service-device-assignments',
+      payload: { items: [{ id: a.assignmentId, ipAddress: '192.168.1.11' }, { id: b.assignmentId, ipAddress: '192.168.1.12' }] }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ updated: 2 });
+    expect(db.prepare('SELECT ip_address AS ip FROM service_device_assignments WHERE id = ?').get(a.assignmentId)).toEqual({ ip: '192.168.1.11' });
+    expect(db.prepare('SELECT ip_address AS ip FROM service_device_assignments WHERE id = ?').get(b.assignmentId)).toEqual({ ip: '192.168.1.12' });
+    expect(counts(catalog.lastInsertRowid)).toEqual(before);
+  });
+
+  test('bulk swaps two IPs without tripping the duplicate guard', async () => {
+    const { catalog, service } = seedBaseService();
+    const a = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-A', ipAddress: '192.168.1.11' });
+    const b = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-B', ipAddress: '192.168.1.12' });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/service-device-assignments',
+      payload: { items: [{ id: a.assignmentId, ipAddress: '192.168.1.12' }, { id: b.assignmentId, ipAddress: '192.168.1.11' }] }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(db.prepare('SELECT ip_address AS ip FROM service_device_assignments WHERE id = ?').get(a.assignmentId)).toEqual({ ip: '192.168.1.12' });
+    expect(db.prepare('SELECT ip_address AS ip FROM service_device_assignments WHERE id = ?').get(b.assignmentId)).toEqual({ ip: '192.168.1.11' });
+  });
+
+  test('bulk writes nothing when one IP is malformed', async () => {
+    const { catalog, service } = seedBaseService();
+    const a = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-A' });
+    const b = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-B' });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/service-device-assignments',
+      payload: { items: [{ id: a.assignmentId, ipAddress: '192.168.1.11' }, { id: b.assignmentId, ipAddress: '192.168.1.X' }] }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(db.prepare('SELECT ip_address AS ip FROM service_device_assignments WHERE id = ?').get(a.assignmentId)).toEqual({ ip: null });
+  });
+
+  test('bulk rejects the same IP twice in one payload', async () => {
+    const { catalog, service } = seedBaseService();
+    const a = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-A' });
+    const b = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-B' });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/service-device-assignments',
+      payload: { items: [{ id: a.assignmentId, ipAddress: '192.168.1.11' }, { id: b.assignmentId, ipAddress: '192.168.1.11' }] }
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(db.prepare('SELECT ip_address AS ip FROM service_device_assignments WHERE id = ?').get(a.assignmentId)).toEqual({ ip: null });
+  });
+
+  test('bulk rejects an IP already held by an assignment outside the payload', async () => {
+    const { catalog, service } = seedBaseService();
+    await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-A', ipAddress: '192.168.1.50' });
+    const b = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-B' });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/service-device-assignments',
+      payload: { items: [{ id: b.assignmentId, ipAddress: '192.168.1.50' }] }
+    });
+
+    expect(response.statusCode).toBe(409);
+  });
+
+  test('bulk rejects a closed or unknown assignment', async () => {
+    const { catalog, service } = seedBaseService();
+    const a = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-A' });
+    await app.inject({ method: 'POST', url: `/api/service-device-assignments/${a.assignmentId}/return`, payload: {} });
+
+    const closed = await app.inject({
+      method: 'PATCH',
+      url: '/api/service-device-assignments',
+      payload: { items: [{ id: a.assignmentId, ipAddress: '192.168.1.11' }] }
+    });
+    expect(closed.statusCode).toBe(404);
+
+    const unknown = await app.inject({
+      method: 'PATCH',
+      url: '/api/service-device-assignments',
+      payload: { items: [{ id: 9999, ipAddress: '192.168.1.11' }] }
+    });
+    expect(unknown.statusCode).toBe(404);
+  });
+
+  test('bulk clears an IP when sent empty', async () => {
+    const { catalog, service } = seedBaseService();
+    const a = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-A', ipAddress: '192.168.1.11' });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/service-device-assignments',
+      payload: { items: [{ id: a.assignmentId, ipAddress: '' }] }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(db.prepare('SELECT ip_address AS ip FROM service_device_assignments WHERE id = ?').get(a.assignmentId)).toEqual({ ip: null });
+  });
+
   test('replace rejects an IP owned by another active assignment', async () => {
     const { catalog, service } = seedBaseService();
     await install(service.lastInsertRowid, catalog.lastInsertRowid, { ipAddress: '192.168.1.10' });
