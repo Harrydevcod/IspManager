@@ -600,8 +600,30 @@ describe('device identity (IP fixo)', () => {
     expect(response.statusCode).toBe(201);
   });
 
-  test('lists active assignments across services for bulk IP assignment', async () => {
+  test('lists only antennas and access points, never client routers', async () => {
     const { catalog, service } = seedBaseService();
+    const antenna = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_cve, is_serialized, stock_total, active)
+      VALUES ('equipamento','cpe','TP-Link','CPE 510', 4000, 1, 5, 1)
+    `).run();
+    // seedBaseService() cria um catalogo type='router' — o IP dele e dinamico.
+    await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-ROUTER' });
+    const cpe = await install(service.lastInsertRowid, antenna.lastInsertRowid, { serialNumber: 'SN-CPE' });
+
+    const response = await app.inject({ method: 'GET', url: '/api/service-device-assignments' });
+
+    expect(response.statusCode).toBe(200);
+    const rows = response.json() as Array<{ id: number; serialNumber: string }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: cpe.assignmentId, serialNumber: 'SN-CPE' });
+  });
+
+  test('lists active assignments across services for bulk IP assignment', async () => {
+    const { service } = seedBaseService();
+    const catalog = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_cve, is_serialized, stock_total, active)
+      VALUES ('equipamento','antena','TP-Link','CPE710', 6000, 1, 10, 1)
+    `).run();
     const kept = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-A', ipAddress: '192.168.1.10' });
     const returned = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-B' });
     await app.inject({ method: 'POST', url: `/api/service-device-assignments/${returned.assignmentId}/return`, payload: {} });
@@ -614,7 +636,7 @@ describe('device identity (IP fixo)', () => {
     expect(rows[0]).toMatchObject({
       id: kept.assignmentId,
       clientName: 'Cliente Tec',
-      model: 'Router Tec',
+      model: 'CPE710',
       serialNumber: 'SN-A',
       ipAddress: '192.168.1.10'
     });

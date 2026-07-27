@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { Button, Field, Message, Select } from '../../components';
+import { takesStaticIp } from '../../../shared/equipment';
 import type { StockCatalogRow } from '../../types';
 import { IpField } from './IpField';
 
@@ -80,7 +81,10 @@ export function ServiceItemDraftsBuilder({ drafts, catalog, onChange, ipPrefix }
                   <Field label="Serial" value={draft.serialNumber} onChange={(event) => update(index, { serialNumber: event.target.value })} />
                   <Field label="Asset tag" value={draft.assetTag} onChange={(event) => update(index, { assetTag: event.target.value })} />
                   <Field label="MAC" value={draft.macAddress} onChange={(event) => update(index, { macAddress: event.target.value })} placeholder="AA:BB:CC:DD:EE:FF" />
-                  <IpField value={draft.ipAddress} prefix={ipPrefix} onChange={(ipAddress) => update(index, { ipAddress })} />
+                  {/* Router do cliente apanha IP dinâmico: o campo só aparece em antenas e APs. */}
+                  {takesStaticIp(selectedItem?.type) && (
+                    <IpField value={draft.ipAddress} prefix={ipPrefix} onChange={(ipAddress) => update(index, { ipAddress })} />
+                  )}
                 </>
               )}
               <Field wide label="Notas" value={draft.notes} onChange={(event) => update(index, { notes: event.target.value })} />
