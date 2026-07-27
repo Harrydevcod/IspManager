@@ -49,7 +49,14 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         s.technical_notes AS technicalNotes,
         s.audiovisual_mode AS audiovisualMode,
         s.audiovisual_monthly_cve AS audiovisualMonthlyCve,
-        s.audiovisual_annual_cve AS audiovisualAnnualCve
+        s.audiovisual_annual_cve AS audiovisualAnnualCve,
+        -- IPs dos equipamentos ativos: chave de identificacao das antenas para
+        -- manutencao remota, por isso vem ja na lista e nao so no detalhe.
+        (
+          SELECT group_concat(a.ip_address, ', ')
+          FROM service_device_assignments a
+          WHERE a.service_id = s.id AND a.end_date IS NULL AND a.ip_address IS NOT NULL
+        ) AS deviceIps
       FROM services s
       JOIN clients c ON c.id = s.client_id
       LEFT JOIN internet_plans p ON p.id = s.plan_id

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
 import {
+  checkDeviceIdentity,
   cleanValue,
   insertInstallCostsWithinTx,
   installDeviceWithinTx,
@@ -46,6 +47,18 @@ const batchItemsSchema = z.object({
   (data) => (data.items?.length ?? 0) > 0 || (data.installCosts?.length ?? 0) > 0,
   { message: 'Indique pelo menos um item ou custo' }
 );
+
+/**
+ * Correcao da identificacao de um equipamento ja instalado. Sem `catalogId`: o
+ * vinculo ao catalogo (e portanto ao stock) nao se move numa edicao.
+ */
+const deviceIdentitySchema = z.object({
+  serialNumber: z.string().trim().optional().nullable(),
+  assetTag: z.string().trim().optional().nullable(),
+  ipAddress: z.string().trim().optional().nullable(),
+  macAddress: z.string().trim().optional().nullable(),
+  notes: z.string().trim().optional().nullable()
+});
 
 const deviceReturnSchema = z.object({
   technicianId: z.coerce.number().int().positive().optional().nullable(),
@@ -236,6 +249,94 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
     return reply.status(201).send(result);
   });
 
+  /**
+   * Corrige a identificacao (IP, MAC, serial, asset tag, notas) de um equipamento ja
+   * instalado. Um unico UPDATE: nao mexe em stock, nao fecha nem cria atribuicoes e
+   * nao escreve evento tecnico — ao contrario de /replace, que existe para a troca
+   * fisica do equipamento. O IP fixo e a chave de manutencao remota das antenas, por
+   * isso tem de ser corrigivel sem custar uma unidade de inventario.
+   */
+  app.patch('/api/service-device-assignments/:id', canWriteTechnical, async (request, reply) => {
+    const assignmentId = Number((request.params as { id: string }).id);
+    const parsed = deviceIdentitySchema.safeParse(request.body ?? {});
+    if (!Number.isInteger(assignmentId) || assignmentId <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Dados de atribuicao invalidos' });
+    }
+
+    const db = getSqliteDatabase();
+    const current = db.prepare(`
+      SELECT
+        id,
+        service_id AS serviceId,
+        end_date AS endDate,
+        serial_number AS serialNumber,
+        asset_tag AS assetTag,
+        ip_address AS ipAddress,
+        mac_address AS macAddress,
+        notes
+      FROM service_device_assignments
+      WHERE id = ?
+    `).get(assignmentId) as {
+      id: number; serviceId: number; endDate: string | null;
+      serialNumber: string | null; assetTag: string | null;
+      ipAddress: string | null; macAddress: string | null; notes: string | null;
+    } | undefined;
+
+    if (!current) {
+      return reply.status(404).send({ error: 'Atribuicao nao encontrada' });
+    }
+    if (current.endDate) {
+      return reply.status(400).send({ error: 'Atribuicao ja encerrada' });
+    }
+
+    // Patch parcial: campo ausente mantem o valor atual, campo a null/'' limpa.
+    const merge = (next: string | null | undefined, previous: string | null) =>
+      next === undefined ? previous : cleanValue(next);
+    const next = {
+      serialNumber: merge(parsed.data.serialNumber, current.serialNumber),
+      assetTag: merge(parsed.data.assetTag, current.assetTag),
+      ipAddress: merge(parsed.data.ipAddress, current.ipAddress),
+      macAddress: merge(parsed.data.macAddress, current.macAddress),
+      notes: merge(parsed.data.notes, current.notes)
+    };
+
+    // So o que muda e validado: dados legados duplicados (nao ha indice unico) nao
+    // podem bloquear a correcao de um campo que o tecnico nem tocou.
+    const changed = (value: string | null, previous: string | null) => value === previous ? null : value;
+    const conflict = checkDeviceIdentity(db, {
+      serialNumber: changed(next.serialNumber, current.serialNumber),
+      assetTag: changed(next.assetTag, current.assetTag),
+      ipAddress: changed(next.ipAddress, current.ipAddress)
+    }, assignmentId);
+    if (conflict) {
+      return reply.status(conflict.status).send({ error: conflict.error });
+    }
+
+    db.prepare(`
+      UPDATE service_device_assignments
+      SET serial_number = ?,
+          asset_tag = ?,
+          ip_address = ?,
+          mac_address = ?,
+          notes = ?,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(next.serialNumber, next.assetTag, next.ipAddress, next.macAddress, next.notes, assignmentId);
+
+    recordAudit(request, {
+      action: 'update_device',
+      entityType: 'service_device_assignment',
+      entityId: assignmentId,
+      summary: `Atualizou identificacao do equipamento ${assignmentId}`,
+      metadata: {
+        serviceId: current.serviceId,
+        ipAddress: next.ipAddress,
+        previousIpAddress: current.ipAddress
+      }
+    });
+    return reply.status(200).send({ assignmentId, ...next });
+  });
+
   app.post('/api/service-device-assignments/:id/replace', canWriteTechnical, async (request, reply) => {
     const assignmentId = Number((request.params as { id: string }).id);
     const parsed = deviceAssignmentSchema.safeParse(request.body);
@@ -276,25 +377,9 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
     const macAddress = cleanValue(parsed.data.macAddress);
     const notes = cleanValue(parsed.data.notes);
 
-    if (serialNumber) {
-      const duplicate = db.prepare(`
-        SELECT id
-        FROM service_device_assignments
-        WHERE serial_number = ? AND end_date IS NULL AND id != ?
-      `).get(serialNumber, assignmentId);
-      if (duplicate) {
-        return reply.status(409).send({ error: 'Serial ja esta atribuido a outro equipamento ativo' });
-      }
-    }
-    if (assetTag) {
-      const duplicate = db.prepare(`
-        SELECT id
-        FROM service_device_assignments
-        WHERE asset_tag = ? AND end_date IS NULL AND id != ?
-      `).get(assetTag, assignmentId);
-      if (duplicate) {
-        return reply.status(409).send({ error: 'Asset tag ja esta atribuido a outro equipamento ativo' });
-      }
+    const conflict = checkDeviceIdentity(db, { serialNumber, assetTag, ipAddress }, assignmentId);
+    if (conflict) {
+      return reply.status(conflict.status).send({ error: conflict.error });
     }
 
     const run = db.transaction(() => {

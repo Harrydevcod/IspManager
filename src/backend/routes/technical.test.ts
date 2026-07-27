@@ -436,3 +436,181 @@ describe('technical routes', () => {
     expect(hist.installCosts[0]).toMatchObject({ kind: 'mao_de_obra', amountCve: 1800 });
   });
 });
+
+describe('device identity (IP fixo)', () => {
+  /** Instala um equipamento e devolve o id da atribuicao criada. */
+  async function install(serviceId: unknown, catalogId: unknown, fields: Record<string, unknown> = {}) {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/services/${serviceId}/items`,
+      payload: { items: [{ catalogId, ...fields }] }
+    });
+    return { response, assignmentId: response.statusCode === 201 ? (response.json() as { assignmentIds: number[] }).assignmentIds[0] : null };
+  }
+
+  function counts(catalogId: unknown) {
+    return {
+      stock: (db.prepare('SELECT stock_total AS n FROM equipment_catalog WHERE id = ?').get(catalogId) as { n: number }).n,
+      movements: (db.prepare('SELECT COUNT(*) AS n FROM stock_movements').get() as { n: number }).n,
+      events: (db.prepare('SELECT COUNT(*) AS n FROM service_events').get() as { n: number }).n
+    };
+  }
+
+  test('patch updates identification in place without touching stock', async () => {
+    const { catalog, service } = seedBaseService();
+    const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, {
+      serialNumber: 'SN-100', ipAddress: '192.168.1.10', macAddress: 'AA:BB:CC:DD:EE:01'
+    });
+    const before = counts(catalog.lastInsertRowid);
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/service-device-assignments/${assignmentId}`,
+      payload: { ipAddress: '192.168.1.11', macAddress: 'AA:BB:CC:DD:EE:02', notes: 'IP corrigido' }
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    const history = await app.inject({ method: 'GET', url: `/api/services/${service.lastInsertRowid}/technical-history` });
+    const body = history.json() as { assignments: Array<{ id: number; ipAddress: string; macAddress: string; serialNumber: string; notes: string; endDate: string | null }> };
+    expect(body.assignments).toHaveLength(1);
+    expect(body.assignments[0]).toMatchObject({
+      id: assignmentId,
+      ipAddress: '192.168.1.11',
+      macAddress: 'AA:BB:CC:DD:EE:02',
+      serialNumber: 'SN-100',
+      notes: 'IP corrigido',
+      endDate: null
+    });
+    expect(counts(catalog.lastInsertRowid)).toEqual(before);
+  });
+
+  test('patch rejects a malformed IPv4 and leaves the row untouched', async () => {
+    const { catalog, service } = seedBaseService();
+    const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, { ipAddress: '192.168.1.10' });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/service-device-assignments/${assignmentId}`,
+      payload: { ipAddress: '192.168.1.999' }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(db.prepare('SELECT ip_address AS ip FROM service_device_assignments WHERE id = ?').get(assignmentId))
+      .toEqual({ ip: '192.168.1.10' });
+  });
+
+  test('patch rejects an IP owned by another active assignment', async () => {
+    const { catalog, service } = seedBaseService();
+    await install(service.lastInsertRowid, catalog.lastInsertRowid, { ipAddress: '192.168.1.10' });
+    const second = await install(service.lastInsertRowid, catalog.lastInsertRowid, { ipAddress: '192.168.1.20' });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/service-device-assignments/${second.assignmentId}`,
+      payload: { ipAddress: '192.168.1.10' }
+    });
+
+    expect(response.statusCode).toBe(409);
+  });
+
+  test('patch allows editing another field when the row already carries a legacy duplicate IP', async () => {
+    const { catalog, service } = seedBaseService();
+    // Dados legados: sem indice unico, a BD real pode ja ter IPs repetidos.
+    const insert = db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id, ip_address, start_date)
+      VALUES (?, ?, '192.168.1.30', date('now'))
+    `);
+    insert.run(service.lastInsertRowid, catalog.lastInsertRowid);
+    const legacy = insert.run(service.lastInsertRowid, catalog.lastInsertRowid);
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/service-device-assignments/${legacy.lastInsertRowid}`,
+      payload: { ipAddress: '192.168.1.30', macAddress: 'AA:BB:CC:DD:EE:09' }
+    });
+
+    expect(response.statusCode).toBe(200);
+  });
+
+  test('patch rejects a closed assignment', async () => {
+    const { catalog, service } = seedBaseService();
+    const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, { ipAddress: '192.168.1.10' });
+    await app.inject({ method: 'POST', url: `/api/service-device-assignments/${assignmentId}/return`, payload: {} });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/service-device-assignments/${assignmentId}`,
+      payload: { ipAddress: '192.168.1.11' }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: 'Atribuicao ja encerrada' });
+  });
+
+  test('patch returns 404 for an unknown assignment', async () => {
+    seedBaseService();
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/service-device-assignments/9999',
+      payload: { ipAddress: '192.168.1.11' }
+    });
+    expect(response.statusCode).toBe(404);
+  });
+
+  test('install rejects an IP already used by an active assignment', async () => {
+    const { catalog, service } = seedBaseService();
+    await install(service.lastInsertRowid, catalog.lastInsertRowid, { ipAddress: '192.168.1.10' });
+
+    const { response } = await install(service.lastInsertRowid, catalog.lastInsertRowid, { ipAddress: '192.168.1.10' });
+
+    expect(response.statusCode).toBe(409);
+  });
+
+  test('install rejects a malformed IPv4', async () => {
+    const { catalog, service } = seedBaseService();
+    const { response } = await install(service.lastInsertRowid, catalog.lastInsertRowid, { ipAddress: '192.168.1' });
+    expect(response.statusCode).toBe(400);
+  });
+
+  test('install rejects two items in the same batch sharing an IP', async () => {
+    const { catalog, service } = seedBaseService();
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/services/${service.lastInsertRowid}/items`,
+      payload: {
+        items: [
+          { catalogId: catalog.lastInsertRowid, ipAddress: '192.168.1.40' },
+          { catalogId: catalog.lastInsertRowid, ipAddress: '192.168.1.40' }
+        ]
+      }
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM service_device_assignments').get()).toEqual({ n: 0 });
+  });
+
+  test('an IP frees up after the device is returned', async () => {
+    const { catalog, service } = seedBaseService();
+    const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, { ipAddress: '192.168.1.10' });
+    await app.inject({ method: 'POST', url: `/api/service-device-assignments/${assignmentId}/return`, payload: {} });
+
+    const { response } = await install(service.lastInsertRowid, catalog.lastInsertRowid, { ipAddress: '192.168.1.10' });
+
+    expect(response.statusCode).toBe(201);
+  });
+
+  test('replace rejects an IP owned by another active assignment', async () => {
+    const { catalog, service } = seedBaseService();
+    await install(service.lastInsertRowid, catalog.lastInsertRowid, { ipAddress: '192.168.1.10' });
+    const second = await install(service.lastInsertRowid, catalog.lastInsertRowid, { ipAddress: '192.168.1.20' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${second.assignmentId}/replace`,
+      payload: { catalogId: catalog.lastInsertRowid, ipAddress: '192.168.1.10' }
+    });
+
+    expect(response.statusCode).toBe(409);
+  });
+});

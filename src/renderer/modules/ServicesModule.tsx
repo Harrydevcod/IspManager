@@ -93,6 +93,8 @@ export function ServicesModule({
   const [eventForm, setEventForm] = useState<EventFormState>(emptyEventForm());
   const [replaceTarget, setReplaceTarget] = useState<DeviceAssignment | null>(null);
   const [replaceDraft, setReplaceDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
+  const [editTarget, setEditTarget] = useState<DeviceAssignment | null>(null);
+  const [editDraft, setEditDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
   const [submitting, setSubmitting] = useState(false);
 
   function loadServices() {
@@ -313,6 +315,7 @@ export function ServicesModule({
       setAddItemDrafts([]);
       setAddLaborCve('');
       await loadTechnicalHistory(selectedService.id);
+      void loadServices();
     } catch {
       toast('Falha de rede ao adicionar itens.', 'error');
     } finally {
@@ -375,6 +378,7 @@ export function ServicesModule({
       }
       toast('Equipamento removido e stock reposto.', 'success');
       await loadTechnicalHistory(selectedService.id);
+      void loadServices();
     } catch {
       toast('Falha de rede ao remover equipamento.', 'error');
     } finally {
@@ -424,8 +428,61 @@ export function ServicesModule({
       setReplaceTarget(null);
       setReplaceDraft(emptyItemDraft('equipamento'));
       await loadTechnicalHistory(selectedService.id);
+      void loadServices();
     } catch {
       toast('Falha de rede ao substituir equipamento.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function openEditDialog(assignment: DeviceAssignment) {
+    setEditTarget(assignment);
+    setEditDraft({
+      ...emptyItemDraft('equipamento'),
+      serialNumber: assignment.serialNumber || '',
+      assetTag: assignment.assetTag || '',
+      ipAddress: assignment.ipAddress || '',
+      macAddress: assignment.macAddress || '',
+      notes: assignment.notes || ''
+    });
+  }
+
+  function closeEditDialog() {
+    if (submitting) return;
+    setEditTarget(null);
+    setEditDraft(emptyItemDraft('equipamento'));
+  }
+
+  /** Corrige a identificação do equipamento instalado — não mexe no stock. */
+  async function submitEditDevice(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedService || !editTarget) return;
+    setSubmitting(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/service-device-assignments/${editTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          serialNumber: editDraft.serialNumber || null,
+          assetTag: editDraft.assetTag || null,
+          ipAddress: editDraft.ipAddress || null,
+          macAddress: editDraft.macAddress || null,
+          notes: editDraft.notes || null
+        })
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) {
+        toast(data.error || 'Nao foi possivel atualizar o equipamento.', 'error');
+        return;
+      }
+      toast('Identificacao atualizada.', 'success');
+      setEditTarget(null);
+      setEditDraft(emptyItemDraft('equipamento'));
+      await loadTechnicalHistory(selectedService.id);
+      void loadServices();
+    } catch {
+      toast('Falha de rede ao atualizar equipamento.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -527,7 +584,9 @@ export function ServicesModule({
     const normalizedSearch = search.trim().toLowerCase();
     const matchesSearch = !normalizedSearch
       || service.clientName.toLowerCase().includes(normalizedSearch)
-      || (service.planName || '').toLowerCase().includes(normalizedSearch);
+      || (service.planName || '').toLowerCase().includes(normalizedSearch)
+      // Manutenção remota ao contrário: do IP da antena para o cliente.
+      || (service.deviceIps || '').toLowerCase().includes(normalizedSearch);
     const matchesStatus = statusFilter === 'all' || service.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -548,7 +607,7 @@ export function ServicesModule({
 
       {loadError && services.length === 0 && <ErrorRetry message={loadError} onRetry={() => { void loadServices(); }} />}
       <FilterBar>
-        <Field type="search" label="Buscar" aria-label="Pesquisar servicos" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente ou plano" />
+        <Field type="search" label="Buscar" aria-label="Pesquisar servicos" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente, plano ou IP" />
         <Select label="Estado" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | ServiceRow['status'])}>
           <option value="all">Todos</option>
           <option value="active">Ativos</option>
@@ -578,6 +637,7 @@ export function ServicesModule({
           onEdit={editService}
           onDelete={(service) => void deleteService(service)}
           onAddDevice={openDeviceDialog}
+          onEditDevice={openEditDialog}
           onReplaceDevice={openReplaceDialog}
           onReturnDevice={(assignment) => void returnDevice(assignment)}
           onAddEvent={openEventDialog}
@@ -604,6 +664,9 @@ export function ServicesModule({
               <strong>{service.clientName}</strong>
               <small>{service.planName || 'Sem plano'} - dia {service.dueDay}</small>
             </span>
+            <code className="service-row-ip" title={service.deviceIps ? `IP dos equipamentos ativos: ${service.deviceIps}` : 'Sem IP registado'}>
+              {service.deviceIps || '—'}
+            </code>
             <small title={service.audiovisualMode === 'monthly' ? 'Mensalidade NET + TVM (canais e conteúdos audiovisuais)' : undefined}>
               {formatCve(monthlyTotalCve(service))}
               {service.audiovisualMode === 'monthly' && ' · NET + TVM'}
@@ -862,6 +925,34 @@ export function ServicesModule({
           <Field label="MAC" value={replaceDraft.macAddress} onChange={(event) => setReplaceDraft((current) => ({ ...current, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
           <Field label="IP" value={replaceDraft.ipAddress} onChange={(event) => setReplaceDraft((current) => ({ ...current, ipAddress: event.target.value }))} placeholder="192.168.X.Y" />
           <Field wide label="Notas" value={replaceDraft.notes} onChange={(event) => setReplaceDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Motivo da substituicao" />
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={editTarget !== null}
+        onClose={closeEditDialog}
+        eyebrow="Editar equipamento"
+        title={editTarget ? (editTarget.brand ? `${editTarget.brand} ${editTarget.model}` : editTarget.model) : 'Editar equipamento'}
+        size="md"
+        closeOnBackdrop={!submitting}
+        actions={
+          <>
+            <Button variant="secondary" onClick={closeEditDialog} disabled={submitting}>Cancelar</Button>
+            <Button type="submit" form="edit-device-form" loading={submitting}>
+              {submitting ? 'A gravar...' : 'Guardar'}
+            </Button>
+          </>
+        }
+      >
+        <form id="edit-device-form" className="client-form" onSubmit={submitEditDevice}>
+          <Message>
+            Corrige a identificação do equipamento instalado. O stock não é alterado e a atribuição mantém-se ativa.
+          </Message>
+          <Field label="IP" value={editDraft.ipAddress} onChange={(event) => setEditDraft((current) => ({ ...current, ipAddress: event.target.value }))} placeholder="192.168.X.Y" />
+          <Field label="MAC" value={editDraft.macAddress} onChange={(event) => setEditDraft((current) => ({ ...current, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
+          <Field label="Serial" value={editDraft.serialNumber} onChange={(event) => setEditDraft((current) => ({ ...current, serialNumber: event.target.value }))} />
+          <Field label="Asset tag" value={editDraft.assetTag} onChange={(event) => setEditDraft((current) => ({ ...current, assetTag: event.target.value }))} />
+          <Field wide label="Notas" value={editDraft.notes} onChange={(event) => setEditDraft((current) => ({ ...current, notes: event.target.value }))} />
         </form>
       </Dialog>
     </section>

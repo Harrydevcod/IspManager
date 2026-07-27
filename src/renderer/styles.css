@@ -4099,9 +4099,28 @@ label.field-toggle {
 
 .service-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 180px 96px auto;
+  grid-template-columns: minmax(0, 1fr) 150px 180px 96px auto;
   gap: var(--space-3);
   align-items: center;
+}
+
+/* IP dos equipamentos ativos: informação técnica, tom secundário e dígitos
+   tabulares para alinhar octeto com octeto entre linhas. Sem família mono —
+   o design system é Inter single-family. */
+.service-row-ip {
+  color: var(--text-3);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.service-row-ip,
+.detail-ip {
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
 }
 
 /* Coluna do valor mensal: mantém "1.500 CVE · NET + TVM" numa única linha. */

@@ -477,6 +477,44 @@ describe('finance routes', () => {
     expect(db.prepare("SELECT count(*) AS n FROM service_events WHERE service_id = ? AND event_type = 'instalacao'").get(body.id)).toEqual({ n: 1 });
   });
 
+  test('GET /api/services exposes the IPs of active devices', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-IP','Cliente IP','active')`).run();
+    const router = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_cve, is_serialized, stock_total, active)
+      VALUES ('equipamento','router','MikroTik','hAP ip', 6000, 1, 5, 1)
+    `).run();
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: {
+        clientId: client.lastInsertRowid,
+        monthlyValueCve: 3500,
+        dueDay: 10,
+        items: [
+          { catalogId: router.lastInsertRowid, ipAddress: '10.0.0.1' },
+          { catalogId: router.lastInsertRowid, ipAddress: '10.0.0.2' }
+        ]
+      }
+    });
+    expect(created.statusCode).toBe(201);
+    const { id: serviceId, assignmentIds } = created.json() as { id: number; assignmentIds: number[] };
+
+    const listed = async () => {
+      const response = await app.inject({ method: 'GET', url: '/api/services' });
+      const rows = response.json() as Array<{ id: number; deviceIps: string | null }>;
+      return rows.find((row) => row.id === serviceId)?.deviceIps;
+    };
+
+    expect(await listed()).toBe('10.0.0.1, 10.0.0.2');
+
+    await app.inject({ method: 'POST', url: `/api/service-device-assignments/${assignmentIds[0]}/return`, payload: {} });
+    expect(await listed()).toBe('10.0.0.2');
+
+    await app.inject({ method: 'POST', url: `/api/service-device-assignments/${assignmentIds[1]}/return`, payload: {} });
+    expect(await listed()).toBeNull();
+  });
+
   test('deletes a service without invoices and restores stock', async () => {
     const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-DEL','Cliente Del','active')`).run();
     const router = db.prepare(`

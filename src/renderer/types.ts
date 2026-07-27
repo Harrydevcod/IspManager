@@ -59,6 +59,8 @@ export type ServiceRow = {
   audiovisualMode: 'none' | 'monthly' | 'annual';
   audiovisualMonthlyCve: number;
   audiovisualAnnualCve: number;
+  /** IPs dos equipamentos ativos, separados por vírgula. Null se não houver nenhum. */
+  deviceIps: string | null;
 };
 
 export type AudiovisualConfig = {

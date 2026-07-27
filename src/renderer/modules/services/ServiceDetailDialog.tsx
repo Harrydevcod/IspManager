@@ -39,6 +39,7 @@ type ServiceDetailDialogProps = {
   onEdit: (service: ServiceRow) => void;
   onDelete: (service: ServiceRow) => void;
   onAddDevice: () => void;
+  onEditDevice: (assignment: DeviceAssignment) => void;
   onReplaceDevice: (assignment: DeviceAssignment) => void;
   onReturnDevice: (assignment: DeviceAssignment) => void;
   onAddEvent: () => void;
@@ -57,10 +58,16 @@ export function ServiceDetailDialog({
   onEdit,
   onDelete,
   onAddDevice,
+  onEditDevice,
   onReplaceDevice,
   onReturnDevice,
   onAddEvent
 }: ServiceDetailDialogProps) {
+  // Fonte fresca após uma edição; enquanto o histórico carrega usa o valor da lista.
+  const activeIps = technicalHistory
+    ? technicalHistory.assignments.filter((a) => !a.endDate && a.ipAddress).map((a) => a.ipAddress).join(', ')
+    : service.deviceIps;
+
   return (
     <Dialog
       open
@@ -86,6 +93,7 @@ export function ServiceDetailDialog({
       <div className="client-detail">
       <dl>
         <div><dt>Plano</dt><dd>{service.planName || '-'}</dd></div>
+        <div><dt>IP</dt><dd className="detail-ip">{activeIps || '-'}</dd></div>
         <div>
           <dt>Mensalidade</dt>
           <dd>
@@ -159,6 +167,9 @@ export function ServiceDetailDialog({
                   {assignment.notes && <p className="technical-item-notes">{assignment.notes}</p>}
                   {active && canRecordTechnical && (
                     <div className="technical-item-actions">
+                      <Button variant="secondary" size="sm" disabled={submitting} onClick={() => onEditDevice(assignment)}>
+                        Editar
+                      </Button>
                       <Button variant="secondary" size="sm" disabled={submitting} onClick={() => onReplaceDevice(assignment)}>
                         Substituir
                       </Button>

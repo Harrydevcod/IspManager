@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { z } from 'zod';
 
 /**
  * Shared equipment-installation logic, used both by the standalone device-assignment
@@ -76,10 +77,61 @@ export function loadCatalogKind(db: Database.Database, id: number): CatalogKind 
   `).get(id) as CatalogKind | undefined;
 }
 
+const IPV4 = z.string().ip({ version: 'v4' });
+
+const IDENTITY_FIELDS = [
+  { key: 'serialNumber', column: 'serial_number', label: 'Serial' },
+  { key: 'assetTag', column: 'asset_tag', label: 'Asset tag' },
+  { key: 'ipAddress', column: 'ip_address', label: 'IP' }
+] as const;
+
+export type DeviceIdentity = Pick<DeviceInput, 'serialNumber' | 'assetTag' | 'ipAddress'>;
+
+export type IdentityIssue = { status: number; error: string };
+
+/**
+ * Formato do IP + unicidade de serial/asset tag/IP entre atribuicoes ATIVAS
+ * (`end_date IS NULL`). Ponto unico partilhado pelos quatro caminhos de escrita:
+ * criacao de servico com itens, POST /items, /replace e PATCH. `excludeAssignmentId`
+ * ignora a propria linha. Campos vazios nao sao verificados.
+ *
+ * O IP e critico para manutencao remota (identificar a antena do cliente), por isso
+ * duplicados ativos sao recusados aqui em vez de por indice unico: a BD real pode ja
+ * conter duplicados legados e uma migracao a falhar bloqueia o arranque da app.
+ */
+export function checkDeviceIdentity(
+  db: Database.Database,
+  device: DeviceIdentity,
+  excludeAssignmentId?: number | null
+): IdentityIssue | null {
+  const ipAddress = cleanValue(device.ipAddress);
+  if (ipAddress && !IPV4.safeParse(ipAddress).success) {
+    return { status: 400, error: 'IP invalido. Use o formato IPv4, ex.: 192.168.1.10' };
+  }
+
+  for (const field of IDENTITY_FIELDS) {
+    const value = cleanValue(device[field.key]);
+    if (!value) {
+      continue;
+    }
+    // ponytail: scan sem indice em ip_address; se a tabela crescer, CREATE INDEX (nao-unico).
+    const sql = `SELECT id FROM service_device_assignments WHERE ${field.column} = ? AND end_date IS NULL`
+      + (excludeAssignmentId ? ' AND id != ?' : '');
+    const duplicate = excludeAssignmentId
+      ? db.prepare(sql).get(value, excludeAssignmentId)
+      : db.prepare(sql).get(value);
+    if (duplicate) {
+      return { status: 409, error: `${field.label} ja esta atribuido a outro equipamento ativo` };
+    }
+  }
+
+  return null;
+}
+
 /**
  * Validates that a device can be installed before opening a transaction: the model
  * exists, has stock, the technician (if any) is real, and no active assignment already
- * owns the serial/asset tag. Returns a discriminated result so callers map it to a reply.
+ * owns the serial/asset tag/IP. Returns a discriminated result so callers map it to a reply.
  */
 export function preflightDeviceInstall(db: Database.Database, device: DeviceInput): PreflightResult {
   const catalog = loadCatalogIdentity(db, device.catalogId);
@@ -96,26 +148,9 @@ export function preflightDeviceInstall(db: Database.Database, device: DeviceInpu
     }
   }
 
-  const serialNumber = cleanValue(device.serialNumber);
-  if (serialNumber) {
-    const duplicate = db.prepare(`
-      SELECT id FROM service_device_assignments
-      WHERE serial_number = ? AND end_date IS NULL
-    `).get(serialNumber);
-    if (duplicate) {
-      return { ok: false, status: 409, error: 'Serial ja esta atribuido a outro equipamento ativo' };
-    }
-  }
-
-  const assetTag = cleanValue(device.assetTag);
-  if (assetTag) {
-    const duplicate = db.prepare(`
-      SELECT id FROM service_device_assignments
-      WHERE asset_tag = ? AND end_date IS NULL
-    `).get(assetTag);
-    if (duplicate) {
-      return { ok: false, status: 409, error: 'Asset tag ja esta atribuido a outro equipamento ativo' };
-    }
+  const conflict = checkDeviceIdentity(db, device);
+  if (conflict) {
+    return { ok: false, ...conflict };
   }
 
   return { ok: true, catalog };
@@ -130,6 +165,10 @@ export function preflightItems(db: Database.Database, items: ServiceItemInput[])
     return { ok: false, status: 400, error: 'Nenhum item indicado' };
   }
 
+  // Identificadores ja usados por itens ANTERIORES do mesmo lote: ainda nao estao
+  // na BD, por isso a verificacao por linha nao os apanharia.
+  const batchIdentifiers = new Set<string>();
+
   for (const item of items) {
     const kind = loadCatalogKind(db, item.catalogId);
     if (!kind) {
@@ -140,6 +179,17 @@ export function preflightItems(db: Database.Database, items: ServiceItemInput[])
       const result = preflightDeviceInstall(db, item);
       if (!result.ok) {
         return result;
+      }
+      for (const field of IDENTITY_FIELDS) {
+        const value = cleanValue(item[field.key]);
+        if (!value) {
+          continue;
+        }
+        const key = `${field.column}:${value}`;
+        if (batchIdentifiers.has(key)) {
+          return { ok: false, status: 409, error: `${field.label} repetido nos itens indicados` };
+        }
+        batchIdentifiers.add(key);
       }
       continue;
     }
