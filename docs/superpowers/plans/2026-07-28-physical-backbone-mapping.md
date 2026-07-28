@@ -48,8 +48,10 @@ implementation files. Do not stage unrelated user files if any appear.
 ### Persistence and contracts
 
 - Create `src/backend/db/migrations/0031_physical_backbone_mapping.ts` — immutable
-  schema/data migration from catalog quantities to physical devices.
-- Modify `src/backend/db/migrations/index.ts` — register migration 31.
+  schema/data migration from catalog quantities to physical devices while retaining
+  the legacy column for intermediate compatibility.
+- Modify `src/backend/db/migrations/index.ts` — register migration 31, then migration
+  32 when Task 4 removes the legacy column.
 - Modify `src/backend/db/schema.ts` — Drizzle declarations for both new tables and
   removal of `backboneQty`.
 - Modify `src/backend/db/migrate.test.ts` — migration preservation and constraint
@@ -122,8 +124,8 @@ implementation files. Do not stage unrelated user files if any appear.
 
 **Interfaces:**
 - Consumes: `Migration` from `src/backend/db/migrations/types.ts`.
-- Produces: tables `backbone_devices`, `backbone_assignment_links`; no
-  `equipment_catalog.backbone_qty`.
+- Produces: tables `backbone_devices`, `backbone_assignment_links`; retains
+  `equipment_catalog.backbone_qty` until Task 4 so every intermediate commit passes.
 
 - [ ] **Step 1: Add a failing migration preservation test**
 
@@ -140,7 +142,7 @@ expect(db.prepare(`
   { name: 'Ubiquiti Rocket Prism #2', provisional: 1, serialNumber: null }
 ]);
 expect(db.prepare(`PRAGMA table_info(equipment_catalog)`).all())
-  .not.toEqual(expect.arrayContaining([expect.objectContaining({ name: 'backbone_qty' })]));
+  .toEqual(expect.arrayContaining([expect.objectContaining({ name: 'backbone_qty' })]));
 ```
 
 Also assert `PRAGMA foreign_key_check` is empty.
@@ -220,13 +222,12 @@ const migration: Migration = {
     INSERT INTO backbone_devices(catalog_id, name, provisional)
       SELECT catalog_id, label || ' #' || ordinal, 1 FROM units;
 
-    ALTER TABLE equipment_catalog DROP COLUMN backbone_qty;
   `
 };
 ```
 
-Register `m0031` in order and replace the schema field with Drizzle declarations for
-the two new tables.
+Register `m0031` in order and add Drizzle declarations for the two new tables. Keep
+the existing `backboneQty` schema field unchanged until Task 4.
 
 - [ ] **Step 4: Add and run database constraint tests**
 
@@ -463,6 +464,10 @@ git commit -m "feat(topology): expose audited backbone management API"
 ### Task 4: Remove legacy quantity and preserve lifecycle/finance behavior
 
 **Files:**
+- Create: `src/backend/db/migrations/0032_retire_catalog_backbone_qty.ts`
+- Modify: `src/backend/db/migrations/index.ts`
+- Modify: `src/backend/db/schema.ts`
+- Modify: `src/backend/db/migrate.test.ts`
 - Modify: `src/backend/routes/stock.ts`
 - Modify: `src/backend/routes/stock.test.ts`
 - Modify: `src/backend/routes/investments.ts`
@@ -488,6 +493,8 @@ expect(investmentSummary.backboneStockCve).toBe(
 
 Add a service removal test that ends an assignment and expects its active topology
 link to receive `ended_at`.
+Add a migration-chain assertion that `backbone_qty` is absent only after migration
+32 and that the physical rows created by migration 31 remain unchanged.
 
 - [ ] **Step 2: Run focused tests and observe failure**
 
@@ -497,10 +504,21 @@ npx.cmd vitest run src/backend/routes/stock.test.ts src/backend/routes/investmen
 
 Expected: FAIL on legacy field/query and unclosed link.
 
-- [ ] **Step 3: Remove stock quantity handling**
+- [ ] **Step 3: Add migration 32 and remove stock quantity handling**
 
-Delete `backboneQty` from the catalog Zod schema, SELECT, INSERT, UPDATE, response,
-and test fixtures. Do not add a replacement field to Stock.
+Create immutable migration 32:
+
+```ts
+const migration: Migration = {
+  version: 32,
+  name: 'retire_catalog_backbone_qty',
+  sql: `ALTER TABLE equipment_catalog DROP COLUMN backbone_qty;`
+};
+```
+
+Register it after migration 31, remove `backboneQty` from the Drizzle schema, and
+delete it from the catalog Zod schema, SELECT, INSERT, UPDATE, response, and test
+fixtures. Do not add a replacement field to Stock.
 
 - [ ] **Step 4: Replace the finance calculation**
 
@@ -544,7 +562,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit lifecycle and finance compatibility**
 
 ```powershell
-git add src/backend/routes/stock.ts src/backend/routes/stock.test.ts src/backend/routes/investments.ts src/backend/routes/investments.test.ts src/backend/routes/technical.ts src/backend/routes/technical.test.ts
+git add src/backend/db/migrations/0032_retire_catalog_backbone_qty.ts src/backend/db/migrations/index.ts src/backend/db/schema.ts src/backend/db/migrate.test.ts src/backend/routes/stock.ts src/backend/routes/stock.test.ts src/backend/routes/investments.ts src/backend/routes/investments.test.ts src/backend/routes/technical.ts src/backend/routes/technical.test.ts
 git commit -m "refactor(topology): retire catalog backbone quantities"
 ```
 
