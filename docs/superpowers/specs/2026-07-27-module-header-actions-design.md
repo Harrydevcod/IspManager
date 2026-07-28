@@ -183,6 +183,26 @@ Exact values may be tuned during browser validation, but must satisfy:
 - no brown primary action in light mode;
 - no pure-black shadow or hard 1 px outline that makes the button feel flat.
 
+#### Cool-neutral correction
+
+Header actions must not inherit the light theme's warm editorial surfaces.
+Their semantic tokens form an independent, cool-neutral palette:
+
+- secondary backgrounds and borders use a restrained 250–260 hue with very
+  low chroma, reading as cool grey rather than beige, cream or brown;
+- secondary foreground uses a cool graphite tone instead of the general
+  warm-neutral text colour;
+- critical actions reuse the same cool-neutral resting surface and communicate
+  risk through red foreground, icon and interaction states;
+- primary actions remain in the ISPM blue/cyan family;
+- no header action surface, border, foreground or shadow may use a warm
+  brown/orange hue in either theme.
+
+For the light theme, the intended resting treatment is approximately
+`oklch(98.7% 0.003 255)` for the surface, `oklch(82% 0.012 255)` for the
+border and `oklch(28% 0.015 255)` for secondary foreground. Exact values may
+be tuned during browser validation while remaining visibly cool-neutral.
+
 ### 6.3 Interaction states
 
 - Hover: subtle surface lift and controlled shadow increase.
@@ -294,4 +314,6 @@ data or operation is touched.
 7. Header layouts do not overflow at supported desktop widths.
 8. Permissions and business behaviour remain unchanged.
 9. Automated checks pass and browser evidence is captured for both themes.
+10. Header action buttons contain no brown, beige or cream treatment; neutral
+    actions read as cool graphite in both themes.
 
