@@ -22,6 +22,10 @@
 - All mutation routes validate with Zod, use parameterized SQL, run state transitions transactionally, and write audit events.
 - Keep React Flow and Dagre outside the initial application chunk.
 - Follow TDD: observe each focused test fail before implementing its production change.
+- Approved dependency order after Task 3: execute Task 5, then Task 9, then resume
+  Task 4. Task 5 keeps a deprecated renderer-compatibility `backboneQty: 1` field;
+  Task 9 removes that field and all renderer consumers; Task 4 then drops the SQL
+  column with no backend or renderer consumer remaining.
 
 ## Execution preflight
 
@@ -582,7 +586,8 @@ files.
 **Interfaces:**
 - Produces `TopologyRelationship = 'defined_link'`.
 - `TopologyBackboneNode` includes `backboneDeviceId`, identity/location fields,
-  `provisional`, and no `backboneQty`.
+  `provisional`, plus a temporary deprecated `backboneQty: 1` compatibility field
+  removed by Task 9.
 - Branch route parameter is `backbone_devices.id`.
 
 - [ ] **Step 1: Rewrite fixtures/tests to express physical links**
@@ -633,6 +638,8 @@ export type TopologyBackboneNode = {
   island: string | null;
   zone: string | null;
   provisional: boolean;
+  /** @deprecated Renderer compatibility only; Task 9 removes this field. */
+  backboneQty: 1;
   administrativeState: TopologyAdministrativeState;
   issueCodes: TopologyIssueCode[];
   parentId: 'root:isp';
@@ -647,6 +654,8 @@ Add `provisional_identity` to `TopologyIssueCode`.
 Snapshot loads non-retired `backbone_devices`. Branch joins active
 `backbone_assignment_links` to active assignments. Stats count active assignments
 with/without active links. Search ancestors follow the active link, never `catalog_id`.
+Each physical backbone row emits `backboneQty: 1` only to keep the current renderer
+compiling until Task 9; no query or relationship may use the legacy catalog quantity.
 
 - [ ] **Step 5: Run backend topology tests**
 
@@ -952,6 +961,8 @@ user-visible “inventário” relationship label with “ligação definida”;
 - [ ] **Step 4: Remove Stock backbone controls**
 
 Delete `backboneQty` form state, payload, filter, sort key, badge, column and field.
+Delete the deprecated `TopologyBackboneNode.backboneQty` compatibility property and
+update topology fixtures at the same time.
 Keep `focusCatalogId` navigation intact because the Topologia inspector still links
 to the underlying catalog model.
 
