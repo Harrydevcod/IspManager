@@ -31,6 +31,8 @@ beforeAll(async () => {
 beforeEach(() => {
   db.prepare('DELETE FROM login_throttle').run();
   db.prepare('DELETE FROM audit_logs').run();
+  db.prepare('DELETE FROM backbone_assignment_links').run();
+  db.prepare('DELETE FROM backbone_devices').run();
   db.prepare('DELETE FROM work_orders').run();
   db.prepare('DELETE FROM service_events').run();
   db.prepare('DELETE FROM service_device_assignments').run();
@@ -246,6 +248,51 @@ describe('auth flow', () => {
         expect(authenticated.statusCode).not.toBe(401);
       }
     }
+  });
+
+  test('topology management allows authenticated reads but only admins and operators can mutate', async () => {
+    const adminToken = await setupAdminToken();
+    const operatorToken = await createUserAndLogin(adminToken, 'operator');
+    const technicianToken = await createUserAndLogin(adminToken, 'technician');
+    const catalogId = Number(db.prepare(`
+      INSERT INTO equipment_catalog (category, type, model, stock_total)
+      VALUES ('equipamento', 'antena', 'Rocket Prism 5AC', 4)
+    `).run().lastInsertRowid);
+    const validBody = {
+      catalogId,
+      name: 'Monte Verde',
+      status: 'active',
+      serialNumber: 'BACKBONE-001',
+      assetTag: null,
+      ipAddress: null,
+      macAddress: null,
+      island: 'Sao Vicente',
+      zone: 'Monte Verde',
+      notes: null
+    };
+
+    const technicianWrite = await app.inject({
+      method: 'POST',
+      url: '/api/topology/backbones',
+      headers: { authorization: `Bearer ${technicianToken}` },
+      payload: validBody
+    });
+    expect(technicianWrite.statusCode).toBe(403);
+
+    const technicianRead = await app.inject({
+      method: 'GET',
+      url: '/api/topology/backbones',
+      headers: { authorization: `Bearer ${technicianToken}` }
+    });
+    expect(technicianRead.statusCode).toBe(200);
+
+    const operatorWrite = await app.inject({
+      method: 'POST',
+      url: '/api/topology/backbones',
+      headers: { authorization: `Bearer ${operatorToken}` },
+      payload: validBody
+    });
+    expect(operatorWrite.statusCode).toBe(201);
   });
 
   test('cannot deactivate last active admin', async () => {
