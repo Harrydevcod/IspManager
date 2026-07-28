@@ -2,6 +2,26 @@
 
 Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/). Cada versão tem uma [Release no GitHub](https://github.com/Harrydevcod/IspManager/releases) com o instalador correspondente.
 
+## [1.7.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.7.0) — 2026-07-28
+
+### Adicionado
+
+- **serviços:** IP fixo dos equipamentos visível na lista, no detalhe e na pesquisa — escrever um IP no filtro encontra o cliente daquela antena
+- **serviços:** Editar a identificação de um equipamento instalado (IP, MAC, serial, tag) sem consumir stock
+- **serviços:** Ecrã "Atribuir IPs" para preencher todos os equipamentos de uma vez, com busca e filtro por preencher
+- **serviços:** Prefixo de IP sugerido a partir da rede já instalada
+- **serviços:** Uma antena pode servir vários clientes (prédio com switch, antena com várias saídas de rede), sem duplicar stock e com o custo dividido pelos serviços servidos
+
+### Alterado
+
+- **clientes/serviços/pagamentos:** As listas abrem filtradas pelos estados ativos
+- **serviços:** IP fixo só se aplica a antenas e pontos de acesso; routers de cliente usam IP dinâmico
+- **serviços:** IPs são validados como IPv4 e recusados quando já pertencem a outro equipamento ativo
+
+### Corrigido
+
+- **serviços:** Campo de IP transbordava para fora do cartão no ecrã de atribuição
+
 ## [1.6.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.6.0) — 2026-07-21
 
 ### Adicionado
