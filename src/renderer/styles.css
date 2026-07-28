@@ -1093,7 +1093,7 @@ h2 {
 
 .module-header-actions {
   display: flex;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   flex-wrap: wrap;
   align-items: flex-end;
   justify-content: flex-end;
@@ -3043,6 +3043,11 @@ h2 {
   .primary-panel {
     grid-column: 1 / -1;
   }
+
+  .module-header-context {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3387,8 +3392,8 @@ h2 {
     transition-duration: 1ms;
   }
 
-  .btn:hover,
-  .btn:active {
+  .btn:hover:not(:disabled),
+  .btn:active:not(:disabled) {
     transform: none;
   }
 
