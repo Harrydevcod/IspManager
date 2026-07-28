@@ -18,6 +18,19 @@ describe('module header action styles', () => {
     expect(css).toContain('.module-header-actions-critical');
   });
 
+  test('keeps header action surfaces and text cool-neutral instead of warm brown', () => {
+    expect(css).toContain('--action-secondary-fg: oklch(93% 0.006 251);');
+    expect(css).toContain('--action-secondary-shadow:');
+    expect(css).toContain('--action-secondary-bg: oklch(98.7% 0.003 255);');
+    expect(css).toContain('--action-secondary-hover: oklch(96.2% 0.006 255);');
+    expect(css).toContain('--action-secondary-border: oklch(82% 0.012 255);');
+    expect(css).toContain('--action-secondary-border-hover: oklch(69% 0.018 255);');
+    expect(css).toContain('--action-secondary-fg: oklch(28% 0.015 255);');
+    expect(css).toMatch(/\.btn-secondary\s*\{[^}]*color:\s*var\(--action-secondary-fg\);/);
+    expect(css).toMatch(/\.btn-secondary:hover:not\(:disabled\)\s*\{[^}]*box-shadow:\s*var\(--action-secondary-shadow\);/);
+    expect(css).toMatch(/\.btn-critical:hover:not\(:disabled\),[\s\S]*?background:\s*color-mix\(in oklch, var\(--danger-bg\) 72%, var\(--action-secondary-hover\)\);/);
+  });
+
   test('respects reduced motion', () => {
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.btn/);
     expect(css).toContain('.btn:hover:not(:disabled),\n  .btn:active:not(:disabled)');

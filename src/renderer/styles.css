@@ -52,10 +52,13 @@
   --action-primary-shadow-hover:
     0 1px 0 oklch(100% 0 0 / 0.24) inset,
     0 12px 24px -12px oklch(58% 0.18 252 / 0.92);
-  --action-secondary-bg: color-mix(in oklch, var(--surface-2) 88%, transparent);
-  --action-secondary-hover: var(--surface-3);
-  --action-secondary-border: color-mix(in oklch, var(--border-2) 72%, transparent);
-  --action-secondary-border-hover: color-mix(in oklch, var(--text-3) 54%, var(--border));
+  --action-secondary-bg: oklch(28.5% 0.012 251 / 0.88);
+  --action-secondary-hover: oklch(32.5% 0.016 251);
+  --action-secondary-border: oklch(45% 0.016 251 / 0.72);
+  --action-secondary-border-hover: oklch(55% 0.018 251 / 0.9);
+  --action-secondary-fg: oklch(93% 0.006 251);
+  --action-secondary-shadow:
+    0 8px 18px -14px oklch(24% 0.02 255 / 0.5);
   --action-focus: color-mix(in oklch, var(--action-primary-start) 66%, transparent);
 
   /* radius / space / type scales */
@@ -205,10 +208,13 @@ table {
   --action-primary-shadow-hover:
     0 1px 0 oklch(100% 0 0 / 0.38) inset,
     0 14px 28px -15px oklch(44% 0.17 255 / 0.62);
-  --action-secondary-bg: color-mix(in oklch, var(--surface) 92%, var(--bg));
-  --action-secondary-hover: color-mix(in oklch, var(--surface-3) 72%, white);
-  --action-secondary-border: color-mix(in oklch, var(--border-2) 66%, var(--border));
-  --action-secondary-border-hover: color-mix(in oklch, var(--text-3) 50%, var(--border));
+  --action-secondary-bg: oklch(98.7% 0.003 255);
+  --action-secondary-hover: oklch(96.2% 0.006 255);
+  --action-secondary-border: oklch(82% 0.012 255);
+  --action-secondary-border-hover: oklch(69% 0.018 255);
+  --action-secondary-fg: oklch(28% 0.015 255);
+  --action-secondary-shadow:
+    0 8px 18px -14px oklch(42% 0.04 255 / 0.22);
   --action-focus: color-mix(in oklch, var(--action-primary-start) 62%, transparent);
 
   /* Tema claro fica opaco — o efeito acrílico é só do dark. */
@@ -3317,13 +3323,13 @@ h2 {
 .btn-secondary {
   border-color: var(--action-secondary-border);
   background: var(--action-secondary-bg);
-  color: var(--text);
+  color: var(--action-secondary-fg);
 }
 
 .btn-secondary:hover:not(:disabled) {
   border-color: var(--action-secondary-border-hover);
   background: var(--action-secondary-hover);
-  box-shadow: 0 6px 16px -13px color-mix(in oklch, var(--text) 48%, transparent);
+  box-shadow: var(--action-secondary-shadow);
 }
 
 .btn-critical {
@@ -3334,8 +3340,8 @@ h2 {
 
 .btn-critical:hover:not(:disabled),
 .btn-critical:focus-visible {
-  border-color: color-mix(in oklch, var(--danger) 58%, var(--border));
-  background: color-mix(in oklch, var(--danger-bg) 72%, var(--surface-2));
+  border-color: color-mix(in oklch, var(--danger) 58%, var(--action-secondary-border));
+  background: color-mix(in oklch, var(--danger-bg) 72%, var(--action-secondary-hover));
   box-shadow: 0 8px 18px -14px color-mix(in oklch, var(--danger) 62%, transparent);
 }
 
