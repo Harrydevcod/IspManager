@@ -64,9 +64,11 @@ const DEFAULT_SERVICE_STATUS_FILTER: 'all' | ServiceRow['status'] = 'active';
 
 export function ServicesModule({
   focusClientId,
+  focusServiceId,
   onFocusHandled
 }: {
   focusClientId?: number | null;
+  focusServiceId?: number | null;
   onFocusHandled?: () => void;
 } = {}) {
   const { toast } = useToast();
@@ -234,6 +236,16 @@ export function ServicesModule({
   }, [selectedService]);
 
   useEffect(() => {
+    if (focusServiceId && services.length > 0) {
+      const service = services.find((candidate) => candidate.id === focusServiceId);
+      if (service) {
+        setSearch(service.clientName);
+        setStatusFilter('all');
+        setSelectedService(service);
+      }
+      onFocusHandled?.();
+      return;
+    }
     if (!focusClientId || services.length === 0) return;
     const clientServices = services.filter((service) => service.clientId === focusClientId);
     if (clientServices.length > 0) {
@@ -244,7 +256,7 @@ export function ServicesModule({
       }
     }
     onFocusHandled?.();
-  }, [focusClientId, services, onFocusHandled]);
+  }, [focusClientId, focusServiceId, services, onFocusHandled]);
 
   function openDeviceDialog() {
     setAddItemDrafts([]);

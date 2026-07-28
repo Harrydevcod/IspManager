@@ -224,6 +224,30 @@ describe('auth flow', () => {
     expect(technicianWorkOrder.statusCode).toBe(201);
   });
 
+  test('topology read routes require authentication and accept every authenticated role', async () => {
+    const adminToken = await setupAdminToken();
+    const operatorToken = await createUserAndLogin(adminToken, 'operator');
+    const technicianToken = await createUserAndLogin(adminToken, 'technician');
+    const routes = [
+      '/api/topology',
+      '/api/topology/backbones/1/clients',
+      '/api/topology/search?q=core'
+    ];
+    const tokens = [adminToken, operatorToken, technicianToken];
+
+    for (const url of routes) {
+      expect((await app.inject({ method: 'GET', url })).statusCode).toBe(401);
+      for (const token of tokens) {
+        const authenticated = await app.inject({
+          method: 'GET',
+          url,
+          headers: { authorization: `Bearer ${token}` }
+        });
+        expect(authenticated.statusCode).not.toBe(401);
+      }
+    }
+  });
+
   test('cannot deactivate last active admin', async () => {
     const setup = await app.inject({
       method: 'POST',

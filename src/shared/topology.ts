@@ -1,0 +1,152 @@
+export type TopologyIssueCode =
+  | 'inactive'
+  | 'missing_ip'
+  | 'suspended_service'
+  | 'incomplete_configuration';
+
+export type TopologyAdministrativeState = 'active' | 'inactive';
+export type TopologyRelationship = 'inventory_lineage';
+export type TopologyNodeId = 'root:isp' | `backbone:${number}` | `assignment:${number}`;
+
+export type TopologyServiceAssociation = {
+  id: number;
+  status: 'active' | 'suspended' | 'cancelled';
+  planId: number | null;
+  planName: string | null;
+  assignmentIds: number[];
+};
+
+export type TopologyClientAssociation = {
+  id: number;
+  clientCode: string;
+  fullName: string;
+  status: 'active' | 'suspended' | 'cancelled';
+  island: string | null;
+  zone: string | null;
+  services: TopologyServiceAssociation[];
+};
+
+export type TopologyLogicalRootNode = {
+  id: 'root:isp';
+  kind: 'logical-root';
+  label: 'Internet / Core ISPM';
+  administrativeState: 'active';
+  issueCodes: [];
+};
+
+export type TopologyBackboneNode = {
+  id: `backbone:${number}`;
+  kind: 'backbone';
+  catalogId: number;
+  label: string;
+  brand: string | null;
+  model: string;
+  catalogType: string;
+  backboneQty: number;
+  administrativeState: TopologyAdministrativeState;
+  issueCodes: TopologyIssueCode[];
+  parentId: 'root:isp';
+  relationship: TopologyRelationship;
+};
+
+export type TopologyClientDeviceNode = {
+  id: `assignment:${number}`;
+  kind: 'client-device';
+  assignmentId: number;
+  catalogId: number;
+  label: string;
+  brand: string | null;
+  model: string;
+  catalogType: string;
+  serialNumber: string | null;
+  assetTag: string | null;
+  ipAddress: string | null;
+  macAddress: string | null;
+  startDate: string;
+  administrativeState: TopologyAdministrativeState;
+  issueCodes: TopologyIssueCode[];
+  parentId: 'root:isp' | `backbone:${number}`;
+  relationship?: TopologyRelationship;
+  clients: TopologyClientAssociation[];
+};
+
+export type TopologyNode =
+  | TopologyLogicalRootNode
+  | TopologyBackboneNode
+  | TopologyClientDeviceNode;
+
+export type TopologyCoreLinkEdge = {
+  id: `core-link:root:isp:backbone:${number}`;
+  kind: 'core-link';
+  source: 'root:isp';
+  target: `backbone:${number}`;
+  relationship: TopologyRelationship;
+};
+
+export type TopologyClientLinkEdge = {
+  id: `client-link:backbone:${number}:assignment:${number}`;
+  kind: 'client-link';
+  source: `backbone:${number}`;
+  target: `assignment:${number}`;
+  relationship: TopologyRelationship;
+};
+
+export type TopologyEdge = TopologyCoreLinkEdge | TopologyClientLinkEdge;
+
+export type TopologyStats = {
+  backboneCount: number;
+  assignmentCount: number;
+  mappedAssignmentCount: number;
+  unmappedAssignmentCount: number;
+  clientCount: number;
+  serviceCount: number;
+  attentionCount: number;
+};
+
+export type TopologySnapshot = {
+  generatedAt: string;
+  root: TopologyLogicalRootNode;
+  backbones: TopologyBackboneNode[];
+  edges: TopologyCoreLinkEdge[];
+  stats: TopologyStats;
+};
+
+export type TopologyBackboneBranch = {
+  generatedAt: string;
+  backbone: TopologyBackboneNode;
+  nodes: TopologyClientDeviceNode[];
+  edges: TopologyClientLinkEdge[];
+  stats: {
+    assignmentCount: number;
+    clientCount: number;
+    serviceCount: number;
+    attentionCount: number;
+  };
+};
+
+export type TopologyAncestor = {
+  id: 'root:isp' | `backbone:${number}`;
+  kind: 'logical-root' | 'backbone';
+  label: string;
+  relationship?: TopologyRelationship;
+};
+
+export type TopologySearchFilters = {
+  administrativeState?: TopologyAdministrativeState;
+  attention?: boolean;
+  island?: string;
+  zone?: string;
+};
+
+export type TopologySearchResult = {
+  node: TopologyBackboneNode | TopologyClientDeviceNode;
+  matchedFields: string[];
+  ancestors: TopologyAncestor[];
+};
+
+export type TopologySearchResponse = {
+  generatedAt: string;
+  query: string;
+  filters: TopologySearchFilters;
+  results: TopologySearchResult[];
+};

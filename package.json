@@ -18,8 +18,10 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^3.0.0",
     "@fastify/cors": "^10.0.1",
     "@fontsource-variable/inter": "^5.2.8",
+    "@xyflow/react": "^12.11.2",
     "better-sqlite3": "^12.0.0",
     "drizzle-orm": "^0.43.0",
     "electron-updater": "^6.8.9",

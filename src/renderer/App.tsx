@@ -1,5 +1,5 @@
-import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, LogOut, Plus, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, LogOut, Network, Plus, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { AuthGate, CommandPalette, ConfirmProvider, PageHeader, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider } from './components';
 import type { CommandPaletteItem } from './components';
 import { AuthProvider, authFetch, useAuth } from './lib/auth';
@@ -19,6 +19,8 @@ import { UsersModule } from './modules/UsersModule';
 import { AuditModule } from './modules/AuditModule';
 import type { DashboardSummary, HealthState, SectionId } from './types';
 
+const TopologyModule = lazy(() => import('./modules/topology/TopologyModule'));
+
 type SidebarItem = {
   id: SectionId;
   label: string;
@@ -31,6 +33,7 @@ const sections: SidebarItem[] = [
   { id: 'clients', label: 'Clientes', icon: UsersRound },
   { id: 'plans', label: 'Planos', icon: Wifi },
   { id: 'services', label: 'Servicos', icon: Cable },
+  { id: 'topology', label: 'Topologia', icon: Network },
   { id: 'finance', label: 'Financeiro', icon: TrendingUp, roles: ['admin', 'operator'] },
   { id: 'work-orders', label: 'OS tecnicas', icon: ClipboardList },
   { id: 'stock', label: 'Stock', icon: Boxes },
@@ -39,6 +42,15 @@ const sections: SidebarItem[] = [
   { id: 'audit', label: 'Auditoria', icon: ShieldCheck, roles: ['admin'] },
   { id: 'settings', label: 'Configuracoes', icon: Settings, roles: ['admin'] }
 ];
+
+function sectionVisible(item: SidebarItem, role: UserRole | null, bypassed: boolean): boolean {
+  if (!item.roles || bypassed) return true;
+  return role ? item.roles.includes(role) : false;
+}
+
+export function sectionIdsForRole(role: UserRole): SectionId[] {
+  return sections.filter((item) => sectionVisible(item, role, false)).map((item) => item.id);
+}
 
 type SidebarCounter = { count: number; tone: 'danger' | 'info' | 'neutral' };
 
@@ -84,19 +96,19 @@ export function App() {
 
 function AppShell() {
   const auth = useAuth();
-  const visibleSections = sections.filter((item) => {
-    if (!item.roles) return true;
-    if (auth.isAuthBypassed) return true;
-    return auth.user ? item.roles.includes(auth.user.role) : false;
-  });
+  const visibleSections = sections.filter((item) => (
+    sectionVisible(item, auth.user?.role ?? null, auth.isAuthBypassed)
+  ));
 
   const [health, setHealth] = useState<HealthState>('checking');
   const [section, setSection] = useState<SectionId>(() => visibleSections[0]?.id ?? 'dashboard');
   const [focusClientId, setFocusClientId] = useState<number | null>(null);
   const [focusServiceClientId, setFocusServiceClientId] = useState<number | null>(null);
+  const [focusServiceId, setFocusServiceId] = useState<number | null>(null);
   const [paymentsFocus, setPaymentsFocus] = useState<'overdue' | 'pending' | null>(null);
   const [paymentsMonth, setPaymentsMonth] = useState<string | null>(null);
   const [stockLowFocus, setStockLowFocus] = useState(false);
+  const [stockCatalogFocus, setStockCatalogFocus] = useState<number | null>(null);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -375,8 +387,31 @@ function AppShell() {
           {section === 'services' && (
             <ServicesModule
               focusClientId={focusServiceClientId}
-              onFocusHandled={() => setFocusServiceClientId(null)}
+              focusServiceId={focusServiceId}
+              onFocusHandled={() => {
+                setFocusServiceClientId(null);
+                setFocusServiceId(null);
+              }}
             />
+          )}
+          {section === 'topology' && (
+            <Suspense fallback={<TopologyModuleFallback />}>
+              <TopologyModule
+                onOpenClient={(id) => {
+                  setFocusClientId(id);
+                  setSection('clients');
+                }}
+                onOpenService={(clientId, serviceId) => {
+                  setFocusServiceClientId(clientId);
+                  setFocusServiceId(serviceId);
+                  setSection('services');
+                }}
+                onOpenStock={(catalogId) => {
+                  setStockCatalogFocus(catalogId);
+                  setSection('stock');
+                }}
+              />
+            </Suspense>
           )}
           {section === 'finance' && (
             <FinanceModule
@@ -387,7 +422,12 @@ function AppShell() {
           )}
           {section === 'work-orders' && <WorkOrdersModule />}
           {section === 'stock' && (
-            <StockModule focusLowStock={stockLowFocus} onFocusHandled={() => setStockLowFocus(false)} />
+            <StockModule
+              focusLowStock={stockLowFocus}
+              focusCatalogId={stockCatalogFocus}
+              onFocusHandled={() => setStockLowFocus(false)}
+              onCatalogFocusHandled={() => setStockCatalogFocus(null)}
+            />
           )}
           {section === 'reports' && (
             <ReportsModule onOpenClient={(id) => { setFocusClientId(id); setSection('clients'); }} />
@@ -412,5 +452,19 @@ function AppShell() {
         <ThemeOnboarding />
       </main>
     </>
+  );
+}
+
+function TopologyModuleFallback() {
+  return (
+    <section className="module-panel" aria-label="A preparar topologia">
+      <div className="module-header">
+        <div>
+          <p className="eyebrow">Infraestrutura</p>
+          <h2>Topologia de rede</h2>
+        </div>
+      </div>
+      <p className="module-message" role="status">A preparar o mapa de inventário…</p>
+    </section>
   );
 }

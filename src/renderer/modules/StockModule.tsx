@@ -80,10 +80,14 @@ function movementTone(type: StockMovement['type']): 'success' | 'danger' | 'info
 
 export function StockModule({
   focusLowStock,
-  onFocusHandled
+  focusCatalogId,
+  onFocusHandled,
+  onCatalogFocusHandled
 }: {
   focusLowStock?: boolean;
+  focusCatalogId?: number | null;
   onFocusHandled?: () => void;
+  onCatalogFocusHandled?: () => void;
 } = {}) {
   const { toast } = useToast();
   const auth = useAuth();
@@ -122,30 +126,37 @@ export function StockModule({
       .catch(() => { setSummary(null); setLoadError('Não foi possível carregar o stock.'); });
   }, []);
 
-  function loadMovements(catalog: StockCatalogRow) {
+  const loadMovements = useCallback((catalog: StockCatalogRow) => {
     return authFetch(`http://127.0.0.1:3001/api/stock?catalogId=${catalog.id}`)
       .then((response) => response.json() as Promise<{ movements: StockMovement[] }>)
       .then((data) => setMovements(data.movements))
       .catch(() => setMovements([]));
-  }
+  }, []);
 
-  function loadAssignments(catalog: StockCatalogRow) {
+  const loadAssignments = useCallback((catalog: StockCatalogRow) => {
     return authFetch(`http://127.0.0.1:3001/api/equipment-catalog/${catalog.id}/assignments`)
       .then((response) => response.json() as Promise<CatalogAssignments>)
       .then((data) => setAssignments(data))
       .catch(() => setAssignments(null));
-  }
+  }, []);
 
-  function selectCatalog(catalog: StockCatalogRow) {
+  const selectCatalog = useCallback((catalog: StockCatalogRow) => {
     setSelectedCatalog(catalog);
     setAssignments(null);
     void loadMovements(catalog);
     void loadAssignments(catalog);
-  }
+  }, [loadAssignments, loadMovements]);
 
   useEffect(() => {
     void loadStock();
   }, [loadStock]);
+
+  useEffect(() => {
+    if (!focusCatalogId || !summary) return;
+    const catalog = summary.rows.find((item) => item.id === focusCatalogId);
+    if (catalog) selectCatalog(catalog);
+    onCatalogFocusHandled?.();
+  }, [focusCatalogId, onCatalogFocusHandled, selectCatalog, summary]);
 
   function updateCatalogForm(field: keyof StockFormState, value: string) {
     setCatalogForm((current) => {

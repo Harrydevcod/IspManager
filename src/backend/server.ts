@@ -23,6 +23,7 @@ import { registerSmsRoutes } from './routes/sms';
 import { registerWorkOrderRoutes } from './routes/work-orders';
 import { registerBackupRoutes } from './routes/backup';
 import { registerJobRoutes } from './routes/jobs';
+import { registerTopologyRoutes } from './routes/topology';
 import { createBackup, pruneBackups, runScheduledBackupIfDue } from './lib/backup';
 import { runMonthlyBillingIfDue } from './lib/auto-billing';
 import { runAudiovisualAnnualIfDue } from './lib/audiovisual-billing';
@@ -124,6 +125,7 @@ export async function createBackendApp() {
   await registerWorkOrderRoutes(app);
   await registerBackupRoutes(app);
   await registerJobRoutes(app);
+  await registerTopologyRoutes(app);
 
   // Automatic overdue/suspension WhatsApp notices — opt-in via the
   // `autoNoticesEnabled` setting (off by default). Fire-and-forget: the send
