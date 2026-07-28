@@ -2,6 +2,12 @@
 
 Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/). Cada versão tem uma [Release no GitHub](https://github.com/Harrydevcod/IspManager/releases) com o instalador correspondente.
 
+## [1.7.1](https://github.com/Harrydevcod/IspManager/releases/tag/v1.7.1) — 2026-07-28
+
+### Alterado
+
+- **interface:** Ações dos cabeçalhos de módulo com hierarquia semântica — uma só ação principal por ecrã, secundárias em tom neutro frio, primárias em grafite editorial no tema claro e azul ISPM no escuro
+
 ## [1.7.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.7.0) — 2026-07-28
 
 ### Adicionado
