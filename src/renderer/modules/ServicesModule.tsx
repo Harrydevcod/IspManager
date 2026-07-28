@@ -1,7 +1,7 @@
-import { Pencil, Wrench } from 'lucide-react';
+import { Network, Pencil, Plus, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Combobox, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, Select, SkeletonList, Textarea, Toggle, useConfirm, useToast } from '../components';
+import { Badge, Button, Combobox, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, Select, SkeletonList, Textarea, Toggle, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import { takesStaticIp } from '../../shared/equipment';
@@ -609,18 +609,21 @@ export function ServicesModule({
           <p className="eyebrow">Modulo</p>
           <h2>Servicos</h2>
         </div>
-        <div className="inline-actions">
-          {canRecordTechnical && (
-            <Button variant="secondary" onClick={() => setShowBulkIp(true)}>
-              Atribuir IPs
-            </Button>
-          )}
-          {canManageServices && (
-            <Button onClick={openCreate}>
-              Novo servico
-            </Button>
-          )}
-        </div>
+        {(canRecordTechnical || canManageServices) && (
+          <ModuleHeaderActions
+            ariaLabel="Ações de serviços"
+            secondary={canRecordTechnical ? (
+              <Button variant="secondary" leadingIcon={<Network size={16} aria-hidden />} onClick={() => setShowBulkIp(true)}>
+                Atribuir IPs
+              </Button>
+            ) : undefined}
+            primary={canManageServices ? (
+              <Button leadingIcon={<Plus size={16} aria-hidden />} onClick={openCreate}>
+                Novo servico
+              </Button>
+            ) : undefined}
+          />
+        )}
       </div>
 
       {showBulkIp && (
