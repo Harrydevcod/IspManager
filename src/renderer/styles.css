@@ -198,16 +198,16 @@ table {
   --shadow-1: 0 1px 2px oklch(60% 0.02 72 / 0.12);
   --shadow-2: 0 16px 38px -16px oklch(50% 0.03 72 / 0.24);
 
-  --action-primary-start: oklch(60% 0.18 249);
-  --action-primary-end: oklch(51% 0.19 260);
-  --action-primary-fg: oklch(99% 0.004 250);
-  --action-primary-border: color-mix(in oklch, var(--action-primary-end) 84%, black);
+  --action-primary-start: oklch(40% 0.02 255);
+  --action-primary-end: oklch(27% 0.016 255);
+  --action-primary-fg: oklch(99% 0.003 255);
+  --action-primary-border: oklch(22% 0.014 255);
   --action-primary-shadow:
-    0 1px 0 oklch(100% 0 0 / 0.32) inset,
-    0 10px 22px -14px oklch(47% 0.16 254 / 0.52);
+    0 1px 0 oklch(100% 0 0 / 0.2) inset,
+    0 10px 22px -14px oklch(20% 0.02 255 / 0.56);
   --action-primary-shadow-hover:
-    0 1px 0 oklch(100% 0 0 / 0.38) inset,
-    0 14px 28px -15px oklch(44% 0.17 255 / 0.62);
+    0 1px 0 oklch(100% 0 0 / 0.26) inset,
+    0 14px 28px -15px oklch(18% 0.024 255 / 0.64);
   --action-secondary-bg: oklch(98.7% 0.003 255);
   --action-secondary-hover: oklch(96.2% 0.006 255);
   --action-secondary-border: oklch(82% 0.012 255);
@@ -215,7 +215,7 @@ table {
   --action-secondary-fg: oklch(28% 0.015 255);
   --action-secondary-shadow:
     0 8px 18px -14px oklch(42% 0.04 255 / 0.22);
-  --action-focus: color-mix(in oklch, var(--action-primary-start) 62%, transparent);
+  --action-focus: oklch(36% 0.03 255 / 0.42);
 
   /* Tema claro fica opaco — o efeito acrílico é só do dark. */
   background: var(--bg);

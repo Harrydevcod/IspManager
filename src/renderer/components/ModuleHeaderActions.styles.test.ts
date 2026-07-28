@@ -31,6 +31,19 @@ describe('module header action styles', () => {
     expect(css).toMatch(/\.btn-critical:hover:not\(:disabled\),[\s\S]*?background:\s*color-mix\(in oklch, var\(--danger-bg\) 72%, var\(--action-secondary-hover\)\);/);
   });
 
+  test('uses editorial graphite for light primary actions while dark stays blue', () => {
+    const lightTheme = css.match(/:root\[data-theme="light"\]\s*\{([\s\S]*?)\n\}/)?.[1] ?? '';
+
+    expect(css).toContain('--action-primary-start: oklch(72% 0.15 246);');
+    expect(css).toContain('--action-primary-end: oklch(62% 0.18 258);');
+    expect(lightTheme).toContain('--action-primary-start: oklch(40% 0.02 255);');
+    expect(lightTheme).toContain('--action-primary-end: oklch(27% 0.016 255);');
+    expect(lightTheme).toContain('--action-primary-fg: oklch(99% 0.003 255);');
+    expect(lightTheme).toContain('--action-primary-border: oklch(22% 0.014 255);');
+    expect(lightTheme).toContain('--action-focus: oklch(36% 0.03 255 / 0.42);');
+    expect(lightTheme).not.toContain('--action-primary-start: oklch(60% 0.18 249);');
+  });
+
   test('respects reduced motion', () => {
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.btn/);
     expect(css).toContain('.btn:hover:not(:disabled),\n  .btn:active:not(:disabled)');
