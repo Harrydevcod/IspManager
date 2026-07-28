@@ -1,0 +1,353 @@
+import type Database from 'better-sqlite3';
+import type {
+  AssignmentBackboneInput,
+  AssignmentListQuery,
+  BackboneAssignmentSummary,
+  BackboneDeviceDetail,
+  BackboneDeviceSummary,
+  BackboneListQuery,
+  BackbonePage,
+  BackboneStatus,
+  BackboneWriteInput
+} from '../../shared/backbone';
+
+export class BackboneNotFoundError extends Error {}
+export class BackboneConflictError extends Error {}
+export class BackboneValidationError extends Error {}
+
+type BackboneRow = Omit<BackboneDeviceSummary, 'provisional'> & { provisional: number };
+type AssignmentRow = BackboneAssignmentSummary;
+
+const BACKBONE_COLUMNS = `
+  bd.id, bd.catalog_id AS catalogId, ec.brand AS catalogBrand, ec.model AS catalogModel,
+  ec.type AS catalogType, bd.name, bd.status, bd.serial_number AS serialNumber,
+  bd.asset_tag AS assetTag, bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
+  bd.island, bd.zone, bd.provisional, bd.created_at AS createdAt, bd.updated_at AS updatedAt,
+  COUNT(active_link.id) AS linkedAssignmentCount`;
+
+const ASSIGNMENT_COLUMNS = `
+  a.id, a.catalog_id AS catalogId, ec.brand AS catalogBrand, ec.model AS catalogModel,
+  ec.type AS catalogType, a.serial_number AS serialNumber, a.asset_tag AS assetTag,
+  a.ip_address AS ipAddress, a.mac_address AS macAddress, a.start_date AS startDate,
+  c.id AS clientId, c.client_code AS clientCode, c.full_name AS clientName,
+  s.id AS serviceId, s.status AS serviceStatus, link.backbone_device_id AS backboneDeviceId,
+  bd.name AS backboneName, link.started_at AS linkedAt`;
+
+function normalizeOptional(value: string | null): string | null {
+  const normalized = value?.trim() ?? '';
+  return normalized || null;
+}
+
+function normalizeMac(value: string | null): string | null {
+  return normalizeOptional(value)?.toUpperCase() ?? null;
+}
+
+function normalizeQuery(value: string | undefined): string | null {
+  const normalized = value
+    ?.normalize('NFKD')
+    .replace(/\p{Diacritic}/gu, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('pt');
+  return normalized || null;
+}
+
+function like(value: string): string {
+  return `%${value.replace(/[\\%_]/g, '\\$&')}%`;
+}
+
+function pageBounds(page: number, pageSize: number, total: number): { page: number; pageSize: number; totalPages: number } {
+  const boundedPageSize = Math.min(100, Math.max(1, Math.trunc(pageSize) || 25));
+  const totalPages = Math.max(1, Math.ceil(total / boundedPageSize));
+  return {
+    page: Math.min(totalPages, Math.max(1, Math.trunc(page) || 1)),
+    pageSize: boundedPageSize,
+    totalPages
+  };
+}
+
+function backboneFromRow(row: BackboneRow): BackboneDeviceSummary {
+  return { ...row, provisional: row.provisional === 1 };
+}
+
+function assignmentFromRow(row: AssignmentRow): BackboneAssignmentSummary {
+  return row;
+}
+
+function backboneSearchClause(query: string | null, params: unknown[]): string {
+  if (!query) return '';
+  const candidate = like(query);
+  const fields = [
+    'bd.name', 'ec.model', 'bd.serial_number', 'bd.asset_tag', 'bd.ip_address',
+    'bd.mac_address', 'bd.island', 'bd.zone'
+  ];
+  params.push(...fields.map(() => candidate));
+  return ` AND (${fields.map((field) => `lower(trim(coalesce(${field}, ''))) LIKE ? ESCAPE '\\'`).join(' OR ')})`;
+}
+
+function assignmentSearchClause(query: string | null, params: unknown[]): string {
+  if (!query) return '';
+  const candidate = like(query);
+  const fields = [
+    'c.client_code', 'c.full_name', 'CAST(s.id AS TEXT)', 's.ip_address',
+    'a.ip_address', 'a.mac_address', 'a.serial_number', 'a.asset_tag', 'ec.model'
+  ];
+  params.push(...fields.map(() => candidate));
+  return ` AND (${fields.map((field) => `lower(trim(coalesce(${field}, ''))) LIKE ? ESCAPE '\\'`).join(' OR ')})`;
+}
+
+function activeAssignmentRow(db: Database.Database, assignmentId: number): { id: number } {
+  const row = db.prepare('SELECT id FROM service_device_assignments WHERE id = ? AND end_date IS NULL').get(assignmentId) as { id: number } | undefined;
+  if (!row) throw new BackboneValidationError('Atribuição ativa não encontrada');
+  return row;
+}
+
+function ensureCatalog(db: Database.Database, catalogId: number): void {
+  const row = db.prepare('SELECT id FROM equipment_catalog WHERE id = ?').get(catalogId);
+  if (!row) throw new BackboneValidationError('Catálogo não encontrado');
+}
+
+function normalizeInput(input: BackboneWriteInput): Omit<BackboneWriteInput, 'expectedUpdatedAt'> & { expectedUpdatedAt?: string } {
+  const name = normalizeOptional(input.name);
+  if (!name) throw new BackboneValidationError('Nome do backbone é obrigatório');
+  if (!Number.isInteger(input.catalogId) || input.catalogId <= 0) {
+    throw new BackboneValidationError('Catálogo inválido');
+  }
+  return {
+    ...input,
+    name,
+    serialNumber: normalizeOptional(input.serialNumber),
+    assetTag: normalizeOptional(input.assetTag),
+    ipAddress: normalizeOptional(input.ipAddress),
+    macAddress: normalizeMac(input.macAddress),
+    island: normalizeOptional(input.island),
+    zone: normalizeOptional(input.zone),
+    notes: normalizeOptional(input.notes),
+    expectedUpdatedAt: normalizeOptional(input.expectedUpdatedAt ?? null) ?? undefined
+  };
+}
+
+function nextUpdatedAt(current: string): string {
+  const now = new Date();
+  const currentTime = Date.parse(current.replace(' ', 'T') + (current.includes('T') ? '' : 'Z'));
+  if (Number.isFinite(currentTime) && now.getTime() <= currentTime) {
+    now.setTime(currentTime + 1);
+  }
+  return now.toISOString();
+}
+
+function handleSqlError(error: unknown): never {
+  if (error instanceof BackboneValidationError || error instanceof BackboneNotFoundError || error instanceof BackboneConflictError) throw error;
+  if (error instanceof Error && /UNIQUE constraint failed/i.test(error.message)) {
+    throw new BackboneConflictError('Serial ou etiqueta de ativo já pertence a outro backbone ativo');
+  }
+  throw error;
+}
+
+export function listBackbones(
+  db: Database.Database,
+  query: BackboneListQuery
+): BackbonePage<BackboneDeviceSummary> {
+  const params: unknown[] = [];
+  const normalizedQuery = normalizeQuery(query.query);
+  let where = 'WHERE 1 = 1';
+  if (query.status) {
+    where += ' AND bd.status = ?';
+    params.push(query.status);
+  }
+  where += backboneSearchClause(normalizedQuery, params);
+  const from = `
+    FROM backbone_devices bd
+    JOIN equipment_catalog ec ON ec.id = bd.catalog_id
+    LEFT JOIN backbone_assignment_links active_link
+      ON active_link.backbone_device_id = bd.id AND active_link.ended_at IS NULL`;
+  const total = Number((db.prepare(`SELECT COUNT(DISTINCT bd.id) AS count ${from} ${where}`).get(...params) as { count: number }).count);
+  const bounds = pageBounds(query.page, query.pageSize, total);
+  const items = db.prepare(`
+    SELECT ${BACKBONE_COLUMNS} ${from} ${where}
+    GROUP BY bd.id
+    ORDER BY bd.name COLLATE NOCASE, bd.id
+    LIMIT ? OFFSET ?
+  `).all(...params, bounds.pageSize, (bounds.page - 1) * bounds.pageSize) as BackboneRow[];
+  return { ...bounds, total, items: items.map(backboneFromRow) };
+}
+
+export function listAssignments(
+  db: Database.Database,
+  query: AssignmentListQuery
+): BackbonePage<BackboneAssignmentSummary> {
+  const params: unknown[] = [];
+  let where = 'WHERE a.end_date IS NULL';
+  if (query.mapping === 'linked') where += ' AND link.id IS NOT NULL';
+  if (query.mapping === 'unlinked') where += ' AND link.id IS NULL';
+  if (query.backboneDeviceId !== undefined) {
+    where += ' AND link.backbone_device_id = ?';
+    params.push(query.backboneDeviceId);
+  }
+  where += assignmentSearchClause(normalizeQuery(query.query), params);
+  const from = `
+    FROM service_device_assignments a
+    JOIN equipment_catalog ec ON ec.id = a.catalog_id
+    JOIN services s ON s.id = a.service_id
+    JOIN clients c ON c.id = s.client_id
+    LEFT JOIN backbone_assignment_links link ON link.assignment_id = a.id AND link.ended_at IS NULL
+    LEFT JOIN backbone_devices bd ON bd.id = link.backbone_device_id`;
+  const total = Number((db.prepare(`SELECT COUNT(*) AS count ${from} ${where}`).get(...params) as { count: number }).count);
+  const bounds = pageBounds(query.page, query.pageSize, total);
+  const items = db.prepare(`
+    SELECT ${ASSIGNMENT_COLUMNS} ${from} ${where}
+    ORDER BY c.full_name COLLATE NOCASE, a.id
+    LIMIT ? OFFSET ?
+  `).all(...params, bounds.pageSize, (bounds.page - 1) * bounds.pageSize) as AssignmentRow[];
+  return { ...bounds, total, items: items.map(assignmentFromRow) };
+}
+
+export function getBackbone(db: Database.Database, id: number): BackboneDeviceDetail | null {
+  const row = db.prepare(`
+    SELECT ${BACKBONE_COLUMNS}, bd.notes
+    FROM backbone_devices bd
+    JOIN equipment_catalog ec ON ec.id = bd.catalog_id
+    LEFT JOIN backbone_assignment_links active_link
+      ON active_link.backbone_device_id = bd.id AND active_link.ended_at IS NULL
+    WHERE bd.id = ?
+    GROUP BY bd.id
+  `).get(id) as (BackboneRow & { notes: string | null }) | undefined;
+  if (!row) return null;
+  const assignments = listAssignments(db, {
+    mapping: 'linked', backboneDeviceId: id, page: 1, pageSize: 100
+  }).items;
+  return { ...backboneFromRow(row), notes: row.notes, assignments };
+}
+
+export function createBackbone(
+  db: Database.Database,
+  input: BackboneWriteInput,
+  actorId: number | null
+): BackboneDeviceDetail {
+  const normalized = normalizeInput(input);
+  ensureCatalog(db, normalized.catalogId);
+  try {
+    const result = db.prepare(`
+      INSERT INTO backbone_devices (
+        catalog_id, name, status, serial_number, asset_tag, ip_address, mac_address,
+        island, zone, notes, created_by, provisional
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    `).run(
+      normalized.catalogId, normalized.name, normalized.status, normalized.serialNumber,
+      normalized.assetTag, normalized.ipAddress, normalized.macAddress, normalized.island,
+      normalized.zone, normalized.notes, actorId
+    );
+    const created = getBackbone(db, Number(result.lastInsertRowid));
+    if (!created) throw new BackboneNotFoundError('Backbone criado não encontrado');
+    return created;
+  } catch (error) {
+    return handleSqlError(error);
+  }
+}
+
+export function updateBackbone(
+  db: Database.Database,
+  id: number,
+  input: BackboneWriteInput,
+  _actorId: number | null
+): BackboneDeviceDetail {
+  const normalized = normalizeInput(input);
+  ensureCatalog(db, normalized.catalogId);
+  const existing = db.prepare('SELECT updated_at AS updatedAt FROM backbone_devices WHERE id = ?').get(id) as { updatedAt: string } | undefined;
+  if (!existing) throw new BackboneNotFoundError('Backbone não encontrado');
+  if (normalized.expectedUpdatedAt && normalized.expectedUpdatedAt !== existing.updatedAt) {
+    throw new BackboneConflictError('O backbone foi alterado por outra pessoa');
+  }
+  if (normalized.status === 'retired') {
+    const activeLink = db.prepare(`
+      SELECT id FROM backbone_assignment_links WHERE backbone_device_id = ? AND ended_at IS NULL
+    `).get(id);
+    if (activeLink) throw new BackboneValidationError('Desvincule ou transfira os equipamentos antes de retirar o backbone');
+  }
+  try {
+    const result = db.prepare(`
+      UPDATE backbone_devices SET
+        catalog_id = ?, name = ?, status = ?, serial_number = ?, asset_tag = ?,
+        ip_address = ?, mac_address = ?, island = ?, zone = ?, notes = ?, updated_at = ?
+      WHERE id = ? AND (? IS NULL OR updated_at = ?)
+    `).run(
+      normalized.catalogId, normalized.name, normalized.status, normalized.serialNumber,
+      normalized.assetTag, normalized.ipAddress, normalized.macAddress, normalized.island,
+      normalized.zone, normalized.notes, nextUpdatedAt(existing.updatedAt), id,
+      normalized.expectedUpdatedAt ?? null, normalized.expectedUpdatedAt ?? null
+    );
+    if (result.changes === 0) throw new BackboneConflictError('O backbone foi alterado por outra pessoa');
+    const updated = getBackbone(db, id);
+    if (!updated) throw new BackboneNotFoundError('Backbone não encontrado');
+    return updated;
+  } catch (error) {
+    return handleSqlError(error);
+  }
+}
+
+export function setAssignmentBackbone(
+  db: Database.Database,
+  assignmentId: number,
+  input: AssignmentBackboneInput,
+  actorId: number | null
+): BackboneAssignmentSummary {
+  if (!Number.isInteger(input.backboneDeviceId) || input.backboneDeviceId <= 0) {
+    throw new BackboneValidationError('Backbone inválido');
+  }
+  const reason = normalizeOptional(input.reason);
+  const transfer = db.transaction(() => {
+    activeAssignmentRow(db, assignmentId);
+    const backbone = db.prepare('SELECT id, status FROM backbone_devices WHERE id = ?').get(input.backboneDeviceId) as { id: number; status: BackboneStatus } | undefined;
+    if (!backbone) throw new BackboneNotFoundError('Backbone não encontrado');
+    if (backbone.status === 'retired') throw new BackboneValidationError('Não é possível associar um backbone retirado');
+    const current = db.prepare(`
+      SELECT id, backbone_device_id AS backboneDeviceId FROM backbone_assignment_links
+      WHERE assignment_id = ? AND ended_at IS NULL
+    `).get(assignmentId) as { id: number; backboneDeviceId: number } | undefined;
+    if (current?.backboneDeviceId !== input.backboneDeviceId) {
+      if (current) {
+        db.prepare(`
+          UPDATE backbone_assignment_links
+          SET ended_at = datetime('now'), ended_by = ?, change_reason = ?, updated_at = datetime('now')
+          WHERE id = ?
+        `).run(actorId, reason, current.id);
+      }
+      db.prepare(`
+        INSERT INTO backbone_assignment_links (backbone_device_id, assignment_id, change_reason, created_by)
+        VALUES (?, ?, ?, ?)
+      `).run(input.backboneDeviceId, assignmentId, reason, actorId);
+    }
+  });
+  try {
+    transfer();
+    const assignment = listAssignments(db, {
+      mapping: 'linked', backboneDeviceId: input.backboneDeviceId, page: 1, pageSize: 100
+    }).items.find((item) => item.id === assignmentId);
+    if (!assignment) throw new BackboneNotFoundError('Atribuição associada não encontrada');
+    return assignment;
+  } catch (error) {
+    return handleSqlError(error);
+  }
+}
+
+export function clearAssignmentBackbone(
+  db: Database.Database,
+  assignmentId: number,
+  reason: string | null,
+  actorId: number | null
+): void {
+  const clear = db.transaction(() => {
+    activeAssignmentRow(db, assignmentId);
+    const result = db.prepare(`
+      UPDATE backbone_assignment_links
+      SET ended_at = datetime('now'), ended_by = ?, change_reason = ?, updated_at = datetime('now')
+      WHERE assignment_id = ? AND ended_at IS NULL
+    `).run(actorId, normalizeOptional(reason), assignmentId);
+    if (result.changes === 0) throw new BackboneNotFoundError('Ligação ativa não encontrada');
+  });
+  try {
+    clear();
+  } catch (error) {
+    handleSqlError(error);
+  }
+}
