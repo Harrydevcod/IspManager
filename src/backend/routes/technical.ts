@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { STATIC_IP_EQUIPMENT_TYPES } from '../../shared/equipment';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
+import { SHARED_WITH_NAMES_SQL, sharerServices } from '../lib/deviceShares';
 import {
   IP_FORMAT_ERROR,
   checkDeviceIdentity,
@@ -61,6 +62,10 @@ const deviceIdentitySchema = z.object({
   ipAddress: z.string().trim().optional().nullable(),
   macAddress: z.string().trim().optional().nullable(),
   notes: z.string().trim().optional().nullable()
+});
+
+const shareSchema = z.object({
+  serviceId: z.coerce.number().int().positive()
 });
 
 /** Atribuição de IPs em massa: só o par (id, IP), para o ecrã de preenchimento. */
@@ -138,12 +143,18 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         a.created_by AS createdBy,
         cu.full_name AS createdByName,
         a.created_at AS createdAt,
-        a.updated_at AS updatedAt
-      FROM service_device_assignments a
+        a.updated_at AS updatedAt,
+        -- Partilha: is_owner distingue a antena instalada NESTE servico da que
+        -- vem partilhada de outro. Só o titular manipula a unidade física.
+        asv.is_owner AS isOwner,
+        ${SHARED_WITH_NAMES_SQL} AS sharedWithNames,
+        (SELECT COUNT(*) FROM service_device_shares sh WHERE sh.assignment_id = a.id) AS shareCount
+      FROM assignment_services asv
+      JOIN service_device_assignments a ON a.id = asv.assignment_id
       JOIN equipment_catalog ec ON ec.id = a.catalog_id
       LEFT JOIN users tu ON tu.id = a.technician_id
       LEFT JOIN users cu ON cu.id = a.created_by
-      WHERE a.service_id = ?
+      WHERE asv.service_id = ?
       ORDER BY a.created_at DESC, a.id DESC
     `).all(id);
 
@@ -277,7 +288,8 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         e.model,
         e.type AS catalogType,
         a.serial_number AS serialNumber,
-        a.ip_address AS ipAddress
+        a.ip_address AS ipAddress,
+        ${SHARED_WITH_NAMES_SQL} AS sharedWithNames
       FROM service_device_assignments a
       JOIN services s ON s.id = a.service_id
       JOIN clients c ON c.id = s.client_id
@@ -354,6 +366,84 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       });
     }
     return reply.status(200).send({ updated: changes.length });
+  });
+
+  /**
+   * Liga uma antena ja instalada a outro servico: predio com switch, ou antena com
+   * varias saidas de rede. NAO toca em stock, movimentos nem eventos — e isso que
+   * distingue partilhar de instalar. A unidade fisica continua a ser uma so.
+   */
+  app.post('/api/service-device-assignments/:id/shares', canWriteTechnical, async (request, reply) => {
+    const assignmentId = Number((request.params as { id: string }).id);
+    const parsed = shareSchema.safeParse(request.body);
+    if (!Number.isInteger(assignmentId) || assignmentId <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Dados de partilha invalidos' });
+    }
+
+    const db = getSqliteDatabase();
+    const current = db.prepare(`
+      SELECT id, service_id AS serviceId, end_date AS endDate
+      FROM service_device_assignments
+      WHERE id = ?
+    `).get(assignmentId) as { id: number; serviceId: number; endDate: string | null } | undefined;
+
+    if (!current) {
+      return reply.status(404).send({ error: 'Atribuicao nao encontrada' });
+    }
+    if (current.endDate) {
+      return reply.status(400).send({ error: 'Atribuicao ja encerrada' });
+    }
+    if (!loadService(parsed.data.serviceId)) {
+      return reply.status(404).send({ error: 'Servico nao encontrado' });
+    }
+    if (parsed.data.serviceId === current.serviceId) {
+      return reply.status(409).send({ error: 'Este servico ja e o titular do equipamento' });
+    }
+
+    const inserted = db.prepare(`
+      INSERT OR IGNORE INTO service_device_shares (assignment_id, service_id)
+      VALUES (?, ?)
+    `).run(assignmentId, parsed.data.serviceId);
+    if (inserted.changes === 0) {
+      return reply.status(409).send({ error: 'Este equipamento ja serve este servico' });
+    }
+
+    recordAudit(request, {
+      action: 'share_device',
+      entityType: 'service_device_assignment',
+      entityId: assignmentId,
+      summary: `Ligou o equipamento ${assignmentId} ao servico ${parsed.data.serviceId}`,
+      metadata: { serviceId: parsed.data.serviceId, ownerServiceId: current.serviceId }
+    });
+    return reply.status(201).send({ shareId: inserted.lastInsertRowid, serviceId: parsed.data.serviceId });
+  });
+
+  /** Desliga a antena de um servico partilhado. O titular nunca sai por aqui. */
+  app.delete('/api/service-device-assignments/:id/shares/:serviceId', canWriteTechnical, async (request, reply) => {
+    const params = request.params as { id: string; serviceId: string };
+    const assignmentId = Number(params.id);
+    const serviceId = Number(params.serviceId);
+    if (!Number.isInteger(assignmentId) || assignmentId <= 0 || !Number.isInteger(serviceId) || serviceId <= 0) {
+      return reply.status(400).send({ error: 'Dados de partilha invalidos' });
+    }
+
+    const db = getSqliteDatabase();
+    const removed = db.prepare(`
+      DELETE FROM service_device_shares
+      WHERE assignment_id = ? AND service_id = ?
+    `).run(assignmentId, serviceId);
+    if (removed.changes === 0) {
+      return reply.status(404).send({ error: 'Partilha nao encontrada' });
+    }
+
+    recordAudit(request, {
+      action: 'unshare_device',
+      entityType: 'service_device_assignment',
+      entityId: assignmentId,
+      summary: `Desligou o equipamento ${assignmentId} do servico ${serviceId}`,
+      metadata: { serviceId }
+    });
+    return reply.status(200).send({ removed: removed.changes });
   });
 
   /**
@@ -527,6 +617,12 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         parsed.data.technicianId || null
       );
 
+      // A unidade nova herda os serviços que a antiga servia: é troca física, os
+      // clientes partilhados continuam servidos.
+      db.prepare(`
+        UPDATE service_device_shares SET assignment_id = ? WHERE assignment_id = ?
+      `).run(replacement.lastInsertRowid, assignmentId);
+
       db.prepare(`
         INSERT INTO stock_movements (
           catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
@@ -612,6 +708,16 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
     }
     if (parsed.data.technicianId && !loadUser(parsed.data.technicianId)) {
       return reply.status(404).send({ error: 'Tecnico nao encontrado' });
+    }
+
+    // Devolver é remoção física: os serviços partilhados ficariam sem sinal. O
+    // operador desassocia-os primeiro — promover um deles a titular em silêncio
+    // seria esperto de mais para as 3 da manhã.
+    const sharers = sharerServices(db, assignmentId);
+    if (sharers.length > 0) {
+      return reply.status(409).send({
+        error: `Esta antena serve tambem ${sharers.length} servico(s): ${sharers.map((sharer) => sharer.clientName).join(', ')}. Remova as partilhas primeiro.`
+      });
     }
 
     const notes = cleanValue(parsed.data.notes);

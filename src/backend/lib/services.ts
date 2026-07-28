@@ -9,6 +9,7 @@ import {
   type ServiceItemInput
 } from './serviceInstall';
 import { insertInstallationFeeIfDue, loadInstallationFeeCve } from './billing';
+import { ownedSharedAssignments } from './deviceShares';
 
 const serviceItemSchema = z.object({
   catalogId: z.coerce.number().int().positive(),
@@ -244,6 +245,17 @@ export function deleteService(db: Database, id: number): ServiceOpResult<{
     return { ok: false, status: 409, error: 'Este servico ja tem faturas emitidas. Cancele o servico em vez de o apagar.' };
   }
 
+  // Apagar o titular de uma antena partilhada deixaria os outros clientes sem
+  // equipamento e sem sinal na UI. O operador desassocia-os primeiro.
+  const sharedOwned = ownedSharedAssignments(db, id);
+  if (sharedOwned.length > 0) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'Este servico e titular de equipamento partilhado com outros servicos. Remova as partilhas primeiro.'
+    };
+  }
+
   // Stock líquido a repor por catálogo: Σ(saida) − Σ(devolucao) deste serviço.
   const restoreStock = db.prepare(`
     SELECT catalog_id AS catalogId,
@@ -272,6 +284,8 @@ export function deleteService(db: Database, id: number): ServiceOpResult<{
     db.prepare('DELETE FROM service_install_costs WHERE service_id = ?').run(id);
     db.prepare('DELETE FROM service_material_lines WHERE service_id = ?').run(id);
     db.prepare('DELETE FROM service_events WHERE service_id = ?').run(id);
+    // Child-first: partilhas antes das atribuições, sem depender do ON DELETE CASCADE.
+    db.prepare('DELETE FROM service_device_shares WHERE service_id = ?').run(id);
     db.prepare('DELETE FROM service_device_assignments WHERE service_id = ?').run(id);
     db.prepare('DELETE FROM services WHERE id = ?').run(id);
   })();

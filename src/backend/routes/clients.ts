@@ -88,15 +88,24 @@ export async function registerClientRoutes(app: FastifyInstance) {
       itemType: string; itemName: string; quantity: number; quantityUsed: number; totalCostCve: number;
     }>;
 
+    // Rateio: uma antena que serve N serviços (prédio com switch) custa 1/N a cada
+    // um. A soma sobre todos os clientes dá o custo do equipamento exatamente uma
+    // vez — o mesmo princípio do rateio de investimentos em lib/opex.ts.
+    // ponytail: a quantidade fica inteira; só o custo se divide. "0,5 antena" não
+    // significa nada para quem lê a ficha do cliente.
     const installedEquipmentUsed = db.prepare(`
       SELECT ec.type AS itemType,
              TRIM(COALESCE(ec.brand || ' ', '') || ec.model) AS itemName,
              COUNT(*) AS quantity,
              SUM(CASE WHEN a.end_date IS NULL THEN 1 ELSE 0 END) AS quantityUsed,
-             SUM(ec.purchase_price_cve + ec.shipping_cost_cve + ec.customs_duty_cve + ec.other_costs_cve) AS totalCostCve
-      FROM service_device_assignments a
+             SUM((ec.purchase_price_cve + ec.shipping_cost_cve + ec.customs_duty_cve + ec.other_costs_cve)
+                 * 1.0 / sh.n) AS totalCostCve
+      FROM assignment_services asv
+      JOIN service_device_assignments a ON a.id = asv.assignment_id
       JOIN equipment_catalog ec ON ec.id = a.catalog_id
-      JOIN services s ON s.id = a.service_id
+      JOIN services s ON s.id = asv.service_id
+      JOIN (SELECT assignment_id, COUNT(*) AS n FROM assignment_services GROUP BY assignment_id) sh
+        ON sh.assignment_id = a.id
       WHERE s.client_id = ?
       GROUP BY ec.type, ec.brand, ec.model
       ORDER BY totalCostCve DESC, itemName ASC

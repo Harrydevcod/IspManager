@@ -38,6 +38,7 @@ beforeEach(() => {
     DELETE FROM service_events;
     DELETE FROM service_install_costs;
     DELETE FROM service_material_lines;
+    DELETE FROM service_device_shares;
     DELETE FROM service_device_assignments;
     DELETE FROM payment_lines;
     DELETE FROM payments;
@@ -513,6 +514,59 @@ describe('finance routes', () => {
 
     await app.inject({ method: 'POST', url: `/api/service-device-assignments/${assignmentIds[1]}/return`, payload: {} });
     expect(await listed()).toBeNull();
+  });
+
+
+  test('a shared antenna shows its IP on every service it serves, and guards the delete', async () => {
+    const clientA = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('C-SA','Cliente SA','active')`).run();
+    const clientB = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('C-SB','Cliente SB','active')`).run();
+    const antenna = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_cve, is_serialized, stock_total, active)
+      VALUES ('equipamento','antena','TP-Link','CPE710', 3000, 1, 5, 1)
+    `).run();
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: {
+        clientId: clientA.lastInsertRowid,
+        monthlyValueCve: 3000,
+        dueDay: 10,
+        items: [{ catalogId: antenna.lastInsertRowid, ipAddress: '192.168.1.77' }]
+      }
+    });
+    const owner = created.json() as { id: number; assignmentIds: number[] };
+
+    const sharerService = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: { clientId: clientB.lastInsertRowid, monthlyValueCve: 3000, dueDay: 10 }
+    });
+    const sharerId = (sharerService.json() as { id: number }).id;
+
+    const shared = await app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${owner.assignmentIds[0]}/shares`,
+      payload: { serviceId: sharerId }
+    });
+    expect(shared.statusCode).toBe(201);
+
+    const listed = await app.inject({ method: 'GET', url: '/api/services' });
+    const rows = listed.json() as Array<{ id: number; deviceIps: string | null }>;
+    expect(rows.find((row) => row.id === owner.id)?.deviceIps).toBe('192.168.1.77');
+    expect(rows.find((row) => row.id === sharerId)?.deviceIps).toBe('192.168.1.77');
+
+    const stockBefore = db.prepare('SELECT stock_total AS n FROM equipment_catalog WHERE id = ?').get(antenna.lastInsertRowid);
+
+    // Apagar o titular deixaria o outro cliente sem antena.
+    const blocked = await app.inject({ method: 'DELETE', url: `/api/services/${owner.id}` });
+    expect(blocked.statusCode).toBe(409);
+
+    // Apagar o sharer é livre: não mexe em stock nem na atribuição.
+    const removed = await app.inject({ method: 'DELETE', url: `/api/services/${sharerId}` });
+    expect(removed.statusCode).toBe(204);
+    expect(db.prepare('SELECT stock_total AS n FROM equipment_catalog WHERE id = ?').get(antenna.lastInsertRowid)).toEqual(stockBefore);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM service_device_assignments WHERE end_date IS NULL').get()).toEqual({ n: 1 });
   });
 
   test('deletes a service without invoices and restores stock', async () => {

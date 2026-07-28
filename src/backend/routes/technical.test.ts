@@ -27,6 +27,7 @@ beforeAll(async () => {
 beforeEach(() => {
   db.exec(`
     DELETE FROM whatsapp_notices;
+    DELETE FROM service_device_shares;
     DELETE FROM service_events;
     DELETE FROM service_install_costs;
     DELETE FROM service_material_lines;
@@ -767,5 +768,160 @@ describe('device identity (IP fixo)', () => {
     });
 
     expect(response.statusCode).toBe(409);
+  });
+});
+
+describe('antena partilhada', () => {
+  /** Antena + dois servicos de clientes distintos: o cenario do predio com switch. */
+  function seedTwoServices() {
+    const base = seedBaseService();
+    const antenna = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_cve, shipping_cost_cve, is_serialized, stock_total, active)
+      VALUES ('equipamento','antena','TP-Link','CPE710', 2500, 500, 1, 5, 1)
+    `).run();
+    const client2 = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-T002', 'Vizinho Tec', 'active')
+    `).run();
+    const service2 = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, activation_date, due_day, status)
+      VALUES (?, 3000, '2026-01-20', 10, 'active')
+    `).run(client2.lastInsertRowid);
+    return { ...base, antenna, client2, service2 };
+  }
+
+  async function installAntenna(serviceId: unknown, catalogId: unknown, fields: Record<string, unknown> = {}) {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/services/${serviceId}/items`,
+      payload: { items: [{ catalogId, ...fields }] }
+    });
+    return (response.json() as { assignmentIds: number[] }).assignmentIds[0];
+  }
+
+  function share(assignmentId: number, serviceId: unknown) {
+    return app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${assignmentId}/shares`,
+      payload: { serviceId }
+    });
+  }
+
+  function stockOf(catalogId: unknown) {
+    return (db.prepare('SELECT stock_total AS n FROM equipment_catalog WHERE id = ?').get(catalogId) as { n: number }).n;
+  }
+
+  test('sharing never moves stock', async () => {
+    const { antenna, service, service2 } = seedTwoServices();
+    const assignmentId = await installAntenna(service.lastInsertRowid, antenna.lastInsertRowid, { ipAddress: '192.168.1.10' });
+    const stockBefore = stockOf(antenna.lastInsertRowid);
+    const movementsBefore = (db.prepare('SELECT COUNT(*) AS n FROM stock_movements').get() as { n: number }).n;
+    const eventsBefore = (db.prepare('SELECT COUNT(*) AS n FROM service_events').get() as { n: number }).n;
+
+    const response = await share(assignmentId, service2.lastInsertRowid);
+
+    expect(response.statusCode).toBe(201);
+    expect(stockOf(antenna.lastInsertRowid)).toBe(stockBefore);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM stock_movements').get()).toEqual({ n: movementsBefore });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM service_events').get()).toEqual({ n: eventsBefore });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM service_device_assignments').get()).toEqual({ n: 1 });
+  });
+
+  test('the shared service sees the antenna and its IP', async () => {
+    const { antenna, service, service2 } = seedTwoServices();
+    const assignmentId = await installAntenna(service.lastInsertRowid, antenna.lastInsertRowid, { ipAddress: '192.168.1.10' });
+    await share(assignmentId, service2.lastInsertRowid);
+
+    const history = await app.inject({ method: 'GET', url: `/api/services/${service2.lastInsertRowid}/technical-history` });
+    const body = history.json() as { assignments: Array<{ id: number; ipAddress: string; isOwner: number }> };
+
+    expect(body.assignments).toHaveLength(1);
+    expect(body.assignments[0]).toMatchObject({ id: assignmentId, ipAddress: '192.168.1.10', isOwner: 0 });
+
+    const ownerHistory = await app.inject({ method: 'GET', url: `/api/services/${service.lastInsertRowid}/technical-history` });
+    const owner = ownerHistory.json() as { assignments: Array<{ isOwner: number; shareCount: number; sharedWithNames: string | null }> };
+    expect(owner.assignments[0]).toMatchObject({ isOwner: 1, shareCount: 1, sharedWithNames: 'Vizinho Tec' });
+  });
+
+  test('rejects duplicate, self, unknown and closed shares', async () => {
+    const { antenna, service, service2 } = seedTwoServices();
+    const assignmentId = await installAntenna(service.lastInsertRowid, antenna.lastInsertRowid);
+
+    expect((await share(assignmentId, service.lastInsertRowid)).statusCode).toBe(409);
+    expect((await share(assignmentId, service2.lastInsertRowid)).statusCode).toBe(201);
+    expect((await share(assignmentId, service2.lastInsertRowid)).statusCode).toBe(409);
+    expect((await share(assignmentId, 9999)).statusCode).toBe(404);
+    expect((await share(9999, service2.lastInsertRowid)).statusCode).toBe(404);
+
+    const closed = await installAntenna(service.lastInsertRowid, antenna.lastInsertRowid);
+    await app.inject({ method: 'POST', url: `/api/service-device-assignments/${closed}/return`, payload: {} });
+    expect((await share(closed, service2.lastInsertRowid)).statusCode).toBe(400);
+  });
+
+  test('return is refused while another service depends on the antenna', async () => {
+    const { antenna, service, service2 } = seedTwoServices();
+    const assignmentId = await installAntenna(service.lastInsertRowid, antenna.lastInsertRowid);
+    await share(assignmentId, service2.lastInsertRowid);
+    const stockBefore = stockOf(antenna.lastInsertRowid);
+
+    const refused = await app.inject({ method: 'POST', url: `/api/service-device-assignments/${assignmentId}/return`, payload: {} });
+    expect(refused.statusCode).toBe(409);
+    expect((refused.json() as { error: string }).error).toContain('Vizinho Tec');
+    expect(stockOf(antenna.lastInsertRowid)).toBe(stockBefore);
+
+    const unshared = await app.inject({
+      method: 'DELETE',
+      url: `/api/service-device-assignments/${assignmentId}/shares/${service2.lastInsertRowid}`
+    });
+    expect(unshared.statusCode).toBe(200);
+
+    const returned = await app.inject({ method: 'POST', url: `/api/service-device-assignments/${assignmentId}/return`, payload: {} });
+    expect(returned.statusCode).toBe(200);
+    expect(stockOf(antenna.lastInsertRowid)).toBe(stockBefore + 1);
+  });
+
+  test('replace carries the shares over to the new unit and costs one stock unit', async () => {
+    const { antenna, service, service2 } = seedTwoServices();
+    const assignmentId = await installAntenna(service.lastInsertRowid, antenna.lastInsertRowid);
+    await share(assignmentId, service2.lastInsertRowid);
+    const stockBefore = stockOf(antenna.lastInsertRowid);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${assignmentId}/replace`,
+      payload: { catalogId: antenna.lastInsertRowid, ipAddress: '192.168.1.11' }
+    });
+
+    expect(response.statusCode).toBe(201);
+    const replacementId = (response.json() as { assignmentId: number }).assignmentId;
+    expect(stockOf(antenna.lastInsertRowid)).toBe(stockBefore - 1);
+    expect(db.prepare('SELECT assignment_id AS id FROM service_device_shares').all()).toEqual([{ id: replacementId }]);
+
+    const history = await app.inject({ method: 'GET', url: `/api/services/${service2.lastInsertRowid}/technical-history` });
+    const body = history.json() as { assignments: Array<{ id: number; ipAddress: string }> };
+    expect(body.assignments).toHaveLength(1);
+    expect(body.assignments[0]).toMatchObject({ id: replacementId, ipAddress: '192.168.1.11' });
+  });
+
+  test('the bulk IP list shows a shared antenna once, naming who else it serves', async () => {
+    const { antenna, service, service2 } = seedTwoServices();
+    const assignmentId = await installAntenna(service.lastInsertRowid, antenna.lastInsertRowid, { ipAddress: '192.168.1.10' });
+    await share(assignmentId, service2.lastInsertRowid);
+
+    const response = await app.inject({ method: 'GET', url: '/api/service-device-assignments' });
+    const rows = response.json() as Array<{ id: number; clientName: string; sharedWithNames: string | null }>;
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: assignmentId, clientName: 'Cliente Tec', sharedWithNames: 'Vizinho Tec' });
+  });
+
+  test('unshare requires an existing share', async () => {
+    const { antenna, service, service2 } = seedTwoServices();
+    const assignmentId = await installAntenna(service.lastInsertRowid, antenna.lastInsertRowid);
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/api/service-device-assignments/${assignmentId}/shares/${service2.lastInsertRowid}`
+    });
+    expect(response.statusCode).toBe(404);
   });
 });

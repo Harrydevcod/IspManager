@@ -178,6 +178,15 @@ export const serviceDeviceAssignments = sqliteTable('service_device_assignments'
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
 });
 
+// Serviços EXTRA servidos por uma atribuição física (migração 0030). O titular
+// continua em service_device_assignments.service_id.
+export const serviceDeviceShares = sqliteTable('service_device_shares', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  assignmentId: integer('assignment_id').notNull(),
+  serviceId: integer('service_id').notNull(),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
 export const serviceEvents = sqliteTable('service_events', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   serviceId: integer('service_id').notNull(),
@@ -440,6 +449,8 @@ export type StockMovement = typeof stockMovements.$inferSelect;
 export type NewStockMovement = typeof stockMovements.$inferInsert;
 export type ServiceDeviceAssignment = typeof serviceDeviceAssignments.$inferSelect;
 export type NewServiceDeviceAssignment = typeof serviceDeviceAssignments.$inferInsert;
+export type ServiceDeviceShare = typeof serviceDeviceShares.$inferSelect;
+export type NewServiceDeviceShare = typeof serviceDeviceShares.$inferInsert;
 export type ServiceEvent = typeof serviceEvents.$inferSelect;
 export type NewServiceEvent = typeof serviceEvents.$inferInsert;
 export type ServiceMaterialLine = typeof serviceMaterialLines.$inferSelect;

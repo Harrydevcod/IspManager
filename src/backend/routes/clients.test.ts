@@ -30,6 +30,7 @@ beforeEach(() => {
   db.prepare('DELETE FROM service_events').run();
   db.prepare('DELETE FROM service_install_costs').run();
   db.prepare('DELETE FROM service_material_lines').run();
+  db.prepare('DELETE FROM service_device_shares').run();
   db.prepare('DELETE FROM service_device_assignments').run();
   db.prepare('DELETE FROM expenses').run();
   db.prepare('DELETE FROM investment_items').run();
@@ -466,5 +467,59 @@ describe('GET /api/clients/import-template.xlsx', () => {
     // XLSX = ZIP archive → starts with "PK".
     expect(buffer[0]).toBe(0x50);
     expect(buffer[1]).toBe(0x4b);
+  });
+});
+
+describe('rateio de antena partilhada', () => {
+  /** Antena de 3000$ instalada no serviço de A. Devolve ids de tudo. */
+  function seedSharedAntenna() {
+    const clientA = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('C-RA','Cliente A','active')`).run();
+    const clientB = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('C-RB','Cliente B','active')`).run();
+    const antenna = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_cve, shipping_cost_cve, is_serialized, stock_total, active)
+      VALUES ('equipamento','antena','TP-Link','CPE710', 2500, 500, 1, 5, 1)
+    `).run();
+    const serviceA = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, activation_date, due_day, status)
+      VALUES (?, 3000, '2026-01-10', 10, 'active')
+    `).run(clientA.lastInsertRowid);
+    const serviceB = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, activation_date, due_day, status)
+      VALUES (?, 3000, '2026-01-10', 10, 'active')
+    `).run(clientB.lastInsertRowid);
+    const assignment = db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id, ip_address, start_date)
+      VALUES (?, ?, '192.168.1.10', date('now'))
+    `).run(serviceA.lastInsertRowid, antenna.lastInsertRowid);
+    return { clientA, clientB, antenna, serviceA, serviceB, assignment };
+  }
+
+  async function equipmentCost(clientId: unknown) {
+    const response = await app.inject({ method: 'GET', url: `/api/clients/${clientId}/profitability` });
+    const body = response.json() as { equipmentUsed: Array<{ itemName: string; quantity: number; totalCostCve: number }> };
+    return body.equipmentUsed;
+  }
+
+  test('charges the whole antenna to its owner while nobody shares it', async () => {
+    const { clientA, clientB } = seedSharedAntenna();
+
+    expect(await equipmentCost(clientA.lastInsertRowid)).toEqual([
+      expect.objectContaining({ itemName: 'TP-Link CPE710', quantity: 1, totalCostCve: 3000 })
+    ]);
+    expect(await equipmentCost(clientB.lastInsertRowid)).toEqual([]);
+  });
+
+  test('splits the antenna cost between the services it serves', async () => {
+    const { clientA, clientB, serviceB, assignment } = seedSharedAntenna();
+    db.prepare('INSERT INTO service_device_shares (assignment_id, service_id) VALUES (?, ?)')
+      .run(assignment.lastInsertRowid, serviceB.lastInsertRowid);
+
+    const a = await equipmentCost(clientA.lastInsertRowid);
+    const b = await equipmentCost(clientB.lastInsertRowid);
+
+    expect(a).toEqual([expect.objectContaining({ quantity: 1, totalCostCve: 1500 })]);
+    expect(b).toEqual([expect.objectContaining({ quantity: 1, totalCostCve: 1500 })]);
+    // A soma sobre todos os clientes é o custo do equipamento, exatamente uma vez.
+    expect(a[0].totalCostCve + b[0].totalCostCve).toBe(3000);
   });
 });

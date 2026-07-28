@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
+import { SHARED_WITH_NAMES_SQL } from '../lib/deviceShares';
 import { requireAuth, requireRole } from './auth';
 
 const catalogSchema = z.object({
@@ -224,7 +225,10 @@ export async function registerStockRoutes(app: FastifyInstance) {
         a.ip_address AS ipAddress,
         a.start_date AS startDate,
         a.end_date AS endDate,
-        a.notes
+        a.notes,
+        -- Uma linha por unidade física; se ela servir mais clientes por partilha,
+        -- vêm nomeados aqui em vez de multiplicarem a linha.
+        ${SHARED_WITH_NAMES_SQL} AS sharedWithNames
       FROM service_device_assignments a
       JOIN services s ON s.id = a.service_id
       JOIN clients c ON c.id = s.client_id

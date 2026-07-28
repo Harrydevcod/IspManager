@@ -52,10 +52,13 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         s.audiovisual_annual_cve AS audiovisualAnnualCve,
         -- IPs dos equipamentos ativos: chave de identificacao das antenas para
         -- manutencao remota, por isso vem ja na lista e nao so no detalhe.
+        -- Pela vista assignment_services, para uma antena partilhada aparecer em
+        -- todos os clientes que serve e não só no titular.
         (
           SELECT group_concat(a.ip_address, ', ')
-          FROM service_device_assignments a
-          WHERE a.service_id = s.id AND a.end_date IS NULL AND a.ip_address IS NOT NULL
+          FROM assignment_services asv
+          JOIN service_device_assignments a ON a.id = asv.assignment_id
+          WHERE asv.service_id = s.id AND a.end_date IS NULL AND a.ip_address IS NOT NULL
         ) AS deviceIps
       FROM services s
       JOIN clients c ON c.id = s.client_id

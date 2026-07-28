@@ -27,6 +27,7 @@ import m0026 from './0026_catalog_backbone_qty';
 import m0027 from './0027_investment_clients';
 import m0028 from './0028_sms_outbox_created_status_index';
 import m0029 from './0029_payment_lines_installation_kind';
+import m0030 from './0030_service_device_shares';
 
 /**
  * The migration chain, in the order new migrations are appended.
@@ -37,6 +38,6 @@ import m0029 from './0029_payment_lines_installation_kind';
  * the runner enforces this via checksum drift detection.
  */
 // 0021 (money_centavos) ficou por usar — o runner ordena por versão e tolera o gap.
-export const migrations: Migration[] = [m0001, m0002, m0003, m0004, m0005, m0006, m0007, m0008, m0009, m0010, m0011, m0012, m0013, m0014, m0015, m0016, m0017, m0018, m0019, m0020, m0022, m0023, m0024, m0025, m0026, m0027, m0028, m0029];
+export const migrations: Migration[] = [m0001, m0002, m0003, m0004, m0005, m0006, m0007, m0008, m0009, m0010, m0011, m0012, m0013, m0014, m0015, m0016, m0017, m0018, m0019, m0020, m0022, m0023, m0024, m0025, m0026, m0027, m0028, m0029, m0030];
 
 export type { Migration } from './types';
