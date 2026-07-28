@@ -46,7 +46,9 @@ describe('module header action styles', () => {
 
   test('respects reduced motion', () => {
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.btn/);
-    expect(css).toContain('.btn:hover:not(:disabled),\n  .btn:active:not(:disabled)');
+    expect(css).toMatch(
+      /\.btn:hover:not\(:disabled\),\s*\.btn:active:not\(:disabled\)\s*\{\s*transform:\s*none;/,
+    );
   });
 
   test('lets wrapped action rows align context with the module edge', () => {
