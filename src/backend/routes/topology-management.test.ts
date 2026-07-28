@@ -126,6 +126,53 @@ describe('topology management routes', () => {
     });
   });
 
+  test('rolls back a backbone mutation when its mandated audit insert fails', async () => {
+    const catalogId = insertCatalog();
+    db.exec(`
+      CREATE TRIGGER fail_topology_backbone_audit
+      BEFORE INSERT ON audit_logs
+      WHEN NEW.action = 'topology.backbone.create'
+      BEGIN
+        SELECT RAISE(ABORT, 'forced audit failure');
+      END
+    `);
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/topology/backbones',
+        payload: validBackbone(catalogId)
+      });
+      expect(response.statusCode).toBe(500);
+      expect((db.prepare('SELECT COUNT(*) AS total FROM backbone_devices').get() as { total: number }).total).toBe(0);
+    } finally {
+      db.exec('DROP TRIGGER fail_topology_backbone_audit');
+    }
+  });
+
+  test('rejects boolean IDs even when catalog and backbone ID 1 exist', async () => {
+    const catalogId = Number(db.prepare(`
+      INSERT INTO equipment_catalog (id, category, type, brand, model, stock_total)
+      VALUES (1, 'equipamento', 'antena', 'Ubiquiti', 'Rocket Prism 5AC', 7)
+    `).run().lastInsertRowid);
+    const assignmentId = insertActiveAssignment(catalogId);
+    db.prepare(`
+      INSERT INTO backbone_devices (id, catalog_id, name, status, provisional)
+      VALUES (1, ?, 'Monte Verde', 'active', 0)
+    `).run(catalogId);
+
+    expect((await app.inject({
+      method: 'POST',
+      url: '/api/topology/backbones',
+      payload: { ...validBackbone(catalogId), catalogId: true }
+    })).statusCode).toBe(400);
+    expect((await app.inject({
+      method: 'PUT',
+      url: `/api/topology/assignments/${assignmentId}/backbone`,
+      payload: { backboneDeviceId: true, reason: null }
+    })).statusCode).toBe(400);
+  });
+
   test('lists and validates backbone management input and translates repository errors', async () => {
     const catalogId = insertCatalog();
     const created = await app.inject({ method: 'POST', url: '/api/topology/backbones', payload: validBackbone(catalogId) });

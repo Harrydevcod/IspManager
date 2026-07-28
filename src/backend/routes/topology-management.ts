@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
-import { recordAudit } from '../lib/audit';
+import { recordAuditStrict } from '../lib/audit';
 import {
   BackboneConflictError,
   BackboneNotFoundError,
@@ -16,7 +16,10 @@ import {
 } from '../lib/backbone-management';
 import { requireAuth, requireRole } from './auth';
 
-const idSchema = z.coerce.number().int().positive();
+const idSchema = z.union([
+  z.number().int().positive().safe(),
+  z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().positive().safe())
+]);
 const pageSchema = z.coerce.number().int().min(1).default(1);
 const pageSizeSchema = z.coerce.number().int().min(1).max(100).default(25);
 const optionalText = (max: number) => z.string().trim().max(max).nullable().optional().transform((value) => value ?? null);
@@ -106,18 +109,22 @@ export async function registerTopologyManagementRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.status(400).send({ error: 'Dados de backbone invalidos' });
     if (!catalogExists(parsed.data.catalogId)) return reply.status(404).send({ error: 'Catalogo nao encontrado' });
     try {
-      const backbone = createBackbone(getSqliteDatabase(), parsed.data, request.user?.id ?? null);
-      recordAudit(request, {
-        action: 'topology.backbone.create',
-        entityType: 'backbone_device',
-        entityId: backbone.id,
-        metadata: {
-          backboneDeviceId: backbone.id,
-          catalogId: backbone.catalogId,
-          previousStatus: null,
-          nextStatus: backbone.status
-        }
-      });
+      const db = getSqliteDatabase();
+      const backbone = db.transaction(() => {
+        const created = createBackbone(db, parsed.data, request.user?.id ?? null);
+        recordAuditStrict(db, request, {
+          action: 'topology.backbone.create',
+          entityType: 'backbone_device',
+          entityId: created.id,
+          metadata: {
+            backboneDeviceId: created.id,
+            catalogId: created.catalogId,
+            previousStatus: null,
+            nextStatus: created.status
+          }
+        });
+        return created;
+      })();
       return reply.status(201).send(backbone);
     } catch (error) {
       return repositoryError(reply, error);
@@ -132,18 +139,22 @@ export async function registerTopologyManagementRoutes(app: FastifyInstance) {
     const previous = getBackbone(getSqliteDatabase(), params.data.id);
     if (!previous) return reply.status(404).send({ error: 'Backbone nao encontrado' });
     try {
-      const backbone = updateBackbone(getSqliteDatabase(), params.data.id, body.data, request.user?.id ?? null);
-      recordAudit(request, {
-        action: 'topology.backbone.update',
-        entityType: 'backbone_device',
-        entityId: backbone.id,
-        metadata: {
-          backboneDeviceId: backbone.id,
-          catalogId: backbone.catalogId,
-          previousStatus: previous.status,
-          nextStatus: backbone.status
-        }
-      });
+      const db = getSqliteDatabase();
+      const backbone = db.transaction(() => {
+        const updated = updateBackbone(db, params.data.id, body.data, request.user?.id ?? null);
+        recordAuditStrict(db, request, {
+          action: 'topology.backbone.update',
+          entityType: 'backbone_device',
+          entityId: updated.id,
+          metadata: {
+            backboneDeviceId: updated.id,
+            catalogId: updated.catalogId,
+            previousStatus: previous.status,
+            nextStatus: updated.status
+          }
+        });
+        return updated;
+      })();
       return reply.send(backbone);
     } catch (error) {
       return repositoryError(reply, error);
@@ -163,19 +174,23 @@ export async function registerTopologyManagementRoutes(app: FastifyInstance) {
     if (!activeAssignmentExists(params.data.id)) return reply.status(404).send({ error: 'Atribuicao ativa nao encontrada' });
     const previousBackboneDeviceId = activeBackboneIdForAssignment(params.data.id);
     try {
-      const assignment = setAssignmentBackbone(getSqliteDatabase(), params.data.id, body.data, request.user?.id ?? null);
-      if (previousBackboneDeviceId !== assignment.backboneDeviceId) {
-        recordAudit(request, {
-          action: previousBackboneDeviceId === null ? 'topology.assignment.link' : 'topology.assignment.transfer',
-          entityType: 'service_device_assignment',
-          entityId: assignment.id,
-          metadata: {
-            assignmentId: assignment.id,
-            previousBackboneDeviceId,
-            nextBackboneDeviceId: assignment.backboneDeviceId
-          }
-        });
-      }
+      const db = getSqliteDatabase();
+      const assignment = db.transaction(() => {
+        const linked = setAssignmentBackbone(db, params.data.id, body.data, request.user?.id ?? null);
+        if (previousBackboneDeviceId !== linked.backboneDeviceId) {
+          recordAuditStrict(db, request, {
+            action: previousBackboneDeviceId === null ? 'topology.assignment.link' : 'topology.assignment.transfer',
+            entityType: 'service_device_assignment',
+            entityId: linked.id,
+            metadata: {
+              assignmentId: linked.id,
+              previousBackboneDeviceId,
+              nextBackboneDeviceId: linked.backboneDeviceId
+            }
+          });
+        }
+        return linked;
+      })();
       return reply.send(assignment);
     } catch (error) {
       return repositoryError(reply, error);
@@ -189,17 +204,20 @@ export async function registerTopologyManagementRoutes(app: FastifyInstance) {
     if (!activeAssignmentExists(params.data.id)) return reply.status(404).send({ error: 'Atribuicao ativa nao encontrada' });
     const previousBackboneDeviceId = activeBackboneIdForAssignment(params.data.id);
     try {
-      clearAssignmentBackbone(getSqliteDatabase(), params.data.id, body.data.reason, request.user?.id ?? null);
-      recordAudit(request, {
-        action: 'topology.assignment.unlink',
-        entityType: 'service_device_assignment',
-        entityId: params.data.id,
-        metadata: {
-          assignmentId: params.data.id,
-          previousBackboneDeviceId,
-          nextBackboneDeviceId: null
-        }
-      });
+      const db = getSqliteDatabase();
+      db.transaction(() => {
+        clearAssignmentBackbone(db, params.data.id, body.data.reason, request.user?.id ?? null);
+        recordAuditStrict(db, request, {
+          action: 'topology.assignment.unlink',
+          entityType: 'service_device_assignment',
+          entityId: params.data.id,
+          metadata: {
+            assignmentId: params.data.id,
+            previousBackboneDeviceId,
+            nextBackboneDeviceId: null
+          }
+        });
+      })();
       return reply.send({ assignmentId: params.data.id, backboneDeviceId: null });
     } catch (error) {
       return repositoryError(reply, error);
