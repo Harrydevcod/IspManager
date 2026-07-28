@@ -8,7 +8,7 @@ import { takesStaticIp } from '../../shared/equipment';
 import { suggestIpPrefix } from '../lib/ip';
 import { statusLabel, statusTone } from '../lib/status';
 import type { AudiovisualConfig, Client, DeviceAssignment, PlanRow, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
-import { BulkIpDialog } from './services/BulkIpDialog';
+import { BulkIpDialog, type ActiveAssignment } from './services/BulkIpDialog';
 import { IpField } from './services/IpField';
 import { ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
 import { ServiceItemDraftsBuilder, emptyItemDraft, type ItemDraft } from './services/ServiceItemDraftsBuilder';
@@ -105,6 +105,9 @@ export function ServicesModule({
   const [editDraft, setEditDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
   const [submitting, setSubmitting] = useState(false);
   const [showBulkIp, setShowBulkIp] = useState(false);
+  const [deviceMode, setDeviceMode] = useState<'install' | 'share'>('install');
+  const [shareableDevices, setShareableDevices] = useState<ActiveAssignment[]>([]);
+  const [shareChoice, setShareChoice] = useState('');
   // Sugestão de faixa vinda da própria rede instalada, não fixa no código.
   const ipPrefix = useMemo(() => suggestIpPrefix(services.map((service) => service.deviceIps)), [services]);
 
@@ -246,7 +249,10 @@ export function ServicesModule({
   function openDeviceDialog() {
     setAddItemDrafts([]);
     setAddLaborCve('');
+    setDeviceMode('install');
+    setShareChoice('');
     void ensureCatalogLoaded();
+    void loadShareableDevices();
     setShowDeviceDialog(true);
   }
 
@@ -255,6 +261,77 @@ export function ServicesModule({
     setShowDeviceDialog(false);
     setAddItemDrafts([]);
     setAddLaborCve('');
+    setDeviceMode('install');
+    setShareChoice('');
+  }
+
+  /** Antenas ativas de outros serviços, candidatas a servir também este cliente. */
+  function loadShareableDevices() {
+    return authFetch('http://127.0.0.1:3001/api/service-device-assignments')
+      .then((response) => response.ok ? response.json() as Promise<ActiveAssignment[]> : [])
+      .then(setShareableDevices)
+      .catch(() => setShareableDevices([]));
+  }
+
+  /** Liga uma antena já instalada a este serviço. Não desconta stock. */
+  async function submitShare(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedService || !shareChoice) {
+      toast('Escolhe o equipamento a ligar.', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/service-device-assignments/${shareChoice}/shares`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serviceId: selectedService.id })
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) {
+        toast(data.error || 'Nao foi possivel ligar o equipamento.', 'error');
+        return;
+      }
+      toast('Equipamento passa a servir também este cliente.', 'success');
+      closeDeviceDialog();
+      await loadTechnicalHistory(selectedService.id);
+      void loadServices();
+    } catch {
+      toast('Falha de rede ao ligar o equipamento.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  /** Corta a ligação a uma antena de que este serviço não é titular. */
+  async function unshareDevice(assignment: DeviceAssignment) {
+    if (!selectedService) return;
+    const label = assignment.brand ? `${assignment.brand} ${assignment.model}` : assignment.model;
+    if (!(await confirm({
+      title: 'Desassociar equipamento',
+      message: `Este serviço deixa de ser servido por ${label}. O equipamento continua instalado no serviço titular e o stock não é alterado.`,
+      tone: 'danger',
+      confirmLabel: 'Desassociar'
+    }))) return;
+    setSubmitting(true);
+    try {
+      const response = await authFetch(
+        `http://127.0.0.1:3001/api/service-device-assignments/${assignment.id}/shares/${selectedService.id}`,
+        { method: 'DELETE' }
+      );
+      const data = await response.json() as { error?: string };
+      if (!response.ok) {
+        toast(data.error || 'Nao foi possivel desassociar o equipamento.', 'error');
+        return;
+      }
+      toast('Equipamento desassociado.', 'success');
+      await loadTechnicalHistory(selectedService.id);
+      void loadServices();
+    } catch {
+      toast('Falha de rede ao desassociar equipamento.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function buildItemsPayload(drafts: ItemDraft[], catalog: StockCatalogRow[]) {
@@ -663,6 +740,7 @@ export function ServicesModule({
           onDelete={(service) => void deleteService(service)}
           onAddDevice={openDeviceDialog}
           onEditDevice={openEditDialog}
+          onUnshareDevice={(assignment) => void unshareDevice(assignment)}
           onReplaceDevice={openReplaceDialog}
           onReturnDevice={(assignment) => void returnDevice(assignment)}
           onAddEvent={openEventDialog}
@@ -857,24 +935,68 @@ export function ServicesModule({
           <>
             <Button variant="secondary" onClick={closeDeviceDialog} disabled={submitting}>Cancelar</Button>
             <Button type="submit" form="device-form" loading={submitting}>
-              {submitting ? 'A gravar...' : 'Adicionar'}
+              {submitting ? 'A gravar...' : deviceMode === 'share' ? 'Ligar' : 'Adicionar'}
             </Button>
           </>
         }
       >
-        <form id="device-form" className="client-form" onSubmit={submitItems}>
-          <ServiceItemDraftsBuilder drafts={addItemDrafts} catalog={catalogList} onChange={setAddItemDrafts} ipPrefix={ipPrefix} />
-          <Field
-            wide
-            label="Mão de obra (CVE)"
-            type="number"
-            min={0}
-            step="0.01"
-            placeholder="0"
-            value={addLaborCve}
-            onChange={(event) => setAddLaborCve(event.target.value)}
-          />
-        </form>
+        <div className="device-mode-switch" role="group" aria-label="Modo">
+          <Button
+            variant={deviceMode === 'install' ? 'primary' : 'secondary'}
+            size="sm"
+            aria-pressed={deviceMode === 'install'}
+            onClick={() => setDeviceMode('install')}
+          >
+            Instalar novo
+          </Button>
+          <Button
+            variant={deviceMode === 'share' ? 'primary' : 'secondary'}
+            size="sm"
+            aria-pressed={deviceMode === 'share'}
+            onClick={() => setDeviceMode('share')}
+          >
+            Ligar equipamento existente
+          </Button>
+        </div>
+        {deviceMode === 'install' ? (
+          <form id="device-form" className="client-form" onSubmit={submitItems}>
+            <ServiceItemDraftsBuilder drafts={addItemDrafts} catalog={catalogList} onChange={setAddItemDrafts} ipPrefix={ipPrefix} />
+            <Field
+              wide
+              label="Mão de obra (CVE)"
+              type="number"
+              min={0}
+              step="0.01"
+              placeholder="0"
+              value={addLaborCve}
+              onChange={(event) => setAddLaborCve(event.target.value)}
+            />
+          </form>
+        ) : (
+          <form id="device-form" className="client-form" onSubmit={submitShare}>
+            <Message>
+              Para um prédio com switch, ou uma antena com várias saídas de rede. Não desconta stock — a mesma antena
+              passa a servir também este cliente, e o custo dela passa a ser dividido pelos serviços que serve.
+            </Message>
+            <Select
+              wide
+              label="Antena já instalada"
+              required
+              value={shareChoice}
+              onChange={(event) => setShareChoice(event.target.value)}
+            >
+              <option value="">Selecionar equipamento</option>
+              {shareableDevices
+                .filter((device) => device.serviceId !== selectedService?.id)
+                .map((device) => (
+                  <option key={device.id} value={device.id}>
+                    {device.clientName} — {device.brand ? `${device.brand} ${device.model}` : device.model}
+                    {device.ipAddress ? ` — ${device.ipAddress}` : ''}
+                  </option>
+                ))}
+            </Select>
+          </form>
+        )}
       </Dialog>
 
       <Dialog

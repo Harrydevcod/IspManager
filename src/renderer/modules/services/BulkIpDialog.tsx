@@ -15,6 +15,8 @@ export type ActiveAssignment = {
   catalogType: string;
   serialNumber: string | null;
   ipAddress: string | null;
+  /** Clientes servidos por partilha (a antena é a mesma unidade física). */
+  sharedWithNames: string | null;
 };
 
 type BulkIpDialogProps = {
@@ -69,7 +71,7 @@ export function BulkIpDialog({ onClose, onSaved }: BulkIpDialogProps) {
     if (!term) {
       return true;
     }
-    return [row.clientName, row.brand, row.model, row.serialNumber, drafts[row.id]]
+    return [row.clientName, row.sharedWithNames, row.brand, row.model, row.serialNumber, drafts[row.id]]
       .some((value) => (value || '').toLowerCase().includes(term));
   });
 
@@ -171,7 +173,10 @@ export function BulkIpDialog({ onClose, onSaved }: BulkIpDialogProps) {
             {visibleRows.map((row) => (
               <div key={row.id} className="bulk-ip-row">
                 <span className="bulk-ip-device">
-                  <strong>{row.clientName}</strong>
+                  <strong>
+                    {row.clientName}
+                    {row.sharedWithNames && <span className="bulk-ip-shared"> + {row.sharedWithNames}</span>}
+                  </strong>
                   <small>
                     {row.brand ? `${row.brand} ${row.model}` : row.model}
                     {row.serialNumber ? ` · ${row.serialNumber}` : ''}

@@ -40,6 +40,7 @@ type ServiceDetailDialogProps = {
   onDelete: (service: ServiceRow) => void;
   onAddDevice: () => void;
   onEditDevice: (assignment: DeviceAssignment) => void;
+  onUnshareDevice: (assignment: DeviceAssignment) => void;
   onReplaceDevice: (assignment: DeviceAssignment) => void;
   onReturnDevice: (assignment: DeviceAssignment) => void;
   onAddEvent: () => void;
@@ -59,6 +60,7 @@ export function ServiceDetailDialog({
   onDelete,
   onAddDevice,
   onEditDevice,
+  onUnshareDevice,
   onReplaceDevice,
   onReturnDevice,
   onAddEvent
@@ -154,6 +156,10 @@ export function ServiceDetailDialog({
                       {assignment.brand ? `${assignment.brand} ${assignment.model}` : assignment.model}
                       <span className="technical-item-type"> · {assignment.catalogType}</span>
                     </strong>
+                    {!assignment.isOwner && <Badge tone="info">Partilhada</Badge>}
+                    {Boolean(assignment.isOwner) && assignment.shareCount > 0 && (
+                      <Badge tone="info">Serve {assignment.shareCount + 1} serviços</Badge>
+                    )}
                     <Badge tone={active ? 'success' : 'neutral'}>{active ? 'Ativo' : 'Removido'}</Badge>
                   </div>
                   <dl className="technical-item-meta">
@@ -163,19 +169,31 @@ export function ServiceDetailDialog({
                     {assignment.assetTag && <div><dt>Tag</dt><dd>{assignment.assetTag}</dd></div>}
                     <div><dt>Inicio</dt><dd>{formatPtDate(assignment.startDate)}</dd></div>
                     {assignment.endDate && <div><dt>Fim</dt><dd>{formatPtDate(assignment.endDate)}</dd></div>}
+                    {assignment.sharedWithNames && (
+                      <div><dt>Também serve</dt><dd>{assignment.sharedWithNames}</dd></div>
+                    )}
                   </dl>
                   {assignment.notes && <p className="technical-item-notes">{assignment.notes}</p>}
                   {active && canRecordTechnical && (
                     <div className="technical-item-actions">
-                      <Button variant="secondary" size="sm" disabled={submitting} onClick={() => onEditDevice(assignment)}>
-                        Editar
-                      </Button>
-                      <Button variant="secondary" size="sm" disabled={submitting} onClick={() => onReplaceDevice(assignment)}>
-                        Substituir
-                      </Button>
-                      <Button variant="danger" size="sm" disabled={submitting} onClick={() => onReturnDevice(assignment)}>
-                        Remover
-                      </Button>
+                      {assignment.isOwner ? (
+                        <>
+                          <Button variant="secondary" size="sm" disabled={submitting} onClick={() => onEditDevice(assignment)}>
+                            Editar
+                          </Button>
+                          <Button variant="secondary" size="sm" disabled={submitting} onClick={() => onReplaceDevice(assignment)}>
+                            Substituir
+                          </Button>
+                          <Button variant="danger" size="sm" disabled={submitting} onClick={() => onReturnDevice(assignment)}>
+                            Remover
+                          </Button>
+                        </>
+                      ) : (
+                        // A unidade física pertence a outro serviço: daqui só se corta a ligação.
+                        <Button variant="danger" size="sm" disabled={submitting} onClick={() => onUnshareDevice(assignment)}>
+                          Desassociar
+                        </Button>
+                      )}
                     </div>
                   )}
                 </li>

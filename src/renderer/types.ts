@@ -623,6 +623,11 @@ export type DeviceAssignment = {
   startDate: string;
   endDate: string | null;
   createdAt: string;
+  /** 1 = instalado neste serviço; 0 = partilhado a partir de outro serviço. */
+  isOwner: number;
+  /** Clientes servidos por partilha, separados por vírgula. */
+  sharedWithNames: string | null;
+  shareCount: number;
 };
 
 export type MaterialLine = {
@@ -679,6 +684,7 @@ export type CatalogAssignmentRow = {
   startDate: string;
   endDate: string | null;
   notes: string | null;
+  sharedWithNames: string | null;
 };
 
 export type CatalogAssignments = {

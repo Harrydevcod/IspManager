@@ -494,6 +494,7 @@ export function StockModule({
                         {row.assetTag && <div><dt>Asset</dt><dd>{row.assetTag}</dd></div>}
                         {row.macAddress && <div><dt>MAC</dt><dd>{row.macAddress}</dd></div>}
                         {row.ipAddress && <div><dt>IP</dt><dd>{row.ipAddress}</dd></div>}
+                        {row.sharedWithNames && <div><dt>Também serve</dt><dd>{row.sharedWithNames}</dd></div>}
                         <div><dt>Desde</dt><dd>{formatPtDate(row.startDate)}</dd></div>
                         {row.endDate && (
                           <div><dt>Devolvido</dt><dd>{formatPtDate(row.endDate)}</dd></div>

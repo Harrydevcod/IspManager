@@ -4108,6 +4108,20 @@ label.field-toggle {
   align-items: center;
 }
 
+/* Instalar novo vs ligar equipamento existente: duas rotas exclusivas para o
+   mesmo objetivo, lado a lado no topo do diálogo. */
+.device-mode-switch {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+/* Clientes que a mesma antena serve, a seguir ao titular. */
+.bulk-ip-shared {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
 /* Atribuição de IPs em massa. Tabela densa, não cards: são dezenas de linhas
    percorridas só com Tab, e cada moldura extra rouba largura ao que interessa —
    o nome do cliente e o campo. Separadores hairline em vez de caixas. */
