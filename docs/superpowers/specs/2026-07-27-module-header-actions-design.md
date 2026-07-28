@@ -33,7 +33,8 @@ by the components.
 2. Make `Button` the single source of truth for its visual variant and state.
 3. Introduce a reusable header action composition that keeps structure,
    ordering and responsive behaviour consistent across modules.
-4. Align primary actions with the blue/cyan ISPM identity in both themes.
+4. Use blue/cyan primary actions in dark mode and graphite editorial primary
+   actions in light mode.
 5. Preserve permissions, business operations and existing interaction flows.
 6. Deliver accessible focus, loading, disabled and reduced-motion states.
 
@@ -71,15 +72,16 @@ interaction model.
 
 The visual language is precise, dark-first and operational:
 
-- Primary buttons use an ISPM blue gradient with a restrained inner highlight
-  and short shadow.
+- Primary buttons use an ISPM blue gradient in dark mode and an editorial
+  graphite gradient in light mode, both with a restrained inner highlight and
+  short shadow.
 - Secondary buttons use a neutral, translucent surface and a low-contrast
   border. Their emphasis increases on hover, not at rest.
 - Critical buttons remain neutral at rest, with a red icon/tone cue. The risk
   surface and border become explicit on hover and keyboard focus.
 - The treatment must feel dimensional but not glossy, neon or game-like.
-- Dark and light themes retain their own surfaces while sharing the same
-  semantic hierarchy and blue primary identity.
+- Dark and light themes retain their own primary material while sharing the
+  same semantic hierarchy: blue for dark, graphite for light.
 
 ## 5. Component architecture
 
@@ -177,7 +179,8 @@ accent:
 Exact values may be tuned during browser validation, but must satisfy:
 
 - WCAG AA contrast for text and meaningful iconography;
-- blue/cyan family for the primary action in both themes;
+- blue/cyan family for the primary action in dark mode;
+- cool graphite family for the primary action in light mode;
 - neutral dark graphite surfaces in dark mode;
 - neutral light surfaces in light mode;
 - no brown primary action in light mode;
@@ -194,7 +197,7 @@ Their semantic tokens form an independent, cool-neutral palette:
   warm-neutral text colour;
 - critical actions reuse the same cool-neutral resting surface and communicate
   risk through red foreground, icon and interaction states;
-- primary actions remain in the ISPM blue/cyan family;
+- primary actions remain in the ISPM blue/cyan family in dark mode;
 - no header action surface, border, foreground or shadow may use a warm
   brown/orange hue in either theme.
 
@@ -202,6 +205,19 @@ For the light theme, the intended resting treatment is approximately
 `oklch(98.7% 0.003 255)` for the surface, `oklch(82% 0.012 255)` for the
 border and `oklch(28% 0.015 255)` for secondary foreground. Exact values may
 be tuned during browser validation while remaining visibly cool-neutral.
+
+#### Light-theme primary correction
+
+The light theme uses an editorial graphite primary instead of blue. This
+choice creates strong hierarchy against the warm off-white canvas without
+introducing a competing status colour or returning to brown:
+
+- gradient start: approximately `oklch(40% 0.02 255)`;
+- gradient end: approximately `oklch(27% 0.016 255)`;
+- foreground: near-white with a cool-neutral hue;
+- border and shadow: cool graphite only, with no warm or blue tint;
+- hover and active states preserve the same graphite identity;
+- dark mode keeps the existing blue/cyan primary treatment unchanged.
 
 ### 6.3 Interaction states
 
@@ -309,7 +325,8 @@ data or operation is touched.
 3. Every mapped header has no more than one primary action.
 4. Payments clearly distinguishes context, routine utility, critical reversal
    and primary generation.
-5. Primary actions use the ISPM blue family in dark and light modes.
+5. Primary actions use ISPM blue in dark mode and editorial graphite in light
+   mode.
 6. Button states meet the visual, motion and accessibility contract.
 7. Header layouts do not overflow at supported desktop widths.
 8. Permissions and business behaviour remain unchanged.
