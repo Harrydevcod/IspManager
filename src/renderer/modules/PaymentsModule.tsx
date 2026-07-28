@@ -36,6 +36,7 @@ import { BulkPaymentDialog, type BulkPaymentMode } from './payments/BulkPaymentD
 type PaymentSortKey = 'dueDate' | 'clientName' | 'status' | 'amountCve';
 const DEFAULT_PAYMENT_SORT: SortState<PaymentSortKey> = { key: 'dueDate', direction: 'asc' };
 const DEFAULT_PAYMENT_PAGE_SIZE = 25;
+const DEFAULT_PAYMENT_STATUS_FILTER: 'all' | PaymentRow['status'] = 'pending';
 
 // ---------------------------------------------------------------------------
 // Reminder helpers (moved verbatim from App.tsx L694–L712)
@@ -85,7 +86,9 @@ export function PaymentsModule({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [referenceMonth, setReferenceMonth] = useState(defaultRefMonth);
-  const [statusFilter, setStatusFilter] = useState<'all' | PaymentRow['status']>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | PaymentRow['status']>(
+    DEFAULT_PAYMENT_STATUS_FILTER
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [selectedPayment, setSelectedPayment] = useState<PaymentRow | null>(null);
   const [actionMode, setActionMode] = useState<PaymentActionMode | null>(null);
@@ -903,7 +906,7 @@ export function PaymentsModule({
           {showAllMonths ? 'Mês atual' : 'Todos os meses'}
         </Button>
         <Button variant="secondary" onClick={() => {
-          setStatusFilter('all');
+          setStatusFilter(DEFAULT_PAYMENT_STATUS_FILTER);
           setReferenceMonth(defaultRefMonth);
           setShowAllMonths(false);
           setSearch('');

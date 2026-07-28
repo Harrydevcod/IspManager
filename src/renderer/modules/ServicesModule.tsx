@@ -60,6 +60,8 @@ function emptyServiceForm(): ServiceFormState {
   };
 }
 
+const DEFAULT_SERVICE_STATUS_FILTER: 'all' | ServiceRow['status'] = 'active';
+
 export function ServicesModule({
   focusClientId,
   onFocusHandled
@@ -85,7 +87,9 @@ export function ServicesModule({
   const [itemDrafts, setItemDrafts] = useState<ItemDraft[]>([]);
   const [laborCve, setLaborCve] = useState('');
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | ServiceRow['status']>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | ServiceRow['status']>(
+    DEFAULT_SERVICE_STATUS_FILTER
+  );
   const [form, setForm] = useState<ServiceFormState>(emptyServiceForm());
   const [technicalHistory, setTechnicalHistory] = useState<TechnicalHistory | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -637,7 +641,7 @@ export function ServicesModule({
         </Select>
         <Button variant="secondary" onClick={() => {
           setSearch('');
-          setStatusFilter('all');
+          setStatusFilter(DEFAULT_SERVICE_STATUS_FILTER);
         }}>
           Limpar filtros
         </Button>

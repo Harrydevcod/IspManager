@@ -28,6 +28,7 @@ type ClientSortKey = 'fullName' | 'clientCode' | 'status' | 'island' | 'zone';
 
 const DEFAULT_CLIENT_SORT: SortState<ClientSortKey> = { key: 'fullName', direction: 'asc' };
 const DEFAULT_CLIENT_PAGE_SIZE = 25;
+const DEFAULT_CLIENT_STATUS_FILTER: 'all' | Client['status'] = 'active';
 
 type ClientNotice = {
   id: number;
@@ -85,7 +86,9 @@ export function ClientsModule({
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | Client['status']>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | Client['status']>(
+    DEFAULT_CLIENT_STATUS_FILTER
+  );
   const [messagingSettings, setMessagingSettings] = useState<MessagingSettings>({
     companyName: 'ISPM',
     whatsappTemplate: fallbackWhatsappTemplate
@@ -444,7 +447,7 @@ export function ClientsModule({
         </Select>
         <Button variant="secondary" onClick={() => {
           setSearch('');
-          setStatusFilter('all');
+          setStatusFilter(DEFAULT_CLIENT_STATUS_FILTER);
           setSortState(DEFAULT_CLIENT_SORT);
           setClientPage(1);
         }}>
