@@ -83,3 +83,6 @@ app-builds/
 
 # Visual companion (brainstorming) scratch
 .superpowers/
+
+# Git worktrees locais
+.worktrees/
