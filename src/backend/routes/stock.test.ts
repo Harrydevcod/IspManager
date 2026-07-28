@@ -111,3 +111,48 @@ describe('POST /api/equipment-catalog with materials', () => {
     expect(row).toMatchObject({ category: 'material', unitOfMeasure: 'un', isSerialized: 0 });
   });
 });
+
+describe('erros de validacao do catalogo', () => {
+  const valid = {
+    category: 'equipamento', type: 'router', brand: 'Teste', model: 'Modelo Val',
+    supplier: '', unitOfMeasure: 'un', isSerialized: true,
+    purchasePriceCve: 1000, sellingPriceCve: 0, rentalFeeCve: 0,
+    stockTotal: 0, active: true, backboneQty: 0
+  };
+
+  test('names the offending field instead of a blanket message', async () => {
+    // Stock decimal e o caso real: para material medido em metros escrever 150.5
+    // e natural, e o backend so aceita inteiros.
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/equipment-catalog',
+      payload: { ...valid, category: 'material', type: 'cabo', unitOfMeasure: 'metro', stockTotal: 150.5 }
+    });
+
+    expect(response.statusCode).toBe(400);
+    const error = (response.json() as { error: string }).error;
+    expect(error).toContain('Stock');
+    expect(error).toContain('inteiro');
+    expect(error).not.toBe('Dados de equipamento invalidos');
+  });
+
+  test('names the field for each reachable form mistake', async () => {
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ backboneQty: 1.5 }, 'Unidades backbone'],
+      [{ model: '   ' }, 'Designacao'],
+      [{ unitOfMeasure: '' }, 'Unidade de medida'],
+      [{ purchasePriceCve: -1 }, 'Custo de compra']
+    ];
+
+    for (const [patch, expected] of cases) {
+      const response = await app.inject({ method: 'POST', url: '/api/equipment-catalog', payload: { ...valid, ...patch } });
+      expect(response.statusCode).toBe(400);
+      expect((response.json() as { error: string }).error).toContain(expected);
+    }
+  });
+
+  test('still accepts a well-formed catalog entry', async () => {
+    const response = await app.inject({ method: 'POST', url: '/api/equipment-catalog', payload: valid });
+    expect(response.statusCode).toBe(201);
+  });
+});

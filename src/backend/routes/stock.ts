@@ -25,6 +25,46 @@ const catalogSchema = z.object({
   backboneQty: z.coerce.number().int().min(0).default(0)
 });
 
+/** Nomes dos campos como o operador os vê no formulário, não como o JSON os chama. */
+const CATALOG_FIELD_LABELS: Record<string, string> = {
+  category: 'Categoria',
+  type: 'Tipo',
+  brand: 'Marca',
+  model: 'Designacao',
+  description: 'Descricao',
+  supplier: 'Fornecedor',
+  unitOfMeasure: 'Unidade de medida',
+  isSerialized: 'Serializado',
+  purchasePriceCve: 'Custo de compra',
+  shippingCostCve: 'Transporte',
+  customsDutyCve: 'Alfandega',
+  otherCostsCve: 'Outros custos',
+  sellingPriceCve: 'Preco de venda',
+  rentalFeeCve: 'Aluguer mensal',
+  stockTotal: 'Stock',
+  active: 'Estado',
+  backboneQty: 'Unidades backbone'
+};
+
+/**
+ * "Dados invalidos" nao ajuda ninguem a corrigir um formulario de 12 campos. O zod
+ * sabe qual falhou e porque — dizer isso e a diferenca entre corrigir e adivinhar.
+ */
+function catalogValidationError(error: z.ZodError): string {
+  const issue = error.issues[0];
+  const field = CATALOG_FIELD_LABELS[String(issue.path[0])] || String(issue.path[0]);
+  if (issue.code === 'invalid_type' && issue.expected === 'integer') {
+    return `${field}: use um numero inteiro, sem casas decimais`;
+  }
+  if (issue.code === 'too_small') {
+    return `${field}: valor abaixo do minimo permitido`;
+  }
+  if (issue.code === 'invalid_enum_value') {
+    return `${field}: valor nao permitido`;
+  }
+  return `${field}: ${issue.message}`;
+}
+
 const movementSchema = z.object({
   catalogId: z.coerce.number().int().positive(),
   type: z.enum(['entrada', 'saida', 'ajuste']),
@@ -94,7 +134,7 @@ export async function registerStockRoutes(app: FastifyInstance) {
   app.post('/api/equipment-catalog', canWriteStock, async (request, reply) => {
     const parsed = catalogSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.status(400).send({ error: 'Dados de equipamento invalidos' });
+      return reply.status(400).send({ error: catalogValidationError(parsed.error) });
     }
 
     const db = getSqliteDatabase();
@@ -138,8 +178,11 @@ export async function registerStockRoutes(app: FastifyInstance) {
   app.put('/api/equipment-catalog/:id', canWriteStock, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     const parsed = catalogSchema.safeParse(request.body);
-    if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
-      return reply.status(400).send({ error: 'Dados de equipamento invalidos' });
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Equipamento invalido' });
+    }
+    if (!parsed.success) {
+      return reply.status(400).send({ error: catalogValidationError(parsed.error) });
     }
 
     const db = getSqliteDatabase();

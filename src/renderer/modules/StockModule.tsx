@@ -226,7 +226,13 @@ export function StockModule({
     });
 
     if (!response.ok) {
-      toast(editingCatalog ? 'Nao foi possivel atualizar o equipamento.' : 'Nao foi possivel criar o equipamento.', 'error');
+      // O servidor diz sempre o motivo; mostrá-lo é a diferença entre corrigir
+      // o campo errado e ficar a olhar para o formulário sem saber porquê.
+      // `catch` porque uma resposta sem corpo JSON (401, 5xx) não pode rebentar
+      // por cima do erro que estamos a tentar reportar.
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      const fallback = editingCatalog ? 'Nao foi possivel atualizar o equipamento.' : 'Nao foi possivel criar o equipamento.';
+      toast(result.error || `${fallback} (HTTP ${response.status})`, 'error');
       return;
     }
 
@@ -694,7 +700,7 @@ export function StockModule({
               </Select>
               <Field label="Fornecedor" value={catalogForm.supplier} onChange={(event) => updateCatalogForm('supplier', event.target.value)} />
               <Field label="Custo por unidade CVE" type="number" min={0} value={catalogForm.purchasePriceCve} onChange={(event) => updateCatalogForm('purchasePriceCve', event.target.value)} />
-              <Field label={editingCatalog ? `Stock atual (${catalogForm.unitOfMeasure})` : `Stock inicial (${catalogForm.unitOfMeasure})`} type="number" min={0} value={catalogForm.stockTotal} onChange={(event) => updateCatalogForm('stockTotal', event.target.value)} />
+              <Field label={editingCatalog ? `Stock atual (${catalogForm.unitOfMeasure})` : `Stock inicial (${catalogForm.unitOfMeasure})`} type="number" min={0} step={1} value={catalogForm.stockTotal} onChange={(event) => updateCatalogForm('stockTotal', event.target.value)} />
             </>
           ) : (
             <>
@@ -711,12 +717,12 @@ export function StockModule({
               <Field label="Custo compra CVE" type="number" min={0} value={catalogForm.purchasePriceCve} onChange={(event) => updateCatalogForm('purchasePriceCve', event.target.value)} />
               <Field label="Preco venda CVE" type="number" min={0} value={catalogForm.sellingPriceCve} onChange={(event) => updateCatalogForm('sellingPriceCve', event.target.value)} />
               <Field label="Aluguer mensal CVE" type="number" min={0} value={catalogForm.rentalFeeCve} onChange={(event) => updateCatalogForm('rentalFeeCve', event.target.value)} />
-              <Field label={editingCatalog ? 'Stock atual' : 'Stock inicial'} type="number" min={0} value={catalogForm.stockTotal} onChange={(event) => updateCatalogForm('stockTotal', event.target.value)} />
+              <Field label={editingCatalog ? 'Stock atual' : 'Stock inicial'} type="number" min={0} step={1} value={catalogForm.stockTotal} onChange={(event) => updateCatalogForm('stockTotal', event.target.value)} />
               <Select label="Estado" value={catalogForm.active} onChange={(event) => updateCatalogForm('active', event.target.value)}>
                 <option value="1">Ativo</option>
                 <option value="0">Inativo</option>
               </Select>
-              <Field label="Unidades backbone" type="number" min={0} value={catalogForm.backboneQty} onChange={(event) => updateCatalogForm('backboneQty', event.target.value)} />
+              <Field label="Unidades backbone" type="number" min={0} step={1} value={catalogForm.backboneQty} onChange={(event) => updateCatalogForm('backboneQty', event.target.value)} />
             </>
           )}
         </form>
