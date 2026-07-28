@@ -245,4 +245,81 @@ describe('runMigrations', () => {
 
     db.close();
   });
+
+  test('materializes catalog backbone quantities as provisional physical devices', () => {
+    const db = freshDb();
+    const beforePhysicalBackboneMapping = migrations.filter((migration) => migration.version < 31);
+    runMigrations(db, beforePhysicalBackboneMapping);
+
+    db.prepare(`
+      INSERT INTO equipment_catalog (type, brand, model, stock_total, backbone_qty, active)
+      VALUES ('antena', 'Ubiquiti', 'Rocket Prism', 2, 2, 1)
+    `).run();
+
+    runMigrations(db, migrations);
+
+    expect(db.prepare(`
+      SELECT name, provisional, serial_number AS serialNumber
+      FROM backbone_devices
+      ORDER BY id
+    `).all()).toEqual([
+      { name: 'Ubiquiti Rocket Prism #1', provisional: 1, serialNumber: null },
+      { name: 'Ubiquiti Rocket Prism #2', provisional: 1, serialNumber: null }
+    ]);
+    expect(db.prepare(`PRAGMA table_info(equipment_catalog)`).all())
+      .toEqual(expect.arrayContaining([expect.objectContaining({ name: 'backbone_qty' })]));
+    expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+  });
+
+  test('enforces live physical identity and assignment-link invariants', () => {
+    const db = freshDb();
+    runMigrations(db);
+
+    const catalogId = db.prepare(`
+      INSERT INTO equipment_catalog (type, brand, model, stock_total, active)
+      VALUES ('antena', 'Ubiquiti', 'Rocket Prism', 2, 1)
+    `).run().lastInsertRowid;
+    const clientId = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status)
+      VALUES ('CLT-BACKBONE', 'Cliente Backbone', 'active')
+    `).run().lastInsertRowid;
+    const serviceId = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
+      VALUES (?, 3500, 10, 'active')
+    `).run(clientId).lastInsertRowid;
+    const assignmentId = db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id, start_date)
+      VALUES (?, ?, '2026-07-28')
+    `).run(serviceId, catalogId).lastInsertRowid;
+    const firstBackboneDeviceId = db.prepare(`
+      INSERT INTO backbone_devices (catalog_id, name, serial_number)
+      VALUES (?, 'Rocket Prism Norte', 'BACKBONE-42')
+    `).run(catalogId).lastInsertRowid;
+    const secondBackboneDeviceId = db.prepare(`
+      INSERT INTO backbone_devices (catalog_id, name)
+      VALUES (?, 'Rocket Prism Sul')
+    `).run(catalogId).lastInsertRowid;
+
+    db.prepare(`
+      INSERT INTO backbone_assignment_links (backbone_device_id, assignment_id)
+      VALUES (?, ?)
+    `).run(firstBackboneDeviceId, assignmentId);
+
+    const insertSecondActiveLinkForSameAssignment = () => db.prepare(`
+      INSERT INTO backbone_assignment_links (backbone_device_id, assignment_id)
+      VALUES (?, ?)
+    `).run(secondBackboneDeviceId, assignmentId);
+    const insertDuplicateLiveSerialIgnoringCase = () => db.prepare(`
+      INSERT INTO backbone_devices (catalog_id, name, serial_number)
+      VALUES (?, 'Rocket Prism Este', 'backbone-42')
+    `).run(catalogId);
+    const insertDuplicateRetiredSerial = () => db.prepare(`
+      INSERT INTO backbone_devices (catalog_id, name, serial_number, status)
+      VALUES (?, 'Rocket Prism Reserva', 'backbone-42', 'retired')
+    `).run(catalogId);
+
+    expect(insertSecondActiveLinkForSameAssignment).toThrow();
+    expect(insertDuplicateLiveSerialIgnoringCase).toThrow();
+    expect(insertDuplicateRetiredSerial).not.toThrow();
+  });
 });
