@@ -130,6 +130,8 @@ describe('backbone management repository', () => {
   test('updates optimistically and rejects stale or retired-with-links changes', () => {
     db = freshDb();
     const fixture = seed(db);
+    expect(() => createBackbone(db!, input(fixture.catalogId, { status: 'invalid-status' }), null))
+      .toThrow(BackboneValidationError);
     const created = createBackbone(db, input(fixture.catalogId), null);
     const updated = updateBackbone(db, created.id, input(fixture.catalogId, {
       name: 'Core Atualizado', expectedUpdatedAt: created.updatedAt
@@ -167,5 +169,34 @@ describe('backbone management repository', () => {
       .toEqual({ count: 0 });
     expect(db.prepare('SELECT ended_by AS endedBy, change_reason AS reason FROM backbone_assignment_links WHERE assignment_id = ? ORDER BY id DESC LIMIT 1').get(fixture.activeAssignmentId))
       .toEqual({ endedBy: fixture.actorId, reason: 'Retirado' });
+  });
+
+  test('keeps the current active link when a transfer insert is rejected', () => {
+    db = freshDb();
+    const fixture = seed(db);
+    const first = createBackbone(db, input(fixture.catalogId, { name: 'Core A' }), null);
+    const blocked = createBackbone(db, input(fixture.catalogId, {
+      name: 'Core Bloqueado', serialNumber: 'SN-002', assetTag: 'AT-002'
+    }), null);
+    setAssignmentBackbone(db, fixture.activeAssignmentId, { backboneDeviceId: first.id, reason: null }, fixture.actorId);
+    db.exec(`
+      CREATE TRIGGER reject_blocked_backbone_link
+      BEFORE INSERT ON backbone_assignment_links
+      WHEN NEW.backbone_device_id = ${blocked.id}
+      BEGIN
+        SELECT RAISE(ABORT, 'blocked transfer insert');
+      END;
+    `);
+
+    expect(() => setAssignmentBackbone(db!, fixture.activeAssignmentId, {
+      backboneDeviceId: blocked.id, reason: 'Transferência falhada'
+    }, fixture.actorId)).toThrow('blocked transfer insert');
+    expect(listAssignments(db, {
+      mapping: 'linked', backboneDeviceId: first.id, page: 1, pageSize: 25
+    }).items).toEqual([expect.objectContaining({ id: fixture.activeAssignmentId, backboneDeviceId: first.id })]);
+    expect(db.prepare(`
+      SELECT COUNT(*) AS count FROM backbone_assignment_links
+      WHERE assignment_id = ? AND ended_at IS NULL
+    `).get(fixture.activeAssignmentId)).toEqual({ count: 1 });
   });
 });

@@ -17,6 +17,7 @@ export class BackboneValidationError extends Error {}
 
 type BackboneRow = Omit<BackboneDeviceSummary, 'provisional'> & { provisional: number };
 type AssignmentRow = BackboneAssignmentSummary;
+const BACKBONE_STATUSES: ReadonlySet<BackboneStatus> = new Set(['active', 'maintenance', 'retired']);
 
 const BACKBONE_COLUMNS = `
   bd.id, bd.catalog_id AS catalogId, ec.brand AS catalogBrand, ec.model AS catalogModel,
@@ -112,6 +113,9 @@ function normalizeInput(input: BackboneWriteInput): Omit<BackboneWriteInput, 'ex
   if (!name) throw new BackboneValidationError('Nome do backbone é obrigatório');
   if (!Number.isInteger(input.catalogId) || input.catalogId <= 0) {
     throw new BackboneValidationError('Catálogo inválido');
+  }
+  if (!BACKBONE_STATUSES.has(input.status)) {
+    throw new BackboneValidationError('Estado do backbone inválido');
   }
   return {
     ...input,
@@ -253,30 +257,43 @@ export function updateBackbone(
 ): BackboneDeviceDetail {
   const normalized = normalizeInput(input);
   ensureCatalog(db, normalized.catalogId);
-  const existing = db.prepare('SELECT updated_at AS updatedAt FROM backbone_devices WHERE id = ?').get(id) as { updatedAt: string } | undefined;
-  if (!existing) throw new BackboneNotFoundError('Backbone não encontrado');
-  if (normalized.expectedUpdatedAt && normalized.expectedUpdatedAt !== existing.updatedAt) {
-    throw new BackboneConflictError('O backbone foi alterado por outra pessoa');
-  }
-  if (normalized.status === 'retired') {
-    const activeLink = db.prepare(`
-      SELECT id FROM backbone_assignment_links WHERE backbone_device_id = ? AND ended_at IS NULL
-    `).get(id);
-    if (activeLink) throw new BackboneValidationError('Desvincule ou transfira os equipamentos antes de retirar o backbone');
-  }
-  try {
+  const update = db.transaction(() => {
+    const existing = db.prepare('SELECT updated_at AS updatedAt FROM backbone_devices WHERE id = ?').get(id) as { updatedAt: string } | undefined;
+    if (!existing) throw new BackboneNotFoundError('Backbone não encontrado');
+    if (normalized.expectedUpdatedAt && normalized.expectedUpdatedAt !== existing.updatedAt) {
+      throw new BackboneConflictError('O backbone foi alterado por outra pessoa');
+    }
+    if (normalized.status === 'retired') {
+      const activeLink = db.prepare(`
+        SELECT id FROM backbone_assignment_links WHERE backbone_device_id = ? AND ended_at IS NULL
+      `).get(id);
+      if (activeLink) throw new BackboneValidationError('Desvincule ou transfira os equipamentos antes de retirar o backbone');
+    }
     const result = db.prepare(`
       UPDATE backbone_devices SET
         catalog_id = ?, name = ?, status = ?, serial_number = ?, asset_tag = ?,
         ip_address = ?, mac_address = ?, island = ?, zone = ?, notes = ?, updated_at = ?
       WHERE id = ? AND (? IS NULL OR updated_at = ?)
+        AND (? <> 'retired' OR NOT EXISTS (
+          SELECT 1 FROM backbone_assignment_links
+          WHERE backbone_device_id = backbone_devices.id AND ended_at IS NULL
+        ))
     `).run(
       normalized.catalogId, normalized.name, normalized.status, normalized.serialNumber,
       normalized.assetTag, normalized.ipAddress, normalized.macAddress, normalized.island,
       normalized.zone, normalized.notes, nextUpdatedAt(existing.updatedAt), id,
-      normalized.expectedUpdatedAt ?? null, normalized.expectedUpdatedAt ?? null
+      normalized.expectedUpdatedAt ?? null, normalized.expectedUpdatedAt ?? null, normalized.status
     );
-    if (result.changes === 0) throw new BackboneConflictError('O backbone foi alterado por outra pessoa');
+    if (result.changes === 0) {
+      const activeLink = normalized.status === 'retired' && db.prepare(`
+        SELECT id FROM backbone_assignment_links WHERE backbone_device_id = ? AND ended_at IS NULL
+      `).get(id);
+      if (activeLink) throw new BackboneValidationError('Desvincule ou transfira os equipamentos antes de retirar o backbone');
+      throw new BackboneConflictError('O backbone foi alterado por outra pessoa');
+    }
+  });
+  try {
+    update();
     const updated = getBackbone(db, id);
     if (!updated) throw new BackboneNotFoundError('Backbone não encontrado');
     return updated;
