@@ -1071,6 +1071,7 @@ h2 {
 .client-form select,
 .client-form textarea,
 .bulk-ip-row input,
+.bulk-ip-filters input,
 .action-panel input,
 .action-panel select {
   min-height: 40px;
@@ -1093,6 +1094,7 @@ h2 {
 .client-form select:focus-visible,
 .client-form textarea:focus-visible,
 .bulk-ip-row input:focus-visible,
+.bulk-ip-filters input:focus-visible,
 .action-panel input:focus-visible,
 .action-panel select:focus-visible {
   outline: none;
@@ -4114,8 +4116,37 @@ label.field-toggle {
   gap: var(--space-4);
 }
 
+/* Barra de contexto: o resumo à esquerda, busca e filtro à direita. Colapsa
+   para uma coluna quando o diálogo encolhe. */
+.bulk-ip-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.bulk-ip-filters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.bulk-ip-filters .field {
+  min-width: 220px;
+}
+
+.bulk-ip-none {
+  margin: 0;
+  padding: var(--space-5) 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
 .bulk-ip-intro {
   margin: 0;
+  max-width: 46ch;
   color: var(--text-2);
   font-size: var(--fs-sm);
 }

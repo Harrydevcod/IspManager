@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Dialog, EmptyState, Message, SkeletonList, useToast } from '../../components';
+import { Button, Dialog, EmptyState, Field, Message, SkeletonList, useToast } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { suggestIpPrefix } from '../../lib/ip';
 import { IpField } from './IpField';
@@ -34,6 +34,8 @@ export function BulkIpDialog({ onClose, onSaved }: BulkIpDialogProps) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [search, setSearch] = useState('');
+  const [onlyEmpty, setOnlyEmpty] = useState(false);
 
   useEffect(() => {
     authFetch('http://127.0.0.1:3001/api/service-device-assignments')
@@ -55,6 +57,21 @@ export function BulkIpDialog({ onClose, onSaved }: BulkIpDialogProps) {
     const trimmed = (value || '').trim();
     return trimmed !== '' && trimmed !== currentPrefix;
   }
+
+  // Filtrar é só uma vista: os rascunhos vivem por id, por isso escrever num
+  // campo, filtrar e voltar atrás não perde nada, e gravar continua a olhar
+  // para a lista toda.
+  const term = search.trim().toLowerCase();
+  const visibleRows = rows.filter((row) => {
+    if (onlyEmpty && isFilled(drafts[row.id], prefix)) {
+      return false;
+    }
+    if (!term) {
+      return true;
+    }
+    return [row.clientName, row.brand, row.model, row.serialNumber, drafts[row.id]]
+      .some((value) => (value || '').toLowerCase().includes(term));
+  });
 
   async function save() {
     // Só viaja o que mudou; o prefixo sozinho conta como campo por preencher.
@@ -119,16 +136,39 @@ export function BulkIpDialog({ onClose, onSaved }: BulkIpDialogProps) {
       )}
       {!loading && rows.length > 0 && (
         <div className="bulk-ip">
-          <p className="bulk-ip-intro">
-            <strong>{filled}</strong> de {rows.length} com IP. Escreve só o número final; para outra faixa, reescreve a
-            linha inteira.
-          </p>
+          <div className="bulk-ip-toolbar">
+            <p className="bulk-ip-intro">
+              <strong>{filled}</strong> de {rows.length} com IP. Escreve só o número final; para outra faixa, reescreve a
+              linha inteira.
+            </p>
+            <div className="bulk-ip-filters">
+              <Field
+                type="search"
+                label="Procurar"
+                hideLabel
+                placeholder="Cliente, equipamento ou IP"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+              <Button
+                variant={onlyEmpty ? 'primary' : 'secondary'}
+                size="sm"
+                onClick={() => setOnlyEmpty((current) => !current)}
+                aria-pressed={onlyEmpty}
+              >
+                Por preencher ({rows.length - filled})
+              </Button>
+            </div>
+          </div>
           <div className="bulk-ip-table">
             <div className="bulk-ip-head">
               <span>Cliente e equipamento</span>
               <span>IP</span>
             </div>
-            {rows.map((row) => (
+            {visibleRows.length === 0 && (
+              <p className="bulk-ip-none">Nenhum equipamento corresponde ao filtro.</p>
+            )}
+            {visibleRows.map((row) => (
               <div key={row.id} className="bulk-ip-row">
                 <span className="bulk-ip-device">
                   <strong>{row.clientName}</strong>
