@@ -44,14 +44,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.expenses-header-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
 .expenses-filter-shell .filter-bar {
   align-items: end;
   margin-top: var(--space-4);
@@ -643,12 +635,6 @@
 @media (max-width: 760px) {
   .expenses-module .module-header {
     align-items: stretch;
-  }
-  .expenses-header-actions {
-    justify-content: stretch;
-  }
-  .expenses-header-actions button {
-    flex: 1 1 180px;
   }
   .expenses-filter-shell .filter-bar {
     align-items: stretch;

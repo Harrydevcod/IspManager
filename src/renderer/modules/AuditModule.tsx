@@ -1,7 +1,7 @@
 import { Activity, Banknote, Inbox, KeyRound, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { Button, EmptyState, ErrorRetry, Field, FilterBar, Select, SkeletonList } from '../components';
+import { Button, EmptyState, ErrorRetry, Field, FilterBar, ModuleHeaderActions, Select, SkeletonList } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatPtDate, formatPtDateTime } from '../lib/format';
 import './AuditModule.css';
@@ -133,9 +133,14 @@ export function AuditModule() {
             {hasFilter ? 'eventos nos filtros atuais' : 'eventos registados'}
           </p>
         </div>
-        <Button variant="secondary" size="sm" loading={loading} onClick={() => void load()}>
-          Atualizar
-        </Button>
+        <ModuleHeaderActions
+          ariaLabel="Ações de auditoria"
+          secondary={
+            <Button variant="secondary" loading={loading} onClick={() => void load()}>
+              Atualizar
+            </Button>
+          }
+        />
       </div>
 
       <div className="audit-filter-sticky">

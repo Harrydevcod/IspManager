@@ -1,6 +1,6 @@
-import { Activity, AlertTriangle, Banknote, Cable, CheckCircle2, CopyX, MessageCircle, UserCog, UsersRound } from 'lucide-react';
+import { Activity, AlertTriangle, Banknote, Cable, CheckCircle2, CopyX, Download, MessageCircle, UserCog, UsersRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Button, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, SkeletonList } from '../components';
+import { Button, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, ModuleHeaderActions, SkeletonList } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
@@ -201,16 +201,28 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
           <p className="eyebrow">Modulo</p>
           <h2>Relatorios</h2>
         </div>
-        <div className="inline-actions report-tabs">
-          <Button variant="ghost" size="sm" className={view === 'revenue' ? 'active' : ''} onClick={() => changeView('revenue')}>Receita</Button>
-          <Button variant="ghost" size="sm" className={view === 'overdue' ? 'active' : ''} onClick={() => changeView('overdue')}>Atrasos</Button>
-          <Button variant="ghost" size="sm" className={view === 'stock' ? 'active' : ''} onClick={() => changeView('stock')}>Stock</Button>
-          <Button variant="ghost" size="sm" className={view === 'incomplete' ? 'active' : ''} onClick={() => changeView('incomplete')}>Incompletos</Button>
-          <Button variant="ghost" size="sm" className={view === 'duplicates' ? 'active' : ''} onClick={() => changeView('duplicates')}>Duplicados</Button>
-          <Button variant="secondary" size="sm" disabled={(view === 'incomplete' || view === 'duplicates') ? !dq : !summary} onClick={exportCsv}>
-            Exportar CSV
-          </Button>
-        </div>
+        <ModuleHeaderActions
+          ariaLabel="Ações de relatórios"
+          context={
+            <div className="report-tabs">
+              <Button variant="ghost" size="sm" className={view === 'revenue' ? 'active' : ''} onClick={() => changeView('revenue')}>Receita</Button>
+              <Button variant="ghost" size="sm" className={view === 'overdue' ? 'active' : ''} onClick={() => changeView('overdue')}>Atrasos</Button>
+              <Button variant="ghost" size="sm" className={view === 'stock' ? 'active' : ''} onClick={() => changeView('stock')}>Stock</Button>
+              <Button variant="ghost" size="sm" className={view === 'incomplete' ? 'active' : ''} onClick={() => changeView('incomplete')}>Incompletos</Button>
+              <Button variant="ghost" size="sm" className={view === 'duplicates' ? 'active' : ''} onClick={() => changeView('duplicates')}>Duplicados</Button>
+            </div>
+          }
+          secondary={
+            <Button
+              variant="secondary"
+              leadingIcon={<Download size={16} aria-hidden />}
+              disabled={(view === 'incomplete' || view === 'duplicates') ? !dq : !summary}
+              onClick={exportCsv}
+            >
+              Exportar CSV
+            </Button>
+          }
+        />
       </div>
 
       {view !== 'incomplete' && view !== 'duplicates' && (

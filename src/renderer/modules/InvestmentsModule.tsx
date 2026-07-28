@@ -1,7 +1,7 @@
 import { Pencil, Plus, Trash2, Wallet, X } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Card, Combobox, DataList, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, MetricGrid, Select, SkeletonList, Textarea, useConfirm, useToast } from '../components';
+import { Badge, Button, Card, Combobox, DataList, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, MetricGrid, ModuleHeaderActions, Select, SkeletonList, Textarea, useConfirm, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './InvestmentsModule.css';
@@ -378,12 +378,17 @@ export function InvestmentsModule() {
           <p className="eyebrow">Painel financeiro ISP</p>
           <h2>Investimentos</h2>
         </div>
-        <div className="inline-actions">
-          <Field label="Mes" type="month" value={month} onChange={(e) => setMonth(e.target.value)} disabled={showAllMonths} />
-          <Button size="sm" leadingIcon={<Plus size={14} aria-hidden />} onClick={openCreate}>
-            Novo investimento
-          </Button>
-        </div>
+        <ModuleHeaderActions
+          ariaLabel="Ações de investimentos"
+          context={
+            <Field label="Mes" type="month" value={month} onChange={(e) => setMonth(e.target.value)} disabled={showAllMonths} />
+          }
+          primary={
+            <Button leadingIcon={<Plus size={16} aria-hidden />} onClick={openCreate}>
+              Novo investimento
+            </Button>
+          }
+        />
       </div>
 
       <MetricGrid label="Investimento próprio">

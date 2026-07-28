@@ -1,4 +1,4 @@
-import { Button, Message } from '../../components';
+import { Button, Message, ModuleHeaderActions } from '../../components';
 import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
 
 export type BillingPreviewRow = {
@@ -33,19 +33,22 @@ export function MonthlyBillingPreview({ preview, loading, onConfirm, onClose }: 
           <p className="eyebrow">Pre-visualizacao da geracao</p>
           <h2>Mensalidades de {formatPtMonth(preview.referenceMonth)}</h2>
         </div>
-        <div className="inline-actions">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={onConfirm}
-            disabled={loading || preview.toCreate.length === 0}
-          >
-            {loading ? 'A gerar...' : `Confirmar e gerar (${preview.toCreate.length})`}
-          </Button>
-          <Button variant="secondary" size="sm" onClick={onClose} disabled={loading}>
-            Cancelar
-          </Button>
-        </div>
+        <ModuleHeaderActions
+          ariaLabel="Ações da pré-visualização"
+          secondary={
+            <Button variant="secondary" onClick={onClose} disabled={loading}>
+              Cancelar
+            </Button>
+          }
+          primary={
+            <Button
+              onClick={onConfirm}
+              disabled={loading || preview.toCreate.length === 0}
+            >
+              {loading ? 'A gerar...' : `Confirmar e gerar (${preview.toCreate.length})`}
+            </Button>
+          }
+        />
       </div>
       <div className="monthly-preview-summary">
         <span className="monthly-preview-chip">

@@ -1,7 +1,7 @@
 import { KeyRound, Pencil, Plus, ShieldCheck, Trash2, UserCog, UsersRound, Wrench } from 'lucide-react';
 import type { FormEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Select, SkeletonList, useConfirm, useToast } from '../components';
+import { Button, Dialog, EmptyState, ErrorRetry, Field, FilterBar, ModuleHeaderActions, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import type { UserRole } from '../lib/auth';
 import './UsersModule.css';
@@ -248,11 +248,14 @@ export function UsersModule() {
             </p>
           )}
         </div>
-        <div className="inline-actions">
-          <Button size="sm" leadingIcon={<Plus size={14} aria-hidden />} onClick={openCreate}>
-            Novo utilizador
-          </Button>
-        </div>
+        <ModuleHeaderActions
+          ariaLabel="Ações de utilizadores"
+          primary={
+            <Button leadingIcon={<Plus size={16} aria-hidden />} onClick={openCreate}>
+              Novo utilizador
+            </Button>
+          }
+        />
       </div>
 
       {counts.total > 3 && (

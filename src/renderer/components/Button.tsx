@@ -1,7 +1,7 @@
 import { Loader2 } from 'lucide-react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'icon';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'critical' | 'danger' | 'icon';
 type Size = 'sm' | 'md' | 'lg';
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -37,9 +37,12 @@ export function Button({
       aria-busy={loading || undefined}
       {...rest}
     >
-      {loading ? <Loader2 size={14} className="btn-spinner" aria-hidden /> : leadingIcon}
-      {children}
-      {trailingIcon}
+      <span className="btn-content">
+        {leadingIcon}
+        {children}
+        {trailingIcon}
+      </span>
+      {loading ? <Loader2 size={16} className="btn-spinner" aria-hidden /> : null}
     </button>
   );
 }

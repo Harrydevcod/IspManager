@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, RotateCcw, Send } from 'lucide-react';
-import { BulkActionBar, Button, ErrorRetry, Field, FilterBar, Message, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
+import { AlertTriangle, CalendarPlus, RotateCcw, Send } from 'lucide-react';
+import { BulkActionBar, Button, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { formatPtMonth } from '../lib/format';
 import { authFetch } from '../lib/auth';
 import { downloadAuthenticated, printAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
@@ -858,28 +858,38 @@ export function PaymentsModule({
           <p className="eyebrow">Modulo</p>
           <h2>Pagamentos</h2>
         </div>
-        <div className="inline-actions">
-          <Field label="Mes" type="month" value={referenceMonth} onChange={(event) => setReferenceMonth(event.target.value)} />
-          <Button variant="secondary" size="sm" onClick={() => void openMonthlyPreview()} disabled={monthlyLoading}>
-            {monthlyLoading && !monthlyPreview ? 'A calcular...' : 'Gerar mensalidades'}
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => void openReversePreview()}
-            disabled={reverseLoading}
-            title="Reverter mensalidades geradas para este mes"
-          >
-            <RotateCcw size={14} aria-hidden />
-            {reverseLoading ? 'A consultar...' : 'Reverter mensalidades'}
-          </Button>
-          <Button variant="secondary" size="sm" leadingIcon={<Send size={14} aria-hidden />} onClick={() => void openOverduePreview()} disabled={notifyLoading}>
-            {notifyLoading ? 'A consultar...' : 'Notificar atrasados'}
-          </Button>
-          <Button variant="secondary" size="sm" leadingIcon={<AlertTriangle size={14} aria-hidden />} onClick={() => void openOverduePreview('suspension')} disabled={notifyLoading}>
-            Avisar suspensao
-          </Button>
-        </div>
+        <ModuleHeaderActions
+          ariaLabel="Ações de pagamentos"
+          context={
+            <Field label="Mes" type="month" value={referenceMonth} onChange={(event) => setReferenceMonth(event.target.value)} />
+          }
+          secondary={
+            <>
+              <Button variant="secondary" leadingIcon={<Send size={16} aria-hidden />} onClick={() => void openOverduePreview()} disabled={notifyLoading}>
+                {notifyLoading ? 'A consultar...' : 'Notificar atrasados'}
+              </Button>
+              <Button variant="secondary" leadingIcon={<AlertTriangle size={16} aria-hidden />} onClick={() => void openOverduePreview('suspension')} disabled={notifyLoading}>
+                Avisar suspensao
+              </Button>
+            </>
+          }
+          critical={
+            <Button
+              variant="critical"
+              leadingIcon={<RotateCcw size={16} aria-hidden />}
+              onClick={() => void openReversePreview()}
+              disabled={reverseLoading}
+              title="Reverter mensalidades geradas para este mes"
+            >
+              {reverseLoading ? 'A consultar...' : 'Reverter mensalidades'}
+            </Button>
+          }
+          primary={
+            <Button leadingIcon={<CalendarPlus size={16} aria-hidden />} onClick={() => void openMonthlyPreview()} disabled={monthlyLoading}>
+              {monthlyLoading && !monthlyPreview ? 'A calcular...' : 'Gerar mensalidades'}
+            </Button>
+          }
+        />
       </div>
 
       {/* Message primitive — renders p.module-message, byte-identical to original */}

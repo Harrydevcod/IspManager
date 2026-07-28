@@ -1,7 +1,7 @@
-import { Cable, MessageCircle, Pencil, Upload, UsersRound, Wallet } from 'lucide-react';
+import { Cable, MessageCircle, Pencil, Plus, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, BulkActionBar, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
+import { Badge, BulkActionBar, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { ClientImportDialog } from './clients/import';
 import { authFetch, useAuth } from '../lib/auth';
 import { CV_ISLANDS, DEFAULT_ISLAND, isKnownIsland } from '../lib/islands';
@@ -415,14 +415,19 @@ export function ClientsModule({
           <h2>Clientes</h2>
         </div>
         {canManageClients && (
-          <div className="inline-actions">
-            <Button variant="secondary" size="sm" leadingIcon={<Upload size={14} aria-hidden />} onClick={() => setShowImport(true)}>
-              Importar
-            </Button>
-            <Button size="sm" onClick={openCreate}>
-              Novo cliente
-            </Button>
-          </div>
+          <ModuleHeaderActions
+            ariaLabel="Ações de clientes"
+            secondary={
+              <Button variant="secondary" leadingIcon={<Upload size={16} aria-hidden />} onClick={() => setShowImport(true)}>
+                Importar
+              </Button>
+            }
+            primary={
+              <Button leadingIcon={<Plus size={16} aria-hidden />} onClick={openCreate}>
+                Novo cliente
+              </Button>
+            }
+          />
         )}
       </div>
 

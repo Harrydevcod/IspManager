@@ -1,7 +1,7 @@
 import { ClipboardList, Pencil, Plus, Trash2, X } from 'lucide-react';
 import type { CSSProperties, DragEvent, FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Dialog, ErrorRetry, Field, Select, Skeleton, Textarea, useConfirm, useToast } from '../components';
+import { Button, Dialog, ErrorRetry, Field, ModuleHeaderActions, Select, Skeleton, Textarea, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatPtDate } from '../lib/format';
 import './WorkOrdersModule.css';
@@ -302,11 +302,14 @@ export function WorkOrdersModule() {
             </p>
           )}
         </div>
-        <div className="inline-actions">
-          <Button size="sm" leadingIcon={<Plus size={14} aria-hidden />} onClick={openCreate}>
-            Nova OS
-          </Button>
-        </div>
+        <ModuleHeaderActions
+          ariaLabel="Ações de ordens de serviço"
+          primary={
+            <Button leadingIcon={<Plus size={16} aria-hidden />} onClick={openCreate}>
+              Nova OS
+            </Button>
+          }
+        />
       </div>
 
       {!board && (loadError

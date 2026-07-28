@@ -1,7 +1,7 @@
 import { FileText, Pencil, Plus, Repeat, Trash2 } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Select, SkeletonList, Textarea, Toggle, useConfirm, useToast } from '../components';
+import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, ModuleHeaderActions, Select, SkeletonList, Textarea, Toggle, useConfirm, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './ExpensesModule.css';
@@ -342,14 +342,19 @@ export function ExpensesModule() {
           <p className="eyebrow">Painel operacional</p>
           <h2>Despesas operacionais</h2>
         </div>
-        <div className="expenses-header-actions">
-          <Button variant="secondary" leadingIcon={<Repeat size={16} aria-hidden />} onClick={openTemplates}>
-            Recorrentes
-          </Button>
-          <Button leadingIcon={<Plus size={16} aria-hidden />} onClick={openCreate}>
-            Nova despesa
-          </Button>
-        </div>
+        <ModuleHeaderActions
+          ariaLabel="Ações de despesas"
+          secondary={
+            <Button variant="secondary" leadingIcon={<Repeat size={16} aria-hidden />} onClick={openTemplates}>
+              Recorrentes
+            </Button>
+          }
+          primary={
+            <Button leadingIcon={<Plus size={16} aria-hidden />} onClick={openCreate}>
+              Nova despesa
+            </Button>
+          }
+        />
       </div>
 
       <div className="expenses-metrics" aria-label="Resumo de despesas">
