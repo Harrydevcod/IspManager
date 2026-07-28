@@ -1,8 +1,8 @@
-import { Activity, Cable, Pencil, Wifi } from 'lucide-react';
+import { Activity, Cable, Pencil, Plus, Wifi } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Select, SkeletonList, useToast } from '../components';
+import { Button, Dialog, EmptyState, ErrorRetry, Field, FilterBar, ModuleHeaderActions, Select, SkeletonList, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import type { PlanRow } from '../types';
@@ -169,9 +169,14 @@ export function PlansModule() {
           </p>
         </div>
         {canManagePlans && (
-          <Button onClick={openCreate}>
-            Novo plano
-          </Button>
+          <ModuleHeaderActions
+            ariaLabel="Ações de planos"
+            primary={
+              <Button leadingIcon={<Plus size={16} aria-hidden />} onClick={openCreate}>
+                Novo plano
+              </Button>
+            }
+          />
         )}
       </div>
 

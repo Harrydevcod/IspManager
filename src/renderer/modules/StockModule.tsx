@@ -1,8 +1,8 @@
-import { Activity, ArrowDownUp, Banknote, Boxes, Cable, Gauge, HardDrive, Network, Pencil, Radio, Router, Users } from 'lucide-react';
+import { Activity, ArrowDownUp, Banknote, Boxes, Cable, Gauge, HardDrive, Network, Pencil, Plus, Radio, Router, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, PaginationControls, Select, useToast } from '../components';
+import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
 import { compareNumber, compareText, paginateRows, sortRows, type SortState } from '../lib/listView';
@@ -331,9 +331,14 @@ export function StockModule({
           )}
         </div>
         {canManageStock && (
-          <Button onClick={openCreateCatalog}>
-            {stockTab === 'material' ? 'Novo material' : 'Novo equipamento'}
-          </Button>
+          <ModuleHeaderActions
+            ariaLabel="Ações de stock"
+            primary={
+              <Button leadingIcon={<Plus size={16} aria-hidden />} onClick={openCreateCatalog}>
+                {stockTab === 'material' ? 'Novo material' : 'Novo equipamento'}
+              </Button>
+            }
+          />
         )}
       </div>
 
@@ -439,10 +444,19 @@ export function StockModule({
               <h2>{selectedCatalog.brand ? `${selectedCatalog.brand} ${selectedCatalog.model}` : selectedCatalog.model}</h2>
             </div>
             {canManageStock && (
-              <div className="inline-actions">
-                <Button variant="secondary" size="sm" onClick={() => editCatalog(selectedCatalog)}>Editar</Button>
-                <Button size="sm" onClick={openMovementForm}>Movimento</Button>
-              </div>
+              <ModuleHeaderActions
+                ariaLabel="Ações do item de stock"
+                secondary={
+                  <Button variant="secondary" leadingIcon={<Pencil size={16} aria-hidden />} onClick={() => editCatalog(selectedCatalog)}>
+                    Editar
+                  </Button>
+                }
+                primary={
+                  <Button leadingIcon={<ArrowDownUp size={16} aria-hidden />} onClick={openMovementForm}>
+                    Movimento
+                  </Button>
+                }
+              />
             )}
           </div>
           {selectedCatalog.category === 'material' ? (

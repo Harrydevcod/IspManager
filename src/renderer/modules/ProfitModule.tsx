@@ -1,6 +1,6 @@
 import { Banknote, Coins, Download, FileText, Percent, RadioTower, Wallet } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Card, ErrorRetry, Field, Message, MetricCard, MetricGrid, RevenueBars, formatCompactCve } from '../components';
+import { Button, Card, ErrorRetry, Field, Message, MetricCard, MetricGrid, ModuleHeaderActions, RevenueBars, formatCompactCve } from '../components';
 import { authFetch } from '../lib/auth';
 import { downloadAuthenticated } from '../lib/download';
 import { formatCve } from '../lib/format';
@@ -101,28 +101,39 @@ export function ProfitModule() {
           <p className="eyebrow">Painel financeiro ISP</p>
           <h2>Lucro</h2>
         </div>
-        <div className="inline-actions">
-          <Field label="Mes" type="month" value={month} onChange={(e) => setMonth(e.target.value)} disabled={showAllMonths} />
-          <Button variant="secondary" onClick={() => setShowAllMonths((s) => !s)} className={showAllMonths ? 'active' : ''}>
-            {showAllMonths ? 'Mes selecionado' : 'Todos os meses'}
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => void downloadReport('pdf')}
-            disabled={exportBusy !== null}
-            title="Exportar relatório PDF"
-          >
-            <FileText size={14} /> {exportBusy === 'pdf' ? 'A gerar…' : 'PDF'}
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => void downloadReport('xlsx')}
-            disabled={exportBusy !== null}
-            title="Exportar dados em Excel"
-          >
-            <Download size={14} /> {exportBusy === 'xlsx' ? 'A gerar…' : 'Excel'}
-          </Button>
-        </div>
+        <ModuleHeaderActions
+          ariaLabel="Ações de lucro"
+          context={
+            <>
+              <Field label="Mes" type="month" value={month} onChange={(e) => setMonth(e.target.value)} disabled={showAllMonths} />
+              <Button variant="ghost" onClick={() => setShowAllMonths((s) => !s)} className={showAllMonths ? 'active' : ''}>
+                {showAllMonths ? 'Mes selecionado' : 'Todos os meses'}
+              </Button>
+            </>
+          }
+          secondary={
+            <>
+              <Button
+                variant="secondary"
+                leadingIcon={<FileText size={16} aria-hidden />}
+                onClick={() => void downloadReport('pdf')}
+                disabled={exportBusy !== null}
+                title="Exportar relatório PDF"
+              >
+                {exportBusy === 'pdf' ? 'A gerar…' : 'PDF'}
+              </Button>
+              <Button
+                variant="secondary"
+                leadingIcon={<Download size={16} aria-hidden />}
+                onClick={() => void downloadReport('xlsx')}
+                disabled={exportBusy !== null}
+                title="Exportar dados em Excel"
+              >
+                {exportBusy === 'xlsx' ? 'A gerar…' : 'Excel'}
+              </Button>
+            </>
+          }
+        />
       </div>
 
       {exportError && <Message tone="error">{exportError}</Message>}
