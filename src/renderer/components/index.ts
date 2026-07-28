@@ -4,6 +4,7 @@ export * from './MetricGrid';
 export * from './Card';
 export * from './RevenueBars';
 export * from './Button';
+export * from './ModuleHeaderActions';
 export * from './Field';
 export * from './Select';
 export * from './Textarea';
