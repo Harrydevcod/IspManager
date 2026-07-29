@@ -29,7 +29,7 @@ function removeId(current: ReadonlySet<number>, id: number): Set<number> {
 }
 
 function resultBackboneId(result: TopologySearchResult): number | null {
-  if (result.node.kind === 'backbone') return result.node.catalogId;
+  if (result.node.kind === 'backbone') return result.node.backboneDeviceId;
   const ancestor = result.ancestors.find((item) => item.kind === 'backbone');
   const parsed = ancestor ? Number(ancestor.id.slice('backbone:'.length)) : NaN;
   return Number.isInteger(parsed) ? parsed : null;

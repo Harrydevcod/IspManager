@@ -1,13 +1,30 @@
 /** @vitest-environment jsdom */
 
-import { act } from 'react';
+import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { TopologySearchResponse } from '../../../shared/topology';
+import { Button } from '../../components';
 import { branchOne, branchTwo, deviceOne, snapshot } from './topologyTestFixtures';
+import TopologyMapView from './TopologyMapView';
 import TopologyModule from './TopologyModule';
 
 const roots: Root[] = [];
+
+vi.mock('./BackboneWorkspace', () => ({
+  BackboneWorkspace: ({
+    onMutation,
+    onViewTopology
+  }: {
+    onMutation: () => void;
+    onViewTopology: (backboneDeviceId: number) => void;
+  }) => (
+    <section aria-label="Gestão de backbone">
+      <Button onClick={onMutation}>Concluir ligação</Button>
+      <Button onClick={() => onViewTopology(77)}>Ver na Topologia</Button>
+    </section>
+  )
+}));
 
 class ResizeObserverStub {
   observe() {}
@@ -49,29 +66,56 @@ function api(overrides: Partial<{
   };
 }
 
-async function mount(topologyApi = api()): Promise<HTMLElement> {
+async function mountWith(
+  element: ReactNode
+): Promise<HTMLElement> {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
   roots.push(root);
   await act(async () => {
-    root.render(
-      <TopologyModule
+    root.render(element);
+  });
+  await act(async () => { await Promise.resolve(); });
+  return container;
+}
+
+async function mountModule(topologyApi = api()): Promise<HTMLElement> {
+  return mountWith(
+    <TopologyModule
+      api={topologyApi}
+      onOpenClient={() => undefined}
+      onOpenService={() => undefined}
+      onOpenStock={() => undefined}
+    />
+  );
+}
+
+async function mountMap(topologyApi = api()): Promise<HTMLElement> {
+  return mountWith(
+    <TopologyMapView
         api={topologyApi}
         onOpenClient={() => undefined}
         onOpenService={() => undefined}
         onOpenStock={() => undefined}
-      />
-    );
-  });
-  await act(async () => { await Promise.resolve(); });
-  return container;
+      revision={0}
+      focusBackboneDeviceId={null}
+      onFocusHandled={() => undefined}
+    />
+  );
 }
 
 function button(container: HTMLElement, name: string): HTMLButtonElement {
   const result = [...container.querySelectorAll('button')]
     .find((candidate) => candidate.getAttribute('aria-label') === name);
   if (!result) throw new Error(`Button not found: ${name}`);
+  return result;
+}
+
+function tab(container: HTMLElement, name: string): HTMLButtonElement {
+  const result = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+    .find((candidate) => candidate.textContent?.trim() === name);
+  if (!result) throw new Error(`Tab not found: ${name}`);
   return result;
 }
 
@@ -98,10 +142,149 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-describe('TopologyModule branch interaction', () => {
-  test('starts collapsed and reuses the cached branch after collapse', async () => {
+describe('TopologyModule tab shell', () => {
+  test('opens Backbone as the first selected tab', async () => {
+    const container = await mountModule();
+
+    expect(tab(container, 'Backbone').getAttribute('aria-selected')).toBe('true');
+    expect(tab(container, 'Topologia').getAttribute('aria-selected')).toBe('false');
+    expect(container.querySelector('[role="tabpanel"]:not([hidden])')?.textContent)
+      .toContain('Concluir ligação');
+  });
+
+  test('moves selection and keyboard focus with horizontal arrow keys', async () => {
+    const container = await mountModule();
+    const backboneTab = tab(container, 'Backbone');
+    const topologyTab = tab(container, 'Topologia');
+    backboneTab.focus();
+
+    await act(async () => {
+      backboneTab.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'ArrowRight',
+        bubbles: true
+      }));
+      await vi.dynamicImportSettled();
+    });
+
+    expect(topologyTab.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(topologyTab);
+
+    await act(async () => {
+      topologyTab.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'ArrowLeft',
+        bubbles: true
+      }));
+    });
+
+    expect(backboneTab.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(backboneTab);
+  });
+
+  test('invalidates loaded map state only after a successful management mutation', async () => {
     const topologyApi = api();
-    const container = await mount(topologyApi);
+    const container = await mountModule(topologyApi);
+
+    await act(async () => {
+      tab(container, 'Topologia').click();
+      await vi.dynamicImportSettled();
+      await Promise.resolve();
+    });
+    expect(topologyApi.fetchSnapshot).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      button(container, 'Expandir ramo Ubiquiti Rocket Prism').click();
+      await Promise.resolve();
+      button(container, 'Selecionar Ubiquiti Rocket Prism').click();
+      tab(container, 'Backbone').click();
+    });
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>('button')]
+        .find((candidate) => candidate.textContent?.trim() === 'Concluir ligação')
+        ?.click();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      tab(container, 'Topologia').click();
+      await Promise.resolve();
+    });
+
+    expect(topologyApi.fetchSnapshot).toHaveBeenCalledTimes(2);
+    expect(container.textContent).not.toContain('CPE 100');
+    expect(container.textContent).toContain('Seleciona um nó');
+  });
+
+  test('opens Topologia and focuses the requested physical backbone after lazy load', async () => {
+    const focusedSnapshot = {
+      ...snapshot,
+      backbones: [{
+        ...snapshot.backbones[0],
+        id: 'backbone:77' as const,
+        backboneDeviceId: 77,
+        catalogId: 10,
+        label: 'Backbone físico Fogo'
+      }],
+      edges: [{
+        ...snapshot.edges[0],
+        id: 'core-link:root:isp:backbone:77' as const,
+        target: 'backbone:77' as const
+      }]
+    };
+    const container = await mountModule(api({
+      fetchSnapshot: vi.fn(async () => focusedSnapshot)
+    }));
+
+    await act(async () => {
+      [...container.querySelectorAll<HTMLButtonElement>('button')]
+        .find((candidate) => candidate.textContent?.trim() === 'Ver na Topologia')
+        ?.click();
+      await vi.dynamicImportSettled();
+      await Promise.resolve();
+    });
+
+    expect(tab(container, 'Topologia').getAttribute('aria-selected')).toBe('true');
+    expect(container.textContent).toContain('Equipamento backbone');
+    expect(container.textContent).toContain('Backbone físico Fogo');
+  });
+});
+
+describe('TopologyModule branch interaction', () => {
+  test('loads a physical backbone branch once even when its catalog id differs', async () => {
+    const physicalBackbone = {
+      ...snapshot.backbones[0],
+      id: 'backbone:77' as const,
+      backboneDeviceId: 77,
+      catalogId: 10
+    };
+    const physicalSnapshot = {
+      ...snapshot,
+      backbones: [physicalBackbone, snapshot.backbones[1]],
+      edges: [
+        {
+          ...snapshot.edges[0],
+          id: 'core-link:root:isp:backbone:77' as const,
+          target: 'backbone:77' as const
+        },
+        snapshot.edges[1]
+      ]
+    };
+    const physicalBranch = {
+      ...branchOne,
+      backbone: physicalBackbone,
+      nodes: [{
+        ...branchOne.nodes[0],
+        parentId: 'backbone:77' as const
+      }],
+      edges: [{
+        ...branchOne.edges[0],
+        id: 'client-link:backbone:77:assignment:100' as const,
+        source: 'backbone:77' as const
+      }]
+    };
+    const topologyApi = api({
+      fetchSnapshot: vi.fn(async () => physicalSnapshot),
+      fetchBranch: vi.fn(async (id: number) => id === 77 ? physicalBranch : branchTwo)
+    });
+    const container = await mountMap(topologyApi);
     expect(container.textContent).not.toContain('CPE 100');
 
     await act(async () => {
@@ -120,6 +303,7 @@ describe('TopologyModule branch interaction', () => {
       await Promise.resolve();
     });
     expect(topologyApi.fetchBranch).toHaveBeenCalledTimes(1);
+    expect(topologyApi.fetchBranch).toHaveBeenCalledWith(77);
   });
 
   test('keeps one failed branch isolated and retries only that branch', async () => {
@@ -132,7 +316,7 @@ describe('TopologyModule branch interaction', () => {
         return branchTwo;
       })
     });
-    const container = await mount(topologyApi);
+    const container = await mountMap(topologyApi);
 
     await act(async () => {
       button(container, 'Expandir ramo Ubiquiti Rocket Prism').click();
@@ -155,7 +339,7 @@ describe('TopologyModule branch interaction', () => {
 test('debounces server search, expands ancestors and opens the result inspector', async () => {
   vi.useFakeTimers();
   const topologyApi = api();
-  const container = await mount(topologyApi);
+  const container = await mountMap(topologyApi);
   const search = container.querySelector<HTMLInputElement>(
     '[aria-label="Pesquisar na topologia"]'
   );
@@ -216,7 +400,7 @@ test('expands and loads a backbone selected from server search', async () => {
       }]
     }))
   });
-  const container = await mount(topologyApi);
+  const container = await mountMap(topologyApi);
   const search = container.querySelector<HTMLInputElement>(
     '[aria-label="Pesquisar na topologia"]'
   );
@@ -257,7 +441,7 @@ test('surfaces the number of CPE assignments without a defined backbone link', a
       }
     }))
   });
-  const container = await mount(topologyApi);
+  const container = await mountMap(topologyApi);
 
   expect(container.textContent).toContain('CPE ligadas2');
   expect(container.textContent).toContain('Sem ligação2');
@@ -286,7 +470,7 @@ test('identifies a search result that has no defined backbone link', async () =>
       }]
     }))
   });
-  const container = await mount(topologyApi);
+  const container = await mountMap(topologyApi);
   const search = container.querySelector<HTMLInputElement>(
     '[aria-label="Pesquisar na topologia"]'
   );
@@ -310,7 +494,7 @@ test('identifies a search result that has no defined backbone link', async () =>
 });
 
 test('describes rendered relationships as defined links', async () => {
-  const container = await mount();
+  const container = await mountMap();
 
   expect(container.textContent).toContain('Ligação definida');
   expect(container.textContent).not.toContain('Linhagem de inventário');
@@ -332,7 +516,7 @@ test('recovers the global snapshot after an explicit retry', async () => {
       return snapshot;
     })
   });
-  const container = await mount(topologyApi);
+  const container = await mountMap(topologyApi);
   expect(container.textContent).toContain('Não foi possível abrir a topologia');
   const retry = [...container.querySelectorAll('button')]
     .find((candidate) => candidate.textContent?.includes('Tentar novamente'));
@@ -348,7 +532,7 @@ test('recovers the global snapshot after an explicit retry', async () => {
 });
 
 test('closes the inspector with Escape while preserving the graph', async () => {
-  const container = await mount();
+  const container = await mountMap();
   await act(async () => {
     button(container, 'Selecionar Ubiquiti Rocket Prism').click();
   });

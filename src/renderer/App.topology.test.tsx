@@ -121,6 +121,13 @@ beforeEach(() => {
     if (url.endsWith('/api/topology/backbones/10/clients')) {
       return json(branchWithTwoServices);
     }
+    if (url.includes('/api/topology/backbones?')) {
+      return json({ page: 1, pageSize: 25, total: 0, totalPages: 0, items: [] });
+    }
+    if (url.includes('/api/topology/assignments?')) {
+      return json({ page: 1, pageSize: 25, total: 0, totalPages: 0, items: [] });
+    }
+    if (url.endsWith('/api/stock/summary')) return json({ rows: [] });
     if (url.endsWith('/api/services')) return json(services);
     if (url.endsWith('/api/clients') || url.endsWith('/api/plans')) return json([]);
     if (url.endsWith('/api/audiovisual-config')) {
@@ -155,7 +162,7 @@ describe('topology App integration', () => {
     }
   );
 
-  test('loads the real topology module only after its sidebar action', async () => {
+  test('opens the lazy topology module on Backbone before loading the map tab', async () => {
     const container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -175,6 +182,28 @@ describe('topology App integration', () => {
       await vi.dynamicImportSettled();
     });
     for (let attempt = 0; attempt < 10; attempt += 1) {
+      if (container.querySelector('[role="tab"]')) break;
+      await act(async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 10));
+      });
+    }
+
+    const backboneTab = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+      .find((candidate) => candidate.textContent?.trim() === 'Backbone');
+    const mapTab = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+      .find((candidate) => candidate.textContent?.trim() === 'Topologia');
+    expect(backboneTab?.getAttribute('aria-selected')).toBe('true');
+    expect(mapTab?.getAttribute('aria-selected')).toBe('false');
+    expect(container.textContent).not.toContain('Mapa físico');
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => (
+      String(input).endsWith('/api/topology')
+    ))).toHaveLength(0);
+
+    await act(async () => {
+      mapTab?.click();
+      await vi.dynamicImportSettled();
+    });
+    for (let attempt = 0; attempt < 10; attempt += 1) {
       if (container.textContent?.includes('Mapa físico')) break;
       await act(async () => {
         await new Promise((resolve) => window.setTimeout(resolve, 10));
@@ -182,6 +211,9 @@ describe('topology App integration', () => {
     }
 
     expect(container.textContent).toContain('Mapa físico');
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => (
+      String(input).endsWith('/api/topology')
+    ))).toHaveLength(1);
   });
 
   test('opens the exact service selected from a CPE with multiple services', async () => {
@@ -200,6 +232,20 @@ describe('topology App integration', () => {
 
     await act(async () => topologyButton.click());
     await act(async () => { await vi.dynamicImportSettled(); });
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (document.querySelector('[role="tab"][aria-controls="topology-panel-topology"]')) break;
+      await act(async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 10));
+      });
+    }
+    const mapTab = document.querySelector<HTMLButtonElement>(
+      '[role="tab"][aria-controls="topology-panel-topology"]'
+    );
+    if (!mapTab) throw new Error('Topologia tab not found');
+    await act(async () => {
+      mapTab.click();
+      await vi.dynamicImportSettled();
+    });
     for (let attempt = 0; attempt < 20; attempt += 1) {
       if (findButton('Expandir ramo Ubiquiti Rocket Prism')) break;
       await act(async () => {
