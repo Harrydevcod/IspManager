@@ -123,6 +123,7 @@ export function BackboneList({
                 key={backbone.id}
                 variant="ghost"
                 role="option"
+                data-backbone-id={backbone.id}
                 aria-selected={selectedId === backbone.id}
                 className="backbone-row"
                 onClick={() => onSelect(backbone.id)}
@@ -142,6 +143,7 @@ export function BackboneList({
                 </span>
                 <span className="backbone-row-meta">
                   <span>{identity(backbone)}</span>
+                  {backbone.ipAddress && <span>IP {backbone.ipAddress}</span>}
                   <span>{location(backbone)}</span>
                   <span>{backbone.linkedAssignmentCount} ligados</span>
                 </span>

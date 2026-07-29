@@ -2,18 +2,22 @@ import {
   ArrowLeft,
   ArrowRightLeft,
   Cable,
+  ChevronLeft,
+  ChevronRight,
   Link2,
   Map,
   Pencil,
   RadioTower,
+  Search,
   Unlink
 } from 'lucide-react';
 import type {
   BackboneAssignmentSummary,
   BackboneDeviceDetail,
+  BackbonePage,
   BackboneStatus
 } from '../../../shared/backbone';
-import { Badge, Button } from '../../components';
+import { Badge, Button, Field } from '../../components';
 
 const STATUS_LABEL: Record<BackboneStatus, string> = {
   active: 'Ativo',
@@ -31,6 +35,10 @@ function assignmentIdentity(assignment: BackboneAssignmentSummary): string {
 
 type BackboneDetailProps = {
   backbone: BackboneDeviceDetail | null;
+  linked: BackbonePage<BackboneAssignmentSummary>;
+  linkedQuery: string;
+  linkedLoading: boolean;
+  linkedError: string | null;
   selectedId: number | null;
   canManage: boolean;
   loading: boolean;
@@ -40,10 +48,17 @@ type BackboneDetailProps = {
   onTransfer: (assignment: BackboneAssignmentSummary) => void;
   onUnlink: (assignment: BackboneAssignmentSummary) => void;
   onViewTopology: (id: number) => void;
+  onLinkedQueryChange: (query: string) => void;
+  onLinkedPageChange: (page: number) => void;
+  onLinkedRetry: () => void;
 };
 
 export function BackboneDetail({
   backbone,
+  linked,
+  linkedQuery,
+  linkedLoading,
+  linkedError,
   selectedId,
   canManage,
   loading,
@@ -52,7 +67,10 @@ export function BackboneDetail({
   onLink,
   onTransfer,
   onUnlink,
-  onViewTopology
+  onViewTopology,
+  onLinkedQueryChange,
+  onLinkedPageChange,
+  onLinkedRetry
 }: BackboneDetailProps) {
   if (selectedId === null) {
     return (
@@ -159,21 +177,46 @@ export function BackboneDetail({
         <div className="backbone-section-heading">
           <span>03</span>
           <h4 id="backbone-links-title">Equipamentos ligados</h4>
-          <strong>{backbone.assignments.length}</strong>
+          <strong>{backbone.linkedAssignmentCount}</strong>
         </div>
 
-        {backbone.assignments.length === 0 ? (
+        <div className="backbone-linked-tools">
+          <div className="backbone-search">
+            <Search size={15} aria-hidden />
+            <Field
+              hideLabel
+              aria-label="Pesquisar equipamentos ligados"
+              label="Pesquisar equipamentos ligados"
+              value={linkedQuery}
+              onChange={(event) => onLinkedQueryChange(event.target.value)}
+              placeholder="Cliente, código, série, IP ou MAC…"
+            />
+          </div>
+        </div>
+
+        {linkedLoading && linked.items.length === 0 ? (
+          <div className="backbone-links-state" role="status" aria-busy="true">
+            <span className="backbone-pulse" aria-hidden />
+            A carregar equipamentos ligados…
+          </div>
+        ) : linkedError && linked.items.length === 0 ? (
+          <div className="backbone-links-state" role="alert">
+            <strong>Não foi possível carregar as ligações.</strong>
+            <span>{linkedError}</span>
+            <Button variant="secondary" size="sm" onClick={onLinkedRetry}>Tentar novamente</Button>
+          </div>
+        ) : linked.items.length === 0 ? (
           <div className="backbone-links-empty">
             <Cable size={18} aria-hidden />
             <div>
-              <strong>Sem equipamentos ligados</strong>
-              <p>Esta unidade ainda não tem CPEs associados.</p>
+              <strong>{linkedQuery ? 'Nenhuma ligação corresponde à pesquisa' : 'Sem equipamentos ligados'}</strong>
+              <p>{linkedQuery ? 'Ajuste os termos pesquisados.' : 'Esta unidade ainda não tem CPEs associados.'}</p>
             </div>
             {canManage && <Button variant="secondary" size="sm" onClick={onLink}>Criar ligação</Button>}
           </div>
         ) : (
           <div className="backbone-assignment-list">
-            {backbone.assignments.map((assignment) => (
+            {linked.items.map((assignment) => (
               <article className="backbone-assignment" key={assignment.id}>
                 <div className="backbone-assignment-main">
                   <span className="backbone-assignment-client">
@@ -214,6 +257,30 @@ export function BackboneDetail({
             ))}
           </div>
         )}
+
+        <nav className="backbone-linked-pagination" aria-label="Paginação de equipamentos ligados">
+          <span>Página {linked.page} de {Math.max(linked.totalPages, 1)}</span>
+          <div>
+            <Button
+              variant="icon"
+              size="sm"
+              aria-label="Página anterior de equipamentos ligados"
+              disabled={linked.page <= 1 || linkedLoading}
+              onClick={() => onLinkedPageChange(linked.page - 1)}
+            >
+              <ChevronLeft size={15} aria-hidden />
+            </Button>
+            <Button
+              variant="icon"
+              size="sm"
+              aria-label="Página seguinte de equipamentos ligados"
+              disabled={linked.page >= linked.totalPages || linkedLoading}
+              onClick={() => onLinkedPageChange(linked.page + 1)}
+            >
+              <ChevronRight size={15} aria-hidden />
+            </Button>
+          </div>
+        </nav>
       </section>
     </section>
   );

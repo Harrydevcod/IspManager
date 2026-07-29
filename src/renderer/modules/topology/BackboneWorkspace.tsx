@@ -1,5 +1,5 @@
 import { Plus, RadioTower } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   BackboneAssignmentSummary,
   BackboneDeviceDetail,
@@ -42,9 +42,42 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
   const [editorAttempted, setEditorAttempted] = useState(false);
   const [mappingAttempted, setMappingAttempted] = useState(false);
   const [unlinkAttempted, setUnlinkAttempted] = useState(false);
+  const selectionOriginRef = useRef<{ id: number; element: HTMLElement | null } | null>(null);
+  const restoreSelectionFocusRef = useRef(false);
+  const workspaceHeadingRef = useRef<HTMLHeadingElement>(null);
 
   const selected = workspace.selected;
   const selectedId = workspace.selectedId;
+
+  useEffect(() => {
+    if (window.innerWidth >= 760) return;
+    if (selectedId !== null) {
+      document.querySelector<HTMLElement>('.backbone-detail .backbone-mobile-back')?.focus();
+      return;
+    }
+    if (!restoreSelectionFocusRef.current) return;
+    restoreSelectionFocusRef.current = false;
+    const origin = selectionOriginRef.current;
+    const currentRow = origin
+      ? document.querySelector<HTMLElement>(`[data-backbone-id="${origin.id}"]`)
+      : null;
+    if (origin?.element?.isConnected) origin.element.focus();
+    else if (currentRow) currentRow.focus();
+    else workspaceHeadingRef.current?.focus();
+  }, [selectedId]);
+
+  function selectBackbone(id: number) {
+    selectionOriginRef.current = {
+      id,
+      element: document.querySelector<HTMLElement>(`[data-backbone-id="${id}"]`)
+    };
+    workspace.selectBackbone(id);
+  }
+
+  function backToBackboneList() {
+    restoreSelectionFocusRef.current = true;
+    workspace.selectBackbone(null);
+  }
 
   function openCreate() {
     setEditingBackbone(null);
@@ -68,6 +101,8 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
     } else {
       workspace.setAssignmentQuery('');
       workspace.setAssignmentPage(1);
+      workspace.setDestinationQuery('');
+      workspace.setDestinationPage(1);
     }
     setMapping({ mode, initialAssignmentId: assignmentId, currentBackbone: selected });
   }
@@ -77,28 +112,12 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
     setUnlinking(assignment);
   }
 
-  async function reloadSelectedDetail() {
-    const id = workspace.selectedId;
-    if (id === null) return;
-    workspace.selectBackbone(null);
-    // Cross a macrotask so React commits the deselection and the detail effect
-    // invalidates its request before selecting the same ID again.
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-    workspace.selectBackbone(id);
-  }
-
   async function saveBackbone(input: BackboneWriteInput): Promise<boolean> {
     setEditorAttempted(true);
     const result = editingBackbone
       ? await workspace.updateBackbone(editingBackbone.id, input)
       : await workspace.createBackbone(input);
-    if (!result) {
-      // The hook preserves the attempted payload and structured error. Revalidate
-      // independently of render timing so a 409 never leaves list/detail stale.
-      await workspace.refresh();
-      await reloadSelectedDetail();
-      return false;
-    }
+    if (!result) return false;
     setEditorOpen(false);
     return true;
   }
@@ -116,7 +135,6 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
           })
         )
       : await workspace.linkAssignments(assignmentIds, targetId, reason);
-    await reloadSelectedDetail();
     if (result.failedAssignmentIds.length === 0) setMapping(null);
     return result.failedAssignmentIds;
   }
@@ -125,7 +143,6 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
     if (!unlinking) return false;
     setUnlinkAttempted(true);
     const result = await workspace.unlinkAssignment(unlinking.id, reason);
-    await reloadSelectedDetail();
     if (!result) return false;
     setUnlinking(null);
     return true;
@@ -162,7 +179,7 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
       <header className="backbone-workspace-header">
         <div>
           <p className="backbone-kicker">Infraestrutura física</p>
-          <h2>Backbone</h2>
+          <h2 ref={workspaceHeadingRef} tabIndex={-1}>Backbone</h2>
           <p>Identidade, implantação e ligações verificáveis do inventário.</p>
         </div>
         {canManage && (
@@ -186,8 +203,8 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
           selectedId={selectedId}
           query={workspace.backboneQuery}
           status={workspace.backboneStatusFilter}
-          loading={workspace.loading}
-          error={workspace.error}
+          loading={workspace.backboneLoading}
+          error={workspace.backboneError}
           unlinkedCount={workspace.unlinked.total}
           onQueryChange={(query) => {
             workspace.setBackbonePage(1);
@@ -198,20 +215,30 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
             workspace.setBackboneStatusFilter(status);
           }}
           onPageChange={workspace.setBackbonePage}
-          onSelect={workspace.selectBackbone}
+          onSelect={selectBackbone}
           onRetry={() => void workspace.refresh()}
         />
         <BackboneDetail
           backbone={selected}
+          linked={workspace.linked}
+          linkedQuery={workspace.linkedQuery}
+          linkedLoading={workspace.linkedLoading}
+          linkedError={workspace.linkedError}
           selectedId={selectedId}
           canManage={canManage}
           loading={workspace.loading}
-          onBack={() => workspace.selectBackbone(null)}
+          onBack={backToBackboneList}
           onEdit={openEdit}
           onLink={() => openMapping('link')}
           onTransfer={(assignment) => openMapping('transfer', assignment.id)}
           onUnlink={openUnlink}
           onViewTopology={onViewTopology}
+          onLinkedQueryChange={(query) => {
+            workspace.setLinkedPage(1);
+            workspace.setLinkedQuery(query);
+          }}
+          onLinkedPageChange={workspace.setLinkedPage}
+          onLinkedRetry={() => void workspace.refreshLinked()}
         />
       </div>
 
@@ -222,6 +249,10 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
             backbone={editingBackbone}
             pending={workspace.mutationState.pending}
             error={editorError}
+            catalogs={workspace.catalogs}
+            catalogLoading={workspace.catalogLoading}
+            catalogError={workspace.catalogError}
+            onCatalogRetry={() => void workspace.refreshCatalogs()}
             onClose={() => setEditorOpen(false)}
             onSubmit={saveBackbone}
           />
@@ -230,9 +261,18 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
             mode={mapping?.mode ?? 'link'}
             currentBackbone={mapping?.currentBackbone ?? selected}
             candidates={mapping?.mode === 'transfer' ? workspace.assignments : workspace.unlinked}
-            backbones={workspace.backbones.items}
+            destinations={workspace.destinations}
+            destinationQuery={workspace.destinationQuery}
+            destinationLoading={workspace.destinationLoading}
+            destinationError={workspace.destinationError}
             initialAssignmentId={mapping?.initialAssignmentId ?? null}
             query={mapping?.mode === 'transfer' ? workspace.assignmentQuery : workspace.unlinkedQuery}
+            candidateLoading={mapping?.mode === 'transfer'
+              ? workspace.assignmentLoading
+              : workspace.unlinkedLoading}
+            candidateError={mapping?.mode === 'transfer'
+              ? workspace.assignmentError
+              : workspace.unlinkedError}
             pending={workspace.mutationState.pending}
             mutationState={mappingMutation}
             onQueryChange={(query) => {
@@ -247,6 +287,13 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
             onPageChange={mapping?.mode === 'transfer'
               ? workspace.setAssignmentPage
               : workspace.setUnlinkedPage}
+            onCandidateRetry={() => void workspace.refresh()}
+            onDestinationQueryChange={(query) => {
+              workspace.setDestinationPage(1);
+              workspace.setDestinationQuery(query);
+            }}
+            onDestinationPageChange={workspace.setDestinationPage}
+            onDestinationRetry={() => void workspace.refreshDestinations()}
             onClose={() => setMapping(null)}
             onSubmit={saveMapping}
           />

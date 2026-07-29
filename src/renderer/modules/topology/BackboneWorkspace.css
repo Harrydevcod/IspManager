@@ -497,6 +497,30 @@
   padding: clamp(1.25rem, 3vw, 2.4rem);
 }
 
+.backbone-linked-tools {
+  display: flex;
+  margin: calc(var(--space-2) * -1) 0 var(--space-4);
+}
+
+.backbone-linked-tools .backbone-search {
+  width: min(100%, 28rem);
+}
+
+.backbone-links-state {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-8);
+  border-top: 1px solid var(--backbone-rule);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.backbone-links-state strong {
+  color: var(--text-2);
+}
+
 .backbone-links-empty {
   display: flex;
   align-items: center;
@@ -584,6 +608,26 @@
   font-size: 0.68rem;
 }
 
+.backbone-linked-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 3rem;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.backbone-linked-pagination > div {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.backbone-linked-pagination .btn-icon {
+  width: 2rem;
+  min-height: 2rem;
+}
+
 .backbone-mobile-back {
   display: none;
 }
@@ -622,6 +666,24 @@
   border-radius: var(--r1);
   background: var(--surface-2);
   color: var(--text);
+}
+
+.backbone-catalog-field .combobox {
+  width: 100%;
+}
+
+.backbone-catalog-field .combobox-trigger {
+  width: 100%;
+  min-height: 2.5rem;
+}
+
+.backbone-catalog-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--danger);
+  font-size: var(--fs-xs);
 }
 
 .backbone-dialog-section .field input,
@@ -681,6 +743,46 @@
 .backbone-mapping-form {
   display: grid;
   gap: var(--space-4);
+}
+
+.backbone-destination-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 0.8fr);
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.backbone-destination-picker > .backbone-dialog-search {
+  align-self: end;
+}
+
+.backbone-picker-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 2.5rem;
+  color: var(--danger);
+  font-size: var(--fs-xs);
+}
+
+.backbone-destination-pagination {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.backbone-destination-pagination > div {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.backbone-destination-pagination .btn-icon {
+  width: 2rem;
+  min-height: 2rem;
 }
 
 .backbone-mapping-form > .field {
@@ -758,6 +860,9 @@
 }
 
 .backbone-candidate-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
   margin: 0;
   padding: var(--space-8);
   color: var(--text-3);
@@ -929,6 +1034,10 @@
   }
 
   .backbone-dialog-section {
+    grid-template-columns: 1fr;
+  }
+
+  .backbone-destination-picker {
     grid-template-columns: 1fr;
   }
 }

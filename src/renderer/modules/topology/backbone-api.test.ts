@@ -14,6 +14,22 @@ const emptyBackbones: BackbonePage<BackboneDeviceSummary> = {
 };
 
 describe('backbone management API', () => {
+  test('loads only active equipment catalogs with factual brand and model labels', async () => {
+    const api = createBackboneApi(async (url) => response({
+      totals: {},
+      rows: [
+        { id: 7, category: 'equipamento', brand: 'Ubiquiti', model: 'Rocket', type: 'antena', active: 1 },
+        { id: 8, category: 'material', brand: null, model: 'Cabo CAT6', type: 'cabo', active: 1 },
+        { id: 9, category: 'equipamento', brand: 'MikroTik', model: 'CCR', type: 'router', active: 0 }
+      ],
+      url
+    }));
+
+    await expect(api.listCatalogs()).resolves.toEqual([
+      { id: 7, brand: 'Ubiquiti', model: 'Rocket', type: 'antena' }
+    ]);
+  });
+
   test('serializes independent backbone and assignment list filters for the approved routes', async () => {
     const calls: string[] = [];
     const api = createBackboneApi(async (url) => {

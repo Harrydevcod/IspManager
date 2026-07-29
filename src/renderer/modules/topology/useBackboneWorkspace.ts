@@ -8,6 +8,7 @@ import type {
   BackboneWriteInput
 } from '../../../shared/backbone';
 import { BackboneApiError, type BackboneApi } from './backbone-api';
+import type { BackboneCatalogOption } from './backbone-api';
 
 const PAGE_SIZE = 25;
 const LINK_CONCURRENCY = 4;
@@ -124,29 +125,58 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
   const [backbones, setBackbones] = useState<BackbonePage<BackboneDeviceSummary>>(() => emptyPage());
   const [assignments, setAssignments] = useState<BackbonePage<BackboneAssignmentSummary>>(() => emptyPage());
   const [unlinked, setUnlinked] = useState<BackbonePage<BackboneAssignmentSummary>>(() => emptyPage());
+  const [linked, setLinked] = useState<BackbonePage<BackboneAssignmentSummary>>(() => emptyPage());
+  const [destinations, setDestinations] = useState<BackbonePage<BackboneDeviceSummary>>(() => emptyPage());
+  const [catalogs, setCatalogs] = useState<BackboneCatalogOption[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selected, setSelected] = useState<BackboneDeviceDetail | null>(null);
   const [backboneQuery, setBackboneQuery] = useState('');
   const [assignmentQuery, setAssignmentQuery] = useState('');
   const [unlinkedQuery, setUnlinkedQuery] = useState('');
+  const [linkedQuery, setLinkedQuery] = useState('');
+  const [destinationQuery, setDestinationQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<BackboneStatus | undefined>();
   const [backbonePage, setBackbonePage] = useState(1);
   const [assignmentPage, setAssignmentPage] = useState(1);
   const [unlinkedPage, setUnlinkedPage] = useState(1);
+  const [linkedPage, setLinkedPage] = useState(1);
+  const [destinationPage, setDestinationPage] = useState(1);
+  const [linkedLoading, setLinkedLoading] = useState(false);
+  const [linkedError, setLinkedError] = useState<string | null>(null);
+  const [destinationLoading, setDestinationLoading] = useState(true);
+  const [destinationError, setDestinationError] = useState<string | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [backboneLoading, setBackboneLoading] = useState(true);
+  const [assignmentLoading, setAssignmentLoading] = useState(true);
+  const [unlinkedLoading, setUnlinkedLoading] = useState(true);
+  const [backboneError, setBackboneError] = useState<string | null>(null);
+  const [assignmentError, setAssignmentError] = useState<string | null>(null);
+  const [unlinkedError, setUnlinkedError] = useState<string | null>(null);
   const [mutationState, setMutationState] = useState<BackboneMutationState>(idleMutationState);
   const requestVersion = useRef(0);
   const detailRequestVersion = useRef(0);
+  const linkedRequestVersion = useRef(0);
+  const linkedSelection = useRef<number | null>(null);
+  const destinationRequestVersion = useRef(0);
+  const destinationInitialLoad = useRef(true);
   const initialLoad = useRef(true);
 
-  const refresh = useCallback(async () => {
+  const refreshPrimary = useCallback(async () => {
     const version = ++requestVersion.current;
     const normalizedBackboneQuery = backboneQuery.trim() || undefined;
     const normalizedAssignmentQuery = assignmentQuery.trim() || undefined;
     const normalizedUnlinkedQuery = unlinkedQuery.trim() || undefined;
     setLoading(true);
     setError(null);
+    setBackboneLoading(true);
+    setAssignmentLoading(true);
+    setUnlinkedLoading(true);
+    setBackboneError(null);
+    setAssignmentError(null);
+    setUnlinkedError(null);
     const results = await Promise.allSettled([
       api.listBackbones({ page: backbonePage, pageSize: PAGE_SIZE, status: statusFilter, query: normalizedBackboneQuery }),
       api.listAssignments({ page: assignmentPage, pageSize: PAGE_SIZE, mapping: 'all', query: normalizedAssignmentQuery }),
@@ -157,6 +187,12 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
     if (nextBackbones.status === 'fulfilled') setBackbones(nextBackbones.value);
     if (nextAssignments.status === 'fulfilled') setAssignments(nextAssignments.value);
     if (nextUnlinked.status === 'fulfilled') setUnlinked(nextUnlinked.value);
+    setBackboneError(nextBackbones.status === 'rejected' ? message(nextBackbones.reason) : null);
+    setAssignmentError(nextAssignments.status === 'rejected' ? message(nextAssignments.reason) : null);
+    setUnlinkedError(nextUnlinked.status === 'rejected' ? message(nextUnlinked.reason) : null);
+    setBackboneLoading(false);
+    setAssignmentLoading(false);
+    setUnlinkedLoading(false);
     const failure = results.find((result) => result.status === 'rejected');
     setError(failure?.status === 'rejected' ? message(failure.reason) : null);
     setLoading(false);
@@ -165,27 +201,130 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
   useEffect(() => {
     if (initialLoad.current) {
       initialLoad.current = false;
-      void refresh();
+      void refreshPrimary();
       return;
     }
     requestVersion.current += 1;
-    const timer = window.setTimeout(() => { void refresh(); }, 300);
+    const timer = window.setTimeout(() => { void refreshPrimary(); }, 300);
     return () => window.clearTimeout(timer);
-  }, [refresh]);
+  }, [refreshPrimary]);
 
-  useEffect(() => {
+  const loadSelectedDetail = useCallback(async () => {
     const version = ++detailRequestVersion.current;
     if (selectedId === null) {
       setSelected(null);
-      return;
+      return null;
     }
     setSelected(null);
-    void api.getBackbone(selectedId).then((detail) => {
+    try {
+      const detail = await api.getBackbone(selectedId);
       if (version === detailRequestVersion.current) setSelected(detail);
-    }).catch((detailError: unknown) => {
+      return detail;
+    } catch (detailError) {
       if (version === detailRequestVersion.current) setError(message(detailError));
-    });
+      return null;
+    }
   }, [api, selectedId]);
+
+  useEffect(() => {
+    void loadSelectedDetail();
+  }, [loadSelectedDetail]);
+
+  const loadLinked = useCallback(async () => {
+    if (selectedId === null) {
+      setLinked(emptyPage());
+      setLinkedLoading(false);
+      setLinkedError(null);
+      return;
+    }
+    const version = ++linkedRequestVersion.current;
+    setLinkedLoading(true);
+    setLinkedError(null);
+    try {
+      const result = await api.listAssignments({
+        page: linkedPage,
+        pageSize: PAGE_SIZE,
+        mapping: 'linked',
+        backboneDeviceId: selectedId,
+        query: linkedQuery.trim() || undefined
+      });
+      if (version === linkedRequestVersion.current) setLinked(result);
+    } catch (loadError) {
+      if (version === linkedRequestVersion.current) setLinkedError(message(loadError));
+    } finally {
+      if (version === linkedRequestVersion.current) setLinkedLoading(false);
+    }
+  }, [api, linkedPage, linkedQuery, selectedId]);
+
+  useEffect(() => {
+    if (selectedId === null) {
+      linkedSelection.current = null;
+      void loadLinked();
+      return;
+    }
+    if (linkedSelection.current !== selectedId) {
+      linkedSelection.current = selectedId;
+      void loadLinked();
+      return;
+    }
+    linkedRequestVersion.current += 1;
+    const timer = window.setTimeout(() => { void loadLinked(); }, 300);
+    return () => window.clearTimeout(timer);
+  }, [loadLinked, selectedId]);
+
+  const loadDestinations = useCallback(async () => {
+    const version = ++destinationRequestVersion.current;
+    setDestinationLoading(true);
+    setDestinationError(null);
+    try {
+      const result = await api.listBackbones({
+        page: destinationPage,
+        pageSize: PAGE_SIZE,
+        status: 'active',
+        query: destinationQuery.trim() || undefined
+      });
+      if (version === destinationRequestVersion.current) setDestinations(result);
+    } catch (loadError) {
+      if (version === destinationRequestVersion.current) setDestinationError(message(loadError));
+    } finally {
+      if (version === destinationRequestVersion.current) setDestinationLoading(false);
+    }
+  }, [api, destinationPage, destinationQuery]);
+
+  useEffect(() => {
+    if (destinationInitialLoad.current) {
+      destinationInitialLoad.current = false;
+      void loadDestinations();
+      return;
+    }
+    destinationRequestVersion.current += 1;
+    const timer = window.setTimeout(() => { void loadDestinations(); }, 300);
+    return () => window.clearTimeout(timer);
+  }, [loadDestinations]);
+
+  const loadCatalogs = useCallback(async () => {
+    setCatalogLoading(true);
+    setCatalogError(null);
+    try {
+      setCatalogs(await api.listCatalogs());
+    } catch (loadError) {
+      setCatalogError(message(loadError));
+    } finally {
+      setCatalogLoading(false);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    void loadCatalogs();
+  }, [loadCatalogs]);
+
+  const refreshCollections = useCallback(async () => {
+    await Promise.all([refreshPrimary(), loadLinked(), loadDestinations()]);
+  }, [loadDestinations, loadLinked, refreshPrimary]);
+
+  const revalidateSelected = useCallback(async () => {
+    await Promise.all([refreshCollections(), loadSelectedDetail()]);
+  }, [loadSelectedDetail, refreshCollections]);
 
   const createBackbone = useCallback(async (input: BackboneWriteInput) => {
     setMutationState(pendingMutationState());
@@ -193,7 +332,7 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
       const created = await api.createBackbone(input);
       setSelectedId(created.id);
       setSelected(created);
-      await refresh();
+      await refreshCollections();
       onMutation();
       setMutationState(idleMutationState());
       return created;
@@ -201,22 +340,24 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
       setMutationState(failedMutationState(mutationFailure('createBackbone', { input }, mutationError)));
       return null;
     }
-  }, [api, onMutation, refresh]);
+  }, [api, onMutation, refreshCollections]);
 
   const updateBackbone = useCallback(async (id: number, input: BackboneWriteInput) => {
     setMutationState(pendingMutationState());
     try {
       const updated = await api.updateBackbone(id, input);
       setSelected(updated);
-      await refresh();
+      await refreshCollections();
       onMutation();
       setMutationState(idleMutationState());
       return updated;
     } catch (mutationError) {
-      setMutationState(failedMutationState(mutationFailure('updateBackbone', { id, input }, mutationError)));
+      const failure = mutationFailure('updateBackbone', { id, input }, mutationError);
+      await revalidateSelected();
+      setMutationState(failedMutationState(failure));
       return null;
     }
-  }, [api, onMutation, refresh]);
+  }, [api, onMutation, refreshCollections, revalidateSelected]);
 
   const linkAssignments = useCallback(async (
     assignmentIds: number[], backboneDeviceId: number, reason: string | null = null
@@ -234,7 +375,7 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
     });
     const successful = results.length - failures.length;
     const assignmentErrors = Object.fromEntries(failures.map((failure) => [failure.id, message(failure.error)]));
-    await refresh();
+    await revalidateSelected();
     if (successful > 0) onMutation();
     const assignmentFailures = Object.fromEntries(failures.map((failure) => [
       failure.id,
@@ -258,7 +399,7 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
         }
       : idleMutationState());
     return { successful, failedAssignmentIds: failures.map((failure) => failure.id), assignmentErrors };
-  }, [api, onMutation, refresh]);
+  }, [api, onMutation, revalidateSelected]);
 
   const transferAssignment = useCallback(async (
     assignmentId: number, backboneDeviceId: number, reason: string | null = null
@@ -267,46 +408,61 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
     setMutationState(pendingMutationState());
     try {
       const result = await api.linkAssignment(assignmentId, backboneDeviceId, reason);
-      await refresh();
+      await revalidateSelected();
       onMutation();
       setMutationState(idleMutationState());
       return result;
     } catch (mutationError) {
-      setMutationState(failedMutationState(mutationFailure('transferAssignment', context, mutationError)));
+      const failure = mutationFailure('transferAssignment', context, mutationError);
+      await revalidateSelected();
+      setMutationState(failedMutationState(failure, [assignmentId], { [assignmentId]: failure.message }));
       return null;
     }
-  }, [api, onMutation, refresh]);
+  }, [api, onMutation, revalidateSelected]);
 
   const unlinkAssignment = useCallback(async (assignmentId: number, reason: string | null = null) => {
     setMutationState(pendingMutationState());
     try {
       const result = await api.unlinkAssignment(assignmentId, reason);
-      await refresh();
+      await revalidateSelected();
       onMutation();
       setMutationState(idleMutationState());
       return result;
     } catch (mutationError) {
       const failure = mutationFailure('unlinkAssignment', { assignmentId, reason }, mutationError);
+      await revalidateSelected();
       setMutationState(failedMutationState(failure, [assignmentId], { [assignmentId]: failure.message }));
       return null;
     }
-  }, [api, onMutation, refresh]);
+  }, [api, onMutation, revalidateSelected]);
 
-  const selectBackbone = useCallback((id: number | null) => { setSelectedId(id); }, []);
+  const selectBackbone = useCallback((id: number | null) => {
+    setLinkedQuery('');
+    setLinkedPage(1);
+    setSelectedId(id);
+  }, []);
 
   return useMemo(() => ({
-    backbones, selectedId, selected, assignments, unlinked,
-    query: backboneQuery, backboneQuery, assignmentQuery, unlinkedQuery,
-    backboneStatusFilter: statusFilter, statusFilter, loading, error, mutationState,
-    setQuery: setBackboneQuery, setBackboneQuery, setAssignmentQuery, setUnlinkedQuery,
+    backbones, selectedId, selected, assignments, unlinked, linked, destinations, catalogs,
+    query: backboneQuery, backboneQuery, assignmentQuery, unlinkedQuery, linkedQuery, destinationQuery,
+    backboneStatusFilter: statusFilter, statusFilter, loading, error,
+    backboneLoading, assignmentLoading, unlinkedLoading,
+    backboneError, assignmentError, unlinkedError,
+    linkedLoading, linkedError, destinationLoading, destinationError,
+    catalogLoading, catalogError, mutationState,
+    setQuery: setBackboneQuery, setBackboneQuery, setAssignmentQuery, setUnlinkedQuery, setLinkedQuery,
+    setDestinationQuery,
     setBackboneStatusFilter: setStatusFilter, setStatusFilter,
-    setBackbonePage, setAssignmentPage, setUnlinkedPage,
+    setBackbonePage, setAssignmentPage, setUnlinkedPage, setLinkedPage, setDestinationPage,
     selectBackbone,
-    refresh,
+    refresh: refreshCollections,
+    refreshLinked: loadLinked,
+    refreshDestinations: loadDestinations,
+    refreshCatalogs: loadCatalogs,
     createBackbone,
     updateBackbone,
     linkAssignments,
     transferAssignment,
     unlinkAssignment
-  }), [assignmentQuery, assignments, backboneQuery, backbones, createBackbone, error, linkAssignments, loading, mutationState, refresh, selectBackbone, selected, selectedId, statusFilter, transferAssignment, unlinkAssignment, unlinked, unlinkedQuery, updateBackbone]);
+  }), [assignmentError, assignmentLoading, assignmentQuery, assignments, backboneError, backboneLoading, backboneQuery, backbones, catalogError, catalogLoading, catalogs, createBackbone, destinationError, destinationLoading, destinationQuery, destinations, error, linkAssignments, linked, linkedError, linkedLoading, linkedQuery, loadCatalogs, loadDestinations, loadLinked, loading, mutationState, refreshCollections, selectBackbone, selected, selectedId, statusFilter, transferAssignment, unlinkAssignment, unlinked, unlinkedError, unlinkedLoading, unlinkedQuery, updateBackbone]);
 }

@@ -13,6 +13,18 @@ const API_BASE = 'http://127.0.0.1:3001';
 
 export type BackboneFetcher = (input: string, init?: RequestInit) => Promise<Response>;
 
+export type BackboneCatalogOption = {
+  id: number;
+  brand: string | null;
+  model: string;
+  type: string;
+};
+
+type StockCatalogWireRow = BackboneCatalogOption & {
+  category: 'equipamento' | 'material';
+  active: number | boolean;
+};
+
 export class BackboneApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -65,6 +77,11 @@ function jsonMutation<T>(
 
 export function createBackboneApi(fetcher: BackboneFetcher = authFetch) {
   return {
+    listCatalogs: () => fetcher(`${API_BASE}/api/stock/summary`)
+      .then(readJson<{ rows: StockCatalogWireRow[] }>)
+      .then(({ rows }) => rows
+        .filter((row) => row.category === 'equipamento' && (row.active === true || row.active === 1))
+        .map(({ id, brand, model, type }) => ({ id, brand, model, type }))),
     listBackbones: (query: BackboneListQuery) => fetcher(
       listUrl('/api/topology/backbones', query)
     ).then(readJson<BackbonePage<BackboneDeviceSummary>>),

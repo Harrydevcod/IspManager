@@ -1,5 +1,5 @@
 import { AlertTriangle, ChevronLeft, ChevronRight, Link2, Search, Unlink } from 'lucide-react';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import type {
   BackboneAssignmentSummary,
   BackboneDeviceDetail,
@@ -9,19 +9,24 @@ import type {
   BackboneWriteInput
 } from '../../../shared/backbone';
 import type { BackboneMutationState } from './useBackboneWorkspace';
-import { Badge, Button, Dialog, Field, Select, Textarea, Toggle } from '../../components';
+import type { BackboneCatalogOption } from './backbone-api';
+import { Badge, Button, Combobox, Dialog, Field, Select, Textarea, Toggle } from '../../components';
 
 type EditorProps = {
   open: boolean;
   backbone: BackboneDeviceDetail | null;
   pending: boolean;
   error: string | null;
+  catalogs: BackboneCatalogOption[];
+  catalogLoading: boolean;
+  catalogError: string | null;
+  onCatalogRetry: () => void;
   onClose: () => void;
   onSubmit: (input: BackboneWriteInput) => Promise<boolean>;
 };
 
 type EditorState = {
-  catalogId: string;
+  catalogId: number | null;
   name: string;
   status: BackboneStatus;
   serialNumber: string;
@@ -35,7 +40,7 @@ type EditorState = {
 
 function editorState(backbone: BackboneDeviceDetail | null): EditorState {
   return {
-    catalogId: backbone ? String(backbone.catalogId) : '',
+    catalogId: backbone?.catalogId ?? null,
     name: backbone?.name ?? '',
     status: backbone?.status ?? 'active',
     serialNumber: backbone?.serialNumber ?? '',
@@ -57,6 +62,10 @@ export function BackboneEditorDialog({
   backbone,
   pending,
   error,
+  catalogs,
+  catalogLoading,
+  catalogError,
+  onCatalogRetry,
   onClose,
   onSubmit
 }: EditorProps) {
@@ -126,15 +135,37 @@ export function BackboneEditorDialog({
         )}
         <div className="backbone-dialog-section">
           <p>Registo</p>
-          <Field
-            label="ID do catálogo"
-            type="number"
-            min={1}
-            required
-            value={form.catalogId}
-            onChange={(event) => update('catalogId', event.target.value)}
-            hint="Equipamento correspondente no Stock."
-          />
+          <div className="field backbone-catalog-field">
+            <span className="field-label">Equipamento do catálogo</span>
+            <Combobox
+              ariaLabel="Equipamento do catálogo"
+              options={backbone && !catalogs.some((item) => item.id === backbone.catalogId)
+                ? [{
+                    id: backbone.catalogId,
+                    brand: backbone.catalogBrand,
+                    model: backbone.catalogModel,
+                    type: backbone.catalogType
+                  }, ...catalogs]
+                : catalogs}
+              value={form.catalogId}
+              onChange={(value) => update('catalogId', typeof value === 'number' ? value : null)}
+              rowKey={(row) => row.id}
+              rowCode={(row) => row.brand || 'Sem marca'}
+              rowLabel={(row) => row.model}
+              rowHint={(row) => row.type}
+              placeholder={catalogLoading ? 'A carregar equipamentos…' : 'Selecionar equipamento…'}
+              searchPlaceholder="Pesquisar marca ou modelo"
+              emptyLabel="Nenhum equipamento ativo"
+              allowClear={false}
+              disabled={catalogLoading || !!catalogError}
+            />
+            {catalogError && (
+              <span className="backbone-catalog-error" role="alert">
+                {catalogError}
+                <Button variant="ghost" size="sm" onClick={onCatalogRetry}>Tentar novamente</Button>
+              </span>
+            )}
+          </div>
           <Field
             label="Nome operacional"
             required
@@ -175,7 +206,7 @@ export function BackboneEditorDialog({
             onChange={(event) => update('macAddress', event.target.value)}
           />
           <small className="backbone-form-note">
-            Sem série e etiqueta, a unidade será marcada como provisória.
+            Campos sem valor serão apresentados como “Não informado”.
           </small>
         </div>
         <div className="backbone-dialog-section">
@@ -202,13 +233,22 @@ type MappingDialogProps = {
   mode: MappingMode;
   currentBackbone: BackboneDeviceDetail | null;
   candidates: BackbonePage<BackboneAssignmentSummary>;
-  backbones: BackboneDeviceSummary[];
+  destinations: BackbonePage<BackboneDeviceSummary>;
+  destinationQuery: string;
+  destinationLoading: boolean;
+  destinationError: string | null;
   initialAssignmentId: number | null;
   query: string;
+  candidateLoading: boolean;
+  candidateError: string | null;
   pending: boolean;
   mutationState: BackboneMutationState;
   onQueryChange: (value: string) => void;
   onPageChange: (page: number) => void;
+  onCandidateRetry: () => void;
+  onDestinationQueryChange: (value: string) => void;
+  onDestinationPageChange: (page: number) => void;
+  onDestinationRetry: () => void;
   onClose: () => void;
   onSubmit: (assignmentIds: number[], targetId: number, reason: string | null) => Promise<number[]>;
 };
@@ -222,13 +262,22 @@ export function BackboneMappingDialog({
   mode,
   currentBackbone,
   candidates,
-  backbones,
+  destinations,
+  destinationQuery,
+  destinationLoading,
+  destinationError,
   initialAssignmentId,
   query,
+  candidateLoading,
+  candidateError,
   pending,
   mutationState,
   onQueryChange,
   onPageChange,
+  onCandidateRetry,
+  onDestinationQueryChange,
+  onDestinationPageChange,
+  onDestinationRetry,
   onClose,
   onSubmit
 }: MappingDialogProps) {
@@ -236,10 +285,6 @@ export function BackboneMappingDialog({
   const [targetId, setTargetId] = useState('');
   const [reason, setReason] = useState('');
   const [validation, setValidation] = useState<string | null>(null);
-  const visibleCandidates = useMemo(
-    () => candidates.items.filter((assignment) => assignment.serviceStatus !== 'cancelled'),
-    [candidates.items]
-  );
 
   useEffect(() => {
     if (!open) return;
@@ -314,12 +359,61 @@ export function BackboneMappingDialog({
         )}
 
         {mode === 'transfer' && (
-          <Select label="Backbone de destino" required value={targetId} onChange={(event) => setTargetId(event.target.value)}>
-            <option value="">Selecionar destino…</option>
-            {backbones
-              .filter((item) => item.status === 'active' && item.id !== currentBackbone?.id)
-              .map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
-          </Select>
+          <div className="backbone-destination-picker">
+            <div className="backbone-dialog-search">
+              <Search size={15} aria-hidden />
+              <Field
+                hideLabel
+                aria-label="Pesquisar backbones de destino"
+                label="Pesquisar backbones de destino"
+                value={destinationQuery}
+                onChange={(event) => onDestinationQueryChange(event.target.value)}
+                placeholder="Nome, IP, série ou ativo…"
+              />
+            </div>
+            {destinationError ? (
+              <div className="backbone-picker-state" role="alert">
+                <span>{destinationError}</span>
+                <Button variant="secondary" size="sm" onClick={onDestinationRetry}>Tentar novamente</Button>
+              </div>
+            ) : (
+              <Select
+                label="Backbone de destino"
+                required
+                value={targetId}
+                disabled={destinationLoading}
+                onChange={(event) => setTargetId(event.target.value)}
+              >
+                <option value="">{destinationLoading ? 'A carregar destinos…' : 'Selecionar destino…'}</option>
+                {destinations.items
+                  .filter((item) => item.id !== currentBackbone?.id)
+                  .map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
+              </Select>
+            )}
+            <div className="backbone-destination-pagination">
+              <span>Página {destinations.page} de {Math.max(destinations.totalPages, 1)}</span>
+              <div>
+                <Button
+                  variant="icon"
+                  size="sm"
+                  aria-label="Página anterior de destinos"
+                  disabled={destinations.page <= 1 || destinationLoading}
+                  onClick={() => onDestinationPageChange(destinations.page - 1)}
+                >
+                  <ChevronLeft size={15} aria-hidden />
+                </Button>
+                <Button
+                  variant="icon"
+                  size="sm"
+                  aria-label="Página seguinte de destinos"
+                  disabled={destinations.page >= destinations.totalPages || destinationLoading}
+                  onClick={() => onDestinationPageChange(destinations.page + 1)}
+                >
+                  <ChevronRight size={15} aria-hidden />
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
 
         <div className="backbone-dialog-search">
@@ -333,12 +427,34 @@ export function BackboneMappingDialog({
           />
         </div>
 
-        <div className="backbone-candidate-list" aria-label="Equipamentos disponíveis">
-          {visibleCandidates.length === 0 ? (
+        {candidateError && candidates.items.length > 0 && (
+          <div className="backbone-picker-state" role="alert">
+            <span>{candidateError}</span>
+            <Button variant="secondary" size="sm" onClick={onCandidateRetry}>Tentar novamente</Button>
+          </div>
+        )}
+
+        <div
+          className="backbone-candidate-list"
+          aria-label="Equipamentos disponíveis"
+          aria-busy={candidateLoading || undefined}
+        >
+          {candidateLoading && candidates.items.length === 0 ? (
+            <div className="backbone-candidate-empty" role="status">
+              <span className="backbone-pulse" aria-hidden />
+              A carregar equipamentos…
+            </div>
+          ) : candidateError && candidates.items.length === 0 ? (
+            <div className="backbone-candidate-empty" role="alert">
+              <strong>Não foi possível carregar os equipamentos</strong>
+              <span>{candidateError}</span>
+              <Button variant="secondary" size="sm" onClick={onCandidateRetry}>Tentar novamente</Button>
+            </div>
+          ) : candidates.items.length === 0 ? (
             <p className="backbone-candidate-empty">
               {query ? 'Nenhum equipamento corresponde à pesquisa.' : 'Não há equipamentos disponíveis.'}
             </p>
-          ) : visibleCandidates.map((assignment) => {
+          ) : candidates.items.map((assignment) => {
             const selected = selectedIds.includes(assignment.id);
             const itemError = mutationState.assignmentErrors[assignment.id];
             return (

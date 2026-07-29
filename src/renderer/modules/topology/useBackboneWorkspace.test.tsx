@@ -39,6 +39,9 @@ const writeInput = {
 
 function api(overrides: Partial<BackboneApi> = {}): BackboneApi {
   return {
+    listCatalogs: vi.fn(async () => [
+      { id: 3, brand: 'Ubiquiti', model: 'Rocket', type: 'antena' }
+    ]),
     listBackbones: vi.fn(async () => page([backbone])),
     listAssignments: vi.fn(async () => page([assignment])),
     getBackbone: vi.fn(async () => detail),
@@ -119,25 +122,51 @@ describe('backbone workspace state', () => {
     expect(latest?.selected).toEqual(detail);
   });
 
+  test('loads linked assignments from their own server collection for the selected backbone', async () => {
+    const workspaceApi = await mount();
+    vi.mocked(workspaceApi.listAssignments).mockClear();
+
+    await act(async () => {
+      latest?.selectBackbone(10);
+      await Promise.resolve();
+    });
+
+    expect(workspaceApi.listAssignments).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 25,
+      mapping: 'linked',
+      backboneDeviceId: 10,
+      query: undefined
+    });
+    expect(latest?.linked.items).toEqual([assignment]);
+  });
+
   test('debounces search and ignores a stale list response', async () => {
     vi.useFakeTimers();
     let resolveOld!: (value: BackbonePage<BackboneDeviceSummary>) => void;
     const oldPage = new Promise<BackbonePage<BackboneDeviceSummary>>((resolve) => { resolveOld = resolve; });
+    let masterRequest = 0;
     const workspaceApi = api({
-      listBackbones: vi.fn()
-        .mockReturnValueOnce(oldPage)
-        .mockResolvedValueOnce(page([{ ...backbone, name: 'Resultado novo' }]))
+      listBackbones: vi.fn((query) => {
+        if (query.status === 'active') return Promise.resolve(page([backbone]));
+        masterRequest += 1;
+        return masterRequest === 1
+          ? oldPage
+          : Promise.resolve(page([{ ...backbone, name: 'Resultado novo' }]));
+      })
     });
     await mount(workspaceApi);
-    expect(workspaceApi.listBackbones).toHaveBeenCalledTimes(1);
+    const masterCalls = () => vi.mocked(workspaceApi.listBackbones).mock.calls
+      .filter(([query]) => query.status === undefined);
+    expect(masterCalls()).toHaveLength(1);
 
     await act(async () => { latest?.setBackboneQuery('novo'); });
     await act(async () => { resolveOld(page([{ ...backbone, name: 'Resultado antigo' }])); });
     expect(latest?.backbones.items).toEqual([]);
     await act(async () => { vi.advanceTimersByTime(299); });
-    expect(workspaceApi.listBackbones).toHaveBeenCalledTimes(1);
+    expect(masterCalls()).toHaveLength(1);
     await act(async () => { vi.advanceTimersByTime(1); await Promise.resolve(); });
-    expect(workspaceApi.listBackbones).toHaveBeenCalledTimes(2);
+    expect(masterCalls()).toHaveLength(2);
 
     expect(latest?.backbones.items[0]?.name).toBe('Resultado novo');
     vi.useRealTimers();
@@ -198,8 +227,11 @@ describe('backbone workspace state', () => {
     await act(async () => { await latest?.createBackbone(writeInput); });
 
     expect(workspaceApi.createBackbone).toHaveBeenCalledWith(writeInput);
-    expect(workspaceApi.listBackbones).toHaveBeenCalledTimes(2);
-    expect(workspaceApi.listAssignments).toHaveBeenCalledTimes(4);
+    expect(workspaceApi.listBackbones).toHaveBeenCalledTimes(4);
+    expect(workspaceApi.listAssignments).toHaveBeenCalledTimes(5);
+    expect(workspaceApi.listAssignments).toHaveBeenCalledWith({
+      page: 1, pageSize: 25, mapping: 'linked', backboneDeviceId: 10, query: undefined
+    });
     expect(onMutation).toHaveBeenCalledTimes(1);
     expect(latest?.mutationState.error).toBeNull();
   });
@@ -274,7 +306,7 @@ describe('backbone workspace state', () => {
       failedAssignmentIds: [2],
       assignmentErrors: { 2: 'Atribuição já foi alterada' }
     });
-    expect(workspaceApi.listBackbones).toHaveBeenCalledTimes(2);
+    expect(workspaceApi.listBackbones).toHaveBeenCalledTimes(4);
     expect(workspaceApi.listAssignments).toHaveBeenCalledTimes(4);
     expect(onMutation).toHaveBeenCalledTimes(1);
   });
@@ -322,7 +354,7 @@ describe('backbone workspace state', () => {
     await act(async () => { await latest?.transferAssignment(21, 12, 'Mudança de POP'); });
 
     expect(workspaceApi.linkAssignment).toHaveBeenCalledWith(21, 12, 'Mudança de POP');
-    expect(workspaceApi.listBackbones).toHaveBeenCalledTimes(2);
+    expect(workspaceApi.listBackbones).toHaveBeenCalledTimes(4);
     expect(workspaceApi.listAssignments).toHaveBeenCalledTimes(4);
     expect(onMutation).toHaveBeenCalledTimes(1);
   });
@@ -350,7 +382,7 @@ describe('backbone workspace state', () => {
     await act(async () => { await latest?.unlinkAssignment(21, 'Equipamento removido'); });
 
     expect(workspaceApi.unlinkAssignment).toHaveBeenCalledWith(21, 'Equipamento removido');
-    expect(workspaceApi.listBackbones).toHaveBeenCalledTimes(2);
+    expect(workspaceApi.listBackbones).toHaveBeenCalledTimes(4);
     expect(workspaceApi.listAssignments).toHaveBeenCalledTimes(4);
     expect(latest?.mutationState).toMatchObject({ pending: false, error: null });
     expect(onMutation).toHaveBeenCalledTimes(1);
