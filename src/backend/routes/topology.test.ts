@@ -312,7 +312,6 @@ describe('GET /api/topology', () => {
         island: 'São Vicente',
         zone: 'Monte Verde',
         provisional: false,
-        backboneQty: 1,
         issueCodes: []
       }),
       expect.objectContaining({
@@ -323,6 +322,9 @@ describe('GET /api/topology', () => {
         issueCodes: ['inactive', 'provisional_identity']
       })
     ]));
+    expect(body.backbones.every(
+      (backbone: Record<string, unknown>) => !('backboneQty' in backbone)
+    )).toBe(true);
     expect(body.backbones).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ backboneDeviceId: fixture.retiredBackboneDeviceId })
     ]));

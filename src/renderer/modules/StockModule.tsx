@@ -23,7 +23,6 @@ type StockFormState = {
   rentalFeeCve: string;
   stockTotal: string;
   active: '1' | '0';
-  backboneQty: string;
 };
 
 type StockMovementFormState = {
@@ -35,7 +34,7 @@ type StockMovementFormState = {
   notes: string;
 };
 
-type StockSortKey = 'model' | 'type' | 'stockTotal' | 'sellingPriceCve' | 'backboneQty';
+type StockSortKey = 'model' | 'type' | 'stockTotal' | 'sellingPriceCve';
 
 const DEFAULT_STOCK_SORT: SortState<StockSortKey> = { key: 'model', direction: 'asc' };
 const DEFAULT_STOCK_PAGE_SIZE = 25;
@@ -53,8 +52,7 @@ function emptyCatalogForm(): StockFormState {
     sellingPriceCve: '',
     rentalFeeCve: '',
     stockTotal: '0',
-    active: '1',
-    backboneQty: '0'
+    active: '1'
   };
 }
 
@@ -104,7 +102,6 @@ export function StockModule({
   const [stockTab, setStockTab] = useState<'equipamento' | 'material'>('equipamento');
   const [typeFilter, setTypeFilter] = useState<'all' | StockCatalogRow['type']>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out'>('all');
-  const [backboneFilter, setBackboneFilter] = useState<'all' | 'backbone' | 'cliente'>('all');
   const [catalogForm, setCatalogForm] = useState<StockFormState>(emptyCatalogForm());
   const [movementForm, setMovementForm] = useState<StockMovementFormState>(emptyMovementForm());
   const [sortState, setSortState] = useState<SortState<StockSortKey>>(DEFAULT_STOCK_SORT);
@@ -196,8 +193,7 @@ export function StockModule({
       sellingPriceCve: String(catalog.sellingPriceCve),
       rentalFeeCve: String(catalog.rentalFeeCve),
       stockTotal: String(catalog.stockTotal),
-      active: catalog.active ? '1' : '0',
-      backboneQty: String(catalog.backboneQty ?? 0)
+      active: catalog.active ? '1' : '0'
     });
     setShowCatalogForm(true);
   }
@@ -230,7 +226,6 @@ export function StockModule({
         sellingPriceCve: Number(catalogForm.sellingPriceCve || 0),
         rentalFeeCve: Number(catalogForm.rentalFeeCve || 0),
         stockTotal: Number(catalogForm.stockTotal || 0),
-        backboneQty: Number(catalogForm.backboneQty || 0),
         isSerialized: catalogForm.isSerialized === '1',
         active: catalogForm.active === '1'
       })
@@ -313,17 +308,13 @@ export function StockModule({
     const matchesStock = stockFilter === 'all'
       || (stockFilter === 'low' && item.stockTotal > 0 && item.stockTotal <= 3)
       || (stockFilter === 'out' && item.stockTotal <= 0);
-    const matchesBackbone = backboneFilter === 'all'
-      || (backboneFilter === 'backbone' && item.backboneQty > 0)
-      || (backboneFilter === 'cliente' && item.backboneQty <= 0);
-    return matchesSearch && matchesTab && matchesType && matchesStock && matchesBackbone;
-  }), [summary, search, stockTab, typeFilter, stockFilter, backboneFilter]);
+    return matchesSearch && matchesTab && matchesType && matchesStock;
+  }), [summary, search, stockTab, typeFilter, stockFilter]);
   const visibleStockRows = useMemo(() => sortRows(filteredStockRows, sortState, {
     model: (a, b) => compareText(`${a.brand || ''} ${a.model}`, `${b.brand || ''} ${b.model}`),
     type: (a, b) => compareText(a.type, b.type) || compareText(a.model, b.model),
     stockTotal: (a, b) => compareNumber(a.stockTotal, b.stockTotal) || compareText(a.model, b.model),
-    sellingPriceCve: (a, b) => compareNumber(a.sellingPriceCve, b.sellingPriceCve) || compareText(a.model, b.model),
-    backboneQty: (a, b) => compareNumber(a.backboneQty, b.backboneQty) || compareText(a.model, b.model)
+    sellingPriceCve: (a, b) => compareNumber(a.sellingPriceCve, b.sellingPriceCve) || compareText(a.model, b.model)
   }), [filteredStockRows, sortState]);
   const pagedStockRows = useMemo(
     () => paginateRows(visibleStockRows, { page: stockPage, pageSize: stockPageSize }),
@@ -332,7 +323,7 @@ export function StockModule({
 
   useEffect(() => {
     setStockPage(1);
-  }, [search, stockTab, typeFilter, stockFilter, backboneFilter, sortState, stockPageSize]);
+  }, [search, stockTab, typeFilter, stockFilter, sortState, stockPageSize]);
 
   return (
     <section className="module-panel">
@@ -414,12 +405,7 @@ export function StockModule({
             <option value="low">Baixo</option>
             <option value="out">Esgotado</option>
           </Select>
-          <Select label="Uso" value={backboneFilter} onChange={(event) => setBackboneFilter(event.target.value as 'all' | 'backbone' | 'cliente')}>
-            <option value="all">Todos</option>
-            <option value="backbone">Com backbone</option>
-            <option value="cliente">Sem backbone</option>
-          </Select>
-          <Button variant="secondary" onClick={() => { setSearch(''); setTypeFilter('all'); setStockFilter('all'); setBackboneFilter('all'); setSortState(DEFAULT_STOCK_SORT); setStockPage(1); }}>
+          <Button variant="secondary" onClick={() => { setSearch(''); setTypeFilter('all'); setStockFilter('all'); setSortState(DEFAULT_STOCK_SORT); setStockPage(1); }}>
             Limpar filtros
           </Button>
           <small>{visibleStockRows.length} {visibleStockRows.length === 1 ? 'modelo' : 'modelos'}</small>
@@ -565,7 +551,7 @@ export function StockModule({
             sort={sortState}
             onSortChange={setSortState}
             onRowClick={selectCatalog}
-            gridTemplateColumns="minmax(260px, 1.4fr) 112px 112px 132px 118px"
+            gridTemplateColumns="minmax(260px, 1.4fr) 112px 112px 132px"
             actionsWidth="92px"
             columns={[
               {
@@ -581,7 +567,6 @@ export function StockModule({
                       <span className="stock-item-main">
                         <span className="stock-item-name">
                           {item.brand ? `${item.brand} ${item.model}` : item.model}
-                          {item.backboneQty > 0 && <Badge tone="info">Backbone ×{item.backboneQty}</Badge>}
                         </span>
                         <span className="stock-item-meta-supplier">{item.supplier || 'sem fornecedor'}</span>
                       </span>
@@ -617,13 +602,6 @@ export function StockModule({
                 align: 'end',
                 cell: (item) => <span className="stock-item-value-amount">{formatCve(item.sellingPriceCve)}</span>
               },
-              {
-                header: 'Backbone',
-                sortKey: 'backboneQty',
-                defaultDirection: 'desc',
-                align: 'center',
-                cell: (item) => item.backboneQty > 0 ? <Badge tone="info">{item.backboneQty}</Badge> : <span>-</span>
-              }
             ]}
             actions={canManageStock ? (item) => (
               <>
@@ -733,7 +711,6 @@ export function StockModule({
                 <option value="1">Ativo</option>
                 <option value="0">Inativo</option>
               </Select>
-              <Field label="Unidades backbone" type="number" min={0} step={1} value={catalogForm.backboneQty} onChange={(event) => updateCatalogForm('backboneQty', event.target.value)} />
             </>
           )}
         </form>

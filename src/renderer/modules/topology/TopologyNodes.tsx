@@ -41,10 +41,16 @@ export type TopologyCanvasNode = Node<
 >;
 
 function nodeMeta(node: TopologyNode, branchCount?: number): string {
-  if (node.kind === 'logical-root') return 'Raiz lógica · inventário';
+  if (node.kind === 'logical-root') return 'Raiz lógica · mapa físico';
   if (node.kind === 'backbone') {
-    const count = branchCount === undefined ? 'ramo fechado' : `${branchCount} CPE`;
-    return `${node.catalogType} · inventário ×${node.backboneQty} · ${count}`;
+    const count = branchCount === undefined ? 'CPE por carregar' : `${branchCount} CPE`;
+    const location = [node.island, node.zone].filter(Boolean).join(' · ');
+    return [
+      node.model,
+      node.ipAddress ?? 'IP em falta',
+      location || 'Localização em falta',
+      count
+    ].join(' · ');
   }
   const clientCount = node.clients.length;
   return `${node.ipAddress ?? 'IP em falta'} · ${clientCount} cliente${clientCount === 1 ? '' : 's'}`;

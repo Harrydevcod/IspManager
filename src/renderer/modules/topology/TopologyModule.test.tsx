@@ -245,7 +245,7 @@ test('expands and loads a backbone selected from server search', async () => {
   vi.useRealTimers();
 });
 
-test('surfaces the number of CPE assignments without backbone lineage', async () => {
+test('surfaces the number of CPE assignments without a defined backbone link', async () => {
   const topologyApi = api({
     fetchSnapshot: vi.fn(async () => ({
       ...snapshot,
@@ -259,11 +259,11 @@ test('surfaces the number of CPE assignments without backbone lineage', async ()
   });
   const container = await mount(topologyApi);
 
-  expect(container.textContent).toContain('CPE mapeadas2');
-  expect(container.textContent).toContain('Sem linhagem2');
+  expect(container.textContent).toContain('CPE ligadas2');
+  expect(container.textContent).toContain('Sem ligação2');
 });
 
-test('identifies a search result that has no factual backbone lineage', async () => {
+test('identifies a search result that has no defined backbone link', async () => {
   vi.useFakeTimers();
   const unmappedDevice = {
     ...deviceOne,
@@ -305,8 +305,22 @@ test('identifies a search result that has no factual backbone lineage', async ()
     await Promise.resolve();
   });
 
-  expect(container.textContent).toContain('CPE física · sem linhagem');
+  expect(container.textContent).toContain('CPE física · sem ligação definida');
   vi.useRealTimers();
+});
+
+test('describes rendered relationships as defined links', async () => {
+  const container = await mount();
+
+  expect(container.textContent).toContain('Ligação definida');
+  expect(container.textContent).not.toContain('Linhagem de inventário');
+
+  await act(async () => {
+    button(container, 'Alternar etiquetas das ligações').click();
+  });
+
+  expect(button(container, 'Alternar etiquetas das ligações').getAttribute('aria-pressed'))
+    .toBe('true');
 });
 
 test('recovers the global snapshot after an explicit retry', async () => {
@@ -329,7 +343,7 @@ test('recovers the global snapshot after an explicit retry', async () => {
     await Promise.resolve();
   });
 
-  expect(container.textContent).toContain('Mapa de inventário');
+  expect(container.textContent).toContain('Mapa físico');
   expect(topologyApi.fetchSnapshot).toHaveBeenCalledTimes(2);
 });
 
@@ -338,7 +352,7 @@ test('closes the inspector with Escape while preserving the graph', async () => 
   await act(async () => {
     button(container, 'Selecionar Ubiquiti Rocket Prism').click();
   });
-  expect(container.textContent).toContain('Agrupamento backbone');
+  expect(container.textContent).toContain('Equipamento backbone');
 
   await act(async () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));

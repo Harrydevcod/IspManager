@@ -167,7 +167,7 @@ describe('topology App integration', () => {
       .find((candidate) => candidate.textContent?.trim() === 'Topologia');
     if (!topologyButton) throw new Error('Topologia sidebar action not found');
 
-    expect(container.textContent).not.toContain('Mapa de inventário');
+    expect(container.textContent).not.toContain('Mapa físico');
     await act(async () => {
       topologyButton.click();
     });
@@ -175,13 +175,13 @@ describe('topology App integration', () => {
       await vi.dynamicImportSettled();
     });
     for (let attempt = 0; attempt < 10; attempt += 1) {
-      if (container.textContent?.includes('Mapa de inventário')) break;
+      if (container.textContent?.includes('Mapa físico')) break;
       await act(async () => {
         await new Promise((resolve) => window.setTimeout(resolve, 10));
       });
     }
 
-    expect(container.textContent).toContain('Mapa de inventário');
+    expect(container.textContent).toContain('Mapa físico');
   });
 
   test('opens the exact service selected from a CPE with multiple services', async () => {

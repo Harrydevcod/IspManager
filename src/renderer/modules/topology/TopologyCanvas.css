@@ -127,12 +127,15 @@
 }
 
 .topology-node-copy small {
+  display: -webkit-box;
   overflow: hidden;
   color: var(--topology-faint);
   font-size: 0.61rem;
   line-height: 1.35;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .topology-node-state {

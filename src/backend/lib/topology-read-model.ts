@@ -223,7 +223,6 @@ function backboneNode(row: BackboneRow): TopologyBackboneNode {
     island: row.island,
     zone: row.zone,
     provisional,
-    backboneQty: 1,
     administrativeState: inactive ? 'inactive' : 'active',
     issueCodes,
     parentId: 'root:isp',

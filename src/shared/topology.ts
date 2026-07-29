@@ -51,8 +51,6 @@ export type TopologyBackboneNode = {
   island: string | null;
   zone: string | null;
   provisional: boolean;
-  /** @deprecated Renderer compatibility only; Task 9 removes this field. */
-  backboneQty: 1;
   administrativeState: TopologyAdministrativeState;
   issueCodes: TopologyIssueCode[];
   parentId: 'root:isp';

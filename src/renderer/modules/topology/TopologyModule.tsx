@@ -19,6 +19,7 @@ import type { TopologyApi } from './topology-api';
 import { filterTopologyGraph } from './topology-filters';
 import {
   composeTopologyGraph,
+  topologyRelationshipLabel,
   type TopologyFlowEdge,
   type TopologyGraph
 } from './topology-graph';
@@ -72,7 +73,9 @@ function decorateEdges(graph: TopologyGraph, labelsVisible: boolean): TopologyFl
   return graph.edges.map((edge) => ({
     ...edge,
     type: 'smoothstep',
-    label: labelsVisible ? 'inventário' : undefined,
+    label: labelsVisible && edge.data
+      ? topologyRelationshipLabel(edge.data.topology.relationship)
+      : undefined,
     labelStyle: { fill: 'oklch(72% 0.02 145)', fontSize: 10, fontWeight: 650 },
     labelBgStyle: { fill: 'oklch(20% 0.012 145)', fillOpacity: 0.96 },
     labelBgPadding: [6, 3] as [number, number],
@@ -101,7 +104,7 @@ function TopologyLoading() {
     <section className="topology-loading" aria-label="A carregar topologia">
       <span className="topology-loading-line" />
       <span className="topology-loading-line" />
-      <p>A preparar o mapa de inventário…</p>
+      <p>A preparar o mapa físico…</p>
     </section>
   );
 }
@@ -130,11 +133,11 @@ function EmptyCanvas({ filtered }: { filtered: boolean }) {
     <div className="topology-canvas-empty">
       <Network size={22} aria-hidden />
       <p className="eyebrow">{filtered ? 'Sem correspondências' : 'Primeiro mapa'}</p>
-      <h3>{filtered ? 'Revê os filtros ativos' : 'Ainda não há backbones no inventário'}</h3>
+      <h3>{filtered ? 'Revê os filtros ativos' : 'Ainda não há equipamentos backbone'}</h3>
       <p>
         {filtered
           ? 'Limpa um filtro ou expande outros ramos para comparar dados já carregados.'
-          : 'Marca unidades backbone no Stock. O mapa irá agrupá-las aqui sem inferir conectividade.'}
+          : 'Quando forem registadas, as unidades físicas backbone serão apresentadas aqui.'}
       </p>
     </div>
   );
@@ -195,13 +198,13 @@ function TopologyHeader({ snapshot }: { snapshot: TopologySnapshot }) {
       <div>
         <p className="eyebrow">Infraestrutura · leitura</p>
         <h2 id="topology-title">Topologia de rede</h2>
-        <p>Mapa de inventário</p>
+        <p>Mapa físico · ligações definidas</p>
       </div>
       <dl className="topology-stats" aria-label="Resumo factual">
         <div><dt>Backbones</dt><dd>{snapshot.stats.backboneCount}</dd></div>
-        <div><dt>CPE mapeadas</dt><dd>{snapshot.stats.mappedAssignmentCount}</dd></div>
+        <div><dt>CPE ligadas</dt><dd>{snapshot.stats.mappedAssignmentCount}</dd></div>
         <div data-tone={snapshot.stats.unmappedAssignmentCount > 0 ? 'attention' : undefined}>
-          <dt>Sem linhagem</dt><dd>{snapshot.stats.unmappedAssignmentCount}</dd>
+          <dt>Sem ligação</dt><dd>{snapshot.stats.unmappedAssignmentCount}</dd>
         </div>
         <div><dt>Clientes</dt><dd>{snapshot.stats.clientCount}</dd></div>
         <div data-tone={snapshot.stats.attentionCount > 0 ? 'attention' : undefined}>

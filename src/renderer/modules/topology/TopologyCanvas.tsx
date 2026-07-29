@@ -80,7 +80,7 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
     useCanvasControls(ref, nodes);
 
     return (
-      <div className="topology-canvas" aria-label="Mapa de inventário da rede">
+      <div className="topology-canvas" aria-label="Mapa físico da rede">
         <ReactFlow<TopologyCanvasNode, TopologyFlowEdge>
           nodes={nodes}
           edges={edges}
@@ -118,8 +118,8 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
           <div className="topology-legend" aria-label="Legenda da topologia">
             <span><i data-tone="active" /> Configurado</span>
             <span><i data-tone="attention" /> Requer atenção</span>
-            <span><b /> Linhagem de inventário</span>
-            <small>As linhas não indicam conectividade em tempo real.</small>
+            <span><b /> Ligação definida</span>
+            <small>As linhas são administrativas; não indicam conectividade em tempo real.</small>
           </div>
         )}
       </div>

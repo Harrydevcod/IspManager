@@ -16,12 +16,11 @@ export const backboneOne: TopologyBackboneNode = {
   catalogType: 'antena',
   serialNumber: 'BB-010',
   assetTag: 'AT-010',
-  ipAddress: '10.10.0.10',
+  ipAddress: '10.20.0.1',
   macAddress: 'AA:BB:CC:DD:EE:10',
   island: 'São Vicente',
   zone: 'Monte Verde',
   provisional: false,
-  backboneQty: 1,
   administrativeState: 'active',
   issueCodes: [],
   parentId: 'root:isp',
@@ -43,7 +42,6 @@ export const backboneTwo: TopologyBackboneNode = {
   island: null,
   zone: null,
   provisional: true,
-  backboneQty: 1,
   administrativeState: 'inactive',
   issueCodes: ['inactive', 'provisional_identity']
 };
