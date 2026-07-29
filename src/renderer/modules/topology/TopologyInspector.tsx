@@ -28,7 +28,8 @@ const ISSUE_LABELS: Record<TopologyIssueCode, string> = {
   inactive: 'Inativo',
   missing_ip: 'IP em falta',
   suspended_service: 'Serviço suspenso',
-  incomplete_configuration: 'Configuração incompleta'
+  incomplete_configuration: 'Configuração incompleta',
+  provisional_identity: 'Identidade provisória'
 };
 
 function kindLabel(node: TopologyNode): string {

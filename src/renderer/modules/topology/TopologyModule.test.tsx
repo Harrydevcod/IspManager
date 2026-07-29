@@ -29,7 +29,7 @@ function responseSearch(): TopologySearchResponse {
           id: 'backbone:10',
           kind: 'backbone',
           label: branchOne.backbone.label,
-          relationship: 'inventory_lineage'
+          relationship: 'defined_link'
         }
       ]
     }]

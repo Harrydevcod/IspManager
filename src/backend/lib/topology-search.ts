@@ -38,18 +38,29 @@ function clientFields(node: TopologyClientDeviceNode): SearchField[] {
 }
 
 function nodeFields(node: TopologyBackboneNode | TopologyClientDeviceNode): SearchField[] {
-  const catalog = [
+  const equipment = [
     { name: 'backbone', value: node.label },
     { name: 'backbone', value: node.brand },
     { name: 'backbone', value: node.model },
     { name: 'backbone', value: node.catalogType }
   ];
-  if (node.kind === 'backbone') return catalog;
-  return [
-    ...catalog,
+  const identity = [
     { name: 'ip', value: node.ipAddress },
     { name: 'mac', value: node.macAddress },
     { name: 'serial', value: node.serialNumber },
+    { name: 'assetTag', value: node.assetTag }
+  ];
+  if (node.kind === 'backbone') {
+    return [
+      ...equipment,
+      ...identity,
+      { name: 'island', value: node.island },
+      { name: 'zone', value: node.zone }
+    ];
+  }
+  return [
+    ...equipment,
+    ...identity,
     ...clientFields(node)
   ];
 }
@@ -69,7 +80,12 @@ function nodeLocations(node: TopologyBackboneNode | TopologyClientDeviceNode): {
   islands: string[];
   zones: string[];
 } {
-  if (node.kind === 'backbone') return { islands: [], zones: [] };
+  if (node.kind === 'backbone') {
+    return {
+      islands: [normalizeTopologyText(node.island ?? '')],
+      zones: [normalizeTopologyText(node.zone ?? '')]
+    };
+  }
   return {
     islands: node.clients.map((client) => normalizeTopologyText(client.island ?? '')),
     zones: node.clients.map((client) => normalizeTopologyText(client.zone ?? ''))
@@ -106,13 +122,15 @@ function ancestors(
     label: 'Internet / Core ISPM'
   }];
   if (node.kind === 'backbone') return result;
-  const backbone = backbones.get(node.catalogId);
+  if (node.parentId === 'root:isp') return result;
+  const backboneDeviceId = Number(node.parentId.slice('backbone:'.length));
+  const backbone = backbones.get(backboneDeviceId);
   if (backbone) {
     result.push({
       id: backbone.id,
       kind: 'backbone',
       label: backbone.label,
-      relationship: 'inventory_lineage'
+      relationship: 'defined_link'
     });
   }
   return result;
@@ -143,7 +161,7 @@ export function searchTopology(
     island: options.island,
     zone: options.zone
   };
-  const backbones = new Map(snapshot.backbones.map((item) => [item.catalogId, item]));
+  const backbones = new Map(snapshot.backbones.map((item) => [item.backboneDeviceId, item]));
   const nodes = [...snapshot.backbones, ...snapshot.clientDevices];
   const results = nodes.flatMap((node) => {
     const matches = matchedFields(node, query);
