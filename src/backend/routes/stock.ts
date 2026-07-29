@@ -22,7 +22,7 @@ const catalogSchema = z.object({
   rentalFeeCve: z.coerce.number().min(0).default(0),
   stockTotal: z.coerce.number().int().min(0).default(0),
   active: z.coerce.boolean().default(true)
-});
+}).strict();
 
 /** Nomes dos campos como o operador os vê no formulário, não como o JSON os chama. */
 const CATALOG_FIELD_LABELS: Record<string, string> = {
@@ -50,6 +50,9 @@ const CATALOG_FIELD_LABELS: Record<string, string> = {
  */
 function catalogValidationError(error: z.ZodError): string {
   const issue = error.issues[0];
+  if (issue.code === 'unrecognized_keys') {
+    return `Campos nao permitidos: ${issue.keys.join(', ')}`;
+  }
   const field = CATALOG_FIELD_LABELS[String(issue.path[0])] || String(issue.path[0]);
   if (issue.code === 'invalid_type' && issue.expected === 'integer') {
     return `${field}: use um numero inteiro, sem casas decimais`;

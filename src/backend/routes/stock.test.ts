@@ -151,6 +151,37 @@ describe('erros de validacao do catalogo', () => {
     }
   });
 
+  test('rejects retired backbone quantity on catalog creation', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/equipment-catalog',
+      payload: { ...valid, backboneQty: 2 }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect((response.json() as { error: string }).error).toContain('backboneQty');
+    expect(db.prepare('SELECT COUNT(*) AS count FROM equipment_catalog').get())
+      .toEqual({ count: 0 });
+  });
+
+  test('rejects retired backbone quantity on catalog update', async () => {
+    const catalogId = db.prepare(`
+      INSERT INTO equipment_catalog (type, brand, model, stock_total, active)
+      VALUES ('router', 'Teste', 'Antes', 3, 1)
+    `).run().lastInsertRowid;
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/equipment-catalog/${catalogId}`,
+      payload: { ...valid, model: 'Depois', backboneQty: 2 }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect((response.json() as { error: string }).error).toContain('backboneQty');
+    expect(db.prepare('SELECT model FROM equipment_catalog WHERE id = ?').get(catalogId))
+      .toEqual({ model: 'Antes' });
+  });
+
   test('still accepts a well-formed catalog entry', async () => {
     const response = await app.inject({ method: 'POST', url: '/api/equipment-catalog', payload: valid });
     expect(response.statusCode).toBe(201);
