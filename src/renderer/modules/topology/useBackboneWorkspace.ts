@@ -7,7 +7,7 @@ import type {
   BackboneStatus,
   BackboneWriteInput
 } from '../../../shared/backbone';
-import type { BackboneApi } from './backbone-api';
+import { BackboneApiError, type BackboneApi } from './backbone-api';
 
 const PAGE_SIZE = 25;
 const LINK_CONCURRENCY = 4;
@@ -16,9 +16,30 @@ function emptyPage<T>(page = 1): BackbonePage<T> {
   return { page, pageSize: PAGE_SIZE, total: 0, totalPages: 0, items: [] };
 }
 
+export type BackboneMutationOperation =
+  | 'createBackbone'
+  | 'updateBackbone'
+  | 'linkAssignments'
+  | 'unlinkAssignment';
+
+export type BackboneMutationContext =
+  | { input: BackboneWriteInput }
+  | { id: number; input: BackboneWriteInput }
+  | { assignmentIds: number[]; backboneDeviceId: number; reason: string | null }
+  | { assignmentId: number; reason: string | null };
+
+export type BackboneMutationFailure = {
+  status: number | null;
+  operation: BackboneMutationOperation;
+  message: string;
+  context: BackboneMutationContext;
+};
+
 export type BackboneMutationState = {
   pending: boolean;
   error: string | null;
+  failure: BackboneMutationFailure | null;
+  conflict: (BackboneMutationFailure & { status: 409 }) | null;
   failedAssignmentIds: number[];
   assignmentErrors: Readonly<Record<number, string>>;
 };
@@ -27,11 +48,50 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : 'Não foi possível concluir a alteração.';
 }
 
+function idleMutationState(): BackboneMutationState {
+  return {
+    pending: false, error: null, failure: null, conflict: null,
+    failedAssignmentIds: [], assignmentErrors: {}
+  };
+}
+
+function pendingMutationState(): BackboneMutationState {
+  return { ...idleMutationState(), pending: true };
+}
+
+function mutationFailure(
+  operation: BackboneMutationOperation,
+  context: BackboneMutationContext,
+  error: unknown
+): BackboneMutationFailure {
+  return {
+    status: error instanceof BackboneApiError ? error.status : null,
+    operation,
+    message: message(error),
+    context
+  };
+}
+
+function failedMutationState(
+  failure: BackboneMutationFailure,
+  failedAssignmentIds: number[] = [],
+  assignmentErrors: Readonly<Record<number, string>> = {}
+): BackboneMutationState {
+  return {
+    pending: false,
+    error: failure.message,
+    failure,
+    conflict: failure.status === 409 ? { ...failure, status: 409 } : null,
+    failedAssignmentIds,
+    assignmentErrors
+  };
+}
+
 async function settleBounded<T>(
   ids: readonly number[],
   work: (id: number) => Promise<T>
-): Promise<Array<{ id: number; error?: string }>> {
-  const results: Array<{ id: number; error?: string }> = [];
+): Promise<Array<{ id: number; error?: unknown }>> {
+  const results: Array<{ id: number; error?: unknown }> = [];
   let next = 0;
   const worker = async () => {
     while (next < ids.length) {
@@ -40,7 +100,7 @@ async function settleBounded<T>(
         await work(id);
         results.push({ id });
       } catch (error) {
-        results.push({ id, error: message(error) });
+        results.push({ id, error });
       }
     }
   };
@@ -54,29 +114,31 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
   const [unlinked, setUnlinked] = useState<BackbonePage<BackboneAssignmentSummary>>(() => emptyPage());
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selected, setSelected] = useState<BackboneDeviceDetail | null>(null);
-  const [query, setQuery] = useState('');
+  const [backboneQuery, setBackboneQuery] = useState('');
+  const [assignmentQuery, setAssignmentQuery] = useState('');
+  const [unlinkedQuery, setUnlinkedQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<BackboneStatus | undefined>();
   const [backbonePage, setBackbonePage] = useState(1);
   const [assignmentPage, setAssignmentPage] = useState(1);
   const [unlinkedPage, setUnlinkedPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [mutationState, setMutationState] = useState<BackboneMutationState>({
-    pending: false, error: null, failedAssignmentIds: [], assignmentErrors: {}
-  });
+  const [mutationState, setMutationState] = useState<BackboneMutationState>(idleMutationState);
   const requestVersion = useRef(0);
   const detailRequestVersion = useRef(0);
   const initialLoad = useRef(true);
 
   const refresh = useCallback(async () => {
     const version = ++requestVersion.current;
-    const normalizedQuery = query.trim() || undefined;
+    const normalizedBackboneQuery = backboneQuery.trim() || undefined;
+    const normalizedAssignmentQuery = assignmentQuery.trim() || undefined;
+    const normalizedUnlinkedQuery = unlinkedQuery.trim() || undefined;
     setLoading(true);
     setError(null);
     const results = await Promise.allSettled([
-      api.listBackbones({ page: backbonePage, pageSize: PAGE_SIZE, status: statusFilter, query: normalizedQuery }),
-      api.listAssignments({ page: assignmentPage, pageSize: PAGE_SIZE, mapping: 'all', query: normalizedQuery }),
-      api.listAssignments({ page: unlinkedPage, pageSize: PAGE_SIZE, mapping: 'unlinked', query: normalizedQuery })
+      api.listBackbones({ page: backbonePage, pageSize: PAGE_SIZE, status: statusFilter, query: normalizedBackboneQuery }),
+      api.listAssignments({ page: assignmentPage, pageSize: PAGE_SIZE, mapping: 'all', query: normalizedAssignmentQuery }),
+      api.listAssignments({ page: unlinkedPage, pageSize: PAGE_SIZE, mapping: 'unlinked', query: normalizedUnlinkedQuery })
     ]);
     if (version !== requestVersion.current) return;
     const [nextBackbones, nextAssignments, nextUnlinked] = results;
@@ -86,7 +148,7 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
     const failure = results.find((result) => result.status === 'rejected');
     setError(failure?.status === 'rejected' ? message(failure.reason) : null);
     setLoading(false);
-  }, [api, assignmentPage, backbonePage, query, statusFilter, unlinkedPage]);
+  }, [api, assignmentPage, assignmentQuery, backbonePage, backboneQuery, statusFilter, unlinkedPage, unlinkedQuery]);
 
   useEffect(() => {
     if (initialLoad.current) {
@@ -114,36 +176,32 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
   }, [api, selectedId]);
 
   const createBackbone = useCallback(async (input: BackboneWriteInput) => {
-    setMutationState({ pending: true, error: null, failedAssignmentIds: [], assignmentErrors: {} });
+    setMutationState(pendingMutationState());
     try {
       const created = await api.createBackbone(input);
       setSelectedId(created.id);
       setSelected(created);
       await refresh();
       onMutation();
-      setMutationState({ pending: false, error: null, failedAssignmentIds: [], assignmentErrors: {} });
+      setMutationState(idleMutationState());
       return created;
     } catch (mutationError) {
-      setMutationState({
-        pending: false, error: message(mutationError), failedAssignmentIds: [], assignmentErrors: {}
-      });
+      setMutationState(failedMutationState(mutationFailure('createBackbone', { input }, mutationError)));
       return null;
     }
   }, [api, onMutation, refresh]);
 
   const updateBackbone = useCallback(async (id: number, input: BackboneWriteInput) => {
-    setMutationState({ pending: true, error: null, failedAssignmentIds: [], assignmentErrors: {} });
+    setMutationState(pendingMutationState());
     try {
       const updated = await api.updateBackbone(id, input);
       setSelected(updated);
       await refresh();
       onMutation();
-      setMutationState({ pending: false, error: null, failedAssignmentIds: [], assignmentErrors: {} });
+      setMutationState(idleMutationState());
       return updated;
     } catch (mutationError) {
-      setMutationState({
-        pending: false, error: message(mutationError), failedAssignmentIds: [], assignmentErrors: {}
-      });
+      setMutationState(failedMutationState(mutationFailure('updateBackbone', { id, input }, mutationError)));
       return null;
     }
   }, [api, onMutation, refresh]);
@@ -152,21 +210,25 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
     assignmentIds: number[], backboneDeviceId: number, reason: string | null = null
   ) => {
     const uniqueIds = [...new Set(assignmentIds)];
-    setMutationState({ pending: true, error: null, failedAssignmentIds: [], assignmentErrors: {} });
+    const context = { assignmentIds: uniqueIds, backboneDeviceId, reason };
+    setMutationState(pendingMutationState());
     const results = await settleBounded(uniqueIds, (assignmentId) => (
       api.linkAssignment(assignmentId, backboneDeviceId, reason)
     ));
-    const failures = results.filter((result) => result.error !== undefined);
+    const failures = results.filter((result): result is { id: number; error: unknown } => result.error !== undefined);
     const successful = results.length - failures.length;
-    const assignmentErrors = Object.fromEntries(failures.map((failure) => [failure.id, failure.error!]));
+    const assignmentErrors = Object.fromEntries(failures.map((failure) => [failure.id, message(failure.error)]));
     await refresh();
     if (successful > 0) onMutation();
-    setMutationState({
-      pending: false,
-      error: successful === 0 ? failures[0]?.error ?? 'Não foi possível associar as atribuições.' : null,
-      failedAssignmentIds: failures.map((failure) => failure.id),
-      assignmentErrors
-    });
+    const firstFailure = failures[0]
+      ? mutationFailure('linkAssignments', context, failures[0].error)
+      : null;
+    setMutationState(firstFailure
+      ? {
+          ...failedMutationState(firstFailure, failures.map((failure) => failure.id), assignmentErrors),
+          error: successful === 0 ? firstFailure.message : null
+        }
+      : idleMutationState());
     return { successful, failedAssignmentIds: failures.map((failure) => failure.id), assignmentErrors };
   }, [api, onMutation, refresh]);
 
@@ -175,19 +237,16 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
   ) => linkAssignments([assignmentId], backboneDeviceId, reason), [linkAssignments]);
 
   const unlinkAssignment = useCallback(async (assignmentId: number, reason: string | null = null) => {
-    setMutationState({ pending: true, error: null, failedAssignmentIds: [], assignmentErrors: {} });
+    setMutationState(pendingMutationState());
     try {
       const result = await api.unlinkAssignment(assignmentId, reason);
       await refresh();
       onMutation();
-      setMutationState({ pending: false, error: null, failedAssignmentIds: [], assignmentErrors: {} });
+      setMutationState(idleMutationState());
       return result;
     } catch (mutationError) {
-      const mutationMessage = message(mutationError);
-      setMutationState({
-        pending: false, error: mutationMessage, failedAssignmentIds: [assignmentId],
-        assignmentErrors: { [assignmentId]: mutationMessage }
-      });
+      const failure = mutationFailure('unlinkAssignment', { assignmentId, reason }, mutationError);
+      setMutationState(failedMutationState(failure, [assignmentId], { [assignmentId]: failure.message }));
       return null;
     }
   }, [api, onMutation, refresh]);
@@ -196,8 +255,11 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
 
   return useMemo(() => ({
     backbones, selectedId, selected, assignments, unlinked,
-    query, statusFilter, loading, error, mutationState,
-    setQuery, setStatusFilter, setBackbonePage, setAssignmentPage, setUnlinkedPage,
+    backboneQuery, assignmentQuery, unlinkedQuery,
+    backboneStatusFilter: statusFilter, statusFilter, loading, error, mutationState,
+    setBackboneQuery, setAssignmentQuery, setUnlinkedQuery,
+    setBackboneStatusFilter: setStatusFilter, setStatusFilter,
+    setBackbonePage, setAssignmentPage, setUnlinkedPage,
     selectBackbone,
     refresh,
     createBackbone,
@@ -205,5 +267,5 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
     linkAssignments,
     transferAssignment,
     unlinkAssignment
-  }), [assignments, backbones, createBackbone, error, linkAssignments, loading, mutationState, query, refresh, selectBackbone, selected, selectedId, statusFilter, transferAssignment, unlinkAssignment, unlinked, updateBackbone]);
+  }), [assignmentQuery, assignments, backboneQuery, backbones, createBackbone, error, linkAssignments, loading, mutationState, refresh, selectBackbone, selected, selectedId, statusFilter, transferAssignment, unlinkAssignment, unlinked, unlinkedQuery, updateBackbone]);
 }

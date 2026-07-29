@@ -131,7 +131,7 @@ describe('backbone workspace state', () => {
     await mount(workspaceApi);
     expect(workspaceApi.listBackbones).toHaveBeenCalledTimes(1);
 
-    await act(async () => { latest?.setQuery('novo'); });
+    await act(async () => { latest?.setBackboneQuery('novo'); });
     await act(async () => { resolveOld(page([{ ...backbone, name: 'Resultado antigo' }])); });
     expect(latest?.backbones.items).toEqual([]);
     await act(async () => { vi.advanceTimersByTime(299); });
@@ -140,6 +140,38 @@ describe('backbone workspace state', () => {
     expect(workspaceApi.listBackbones).toHaveBeenCalledTimes(2);
 
     expect(latest?.backbones.items[0]?.name).toBe('Resultado novo');
+    vi.useRealTimers();
+  });
+
+  test('keeps backbone, linked-assignment, and unlinked queries independent', async () => {
+    vi.useFakeTimers();
+    const workspaceApi = await mount();
+    vi.mocked(workspaceApi.listBackbones).mockClear();
+    vi.mocked(workspaceApi.listAssignments).mockClear();
+
+    await act(async () => {
+      latest?.setBackboneQuery('core');
+      latest?.setBackboneStatusFilter('maintenance');
+      latest?.setAssignmentQuery('cliente ligado');
+      latest?.setUnlinkedQuery('sem POP');
+    });
+    await act(async () => { vi.advanceTimersByTime(300); await Promise.resolve(); });
+
+    expect(workspaceApi.listBackbones).toHaveBeenCalledWith({
+      page: 1, pageSize: 25, status: 'maintenance', query: 'core'
+    });
+    expect(workspaceApi.listAssignments).toHaveBeenNthCalledWith(1, {
+      page: 1, pageSize: 25, mapping: 'all', query: 'cliente ligado'
+    });
+    expect(workspaceApi.listAssignments).toHaveBeenNthCalledWith(2, {
+      page: 1, pageSize: 25, mapping: 'unlinked', query: 'sem POP'
+    });
+    expect(latest).toMatchObject({
+      backboneQuery: 'core',
+      backboneStatusFilter: 'maintenance',
+      assignmentQuery: 'cliente ligado',
+      unlinkedQuery: 'sem POP'
+    });
     vi.useRealTimers();
   });
 
@@ -169,9 +201,37 @@ describe('backbone workspace state', () => {
     expect(latest?.selectedId).toBe(10);
     expect(latest?.selected).toEqual(detail);
     expect(latest?.mutationState).toMatchObject({
-      pending: false, error: 'O backbone foi alterado por outra pessoa'
+      pending: false,
+      error: 'O backbone foi alterado por outra pessoa',
+      conflict: {
+        status: 409,
+        operation: 'updateBackbone',
+        message: 'O backbone foi alterado por outra pessoa',
+        context: { id: 10, input: writeInput }
+      }
     });
     expect(onMutation).not.toHaveBeenCalled();
+  });
+
+  test('retains typed actionable context for a non-conflict mutation failure', async () => {
+    const workspaceApi = await mount(api({
+      createBackbone: vi.fn(async () => { throw new BackboneApiError('Dados de backbone inválidos', 400); })
+    }));
+
+    await act(async () => { await latest?.createBackbone(writeInput); });
+
+    expect(workspaceApi.createBackbone).toHaveBeenCalledWith(writeInput);
+    expect(latest?.mutationState).toMatchObject({
+      pending: false,
+      error: 'Dados de backbone inválidos',
+      failure: {
+        status: 400,
+        operation: 'createBackbone',
+        message: 'Dados de backbone inválidos',
+        context: { input: writeInput }
+      },
+      conflict: null
+    });
   });
 
   test('links selected assignments in a bounded sequence, retains partial failures, and refreshes once', async () => {
