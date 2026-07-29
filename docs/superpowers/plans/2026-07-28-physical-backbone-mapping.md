@@ -692,10 +692,10 @@ Assert exact URLs:
 
 ```ts
 expect(calls[0]).toBe(
-  'http://127.0.0.1:3001/api/topology/backbones?page=1&pageSize=25&status=active&q=rocket'
+  'http://127.0.0.1:3001/api/topology/backbones?page=1&pageSize=25&status=active&query=rocket'
 );
 expect(calls[1]).toBe(
-  'http://127.0.0.1:3001/api/topology/assignments?page=1&pageSize=25&mapping=unlinked&q=cliente'
+  'http://127.0.0.1:3001/api/topology/assignments?page=1&pageSize=25&mapping=unlinked&query=cliente'
 );
 ```
 
