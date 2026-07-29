@@ -246,7 +246,7 @@ describe('runMigrations', () => {
     db.close();
   });
 
-  test('materializes catalog backbone quantities as provisional physical devices', () => {
+  test('retires catalog backbone quantities only after preserving their physical devices', () => {
     const db = freshDb();
     const beforePhysicalBackboneMapping = migrations.filter((migration) => migration.version < 31);
     runMigrations(db, beforePhysicalBackboneMapping);
@@ -256,18 +256,30 @@ describe('runMigrations', () => {
       VALUES ('antena', 'Ubiquiti', 'Rocket Prism', 2, 2, 1)
     `).run();
 
+    const throughPhysicalBackboneMapping = migrations.filter((migration) => migration.version <= 31);
+    runMigrations(db, throughPhysicalBackboneMapping);
+
+    const materializedDevices = db.prepare(`
+      SELECT name, provisional, serial_number AS serialNumber
+      FROM backbone_devices
+      ORDER BY id
+    `).all();
+    expect(materializedDevices).toEqual([
+      { name: 'Ubiquiti Rocket Prism #1', provisional: 1, serialNumber: null },
+      { name: 'Ubiquiti Rocket Prism #2', provisional: 1, serialNumber: null }
+    ]);
+    expect(db.prepare('PRAGMA table_info(equipment_catalog)').all())
+      .toEqual(expect.arrayContaining([expect.objectContaining({ name: 'backbone_qty' })]));
+
     runMigrations(db, migrations);
 
+    expect(db.prepare('PRAGMA table_info(equipment_catalog)').all())
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ name: 'backbone_qty' })]));
     expect(db.prepare(`
       SELECT name, provisional, serial_number AS serialNumber
       FROM backbone_devices
       ORDER BY id
-    `).all()).toEqual([
-      { name: 'Ubiquiti Rocket Prism #1', provisional: 1, serialNumber: null },
-      { name: 'Ubiquiti Rocket Prism #2', provisional: 1, serialNumber: null }
-    ]);
-    expect(db.prepare(`PRAGMA table_info(equipment_catalog)`).all())
-      .toEqual(expect.arrayContaining([expect.objectContaining({ name: 'backbone_qty' })]));
+    `).all()).toEqual(materializedDevices);
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
   });
 

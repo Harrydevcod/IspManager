@@ -330,12 +330,21 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       .get() as { totalCve: number };
     const stockAcquiredCve = Number(stockAcquiredRow.totalCve) || 0;
 
-    // Capital de backbone (transmissão): unidades marcadas backbone por modelo
-    // × custo landed. Métrica de visibilidade — não soma a totalInvestedCve.
+    // Capital de backbone (transmissão): unidades físicas não retiradas × custo
+    // landed. Métrica de visibilidade — não soma a totalInvestedCve.
     const backboneStockRow = getSqliteDatabase()
       .prepare(`
-        SELECT COALESCE(SUM(backbone_qty * (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve)), 0) AS totalCve
-        FROM equipment_catalog
+        SELECT COALESCE(SUM(
+          (ec.purchase_price_cve + ec.shipping_cost_cve + ec.customs_duty_cve + ec.other_costs_cve)
+          * bd.units
+        ), 0) AS totalCve
+        FROM equipment_catalog ec
+        JOIN (
+          SELECT catalog_id, COUNT(*) AS units
+          FROM backbone_devices
+          WHERE status <> 'retired'
+          GROUP BY catalog_id
+        ) bd ON bd.catalog_id = ec.id
       `)
       .get() as { totalCve: number };
     const backboneStockCve = Number(backboneStockRow.totalCve) || 0;

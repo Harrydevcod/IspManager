@@ -66,18 +66,16 @@ afterAll(async () => {
 function insertCatalog(values: {
   model: string;
   type: string;
-  backboneQty: number;
   active?: number;
   serialized?: number;
 }) {
   return Number(db.prepare(`
     INSERT INTO equipment_catalog (
-      category, type, brand, model, backbone_qty, active, is_serialized, stock_total
-    ) VALUES ('equipamento', ?, 'Ubiquiti', ?, ?, ?, ?, 10)
+      category, type, brand, model, active, is_serialized, stock_total
+    ) VALUES ('equipamento', ?, 'Ubiquiti', ?, ?, ?, 10)
   `).run(
     values.type,
     values.model,
-    values.backboneQty,
     values.active ?? 1,
     values.serialized ?? 1
   ).lastInsertRowid);
@@ -168,24 +166,20 @@ function linkAssignment(
 function seedTopology(): Fixture {
   const backboneCatalogId = insertCatalog({
     model: 'Rocket Prism 5AC',
-    type: 'antena',
-    backboneQty: 0
+    type: 'antena'
   });
   const provisionalBackboneCatalogId = insertCatalog({
     model: 'Core Switch Legacy',
     type: 'switch',
-    backboneQty: 0,
     serialized: 0
   });
   const clientCatalogId = insertCatalog({
     model: 'LiteBeam 5AC',
-    type: 'cpe',
-    backboneQty: 9
+    type: 'cpe'
   });
   const inactiveClientCatalogId = insertCatalog({
     model: 'NanoStation Legacy',
     type: 'cpe',
-    backboneQty: 0,
     active: 0,
     serialized: 0
   });
@@ -433,7 +427,7 @@ describe('GET /api/topology/backbones/:id/clients', () => {
     expect(response.statusCode).toBe(statusCode);
   });
 
-  test('treats a catalog id as a missing backbone even when its legacy quantity is positive', async () => {
+  test('treats a catalog id without a physical backbone device as a missing backbone', async () => {
     const { clientCatalogId } = seedTopology();
     const response = await app.inject({
       method: 'GET',
