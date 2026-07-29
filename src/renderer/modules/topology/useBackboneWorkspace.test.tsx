@@ -175,6 +175,22 @@ describe('backbone workspace state', () => {
     vi.useRealTimers();
   });
 
+  test('keeps query and setQuery as backbone-query compatibility aliases', async () => {
+    vi.useFakeTimers();
+    const workspaceApi = await mount();
+    vi.mocked(workspaceApi.listBackbones).mockClear();
+
+    await act(async () => { latest?.setQuery('compatível'); });
+    await act(async () => { vi.advanceTimersByTime(300); await Promise.resolve(); });
+
+    expect(latest?.query).toBe('compatível');
+    expect(latest?.backboneQuery).toBe('compatível');
+    expect(workspaceApi.listBackbones).toHaveBeenCalledWith({
+      page: 1, pageSize: 25, status: undefined, query: 'compatível'
+    });
+    vi.useRealTimers();
+  });
+
   test('refreshes once and notifies once after a successful backbone mutation', async () => {
     const onMutation = vi.fn();
     const workspaceApi = await mount(api(), onMutation);
@@ -263,6 +279,42 @@ describe('backbone workspace state', () => {
     expect(onMutation).toHaveBeenCalledTimes(1);
   });
 
+  test('retains every bulk-link failure in input order when a faster failure is a conflict', async () => {
+    const workspaceApi = await mount(api({
+      linkAssignment: vi.fn(async (assignmentId: number) => {
+        if (assignmentId === 1) {
+          await Promise.resolve();
+          throw new BackboneApiError('Primeira falha', 400);
+        }
+        if (assignmentId === 2) throw new BackboneApiError('Conflito rápido', 409);
+        throw new BackboneApiError('Terceira falha', 404);
+      })
+    }));
+
+    await act(async () => { await latest?.linkAssignments([1, 2, 3], 10, 'Instalação'); });
+
+    expect(latest?.mutationState).toMatchObject({
+      failedAssignmentIds: [1, 2, 3],
+      assignmentFailures: {
+        1: { status: 400, operation: 'linkAssignments', message: 'Primeira falha' },
+        2: {
+          status: 409,
+          operation: 'linkAssignments',
+          message: 'Conflito rápido',
+          context: { assignmentId: 2, assignmentIds: [1, 2, 3], backboneDeviceId: 10, reason: 'Instalação' }
+        },
+        3: { status: 404, operation: 'linkAssignments', message: 'Terceira falha' }
+      },
+      conflicts: [{
+        status: 409,
+        operation: 'linkAssignments',
+        message: 'Conflito rápido',
+        context: { assignmentId: 2, assignmentIds: [1, 2, 3], backboneDeviceId: 10, reason: 'Instalação' }
+      }]
+    });
+    expect(latest?.mutationState.conflict).toMatchObject({ message: 'Conflito rápido' });
+  });
+
   test('transfers one assignment through the same mutation refresh path', async () => {
     const onMutation = vi.fn();
     const workspaceApi = await mount(api(), onMutation);
@@ -273,6 +325,22 @@ describe('backbone workspace state', () => {
     expect(workspaceApi.listBackbones).toHaveBeenCalledTimes(2);
     expect(workspaceApi.listAssignments).toHaveBeenCalledTimes(4);
     expect(onMutation).toHaveBeenCalledTimes(1);
+  });
+
+  test('preserves transfer-specific conflict context', async () => {
+    const workspaceApi = await mount(api({
+      linkAssignment: vi.fn(async () => { throw new BackboneApiError('A ligação mudou', 409); })
+    }));
+
+    await act(async () => { await latest?.transferAssignment(21, 12, 'Mudança de POP'); });
+
+    expect(latest?.mutationState.conflict).toMatchObject({
+      status: 409,
+      operation: 'transferAssignment',
+      message: 'A ligação mudou',
+      context: { assignmentId: 21, backboneDeviceId: 12, reason: 'Mudança de POP' }
+    });
+    expect(workspaceApi.linkAssignment).toHaveBeenCalledWith(21, 12, 'Mudança de POP');
   });
 
   test('unlinks an assignment and leaves no stale mutation error after success', async () => {

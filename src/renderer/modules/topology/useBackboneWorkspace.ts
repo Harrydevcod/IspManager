@@ -20,12 +20,14 @@ export type BackboneMutationOperation =
   | 'createBackbone'
   | 'updateBackbone'
   | 'linkAssignments'
+  | 'transferAssignment'
   | 'unlinkAssignment';
 
 export type BackboneMutationContext =
   | { input: BackboneWriteInput }
   | { id: number; input: BackboneWriteInput }
-  | { assignmentIds: number[]; backboneDeviceId: number; reason: string | null }
+  | { assignmentIds: number[]; assignmentId?: number; backboneDeviceId: number; reason: string | null }
+  | { assignmentId: number; backboneDeviceId: number; reason: string | null }
   | { assignmentId: number; reason: string | null };
 
 export type BackboneMutationFailure = {
@@ -35,13 +37,17 @@ export type BackboneMutationFailure = {
   context: BackboneMutationContext;
 };
 
+export type BackboneMutationConflict = BackboneMutationFailure & { status: 409 };
+
 export type BackboneMutationState = {
   pending: boolean;
   error: string | null;
   failure: BackboneMutationFailure | null;
-  conflict: (BackboneMutationFailure & { status: 409 }) | null;
+  conflict: BackboneMutationConflict | null;
+  conflicts: readonly BackboneMutationConflict[];
   failedAssignmentIds: number[];
   assignmentErrors: Readonly<Record<number, string>>;
+  assignmentFailures: Readonly<Record<number, BackboneMutationFailure>>;
 };
 
 function message(error: unknown): string {
@@ -50,8 +56,8 @@ function message(error: unknown): string {
 
 function idleMutationState(): BackboneMutationState {
   return {
-    pending: false, error: null, failure: null, conflict: null,
-    failedAssignmentIds: [], assignmentErrors: {}
+    pending: false, error: null, failure: null, conflict: null, conflicts: [],
+    failedAssignmentIds: [], assignmentErrors: {}, assignmentFailures: {}
   };
 }
 
@@ -75,15 +81,21 @@ function mutationFailure(
 function failedMutationState(
   failure: BackboneMutationFailure,
   failedAssignmentIds: number[] = [],
-  assignmentErrors: Readonly<Record<number, string>> = {}
+  assignmentErrors: Readonly<Record<number, string>> = {},
+  assignmentFailures: Readonly<Record<number, BackboneMutationFailure>> = {},
+  conflicts: readonly BackboneMutationConflict[] = failure.status === 409
+    ? [{ ...failure, status: 409 }]
+    : []
 ): BackboneMutationState {
   return {
     pending: false,
     error: failure.message,
     failure,
-    conflict: failure.status === 409 ? { ...failure, status: 409 } : null,
+    conflict: conflicts[0] ?? null,
+    conflicts,
     failedAssignmentIds,
-    assignmentErrors
+    assignmentErrors,
+    assignmentFailures
   };
 }
 
@@ -215,26 +227,55 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
     const results = await settleBounded(uniqueIds, (assignmentId) => (
       api.linkAssignment(assignmentId, backboneDeviceId, reason)
     ));
-    const failures = results.filter((result): result is { id: number; error: unknown } => result.error !== undefined);
+    const byAssignmentId = new Map(results.map((result) => [result.id, result]));
+    const failures = uniqueIds.flatMap((assignmentId) => {
+      const result = byAssignmentId.get(assignmentId);
+      return result?.error !== undefined ? [{ id: assignmentId, error: result.error }] : [];
+    });
     const successful = results.length - failures.length;
     const assignmentErrors = Object.fromEntries(failures.map((failure) => [failure.id, message(failure.error)]));
     await refresh();
     if (successful > 0) onMutation();
-    const firstFailure = failures[0]
-      ? mutationFailure('linkAssignments', context, failures[0].error)
-      : null;
+    const assignmentFailures = Object.fromEntries(failures.map((failure) => [
+      failure.id,
+      mutationFailure('linkAssignments', { ...context, assignmentId: failure.id }, failure.error)
+    ])) as Record<number, BackboneMutationFailure>;
+    const orderedFailures = failures.map((failure) => assignmentFailures[failure.id]);
+    const conflicts: BackboneMutationConflict[] = orderedFailures
+      .filter((failure) => failure.status === 409)
+      .map((failure) => ({ ...failure, status: 409 as const }));
+    const firstFailure = orderedFailures[0] ?? null;
     setMutationState(firstFailure
       ? {
-          ...failedMutationState(firstFailure, failures.map((failure) => failure.id), assignmentErrors),
+          ...failedMutationState(
+            firstFailure,
+            failures.map((failure) => failure.id),
+            assignmentErrors,
+            assignmentFailures,
+            conflicts
+          ),
           error: successful === 0 ? firstFailure.message : null
         }
       : idleMutationState());
     return { successful, failedAssignmentIds: failures.map((failure) => failure.id), assignmentErrors };
   }, [api, onMutation, refresh]);
 
-  const transferAssignment = useCallback((
+  const transferAssignment = useCallback(async (
     assignmentId: number, backboneDeviceId: number, reason: string | null = null
-  ) => linkAssignments([assignmentId], backboneDeviceId, reason), [linkAssignments]);
+  ) => {
+    const context = { assignmentId, backboneDeviceId, reason };
+    setMutationState(pendingMutationState());
+    try {
+      const result = await api.linkAssignment(assignmentId, backboneDeviceId, reason);
+      await refresh();
+      onMutation();
+      setMutationState(idleMutationState());
+      return result;
+    } catch (mutationError) {
+      setMutationState(failedMutationState(mutationFailure('transferAssignment', context, mutationError)));
+      return null;
+    }
+  }, [api, onMutation, refresh]);
 
   const unlinkAssignment = useCallback(async (assignmentId: number, reason: string | null = null) => {
     setMutationState(pendingMutationState());
@@ -255,9 +296,9 @@ export function useBackboneWorkspace(api: BackboneApi, onMutation: () => void) {
 
   return useMemo(() => ({
     backbones, selectedId, selected, assignments, unlinked,
-    backboneQuery, assignmentQuery, unlinkedQuery,
+    query: backboneQuery, backboneQuery, assignmentQuery, unlinkedQuery,
     backboneStatusFilter: statusFilter, statusFilter, loading, error, mutationState,
-    setBackboneQuery, setAssignmentQuery, setUnlinkedQuery,
+    setQuery: setBackboneQuery, setBackboneQuery, setAssignmentQuery, setUnlinkedQuery,
     setBackboneStatusFilter: setStatusFilter, setStatusFilter,
     setBackbonePage, setAssignmentPage, setUnlinkedPage,
     selectBackbone,
