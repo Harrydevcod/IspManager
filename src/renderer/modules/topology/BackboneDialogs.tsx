@@ -1,5 +1,5 @@
 import { AlertTriangle, ChevronLeft, ChevronRight, Link2, Search, Unlink } from 'lucide-react';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type {
   BackboneAssignmentSummary,
   BackboneDeviceDetail,
@@ -285,6 +285,10 @@ export function BackboneMappingDialog({
   const [targetId, setTargetId] = useState('');
   const [reason, setReason] = useState('');
   const [validation, setValidation] = useState<string | null>(null);
+  const visibleDestinations = useMemo(
+    () => destinations.items.filter((item) => item.id !== currentBackbone?.id),
+    [currentBackbone?.id, destinations.items]
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -293,6 +297,13 @@ export function BackboneMappingDialog({
     setReason('');
     setValidation(null);
   }, [currentBackbone, initialAssignmentId, mode, open]);
+
+  useEffect(() => {
+    if (!open || mode !== 'transfer' || !targetId) return;
+    if (destinationError || !visibleDestinations.some((item) => String(item.id) === targetId)) {
+      setTargetId('');
+    }
+  }, [destinationError, mode, open, targetId, visibleDestinations]);
 
   function toggle(id: number) {
     setSelectedIds((current) => current.includes(id)
@@ -309,6 +320,14 @@ export function BackboneMappingDialog({
     }
     if (!Number.isInteger(parsedTarget) || parsedTarget <= 0) {
       setValidation('Selecione o backbone de destino.');
+      return;
+    }
+    if (mode === 'transfer' && (
+      destinationLoading
+      || destinationError
+      || !visibleDestinations.some((item) => item.id === parsedTarget)
+    )) {
+      setValidation('Selecione um backbone de destino disponível.');
       return;
     }
     setValidation(null);
@@ -338,6 +357,7 @@ export function BackboneMappingDialog({
             type="submit"
             form="backbone-mapping-form"
             loading={pending}
+            disabled={mode === 'transfer' && (destinationLoading || Boolean(destinationError))}
             leadingIcon={<Link2 size={15} aria-hidden />}
           >
             {mode === 'link' ? 'Criar ligações' : 'Transferir'}
@@ -385,8 +405,7 @@ export function BackboneMappingDialog({
                 onChange={(event) => setTargetId(event.target.value)}
               >
                 <option value="">{destinationLoading ? 'A carregar destinos…' : 'Selecionar destino…'}</option>
-                {destinations.items
-                  .filter((item) => item.id !== currentBackbone?.id)
+                {visibleDestinations
                   .map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
               </Select>
             )}

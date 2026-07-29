@@ -173,7 +173,11 @@ export function BackboneDetail({
         </section>
       </div>
 
-      <section className="backbone-links" aria-labelledby="backbone-links-title">
+      <section
+        className="backbone-links"
+        aria-labelledby="backbone-links-title"
+        aria-busy={linkedLoading || undefined}
+      >
         <div className="backbone-section-heading">
           <span>03</span>
           <h4 id="backbone-links-title">Equipamentos ligados</h4>
@@ -193,6 +197,14 @@ export function BackboneDetail({
             />
           </div>
         </div>
+
+        {linkedError && linked.items.length > 0 && (
+          <div className="backbone-links-state" role="alert">
+            <strong>Não foi possível atualizar as ligações.</strong>
+            <span>{linkedError}</span>
+            <Button variant="secondary" size="sm" onClick={onLinkedRetry}>Tentar novamente</Button>
+          </div>
+        )}
 
         {linkedLoading && linked.items.length === 0 ? (
           <div className="backbone-links-state" role="status" aria-busy="true">

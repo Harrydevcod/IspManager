@@ -44,13 +44,30 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
   const [unlinkAttempted, setUnlinkAttempted] = useState(false);
   const selectionOriginRef = useRef<{ id: number; element: HTMLElement | null } | null>(null);
   const restoreSelectionFocusRef = useRef(false);
+  const mutationOpenerRef = useRef<HTMLElement | null>(null);
+  const restoreMutationFocusRef = useRef(false);
+  const workspaceRef = useRef<HTMLElement>(null);
   const workspaceHeadingRef = useRef<HTMLHeadingElement>(null);
+  const [isCompactViewport, setIsCompactViewport] = useState(false);
 
   const selected = workspace.selected;
   const selectedId = workspace.selectedId;
 
   useEffect(() => {
-    if (window.innerWidth >= 760) return;
+    const element = workspaceRef.current;
+    if (!element) return;
+    const updateCompactState = (width: number) => setIsCompactViewport(width <= 760);
+    updateCompactState(element.getBoundingClientRect().width);
+
+    const observer = new ResizeObserver(([entry]) => {
+      updateCompactState(entry.contentRect.width);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!isCompactViewport) return;
     if (selectedId !== null) {
       document.querySelector<HTMLElement>('.backbone-detail .backbone-mobile-back')?.focus();
       return;
@@ -64,7 +81,17 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
     if (origin?.element?.isConnected) origin.element.focus();
     else if (currentRow) currentRow.focus();
     else workspaceHeadingRef.current?.focus();
-  }, [selectedId]);
+  }, [isCompactViewport, selectedId]);
+
+  useEffect(() => {
+    if (!restoreMutationFocusRef.current || mapping !== null || unlinking !== null) return;
+    restoreMutationFocusRef.current = false;
+    const opener = mutationOpenerRef.current;
+    queueMicrotask(() => {
+      if (opener?.isConnected) return;
+      document.querySelector<HTMLElement>(`#backbone-detail-${selectedId}`)?.focus();
+    });
+  }, [mapping, selectedId, unlinking]);
 
   function selectBackbone(id: number) {
     selectionOriginRef.current = {
@@ -94,6 +121,11 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
 
   function openMapping(mode: MappingMode, assignmentId: number | null = null) {
     if (!selected) return;
+    if (mode === 'transfer') {
+      mutationOpenerRef.current = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    }
     setMappingAttempted(false);
     if (mode === 'link') {
       workspace.setUnlinkedQuery('');
@@ -108,6 +140,9 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
   }
 
   function openUnlink(assignment: BackboneAssignmentSummary) {
+    mutationOpenerRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
     setUnlinkAttempted(false);
     setUnlinking(assignment);
   }
@@ -135,7 +170,10 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
           })
         )
       : await workspace.linkAssignments(assignmentIds, targetId, reason);
-    if (result.failedAssignmentIds.length === 0) setMapping(null);
+    if (result.failedAssignmentIds.length === 0) {
+      if (mapping?.mode === 'transfer') restoreMutationFocusRef.current = true;
+      setMapping(null);
+    }
     return result.failedAssignmentIds;
   }
 
@@ -144,6 +182,7 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
     setUnlinkAttempted(true);
     const result = await workspace.unlinkAssignment(unlinking.id, reason);
     if (!result) return false;
+    restoreMutationFocusRef.current = true;
     setUnlinking(null);
     return true;
   }
@@ -172,6 +211,7 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
 
   return (
     <section
+      ref={workspaceRef}
       className="backbone-workspace"
       data-detail-open={selectedId !== null || undefined}
       aria-label="Gestão de backbone"
