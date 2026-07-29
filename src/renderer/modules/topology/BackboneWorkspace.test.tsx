@@ -279,6 +279,7 @@ afterEach(async () => {
   host = null;
   document.body.replaceChildren();
   vi.restoreAllMocks();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -720,6 +721,51 @@ describe('Backbone workspace', () => {
     expect(destination.value).toBe('');
     await click(buttonWithin(dialog, 'Transferir'));
 
+    expect(linkAssignment).not.toHaveBeenCalled();
+  });
+
+  test('invalidates a transfer target synchronously when destination search changes', async () => {
+    vi.useFakeTimers();
+    const linkAssignment = vi.fn(async () => linkedAssignment);
+    const container = await renderWorkspace('operator', {
+      listBackbones: vi.fn(async () => page([backbone, destinationBackbone])),
+      linkAssignment
+    });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Transferir') !== undefined);
+    await click(button('Transferir'));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const destination = labelledControl<HTMLSelectElement>('Backbone de destino');
+    await changeValue(destination, '11');
+    await changeValue(
+      dialog.querySelector<HTMLInputElement>('[aria-label="Pesquisar backbones de destino"]')!,
+      'mindelo'
+    );
+
+    expect(destination.value).toBe('');
+    await click(buttonWithin(dialog, 'Transferir'));
+    expect(linkAssignment).not.toHaveBeenCalled();
+  });
+
+  test('invalidates a transfer target synchronously when destination page changes', async () => {
+    vi.useFakeTimers();
+    const linkAssignment = vi.fn(async () => linkedAssignment);
+    const listBackbones = vi.fn(async (query: Parameters<BackboneApi['listBackbones']>[0]) => (
+      query.status === 'active'
+        ? page([destinationBackbone], { total: 26, totalPages: 2 })
+        : page([backbone])
+    ));
+    const container = await renderWorkspace('operator', { listBackbones, linkAssignment });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Transferir') !== undefined);
+    await click(button('Transferir'));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const destination = labelledControl<HTMLSelectElement>('Backbone de destino');
+    await changeValue(destination, '11');
+    await click(buttonWithin(dialog, 'Página seguinte de destinos'));
+
+    expect(destination.value).toBe('');
+    await click(buttonWithin(dialog, 'Transferir'));
     expect(linkAssignment).not.toHaveBeenCalled();
   });
 

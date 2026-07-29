@@ -311,6 +311,16 @@ export function BackboneMappingDialog({
       : [...current, id]);
   }
 
+  function changeDestinationQuery(value: string) {
+    setTargetId('');
+    onDestinationQueryChange(value);
+  }
+
+  function changeDestinationPage(page: number) {
+    setTargetId('');
+    onDestinationPageChange(page);
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     const parsedTarget = Number(targetId);
@@ -387,7 +397,7 @@ export function BackboneMappingDialog({
                 aria-label="Pesquisar backbones de destino"
                 label="Pesquisar backbones de destino"
                 value={destinationQuery}
-                onChange={(event) => onDestinationQueryChange(event.target.value)}
+                onChange={(event) => changeDestinationQuery(event.target.value)}
                 placeholder="Nome, IP, série ou ativo…"
               />
             </div>
@@ -417,7 +427,7 @@ export function BackboneMappingDialog({
                   size="sm"
                   aria-label="Página anterior de destinos"
                   disabled={destinations.page <= 1 || destinationLoading}
-                  onClick={() => onDestinationPageChange(destinations.page - 1)}
+                  onClick={() => changeDestinationPage(destinations.page - 1)}
                 >
                   <ChevronLeft size={15} aria-hidden />
                 </Button>
@@ -426,7 +436,7 @@ export function BackboneMappingDialog({
                   size="sm"
                   aria-label="Página seguinte de destinos"
                   disabled={destinations.page >= destinations.totalPages || destinationLoading}
-                  onClick={() => onDestinationPageChange(destinations.page + 1)}
+                  onClick={() => changeDestinationPage(destinations.page + 1)}
                 >
                   <ChevronRight size={15} aria-hidden />
                 </Button>
