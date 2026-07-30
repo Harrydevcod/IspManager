@@ -116,14 +116,20 @@ export function BackboneDetail({
       </header>
 
       <div className="backbone-detail-actions">
-        <Button
-          variant="secondary"
-          size="sm"
-          leadingIcon={<Map size={15} aria-hidden />}
-          onClick={() => onViewTopology(backbone.id)}
-        >
-          Ver na Topologia
-        </Button>
+        {backbone.status === 'retired' ? (
+          <p className="backbone-detail-note" role="status">
+            Retirado — não aparece na topologia ativa
+          </p>
+        ) : (
+          <Button
+            variant="secondary"
+            size="sm"
+            leadingIcon={<Map size={15} aria-hidden />}
+            onClick={() => onViewTopology(backbone.id)}
+          >
+            Ver na Topologia
+          </Button>
+        )}
         {canManage && (
           <>
             <Button

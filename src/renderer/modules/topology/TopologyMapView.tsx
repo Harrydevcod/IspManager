@@ -29,6 +29,7 @@ import type { TopologyModuleProps } from './TopologyModule';
 
 export type TopologyMapViewProps = TopologyModuleProps & {
   revision: number;
+  active: boolean;
   focusBackboneDeviceId: number | null;
   onFocusHandled: () => void;
 };
@@ -186,35 +187,43 @@ function useCanvasEffects(
   canvasRef: React.RefObject<TopologyCanvasHandle | null>,
   nodes: TopologyCanvasNode[],
   workspace: ReturnType<typeof useTopologyWorkspace>,
+  active: boolean,
   focusBackboneDeviceId: number | null,
   onFocusHandled: () => void
 ) {
+  const { pendingFocusId, setPendingFocusId, setSelectedNode } = workspace;
+  // ponytail: only the primitives may enter the deps — `workspace` and `nodes`
+  // change identity on every render, which cancelled the frame before it ran.
+  const focusable = pendingFocusId !== null
+    && nodes.some((node) => node.id === pendingFocusId);
+
   useEffect(() => {
-    if (!workspace.pendingFocusId) return;
-    if (!nodes.some((node) => node.id === workspace.pendingFocusId)) return;
+    if (!pendingFocusId || !focusable) return;
     const frame = window.requestAnimationFrame(() => {
-      canvasRef.current?.centerNode(workspace.pendingFocusId!);
-      if (workspace.pendingFocusId === `backbone:${focusBackboneDeviceId}`) {
+      canvasRef.current?.centerNode(pendingFocusId);
+      if (pendingFocusId === `backbone:${focusBackboneDeviceId}`) {
         onFocusHandled();
       }
-      workspace.setPendingFocusId(null);
+      setPendingFocusId(null);
     });
     return () => window.cancelAnimationFrame(frame);
   }, [
     canvasRef,
+    focusable,
     focusBackboneDeviceId,
-    nodes,
     onFocusHandled,
-    workspace
+    pendingFocusId,
+    setPendingFocusId
   ]);
 
   useEffect(() => {
+    if (!active) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') workspace.setSelectedNode(null);
+      if (event.key === 'Escape') setSelectedNode(null);
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [workspace]);
+  }, [active, setSelectedNode]);
 }
 
 function useRequestedBackboneFocus(
@@ -370,6 +379,7 @@ function TopologyMapWorkspace(
     canvasRef,
     nodes,
     workspace,
+    props.active,
     props.focusBackboneDeviceId,
     props.onFocusHandled
   );

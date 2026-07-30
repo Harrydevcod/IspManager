@@ -10,6 +10,24 @@ import TopologyMapView from './TopologyMapView';
 import TopologyModule from './TopologyModule';
 
 const roots: Root[] = [];
+const canvasNodeLookups = vi.hoisted(() => vi.fn());
+
+vi.mock('@xyflow/react', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@xyflow/react')>();
+  return {
+    ...original,
+    useReactFlow: () => {
+      const flow = original.useReactFlow();
+      return {
+        ...flow,
+        getNode: (nodeId: string) => {
+          canvasNodeLookups(nodeId);
+          return flow.getNode(nodeId);
+        }
+      };
+    }
+  };
+});
 
 vi.mock('./BackboneWorkspace', () => ({
   BackboneWorkspace: ({
@@ -99,6 +117,7 @@ async function mountMap(topologyApi = api()): Promise<HTMLElement> {
         onOpenService={() => undefined}
         onOpenStock={() => undefined}
       revision={0}
+      active
       focusBackboneDeviceId={null}
       onFocusHandled={() => undefined}
     />
@@ -131,6 +150,7 @@ beforeEach(() => {
     x: 0, y: 0, top: 0, left: 0, right: 1200, bottom: 700,
     width: 1200, height: 700, toJSON: () => ({})
   });
+  canvasNodeLookups.mockClear();
 });
 
 afterEach(async () => {
@@ -213,6 +233,44 @@ describe('TopologyModule tab shell', () => {
     expect(container.textContent).toContain('Seleciona um nó');
   });
 
+  test('keeps one loaded snapshot across ordinary tab round trips', async () => {
+    const topologyApi = api();
+    const container = await mountModule(topologyApi);
+
+    await act(async () => {
+      tab(container, 'Topologia').click();
+      await vi.dynamicImportSettled();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      tab(container, 'Backbone').click();
+      tab(container, 'Topologia').click();
+      await Promise.resolve();
+    });
+
+    expect(topologyApi.fetchSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  test('preserves map selection when Escape is pressed from the Backbone tab', async () => {
+    const container = await mountModule();
+
+    await act(async () => {
+      tab(container, 'Topologia').click();
+      await vi.dynamicImportSettled();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      button(container, 'Selecionar Ubiquiti Rocket Prism').click();
+      tab(container, 'Backbone').click();
+    });
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      tab(container, 'Topologia').click();
+    });
+
+    expect(container.textContent).toContain('Equipamento backbone');
+  });
+
   test('opens Topologia and focuses the requested physical backbone after lazy load', async () => {
     const focusedSnapshot = {
       ...snapshot,
@@ -240,10 +298,14 @@ describe('TopologyModule tab shell', () => {
       await vi.dynamicImportSettled();
       await Promise.resolve();
     });
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 40));
+    });
 
     expect(tab(container, 'Topologia').getAttribute('aria-selected')).toBe('true');
     expect(container.textContent).toContain('Equipamento backbone');
     expect(container.textContent).toContain('Backbone físico Fogo');
+    expect(canvasNodeLookups).toHaveBeenCalledWith('backbone:77');
   });
 });
 

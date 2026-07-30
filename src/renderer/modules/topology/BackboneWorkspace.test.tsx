@@ -309,6 +309,36 @@ describe('Backbone workspace', () => {
     expect(button('Desligar')).toBeUndefined();
   });
 
+  test('keeps retired backbone facts visible without offering active-topology navigation', async () => {
+    const onViewTopology = vi.fn();
+    const retiredBackbone: BackboneDeviceSummary = {
+      ...backbone,
+      status: 'retired'
+    };
+    const retiredDetail: BackboneDeviceDetail = {
+      ...detail,
+      status: 'retired'
+    };
+    const container = await renderWorkspace(
+      'technician',
+      {
+        listBackbones: vi.fn(async () => page([retiredBackbone])),
+        getBackbone: vi.fn(async () => retiredDetail)
+      },
+      { onViewTopology }
+    );
+
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => container.textContent?.includes(
+      'Retirado — não aparece na topologia ativa'
+    ) ?? false);
+
+    expect(button('Ver na Topologia')).toBeUndefined();
+    expect(container.querySelector('[role="status"]')?.textContent)
+      .toContain('Retirado — não aparece na topologia ativa');
+    expect(onViewTopology).not.toHaveBeenCalled();
+  });
+
   test('supports keyboard selection and restores focus after a dialog closes', async () => {
     const container = await renderWorkspace();
     const row = container.querySelector<HTMLButtonElement>('[role="option"]');

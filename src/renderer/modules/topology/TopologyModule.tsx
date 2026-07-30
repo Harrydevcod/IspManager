@@ -67,6 +67,8 @@ export default function TopologyModule(props: TopologyModuleProps) {
     selectTab('topology');
   }
 
+  const handleFocusHandled = useCallback(() => setFocusBackboneDeviceId(null), []);
+
   return (
     <section className="topology-shell" aria-label="Infraestrutura de backbone e topologia">
       <div
@@ -120,8 +122,9 @@ export default function TopologyModule(props: TopologyModuleProps) {
             <TopologyMapView
               {...props}
               revision={revision}
+              active={activeTab === 'topology'}
               focusBackboneDeviceId={focusBackboneDeviceId}
-              onFocusHandled={() => setFocusBackboneDeviceId(null)}
+              onFocusHandled={handleFocusHandled}
             />
           </Suspense>
         )}
