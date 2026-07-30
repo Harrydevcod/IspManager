@@ -281,15 +281,19 @@ function TopologyControls({
   workspace,
   labelsVisible,
   legendVisible,
+  inspectorVisible,
   setLabelsVisible,
   setLegendVisible,
+  setInspectorVisible,
   canvasRef
 }: {
   workspace: ReturnType<typeof useTopologyWorkspace>;
   labelsVisible: boolean;
   legendVisible: boolean;
+  inspectorVisible: boolean;
   setLabelsVisible: React.Dispatch<React.SetStateAction<boolean>>;
   setLegendVisible: React.Dispatch<React.SetStateAction<boolean>>;
+  setInspectorVisible: React.Dispatch<React.SetStateAction<boolean>>;
   canvasRef: React.RefObject<TopologyCanvasHandle | null>;
 }) {
   return (
@@ -300,12 +304,14 @@ function TopologyControls({
         filters={workspace.filters}
         labelsVisible={labelsVisible}
         legendVisible={legendVisible}
+        inspectorVisible={inspectorVisible}
         onQueryChange={workspace.setQuery}
         onResultSelect={(result) => { void workspace.selectSearchResult(result); }}
         onFiltersChange={workspace.setFilters}
         onClearFilters={() => workspace.setFilters({})}
         onToggleLabels={() => setLabelsVisible((visible) => !visible)}
         onToggleLegend={() => setLegendVisible((visible) => !visible)}
+        onToggleInspector={() => setInspectorVisible((visible) => !visible)}
         onZoomIn={() => canvasRef.current?.zoomIn()}
         onZoomOut={() => canvasRef.current?.zoomOut()}
         onFit={() => canvasRef.current?.fit()}
@@ -320,6 +326,8 @@ function TopologyStage({
   nodes,
   edges,
   legendVisible,
+  inspectorVisible,
+  onCloseInspector,
   canvasRef
 }: {
   props: TopologyModuleProps;
@@ -328,13 +336,18 @@ function TopologyStage({
   nodes: TopologyCanvasNode[];
   edges: TopologyFlowEdge[];
   legendVisible: boolean;
+  inspectorVisible: boolean;
+  onCloseInspector: () => void;
   canvasRef: React.RefObject<TopologyCanvasHandle | null>;
 }) {
   const filteredEmpty = nodes.length === 0
     || (hasActiveFilters(workspace.filters) && nodes.length === 1);
   const inspectorBranch = branchForNode(workspace.selectedNode, workspace.branches);
   return (
-      <div className="topology-workspace">
+      <div
+        className="topology-workspace"
+        data-inspector={inspectorVisible ? undefined : 'collapsed'}
+      >
         <div className="topology-canvas-shell">
           {/* ponytail: sem faixas fixas — a cadeia física tem profundidade variável
               (Starlink → router → switch → AP → CPE) e os rótulos passariam a
@@ -349,15 +362,17 @@ function TopologyStage({
             <EmptyCanvas filtered={hasActiveFilters(workspace.filters)} />
           )}
         </div>
-        <TopologyInspector
-          node={workspace.selectedNode}
-          snapshot={snapshot}
-          branch={inspectorBranch}
-          onClose={() => workspace.setSelectedNode(null)}
-          onOpenClient={props.onOpenClient}
-          onOpenService={props.onOpenService}
-          onOpenStock={props.onOpenStock}
-        />
+        {inspectorVisible && (
+          <TopologyInspector
+            node={workspace.selectedNode}
+            snapshot={snapshot}
+            branch={inspectorBranch}
+            onClose={onCloseInspector}
+            onOpenClient={props.onOpenClient}
+            onOpenService={props.onOpenService}
+            onOpenStock={props.onOpenStock}
+          />
+        )}
       </div>
   );
 }
@@ -369,7 +384,15 @@ function TopologyMapWorkspace(
   const canvasRef = useRef<TopologyCanvasHandle>(null);
   const [labelsVisible, setLabelsVisible] = useState(false);
   const [legendVisible, setLegendVisible] = useState(true);
+  const [inspectorVisible, setInspectorVisible] = useState(true);
   const { nodes, edges } = useRenderedGraph(workspace.snapshot, workspace, labelsVisible);
+  // Escolher um nó com o painel recolhido volta a abri-lo — senão o clique
+  // parecia não fazer nada. Recolher com o mesmo nó selecionado não mexe no id,
+  // por isso o painel fica fechado como foi pedido.
+  const selectedNodeId = workspace.selectedNode?.id;
+  useEffect(() => {
+    if (selectedNodeId) setInspectorVisible(true);
+  }, [selectedNodeId]);
   useRequestedBackboneFocus(
     workspace,
     props.focusBackboneDeviceId,
@@ -394,8 +417,10 @@ function TopologyMapWorkspace(
         workspace={workspace}
         labelsVisible={labelsVisible}
         legendVisible={legendVisible}
+        inspectorVisible={inspectorVisible}
         setLabelsVisible={setLabelsVisible}
         setLegendVisible={setLegendVisible}
+        setInspectorVisible={setInspectorVisible}
         canvasRef={canvasRef}
       />
       <TopologyStage
@@ -405,6 +430,11 @@ function TopologyMapWorkspace(
         nodes={nodes}
         edges={edges}
         legendVisible={legendVisible}
+        inspectorVisible={inspectorVisible}
+        onCloseInspector={() => {
+          setInspectorVisible(false);
+          workspace.setSelectedNode(null);
+        }}
         canvasRef={canvasRef}
       />
     </section>

@@ -396,6 +396,27 @@ describe('TopologyModule branch interaction', () => {
     expect(container.textContent).toContain('CPE 200');
     expect(secondAttempts).toBe(2);
   });
+
+  test('collapses the inspector to widen the map and reopens it on the next selection', async () => {
+    const container = await mountMap();
+    const inspector = () => container.querySelector('[aria-label="Inspetor da topologia"]');
+    const toggle = () => button(container, 'Alternar inspetor');
+    expect(inspector()).not.toBeNull();
+
+    await act(async () => { toggle().click(); });
+    expect(inspector()).toBeNull();
+    expect(toggle().getAttribute('aria-pressed')).toBe('false');
+
+    await act(async () => {
+      button(container, 'Selecionar Ubiquiti Rocket Prism').click();
+    });
+    expect(inspector()).not.toBeNull();
+    expect(toggle().getAttribute('aria-pressed')).toBe('true');
+
+    // O ✕ do cabeçalho fecha o painel e larga a seleção.
+    await act(async () => { button(container, 'Fechar inspetor').click(); });
+    expect(inspector()).toBeNull();
+  });
 });
 
 test('debounces server search, expands ancestors and opens the result inspector', async () => {

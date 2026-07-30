@@ -5,6 +5,7 @@ import {
   Focus,
   ListTree,
   Minus,
+  PanelRight,
   Plus,
   Search,
   X
@@ -24,12 +25,14 @@ type TopologyToolbarProps = {
   filters: TopologyGraphFilters;
   labelsVisible: boolean;
   legendVisible: boolean;
+  inspectorVisible: boolean;
   onQueryChange: (value: string) => void;
   onResultSelect: (result: TopologySearchResult) => void;
   onFiltersChange: (filters: TopologyGraphFilters) => void;
   onClearFilters: () => void;
   onToggleLabels: () => void;
   onToggleLegend: () => void;
+  onToggleInspector: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
@@ -168,8 +171,10 @@ function CanvasTools(props: Pick<
   TopologyToolbarProps,
   | 'labelsVisible'
   | 'legendVisible'
+  | 'inspectorVisible'
   | 'onToggleLabels'
   | 'onToggleLegend'
+  | 'onToggleInspector'
   | 'onZoomIn'
   | 'onZoomOut'
   | 'onFit'
@@ -195,6 +200,14 @@ function CanvasTools(props: Pick<
         aria-label="Alternar legenda"
       >
         <ListTree size={15} />
+      </Button>
+      <Button
+        variant="icon"
+        aria-pressed={props.inspectorVisible}
+        onClick={props.onToggleInspector}
+        aria-label="Alternar inspetor"
+      >
+        <PanelRight size={15} />
       </Button>
     </div>
   );
