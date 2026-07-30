@@ -131,3 +131,75 @@ lint; renderer and main TypeScript checks; Vite production build with manifest)
 No Critical, High, or Medium issues remain in the reviewed Topology scope.
 
 ### Verdict: APPROVED
+
+---
+
+## Code Review Round 5 — 2026-07-30
+
+**Scope**: Physical backbone mapping — outstanding red tests, migration
+compatibility against the real field database, and the first browser pass over
+the two-tab module
+
+**Build Status**: PASS (`683` tests in `72` files; lint; renderer and main
+TypeScript checks; Vite production build with manifest)
+
+### Resolution
+
+- Three tests were left failing and uncommitted at the end of the previous
+  session. Two named real defects and one was mis-structured:
+  - The focus effect depended on the whole `useTopologyWorkspace` object, whose
+    identity changes on every render. Every render cancelled and rescheduled the
+    animation frame, so `centerNode` never ran and “Ver na Topologia” landed on
+    the map without centring the requested unit. The effect now depends only on
+    `pendingFocusId`, a `focusable` boolean, and stable setters.
+  - The map's `Escape` listener stayed active while the panel was merely
+    `hidden`, so pressing Escape on the Backbone tab cleared the map selection.
+    The listener is now bound only while the Topologia tab is active.
+  - A retired backbone offered “Ver na Topologia” even though the read model
+    filters `status <> 'retired'`. The detail now states
+    “Retirado — não aparece na topologia ativa” in a `role="status"` note.
+  - The two module tests asserted inside the same `act()` scope that triggered
+    the work, so React had not flushed the effects yet. Split into two scopes.
+- Migration compatibility, run against a copy of the real field database,
+  exposed a blocking conflict: an abandoned development build had applied a
+  different migration `31` (`backbone_devices` + `backbone_client_links`) on that
+  machine, and the operator had already recorded six real units and twenty-four
+  links through it. Shipping this chain as `31`/`32` would have aborted the boot
+  with checksum drift, and dropping the tables would have destroyed real data.
+  The chain now starts at `33` and adopts the legacy rows — names, IPs and links
+  kept, `active` mapped to `status`, `provisional = 0` — generating provisional
+  units only for the catalogued quantity the adopted rows do not account for.
+- Verified on the copy: `6` devices adopted, `24` links open, no legacy tables
+  left, `backbone_qty` dropped, `PRAGMA foreign_key_check` and
+  `PRAGMA integrity_check` clean.
+- Browser QA found the backbone workspace rendering as an empty box: the
+  workspace declared `grid-template-rows: auto auto minmax(34rem, 1fr)` while its
+  inline error banner is conditional, so with no error the master/detail pane
+  landed in the content-sized second row and collapsed to `35px` while the
+  reserved `544px` row stayed empty. jsdom has no layout, so no test could see
+  it. The workspace is now a flex column and the pane grows with `flex: 1`.
+- Browser pass at `1920×911` with the real data: Backbone opens first, the six
+  adopted units list with their IPs and link counts, the detail shows identity
+  and deployment, “Ver na Topologia” switches tabs and focuses the unit, branch
+  expansion loads CPEs with their attention states, Escape from Backbone
+  preserves the map selection, and Escape on the map closes the inspector. No
+  console errors.
+- Container-query widths of `760px` and `390px` were exercised by narrowing the
+  module container: master/detail collapses to one pane with a working “Voltar”,
+  list tools stack, and nothing overflows horizontally.
+
+### Issues
+
+No Critical, High, or Medium issues remain in the reviewed Topology scope.
+
+### Limitations
+
+- The browser pass ran against the Vite dev server with a copy of the field
+  database, not the packaged Electron shell, and the host window could not be
+  resized below `1920px`, so the `1024×768` and `390×844` viewport checks were
+  approximated through the module's container queries. A packaged smoke test at
+  real viewport sizes is still owed.
+- Technician read-only state was verified by the route and workspace tests, not
+  in the browser.
+
+### Verdict: APPROVED

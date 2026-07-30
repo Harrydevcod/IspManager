@@ -2,8 +2,11 @@
   --backbone-accent: oklch(70% 0.105 151);
   --backbone-accent-muted: color-mix(in oklch, var(--backbone-accent) 14%, transparent);
   --backbone-rule: color-mix(in oklch, var(--border) 82%, transparent);
-  display: grid;
-  grid-template-rows: auto auto minmax(34rem, 1fr);
+  /* Column flow, not a fixed row template: the inline error banner is
+     conditional, so a three-row grid left the master/detail pane in the
+     content-sized second row and collapsed it to a few pixels. */
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 40rem;
   height: min(48rem, calc(100vh - 8.5rem));
@@ -75,6 +78,7 @@
 .backbone-master-detail {
   display: grid;
   grid-template-columns: minmax(18rem, 0.72fr) minmax(27rem, 1.28fr);
+  flex: 1;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
