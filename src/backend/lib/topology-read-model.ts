@@ -30,7 +30,19 @@ type BackboneRow = EquipmentRow & {
   zone: string | null;
   status: 'active' | 'maintenance';
   provisional: number;
+  upstreamDeviceId: number | null;
 };
+
+/**
+ * O upstream só conta se ainda estiver no mapa: uma unidade retirada é filtrada
+ * da leitura, e sem esta guarda os seus jusantes ficariam pendurados num nó
+ * inexistente. Nesse caso caem na raiz.
+ */
+const VISIBLE_UPSTREAM = `
+  CASE WHEN EXISTS (
+    SELECT 1 FROM backbone_devices up
+    WHERE up.id = bd.upstream_device_id AND up.status <> 'retired'
+  ) THEN bd.upstream_device_id END AS upstreamDeviceId`;
 
 type AssignmentRow = EquipmentRow & {
   catalogId: number;
@@ -78,6 +90,7 @@ function loadBackboneRows(db: Database.Database): BackboneRow[] {
       bd.serial_number AS serialNumber, bd.asset_tag AS assetTag,
       bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
       bd.island, bd.zone, bd.status, bd.provisional,
+      ${VISIBLE_UPSTREAM},
       ec.brand, ec.model, ec.type AS catalogType
     FROM backbone_devices bd
     JOIN equipment_catalog ec ON ec.id = bd.catalog_id
@@ -96,6 +109,7 @@ function loadBackboneRow(
       bd.serial_number AS serialNumber, bd.asset_tag AS assetTag,
       bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
       bd.island, bd.zone, bd.status, bd.provisional,
+      ${VISIBLE_UPSTREAM},
       ec.brand, ec.model, ec.type AS catalogType
     FROM backbone_devices bd
     JOIN equipment_catalog ec ON ec.id = bd.catalog_id
@@ -225,7 +239,9 @@ function backboneNode(row: BackboneRow): TopologyBackboneNode {
     provisional,
     administrativeState: inactive ? 'inactive' : 'active',
     issueCodes,
-    parentId: 'root:isp',
+    parentId: row.upstreamDeviceId === null
+      ? 'root:isp'
+      : `backbone:${row.upstreamDeviceId}`,
     relationship: 'defined_link'
   };
 }
@@ -333,9 +349,9 @@ function topologyStats(
 
 function coreLink(backbone: TopologyBackboneNode): TopologyCoreLinkEdge {
   return {
-    id: `core-link:root:isp:backbone:${backbone.backboneDeviceId}`,
+    id: `core-link:${backbone.parentId}:backbone:${backbone.backboneDeviceId}`,
     kind: 'core-link',
-    source: 'root:isp',
+    source: backbone.parentId,
     target: backbone.id,
     relationship: 'defined_link'
   };
@@ -392,7 +408,7 @@ export function loadTopologySnapshot(
     root: {
       id: 'root:isp',
       kind: 'logical-root',
-      label: 'Internet / Core ISPM',
+      label: 'Internet',
       administrativeState: 'active',
       issueCodes: []
     },

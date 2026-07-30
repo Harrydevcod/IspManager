@@ -69,6 +69,7 @@ function input(catalogId: number, overrides: Record<string, unknown> = {}) {
     island: ' Santiago ',
     zone: ' Praia ',
     notes: '  Torre principal ',
+    upstreamDeviceId: null,
     ...overrides
   };
 }
@@ -198,5 +199,57 @@ describe('backbone management repository', () => {
       SELECT COUNT(*) AS count FROM backbone_assignment_links
       WHERE assignment_id = ? AND ended_at IS NULL
     `).get(fixture.activeAssignmentId)).toEqual({ count: 1 });
+  });
+
+  test('records the upstream chain and refuses the links that would break it', () => {
+    db = freshDb();
+    const fixture = seed(db);
+    const head = createBackbone(db, input(fixture.catalogId, { name: 'Starlink' }), null);
+    const middle = createBackbone(db, input(fixture.catalogId, {
+      name: 'Router Starlink', serialNumber: 'SN-002', assetTag: 'AT-002',
+      upstreamDeviceId: head.id
+    }), null);
+    const leaf = createBackbone(db, input(fixture.catalogId, {
+      name: 'AP Espia', serialNumber: 'SN-003', assetTag: 'AT-003',
+      upstreamDeviceId: middle.id
+    }), null);
+
+    expect(middle.upstreamDeviceId).toBe(head.id);
+    expect(middle.upstreamName).toBe('Starlink');
+    expect(head.upstreamDeviceId).toBeNull();
+    expect(head.upstreamName).toBeNull();
+
+    // Auto-referência, ciclo indirecto e upstream inexistente.
+    expect(() => updateBackbone(db!, head.id, input(fixture.catalogId, {
+      name: 'Starlink', upstreamDeviceId: head.id
+    }), null)).toThrow(BackboneValidationError);
+    expect(() => updateBackbone(db!, head.id, input(fixture.catalogId, {
+      name: 'Starlink', upstreamDeviceId: leaf.id
+    }), null)).toThrow(BackboneValidationError);
+    expect(() => createBackbone(db!, input(fixture.catalogId, {
+      name: 'Orfão', serialNumber: 'SN-004', assetTag: 'AT-004', upstreamDeviceId: 9999
+    }), null)).toThrow(BackboneValidationError);
+
+    // Retirar uma unidade que ainda alimenta outra fica bloqueado.
+    expect(() => updateBackbone(db!, middle.id, input(fixture.catalogId, {
+      name: 'Router Starlink', serialNumber: 'SN-002', assetTag: 'AT-002',
+      status: 'retired', upstreamDeviceId: head.id
+    }), null)).toThrow(BackboneValidationError);
+
+    // Reencaminhado o jusante, a unidade já pode ser retirada — e deixa de ser
+    // um upstream aceitável.
+    updateBackbone(db, leaf.id, input(fixture.catalogId, {
+      name: 'AP Espia', serialNumber: 'SN-003', assetTag: 'AT-003',
+      upstreamDeviceId: head.id
+    }), null);
+    const retired = updateBackbone(db, middle.id, input(fixture.catalogId, {
+      name: 'Router Starlink', serialNumber: 'SN-002', assetTag: 'AT-002',
+      status: 'retired', upstreamDeviceId: head.id
+    }), null);
+    expect(retired.status).toBe('retired');
+    expect(() => updateBackbone(db!, leaf.id, input(fixture.catalogId, {
+      name: 'AP Espia', serialNumber: 'SN-003', assetTag: 'AT-003',
+      upstreamDeviceId: middle.id
+    }), null)).toThrow(BackboneValidationError);
   });
 });

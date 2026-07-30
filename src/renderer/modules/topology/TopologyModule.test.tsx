@@ -59,7 +59,7 @@ function responseSearch(): TopologySearchResponse {
       node: deviceOne,
       matchedFields: ['clientName'],
       ancestors: [
-        { id: 'root:isp', kind: 'logical-root', label: 'Internet / Core ISPM' },
+        { id: 'root:isp', kind: 'logical-root', label: 'Internet' },
         {
           id: 'backbone:10',
           kind: 'backbone',
@@ -457,7 +457,7 @@ test('expands and loads a backbone selected from server search', async () => {
         ancestors: [{
           id: 'root:isp',
           kind: 'logical-root',
-          label: 'Internet / Core ISPM'
+          label: 'Internet'
         }]
       }]
     }))
@@ -527,7 +527,7 @@ test('identifies a search result that has no defined backbone link', async () =>
         ancestors: [{
           id: 'root:isp',
           kind: 'logical-root',
-          label: 'Internet / Core ISPM'
+          label: 'Internet'
         }]
       }]
     }))

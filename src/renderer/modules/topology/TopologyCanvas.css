@@ -198,24 +198,6 @@
 
 .topology-spin { animation: topology-spin 900ms linear infinite; }
 
-.topology-lanes {
-  position: absolute;
-  top: 0.8rem;
-  right: 1rem;
-  left: 1rem;
-  z-index: 5;
-  display: grid;
-  grid-template-columns: 1fr 1.25fr 1.35fr;
-  pointer-events: none;
-}
-
-.topology-lanes span {
-  color: var(--topology-faint);
-  font-size: var(--fs-xs);
-  font-weight: 760;
-  letter-spacing: 0.13em;
-}
-
 .topology-minimap {
   border: 1px solid var(--topology-line);
   border-radius: var(--r1);

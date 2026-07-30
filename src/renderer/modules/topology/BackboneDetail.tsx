@@ -173,6 +173,7 @@ export function BackboneDetail({
             <h4 id="backbone-location-title">Implantação</h4>
           </div>
           <dl>
+            <div><dt>Alimentado por</dt><dd>{backbone.upstreamName ?? 'Internet'}</dd></div>
             <div><dt>Ilha</dt><dd>{fact(backbone.island)}</dd></div>
             <div><dt>Zona</dt><dd>{fact(backbone.zone)}</dd></div>
             <div className="backbone-fact-wide"><dt>Notas</dt><dd>{fact(backbone.notes)}</dd></div>

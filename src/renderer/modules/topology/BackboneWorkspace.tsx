@@ -292,6 +292,7 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
             catalogs={workspace.catalogs}
             catalogLoading={workspace.catalogLoading}
             catalogError={workspace.catalogError}
+            upstreamOptions={workspace.destinations.items}
             onCatalogRetry={() => void workspace.refreshCatalogs()}
             onClose={() => setEditorOpen(false)}
             onSubmit={saveBackbone}

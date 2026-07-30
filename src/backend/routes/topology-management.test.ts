@@ -122,7 +122,9 @@ describe('topology management routes', () => {
       backboneDeviceId: response.json().id,
       catalogId,
       previousStatus: null,
-      nextStatus: 'active'
+      nextStatus: 'active',
+      previousUpstreamDeviceId: null,
+      nextUpstreamDeviceId: null
     });
   });
 
@@ -198,7 +200,9 @@ describe('topology management routes', () => {
       backboneDeviceId: backbone.id,
       catalogId,
       previousStatus: 'active',
-      nextStatus: 'maintenance'
+      nextStatus: 'maintenance',
+      previousUpstreamDeviceId: null,
+      nextUpstreamDeviceId: null
     });
     expect((await app.inject({
       method: 'PUT',

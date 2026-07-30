@@ -27,6 +27,8 @@ const backbone: BackboneDeviceSummary = {
   island: 'São Vicente',
   zone: null,
   provisional: false,
+  upstreamDeviceId: null,
+  upstreamName: null,
   linkedAssignmentCount: 1,
   createdAt: '2026-07-29T10:00:00.000Z',
   updatedAt: '2026-07-29T10:00:00.000Z'
@@ -434,7 +436,8 @@ describe('Backbone workspace', () => {
       macAddress: null,
       island: 'São Vicente',
       zone: null,
-      notes: null
+      notes: null,
+      upstreamDeviceId: null
     });
     expect(onMutation).toHaveBeenCalledTimes(1);
   });

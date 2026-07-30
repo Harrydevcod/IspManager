@@ -336,9 +336,9 @@ function TopologyStage({
   return (
       <div className="topology-workspace">
         <div className="topology-canvas-shell">
-          <div className="topology-lanes" aria-hidden>
-            <span>ORIGEM LÓGICA</span><span>BACKBONE</span><span>CPE / CLIENTE</span>
-          </div>
+          {/* ponytail: sem faixas fixas — a cadeia física tem profundidade variável
+              (Starlink → router → switch → AP → CPE) e os rótulos passariam a
+              nomear a coluna errada. O dagre distribui os ranks sozinho. */}
           <TopologyCanvas
             ref={canvasRef}
             nodes={nodes}

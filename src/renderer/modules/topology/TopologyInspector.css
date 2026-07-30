@@ -420,8 +420,6 @@
     left: 0.75rem;
     max-width: none;
   }
-
-  .topology-lanes { display: none; }
 }
 
 @container (max-width: 32rem) {

@@ -30,7 +30,10 @@ function removeId(current: ReadonlySet<number>, id: number): Set<number> {
 
 function resultBackboneId(result: TopologySearchResult): number | null {
   if (result.node.kind === 'backbone') return result.node.backboneDeviceId;
-  const ancestor = result.ancestors.find((item) => item.kind === 'backbone');
+  // O ramo a carregar é o do pai imediato: os ancestrais vêm ordenados da raiz
+  // para baixo, e o primeiro backbone da cadeia é a cabeça (Starlink), não o AP
+  // onde o resultado está pendurado.
+  const ancestor = [...result.ancestors].reverse().find((item) => item.kind === 'backbone');
   const parsed = ancestor ? Number(ancestor.id.slice('backbone:'.length)) : NaN;
   return Number.isInteger(parsed) ? parsed : null;
 }

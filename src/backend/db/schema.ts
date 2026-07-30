@@ -201,7 +201,8 @@ export const backboneDevices = sqliteTable('backbone_devices', {
   notes: text('notes'),
   createdBy: integer('created_by'),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
-  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
+  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP'),
+  upstreamDeviceId: integer('upstream_device_id')
 });
 
 export const backboneAssignmentLinks = sqliteTable('backbone_assignment_links', {

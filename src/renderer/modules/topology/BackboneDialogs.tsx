@@ -20,10 +20,15 @@ type EditorProps = {
   catalogs: BackboneCatalogOption[];
   catalogLoading: boolean;
   catalogError: string | null;
+  /** Candidatos a montante — a mesma página de backbones ativos do diálogo de transferência. */
+  upstreamOptions: BackboneDeviceSummary[];
   onCatalogRetry: () => void;
   onClose: () => void;
   onSubmit: (input: BackboneWriteInput) => Promise<boolean>;
 };
+
+/** Sentinela do "sem upstream": o Combobox precisa de uma chave, `null` é o valor limpo. */
+const INTERNET_OPTION = { id: 0, name: 'Internet (origem)' };
 
 type EditorState = {
   catalogId: number | null;
@@ -36,11 +41,13 @@ type EditorState = {
   island: string;
   zone: string;
   notes: string;
+  upstreamDeviceId: number | null;
 };
 
 function editorState(backbone: BackboneDeviceDetail | null): EditorState {
   return {
     catalogId: backbone?.catalogId ?? null,
+    upstreamDeviceId: backbone?.upstreamDeviceId ?? null,
     name: backbone?.name ?? '',
     status: backbone?.status ?? 'active',
     serialNumber: backbone?.serialNumber ?? '',
@@ -65,12 +72,27 @@ export function BackboneEditorDialog({
   catalogs,
   catalogLoading,
   catalogError,
+  upstreamOptions,
   onCatalogRetry,
   onClose,
   onSubmit
 }: EditorProps) {
   const [form, setForm] = useState<EditorState>(() => editorState(backbone));
   const [validation, setValidation] = useState<string | null>(null);
+
+  // ponytail: a lista é a página de backbones ativos já carregada (25). Chega para
+  // o tamanho desta rede; passar dos 25 exige a paginação que o diálogo de
+  // transferência já usa. O upstream atual entra à mão caso caia fora da página.
+  const upstreamCandidates = useMemo(() => {
+    const current = backbone?.upstreamDeviceId ?? null;
+    const known = upstreamOptions
+      .filter((item) => item.id !== backbone?.id)
+      .map((item) => ({ id: item.id, name: item.name }));
+    const missing = current !== null && !known.some((item) => item.id === current)
+      ? [{ id: current, name: backbone?.upstreamName ?? `Backbone #${current}` }]
+      : [];
+    return [INTERNET_OPTION, ...missing, ...known];
+  }, [backbone, upstreamOptions]);
 
   useEffect(() => {
     if (!open) return;
@@ -105,6 +127,7 @@ export function BackboneEditorDialog({
       island: nullable(form.island),
       zone: nullable(form.zone),
       notes: nullable(form.notes),
+      upstreamDeviceId: form.upstreamDeviceId,
       ...(backbone ? { expectedUpdatedAt: backbone.updatedAt } : {})
     });
   }
@@ -182,6 +205,28 @@ export function BackboneEditorDialog({
             <option value="maintenance">Em manutenção</option>
             <option value="retired">Retirado</option>
           </Select>
+          <div className="field backbone-catalog-field">
+            <span className="field-label">Alimentado por</span>
+            <Combobox
+              ariaLabel="Alimentado por"
+              options={upstreamCandidates}
+              value={form.upstreamDeviceId ?? INTERNET_OPTION.id}
+              onChange={(value) => update(
+                'upstreamDeviceId',
+                typeof value === 'number' && value !== INTERNET_OPTION.id ? value : null
+              )}
+              rowKey={(row) => row.id}
+              rowCode={(row) => (row.id === INTERNET_OPTION.id ? 'Origem' : 'Backbone')}
+              rowLabel={(row) => row.name}
+              placeholder="Selecionar origem do sinal…"
+              searchPlaceholder="Pesquisar backbone"
+              emptyLabel="Nenhum backbone ativo"
+              allowClear={false}
+            />
+            <small className="backbone-form-note">
+              De quem esta unidade recebe sinal. “Internet (origem)” marca a cabeça da cadeia.
+            </small>
+          </div>
         </div>
         <div className="backbone-dialog-section">
           <p>Identidade física</p>

@@ -15,6 +15,9 @@ export type BackboneDeviceSummary = {
   island: string | null;
   zone: string | null;
   provisional: boolean;
+  /** De quem esta unidade recebe sinal. `null` = alimentada pela Internet. */
+  upstreamDeviceId: number | null;
+  upstreamName: string | null;
   linkedAssignmentCount: number;
   createdAt: string;
   updatedAt: string;
@@ -65,6 +68,7 @@ export type BackboneWriteInput = {
   island: string | null;
   zone: string | null;
   notes: string | null;
+  upstreamDeviceId: number | null;
   expectedUpdatedAt?: string;
 };
 

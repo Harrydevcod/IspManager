@@ -50,6 +50,7 @@ const backboneWriteSchema = z.object({
   island: optionalText(120),
   zone: optionalText(120),
   notes: optionalText(2_000),
+  upstreamDeviceId: idSchema.nullable().optional().transform((value) => value ?? null),
   expectedUpdatedAt: z.string().trim().min(1).max(80).optional()
 }).strict();
 const assignmentBackboneSchema = z.object({
@@ -120,7 +121,9 @@ export async function registerTopologyManagementRoutes(app: FastifyInstance) {
             backboneDeviceId: created.id,
             catalogId: created.catalogId,
             previousStatus: null,
-            nextStatus: created.status
+            nextStatus: created.status,
+            previousUpstreamDeviceId: null,
+            nextUpstreamDeviceId: created.upstreamDeviceId
           }
         });
         return created;
@@ -150,7 +153,9 @@ export async function registerTopologyManagementRoutes(app: FastifyInstance) {
             backboneDeviceId: updated.id,
             catalogId: updated.catalogId,
             previousStatus: previous.status,
-            nextStatus: updated.status
+            nextStatus: updated.status,
+            previousUpstreamDeviceId: previous.upstreamDeviceId,
+            nextUpstreamDeviceId: updated.upstreamDeviceId
           }
         });
         return updated;
