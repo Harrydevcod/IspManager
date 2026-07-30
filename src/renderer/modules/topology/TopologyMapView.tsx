@@ -23,7 +23,7 @@ import {
   type TopologyFlowEdge,
   type TopologyGraph
 } from './topology-graph';
-import { layoutTopologyGraph } from './topology-layout';
+import { layoutTopologyGraph, type TopologyDirection } from './topology-layout';
 import { useTopologyWorkspace } from './useTopologyWorkspace';
 import type { TopologyModuleProps } from './TopologyModule';
 
@@ -165,13 +165,17 @@ function hasActiveFilters(filters: ReturnType<typeof useTopologyWorkspace>['filt
 function useRenderedGraph(
   snapshot: TopologySnapshot | null,
   workspace: ReturnType<typeof useTopologyWorkspace>,
-  labelsVisible: boolean
+  labelsVisible: boolean,
+  direction: TopologyDirection
 ) {
   const graph = useMemo(() => {
     if (!snapshot) return { nodes: [], edges: [] };
     const composed = composeTopologyGraph(snapshot, workspace.branches, workspace.expanded);
-    return layoutTopologyGraph(filterTopologyGraph(composed, workspace.filters));
-  }, [snapshot, workspace.branches, workspace.expanded, workspace.filters]);
+    return layoutTopologyGraph(
+      filterTopologyGraph(composed, workspace.filters),
+      direction
+    );
+  }, [direction, snapshot, workspace.branches, workspace.expanded, workspace.filters]);
   const nodes = useMemo(
     () => decorateNodes(graph, workspace),
     [graph, workspace]
@@ -224,6 +228,20 @@ function useCanvasEffects(
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [active, setSelectedNode]);
+}
+
+/** Virar reposiciona tudo — sem reenquadrar, o desenho salta para fora da vista. */
+function useRefitOnDirectionChange(
+  canvasRef: React.RefObject<TopologyCanvasHandle | null>,
+  direction: TopologyDirection
+) {
+  const previous = useRef(direction);
+  useEffect(() => {
+    if (previous.current === direction) return;
+    previous.current = direction;
+    const frame = window.requestAnimationFrame(() => canvasRef.current?.fit());
+    return () => window.cancelAnimationFrame(frame);
+  }, [canvasRef, direction]);
 }
 
 function useRequestedBackboneFocus(
@@ -282,18 +300,22 @@ function TopologyControls({
   labelsVisible,
   legendVisible,
   inspectorVisible,
+  direction,
   setLabelsVisible,
   setLegendVisible,
   setInspectorVisible,
+  setDirection,
   canvasRef
 }: {
   workspace: ReturnType<typeof useTopologyWorkspace>;
   labelsVisible: boolean;
   legendVisible: boolean;
   inspectorVisible: boolean;
+  direction: TopologyDirection;
   setLabelsVisible: React.Dispatch<React.SetStateAction<boolean>>;
   setLegendVisible: React.Dispatch<React.SetStateAction<boolean>>;
   setInspectorVisible: React.Dispatch<React.SetStateAction<boolean>>;
+  setDirection: React.Dispatch<React.SetStateAction<TopologyDirection>>;
   canvasRef: React.RefObject<TopologyCanvasHandle | null>;
 }) {
   return (
@@ -305,6 +327,7 @@ function TopologyControls({
         labelsVisible={labelsVisible}
         legendVisible={legendVisible}
         inspectorVisible={inspectorVisible}
+        direction={direction}
         onQueryChange={workspace.setQuery}
         onResultSelect={(result) => { void workspace.selectSearchResult(result); }}
         onFiltersChange={workspace.setFilters}
@@ -312,6 +335,7 @@ function TopologyControls({
         onToggleLabels={() => setLabelsVisible((visible) => !visible)}
         onToggleLegend={() => setLegendVisible((visible) => !visible)}
         onToggleInspector={() => setInspectorVisible((visible) => !visible)}
+        onToggleDirection={() => setDirection((current) => current === 'LR' ? 'TB' : 'LR')}
         onZoomIn={() => canvasRef.current?.zoomIn()}
         onZoomOut={() => canvasRef.current?.zoomOut()}
         onFit={() => canvasRef.current?.fit()}
@@ -385,7 +409,14 @@ function TopologyMapWorkspace(
   const [labelsVisible, setLabelsVisible] = useState(false);
   const [legendVisible, setLegendVisible] = useState(true);
   const [inspectorVisible, setInspectorVisible] = useState(true);
-  const { nodes, edges } = useRenderedGraph(workspace.snapshot, workspace, labelsVisible);
+  const [direction, setDirection] = useState<TopologyDirection>('LR');
+  const { nodes, edges } = useRenderedGraph(
+    workspace.snapshot,
+    workspace,
+    labelsVisible,
+    direction
+  );
+  useRefitOnDirectionChange(canvasRef, direction);
   // Escolher um nó com o painel recolhido volta a abri-lo — senão o clique
   // parecia não fazer nada. Recolher com o mesmo nó selecionado não mexe no id,
   // por isso o painel fica fechado como foi pedido.
@@ -418,9 +449,11 @@ function TopologyMapWorkspace(
         labelsVisible={labelsVisible}
         legendVisible={legendVisible}
         inspectorVisible={inspectorVisible}
+        direction={direction}
         setLabelsVisible={setLabelsVisible}
         setLegendVisible={setLegendVisible}
         setInspectorVisible={setInspectorVisible}
+        setDirection={setDirection}
         canvasRef={canvasRef}
       />
       <TopologyStage

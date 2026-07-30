@@ -5,6 +5,8 @@ import {
   Focus,
   ListTree,
   Minus,
+  MoveHorizontal,
+  MoveVertical,
   PanelRight,
   Plus,
   Search,
@@ -15,6 +17,7 @@ import type {
 } from '../../../shared/topology';
 import { Button, Field, Select } from '../../components';
 import type { TopologyGraphFilters } from './topology-filters';
+import type { TopologyDirection } from './topology-layout';
 
 export type SearchState = 'idle' | 'loading' | 'error';
 
@@ -26,6 +29,7 @@ type TopologyToolbarProps = {
   labelsVisible: boolean;
   legendVisible: boolean;
   inspectorVisible: boolean;
+  direction: TopologyDirection;
   onQueryChange: (value: string) => void;
   onResultSelect: (result: TopologySearchResult) => void;
   onFiltersChange: (filters: TopologyGraphFilters) => void;
@@ -33,6 +37,7 @@ type TopologyToolbarProps = {
   onToggleLabels: () => void;
   onToggleLegend: () => void;
   onToggleInspector: () => void;
+  onToggleDirection: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
@@ -172,13 +177,16 @@ function CanvasTools(props: Pick<
   | 'labelsVisible'
   | 'legendVisible'
   | 'inspectorVisible'
+  | 'direction'
   | 'onToggleLabels'
   | 'onToggleLegend'
   | 'onToggleInspector'
+  | 'onToggleDirection'
   | 'onZoomIn'
   | 'onZoomOut'
   | 'onFit'
 >) {
+  const vertical = props.direction === 'TB';
   return (
     <div className="topology-canvas-tools" role="toolbar" aria-label="Controlos do mapa">
       <Button variant="icon" onClick={props.onFit} aria-label="Ajustar mapa"><Focus size={15} /></Button>
@@ -208,6 +216,15 @@ function CanvasTools(props: Pick<
         aria-label="Alternar inspetor"
       >
         <PanelRight size={15} />
+      </Button>
+      <Button
+        variant="icon"
+        onClick={props.onToggleDirection}
+        aria-label={vertical
+          ? 'Mudar para orientação horizontal'
+          : 'Mudar para orientação vertical'}
+      >
+        {vertical ? <MoveHorizontal size={15} /> : <MoveVertical size={15} />}
       </Button>
     </div>
   );

@@ -50,6 +50,17 @@ class ResizeObserverStub {
   disconnect() {}
 }
 
+/**
+ * O jsdom não traz `DOMMatrixReadOnly`, que o d3-zoom lê ao enquadrar a vista.
+ * Basta a identidade: os testes verificam comandos e conteúdo, não coordenadas.
+ */
+class DOMMatrixReadOnlyStub {
+  m11 = 1;
+  m22 = 1;
+  m41 = 0;
+  m42 = 0;
+}
+
 function responseSearch(): TopologySearchResponse {
   return {
     generatedAt: snapshot.generatedAt,
@@ -141,6 +152,7 @@ function tab(container: HTMLElement, name: string): HTMLButtonElement {
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+  vi.stubGlobal('DOMMatrixReadOnly', DOMMatrixReadOnlyStub);
   vi.stubGlobal('matchMedia', vi.fn(() => ({
     matches: true,
     addEventListener: vi.fn(),
@@ -416,6 +428,20 @@ describe('TopologyModule branch interaction', () => {
     // O ✕ do cabeçalho fecha o painel e larga a seleção.
     await act(async () => { button(container, 'Fechar inspetor').click(); });
     expect(inspector()).toBeNull();
+  });
+
+  test('turns the map between the horizontal and the vertical orientation', async () => {
+    const container = await mountMap();
+
+    await act(async () => {
+      button(container, 'Mudar para orientação vertical').click();
+    });
+    expect(button(container, 'Mudar para orientação horizontal')).toBeTruthy();
+
+    await act(async () => {
+      button(container, 'Mudar para orientação horizontal').click();
+    });
+    expect(button(container, 'Mudar para orientação vertical')).toBeTruthy();
   });
 });
 

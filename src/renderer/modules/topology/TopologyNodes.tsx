@@ -179,23 +179,37 @@ export function TopologyNodeContent({
   );
 }
 
-function NodeHandles({ kind }: { kind: TopologyNode['kind'] }) {
+/** As âncoras vêm do layout: viram com a orientação do mapa. */
+function NodeHandles({ kind, source, target }: {
+  kind: TopologyNode['kind'];
+  source: Position;
+  target: Position;
+}) {
   return (
     <>
       {kind !== 'logical-root' && (
-        <Handle type="target" position={Position.Left} isConnectable={false} />
+        <Handle type="target" position={target} isConnectable={false} />
       )}
       {kind !== 'client-device' && (
-        <Handle type="source" position={Position.Right} isConnectable={false} />
+        <Handle type="source" position={source} isConnectable={false} />
       )}
     </>
   );
 }
 
-function TopologyNodeRenderer({ data, selected }: NodeProps<TopologyCanvasNode>) {
+function TopologyNodeRenderer({
+  data,
+  selected,
+  sourcePosition,
+  targetPosition
+}: NodeProps<TopologyCanvasNode>) {
   return (
     <>
-      <NodeHandles kind={data.topology.kind} />
+      <NodeHandles
+        kind={data.topology.kind}
+        source={sourcePosition ?? Position.Right}
+        target={targetPosition ?? Position.Left}
+      />
       <TopologyNodeContent
         node={data.topology}
         selected={selected}
