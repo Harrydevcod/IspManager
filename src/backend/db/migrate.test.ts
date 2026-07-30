@@ -248,7 +248,7 @@ describe('runMigrations', () => {
 
   test('retires catalog backbone quantities only after preserving their physical devices', () => {
     const db = freshDb();
-    const beforePhysicalBackboneMapping = migrations.filter((migration) => migration.version < 31);
+    const beforePhysicalBackboneMapping = migrations.filter((migration) => migration.version < 33);
     runMigrations(db, beforePhysicalBackboneMapping);
 
     db.prepare(`
@@ -256,7 +256,7 @@ describe('runMigrations', () => {
       VALUES ('antena', 'Ubiquiti', 'Rocket Prism', 2, 2, 1)
     `).run();
 
-    const throughPhysicalBackboneMapping = migrations.filter((migration) => migration.version <= 31);
+    const throughPhysicalBackboneMapping = migrations.filter((migration) => migration.version <= 33);
     runMigrations(db, throughPhysicalBackboneMapping);
 
     const materializedDevices = db.prepare(`
@@ -281,6 +281,94 @@ describe('runMigrations', () => {
       ORDER BY id
     `).all()).toEqual(materializedDevices);
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+  });
+
+  test('adopts backbone units and links recorded by the abandoned migration 31', () => {
+    const db = freshDb();
+    runMigrations(db, migrations.filter((migration) => migration.version < 33));
+
+    const catalogId = db.prepare(`
+      INSERT INTO equipment_catalog (type, brand, model, stock_total, backbone_qty, active)
+      VALUES ('antena', 'TP-Link', 'CPE710', 3, 3, 1)
+    `).run().lastInsertRowid;
+    const clientId = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status)
+      VALUES ('CLT-LEGACY', 'Cliente Legacy', 'active')
+    `).run().lastInsertRowid;
+    const serviceId = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
+      VALUES (?, 3500, 10, 'active')
+    `).run(clientId).lastInsertRowid;
+    const assignmentId = db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id, start_date)
+      VALUES (?, ?, '2026-07-28')
+    `).run(serviceId, catalogId).lastInsertRowid;
+
+    // The shape the abandoned development build left in the field.
+    db.exec(`
+      CREATE TABLE backbone_devices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        catalog_id INTEGER NOT NULL REFERENCES equipment_catalog(id) ON DELETE RESTRICT,
+        name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        serial_number TEXT,
+        asset_tag TEXT,
+        ip_address TEXT,
+        mac_address TEXT,
+        notes TEXT,
+        active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE backbone_client_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        backbone_device_id INTEGER NOT NULL REFERENCES backbone_devices(id) ON DELETE CASCADE,
+        client_assignment_id INTEGER NOT NULL REFERENCES service_device_assignments(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(client_assignment_id)
+      );
+    `);
+    db.prepare(`
+      INSERT INTO backbone_devices (catalog_id, name, ip_address, active, created_at)
+      VALUES (?, 'CPE710-Cruz', '192.168.1.140', 1, '2026-07-28 14:57:48')
+    `).run(catalogId);
+    db.prepare(`
+      INSERT INTO backbone_devices (catalog_id, name, active) VALUES (?, 'CPE710-Retirado', 0)
+    `).run(catalogId);
+    db.prepare(`
+      INSERT INTO backbone_client_links (backbone_device_id, client_assignment_id, created_at)
+      VALUES (1, ?, '2026-07-28 16:29:48')
+    `).run(assignmentId);
+
+    runMigrations(db, migrations);
+
+    expect(db.prepare(`
+      SELECT name, ip_address AS ipAddress, status, provisional
+      FROM backbone_devices ORDER BY id
+    `).all()).toEqual([
+      { name: 'CPE710-Cruz', ipAddress: '192.168.1.140', status: 'active', provisional: 0 },
+      { name: 'CPE710-Retirado', ipAddress: null, status: 'retired', provisional: 0 },
+      // Only the third catalogued unit is still unaccounted for.
+      { name: 'TP-Link CPE710 #1', ipAddress: null, status: 'active', provisional: 1 }
+    ]);
+    expect(db.prepare(`
+      SELECT backbone_device_id AS backboneDeviceId, assignment_id AS assignmentId,
+             started_at AS startedAt, ended_at AS endedAt
+      FROM backbone_assignment_links
+    `).all()).toEqual([{
+      backboneDeviceId: 1,
+      assignmentId,
+      startedAt: '2026-07-28 16:29:48',
+      endedAt: null
+    }]);
+    expect(db.prepare(`
+      SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%legacy%'
+    `).all()).toEqual([]);
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'backbone_client_links'").all())
+      .toEqual([]);
+    expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    db.close();
   });
 
   test('enforces live physical identity and assignment-link invariants', () => {
