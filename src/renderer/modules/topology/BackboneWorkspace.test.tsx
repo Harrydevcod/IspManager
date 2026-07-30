@@ -1,0 +1,1089 @@
+/** @vitest-environment jsdom */
+
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type {
+  BackboneAssignmentSummary,
+  BackboneDeviceDetail,
+  BackboneDeviceSummary,
+  BackbonePage
+} from '../../../shared/backbone';
+import { BackboneApiError, type BackboneApi } from './backbone-api';
+import { BackboneWorkspace } from './BackboneWorkspace';
+
+const backbone: BackboneDeviceSummary = {
+  id: 10,
+  catalogId: 3,
+  catalogBrand: 'Ubiquiti',
+  catalogModel: 'Rocket Prism 5AC',
+  catalogType: 'radio',
+  name: 'Monte Verde',
+  status: 'active',
+  serialNumber: 'BB-10',
+  assetTag: null,
+  ipAddress: '10.0.0.10',
+  macAddress: null,
+  island: 'São Vicente',
+  zone: null,
+  provisional: false,
+  linkedAssignmentCount: 1,
+  createdAt: '2026-07-29T10:00:00.000Z',
+  updatedAt: '2026-07-29T10:00:00.000Z'
+};
+
+const destinationBackbone: BackboneDeviceSummary = {
+  ...backbone,
+  id: 11,
+  name: 'Mindelo Sul',
+  serialNumber: 'BB-11',
+  ipAddress: '10.0.0.11',
+  linkedAssignmentCount: 0
+};
+
+const unlinkedAssignment: BackboneAssignmentSummary = {
+  id: 21,
+  catalogId: 4,
+  catalogBrand: 'MikroTik',
+  catalogModel: 'hAP',
+  catalogType: 'router',
+  serialNumber: 'CPE-21',
+  assetTag: null,
+  ipAddress: null,
+  macAddress: null,
+  startDate: '2026-07-01',
+  clientId: 1,
+  clientCode: 'CLT-001',
+  clientName: 'Cliente Um',
+  serviceId: 2,
+  serviceStatus: 'active',
+  backboneDeviceId: null,
+  backboneName: null,
+  linkedAt: null
+};
+
+const linkedAssignment: BackboneAssignmentSummary = {
+  ...unlinkedAssignment,
+  id: 22,
+  clientCode: 'CLT-002',
+  clientName: 'Cliente Dois',
+  backboneDeviceId: 10,
+  backboneName: 'Monte Verde',
+  linkedAt: '2026-07-20T10:00:00.000Z'
+};
+
+const secondUnlinkedAssignment: BackboneAssignmentSummary = {
+  ...unlinkedAssignment,
+  id: 23,
+  clientId: 3,
+  clientCode: 'CLT-003',
+  clientName: 'Cliente Três',
+  serviceId: 4,
+  serialNumber: 'CPE-23'
+};
+
+const cancelledServiceAssignment: BackboneAssignmentSummary = {
+  ...unlinkedAssignment,
+  id: 24,
+  clientCode: 'CLT-004',
+  clientName: 'Cliente com serviço cancelado',
+  serviceId: 5,
+  serviceStatus: 'cancelled'
+};
+
+const detail: BackboneDeviceDetail = {
+  ...backbone,
+  notes: 'POP principal',
+  assignments: [linkedAssignment]
+};
+
+function page<T>(items: T[], overrides: Partial<BackbonePage<T>> = {}): BackbonePage<T> {
+  return {
+    page: 1,
+    pageSize: 25,
+    total: items.length,
+    totalPages: items.length ? 1 : 0,
+    items,
+    ...overrides
+  };
+}
+
+let currentRole: 'admin' | 'operator' | 'technician' = 'admin';
+let workspaceApi: BackboneApi;
+
+vi.mock('../../lib/auth', () => ({
+  authFetch: vi.fn(),
+  useAuth: () => ({
+    isAuthBypassed: false,
+    hasRole: (...roles: string[]) => roles.includes(currentRole)
+  })
+}));
+
+vi.mock('./backbone-api', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./backbone-api')>();
+  return {
+    ...original,
+    createBackboneApi: () => workspaceApi
+  };
+});
+
+function api(overrides: Partial<BackboneApi> = {}): BackboneApi {
+  return {
+    listCatalogs: vi.fn(async () => [
+      { id: 3, brand: 'Ubiquiti', model: 'Rocket Prism 5AC', type: 'antena' }
+    ]),
+    listBackbones: vi.fn(async () => page([backbone])),
+    listAssignments: vi.fn(async (query) => page(
+      query.mapping === 'unlinked' ? [unlinkedAssignment] : [linkedAssignment, unlinkedAssignment]
+    )),
+    getBackbone: vi.fn(async () => detail),
+    createBackbone: vi.fn(async () => detail),
+    updateBackbone: vi.fn(async () => detail),
+    linkAssignment: vi.fn(async (id) => ({
+      ...unlinkedAssignment,
+      id,
+      backboneDeviceId: 10,
+      backboneName: 'Monte Verde'
+    })),
+    unlinkAssignment: vi.fn(async (id) => ({ assignmentId: id, backboneDeviceId: null })),
+    ...overrides
+  };
+}
+
+let root: Root | null = null;
+let host: HTMLDivElement | null = null;
+let workspaceWidth = 1200;
+const resizeCallbacks = new Set<ResizeObserverCallback>();
+
+class WorkspaceResizeObserver implements ResizeObserver {
+  constructor(private readonly callback: ResizeObserverCallback) {
+    resizeCallbacks.add(callback);
+  }
+
+  observe(target: Element) {
+    this.callback(
+      [{ target, contentRect: { width: workspaceWidth } } as ResizeObserverEntry],
+      this
+    );
+  }
+
+  unobserve() {}
+
+  disconnect() {
+    resizeCallbacks.delete(this.callback);
+  }
+}
+
+async function flush() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+async function renderWorkspace(
+  role: typeof currentRole = 'admin',
+  apiOverrides: Partial<BackboneApi> = {},
+  props: {
+    onMutation?: () => void;
+    onViewTopology?: (id: number) => void;
+  } = {}
+) {
+  currentRole = role;
+  workspaceApi = api(apiOverrides);
+  host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+  await act(async () => {
+    root?.render(
+      <BackboneWorkspace
+        onMutation={props.onMutation ?? (() => undefined)}
+        onViewTopology={props.onViewTopology ?? (() => undefined)}
+      />
+    );
+  });
+  await flush();
+  return host;
+}
+
+function button(name: string): HTMLButtonElement | undefined {
+  return [...document.querySelectorAll<HTMLButtonElement>('button')]
+    .find((element) => element.getAttribute('aria-label') === name || element.textContent?.trim() === name);
+}
+
+function buttonWithin(rootElement: ParentNode, name: string): HTMLButtonElement | undefined {
+  return [...rootElement.querySelectorAll<HTMLButtonElement>('button')]
+    .find((element) => element.getAttribute('aria-label') === name || element.textContent?.trim() === name);
+}
+
+async function click(element: Element | null | undefined) {
+  expect(element).toBeTruthy();
+  await act(async () => {
+    element?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await Promise.resolve();
+  });
+}
+
+async function mouseDown(element: Element | null | undefined) {
+  expect(element).toBeTruthy();
+  await act(async () => {
+    element?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    await Promise.resolve();
+  });
+}
+
+async function waitFor(check: () => boolean) {
+  for (let index = 0; index < 20; index += 1) {
+    if (check()) return;
+    await flush();
+  }
+  expect(check()).toBe(true);
+}
+
+async function changeValue(control: HTMLInputElement | HTMLSelectElement, value: string) {
+  const prototype = control instanceof HTMLSelectElement
+    ? HTMLSelectElement.prototype
+    : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(control, value);
+  await act(async () => {
+    control.dispatchEvent(new Event(control instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true }));
+  });
+}
+
+async function debounce() {
+  await act(async () => {
+    await new Promise((resolve) => window.setTimeout(resolve, 330));
+  });
+}
+
+function labelledControl<T extends HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+  label: string
+): T {
+  const field = [...document.querySelectorAll('label')]
+    .find((candidate) => candidate.querySelector('.field-label')?.textContent === label);
+  const control = field?.querySelector<T>('input, select, textarea');
+  expect(control).toBeTruthy();
+  return control!;
+}
+
+beforeEach(() => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  workspaceWidth = 1200;
+  resizeCallbacks.clear();
+  vi.stubGlobal('ResizeObserver', WorkspaceResizeObserver);
+});
+
+afterEach(async () => {
+  await act(async () => root?.unmount());
+  root = null;
+  host = null;
+  document.body.replaceChildren();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+describe('Backbone workspace', () => {
+  test('exposes the management heading, create action, and factual unlinked state', async () => {
+    const container = await renderWorkspace();
+
+    expect(container.querySelector('h1, h2, h3')?.textContent).toContain('Backbone');
+    expect(button('Novo backbone')).toBeTruthy();
+    expect(container.textContent).toContain('Sem ligação');
+    expect(container.querySelector('.backbone-list')?.textContent).toContain('10.0.0.10');
+  });
+
+  test('keeps list and detail visible for technicians without exposing mutation actions', async () => {
+    const container = await renderWorkspace('technician');
+
+    expect(button('Novo backbone')).toBeUndefined();
+    expect(container.querySelector('[role="listbox"]')).toBeTruthy();
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => container.textContent?.includes('Número de série') ?? false);
+
+    expect(container.textContent).toContain('Monte Verde');
+    expect(button('Ver na Topologia')).toBeTruthy();
+    expect(button('Editar')).toBeUndefined();
+    expect(button('Ligar equipamentos')).toBeUndefined();
+    expect(button('Transferir')).toBeUndefined();
+    expect(button('Desligar')).toBeUndefined();
+  });
+
+  test('keeps retired backbone facts visible without offering active-topology navigation', async () => {
+    const onViewTopology = vi.fn();
+    const retiredBackbone: BackboneDeviceSummary = {
+      ...backbone,
+      status: 'retired'
+    };
+    const retiredDetail: BackboneDeviceDetail = {
+      ...detail,
+      status: 'retired'
+    };
+    const container = await renderWorkspace(
+      'technician',
+      {
+        listBackbones: vi.fn(async () => page([retiredBackbone])),
+        getBackbone: vi.fn(async () => retiredDetail)
+      },
+      { onViewTopology }
+    );
+
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => container.textContent?.includes(
+      'Retirado — não aparece na topologia ativa'
+    ) ?? false);
+
+    expect(button('Ver na Topologia')).toBeUndefined();
+    expect(container.querySelector('[role="status"]')?.textContent)
+      .toContain('Retirado — não aparece na topologia ativa');
+    expect(onViewTopology).not.toHaveBeenCalled();
+  });
+
+  test('supports keyboard selection and restores focus after a dialog closes', async () => {
+    const container = await renderWorkspace();
+    const row = container.querySelector<HTMLButtonElement>('[role="option"]');
+    row?.focus();
+
+    await act(async () => {
+      row?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await Promise.resolve();
+    });
+    await waitFor(() => container.textContent?.includes('Número de série') ?? false);
+
+    expect(container.querySelector('[role="option"]')?.getAttribute('aria-selected')).toBe('true');
+    const create = button('Novo backbone')!;
+    create.focus();
+    await click(create);
+    expect(document.querySelector('[role="dialog"]')).toBeTruthy();
+    expect(document.activeElement).toBe(document.querySelector(
+      'button[aria-label="Equipamento do catálogo"]'
+    ));
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(create);
+  });
+
+  test('drives backbone search, status, and pagination through server query state', async () => {
+    const listBackbones = vi.fn(async (query: Parameters<BackboneApi['listBackbones']>[0]) => page(
+      [backbone],
+      { page: query.page, total: 50, totalPages: 2 }
+    ));
+    const container = await renderWorkspace('operator', { listBackbones });
+
+    await click(button('Página seguinte'));
+    await debounce();
+    expect(listBackbones).toHaveBeenLastCalledWith({
+      page: 2,
+      pageSize: 25,
+      status: undefined,
+      query: undefined
+    });
+
+    const search = container.querySelector<HTMLInputElement>('input[placeholder^="Nome"]')!;
+    await changeValue(search, 'core norte');
+    const status = container.querySelector<HTMLSelectElement>('[aria-label="Filtrar por estado"]')!;
+    await changeValue(status, 'maintenance');
+    await debounce();
+
+    expect(listBackbones).toHaveBeenLastCalledWith({
+      page: 1,
+      pageSize: 25,
+      status: 'maintenance',
+      query: 'core norte'
+    });
+  });
+
+  test('creates a backbone from a searchable factual equipment catalog label', async () => {
+    const onMutation = vi.fn();
+    const createBackbone = vi.fn(async () => detail);
+    await renderWorkspace('admin', { createBackbone }, { onMutation });
+
+    await click(button('Novo backbone'));
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Novo backbone');
+    expect(document.body.textContent).not.toContain('ID do catálogo');
+    expect(document.body.textContent).toContain('Campos sem valor serão apresentados como “Não informado”');
+    expect(document.body.textContent).not.toContain('marcada como provisória');
+    const catalogTrigger = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Equipamento do catálogo"]'
+    );
+    await click(catalogTrigger);
+    const catalogOption = [...document.querySelectorAll<HTMLElement>('.combobox-popover [role="option"]')]
+      .find((option) => option.textContent?.includes('Ubiquiti')
+        && option.textContent.includes('Rocket Prism 5AC'));
+    expect(catalogOption).toBeTruthy();
+    await mouseDown(catalogOption);
+    await changeValue(labelledControl<HTMLInputElement>('Nome operacional'), 'Monte Verde');
+    await changeValue(labelledControl<HTMLInputElement>('Número de série'), 'SN-MV-01');
+    await changeValue(labelledControl<HTMLInputElement>('Ilha'), 'São Vicente');
+    await click(button('Registar backbone'));
+    expect(createBackbone).toHaveBeenCalled();
+    await waitFor(() => document.querySelector('[role="dialog"]') === null);
+
+    expect(createBackbone).toHaveBeenCalledWith({
+      catalogId: 3,
+      name: 'Monte Verde',
+      status: 'active',
+      serialNumber: 'SN-MV-01',
+      assetTag: null,
+      ipAddress: null,
+      macAddress: null,
+      island: 'São Vicente',
+      zone: null,
+      notes: null
+    });
+    expect(onMutation).toHaveBeenCalledTimes(1);
+  });
+
+  test('edits the selected backbone with optimistic concurrency identity', async () => {
+    const updateBackbone = vi.fn(async () => ({ ...detail, name: 'Monte Verde Norte' }));
+    const container = await renderWorkspace('operator', { updateBackbone });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Editar') !== undefined);
+
+    await click(button('Editar'));
+    expect(labelledControl<HTMLInputElement>('Nome operacional').value).toBe('Monte Verde');
+    await changeValue(labelledControl<HTMLInputElement>('Nome operacional'), 'Monte Verde Norte');
+    await click(button('Guardar alterações'));
+    await waitFor(() => document.querySelector('[role="dialog"]') === null);
+
+    expect(updateBackbone).toHaveBeenCalledWith(10, expect.objectContaining({
+      catalogId: 3,
+      name: 'Monte Verde Norte',
+      expectedUpdatedAt: detail.updatedAt
+    }));
+  });
+
+  test('marks provisional units and reports missing identity without fabricating values', async () => {
+    const provisional: BackboneDeviceDetail = {
+      ...detail,
+      serialNumber: null,
+      assetTag: null,
+      ipAddress: null,
+      macAddress: null,
+      island: null,
+      zone: null,
+      notes: null,
+      provisional: true
+    };
+    const container = await renderWorkspace('admin', {
+      listBackbones: vi.fn(async () => page([provisional])),
+      getBackbone: vi.fn(async () => provisional)
+    });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => container.textContent?.includes('Número de série') ?? false);
+
+    expect(container.textContent).toContain('Provisório');
+    const identityValues = [...container.querySelectorAll('.backbone-facts dd')]
+      .map((element) => element.textContent);
+    expect(identityValues.filter((value) => value === 'Não informado').length).toBeGreaterThanOrEqual(6);
+    expect(container.textContent).not.toContain('Desconhecido');
+  });
+
+  test('searches and paginates the factual linked-assignment server collection beyond 100 rows', async () => {
+    const listAssignments = vi.fn(async (query: Parameters<BackboneApi['listAssignments']>[0]) => {
+      if (query.mapping === 'linked') {
+        return page([linkedAssignment], {
+          page: query.page,
+          total: 101,
+          totalPages: 5
+        });
+      }
+      return page(query.mapping === 'unlinked' ? [unlinkedAssignment] : [linkedAssignment]);
+    });
+    const container = await renderWorkspace('admin', {
+      listAssignments,
+      getBackbone: vi.fn(async () => ({ ...detail, linkedAssignmentCount: 101 }))
+    });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => container.textContent?.includes('Equipamentos ligados') ?? false);
+
+    expect(container.querySelector('.backbone-links')?.textContent).toContain('101');
+    const search = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Pesquisar equipamentos ligados"]'
+    );
+    expect(search).toBeTruthy();
+    await changeValue(search!, 'cliente dois');
+    await debounce();
+    expect(listAssignments).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 25,
+      mapping: 'linked',
+      backboneDeviceId: 10,
+      query: 'cliente dois'
+    });
+
+    await click(button('Página seguinte de equipamentos ligados'));
+    await debounce();
+    expect(listAssignments).toHaveBeenCalledWith({
+      page: 2,
+      pageSize: 25,
+      mapping: 'linked',
+      backboneDeviceId: 10,
+      query: 'cliente dois'
+    });
+  });
+
+  test('keeps stale linked rows visible with busy, error, and retry feedback during refresh', async () => {
+    let rejectRefresh!: (reason: Error) => void;
+    let shouldFail = true;
+    const failedRefresh = new Promise<BackbonePage<BackboneAssignmentSummary>>((_resolve, reject) => {
+      rejectRefresh = reject;
+    });
+    const listAssignments = vi.fn(async (query: Parameters<BackboneApi['listAssignments']>[0]) => {
+      if (query.mapping === 'linked' && query.query === 'falha') {
+        return shouldFail ? failedRefresh : page([linkedAssignment]);
+      }
+      return page(query.mapping === 'unlinked' ? [unlinkedAssignment] : [linkedAssignment]);
+    });
+    const container = await renderWorkspace('admin', { listAssignments });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => container.textContent?.includes('Cliente Dois') ?? false);
+    const linkedSection = container.querySelector<HTMLElement>('.backbone-links')!;
+    await changeValue(
+      container.querySelector<HTMLInputElement>(
+        'input[aria-label="Pesquisar equipamentos ligados"]'
+      )!,
+      'falha'
+    );
+    await debounce();
+
+    expect(linkedSection.getAttribute('aria-busy')).toBe('true');
+    expect(linkedSection.textContent).toContain('Cliente Dois');
+    await act(async () => {
+      rejectRefresh(new Error('Ligações indisponíveis'));
+      await Promise.resolve();
+    });
+    await waitFor(() => linkedSection.textContent?.includes('Ligações indisponíveis') ?? false);
+    expect(linkedSection.textContent).toContain('Cliente Dois');
+
+    shouldFail = false;
+    await click(buttonWithin(linkedSection, 'Tentar novamente'));
+    await waitFor(() => linkedSection.getAttribute('aria-busy') !== 'true');
+    expect(linkedSection.textContent).not.toContain('Ligações indisponíveis');
+  });
+
+  test('links multiple unlinked assignments and preserves one mutation notification', async () => {
+    const onMutation = vi.fn();
+    const linkAssignment = vi.fn(async (id: number) => ({
+      ...(id === 21 ? unlinkedAssignment : secondUnlinkedAssignment),
+      backboneDeviceId: 10,
+      backboneName: 'Monte Verde'
+    }));
+    const listAssignments = vi.fn(async (query: Parameters<BackboneApi['listAssignments']>[0]) => page(
+      query.mapping === 'unlinked'
+        ? [unlinkedAssignment, secondUnlinkedAssignment]
+        : [linkedAssignment, unlinkedAssignment, secondUnlinkedAssignment]
+    ));
+    const container = await renderWorkspace(
+      'admin',
+      { linkAssignment, listAssignments },
+      { onMutation }
+    );
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Ligar equipamentos') !== undefined);
+
+    await click(button('Ligar equipamentos'));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain('Sem ligação definida');
+    const selections = dialog.querySelectorAll<HTMLInputElement>('.backbone-candidate input[type="checkbox"]');
+    expect(selections).toHaveLength(2);
+    await click(selections[0]);
+    await click(selections[1]);
+    expect(dialog.textContent).toContain('2 selecionados');
+    await changeValue(labelledControl<HTMLInputElement>('Motivo'), 'Instalação inicial');
+    await click(button('Criar ligações'));
+    await waitFor(() => document.querySelector('[role="dialog"]') === null);
+
+    expect(linkAssignment).toHaveBeenCalledTimes(2);
+    expect(linkAssignment).toHaveBeenCalledWith(21, 10, 'Instalação inicial');
+    expect(linkAssignment).toHaveBeenCalledWith(23, 10, 'Instalação inicial');
+    expect(onMutation).toHaveBeenCalledTimes(1);
+  });
+
+  test('keeps only failed bulk selections with their server messages after a 409', async () => {
+    const linkAssignment = vi.fn(async (id: number) => {
+      if (id === 23) throw new BackboneApiError('A ligação foi alterada por outra pessoa', 409);
+      return { ...unlinkedAssignment, backboneDeviceId: 10, backboneName: 'Monte Verde' };
+    });
+    const listAssignments = vi.fn(async (query: Parameters<BackboneApi['listAssignments']>[0]) => page(
+      query.mapping === 'unlinked'
+        ? [unlinkedAssignment, secondUnlinkedAssignment]
+        : [linkedAssignment, unlinkedAssignment, secondUnlinkedAssignment]
+    ));
+    const container = await renderWorkspace('admin', { linkAssignment, listAssignments });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Ligar equipamentos') !== undefined);
+    await click(button('Ligar equipamentos'));
+
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const selections = dialog.querySelectorAll<HTMLInputElement>('.backbone-candidate input[type="checkbox"]');
+    await click(selections[0]);
+    await click(selections[1]);
+    await click(button('Criar ligações'));
+    await waitFor(() => document.body.textContent?.includes('A ligação foi alterada por outra pessoa') ?? false);
+
+    expect(document.querySelector('[role="dialog"]')).toBeTruthy();
+    const retained = [...document.querySelectorAll<HTMLInputElement>('.backbone-candidate input[type="checkbox"]')]
+      .filter((candidate) => candidate.checked)
+      .map((candidate) => candidate.closest('label')?.textContent);
+    expect(retained).toHaveLength(1);
+    expect(retained[0]).toContain('Cliente Três');
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+      'Equipamento #23: A ligação foi alterada por outra pessoa'
+    );
+  });
+
+  test('transfers a linked assignment to another active backbone', async () => {
+    const linkAssignment = vi.fn(async () => ({
+      ...linkedAssignment,
+      backboneDeviceId: 11,
+      backboneName: 'Mindelo Sul'
+    }));
+    const container = await renderWorkspace('operator', {
+      listBackbones: vi.fn(async () => page([backbone, destinationBackbone])),
+      linkAssignment
+    });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Transferir') !== undefined);
+    await click(button('Transferir'));
+
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain('Mudança de backbone');
+    expect(dialog.querySelector<HTMLInputElement>('.backbone-candidate input')?.checked).toBe(true);
+    await changeValue(labelledControl<HTMLSelectElement>('Backbone de destino'), '11');
+    await changeValue(labelledControl<HTMLInputElement>('Motivo'), 'Mudança de POP');
+    await click(buttonWithin(dialog, 'Transferir'));
+    await waitFor(() => document.querySelector('[role="dialog"]') === null);
+
+    expect(linkAssignment).toHaveBeenCalledWith(22, 11, 'Mudança de POP');
+  });
+
+  test('focuses the persistent detail heading when a successful transfer removes its opener', async () => {
+    let transferred = false;
+    const listAssignments = vi.fn(async (query: Parameters<BackboneApi['listAssignments']>[0]) => page(
+      query.mapping === 'linked' && transferred ? [] : [linkedAssignment]
+    ));
+    const linkAssignment = vi.fn(async () => {
+      transferred = true;
+      return {
+        ...linkedAssignment,
+        backboneDeviceId: 11,
+        backboneName: 'Mindelo Sul'
+      };
+    });
+    const container = await renderWorkspace('operator', {
+      listBackbones: vi.fn(async () => page([backbone, destinationBackbone])),
+      listAssignments,
+      linkAssignment
+    });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Transferir') !== undefined);
+    const opener = button('Transferir')!;
+    opener.focus();
+    await click(opener);
+    const dialog = document.querySelector('[role="dialog"]')!;
+    await changeValue(labelledControl<HTMLSelectElement>('Backbone de destino'), '11');
+    await click(buttonWithin(dialog, 'Transferir'));
+    await waitFor(() => document.querySelector('[role="dialog"]') === null);
+
+    const heading = container.querySelector<HTMLHeadingElement>('#backbone-detail-10');
+    expect(opener.isConnected).toBe(false);
+    await waitFor(() => document.activeElement === heading);
+  });
+
+  test('searches active transfer destinations independently from the filtered master page', async () => {
+    const listBackbones = vi.fn(async (query: Parameters<BackboneApi['listBackbones']>[0]) => {
+      if (query.status === 'active') {
+        return page([destinationBackbone], { page: query.page, total: 26, totalPages: 2 });
+      }
+      return page([{ ...backbone, status: 'maintenance' as const }]);
+    });
+    const container = await renderWorkspace('operator', { listBackbones });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Transferir') !== undefined);
+    await click(button('Transferir'));
+
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(labelledControl<HTMLSelectElement>('Backbone de destino').textContent).toContain('Mindelo Sul');
+    const search = dialog.querySelector<HTMLInputElement>(
+      'input[aria-label="Pesquisar backbones de destino"]'
+    );
+    expect(search).toBeTruthy();
+    await changeValue(search!, 'mindelo');
+    await debounce();
+
+    expect(listBackbones).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 25,
+      status: 'active',
+      query: 'mindelo'
+    });
+  });
+
+  test('clears a transfer target that disappears from destination search before submit', async () => {
+    const linkAssignment = vi.fn(async () => linkedAssignment);
+    const listBackbones = vi.fn(async (query: Parameters<BackboneApi['listBackbones']>[0]) => {
+      if (query.status !== 'active') return page([backbone]);
+      return page(query.query ? [] : [destinationBackbone]);
+    });
+    const container = await renderWorkspace('operator', { listBackbones, linkAssignment });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Transferir') !== undefined);
+    await click(button('Transferir'));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const destination = labelledControl<HTMLSelectElement>('Backbone de destino');
+    await changeValue(destination, '11');
+    const search = dialog.querySelector<HTMLInputElement>(
+      '[aria-label="Pesquisar backbones de destino"]'
+    )!;
+    await changeValue(search, 'outro pop');
+    await debounce();
+    await waitFor(() => destination.value === '');
+    await changeValue(search, '');
+    await debounce();
+    await waitFor(() => destination.querySelector('option[value="11"]') !== null);
+
+    expect(destination.value).toBe('');
+    await click(buttonWithin(dialog, 'Transferir'));
+
+    expect(linkAssignment).not.toHaveBeenCalled();
+  });
+
+  test('invalidates a transfer target synchronously when destination search changes', async () => {
+    vi.useFakeTimers();
+    const linkAssignment = vi.fn(async () => linkedAssignment);
+    const container = await renderWorkspace('operator', {
+      listBackbones: vi.fn(async () => page([backbone, destinationBackbone])),
+      linkAssignment
+    });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Transferir') !== undefined);
+    await click(button('Transferir'));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const destination = labelledControl<HTMLSelectElement>('Backbone de destino');
+    await changeValue(destination, '11');
+    await changeValue(
+      dialog.querySelector<HTMLInputElement>('[aria-label="Pesquisar backbones de destino"]')!,
+      'mindelo'
+    );
+
+    expect(destination.value).toBe('');
+    await click(buttonWithin(dialog, 'Transferir'));
+    expect(linkAssignment).not.toHaveBeenCalled();
+  });
+
+  test('invalidates a transfer target synchronously when destination page changes', async () => {
+    vi.useFakeTimers();
+    const linkAssignment = vi.fn(async () => linkedAssignment);
+    const listBackbones = vi.fn(async (query: Parameters<BackboneApi['listBackbones']>[0]) => (
+      query.status === 'active'
+        ? page([destinationBackbone], { total: 26, totalPages: 2 })
+        : page([backbone])
+    ));
+    const container = await renderWorkspace('operator', { listBackbones, linkAssignment });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Transferir') !== undefined);
+    await click(button('Transferir'));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const destination = labelledControl<HTMLSelectElement>('Backbone de destino');
+    await changeValue(destination, '11');
+    await click(buttonWithin(dialog, 'Página seguinte de destinos'));
+
+    expect(destination.value).toBe('');
+    await click(buttonWithin(dialog, 'Transferir'));
+    expect(linkAssignment).not.toHaveBeenCalled();
+  });
+
+  test('clears and disables a transfer target when destination refresh fails', async () => {
+    const linkAssignment = vi.fn(async () => linkedAssignment);
+    const listBackbones = vi.fn(async (query: Parameters<BackboneApi['listBackbones']>[0]) => {
+      if (query.status !== 'active') return page([backbone]);
+      if (query.query === 'erro') throw new Error('Destinos indisponíveis');
+      return page([destinationBackbone]);
+    });
+    const container = await renderWorkspace('operator', { listBackbones, linkAssignment });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Transferir') !== undefined);
+    await click(button('Transferir'));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    await changeValue(labelledControl<HTMLSelectElement>('Backbone de destino'), '11');
+    await changeValue(
+      dialog.querySelector<HTMLInputElement>('[aria-label="Pesquisar backbones de destino"]')!,
+      'erro'
+    );
+    await debounce();
+    await waitFor(() => dialog.textContent?.includes('Destinos indisponíveis') ?? false);
+    const submit = buttonWithin(dialog, 'Transferir')!;
+
+    expect(submit.disabled).toBe(true);
+    await click(submit);
+    expect(linkAssignment).not.toHaveBeenCalled();
+  });
+
+  test('disables transfer while destination page changes and clears a target absent from the new page', async () => {
+    const pageTwoDestination = { ...destinationBackbone, id: 12, name: 'Sal Norte' };
+    let resolvePageTwo!: (result: BackbonePage<BackboneDeviceSummary>) => void;
+    const pageTwo = new Promise<BackbonePage<BackboneDeviceSummary>>((resolve) => {
+      resolvePageTwo = resolve;
+    });
+    const linkAssignment = vi.fn(async () => linkedAssignment);
+    const listBackbones = vi.fn(async (query: Parameters<BackboneApi['listBackbones']>[0]) => {
+      if (query.status !== 'active') return page([backbone]);
+      if (query.page === 2) return pageTwo;
+      return page([destinationBackbone], { total: 26, totalPages: 2 });
+    });
+    const container = await renderWorkspace('operator', { listBackbones, linkAssignment });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Transferir') !== undefined);
+    await click(button('Transferir'));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const destination = labelledControl<HTMLSelectElement>('Backbone de destino');
+    await changeValue(destination, '11');
+    await click(buttonWithin(dialog, 'Página seguinte de destinos'));
+    const submit = buttonWithin(dialog, 'Transferir')!;
+    await debounce();
+    await waitFor(() => submit.disabled);
+
+    await act(async () => {
+      resolvePageTwo(page([pageTwoDestination], { page: 2, total: 26, totalPages: 2 }));
+      await pageTwo;
+    });
+    await waitFor(() => destination.querySelector('option[value="12"]') !== null);
+    expect(destination.value).toBe('');
+    await click(submit);
+    expect(linkAssignment).not.toHaveBeenCalled();
+  });
+
+  test('retains a transfer conflict and revalidates every affected collection plus detail once', async () => {
+    const listBackbones = vi.fn(async (query: Parameters<BackboneApi['listBackbones']>[0]) => (
+      query.status === 'active'
+        ? page([backbone, destinationBackbone])
+        : page([backbone])
+    ));
+    const listAssignments = vi.fn(async (query: Parameters<BackboneApi['listAssignments']>[0]) => page(
+      query.mapping === 'unlinked' ? [unlinkedAssignment] : [linkedAssignment]
+    ));
+    const getBackbone = vi.fn(async () => detail);
+    const linkAssignment = vi.fn(async () => {
+      throw new BackboneApiError('A transferência entrou em conflito', 409);
+    });
+    const container = await renderWorkspace('operator', {
+      listBackbones,
+      listAssignments,
+      getBackbone,
+      linkAssignment
+    });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Transferir') !== undefined);
+    await click(button('Transferir'));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    await changeValue(labelledControl<HTMLSelectElement>('Backbone de destino'), '11');
+    await click(buttonWithin(dialog, 'Transferir'));
+    await waitFor(() => dialog.textContent?.includes('A transferência entrou em conflito') ?? false);
+
+    expect(document.querySelector('[role="dialog"]')).toBe(dialog);
+    expect(dialog.querySelector<HTMLInputElement>('.backbone-candidate input')?.checked).toBe(true);
+    const retainedDestination = labelledControl<HTMLSelectElement>('Backbone de destino');
+    expect(retainedDestination.querySelector('option[value="11"]')).toBeTruthy();
+    expect(retainedDestination.value).toBe('11');
+    expect(getBackbone).toHaveBeenCalledTimes(2);
+    expect(listBackbones.mock.calls.filter(([query]) => query.status === undefined)).toHaveLength(2);
+    expect(listBackbones.mock.calls.filter(([query]) => query.status === 'active')).toHaveLength(2);
+    expect(listAssignments.mock.calls.filter(([query]) => query.mapping === 'all')).toHaveLength(2);
+    expect(listAssignments.mock.calls.filter(([query]) => query.mapping === 'unlinked')).toHaveLength(2);
+    expect(listAssignments.mock.calls.filter(([query]) => query.mapping === 'linked')).toHaveLength(2);
+  });
+
+  test('requires confirmation before unlinking while preserving equipment history', async () => {
+    const unlinkAssignment = vi.fn(async (id: number) => ({ assignmentId: id, backboneDeviceId: null }));
+    const container = await renderWorkspace('admin', { unlinkAssignment });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Desligar') !== undefined);
+    await click(button('Desligar'));
+
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain('O equipamento e o histórico permanecem registados');
+    await changeValue(labelledControl<HTMLInputElement>('Motivo'), 'Equipamento removido');
+    await click(buttonWithin(dialog, 'Desligar'));
+    await waitFor(() => document.querySelector('[role="dialog"]') === null);
+
+    expect(unlinkAssignment).toHaveBeenCalledWith(22, 'Equipamento removido');
+  });
+
+  test('focuses the persistent detail heading when a successful unlink removes its opener', async () => {
+    let unlinked = false;
+    const listAssignments = vi.fn(async (query: Parameters<BackboneApi['listAssignments']>[0]) => page(
+      query.mapping === 'linked' && unlinked ? [] : [linkedAssignment]
+    ));
+    const unlinkAssignment = vi.fn(async (id: number) => {
+      unlinked = true;
+      return { assignmentId: id, backboneDeviceId: null };
+    });
+    const container = await renderWorkspace('admin', { listAssignments, unlinkAssignment });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Desligar') !== undefined);
+    const opener = button('Desligar')!;
+    opener.focus();
+    await click(opener);
+    const dialog = document.querySelector('[role="dialog"]')!;
+    await click(buttonWithin(dialog, 'Desligar'));
+    await waitFor(() => document.querySelector('[role="dialog"]') === null);
+
+    const heading = container.querySelector<HTMLHeadingElement>('#backbone-detail-10');
+    expect(opener.isConnected).toBe(false);
+    await waitFor(() => document.activeElement === heading);
+  });
+
+  test('retains an unlink conflict and revalidates collections plus detail once', async () => {
+    const listBackbones = vi.fn(async (query: Parameters<BackboneApi['listBackbones']>[0]) => (
+      query.status === 'active' ? page([backbone, destinationBackbone]) : page([backbone])
+    ));
+    const listAssignments = vi.fn(async (query: Parameters<BackboneApi['listAssignments']>[0]) => page(
+      query.mapping === 'unlinked' ? [unlinkedAssignment] : [linkedAssignment]
+    ));
+    const getBackbone = vi.fn(async () => detail);
+    const unlinkAssignment = vi.fn(async () => {
+      throw new BackboneApiError('A ligação já foi alterada', 409);
+    });
+    const container = await renderWorkspace('admin', {
+      listBackbones,
+      listAssignments,
+      getBackbone,
+      unlinkAssignment
+    });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Desligar') !== undefined);
+    await click(button('Desligar'));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    await changeValue(labelledControl<HTMLInputElement>('Motivo'), 'Retirada confirmada');
+    await click(buttonWithin(dialog, 'Desligar'));
+    await waitFor(() => dialog.textContent?.includes('A ligação já foi alterada') ?? false);
+
+    expect(document.querySelector('[role="dialog"]')).toBe(dialog);
+    expect(dialog.textContent).toContain('Cliente Dois');
+    expect(labelledControl<HTMLInputElement>('Motivo').value).toBe('Retirada confirmada');
+    expect(getBackbone).toHaveBeenCalledTimes(2);
+    expect(listBackbones.mock.calls.filter(([query]) => query.status === undefined)).toHaveLength(2);
+    expect(listBackbones.mock.calls.filter(([query]) => query.status === 'active')).toHaveLength(2);
+    expect(listAssignments.mock.calls.filter(([query]) => query.mapping === 'linked')).toHaveLength(2);
+  });
+
+  test('retains the edited payload and refreshes affected data after an update conflict', async () => {
+    const listBackbones = vi.fn(
+      async (_query: Parameters<BackboneApi['listBackbones']>[0]) => page([backbone])
+    );
+    const getBackbone = vi.fn(async () => detail);
+    const updateBackbone = vi.fn(async () => {
+      throw new BackboneApiError('O backbone foi alterado por outra pessoa', 409);
+    });
+    const container = await renderWorkspace('admin', { listBackbones, getBackbone, updateBackbone });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Editar') !== undefined);
+    await click(button('Editar'));
+    await changeValue(labelledControl<HTMLInputElement>('Nome operacional'), 'Nome ainda por guardar');
+    await click(button('Guardar alterações'));
+    await waitFor(() => document.body.textContent?.includes('O backbone foi alterado por outra pessoa') ?? false);
+
+    expect(document.querySelector('[role="dialog"]')).toBeTruthy();
+    expect(labelledControl<HTMLInputElement>('Nome operacional').value).toBe('Nome ainda por guardar');
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+      'O backbone foi alterado por outra pessoa'
+    );
+    expect(listBackbones.mock.calls.filter(([query]) => query.status === undefined)).toHaveLength(2);
+    expect(listBackbones.mock.calls.filter(([query]) => query.status === 'active')).toHaveLength(2);
+    expect(getBackbone).toHaveBeenCalledTimes(2);
+  });
+
+  test('uses an explicit second navigation level when its container is narrow inside a wide viewport', async () => {
+    vi.stubGlobal('innerWidth', 1440);
+    workspaceWidth = 600;
+    const container = await renderWorkspace();
+    const workspaceElement = container.querySelector('.backbone-workspace')!;
+    expect(workspaceElement.hasAttribute('data-detail-open')).toBe(false);
+
+    const origin = container.querySelector<HTMLButtonElement>('[role="option"]')!;
+    origin.focus();
+    await click(origin);
+    await waitFor(() => workspaceElement.getAttribute('data-detail-open') === 'true');
+    expect(container.querySelector('.backbone-mobile-back')).toBeTruthy();
+    await waitFor(() => document.activeElement === container.querySelector('.backbone-mobile-back'));
+    await click(container.querySelector('.backbone-mobile-back'));
+
+    expect(workspaceElement.hasAttribute('data-detail-open')).toBe(false);
+    expect(container.querySelector('[role="option"]')?.getAttribute('aria-selected')).toBe('false');
+    expect(container.textContent).toContain('Escolha um backbone');
+    await waitFor(() => document.activeElement === origin);
+  });
+
+  test('falls back to the workspace heading when the mobile origin row disappears', async () => {
+    workspaceWidth = 600;
+    const container = await renderWorkspace();
+    const origin = container.querySelector<HTMLButtonElement>('[role="option"]')!;
+    origin.focus();
+    await click(origin);
+    await waitFor(() => document.activeElement === container.querySelector('.backbone-mobile-back'));
+
+    origin.remove();
+    await click(container.querySelector('.backbone-mobile-back'));
+    const heading = container.querySelector<HTMLHeadingElement>('.backbone-workspace-header h2');
+    await waitFor(() => document.activeElement === heading);
+  });
+
+  test('searches link candidates on the independent unlinked server collection', async () => {
+    const listAssignments = vi.fn(async (query: Parameters<BackboneApi['listAssignments']>[0]) => page(
+      query.mapping === 'unlinked' ? [unlinkedAssignment] : [linkedAssignment, unlinkedAssignment]
+    ));
+    const container = await renderWorkspace('admin', { listAssignments });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Ligar equipamentos') !== undefined);
+    await click(button('Ligar equipamentos'));
+
+    const search = document.querySelector<HTMLInputElement>('[role="dialog"] input[placeholder^="Cliente"]')!;
+    await changeValue(search, 'cliente sem pop');
+    await debounce();
+
+    expect(listAssignments).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 25,
+      mapping: 'unlinked',
+      query: 'cliente sem pop'
+    });
+  });
+
+  test('keeps physically active assignments factual even when the service is cancelled', async () => {
+    const listAssignments = vi.fn(async (query: Parameters<BackboneApi['listAssignments']>[0]) => page(
+      query.mapping === 'unlinked' ? [cancelledServiceAssignment] : [linkedAssignment]
+    ));
+    const container = await renderWorkspace('admin', { listAssignments });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Ligar equipamentos') !== undefined);
+    await click(button('Ligar equipamentos'));
+
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain('Cliente com serviço cancelado');
+    expect(dialog.textContent).toContain('1 equipamentos');
+  });
+
+  test('distinguishes a candidate load failure from an empty result and retries it', async () => {
+    const listAssignments = vi.fn(async (query: Parameters<BackboneApi['listAssignments']>[0]) => {
+      if (query.mapping === 'unlinked') throw new Error('Servidor de atribuições indisponível');
+      return page([linkedAssignment]);
+    });
+    const container = await renderWorkspace('admin', { listAssignments });
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => button('Ligar equipamentos') !== undefined);
+    await click(button('Ligar equipamentos'));
+
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain('Não foi possível carregar os equipamentos');
+    expect(dialog.textContent).not.toContain('Não há equipamentos disponíveis');
+    const callsBeforeRetry = listAssignments.mock.calls.length;
+    await click(buttonWithin(dialog, 'Tentar novamente'));
+    await waitFor(() => listAssignments.mock.calls.length > callsBeforeRetry);
+  });
+});

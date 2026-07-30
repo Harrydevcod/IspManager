@@ -141,7 +141,6 @@ export const equipmentCatalog = sqliteTable('equipment_catalog', {
   rentalFeeCve: real('rental_fee_cve').notNull().default(0),
   stockTotal: integer('stock_total').notNull().default(0),
   active: integer('active', { mode: 'boolean' }).notNull().default(true),
-  backboneQty: integer('backbone_qty').notNull().default(0),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
 });
@@ -185,6 +184,37 @@ export const serviceDeviceShares = sqliteTable('service_device_shares', {
   assignmentId: integer('assignment_id').notNull(),
   serviceId: integer('service_id').notNull(),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
+export const backboneDevices = sqliteTable('backbone_devices', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  catalogId: integer('catalog_id').notNull(),
+  name: text('name').notNull(),
+  serialNumber: text('serial_number'),
+  assetTag: text('asset_tag'),
+  ipAddress: text('ip_address'),
+  macAddress: text('mac_address'),
+  island: text('island'),
+  zone: text('zone'),
+  status: text('status', { enum: ['active', 'maintenance', 'retired'] }).notNull().default('active'),
+  provisional: integer('provisional', { mode: 'boolean' }).notNull().default(false),
+  notes: text('notes'),
+  createdBy: integer('created_by'),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
+  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
+export const backboneAssignmentLinks = sqliteTable('backbone_assignment_links', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  backboneDeviceId: integer('backbone_device_id').notNull(),
+  assignmentId: integer('assignment_id').notNull(),
+  startedAt: text('started_at').notNull().default('CURRENT_TIMESTAMP'),
+  endedAt: text('ended_at'),
+  changeReason: text('change_reason'),
+  createdBy: integer('created_by'),
+  endedBy: integer('ended_by'),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
+  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
 });
 
 export const serviceEvents = sqliteTable('service_events', {
@@ -451,6 +481,10 @@ export type ServiceDeviceAssignment = typeof serviceDeviceAssignments.$inferSele
 export type NewServiceDeviceAssignment = typeof serviceDeviceAssignments.$inferInsert;
 export type ServiceDeviceShare = typeof serviceDeviceShares.$inferSelect;
 export type NewServiceDeviceShare = typeof serviceDeviceShares.$inferInsert;
+export type BackboneDevice = typeof backboneDevices.$inferSelect;
+export type NewBackboneDevice = typeof backboneDevices.$inferInsert;
+export type BackboneAssignmentLink = typeof backboneAssignmentLinks.$inferSelect;
+export type NewBackboneAssignmentLink = typeof backboneAssignmentLinks.$inferInsert;
 export type ServiceEvent = typeof serviceEvents.$inferSelect;
 export type NewServiceEvent = typeof serviceEvents.$inferInsert;
 export type ServiceMaterialLine = typeof serviceMaterialLines.$inferSelect;

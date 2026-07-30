@@ -22,6 +22,10 @@
 - All mutation routes validate with Zod, use parameterized SQL, run state transitions transactionally, and write audit events.
 - Keep React Flow and Dagre outside the initial application chunk.
 - Follow TDD: observe each focused test fail before implementing its production change.
+- Approved dependency order after Task 3: execute Task 5, then Task 9, then resume
+  Task 4. Task 5 keeps a deprecated renderer-compatibility `backboneQty: 1` field;
+  Task 9 removes that field and all renderer consumers; Task 4 then drops the SQL
+  column with no backend or renderer consumer remaining.
 
 ## Execution preflight
 
@@ -48,8 +52,10 @@ implementation files. Do not stage unrelated user files if any appear.
 ### Persistence and contracts
 
 - Create `src/backend/db/migrations/0031_physical_backbone_mapping.ts` — immutable
-  schema/data migration from catalog quantities to physical devices.
-- Modify `src/backend/db/migrations/index.ts` — register migration 31.
+  schema/data migration from catalog quantities to physical devices while retaining
+  the legacy column for intermediate compatibility.
+- Modify `src/backend/db/migrations/index.ts` — register migration 31, then migration
+  32 when Task 4 removes the legacy column.
 - Modify `src/backend/db/schema.ts` — Drizzle declarations for both new tables and
   removal of `backboneQty`.
 - Modify `src/backend/db/migrate.test.ts` — migration preservation and constraint
@@ -122,8 +128,8 @@ implementation files. Do not stage unrelated user files if any appear.
 
 **Interfaces:**
 - Consumes: `Migration` from `src/backend/db/migrations/types.ts`.
-- Produces: tables `backbone_devices`, `backbone_assignment_links`; no
-  `equipment_catalog.backbone_qty`.
+- Produces: tables `backbone_devices`, `backbone_assignment_links`; retains
+  `equipment_catalog.backbone_qty` until Task 4 so every intermediate commit passes.
 
 - [ ] **Step 1: Add a failing migration preservation test**
 
@@ -140,7 +146,7 @@ expect(db.prepare(`
   { name: 'Ubiquiti Rocket Prism #2', provisional: 1, serialNumber: null }
 ]);
 expect(db.prepare(`PRAGMA table_info(equipment_catalog)`).all())
-  .not.toEqual(expect.arrayContaining([expect.objectContaining({ name: 'backbone_qty' })]));
+  .toEqual(expect.arrayContaining([expect.objectContaining({ name: 'backbone_qty' })]));
 ```
 
 Also assert `PRAGMA foreign_key_check` is empty.
@@ -220,13 +226,12 @@ const migration: Migration = {
     INSERT INTO backbone_devices(catalog_id, name, provisional)
       SELECT catalog_id, label || ' #' || ordinal, 1 FROM units;
 
-    ALTER TABLE equipment_catalog DROP COLUMN backbone_qty;
   `
 };
 ```
 
-Register `m0031` in order and replace the schema field with Drizzle declarations for
-the two new tables.
+Register `m0031` in order and add Drizzle declarations for the two new tables. Keep
+the existing `backboneQty` schema field unchanged until Task 4.
 
 - [ ] **Step 4: Add and run database constraint tests**
 
@@ -463,6 +468,10 @@ git commit -m "feat(topology): expose audited backbone management API"
 ### Task 4: Remove legacy quantity and preserve lifecycle/finance behavior
 
 **Files:**
+- Create: `src/backend/db/migrations/0032_retire_catalog_backbone_qty.ts`
+- Modify: `src/backend/db/migrations/index.ts`
+- Modify: `src/backend/db/schema.ts`
+- Modify: `src/backend/db/migrate.test.ts`
 - Modify: `src/backend/routes/stock.ts`
 - Modify: `src/backend/routes/stock.test.ts`
 - Modify: `src/backend/routes/investments.ts`
@@ -488,6 +497,8 @@ expect(investmentSummary.backboneStockCve).toBe(
 
 Add a service removal test that ends an assignment and expects its active topology
 link to receive `ended_at`.
+Add a migration-chain assertion that `backbone_qty` is absent only after migration
+32 and that the physical rows created by migration 31 remain unchanged.
 
 - [ ] **Step 2: Run focused tests and observe failure**
 
@@ -497,10 +508,21 @@ npx.cmd vitest run src/backend/routes/stock.test.ts src/backend/routes/investmen
 
 Expected: FAIL on legacy field/query and unclosed link.
 
-- [ ] **Step 3: Remove stock quantity handling**
+- [ ] **Step 3: Add migration 32 and remove stock quantity handling**
 
-Delete `backboneQty` from the catalog Zod schema, SELECT, INSERT, UPDATE, response,
-and test fixtures. Do not add a replacement field to Stock.
+Create immutable migration 32:
+
+```ts
+const migration: Migration = {
+  version: 32,
+  name: 'retire_catalog_backbone_qty',
+  sql: `ALTER TABLE equipment_catalog DROP COLUMN backbone_qty;`
+};
+```
+
+Register it after migration 31, remove `backboneQty` from the Drizzle schema, and
+delete it from the catalog Zod schema, SELECT, INSERT, UPDATE, response, and test
+fixtures. Do not add a replacement field to Stock.
 
 - [ ] **Step 4: Replace the finance calculation**
 
@@ -544,7 +566,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit lifecycle and finance compatibility**
 
 ```powershell
-git add src/backend/routes/stock.ts src/backend/routes/stock.test.ts src/backend/routes/investments.ts src/backend/routes/investments.test.ts src/backend/routes/technical.ts src/backend/routes/technical.test.ts
+git add src/backend/db/migrations/0032_retire_catalog_backbone_qty.ts src/backend/db/migrations/index.ts src/backend/db/schema.ts src/backend/db/migrate.test.ts src/backend/routes/stock.ts src/backend/routes/stock.test.ts src/backend/routes/investments.ts src/backend/routes/investments.test.ts src/backend/routes/technical.ts src/backend/routes/technical.test.ts
 git commit -m "refactor(topology): retire catalog backbone quantities"
 ```
 
@@ -564,7 +586,8 @@ files.
 **Interfaces:**
 - Produces `TopologyRelationship = 'defined_link'`.
 - `TopologyBackboneNode` includes `backboneDeviceId`, identity/location fields,
-  `provisional`, and no `backboneQty`.
+  `provisional`, plus a temporary deprecated `backboneQty: 1` compatibility field
+  removed by Task 9.
 - Branch route parameter is `backbone_devices.id`.
 
 - [ ] **Step 1: Rewrite fixtures/tests to express physical links**
@@ -615,6 +638,8 @@ export type TopologyBackboneNode = {
   island: string | null;
   zone: string | null;
   provisional: boolean;
+  /** @deprecated Renderer compatibility only; Task 9 removes this field. */
+  backboneQty: 1;
   administrativeState: TopologyAdministrativeState;
   issueCodes: TopologyIssueCode[];
   parentId: 'root:isp';
@@ -629,6 +654,8 @@ Add `provisional_identity` to `TopologyIssueCode`.
 Snapshot loads non-retired `backbone_devices`. Branch joins active
 `backbone_assignment_links` to active assignments. Stats count active assignments
 with/without active links. Search ancestors follow the active link, never `catalog_id`.
+Each physical backbone row emits `backboneQty: 1` only to keep the current renderer
+compiling until Task 9; no query or relationship may use the legacy catalog quantity.
 
 - [ ] **Step 5: Run backend topology tests**
 
@@ -665,10 +692,10 @@ Assert exact URLs:
 
 ```ts
 expect(calls[0]).toBe(
-  'http://127.0.0.1:3001/api/topology/backbones?page=1&pageSize=25&status=active&q=rocket'
+  'http://127.0.0.1:3001/api/topology/backbones?page=1&pageSize=25&status=active&query=rocket'
 );
 expect(calls[1]).toBe(
-  'http://127.0.0.1:3001/api/topology/assignments?page=1&pageSize=25&mapping=unlinked&q=cliente'
+  'http://127.0.0.1:3001/api/topology/assignments?page=1&pageSize=25&mapping=unlinked&query=cliente'
 );
 ```
 
@@ -934,6 +961,8 @@ user-visible “inventário” relationship label with “ligação definida”;
 - [ ] **Step 4: Remove Stock backbone controls**
 
 Delete `backboneQty` form state, payload, filter, sort key, badge, column and field.
+Delete the deprecated `TopologyBackboneNode.backboneQty` compatibility property and
+update topology fixtures at the same time.
 Keep `focusCatalogId` navigation intact because the Topologia inspector still links
 to the underlying catalog model.
 

@@ -3,6 +3,7 @@ import type {
   TopologyBackboneBranch,
   TopologyEdge,
   TopologyNode,
+  TopologyRelationship,
   TopologySnapshot
 } from '../../../shared/topology';
 
@@ -25,6 +26,16 @@ export type TopologyGraph = {
   nodes: TopologyFlowNode[];
   edges: TopologyFlowEdge[];
 };
+
+const RELATIONSHIP_LABELS: Record<TopologyRelationship, 'ligação definida'> = {
+  defined_link: 'ligação definida'
+};
+
+export function topologyRelationshipLabel(
+  relationship: TopologyRelationship
+): 'ligação definida' {
+  return RELATIONSHIP_LABELS[relationship];
+}
 
 function toFlowNode(node: TopologyNode): TopologyFlowNode {
   return {

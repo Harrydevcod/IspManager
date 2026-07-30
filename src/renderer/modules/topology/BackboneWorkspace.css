@@ -1,0 +1,1067 @@
+.backbone-workspace {
+  --backbone-accent: oklch(70% 0.105 151);
+  --backbone-accent-muted: color-mix(in oklch, var(--backbone-accent) 14%, transparent);
+  --backbone-rule: color-mix(in oklch, var(--border) 82%, transparent);
+  /* Column flow, not a fixed row template: the inline error banner is
+     conditional, so a three-row grid left the master/detail pane in the
+     content-sized second row and collapsed it to a few pixels. */
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 40rem;
+  height: min(48rem, calc(100vh - 8.5rem));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r3);
+  background: var(--surface);
+  color: var(--text);
+  container-type: inline-size;
+}
+
+.backbone-workspace-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-8);
+  padding: clamp(1.1rem, 2.2vw, 1.65rem) clamp(1rem, 2.5vw, 1.8rem);
+  border-bottom: 1px solid var(--backbone-rule);
+  background:
+    linear-gradient(90deg, color-mix(in oklch, var(--border) 35%, transparent) 0 1px, transparent 1px)
+      0 0 / 4.5rem 100%,
+    color-mix(in oklch, var(--surface-2) 72%, var(--surface));
+}
+
+.backbone-workspace-header > div {
+  min-width: 0;
+}
+
+.backbone-kicker {
+  margin: 0 0 var(--space-1);
+  color: var(--backbone-accent);
+  font-size: 0.66rem;
+  font-weight: 760;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.backbone-workspace-header h2 {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: clamp(1.7rem, 3vw, 2.25rem);
+  font-weight: 550;
+  letter-spacing: -0.045em;
+  line-height: 1;
+}
+
+.backbone-workspace-header > div > p:last-child {
+  margin: var(--space-2) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.backbone-inline-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid color-mix(in oklch, var(--danger) 28%, var(--border));
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: var(--fs-sm);
+}
+
+.backbone-inline-error > span {
+  flex: 1;
+}
+
+.backbone-master-detail {
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.72fr) minmax(27rem, 1.28fr);
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.backbone-list {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--backbone-rule);
+  background: color-mix(in oklch, var(--surface) 82%, var(--surface-2));
+}
+
+.backbone-list-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(9rem, auto);
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--backbone-rule);
+}
+
+.backbone-search,
+.backbone-dialog-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.5rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface);
+  color: var(--text-3);
+}
+
+.backbone-search:focus-within,
+.backbone-dialog-search:focus-within {
+  border-color: var(--action-focus);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--action-focus) 18%, transparent);
+}
+
+.backbone-search input,
+.backbone-dialog-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+
+.backbone-search input::placeholder,
+.backbone-dialog-search input::placeholder {
+  color: var(--text-3);
+  opacity: 1;
+}
+
+.backbone-search > .field,
+.backbone-dialog-search > .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.backbone-list-tools > .field {
+  align-self: stretch;
+}
+
+.backbone-list-tools select {
+  height: 100%;
+  min-height: 2.5rem;
+  border-radius: var(--r1);
+  background: var(--surface);
+  font-size: var(--fs-sm);
+}
+
+.backbone-list-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--backbone-rule);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.025em;
+}
+
+.backbone-list-summary strong {
+  color: var(--text-2);
+}
+
+.backbone-unlinked-count strong {
+  color: var(--warning);
+}
+
+.backbone-list-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.backbone-row {
+  position: relative;
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 7.2rem;
+  padding: var(--space-4);
+  border: 0;
+  border-bottom: 1px solid var(--backbone-rule);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.backbone-row > .btn-content {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+  justify-content: stretch;
+}
+
+.backbone-row::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: transparent;
+  content: '';
+}
+
+.backbone-row:hover {
+  background: color-mix(in oklch, var(--surface-2) 74%, transparent);
+}
+
+.backbone-row:focus-visible {
+  z-index: 1;
+  outline: 2px solid var(--action-focus);
+  outline-offset: -2px;
+}
+
+.backbone-row[aria-selected='true'] {
+  background: var(--backbone-accent-muted);
+}
+
+.backbone-row[aria-selected='true']::before {
+  background: var(--backbone-accent);
+}
+
+.backbone-row-primary,
+.backbone-row-primary > span,
+.backbone-row-meta {
+  display: flex;
+  align-items: center;
+}
+
+.backbone-row-primary {
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.backbone-row-primary > span {
+  min-width: 0;
+  gap: var(--space-2);
+}
+
+.backbone-row-primary strong {
+  overflow: hidden;
+  font-size: var(--fs-base);
+  font-weight: 680;
+  letter-spacing: -0.015em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backbone-row-primary .badge {
+  flex: 0 0 auto;
+  min-height: 1.3rem;
+  padding: 0 var(--space-2);
+  font-size: 0.58rem;
+}
+
+.backbone-row-model {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backbone-row-meta {
+  flex-wrap: wrap;
+  gap: 0;
+  color: var(--text-3);
+  font-size: 0.69rem;
+}
+
+.backbone-row-meta span {
+  display: inline-flex;
+  align-items: center;
+}
+
+.backbone-row-meta span + span::before {
+  margin: 0 var(--space-2);
+  color: var(--border-2);
+  content: '/';
+}
+
+.backbone-list-state,
+.backbone-detail-empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-2);
+  min-height: 100%;
+  padding: var(--space-8);
+  color: var(--text-3);
+  text-align: center;
+}
+
+.backbone-list-state strong,
+.backbone-detail-empty h3 {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+
+.backbone-list-state span,
+.backbone-detail-empty > p:last-child {
+  max-width: 34ch;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.backbone-pulse {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: var(--backbone-accent);
+  box-shadow: 0 0 0 0 color-mix(in oklch, var(--backbone-accent) 35%, transparent);
+  animation: backbone-pulse 1.4s ease-out infinite;
+}
+
+.backbone-pagination,
+.backbone-candidate-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 3.25rem;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--backbone-rule);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.backbone-pagination > div,
+.backbone-candidate-footer > div {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.backbone-pagination .btn-icon,
+.backbone-candidate-footer .btn-icon {
+  width: 2rem;
+  min-height: 2rem;
+}
+
+.backbone-detail {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  background:
+    radial-gradient(circle at 87% 9%, color-mix(in oklch, var(--backbone-accent) 6%, transparent), transparent 28%),
+    var(--surface);
+  scrollbar-gutter: stable;
+}
+
+.backbone-detail-empty {
+  align-content: center;
+}
+
+.backbone-detail-mark {
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  margin-bottom: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--backbone-accent);
+}
+
+.backbone-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: clamp(1.35rem, 3vw, 2.2rem) clamp(1.25rem, 3vw, 2.4rem) var(--space-5);
+}
+
+.backbone-detail-header h3 {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 3.2vw, 2.45rem);
+  font-weight: 540;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
+}
+
+.backbone-detail-header h3:focus-visible {
+  outline: 2px solid var(--action-focus);
+  outline-offset: 4px;
+}
+
+.backbone-detail-header > div > p:last-child {
+  margin: var(--space-2) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.backbone-detail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.backbone-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 0 clamp(1.25rem, 3vw, 2.4rem) var(--space-6);
+  border-bottom: 1px solid var(--backbone-rule);
+}
+
+.backbone-detail-note {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.backbone-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-bottom: 1px solid var(--backbone-rule);
+}
+
+.backbone-facts > section {
+  padding: clamp(1.25rem, 2.5vw, 2rem) clamp(1.25rem, 3vw, 2.4rem);
+}
+
+.backbone-facts > section + section {
+  border-left: 1px solid var(--backbone-rule);
+}
+
+.backbone-section-heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.backbone-section-heading > span {
+  color: var(--backbone-accent);
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+}
+
+.backbone-section-heading h4 {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 720;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.backbone-section-heading > strong {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.backbone-facts dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4) var(--space-5);
+  margin: 0;
+}
+
+.backbone-facts dl > div {
+  min-width: 0;
+}
+
+.backbone-facts dt {
+  margin-bottom: var(--space-1);
+  color: var(--text-3);
+  font-size: 0.66rem;
+}
+
+.backbone-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.backbone-fact-wide {
+  grid-column: 1 / -1;
+}
+
+.backbone-links {
+  padding: clamp(1.25rem, 3vw, 2.4rem);
+}
+
+.backbone-linked-tools {
+  display: flex;
+  margin: calc(var(--space-2) * -1) 0 var(--space-4);
+}
+
+.backbone-linked-tools .backbone-search {
+  width: min(100%, 28rem);
+}
+
+.backbone-links-state {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-8);
+  border-top: 1px solid var(--backbone-rule);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.backbone-links-state strong {
+  color: var(--text-2);
+}
+
+.backbone-links-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5) 0;
+  border-top: 1px dashed var(--border);
+  border-bottom: 1px dashed var(--border);
+  color: var(--text-3);
+}
+
+.backbone-links-empty > div {
+  flex: 1;
+}
+
+.backbone-links-empty strong {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.backbone-links-empty p {
+  margin: var(--space-1) 0 0;
+  font-size: var(--fs-xs);
+}
+
+.backbone-assignment-list {
+  border-top: 1px solid var(--backbone-rule);
+}
+
+.backbone-assignment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--backbone-rule);
+}
+
+.backbone-assignment-main {
+  display: grid;
+  grid-template-columns: minmax(8.5rem, 0.85fr) minmax(10rem, 1.15fr);
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.backbone-assignment-main > span,
+.backbone-assignment-state {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.backbone-assignment-main strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backbone-assignment-main small {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backbone-assignment-state {
+  justify-items: end;
+}
+
+.backbone-assignment-state .badge {
+  min-height: 1.35rem;
+  font-size: 0.57rem;
+}
+
+.backbone-assignment-actions {
+  display: flex;
+}
+
+.backbone-assignment-actions .btn {
+  min-height: 1.8rem;
+  padding: 0 var(--space-2);
+  font-size: 0.68rem;
+}
+
+.backbone-linked-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 3rem;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.backbone-linked-pagination > div {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.backbone-linked-pagination .btn-icon {
+  width: 2rem;
+  min-height: 2rem;
+}
+
+.backbone-mobile-back {
+  display: none;
+}
+
+.backbone-editor-form {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.backbone-dialog-section {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.backbone-dialog-section > p {
+  grid-column: 1 / -1;
+  margin: 0 0 calc(var(--space-2) * -1);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--backbone-rule);
+  color: var(--text-3);
+  font-size: 0.65rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.backbone-dialog-section .field input,
+.backbone-dialog-section .field select,
+.backbone-notes-field textarea,
+.backbone-mapping-form > .field input,
+.backbone-mapping-form > .field select {
+  width: 100%;
+  min-height: 2.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.backbone-catalog-field .combobox {
+  width: 100%;
+}
+
+.backbone-catalog-field .combobox-trigger {
+  width: 100%;
+  min-height: 2.5rem;
+}
+
+.backbone-catalog-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--danger);
+  font-size: var(--fs-xs);
+}
+
+.backbone-dialog-section .field input,
+.backbone-mapping-form > .field input {
+  padding: 0 var(--space-3);
+}
+
+.backbone-notes-field {
+  grid-column: 1 / -1;
+}
+
+.backbone-notes-field textarea {
+  min-height: 5.5rem;
+  padding: var(--space-3);
+  resize: vertical;
+  font: inherit;
+}
+
+.backbone-dialog-section input:focus-visible,
+.backbone-dialog-section select:focus-visible,
+.backbone-notes-field textarea:focus-visible,
+.backbone-mapping-form > .field input:focus-visible,
+.backbone-mapping-form > .field select:focus-visible {
+  outline: 2px solid var(--action-focus);
+  outline-offset: 1px;
+}
+
+.backbone-form-note {
+  align-self: end;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+}
+
+.backbone-dialog-error {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--danger) 34%, var(--border));
+  border-radius: var(--r1);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: var(--fs-sm);
+}
+
+.backbone-dialog-error > div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.backbone-dialog-error span {
+  display: block;
+}
+
+.backbone-mapping-form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.backbone-destination-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 0.8fr);
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.backbone-destination-picker > .backbone-dialog-search {
+  align-self: end;
+}
+
+.backbone-picker-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 2.5rem;
+  color: var(--danger);
+  font-size: var(--fs-xs);
+}
+
+.backbone-destination-pagination {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.backbone-destination-pagination > div {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.backbone-destination-pagination .btn-icon {
+  width: 2rem;
+  min-height: 2rem;
+}
+
+.backbone-mapping-form > .field {
+  max-width: 28rem;
+}
+
+.backbone-candidate-list {
+  max-height: 22rem;
+  overflow-y: auto;
+  border-top: 1px solid var(--backbone-rule);
+  scrollbar-gutter: stable;
+}
+
+.backbone-candidate {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  min-height: 4.8rem;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--backbone-rule);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.backbone-candidate:hover {
+  background: var(--surface-2);
+}
+
+.backbone-candidate[data-selected='true'] {
+  background: var(--backbone-accent-muted);
+}
+
+.backbone-candidate[data-error='true'] {
+  background: var(--danger-bg);
+}
+
+.backbone-candidate input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent);
+}
+
+.backbone-candidate-toggle {
+  min-width: 0;
+}
+
+.backbone-candidate-toggle > span {
+  min-width: 0;
+}
+
+.backbone-candidate-toggle strong,
+.backbone-candidate-toggle small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backbone-candidate-toggle strong {
+  font-size: var(--fs-sm);
+  font-weight: 620;
+}
+
+.backbone-candidate-toggle small,
+.backbone-candidate-error {
+  color: var(--text-3);
+  font-size: 0.68rem;
+}
+
+.backbone-candidate-error {
+  grid-column: 1 / -1;
+  padding-left: 2.9rem;
+  color: var(--danger);
+}
+
+.backbone-candidate-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-8);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.backbone-candidate-footer {
+  padding-inline: 0;
+}
+
+.backbone-dialog-selection {
+  align-self: center;
+  margin-right: auto;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.backbone-unlink-form {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.backbone-unlink-form > p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+
+.backbone-unlink-form input {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+@keyframes backbone-pulse {
+  70% { box-shadow: 0 0 0 0.55rem transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+@container (max-width: 760px) {
+  .backbone-workspace {
+    height: min(50rem, calc(100vh - 7rem));
+    min-height: 34rem;
+  }
+
+  .backbone-workspace-header {
+    align-items: center;
+  }
+
+  .backbone-workspace-header > div > p:last-child {
+    display: none;
+  }
+
+  .backbone-master-detail {
+    display: block;
+    position: relative;
+  }
+
+  .backbone-list,
+  .backbone-detail {
+    position: absolute;
+    inset: 0;
+  }
+
+  .backbone-list {
+    border-right: 0;
+    transform: translateX(0);
+    transition: transform var(--motion-base) var(--ease-out), opacity var(--motion-base) var(--ease-out);
+  }
+
+  .backbone-detail {
+    visibility: hidden;
+    transform: translateX(3%);
+    opacity: 0;
+    transition: transform var(--motion-base) var(--ease-out), opacity var(--motion-base) var(--ease-out);
+  }
+
+  .backbone-workspace[data-detail-open='true'] .backbone-list {
+    visibility: hidden;
+    transform: translateX(-3%);
+    opacity: 0;
+  }
+
+  .backbone-workspace[data-detail-open='true'] .backbone-detail {
+    visibility: visible;
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  .backbone-mobile-back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: var(--space-3) var(--space-4) 0;
+    padding: var(--space-2) 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--fs-sm);
+    cursor: pointer;
+  }
+
+  .backbone-mobile-back:focus-visible {
+    outline: 2px solid var(--action-focus);
+    outline-offset: 2px;
+  }
+
+  .backbone-detail-empty .backbone-mobile-back {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+
+  .backbone-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .backbone-facts > section + section {
+    border-top: 1px solid var(--backbone-rule);
+    border-left: 0;
+  }
+}
+
+@container (max-width: 520px) {
+  .backbone-workspace-header {
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+
+  .backbone-workspace-header h2 {
+    font-size: 1.55rem;
+  }
+
+  .backbone-workspace-header .btn {
+    min-height: 2.25rem;
+    padding-inline: var(--space-3);
+    font-size: var(--fs-sm);
+  }
+
+  .backbone-list-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .backbone-detail-header {
+    display: grid;
+  }
+
+  .backbone-detail-badges {
+    justify-content: flex-start;
+  }
+
+  .backbone-assignment {
+    grid-template-columns: 1fr;
+  }
+
+  .backbone-assignment-main {
+    grid-template-columns: 1fr;
+  }
+
+  .backbone-assignment-state {
+    justify-items: start;
+  }
+
+  .backbone-dialog-section {
+    grid-template-columns: 1fr;
+  }
+
+  .backbone-destination-picker {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backbone-pulse {
+    animation: none;
+  }
+
+  .backbone-list,
+  .backbone-detail {
+    transition-duration: 1ms;
+  }
+}

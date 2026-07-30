@@ -12,17 +12,31 @@ import type {
   TopologyStats
 } from '../../shared/topology';
 
-type CatalogRow = {
-  id: number;
+type EquipmentRow = {
   brand: string | null;
   model: string;
   catalogType: string;
-  backboneQty: number;
-  active: number;
 };
 
-type AssignmentRow = CatalogRow & {
+type BackboneRow = EquipmentRow & {
+  backboneDeviceId: number;
+  catalogId: number;
+  name: string;
+  serialNumber: string | null;
+  assetTag: string | null;
+  ipAddress: string | null;
+  macAddress: string | null;
+  island: string | null;
+  zone: string | null;
+  status: 'active' | 'maintenance';
+  provisional: number;
+};
+
+type AssignmentRow = EquipmentRow & {
+  catalogId: number;
+  active: number;
   assignmentId: number;
+  backboneDeviceId: number | null;
   serialNumber: string | null;
   assetTag: string | null;
   ipAddress: string | null;
@@ -53,48 +67,67 @@ type AggregateRow = {
   assignmentAttentionCount: number;
 };
 
-function equipmentLabel(row: Pick<CatalogRow, 'brand' | 'model'>): string {
+function equipmentLabel(row: Pick<EquipmentRow, 'brand' | 'model'>): string {
   return [row.brand, row.model].filter(Boolean).join(' ');
 }
 
-function loadBackboneRows(db: Database.Database): CatalogRow[] {
+function loadBackboneRows(db: Database.Database): BackboneRow[] {
   return db.prepare(`
-    SELECT id, brand, model, type AS catalogType, backbone_qty AS backboneQty, active
-    FROM equipment_catalog
-    WHERE backbone_qty > 0
-    ORDER BY model COLLATE NOCASE, id
-  `).all() as CatalogRow[];
+    SELECT
+      bd.id AS backboneDeviceId, bd.catalog_id AS catalogId, bd.name,
+      bd.serial_number AS serialNumber, bd.asset_tag AS assetTag,
+      bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
+      bd.island, bd.zone, bd.status, bd.provisional,
+      ec.brand, ec.model, ec.type AS catalogType
+    FROM backbone_devices bd
+    JOIN equipment_catalog ec ON ec.id = bd.catalog_id
+    WHERE bd.status <> 'retired'
+    ORDER BY bd.name COLLATE NOCASE, bd.id
+  `).all() as BackboneRow[];
 }
 
-function loadBackboneRow(db: Database.Database, catalogId: number): CatalogRow | undefined {
+function loadBackboneRow(
+  db: Database.Database,
+  backboneDeviceId: number
+): BackboneRow | undefined {
   return db.prepare(`
-    SELECT id, brand, model, type AS catalogType, backbone_qty AS backboneQty, active
-    FROM equipment_catalog
-    WHERE id = ? AND backbone_qty > 0
-  `).get(catalogId) as CatalogRow | undefined;
+    SELECT
+      bd.id AS backboneDeviceId, bd.catalog_id AS catalogId, bd.name,
+      bd.serial_number AS serialNumber, bd.asset_tag AS assetTag,
+      bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
+      bd.island, bd.zone, bd.status, bd.provisional,
+      ec.brand, ec.model, ec.type AS catalogType
+    FROM backbone_devices bd
+    JOIN equipment_catalog ec ON ec.id = bd.catalog_id
+    WHERE bd.id = ? AND bd.status <> 'retired'
+  `).get(backboneDeviceId) as BackboneRow | undefined;
 }
 
 function loadAssignmentRows(
   db: Database.Database,
-  catalogId: number | null = null
+  backboneDeviceId: number | null = null
 ): AssignmentRow[] {
   return db.prepare(`
     SELECT
-      a.id AS assignmentId, a.catalog_id AS id, ec.brand, ec.model,
-      ec.type AS catalogType, ec.backbone_qty AS backboneQty, ec.active,
+      a.id AS assignmentId, a.catalog_id AS catalogId, ec.brand, ec.model,
+      ec.type AS catalogType, ec.active,
       ec.is_serialized AS isSerialized, a.serial_number AS serialNumber,
       a.asset_tag AS assetTag, a.ip_address AS ipAddress,
-      a.mac_address AS macAddress, a.start_date AS startDate
+      a.mac_address AS macAddress, a.start_date AS startDate,
+      active_link.backbone_device_id AS backboneDeviceId
     FROM service_device_assignments a
     JOIN equipment_catalog ec ON ec.id = a.catalog_id
-    WHERE a.end_date IS NULL AND (? IS NULL OR a.catalog_id = ?)
+    LEFT JOIN backbone_assignment_links active_link
+      ON active_link.assignment_id = a.id AND active_link.ended_at IS NULL
+    WHERE a.end_date IS NULL
+      AND (? IS NULL OR active_link.backbone_device_id = ?)
     ORDER BY a.id
-  `).all(catalogId, catalogId) as AssignmentRow[];
+  `).all(backboneDeviceId, backboneDeviceId) as AssignmentRow[];
 }
 
 function loadAssociationRows(
   db: Database.Database,
-  catalogId: number | null = null
+  backboneDeviceId: number | null = null
 ): AssociationRow[] {
   return db.prepare(`
     SELECT
@@ -104,12 +137,15 @@ function loadAssociationRows(
       c.status AS clientStatus, c.island, c.zone
     FROM assignment_services asv
     JOIN service_device_assignments a ON a.id = asv.assignment_id
+    LEFT JOIN backbone_assignment_links active_link
+      ON active_link.assignment_id = a.id AND active_link.ended_at IS NULL
     JOIN services s ON s.id = asv.service_id
     JOIN clients c ON c.id = s.client_id
     LEFT JOIN internet_plans p ON p.id = s.plan_id
-    WHERE a.end_date IS NULL AND (? IS NULL OR a.catalog_id = ?)
+    WHERE a.end_date IS NULL
+      AND (? IS NULL OR active_link.backbone_device_id = ?)
     ORDER BY asv.assignment_id, c.full_name COLLATE NOCASE, s.id
-  `).all(catalogId, catalogId) as AssociationRow[];
+  `).all(backboneDeviceId, backboneDeviceId) as AssociationRow[];
 }
 
 function serviceFromRow(row: AssociationRow): TopologyServiceAssociation {
@@ -165,21 +201,32 @@ function groupAssociations(rows: AssociationRow[]): Map<number, TopologyClientAs
   );
 }
 
-function backboneNode(row: CatalogRow): TopologyBackboneNode {
-  const inactive = row.active !== 1;
+function backboneNode(row: BackboneRow): TopologyBackboneNode {
+  const inactive = row.status !== 'active';
+  const provisional = row.provisional === 1;
+  const issueCodes: TopologyIssueCode[] = [];
+  if (inactive) issueCodes.push('inactive');
+  if (provisional) issueCodes.push('provisional_identity');
   return {
-    id: `backbone:${row.id}`,
+    id: `backbone:${row.backboneDeviceId}`,
     kind: 'backbone',
-    catalogId: row.id,
-    label: equipmentLabel(row),
+    backboneDeviceId: row.backboneDeviceId,
+    catalogId: row.catalogId,
+    label: row.name,
     brand: row.brand,
     model: row.model,
     catalogType: row.catalogType,
-    backboneQty: row.backboneQty,
+    serialNumber: row.serialNumber,
+    assetTag: row.assetTag,
+    ipAddress: row.ipAddress,
+    macAddress: row.macAddress,
+    island: row.island,
+    zone: row.zone,
+    provisional,
     administrativeState: inactive ? 'inactive' : 'active',
-    issueCodes: inactive ? ['inactive'] : [],
+    issueCodes,
     parentId: 'root:isp',
-    relationship: 'inventory_lineage'
+    relationship: 'defined_link'
   };
 }
 
@@ -204,12 +251,14 @@ function clientDeviceNode(
   row: AssignmentRow,
   clients: TopologyClientAssociation[]
 ): TopologyClientDeviceNode {
-  const hasBackboneLineage = row.backboneQty > 0;
+  const backboneParentId = row.backboneDeviceId === null
+    ? null
+    : `backbone:${row.backboneDeviceId}` as const;
   return {
     id: `assignment:${row.assignmentId}`,
     kind: 'client-device',
     assignmentId: row.assignmentId,
-    catalogId: row.id,
+    catalogId: row.catalogId,
     label: equipmentLabel(row),
     brand: row.brand,
     model: row.model,
@@ -221,8 +270,8 @@ function clientDeviceNode(
     startDate: row.startDate,
     administrativeState: row.active === 1 ? 'active' : 'inactive',
     issueCodes: clientDeviceIssues(row, clients),
-    parentId: hasBackboneLineage ? `backbone:${row.id}` : 'root:isp',
-    relationship: hasBackboneLineage ? 'inventory_lineage' : undefined,
+    parentId: backboneParentId ?? 'root:isp',
+    relationship: backboneParentId ? 'defined_link' : undefined,
     clients
   };
 }
@@ -234,8 +283,11 @@ function loadAggregateRow(db: Database.Database): AggregateRow {
         AS assignmentCount,
       (SELECT COUNT(*)
        FROM service_device_assignments a
-       JOIN equipment_catalog ec ON ec.id = a.catalog_id
-       WHERE a.end_date IS NULL AND ec.backbone_qty > 0)
+       WHERE a.end_date IS NULL AND EXISTS (
+         SELECT 1
+         FROM backbone_assignment_links active_link
+         WHERE active_link.assignment_id = a.id AND active_link.ended_at IS NULL
+       ))
         AS mappedAssignmentCount,
       (SELECT COUNT(DISTINCT s.client_id)
        FROM assignment_services av
@@ -281,11 +333,11 @@ function topologyStats(
 
 function coreLink(backbone: TopologyBackboneNode): TopologyCoreLinkEdge {
   return {
-    id: `core-link:root:isp:backbone:${backbone.catalogId}`,
+    id: `core-link:root:isp:backbone:${backbone.backboneDeviceId}`,
     kind: 'core-link',
     source: 'root:isp',
     target: backbone.id,
-    relationship: 'inventory_lineage'
+    relationship: 'defined_link'
   };
 }
 
@@ -294,11 +346,11 @@ function clientLink(
   node: TopologyClientDeviceNode
 ): TopologyClientLinkEdge {
   return {
-    id: `client-link:backbone:${backbone.catalogId}:assignment:${node.assignmentId}`,
+    id: `client-link:backbone:${backbone.backboneDeviceId}:assignment:${node.assignmentId}`,
     kind: 'client-link',
     source: backbone.id,
     target: node.id,
-    relationship: 'inventory_lineage'
+    relationship: 'defined_link'
   };
 }
 
@@ -352,15 +404,15 @@ export function loadTopologySnapshot(
 
 export function loadBackboneBranch(
   db: Database.Database,
-  catalogId: number,
+  backboneDeviceId: number,
   now = new Date()
 ): TopologyBackboneBranch | null {
-  const row = loadBackboneRow(db, catalogId);
+  const row = loadBackboneRow(db, backboneDeviceId);
   if (!row) return null;
   const backbone = backboneNode(row);
   const nodes = buildClientDevices(
-    loadAssignmentRows(db, catalogId),
-    loadAssociationRows(db, catalogId)
+    loadAssignmentRows(db, backboneDeviceId),
+    loadAssociationRows(db, backboneDeviceId)
   );
   return {
     generatedAt: now.toISOString(),

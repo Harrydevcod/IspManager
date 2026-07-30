@@ -25,6 +25,8 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  db.prepare('DELETE FROM backbone_assignment_links').run();
+  db.prepare('DELETE FROM backbone_devices').run();
   db.prepare('DELETE FROM stock_movements').run();
   db.prepare('DELETE FROM expenses').run();
   db.prepare('DELETE FROM investment_clients').run();
@@ -219,22 +221,29 @@ describe('investments CRUD', () => {
     expect(payload.totals.totalInvestedCve).toBe(26000);
   });
 
-  test('backboneStockCve = unidades backbone × landed, modelo dividido, sem alterar total investido', async () => {
-    // Modelo dividido: landed 6000/unid, 5 em maos, mas só 2 unidades sao backbone.
-    db.prepare(`INSERT INTO equipment_catalog
-                (type, model, purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve, stock_total, backbone_qty)
-                VALUES ('cpe', 'TL-S5-5KM', 5500, 300, 200, 0, 5, 2)`).run();
-    // Equipamento sem backbone: landed 1500/unid, 4 em maos.
-    db.prepare(`INSERT INTO equipment_catalog
-                (type, model, purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve, stock_total, backbone_qty)
-                VALUES ('cpe', 'CPE cliente', 1200, 200, 100, 0, 4, 0)`).run();
+  test('backboneStockCve values non-retired physical devices at landed cost without altering total invested', async () => {
+    // Modelo dividido: landed 6000/unid, 5 em maos, com 2 unidades fisicas operacionais.
+    const backboneCatalogId = db.prepare(`INSERT INTO equipment_catalog
+                (type, model, purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve, stock_total)
+                VALUES ('cpe', 'TL-S5-5KM', 5500, 300, 200, 0, 5)`).run().lastInsertRowid;
+    // Segundo modelo: landed 1500/unid, 4 em maos, com 1 unidade operacional.
+    const clientCatalogId = db.prepare(`INSERT INTO equipment_catalog
+                (type, model, purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve, stock_total)
+                VALUES ('cpe', 'CPE cliente', 1200, 200, 100, 0, 4)`).run().lastInsertRowid;
+    db.prepare(`
+      INSERT INTO backbone_devices (catalog_id, name, status)
+      VALUES (?, 'TL Norte', 'active'),
+             (?, 'TL Sul', 'maintenance'),
+             (?, 'TL aposentado', 'retired'),
+             (?, 'CPE operacional', 'active')
+    `).run(backboneCatalogId, backboneCatalogId, backboneCatalogId, clientCatalogId);
 
     const response = await app.inject({ method: 'GET', url: '/api/investments' });
     expect(response.statusCode).toBe(200);
     const payload = response.json() as { totals: { backboneStockCve: number; totalInvestedCve: number } };
-    // backbone: 2 unidades × 6000 = 12000 (as outras 3 do mesmo modelo NAO contam)
-    expect(payload.totals.backboneStockCve).toBe(12000);
-    // total investido conta o stock todo: 5×6000 + 4×1500 = 36000 (backbone_qty nao altera)
+    // backbone: 2 × 6000 + 1 × 1500 = 13500; a unidade aposentada nao conta.
+    expect(payload.totals.backboneStockCve).toBe(13500);
+    // total investido continua a contar o stock todo: 5×6000 + 4×1500 = 36000.
     expect(payload.totals.totalInvestedCve).toBe(36000);
   });
 

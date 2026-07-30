@@ -2,10 +2,15 @@ import { describe, expect, test } from 'vitest';
 import { branchOne, branchTwo, snapshot } from './topologyTestFixtures';
 import {
   composeTopologyGraph,
+  topologyRelationshipLabel,
   toggleBackboneExpansion
 } from './topology-graph';
 
 describe('topology graph composition', () => {
+  test('labels every persisted relationship as a defined link', () => {
+    expect(topologyRelationshipLabel('defined_link')).toBe('ligação definida');
+  });
+
   test('expands and collapses without mutating expansion state', () => {
     const original = new Set<number>();
     const expanded = toggleBackboneExpansion(original, 10);

@@ -2,10 +2,11 @@ export type TopologyIssueCode =
   | 'inactive'
   | 'missing_ip'
   | 'suspended_service'
-  | 'incomplete_configuration';
+  | 'incomplete_configuration'
+  | 'provisional_identity';
 
 export type TopologyAdministrativeState = 'active' | 'inactive';
-export type TopologyRelationship = 'inventory_lineage';
+export type TopologyRelationship = 'defined_link';
 export type TopologyNodeId = 'root:isp' | `backbone:${number}` | `assignment:${number}`;
 
 export type TopologyServiceAssociation = {
@@ -37,16 +38,23 @@ export type TopologyLogicalRootNode = {
 export type TopologyBackboneNode = {
   id: `backbone:${number}`;
   kind: 'backbone';
+  backboneDeviceId: number;
   catalogId: number;
   label: string;
   brand: string | null;
   model: string;
   catalogType: string;
-  backboneQty: number;
+  serialNumber: string | null;
+  assetTag: string | null;
+  ipAddress: string | null;
+  macAddress: string | null;
+  island: string | null;
+  zone: string | null;
+  provisional: boolean;
   administrativeState: TopologyAdministrativeState;
   issueCodes: TopologyIssueCode[];
   parentId: 'root:isp';
-  relationship: TopologyRelationship;
+  relationship: 'defined_link';
 };
 
 export type TopologyClientDeviceNode = {

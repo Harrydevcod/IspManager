@@ -28,12 +28,13 @@ const ISSUE_LABELS: Record<TopologyIssueCode, string> = {
   inactive: 'Inativo',
   missing_ip: 'IP em falta',
   suspended_service: 'Serviço suspenso',
-  incomplete_configuration: 'Configuração incompleta'
+  incomplete_configuration: 'Configuração incompleta',
+  provisional_identity: 'Identidade provisória'
 };
 
 function kindLabel(node: TopologyNode): string {
   if (node.kind === 'logical-root') return 'Núcleo lógico';
-  if (node.kind === 'backbone') return 'Agrupamento backbone';
+  if (node.kind === 'backbone') return 'Equipamento backbone';
   return 'Equipamento de cliente';
 }
 
@@ -70,8 +71,8 @@ function RootDetails({ snapshot }: { snapshot: TopologySnapshot }) {
     <dl className="topology-inspector-details">
       <Detail label="Backbones" value={snapshot.stats.backboneCount} />
       <Detail label="CPE físicas" value={snapshot.stats.assignmentCount} />
-      <Detail label="Com linhagem" value={snapshot.stats.mappedAssignmentCount} />
-      <Detail label="Sem linhagem" value={snapshot.stats.unmappedAssignmentCount} />
+      <Detail label="Com ligação" value={snapshot.stats.mappedAssignmentCount} />
+      <Detail label="Sem ligação" value={snapshot.stats.unmappedAssignmentCount} />
       <Detail label="Clientes associados" value={snapshot.stats.clientCount} />
       <Detail label="Serviços associados" value={snapshot.stats.serviceCount} />
       <Detail label="Com atenção" value={snapshot.stats.attentionCount} />
@@ -92,11 +93,20 @@ function BackboneDetails({
   return (
     <>
       <dl className="topology-inspector-details">
+        <Detail label="Unidade física" value={`#${node.backboneDeviceId}`} />
         <Detail label="Catálogo" value={`#${node.catalogId}`} />
         <Detail label="Tipo" value={node.catalogType} />
         <Detail label="Marca" value={node.brand ?? 'Não indicada'} />
         <Detail label="Modelo" value={node.model} />
-        <Detail label="Inventário backbone" value={node.backboneQty} />
+        <Detail label="Serial" value={node.serialNumber ?? 'Não indicado'} />
+        <Detail label="Asset tag" value={node.assetTag ?? 'Não indicado'} />
+        <Detail label="IP configurado" value={node.ipAddress ?? 'Em falta'} />
+        <Detail label="MAC" value={node.macAddress ?? 'Não indicado'} />
+        <Detail
+          label="Localização"
+          value={[node.island, node.zone].filter(Boolean).join(' · ') || 'Não indicada'}
+        />
+        <Detail label="Identidade" value={node.provisional ? 'Provisória' : 'Confirmada'} />
         <Detail label="CPE no ramo" value={branch?.stats.assignmentCount ?? 'Ramo fechado'} />
       </dl>
       <Button
@@ -128,10 +138,10 @@ function DeviceDetails({
         <Detail label="MAC" value={node.macAddress ?? 'Não indicado'} />
         <Detail label="Desde" value={node.startDate} />
         <Detail
-          label="Linhagem"
+          label="Ligação"
           value={node.parentId === 'root:isp'
-            ? 'Sem linhagem de backbone'
-            : `Catálogo backbone #${node.parentId.slice('backbone:'.length)}`}
+            ? 'Sem ligação definida'
+            : `Backbone físico #${node.parentId.slice('backbone:'.length)}`}
         />
       </dl>
       <Button
@@ -241,7 +251,7 @@ export function TopologyInspector(props: TopologyInspectorProps) {
             </>
           )}
           <p className="topology-lineage-note">
-            Este mapa representa linhagem de inventário e configuração administrativa;
+            Este mapa representa ligações definidas e configuração administrativa;
             não representa reachability nem telemetria em tempo real.
           </p>
         </>

@@ -66,9 +66,9 @@ function SearchResults({
             <strong>{result.node.label}</strong>
             <small>
               {result.node.kind === 'backbone'
-                ? 'Backbone'
+                ? 'Backbone físico'
                 : result.node.parentId === 'root:isp'
-                  ? 'CPE física · sem linhagem'
+                  ? 'CPE física · sem ligação definida'
                   : 'CPE física'}
             </small>
           </span>

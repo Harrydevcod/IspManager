@@ -1,29 +1,12 @@
-import '@xyflow/react/dist/style.css';
 import './TopologyModule.css';
-import './TopologyCanvas.css';
-import './TopologyInspector.css';
 
-import { AlertTriangle, Network, RotateCw } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type {
-  TopologyBackboneBranch,
-  TopologyNode,
-  TopologySnapshot
-} from '../../../shared/topology';
+import { lazy, Suspense, useCallback, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import { Button } from '../../components';
-import { TopologyCanvas, type TopologyCanvasHandle } from './TopologyCanvas';
-import { TopologyInspector } from './TopologyInspector';
-import type { TopologyCanvasNode } from './TopologyNodes';
-import { TopologyToolbar } from './TopologyToolbar';
+import { BackboneWorkspace } from './BackboneWorkspace';
 import type { TopologyApi } from './topology-api';
-import { filterTopologyGraph } from './topology-filters';
-import {
-  composeTopologyGraph,
-  type TopologyFlowEdge,
-  type TopologyGraph
-} from './topology-graph';
-import { layoutTopologyGraph } from './topology-layout';
-import { useTopologyWorkspace } from './useTopologyWorkspace';
+
+const TopologyMapView = lazy(() => import('./TopologyMapView'));
 
 export type TopologyModuleProps = {
   api?: TopologyApi;
@@ -32,302 +15,120 @@ export type TopologyModuleProps = {
   onOpenStock: (catalogId: number) => void;
 };
 
-type NodeDecorators = Pick<
-  ReturnType<typeof useTopologyWorkspace>,
-  | 'branches'
-  | 'expanded'
-  | 'loadingBranches'
-  | 'branchErrors'
-  | 'selectedNode'
-  | 'toggleBranch'
-  | 'retryBranch'
-  | 'setSelectedNode'
->;
+type TopologyTab = 'backbone' | 'topology';
 
-function decorateNodes(graph: TopologyGraph, state: NodeDecorators): TopologyCanvasNode[] {
-  return graph.nodes.map((node) => {
-    const topology = node.data.topology;
-    const catalogId = topology.kind === 'backbone' ? topology.catalogId : null;
-    const branch = catalogId === null ? undefined : state.branches.get(catalogId);
-    return {
-      ...node,
-      selected: state.selectedNode?.id === node.id,
-      data: {
-        ...node.data,
-        ui: {
-          expanded: catalogId === null ? false : state.expanded.has(catalogId),
-          loading: catalogId === null ? false : state.loadingBranches.has(catalogId),
-          error: catalogId === null ? undefined : state.branchErrors.get(catalogId),
-          branchCount: branch?.stats.assignmentCount,
-          onSelect: () => state.setSelectedNode(topology),
-          onToggle: catalogId === null ? undefined : () => state.toggleBranch(catalogId),
-          onRetry: catalogId === null ? undefined : () => state.retryBranch(catalogId)
-        }
-      }
-    };
-  });
-}
+const tabs: ReadonlyArray<{ id: TopologyTab; label: string }> = [
+  { id: 'backbone', label: 'Backbone' },
+  { id: 'topology', label: 'Topologia' }
+];
 
-function decorateEdges(graph: TopologyGraph, labelsVisible: boolean): TopologyFlowEdge[] {
-  return graph.edges.map((edge) => ({
-    ...edge,
-    type: 'smoothstep',
-    label: labelsVisible ? 'inventário' : undefined,
-    labelStyle: { fill: 'oklch(72% 0.02 145)', fontSize: 10, fontWeight: 650 },
-    labelBgStyle: { fill: 'oklch(20% 0.012 145)', fillOpacity: 0.96 },
-    labelBgPadding: [6, 3] as [number, number],
-    labelBgBorderRadius: 3,
-    style: {
-      stroke: edge.data?.topology.kind === 'core-link'
-        ? 'oklch(58% 0.08 151)'
-        : 'oklch(48% 0.035 145)',
-      strokeWidth: edge.data?.topology.kind === 'core-link' ? 1.8 : 1.25
-    }
-  }));
-}
-
-function branchForNode(
-  node: TopologyNode | null,
-  branches: ReadonlyMap<number, TopologyBackboneBranch>
-): TopologyBackboneBranch | undefined {
-  if (!node || node.kind === 'logical-root') return undefined;
-  if (node.kind === 'backbone') return branches.get(node.catalogId);
-  const parent = Number(node.parentId.replace('backbone:', ''));
-  return branches.get(parent);
-}
-
-function TopologyLoading() {
+function MapLoadingFallback() {
   return (
-    <section className="topology-loading" aria-label="A carregar topologia">
-      <span className="topology-loading-line" />
-      <span className="topology-loading-line" />
-      <p>A preparar o mapa de inventário…</p>
+    <section className="topology-tab-loading" aria-label="A preparar topologia">
+      <span />
+      <p>A preparar o mapa físico…</p>
     </section>
-  );
-}
-
-function TopologyGlobalError({ onRetry }: { onRetry: () => void }) {
-  return (
-    <section className="topology-global-error" role="alert">
-      <AlertTriangle size={20} aria-hidden />
-      <div>
-        <h3>Não foi possível abrir a topologia</h3>
-        <p>Confirma a ligação à API local e tenta novamente.</p>
-      </div>
-      <Button
-        variant="secondary"
-        leadingIcon={<RotateCw size={14} aria-hidden />}
-        onClick={onRetry}
-      >
-        Tentar novamente
-      </Button>
-    </section>
-  );
-}
-
-function EmptyCanvas({ filtered }: { filtered: boolean }) {
-  return (
-    <div className="topology-canvas-empty">
-      <Network size={22} aria-hidden />
-      <p className="eyebrow">{filtered ? 'Sem correspondências' : 'Primeiro mapa'}</p>
-      <h3>{filtered ? 'Revê os filtros ativos' : 'Ainda não há backbones no inventário'}</h3>
-      <p>
-        {filtered
-          ? 'Limpa um filtro ou expande outros ramos para comparar dados já carregados.'
-          : 'Marca unidades backbone no Stock. O mapa irá agrupá-las aqui sem inferir conectividade.'}
-      </p>
-    </div>
-  );
-}
-
-function hasActiveFilters(filters: ReturnType<typeof useTopologyWorkspace>['filters']): boolean {
-  return Object.values(filters).some((value) => value !== undefined && value !== '');
-}
-
-function useRenderedGraph(
-  snapshot: TopologySnapshot | null,
-  workspace: ReturnType<typeof useTopologyWorkspace>,
-  labelsVisible: boolean
-) {
-  const graph = useMemo(() => {
-    if (!snapshot) return { nodes: [], edges: [] };
-    const composed = composeTopologyGraph(snapshot, workspace.branches, workspace.expanded);
-    return layoutTopologyGraph(filterTopologyGraph(composed, workspace.filters));
-  }, [snapshot, workspace.branches, workspace.expanded, workspace.filters]);
-  const nodes = useMemo(
-    () => decorateNodes(graph, workspace),
-    [graph, workspace]
-  );
-  const edges = useMemo(
-    () => decorateEdges(graph, labelsVisible),
-    [graph, labelsVisible]
-  );
-  return { nodes, edges };
-}
-
-function useCanvasEffects(
-  canvasRef: React.RefObject<TopologyCanvasHandle | null>,
-  nodes: TopologyCanvasNode[],
-  workspace: ReturnType<typeof useTopologyWorkspace>
-) {
-  useEffect(() => {
-    if (!workspace.pendingFocusId) return;
-    if (!nodes.some((node) => node.id === workspace.pendingFocusId)) return;
-    const frame = window.requestAnimationFrame(() => {
-      canvasRef.current?.centerNode(workspace.pendingFocusId!);
-      workspace.setPendingFocusId(null);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [canvasRef, nodes, workspace]);
-
-  useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') workspace.setSelectedNode(null);
-    };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [workspace]);
-}
-
-function TopologyHeader({ snapshot }: { snapshot: TopologySnapshot }) {
-  return (
-    <header className="topology-header">
-      <div>
-        <p className="eyebrow">Infraestrutura · leitura</p>
-        <h2 id="topology-title">Topologia de rede</h2>
-        <p>Mapa de inventário</p>
-      </div>
-      <dl className="topology-stats" aria-label="Resumo factual">
-        <div><dt>Backbones</dt><dd>{snapshot.stats.backboneCount}</dd></div>
-        <div><dt>CPE mapeadas</dt><dd>{snapshot.stats.mappedAssignmentCount}</dd></div>
-        <div data-tone={snapshot.stats.unmappedAssignmentCount > 0 ? 'attention' : undefined}>
-          <dt>Sem linhagem</dt><dd>{snapshot.stats.unmappedAssignmentCount}</dd>
-        </div>
-        <div><dt>Clientes</dt><dd>{snapshot.stats.clientCount}</dd></div>
-        <div data-tone={snapshot.stats.attentionCount > 0 ? 'attention' : undefined}>
-          <dt>Atenções</dt><dd>{snapshot.stats.attentionCount}</dd>
-        </div>
-      </dl>
-    </header>
-  );
-}
-
-function TopologyControls({
-  workspace,
-  labelsVisible,
-  legendVisible,
-  setLabelsVisible,
-  setLegendVisible,
-  canvasRef
-}: {
-  workspace: ReturnType<typeof useTopologyWorkspace>;
-  labelsVisible: boolean;
-  legendVisible: boolean;
-  setLabelsVisible: React.Dispatch<React.SetStateAction<boolean>>;
-  setLegendVisible: React.Dispatch<React.SetStateAction<boolean>>;
-  canvasRef: React.RefObject<TopologyCanvasHandle | null>;
-}) {
-  return (
-      <TopologyToolbar
-        query={workspace.query}
-        searchState={workspace.searchState}
-        results={workspace.searchResults}
-        filters={workspace.filters}
-        labelsVisible={labelsVisible}
-        legendVisible={legendVisible}
-        onQueryChange={workspace.setQuery}
-        onResultSelect={(result) => { void workspace.selectSearchResult(result); }}
-        onFiltersChange={workspace.setFilters}
-        onClearFilters={() => workspace.setFilters({})}
-        onToggleLabels={() => setLabelsVisible((visible) => !visible)}
-        onToggleLegend={() => setLegendVisible((visible) => !visible)}
-        onZoomIn={() => canvasRef.current?.zoomIn()}
-        onZoomOut={() => canvasRef.current?.zoomOut()}
-        onFit={() => canvasRef.current?.fit()}
-      />
-  );
-}
-
-function TopologyStage({
-  props,
-  workspace,
-  snapshot,
-  nodes,
-  edges,
-  legendVisible,
-  canvasRef
-}: {
-  props: TopologyModuleProps;
-  workspace: ReturnType<typeof useTopologyWorkspace>;
-  snapshot: TopologySnapshot;
-  nodes: TopologyCanvasNode[];
-  edges: TopologyFlowEdge[];
-  legendVisible: boolean;
-  canvasRef: React.RefObject<TopologyCanvasHandle | null>;
-}) {
-  const filteredEmpty = nodes.length === 0
-    || (hasActiveFilters(workspace.filters) && nodes.length === 1);
-  const inspectorBranch = branchForNode(workspace.selectedNode, workspace.branches);
-  return (
-      <div className="topology-workspace">
-        <div className="topology-canvas-shell">
-          <div className="topology-lanes" aria-hidden>
-            <span>ORIGEM LÓGICA</span><span>BACKBONE</span><span>CPE / CLIENTE</span>
-          </div>
-          <TopologyCanvas
-            ref={canvasRef}
-            nodes={nodes}
-            edges={edges}
-            legendVisible={legendVisible}
-          />
-          {(snapshot.backbones.length === 0 || filteredEmpty) && (
-            <EmptyCanvas filtered={hasActiveFilters(workspace.filters)} />
-          )}
-        </div>
-        <TopologyInspector
-          node={workspace.selectedNode}
-          snapshot={snapshot}
-          branch={inspectorBranch}
-          onClose={() => workspace.setSelectedNode(null)}
-          onOpenClient={props.onOpenClient}
-          onOpenService={props.onOpenService}
-          onOpenStock={props.onOpenStock}
-        />
-      </div>
   );
 }
 
 export default function TopologyModule(props: TopologyModuleProps) {
-  const workspace = useTopologyWorkspace(props.api);
-  const canvasRef = useRef<TopologyCanvasHandle>(null);
-  const [labelsVisible, setLabelsVisible] = useState(false);
-  const [legendVisible, setLegendVisible] = useState(true);
-  const { nodes, edges } = useRenderedGraph(workspace.snapshot, workspace, labelsVisible);
-  useCanvasEffects(canvasRef, nodes, workspace);
-  if (!workspace.snapshot && !workspace.globalError) return <TopologyLoading />;
-  if (!workspace.snapshot) {
-    return <TopologyGlobalError onRetry={() => { void workspace.loadSnapshot(true); }} />;
+  const [activeTab, setActiveTab] = useState<TopologyTab>('backbone');
+  const [revision, setRevision] = useState(0);
+  const [focusBackboneDeviceId, setFocusBackboneDeviceId] = useState<number | null>(null);
+  const [mapVisited, setMapVisited] = useState(false);
+  const tabListRef = useRef<HTMLDivElement>(null);
+
+  const selectTab = useCallback((tab: TopologyTab, moveFocus = false) => {
+    if (tab === 'topology') setMapVisited(true);
+    setActiveTab(tab);
+    if (moveFocus) {
+      queueMicrotask(() => {
+        tabListRef.current
+          ?.querySelector<HTMLButtonElement>(`#topology-tab-${tab}`)
+          ?.focus();
+      });
+    }
+  }, []);
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const nextTab: TopologyTab = activeTab === 'backbone' ? 'topology' : 'backbone';
+    selectTab(nextTab, true);
   }
+
+  function handleMutation() {
+    setFocusBackboneDeviceId(null);
+    setRevision((current) => current + 1);
+  }
+
+  function handleViewTopology(backboneDeviceId: number) {
+    setFocusBackboneDeviceId(backboneDeviceId);
+    selectTab('topology');
+  }
+
+  const handleFocusHandled = useCallback(() => setFocusBackboneDeviceId(null), []);
+
   return (
-    <section className="topology-module" aria-labelledby="topology-title">
-      <TopologyHeader snapshot={workspace.snapshot} />
-      <TopologyControls
-        workspace={workspace}
-        labelsVisible={labelsVisible}
-        legendVisible={legendVisible}
-        setLabelsVisible={setLabelsVisible}
-        setLegendVisible={setLegendVisible}
-        canvasRef={canvasRef}
-      />
-      <TopologyStage
-        props={props}
-        workspace={workspace}
-        snapshot={workspace.snapshot}
-        nodes={nodes}
-        edges={edges}
-        legendVisible={legendVisible}
-        canvasRef={canvasRef}
-      />
+    <section className="topology-shell" aria-label="Infraestrutura de backbone e topologia">
+      <div
+        ref={tabListRef}
+        className="topology-tabs"
+        role="tablist"
+        aria-label="Vistas de infraestrutura"
+      >
+        {tabs.map((tab) => {
+          const selected = activeTab === tab.id;
+          return (
+            <Button
+              key={tab.id}
+              id={`topology-tab-${tab.id}`}
+              variant="ghost"
+              role="tab"
+              aria-selected={selected}
+              aria-controls={`topology-panel-${tab.id}`}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => selectTab(tab.id)}
+              onKeyDown={handleTabKeyDown}
+            >
+              {tab.label}
+            </Button>
+          );
+        })}
+      </div>
+
+      <div
+        id="topology-panel-backbone"
+        className="topology-tab-panel"
+        role="tabpanel"
+        aria-labelledby="topology-tab-backbone"
+        hidden={activeTab !== 'backbone'}
+      >
+        <BackboneWorkspace
+          onMutation={handleMutation}
+          onViewTopology={handleViewTopology}
+        />
+      </div>
+
+      <div
+        id="topology-panel-topology"
+        className="topology-tab-panel topology-map-panel"
+        role="tabpanel"
+        aria-labelledby="topology-tab-topology"
+        hidden={activeTab !== 'topology'}
+      >
+        {mapVisited && (
+          <Suspense fallback={<MapLoadingFallback />}>
+            <TopologyMapView
+              {...props}
+              revision={revision}
+              active={activeTab === 'topology'}
+              focusBackboneDeviceId={focusBackboneDeviceId}
+              onFocusHandled={handleFocusHandled}
+            />
+          </Suspense>
+        )}
+      </div>
     </section>
   );
 }

@@ -27,6 +27,8 @@ beforeAll(async () => {
 beforeEach(() => {
   db.exec(`
     DELETE FROM whatsapp_notices;
+    DELETE FROM backbone_assignment_links;
+    DELETE FROM backbone_devices;
     DELETE FROM service_device_shares;
     DELETE FROM service_events;
     DELETE FROM service_install_costs;
@@ -162,6 +164,14 @@ describe('technical routes', () => {
     });
 
     const assignmentId = (first.json() as { assignmentIds: number[] }).assignmentIds[0];
+    const backboneDeviceId = db.prepare(`
+      INSERT INTO backbone_devices (catalog_id, name)
+      VALUES (?, 'Backbone da atribuicao antiga')
+    `).run(catalog.lastInsertRowid).lastInsertRowid;
+    db.prepare(`
+      INSERT INTO backbone_assignment_links (backbone_device_id, assignment_id, created_by)
+      VALUES (?, ?, ?)
+    `).run(backboneDeviceId, assignmentId, user.lastInsertRowid);
 
     const replacement = await app.inject({
       method: 'POST',
@@ -195,6 +205,18 @@ describe('technical routes', () => {
       assetTag: 'AST-NEW',
       endDate: null
     });
+    expect(db.prepare(`
+      SELECT
+        ended_at AS endedAt,
+        ended_by AS endedBy,
+        change_reason AS changeReason
+      FROM backbone_assignment_links
+      WHERE assignment_id = ?
+    `).get(assignmentId)).toMatchObject({
+      endedAt: expect.any(String),
+      endedBy: user.lastInsertRowid,
+      changeReason: 'assignment_closed'
+    });
 
     const events = db.prepare(`
       SELECT event_type AS eventType, notes
@@ -225,6 +247,14 @@ describe('technical routes', () => {
       }
     });
     const assignmentId = (install.json() as { assignmentIds: number[] }).assignmentIds[0];
+    const backboneDeviceId = db.prepare(`
+      INSERT INTO backbone_devices (catalog_id, name)
+      VALUES (?, 'Backbone da atribuicao devolvida')
+    `).run(catalog.lastInsertRowid).lastInsertRowid;
+    db.prepare(`
+      INSERT INTO backbone_assignment_links (backbone_device_id, assignment_id, created_by)
+      VALUES (?, ?, ?)
+    `).run(backboneDeviceId, assignmentId, user.lastInsertRowid);
 
     expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?')
       .get(catalog.lastInsertRowid)).toEqual({ s: 9 });
@@ -245,6 +275,18 @@ describe('technical routes', () => {
       .get(assignmentId)).not.toEqual({ endDate: null });
     expect(db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?')
       .get(catalog.lastInsertRowid)).toEqual({ s: 10 });
+    expect(db.prepare(`
+      SELECT
+        ended_at AS endedAt,
+        ended_by AS endedBy,
+        change_reason AS changeReason
+      FROM backbone_assignment_links
+      WHERE assignment_id = ?
+    `).get(assignmentId)).toMatchObject({
+      endedAt: expect.any(String),
+      endedBy: user.lastInsertRowid,
+      changeReason: 'assignment_closed'
+    });
 
     expect(db.prepare(`
       SELECT type, quantity FROM stock_movements

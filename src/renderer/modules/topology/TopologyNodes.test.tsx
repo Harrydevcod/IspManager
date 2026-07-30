@@ -8,7 +8,7 @@ import { TopologyNodeContent } from './TopologyNodes';
 
 let root: Root | null = null;
 
-async function mount(expanded = false) {
+async function mount(expanded = false, branchCount?: number) {
   const container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -21,6 +21,7 @@ async function mount(expanded = false) {
         selected={false}
         expanded={expanded}
         loading={false}
+        branchCount={branchCount}
         onSelect={onSelect}
         onToggle={onToggle}
       />
@@ -65,5 +66,15 @@ describe('TopologyNodeContent', () => {
     expect(expanded.container.querySelector(
       '[aria-label="Recolher ramo Ubiquiti Rocket Prism"]'
     )).not.toBeNull();
+  });
+
+  test('prioritizes physical identity, location and CPE count in backbone metadata', async () => {
+    const { container } = await mount(false, 3);
+
+    expect(container.textContent).toContain('Rocket Prism');
+    expect(container.textContent).toContain('10.20.0.1');
+    expect(container.textContent).toContain('São Vicente · Monte Verde');
+    expect(container.textContent).toContain('3 CPE');
+    expect(container.textContent).not.toContain('inventário');
   });
 });

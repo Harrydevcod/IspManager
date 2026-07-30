@@ -11,8 +11,10 @@ let dataDir: string;
 let closeDatabaseForTests: () => void;
 
 type Fixture = {
-  backboneId: number;
-  inactiveBackboneId: number;
+  backboneDeviceId: number;
+  provisionalBackboneDeviceId: number;
+  retiredBackboneDeviceId: number;
+  backboneCatalogId: number;
   clientCatalogId: number;
   sharedAssignmentId: number;
   incompleteAssignmentId: number;
@@ -20,6 +22,8 @@ type Fixture = {
 };
 
 const TABLES_TO_CLEAR = [
+  'backbone_assignment_links',
+  'backbone_devices',
   'service_device_shares',
   'service_device_assignments',
   'services',
@@ -62,18 +66,16 @@ afterAll(async () => {
 function insertCatalog(values: {
   model: string;
   type: string;
-  backboneQty: number;
   active?: number;
   serialized?: number;
 }) {
   return Number(db.prepare(`
     INSERT INTO equipment_catalog (
-      category, type, brand, model, backbone_qty, active, is_serialized, stock_total
-    ) VALUES ('equipamento', ?, 'Ubiquiti', ?, ?, ?, ?, 10)
+      category, type, brand, model, active, is_serialized, stock_total
+    ) VALUES ('equipamento', ?, 'Ubiquiti', ?, ?, ?, 10)
   `).run(
     values.type,
     values.model,
-    values.backboneQty,
     values.active ?? 1,
     values.serialized ?? 1
   ).lastInsertRowid);
@@ -115,22 +117,95 @@ function insertAssignment(values: {
   ).lastInsertRowid);
 }
 
+function insertBackboneDevice(values: {
+  id: number;
+  catalogId: number;
+  name: string;
+  status?: 'active' | 'maintenance' | 'retired';
+  provisional?: boolean;
+  serial?: string | null;
+  assetTag?: string | null;
+  ip?: string | null;
+  mac?: string | null;
+  island?: string | null;
+  zone?: string | null;
+}) {
+  db.prepare(`
+    INSERT INTO backbone_devices (
+      id, catalog_id, name, status, provisional, serial_number, asset_tag,
+      ip_address, mac_address, island, zone
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    values.id,
+    values.catalogId,
+    values.name,
+    values.status ?? 'active',
+    values.provisional ? 1 : 0,
+    values.serial ?? null,
+    values.assetTag ?? null,
+    values.ip ?? null,
+    values.mac ?? null,
+    values.island ?? null,
+    values.zone ?? null
+  );
+  return values.id;
+}
+
+function linkAssignment(
+  backboneDeviceId: number,
+  assignmentId: number,
+  endedAt: string | null = null
+) {
+  db.prepare(`
+    INSERT INTO backbone_assignment_links (
+      backbone_device_id, assignment_id, started_at, ended_at
+    ) VALUES (?, ?, '2026-07-01', ?)
+  `).run(backboneDeviceId, assignmentId, endedAt);
+}
+
 function seedTopology(): Fixture {
-  const backboneId = insertCatalog({ model: 'Rocket Prism 5AC', type: 'antena', backboneQty: 2 });
-  const inactiveBackboneId = insertCatalog({
+  const backboneCatalogId = insertCatalog({
+    model: 'Rocket Prism 5AC',
+    type: 'antena'
+  });
+  const provisionalBackboneCatalogId = insertCatalog({
     model: 'Core Switch Legacy',
     type: 'switch',
-    backboneQty: 1,
-    active: 0,
     serialized: 0
   });
-  const clientCatalogId = insertCatalog({ model: 'LiteBeam 5AC', type: 'cpe', backboneQty: 0 });
+  const clientCatalogId = insertCatalog({
+    model: 'LiteBeam 5AC',
+    type: 'cpe'
+  });
   const inactiveClientCatalogId = insertCatalog({
     model: 'NanoStation Legacy',
     type: 'cpe',
-    backboneQty: 0,
     active: 0,
     serialized: 0
+  });
+  const backboneDeviceId = insertBackboneDevice({
+    id: 701,
+    catalogId: backboneCatalogId,
+    name: 'Monte Verde Principal',
+    serial: 'BB-MV-001',
+    assetTag: 'AT-MV-001',
+    ip: '10.10.0.1',
+    mac: 'AA:BB:CC:00:00:01',
+    island: 'São Vicente',
+    zone: 'Monte Verde'
+  });
+  const provisionalBackboneDeviceId = insertBackboneDevice({
+    id: 702,
+    catalogId: provisionalBackboneCatalogId,
+    name: 'Core Switch Legacy',
+    status: 'maintenance',
+    provisional: true
+  });
+  const retiredBackboneDeviceId = insertBackboneDevice({
+    id: 703,
+    catalogId: backboneCatalogId,
+    name: 'Backbone Retirado',
+    status: 'retired'
   });
   const planId = Number(db.prepare(`
     INSERT INTO internet_plans (name, download_speed, upload_speed, connection_type)
@@ -144,7 +219,7 @@ function seedTopology(): Fixture {
   const anaServiceId = insertService(anaId, planId, 'suspended');
   const sharedAssignmentId = insertAssignment({
     serviceId: joseServiceId,
-    catalogId: backboneId,
+    catalogId: clientCatalogId,
     serial: 'SN-CORE-001',
     ip: '10.20.30.40',
     mac: 'AA:BB:CC:DD:EE:01'
@@ -162,16 +237,22 @@ function seedTopology(): Fixture {
     serial: 'SN-LEGACY',
     ip: '10.0.0.9'
   });
-  insertAssignment({
+  const endedAssignmentId = insertAssignment({
     serviceId: joseServiceId,
-    catalogId: backboneId,
+    catalogId: clientCatalogId,
     serial: 'SN-ENDED',
     ip: '10.20.30.99',
     ended: true
   });
+  linkAssignment(backboneDeviceId, sharedAssignmentId);
+  linkAssignment(backboneDeviceId, incompleteAssignmentId, '2026-07-15');
+  linkAssignment(provisionalBackboneDeviceId, inactiveAssignmentId);
+  linkAssignment(provisionalBackboneDeviceId, endedAssignmentId);
   return {
-    backboneId,
-    inactiveBackboneId,
+    backboneDeviceId,
+    provisionalBackboneDeviceId,
+    retiredBackboneDeviceId,
+    backboneCatalogId,
     clientCatalogId,
     sharedAssignmentId,
     incompleteAssignmentId,
@@ -204,42 +285,58 @@ describe('GET /api/topology', () => {
     expect(body.stats).toEqual({
       backboneCount: 2,
       assignmentCount: 3,
-      mappedAssignmentCount: 1,
-      unmappedAssignmentCount: 2,
+      mappedAssignmentCount: 2,
+      unmappedAssignmentCount: 1,
       clientCount: 3,
       serviceCount: 3,
       attentionCount: 4
     });
     expect(body.backbones).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        id: `backbone:${fixture.backboneId}`,
+        id: `backbone:${fixture.backboneDeviceId}`,
         kind: 'backbone',
-        catalogId: fixture.backboneId,
-        relationship: 'inventory_lineage',
-        backboneQty: 2,
+        backboneDeviceId: fixture.backboneDeviceId,
+        catalogId: fixture.backboneCatalogId,
+        label: 'Monte Verde Principal',
+        relationship: 'defined_link',
+        serialNumber: 'BB-MV-001',
+        assetTag: 'AT-MV-001',
+        ipAddress: '10.10.0.1',
+        macAddress: 'AA:BB:CC:00:00:01',
+        island: 'São Vicente',
+        zone: 'Monte Verde',
+        provisional: false,
         issueCodes: []
       }),
       expect.objectContaining({
-        id: `backbone:${fixture.inactiveBackboneId}`,
+        id: `backbone:${fixture.provisionalBackboneDeviceId}`,
+        backboneDeviceId: fixture.provisionalBackboneDeviceId,
         administrativeState: 'inactive',
-        issueCodes: ['inactive']
+        provisional: true,
+        issueCodes: ['inactive', 'provisional_identity']
       })
+    ]));
+    expect(body.backbones.every(
+      (backbone: Record<string, unknown>) => !('backboneQty' in backbone)
+    )).toBe(true);
+    expect(body.backbones).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ backboneDeviceId: fixture.retiredBackboneDeviceId })
     ]));
     expect(body.edges).toHaveLength(2);
     expect(body.edges).toEqual(expect.arrayContaining([
       {
-        id: `core-link:root:isp:backbone:${fixture.backboneId}`,
+        id: `core-link:root:isp:backbone:${fixture.backboneDeviceId}`,
         kind: 'core-link',
         source: 'root:isp',
-        target: `backbone:${fixture.backboneId}`,
-        relationship: 'inventory_lineage'
+        target: `backbone:${fixture.backboneDeviceId}`,
+        relationship: 'defined_link'
       },
       {
-        id: `core-link:root:isp:backbone:${fixture.inactiveBackboneId}`,
+        id: `core-link:root:isp:backbone:${fixture.provisionalBackboneDeviceId}`,
         kind: 'core-link',
         source: 'root:isp',
-        target: `backbone:${fixture.inactiveBackboneId}`,
-        relationship: 'inventory_lineage'
+        target: `backbone:${fixture.provisionalBackboneDeviceId}`,
+        relationship: 'defined_link'
       }
     ]));
   });
@@ -257,15 +354,19 @@ describe('GET /api/topology', () => {
 
 describe('GET /api/topology/backbones/:id/clients', () => {
   test('returns one physical client-device with every owner/share association and its client edge', async () => {
-    const { backboneId, sharedAssignmentId } = seedTopology();
+    const { backboneDeviceId, sharedAssignmentId } = seedTopology();
     const response = await app.inject({
       method: 'GET',
-      url: `/api/topology/backbones/${backboneId}/clients`
+      url: `/api/topology/backbones/${backboneDeviceId}/clients`
     });
 
     expect(response.statusCode).toBe(200);
     const body = response.json();
-    expect(body.backbone).toMatchObject({ id: `backbone:${backboneId}`, catalogId: backboneId });
+    expect(body.backbone).toMatchObject({
+      id: `backbone:${backboneDeviceId}`,
+      backboneDeviceId,
+      relationship: 'defined_link'
+    });
     expect(body.stats).toEqual({
       assignmentCount: 1,
       clientCount: 2,
@@ -277,8 +378,8 @@ describe('GET /api/topology/backbones/:id/clients', () => {
       id: `assignment:${sharedAssignmentId}`,
       kind: 'client-device',
       assignmentId: sharedAssignmentId,
-      parentId: `backbone:${backboneId}`,
-      relationship: 'inventory_lineage',
+      parentId: `backbone:${backboneDeviceId}`,
+      relationship: 'defined_link',
       ipAddress: '10.20.30.40',
       issueCodes: ['suspended_service']
     });
@@ -289,29 +390,30 @@ describe('GET /api/topology/backbones/:id/clients', () => {
       client.services.flatMap((service) => service.assignmentIds)
     ))).toEqual([sharedAssignmentId, sharedAssignmentId]);
     expect(body.edges).toEqual([{
-      id: `client-link:backbone:${backboneId}:assignment:${sharedAssignmentId}`,
+      id: `client-link:backbone:${backboneDeviceId}:assignment:${sharedAssignmentId}`,
       kind: 'client-link',
-      source: `backbone:${backboneId}`,
+      source: `backbone:${backboneDeviceId}`,
       target: `assignment:${sharedAssignmentId}`,
-      relationship: 'inventory_lineage'
+      relationship: 'defined_link'
     }]);
     expect(body).not.toHaveProperty('clients');
   });
 
-  test('excludes ended devices and returns an empty branch without inventing links', async () => {
-    const { inactiveBackboneId } = seedTopology();
+  test('excludes ended assignments even when their explicit link is still active', async () => {
+    const { provisionalBackboneDeviceId, inactiveAssignmentId } = seedTopology();
     const body = (await app.inject({
       method: 'GET',
-      url: `/api/topology/backbones/${inactiveBackboneId}/clients`
+      url: `/api/topology/backbones/${provisionalBackboneDeviceId}/clients`
     })).json();
 
-    expect(body.nodes).toEqual([]);
-    expect(body.edges).toEqual([]);
+    expect(body.nodes.map((node: { assignmentId: number }) => node.assignmentId))
+      .toEqual([inactiveAssignmentId]);
+    expect(body.edges).toHaveLength(1);
     expect(body.stats).toEqual({
-      assignmentCount: 0,
-      clientCount: 0,
-      serviceCount: 0,
-      attentionCount: 0
+      assignmentCount: 1,
+      clientCount: 1,
+      serviceCount: 1,
+      attentionCount: 1
     });
   });
 
@@ -325,7 +427,7 @@ describe('GET /api/topology/backbones/:id/clients', () => {
     expect(response.statusCode).toBe(statusCode);
   });
 
-  test('treats a catalog row without backbone quantity as a missing backbone', async () => {
+  test('treats a catalog id without a physical backbone device as a missing backbone', async () => {
     const { clientCatalogId } = seedTopology();
     const response = await app.inject({
       method: 'GET',
@@ -357,8 +459,8 @@ describe('GET /api/topology/search', () => {
     ))).toBe(true);
   });
 
-  test('returns ancestor metadata without claiming network reachability', async () => {
-    const { backboneId, sharedAssignmentId } = seedTopology();
+  test('returns the explicitly linked physical backbone as ancestor', async () => {
+    const { backboneDeviceId, sharedAssignmentId } = seedTopology();
     const body = (await app.inject({
       method: 'GET',
       url: '/api/topology/search?q=CLI-001'
@@ -370,10 +472,10 @@ describe('GET /api/topology/search', () => {
     expect(result.ancestors).toEqual([
       { id: 'root:isp', kind: 'logical-root', label: 'Internet / Core ISPM' },
       {
-        id: `backbone:${backboneId}`,
+        id: `backbone:${backboneDeviceId}`,
         kind: 'backbone',
-        label: 'Ubiquiti Rocket Prism 5AC',
-        relationship: 'inventory_lineage'
+        label: 'Monte Verde Principal',
+        relationship: 'defined_link'
       }
     ]);
   });

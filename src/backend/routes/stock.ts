@@ -21,9 +21,8 @@ const catalogSchema = z.object({
   sellingPriceCve: z.coerce.number().min(0).default(0),
   rentalFeeCve: z.coerce.number().min(0).default(0),
   stockTotal: z.coerce.number().int().min(0).default(0),
-  active: z.coerce.boolean().default(true),
-  backboneQty: z.coerce.number().int().min(0).default(0)
-});
+  active: z.coerce.boolean().default(true)
+}).strict();
 
 /** Nomes dos campos como o operador os vê no formulário, não como o JSON os chama. */
 const CATALOG_FIELD_LABELS: Record<string, string> = {
@@ -42,8 +41,7 @@ const CATALOG_FIELD_LABELS: Record<string, string> = {
   sellingPriceCve: 'Preco de venda',
   rentalFeeCve: 'Aluguer mensal',
   stockTotal: 'Stock',
-  active: 'Estado',
-  backboneQty: 'Unidades backbone'
+  active: 'Estado'
 };
 
 /**
@@ -52,6 +50,9 @@ const CATALOG_FIELD_LABELS: Record<string, string> = {
  */
 function catalogValidationError(error: z.ZodError): string {
   const issue = error.issues[0];
+  if (issue.code === 'unrecognized_keys') {
+    return `Campos nao permitidos: ${issue.keys.join(', ')}`;
+  }
   const field = CATALOG_FIELD_LABELS[String(issue.path[0])] || String(issue.path[0]);
   if (issue.code === 'invalid_type' && issue.expected === 'integer') {
     return `${field}: use um numero inteiro, sem casas decimais`;
@@ -106,7 +107,6 @@ export async function registerStockRoutes(app: FastifyInstance) {
         rental_fee_cve AS rentalFeeCve,
         stock_total AS stockTotal,
         active,
-        backbone_qty AS backboneQty,
         (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve) AS landedCostCve,
         (SELECT MAX(created_at) FROM stock_movements sm WHERE sm.catalog_id = equipment_catalog.id) AS lastMovementAt
       FROM equipment_catalog
@@ -142,9 +142,9 @@ export async function registerStockRoutes(app: FastifyInstance) {
       INSERT INTO equipment_catalog (
         category, type, brand, model, description, supplier, unit_of_measure, is_serialized,
         purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve,
-        selling_price_cve, rental_fee_cve, stock_total, active, backbone_qty, created_at, updated_at
+        selling_price_cve, rental_fee_cve, stock_total, active, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     `).run(
       parsed.data.category,
       parsed.data.type,
@@ -161,8 +161,7 @@ export async function registerStockRoutes(app: FastifyInstance) {
       parsed.data.sellingPriceCve,
       parsed.data.rentalFeeCve,
       parsed.data.stockTotal,
-      parsed.data.active ? 1 : 0,
-      parsed.data.backboneQty
+      parsed.data.active ? 1 : 0
     );
 
     recordAudit(request, {
@@ -204,7 +203,6 @@ export async function registerStockRoutes(app: FastifyInstance) {
           rental_fee_cve = ?,
           stock_total = ?,
           active = ?,
-          backbone_qty = ?,
           updated_at = datetime('now')
       WHERE id = ?
     `).run(
@@ -224,7 +222,6 @@ export async function registerStockRoutes(app: FastifyInstance) {
       parsed.data.rentalFeeCve,
       parsed.data.stockTotal,
       parsed.data.active ? 1 : 0,
-      parsed.data.backboneQty,
       id
     );
 

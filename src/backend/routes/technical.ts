@@ -599,6 +599,15 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         WHERE id = ? AND end_date IS NULL
       `).run(assignmentId);
 
+      db.prepare(`
+        UPDATE backbone_assignment_links
+        SET ended_at = datetime('now'),
+            ended_by = ?,
+            change_reason = COALESCE(change_reason, 'assignment_closed'),
+            updated_at = datetime('now')
+        WHERE assignment_id = ? AND ended_at IS NULL
+      `).run(request.user?.id ?? parsed.data.technicianId ?? null, assignmentId);
+
       const replacement = db.prepare(`
         INSERT INTO service_device_assignments (
           service_id, catalog_id, serial_number, asset_tag, ip_address, mac_address,
@@ -733,6 +742,15 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       if (updated.changes === 0) {
         throw new Error('already_closed');
       }
+
+      db.prepare(`
+        UPDATE backbone_assignment_links
+        SET ended_at = datetime('now'),
+            ended_by = ?,
+            change_reason = COALESCE(change_reason, 'assignment_closed'),
+            updated_at = datetime('now')
+        WHERE assignment_id = ? AND ended_at IS NULL
+      `).run(request.user?.id ?? parsed.data.technicianId ?? null, assignmentId);
 
       db.prepare(`
         INSERT INTO stock_movements (

@@ -8,28 +8,42 @@ import type {
 export const backboneOne: TopologyBackboneNode = {
   id: 'backbone:10',
   kind: 'backbone',
+  backboneDeviceId: 10,
   catalogId: 10,
   label: 'Ubiquiti Rocket Prism',
   brand: 'Ubiquiti',
   model: 'Rocket Prism',
   catalogType: 'antena',
-  backboneQty: 2,
+  serialNumber: 'BB-010',
+  assetTag: 'AT-010',
+  ipAddress: '10.20.0.1',
+  macAddress: 'AA:BB:CC:DD:EE:10',
+  island: 'São Vicente',
+  zone: 'Monte Verde',
+  provisional: false,
   administrativeState: 'active',
   issueCodes: [],
   parentId: 'root:isp',
-  relationship: 'inventory_lineage'
+  relationship: 'defined_link'
 };
 
 export const backboneTwo: TopologyBackboneNode = {
   ...backboneOne,
   id: 'backbone:20',
+  backboneDeviceId: 20,
   catalogId: 20,
   label: 'MikroTik Legacy',
   brand: 'MikroTik',
   model: 'Legacy',
-  backboneQty: 1,
+  serialNumber: null,
+  assetTag: null,
+  ipAddress: null,
+  macAddress: null,
+  island: null,
+  zone: null,
+  provisional: true,
   administrativeState: 'inactive',
-  issueCodes: ['inactive']
+  issueCodes: ['inactive', 'provisional_identity']
 };
 
 export const snapshot: TopologySnapshot = {
@@ -48,14 +62,14 @@ export const snapshot: TopologySnapshot = {
       kind: 'core-link',
       source: 'root:isp',
       target: 'backbone:10',
-      relationship: 'inventory_lineage'
+      relationship: 'defined_link'
     },
     {
       id: 'core-link:root:isp:backbone:20',
       kind: 'core-link',
       source: 'root:isp',
       target: 'backbone:20',
-      relationship: 'inventory_lineage'
+      relationship: 'defined_link'
     }
   ],
   stats: {
@@ -71,6 +85,7 @@ export const snapshot: TopologySnapshot = {
 
 function clientDevice(
   assignmentId: number,
+  backboneDeviceId: number,
   catalogId: number,
   clientId: number,
   island: string,
@@ -92,8 +107,8 @@ function clientDevice(
     startDate: '2026-07-01',
     administrativeState: assignmentId === 200 ? 'inactive' : 'active',
     issueCodes: assignmentId === 200 ? ['inactive'] : [],
-    parentId: `backbone:${catalogId}`,
-    relationship: 'inventory_lineage',
+    parentId: `backbone:${backboneDeviceId}`,
+    relationship: 'defined_link',
     clients: [{
       id: clientId,
       clientCode: `CLI-${clientId}`,
@@ -112,8 +127,8 @@ function clientDevice(
   };
 }
 
-export const deviceOne = clientDevice(100, 10, 1, 'São Vicente', 'Mindelo');
-export const deviceTwo = clientDevice(200, 20, 2, 'Sal', 'Espargos');
+export const deviceOne = clientDevice(100, 10, 10, 1, 'São Vicente', 'Mindelo');
+export const deviceTwo = clientDevice(200, 20, 20, 2, 'Sal', 'Espargos');
 
 export const branchOne: TopologyBackboneBranch = {
   generatedAt: '2026-07-28T12:01:00.000Z',
@@ -124,7 +139,7 @@ export const branchOne: TopologyBackboneBranch = {
     kind: 'client-link',
     source: 'backbone:10',
     target: 'assignment:100',
-    relationship: 'inventory_lineage'
+    relationship: 'defined_link'
   }],
   stats: { assignmentCount: 1, clientCount: 1, serviceCount: 1, attentionCount: 0 }
 };
@@ -138,7 +153,7 @@ export const branchTwo: TopologyBackboneBranch = {
     kind: 'client-link',
     source: 'backbone:20',
     target: 'assignment:200',
-    relationship: 'inventory_lineage'
+    relationship: 'defined_link'
   }],
   stats: { assignmentCount: 1, clientCount: 1, serviceCount: 1, attentionCount: 1 }
 };
