@@ -18,6 +18,7 @@ import type {
   BackboneStatus
 } from '../../../shared/backbone';
 import { Badge, Button, Field } from '../../components';
+import { statusLabel, statusTone } from '../../lib/status';
 
 const STATUS_LABEL: Record<BackboneStatus, string> = {
   active: 'Ativo',
@@ -247,8 +248,8 @@ export function BackboneDetail({
                   </span>
                 </div>
                 <div className="backbone-assignment-state">
-                  <Badge tone={assignment.serviceStatus === 'active' ? 'success' : 'neutral'}>
-                    Serviço {assignment.serviceStatus === 'active' ? 'ativo' : assignment.serviceStatus}
+                  <Badge tone={statusTone(assignment.serviceStatus)}>
+                    Serviço {statusLabel(assignment.serviceStatus).toLowerCase()}
                   </Badge>
                   {canManage && (
                     <span className="backbone-assignment-actions">

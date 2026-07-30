@@ -145,7 +145,10 @@ export function BackboneList({
                   <span>{identity(backbone)}</span>
                   {backbone.ipAddress && <span>IP {backbone.ipAddress}</span>}
                   <span>{location(backbone)}</span>
-                  <span>{backbone.linkedAssignmentCount} ligados</span>
+                  <span>
+                    {backbone.linkedAssignmentCount}
+                    {backbone.linkedAssignmentCount === 1 ? ' ligado' : ' ligados'}
+                  </span>
                 </span>
               </Button>
             ))}

@@ -1,5 +1,5 @@
 .backbone-workspace {
-  --backbone-accent: oklch(70% 0.105 151);
+  --backbone-accent: var(--accent);
   --backbone-accent-muted: color-mix(in oklch, var(--backbone-accent) 14%, transparent);
   --backbone-rule: color-mix(in oklch, var(--border) 82%, transparent);
   /* Column flow, not a fixed row template: the inline error banner is
@@ -38,7 +38,7 @@
 .backbone-kicker {
   margin: 0 0 var(--space-1);
   color: var(--backbone-accent);
-  font-size: 0.66rem;
+  font-size: var(--fs-xs);
   font-weight: 760;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -263,7 +263,7 @@
   flex: 0 0 auto;
   min-height: 1.3rem;
   padding: 0 var(--space-2);
-  font-size: 0.58rem;
+  font-size: var(--fs-xs);
 }
 
 .backbone-row-model {
@@ -278,7 +278,7 @@
   flex-wrap: wrap;
   gap: 0;
   color: var(--text-3);
-  font-size: 0.69rem;
+  font-size: var(--fs-sm);
 }
 
 .backbone-row-meta span {
@@ -456,7 +456,7 @@
 
 .backbone-section-heading > span {
   color: var(--backbone-accent);
-  font-size: 0.62rem;
+  font-size: var(--fs-xs);
   font-weight: 750;
   letter-spacing: 0.1em;
 }
@@ -491,7 +491,7 @@
 .backbone-facts dt {
   margin-bottom: var(--space-1);
   color: var(--text-3);
-  font-size: 0.66rem;
+  font-size: var(--fs-xs);
 }
 
 .backbone-facts dd {
@@ -597,7 +597,7 @@
 .backbone-assignment-main small {
   overflow: hidden;
   color: var(--text-3);
-  font-size: 0.68rem;
+  font-size: var(--fs-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -608,7 +608,7 @@
 
 .backbone-assignment-state .badge {
   min-height: 1.35rem;
-  font-size: 0.57rem;
+  font-size: var(--fs-xs);
 }
 
 .backbone-assignment-actions {
@@ -618,7 +618,7 @@
 .backbone-assignment-actions .btn {
   min-height: 1.8rem;
   padding: 0 var(--space-2);
-  font-size: 0.68rem;
+  font-size: var(--fs-xs);
 }
 
 .backbone-linked-pagination {
@@ -662,7 +662,7 @@
   padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--backbone-rule);
   color: var(--text-3);
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   font-weight: 750;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -863,7 +863,7 @@
 .backbone-candidate-toggle small,
 .backbone-candidate-error {
   color: var(--text-3);
-  font-size: 0.68rem;
+  font-size: var(--fs-xs);
 }
 
 .backbone-candidate-error {

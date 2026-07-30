@@ -56,7 +56,7 @@ function nodeMeta(node: TopologyNode, branchCount?: number): string {
   return `${node.ipAddress ?? 'IP em falta'} · ${clientCount} cliente${clientCount === 1 ? '' : 's'}`;
 }
 
-function statusLabel(node: TopologyNode): string {
+function nodeStatusLabel(node: TopologyNode): string {
   if (node.issueCodes.length > 0) return `${node.issueCodes.length} atenção`;
   return node.administrativeState === 'active' ? 'Ativo' : 'Inativo';
 }
@@ -121,7 +121,7 @@ function NodeSelectControl({
       </span>
       <span className="topology-node-state">
         {node.issueCodes.length > 0 && <AlertTriangle size={11} aria-hidden />}
-        {statusLabel(node)}
+        {nodeStatusLabel(node)}
       </span>
     </Button>
   );

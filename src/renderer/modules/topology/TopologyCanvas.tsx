@@ -37,10 +37,10 @@ function motionDuration(): number {
 }
 
 function miniMapColor(node: TopologyCanvasNode): string {
-  if (node.data.topology.issueCodes.length > 0) return 'oklch(69% 0.12 78)';
-  if (node.type === 'logical-root') return 'oklch(66% 0.09 151)';
-  if (node.type === 'backbone') return 'oklch(58% 0.08 151)';
-  return 'oklch(55% 0.025 145)';
+  if (node.data.topology.issueCodes.length > 0) return 'var(--warn)';
+  if (node.type === 'logical-root') return 'var(--accent)';
+  if (node.type === 'backbone') return 'var(--accent-2)';
+  return 'var(--text-3)';
 }
 
 function useCanvasControls(
@@ -104,14 +104,14 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
             variant={BackgroundVariant.Dots}
             gap={22}
             size={1}
-            color="oklch(42% 0.018 145)"
+            color="var(--border-2)"
           />
           <MiniMap
             className="topology-minimap"
             pannable
             zoomable
             nodeColor={miniMapColor}
-            maskColor="oklch(15% 0.012 145 / 0.72)"
+            maskColor="color-mix(in oklch, var(--bg) 72%, transparent)"
           />
         </ReactFlow>
         {legendVisible && (

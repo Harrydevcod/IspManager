@@ -137,16 +137,18 @@
 }
 
 .topology-module {
-  --topology-ink: oklch(92% 0.012 145);
-  --topology-muted: oklch(69% 0.018 145);
-  --topology-faint: oklch(53% 0.016 145);
-  --topology-bg: oklch(14% 0.012 145);
-  --topology-surface: oklch(18% 0.014 145);
-  --topology-raised: oklch(22% 0.016 145);
-  --topology-line: oklch(31% 0.018 145);
-  --topology-green: oklch(69% 0.12 151);
-  --topology-green-dark: oklch(34% 0.075 151);
-  --topology-amber: oklch(74% 0.13 78);
+  /* Aliases sobre os tokens da app: o mapa herda tema, acento e superfícies
+     em vez de declarar uma paleta própria. Nada aqui pode ser uma cor literal. */
+  --topology-ink: var(--text);
+  --topology-muted: var(--text-2);
+  --topology-faint: var(--text-2);
+  --topology-bg: var(--bg);
+  --topology-surface: var(--surface);
+  --topology-raised: var(--surface-2);
+  --topology-line: var(--border);
+  --topology-accent: var(--accent);
+  --topology-accent-deep: var(--accent-2);
+  --topology-amber: var(--warn);
   display: grid;
   grid-template-rows: auto auto minmax(34rem, 1fr);
   min-width: 0;
@@ -154,7 +156,7 @@
   min-height: 40rem;
   overflow: hidden;
   border: 1px solid var(--topology-line);
-  border-radius: 0.75rem;
+  border-radius: var(--r3);
   background: var(--topology-bg);
   color: var(--topology-ink);
   container-type: inline-size;
@@ -176,8 +178,8 @@
 
 .topology-header .eyebrow {
   margin: 0 0 0.3rem;
-  color: var(--topology-green);
-  font-size: 0.65rem;
+  color: var(--topology-accent);
+  font-size: var(--fs-xs);
   font-weight: 750;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -186,7 +188,7 @@
 .topology-header h2 {
   margin: 0;
   color: var(--topology-ink);
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: clamp(1.55rem, 2.3vw, 2.15rem);
   font-weight: 500;
   letter-spacing: -0.035em;
@@ -196,7 +198,7 @@
 .topology-header > div > p:last-child {
   margin: 0.45rem 0 0;
   color: var(--topology-muted);
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
 }
 
 .topology-stats {
@@ -209,7 +211,7 @@
 
 .topology-stats div {
   display: grid;
-  min-width: 5.6rem;
+  min-width: 6.6rem;
   padding: 0.55rem 0.8rem;
   border-left: 1px solid var(--topology-line);
 }
@@ -218,7 +220,7 @@
 
 .topology-stats dt {
   color: var(--topology-faint);
-  font-size: 0.58rem;
+  font-size: var(--fs-xs);
   font-weight: 750;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -243,7 +245,7 @@
   align-items: end;
   padding: 0.65rem 0.75rem;
   border-bottom: 1px solid var(--topology-line);
-  background: oklch(17% 0.013 145);
+  background: color-mix(in oklch, var(--surface) 70%, var(--bg));
 }
 
 .topology-search {
@@ -266,13 +268,14 @@
   min-height: 2.45rem;
   padding: 0 0.75rem;
   border: 1px solid var(--topology-line);
+  border-radius: var(--r1);
   background: var(--topology-bg);
   color: var(--topology-faint);
 }
 
 .topology-search-field:focus-within {
-  border-color: var(--topology-green);
-  box-shadow: 0 0 0 2px oklch(69% 0.12 151 / 0.16);
+  border-color: var(--topology-accent);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--accent) 20%, transparent);
 }
 
 .topology-search-field input {
@@ -283,7 +286,7 @@
   background: transparent;
   color: var(--topology-ink);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
 }
 
 .topology-search-field .field {
@@ -308,14 +311,14 @@
   overflow-y: auto;
   border: 1px solid var(--topology-line);
   background: var(--topology-surface);
-  box-shadow: 0 1rem 2.5rem oklch(5% 0.01 145 / 0.46);
+  box-shadow: var(--shadow-2);
 }
 
 .topology-search-results > p {
   margin: 0;
   padding: 0.9rem 1rem;
   color: var(--topology-muted);
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
 }
 
 .topology-search-results button {
@@ -337,8 +340,7 @@
 .topology-search-results button:hover,
 .topology-search-results button:focus-visible {
   outline: 0;
-  background: var(--topology-raised);
-  box-shadow: inset 2px 0 var(--topology-green);
+  background: color-mix(in oklch, var(--accent) 12%, var(--surface-2));
 }
 
 .topology-search-results button span {
@@ -357,7 +359,7 @@
 .topology-search-results button small,
 .topology-search-results button em {
   color: var(--topology-faint);
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   font-style: normal;
 }
 
@@ -380,7 +382,7 @@
   gap: 0.45rem;
   padding: 0 0.75rem;
   list-style: none;
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   font-weight: 650;
 }
 
@@ -388,9 +390,9 @@
 
 .topology-filter-menu[open] summary,
 .topology-canvas-tools button[aria-pressed='true'] {
-  border-color: var(--topology-green-dark);
-  background: oklch(24% 0.035 151);
-  color: var(--topology-green);
+  border-color: var(--topology-accent-deep);
+  background: color-mix(in oklch, var(--accent) 16%, var(--surface));
+  color: var(--topology-accent);
 }
 
 .topology-filter-fields {
@@ -405,14 +407,14 @@
   padding: 0.9rem;
   border: 1px solid var(--topology-line);
   background: var(--topology-surface);
-  box-shadow: 0 1rem 2.5rem oklch(5% 0.01 145 / 0.46);
+  box-shadow: var(--shadow-2);
 }
 
 .topology-filter-fields label {
   display: grid;
   gap: 0.3rem;
   color: var(--topology-faint);
-  font-size: 0.62rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -424,20 +426,20 @@
   min-height: 2.25rem;
   padding: 0 0.55rem;
   border: 1px solid var(--topology-line);
-  border-radius: 0;
+  border-radius: var(--r1);
   outline: 0;
   background: var(--topology-bg);
   color: var(--topology-ink);
   font: inherit;
-  font-size: 0.76rem;
+  font-size: var(--fs-sm);
   letter-spacing: normal;
   text-transform: none;
 }
 
 .topology-filter-fields select:focus-visible,
 .topology-filter-fields input:focus-visible {
-  border-color: var(--topology-green);
-  box-shadow: 0 0 0 2px oklch(69% 0.12 151 / 0.16);
+  border-color: var(--topology-accent);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--accent) 20%, transparent);
 }
 
 .topology-filter-fields > button {
@@ -455,7 +457,7 @@
 .topology-filter-fields > small {
   align-self: center;
   color: var(--topology-faint);
-  font-size: 0.65rem;
+  font-size: var(--fs-xs);
   line-height: 1.4;
 }
 
@@ -469,7 +471,7 @@
 .topology-filter-menu summary:focus-visible {
   position: relative;
   z-index: 1;
-  outline: 2px solid var(--topology-green);
+  outline: 2px solid var(--topology-accent);
   outline-offset: -2px;
   color: var(--topology-ink);
 }

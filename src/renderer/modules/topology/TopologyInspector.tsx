@@ -13,6 +13,7 @@ import type {
   TopologySnapshot
 } from '../../../shared/topology';
 import { Button } from '../../components';
+import { statusLabel } from '../../lib/status';
 
 export type TopologyInspectorProps = {
   node: TopologyNode | null;
@@ -182,7 +183,7 @@ function ClientAssociations({
               <li key={service.id}>
                 <span>
                   <strong>{service.planName ?? `Serviço #${service.id}`}</strong>
-                  <small>{service.status} · serviço #{service.id}</small>
+                  <small>{statusLabel(service.status)} · serviço #{service.id}</small>
                 </span>
                 <Button
                   variant="ghost"

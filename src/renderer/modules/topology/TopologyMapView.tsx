@@ -91,14 +91,14 @@ function decorateEdges(graph: TopologyGraph, labelsVisible: boolean): TopologyFl
     label: labelsVisible && edge.data
       ? topologyRelationshipLabel(edge.data.topology.relationship)
       : undefined,
-    labelStyle: { fill: 'oklch(72% 0.02 145)', fontSize: 10, fontWeight: 650 },
-    labelBgStyle: { fill: 'oklch(20% 0.012 145)', fillOpacity: 0.96 },
+    labelStyle: { fill: 'var(--text-2)', fontSize: 11, fontWeight: 650 },
+    labelBgStyle: { fill: 'var(--surface)', fillOpacity: 0.96 },
     labelBgPadding: [6, 3] as [number, number],
     labelBgBorderRadius: 3,
     style: {
       stroke: edge.data?.topology.kind === 'core-link'
-        ? 'oklch(58% 0.08 151)'
-        : 'oklch(48% 0.035 145)',
+        ? 'var(--accent-2)'
+        : 'var(--border-2)',
       strokeWidth: edge.data?.topology.kind === 'core-link' ? 1.8 : 1.25
     }
   }));
