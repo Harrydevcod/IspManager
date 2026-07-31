@@ -459,9 +459,34 @@ a:hover {
   object-fit: cover;
 }
 
+.brand > div {
+  flex: 1;
+  min-width: 0;
+}
+
 .brand strong,
 .brand span {
   display: block;
+}
+
+.brand-toggle {
+  flex-shrink: 0;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--r1);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.brand-toggle:hover,
+.brand-toggle:focus-visible {
+  border-color: var(--border);
+  color: var(--text);
 }
 
 .brand strong {
@@ -533,6 +558,70 @@ a:hover {
 
 .nav-list button.active svg {
   color: var(--accent);
+}
+
+/* ---------------------------------------------------------
+   Rail — menu recolhido a 64px, só ícones. Fora do modo barra
+   horizontal (max-width: 980px), onde a sidebar já é outra coisa.
+   Sem transição na largura: `grid-template-columns` refaz o layout a
+   cada frame e o canvas da Topologia recalcularia junto.
+   --------------------------------------------------------- */
+@media (min-width: 981px) {
+  .app-shell[data-nav='rail'] {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .app-shell[data-nav='rail'] .sidebar {
+    padding-inline: var(--space-2-5);
+  }
+
+  .app-shell[data-nav='rail'] .brand {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .app-shell[data-nav='rail'] .brand > div,
+  .app-shell[data-nav='rail'] .nav-label,
+  .app-shell[data-nav='rail'] .palette-trigger > span,
+  .app-shell[data-nav='rail'] .palette-trigger kbd,
+  .app-shell[data-nav='rail'] .sidebar-user-identity > div {
+    display: none;
+  }
+
+  .app-shell[data-nav='rail'] .palette-trigger {
+    margin-inline: 0;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .app-shell[data-nav='rail'] .nav-list button {
+    justify-content: center;
+    padding: 0;
+  }
+
+  /* O número não cabe em 44px; fica um ponto. A contagem continua no
+     aria-label do botão, por isso nada se perde para quem não o vê. */
+  .app-shell[data-nav='rail'] .nav-counter {
+    position: absolute;
+    top: 5px;
+    right: 7px;
+    min-width: 0;
+    width: 6px;
+    height: 6px;
+    padding: 0;
+    font-size: 0;
+  }
+
+  .app-shell[data-nav='rail'] .sidebar-user {
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-inline: 0;
+  }
+
+  .app-shell[data-nav='rail'] .sidebar-user-identity {
+    flex: initial;
+    justify-content: center;
+  }
 }
 
 .content {

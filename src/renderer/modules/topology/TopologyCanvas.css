@@ -20,6 +20,17 @@
   background: var(--topology-accent);
 }
 
+/* Sem afordância visível ninguém descobre que se arrasta daqui para ligar. */
+.topology-canvas .react-flow__handle.connectable {
+  width: 0.6rem;
+  height: 0.6rem;
+  cursor: crosshair;
+}
+
+.topology-canvas .react-flow__handle.connectable:hover {
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--topology-accent) 28%, transparent);
+}
+
 .topology-canvas .react-flow__edge-path { stroke-linecap: round; }
 
 .topology-canvas .react-flow__edge-textbg {
@@ -160,6 +171,21 @@
   transform: translateY(-50%);
 }
 
+/* Com o mapa a descer, o ramo abre por baixo: o botão acompanha. Roda-se o
+   botão inteiro (o círculo é simétrico) para que a volta de 180° do estado
+   expandido continue a significar "para trás". */
+.topology-node[data-flow='TB'] .topology-node-expand {
+  top: auto;
+  right: auto;
+  bottom: -0.8rem;
+  left: 50%;
+  transform: translateX(-50%) rotate(90deg);
+}
+
+.topology-node[data-flow='TB'] .topology-node-error {
+  top: calc(100% + 1.4rem);
+}
+
 .topology-node-expand[aria-expanded='true'] svg { transform: rotate(180deg); }
 
 .topology-node-expand:focus-visible {
@@ -197,24 +223,6 @@
 }
 
 .topology-spin { animation: topology-spin 900ms linear infinite; }
-
-.topology-lanes {
-  position: absolute;
-  top: 0.8rem;
-  right: 1rem;
-  left: 1rem;
-  z-index: 5;
-  display: grid;
-  grid-template-columns: 1fr 1.25fr 1.35fr;
-  pointer-events: none;
-}
-
-.topology-lanes span {
-  color: var(--topology-faint);
-  font-size: var(--fs-xs);
-  font-weight: 760;
-  letter-spacing: 0.13em;
-}
 
 .topology-minimap {
   border: 1px solid var(--topology-line);

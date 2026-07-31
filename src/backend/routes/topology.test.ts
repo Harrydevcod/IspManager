@@ -48,6 +48,9 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  // `backbone_devices.upstream_device_id` aponta para a própria tabela: sem
+  // cortar a cadeia primeiro, o DELETE bate na FK RESTRICT.
+  db.prepare('UPDATE backbone_devices SET upstream_device_id = NULL').run();
   for (const table of TABLES_TO_CLEAR) {
     db.prepare(`DELETE FROM ${table}`).run();
   }
@@ -129,12 +132,13 @@ function insertBackboneDevice(values: {
   mac?: string | null;
   island?: string | null;
   zone?: string | null;
+  upstreamDeviceId?: number | null;
 }) {
   db.prepare(`
     INSERT INTO backbone_devices (
       id, catalog_id, name, status, provisional, serial_number, asset_tag,
-      ip_address, mac_address, island, zone
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ip_address, mac_address, island, zone, upstream_device_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     values.id,
     values.catalogId,
@@ -146,7 +150,8 @@ function insertBackboneDevice(values: {
     values.ip ?? null,
     values.mac ?? null,
     values.island ?? null,
-    values.zone ?? null
+    values.zone ?? null,
+    values.upstreamDeviceId ?? null
   );
   return values.id;
 }
@@ -278,7 +283,7 @@ describe('GET /api/topology', () => {
     expect(body.root).toMatchObject({
       id: 'root:isp',
       kind: 'logical-root',
-      label: 'Internet / Core ISPM',
+      label: 'Internet',
       administrativeState: 'active',
       issueCodes: []
     });
@@ -339,6 +344,43 @@ describe('GET /api/topology', () => {
         relationship: 'defined_link'
       }
     ]));
+  });
+
+  test('hangs each backbone on its upstream and falls back to the root when that unit is retired', async () => {
+    const fixture = seedTopology();
+    // Starlink alimenta o Monte Verde; o provisório é alimentado por uma unidade
+    // retirada, logo não pode ficar pendurado num nó ausente do mapa.
+    const starlinkId = insertBackboneDevice({
+      id: 704,
+      catalogId: fixture.backboneCatalogId,
+      name: 'Starlink Standard',
+      serial: 'BB-STL-001'
+    });
+    db.prepare('UPDATE backbone_devices SET upstream_device_id = ? WHERE id = ?')
+      .run(starlinkId, fixture.backboneDeviceId);
+    db.prepare('UPDATE backbone_devices SET upstream_device_id = ? WHERE id = ?')
+      .run(fixture.retiredBackboneDeviceId, fixture.provisionalBackboneDeviceId);
+
+    const body = (await app.inject({ method: 'GET', url: '/api/topology' })).json();
+
+    expect(body.backbones).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: `backbone:${fixture.backboneDeviceId}`,
+        parentId: `backbone:${starlinkId}`
+      }),
+      expect.objectContaining({ id: `backbone:${starlinkId}`, parentId: 'root:isp' }),
+      expect.objectContaining({
+        id: `backbone:${fixture.provisionalBackboneDeviceId}`,
+        parentId: 'root:isp'
+      })
+    ]));
+    expect(body.edges).toEqual(expect.arrayContaining([{
+      id: `core-link:backbone:${starlinkId}:backbone:${fixture.backboneDeviceId}`,
+      kind: 'core-link',
+      source: `backbone:${starlinkId}`,
+      target: `backbone:${fixture.backboneDeviceId}`,
+      relationship: 'defined_link'
+    }]));
   });
 
   test('keeps every physical device and association out of the lazy initial payload', async () => {
@@ -470,13 +512,44 @@ describe('GET /api/topology/search', () => {
     ));
 
     expect(result.ancestors).toEqual([
-      { id: 'root:isp', kind: 'logical-root', label: 'Internet / Core ISPM' },
+      { id: 'root:isp', kind: 'logical-root', label: 'Internet' },
       {
         id: `backbone:${backboneDeviceId}`,
         kind: 'backbone',
         label: 'Monte Verde Principal',
         relationship: 'defined_link'
       }
+    ]);
+  });
+
+  test('returns the whole upstream chain as ancestors, ordered from the root down', async () => {
+    const { backboneDeviceId, backboneCatalogId, sharedAssignmentId } = seedTopology();
+    const starlinkId = insertBackboneDevice({
+      id: 704, catalogId: backboneCatalogId, name: 'Starlink Standard', serial: 'BB-STL-001'
+    });
+    const routerId = insertBackboneDevice({
+      id: 705,
+      catalogId: backboneCatalogId,
+      name: 'Router Starlink',
+      serial: 'BB-RTR-001',
+      upstreamDeviceId: starlinkId
+    });
+    db.prepare('UPDATE backbone_devices SET upstream_device_id = ? WHERE id = ?')
+      .run(routerId, backboneDeviceId);
+
+    const body = (await app.inject({
+      method: 'GET',
+      url: '/api/topology/search?q=CLI-001'
+    })).json();
+    const result = body.results.find((item: { node: { assignmentId?: number } }) => (
+      item.node.assignmentId === sharedAssignmentId
+    ));
+
+    expect(result.ancestors).toEqual([
+      { id: 'root:isp', kind: 'logical-root', label: 'Internet' },
+      { id: `backbone:${starlinkId}`, kind: 'backbone', label: 'Starlink Standard', relationship: 'defined_link' },
+      { id: `backbone:${routerId}`, kind: 'backbone', label: 'Router Starlink', relationship: 'defined_link' },
+      { id: `backbone:${backboneDeviceId}`, kind: 'backbone', label: 'Monte Verde Principal', relationship: 'defined_link' }
     ]);
   });
 
@@ -497,7 +570,7 @@ describe('GET /api/topology/search', () => {
     });
     expect(result.node).not.toHaveProperty('relationship');
     expect(result.ancestors).toEqual([
-      { id: 'root:isp', kind: 'logical-root', label: 'Internet / Core ISPM' }
+      { id: 'root:isp', kind: 'logical-root', label: 'Internet' }
     ]);
   });
 

@@ -51,7 +51,7 @@ export const snapshot: TopologySnapshot = {
   root: {
     id: 'root:isp',
     kind: 'logical-root',
-    label: 'Internet / Core ISPM',
+    label: 'Internet',
     administrativeState: 'active',
     issueCodes: []
   },

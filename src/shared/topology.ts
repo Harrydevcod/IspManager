@@ -30,7 +30,7 @@ export type TopologyClientAssociation = {
 export type TopologyLogicalRootNode = {
   id: 'root:isp';
   kind: 'logical-root';
-  label: 'Internet / Core ISPM';
+  label: 'Internet';
   administrativeState: 'active';
   issueCodes: [];
 };
@@ -53,7 +53,8 @@ export type TopologyBackboneNode = {
   provisional: boolean;
   administrativeState: TopologyAdministrativeState;
   issueCodes: TopologyIssueCode[];
-  parentId: 'root:isp';
+  /** A unidade a montante, ou a raiz quando recebe directamente da Internet. */
+  parentId: 'root:isp' | `backbone:${number}`;
   relationship: 'defined_link';
 };
 
@@ -83,10 +84,11 @@ export type TopologyNode =
   | TopologyBackboneNode
   | TopologyClientDeviceNode;
 
+/** Raiz→backbone ou backbone→backbone: a espinha dorsal, seja qual for a profundidade. */
 export type TopologyCoreLinkEdge = {
-  id: `core-link:root:isp:backbone:${number}`;
+  id: `core-link:${'root:isp' | `backbone:${number}`}:backbone:${number}`;
   kind: 'core-link';
-  source: 'root:isp';
+  source: 'root:isp' | `backbone:${number}`;
   target: `backbone:${number}`;
   relationship: TopologyRelationship;
 };

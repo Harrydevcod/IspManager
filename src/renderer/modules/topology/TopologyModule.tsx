@@ -34,6 +34,7 @@ function MapLoadingFallback() {
 export default function TopologyModule(props: TopologyModuleProps) {
   const [activeTab, setActiveTab] = useState<TopologyTab>('backbone');
   const [revision, setRevision] = useState(0);
+  const [backboneRevision, setBackboneRevision] = useState(0);
   const [focusBackboneDeviceId, setFocusBackboneDeviceId] = useState<number | null>(null);
   const [mapVisited, setMapVisited] = useState(false);
   const tabListRef = useRef<HTMLDivElement>(null);
@@ -61,6 +62,12 @@ export default function TopologyModule(props: TopologyModuleProps) {
     setFocusBackboneDeviceId(null);
     setRevision((current) => current + 1);
   }
+
+  // O mapa já se recarrega sozinho; aqui só se avisa a lista da outra aba.
+  const handleMapMutation = useCallback(
+    () => setBackboneRevision((current) => current + 1),
+    []
+  );
 
   function handleViewTopology(backboneDeviceId: number) {
     setFocusBackboneDeviceId(backboneDeviceId);
@@ -105,6 +112,7 @@ export default function TopologyModule(props: TopologyModuleProps) {
         hidden={activeTab !== 'backbone'}
       >
         <BackboneWorkspace
+          revision={backboneRevision}
           onMutation={handleMutation}
           onViewTopology={handleViewTopology}
         />
@@ -125,6 +133,7 @@ export default function TopologyModule(props: TopologyModuleProps) {
               active={activeTab === 'topology'}
               focusBackboneDeviceId={focusBackboneDeviceId}
               onFocusHandled={handleFocusHandled}
+              onMutation={handleMapMutation}
             />
           </Suspense>
         )}

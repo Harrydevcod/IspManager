@@ -38,6 +38,9 @@ function listUrl(path: string, query: BackboneListQuery | AssignmentListQuery): 
     pageSize: String(query.pageSize)
   });
   if ('status' in query && query.status) params.set('status', query.status);
+  if ('upstreamDeviceId' in query && query.upstreamDeviceId) {
+    params.set('upstreamDeviceId', String(query.upstreamDeviceId));
+  }
   if ('mapping' in query) params.set('mapping', query.mapping);
   if (query.query?.trim()) params.set('query', query.query.trim());
   if ('backboneDeviceId' in query && query.backboneDeviceId) {

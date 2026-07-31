@@ -484,6 +484,12 @@
   overflow: hidden;
 }
 
+/* Inspetor recolhido: o mapa fica com a largura toda. O seletor de atributo
+   ganha às variantes de @container, seja qual for a ordem das regras. */
+.topology-workspace[data-inspector='collapsed'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .topology-canvas-shell {
   position: relative;
   min-width: 0;

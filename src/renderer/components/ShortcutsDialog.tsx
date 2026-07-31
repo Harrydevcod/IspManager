@@ -7,6 +7,7 @@ const SHORTCUTS: { group: string; items: Shortcut[] }[] = [
     group: 'Geral',
     items: [
       { keys: ['Ctrl', 'K'], description: 'Abrir a paleta de comandos' },
+      { keys: ['Ctrl', 'B'], description: 'Recolher ou expandir o menu lateral' },
       { keys: ['?'], description: 'Mostrar esta lista de atalhos' },
       { keys: ['Esc'], description: 'Fechar diálogo, paleta ou painel' }
     ]

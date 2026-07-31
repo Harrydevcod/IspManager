@@ -23,8 +23,17 @@ const BACKBONE_COLUMNS = `
   bd.id, bd.catalog_id AS catalogId, ec.brand AS catalogBrand, ec.model AS catalogModel,
   ec.type AS catalogType, bd.name, bd.status, bd.serial_number AS serialNumber,
   bd.asset_tag AS assetTag, bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
-  bd.island, bd.zone, bd.provisional, bd.created_at AS createdAt, bd.updated_at AS updatedAt,
+  bd.island, bd.zone, bd.provisional, bd.upstream_device_id AS upstreamDeviceId,
+  up.name AS upstreamName, bd.created_at AS createdAt, bd.updated_at AS updatedAt,
+  (SELECT COUNT(*) FROM backbone_devices down
+   WHERE down.upstream_device_id = bd.id AND down.status <> 'retired')
+    AS downstreamCount,
   COUNT(active_link.id) AS linkedAssignmentCount`;
+
+const BACKBONE_UPSTREAM_JOIN = 'LEFT JOIN backbone_devices up ON up.id = bd.upstream_device_id';
+
+/** Profundidade máxima ao subir a cadeia — trava dados já em ciclo. */
+const MAX_CHAIN_DEPTH = 64;
 
 const ASSIGNMENT_COLUMNS = `
   a.id, a.catalog_id AS catalogId, ec.brand AS catalogBrand, ec.model AS catalogModel,
@@ -108,6 +117,42 @@ function ensureCatalog(db: Database.Database, catalogId: number): void {
   if (!row) throw new BackboneValidationError('Catálogo não encontrado');
 }
 
+/**
+ * O upstream tem de existir, estar em serviço e não fechar um ciclo: subimos a
+ * cadeia a partir do candidato e recusamos se voltarmos à própria unidade.
+ * `id` é null na criação — aí só as duas primeiras condições se aplicam.
+ */
+function ensureUpstream(
+  db: Database.Database,
+  id: number | null,
+  upstreamDeviceId: number | null
+): void {
+  if (upstreamDeviceId === null) return;
+  if (id !== null && upstreamDeviceId === id) {
+    throw new BackboneValidationError('Um backbone não pode alimentar-se a si próprio');
+  }
+  const upstream = db.prepare('SELECT status FROM backbone_devices WHERE id = ?')
+    .get(upstreamDeviceId) as { status: BackboneStatus } | undefined;
+  if (!upstream) throw new BackboneValidationError('Backbone a montante não encontrado');
+  if (upstream.status === 'retired') {
+    throw new BackboneValidationError('Não é possível ser alimentado por um backbone retirado');
+  }
+  const parentOf = db.prepare('SELECT upstream_device_id AS upstream FROM backbone_devices WHERE id = ?');
+  let cursor: number | null = upstreamDeviceId;
+  for (let depth = 0; cursor !== null && depth < MAX_CHAIN_DEPTH; depth += 1) {
+    if (cursor === id) {
+      throw new BackboneValidationError('Esta ligação criaria um ciclo na cadeia de backbones');
+    }
+    cursor = (parentOf.get(cursor) as { upstream: number | null } | undefined)?.upstream ?? null;
+  }
+}
+
+function downstreamExists(db: Database.Database, id: number): boolean {
+  return Boolean(db.prepare(`
+    SELECT 1 FROM backbone_devices WHERE upstream_device_id = ? AND status <> 'retired'
+  `).get(id));
+}
+
 function normalizeInput(input: BackboneWriteInput): Omit<BackboneWriteInput, 'expectedUpdatedAt'> & { expectedUpdatedAt?: string } {
   const name = normalizeOptional(input.name);
   if (!name) throw new BackboneValidationError('Nome do backbone é obrigatório');
@@ -117,9 +162,14 @@ function normalizeInput(input: BackboneWriteInput): Omit<BackboneWriteInput, 'ex
   if (!BACKBONE_STATUSES.has(input.status)) {
     throw new BackboneValidationError('Estado do backbone inválido');
   }
+  const upstreamDeviceId = input.upstreamDeviceId ?? null;
+  if (upstreamDeviceId !== null && (!Number.isInteger(upstreamDeviceId) || upstreamDeviceId <= 0)) {
+    throw new BackboneValidationError('Backbone a montante inválido');
+  }
   return {
     ...input,
     name,
+    upstreamDeviceId,
     serialNumber: normalizeOptional(input.serialNumber),
     assetTag: normalizeOptional(input.assetTag),
     ipAddress: normalizeOptional(input.ipAddress),
@@ -159,10 +209,15 @@ export function listBackbones(
     where += ' AND bd.status = ?';
     params.push(query.status);
   }
+  if (query.upstreamDeviceId !== undefined) {
+    where += ' AND bd.upstream_device_id = ?';
+    params.push(query.upstreamDeviceId);
+  }
   where += backboneSearchClause(normalizedQuery, params);
   const from = `
     FROM backbone_devices bd
     JOIN equipment_catalog ec ON ec.id = bd.catalog_id
+    ${BACKBONE_UPSTREAM_JOIN}
     LEFT JOIN backbone_assignment_links active_link
       ON active_link.backbone_device_id = bd.id AND active_link.ended_at IS NULL`;
   const total = Number((db.prepare(`SELECT COUNT(DISTINCT bd.id) AS count ${from} ${where}`).get(...params) as { count: number }).count);
@@ -211,6 +266,7 @@ export function getBackbone(db: Database.Database, id: number): BackboneDeviceDe
     SELECT ${BACKBONE_COLUMNS}, bd.notes
     FROM backbone_devices bd
     JOIN equipment_catalog ec ON ec.id = bd.catalog_id
+    ${BACKBONE_UPSTREAM_JOIN}
     LEFT JOIN backbone_assignment_links active_link
       ON active_link.backbone_device_id = bd.id AND active_link.ended_at IS NULL
     WHERE bd.id = ?
@@ -220,7 +276,12 @@ export function getBackbone(db: Database.Database, id: number): BackboneDeviceDe
   const assignments = listAssignments(db, {
     mapping: 'linked', backboneDeviceId: id, page: 1, pageSize: 100
   }).items;
-  return { ...backboneFromRow(row), notes: row.notes, assignments };
+  // Retiradas ficam de fora, como no mapa ativo (ADR 0005) e como em
+  // `downstreamCount`. O filtro cru de `listBackbones` não decide isso.
+  const downstream = listBackbones(db, {
+    upstreamDeviceId: id, page: 1, pageSize: 100
+  }).items.filter((unit) => unit.status !== 'retired');
+  return { ...backboneFromRow(row), notes: row.notes, assignments, downstream };
 }
 
 export function createBackbone(
@@ -230,16 +291,17 @@ export function createBackbone(
 ): BackboneDeviceDetail {
   const normalized = normalizeInput(input);
   ensureCatalog(db, normalized.catalogId);
+  ensureUpstream(db, null, normalized.upstreamDeviceId);
   try {
     const result = db.prepare(`
       INSERT INTO backbone_devices (
         catalog_id, name, status, serial_number, asset_tag, ip_address, mac_address,
-        island, zone, notes, created_by, provisional
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        island, zone, notes, created_by, upstream_device_id, provisional
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `).run(
       normalized.catalogId, normalized.name, normalized.status, normalized.serialNumber,
       normalized.assetTag, normalized.ipAddress, normalized.macAddress, normalized.island,
-      normalized.zone, normalized.notes, actorId
+      normalized.zone, normalized.notes, actorId, normalized.upstreamDeviceId
     );
     const created = getBackbone(db, Number(result.lastInsertRowid));
     if (!created) throw new BackboneNotFoundError('Backbone criado não encontrado');
@@ -263,16 +325,21 @@ export function updateBackbone(
     if (normalized.expectedUpdatedAt && normalized.expectedUpdatedAt !== existing.updatedAt) {
       throw new BackboneConflictError('O backbone foi alterado por outra pessoa');
     }
+    ensureUpstream(db, id, normalized.upstreamDeviceId);
     if (normalized.status === 'retired') {
       const activeLink = db.prepare(`
         SELECT id FROM backbone_assignment_links WHERE backbone_device_id = ? AND ended_at IS NULL
       `).get(id);
       if (activeLink) throw new BackboneValidationError('Desvincule ou transfira os equipamentos antes de retirar o backbone');
+      if (downstreamExists(db, id)) {
+        throw new BackboneValidationError('Reencaminhe os backbones alimentados por esta unidade antes de a retirar');
+      }
     }
     const result = db.prepare(`
       UPDATE backbone_devices SET
         catalog_id = ?, name = ?, status = ?, serial_number = ?, asset_tag = ?,
-        ip_address = ?, mac_address = ?, island = ?, zone = ?, notes = ?, updated_at = ?
+        ip_address = ?, mac_address = ?, island = ?, zone = ?, notes = ?,
+        upstream_device_id = ?, updated_at = ?
       WHERE id = ? AND (? IS NULL OR updated_at = ?)
         AND (? <> 'retired' OR NOT EXISTS (
           SELECT 1 FROM backbone_assignment_links
@@ -281,7 +348,8 @@ export function updateBackbone(
     `).run(
       normalized.catalogId, normalized.name, normalized.status, normalized.serialNumber,
       normalized.assetTag, normalized.ipAddress, normalized.macAddress, normalized.island,
-      normalized.zone, normalized.notes, nextUpdatedAt(existing.updatedAt), id,
+      normalized.zone, normalized.notes, normalized.upstreamDeviceId,
+      nextUpdatedAt(existing.updatedAt), id,
       normalized.expectedUpdatedAt ?? null, normalized.expectedUpdatedAt ?? null, normalized.status
     );
     if (result.changes === 0) {

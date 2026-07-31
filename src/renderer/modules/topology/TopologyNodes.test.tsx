@@ -40,6 +40,25 @@ afterEach(async () => {
 });
 
 describe('TopologyNodeContent', () => {
+  test('announces the map direction so the branch control can follow it', async () => {
+    const { container } = await mount();
+    expect(container.querySelector('.topology-node')?.getAttribute('data-flow')).toBe('LR');
+
+    await act(async () => {
+      root?.render(
+        <TopologyNodeContent
+          node={backboneOne}
+          selected={false}
+          flow="TB"
+          onSelect={vi.fn()}
+          onToggle={vi.fn()}
+        />
+      );
+    });
+    expect(container.querySelector('.topology-node')?.getAttribute('data-flow')).toBe('TB');
+  });
+
+
   test('selects a focused node with Enter', async () => {
     const { container, onSelect } = await mount();
     const select = container.querySelector<HTMLButtonElement>('[data-topology-select]');

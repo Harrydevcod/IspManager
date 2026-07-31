@@ -84,17 +84,21 @@ function RootDetails({ snapshot }: { snapshot: TopologySnapshot }) {
 
 function BackboneDetails({
   node,
+  snapshot,
   branch,
   onOpenStock
 }: {
   node: Extract<TopologyNode, { kind: 'backbone' }>;
+  snapshot: TopologySnapshot;
   branch?: TopologyBackboneBranch;
   onOpenStock: (catalogId: number) => void;
 }) {
+  const upstream = snapshot.backbones.find((item) => item.id === node.parentId);
   return (
     <>
       <dl className="topology-inspector-details">
         <Detail label="Unidade física" value={`#${node.backboneDeviceId}`} />
+        <Detail label="Alimentado por" value={upstream?.label ?? 'Internet'} />
         <Detail label="Catálogo" value={`#${node.catalogId}`} />
         <Detail label="Tipo" value={node.catalogType} />
         <Detail label="Marca" value={node.brand ?? 'Não indicada'} />
@@ -239,7 +243,12 @@ export function TopologyInspector(props: TopologyInspectorProps) {
           <StateBadges node={node} />
           {node.kind === 'logical-root' && <RootDetails snapshot={snapshot} />}
           {node.kind === 'backbone' && (
-            <BackboneDetails node={node} branch={branch} onOpenStock={onOpenStock} />
+            <BackboneDetails
+              node={node}
+              snapshot={snapshot}
+              branch={branch}
+              onOpenStock={onOpenStock}
+            />
           )}
           {node.kind === 'client-device' && (
             <>

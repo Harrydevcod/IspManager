@@ -25,7 +25,7 @@ const searchResult: TopologySearchResult = {
   ancestors: [{
     id: 'root:isp',
     kind: 'logical-root',
-    label: 'Internet / Core ISPM'
+    label: 'Internet'
   }]
 };
 

@@ -49,6 +49,7 @@ type BackboneDetailProps = {
   onTransfer: (assignment: BackboneAssignmentSummary) => void;
   onUnlink: (assignment: BackboneAssignmentSummary) => void;
   onViewTopology: (id: number) => void;
+  onSelectDownstream: (id: number) => void;
   onLinkedQueryChange: (query: string) => void;
   onLinkedPageChange: (page: number) => void;
   onLinkedRetry: () => void;
@@ -69,6 +70,7 @@ export function BackboneDetail({
   onTransfer,
   onUnlink,
   onViewTopology,
+  onSelectDownstream,
   onLinkedQueryChange,
   onLinkedPageChange,
   onLinkedRetry
@@ -173,6 +175,7 @@ export function BackboneDetail({
             <h4 id="backbone-location-title">Implantação</h4>
           </div>
           <dl>
+            <div><dt>Alimentado por</dt><dd>{backbone.upstreamName ?? 'Internet'}</dd></div>
             <div><dt>Ilha</dt><dd>{fact(backbone.island)}</dd></div>
             <div><dt>Zona</dt><dd>{fact(backbone.zone)}</dd></div>
             <div className="backbone-fact-wide"><dt>Notas</dt><dd>{fact(backbone.notes)}</dd></div>
@@ -180,13 +183,50 @@ export function BackboneDetail({
         </section>
       </div>
 
+      {backbone.downstream.length > 0 && (
+        <section className="backbone-downstream" aria-labelledby="backbone-downstream-title">
+          <div className="backbone-section-heading">
+            <span>03</span>
+            <h4 id="backbone-downstream-title">Alimenta</h4>
+            <strong>{backbone.downstream.length}</strong>
+          </div>
+          <div className="backbone-downstream-list">
+            {backbone.downstream.map((unit) => (
+              <Button
+                variant="ghost"
+                className="backbone-downstream-row"
+                key={unit.id}
+                onClick={() => onSelectDownstream(unit.id)}
+              >
+                <span className="backbone-downstream-main">
+                  <span>
+                    <strong>{unit.name}</strong>
+                    <small>{unit.serialNumber || unit.assetTag || 'Identidade não informada'}</small>
+                  </span>
+                  <span>
+                    <strong>{[unit.catalogBrand, unit.catalogModel].filter(Boolean).join(' ')}</strong>
+                    <small>{[unit.island, unit.zone].filter(Boolean).join(' · ') || 'Localização não informada'}</small>
+                  </span>
+                </span>
+                <span className="backbone-downstream-state">
+                  <Badge tone={unit.status === 'active' ? 'success' : 'neutral'}>
+                    {STATUS_LABEL[unit.status]}
+                  </Badge>
+                  <small>{unit.linkedAssignmentCount} CPE</small>
+                </span>
+              </Button>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section
         className="backbone-links"
         aria-labelledby="backbone-links-title"
         aria-busy={linkedLoading || undefined}
       >
         <div className="backbone-section-heading">
-          <span>03</span>
+          <span>{backbone.downstream.length > 0 ? '04' : '03'}</span>
           <h4 id="backbone-links-title">Equipamentos ligados</h4>
           <strong>{backbone.linkedAssignmentCount}</strong>
         </div>
@@ -228,8 +268,16 @@ export function BackboneDetail({
           <div className="backbone-links-empty">
             <Cable size={18} aria-hidden />
             <div>
-              <strong>{linkedQuery ? 'Nenhuma ligação corresponde à pesquisa' : 'Sem equipamentos ligados'}</strong>
-              <p>{linkedQuery ? 'Ajuste os termos pesquisados.' : 'Esta unidade ainda não tem CPEs associados.'}</p>
+              <strong>{linkedQuery ? 'Nenhuma ligação corresponde à pesquisa' : 'Sem CPE diretamente ligadas'}</strong>
+              {/* Uma unidade de trânsito não tem CPE por desenho; dizer
+                  "ainda não tem" fazia parecer configuração em falta. */}
+              <p>
+                {linkedQuery
+                  ? 'Ajuste os termos pesquisados.'
+                  : backbone.downstream.length > 0
+                    ? 'As CPE dos clientes penduram nas unidades a jusante.'
+                    : 'Esta unidade ainda não tem CPEs associados.'}
+              </p>
             </div>
             {canManage && <Button variant="secondary" size="sm" onClick={onLink}>Criar ligação</Button>}
           </div>

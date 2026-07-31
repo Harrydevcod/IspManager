@@ -13,6 +13,7 @@ import {
   useRef
 } from 'react';
 import type { ForwardedRef } from 'react';
+import { isValidBackboneConnection } from './backbone-linking';
 import type { TopologyFlowEdge } from './topology-graph';
 import {
   topologyNodeTypes,
@@ -30,6 +31,9 @@ type TopologyCanvasProps = {
   nodes: TopologyCanvasNode[];
   edges: TopologyFlowEdge[];
   legendVisible: boolean;
+  /** Permite arrastar uma ligação entre unidades de backbone. */
+  connectable?: boolean;
+  onConnectNodes?: (sourceNodeId: string, targetNodeId: string) => void;
 };
 
 function motionDuration(): number {
@@ -76,25 +80,41 @@ function useCanvasControls(
 }
 
 const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps>(
-  function TopologyCanvasInner({ nodes, edges, legendVisible }, ref) {
+  function TopologyCanvasInner({
+    nodes,
+    edges,
+    legendVisible,
+    connectable = false,
+    onConnectNodes
+  }, ref) {
     useCanvasControls(ref, nodes);
 
     return (
       <div className="topology-canvas" aria-label="Mapa físico da rede">
+        {/* Sem `panOnScroll`: com ele o React Flow desloca a vista com a roda e
+            manda o zoom para trás de Ctrl. Aqui a roda aproxima e o arrasto
+            desloca, como em qualquer mapa. */}
         <ReactFlow<TopologyCanvasNode, TopologyFlowEdge>
           nodes={nodes}
           edges={edges}
           nodeTypes={topologyNodeTypes}
           nodesDraggable={false}
-          nodesConnectable={false}
+          nodesConnectable={connectable}
+          isValidConnection={(connection) => isValidBackboneConnection(
+            connection.source,
+            connection.target
+          )}
+          onConnect={(connection) => {
+            if (!connection.source || !connection.target) return;
+            onConnectNodes?.(connection.source, connection.target);
+          }}
           nodesFocusable={false}
           edgesFocusable={false}
           deleteKeyCode={null}
           selectionKeyCode={null}
-          minZoom={0.35}
-          maxZoom={1.8}
+          minZoom={0.25}
+          maxZoom={2.5}
           panOnDrag
-          panOnScroll
           zoomOnScroll
           zoomOnPinch
           fitView={false}

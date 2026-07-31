@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { TopologySearchResponse } from '../../../shared/topology';
 import { Button } from '../../components';
+import { AuthProvider } from '../../lib/auth';
 import { branchOne, branchTwo, deviceOne, snapshot } from './topologyTestFixtures';
 import TopologyMapView from './TopologyMapView';
 import TopologyModule from './TopologyModule';
@@ -44,10 +45,28 @@ vi.mock('./BackboneWorkspace', () => ({
   )
 }));
 
+function json(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
 class ResizeObserverStub {
   observe() {}
   unobserve() {}
   disconnect() {}
+}
+
+/**
+ * O jsdom não traz `DOMMatrixReadOnly`, que o d3-zoom lê ao enquadrar a vista.
+ * Basta a identidade: os testes verificam comandos e conteúdo, não coordenadas.
+ */
+class DOMMatrixReadOnlyStub {
+  m11 = 1;
+  m22 = 1;
+  m41 = 0;
+  m42 = 0;
 }
 
 function responseSearch(): TopologySearchResponse {
@@ -59,7 +78,7 @@ function responseSearch(): TopologySearchResponse {
       node: deviceOne,
       matchedFields: ['clientName'],
       ancestors: [
-        { id: 'root:isp', kind: 'logical-root', label: 'Internet / Core ISPM' },
+        { id: 'root:isp', kind: 'logical-root', label: 'Internet' },
         {
           id: 'backbone:10',
           kind: 'backbone',
@@ -92,7 +111,7 @@ async function mountWith(
   const root = createRoot(container);
   roots.push(root);
   await act(async () => {
-    root.render(element);
+    root.render(<AuthProvider>{element}</AuthProvider>);
   });
   await act(async () => { await Promise.resolve(); });
   return container;
@@ -120,6 +139,7 @@ async function mountMap(topologyApi = api()): Promise<HTMLElement> {
       active
       focusBackboneDeviceId={null}
       onFocusHandled={() => undefined}
+      onMutation={() => undefined}
     />
   );
 }
@@ -141,6 +161,17 @@ function tab(container: HTMLElement, name: string): HTMLButtonElement {
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+  vi.stubGlobal('DOMMatrixReadOnly', DOMMatrixReadOnlyStub);
+  // A autoria no mapa corre com sessão sem restrições; catálogo e candidatos
+  // a montante respondem vazio até um teste precisar deles.
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.endsWith('/api/auth/status')) {
+      return json({ setupRequired: false, authBypassed: true });
+    }
+    if (url.endsWith('/api/stock/summary')) return json({ rows: [] });
+    return json({ page: 1, pageSize: 100, total: 0, totalPages: 0, items: [] });
+  }));
   vi.stubGlobal('matchMedia', vi.fn(() => ({
     matches: true,
     addEventListener: vi.fn(),
@@ -396,6 +427,60 @@ describe('TopologyModule branch interaction', () => {
     expect(container.textContent).toContain('CPE 200');
     expect(secondAttempts).toBe(2);
   });
+
+  test('collapses the inspector to widen the map and reopens it on the next selection', async () => {
+    const container = await mountMap();
+    const inspector = () => container.querySelector('[aria-label="Inspetor da topologia"]');
+    const toggle = () => button(container, 'Alternar inspetor');
+    expect(inspector()).not.toBeNull();
+
+    await act(async () => { toggle().click(); });
+    expect(inspector()).toBeNull();
+    expect(toggle().getAttribute('aria-pressed')).toBe('false');
+
+    await act(async () => {
+      button(container, 'Selecionar Ubiquiti Rocket Prism').click();
+    });
+    expect(inspector()).not.toBeNull();
+    expect(toggle().getAttribute('aria-pressed')).toBe('true');
+
+    // O ✕ do cabeçalho fecha o painel e larga a seleção.
+    await act(async () => { button(container, 'Fechar inspetor').click(); });
+    expect(inspector()).toBeNull();
+  });
+
+  test('registers a device from the map with the shared backbone form', async () => {
+    const container = await mountMap();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+
+    const create = [...container.querySelectorAll('button')]
+      .find((candidate) => candidate.textContent?.trim() === 'Novo equipamento');
+    if (!create) throw new Error('Create device button not found');
+
+    await act(async () => {
+      create.click();
+      await Promise.resolve();
+    });
+
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog?.textContent).toContain('Novo backbone');
+    expect(dialog?.textContent).toContain('Alimentado por');
+  });
+
+  test('turns the map between the horizontal and the vertical orientation', async () => {
+    const container = await mountMap();
+
+    await act(async () => {
+      button(container, 'Mudar para orientação vertical').click();
+    });
+    expect(button(container, 'Mudar para orientação horizontal')).toBeTruthy();
+
+    await act(async () => {
+      button(container, 'Mudar para orientação horizontal').click();
+    });
+    expect(button(container, 'Mudar para orientação vertical')).toBeTruthy();
+  });
 });
 
 test('debounces server search, expands ancestors and opens the result inspector', async () => {
@@ -457,7 +542,7 @@ test('expands and loads a backbone selected from server search', async () => {
         ancestors: [{
           id: 'root:isp',
           kind: 'logical-root',
-          label: 'Internet / Core ISPM'
+          label: 'Internet'
         }]
       }]
     }))
@@ -527,7 +612,7 @@ test('identifies a search result that has no defined backbone link', async () =>
         ancestors: [{
           id: 'root:isp',
           kind: 'logical-root',
-          label: 'Internet / Core ISPM'
+          label: 'Internet'
         }]
       }]
     }))

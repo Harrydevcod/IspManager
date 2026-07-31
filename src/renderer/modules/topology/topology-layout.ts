@@ -10,6 +10,14 @@ type NodeSize = {
   height: number;
 };
 
+/** `LR` corre para a direita; `TB` desce e espalha os irmãos pela largura. */
+export type TopologyDirection = 'LR' | 'TB';
+
+const ANCHORS: Record<TopologyDirection, { source: Position; target: Position }> = {
+  LR: { source: Position.Right, target: Position.Left },
+  TB: { source: Position.Bottom, target: Position.Top }
+};
+
 const SIZES: Record<TopologyFlowNode['type'], NodeSize> = {
   'logical-root': { width: 180, height: 72 },
   backbone: { width: 240, height: 104 },
@@ -20,11 +28,11 @@ function compareById<T extends { id: string }>(left: T, right: T): number {
   return left.id.localeCompare(right.id);
 }
 
-function createLayoutGraph(graph: TopologyGraph): Graph {
+function createLayoutGraph(graph: TopologyGraph, direction: TopologyDirection): Graph {
   const dagre = new Graph({ multigraph: true })
     .setDefaultEdgeLabel(() => ({}))
     .setGraph({
-      rankdir: 'LR',
+      rankdir: direction,
       ranker: 'network-simplex',
       nodesep: 48,
       ranksep: 96,
@@ -41,7 +49,11 @@ function createLayoutGraph(graph: TopologyGraph): Graph {
   return dagre;
 }
 
-function positionNode(node: TopologyFlowNode, dagre: Graph): TopologyFlowNode {
+function positionNode(
+  node: TopologyFlowNode,
+  dagre: Graph,
+  direction: TopologyDirection
+): TopologyFlowNode {
   const coordinates = dagre.node(node.id);
   const size = SIZES[node.type];
   return {
@@ -52,15 +64,20 @@ function positionNode(node: TopologyFlowNode, dagre: Graph): TopologyFlowNode {
       x: coordinates.x - size.width / 2,
       y: coordinates.y - size.height / 2
     },
-    sourcePosition: Position.Right,
-    targetPosition: Position.Left
+    sourcePosition: ANCHORS[direction].source,
+    targetPosition: ANCHORS[direction].target
   };
 }
 
-export function layoutTopologyGraph(graph: TopologyGraph): TopologyGraph {
-  const dagre = createLayoutGraph(graph);
+export function layoutTopologyGraph(
+  graph: TopologyGraph,
+  direction: TopologyDirection = 'LR'
+): TopologyGraph {
+  const dagre = createLayoutGraph(graph, direction);
   return {
-    nodes: [...graph.nodes].sort(compareById).map((node) => positionNode(node, dagre)),
+    nodes: [...graph.nodes]
+      .sort(compareById)
+      .map((node) => positionNode(node, dagre, direction)),
     edges: [...graph.edges].sort(compareById)
   };
 }

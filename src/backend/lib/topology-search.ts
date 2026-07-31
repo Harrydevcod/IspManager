@@ -112,28 +112,32 @@ function passesFilters(
   return true;
 }
 
+/** Profundidade máxima ao subir a cadeia — trava dados já em ciclo. */
+const MAX_CHAIN_DEPTH = 64;
+
+/**
+ * Caminho ordenado da raiz até ao pai imediato. Com a cadeia física explícita,
+ * um CPE pode estar a vários saltos da Internet (Starlink → router → AP → CPE),
+ * por isso subimos até à raiz em vez de devolver só o pai.
+ */
 function ancestors(
   node: TopologyBackboneNode | TopologyClientDeviceNode,
   backbones: Map<number, TopologyBackboneNode>
 ): TopologyAncestor[] {
-  const result: TopologyAncestor[] = [{
-    id: 'root:isp',
-    kind: 'logical-root',
-    label: 'Internet / Core ISPM'
-  }];
-  if (node.kind === 'backbone') return result;
-  if (node.parentId === 'root:isp') return result;
-  const backboneDeviceId = Number(node.parentId.slice('backbone:'.length));
-  const backbone = backbones.get(backboneDeviceId);
-  if (backbone) {
-    result.push({
+  const chain: TopologyAncestor[] = [];
+  let parentId = node.parentId;
+  for (let depth = 0; parentId !== 'root:isp' && depth < MAX_CHAIN_DEPTH; depth += 1) {
+    const backbone = backbones.get(Number(parentId.slice('backbone:'.length)));
+    if (!backbone) break;
+    chain.unshift({
       id: backbone.id,
       kind: 'backbone',
       label: backbone.label,
       relationship: 'defined_link'
     });
+    parentId = backbone.parentId;
   }
-  return result;
+  return [{ id: 'root:isp', kind: 'logical-root', label: 'Internet' }, ...chain];
 }
 
 function resultFor(

@@ -4,13 +4,14 @@ import './TopologyCanvas.css';
 import './TopologyInspector.css';
 
 import { AlertTriangle, Network, RotateCw } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   TopologyBackboneBranch,
   TopologyNode,
   TopologySnapshot
 } from '../../../shared/topology';
 import { Button } from '../../components';
+import { BackboneEditorDialog } from './BackboneDialogs';
 import { TopologyCanvas, type TopologyCanvasHandle } from './TopologyCanvas';
 import { TopologyInspector } from './TopologyInspector';
 import type { TopologyCanvasNode } from './TopologyNodes';
@@ -23,7 +24,8 @@ import {
   type TopologyFlowEdge,
   type TopologyGraph
 } from './topology-graph';
-import { layoutTopologyGraph } from './topology-layout';
+import { layoutTopologyGraph, type TopologyDirection } from './topology-layout';
+import { useMapAuthoring } from './useMapAuthoring';
 import { useTopologyWorkspace } from './useTopologyWorkspace';
 import type { TopologyModuleProps } from './TopologyModule';
 
@@ -32,7 +34,10 @@ export type TopologyMapViewProps = TopologyModuleProps & {
   active: boolean;
   focusBackboneDeviceId: number | null;
   onFocusHandled: () => void;
+  onMutation: () => void;
 };
+
+type MapAuthoring = ReturnType<typeof useMapAuthoring>;
 
 type NodeDecorators = Pick<
   ReturnType<typeof useTopologyWorkspace>,
@@ -165,13 +170,17 @@ function hasActiveFilters(filters: ReturnType<typeof useTopologyWorkspace>['filt
 function useRenderedGraph(
   snapshot: TopologySnapshot | null,
   workspace: ReturnType<typeof useTopologyWorkspace>,
-  labelsVisible: boolean
+  labelsVisible: boolean,
+  direction: TopologyDirection
 ) {
   const graph = useMemo(() => {
     if (!snapshot) return { nodes: [], edges: [] };
     const composed = composeTopologyGraph(snapshot, workspace.branches, workspace.expanded);
-    return layoutTopologyGraph(filterTopologyGraph(composed, workspace.filters));
-  }, [snapshot, workspace.branches, workspace.expanded, workspace.filters]);
+    return layoutTopologyGraph(
+      filterTopologyGraph(composed, workspace.filters),
+      direction
+    );
+  }, [direction, snapshot, workspace.branches, workspace.expanded, workspace.filters]);
   const nodes = useMemo(
     () => decorateNodes(graph, workspace),
     [graph, workspace]
@@ -224,6 +233,20 @@ function useCanvasEffects(
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [active, setSelectedNode]);
+}
+
+/** Virar reposiciona tudo — sem reenquadrar, o desenho salta para fora da vista. */
+function useRefitOnDirectionChange(
+  canvasRef: React.RefObject<TopologyCanvasHandle | null>,
+  direction: TopologyDirection
+) {
+  const previous = useRef(direction);
+  useEffect(() => {
+    if (previous.current === direction) return;
+    previous.current = direction;
+    const frame = window.requestAnimationFrame(() => canvasRef.current?.fit());
+    return () => window.cancelAnimationFrame(frame);
+  }, [canvasRef, direction]);
 }
 
 function useRequestedBackboneFocus(
@@ -281,15 +304,25 @@ function TopologyControls({
   workspace,
   labelsVisible,
   legendVisible,
+  inspectorVisible,
+  direction,
   setLabelsVisible,
   setLegendVisible,
+  setInspectorVisible,
+  setDirection,
+  authoring,
   canvasRef
 }: {
   workspace: ReturnType<typeof useTopologyWorkspace>;
   labelsVisible: boolean;
   legendVisible: boolean;
+  inspectorVisible: boolean;
+  direction: TopologyDirection;
   setLabelsVisible: React.Dispatch<React.SetStateAction<boolean>>;
   setLegendVisible: React.Dispatch<React.SetStateAction<boolean>>;
+  setInspectorVisible: React.Dispatch<React.SetStateAction<boolean>>;
+  setDirection: React.Dispatch<React.SetStateAction<TopologyDirection>>;
+  authoring: MapAuthoring;
   canvasRef: React.RefObject<TopologyCanvasHandle | null>;
 }) {
   return (
@@ -300,12 +333,18 @@ function TopologyControls({
         filters={workspace.filters}
         labelsVisible={labelsVisible}
         legendVisible={legendVisible}
+        inspectorVisible={inspectorVisible}
+        direction={direction}
+        canManage={authoring.canManage}
+        onCreateDevice={authoring.openEditor}
         onQueryChange={workspace.setQuery}
         onResultSelect={(result) => { void workspace.selectSearchResult(result); }}
         onFiltersChange={workspace.setFilters}
         onClearFilters={() => workspace.setFilters({})}
         onToggleLabels={() => setLabelsVisible((visible) => !visible)}
         onToggleLegend={() => setLegendVisible((visible) => !visible)}
+        onToggleInspector={() => setInspectorVisible((visible) => !visible)}
+        onToggleDirection={() => setDirection((current) => current === 'LR' ? 'TB' : 'LR')}
         onZoomIn={() => canvasRef.current?.zoomIn()}
         onZoomOut={() => canvasRef.current?.zoomOut()}
         onFit={() => canvasRef.current?.fit()}
@@ -320,6 +359,9 @@ function TopologyStage({
   nodes,
   edges,
   legendVisible,
+  inspectorVisible,
+  onCloseInspector,
+  authoring,
   canvasRef
 }: {
   props: TopologyModuleProps;
@@ -328,36 +370,46 @@ function TopologyStage({
   nodes: TopologyCanvasNode[];
   edges: TopologyFlowEdge[];
   legendVisible: boolean;
+  inspectorVisible: boolean;
+  onCloseInspector: () => void;
+  authoring: MapAuthoring;
   canvasRef: React.RefObject<TopologyCanvasHandle | null>;
 }) {
   const filteredEmpty = nodes.length === 0
     || (hasActiveFilters(workspace.filters) && nodes.length === 1);
   const inspectorBranch = branchForNode(workspace.selectedNode, workspace.branches);
   return (
-      <div className="topology-workspace">
+      <div
+        className="topology-workspace"
+        data-inspector={inspectorVisible ? undefined : 'collapsed'}
+      >
         <div className="topology-canvas-shell">
-          <div className="topology-lanes" aria-hidden>
-            <span>ORIGEM LÓGICA</span><span>BACKBONE</span><span>CPE / CLIENTE</span>
-          </div>
+          {/* ponytail: sem faixas fixas — a cadeia física tem profundidade variável
+              (Starlink → router → switch → AP → CPE) e os rótulos passariam a
+              nomear a coluna errada. O dagre distribui os ranks sozinho. */}
           <TopologyCanvas
             ref={canvasRef}
             nodes={nodes}
             edges={edges}
             legendVisible={legendVisible}
+            connectable={authoring.canManage}
+            onConnectNodes={authoring.connectNodes}
           />
           {(snapshot.backbones.length === 0 || filteredEmpty) && (
             <EmptyCanvas filtered={hasActiveFilters(workspace.filters)} />
           )}
         </div>
-        <TopologyInspector
-          node={workspace.selectedNode}
-          snapshot={snapshot}
-          branch={inspectorBranch}
-          onClose={() => workspace.setSelectedNode(null)}
-          onOpenClient={props.onOpenClient}
-          onOpenService={props.onOpenService}
-          onOpenStock={props.onOpenStock}
-        />
+        {inspectorVisible && (
+          <TopologyInspector
+            node={workspace.selectedNode}
+            snapshot={snapshot}
+            branch={inspectorBranch}
+            onClose={onCloseInspector}
+            onOpenClient={props.onOpenClient}
+            onOpenService={props.onOpenService}
+            onOpenStock={props.onOpenStock}
+          />
+        )}
       </div>
   );
 }
@@ -366,10 +418,33 @@ function TopologyMapWorkspace(
   props: Omit<TopologyMapViewProps, 'revision'>
 ) {
   const workspace = useTopologyWorkspace(props.api);
+  // Registar ou ligar recarrega o mapa no sítio — remontar fecharia os ramos
+  // abertos — e avisa o módulo para refrescar a lista da aba Backbone.
+  const { onMutation } = props;
+  const { loadSnapshot } = workspace;
+  const authoring = useMapAuthoring(useCallback(() => {
+    void loadSnapshot(true);
+    onMutation();
+  }, [loadSnapshot, onMutation]));
   const canvasRef = useRef<TopologyCanvasHandle>(null);
   const [labelsVisible, setLabelsVisible] = useState(false);
   const [legendVisible, setLegendVisible] = useState(true);
-  const { nodes, edges } = useRenderedGraph(workspace.snapshot, workspace, labelsVisible);
+  const [inspectorVisible, setInspectorVisible] = useState(true);
+  const [direction, setDirection] = useState<TopologyDirection>('LR');
+  const { nodes, edges } = useRenderedGraph(
+    workspace.snapshot,
+    workspace,
+    labelsVisible,
+    direction
+  );
+  useRefitOnDirectionChange(canvasRef, direction);
+  // Escolher um nó com o painel recolhido volta a abri-lo — senão o clique
+  // parecia não fazer nada. Recolher com o mesmo nó selecionado não mexe no id,
+  // por isso o painel fica fechado como foi pedido.
+  const selectedNodeId = workspace.selectedNode?.id;
+  useEffect(() => {
+    if (selectedNodeId) setInspectorVisible(true);
+  }, [selectedNodeId]);
   useRequestedBackboneFocus(
     workspace,
     props.focusBackboneDeviceId,
@@ -394,8 +469,13 @@ function TopologyMapWorkspace(
         workspace={workspace}
         labelsVisible={labelsVisible}
         legendVisible={legendVisible}
+        inspectorVisible={inspectorVisible}
+        direction={direction}
         setLabelsVisible={setLabelsVisible}
         setLegendVisible={setLegendVisible}
+        setInspectorVisible={setInspectorVisible}
+        setDirection={setDirection}
+        authoring={authoring}
         canvasRef={canvasRef}
       />
       <TopologyStage
@@ -405,8 +485,29 @@ function TopologyMapWorkspace(
         nodes={nodes}
         edges={edges}
         legendVisible={legendVisible}
+        inspectorVisible={inspectorVisible}
+        onCloseInspector={() => {
+          setInspectorVisible(false);
+          workspace.setSelectedNode(null);
+        }}
+        authoring={authoring}
         canvasRef={canvasRef}
       />
+      {authoring.canManage && (
+        <BackboneEditorDialog
+          open={authoring.editorOpen}
+          backbone={null}
+          pending={authoring.pending}
+          error={authoring.error}
+          catalogs={authoring.catalogs}
+          catalogLoading={authoring.catalogLoading}
+          catalogError={authoring.catalogError}
+          upstreamOptions={authoring.upstreamOptions}
+          onCatalogRetry={authoring.retryCatalogs}
+          onClose={authoring.closeEditor}
+          onSubmit={authoring.createDevice}
+        />
+      )}
     </section>
   );
 }
