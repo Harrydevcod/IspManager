@@ -150,7 +150,10 @@
   --topology-accent-deep: var(--accent-2);
   --topology-amber: var(--warn);
   display: grid;
-  grid-template-rows: auto auto minmax(34rem, 1fr);
+  /* A linha do mapa fica-se pelo que sobra. Um piso rígido aqui, dentro de uma
+     altura fixa e com overflow hidden, empurrava o fundo do canvas para fora da
+     caixa numa janela baixa — e cortava a legenda a meio. */
+  grid-template-rows: auto auto minmax(0, 1fr);
   min-width: 0;
   height: min(48rem, calc(100vh - 8.5rem));
   min-height: 40rem;
