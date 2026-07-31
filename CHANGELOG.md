@@ -2,6 +2,25 @@
 
 Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/). Cada versão tem uma [Release no GitHub](https://github.com/Harrydevcod/IspManager/releases) com o instalador correspondente.
 
+## [1.8.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.8.0) — 2026-07-31
+
+### Adicionado
+
+- **topologia:** Novo módulo com as abas Backbone e Topologia — a rede física mapeada da Internet para baixo, cada equipamento ligado ao que o alimenta
+- **topologia:** Mapa com zoom pela roda do rato, orientação horizontal ou vertical, ramos que abrem e fecham a partir de um só controlo e inspetor recolhível para o mapa ocupar o ecrã todo
+- **topologia:** Registar e ligar equipamento a partir do próprio mapa, por arrasto
+- **interface:** Barra lateral recolhível para uma calha de ícones
+
+### Alterado
+
+- **marca:** Ícone da aplicação redesenhado como a corrente do backbone, em grafite e ouro
+- **stock:** As quantidades de backbone deixam de viver no catálogo e passam a sair das ligações físicas reais
+
+### Corrigido
+
+- **stock:** A gravação de equipamento diz qual é o campo que a impede
+- **topologia:** O mapa deixa de transbordar da caixa e de cortar a legenda
+
 ## [1.7.1](https://github.com/Harrydevcod/IspManager/releases/tag/v1.7.1) — 2026-07-28
 
 ### Alterado

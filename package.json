@@ -1,6 +1,6 @@
 {
   "name": "ispm",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "description": "ISP Manager desktop app",
   "private": true,
   "main": "dist/main/index.js",
@@ -78,7 +78,8 @@
       "output": "release"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "mac": {
       "target": "dmg",
