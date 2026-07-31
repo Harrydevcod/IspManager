@@ -61,6 +61,19 @@ a number an operator typed into a catalog form.
   branch and stay cached for the renderer session. The map remains a lazy chunk, now
   behind the `Topologia` tab of a two-tab module whose first tab is `Backbone`.
 
+- **The spine is a graph, not a tree** (migration 36). `backbone_links` records who
+  feeds whom, replacing the single `upstream_device_id` column of migration 35. A
+  device with no row is fed by the Internet; a device with several rows aggregates
+  them — the concrete case being a multi-WAN router fed by two, three or four
+  Starlink terminals for capacity. `root:isp` stays logical: it is the Internet, never
+  an antenna, and it collects every uplink that exists, whether they are separate
+  antennas on different islands or several links converging on one unit. No
+  single-root constraint may be reintroduced — no index, CHECK, validation, or layout
+  shortcut. An internet source has no type of its own: it is a backbone like any
+  other, identified by having no upstream. Cycle detection is a depth-first walk with
+  a visited set, because a graph offers more than one path to the root and climbing
+  one of them was blind to a cycle closed through another.
+
 ## Consequences
 
 - CAPEX visibility is computed from non-retired physical units joined to their catalog

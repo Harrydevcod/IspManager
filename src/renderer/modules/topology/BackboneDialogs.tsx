@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronLeft, ChevronRight, Link2, Search, Unlink } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Link2, Search, Unlink, X } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type {
   BackboneAssignmentSummary,
@@ -10,6 +10,7 @@ import type {
 } from '../../../shared/backbone';
 import type { BackboneMutationState } from './useBackboneWorkspace';
 import type { BackboneCatalogOption } from './backbone-api';
+import { CV_ISLANDS, isKnownIsland } from '../../lib/islands';
 import { Badge, Button, Combobox, Dialog, Field, Select, Textarea, Toggle } from '../../components';
 
 type EditorProps = {
@@ -27,9 +28,6 @@ type EditorProps = {
   onSubmit: (input: BackboneWriteInput) => Promise<boolean>;
 };
 
-/** Sentinela do "sem upstream": o Combobox precisa de uma chave, `null` é o valor limpo. */
-const INTERNET_OPTION = { id: 0, name: 'Internet (origem)' };
-
 type EditorState = {
   catalogId: number | null;
   name: string;
@@ -41,13 +39,13 @@ type EditorState = {
   island: string;
   zone: string;
   notes: string;
-  upstreamDeviceId: number | null;
+  upstreamDeviceIds: number[];
 };
 
 function editorState(backbone: BackboneDeviceDetail | null): EditorState {
   return {
     catalogId: backbone?.catalogId ?? null,
-    upstreamDeviceId: backbone?.upstreamDeviceId ?? null,
+    upstreamDeviceIds: backbone?.upstreams.map((unit) => unit.id) ?? [],
     name: backbone?.name ?? '',
     status: backbone?.status ?? 'active',
     serialNumber: backbone?.serialNumber ?? '',
@@ -82,17 +80,18 @@ export function BackboneEditorDialog({
 
   // ponytail: a lista é a página de backbones ativos já carregada (25). Chega para
   // o tamanho desta rede; passar dos 25 exige a paginação que o diálogo de
-  // transferência já usa. O upstream atual entra à mão caso caia fora da página.
+  // transferência já usa. As alimentações atuais entram à mão caso caiam fora da página.
   const upstreamCandidates = useMemo(() => {
-    const current = backbone?.upstreamDeviceId ?? null;
     const known = upstreamOptions
       .filter((item) => item.id !== backbone?.id)
       .map((item) => ({ id: item.id, name: item.name }));
-    const missing = current !== null && !known.some((item) => item.id === current)
-      ? [{ id: current, name: backbone?.upstreamName ?? `Backbone #${current}` }]
-      : [];
-    return [INTERNET_OPTION, ...missing, ...known];
+    const missing = (backbone?.upstreams ?? [])
+      .filter((unit) => !known.some((item) => item.id === unit.id));
+    return [...missing, ...known];
   }, [backbone, upstreamOptions]);
+
+  const upstreamName = (id: number) =>
+    upstreamCandidates.find((item) => item.id === id)?.name ?? `Backbone #${id}`;
 
   useEffect(() => {
     if (!open) return;
@@ -127,7 +126,7 @@ export function BackboneEditorDialog({
       island: nullable(form.island),
       zone: nullable(form.zone),
       notes: nullable(form.notes),
-      upstreamDeviceId: form.upstreamDeviceId,
+      upstreamDeviceIds: form.upstreamDeviceIds,
       ...(backbone ? { expectedUpdatedAt: backbone.updatedAt } : {})
     });
   }
@@ -207,24 +206,51 @@ export function BackboneEditorDialog({
           </Select>
           <div className="field backbone-catalog-field">
             <span className="field-label">Alimentado por</span>
+            {form.upstreamDeviceIds.length > 0 ? (
+              <ul className="backbone-uplink-chips">
+                {form.upstreamDeviceIds.map((upstreamId) => (
+                  <li key={upstreamId}>
+                    <span>{upstreamName(upstreamId)}</span>
+                    <Button
+                      variant="icon"
+                      size="sm"
+                      aria-label={`Remover ${upstreamName(upstreamId)}`}
+                      onClick={() => update(
+                        'upstreamDeviceIds',
+                        form.upstreamDeviceIds.filter((item) => item !== upstreamId)
+                      )}
+                    >
+                      <X size={12} aria-hidden />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="backbone-uplink-empty">Internet (origem) — cabeça da cadeia</p>
+            )}
             <Combobox
-              ariaLabel="Alimentado por"
-              options={upstreamCandidates}
-              value={form.upstreamDeviceId ?? INTERNET_OPTION.id}
-              onChange={(value) => update(
-                'upstreamDeviceId',
-                typeof value === 'number' && value !== INTERNET_OPTION.id ? value : null
+              ariaLabel="Adicionar alimentação"
+              options={upstreamCandidates.filter(
+                (row) => !form.upstreamDeviceIds.includes(row.id)
               )}
+              value={null}
+              onChange={(value) => {
+                if (typeof value === 'number') {
+                  update('upstreamDeviceIds', [...form.upstreamDeviceIds, value]);
+                }
+              }}
               rowKey={(row) => row.id}
-              rowCode={(row) => (row.id === INTERNET_OPTION.id ? 'Origem' : 'Backbone')}
+              rowCode={() => 'Backbone'}
               rowLabel={(row) => row.name}
-              placeholder="Selecionar origem do sinal…"
+              placeholder="Adicionar alimentação…"
               searchPlaceholder="Pesquisar backbone"
-              emptyLabel="Nenhum backbone ativo"
+              emptyLabel="Nenhum backbone ativo por associar"
               allowClear={false}
             />
             <small className="backbone-form-note">
-              De quem esta unidade recebe sinal. “Internet (origem)” marca a cabeça da cadeia.
+              De quem esta unidade recebe sinal. Sem nenhuma, é a cabeça da cadeia e recebe
+              da Internet. Várias significam agregação — por exemplo duas Starlink no mesmo
+              router multi-WAN.
             </small>
           </div>
         </div>
@@ -256,7 +282,16 @@ export function BackboneEditorDialog({
         </div>
         <div className="backbone-dialog-section">
           <p>Implantação</p>
-          <Field label="Ilha" value={form.island} onChange={(event) => update('island', event.target.value)} />
+          <Select label="Ilha" value={form.island} onChange={(event) => update('island', event.target.value)}>
+            <option value="">—</option>
+            {CV_ISLANDS.map((island) => (
+              <option key={island} value={island}>{island}</option>
+            ))}
+            {/* Editar um registo antigo não lhe pode apagar a ilha em silêncio. */}
+            {form.island !== '' && !isKnownIsland(form.island) && (
+              <option value={form.island}>{form.island} (grafia antiga)</option>
+            )}
+          </Select>
           <Field label="Zona" value={form.zone} onChange={(event) => update('zone', event.target.value)} />
           <Textarea
             className="backbone-notes-field"

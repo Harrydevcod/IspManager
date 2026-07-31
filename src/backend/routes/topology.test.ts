@@ -23,6 +23,8 @@ type Fixture = {
 
 const TABLES_TO_CLEAR = [
   'backbone_assignment_links',
+  // Antes das unidades: as ligações apontam para elas com FK RESTRICT.
+  'backbone_links',
   'backbone_devices',
   'service_device_shares',
   'service_device_assignments',
@@ -48,9 +50,6 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  // `backbone_devices.upstream_device_id` aponta para a própria tabela: sem
-  // cortar a cadeia primeiro, o DELETE bate na FK RESTRICT.
-  db.prepare('UPDATE backbone_devices SET upstream_device_id = NULL').run();
   for (const table of TABLES_TO_CLEAR) {
     db.prepare(`DELETE FROM ${table}`).run();
   }
@@ -137,8 +136,8 @@ function insertBackboneDevice(values: {
   db.prepare(`
     INSERT INTO backbone_devices (
       id, catalog_id, name, status, provisional, serial_number, asset_tag,
-      ip_address, mac_address, island, zone, upstream_device_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ip_address, mac_address, island, zone
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     values.id,
     values.catalogId,
@@ -150,10 +149,17 @@ function insertBackboneDevice(values: {
     values.ip ?? null,
     values.mac ?? null,
     values.island ?? null,
-    values.zone ?? null,
-    values.upstreamDeviceId ?? null
+    values.zone ?? null
   );
+  if (values.upstreamDeviceId != null) linkUpstream(values.id, values.upstreamDeviceId);
   return values.id;
+}
+
+/** Declara "este equipamento recebe sinal daquele". Várias vezes = multi-WAN. */
+function linkUpstream(deviceId: number, upstreamDeviceId: number) {
+  db.prepare(`
+    INSERT INTO backbone_links (device_id, upstream_device_id) VALUES (?, ?)
+  `).run(deviceId, upstreamDeviceId);
 }
 
 function linkAssignment(
@@ -356,22 +362,20 @@ describe('GET /api/topology', () => {
       name: 'Starlink Standard',
       serial: 'BB-STL-001'
     });
-    db.prepare('UPDATE backbone_devices SET upstream_device_id = ? WHERE id = ?')
-      .run(starlinkId, fixture.backboneDeviceId);
-    db.prepare('UPDATE backbone_devices SET upstream_device_id = ? WHERE id = ?')
-      .run(fixture.retiredBackboneDeviceId, fixture.provisionalBackboneDeviceId);
+    linkUpstream(fixture.backboneDeviceId, starlinkId);
+    linkUpstream(fixture.provisionalBackboneDeviceId, fixture.retiredBackboneDeviceId);
 
     const body = (await app.inject({ method: 'GET', url: '/api/topology' })).json();
 
     expect(body.backbones).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: `backbone:${fixture.backboneDeviceId}`,
-        parentId: `backbone:${starlinkId}`
+        parentIds: [`backbone:${starlinkId}`]
       }),
-      expect.objectContaining({ id: `backbone:${starlinkId}`, parentId: 'root:isp' }),
+      expect.objectContaining({ id: `backbone:${starlinkId}`, parentIds: ['root:isp'] }),
       expect.objectContaining({
         id: `backbone:${fixture.provisionalBackboneDeviceId}`,
-        parentId: 'root:isp'
+        parentIds: ['root:isp']
       })
     ]));
     expect(body.edges).toEqual(expect.arrayContaining([{
@@ -381,6 +385,48 @@ describe('GET /api/topology', () => {
       target: `backbone:${fixture.backboneDeviceId}`,
       relationship: 'defined_link'
     }]));
+  });
+
+  test('keeps every internet uplink at the root and lets them converge on one multi-WAN unit', async () => {
+    const fixture = seedTopology();
+    // Reforço de capacidade: duas Starlink na base da Internet, agregadas no
+    // mesmo router. O nó "Internet" é lógico e soma as origens que existirem.
+    const firstId = insertBackboneDevice({
+      id: 704, catalogId: fixture.backboneCatalogId, name: 'Starlink 1', serial: 'BB-STL-001'
+    });
+    const secondId = insertBackboneDevice({
+      id: 705, catalogId: fixture.backboneCatalogId, name: 'Starlink 2', serial: 'BB-STL-002'
+    });
+    const routerId = insertBackboneDevice({
+      id: 706, catalogId: fixture.backboneCatalogId, name: 'Router multi-WAN', serial: 'BB-RTR-001'
+    });
+    linkUpstream(routerId, firstId);
+    linkUpstream(routerId, secondId);
+
+    const body = (await app.inject({ method: 'GET', url: '/api/topology' })).json();
+
+    expect(body.backbones).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: `backbone:${firstId}`, parentIds: ['root:isp'] }),
+      expect.objectContaining({ id: `backbone:${secondId}`, parentIds: ['root:isp'] }),
+      expect.objectContaining({
+        id: `backbone:${routerId}`,
+        parentIds: [`backbone:${firstId}`, `backbone:${secondId}`]
+      })
+    ]));
+    // Duas arestas convergem no router; ambas as antenas continuam na raiz.
+    expect(body.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: `backbone:${firstId}`, target: `backbone:${routerId}`
+      }),
+      expect.objectContaining({
+        source: `backbone:${secondId}`, target: `backbone:${routerId}`
+      }),
+      expect.objectContaining({ source: 'root:isp', target: `backbone:${firstId}` }),
+      expect.objectContaining({ source: 'root:isp', target: `backbone:${secondId}` })
+    ]));
+    expect(body.edges.filter((edge: { target: string }) => (
+      edge.target === `backbone:${routerId}`
+    ))).toHaveLength(2);
   });
 
   test('keeps every physical device and association out of the lazy initial payload', async () => {
@@ -534,8 +580,7 @@ describe('GET /api/topology/search', () => {
       serial: 'BB-RTR-001',
       upstreamDeviceId: starlinkId
     });
-    db.prepare('UPDATE backbone_devices SET upstream_device_id = ? WHERE id = ?')
-      .run(routerId, backboneDeviceId);
+    linkUpstream(backboneDeviceId, routerId);
 
     const body = (await app.inject({
       method: 'GET',

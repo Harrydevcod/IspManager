@@ -69,7 +69,7 @@ function input(catalogId: number, overrides: Record<string, unknown> = {}) {
     island: ' Santiago ',
     zone: ' Praia ',
     notes: '  Torre principal ',
-    upstreamDeviceId: null,
+    upstreamDeviceIds: [] as number[],
     ...overrides
   };
 }
@@ -206,14 +206,14 @@ describe('backbone management repository', () => {
     const fixture = seed(db);
     const head = createBackbone(db, input(fixture.catalogId, { name: 'Starlink' }), null);
     const fed = createBackbone(db, input(fixture.catalogId, {
-      name: 'AP Espia', serialNumber: 'SN-002', assetTag: 'AT-002', upstreamDeviceId: head.id
+      name: 'AP Espia', serialNumber: 'SN-002', assetTag: 'AT-002', upstreamDeviceIds: [head.id]
     }), null);
     const gone = createBackbone(db, input(fixture.catalogId, {
-      name: 'AP Retirado', serialNumber: 'SN-003', assetTag: 'AT-003', upstreamDeviceId: head.id
+      name: 'AP Retirado', serialNumber: 'SN-003', assetTag: 'AT-003', upstreamDeviceIds: [head.id]
     }), null);
     updateBackbone(db, gone.id, input(fixture.catalogId, {
       name: 'AP Retirado', serialNumber: 'SN-003', assetTag: 'AT-003',
-      status: 'retired', upstreamDeviceId: head.id
+      status: 'retired', upstreamDeviceIds: [head.id]
     }), null);
 
     // Uma unidade de trânsito não tem CPE; sem esta contagem lia-se vazia.
@@ -235,49 +235,119 @@ describe('backbone management repository', () => {
     const head = createBackbone(db, input(fixture.catalogId, { name: 'Starlink' }), null);
     const middle = createBackbone(db, input(fixture.catalogId, {
       name: 'Router Starlink', serialNumber: 'SN-002', assetTag: 'AT-002',
-      upstreamDeviceId: head.id
+      upstreamDeviceIds: [head.id]
     }), null);
     const leaf = createBackbone(db, input(fixture.catalogId, {
       name: 'AP Espia', serialNumber: 'SN-003', assetTag: 'AT-003',
-      upstreamDeviceId: middle.id
+      upstreamDeviceIds: [middle.id]
     }), null);
 
-    expect(middle.upstreamDeviceId).toBe(head.id);
-    expect(middle.upstreamName).toBe('Starlink');
-    expect(head.upstreamDeviceId).toBeNull();
-    expect(head.upstreamName).toBeNull();
+    expect(middle.upstreams).toEqual([{ id: head.id, name: 'Starlink' }]);
+    expect(head.upstreams).toEqual([]);
 
     // Auto-referência, ciclo indirecto e upstream inexistente.
     expect(() => updateBackbone(db!, head.id, input(fixture.catalogId, {
-      name: 'Starlink', upstreamDeviceId: head.id
+      name: 'Starlink', upstreamDeviceIds: [head.id]
     }), null)).toThrow(BackboneValidationError);
     expect(() => updateBackbone(db!, head.id, input(fixture.catalogId, {
-      name: 'Starlink', upstreamDeviceId: leaf.id
+      name: 'Starlink', upstreamDeviceIds: [leaf.id]
     }), null)).toThrow(BackboneValidationError);
     expect(() => createBackbone(db!, input(fixture.catalogId, {
-      name: 'Orfão', serialNumber: 'SN-004', assetTag: 'AT-004', upstreamDeviceId: 9999
+      name: 'Orfão', serialNumber: 'SN-004', assetTag: 'AT-004', upstreamDeviceIds: [9999]
     }), null)).toThrow(BackboneValidationError);
 
     // Retirar uma unidade que ainda alimenta outra fica bloqueado.
     expect(() => updateBackbone(db!, middle.id, input(fixture.catalogId, {
       name: 'Router Starlink', serialNumber: 'SN-002', assetTag: 'AT-002',
-      status: 'retired', upstreamDeviceId: head.id
+      status: 'retired', upstreamDeviceIds: [head.id]
     }), null)).toThrow(BackboneValidationError);
 
     // Reencaminhado o jusante, a unidade já pode ser retirada — e deixa de ser
     // um upstream aceitável.
     updateBackbone(db, leaf.id, input(fixture.catalogId, {
       name: 'AP Espia', serialNumber: 'SN-003', assetTag: 'AT-003',
-      upstreamDeviceId: head.id
+      upstreamDeviceIds: [head.id]
     }), null);
     const retired = updateBackbone(db, middle.id, input(fixture.catalogId, {
       name: 'Router Starlink', serialNumber: 'SN-002', assetTag: 'AT-002',
-      status: 'retired', upstreamDeviceId: head.id
+      status: 'retired', upstreamDeviceIds: [head.id]
     }), null);
     expect(retired.status).toBe('retired');
     expect(() => updateBackbone(db!, leaf.id, input(fixture.catalogId, {
       name: 'AP Espia', serialNumber: 'SN-003', assetTag: 'AT-003',
-      upstreamDeviceId: middle.id
+      upstreamDeviceIds: [middle.id]
     }), null)).toThrow(BackboneValidationError);
+  });
+
+  test('aggregates several internet uplinks on one multi-WAN device', () => {
+    db = freshDb();
+    const fixture = seed(db);
+    // Duas Starlink na base da Internet, agregadas num router de portas WAN.
+    const first = createBackbone(db, input(fixture.catalogId, { name: 'Starlink 1' }), null);
+    const second = createBackbone(db, input(fixture.catalogId, {
+      name: 'Starlink 2', serialNumber: 'SN-002', assetTag: 'AT-002'
+    }), null);
+    const router = createBackbone(db, input(fixture.catalogId, {
+      name: 'Router multi-WAN', serialNumber: 'SN-003', assetTag: 'AT-003',
+      upstreamDeviceIds: [first.id, second.id]
+    }), null);
+
+    expect(first.upstreams).toEqual([]);
+    expect(second.upstreams).toEqual([]);
+    expect(router.upstreams).toEqual([
+      { id: first.id, name: 'Starlink 1' },
+      { id: second.id, name: 'Starlink 2' }
+    ]);
+    expect(getBackbone(db, first.id)?.downstreamCount).toBe(1);
+    expect(getBackbone(db, second.id)?.downstreamCount).toBe(1);
+
+    // Uma terceira antena entra sem apagar as anteriores.
+    const third = createBackbone(db, input(fixture.catalogId, {
+      name: 'Starlink 3', serialNumber: 'SN-004', assetTag: 'AT-004'
+    }), null);
+    const grown = updateBackbone(db, router.id, input(fixture.catalogId, {
+      name: 'Router multi-WAN', serialNumber: 'SN-003', assetTag: 'AT-003',
+      upstreamDeviceIds: [first.id, second.id, third.id]
+    }), null);
+    expect(grown.upstreams.map((unit) => unit.id)).toEqual([first.id, second.id, third.id]);
+
+    // Repetir a mesma alimentação não duplica a ligação.
+    const deduped = updateBackbone(db, router.id, input(fixture.catalogId, {
+      name: 'Router multi-WAN', serialNumber: 'SN-003', assetTag: 'AT-003',
+      upstreamDeviceIds: [first.id, first.id]
+    }), null);
+    expect(deduped.upstreams.map((unit) => unit.id)).toEqual([first.id]);
+  });
+
+  test('refuses a cycle closed through a second path of the graph', () => {
+    db = freshDb();
+    const fixture = seed(db);
+    // first → router → leaf. Alimentar a `first` a partir da `leaf` fecharia o
+    // circuito por um caminho que a subida linear de um só pai não via.
+    const first = createBackbone(db, input(fixture.catalogId, { name: 'Starlink 1' }), null);
+    const second = createBackbone(db, input(fixture.catalogId, {
+      name: 'Starlink 2', serialNumber: 'SN-002', assetTag: 'AT-002'
+    }), null);
+    const router = createBackbone(db, input(fixture.catalogId, {
+      name: 'Router multi-WAN', serialNumber: 'SN-003', assetTag: 'AT-003',
+      upstreamDeviceIds: [first.id, second.id]
+    }), null);
+    const leaf = createBackbone(db, input(fixture.catalogId, {
+      name: 'AP Espia', serialNumber: 'SN-004', assetTag: 'AT-004',
+      upstreamDeviceIds: [router.id]
+    }), null);
+
+    expect(() => updateBackbone(db!, second.id, input(fixture.catalogId, {
+      name: 'Starlink 2', serialNumber: 'SN-002', assetTag: 'AT-002',
+      upstreamDeviceIds: [leaf.id]
+    }), null)).toThrow(BackboneValidationError);
+
+    // A cadeia intacta continua a aceitar uma alimentação legítima.
+    const relinked = updateBackbone(db, leaf.id, input(fixture.catalogId, {
+      name: 'AP Espia', serialNumber: 'SN-004', assetTag: 'AT-004',
+      upstreamDeviceIds: [router.id, first.id]
+    }), null);
+    // A lista vem ordenada por nome: "Router multi-WAN" antes de "Starlink 1".
+    expect(relinked.upstreams.map((unit) => unit.id)).toEqual([router.id, first.id]);
   });
 });

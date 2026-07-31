@@ -53,8 +53,12 @@ export type TopologyBackboneNode = {
   provisional: boolean;
   administrativeState: TopologyAdministrativeState;
   issueCodes: TopologyIssueCode[];
-  /** A unidade a montante, ou a raiz quando recebe directamente da Internet. */
-  parentId: 'root:isp' | `backbone:${number}`;
+  /**
+   * As unidades a montante, ou a raiz quando recebe directamente da Internet.
+   * Mais do que uma significa agregação multi-WAN: o equipamento soma links.
+   * Nunca vazio — sem alimentação declarada, o pai é `root:isp`.
+   */
+  parentIds: ('root:isp' | `backbone:${number}`)[];
   relationship: 'defined_link';
 };
 

@@ -53,7 +53,7 @@ describe('backbone management API', () => {
     const input: BackboneWriteInput = {
       catalogId: 7, name: 'Monte Verde', status: 'active', serialNumber: null,
       assetTag: null, ipAddress: null, macAddress: null, island: null, zone: null,
-      notes: 'Core', upstreamDeviceId: null, expectedUpdatedAt: '2026-07-29T10:00:00.000Z'
+      notes: 'Core', upstreamDeviceIds: [], expectedUpdatedAt: '2026-07-29T10:00:00.000Z'
     };
     const api = createBackboneApi(async (url, init) => {
       requests.push({ url, init });
@@ -80,7 +80,7 @@ describe('backbone management API', () => {
     const input: BackboneWriteInput = {
       catalogId: 7, name: 'Monte Verde', status: 'active', serialNumber: null,
       assetTag: null, ipAddress: null, macAddress: null, island: null, zone: null,
-      notes: null, upstreamDeviceId: null
+      notes: null, upstreamDeviceIds: []
     };
     const api = createBackboneApi(async (url, init) => {
       requests.push({ url, init });

@@ -411,6 +411,7 @@ function TopologyStage({
             onOpenClient={props.onOpenClient}
             onOpenService={props.onOpenService}
             onOpenStock={props.onOpenStock}
+            onDisconnectUpstream={authoring.canManage ? authoring.disconnectUpstream : undefined}
           />
         )}
       </div>

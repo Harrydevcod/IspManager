@@ -20,6 +20,7 @@ import type {
   TopologySearchResult
 } from '../../../shared/topology';
 import { Button, Field, Select } from '../../components';
+import { CV_ISLANDS } from '../../lib/islands';
 import type { TopologyGraphFilters } from './topology-filters';
 import type { TopologyDirection } from './topology-layout';
 
@@ -143,12 +144,18 @@ function AttentionFilter({ filters, onChange }: Omit<FiltersProps, 'onClear'>) {
 function LocationFilters({ filters, onChange }: Omit<FiltersProps, 'onClear'>) {
   return (
     <>
-      <Field
+      {/* Grafias antigas continuam a ser apanhadas: o filtro compara texto
+          normalizado dos dois lados (topology-filters.ts). */}
+      <Select
         label="Ilha"
         value={filters.island ?? ''}
         onChange={(event) => onChange({ ...filters, island: event.target.value || undefined })}
-        placeholder="Ex.: Santiago"
-      />
+      >
+        <option value="">Todas</option>
+        {CV_ISLANDS.map((island) => (
+          <option key={island} value={island}>{island}</option>
+        ))}
+      </Select>
       <Field
         label="Zona"
         value={filters.zone ?? ''}

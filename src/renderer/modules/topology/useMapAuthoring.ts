@@ -3,7 +3,7 @@ import type { BackboneDeviceSummary, BackboneWriteInput } from '../../../shared/
 import { useToast } from '../../components';
 import { useAuth } from '../../lib/auth';
 import { createBackboneApi, type BackboneCatalogOption } from './backbone-api';
-import { connectBackboneUpstream } from './backbone-linking';
+import { connectBackboneUpstream, disconnectBackboneUpstream } from './backbone-linking';
 
 /** O suficiente para o campo "Alimentado por" desta rede sem paginar. */
 const UPSTREAM_PAGE_SIZE = 100;
@@ -93,6 +93,15 @@ export function useMapAuthoring(onMutation: () => void) {
       .catch((connectError) => toast(message(connectError), 'error'));
   }, [api, onMutation, toast]);
 
+  const disconnectUpstream = useCallback((deviceId: number, upstreamDeviceId: number) => {
+    void disconnectBackboneUpstream(api, deviceId, upstreamDeviceId)
+      .then(() => {
+        toast('Ligação removida', 'success');
+        onMutation();
+      })
+      .catch((disconnectError) => toast(message(disconnectError), 'error'));
+  }, [api, onMutation, toast]);
+
   return {
     canManage,
     editorOpen,
@@ -106,6 +115,7 @@ export function useMapAuthoring(onMutation: () => void) {
     closeEditor: () => setEditorOpen(false),
     retryCatalogs: () => { void loadCatalogs(); },
     createDevice,
-    connectNodes
+    connectNodes,
+    disconnectUpstream
   };
 }

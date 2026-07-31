@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { authFetch } from '../../../lib/auth';
+import { isKnownIsland } from '../../../lib/islands';
 import { buildPreview, detectMapping, parseFile } from './parseFile';
 import type {
   BulkResult,
@@ -28,7 +29,7 @@ type UseClientImportReturn = {
   mapping: ColumnMapping;
   preview: PreviewRow[];
   previewSlice: PreviewRow[];
-  counters: { ok: number; conflict: number; error: number; total: number };
+  counters: { ok: number; conflict: number; error: number; unknownIsland: number; total: number };
   missingRequired: ReturnType<typeof getMissingRequired>;
   submitting: boolean;
   downloadingTemplate: boolean;
@@ -132,12 +133,16 @@ export function useClientImport({ open, onCompleted, toast }: UseClientImportArg
     let ok = 0;
     let conflict = 0;
     let error = 0;
+    // Ilhas que nem depois da conversão caem na lista fechada: entram como
+    // vieram, mas o utilizador fica a saber antes de gravar.
+    let unknownIsland = 0;
     for (const row of preview) {
       if (row.errors.length > 0) error += 1;
       else if (row.conflict) conflict += 1;
       else ok += 1;
+      if (row.values.island && !isKnownIsland(row.values.island)) unknownIsland += 1;
     }
-    return { ok, conflict, error, total: preview.length };
+    return { ok, conflict, error, unknownIsland, total: preview.length };
   }, [preview]);
 
   const missingRequired = useMemo(() => getMissingRequired(mapping), [mapping]);

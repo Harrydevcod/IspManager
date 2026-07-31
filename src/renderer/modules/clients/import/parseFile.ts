@@ -2,6 +2,7 @@ import Papa from 'papaparse';
 import readXlsxFile from 'read-excel-file/browser';
 import type { ColumnMapping, ExistingHints, ParsedRow, PreviewRow, TargetField } from './types';
 import { EMPTY_MAPPING, TARGET_HINTS } from './types';
+import { canonicalIsland } from '../../../lib/islands';
 
 /** Auto-detect mapping from column headers to target fields, using TARGET_HINTS regex matrix. */
 export function detectMapping(headers: string[]): ColumnMapping {
@@ -35,6 +36,10 @@ export function buildPreview(
       const value = (raw[source] ?? '').toString().trim();
       if (value) values[target] = value;
     }
+    // A ilha é lista fechada: "Sao Vicente" e "S. Vicente" entram com a grafia
+    // oficial. O que não se reconhece fica como veio — a folha pode estar certa
+    // e a lista incompleta, e recusar a linha por causa disso seria demais.
+    if (values.island) values.island = canonicalIsland(values.island) ?? values.island;
 
     const errors: string[] = [];
     if (!values.fullName) errors.push('Nome em falta');

@@ -8,6 +8,7 @@ import type {
   BackboneListQuery,
   BackbonePage,
   BackboneStatus,
+  BackboneUpstreamRef,
   BackboneWriteInput
 } from '../../shared/backbone';
 
@@ -15,7 +16,7 @@ export class BackboneNotFoundError extends Error {}
 export class BackboneConflictError extends Error {}
 export class BackboneValidationError extends Error {}
 
-type BackboneRow = Omit<BackboneDeviceSummary, 'provisional'> & { provisional: number };
+type BackboneRow = Omit<BackboneDeviceSummary, 'provisional' | 'upstreams'> & { provisional: number };
 type AssignmentRow = BackboneAssignmentSummary;
 const BACKBONE_STATUSES: ReadonlySet<BackboneStatus> = new Set(['active', 'maintenance', 'retired']);
 
@@ -23,17 +24,13 @@ const BACKBONE_COLUMNS = `
   bd.id, bd.catalog_id AS catalogId, ec.brand AS catalogBrand, ec.model AS catalogModel,
   ec.type AS catalogType, bd.name, bd.status, bd.serial_number AS serialNumber,
   bd.asset_tag AS assetTag, bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
-  bd.island, bd.zone, bd.provisional, bd.upstream_device_id AS upstreamDeviceId,
-  up.name AS upstreamName, bd.created_at AS createdAt, bd.updated_at AS updatedAt,
-  (SELECT COUNT(*) FROM backbone_devices down
-   WHERE down.upstream_device_id = bd.id AND down.status <> 'retired')
+  bd.island, bd.zone, bd.provisional,
+  bd.created_at AS createdAt, bd.updated_at AS updatedAt,
+  (SELECT COUNT(*) FROM backbone_links down
+   JOIN backbone_devices dev ON dev.id = down.device_id
+   WHERE down.upstream_device_id = bd.id AND dev.status <> 'retired')
     AS downstreamCount,
   COUNT(active_link.id) AS linkedAssignmentCount`;
-
-const BACKBONE_UPSTREAM_JOIN = 'LEFT JOIN backbone_devices up ON up.id = bd.upstream_device_id';
-
-/** Profundidade máxima ao subir a cadeia — trava dados já em ciclo. */
-const MAX_CHAIN_DEPTH = 64;
 
 const ASSIGNMENT_COLUMNS = `
   a.id, a.catalog_id AS catalogId, ec.brand AS catalogBrand, ec.model AS catalogModel,
@@ -76,8 +73,47 @@ function pageBounds(page: number, pageSize: number, total: number): { page: numb
   };
 }
 
-function backboneFromRow(row: BackboneRow): BackboneDeviceSummary {
-  return { ...row, provisional: row.provisional === 1 };
+function backboneFromRow(row: BackboneRow, upstreams: BackboneUpstreamRef[]): BackboneDeviceSummary {
+  return { ...row, provisional: row.provisional === 1, upstreams };
+}
+
+/**
+ * As alimentações de cada unidade, numa só consulta para a página inteira: um
+ * equipamento multi-WAN tem várias, e um JOIN na leitura principal duplicaria
+ * as linhas do agregado de CPE ligadas.
+ */
+function upstreamsByDevice(
+  db: Database.Database,
+  deviceIds: number[]
+): Map<number, BackboneUpstreamRef[]> {
+  const grouped = new Map<number, BackboneUpstreamRef[]>();
+  if (deviceIds.length === 0) return grouped;
+  const rows = db.prepare(`
+    SELECT link.device_id AS deviceId, up.id, up.name
+    FROM backbone_links link
+    JOIN backbone_devices up ON up.id = link.upstream_device_id
+    WHERE link.device_id IN (${deviceIds.map(() => '?').join(', ')})
+    ORDER BY up.name COLLATE NOCASE, up.id
+  `).all(...deviceIds) as Array<BackboneUpstreamRef & { deviceId: number }>;
+  for (const { deviceId, id, name } of rows) {
+    const current = grouped.get(deviceId);
+    if (current) current.push({ id, name });
+    else grouped.set(deviceId, [{ id, name }]);
+  }
+  return grouped;
+}
+
+function replaceUpstreams(
+  db: Database.Database,
+  deviceId: number,
+  upstreamDeviceIds: number[],
+  actorId: number | null
+): void {
+  db.prepare('DELETE FROM backbone_links WHERE device_id = ?').run(deviceId);
+  const insert = db.prepare(`
+    INSERT INTO backbone_links (device_id, upstream_device_id, created_by) VALUES (?, ?, ?)
+  `);
+  for (const upstreamId of upstreamDeviceIds) insert.run(deviceId, upstreamId, actorId);
 }
 
 function assignmentFromRow(row: AssignmentRow): BackboneAssignmentSummary {
@@ -118,38 +154,57 @@ function ensureCatalog(db: Database.Database, catalogId: number): void {
 }
 
 /**
- * O upstream tem de existir, estar em serviço e não fechar um ciclo: subimos a
- * cadeia a partir do candidato e recusamos se voltarmos à própria unidade.
- * `id` é null na criação — aí só as duas primeiras condições se aplicam.
+ * Cada alimentação tem de existir, estar em serviço e não fechar um ciclo.
+ * Lista vazia é válida: a unidade recebe directamente da Internet.
+ *
+ * O ciclo procura-se com uma travessia em profundidade a partir dos candidatos,
+ * com conjunto de visitados — num grafo há vários caminhos até à raiz, e subir
+ * um só (como fazia a versão de coluna única) deixava passar o ciclo fechado
+ * pelo segundo. O conjunto garante que a travessia termina mesmo com dados já
+ * em ciclo, sem precisar de tecto de profundidade.
+ *
+ * `id` é null na criação — uma unidade acabada de criar ainda não alimenta
+ * ninguém, logo não pode fechar nada.
  */
-function ensureUpstream(
+function ensureUpstreams(
   db: Database.Database,
   id: number | null,
-  upstreamDeviceId: number | null
+  upstreamDeviceIds: number[]
 ): void {
-  if (upstreamDeviceId === null) return;
-  if (id !== null && upstreamDeviceId === id) {
-    throw new BackboneValidationError('Um backbone não pode alimentar-se a si próprio');
+  if (upstreamDeviceIds.length === 0) return;
+  const statusOf = db.prepare('SELECT status FROM backbone_devices WHERE id = ?');
+  for (const upstreamId of upstreamDeviceIds) {
+    if (id !== null && upstreamId === id) {
+      throw new BackboneValidationError('Um backbone não pode alimentar-se a si próprio');
+    }
+    const upstream = statusOf.get(upstreamId) as { status: BackboneStatus } | undefined;
+    if (!upstream) throw new BackboneValidationError('Backbone a montante não encontrado');
+    if (upstream.status === 'retired') {
+      throw new BackboneValidationError('Não é possível ser alimentado por um backbone retirado');
+    }
   }
-  const upstream = db.prepare('SELECT status FROM backbone_devices WHERE id = ?')
-    .get(upstreamDeviceId) as { status: BackboneStatus } | undefined;
-  if (!upstream) throw new BackboneValidationError('Backbone a montante não encontrado');
-  if (upstream.status === 'retired') {
-    throw new BackboneValidationError('Não é possível ser alimentado por um backbone retirado');
-  }
-  const parentOf = db.prepare('SELECT upstream_device_id AS upstream FROM backbone_devices WHERE id = ?');
-  let cursor: number | null = upstreamDeviceId;
-  for (let depth = 0; cursor !== null && depth < MAX_CHAIN_DEPTH; depth += 1) {
-    if (cursor === id) {
+  if (id === null) return;
+  const parentsOf = db.prepare('SELECT upstream_device_id AS upstream FROM backbone_links WHERE device_id = ?');
+  const visited = new Set<number>();
+  const pending = [...upstreamDeviceIds];
+  while (pending.length > 0) {
+    const current = pending.pop() as number;
+    if (current === id) {
       throw new BackboneValidationError('Esta ligação criaria um ciclo na cadeia de backbones');
     }
-    cursor = (parentOf.get(cursor) as { upstream: number | null } | undefined)?.upstream ?? null;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    for (const row of parentsOf.all(current) as Array<{ upstream: number }>) {
+      pending.push(row.upstream);
+    }
   }
 }
 
 function downstreamExists(db: Database.Database, id: number): boolean {
   return Boolean(db.prepare(`
-    SELECT 1 FROM backbone_devices WHERE upstream_device_id = ? AND status <> 'retired'
+    SELECT 1 FROM backbone_links link
+    JOIN backbone_devices dev ON dev.id = link.device_id
+    WHERE link.upstream_device_id = ? AND dev.status <> 'retired'
   `).get(id));
 }
 
@@ -162,14 +217,14 @@ function normalizeInput(input: BackboneWriteInput): Omit<BackboneWriteInput, 'ex
   if (!BACKBONE_STATUSES.has(input.status)) {
     throw new BackboneValidationError('Estado do backbone inválido');
   }
-  const upstreamDeviceId = input.upstreamDeviceId ?? null;
-  if (upstreamDeviceId !== null && (!Number.isInteger(upstreamDeviceId) || upstreamDeviceId <= 0)) {
+  const upstreamDeviceIds = [...new Set(input.upstreamDeviceIds ?? [])];
+  if (upstreamDeviceIds.some((value) => !Number.isInteger(value) || value <= 0)) {
     throw new BackboneValidationError('Backbone a montante inválido');
   }
   return {
     ...input,
     name,
-    upstreamDeviceId,
+    upstreamDeviceIds,
     serialNumber: normalizeOptional(input.serialNumber),
     assetTag: normalizeOptional(input.assetTag),
     ipAddress: normalizeOptional(input.ipAddress),
@@ -210,14 +265,16 @@ export function listBackbones(
     params.push(query.status);
   }
   if (query.upstreamDeviceId !== undefined) {
-    where += ' AND bd.upstream_device_id = ?';
+    where += ` AND EXISTS (
+      SELECT 1 FROM backbone_links link
+      WHERE link.device_id = bd.id AND link.upstream_device_id = ?
+    )`;
     params.push(query.upstreamDeviceId);
   }
   where += backboneSearchClause(normalizedQuery, params);
   const from = `
     FROM backbone_devices bd
     JOIN equipment_catalog ec ON ec.id = bd.catalog_id
-    ${BACKBONE_UPSTREAM_JOIN}
     LEFT JOIN backbone_assignment_links active_link
       ON active_link.backbone_device_id = bd.id AND active_link.ended_at IS NULL`;
   const total = Number((db.prepare(`SELECT COUNT(DISTINCT bd.id) AS count ${from} ${where}`).get(...params) as { count: number }).count);
@@ -228,7 +285,12 @@ export function listBackbones(
     ORDER BY bd.name COLLATE NOCASE, bd.id
     LIMIT ? OFFSET ?
   `).all(...params, bounds.pageSize, (bounds.page - 1) * bounds.pageSize) as BackboneRow[];
-  return { ...bounds, total, items: items.map(backboneFromRow) };
+  const upstreams = upstreamsByDevice(db, items.map((item) => item.id));
+  return {
+    ...bounds,
+    total,
+    items: items.map((item) => backboneFromRow(item, upstreams.get(item.id) ?? []))
+  };
 }
 
 export function listAssignments(
@@ -266,7 +328,6 @@ export function getBackbone(db: Database.Database, id: number): BackboneDeviceDe
     SELECT ${BACKBONE_COLUMNS}, bd.notes
     FROM backbone_devices bd
     JOIN equipment_catalog ec ON ec.id = bd.catalog_id
-    ${BACKBONE_UPSTREAM_JOIN}
     LEFT JOIN backbone_assignment_links active_link
       ON active_link.backbone_device_id = bd.id AND active_link.ended_at IS NULL
     WHERE bd.id = ?
@@ -281,7 +342,8 @@ export function getBackbone(db: Database.Database, id: number): BackboneDeviceDe
   const downstream = listBackbones(db, {
     upstreamDeviceId: id, page: 1, pageSize: 100
   }).items.filter((unit) => unit.status !== 'retired');
-  return { ...backboneFromRow(row), notes: row.notes, assignments, downstream };
+  const upstreams = upstreamsByDevice(db, [id]).get(id) ?? [];
+  return { ...backboneFromRow(row, upstreams), notes: row.notes, assignments, downstream };
 }
 
 export function createBackbone(
@@ -291,19 +353,26 @@ export function createBackbone(
 ): BackboneDeviceDetail {
   const normalized = normalizeInput(input);
   ensureCatalog(db, normalized.catalogId);
-  ensureUpstream(db, null, normalized.upstreamDeviceId);
-  try {
+  ensureUpstreams(db, null, normalized.upstreamDeviceIds);
+  // A unidade e as suas alimentações entram juntas: um backbone gravado sem as
+  // ligações apareceria por instantes pendurado na Internet.
+  const create = db.transaction(() => {
     const result = db.prepare(`
       INSERT INTO backbone_devices (
         catalog_id, name, status, serial_number, asset_tag, ip_address, mac_address,
-        island, zone, notes, created_by, upstream_device_id, provisional
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        island, zone, notes, created_by, provisional
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `).run(
       normalized.catalogId, normalized.name, normalized.status, normalized.serialNumber,
       normalized.assetTag, normalized.ipAddress, normalized.macAddress, normalized.island,
-      normalized.zone, normalized.notes, actorId, normalized.upstreamDeviceId
+      normalized.zone, normalized.notes, actorId
     );
-    const created = getBackbone(db, Number(result.lastInsertRowid));
+    const createdId = Number(result.lastInsertRowid);
+    replaceUpstreams(db, createdId, normalized.upstreamDeviceIds, actorId);
+    return createdId;
+  });
+  try {
+    const created = getBackbone(db, create());
     if (!created) throw new BackboneNotFoundError('Backbone criado não encontrado');
     return created;
   } catch (error) {
@@ -315,7 +384,7 @@ export function updateBackbone(
   db: Database.Database,
   id: number,
   input: BackboneWriteInput,
-  _actorId: number | null
+  actorId: number | null
 ): BackboneDeviceDetail {
   const normalized = normalizeInput(input);
   ensureCatalog(db, normalized.catalogId);
@@ -325,7 +394,7 @@ export function updateBackbone(
     if (normalized.expectedUpdatedAt && normalized.expectedUpdatedAt !== existing.updatedAt) {
       throw new BackboneConflictError('O backbone foi alterado por outra pessoa');
     }
-    ensureUpstream(db, id, normalized.upstreamDeviceId);
+    ensureUpstreams(db, id, normalized.upstreamDeviceIds);
     if (normalized.status === 'retired') {
       const activeLink = db.prepare(`
         SELECT id FROM backbone_assignment_links WHERE backbone_device_id = ? AND ended_at IS NULL
@@ -339,7 +408,7 @@ export function updateBackbone(
       UPDATE backbone_devices SET
         catalog_id = ?, name = ?, status = ?, serial_number = ?, asset_tag = ?,
         ip_address = ?, mac_address = ?, island = ?, zone = ?, notes = ?,
-        upstream_device_id = ?, updated_at = ?
+        updated_at = ?
       WHERE id = ? AND (? IS NULL OR updated_at = ?)
         AND (? <> 'retired' OR NOT EXISTS (
           SELECT 1 FROM backbone_assignment_links
@@ -348,7 +417,7 @@ export function updateBackbone(
     `).run(
       normalized.catalogId, normalized.name, normalized.status, normalized.serialNumber,
       normalized.assetTag, normalized.ipAddress, normalized.macAddress, normalized.island,
-      normalized.zone, normalized.notes, normalized.upstreamDeviceId,
+      normalized.zone, normalized.notes,
       nextUpdatedAt(existing.updatedAt), id,
       normalized.expectedUpdatedAt ?? null, normalized.expectedUpdatedAt ?? null, normalized.status
     );
@@ -359,6 +428,7 @@ export function updateBackbone(
       if (activeLink) throw new BackboneValidationError('Desvincule ou transfira os equipamentos antes de retirar o backbone');
       throw new BackboneConflictError('O backbone foi alterado por outra pessoa');
     }
+    replaceUpstreams(db, id, normalized.upstreamDeviceIds, actorId);
   });
   try {
     update();
