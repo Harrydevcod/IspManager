@@ -150,7 +150,10 @@
   --topology-accent-deep: var(--accent-2);
   --topology-amber: var(--warn);
   display: grid;
-  grid-template-rows: auto auto minmax(34rem, 1fr);
+  /* A linha do mapa fica-se pelo que sobra. Um piso rígido aqui, dentro de uma
+     altura fixa e com overflow hidden, empurrava o fundo do canvas para fora da
+     caixa numa janela baixa — e cortava a legenda a meio. */
+  grid-template-rows: auto auto minmax(0, 1fr);
   min-width: 0;
   height: min(48rem, calc(100vh - 8.5rem));
   min-height: 40rem;
@@ -373,6 +376,7 @@
   min-width: 2.45rem;
   min-height: 2.45rem;
   border: 1px solid var(--topology-line);
+  border-radius: var(--r1);
   background: var(--topology-bg);
   color: var(--topology-muted);
   cursor: pointer;
@@ -461,10 +465,14 @@
   line-height: 1.4;
 }
 
-.topology-canvas-tools { display: flex; }
-.topology-canvas-tools button { border-left-width: 0; }
-.topology-canvas-tools button:first-child { border-left-width: 1px; }
-.topology-canvas-tools > span { width: 0.35rem; }
+/* Botões separados, não um bloco segmentado: com seis controlos a laje encostada
+   lia-se como uma peça só. Apertado dentro do grupo, folgado entre grupos. */
+.topology-canvas-tools {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.topology-canvas-tools > span { width: var(--space-2); }
 
 .topology-canvas-tools button:hover,
 .topology-canvas-tools button:focus-visible,

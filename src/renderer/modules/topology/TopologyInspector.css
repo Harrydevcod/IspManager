@@ -355,11 +355,15 @@
 
 @container (max-width: 52rem) {
   .topology-minimap { display: none; }
+
+  /* Sem minimapa não há nada a reservar à direita. */
+  .topology-legend { max-width: min(33rem, calc(100% - 2rem)); }
 }
 
 @container (max-width: 46rem) {
   .topology-module {
-    grid-template-rows: auto auto minmax(30rem, 1fr);
+    /* Mesmo motivo da regra base: o piso rígido transbordava a caixa. */
+    grid-template-rows: auto auto minmax(0, 1fr);
     width: 100%;
     max-width: 100%;
     height: calc(100dvh - 6.5rem);

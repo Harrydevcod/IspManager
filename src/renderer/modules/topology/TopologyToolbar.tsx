@@ -1,4 +1,6 @@
 import {
+  ChevronsDownUp,
+  ChevronsUpDown,
   Eye,
   EyeOff,
   Filter,
@@ -13,6 +15,7 @@ import {
   Search,
   X
 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import type {
   TopologySearchResult
 } from '../../../shared/topology';
@@ -30,6 +33,8 @@ type TopologyToolbarProps = {
   labelsVisible: boolean;
   legendVisible: boolean;
   inspectorVisible: boolean;
+  allBranchesExpanded: boolean;
+  hasBackbones: boolean;
   direction: TopologyDirection;
   canManage: boolean;
   onCreateDevice: () => void;
@@ -41,6 +46,7 @@ type TopologyToolbarProps = {
   onToggleLegend: () => void;
   onToggleInspector: () => void;
   onToggleDirection: () => void;
+  onToggleAllBranches: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
@@ -175,16 +181,44 @@ function Filters({ filters, onChange, onClear }: FiltersProps) {
   );
 }
 
+/**
+ * O rótulo entra uma vez e sai nos dois sítios: `aria-label` para quem ouve,
+ * `title` para quem passa o rato. Duas strings à mão acabariam por divergir.
+ */
+function ToolButton({ label, pressed, disabled, onClick, children }: {
+  label: string;
+  pressed?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Button
+      variant="icon"
+      aria-label={label}
+      title={label}
+      aria-pressed={pressed}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {children}
+    </Button>
+  );
+}
+
 function CanvasTools(props: Pick<
   TopologyToolbarProps,
   | 'labelsVisible'
   | 'legendVisible'
   | 'inspectorVisible'
+  | 'allBranchesExpanded'
+  | 'hasBackbones'
   | 'direction'
   | 'onToggleLabels'
   | 'onToggleLegend'
   | 'onToggleInspector'
   | 'onToggleDirection'
+  | 'onToggleAllBranches'
   | 'onZoomIn'
   | 'onZoomOut'
   | 'onFit'
@@ -192,43 +226,56 @@ function CanvasTools(props: Pick<
   const vertical = props.direction === 'TB';
   return (
     <div className="topology-canvas-tools" role="toolbar" aria-label="Controlos do mapa">
-      <Button variant="icon" onClick={props.onFit} aria-label="Ajustar mapa"><Focus size={15} /></Button>
-      <Button variant="icon" onClick={props.onZoomOut} aria-label="Reduzir zoom"><Minus size={15} /></Button>
-      <Button variant="icon" onClick={props.onZoomIn} aria-label="Aumentar zoom"><Plus size={15} /></Button>
+      <ToolButton label="Ajustar o mapa à vista" onClick={props.onFit}>
+        <Focus size={15} />
+      </ToolButton>
+      <ToolButton label="Reduzir zoom" onClick={props.onZoomOut}>
+        <Minus size={15} />
+      </ToolButton>
+      <ToolButton label="Aumentar zoom" onClick={props.onZoomIn}>
+        <Plus size={15} />
+      </ToolButton>
       <span aria-hidden />
-      <Button
-        variant="icon"
-        aria-pressed={props.labelsVisible}
+      {/* O rótulo diz o que o clique vai fazer; o estado fica no aria-pressed. */}
+      <ToolButton
+        label={props.allBranchesExpanded ? 'Fechar todos os ramos' : 'Abrir todos os ramos'}
+        pressed={props.allBranchesExpanded}
+        disabled={!props.hasBackbones}
+        onClick={props.onToggleAllBranches}
+      >
+        {props.allBranchesExpanded ? <ChevronsDownUp size={15} /> : <ChevronsUpDown size={15} />}
+      </ToolButton>
+      <ToolButton
+        label={props.labelsVisible
+          ? 'Ocultar as etiquetas das ligações'
+          : 'Mostrar as etiquetas das ligações'}
+        pressed={props.labelsVisible}
         onClick={props.onToggleLabels}
-        aria-label="Alternar etiquetas das ligações"
       >
         {props.labelsVisible ? <Eye size={15} /> : <EyeOff size={15} />}
-      </Button>
-      <Button
-        variant="icon"
-        aria-pressed={props.legendVisible}
+      </ToolButton>
+      <ToolButton
+        label={props.legendVisible ? 'Ocultar a legenda' : 'Mostrar a legenda'}
+        pressed={props.legendVisible}
         onClick={props.onToggleLegend}
-        aria-label="Alternar legenda"
       >
         <ListTree size={15} />
-      </Button>
-      <Button
-        variant="icon"
-        aria-pressed={props.inspectorVisible}
+      </ToolButton>
+      <ToolButton
+        label={props.inspectorVisible ? 'Ocultar o inspetor' : 'Mostrar o inspetor'}
+        pressed={props.inspectorVisible}
         onClick={props.onToggleInspector}
-        aria-label="Alternar inspetor"
       >
         <PanelRight size={15} />
-      </Button>
-      <Button
-        variant="icon"
-        onClick={props.onToggleDirection}
-        aria-label={vertical
+      </ToolButton>
+      <ToolButton
+        label={vertical
           ? 'Mudar para orientação horizontal'
           : 'Mudar para orientação vertical'}
+        onClick={props.onToggleDirection}
       >
         {vertical ? <MoveHorizontal size={15} /> : <MoveVertical size={15} />}
-      </Button>
+      </ToolButton>
     </div>
   );
 }
