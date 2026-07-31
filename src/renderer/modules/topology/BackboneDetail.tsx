@@ -198,9 +198,15 @@ export function BackboneDetail({
                 key={unit.id}
                 onClick={() => onSelectDownstream(unit.id)}
               >
-                <span>
-                  <strong>{unit.name}</strong>
-                  <small>{[unit.catalogBrand, unit.catalogModel].filter(Boolean).join(' ')}</small>
+                <span className="backbone-downstream-main">
+                  <span>
+                    <strong>{unit.name}</strong>
+                    <small>{unit.serialNumber || unit.assetTag || 'Identidade não informada'}</small>
+                  </span>
+                  <span>
+                    <strong>{[unit.catalogBrand, unit.catalogModel].filter(Boolean).join(' ')}</strong>
+                    <small>{[unit.island, unit.zone].filter(Boolean).join(' · ') || 'Localização não informada'}</small>
+                  </span>
                 </span>
                 <span className="backbone-downstream-state">
                   <Badge tone={unit.status === 'active' ? 'success' : 'neutral'}>
