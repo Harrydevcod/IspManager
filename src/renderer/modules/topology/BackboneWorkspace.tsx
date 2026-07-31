@@ -20,6 +20,8 @@ import { useBackboneWorkspace } from './useBackboneWorkspace';
 import './BackboneWorkspace.css';
 
 export type BackboneWorkspaceProps = {
+  /** Sobe quando o mapa regista ou liga uma unidade: refresca sem remontar. */
+  revision?: number;
   onMutation: () => void;
   onViewTopology: (backboneDeviceId: number) => void;
 };
@@ -30,7 +32,11 @@ type MappingState = {
   currentBackbone: BackboneDeviceDetail;
 } | null;
 
-export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorkspaceProps) {
+export function BackboneWorkspace({
+  revision = 0,
+  onMutation,
+  onViewTopology
+}: BackboneWorkspaceProps) {
   const auth = useAuth();
   const canManage = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
   const api = useMemo(() => createBackboneApi(), []);
@@ -52,6 +58,19 @@ export function BackboneWorkspace({ onMutation, onViewTopology }: BackboneWorksp
 
   const selected = workspace.selected;
   const selectedId = workspace.selectedId;
+  // O `refresh` muda de identidade a cada mutação; guardá-lo numa ref mantém o
+  // efeito preso apenas à revisão, senão refrescava duas vezes por mutação.
+  const refreshRef = useRef(workspace.refresh);
+  useEffect(() => { refreshRef.current = workspace.refresh; }, [workspace.refresh]);
+
+  const firstRevision = useRef(true);
+  useEffect(() => {
+    if (firstRevision.current) {
+      firstRevision.current = false;
+      return;
+    }
+    void refreshRef.current();
+  }, [revision]);
 
   useEffect(() => {
     const element = workspaceRef.current;

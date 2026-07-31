@@ -9,6 +9,7 @@ import {
   MoveVertical,
   PanelRight,
   Plus,
+  RadioTower,
   Search,
   X
 } from 'lucide-react';
@@ -30,6 +31,8 @@ type TopologyToolbarProps = {
   legendVisible: boolean;
   inspectorVisible: boolean;
   direction: TopologyDirection;
+  canManage: boolean;
+  onCreateDevice: () => void;
   onQueryChange: (value: string) => void;
   onResultSelect: (result: TopologySearchResult) => void;
   onFiltersChange: (filters: TopologyGraphFilters) => void;
@@ -259,6 +262,17 @@ export function TopologyToolbar(props: TopologyToolbarProps) {
         onChange={props.onFiltersChange}
         onClear={props.onClearFilters}
       />
+      {props.canManage && (
+        <Button
+          variant="secondary"
+          size="sm"
+          className="topology-create-device"
+          leadingIcon={<RadioTower size={14} aria-hidden />}
+          onClick={props.onCreateDevice}
+        >
+          Novo equipamento
+        </Button>
+      )}
       <CanvasTools {...props} />
     </div>
   );

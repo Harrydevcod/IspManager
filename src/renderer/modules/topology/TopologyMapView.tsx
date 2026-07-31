@@ -4,13 +4,14 @@ import './TopologyCanvas.css';
 import './TopologyInspector.css';
 
 import { AlertTriangle, Network, RotateCw } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   TopologyBackboneBranch,
   TopologyNode,
   TopologySnapshot
 } from '../../../shared/topology';
 import { Button } from '../../components';
+import { BackboneEditorDialog } from './BackboneDialogs';
 import { TopologyCanvas, type TopologyCanvasHandle } from './TopologyCanvas';
 import { TopologyInspector } from './TopologyInspector';
 import type { TopologyCanvasNode } from './TopologyNodes';
@@ -24,6 +25,7 @@ import {
   type TopologyGraph
 } from './topology-graph';
 import { layoutTopologyGraph, type TopologyDirection } from './topology-layout';
+import { useMapAuthoring } from './useMapAuthoring';
 import { useTopologyWorkspace } from './useTopologyWorkspace';
 import type { TopologyModuleProps } from './TopologyModule';
 
@@ -32,7 +34,10 @@ export type TopologyMapViewProps = TopologyModuleProps & {
   active: boolean;
   focusBackboneDeviceId: number | null;
   onFocusHandled: () => void;
+  onMutation: () => void;
 };
+
+type MapAuthoring = ReturnType<typeof useMapAuthoring>;
 
 type NodeDecorators = Pick<
   ReturnType<typeof useTopologyWorkspace>,
@@ -305,6 +310,7 @@ function TopologyControls({
   setLegendVisible,
   setInspectorVisible,
   setDirection,
+  authoring,
   canvasRef
 }: {
   workspace: ReturnType<typeof useTopologyWorkspace>;
@@ -316,6 +322,7 @@ function TopologyControls({
   setLegendVisible: React.Dispatch<React.SetStateAction<boolean>>;
   setInspectorVisible: React.Dispatch<React.SetStateAction<boolean>>;
   setDirection: React.Dispatch<React.SetStateAction<TopologyDirection>>;
+  authoring: MapAuthoring;
   canvasRef: React.RefObject<TopologyCanvasHandle | null>;
 }) {
   return (
@@ -328,6 +335,8 @@ function TopologyControls({
         legendVisible={legendVisible}
         inspectorVisible={inspectorVisible}
         direction={direction}
+        canManage={authoring.canManage}
+        onCreateDevice={authoring.openEditor}
         onQueryChange={workspace.setQuery}
         onResultSelect={(result) => { void workspace.selectSearchResult(result); }}
         onFiltersChange={workspace.setFilters}
@@ -352,6 +361,7 @@ function TopologyStage({
   legendVisible,
   inspectorVisible,
   onCloseInspector,
+  authoring,
   canvasRef
 }: {
   props: TopologyModuleProps;
@@ -362,6 +372,7 @@ function TopologyStage({
   legendVisible: boolean;
   inspectorVisible: boolean;
   onCloseInspector: () => void;
+  authoring: MapAuthoring;
   canvasRef: React.RefObject<TopologyCanvasHandle | null>;
 }) {
   const filteredEmpty = nodes.length === 0
@@ -381,6 +392,8 @@ function TopologyStage({
             nodes={nodes}
             edges={edges}
             legendVisible={legendVisible}
+            connectable={authoring.canManage}
+            onConnectNodes={authoring.connectNodes}
           />
           {(snapshot.backbones.length === 0 || filteredEmpty) && (
             <EmptyCanvas filtered={hasActiveFilters(workspace.filters)} />
@@ -405,6 +418,14 @@ function TopologyMapWorkspace(
   props: Omit<TopologyMapViewProps, 'revision'>
 ) {
   const workspace = useTopologyWorkspace(props.api);
+  // Registar ou ligar recarrega o mapa no sítio — remontar fecharia os ramos
+  // abertos — e avisa o módulo para refrescar a lista da aba Backbone.
+  const { onMutation } = props;
+  const { loadSnapshot } = workspace;
+  const authoring = useMapAuthoring(useCallback(() => {
+    void loadSnapshot(true);
+    onMutation();
+  }, [loadSnapshot, onMutation]));
   const canvasRef = useRef<TopologyCanvasHandle>(null);
   const [labelsVisible, setLabelsVisible] = useState(false);
   const [legendVisible, setLegendVisible] = useState(true);
@@ -454,6 +475,7 @@ function TopologyMapWorkspace(
         setLegendVisible={setLegendVisible}
         setInspectorVisible={setInspectorVisible}
         setDirection={setDirection}
+        authoring={authoring}
         canvasRef={canvasRef}
       />
       <TopologyStage
@@ -468,8 +490,24 @@ function TopologyMapWorkspace(
           setInspectorVisible(false);
           workspace.setSelectedNode(null);
         }}
+        authoring={authoring}
         canvasRef={canvasRef}
       />
+      {authoring.canManage && (
+        <BackboneEditorDialog
+          open={authoring.editorOpen}
+          backbone={null}
+          pending={authoring.pending}
+          error={authoring.error}
+          catalogs={authoring.catalogs}
+          catalogLoading={authoring.catalogLoading}
+          catalogError={authoring.catalogError}
+          upstreamOptions={authoring.upstreamOptions}
+          onCatalogRetry={authoring.retryCatalogs}
+          onClose={authoring.closeEditor}
+          onSubmit={authoring.createDevice}
+        />
+      )}
     </section>
   );
 }

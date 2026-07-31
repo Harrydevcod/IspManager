@@ -20,6 +20,17 @@
   background: var(--topology-accent);
 }
 
+/* Sem afordância visível ninguém descobre que se arrasta daqui para ligar. */
+.topology-canvas .react-flow__handle.connectable {
+  width: 0.6rem;
+  height: 0.6rem;
+  cursor: crosshair;
+}
+
+.topology-canvas .react-flow__handle.connectable:hover {
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--topology-accent) 28%, transparent);
+}
+
 .topology-canvas .react-flow__edge-path { stroke-linecap: round; }
 
 .topology-canvas .react-flow__edge-textbg {

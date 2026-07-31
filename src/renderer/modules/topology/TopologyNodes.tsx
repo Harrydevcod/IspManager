@@ -185,19 +185,24 @@ export function TopologyNodeContent({
   );
 }
 
-/** As âncoras vêm do layout: viram com a orientação do mapa. */
-function NodeHandles({ kind, source, target }: {
+/**
+ * As âncoras vêm do layout: viram com a orientação do mapa. Só a espinha dorsal
+ * aceita o gesto de ligar — as CPE dependem de uma atribuição de serviço.
+ */
+function NodeHandles({ kind, source, target, connectable }: {
   kind: TopologyNode['kind'];
   source: Position;
   target: Position;
+  connectable: boolean;
 }) {
+  const spine = connectable && kind !== 'client-device';
   return (
     <>
       {kind !== 'logical-root' && (
-        <Handle type="target" position={target} isConnectable={false} />
+        <Handle type="target" position={target} isConnectable={spine} />
       )}
       {kind !== 'client-device' && (
-        <Handle type="source" position={source} isConnectable={false} />
+        <Handle type="source" position={source} isConnectable={spine} />
       )}
     </>
   );
@@ -206,6 +211,7 @@ function NodeHandles({ kind, source, target }: {
 function TopologyNodeRenderer({
   data,
   selected,
+  isConnectable,
   sourcePosition,
   targetPosition
 }: NodeProps<TopologyCanvasNode>) {
@@ -215,6 +221,7 @@ function TopologyNodeRenderer({
         kind={data.topology.kind}
         source={sourcePosition ?? Position.Right}
         target={targetPosition ?? Position.Left}
+        connectable={isConnectable}
       />
       <TopologyNodeContent
         node={data.topology}
