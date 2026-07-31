@@ -431,18 +431,19 @@ describe('TopologyModule branch interaction', () => {
   test('collapses the inspector to widen the map and reopens it on the next selection', async () => {
     const container = await mountMap();
     const inspector = () => container.querySelector('[aria-label="Inspetor da topologia"]');
-    const toggle = () => button(container, 'Alternar inspetor');
+    // O rótulo diz o próximo passo, por isso muda com o estado.
+    const toggle = (label: string) => button(container, label);
     expect(inspector()).not.toBeNull();
 
-    await act(async () => { toggle().click(); });
+    await act(async () => { toggle('Ocultar o inspetor').click(); });
     expect(inspector()).toBeNull();
-    expect(toggle().getAttribute('aria-pressed')).toBe('false');
+    expect(toggle('Mostrar o inspetor').getAttribute('aria-pressed')).toBe('false');
 
     await act(async () => {
       button(container, 'Selecionar Ubiquiti Rocket Prism').click();
     });
     expect(inspector()).not.toBeNull();
-    expect(toggle().getAttribute('aria-pressed')).toBe('true');
+    expect(toggle('Ocultar o inspetor').getAttribute('aria-pressed')).toBe('true');
 
     // O ✕ do cabeçalho fecha o painel e larga a seleção.
     await act(async () => { button(container, 'Fechar inspetor').click(); });
@@ -647,10 +648,10 @@ test('describes rendered relationships as defined links', async () => {
   expect(container.textContent).not.toContain('Linhagem de inventário');
 
   await act(async () => {
-    button(container, 'Alternar etiquetas das ligações').click();
+    button(container, 'Mostrar as etiquetas das ligações').click();
   });
 
-  expect(button(container, 'Alternar etiquetas das ligações').getAttribute('aria-pressed'))
+  expect(button(container, 'Ocultar as etiquetas das ligações').getAttribute('aria-pressed'))
     .toBe('true');
 });
 

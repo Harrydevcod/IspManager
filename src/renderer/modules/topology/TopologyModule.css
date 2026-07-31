@@ -373,6 +373,7 @@
   min-width: 2.45rem;
   min-height: 2.45rem;
   border: 1px solid var(--topology-line);
+  border-radius: var(--r1);
   background: var(--topology-bg);
   color: var(--topology-muted);
   cursor: pointer;
@@ -461,10 +462,14 @@
   line-height: 1.4;
 }
 
-.topology-canvas-tools { display: flex; }
-.topology-canvas-tools button { border-left-width: 0; }
-.topology-canvas-tools button:first-child { border-left-width: 1px; }
-.topology-canvas-tools > span { width: 0.35rem; }
+/* Botões separados, não um bloco segmentado: com seis controlos a laje encostada
+   lia-se como uma peça só. Apertado dentro do grupo, folgado entre grupos. */
+.topology-canvas-tools {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.topology-canvas-tools > span { width: var(--space-2); }
 
 .topology-canvas-tools button:hover,
 .topology-canvas-tools button:focus-visible,
