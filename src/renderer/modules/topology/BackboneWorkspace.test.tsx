@@ -29,6 +29,7 @@ const backbone: BackboneDeviceSummary = {
   provisional: false,
   upstreamDeviceId: null,
   upstreamName: null,
+  downstreamCount: 0,
   linkedAssignmentCount: 1,
   createdAt: '2026-07-29T10:00:00.000Z',
   updatedAt: '2026-07-29T10:00:00.000Z'
@@ -96,7 +97,8 @@ const cancelledServiceAssignment: BackboneAssignmentSummary = {
 const detail: BackboneDeviceDetail = {
   ...backbone,
   notes: 'POP principal',
-  assignments: [linkedAssignment]
+  assignments: [linkedAssignment],
+  downstream: []
 };
 
 function page<T>(items: T[], overrides: Partial<BackbonePage<T>> = {}): BackbonePage<T> {
@@ -309,6 +311,47 @@ describe('Backbone workspace', () => {
     expect(button('Ligar equipamentos')).toBeUndefined();
     expect(button('Transferir')).toBeUndefined();
     expect(button('Desligar')).toBeUndefined();
+  });
+
+  test('shows what a transit unit feeds instead of reading as empty', async () => {
+    const fedUnit: BackboneDeviceSummary = {
+      ...backbone,
+      id: 12,
+      name: 'CPE710 Espia',
+      serialNumber: 'BB-12',
+      linkedAssignmentCount: 6
+    };
+    const starlink: BackboneDeviceSummary = {
+      ...backbone,
+      name: 'Starlink',
+      linkedAssignmentCount: 0,
+      downstreamCount: 1
+    };
+    const getBackbone = vi.fn(async (id: number) => ({
+      ...detail,
+      id,
+      name: 'Starlink',
+      linkedAssignmentCount: 0,
+      downstreamCount: 1,
+      assignments: [],
+      downstream: [fedUnit]
+    }));
+    const container = await renderWorkspace('admin', {
+      listBackbones: vi.fn(async () => page([starlink])),
+      getBackbone,
+      listAssignments: vi.fn(async (query) => page(query.mapping === 'linked' ? [] : [unlinkedAssignment]))
+    });
+
+    expect(container.textContent).toContain('1 a jusante');
+
+    await click(container.querySelector('[role="option"]'));
+    await waitFor(() => container.textContent?.includes('Alimenta') ?? false);
+
+    expect(container.textContent).toContain('CPE710 Espia');
+    expect(container.textContent).toContain('As CPE dos clientes penduram nas unidades a jusante.');
+
+    await click(container.querySelector('.backbone-downstream-row'));
+    await waitFor(() => getBackbone.mock.calls.some(([id]) => id === 12));
   });
 
   test('keeps retired backbone facts visible without offering active-topology navigation', async () => {

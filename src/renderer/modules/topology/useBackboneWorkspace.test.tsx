@@ -16,7 +16,8 @@ const backbone: BackboneDeviceSummary = {
   id: 10, catalogId: 3, catalogBrand: 'Ubiquiti', catalogModel: 'Rocket', catalogType: 'radio',
   name: 'Monte Verde', status: 'active', serialNumber: 'BB-10', assetTag: null,
   ipAddress: '10.0.0.10', macAddress: null, island: 'São Vicente', zone: null,
-  provisional: false, upstreamDeviceId: null, upstreamName: null, linkedAssignmentCount: 1,
+  provisional: false, upstreamDeviceId: null, upstreamName: null,
+  downstreamCount: 0, linkedAssignmentCount: 1,
   createdAt: '2026-07-29T10:00:00.000Z', updatedAt: '2026-07-29T10:00:00.000Z'
 };
 
@@ -31,7 +32,7 @@ function page<T>(items: T[]): BackbonePage<T> {
   return { page: 1, pageSize: 25, total: items.length, totalPages: 1, items };
 }
 
-const detail: BackboneDeviceDetail = { ...backbone, notes: null, assignments: [] };
+const detail: BackboneDeviceDetail = { ...backbone, notes: null, assignments: [], downstream: [] };
 const writeInput = {
   catalogId: 3, name: 'Monte Verde', status: 'active' as const, serialNumber: null,
   assetTag: null, ipAddress: null, macAddress: null, island: null, zone: null, notes: null,

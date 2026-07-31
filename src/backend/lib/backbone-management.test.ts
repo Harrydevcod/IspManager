@@ -201,6 +201,34 @@ describe('backbone management repository', () => {
     `).get(fixture.activeAssignmentId)).toEqual({ count: 1 });
   });
 
+  test('counts and lists the units a backbone feeds, ignoring retired ones', () => {
+    db = freshDb();
+    const fixture = seed(db);
+    const head = createBackbone(db, input(fixture.catalogId, { name: 'Starlink' }), null);
+    const fed = createBackbone(db, input(fixture.catalogId, {
+      name: 'AP Espia', serialNumber: 'SN-002', assetTag: 'AT-002', upstreamDeviceId: head.id
+    }), null);
+    const gone = createBackbone(db, input(fixture.catalogId, {
+      name: 'AP Retirado', serialNumber: 'SN-003', assetTag: 'AT-003', upstreamDeviceId: head.id
+    }), null);
+    updateBackbone(db, gone.id, input(fixture.catalogId, {
+      name: 'AP Retirado', serialNumber: 'SN-003', assetTag: 'AT-003',
+      status: 'retired', upstreamDeviceId: head.id
+    }), null);
+
+    // Uma unidade de trânsito não tem CPE; sem esta contagem lia-se vazia.
+    const detail = getBackbone(db, head.id);
+    expect(detail?.linkedAssignmentCount).toBe(0);
+    expect(detail?.downstreamCount).toBe(1);
+    expect(detail?.downstream.map((unit) => unit.id)).toEqual([fed.id]);
+    expect(getBackbone(db, fed.id)?.downstreamCount).toBe(0);
+
+    // O filtro cru devolve tudo o que aponta para a cabeça; é o detalhe que
+    // decide não mostrar as retiradas.
+    expect(listBackbones(db, { upstreamDeviceId: head.id, page: 1, pageSize: 25 })
+      .items.map((unit) => unit.name)).toEqual(['AP Espia', 'AP Retirado']);
+  });
+
   test('records the upstream chain and refuses the links that would break it', () => {
     db = freshDb();
     const fixture = seed(db);

@@ -292,6 +292,7 @@ export function BackboneWorkspace({
           onTransfer={(assignment) => openMapping('transfer', assignment.id)}
           onUnlink={openUnlink}
           onViewTopology={onViewTopology}
+          onSelectDownstream={selectBackbone}
           onLinkedQueryChange={(query) => {
             workspace.setLinkedPage(1);
             workspace.setLinkedQuery(query);

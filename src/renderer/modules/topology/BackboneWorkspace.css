@@ -506,6 +506,57 @@
   grid-column: 1 / -1;
 }
 
+.backbone-downstream {
+  padding: clamp(1.25rem, 3vw, 2.4rem);
+  padding-bottom: 0;
+}
+
+.backbone-downstream-list {
+  border-top: 1px solid var(--backbone-rule);
+}
+
+.backbone-downstream-row.btn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-4);
+  width: 100%;
+  min-height: 0;
+  padding: var(--space-3) 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--backbone-rule);
+  text-align: left;
+}
+
+.backbone-downstream-row > span {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.backbone-downstream-row strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backbone-downstream-row small {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+.backbone-downstream-state {
+  justify-items: end;
+}
+
+.backbone-downstream-state .badge {
+  min-height: 1.35rem;
+  font-size: var(--fs-xs);
+}
+
 .backbone-links {
   padding: clamp(1.25rem, 3vw, 2.4rem);
 }

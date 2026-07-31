@@ -29,6 +29,7 @@ const assignmentParamsSchema = z.object({ id: idSchema });
 const backboneListSchema = z.object({
   query: z.string().trim().max(120).optional(),
   status: z.enum(['active', 'maintenance', 'retired']).optional(),
+  upstreamDeviceId: idSchema.optional(),
   page: pageSchema,
   pageSize: pageSizeSchema
 }).strict();

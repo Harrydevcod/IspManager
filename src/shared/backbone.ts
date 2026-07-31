@@ -18,6 +18,8 @@ export type BackboneDeviceSummary = {
   /** De quem esta unidade recebe sinal. `null` = alimentada pela Internet. */
   upstreamDeviceId: number | null;
   upstreamName: string | null;
+  /** Unidades não-retiradas que esta alimenta. */
+  downstreamCount: number;
   linkedAssignmentCount: number;
   createdAt: string;
   updatedAt: string;
@@ -47,6 +49,7 @@ export type BackboneAssignmentSummary = {
 export type BackboneDeviceDetail = BackboneDeviceSummary & {
   notes: string | null;
   assignments: BackboneAssignmentSummary[];
+  downstream: BackboneDeviceSummary[];
 };
 
 export type BackbonePage<T> = {
@@ -80,6 +83,8 @@ export type AssignmentBackboneInput = {
 export type BackboneListQuery = {
   query?: string;
   status?: BackboneStatus;
+  /** Só as unidades alimentadas por esta. */
+  upstreamDeviceId?: number;
   page: number;
   pageSize: number;
 };

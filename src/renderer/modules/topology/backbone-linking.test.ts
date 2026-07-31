@@ -24,11 +24,13 @@ const detail: BackboneDeviceDetail = {
   provisional: false,
   upstreamDeviceId: null,
   upstreamName: null,
+  downstreamCount: 0,
   linkedAssignmentCount: 2,
   createdAt: '2026-07-29T10:00:00.000Z',
   updatedAt: '2026-07-30T10:00:00.000Z',
   notes: 'Torre norte',
-  assignments: []
+  assignments: [],
+  downstream: []
 };
 
 function api(overrides: Partial<BackboneApi> = {}): BackboneApi {

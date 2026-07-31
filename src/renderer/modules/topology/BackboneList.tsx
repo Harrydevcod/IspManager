@@ -149,6 +149,10 @@ export function BackboneList({
                     {backbone.linkedAssignmentCount}
                     {backbone.linkedAssignmentCount === 1 ? ' ligado' : ' ligados'}
                   </span>
+                  {/* Sem isto, uma unidade que só alimenta outras lê-se vazia. */}
+                  {backbone.downstreamCount > 0 && (
+                    <span>{backbone.downstreamCount} a jusante</span>
+                  )}
                 </span>
               </Button>
             ))}

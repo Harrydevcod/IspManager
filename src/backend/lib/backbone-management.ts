@@ -25,6 +25,9 @@ const BACKBONE_COLUMNS = `
   bd.asset_tag AS assetTag, bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
   bd.island, bd.zone, bd.provisional, bd.upstream_device_id AS upstreamDeviceId,
   up.name AS upstreamName, bd.created_at AS createdAt, bd.updated_at AS updatedAt,
+  (SELECT COUNT(*) FROM backbone_devices down
+   WHERE down.upstream_device_id = bd.id AND down.status <> 'retired')
+    AS downstreamCount,
   COUNT(active_link.id) AS linkedAssignmentCount`;
 
 const BACKBONE_UPSTREAM_JOIN = 'LEFT JOIN backbone_devices up ON up.id = bd.upstream_device_id';
@@ -206,6 +209,10 @@ export function listBackbones(
     where += ' AND bd.status = ?';
     params.push(query.status);
   }
+  if (query.upstreamDeviceId !== undefined) {
+    where += ' AND bd.upstream_device_id = ?';
+    params.push(query.upstreamDeviceId);
+  }
   where += backboneSearchClause(normalizedQuery, params);
   const from = `
     FROM backbone_devices bd
@@ -269,7 +276,12 @@ export function getBackbone(db: Database.Database, id: number): BackboneDeviceDe
   const assignments = listAssignments(db, {
     mapping: 'linked', backboneDeviceId: id, page: 1, pageSize: 100
   }).items;
-  return { ...backboneFromRow(row), notes: row.notes, assignments };
+  // Retiradas ficam de fora, como no mapa ativo (ADR 0005) e como em
+  // `downstreamCount`. O filtro cru de `listBackbones` não decide isso.
+  const downstream = listBackbones(db, {
+    upstreamDeviceId: id, page: 1, pageSize: 100
+  }).items.filter((unit) => unit.status !== 'retired');
+  return { ...backboneFromRow(row), notes: row.notes, assignments, downstream };
 }
 
 export function createBackbone(
