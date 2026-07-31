@@ -160,6 +160,21 @@
   transform: translateY(-50%);
 }
 
+/* Com o mapa a descer, o ramo abre por baixo: o botão acompanha. Roda-se o
+   botão inteiro (o círculo é simétrico) para que a volta de 180° do estado
+   expandido continue a significar "para trás". */
+.topology-node[data-flow='TB'] .topology-node-expand {
+  top: auto;
+  right: auto;
+  bottom: -0.8rem;
+  left: 50%;
+  transform: translateX(-50%) rotate(90deg);
+}
+
+.topology-node[data-flow='TB'] .topology-node-error {
+  top: calc(100% + 1.4rem);
+}
+
 .topology-node-expand[aria-expanded='true'] svg { transform: rotate(180deg); }
 
 .topology-node-expand:focus-visible {

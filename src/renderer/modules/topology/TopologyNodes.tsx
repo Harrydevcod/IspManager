@@ -13,6 +13,7 @@ import type { KeyboardEvent } from 'react';
 import type { TopologyNode } from '../../../shared/topology';
 import { Button } from '../../components';
 import type { TopologyFlowNodeData } from './topology-graph';
+import type { TopologyDirection } from './topology-layout';
 
 export type TopologyNodeContentProps = {
   node: TopologyNode;
@@ -21,14 +22,17 @@ export type TopologyNodeContentProps = {
   loading?: boolean;
   error?: string;
   branchCount?: number;
+  /** Direção do mapa: manda no lado por onde o ramo abre. */
+  flow?: TopologyDirection;
   onSelect: () => void;
   onToggle?: () => void;
   onRetry?: () => void;
 };
 
+/** `flow` vem do layout, não do estado do workspace — fica fora do `data.ui`. */
 export type TopologyNodeUi = Omit<
   TopologyNodeContentProps,
-  'node' | 'selected'
+  'node' | 'selected' | 'flow'
 >;
 
 export type TopologyCanvasNodeData = TopologyFlowNodeData & {
@@ -156,6 +160,7 @@ export function TopologyNodeContent({
   loading = false,
   error,
   branchCount,
+  flow = 'LR',
   onSelect,
   onToggle,
   onRetry
@@ -164,6 +169,7 @@ export function TopologyNodeContent({
     <article
       className="topology-node"
       data-kind={node.kind}
+      data-flow={flow}
       data-state={node.issueCodes.length > 0 ? 'attention' : node.administrativeState}
       data-selected={selected || undefined}
     >
@@ -213,6 +219,7 @@ function TopologyNodeRenderer({
       <TopologyNodeContent
         node={data.topology}
         selected={selected}
+        flow={sourcePosition === Position.Bottom ? 'TB' : 'LR'}
         {...data.ui}
       />
     </>
