@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ISPM">
+  <!-- Gerado por scripts/make-icons.mjs. Editar a geometria lá, não aqui. -->
+  <rect width="64" height="64" rx="14" fill="#191b1f" />
+  <path d="M32 24L32 30" fill="none" stroke="#e0b578" stroke-width="4" stroke-linecap="round" opacity="0.62" />
+  <path d="M32 30L19 38" fill="none" stroke="#e0b578" stroke-width="4" stroke-linecap="round" opacity="0.62" />
+  <path d="M32 30L45 38" fill="none" stroke="#e0b578" stroke-width="4" stroke-linecap="round" opacity="0.62" />
+  <circle cx="32" cy="17" r="7" fill="#e0b578" opacity="1" />
+  <circle cx="17" cy="43" r="5.5" fill="#e0b578" opacity="1" />
+  <circle cx="47" cy="43" r="5.5" fill="#e0b578" opacity="1" />
+</svg>
