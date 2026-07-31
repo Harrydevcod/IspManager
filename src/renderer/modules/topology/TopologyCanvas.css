@@ -224,7 +224,11 @@
 
 .topology-spin { animation: topology-spin 900ms linear infinite; }
 
+/* Tamanho declarado aqui, não o que o React Flow traz por omissão: a reserva
+   da legenda logo abaixo conta com esta largura. */
 .topology-minimap {
+  width: 180px;
+  height: 120px;
   border: 1px solid var(--topology-line);
   border-radius: var(--r1);
   background: var(--topology-surface);
@@ -238,7 +242,10 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem 1rem;
-  max-width: min(33rem, calc(100% - 10rem));
+  /* 13.5rem = 180px do minimapa + 15px da margem do painel + folga. Mexer na
+     largura do `.topology-minimap` obriga a mexer aqui, senão a legenda volta a
+     correr por baixo dele. */
+  max-width: min(33rem, calc(100% - 13.5rem));
   padding: 0.55rem 0.65rem;
   border: 1px solid var(--topology-line);
   background: var(--topology-surface);

@@ -355,6 +355,9 @@
 
 @container (max-width: 52rem) {
   .topology-minimap { display: none; }
+
+  /* Sem minimapa não há nada a reservar à direita. */
+  .topology-legend { max-width: min(33rem, calc(100% - 2rem)); }
 }
 
 @container (max-width: 46rem) {
