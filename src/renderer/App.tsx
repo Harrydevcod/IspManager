@@ -1,10 +1,11 @@
-import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, LogOut, Network, Plus, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
+import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, LogOut, Network, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { AuthGate, CommandPalette, ConfirmProvider, PageHeader, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider } from './components';
 import type { CommandPaletteItem } from './components';
 import { AuthProvider, authFetch, useAuth } from './lib/auth';
 import type { UserRole } from './lib/auth';
 import { installKeyboardNavigationIntent } from './lib/keyboardNavigation';
+import { readSidebarCollapsed, writeSidebarCollapsed } from './lib/sidebar';
 import { watchSystemTheme } from './lib/theme';
 import { Dashboard } from './modules/Dashboard';
 import { FinanceModule } from './modules/FinanceModule';
@@ -113,7 +114,9 @@ function AppShell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [releaseNotesVersion, setReleaseNotesVersion] = useState<string | null>(null);
+  const [navCollapsed, setNavCollapsed] = useState(readSidebarCollapsed);
 
+  useEffect(() => writeSidebarCollapsed(navCollapsed), [navCollapsed]);
   useEffect(() => installKeyboardNavigationIntent(), []);
   useEffect(() => watchSystemTheme(), []);
   // Menu Sobre → "Novidades desta versão" (IPC do processo main).
@@ -163,6 +166,12 @@ function AppShell() {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         setPaletteOpen((open) => !open);
+        return;
+      }
+      // Ctrl/Cmd+B recolhe o menu lateral — a tecla que VS Code, Linear e Notion usam.
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'b') {
+        event.preventDefault();
+        setNavCollapsed((collapsed) => !collapsed);
         return;
       }
       // "?" abre o cheat-sheet de atalhos (não enquanto se escreve num campo).
@@ -279,7 +288,7 @@ function AppShell() {
   return (
     <>
       <a className="skip-link" href="#app-content">Saltar para conteudo</a>
-      <main className="app-shell">
+      <main className="app-shell" data-nav={navCollapsed ? 'rail' : undefined}>
       <aside className="sidebar">
         <div className="brand">
           <img className="brand-mark" src="./favicon.png" alt="" />
@@ -287,6 +296,18 @@ function AppShell() {
             <strong>ISPM</strong>
             <span>Operacao ISP</span>
           </div>
+          <button
+            type="button"
+            className="brand-toggle"
+            onClick={() => setNavCollapsed((collapsed) => !collapsed)}
+            aria-expanded={!navCollapsed}
+            aria-label={navCollapsed ? 'Expandir menu' : 'Recolher menu'}
+            title={`${navCollapsed ? 'Expandir' : 'Recolher'} menu (Ctrl+B)`}
+          >
+            {navCollapsed
+              ? <PanelLeftOpen size={16} aria-hidden />
+              : <PanelLeftClose size={16} aria-hidden />}
+          </button>
         </div>
 
         <button
@@ -315,6 +336,7 @@ function AppShell() {
                 onClick={() => setSection(item.id)}
                 aria-current={section === item.id ? 'page' : undefined}
                 aria-label={`${item.label}${counterLabel}`}
+                title={navCollapsed ? item.label : undefined}
               >
                 <Icon size={18} aria-hidden />
                 <span className="nav-label">{item.label}</span>
