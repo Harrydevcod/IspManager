@@ -70,6 +70,7 @@ coverage/
 # Scratch / specs internos
 .scratch/
 .specs/
+.impeccable/
 
 # Electron-builder
 release-builds/
