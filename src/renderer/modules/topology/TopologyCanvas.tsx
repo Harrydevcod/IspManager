@@ -91,6 +91,9 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
 
     return (
       <div className="topology-canvas" aria-label="Mapa físico da rede">
+        {/* Sem `panOnScroll`: com ele o React Flow desloca a vista com a roda e
+            manda o zoom para trás de Ctrl. Aqui a roda aproxima e o arrasto
+            desloca, como em qualquer mapa. */}
         <ReactFlow<TopologyCanvasNode, TopologyFlowEdge>
           nodes={nodes}
           edges={edges}
@@ -109,10 +112,9 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
           edgesFocusable={false}
           deleteKeyCode={null}
           selectionKeyCode={null}
-          minZoom={0.35}
-          maxZoom={1.8}
+          minZoom={0.25}
+          maxZoom={2.5}
           panOnDrag
-          panOnScroll
           zoomOnScroll
           zoomOnPinch
           fitView={false}
