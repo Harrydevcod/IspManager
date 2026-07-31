@@ -450,6 +450,31 @@ describe('TopologyModule branch interaction', () => {
     expect(inspector()).toBeNull();
   });
 
+  test('opens and closes every branch from one control, without refetching', async () => {
+    const topologyApi = api();
+    const container = await mountMap(topologyApi);
+    expect(container.textContent).not.toContain('CPE 100');
+
+    await act(async () => {
+      button(container, 'Abrir todos os ramos').click();
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain('CPE 100');
+    expect(container.textContent).toContain('CPE 200');
+    expect(topologyApi.fetchBranch).toHaveBeenCalledTimes(2);
+
+    await act(async () => { button(container, 'Fechar todos os ramos').click(); });
+    expect(container.textContent).not.toContain('CPE 100');
+
+    // Fechar não deita fora os ramos carregados.
+    await act(async () => {
+      button(container, 'Abrir todos os ramos').click();
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain('CPE 100');
+    expect(topologyApi.fetchBranch).toHaveBeenCalledTimes(2);
+  });
+
   test('registers a device from the map with the shared backbone form', async () => {
     const container = await mountMap();
     expect(document.querySelector('[role="dialog"]')).toBeNull();

@@ -134,6 +134,25 @@ export function useTopologyWorkspace(providedApi?: TopologyApi) {
     if (!branchState.branches.has(catalogId)) void branchState.loadBranch(catalogId);
   }, [branchState]);
 
+  const backboneIds = useMemo(
+    () => snapshotState.snapshot?.backbones.map((item) => item.backboneDeviceId) ?? [],
+    [snapshotState.snapshot]
+  );
+  const allBranchesExpanded = backboneIds.length > 0
+    && backboneIds.every((id) => branchState.expanded.has(id));
+
+  const toggleAllBranches = useCallback(() => {
+    if (allBranchesExpanded) {
+      // Fechar não deita fora os ramos: reabrir não repete pedidos.
+      branchState.setExpanded(new Set());
+      return;
+    }
+    branchState.setExpanded(new Set(backboneIds));
+    backboneIds
+      .filter((id) => !branchState.branches.has(id))
+      .forEach((id) => void branchState.loadBranch(id));
+  }, [allBranchesExpanded, backboneIds, branchState]);
+
   const retryBranch = useCallback((catalogId: number) => {
     branchState.setExpanded((current) => addId(current, catalogId));
     void branchState.loadBranch(catalogId, true);
@@ -158,8 +177,8 @@ export function useTopologyWorkspace(providedApi?: TopologyApi) {
 
   return {
     ...snapshotState, ...branchState, ...search,
-    selectedNode, pendingFocusId, filters,
+    selectedNode, pendingFocusId, filters, allBranchesExpanded,
     setSelectedNode, setPendingFocusId, setFilters,
-    toggleBranch, retryBranch, selectSearchResult
+    toggleBranch, toggleAllBranches, retryBranch, selectSearchResult
   };
 }

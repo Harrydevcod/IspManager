@@ -334,6 +334,8 @@ function TopologyControls({
         labelsVisible={labelsVisible}
         legendVisible={legendVisible}
         inspectorVisible={inspectorVisible}
+        allBranchesExpanded={workspace.allBranchesExpanded}
+        hasBackbones={(workspace.snapshot?.backbones.length ?? 0) > 0}
         direction={direction}
         canManage={authoring.canManage}
         onCreateDevice={authoring.openEditor}
@@ -345,6 +347,7 @@ function TopologyControls({
         onToggleLegend={() => setLegendVisible((visible) => !visible)}
         onToggleInspector={() => setInspectorVisible((visible) => !visible)}
         onToggleDirection={() => setDirection((current) => current === 'LR' ? 'TB' : 'LR')}
+        onToggleAllBranches={workspace.toggleAllBranches}
         onZoomIn={() => canvasRef.current?.zoomIn()}
         onZoomOut={() => canvasRef.current?.zoomOut()}
         onFit={() => canvasRef.current?.fit()}

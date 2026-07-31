@@ -1,4 +1,6 @@
 import {
+  ChevronsDownUp,
+  ChevronsUpDown,
   Eye,
   EyeOff,
   Filter,
@@ -31,6 +33,8 @@ type TopologyToolbarProps = {
   labelsVisible: boolean;
   legendVisible: boolean;
   inspectorVisible: boolean;
+  allBranchesExpanded: boolean;
+  hasBackbones: boolean;
   direction: TopologyDirection;
   canManage: boolean;
   onCreateDevice: () => void;
@@ -42,6 +46,7 @@ type TopologyToolbarProps = {
   onToggleLegend: () => void;
   onToggleInspector: () => void;
   onToggleDirection: () => void;
+  onToggleAllBranches: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
@@ -180,9 +185,10 @@ function Filters({ filters, onChange, onClear }: FiltersProps) {
  * O rótulo entra uma vez e sai nos dois sítios: `aria-label` para quem ouve,
  * `title` para quem passa o rato. Duas strings à mão acabariam por divergir.
  */
-function ToolButton({ label, pressed, onClick, children }: {
+function ToolButton({ label, pressed, disabled, onClick, children }: {
   label: string;
   pressed?: boolean;
+  disabled?: boolean;
   onClick: () => void;
   children: ReactNode;
 }) {
@@ -192,6 +198,7 @@ function ToolButton({ label, pressed, onClick, children }: {
       aria-label={label}
       title={label}
       aria-pressed={pressed}
+      disabled={disabled}
       onClick={onClick}
     >
       {children}
@@ -204,11 +211,14 @@ function CanvasTools(props: Pick<
   | 'labelsVisible'
   | 'legendVisible'
   | 'inspectorVisible'
+  | 'allBranchesExpanded'
+  | 'hasBackbones'
   | 'direction'
   | 'onToggleLabels'
   | 'onToggleLegend'
   | 'onToggleInspector'
   | 'onToggleDirection'
+  | 'onToggleAllBranches'
   | 'onZoomIn'
   | 'onZoomOut'
   | 'onFit'
@@ -227,6 +237,14 @@ function CanvasTools(props: Pick<
       </ToolButton>
       <span aria-hidden />
       {/* O rótulo diz o que o clique vai fazer; o estado fica no aria-pressed. */}
+      <ToolButton
+        label={props.allBranchesExpanded ? 'Fechar todos os ramos' : 'Abrir todos os ramos'}
+        pressed={props.allBranchesExpanded}
+        disabled={!props.hasBackbones}
+        onClick={props.onToggleAllBranches}
+      >
+        {props.allBranchesExpanded ? <ChevronsDownUp size={15} /> : <ChevronsUpDown size={15} />}
+      </ToolButton>
       <ToolButton
         label={props.labelsVisible
           ? 'Ocultar as etiquetas das ligações'
