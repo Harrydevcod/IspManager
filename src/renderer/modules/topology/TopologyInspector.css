@@ -395,13 +395,6 @@
   }
 }
 
-@container (max-width: 52rem) {
-  .topology-minimap { display: none; }
-
-  /* Sem minimapa não há nada a reservar à direita. */
-  .topology-legend { max-width: min(33rem, calc(100% - 2rem)); }
-}
-
 @container (max-width: 46rem) {
   .topology-module {
     /* Mesmo motivo da regra base: o piso rígido transbordava a caixa. */
@@ -458,10 +451,10 @@
   }
 
   .topology-inspector:has(.topology-inspector-empty) { display: none; }
-  .topology-minimap { display: none; }
 
   .topology-legend {
-    right: 0.75rem;
+    /* A legenda ocupa o resto da largura — o resto é o que o minimapa deixa. */
+    right: 13.25rem;
     bottom: 0.75rem;
     left: 0.75rem;
     max-width: none;

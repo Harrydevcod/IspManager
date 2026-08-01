@@ -300,6 +300,7 @@ describe('GET /api/topology', () => {
       unmappedAssignmentCount: 1,
       clientCount: 3,
       serviceCount: 3,
+      servicesWithoutDeviceCount: 0,
       attentionCount: 4
     });
     expect(body.backbones).toEqual(expect.arrayContaining([
@@ -427,6 +428,23 @@ describe('GET /api/topology', () => {
     expect(body.edges.filter((edge: { target: string }) => (
       edge.target === `backbone:${routerId}`
     ))).toHaveLength(2);
+  });
+
+  test('counts live services with no equipment, which the map cannot draw at all', async () => {
+    seedTopology();
+    const planId = (db.prepare('SELECT id FROM internet_plans LIMIT 1').get() as { id: number }).id;
+    const clientId = insertClient('CLI-004', 'Cliente Sem CPE', 'active', 'São Vicente', 'Mindelo');
+    const serviceId = insertService(clientId, planId, 'active');
+    // Um serviço cancelado não é uma dívida por resolver — fica de fora.
+    const goneId = insertClient('CLI-005', 'Cliente Saiu', 'cancelled', 'São Vicente', 'Mindelo');
+    insertService(goneId, planId, 'cancelled');
+
+    const body = (await app.inject({ method: 'GET', url: '/api/topology' })).json();
+
+    // Sem atribuição física não há nó nenhum: o serviço não é sequer "sem ligação".
+    expect(body.stats.servicesWithoutDeviceCount).toBe(1);
+    expect(body.stats.assignmentCount).toBe(3);
+    expect(JSON.stringify(body)).not.toContain(`assignment:${serviceId}`);
   });
 
   test('keeps every physical device and association out of the lazy initial payload', async () => {

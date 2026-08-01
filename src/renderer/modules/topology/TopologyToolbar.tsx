@@ -12,6 +12,7 @@ import {
   PanelRight,
   Plus,
   RadioTower,
+  RotateCw,
   Search,
   X
 } from 'lucide-react';
@@ -38,6 +39,8 @@ type TopologyToolbarProps = {
   hasBackbones: boolean;
   direction: TopologyDirection;
   canManage: boolean;
+  refreshing: boolean;
+  onRefresh: () => void;
   onCreateDevice: () => void;
   onQueryChange: (value: string) => void;
   onResultSelect: (result: TopologySearchResult) => void;
@@ -226,6 +229,8 @@ function CanvasTools(props: Pick<
   | 'onToggleInspector'
   | 'onToggleDirection'
   | 'onToggleAllBranches'
+  | 'refreshing'
+  | 'onRefresh'
   | 'onZoomIn'
   | 'onZoomOut'
   | 'onFit'
@@ -243,6 +248,13 @@ function CanvasTools(props: Pick<
         <Plus size={15} />
       </ToolButton>
       <span aria-hidden />
+      <ToolButton
+        label="Atualizar o mapa"
+        disabled={props.refreshing}
+        onClick={props.onRefresh}
+      >
+        <RotateCw size={15} className={props.refreshing ? 'topology-refreshing' : undefined} />
+      </ToolButton>
       {/* O rótulo diz o que o clique vai fazer; o estado fica no aria-pressed. */}
       <ToolButton
         label={props.allBranchesExpanded ? 'Fechar todos os ramos' : 'Abrir todos os ramos'}
@@ -275,10 +287,12 @@ function CanvasTools(props: Pick<
       >
         <PanelRight size={15} />
       </ToolButton>
+      {/* "Horizontal/vertical" é ambíguo — TB desce mas espalha os irmãos ao
+          longo da largura. O rótulo diz o desenho de destino. */}
       <ToolButton
         label={vertical
-          ? 'Mudar para orientação horizontal'
-          : 'Mudar para orientação vertical'}
+          ? 'Desenhar da esquerda para a direita'
+          : 'Desenhar de cima para baixo'}
         onClick={props.onToggleDirection}
       >
         {vertical ? <MoveHorizontal size={15} /> : <MoveVertical size={15} />}

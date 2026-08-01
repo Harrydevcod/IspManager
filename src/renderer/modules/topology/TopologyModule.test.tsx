@@ -231,7 +231,7 @@ describe('TopologyModule tab shell', () => {
     expect(document.activeElement).toBe(backboneTab);
   });
 
-  test('invalidates loaded map state only after a successful management mutation', async () => {
+  test('reloads the map after a management mutation without closing the open branch', async () => {
     const topologyApi = api();
     const container = await mountModule(topologyApi);
 
@@ -259,12 +259,16 @@ describe('TopologyModule tab shell', () => {
       await Promise.resolve();
     });
 
+    // Ligar uma CPE na outra aba obriga a reler — e a releitura tem de passar
+    // pelo ramo aberto, senão a CPE nova nunca lá aparecia. O que o operador
+    // tinha aberto e selecionado continua aberto e selecionado.
     expect(topologyApi.fetchSnapshot).toHaveBeenCalledTimes(2);
-    expect(container.textContent).not.toContain('CPE 100');
-    expect(container.textContent).toContain('Seleciona um nó');
+    expect(topologyApi.fetchBranch).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain('CPE 100');
+    expect(container.textContent).not.toContain('Seleciona um nó');
   });
 
-  test('keeps one loaded snapshot across ordinary tab round trips', async () => {
+  test('refetches when the map becomes visible again, to catch work done elsewhere', async () => {
     const topologyApi = api();
     const container = await mountModule(topologyApi);
 
@@ -275,11 +279,14 @@ describe('TopologyModule tab shell', () => {
     });
     await act(async () => {
       tab(container, 'Backbone').click();
+      await Promise.resolve();
+    });
+    await act(async () => {
       tab(container, 'Topologia').click();
       await Promise.resolve();
     });
 
-    expect(topologyApi.fetchSnapshot).toHaveBeenCalledTimes(1);
+    expect(topologyApi.fetchSnapshot).toHaveBeenCalledTimes(2);
   });
 
   test('preserves map selection when Escape is pressed from the Backbone tab', async () => {
@@ -428,14 +435,12 @@ describe('TopologyModule branch interaction', () => {
     expect(secondAttempts).toBe(2);
   });
 
-  test('collapses the inspector to widen the map and reopens it on the next selection', async () => {
+  test('opens with the inspector closed and shows it on the first selection', async () => {
     const container = await mountMap();
     const inspector = () => container.querySelector('[aria-label="Inspetor da topologia"]');
     // O rótulo diz o próximo passo, por isso muda com o estado.
     const toggle = (label: string) => button(container, label);
-    expect(inspector()).not.toBeNull();
-
-    await act(async () => { toggle('Ocultar o inspetor').click(); });
+    // O mapa arranca com toda a largura — o painel só entra quando for preciso.
     expect(inspector()).toBeNull();
     expect(toggle('Mostrar o inspetor').getAttribute('aria-pressed')).toBe('false');
 
@@ -445,7 +450,11 @@ describe('TopologyModule branch interaction', () => {
     expect(inspector()).not.toBeNull();
     expect(toggle('Ocultar o inspetor').getAttribute('aria-pressed')).toBe('true');
 
+    await act(async () => { toggle('Ocultar o inspetor').click(); });
+    expect(inspector()).toBeNull();
+
     // O ✕ do cabeçalho fecha o painel e larga a seleção.
+    await act(async () => { toggle('Mostrar o inspetor').click(); });
     await act(async () => { button(container, 'Fechar inspetor').click(); });
     expect(inspector()).toBeNull();
   });
@@ -494,18 +503,19 @@ describe('TopologyModule branch interaction', () => {
     expect(dialog?.textContent).toContain('Alimentado por');
   });
 
-  test('turns the map between the horizontal and the vertical orientation', async () => {
+  test('turns the map between the two drawing directions', async () => {
     const container = await mountMap();
 
+    // Arranca de cima para baixo, por isso o botão oferece o outro desenho.
     await act(async () => {
-      button(container, 'Mudar para orientação vertical').click();
+      button(container, 'Desenhar da esquerda para a direita').click();
     });
-    expect(button(container, 'Mudar para orientação horizontal')).toBeTruthy();
+    expect(button(container, 'Desenhar de cima para baixo')).toBeTruthy();
 
     await act(async () => {
-      button(container, 'Mudar para orientação horizontal').click();
+      button(container, 'Desenhar de cima para baixo').click();
     });
-    expect(button(container, 'Mudar para orientação vertical')).toBeTruthy();
+    expect(button(container, 'Desenhar da esquerda para a direita')).toBeTruthy();
   });
 });
 

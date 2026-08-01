@@ -79,6 +79,7 @@ export const snapshot: TopologySnapshot = {
     unmappedAssignmentCount: 0,
     clientCount: 2,
     serviceCount: 2,
+    servicesWithoutDeviceCount: 0,
     attentionCount: 2
   }
 };

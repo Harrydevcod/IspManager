@@ -48,6 +48,37 @@ describe('topology branch cache', () => {
     expect(attempts).toEqual(new Map([[10, 2], [20, 1]]));
   });
 
+  test('clear forces the next read to hit the server again', async () => {
+    // Uma CPE ligada depois do ramo ter sido lido só aparece se o lido for
+    // deitado fora — sem isto, "atualizar" servia a lista velha.
+    let requests = 0;
+    const branches = [branchOne, branchTwo];
+    const cache = createTopologyBranchCache(async () => branches[requests++]);
+
+    expect(await cache.load(10)).toEqual(branchOne);
+    expect(await cache.load(10)).toEqual(branchOne);
+    expect(requests).toBe(1);
+
+    cache.clear();
+    expect(cache.peek(10)).toBeUndefined();
+    expect(await cache.load(10)).toEqual(branchTwo);
+    expect(requests).toBe(2);
+  });
+
+  test('clear also drops a recorded failure so the branch can load clean', async () => {
+    let attempt = 0;
+    const cache = createTopologyBranchCache(async () => {
+      attempt += 1;
+      if (attempt === 1) throw new Error('offline');
+      return branchOne;
+    });
+
+    await expect(cache.load(10)).rejects.toThrow('offline');
+    cache.clear();
+    expect(cache.error(10)).toBeUndefined();
+    expect(await cache.load(10)).toEqual(branchOne);
+  });
+
   test('keeps cache instances isolated by renderer session', async () => {
     let requests = 0;
     const loader = async () => {

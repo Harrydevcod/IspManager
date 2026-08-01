@@ -114,6 +114,11 @@ export type TopologyStats = {
   unmappedAssignmentCount: number;
   clientCount: number;
   serviceCount: number;
+  /**
+   * Serviços vivos sem nenhum equipamento instalado. Não são "sem ligação" —
+   * não existem no mapa, porque o mapa nasce das atribuições físicas.
+   */
+  servicesWithoutDeviceCount: number;
   attentionCount: number;
 };
 

@@ -64,6 +64,7 @@ type AggregateRow = {
   mappedAssignmentCount: number;
   clientCount: number;
   serviceCount: number;
+  servicesWithoutDeviceCount: number;
   assignmentAttentionCount: number;
 };
 
@@ -327,6 +328,18 @@ function loadAggregateRow(db: Database.Database): AggregateRow {
        FROM assignment_services av
        JOIN service_device_assignments a ON a.id = av.assignment_id
        WHERE a.end_date IS NULL) AS serviceCount,
+      -- Um serviço sem equipamento instalado não é "sem ligação": não existe de
+      -- todo no mapa, que nasce das atribuições. Sem esta contagem, um serviço
+      -- criado sem equipamento desaparecia sem ninguém dar por isso.
+      (SELECT COUNT(*)
+       FROM services s
+       JOIN clients c ON c.id = s.client_id
+       WHERE s.status <> 'cancelled' AND c.status <> 'cancelled'
+         AND NOT EXISTS (
+           SELECT 1 FROM assignment_services av
+           JOIN service_device_assignments a ON a.id = av.assignment_id
+           WHERE av.service_id = s.id AND a.end_date IS NULL
+         )) AS servicesWithoutDeviceCount,
       (SELECT COUNT(DISTINCT a.id)
        FROM service_device_assignments a
        JOIN equipment_catalog ec ON ec.id = a.catalog_id
@@ -356,6 +369,7 @@ function topologyStats(
     unmappedAssignmentCount: aggregate.assignmentCount - aggregate.mappedAssignmentCount,
     clientCount: aggregate.clientCount,
     serviceCount: aggregate.serviceCount,
+    servicesWithoutDeviceCount: aggregate.servicesWithoutDeviceCount,
     attentionCount: backboneAttention + aggregate.assignmentAttentionCount
   };
 }
