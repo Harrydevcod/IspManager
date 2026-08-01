@@ -25,7 +25,12 @@ export function isValidBackboneConnection(
 }
 
 /**
- * Grava "o alvo passa a ser alimentado pela origem".
+ * Grava "o alvo passa a ser alimentado também pela origem".
+ *
+ * Acrescenta em vez de substituir: um equipamento multi-WAN soma links (várias
+ * Starlink no mesmo router), por isso arrastar uma segunda ligação não pode
+ * apagar a primeira. Ligar à raiz retira todas — o alvo volta a receber
+ * directamente da Internet.
  *
  * Read-modify-write deliberado sobre o PUT que já existe, em vez de uma rota
  * nova: o `expectedUpdatedAt` que vem do GET transforma uma edição concorrente
@@ -40,9 +45,30 @@ export async function connectBackboneUpstream(
   if (!isValidBackboneConnection(sourceNodeId, targetNodeId)) {
     throw new Error('Ligação inválida: só as unidades de backbone se ligam no mapa');
   }
-  const targetId = parseBackboneNodeId(targetNodeId)!;
-  const detail = await api.getBackbone(targetId);
-  await api.updateBackbone(targetId, {
+  const targetId = parseBackboneNodeId(targetNodeId) as number;
+  const sourceId = parseBackboneNodeId(sourceNodeId);
+  await writeUpstreams(api, targetId, (current) => {
+    if (sourceId === null) return [];
+    return current.includes(sourceId) ? current : [...current, sourceId];
+  });
+}
+
+/** Retira uma alimentação; as restantes ficam. Sem nenhuma, o alvo volta à Internet. */
+export async function disconnectBackboneUpstream(
+  api: BackboneApi,
+  deviceId: number,
+  upstreamDeviceId: number
+): Promise<void> {
+  await writeUpstreams(api, deviceId, (current) => current.filter((id) => id !== upstreamDeviceId));
+}
+
+async function writeUpstreams(
+  api: BackboneApi,
+  deviceId: number,
+  next: (current: number[]) => number[]
+): Promise<void> {
+  const detail = await api.getBackbone(deviceId);
+  await api.updateBackbone(deviceId, {
     catalogId: detail.catalogId,
     name: detail.name,
     status: detail.status,
@@ -53,7 +79,7 @@ export async function connectBackboneUpstream(
     island: detail.island,
     zone: detail.zone,
     notes: detail.notes,
-    upstreamDeviceId: parseBackboneNodeId(sourceNodeId),
+    upstreamDeviceIds: next(detail.upstreams.map((unit) => unit.id)),
     expectedUpdatedAt: detail.updatedAt
   });
 }

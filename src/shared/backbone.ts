@@ -1,5 +1,11 @@
 export type BackboneStatus = 'active' | 'maintenance' | 'retired';
 
+/** Uma unidade que alimenta outra. */
+export type BackboneUpstreamRef = {
+  id: number;
+  name: string;
+};
+
 export type BackboneDeviceSummary = {
   id: number;
   catalogId: number;
@@ -15,9 +21,11 @@ export type BackboneDeviceSummary = {
   island: string | null;
   zone: string | null;
   provisional: boolean;
-  /** De quem esta unidade recebe sinal. `null` = alimentada pela Internet. */
-  upstreamDeviceId: number | null;
-  upstreamName: string | null;
+  /**
+   * De quem esta unidade recebe sinal. Vazio = alimentada pela Internet; mais
+   * do que uma = agregação multi-WAN (várias Starlink no mesmo equipamento).
+   */
+  upstreams: BackboneUpstreamRef[];
   /** Unidades não-retiradas que esta alimenta. */
   downstreamCount: number;
   linkedAssignmentCount: number;
@@ -71,7 +79,8 @@ export type BackboneWriteInput = {
   island: string | null;
   zone: string | null;
   notes: string | null;
-  upstreamDeviceId: number | null;
+  /** Lista completa de alimentações: substitui a anterior por inteiro. */
+  upstreamDeviceIds: number[];
   expectedUpdatedAt?: string;
 };
 

@@ -112,21 +112,32 @@ function passesFilters(
   return true;
 }
 
-/** Profundidade máxima ao subir a cadeia — trava dados já em ciclo. */
-const MAX_CHAIN_DEPTH = 64;
+/** A primeira alimentação declarada, ou a raiz quando não há nenhuma. */
+function firstParentId(
+  node: TopologyBackboneNode | TopologyClientDeviceNode
+): 'root:isp' | `backbone:${number}` {
+  return node.kind === 'backbone' ? node.parentIds[0] ?? 'root:isp' : node.parentId;
+}
 
 /**
  * Caminho ordenado da raiz até ao pai imediato. Com a cadeia física explícita,
  * um CPE pode estar a vários saltos da Internet (Starlink → router → AP → CPE),
  * por isso subimos até à raiz em vez de devolver só o pai.
+ *
+ * Onde há agregação multi-WAN existe mais do que um caminho até à Internet:
+ * seguimos o primeiro (a lista vem ordenada por nome, logo é estável). O painel
+ * serve para situar o nó na rede, não para provar por onde o tráfego passa. O
+ * conjunto de visitados trava dados que já estejam em ciclo.
  */
 function ancestors(
   node: TopologyBackboneNode | TopologyClientDeviceNode,
   backbones: Map<number, TopologyBackboneNode>
 ): TopologyAncestor[] {
   const chain: TopologyAncestor[] = [];
-  let parentId = node.parentId;
-  for (let depth = 0; parentId !== 'root:isp' && depth < MAX_CHAIN_DEPTH; depth += 1) {
+  const visited = new Set<string>();
+  let parentId = firstParentId(node);
+  while (parentId !== 'root:isp' && !visited.has(parentId)) {
+    visited.add(parentId);
     const backbone = backbones.get(Number(parentId.slice('backbone:'.length)));
     if (!backbone) break;
     chain.unshift({
@@ -135,7 +146,7 @@ function ancestors(
       label: backbone.label,
       relationship: 'defined_link'
     });
-    parentId = backbone.parentId;
+    parentId = firstParentId(backbone);
   }
   return [{ id: 'root:isp', kind: 'logical-root', label: 'Internet' }, ...chain];
 }

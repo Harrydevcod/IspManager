@@ -201,8 +201,16 @@ export const backboneDevices = sqliteTable('backbone_devices', {
   notes: text('notes'),
   createdBy: integer('created_by'),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
-  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP'),
-  upstreamDeviceId: integer('upstream_device_id')
+  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
+/** Quem alimenta quem. Sem linhas para um equipamento = alimentado pela Internet. */
+export const backboneLinks = sqliteTable('backbone_links', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  deviceId: integer('device_id').notNull(),
+  upstreamDeviceId: integer('upstream_device_id').notNull(),
+  createdBy: integer('created_by'),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
 });
 
 export const backboneAssignmentLinks = sqliteTable('backbone_assignment_links', {
@@ -484,6 +492,8 @@ export type ServiceDeviceShare = typeof serviceDeviceShares.$inferSelect;
 export type NewServiceDeviceShare = typeof serviceDeviceShares.$inferInsert;
 export type BackboneDevice = typeof backboneDevices.$inferSelect;
 export type NewBackboneDevice = typeof backboneDevices.$inferInsert;
+export type BackboneLink = typeof backboneLinks.$inferSelect;
+export type NewBackboneLink = typeof backboneLinks.$inferInsert;
 export type BackboneAssignmentLink = typeof backboneAssignmentLinks.$inferSelect;
 export type NewBackboneAssignmentLink = typeof backboneAssignmentLinks.$inferInsert;
 export type ServiceEvent = typeof serviceEvents.$inferSelect;

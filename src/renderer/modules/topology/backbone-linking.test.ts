@@ -3,6 +3,7 @@ import type { BackboneDeviceDetail } from '../../../shared/backbone';
 import type { BackboneApi } from './backbone-api';
 import {
   connectBackboneUpstream,
+  disconnectBackboneUpstream,
   isValidBackboneConnection,
   parseBackboneNodeId
 } from './backbone-linking';
@@ -22,8 +23,7 @@ const detail: BackboneDeviceDetail = {
   island: 'Santiago',
   zone: 'Praia',
   provisional: false,
-  upstreamDeviceId: null,
-  upstreamName: null,
+  upstreams: [],
   downstreamCount: 0,
   linkedAssignmentCount: 2,
   createdAt: '2026-07-29T10:00:00.000Z',
@@ -91,7 +91,7 @@ describe('connectBackboneUpstream', () => {
       island: 'Santiago',
       zone: 'Praia',
       notes: 'Torre norte',
-      upstreamDeviceId: 3,
+      upstreamDeviceIds: [3],
       expectedUpdatedAt: '2026-07-30T10:00:00.000Z'
     });
   });
@@ -100,7 +100,37 @@ describe('connectBackboneUpstream', () => {
     const client = api();
     await connectBackboneUpstream(client, 'root:isp', 'backbone:7');
 
-    expect(vi.mocked(client.updateBackbone).mock.calls[0][1].upstreamDeviceId).toBeNull();
+    expect(vi.mocked(client.updateBackbone).mock.calls[0][1].upstreamDeviceIds).toEqual([]);
+  });
+
+  test('adds a second uplink instead of replacing the first: multi-WAN sums links', async () => {
+    const client = api({
+      getBackbone: vi.fn(async () => ({ ...detail, upstreams: [{ id: 3, name: 'Starlink 1' }] }))
+    });
+    await connectBackboneUpstream(client, 'backbone:4', 'backbone:7');
+
+    expect(vi.mocked(client.updateBackbone).mock.calls[0][1].upstreamDeviceIds).toEqual([3, 4]);
+  });
+
+  test('ignores an uplink that is already declared', async () => {
+    const client = api({
+      getBackbone: vi.fn(async () => ({ ...detail, upstreams: [{ id: 3, name: 'Starlink 1' }] }))
+    });
+    await connectBackboneUpstream(client, 'backbone:3', 'backbone:7');
+
+    expect(vi.mocked(client.updateBackbone).mock.calls[0][1].upstreamDeviceIds).toEqual([3]);
+  });
+
+  test('disconnecting one uplink keeps the others', async () => {
+    const client = api({
+      getBackbone: vi.fn(async () => ({
+        ...detail,
+        upstreams: [{ id: 3, name: 'Starlink 1' }, { id: 4, name: 'Starlink 2' }]
+      }))
+    });
+    await disconnectBackboneUpstream(client, 7, 3);
+
+    expect(vi.mocked(client.updateBackbone).mock.calls[0][1].upstreamDeviceIds).toEqual([4]);
   });
 
   test('surfaces the server refusal as it comes', async () => {

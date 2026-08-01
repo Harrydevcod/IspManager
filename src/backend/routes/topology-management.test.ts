@@ -123,8 +123,8 @@ describe('topology management routes', () => {
       catalogId,
       previousStatus: null,
       nextStatus: 'active',
-      previousUpstreamDeviceId: null,
-      nextUpstreamDeviceId: null
+      previousUpstreamDeviceIds: [],
+      nextUpstreamDeviceIds: []
     });
   });
 
@@ -201,8 +201,8 @@ describe('topology management routes', () => {
       catalogId,
       previousStatus: 'active',
       nextStatus: 'maintenance',
-      previousUpstreamDeviceId: null,
-      nextUpstreamDeviceId: null
+      previousUpstreamDeviceIds: [],
+      nextUpstreamDeviceIds: []
     });
     expect((await app.inject({
       method: 'PUT',

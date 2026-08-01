@@ -23,6 +23,8 @@ export type TopologyInspectorProps = {
   onOpenClient: (clientId: number) => void;
   onOpenService: (clientId: number, serviceId: number) => void;
   onOpenStock: (catalogId: number) => void;
+  /** Ausente para quem não pode gerir: as alimentações ficam só de leitura. */
+  onDisconnectUpstream?: (deviceId: number, upstreamDeviceId: number) => void;
 };
 
 const ISSUE_LABELS: Record<TopologyIssueCode, string> = {
@@ -68,8 +70,13 @@ function StateBadges({ node }: { node: TopologyNode }) {
 }
 
 function RootDetails({ snapshot }: { snapshot: TopologySnapshot }) {
+  // Quantas unidades recebem sinal directamente da Internet: cada uma é uma
+  // origem própria (outra ilha, outra zona, ou reforço de capacidade no mesmo sítio).
+  const uplinkCount = snapshot.backbones
+    .filter((item) => item.parentIds.includes('root:isp')).length;
   return (
     <dl className="topology-inspector-details">
+      <Detail label="Ligações à Internet" value={uplinkCount} />
       <Detail label="Backbones" value={snapshot.stats.backboneCount} />
       <Detail label="CPE físicas" value={snapshot.stats.assignmentCount} />
       <Detail label="Com ligação" value={snapshot.stats.mappedAssignmentCount} />
@@ -82,23 +89,65 @@ function RootDetails({ snapshot }: { snapshot: TopologySnapshot }) {
   );
 }
 
+function UpstreamList({
+  node,
+  snapshot,
+  onDisconnect
+}: {
+  node: Extract<TopologyNode, { kind: 'backbone' }>;
+  snapshot: TopologySnapshot;
+  onDisconnect?: (deviceId: number, upstreamDeviceId: number) => void;
+}) {
+  // Várias alimentações = agregação multi-WAN (por exemplo duas Starlink no
+  // mesmo router). Sem nenhuma no mapa, a unidade recebe da Internet.
+  const upstreams = node.parentIds
+    .flatMap((parentId) => snapshot.backbones.filter((item) => item.id === parentId));
+  return (
+    <div className="topology-inspector-detail topology-inspector-uplinks">
+      <dt>{upstreams.length > 1 ? 'Alimentado por (multi-WAN)' : 'Alimentado por'}</dt>
+      <dd>
+        {upstreams.length === 0 ? 'Internet' : (
+          <ul>
+            {upstreams.map((upstream) => (
+              <li key={upstream.id}>
+                <span>{upstream.label}</span>
+                {onDisconnect && (
+                  <Button
+                    variant="icon"
+                    size="sm"
+                    aria-label={`Remover alimentação de ${upstream.label}`}
+                    onClick={() => onDisconnect(node.backboneDeviceId, upstream.backboneDeviceId)}
+                  >
+                    <X size={12} aria-hidden />
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </dd>
+    </div>
+  );
+}
+
 function BackboneDetails({
   node,
   snapshot,
   branch,
-  onOpenStock
+  onOpenStock,
+  onDisconnectUpstream
 }: {
   node: Extract<TopologyNode, { kind: 'backbone' }>;
   snapshot: TopologySnapshot;
   branch?: TopologyBackboneBranch;
   onOpenStock: (catalogId: number) => void;
+  onDisconnectUpstream?: (deviceId: number, upstreamDeviceId: number) => void;
 }) {
-  const upstream = snapshot.backbones.find((item) => item.id === node.parentId);
   return (
     <>
       <dl className="topology-inspector-details">
         <Detail label="Unidade física" value={`#${node.backboneDeviceId}`} />
-        <Detail label="Alimentado por" value={upstream?.label ?? 'Internet'} />
+        <UpstreamList node={node} snapshot={snapshot} onDisconnect={onDisconnectUpstream} />
         <Detail label="Catálogo" value={`#${node.catalogId}`} />
         <Detail label="Tipo" value={node.catalogType} />
         <Detail label="Marca" value={node.brand ?? 'Não indicada'} />
@@ -248,6 +297,7 @@ export function TopologyInspector(props: TopologyInspectorProps) {
               snapshot={snapshot}
               branch={branch}
               onOpenStock={onOpenStock}
+              onDisconnectUpstream={props.onDisconnectUpstream}
             />
           )}
           {node.kind === 'client-device' && (

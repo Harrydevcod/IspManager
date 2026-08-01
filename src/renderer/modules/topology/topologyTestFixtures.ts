@@ -23,7 +23,7 @@ export const backboneOne: TopologyBackboneNode = {
   provisional: false,
   administrativeState: 'active',
   issueCodes: [],
-  parentId: 'root:isp',
+  parentIds: ['root:isp'],
   relationship: 'defined_link'
 };
 

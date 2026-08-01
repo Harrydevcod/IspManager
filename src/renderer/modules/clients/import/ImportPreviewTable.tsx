@@ -2,7 +2,13 @@ import { FileSpreadsheet, FileText, X } from 'lucide-react';
 import { Button } from '../../../components';
 import type { PreviewRow } from './types';
 
-type Counters = { ok: number; conflict: number; error: number; total: number };
+type Counters = {
+  ok: number;
+  conflict: number;
+  error: number;
+  unknownIsland: number;
+  total: number;
+};
 
 type ImportPreviewTableProps = {
   file: File | null;
@@ -52,6 +58,12 @@ export function ImportPreviewTable({
           <span className="import-counter import-counter-ok">{counters.ok} importar</span>
           <span className="import-counter import-counter-conflict">{counters.conflict} duplicado</span>
           <span className="import-counter import-counter-error">{counters.error} com erro</span>
+          {/* Grafias reconhecidas já foram convertidas; isto é o que sobrou. */}
+          {counters.unknownIsland > 0 && (
+            <span className="import-counter import-counter-conflict">
+              {counters.unknownIsland} ilha por reconhecer
+            </span>
+          )}
           <span className="import-counter import-counter-total">{counters.total} total</span>
         </div>
       </header>

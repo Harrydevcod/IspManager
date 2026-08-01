@@ -30,19 +30,7 @@ type BackboneRow = EquipmentRow & {
   zone: string | null;
   status: 'active' | 'maintenance';
   provisional: number;
-  upstreamDeviceId: number | null;
 };
-
-/**
- * O upstream só conta se ainda estiver no mapa: uma unidade retirada é filtrada
- * da leitura, e sem esta guarda os seus jusantes ficariam pendurados num nó
- * inexistente. Nesse caso caem na raiz.
- */
-const VISIBLE_UPSTREAM = `
-  CASE WHEN EXISTS (
-    SELECT 1 FROM backbone_devices up
-    WHERE up.id = bd.upstream_device_id AND up.status <> 'retired'
-  ) THEN bd.upstream_device_id END AS upstreamDeviceId`;
 
 type AssignmentRow = EquipmentRow & {
   catalogId: number;
@@ -90,13 +78,39 @@ function loadBackboneRows(db: Database.Database): BackboneRow[] {
       bd.serial_number AS serialNumber, bd.asset_tag AS assetTag,
       bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
       bd.island, bd.zone, bd.status, bd.provisional,
-      ${VISIBLE_UPSTREAM},
       ec.brand, ec.model, ec.type AS catalogType
     FROM backbone_devices bd
     JOIN equipment_catalog ec ON ec.id = bd.catalog_id
     WHERE bd.status <> 'retired'
     ORDER BY bd.name COLLATE NOCASE, bd.id
   `).all() as BackboneRow[];
+}
+
+/**
+ * As alimentações que ainda estão no mapa, por equipamento. Uma unidade
+ * retirada é filtrada da leitura, e sem esta guarda os seus jusantes ficariam
+ * pendurados num nó inexistente — nesse caso caem na raiz. Um equipamento
+ * multi-WAN devolve várias: cada Starlink é um pai seu.
+ */
+function loadVisibleUplinks(
+  db: Database.Database,
+  backboneDeviceId: number | null = null
+): Map<number, number[]> {
+  const rows = db.prepare(`
+    SELECT link.device_id AS deviceId, link.upstream_device_id AS upstreamDeviceId
+    FROM backbone_links link
+    JOIN backbone_devices up ON up.id = link.upstream_device_id
+    WHERE up.status <> 'retired'
+      AND (? IS NULL OR link.device_id = ?)
+    ORDER BY up.name COLLATE NOCASE, link.upstream_device_id
+  `).all(backboneDeviceId, backboneDeviceId) as Array<{ deviceId: number; upstreamDeviceId: number }>;
+  const grouped = new Map<number, number[]>();
+  for (const row of rows) {
+    const current = grouped.get(row.deviceId);
+    if (current) current.push(row.upstreamDeviceId);
+    else grouped.set(row.deviceId, [row.upstreamDeviceId]);
+  }
+  return grouped;
 }
 
 function loadBackboneRow(
@@ -109,7 +123,6 @@ function loadBackboneRow(
       bd.serial_number AS serialNumber, bd.asset_tag AS assetTag,
       bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
       bd.island, bd.zone, bd.status, bd.provisional,
-      ${VISIBLE_UPSTREAM},
       ec.brand, ec.model, ec.type AS catalogType
     FROM backbone_devices bd
     JOIN equipment_catalog ec ON ec.id = bd.catalog_id
@@ -215,7 +228,7 @@ function groupAssociations(rows: AssociationRow[]): Map<number, TopologyClientAs
   );
 }
 
-function backboneNode(row: BackboneRow): TopologyBackboneNode {
+function backboneNode(row: BackboneRow, uplinks: number[] = []): TopologyBackboneNode {
   const inactive = row.status !== 'active';
   const provisional = row.provisional === 1;
   const issueCodes: TopologyIssueCode[] = [];
@@ -239,9 +252,9 @@ function backboneNode(row: BackboneRow): TopologyBackboneNode {
     provisional,
     administrativeState: inactive ? 'inactive' : 'active',
     issueCodes,
-    parentId: row.upstreamDeviceId === null
-      ? 'root:isp'
-      : `backbone:${row.upstreamDeviceId}`,
+    parentIds: uplinks.length === 0
+      ? ['root:isp']
+      : uplinks.map((upstreamId) => `backbone:${upstreamId}` as const),
     relationship: 'defined_link'
   };
 }
@@ -347,14 +360,15 @@ function topologyStats(
   };
 }
 
-function coreLink(backbone: TopologyBackboneNode): TopologyCoreLinkEdge {
-  return {
-    id: `core-link:${backbone.parentId}:backbone:${backbone.backboneDeviceId}`,
+/** Uma aresta por alimentação: num router multi-WAN convergem várias. */
+function coreLinks(backbone: TopologyBackboneNode): TopologyCoreLinkEdge[] {
+  return backbone.parentIds.map((parentId) => ({
+    id: `core-link:${parentId}:backbone:${backbone.backboneDeviceId}`,
     kind: 'core-link',
-    source: backbone.parentId,
+    source: parentId,
     target: backbone.id,
     relationship: 'defined_link'
-  };
+  }));
 }
 
 function clientLink(
@@ -402,7 +416,9 @@ export function loadTopologySnapshot(
   db: Database.Database,
   now = new Date()
 ): TopologySnapshot {
-  const backbones = loadBackboneRows(db).map(backboneNode);
+  const uplinks = loadVisibleUplinks(db);
+  const backbones = loadBackboneRows(db)
+    .map((row) => backboneNode(row, uplinks.get(row.backboneDeviceId) ?? []));
   return {
     generatedAt: now.toISOString(),
     root: {
@@ -413,7 +429,7 @@ export function loadTopologySnapshot(
       issueCodes: []
     },
     backbones,
-    edges: backbones.map(coreLink),
+    edges: backbones.flatMap(coreLinks),
     stats: topologyStats(db, backbones)
   };
 }
@@ -425,7 +441,7 @@ export function loadBackboneBranch(
 ): TopologyBackboneBranch | null {
   const row = loadBackboneRow(db, backboneDeviceId);
   if (!row) return null;
-  const backbone = backboneNode(row);
+  const backbone = backboneNode(row, loadVisibleUplinks(db, backboneDeviceId).get(backboneDeviceId) ?? []);
   const nodes = buildClientDevices(
     loadAssignmentRows(db, backboneDeviceId),
     loadAssociationRows(db, backboneDeviceId)
@@ -443,8 +459,10 @@ export function loadSearchableTopologyNodes(db: Database.Database): {
   backbones: TopologyBackboneNode[];
   clientDevices: TopologyClientDeviceNode[];
 } {
+  const uplinks = loadVisibleUplinks(db);
   return {
-    backbones: loadBackboneRows(db).map(backboneNode),
+    backbones: loadBackboneRows(db)
+      .map((row) => backboneNode(row, uplinks.get(row.backboneDeviceId) ?? [])),
     clientDevices: buildClientDevices(
       loadAssignmentRows(db),
       loadAssociationRows(db)

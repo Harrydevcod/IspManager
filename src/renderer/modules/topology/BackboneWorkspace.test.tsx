@@ -27,8 +27,7 @@ const backbone: BackboneDeviceSummary = {
   island: 'São Vicente',
   zone: null,
   provisional: false,
-  upstreamDeviceId: null,
-  upstreamName: null,
+  upstreams: [],
   downstreamCount: 0,
   linkedAssignmentCount: 1,
   createdAt: '2026-07-29T10:00:00.000Z',
@@ -480,9 +479,48 @@ describe('Backbone workspace', () => {
       island: 'São Vicente',
       zone: null,
       notes: null,
-      upstreamDeviceId: null
+      upstreamDeviceIds: []
     });
     expect(onMutation).toHaveBeenCalledTimes(1);
+  });
+
+  test('registers a multi-WAN unit fed by more than one uplink', async () => {
+    const createBackbone = vi.fn(async () => detail);
+    // Duas antenas candidatas: o router agrega as duas em vez de escolher uma.
+    const firstUplink = { ...backbone, id: 40, name: 'Starlink 1' };
+    const secondUplink = { ...backbone, id: 41, name: 'Starlink 2' };
+    await renderWorkspace('admin', {
+      createBackbone,
+      listBackbones: vi.fn(async () => page([firstUplink, secondUplink]))
+    });
+
+    await click(button('Novo backbone'));
+    const catalogTrigger = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Equipamento do catálogo"]'
+    );
+    await click(catalogTrigger);
+    await mouseDown([...document.querySelectorAll<HTMLElement>('.combobox-popover [role="option"]')]
+      .find((option) => option.textContent?.includes('Rocket Prism 5AC')));
+    await changeValue(labelledControl<HTMLInputElement>('Nome operacional'), 'Router multi-WAN');
+
+    for (const name of ['Starlink 1', 'Starlink 2']) {
+      await click(document.querySelector<HTMLButtonElement>('button[aria-label="Adicionar alimentação"]'));
+      await mouseDown([...document.querySelectorAll<HTMLElement>('.combobox-popover [role="option"]')]
+        .find((option) => option.textContent?.includes(name)));
+    }
+
+    // Uma terceira escolha por engano sai pelo mesmo sítio onde entrou.
+    await click(document.querySelector<HTMLButtonElement>('button[aria-label="Remover Starlink 1"]'));
+    await click(document.querySelector<HTMLButtonElement>('button[aria-label="Adicionar alimentação"]'));
+    await mouseDown([...document.querySelectorAll<HTMLElement>('.combobox-popover [role="option"]')]
+      .find((option) => option.textContent?.includes('Starlink 1')));
+
+    await click(button('Registar backbone'));
+
+    expect(createBackbone).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Router multi-WAN',
+      upstreamDeviceIds: [41, 40]
+    }));
   });
 
   test('edits the selected backbone with optimistic concurrency identity', async () => {
