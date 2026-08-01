@@ -81,6 +81,8 @@ function RootDetails({ snapshot }: { snapshot: TopologySnapshot }) {
       <Detail label="CPE físicas" value={snapshot.stats.assignmentCount} />
       <Detail label="Com ligação" value={snapshot.stats.mappedAssignmentCount} />
       <Detail label="Sem ligação" value={snapshot.stats.unmappedAssignmentCount} />
+      {/* Serviço vivo sem CPE instalada: não é "sem ligação", não existe no mapa. */}
+      <Detail label="Sem equipamento" value={snapshot.stats.servicesWithoutDeviceCount} />
       <Detail label="Clientes associados" value={snapshot.stats.clientCount} />
       <Detail label="Serviços associados" value={snapshot.stats.serviceCount} />
       <Detail label="Com atenção" value={snapshot.stats.attentionCount} />

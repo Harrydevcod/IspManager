@@ -235,6 +235,27 @@ function useCanvasEffects(
   }, [active, setSelectedNode]);
 }
 
+/**
+ * O mapa não pode mostrar uma fotografia velha da rede. Recarrega-se quando a
+ * outra aba avisa que mexeu em alguma coisa (`revision`) e quando volta a ficar
+ * visível — instalar um serviço com equipamento noutro módulo liga a CPE a um
+ * backbone, e essa CPE tem de estar lá quando o operador volta ao mapa.
+ *
+ * Recarregar em vez de remontar: os ramos abertos ficam abertos.
+ */
+function useMapFreshness(refresh: () => Promise<void>, revision: number, active: boolean) {
+  const seenRef = useRef({ revision, active });
+  useEffect(() => {
+    const seen = seenRef.current;
+    const becameActive = active && !seen.active;
+    const changed = revision !== seen.revision;
+    seenRef.current = { revision, active };
+    // A primeira leitura já vem do arranque do workspace, e uma alteração feita
+    // com o mapa escondido espera pelo regresso em vez de pedir duas vezes.
+    if (becameActive || (changed && active)) void refresh();
+  }, [active, refresh, revision]);
+}
+
 /** Virar reposiciona tudo — sem reenquadrar, o desenho salta para fora da vista. */
 function useRefitOnDirectionChange(
   canvasRef: React.RefObject<TopologyCanvasHandle | null>,
@@ -291,6 +312,11 @@ function TopologyHeader({ snapshot }: { snapshot: TopologySnapshot }) {
         <div data-tone={snapshot.stats.unmappedAssignmentCount > 0 ? 'attention' : undefined}>
           <dt>Sem ligação</dt><dd>{snapshot.stats.unmappedAssignmentCount}</dd>
         </div>
+        {/* Os dois motivos para um cliente não estar no mapa: falta a CPE, ou
+            falta dizer de que backbone ela pende. */}
+        <div data-tone={snapshot.stats.servicesWithoutDeviceCount > 0 ? 'attention' : undefined}>
+          <dt>Sem equipamento</dt><dd>{snapshot.stats.servicesWithoutDeviceCount}</dd>
+        </div>
         <div><dt>Clientes</dt><dd>{snapshot.stats.clientCount}</dd></div>
         <div data-tone={snapshot.stats.attentionCount > 0 ? 'attention' : undefined}>
           <dt>Atenções</dt><dd>{snapshot.stats.attentionCount}</dd>
@@ -338,6 +364,8 @@ function TopologyControls({
         hasBackbones={(workspace.snapshot?.backbones.length ?? 0) > 0}
         direction={direction}
         canManage={authoring.canManage}
+        refreshing={workspace.refreshing}
+        onRefresh={() => { void workspace.refresh(); }}
         onCreateDevice={authoring.openEditor}
         onQueryChange={workspace.setQuery}
         onResultSelect={(result) => { void workspace.selectSearchResult(result); }}
@@ -418,23 +446,23 @@ function TopologyStage({
   );
 }
 
-function TopologyMapWorkspace(
-  props: Omit<TopologyMapViewProps, 'revision'>
-) {
+function TopologyMapWorkspace(props: TopologyMapViewProps) {
   const workspace = useTopologyWorkspace(props.api);
   // Registar ou ligar recarrega o mapa no sítio — remontar fecharia os ramos
   // abertos — e avisa o módulo para refrescar a lista da aba Backbone.
   const { onMutation } = props;
-  const { loadSnapshot } = workspace;
+  const { refresh } = workspace;
   const authoring = useMapAuthoring(useCallback(() => {
-    void loadSnapshot(true);
+    void refresh();
     onMutation();
-  }, [loadSnapshot, onMutation]));
+  }, [refresh, onMutation]));
+  useMapFreshness(refresh, props.revision, props.active);
   const canvasRef = useRef<TopologyCanvasHandle>(null);
   const [labelsVisible, setLabelsVisible] = useState(false);
   const [legendVisible, setLegendVisible] = useState(true);
-  const [inspectorVisible, setInspectorVisible] = useState(true);
-  const [direction, setDirection] = useState<TopologyDirection>('LR');
+  // O mapa abre inteiro: o inspetor só aparece quando houver nó selecionado.
+  const [inspectorVisible, setInspectorVisible] = useState(false);
+  const [direction, setDirection] = useState<TopologyDirection>('TB');
   const { nodes, edges } = useRenderedGraph(
     workspace.snapshot,
     workspace,
@@ -516,9 +544,6 @@ function TopologyMapWorkspace(
   );
 }
 
-export default function TopologyMapView({
-  revision,
-  ...props
-}: TopologyMapViewProps) {
-  return <TopologyMapWorkspace key={revision} {...props} />;
+export default function TopologyMapView(props: TopologyMapViewProps) {
+  return <TopologyMapWorkspace {...props} />;
 }

@@ -83,8 +83,20 @@ function useTopologyBranches(api: TopologyApi) {
       setLoading((current) => removeId(current, catalogId));
     }
   }, [cache]);
+
+  // Um ref para o conjunto aberto: `reloadBranches` mantém a identidade estável
+  // (entra nas deps de `refresh`) e mesmo assim lê sempre os ramos do momento.
+  const expandedRef = useRef(expanded);
+  useEffect(() => { expandedRef.current = expanded; }, [expanded]);
+
+  /** Deita fora o lido e volta a pedir os ramos abertos — sem os fechar. */
+  const reloadBranches = useCallback(async () => {
+    cache.clear();
+    await Promise.all([...expandedRef.current].map((id) => loadBranch(id)));
+  }, [cache, loadBranch]);
+
   return {
-    branches, expanded, loadingBranches, branchErrors, setExpanded, loadBranch
+    branches, expanded, loadingBranches, branchErrors, setExpanded, loadBranch, reloadBranches
   };
 }
 
@@ -158,6 +170,24 @@ export function useTopologyWorkspace(providedApi?: TopologyApi) {
     void branchState.loadBranch(catalogId, true);
   }, [branchState]);
 
+  /**
+   * Recarrega o que está à vista: o esqueleto e os ramos abertos. É o que corre
+   * ao carregar em Atualizar, quando a aba volta a ficar visível e quando a aba
+   * Backbone avisa que mexeu em alguma coisa — sem remontar, para que os ramos
+   * abertos não se fechem por baixo dos pés de quem está a olhar.
+   */
+  const { loadSnapshot } = snapshotState;
+  const { reloadBranches } = branchState;
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([loadSnapshot(true), reloadBranches()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadSnapshot, reloadBranches]);
+
   const selectSearchResult = useCallback(async (result: TopologySearchResult) => {
     let node: TopologyNode = result.node;
     const catalogId = resultBackboneId(result);
@@ -177,8 +207,8 @@ export function useTopologyWorkspace(providedApi?: TopologyApi) {
 
   return {
     ...snapshotState, ...branchState, ...search,
-    selectedNode, pendingFocusId, filters, allBranchesExpanded,
+    selectedNode, pendingFocusId, filters, allBranchesExpanded, refreshing,
     setSelectedNode, setPendingFocusId, setFilters,
-    toggleBranch, toggleAllBranches, retryBranch, selectSearchResult
+    toggleBranch, toggleAllBranches, retryBranch, selectSearchResult, refresh
   };
 }

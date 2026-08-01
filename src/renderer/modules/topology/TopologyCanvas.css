@@ -226,11 +226,10 @@
 
 .topology-spin { animation: topology-spin 900ms linear infinite; }
 
-/* Tamanho declarado aqui, não o que o React Flow traz por omissão: a reserva
-   da legenda logo abaixo conta com esta largura. */
+/* Tamanho no `style` do <MiniMap> (TopologyCanvas.tsx), não aqui: é de lá que o
+   React Flow tira a escala do desenho. A reserva da legenda logo abaixo conta
+   com esses 180px. */
 .topology-minimap {
-  width: 180px;
-  height: 120px;
   border: 1px solid var(--topology-line);
   border-radius: var(--r1);
   background: var(--topology-surface);

@@ -38,9 +38,21 @@ export function createTopologyBranchCache(loader: BranchLoader) {
     return load(catalogId);
   }
 
+  /**
+   * Deita fora tudo o que já foi lido. Sem isto, "atualizar" continuava a servir
+   * ramos anteriores à CPE que acabou de ser ligada. Os pedidos em voo também
+   * saem: o próximo `load` volta a pedir em vez de aproveitar a resposta velha.
+   */
+  function clear(): void {
+    values.clear();
+    requests.clear();
+    errors.clear();
+  }
+
   return {
     load,
     retry,
+    clear,
     peek: (catalogId: number) => values.get(catalogId),
     error: (catalogId: number) => errors.get(catalogId)
   };

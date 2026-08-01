@@ -393,6 +393,19 @@
 .topology-filter-menu summary::-webkit-details-marker { display: none; }
 
 .topology-filter-menu[open] summary,
+/* O ícone roda enquanto a leitura corre: o botão fica inerte e diz porquê. */
+.topology-refreshing {
+  animation: topology-refresh-spin 900ms linear infinite;
+}
+
+@keyframes topology-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topology-refreshing { animation: none; opacity: 0.5; }
+}
+
 .topology-canvas-tools button[aria-pressed='true'] {
   border-color: var(--topology-accent-deep);
   background: color-mix(in oklch, var(--accent) 16%, var(--surface));

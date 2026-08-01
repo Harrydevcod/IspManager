@@ -126,8 +126,13 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
             size={1}
             color="var(--border-2)"
           />
+          {/* O tamanho vive aqui, não no CSS: o React Flow lê `style.width/height`
+              para calcular a escala do desenho e o mapeamento do arrasto. Uma
+              caixa encolhida só por CSS deixava o SVG nos 200×150 por omissão —
+              com todos os ramos abertos o grafo transbordava para fora dela. */}
           <MiniMap
             className="topology-minimap"
+            style={{ width: 180, height: 120 }}
             pannable
             zoomable
             nodeColor={miniMapColor}
