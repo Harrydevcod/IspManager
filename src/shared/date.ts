@@ -3,7 +3,7 @@
 // off-by-one of `new Date('YYYY-MM-DD')`) and passes datetime strings through
 // so timestamps keep their time component. Separador dia-mês-ano é o hífen
 // (dd-mm-aaaa), não a barra pt-PT por defeito.
-function parseDate(value: string | null | undefined): Date | null {
+export function parseDate(value: string | null | undefined): Date | null {
   if (!value) return null;
   const source = value.includes('T') ? value : `${value.slice(0, 10)}T00:00:00`;
   const date = new Date(source);
