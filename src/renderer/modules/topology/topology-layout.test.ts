@@ -30,6 +30,22 @@ describe('topology Dagre layout', () => {
     expect(client.targetPosition).toBe('left');
   });
 
+  /*
+   * O mapa é controlado e não tem `onNodesChange`, por isso as medições que o
+   * React Flow faz nunca voltam para os nós. Sem `measured`, o `fitView` ignora
+   * o nó e o mapa abre por enquadrar — é daqui que as medidas têm de vir.
+   */
+  test('carries the rendered size of every node so the canvas can frame them', () => {
+    const laidOut = layoutTopologyGraph(graph);
+
+    expect(laidOut.nodes.length).toBeGreaterThan(2);
+    for (const node of laidOut.nodes) {
+      expect(node.measured).toEqual({ width: node.width, height: node.height });
+      expect(node.measured?.width).toBeGreaterThan(0);
+      expect(node.measured?.height).toBeGreaterThan(0);
+    }
+  });
+
   test('stacks the same graph downwards when the map is turned vertical', () => {
     const laidOut = layoutTopologyGraph(graph, 'TB');
     const byId = new Map(laidOut.nodes.map((node) => [node.id, node]));

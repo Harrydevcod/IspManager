@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type {
+  TopologyBackboneNode,
   TopologySearchResult
 } from '../../../shared/topology';
 import { Button, Field, Select } from '../../components';
@@ -27,25 +28,16 @@ import type { TopologyDirection } from './topology-layout';
 
 export type SearchState = 'idle' | 'loading' | 'error';
 
-type TopologyToolbarProps = {
-  query: string;
-  searchState: SearchState;
-  results: TopologySearchResult[];
-  filters: TopologyGraphFilters;
+/** O que se controla sobre o mapa — flutua no canto do canvas, não na barra. */
+export type CanvasToolsProps = {
   labelsVisible: boolean;
   legendVisible: boolean;
   inspectorVisible: boolean;
   allBranchesExpanded: boolean;
   hasBackbones: boolean;
   direction: TopologyDirection;
-  canManage: boolean;
   refreshing: boolean;
   onRefresh: () => void;
-  onCreateDevice: () => void;
-  onQueryChange: (value: string) => void;
-  onResultSelect: (result: TopologySearchResult) => void;
-  onFiltersChange: (filters: TopologyGraphFilters) => void;
-  onClearFilters: () => void;
   onToggleLabels: () => void;
   onToggleLegend: () => void;
   onToggleInspector: () => void;
@@ -54,6 +46,22 @@ type TopologyToolbarProps = {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
+};
+
+type TopologyToolbarProps = {
+  query: string;
+  searchState: SearchState;
+  results: TopologySearchResult[];
+  filters: TopologyGraphFilters;
+  backbones: TopologyBackboneNode[];
+  focusedBackboneId: number | null;
+  onFocusBackbone: (backboneDeviceId: number | null) => void;
+  canManage: boolean;
+  onCreateDevice: () => void;
+  onQueryChange: (value: string) => void;
+  onResultSelect: (result: TopologySearchResult) => void;
+  onFiltersChange: (filters: TopologyGraphFilters) => void;
+  onClearFilters: () => void;
 };
 
 function SearchResults({
@@ -169,6 +177,36 @@ function LocationFilters({ filters, onChange }: Omit<FiltersProps, 'onClear'>) {
   );
 }
 
+/**
+ * A rede inteira não cabe legível num ecrã. Este seletor troca-a por uma antena
+ * de cada vez — o backbone, o que pende dele e a cadeia até à Internet.
+ */
+function ViewScope({ backbones, focusedBackboneId, onFocusBackbone }: Pick<
+  TopologyToolbarProps,
+  'backbones' | 'focusedBackboneId' | 'onFocusBackbone'
+>) {
+  // Com um backbone só não há por onde dividir.
+  if (backbones.length < 2) return null;
+  return (
+    <div className="topology-scope">
+      <Select
+        aria-label="Vista do mapa"
+        value={focusedBackboneId === null ? 'all' : String(focusedBackboneId)}
+        onChange={(event) => onFocusBackbone(
+          event.target.value === 'all' ? null : Number(event.target.value)
+        )}
+      >
+        <option value="all">Rede completa</option>
+        {backbones.map((backbone) => (
+          <option key={backbone.id} value={backbone.backboneDeviceId}>
+            {backbone.label}
+          </option>
+        ))}
+      </Select>
+    </div>
+  );
+}
+
 function Filters({ filters, onChange, onClear }: FiltersProps) {
   return (
     <details className="topology-filter-menu">
@@ -216,25 +254,7 @@ function ToolButton({ label, pressed, disabled, onClick, children }: {
   );
 }
 
-function CanvasTools(props: Pick<
-  TopologyToolbarProps,
-  | 'labelsVisible'
-  | 'legendVisible'
-  | 'inspectorVisible'
-  | 'allBranchesExpanded'
-  | 'hasBackbones'
-  | 'direction'
-  | 'onToggleLabels'
-  | 'onToggleLegend'
-  | 'onToggleInspector'
-  | 'onToggleDirection'
-  | 'onToggleAllBranches'
-  | 'refreshing'
-  | 'onRefresh'
-  | 'onZoomIn'
-  | 'onZoomOut'
-  | 'onFit'
->) {
+export function CanvasTools(props: CanvasToolsProps) {
   const vertical = props.direction === 'TB';
   return (
     <div className="topology-canvas-tools" role="toolbar" aria-label="Controlos do mapa">
@@ -325,6 +345,11 @@ export function TopologyToolbar(props: TopologyToolbarProps) {
           onSelect={props.onResultSelect}
         />
       </div>
+      <ViewScope
+        backbones={props.backbones}
+        focusedBackboneId={props.focusedBackboneId}
+        onFocusBackbone={props.onFocusBackbone}
+      />
       <Filters
         filters={props.filters}
         onChange={props.onFiltersChange}
@@ -341,7 +366,6 @@ export function TopologyToolbar(props: TopologyToolbarProps) {
           Novo equipamento
         </Button>
       )}
-      <CanvasTools {...props} />
     </div>
   );
 }

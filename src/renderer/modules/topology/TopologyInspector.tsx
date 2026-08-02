@@ -1,6 +1,7 @@
 import {
   ArrowUpRight,
   Box,
+  Focus,
   Network,
   RadioTower,
   X
@@ -25,6 +26,8 @@ export type TopologyInspectorProps = {
   onOpenStock: (catalogId: number) => void;
   /** Ausente para quem não pode gerir: as alimentações ficam só de leitura. */
   onDisconnectUpstream?: (deviceId: number, upstreamDeviceId: number) => void;
+  focusedBackboneId: number | null;
+  onFocusBackbone: (backboneDeviceId: number | null) => void;
 };
 
 const ISSUE_LABELS: Record<TopologyIssueCode, string> = {
@@ -137,13 +140,17 @@ function BackboneDetails({
   snapshot,
   branch,
   onOpenStock,
-  onDisconnectUpstream
+  onDisconnectUpstream,
+  focused,
+  onFocusBackbone
 }: {
   node: Extract<TopologyNode, { kind: 'backbone' }>;
   snapshot: TopologySnapshot;
   branch?: TopologyBackboneBranch;
   onOpenStock: (catalogId: number) => void;
   onDisconnectUpstream?: (deviceId: number, upstreamDeviceId: number) => void;
+  focused: boolean;
+  onFocusBackbone: (backboneDeviceId: number | null) => void;
 }) {
   return (
     <>
@@ -165,6 +172,16 @@ function BackboneDetails({
         <Detail label="Identidade" value={node.provisional ? 'Provisória' : 'Confirmada'} />
         <Detail label="CPE no ramo" value={branch?.stats.assignmentCount ?? 'Ramo fechado'} />
       </dl>
+      {/* Quem está a olhar para a antena já não precisa de a ir procurar ao
+          seletor da barra. */}
+      <Button
+        variant="secondary"
+        className="topology-inspector-action"
+        onClick={() => onFocusBackbone(focused ? null : node.backboneDeviceId)}
+      >
+        {focused ? 'Ver a rede completa' : 'Ver só este backbone'}
+        <Focus size={14} aria-hidden />
+      </Button>
       <Button
         variant="secondary"
         className="topology-inspector-action"
@@ -300,6 +317,8 @@ export function TopologyInspector(props: TopologyInspectorProps) {
               branch={branch}
               onOpenStock={onOpenStock}
               onDisconnectUpstream={props.onDisconnectUpstream}
+              focused={props.focusedBackboneId === node.backboneDeviceId}
+              onFocusBackbone={props.onFocusBackbone}
             />
           )}
           {node.kind === 'client-device' && (

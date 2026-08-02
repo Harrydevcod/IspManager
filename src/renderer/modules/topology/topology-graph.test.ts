@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { branchOne, branchTwo, snapshot } from './topologyTestFixtures';
 import {
   composeTopologyGraph,
+  scopeGraphToBackbone,
   topologyRelationshipLabel,
   toggleBackboneExpansion
 } from './topology-graph';
@@ -35,6 +36,37 @@ describe('topology graph composition', () => {
     expect(expanded.nodes.map((node) => node.id)).toContain('assignment:100');
     expect(expanded.edges.map((edge) => edge.id))
       .toContain('client-link:backbone:10:assignment:100');
+  });
+
+  /*
+   * A rede inteira não cabe legível num ecrã (~8000px com os ramos abertos,
+   * `minZoom` 0.25). Recortar por antena é o que a torna consultável.
+   */
+  test('scopes the map to one backbone, keeping its branch and the chain above', () => {
+    const graph = composeTopologyGraph(
+      snapshot,
+      new Map([[10, branchOne], [20, branchTwo]]),
+      new Set([10, 20])
+    );
+
+    const scoped = scopeGraphToBackbone(graph, 'backbone:10');
+    const ids = scoped.nodes.map((node) => node.id);
+
+    expect(ids).toContain('backbone:10');
+    expect(ids).toContain('assignment:100');
+    expect(ids).toContain('root:isp');
+    // O irmão e o ramo dele ficam fora da vista.
+    expect(ids).not.toContain('backbone:20');
+    expect(ids).not.toContain('assignment:200');
+    expect(scoped.edges.every((edge) => (
+      ids.includes(edge.source) && ids.includes(edge.target)
+    ))).toBe(true);
+  });
+
+  test('leaves the graph untouched when the scoped backbone is not on the map', () => {
+    const graph = composeTopologyGraph(snapshot, new Map(), new Set());
+
+    expect(scopeGraphToBackbone(graph, 'backbone:999')).toBe(graph);
   });
 
   test('merges multiple loaded branches with stable physical-node deduplication', () => {

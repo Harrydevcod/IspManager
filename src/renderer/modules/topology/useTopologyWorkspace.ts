@@ -171,6 +171,29 @@ export function useTopologyWorkspace(providedApi?: TopologyApi) {
   }, [branchState]);
 
   /**
+   * Ver uma antena de cada vez. Focar abre o ramo e carrega-o — focar um
+   * backbone fechado mostraria um nó sozinho, que não é o que ninguém quer ver.
+   */
+  const [focusedBackboneId, setFocusedBackboneId] = useState<number | null>(null);
+  const focusBackbone = useCallback((backboneDeviceId: number | null) => {
+    setFocusedBackboneId(backboneDeviceId);
+    if (backboneDeviceId === null) return;
+    branchState.setExpanded((current) => addId(current, backboneDeviceId));
+    if (!branchState.branches.has(backboneDeviceId)) {
+      void branchState.loadBranch(backboneDeviceId);
+    }
+  }, [branchState]);
+
+  // Um backbone apagado noutro sítio não pode deixar o mapa preso numa vista
+  // vazia: o foco larga assim que o equipamento sai do retrato.
+  useEffect(() => {
+    if (focusedBackboneId === null) return;
+    if (!snapshotState.snapshot) return;
+    if (backboneIds.includes(focusedBackboneId)) return;
+    setFocusedBackboneId(null);
+  }, [backboneIds, focusedBackboneId, snapshotState.snapshot]);
+
+  /**
    * Recarrega o que está à vista: o esqueleto e os ramos abertos. É o que corre
    * ao carregar em Atualizar, quando a aba volta a ficar visível e quando a aba
    * Backbone avisa que mexeu em alguma coisa — sem remontar, para que os ramos
@@ -200,6 +223,9 @@ export function useTopologyWorkspace(providedApi?: TopologyApi) {
         : loaded?.nodes.find((item) => item.id === result.node.id) ?? result.node;
     }
     setSelectedNode(node);
+    // A pesquisa é sobre a rede toda: um resultado fora da antena focada só
+    // aparece se a vista voltar a ser completa.
+    setFocusedBackboneId(null);
     search.setQuery('');
     search.setSearchResults([]);
     setPendingFocusId(node.id);
@@ -208,7 +234,8 @@ export function useTopologyWorkspace(providedApi?: TopologyApi) {
   return {
     ...snapshotState, ...branchState, ...search,
     selectedNode, pendingFocusId, filters, allBranchesExpanded, refreshing,
-    setSelectedNode, setPendingFocusId, setFilters,
+    focusedBackboneId,
+    setSelectedNode, setPendingFocusId, setFilters, focusBackbone,
     toggleBranch, toggleAllBranches, retryBranch, selectSearchResult, refresh
   };
 }
