@@ -147,6 +147,15 @@ export function currentLicenseStatus(now: Date = new Date()): LicenseStatus {
   );
 }
 
+/**
+ * A instalação pode escrever? Usado pelo portão HTTP e pelas tarefas em
+ * processo, para que faturar automaticamente e faturar à mão obedeçam à mesma
+ * regra. As cópias de segurança são a exceção: correm sempre.
+ */
+export function licenseAllowsWrites(now: Date = new Date()): boolean {
+  return currentLicenseStatus(now).canWrite;
+}
+
 export type ActivationResult =
   | { ok: true; status: LicenseStatus; claim: LicenseClaim }
   | { ok: false; reason: string };

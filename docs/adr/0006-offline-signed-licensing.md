@@ -67,7 +67,15 @@ that rule out most of the obvious answers:
 - Enforcement is client-side and therefore defeatable by repackaging the Electron app.
   This is accepted: the mechanism targets casual copying between ISPs and continued use
   after expiry, not a determined attacker. No obfuscation is planned.
-- **Known gap:** the gate covers HTTP requests only. The in-process scheduled jobs
-  (automatic billing, notices, outbox drains) still run in a read-only installation.
-  Whether an unlicensed install should keep generating invoices is a commercial decision
-  that has not been made.
+- **Scheduled jobs follow the same rule as the UI.** Automatic billing, recurring
+  expenses, overdue notices and the WhatsApp/SMS outbox drains do not run in a read-only
+  installation — invoicing automatically what the interface refuses to invoice would be
+  incoherent. Stopping is safe because auto-billing's `monthsAfter` catch-up regenerates
+  every skipped month on the first boot after renewal, leaving no gaps in the sequence.
+  Two deliberate exceptions: delivery-status polls keep running (they reconcile messages
+  already sent, and stopping them would strand those messages in an unknown state), and
+  scheduled backups always run, for the same reason the backup routes are exempt from the
+  HTTP gate.
+- The job checks read the licence inside each tick rather than at registration, so
+  activating a licence — or crossing midnight into expiry — takes effect without a
+  restart.
