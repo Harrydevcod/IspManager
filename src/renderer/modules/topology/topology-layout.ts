@@ -60,6 +60,14 @@ function positionNode(
     ...node,
     width: size.width,
     height: size.height,
+    /*
+     * O React Flow só escreve `measured` ao aplicar uma alteração `dimensions`
+     * vinda do `onNodesChange` — e este mapa é controlado, sem esse handler, por
+     * isso as medições dele nunca voltavam para cá. Sem `measured`, o `fitView`
+     * ignora o nó (`getFitViewNodes`) e o mapa abria por enquadrar. As medidas
+     * são estas: o CSS dos nós usa exatamente os valores de `SIZES`.
+     */
+    measured: { width: size.width, height: size.height },
     position: {
       x: coordinates.x - size.width / 2,
       y: coordinates.y - size.height / 2

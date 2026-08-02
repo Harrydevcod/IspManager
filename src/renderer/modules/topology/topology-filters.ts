@@ -3,7 +3,11 @@ import type {
   TopologyClientDeviceNode,
   TopologyNode
 } from '../../../shared/topology';
-import type { TopologyFlowNode, TopologyGraph } from './topology-graph';
+import {
+  collectAncestors,
+  type TopologyFlowNode,
+  type TopologyGraph
+} from './topology-graph';
 
 export type TopologyGraphFilters = {
   administrativeState?: TopologyAdministrativeState;
@@ -52,24 +56,6 @@ function matchesNode(node: TopologyNode, filters: TopologyGraphFilters): boolean
   ) return false;
   if (!filters.island && !filters.zone) return true;
   return node.kind === 'client-device' && matchesLocation(node, filters);
-}
-
-function collectAncestors(graph: TopologyGraph, matched: Set<string>): Set<string> {
-  const visible = new Set(matched);
-  const parents = new Map<string, string[]>();
-  graph.edges.forEach((edge) => {
-    parents.set(edge.target, [...(parents.get(edge.target) ?? []), edge.source]);
-  });
-  const pending = [...matched];
-  while (pending.length > 0) {
-    const current = pending.shift()!;
-    for (const parent of parents.get(current) ?? []) {
-      if (visible.has(parent)) continue;
-      visible.add(parent);
-      pending.push(parent);
-    }
-  }
-  return visible;
 }
 
 export function filterTopologyGraph(

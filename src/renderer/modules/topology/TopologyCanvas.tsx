@@ -4,6 +4,7 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
+  useNodesInitialized,
   useReactFlow
 } from '@xyflow/react';
 import {
@@ -52,7 +53,8 @@ function useCanvasControls(
   nodes: TopologyCanvasNode[]
 ) {
   const flow = useReactFlow<TopologyCanvasNode, TopologyFlowEdge>();
-  const didInitialFit = useRef(false);
+  const nodesInitialized = useNodesInitialized();
+  const fittedCount = useRef(0);
   useImperativeHandle(ref, () => ({
     fit: () => void flow.fitView({ padding: 0.18, duration: motionDuration() }),
     zoomIn: () => void flow.zoomIn({ duration: motionDuration() }),
@@ -69,14 +71,25 @@ function useCanvasControls(
       );
     }
   }), [flow]);
+  /**
+   * Enquadrar sem `requestAnimationFrame`: o frame só corre com a janela à
+   * vista, por isso um mapa montado com a janela minimizada ou em segundo plano
+   * abria por enquadrar — e, em `StrictMode`, a cleanup da primeira passagem
+   * cancelava o frame que a segunda já não voltava a agendar.
+   *
+   * `useNodesInitialized` diz que o React Flow já mediu os nós, que é a única
+   * condição de que o enquadramento precisa: sem medidas, `fitView` só conta os
+   * nós medidos e a escala sai calculada sobre um subconjunto do grafo.
+   */
   useEffect(() => {
-    if (didInitialFit.current || nodes.length === 0) return;
-    didInitialFit.current = true;
-    const frame = window.requestAnimationFrame(() => {
-      void flow.fitView({ padding: 0.2, duration: motionDuration() });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [flow, nodes.length]);
+    if (!nodesInitialized || nodes.length === 0) return;
+    if (fittedCount.current === nodes.length) return;
+    fittedCount.current = nodes.length;
+    // Sem animação: o mapa acabou de aparecer, não há de onde animar — e a
+    // transição do `setViewport` corre em `requestAnimationFrame`, que não corre
+    // com a janela em segundo plano. Assim o enquadramento aplica-se sempre.
+    void flow.fitView({ padding: 0.2, duration: 0 });
+  }, [flow, nodes.length, nodesInitialized]);
 }
 
 const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps>(

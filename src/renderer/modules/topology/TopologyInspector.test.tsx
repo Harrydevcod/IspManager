@@ -40,6 +40,8 @@ test('shows factual CPE associations and routes destination actions', async () =
         onClose={() => undefined}
         onOpenClient={onOpenClient}
         onOpenService={onOpenService}
+        focusedBackboneId={null}
+        onFocusBackbone={() => undefined}
         onOpenStock={onOpenStock}
       />
     );
@@ -80,6 +82,8 @@ test('shows the physical backbone identity and preserves Stock navigation', asyn
         onClose={() => undefined}
         onOpenClient={() => undefined}
         onOpenService={() => undefined}
+        focusedBackboneId={null}
+        onFocusBackbone={() => undefined}
         onOpenStock={onOpenStock}
       />
     );
@@ -112,6 +116,8 @@ test('surfaces provisional physical backbone identity as attention', async () =>
         onClose={() => undefined}
         onOpenClient={() => undefined}
         onOpenService={() => undefined}
+        focusedBackboneId={null}
+        onFocusBackbone={() => undefined}
         onOpenStock={() => undefined}
       />
     );
@@ -145,6 +151,8 @@ test('distinguishes linked CPE from assignments without a defined link', async (
         onClose={() => undefined}
         onOpenClient={() => undefined}
         onOpenService={() => undefined}
+        focusedBackboneId={null}
+        onFocusBackbone={() => undefined}
         onOpenStock={() => undefined}
       />
     );
@@ -173,6 +181,8 @@ test('marks a searched CPE that has no defined backbone link', async () => {
         onClose={() => undefined}
         onOpenClient={() => undefined}
         onOpenService={() => undefined}
+        focusedBackboneId={null}
+        onFocusBackbone={() => undefined}
         onOpenStock={() => undefined}
       />
     );

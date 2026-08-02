@@ -12,6 +12,7 @@ import TopologyModule from './TopologyModule';
 
 const roots: Root[] = [];
 const canvasNodeLookups = vi.hoisted(() => vi.fn());
+const canvasFits = vi.hoisted(() => vi.fn());
 
 vi.mock('@xyflow/react', async (importOriginal) => {
   const original = await importOriginal<typeof import('@xyflow/react')>();
@@ -24,6 +25,10 @@ vi.mock('@xyflow/react', async (importOriginal) => {
         getNode: (nodeId: string) => {
           canvasNodeLookups(nodeId);
           return flow.getNode(nodeId);
+        },
+        fitView: (options?: unknown) => {
+          canvasFits(options);
+          return flow.fitView(options as never);
         }
       };
     }
@@ -182,6 +187,7 @@ beforeEach(() => {
     width: 1200, height: 700, toJSON: () => ({})
   });
   canvasNodeLookups.mockClear();
+  canvasFits.mockClear();
 });
 
 afterEach(async () => {
@@ -503,6 +509,63 @@ describe('TopologyModule branch interaction', () => {
     expect(dialog?.textContent).toContain('Alimentado por');
   });
 
+  test('refits the view when opening every branch pushes the graph off screen', async () => {
+    const container = await mountMap();
+    // O enquadramento inicial já correu — conta-se só o que a abertura provoca.
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 40));
+    });
+    canvasFits.mockClear();
+
+    await act(async () => {
+      button(container, 'Abrir todos os ramos').click();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 40));
+    });
+
+    expect(container.textContent).toContain('CPE 100');
+    expect(canvasFits).toHaveBeenCalled();
+  });
+
+  test('scopes the map to one backbone and back to the whole network', async () => {
+    const container = await mountMap();
+    const scope = () => {
+      const select = container.querySelector<HTMLSelectElement>('[aria-label="Vista do mapa"]');
+      if (!select) throw new Error('Scope select not found');
+      return select;
+    };
+    // O nome também está nas opções do seletor: quem conta é o nó no mapa.
+    const onMap = (label: string) => container.querySelector(
+      `[aria-label="Selecionar ${label}"]`
+    ) !== null;
+    expect(onMap('MikroTik Legacy')).toBe(true);
+
+    // Focar carrega o ramo sozinho: um backbone sem as CPEs não serve de vista.
+    await act(async () => {
+      const select = scope();
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLSelectElement.prototype,
+        'value'
+      )?.set;
+      setter?.call(select, '10');
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onMap('CPE 100')).toBe(true);
+    expect(onMap('MikroTik Legacy')).toBe(false);
+    expect(container.textContent).toContain('Vista:');
+
+    // O chip devolve a rede completa.
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('.topology-scope-chip')?.click();
+    });
+    expect(onMap('MikroTik Legacy')).toBe(true);
+  });
+
   test('turns the map between the two drawing directions', async () => {
     const container = await mountMap();
 
@@ -710,7 +773,7 @@ test('recovers the global snapshot after an explicit retry', async () => {
     await Promise.resolve();
   });
 
-  expect(container.textContent).toContain('Mapa físico');
+  expect(container.querySelector('[aria-label="Mapa físico da rede"]')).not.toBeNull();
   expect(topologyApi.fetchSnapshot).toHaveBeenCalledTimes(2);
 });
 

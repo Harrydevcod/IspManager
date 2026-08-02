@@ -3,7 +3,7 @@ import './TopologyModule.css';
 import './TopologyCanvas.css';
 import './TopologyInspector.css';
 
-import { AlertTriangle, Network, RotateCw } from 'lucide-react';
+import { AlertTriangle, Network, RotateCw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   TopologyBackboneBranch,
@@ -15,11 +15,12 @@ import { BackboneEditorDialog } from './BackboneDialogs';
 import { TopologyCanvas, type TopologyCanvasHandle } from './TopologyCanvas';
 import { TopologyInspector } from './TopologyInspector';
 import type { TopologyCanvasNode } from './TopologyNodes';
-import { TopologyToolbar } from './TopologyToolbar';
+import { CanvasTools, TopologyToolbar, type CanvasToolsProps } from './TopologyToolbar';
 import type { TopologyApi } from './topology-api';
 import { filterTopologyGraph } from './topology-filters';
 import {
   composeTopologyGraph,
+  scopeGraphToBackbone,
   topologyRelationshipLabel,
   type TopologyFlowEdge,
   type TopologyGraph
@@ -173,14 +174,27 @@ function useRenderedGraph(
   labelsVisible: boolean,
   direction: TopologyDirection
 ) {
+  const focusedBackboneId = workspace.focusedBackboneId;
   const graph = useMemo(() => {
     if (!snapshot) return { nodes: [], edges: [] };
     const composed = composeTopologyGraph(snapshot, workspace.branches, workspace.expanded);
+    // Recortar antes de filtrar: a vista escolhe a antena, os filtros escolhem
+    // o que dentro dela interessa.
+    const scoped = focusedBackboneId === null
+      ? composed
+      : scopeGraphToBackbone(composed, `backbone:${focusedBackboneId}`);
     return layoutTopologyGraph(
-      filterTopologyGraph(composed, workspace.filters),
+      filterTopologyGraph(scoped, workspace.filters),
       direction
     );
-  }, [direction, snapshot, workspace.branches, workspace.expanded, workspace.filters]);
+  }, [
+    direction,
+    focusedBackboneId,
+    snapshot,
+    workspace.branches,
+    workspace.expanded,
+    workspace.filters
+  ]);
   const nodes = useMemo(
     () => decorateNodes(graph, workspace),
     [graph, workspace]
@@ -256,18 +270,27 @@ function useMapFreshness(refresh: () => Promise<void>, revision: number, active:
   }, [active, refresh, revision]);
 }
 
-/** Virar reposiciona tudo — sem reenquadrar, o desenho salta para fora da vista. */
-function useRefitOnDirectionChange(
+/**
+ * Mudar a forma do grafo — virar a orientação, abrir ou fechar ramos, filtrar —
+ * reposiciona tudo, e sem reenquadrar o desenho salta para fora da vista. Virar
+ * não muda o número de nós, por isso o enquadramento do canvas (que segue as
+ * medidas) não chega: é este que apanha a rotação.
+ *
+ * Sem `requestAnimationFrame` de propósito — ver a nota em TopologyCanvas: com
+ * a janela em segundo plano o frame nunca corre e o enquadramento perdia-se.
+ */
+function useRefitOnShapeChange(
   canvasRef: React.RefObject<TopologyCanvasHandle | null>,
-  direction: TopologyDirection
+  direction: TopologyDirection,
+  nodeCount: number
 ) {
-  const previous = useRef(direction);
+  const previous = useRef(`${direction}:${nodeCount}`);
   useEffect(() => {
-    if (previous.current === direction) return;
-    previous.current = direction;
-    const frame = window.requestAnimationFrame(() => canvasRef.current?.fit());
-    return () => window.cancelAnimationFrame(frame);
-  }, [canvasRef, direction]);
+    const shape = `${direction}:${nodeCount}`;
+    if (previous.current === shape) return;
+    previous.current = shape;
+    canvasRef.current?.fit();
+  }, [canvasRef, direction, nodeCount]);
 }
 
 function useRequestedBackboneFocus(
@@ -293,19 +316,43 @@ function useRequestedBackboneFocus(
     }
 
     appliedFocusRef.current = focusBackboneDeviceId;
+    // Quem vem da lista de backbones quer ver aquele equipamento, não a rede
+    // toda: o mapa abre já recortado nele.
+    workspace.focusBackbone(focusBackboneDeviceId);
     workspace.setSelectedNode(backbone);
     workspace.setPendingFocusId(backbone.id);
   }, [focusBackboneDeviceId, onFocusHandled, workspace]);
 }
 
-function TopologyHeader({ snapshot }: { snapshot: TopologySnapshot }) {
+/**
+ * Uma tira, uma linha. O título saiu: a aba já diz "Topologia" e o mapa é o
+ * conteúdo — cada pixel de cromo aqui é um pixel a menos de rede à vista.
+ */
+function TopologyStatsBar({
+  snapshot,
+  focused,
+  onClearFocus
+}: {
+  snapshot: TopologySnapshot;
+  focused: TopologySnapshot['backbones'][number] | null;
+  onClearFocus: () => void;
+}) {
   return (
     <header className="topology-header">
-      <div>
-        <p className="eyebrow">Infraestrutura · leitura</p>
-        <h2 id="topology-title">Topologia de rede</h2>
-        <p>Mapa físico · ligações definidas</p>
-      </div>
+      {/* Os números são da rede toda. Com a vista recortada, o chip diz para
+          onde se está a olhar — senão lêem-se como se fossem do que está no
+          ecrã. */}
+      {focused && (
+        <button
+          type="button"
+          className="topology-scope-chip"
+          onClick={onClearFocus}
+        >
+          <span>Vista: {focused.label}</span>
+          <X size={12} aria-hidden />
+          <span className="sr-only">Voltar à rede completa</span>
+        </button>
+      )}
       <dl className="topology-stats" aria-label="Resumo factual">
         <div><dt>Backbones</dt><dd>{snapshot.stats.backboneCount}</dd></div>
         <div><dt>CPE ligadas</dt><dd>{snapshot.stats.mappedAssignmentCount}</dd></div>
@@ -326,62 +373,6 @@ function TopologyHeader({ snapshot }: { snapshot: TopologySnapshot }) {
   );
 }
 
-function TopologyControls({
-  workspace,
-  labelsVisible,
-  legendVisible,
-  inspectorVisible,
-  direction,
-  setLabelsVisible,
-  setLegendVisible,
-  setInspectorVisible,
-  setDirection,
-  authoring,
-  canvasRef
-}: {
-  workspace: ReturnType<typeof useTopologyWorkspace>;
-  labelsVisible: boolean;
-  legendVisible: boolean;
-  inspectorVisible: boolean;
-  direction: TopologyDirection;
-  setLabelsVisible: React.Dispatch<React.SetStateAction<boolean>>;
-  setLegendVisible: React.Dispatch<React.SetStateAction<boolean>>;
-  setInspectorVisible: React.Dispatch<React.SetStateAction<boolean>>;
-  setDirection: React.Dispatch<React.SetStateAction<TopologyDirection>>;
-  authoring: MapAuthoring;
-  canvasRef: React.RefObject<TopologyCanvasHandle | null>;
-}) {
-  return (
-      <TopologyToolbar
-        query={workspace.query}
-        searchState={workspace.searchState}
-        results={workspace.searchResults}
-        filters={workspace.filters}
-        labelsVisible={labelsVisible}
-        legendVisible={legendVisible}
-        inspectorVisible={inspectorVisible}
-        allBranchesExpanded={workspace.allBranchesExpanded}
-        hasBackbones={(workspace.snapshot?.backbones.length ?? 0) > 0}
-        direction={direction}
-        canManage={authoring.canManage}
-        refreshing={workspace.refreshing}
-        onRefresh={() => { void workspace.refresh(); }}
-        onCreateDevice={authoring.openEditor}
-        onQueryChange={workspace.setQuery}
-        onResultSelect={(result) => { void workspace.selectSearchResult(result); }}
-        onFiltersChange={workspace.setFilters}
-        onClearFilters={() => workspace.setFilters({})}
-        onToggleLabels={() => setLabelsVisible((visible) => !visible)}
-        onToggleLegend={() => setLegendVisible((visible) => !visible)}
-        onToggleInspector={() => setInspectorVisible((visible) => !visible)}
-        onToggleDirection={() => setDirection((current) => current === 'LR' ? 'TB' : 'LR')}
-        onToggleAllBranches={workspace.toggleAllBranches}
-        onZoomIn={() => canvasRef.current?.zoomIn()}
-        onZoomOut={() => canvasRef.current?.zoomOut()}
-        onFit={() => canvasRef.current?.fit()}
-      />
-  );
-}
 
 function TopologyStage({
   props,
@@ -391,6 +382,7 @@ function TopologyStage({
   edges,
   legendVisible,
   inspectorVisible,
+  tools,
   onCloseInspector,
   authoring,
   canvasRef
@@ -402,6 +394,7 @@ function TopologyStage({
   edges: TopologyFlowEdge[];
   legendVisible: boolean;
   inspectorVisible: boolean;
+  tools: CanvasToolsProps;
   onCloseInspector: () => void;
   authoring: MapAuthoring;
   canvasRef: React.RefObject<TopologyCanvasHandle | null>;
@@ -426,6 +419,9 @@ function TopologyStage({
             connectable={authoring.canManage}
             onConnectNodes={authoring.connectNodes}
           />
+          {/* Os controlos vivem sobre o mapa, como em qualquer canvas: pousados
+              no canto, não numa segunda linha de barra a comer altura. */}
+          <CanvasTools {...tools} />
           {(snapshot.backbones.length === 0 || filteredEmpty) && (
             <EmptyCanvas filtered={hasActiveFilters(workspace.filters)} />
           )}
@@ -440,6 +436,8 @@ function TopologyStage({
             onOpenService={props.onOpenService}
             onOpenStock={props.onOpenStock}
             onDisconnectUpstream={authoring.canManage ? authoring.disconnectUpstream : undefined}
+            focusedBackboneId={workspace.focusedBackboneId}
+            onFocusBackbone={workspace.focusBackbone}
           />
         )}
       </div>
@@ -469,7 +467,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
     labelsVisible,
     direction
   );
-  useRefitOnDirectionChange(canvasRef, direction);
+  useRefitOnShapeChange(canvasRef, direction, nodes.length);
   // Escolher um nó com o painel recolhido volta a abri-lo — senão o clique
   // parecia não fazer nada. Recolher com o mesmo nó selecionado não mexe no id,
   // por isso o painel fica fechado como foi pedido.
@@ -494,21 +492,47 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
   if (!workspace.snapshot) {
     return <TopologyGlobalError onRetry={() => { void workspace.loadSnapshot(true); }} />;
   }
+  const tools: CanvasToolsProps = {
+    labelsVisible,
+    legendVisible,
+    inspectorVisible,
+    allBranchesExpanded: workspace.allBranchesExpanded,
+    hasBackbones: workspace.snapshot.backbones.length > 0,
+    direction,
+    refreshing: workspace.refreshing,
+    onRefresh: () => { void workspace.refresh(); },
+    onToggleLabels: () => setLabelsVisible((visible) => !visible),
+    onToggleLegend: () => setLegendVisible((visible) => !visible),
+    onToggleInspector: () => setInspectorVisible((visible) => !visible),
+    onToggleDirection: () => setDirection((current) => current === 'LR' ? 'TB' : 'LR'),
+    onToggleAllBranches: workspace.toggleAllBranches,
+    onZoomIn: () => canvasRef.current?.zoomIn(),
+    onZoomOut: () => canvasRef.current?.zoomOut(),
+    onFit: () => canvasRef.current?.fit()
+  };
   return (
-    <section className="topology-module" aria-labelledby="topology-title">
-      <TopologyHeader snapshot={workspace.snapshot} />
-      <TopologyControls
-        workspace={workspace}
-        labelsVisible={labelsVisible}
-        legendVisible={legendVisible}
-        inspectorVisible={inspectorVisible}
-        direction={direction}
-        setLabelsVisible={setLabelsVisible}
-        setLegendVisible={setLegendVisible}
-        setInspectorVisible={setInspectorVisible}
-        setDirection={setDirection}
-        authoring={authoring}
-        canvasRef={canvasRef}
+    <section className="topology-module" aria-label="Topologia de rede">
+      <TopologyStatsBar
+        snapshot={workspace.snapshot}
+        focused={workspace.snapshot.backbones.find(
+          (backbone) => backbone.backboneDeviceId === workspace.focusedBackboneId
+        ) ?? null}
+        onClearFocus={() => workspace.focusBackbone(null)}
+      />
+      <TopologyToolbar
+        query={workspace.query}
+        searchState={workspace.searchState}
+        results={workspace.searchResults}
+        filters={workspace.filters}
+        backbones={workspace.snapshot.backbones}
+        focusedBackboneId={workspace.focusedBackboneId}
+        onFocusBackbone={workspace.focusBackbone}
+        canManage={authoring.canManage}
+        onCreateDevice={authoring.openEditor}
+        onQueryChange={workspace.setQuery}
+        onResultSelect={(result) => { void workspace.selectSearchResult(result); }}
+        onFiltersChange={workspace.setFilters}
+        onClearFilters={() => workspace.setFilters({})}
       />
       <TopologyStage
         props={props}
@@ -518,6 +542,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
         edges={edges}
         legendVisible={legendVisible}
         inspectorVisible={inspectorVisible}
+        tools={tools}
         onCloseInspector={() => {
           setInspectorVisible(false);
           workspace.setSelectedNode(null);

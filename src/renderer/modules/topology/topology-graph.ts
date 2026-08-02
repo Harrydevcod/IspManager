@@ -83,6 +83,62 @@ export function composeTopologyGraph(
   return { nodes: [...nodes.values()], edges: [...edges.values()] };
 }
 
+function relatives(
+  graph: TopologyGraph,
+  seeds: Iterable<string>,
+  direction: 'up' | 'down'
+): Set<string> {
+  const next = new Map<string, string[]>();
+  graph.edges.forEach((edge) => {
+    const [from, to] = direction === 'up'
+      ? [edge.target, edge.source]
+      : [edge.source, edge.target];
+    next.set(from, [...(next.get(from) ?? []), to]);
+  });
+  const found = new Set(seeds);
+  const pending = [...found];
+  while (pending.length > 0) {
+    const current = pending.shift()!;
+    for (const neighbour of next.get(current) ?? []) {
+      if (found.has(neighbour)) continue;
+      found.add(neighbour);
+      pending.push(neighbour);
+    }
+  }
+  return found;
+}
+
+/** Sobe até à raiz a partir dos nós dados: um filho visível arrasta os pais. */
+export function collectAncestors(
+  graph: TopologyGraph,
+  matched: Set<string>
+): Set<string> {
+  return relatives(graph, matched, 'up');
+}
+
+/**
+ * A rede inteira não cabe num ecrã — ~8000px de largura com os ramos todos
+ * abertos, para um `minZoom` de 0.25. Recortada por antena cabe: o backbone
+ * escolhido, tudo o que pende dele e a cadeia acima, para não se perder de onde
+ * vem a Internet. Um id que não exista no grafo devolve o grafo intacto.
+ */
+export function scopeGraphToBackbone(
+  graph: TopologyGraph,
+  backboneNodeId: string
+): TopologyGraph {
+  if (!graph.nodes.some((node) => node.id === backboneNodeId)) return graph;
+  const visible = new Set([
+    ...relatives(graph, [backboneNodeId], 'down'),
+    ...relatives(graph, [backboneNodeId], 'up')
+  ]);
+  return {
+    nodes: graph.nodes.filter((node) => visible.has(node.id)),
+    edges: graph.edges.filter((edge) => (
+      visible.has(edge.source) && visible.has(edge.target)
+    ))
+  };
+}
+
 export function toggleBackboneExpansion(
   expanded: ReadonlySet<number>,
   catalogId: number

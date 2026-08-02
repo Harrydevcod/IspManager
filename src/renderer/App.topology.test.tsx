@@ -25,6 +25,9 @@ function json(body: unknown): Response {
   });
 }
 
+/** O canvas é a marca de que a aba do mapa montou — o módulo já não tem título. */
+const MAP_CANVAS = '[aria-label="Mapa físico da rede"]';
+
 const dashboard = {
   totalClients: 0,
   activeClients: 0,
@@ -174,7 +177,7 @@ describe('topology App integration', () => {
       .find((candidate) => candidate.textContent?.trim() === 'Topologia');
     if (!topologyButton) throw new Error('Topologia sidebar action not found');
 
-    expect(container.textContent).not.toContain('Mapa físico');
+    expect(container.querySelector(MAP_CANVAS)).toBeNull();
     await act(async () => {
       topologyButton.click();
     });
@@ -194,7 +197,7 @@ describe('topology App integration', () => {
       .find((candidate) => candidate.textContent?.trim() === 'Topologia');
     expect(backboneTab?.getAttribute('aria-selected')).toBe('true');
     expect(mapTab?.getAttribute('aria-selected')).toBe('false');
-    expect(container.textContent).not.toContain('Mapa físico');
+    expect(container.querySelector(MAP_CANVAS)).toBeNull();
     expect(vi.mocked(fetch).mock.calls.filter(([input]) => (
       String(input).endsWith('/api/topology')
     ))).toHaveLength(0);
@@ -204,13 +207,13 @@ describe('topology App integration', () => {
       await vi.dynamicImportSettled();
     });
     for (let attempt = 0; attempt < 10; attempt += 1) {
-      if (container.textContent?.includes('Mapa físico')) break;
+      if (container.querySelector(MAP_CANVAS)) break;
       await act(async () => {
         await new Promise((resolve) => window.setTimeout(resolve, 10));
       });
     }
 
-    expect(container.textContent).toContain('Mapa físico');
+    expect(container.querySelector(MAP_CANVAS)).not.toBeNull();
     expect(vi.mocked(fetch).mock.calls.filter(([input]) => (
       String(input).endsWith('/api/topology')
     ))).toHaveLength(1);
