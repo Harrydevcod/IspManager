@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-type Tone = 'success' | 'danger' | 'info' | 'neutral' | 'accent';
+type Tone = 'success' | 'danger' | 'info' | 'neutral' | 'accent' | 'warn';
 
 /**
  * Source of truth: PaymentsModule status pill

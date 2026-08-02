@@ -13,7 +13,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { recordAudit } from '../lib/audit';
 import { isSetupComplete } from '../lib/auth';
-import { activateLicense, currentLicenseStatus, deactivateLicense } from '../lib/license';
+import { activateLicense, currentLicenseStatus, deactivateLicense, machineFingerprint } from '../lib/license';
 import { licensingEnabled } from '../lib/license-key';
 import type { LicenseStatus } from '../../shared/license';
 import { requireRole } from './auth';
@@ -71,6 +71,8 @@ function publicStatus(status: LicenseStatus) {
     daysRemaining: status.daysRemaining,
     reason: status.reason,
     enabled: licensingEnabled(),
+    // O cliente precisa de a ler para pedir uma licença ligada a esta máquina.
+    fingerprint: machineFingerprint(),
     license: status.claim
       ? {
           id: status.claim.id,

@@ -30,3 +30,4 @@ export * from './CommandPalette';
 export * from './ShortcutsDialog';
 export * from './ReleaseNotesDialog';
 export * from './AuthGate';
+export * from './LicenseActivation';
