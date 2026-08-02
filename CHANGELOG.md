@@ -2,6 +2,27 @@
 
 Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/). Cada versão tem uma [Release no GitHub](https://github.com/Harrydevcod/IspManager/releases) com o instalador correspondente.
 
+## [1.9.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.9.0) — 2026-08-02
+
+### Adicionado
+
+- **topologia:** Ver o mapa por antena — o backbone escolhido, as CPEs que pendem dele e a cadeia até à Internet, a partir do seletor da barra, do inspetor ou da lista de backbones. A rede inteira não cabe legível num ecrã; uma antena de cada vez cabe
+- **topologia:** Agregação multi-WAN — um equipamento pode somar vários links a montante, e o mapa mostra de onde vem cada um
+- **topologia:** Contador "Sem equipamento" — os serviços ativos sem CPE não existem no mapa e não são "sem ligação"; é o motivo nº1 para um cliente não aparecer
+- **topologia:** Botão Atualizar no mapa, que recarrega sem fechar os ramos abertos
+
+### Alterado
+
+- **topologia:** O mapa abre de cima para baixo e com o inspetor fechado — o painel só entra na primeira seleção
+- **topologia:** O módulo devolve o espaço ao mapa: o título saiu, os números passam a uma tira de uma linha e as ferramentas flutuam sobre o canvas
+- **topologia:** A ilha deixa de ser texto livre em todos os pontos de entrada, incluindo a importação de clientes
+
+### Corrigido
+
+- **topologia:** O mapa passa a enquadrar-se de facto — abre com a rede à vista e reenquadra ao abrir ou fechar ramos
+- **topologia:** O minimapa deixa de desenhar o grafo para fora da própria caixa e de desaparecer em janelas estreitas
+- **topologia:** O mapa deixa de mostrar uma fotografia velha da rede depois de instalar equipamento noutro módulo
+
 ## [1.8.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.8.0) — 2026-07-31
 
 ### Adicionado
