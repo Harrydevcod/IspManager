@@ -23,6 +23,7 @@ import { registerSmsRoutes } from './routes/sms';
 import { registerWorkOrderRoutes } from './routes/work-orders';
 import { registerBackupRoutes } from './routes/backup';
 import { registerJobRoutes } from './routes/jobs';
+import { licenseGateHook, registerLicenseRoutes } from './routes/license';
 import { registerTopologyRoutes } from './routes/topology';
 import { registerTopologyManagementRoutes } from './routes/topology-management';
 import { createBackup, pruneBackups, runScheduledBackupIfDue } from './lib/backup';
@@ -55,6 +56,11 @@ export async function createBackendApp() {
     // em file://, que o Chromium serializa como origin opaco "null".
     exposedHeaders: ['Content-Disposition']
   });
+
+  // Portão de licenciamento antes de tudo o resto: bloqueia escritas quando a
+  // licença não as permite e deixa passar leituras, autenticação e backups.
+  // Inerte enquanto não houver chave pública configurada (ver ./lib/license-key).
+  app.addHook('onRequest', licenseGateHook());
 
   getDatabase();
 
@@ -106,6 +112,7 @@ export async function createBackendApp() {
   }
 
   await registerAuthRoutes(app);
+  await registerLicenseRoutes(app);
   await registerAuditRoutes(app);
   await registerUserRoutes(app);
   await registerHealthRoutes(app);
