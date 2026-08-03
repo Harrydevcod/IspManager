@@ -41,6 +41,15 @@ that rule out most of the obvious answers:
   list in `routes/license.ts` (`/health`, `/api/license`, `/api/auth`, `/api/backups`) is
   the enforcement of that promise, and is covered by tests that assert what does *not*
   get blocked.
+- **Activating is open to every user; removing is not.** Whoever is at the machine when a
+  licence lapses can unlock the operation with the file the owner received, without
+  waiting for an administrator — the person blocked from working is rarely the person
+  holding the admin password. The exposure is small and bounded: only a licence with a
+  valid signature, within its validity and for this machine is accepted, a rejected
+  licence never replaces the one already installed, and the audit log records who
+  activated. Removing a licence stays admin-only, because that is the action that puts
+  the installation into read-only. Reading the state needs no session at all, since the
+  screen must render before login.
 - **State lives outside the database.** `license.json` sits in `resolveDataDir()`, not in
   SQLite, so restoring a backup taken on another machine does not carry a licence with it.
 - **Licensing is inert until a key is configured.** With `EMBEDDED_PUBLIC_KEY` empty the

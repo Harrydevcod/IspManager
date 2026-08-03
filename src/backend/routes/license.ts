@@ -12,7 +12,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { recordAudit } from '../lib/audit';
-import { isSetupComplete } from '../lib/auth';
 import { activateLicense, currentLicenseStatus, deactivateLicense, machineFingerprint } from '../lib/license';
 import { licensingEnabled } from '../lib/license-key';
 import type { LicenseStatus } from '../../shared/license';
@@ -89,21 +88,21 @@ function publicStatus(status: LicenseStatus) {
   };
 }
 
-/**
- * Antes de haver contas, ativar não pode exigir sessão — senão uma instalação
- * nova cuja avaliação já expirou ficava sem saída. Depois do setup, é uma ação
- * de administrador como qualquer outra.
- */
-async function adminOnceSetUp(request: FastifyRequest, reply: FastifyReply) {
-  if (!isSetupComplete()) return;
-  return requireRole(['admin'])(request, reply);
-}
-
 export async function registerLicenseRoutes(app: FastifyInstance) {
   // Sem sessão: o ecrã de licença aparece antes do login.
   app.get('/api/license', async () => publicStatus(currentLicenseStatus()));
 
-  app.post('/api/license', { preHandler: adminOnceSetUp }, async (request, reply) => {
+  /**
+   * Ativar está aberto a qualquer utilizador, por decisão de produto: quem
+   * estiver ao computador quando a licença caduca deve poder desbloquear a
+   * operação com o ficheiro que o dono recebeu, sem esperar pelo admin.
+   *
+   * O risco é baixo e limitado: só entra uma licença com assinatura válida,
+   * dentro da validade e desta máquina, e nunca substitui a que lá está por
+   * uma pior. A auditoria regista quem ativou. Remover, essa sim, continua
+   * reservada ao admin — é a ação que põe a instalação em leitura-apenas.
+   */
+  app.post('/api/license', async (request, reply) => {
     const parsed = activateSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Pedido inválido' });
