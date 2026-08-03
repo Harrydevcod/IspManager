@@ -84,7 +84,7 @@ export function LicensePanel() {
       <header className="backups-head">
         <div>
           <h3>Licença</h3>
-          <p className="backups-dir">{info.reason}</p>
+          <p className="license-reason">{info.reason}</p>
         </div>
         <Badge tone={STATE_TONE[info.state]}>{STATE_LABEL[info.state]}</Badge>
       </header>

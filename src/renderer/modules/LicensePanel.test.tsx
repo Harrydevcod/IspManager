@@ -203,6 +203,17 @@ describe('LicensePanel', () => {
     expect(container.textContent).toContain('manutenção até 31-03-2027');
   });
 
+  test('o motivo é prosa, não um caminho de ficheiro', async () => {
+    // Regressão de um defeito apanhado no smoke da app empacotada: reutilizar
+    // .backups-dir (que tem word-break: break-all, para caminhos) partia as
+    // palavras a meio — "para vol / tar a registar".
+    const container = await mount(<LicensePanel />);
+    const reason = container.querySelector('.license-reason');
+
+    expect(reason).not.toBeNull();
+    expect(container.querySelector('.license-panel .backups-dir')).toBeNull();
+  });
+
   test('sem licenciamento configurado explica que não há restrições', async () => {
     licenseState = info({ enabled: false });
     const container = await mount(<LicensePanel />);

@@ -6025,6 +6025,16 @@ button.danger:disabled {
   padding-top: var(--space-4);
 }
 
+/* Prosa, não um caminho de ficheiro: nunca `word-break: break-all`, senão o
+   texto parte palavras a meio ("para vol / tar a registar"). É por isso que
+   isto não reutiliza .backups-dir, apesar de parecer o mesmo estilo. */
+.license-reason {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  margin: var(--space-1) 0 0;
+  max-width: 58ch;
+}
+
 /* Pares rótulo/valor em grelha: a densidade tabular que o resto do produto usa. */
 .license-details {
   display: grid;
