@@ -1,0 +1,225 @@
+CONTRATO DE LICENÇA DE UTILIZAÇÃO DE SOFTWARE
+ISPM — ISP Manager
+
+Versão 1.0 — [DATA DE ENTRADA EM VIGOR]
+
+Este contrato é celebrado entre [DENOMINAÇÃO SOCIAL], NIF [NIF], com sede em
+[MORADA], Cabo Verde (adiante «o Licenciante»), e a pessoa singular ou coletiva
+que instala ou utiliza o ISPM (adiante «o Cliente»).
+
+Ao instalar ou utilizar o ISPM, o Cliente declara ter lido e aceite este
+contrato. Se não concordar, não instale o software.
+
+
+1. OBJETO
+
+O ISPM é uma aplicação de gestão para operadores de serviços de Internet:
+clientes, serviços, faturação, tesouraria, stock, topologia de rede e
+relatórios. O Licenciante concede o direito de o utilizar nos termos abaixo; não
+vende o software nem transmite a sua propriedade.
+
+
+2. DEFINIÇÕES
+
+«Licença» — o ficheiro assinado que autoriza a utilização, emitido pelo
+Licenciante e associado a uma instalação.
+
+«Instalação» — uma cópia do ISPM a correr num computador, com a sua própria base
+de dados.
+
+«Subscrição» — modalidade com prazo. Findo o prazo, cessa o direito de
+utilização ativa nos termos da cláusula 8.
+
+«Perpétua» — modalidade sem prazo de utilização. O direito de utilizar a versão
+licenciada não caduca; caduca apenas o período de manutenção, nos termos da
+cláusula 9.
+
+
+3. LICENÇA CONCEDIDA
+
+3.1. O Licenciante concede ao Cliente uma licença não exclusiva, intransmissível
+e não sublicenciável para instalar e utilizar o ISPM numa (1) Instalação, para
+os fins internos da sua atividade.
+
+3.2. Licenças adicionais para instalações adicionais são adquiridas
+separadamente.
+
+3.3. O Cliente pode fazer cópias de segurança da sua base de dados sem
+limitação, e utilizar cópias do instalador para reinstalar a sua própria
+Instalação.
+
+
+4. RESTRIÇÕES
+
+O Cliente não pode:
+
+a) revender, alugar, emprestar ou disponibilizar o ISPM a terceiros, nem prestar
+   com ele serviços a terceiros em regime de bureau, salvo acordo escrito;
+b) descompilar, desmontar ou fazer engenharia inversa do software, salvo na
+   medida imperativamente permitida por lei;
+c) remover, contornar ou desativar o mecanismo de licenciamento, nem os avisos
+   de propriedade intelectual;
+d) utilizar o ISPM para fins ilícitos ou em violação da legislação aplicável.
+
+
+5. PROPRIEDADE DOS DADOS
+
+5.1. Todos os dados introduzidos ou gerados no ISPM são propriedade exclusiva do
+Cliente. O Licenciante não adquire sobre eles qualquer direito.
+
+5.2. O ISPM funciona localmente, no computador do Cliente. Não transmite os
+dados do Cliente ao Licenciante nem a terceiros, e não contém telemetria. As
+integrações que enviem dados para fora (por exemplo, mensagens aos clientes do
+Cliente) só funcionam se o próprio Cliente as configurar.
+
+5.3. Os dados residem numa base de dados SQLite em formato aberto e o Cliente
+pode exportá-los ou copiá-los a qualquer momento, pelas funções de cópia de
+segurança da aplicação ou diretamente do ficheiro.
+
+5.4. As cópias de segurança são da responsabilidade do Cliente. O ISPM cria
+cópias automáticas no computador do Cliente, o que não substitui uma política de
+cópias guardadas fora do local.
+
+
+6. PROPRIEDADE INTELECTUAL
+
+O ISPM, o seu código, marca, interface e documentação são propriedade do
+Licenciante e estão protegidos pela legislação de direito de autor aplicável.
+Este contrato não transmite qualquer direito de propriedade intelectual.
+
+
+7. ATIVAÇÃO E VERIFICAÇÃO DA LICENÇA
+
+7.1. A licença é verificada localmente, sem ligação à Internet. O ISPM não
+comunica com servidores do Licenciante para validar a licença.
+
+7.2. Quando a licença for emitida associada a uma máquina, o ISPM verifica uma
+impressão digital do equipamento. Substituição de hardware ou mudança de
+computador dão direito a reemissão gratuita da licença, mediante pedido ao
+Licenciante.
+
+7.3. O Cliente é responsável por manter a confidencialidade do ficheiro de
+licença.
+
+
+8. CESSAÇÃO DA VALIDADE E ACESSO AOS DADOS
+
+8.1. Terminado o prazo de uma Subscrição, e decorrido o período de tolerância
+indicado na licença, a Instalação passa a modo de leitura: deixam de ser
+possíveis novos registos e alterações.
+
+8.2. O Licenciante obriga-se a que, em qualquer circunstância, incluindo falta
+de pagamento ou cessação deste contrato, o Cliente mantenha acesso integral aos
+seus dados: consulta, impressão de documentos e exportação de cópias de
+segurança permanecem disponíveis. O ISPM nunca apaga, cifra nem torna
+inacessíveis os dados do Cliente por motivo de licenciamento.
+
+8.3. Regularizada a situação, a ativação de nova licença repõe a Instalação em
+funcionamento pleno, sem perda de dados.
+
+
+9. ATUALIZAÇÕES E MANUTENÇÃO
+
+9.1. Durante a Subscrição ativa, ou durante o período de manutenção de uma
+licença Perpétua, o Cliente tem direito às novas versões do ISPM que o
+Licenciante disponibilize.
+
+9.2. Findo esse período, numa licença Perpétua o Cliente conserva o direito de
+utilizar indefinidamente a última versão a que teve direito, deixando de receber
+novas versões até renovar a manutenção.
+
+9.3. O Licenciante não se obriga a desenvolver funcionalidades específicas nem a
+manter compatibilidade com sistemas de terceiros que se alterem.
+
+
+10. SUPORTE
+
+O suporte é prestado nos termos da política de suporte em vigor, comunicada ao
+Cliente e disponível em [ENDEREÇO DA POLÍTICA DE SUPORTE]. Salvo acordo escrito
+em contrário, o suporte não inclui deslocações, formação alargada, migração de
+dados de outros sistemas nem desenvolvimento por medida.
+
+
+11. OBRIGAÇÕES FISCAIS E DECLARATIVAS DO CLIENTE
+
+11.1. O ISPM é uma ferramenta de apoio à gestão. O cumprimento das obrigações
+fiscais, contabilísticas e declarativas do Cliente perante a Administração
+Fiscal e demais entidades é da exclusiva responsabilidade do Cliente.
+
+11.2. Salvo declaração escrita do Licenciante em contrário, o ISPM não é um
+programa de faturação certificado pela entidade competente de Cabo Verde, nem
+integra a plataforma de fatura eletrónica. Os documentos que emite destinam-se à
+gestão interna e ao relacionamento comercial com os clientes do Cliente.
+
+11.3. O Cliente é responsável por verificar a conformidade dos documentos e
+valores produzidos antes de os utilizar para efeitos fiscais.
+
+
+12. PROTEÇÃO DE DADOS PESSOAIS
+
+12.1. O Cliente é o responsável pelo tratamento dos dados pessoais que insere no
+ISPM, incluindo os dados dos seus próprios clientes, e cumpre as obrigações que
+a legislação cabo-verdiana de proteção de dados pessoais lhe impõe.
+
+12.2. Como o ISPM funciona localmente e não transmite dados ao Licenciante, este
+não trata dados pessoais dos clientes do Cliente por força da utilização normal
+do software. Quando, a pedido do Cliente, o Licenciante aceder a dados no âmbito
+de uma intervenção de suporte, fá-lo-á apenas na medida necessária e sob dever
+de sigilo.
+
+
+13. GARANTIAS
+
+13.1. O Licenciante garante que o ISPM desempenha substancialmente as funções
+descritas na documentação. Verificando-se defeito relevante comunicado por
+escrito, o Licenciante corrige-o em prazo razoável ou, não sendo possível,
+resolve o contrato e devolve a parte proporcional do valor pago referente ao
+período não utilizado.
+
+13.2. Fora do disposto em 13.1, e na medida máxima permitida por lei, o software
+é fornecido no estado em que se encontra, sem outras garantias, expressas ou
+implícitas.
+
+
+14. LIMITAÇÃO DE RESPONSABILIDADE
+
+14.1. Na medida máxima permitida por lei, a responsabilidade total do
+Licenciante emergente deste contrato está limitada ao montante efetivamente pago
+pelo Cliente nos doze (12) meses anteriores ao facto que a origina.
+
+14.2. O Licenciante não responde por lucros cessantes, perda de clientela, perda
+ou corrupção de dados não imputável a defeito do software, nem por danos
+indiretos.
+
+14.3. As limitações desta cláusula não se aplicam a dolo nem a culpa grave.
+
+
+15. VIGÊNCIA E CESSAÇÃO
+
+15.1. O contrato vigora enquanto a licença se mantiver válida ou, na modalidade
+Perpétua, por tempo indeterminado.
+
+15.2. O Licenciante pode resolver o contrato em caso de violação grave das
+cláusulas 4 ou 5.1 não sanada em 15 dias após interpelação escrita.
+
+15.3. A cessação obriga o Cliente a deixar de utilizar o ISPM, mantendo-se o
+disposto em 8.2 quanto ao acesso aos seus dados.
+
+
+16. ALTERAÇÕES
+
+Alterações a este contrato aplicam-se às licenças emitidas ou renovadas após a
+sua entrada em vigor, e são comunicadas ao Cliente. Não se aplicam
+retroativamente a licenças Perpétuas já adquiridas.
+
+
+17. LEI APLICÁVEL E FORO
+
+Este contrato rege-se pela lei da República de Cabo Verde. Para a resolução de
+qualquer litígio, as partes elegem o foro da Comarca [COMARCA], com renúncia a
+qualquer outro.
+
+
+[DENOMINAÇÃO SOCIAL]
+[MORADA] — [CIDADE], Cabo Verde
+NIF [NIF] — [EMAIL] — [TELEFONE]
