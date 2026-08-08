@@ -1,4 +1,4 @@
-import { Activity, Banknote, Building2, DatabaseBackup, MessageCircle, Smartphone } from 'lucide-react';
+import { Activity, Banknote, Building2, DatabaseBackup, KeyRound, MessageCircle, Smartphone } from 'lucide-react';
 import QRCode from 'qrcode';
 import type { FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -30,8 +30,9 @@ import { SmsTab } from './settings/SmsTab';
 import { WhatsappTab } from './settings/WhatsappTab';
 import { emptyBankAccount, type BankAccountForm, type SettingsFormState } from './settings/settingsForm';
 import { JobHealthPanel } from './JobHealthPanel';
+import { LicensePanel } from './LicensePanel';
 
-type SettingsTab = 'company' | 'billing' | 'whatsapp' | 'sms' | 'backups' | 'jobs';
+type SettingsTab = 'company' | 'billing' | 'whatsapp' | 'sms' | 'backups' | 'jobs' | 'license';
 
 const TABS: { id: SettingsTab; label: string; icon: typeof Building2 }[] = [
   { id: 'company', label: 'Empresa', icon: Building2 },
@@ -39,7 +40,8 @@ const TABS: { id: SettingsTab; label: string; icon: typeof Building2 }[] = [
   { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
   { id: 'sms', label: 'SMS', icon: Smartphone },
   { id: 'backups', label: 'Backups', icon: DatabaseBackup },
-  { id: 'jobs', label: 'Automatismos', icon: Activity }
+  { id: 'jobs', label: 'Automatismos', icon: Activity },
+  { id: 'license', label: 'Licença', icon: KeyRound }
 ];
 
 export function SettingsModule() {
@@ -496,7 +498,7 @@ export function SettingsModule() {
 
       {message && message.placement === 'top' && <Message tone={message.tone}>{message.text}</Message>}
 
-      {activeTab !== 'backups' && activeTab !== 'jobs' && (
+      {activeTab !== 'backups' && activeTab !== 'jobs' && activeTab !== 'license' && (
       <form className="client-form settings-form" onSubmit={saveSettings}>
         {activeTab === 'company' && (
           <CompanyTab
@@ -565,6 +567,8 @@ export function SettingsModule() {
       {activeTab === 'backups' && <BackupsPanel />}
 
       {activeTab === 'jobs' && <JobHealthPanel />}
+
+      {activeTab === 'license' && <LicensePanel />}
     </section>
   );
 }

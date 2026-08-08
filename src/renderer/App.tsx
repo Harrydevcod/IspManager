@@ -1,8 +1,9 @@
 import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, LogOut, Network, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { AuthGate, CommandPalette, ConfirmProvider, PageHeader, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider } from './components';
+import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, PageHeader, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider } from './components';
 import type { CommandPaletteItem } from './components';
 import { AuthProvider, authFetch, useAuth } from './lib/auth';
+import { LicenseProvider } from './lib/license';
 import type { UserRole } from './lib/auth';
 import { installKeyboardNavigationIntent } from './lib/keyboardNavigation';
 import { readSidebarCollapsed, writeSidebarCollapsed } from './lib/sidebar';
@@ -87,7 +88,11 @@ export function App() {
       <ToastProvider>
         <ConfirmProvider>
           <AuthGate>
-            <AppShell />
+            {/* Dentro do AuthGate: ativar licença é uma ação de administrador,
+                logo precisa de sessão. O login em si nunca é bloqueado. */}
+            <LicenseProvider>
+              <AppShell />
+            </LicenseProvider>
           </AuthGate>
         </ConfirmProvider>
       </ToastProvider>
@@ -371,6 +376,7 @@ function AppShell() {
       </aside>
 
         <section className="content" id="app-content" tabIndex={-1}>
+          <LicenseBanner />
           <PageHeader
             eyebrow="Cabo Verde"
             title="Painel operacional"

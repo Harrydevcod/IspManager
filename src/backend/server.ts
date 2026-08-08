@@ -23,6 +23,8 @@ import { registerSmsRoutes } from './routes/sms';
 import { registerWorkOrderRoutes } from './routes/work-orders';
 import { registerBackupRoutes } from './routes/backup';
 import { registerJobRoutes } from './routes/jobs';
+import { licenseGateHook, registerLicenseRoutes } from './routes/license';
+import { licenseAllowsWrites } from './lib/license';
 import { registerTopologyRoutes } from './routes/topology';
 import { registerTopologyManagementRoutes } from './routes/topology-management';
 import { createBackup, pruneBackups, runScheduledBackupIfDue } from './lib/backup';
@@ -56,6 +58,11 @@ export async function createBackendApp() {
     exposedHeaders: ['Content-Disposition']
   });
 
+  // Portão de licenciamento antes de tudo o resto: bloqueia escritas quando a
+  // licença não as permite e deixa passar leituras, autenticação e backups.
+  // Inerte enquanto não houver chave pública configurada (ver ./lib/license-key).
+  app.addHook('onRequest', licenseGateHook());
+
   getDatabase();
 
   // One consistent backup per boot. Availability > backup: never block the
@@ -71,7 +78,11 @@ export async function createBackendApp() {
   // attributing each invoice to the month it closes and catching up any month
   // missed (desktop app may not open on day 30). Idempotent + opt-out via
   // ISPM_AUTO_BILLING=off (tests).
-  if (process.env.ISPM_AUTO_BILLING !== 'off') {
+  // Sem direito de escrita, as tarefas que criam documentos ou contactam
+  // clientes ficam paradas — faturar sozinho o que a interface recusa faturar
+  // seria incoerente. É seguro parar: `monthsAfter` recupera todos os meses
+  // saltados no arranque seguinte à renovação, sem deixar gaps na numeração.
+  if (process.env.ISPM_AUTO_BILLING !== 'off' && licenseAllowsWrites()) {
     try {
       const result = runJobSync('auto_billing', runMonthlyBillingIfDue);
       if ('ran' in result) {
@@ -94,7 +105,7 @@ export async function createBackendApp() {
   }
 
   // Generate recurring expenses for any due templates. Idempotent.
-  if (process.env.ISPM_RECURRING_EXPENSES !== 'off') {
+  if (process.env.ISPM_RECURRING_EXPENSES !== 'off' && licenseAllowsWrites()) {
     try {
       const result = runJobSync('recurring_expenses', runRecurringExpensesIfDue);
       if ('ran' in result) {
@@ -106,6 +117,7 @@ export async function createBackendApp() {
   }
 
   await registerAuthRoutes(app);
+  await registerLicenseRoutes(app);
   await registerAuditRoutes(app);
   await registerUserRoutes(app);
   await registerHealthRoutes(app);
@@ -132,7 +144,7 @@ export async function createBackendApp() {
   // Automatic overdue/suspension WhatsApp notices — opt-in via the
   // `autoNoticesEnabled` setting (off by default). Fire-and-forget: the send
   // loop is rate-limited and must never block server boot.
-  if (process.env.ISPM_AUTO_NOTICES !== 'off') {
+  if (process.env.ISPM_AUTO_NOTICES !== 'off' && licenseAllowsWrites()) {
     void runJob('overdue_notices', runOverdueNoticesIfDue)
       .then((result) => {
         if ('ran' in result) {
@@ -149,7 +161,14 @@ export async function createBackendApp() {
   // provider/network failure never crashes the backend. Timers are unref'd so
   // they never keep the process alive on shutdown.
   if (process.env.ISPM_WHATSAPP_OUTBOX !== 'off' && !process.env.VITEST) {
-    const drain = () => { void runJob('whatsapp_drain', runWhatsappOutboxIfDue).catch(() => undefined); };
+    // A verificação vai dentro do tick, não no registo: a licença pode ser
+    // ativada (ou expirar à meia-noite) com a aplicação aberta. O `poll` de
+    // estado de entrega corre sempre — reconcilia mensagens já enviadas, e
+    // pará-lo deixava-as presas em "enviada, estado desconhecido".
+    const drain = () => {
+      if (!licenseAllowsWrites()) return;
+      void runJob('whatsapp_drain', runWhatsappOutboxIfDue).catch(() => undefined);
+    };
     const poll = () => { void runJob('whatsapp_poll', pollWhatsappDeliveryIfDue).catch(() => undefined); };
     drain();
     setInterval(drain, 60_000).unref();
@@ -160,6 +179,8 @@ export async function createBackendApp() {
   // sessões longas, criando um backup quando passou `backupIntervalHours` desde
   // o último (idempotente, catch-up). Verifica de hora a hora; opt-out com
   // ISPM_SCHEDULED_BACKUP=off. Mesma disciplina de timer unref'd + erros engolidos.
+  // Sem guarda de licenciamento, ao contrário das restantes tarefas: os dados são
+  // do cliente e continuar a protegê-los nunca depende de estar em dia connosco.
   if (process.env.ISPM_SCHEDULED_BACKUP !== 'off' && !process.env.VITEST) {
     const backupTick = () => { void runJob('scheduled_backup', runScheduledBackupIfDue).catch((err) => app.log.error({ err }, 'scheduled backup failed')); };
     setInterval(backupTick, 3_600_000).unref();
@@ -169,7 +190,10 @@ export async function createBackendApp() {
   // poll for approval/send status. Opt-out with ISPM_SMS_OUTBOX=off. Same
   // swallow-errors + unref'd timer discipline as the WhatsApp outbox.
   if (process.env.ISPM_SMS_OUTBOX !== 'off' && !process.env.VITEST) {
-    const drainSms = () => { void runJob('sms_drain', runSmsOutboxIfDue).catch(() => undefined); };
+    const drainSms = () => {
+      if (!licenseAllowsWrites()) return;
+      void runJob('sms_drain', runSmsOutboxIfDue).catch(() => undefined);
+    };
     const pollSms = () => { void runJob('sms_poll', pollSmsStatusIfDue).catch(() => undefined); };
     // Self-rescheduling so "Intervalo de envio SMS (segundos)" applies live —
     // each tick re-reads the setting instead of pinning a fixed setInterval.
