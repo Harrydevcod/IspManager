@@ -4,8 +4,7 @@
  */
 import { useState } from 'react';
 import { KeyRound, ShieldCheck, Trash2 } from 'lucide-react';
-import { Badge, Button, EmptyState, LicenseDialog, Message } from '../components';
-import { useConfirm } from '../components/ConfirmDialog';
+import { Badge, Button, Dialog, EmptyState, Field, LicenseDialog, Message } from '../components';
 import { formatPtDate } from '../../shared/date';
 import { useLicense, type LicenseInfo, type LicenseState } from '../lib/license';
 
@@ -38,27 +37,35 @@ function validityLine(info: LicenseInfo): string {
 
 export function LicensePanel() {
   const { info, loading, deactivate } = useLicense();
-  const confirm = useConfirm();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
 
-  async function remove() {
-    const ok = await confirm({
-      title: 'Remover a licença desta máquina?',
-      message:
-        'A aplicação passa a só leitura até ser ativada outra licença. Os dados não são afetados — continuam a poder ser consultados, impressos e exportados.',
-      confirmLabel: 'Remover',
-      tone: 'danger'
-    });
-    if (!ok) return;
+  function openRemove() {
+    setPassword('');
+    setRemoveError(null);
+    setRemoveOpen(true);
+  }
 
+  async function remove() {
+    if (removing) return;
+    if (!password) {
+      setRemoveError('Confirme a sua password para remover a licença.');
+      return;
+    }
     setRemoving(true);
-    setError(null);
+    setRemoveError(null);
     try {
-      await deactivate();
+      await deactivate(password);
+      setRemoveOpen(false);
+      setPassword('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Não foi possível remover a licença.');
+      // A password nunca fica em memória depois de uma recusa.
+      setPassword('');
+      setRemoveError(err instanceof Error ? err.message : 'Não foi possível remover a licença.');
     } finally {
       setRemoving(false);
     }
@@ -138,8 +145,7 @@ export function LicensePanel() {
           <Button
             variant="danger"
             leadingIcon={<Trash2 size={16} aria-hidden />}
-            loading={removing}
-            onClick={() => void remove()}
+            onClick={openRemove}
           >
             Remover desta máquina
           </Button>
@@ -147,6 +153,40 @@ export function LicensePanel() {
       </div>
 
       <LicenseDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
+
+      <Dialog
+        open={removeOpen}
+        onClose={() => setRemoveOpen(false)}
+        eyebrow="Licenciamento"
+        title="Remover a licença desta máquina?"
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setRemoveOpen(false)}>Cancelar</Button>
+            <Button
+              variant="danger"
+              leadingIcon={<Trash2 size={16} aria-hidden />}
+              loading={removing}
+              onClick={() => void remove()}
+            >
+              Remover
+            </Button>
+          </>
+        }
+      >
+        <p className="license-reason">
+          A aplicação passa a só leitura até ser ativada outra licença. Os dados não são afetados —
+          continuam a poder ser consultados, impressos e exportados.
+        </p>
+        <Field
+          label="A sua password"
+          type="password"
+          autoComplete="current-password"
+          hint="Só administradores podem remover a licença."
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          error={removeError ?? undefined}
+        />
+      </Dialog>
     </section>
   );
 }

@@ -13,7 +13,7 @@ import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
 import { licenseClaimSchema, toIsoDate } from '../../shared/license';
 import { generateLicenseKeyPair, signLicense } from '../lib/license-signature';
-import { resetLicenseCache } from '../lib/license';
+import { clearLicenseState, resetLicenseCache } from '../lib/license';
 
 const keys = generateLicenseKeyPair();
 
@@ -62,6 +62,10 @@ beforeEach(() => {
   db.prepare('DELETE FROM audit_logs').run();
   db.prepare('DELETE FROM users').run();
   resetAuthSecretCache();
+  // A licença vive em disco, não na base de dados: sem isto a licença ativada
+  // por um teste sobrevive para o seguinte, e um teste chamado "ativar" passa a
+  // exercitar, sem o dizer, o caminho de substituir.
+  clearLicenseState();
   resetLicenseCache();
 });
 
@@ -75,6 +79,13 @@ afterAll(async () => {
   delete process.env.ISPM_LICENSE_PUBLIC_KEY;
   resetLicenseCache();
 });
+
+/** Referência da licença atualmente instalada, ou `null`. */
+async function licenseId(): Promise<string | null> {
+  resetLicenseCache();
+  const response = await app.inject({ method: 'GET', url: '/api/license' });
+  return response.json().license?.id ?? null;
+}
 
 async function adminToken() {
   const setup = await app.inject({
@@ -183,7 +194,7 @@ describe('remover', () => {
     expect(response.statusCode).toBe(401);
   });
 
-  test('o admin remove', async () => {
+  test('o admin remove confirmando a password', async () => {
     const admin = await adminToken();
     await app.inject({
       method: 'POST',
@@ -195,10 +206,133 @@ describe('remover', () => {
     const response = await app.inject({
       method: 'DELETE',
       url: '/api/license',
-      headers: { authorization: `Bearer ${admin}` }
+      headers: { authorization: `Bearer ${admin}` },
+      payload: { password: 'supersecret' }
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().license).toBeNull();
+  });
+
+  test('sem password o admin não remove', async () => {
+    const admin = await adminToken();
+    await app.inject({
+      method: 'POST',
+      url: '/api/license',
+      headers: { authorization: `Bearer ${admin}` },
+      payload: { token: token('LIC-2026-0006') }
+    });
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/api/license',
+      headers: { authorization: `Bearer ${admin}` }
+    });
+    expect(response.statusCode).toBe(400);
+    expect(await licenseId()).toBe('LIC-2026-0006');
+  });
+
+  test('com a password errada não remove', async () => {
+    const admin = await adminToken();
+    await app.inject({
+      method: 'POST',
+      url: '/api/license',
+      headers: { authorization: `Bearer ${admin}` },
+      payload: { token: token('LIC-2026-0007') }
+    });
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/api/license',
+      headers: { authorization: `Bearer ${admin}` },
+      payload: { password: 'errada' }
+    });
+    expect(response.statusCode).toBe(403);
+    expect(await licenseId()).toBe('LIC-2026-0007');
+  });
+});
+
+/**
+ * Substituir uma licença ativa é indistinguível de a roubar para outra máquina:
+ * a barra é a mesma de remover, e não a de ativar.
+ */
+describe('substituir uma licença ativa', () => {
+  async function withActiveLicense() {
+    const admin = await adminToken();
+    const activated = await app.inject({
+      method: 'POST',
+      url: '/api/license',
+      headers: { authorization: `Bearer ${admin}` },
+      payload: { token: token('LIC-2026-0100') }
+    });
+    expect(activated.statusCode).toBe(200);
+    return admin;
+  }
+
+  test('um operador não pode substituir, mesmo podendo ativar', async () => {
+    const admin = await withActiveLicense();
+    const op = await userToken(admin, 'operator');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/license',
+      headers: { authorization: `Bearer ${op}` },
+      payload: { token: token('LIC-2026-0101'), password: 'operator-pw-1' }
+    });
+    expect(response.statusCode).toBe(403);
+    expect(await licenseId()).toBe('LIC-2026-0100');
+  });
+
+  test('sem sessão não se substitui', async () => {
+    await withActiveLicense();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/license',
+      payload: { token: token('LIC-2026-0102') }
+    });
+    expect(response.statusCode).toBe(401);
+    expect(await licenseId()).toBe('LIC-2026-0100');
+  });
+
+  test('o admin sem password não substitui', async () => {
+    const admin = await withActiveLicense();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/license',
+      headers: { authorization: `Bearer ${admin}` },
+      payload: { token: token('LIC-2026-0103') }
+    });
+    expect(response.statusCode).toBe(400);
+    expect(await licenseId()).toBe('LIC-2026-0100');
+  });
+
+  test('o admin com a password errada não substitui', async () => {
+    const admin = await withActiveLicense();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/license',
+      headers: { authorization: `Bearer ${admin}` },
+      payload: { token: token('LIC-2026-0104'), password: 'errada' }
+    });
+    expect(response.statusCode).toBe(403);
+    expect(await licenseId()).toBe('LIC-2026-0100');
+  });
+
+  test('o admin substitui confirmando a password, e a auditoria diz o que saiu', async () => {
+    const admin = await withActiveLicense();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/license',
+      headers: { authorization: `Bearer ${admin}` },
+      payload: { token: token('LIC-2026-0105'), password: 'supersecret' }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(await licenseId()).toBe('LIC-2026-0105');
+
+    const row = db
+      .prepare(`SELECT action, entity_id, metadata_json AS metadata FROM audit_logs WHERE action = 'replace'`)
+      .get() as { action: string; entity_id: string; metadata: string };
+    expect(row).toMatchObject({ action: 'replace', entity_id: 'LIC-2026-0105' });
+    expect(JSON.parse(row.metadata).replacedId).toBe('LIC-2026-0100');
   });
 });
 

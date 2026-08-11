@@ -15,7 +15,7 @@ import { recordAudit } from '../lib/audit';
 import { activateLicense, currentLicenseStatus, deactivateLicense, machineFingerprint } from '../lib/license';
 import { licensingEnabled } from '../lib/license-key';
 import type { LicenseStatus } from '../../shared/license';
-import { requireRole } from './auth';
+import { confirmSessionPassword, ensureRole, requireRole } from './auth';
 
 /**
  * Prefixos que o portão nunca bloqueia, e porquê:
@@ -59,7 +59,13 @@ export function licenseGateHook() {
 }
 
 const activateSchema = z.object({
-  token: z.string().trim().min(1).max(8192)
+  token: z.string().trim().min(1).max(8192),
+  /** Só exigida quando já existe uma licença ativa a ser substituída. */
+  password: z.string().min(1).max(200).optional()
+});
+
+const deactivateSchema = z.object({
+  password: z.string().min(1).max(200).optional()
 });
 
 function publicStatus(status: LicenseStatus) {
@@ -93,19 +99,27 @@ export async function registerLicenseRoutes(app: FastifyInstance) {
   app.get('/api/license', async () => publicStatus(currentLicenseStatus()));
 
   /**
-   * Ativar está aberto a qualquer utilizador, por decisão de produto: quem
-   * estiver ao computador quando a licença caduca deve poder desbloquear a
-   * operação com o ficheiro que o dono recebeu, sem esperar pelo admin.
+   * Ativar numa instalação SEM licença está aberto a qualquer utilizador, por
+   * decisão de produto: quem estiver ao computador quando a avaliação termina
+   * deve poder desbloquear a operação com o ficheiro que o dono recebeu, sem
+   * esperar pelo admin. Só entra uma licença com assinatura válida e desta
+   * máquina, e a auditoria regista quem ativou.
    *
-   * O risco é baixo e limitado: só entra uma licença com assinatura válida,
-   * dentro da validade e desta máquina, e nunca substitui a que lá está por
-   * uma pior. A auditoria regista quem ativou. Remover, essa sim, continua
-   * reservada ao admin — é a ação que põe a instalação em leitura-apenas.
+   * **Substituir uma licença ativa é outra coisa.** Troca a licença legítima
+   * desta instalação por outra e é indistinguível de a roubar para uma máquina
+   * alheia, por isso exige admin E a password dele outra vez — uma sessão
+   * aberta prova quem entrou, não quem está ao teclado agora.
    */
   app.post('/api/license', async (request, reply) => {
     const parsed = activateSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Pedido inválido' });
+    }
+
+    const previous = currentLicenseStatus().claim;
+    if (previous) {
+      if (!ensureRole(request, reply, ['admin'])) return reply;
+      if (!(await confirmSessionPassword(request, reply, parsed.data.password))) return reply;
     }
 
     const result = activateLicense(parsed.data.token);
@@ -114,11 +128,14 @@ export async function registerLicenseRoutes(app: FastifyInstance) {
     }
 
     recordAudit(request, {
-      action: 'activate',
+      action: previous ? 'replace' : 'activate',
       entityType: 'license',
       entityId: result.claim.id,
-      summary: `Licença ${result.claim.kind} ativada para ${result.claim.customer}`,
+      summary: previous
+        ? `Licença ${previous.id} substituída por ${result.claim.id} (${result.claim.customer})`
+        : `Licença ${result.claim.kind} ativada para ${result.claim.customer}`,
       metadata: {
+        replacedId: previous?.id ?? null,
         kind: result.claim.kind,
         bind: result.claim.bind,
         expiresAt: result.claim.expiresAt ?? null,
@@ -129,7 +146,17 @@ export async function registerLicenseRoutes(app: FastifyInstance) {
     return publicStatus(result.status);
   });
 
-  app.delete('/api/license', { preHandler: requireRole(['admin']) }, async (request) => {
+  /**
+   * Remover põe a instalação em leitura-apenas. Admin, e password outra vez —
+   * a mesma barra de substituir, porque o estrago é o mesmo.
+   */
+  app.delete('/api/license', { preHandler: requireRole(['admin']) }, async (request, reply) => {
+    const parsed = deactivateSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Pedido inválido' });
+    }
+    if (!(await confirmSessionPassword(request, reply, parsed.data.password))) return reply;
+
     const previous = currentLicenseStatus().claim;
     const status = deactivateLicense();
 

@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle, KeyRound } from 'lucide-react';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
+import { Field } from './Field';
 import { Textarea } from './Textarea';
 import { licenseNeedsAttention, licenseTone, useLicense } from '../lib/license';
 
@@ -39,14 +40,21 @@ export function LicenseBanner() {
 export function LicenseDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { info, activate } = useLicense();
   const [token, setToken] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Substituir uma licença ativa é uma ação de administrador e exige a password
+  // outra vez. Ativar numa instalação sem licença continua aberto a quem lá
+  // estiver — é o que desbloqueia a operação quando a avaliação termina.
+  const replacing = Boolean(info?.license);
+
   // Reabrir o diálogo depois de uma tentativa falhada não pode mostrar o erro
-  // antigo nem o token recusado.
+  // antigo, nem o token recusado, nem deixar a password em memória.
   useEffect(() => {
     if (open) {
       setToken('');
+      setPassword('');
       setError(null);
     }
   }, [open]);
@@ -58,12 +66,17 @@ export function LicenseDialog({ open, onClose }: { open: boolean; onClose: () =>
       setError('Cole o conteúdo do ficheiro de licença.');
       return;
     }
+    if (replacing && !password) {
+      setError('Confirme a sua password para substituir a licença.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
-      await activate(value);
+      await activate(value, replacing ? password : undefined);
       onClose();
     } catch (err) {
+      setPassword('');
       setError(err instanceof Error ? err.message : 'Não foi possível ativar a licença.');
     } finally {
       setSubmitting(false);
@@ -75,12 +88,12 @@ export function LicenseDialog({ open, onClose }: { open: boolean; onClose: () =>
       open={open}
       onClose={onClose}
       eyebrow="Licenciamento"
-      title="Ativar licença"
+      title={replacing ? 'Substituir licença' : 'Ativar licença'}
       actions={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button leadingIcon={<KeyRound size={16} aria-hidden />} loading={submitting} onClick={() => void submit()}>
-            Ativar
+            {replacing ? 'Substituir' : 'Ativar'}
           </Button>
         </>
       }
@@ -92,8 +105,19 @@ export function LicenseDialog({ open, onClose }: { open: boolean; onClose: () =>
         value={token}
         spellCheck={false}
         onChange={(event) => setToken(event.target.value)}
-        error={error ?? undefined}
+        error={replacing ? undefined : (error ?? undefined)}
       />
+      {replacing && (
+        <Field
+          label="A sua password"
+          type="password"
+          autoComplete="current-password"
+          hint={`A licença ${info?.license?.id ?? ''} vai ser substituída. Só administradores o podem fazer.`}
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          error={error ?? undefined}
+        />
+      )}
       {info?.fingerprint && (
         <p className="license-fingerprint">
           Identificação desta máquina: <code>{info.fingerprint}</code>
