@@ -60,7 +60,9 @@ const tokenFor = (c: LicenseClaim = claim(), privateKey = keys.privateKey) => si
 
 describe('licenciamento desligado', () => {
   test('sem chave pública configurada a app não é restringida', () => {
-    delete process.env.ISPM_LICENSE_PUBLIC_KEY;
+    // String vazia = build sem chave. Um `delete` deixaria a chave EMBEBIDA
+    // valer e este teste passaria a exercitar o caminho oposto ao que descreve.
+    process.env.ISPM_LICENSE_PUBLIC_KEY = '';
     resetLicenseCache();
     const status = currentLicenseStatus();
     expect(status.canWrite).toBe(true);

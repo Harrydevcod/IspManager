@@ -89,7 +89,8 @@ describe('licenseAllowsWrites', () => {
   });
 
   test('sem licenciamento configurado nunca trava nada', () => {
-    delete process.env.ISPM_LICENSE_PUBLIC_KEY;
+    // String vazia = build sem chave; um `delete` deixaria a EMBEBIDA valer.
+    process.env.ISPM_LICENSE_PUBLIC_KEY = '';
     resetLicenseCache();
     writeState('2020-01-01');
     expect(licenseAllowsWrites()).toBe(true);

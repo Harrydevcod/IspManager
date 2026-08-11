@@ -201,7 +201,8 @@ describe('POST /api/license', () => {
 describe('licenciamento desligado', () => {
   test('sem chave pública o portão é inerte', async () => {
     readonlyInstall();
-    delete process.env.ISPM_LICENSE_PUBLIC_KEY;
+    // String vazia = build sem chave; um `delete` deixaria a EMBEBIDA valer.
+    process.env.ISPM_LICENSE_PUBLIC_KEY = '';
     resetLicenseCache();
 
     const response = await app.inject({ method: 'POST', url: '/api/clients', payload: {} });
