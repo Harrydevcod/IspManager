@@ -1,6 +1,9 @@
 # Builds desktop multiplataforma do ISPM — macOS (DMG arm64 + Intel x64) e
 # Linux (AppImage x64) em runners do GitHub, anexados à release da tag.
-# O instalador Windows continua a ser gerado localmente (fluxo manual).
+# O instalador Windows continua a ser gerado localmente (fluxo manual), e é ele
+# que normalmente cria a release. Estes jobs ANEXAM — por isso cada um garante
+# a release antes de enviar: publicar a tag antes de criar a release deitava o
+# pipeline abaixo com "release not found", que foi o que aconteceu na v1.10.0.
 #
 # Porquê electron-rebuild por arquitetura: o package.json tem npmRebuild:false
 # (o electron-builder empacota o better_sqlite3.node tal como está em
@@ -64,7 +67,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           # Via env, não interpolado no shell — input de dispatch é untrusted.
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
-        run: gh release upload "$TAG" release/*.dmg --clobber
+        run: |
+          # Os dois jobs correm em paralelo: quem chegar primeiro cria, o outro
+          # falha aqui e segue — o upload é que tem de ser fiável.
+          gh release create "$TAG" --title "$TAG" --notes-from-tag || true
+          gh release upload "$TAG" release/*.dmg --clobber
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -97,7 +104,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
-        run: gh release upload "$TAG" release/*.AppImage release/latest-linux.yml --clobber
+        run: |
+          gh release create "$TAG" --title "$TAG" --notes-from-tag || true
+          gh release upload "$TAG" release/*.AppImage release/latest-linux.yml --clobber
 
       - uses: actions/upload-artifact@v4
         if: always()

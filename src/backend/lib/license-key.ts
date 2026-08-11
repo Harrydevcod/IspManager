@@ -7,16 +7,22 @@
  * ativação, mas uma build enganada a trancar clientes pagantes em
  * leitura-apenas é um incidente. Falhar para o lado de deixar trabalhar.
  *
- * Para ligar: `node scripts/issue-license.cjs keygen`, guardar a chave PRIVADA
- * fora do repositório (é ela que emite licenças e não pode ser perdida nem
- * partilhada) e colar aqui só a pública.
+ * Para ligar: `npx tsx scripts/issue-license.ts keygen`, guardar a chave
+ * PRIVADA fora do repositório (é ela que emite licenças e não pode ser perdida
+ * nem partilhada) e colar aqui só a pública.
  *
- * `ISPM_LICENSE_PUBLIC_KEY` sobrepõe-se, para desenvolvimento e testes.
+ * `ISPM_LICENSE_PUBLIC_KEY` sobrepõe-se, para desenvolvimento e testes —
+ * incluindo quando é definida como string vazia, que vale por "esta build não
+ * tem chave". Um override que não consegue exprimir "nenhuma" não é override, e
+ * é essa a única forma de exercitar o caminho de build-sem-chave agora que a
+ * constante abaixo vem preenchida.
  */
-const EMBEDDED_PUBLIC_KEY = '';
+const EMBEDDED_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAzHjKrykfuSWBTOoooaGV1psmlC1ZIaEgf4PN4inAbZk=
+-----END PUBLIC KEY-----`;
 
 export function licensePublicKey(): string {
-  return (process.env.ISPM_LICENSE_PUBLIC_KEY || EMBEDDED_PUBLIC_KEY).trim();
+  return (process.env.ISPM_LICENSE_PUBLIC_KEY ?? EMBEDDED_PUBLIC_KEY).trim();
 }
 
 /**

@@ -2,6 +2,17 @@
 
 Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/). Cada versão tem uma [Release no GitHub](https://github.com/Harrydevcod/IspManager/releases) com o instalador correspondente.
 
+## [1.10.1](https://github.com/Harrydevcod/IspManager/releases/tag/v1.10.1) — 2026-08-11
+
+### Adicionado
+
+- **licenciamento:** A aplicação passa a validar a licença. Sem licença há **30 dias de avaliação**; terminados, entra em **leitura-apenas** — consultar, exportar documentos e fazer cópias de segurança continua a funcionar, e os dados nunca ficam inacessíveis. Ativação em Definições → Licença, com o ficheiro fornecido na compra. Uma licença perpétua nunca expira: o que caduca é o direito a atualizações
+
+### Corrigido
+
+- **instalador:** As builds de macOS e Linux voltam a sair. O contrato de licença em português fazia o empacotamento do DMG falhar, porque o macOS não traz rótulos de botões para português; o contrato passa a ser declarado só onde é usado, no instalador Windows
+- **instalador:** Publicar a etiqueta de versão antes de criar a release deixa de deitar abaixo as builds de macOS e Linux
+
 ## [1.10.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.10.0) — 2026-08-11
 
 ### Adicionado
