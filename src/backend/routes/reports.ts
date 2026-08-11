@@ -4,6 +4,8 @@ import { getSqliteDatabase } from '../db/database';
 import { requireRole } from './auth';
 import { computeIncompleteFlags, findDuplicateGroups, type DqClient } from '../lib/data-quality';
 import { recordAudit } from '../lib/audit';
+import { loadOperationsStatus } from '../lib/operations-status';
+import { buildOperationsStatusPdf } from '../lib/operations-export';
 
 type ReportMetricRow = {
   totalClients: number;
@@ -34,6 +36,29 @@ const querySchema = z.object({
 });
 
 export async function registerReportRoutes(app: FastifyInstance) {
+  /**
+   * Estado da operação — leitura viva, sem cache.
+   *
+   * O renderer faz polling curto sobre este endpoint. Em SQLite local o custo
+   * é de milissegundos e servir dados de há cinco minutos num painel de
+   * monitorização mente exatamente quando mais importa acertar.
+   */
+  app.get('/api/reports/operations', { preHandler: requireRole(['admin', 'operator']) }, async () => {
+    return loadOperationsStatus();
+  });
+
+  // Fotografia do mesmo read model para arquivo mensal. Sem `attachment` a app
+  // empacotada (file://) não consegue ler o nome — ver o cors exposedHeaders.
+  app.get('/api/reports/operations.pdf', { preHandler: requireRole(['admin', 'operator']) }, async (request, reply) => {
+    const pdf = await buildOperationsStatusPdf();
+    const stamp = new Date().toISOString().slice(0, 7);
+    const filename = `Estado da operacao - ${stamp}.pdf`;
+    return reply
+      .header('content-type', 'application/pdf')
+      .header('content-disposition', `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`)
+      .send(pdf);
+  });
+
   app.get('/api/reports/summary', { preHandler: requireRole(['admin', 'operator']) }, async (request, reply) => {
     const parsed = querySchema.safeParse(request.query || {});
     if (!parsed.success) {

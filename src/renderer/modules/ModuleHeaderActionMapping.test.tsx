@@ -24,6 +24,12 @@ type HeaderCase = {
   ariaLabel: string;
   primaryCount: 0 | 1;
   actions: Array<{ label: string; variant: 'primary' | 'secondary' | 'critical' }>;
+  /**
+   * Aba a ativar antes de medir o cabeçalho. Módulos com vistas mostram
+   * comandos diferentes conforme a vista, e a inicial pode não ser a que
+   * expõe o comando do módulo.
+   */
+  activate?: string;
 };
 
 const headerCases: HeaderCase[] = [
@@ -116,6 +122,9 @@ const headerCases: HeaderCase[] = [
     render: () => <ReportsModule />,
     ariaLabel: 'Ações de relatórios',
     primaryCount: 0,
+    // A aba inicial ("Operacao") é um painel vivo com as suas próprias ações;
+    // o comando de exportação do módulo pertence às vistas tabulares.
+    activate: 'Receita',
     actions: [{ label: 'Exportar CSV', variant: 'secondary' }]
   },
   {
@@ -139,7 +148,7 @@ function jsonResponse(body: unknown): Response {
   });
 }
 
-async function mount(element: ReactElement): Promise<HTMLElement> {
+async function mount(element: ReactElement, activate?: string): Promise<HTMLElement> {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -154,6 +163,11 @@ async function mount(element: ReactElement): Promise<HTMLElement> {
       </AuthProvider>
     );
   });
+
+  if (activate) {
+    const tab = action(container, activate);
+    await act(async () => { tab.click(); });
+  }
 
   return container;
 }
@@ -185,9 +199,9 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-describe.each(headerCases)('$name module header actions', ({ render, ariaLabel, primaryCount, actions }) => {
+describe.each(headerCases)('$name module header actions', ({ render, ariaLabel, primaryCount, actions, activate }) => {
   test('maps every command to the approved semantic variant', async () => {
-    const container = await mount(render());
+    const container = await mount(render(), activate);
 
     for (const { label, variant } of actions) {
       expect(action(container, label).classList.contains(`btn-${variant}`)).toBe(true);
@@ -195,7 +209,7 @@ describe.each(headerCases)('$name module header actions', ({ render, ariaLabel, 
   });
 
   test('exposes one named group with no more than one primary command', async () => {
-    const container = await mount(render());
+    const container = await mount(render(), activate);
     const commandGroup = container.querySelector(
       `[role="group"][aria-label="${ariaLabel}"]`
     );

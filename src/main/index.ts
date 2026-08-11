@@ -243,7 +243,7 @@ async function createWindow() {
     // igual ao theme-color dark do index.html.
     ...(process.platform === 'win32'
       ? { backgroundColor: '#00000000', backgroundMaterial: 'acrylic' as const }
-      : { backgroundColor: '#161A1E' }),
+      : { backgroundColor: '#05070D' }),
     icon: iconPath,
     webPreferences: {
       // Em dev o main corre via tsx a partir de src/main, mas o preload tem de ser
