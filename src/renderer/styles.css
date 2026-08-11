@@ -4636,34 +4636,37 @@ label.field-toggle {
 /* Dashboard grid: 3 cols desktop, 2 cols tablet, 1 col mobile.
    Dense auto-flow packs short cards into gaps; align-items:start lets
    each card take its intrinsic height so neighbours never stretch. */
+/* Duas colunas, não três: a secção só tem dois cartões de coluna única
+   ("Vencimentos" e "Atrasos criticos") mais um de largura inteira. Com três
+   colunas sobrava sempre uma célula vazia — um terço da linha em preto. */
 .dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
   margin-top: var(--space-3);
   grid-auto-flow: dense;
-  align-items: start;
+  /* Os pares partilham a altura da linha. Com `start` o cartão mais curto
+     acabava a meio e deixava meia linha de fundo de página a descoberto — um
+     buraco preto maior do que qualquer vazio dentro do cartão. */
+  align-items: stretch;
 }
 .dashboard-card-wide { grid-column: 1 / -1; }
-.dashboard-card-list { min-height: 170px; }
-/* Compact card matches the height of its row neighbours (lists with
-   min-height 200px), but keeps its slim plan-mix density by stretching
-   into a flex column and distributing the bar rows evenly. */
-.dashboard-card-compact {
-  min-height: 170px;
+/* O conteúdo ocupa o que sobra da altura partilhada: a lista encosta ao topo,
+   o estado vazio centra-se. Assim o espaço lê-se como composição e não como
+   falha de carregamento. */
+.dashboard-card-list {
   display: flex;
   flex-direction: column;
 }
-.dashboard-card-compact .plan-mix {
+.dashboard-card-list > .dashboard-list {
   flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-around;
-  gap: var(--space-2);
+  align-content: start;
 }
-.dashboard-card-compact .plan-mix-row { font-size: var(--fs-xs); }
-.dashboard-card-compact .plan-mix-bar { height: 4px; margin-top: var(--space-1); }
+.dashboard-card-list > .empty-state {
+  flex: 1;
+  /* `.empty-state` é grid: são as linhas que se centram no eixo de bloco. */
+  align-content: center;
+}
 
 .dashboard-card-chart .sparkline svg {
   height: 156px;
@@ -4676,8 +4679,6 @@ label.field-toggle {
   .metric-grid {
     grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
   }
-  .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .dashboard-card-compact { grid-column: 1 / -1; }
 }
 
 /* Revenue chart: stacked vertical bars (paid base + pending top).
@@ -5034,8 +5035,6 @@ label.field-toggle {
   }
   .dashboard-grid { grid-template-columns: 1fr; }
   .dashboard-card-wide { grid-column: auto; }
-  .dashboard-card-compact { grid-column: auto; }
-  .dashboard-card-list { min-height: 0; }
 }
 
 @media (max-width: 640px) {
