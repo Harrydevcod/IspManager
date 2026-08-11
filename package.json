@@ -1,6 +1,6 @@
 {
   "name": "ispm",
-  "version": "1.10.0",
+  "version": "1.10.1",
   "description": "ISP Manager desktop app",
   "private": true,
   "main": "dist/main/index.js",
@@ -80,6 +80,9 @@
     "win": {
       "target": "nsis",
       "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "license": "assets/eula/license_pt_PT.txt"
     },
     "mac": {
       "target": "dmg",
