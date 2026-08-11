@@ -64,17 +64,94 @@ export function requireAuth() {
   };
 }
 
+/**
+ * A mesma verificação de papel, utilizável DENTRO de um handler — para rotas
+ * onde a exigência depende do estado (substituir uma licença ativa exige
+ * admin; ativar numa instalação sem licença não).
+ *
+ * Devolve `false` já tendo respondido: quem chama só tem de sair.
+ */
+export function ensureRole(request: FastifyRequest, reply: FastifyReply, roles: UserRole[]): boolean {
+  if (authBypassed()) return true;
+  if (!request.user) {
+    reply.status(401).send({ error: 'Sessao nao autenticada' });
+    return false;
+  }
+  if (!roles.includes(request.user.role)) {
+    reply.status(403).send({ error: 'Permissao insuficiente' });
+    return false;
+  }
+  return true;
+}
+
 export function requireRole(roles: UserRole[]) {
   return async function (request: FastifyRequest, reply: FastifyReply) {
-    if (authBypassed()) return;
-    if (!request.user) {
-      reply.status(401).send({ error: 'Sessao nao autenticada' });
-      return;
-    }
-    if (!roles.includes(request.user.role)) {
-      reply.status(403).send({ error: 'Permissao insuficiente' });
-    }
+    ensureRole(request, reply, roles);
   };
+}
+
+/**
+ * Reconfirmação da password do próprio utilizador da sessão.
+ *
+ * Uma sessão aberta prova quem entrou, não quem está ao teclado agora. Para as
+ * ações que desarmam a instalação — remover ou substituir a licença — pedimos a
+ * password outra vez, para que um computador deixado destrancado não baste.
+ *
+ * Reutiliza o mesmo travão do login: as tentativas falhadas contam para os
+ * mesmos identificadores, portanto martelar aqui tranca também o login. É a
+ * direção segura — é a mesma credencial.
+ */
+export async function confirmSessionPassword(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  password: unknown
+): Promise<boolean> {
+  // Sem autenticação não há password para reconfirmar. Mesmo desvio que
+  // `ensureRole`, para o modo de desenvolvimento continuar utilizável.
+  if (authBypassed()) return true;
+
+  const user = request.user;
+  if (!user) {
+    reply.status(401).send({ error: 'Sessao nao autenticada' });
+    return false;
+  }
+
+  if (typeof password !== 'string' || password.length === 0) {
+    reply.status(400).send({ error: 'Confirme a sua password para continuar.' });
+    return false;
+  }
+
+  const db = getSqliteDatabase();
+  const identifiers = loginIdentifiers(user.username, request.ip);
+
+  const lock = assessLogin(db, identifiers, new Date());
+  if (lock.locked) {
+    reply.header('Retry-After', String(lock.retryAfterSeconds));
+    reply.status(429).send({
+      error: 'Demasiadas tentativas falhadas. Tente novamente mais tarde.',
+      retryAfterSeconds: lock.retryAfterSeconds
+    });
+    return false;
+  }
+
+  const row = db.prepare(`
+    SELECT password_hash AS passwordHash FROM users WHERE id = ? AND active = 1
+  `).get(user.id) as { passwordHash: string } | undefined;
+
+  if (!row || !verifyPassword(password, row.passwordHash)) {
+    for (const identifier of identifiers) registerFailure(db, identifier, new Date());
+    recordAudit(request, {
+      action: 'password_confirm_failed',
+      entityType: 'auth',
+      summary: user.username,
+      metadata: { ip: request.ip }
+    });
+    reply.status(403).send({ error: 'Password incorreta.' });
+    return false;
+  }
+
+  clearThrottle(db, identifiers);
+  return true;
 }
 
 export async function registerAuthRoutes(app: FastifyInstance) {

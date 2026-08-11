@@ -45,8 +45,12 @@ type LicenseContextValue = {
   info: LicenseInfo | null;
   loading: boolean;
   refresh: () => Promise<void>;
-  activate: (token: string) => Promise<void>;
-  deactivate: () => Promise<void>;
+  /**
+   * `password` só é exigida quando já existe uma licença ativa a ser
+   * substituída — o backend decide, e recusa com 400 se faltar.
+   */
+  activate: (token: string, password?: string) => Promise<void>;
+  deactivate: (password: string) => Promise<void>;
 };
 
 const LicenseContext = createContext<LicenseContextValue | null>(null);
@@ -77,11 +81,11 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
-  const activate = useCallback(async (token: string) => {
+  const activate = useCallback(async (token: string, password?: string) => {
     const response = await authFetch(`${API_BASE}/api/license`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token })
+      body: JSON.stringify(password ? { token, password } : { token })
     });
     if (!response.ok) {
       throw new Error(await readError(response, 'Não foi possível ativar a licença.'));
@@ -89,8 +93,12 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     setInfo((await response.json()) as LicenseInfo);
   }, []);
 
-  const deactivate = useCallback(async () => {
-    const response = await authFetch(`${API_BASE}/api/license`, { method: 'DELETE' });
+  const deactivate = useCallback(async (password: string) => {
+    const response = await authFetch(`${API_BASE}/api/license`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
     if (!response.ok) {
       throw new Error(await readError(response, 'Não foi possível remover a licença.'));
     }
