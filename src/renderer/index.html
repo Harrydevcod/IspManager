@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#161A1E" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#05070D" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#F6F3EC" media="(prefers-color-scheme: light)" />
     <meta name="color-scheme" content="dark light" />
     <title>ISPM</title>
@@ -21,8 +21,11 @@
           }
           document.documentElement.dataset.theme = t;
           document.documentElement.style.colorScheme = t;
+          // Espelha o --bg do styles.css. No escuro leva o alpha do véu que o
+          // :root pinta por cima do acrílico (93% → 0xED), para o arranque não
+          // piscar uma cor diferente da que a app assenta a seguir.
           document.documentElement.style.background =
-            t === 'light' ? '#F6F3EC' : '#161A1ED1';
+            t === 'light' ? '#F6F3EC' : '#05070DED';
         } catch (e) {
           document.documentElement.dataset.theme = 'dark';
           document.documentElement.style.colorScheme = 'dark';

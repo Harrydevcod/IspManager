@@ -4,6 +4,7 @@ import { Button, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, 
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
+import { OperationsStatusPanel } from './reports/OperationsStatusPanel';
 import type { DataQualityIncompleteFlag, DataQualitySummary, ReportsSummary, ReportView } from '../types';
 
 type MessagingSettings = { companyName: string; whatsappTemplate: string };
@@ -12,8 +13,10 @@ const PAGE_SIZE = 20;
 
 export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: number) => void } = {}) {
   const [summary, setSummary] = useState<ReportsSummary | null>(null);
-  type Tab = ReportView | 'incomplete' | 'duplicates';
-  const [view, setView] = useState<Tab>('revenue');
+  type Tab = ReportView | 'incomplete' | 'duplicates' | 'operations';
+  // "Operação" arranca em primeiro: é a única vista viva, e é a que responde à
+  // pergunta com que se abre o módulo — o que exige decisão agora.
+  const [view, setView] = useState<Tab>('operations');
   const [dq, setDq] = useState<DataQualitySummary | null>(null);
   const [issue, setIssue] = useState<DataQualityIncompleteFlag | null>(null);
   const [dateFrom, setDateFrom] = useState('');
@@ -28,7 +31,9 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
   });
 
   useEffect(() => {
-    if (view === 'incomplete' || view === 'duplicates') return;
+    // "Operação" tem o seu próprio ciclo de vida (polling); as vistas de
+    // qualidade de dados usam o endpoint seguinte. Só as restantes vêm daqui.
+    if (view === 'incomplete' || view === 'duplicates' || view === 'operations') return;
     const params = new URLSearchParams({
       view,
       page: String(page),
@@ -114,6 +119,9 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
   }
 
   function exportCsv() {
+    // "Operação" exporta em PDF a partir do próprio painel — o seu conteúdo é
+    // narrativo (riscos, ações) e não cabe numa grelha de células.
+    if (view === 'operations') return;
     if ((view === 'incomplete' || view === 'duplicates') ? !dq : !summary) {
       return;
     }
@@ -205,6 +213,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
           ariaLabel="Ações de relatórios"
           context={
             <div className="report-tabs">
+              <Button variant="ghost" size="sm" className={view === 'operations' ? 'active' : ''} onClick={() => changeView('operations')}>Operacao</Button>
               <Button variant="ghost" size="sm" className={view === 'revenue' ? 'active' : ''} onClick={() => changeView('revenue')}>Receita</Button>
               <Button variant="ghost" size="sm" className={view === 'overdue' ? 'active' : ''} onClick={() => changeView('overdue')}>Atrasos</Button>
               <Button variant="ghost" size="sm" className={view === 'stock' ? 'active' : ''} onClick={() => changeView('stock')}>Stock</Button>
@@ -212,7 +221,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
               <Button variant="ghost" size="sm" className={view === 'duplicates' ? 'active' : ''} onClick={() => changeView('duplicates')}>Duplicados</Button>
             </div>
           }
-          secondary={
+          secondary={view === 'operations' ? undefined : (
             <Button
               variant="secondary"
               leadingIcon={<Download size={16} aria-hidden />}
@@ -221,11 +230,11 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
             >
               Exportar CSV
             </Button>
-          }
+          )}
         />
       </div>
 
-      {view !== 'incomplete' && view !== 'duplicates' && (
+      {view !== 'incomplete' && view !== 'duplicates' && view !== 'operations' && (
         <FilterBar className="reports-filter-bar">
           <Field
             label="De"
@@ -250,10 +259,12 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
         </FilterBar>
       )}
 
-      {error && <ErrorRetry message={error} onRetry={() => setReloadTick((t) => t + 1)} />}
+      {view !== 'operations' && error && <ErrorRetry message={error} onRetry={() => setReloadTick((t) => t + 1)} />}
       {whatsappStatus && <Message>{whatsappStatus}</Message>}
 
-      {(view === 'incomplete' || view === 'duplicates') ? (
+      {view === 'operations' && <OperationsStatusPanel active />}
+
+      {view !== 'operations' && ((view === 'incomplete' || view === 'duplicates') ? (
         <section className="metric-grid compact" aria-label="Resumo de qualidade de dados">
           <MetricCard icon={UsersRound} label="Incompletos" value={dq ? String(dq.incompleteCounts.total) : '...'} trend="com pelo menos uma lacuna" />
           <MetricCard icon={MessageCircle} label="Sem telefone" value={dq ? String(dq.incompleteCounts.noPhone) : '...'} trend="sem contacto WhatsApp" />
@@ -267,8 +278,9 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
           <MetricCard icon={Banknote} label="Receita paga" value={metrics ? formatCve(metrics.paidAmountCve) : '...'} trend="recebidos" />
           <MetricCard icon={Activity} label="Em atraso" value={metrics ? formatCve(metrics.overdueAmountCve) : '...'} trend={metrics ? `${metrics.overduePayments} cobrancas` : 'a carregar'} />
         </section>
-      )}
+      ))}
 
+      {view !== 'operations' && (
       <div className="module-table">
         {!error && ((view === 'incomplete' || view === 'duplicates') ? !dq : !summary) && <SkeletonList rows={5} />}
         {view === 'revenue' && summary?.revenueByMonth.map((row) => (
@@ -406,6 +418,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
           </div>
         )}
       </div>
+      )}
     </section>
   );
 }

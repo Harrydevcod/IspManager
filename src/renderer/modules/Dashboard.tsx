@@ -1,6 +1,6 @@
-import { Activity, AlertTriangle, CalendarClock, MessageCircle, TrendingUp, UsersRound, Wrench } from 'lucide-react';
+import { Activity, AlertTriangle, CalendarClock, CheckCircle2, MessageCircle, ShieldCheck, TrendingUp, UsersRound, Wrench } from 'lucide-react';
 import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
-import { Badge, Button, Card, ErrorRetry, MetricCard, MetricGrid, RevenueBars, Skeleton } from '../components';
+import { Badge, Button, Card, EmptyState, ErrorRetry, MetricCard, MetricGrid, RevenueBars, Skeleton } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
 import type { DashboardSummary } from '../types';
@@ -223,7 +223,12 @@ export function Dashboard({
               ))}
             </ul>
           ) : (
-            <p className="module-message">Nenhum vencimento previsto nos proximos 7 dias.</p>
+            <EmptyState
+              size="sm"
+              icon={CalendarClock}
+              title="Nada a vencer"
+              description="Nenhuma cobranca vence nos proximos 7 dias."
+            />
           )}
         </Card>
 
@@ -244,7 +249,12 @@ export function Dashboard({
               ))}
             </ul>
           ) : (
-            <p className="module-message">Sem atrasos com mais de 30 dias.</p>
+            <EmptyState
+              size="sm"
+              icon={ShieldCheck}
+              title="Sem atrasos criticos"
+              description="Nada por cobrar ha mais de 30 dias."
+            />
           )}
         </Card>
 
@@ -262,9 +272,12 @@ export function Dashboard({
               ))}
             </ul>
           ) : (
-            <p className="module-message">
-              Tudo em dia. Sem pendencias para hoje.
-            </p>
+            <EmptyState
+              size="sm"
+              icon={CheckCircle2}
+              title="Tudo em dia"
+              description="Sem pendencias para hoje."
+            />
           )}
           <div className="dashboard-card-footer">
             <Button variant="secondary" className="dashboard-cta" leadingIcon={<Wrench size={14} aria-hidden />} onClick={onOpenWorkOrders}>

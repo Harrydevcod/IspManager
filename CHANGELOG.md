@@ -2,6 +2,24 @@
 
 Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/). Cada versão tem uma [Release no GitHub](https://github.com/Harrydevcod/IspManager/releases) com o instalador correspondente.
 
+## [1.10.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.10.0) — 2026-08-11
+
+### Adicionado
+
+- **relatorios:** Aba "Operacao" — o estado da operação inteiro numa leitura: cobrança, rede, parque, canais, acesso e sistema. É a vista que abre o módulo, porque é a que responde à pergunta com que se abre um relatório: o que exige decisão agora
+- **relatorios:** Riscos e próximas ações derivados dos dados a cada leitura, e não de uma lista fixa — resolvido o problema, a linha desaparece sozinha. Cada um traz a exposição em escudos, para se saber o que custa não decidir
+- **relatorios:** PDF mensal do estado da operação, para arquivo
+
+### Alterado
+
+- **relatorios:** O painel lê-se vivo — atualiza sozinho a cada 30 segundos e revalida ao voltar à janela. Uma falha de leitura deixa de apagar o painel: mostra a última leitura válida com o aviso por cima
+- **aparencia:** Tema escuro reescrito em azul-tinta. Sobre um fundo escuro a sério os cartões e os gráficos destacam-se sem precisarem de sombra, e o laranja da empresa entra como segundo eixo ao lado do azul. O tema claro fica exatamente como estava
+
+### Corrigido
+
+- **dashboard:** Os cartões deixam de abrir grandes espaços pretos. A grelha tinha três colunas para dois cartões, o que deixava sempre um terço da linha vazio, e o cartão mais curto acabava a meio da linha em vez de acompanhar o vizinho. Os estados vazios passam a ser desenhados em vez de uma frase solta no escuro
+- **aparencia:** O arranque deixa de piscar a cor antiga antes de assentar no tema
+
 ## [1.9.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.9.0) — 2026-08-02
 
 ### Adicionado

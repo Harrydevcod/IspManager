@@ -1,64 +1,82 @@
 /* =========================================================================
    ISPM — Design system (dark-first, editorial)
-   Type: Inter Variable (single family, weight contrast). Color: OKLCH, warm
-   neutrals tinted toward the heritage gold (hue ~72). Depth via lighter
-   surfaces + hairline borders — no glow. Two token layers + legacy aliases
-   so non-slice modules stay coherent until they get their own pass.
+   Type: Inter Variable (single family, weight contrast).
+
+   Cor: dois temas com paletas independentes.
+   • Escuro — paleta SKYNET: azul-tinta quase preto, azul #2f7dff e laranja
+     #ff7a1a como marca. Profundidade por superfícies mais claras + fios de
+     borda; sem glow.
+   • Claro — neutros quentes com o dourado histórico (hue ~72), intocado.
+
+   Só os primitivos são redefinidos por tema; os aliases legados herdam.
    ========================================================================= */
 
 :root {
   color-scheme: dark;
 
-  /* neutrals — grafite frio ~21.5%, tintado ao hue do accent Windows do dono
-     (#0078D4 ≈ oklch 56.8% 0.167 251, capturado do registry em 2026-07-03).
-     Escuro q.b. para trabalho noturno sem ler como preto absoluto. */
-  --bg: oklch(21.5% 0.01 251);
-  --surface: oklch(25% 0.011 251);
-  --surface-2: oklch(28.5% 0.012 251);
-  --surface-3: oklch(32.5% 0.013 249);
-  --border: oklch(35.5% 0.014 249);
-  --border-2: oklch(45% 0.016 247);
+  /* neutrals — paleta SKYNET. Azul-tinta muito escuro (#05070d) com as
+     superfícies a subir em degraus visíveis (#0e1524 → #131c2e → #1a2438) e
+     os fios de borda em #1e2a42. Mais escuro e mais azul do que o grafite
+     anterior: é o contraste que faz os cartões e os gráficos destacarem-se
+     sem precisarem de sombra. */
+  --bg: #05070d;
+  --surface: #0e1524;
+  --surface-2: #131c2e;
+  --surface-3: #1a2438;
+  --border: #1e2a42;
+  --border-2: #2a3a58;
 
-  --text: oklch(93% 0.006 251);
-  --text-2: oklch(74% 0.01 251);
-  --text-3: oklch(62% 0.012 251);
+  --text: #e8eefc;
+  --text-2: #94a5c4;
+  /* Clareado de #5d6f92 (o valor do painel HTML) para #7786a3: sobre
+     --surface-2 aquele dava 3.37:1, abaixo do mínimo AA de 4.5. Num relatório
+     de página única passava; aqui o terciário carrega rótulos, cabeçalhos de
+     tabela e legendas em todos os módulos. Agora dá 4.64:1. */
+  --text-3: #7786a3;
 
-  /* accent — azul Windows do sistema do dono, elevado para legibilidade em dark */
-  --accent: oklch(68% 0.15 251);
-  --accent-2: oklch(61% 0.16 251);
-  --on-accent: oklch(16% 0.02 251);
+  /* accent — azul da marca. #3380ff é o #2f7dff do painel elevado o mínimo
+     para chegar a 4.6:1 sobre --surface-2, já que também serve como cor de
+     texto em ligações e destaques. A diferença é imperceptível ao lado. */
+  --accent: #3380ff;
+  --accent-2: #1b4a9c;
+  --on-accent: #05070d;
 
-  /* semantic — paired surface tints for dark legibility */
-  --success: oklch(77% 0.16 148);
-  --success-bg: oklch(29% 0.07 148);
-  --danger: oklch(70% 0.18 24);
-  --danger-bg: oklch(29% 0.075 24);
-  --info: oklch(72% 0.12 212);
-  --info-bg: oklch(29% 0.045 212);
-  --warn: oklch(80% 0.13 85);
+  /* semantic — o par cor + tinta de fundo. As tintas nascem por color-mix
+     sobre o fundo, para acompanharem sozinhas qualquer ajuste do --bg. */
+  --success: #22d38a;
+  --success-bg: color-mix(in oklch, #22d38a 18%, var(--bg));
+  --danger: #ff3d5a;
+  --danger-bg: color-mix(in oklch, #ff3d5a 18%, var(--bg));
+  --info: #38d6ff;
+  --info-bg: color-mix(in oklch, #38d6ff 16%, var(--bg));
+  --warn: #ffb020;
+
+  /* laranja da marca — o segundo eixo do par azul+laranja. Usado nas réguas
+     de secção e nos realces de concentração. */
+  --brand-orange: #ff7a1a;
 
   --ring: color-mix(in oklch, var(--accent) 62%, transparent);
-  --shadow-1: 0 1px 2px oklch(0% 0 0 / 0.45);
-  --shadow-2: 0 18px 42px -26px oklch(0% 0 0 / 0.82);
+  --shadow-1: 0 1px 2px oklch(0% 0 0 / 0.55);
+  --shadow-2: 0 18px 42px -26px oklch(0% 0 0 / 0.9);
 
   /* action hierarchy — intentionally independent from the broad theme accent */
-  --action-primary-start: oklch(72% 0.15 246);
-  --action-primary-end: oklch(62% 0.18 258);
-  --action-primary-fg: oklch(16% 0.025 251);
+  --action-primary-start: #4a8dff;
+  --action-primary-end: #1b4a9c;
+  --action-primary-fg: #05070d;
   --action-primary-border: color-mix(in oklch, var(--action-primary-start) 76%, white);
   --action-primary-shadow:
     0 1px 0 oklch(100% 0 0 / 0.18) inset,
-    0 8px 18px -10px oklch(58% 0.18 252 / 0.8);
+    0 8px 18px -10px color-mix(in oklch, var(--accent) 70%, transparent);
   --action-primary-shadow-hover:
     0 1px 0 oklch(100% 0 0 / 0.24) inset,
-    0 12px 24px -12px oklch(58% 0.18 252 / 0.92);
-  --action-secondary-bg: oklch(28.5% 0.012 251 / 0.88);
-  --action-secondary-hover: oklch(32.5% 0.016 251);
-  --action-secondary-border: oklch(45% 0.016 251 / 0.72);
-  --action-secondary-border-hover: oklch(55% 0.018 251 / 0.9);
-  --action-secondary-fg: oklch(93% 0.006 251);
+    0 12px 24px -12px color-mix(in oklch, var(--accent) 82%, transparent);
+  --action-secondary-bg: color-mix(in oklch, var(--surface-2) 88%, transparent);
+  --action-secondary-hover: var(--surface-3);
+  --action-secondary-border: color-mix(in oklch, var(--border-2) 72%, transparent);
+  --action-secondary-border-hover: color-mix(in oklch, var(--border-2) 90%, white 6%);
+  --action-secondary-fg: var(--text);
   --action-secondary-shadow:
-    0 8px 18px -14px oklch(24% 0.02 255 / 0.5);
+    0 8px 18px -14px oklch(0% 0 0 / 0.6);
   --action-focus: color-mix(in oklch, var(--action-primary-start) 66%, transparent);
 
   /* radius / space / type scales */
@@ -133,8 +151,17 @@
   color: var(--text);
   /* Véu semi-transparente: a janela Electron usa backgroundMaterial acrylic
      (Win11), que fica visível através deste fundo. Se o material não existir
-     (Win10), o alpha assenta sobre a cor sólida da janela — sem regressão. */
-  background: color-mix(in oklch, var(--bg) 82%, transparent);
+     (Win10), o alpha assenta sobre a cor sólida da janela — sem regressão.
+     Subiu de 82% para 93% com a paleta SKYNET: sobre um fundo quase preto,
+     18% de ambiente do desktop lavava o preto e desfazia o contraste que os
+     cartões e os gráficos precisam.
+     Por cima, dois halos — azul em cima à esquerda, laranja à direita — que
+     dão o ar de profundidade do painel sem pintar nenhum elemento. */
+  background:
+    radial-gradient(900px 500px at 12% -8%, color-mix(in oklch, var(--accent) 13%, transparent), transparent 60%),
+    radial-gradient(700px 420px at 92% 4%, color-mix(in oklch, var(--brand-orange) 10%, transparent), transparent 60%),
+    color-mix(in oklch, var(--bg) 93%, transparent);
+  background-attachment: fixed;
   font-family: var(--font-ui);
   font-feature-settings: var(--font-feature-ui);
   font-synthesis: none;
@@ -193,6 +220,10 @@ table {
   --info: oklch(46% 0.13 240);
   --info-bg: oklch(94.5% 0.045 240);
   --warn: oklch(50% 0.12 75);
+
+  /* O laranja da marca também escurece no tema claro: o #ff7a1a do dark não
+     tem contraste suficiente sobre off-white. */
+  --brand-orange: oklch(55% 0.16 52);
 
   --ring: color-mix(in oklch, var(--accent) 55%, transparent);
   --shadow-1: 0 1px 2px oklch(60% 0.02 72 / 0.12);
@@ -370,8 +401,10 @@ a:hover {
 /* prefers-contrast: more — strengthen borders + focus ring */
 @media (prefers-contrast: more) {
   :root {
-    --border: oklch(48% 0.014 72);
-    --border-2: oklch(58% 0.016 72);
+    /* Bordas mais fortes na mesma família azul da paleta SKYNET — antes eram
+       neutros quentes, que sobre este fundo liam como sujidade. */
+    --border: #35486e;
+    --border-2: #48608f;
   }
   :root[data-theme="light"] {
     --border: oklch(70% 0.012 72);
@@ -4603,34 +4636,37 @@ label.field-toggle {
 /* Dashboard grid: 3 cols desktop, 2 cols tablet, 1 col mobile.
    Dense auto-flow packs short cards into gaps; align-items:start lets
    each card take its intrinsic height so neighbours never stretch. */
+/* Duas colunas, não três: a secção só tem dois cartões de coluna única
+   ("Vencimentos" e "Atrasos criticos") mais um de largura inteira. Com três
+   colunas sobrava sempre uma célula vazia — um terço da linha em preto. */
 .dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
   margin-top: var(--space-3);
   grid-auto-flow: dense;
-  align-items: start;
+  /* Os pares partilham a altura da linha. Com `start` o cartão mais curto
+     acabava a meio e deixava meia linha de fundo de página a descoberto — um
+     buraco preto maior do que qualquer vazio dentro do cartão. */
+  align-items: stretch;
 }
 .dashboard-card-wide { grid-column: 1 / -1; }
-.dashboard-card-list { min-height: 170px; }
-/* Compact card matches the height of its row neighbours (lists with
-   min-height 200px), but keeps its slim plan-mix density by stretching
-   into a flex column and distributing the bar rows evenly. */
-.dashboard-card-compact {
-  min-height: 170px;
+/* O conteúdo ocupa o que sobra da altura partilhada: a lista encosta ao topo,
+   o estado vazio centra-se. Assim o espaço lê-se como composição e não como
+   falha de carregamento. */
+.dashboard-card-list {
   display: flex;
   flex-direction: column;
 }
-.dashboard-card-compact .plan-mix {
+.dashboard-card-list > .dashboard-list {
   flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-around;
-  gap: var(--space-2);
+  align-content: start;
 }
-.dashboard-card-compact .plan-mix-row { font-size: var(--fs-xs); }
-.dashboard-card-compact .plan-mix-bar { height: 4px; margin-top: var(--space-1); }
+.dashboard-card-list > .empty-state {
+  flex: 1;
+  /* `.empty-state` é grid: são as linhas que se centram no eixo de bloco. */
+  align-content: center;
+}
 
 .dashboard-card-chart .sparkline svg {
   height: 156px;
@@ -4643,8 +4679,6 @@ label.field-toggle {
   .metric-grid {
     grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
   }
-  .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .dashboard-card-compact { grid-column: 1 / -1; }
 }
 
 /* Revenue chart: stacked vertical bars (paid base + pending top).
@@ -4655,8 +4689,10 @@ label.field-toggle {
 .sparkline {
   display: block;
   position: relative;
-  --chart-paid: oklch(67% 0.17 252);
-  --chart-pending: oklch(82% 0.19 92);
+  /* Séries do gráfico de receita alinhadas à marca: azul para o recebido,
+     âmbar para o pendente. Ambos legíveis nos dois temas. */
+  --chart-paid: var(--accent);
+  --chart-pending: var(--warn);
 }
 .sparkline svg {
   width: 100%;
@@ -4999,8 +5035,6 @@ label.field-toggle {
   }
   .dashboard-grid { grid-template-columns: 1fr; }
   .dashboard-card-wide { grid-column: auto; }
-  .dashboard-card-compact { grid-column: auto; }
-  .dashboard-card-list { min-height: 0; }
 }
 
 @media (max-width: 640px) {
@@ -5283,9 +5317,11 @@ label.field-toggle {
   gap: var(--space-2);
   margin: 0;
   padding: var(--space-2) var(--space-3);
-  border-left: 2px solid oklch(64% 0.18 25);
-  background: color-mix(in oklch, oklch(64% 0.18 25) 8%, transparent);
-  color: oklch(74% 0.13 25);
+  /* Passou a usar o token: um vermelho fixo aqui ficava dessincronizado do
+     resto do sistema sempre que a paleta muda. */
+  border-left: 2px solid var(--danger);
+  background: color-mix(in oklch, var(--danger) 8%, transparent);
+  color: var(--danger);
   font-size: 12px;
   text-transform: none;
   letter-spacing: 0;
@@ -5429,9 +5465,9 @@ label.field-toggle {
 }
 
 .sidebar-user-logout:hover {
-  border-color: oklch(64% 0.18 25);
-  color: oklch(64% 0.18 25);
-  background: color-mix(in oklch, oklch(64% 0.18 25) 6%, transparent);
+  border-color: var(--danger);
+  color: var(--danger);
+  background: color-mix(in oklch, var(--danger) 6%, transparent);
 }
 
 @media (max-width: 980px) {
