@@ -343,6 +343,12 @@ function TopologyStatsBar({
           onde se está a olhar — senão lêem-se como se fossem do que está no
           ecrã. */}
       {focused && (
+        // Exceção deliberada à regra do <Button>: isto é um chip de estado que
+        // se dispensa, não um comando — a barra de ferramentas do mapa usa
+        // <Button> para os comandos. O sistema não tem primitiva de chip e
+        // criar uma para um só sítio seria abstrair cedo demais; se aparecer um
+        // segundo chip clicável, promove-se então.
+        // eslint-disable-next-line no-restricted-syntax
         <button
           type="button"
           className="topology-scope-chip"
