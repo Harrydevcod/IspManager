@@ -281,13 +281,16 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       metadata: {
         referenceMonth,
         reversed: result.reversed,
-        invoiceNumbers: result.invoiceNumbers
+        // Documentos numerados que a reversão deixou intactos. Antes eram
+        // apagados e o registo guardava os números destruídos.
+        invoicedKept: result.invoicedKept
       }
     });
 
     return {
       referenceMonth,
-      reversed: result.reversed
+      reversed: result.reversed,
+      invoicedKept: result.invoicedKept
     };
   });
 

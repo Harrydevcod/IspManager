@@ -7,10 +7,13 @@ export type ReverseMonthlyPreview = {
   total: number;
   eligibleCount: number;
   paidLockedCount: number;
+  /** Pendentes/atraso que já têm fatura emitida: anulam-se, não se revertem. */
+  invoicedLockedCount: number;
   cancelledCount: number;
   totalCve: number;
   eligible: Array<{ id: number; clientName: string; clientCode: string | null; invoiceNumber: string | null; amountCve: number; dueDate: string; status: 'pending' | 'overdue' }>;
   paidLocked: Array<{ id: number; clientName: string; clientCode: string | null; invoiceNumber: string | null; amountCve: number }>;
+  invoicedLocked: Array<{ id: number; clientName: string; clientCode: string | null; invoiceNumber: string | null; amountCve: number }>;
 };
 
 type ReverseMonthlyDialogProps = {
@@ -55,6 +58,11 @@ export function ReverseMonthlyDialog({ preview, submitting, onClose, onConfirm }
                 {preview.paidLockedCount} pagas ficam intactas (anular se necessario).
               </span>
             )}
+            {preview.invoicedLockedCount > 0 && (
+              <span className="overdue-notify-skip">
+                {' '}{preview.invoicedLockedCount} com fatura emitida ficam intactas.
+              </span>
+            )}
             {preview.cancelledCount > 0 && (
               <span className="overdue-notify-skip">
                 {' '}{preview.cancelledCount} ja anuladas.
@@ -69,7 +77,9 @@ export function ReverseMonthlyDialog({ preview, submitting, onClose, onConfirm }
                   <div className="overdue-notify-meta">
                     <small className="entity-code">{row.clientCode || '—'}</small>
                     <strong>{row.clientName}</strong>
-                    <small>FT {row.invoiceNumber || '-'} · venc. {formatPtDate(row.dueDate)}</small>
+                    {/* Sem número: o que ainda não foi documento é o único que
+                        pode ser apagado. */}
+                    <small>venc. {formatPtDate(row.dueDate)}</small>
                   </div>
                   <Badge tone={row.status === 'overdue' ? 'danger' : 'info'}>{paymentStatusLabel(row.status)}</Badge>
                   <span className="overdue-notify-amount">{formatCve(row.amountCve)}</span>
@@ -80,6 +90,23 @@ export function ReverseMonthlyDialog({ preview, submitting, onClose, onConfirm }
             <Message>
               Sem cobrancas pendentes ou em atraso para reverter em {formatPtMonth(preview.referenceMonth)}.
             </Message>
+          )}
+
+          {preview.invoicedLockedCount > 0 && (
+            <details className="overdue-notify-skipped">
+              <summary>Com fatura emitida ({preview.invoicedLockedCount}) - anular, nao reverter</summary>
+              <p className="module-message">
+                Reverter apagaria o documento e deixaria um salto na numeracao. Para desfazer
+                qualquer uma destas, abra a cobranca e use Anular, indicando o motivo.
+              </p>
+              <ul>
+                {preview.invoicedLocked.map((row) => (
+                  <li key={row.id}>
+                    {row.clientName} <small>({row.invoiceNumber} - {formatCve(row.amountCve)})</small>
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
 
           {preview.paidLockedCount > 0 && (

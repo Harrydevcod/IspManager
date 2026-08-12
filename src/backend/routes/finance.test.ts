@@ -1089,7 +1089,13 @@ describe('finance routes', () => {
 
     await app.inject({ method: 'POST', url: '/api/billing/generate-monthly', payload: { referenceMonth: '2026-12' } });
     const original = db.prepare('SELECT id FROM payments WHERE service_id = ?').get(service.lastInsertRowid) as { id: number };
-    await app.inject({ method: 'POST', url: `/api/payments/${original.id}/cancel`, payload: { reason: 'teste' } });
+    // A mensalidade gerada já tem número de fatura, e anular um documento
+    // numerado exige motivo detalhado.
+    await app.inject({
+      method: 'POST',
+      url: `/api/payments/${original.id}/cancel`,
+      payload: { reason: 'Valor a corrigir antes de regenerar' }
+    });
 
     const response = await app.inject({ method: 'POST', url: `/api/payments/${original.id}/regenerate` });
 
