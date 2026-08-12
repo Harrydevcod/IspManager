@@ -20,7 +20,13 @@ function selectPayment(db: Database, id: number): PaymentRecord | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// Reversão de cobrança mensal (apaga pendentes/atraso; pagas e anuladas ficam)
+// Reversão de cobrança mensal
+//
+// Apaga só o que nunca foi documento: pendentes/atraso SEM número de fatura.
+// Pagas, anuladas e numeradas ficam. O número é atribuído na geração da
+// mensalidade (ver `billing.ts`), não na impressão do PDF — uma mensalidade
+// gerada já é um documento antes de alguém a imprimir, e apagá-la deixaria um
+// salto na sequência sem rasto de que existiu. Documento numerado anula-se.
 // ---------------------------------------------------------------------------
 
 export function previewReverseMonthly(db: Database, referenceMonth: string) {
@@ -49,43 +55,53 @@ export function previewReverseMonthly(db: Database, referenceMonth: string) {
     status: PaymentStatus;
   }>;
 
-  const eligible = rows.filter((r) => r.status === 'pending' || r.status === 'overdue');
+  const openRows = rows.filter((r) => r.status === 'pending' || r.status === 'overdue');
+
+  const eligible = openRows.filter((r) => !r.invoiceNumber);
+  const invoicedLocked = openRows.filter((r) => Boolean(r.invoiceNumber));
   const paidLocked = rows.filter((r) => r.status === 'paid');
   const cancelledKept = rows.filter((r) => r.status === 'cancelled');
+
+  const locked = (r: (typeof rows)[number]) => ({
+    id: r.id,
+    clientName: r.clientName,
+    clientCode: r.clientCode,
+    invoiceNumber: r.invoiceNumber,
+    amountCve: r.amountCve
+  });
 
   return {
     referenceMonth,
     total: rows.length,
     eligibleCount: eligible.length,
     paidLockedCount: paidLocked.length,
+    invoicedLockedCount: invoicedLocked.length,
     cancelledCount: cancelledKept.length,
     totalCve: eligible.reduce((sum, r) => sum + r.amountCve, 0),
     eligible,
-    paidLocked: paidLocked.map((r) => ({
-      id: r.id,
-      clientName: r.clientName,
-      clientCode: r.clientCode,
-      invoiceNumber: r.invoiceNumber,
-      amountCve: r.amountCve
-    }))
+    paidLocked: paidLocked.map(locked),
+    invoicedLocked: invoicedLocked.map(locked)
   };
 }
 
-export function executeReverseMonthly(db: Database, referenceMonth: string): { reversed: number; invoiceNumbers: string[] } {
-  const eligibleRows = db.prepare(`
-    SELECT id, invoice_number AS invoiceNumber
+export function executeReverseMonthly(db: Database, referenceMonth: string): { reversed: number; invoicedKept: number } {
+  const invoicedKept = db.prepare(`
+    SELECT COUNT(*) AS n
     FROM payments
-    WHERE reference_month = ? AND status IN ('pending', 'overdue')
-  `).all(referenceMonth) as Array<{ id: number; invoiceNumber: string | null }>;
+    WHERE reference_month = ? AND status IN ('pending', 'overdue') AND invoice_number IS NOT NULL
+  `).get(referenceMonth) as { n: number };
 
+  // `invoice_number IS NULL` nos dois passos: é ele que separa o rascunho de
+  // cobrança do documento emitido.
   const deleteLinesStmt = db.prepare(`
     DELETE FROM payment_lines WHERE payment_id IN (
-      SELECT id FROM payments WHERE reference_month = ? AND status IN ('pending', 'overdue')
+      SELECT id FROM payments
+      WHERE reference_month = ? AND status IN ('pending', 'overdue') AND invoice_number IS NULL
     )
   `);
   const deleteStmt = db.prepare(`
     DELETE FROM payments
-    WHERE reference_month = ? AND status IN ('pending', 'overdue')
+    WHERE reference_month = ? AND status IN ('pending', 'overdue') AND invoice_number IS NULL
   `);
 
   const result = db.transaction(() => {
@@ -93,10 +109,7 @@ export function executeReverseMonthly(db: Database, referenceMonth: string): { r
     return deleteStmt.run(referenceMonth);
   })();
 
-  return {
-    reversed: result.changes,
-    invoiceNumbers: eligibleRows.map((r) => r.invoiceNumber).filter((n): n is string => Boolean(n))
-  };
+  return { reversed: result.changes, invoicedKept: invoicedKept.n };
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +140,15 @@ export function revertPayment(db: Database, id: number): PaymentOpResult<{
   }
   if (payment.status === 'cancelled') {
     return { ok: false, status: 400, error: 'Pagamento ja esta anulado. Nada a reverter.' };
+  }
+  // Reverter apaga a linha. Um documento numerado nunca desaparece: anula-se e
+  // fica, senão o número some e a sequência ganha um salto sem explicacao.
+  if (payment.invoiceNumber) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Pagamento com fatura ${payment.invoiceNumber} emitida nao pode ser revertido. Use anular.`
+    };
   }
 
   db.transaction(() => {
@@ -355,6 +377,15 @@ export function cancelPayment(db: Database, id: number, rawReason: string | null
   const wasPaid = payment.status === 'paid';
   if (wasPaid && reason.length < 10) {
     return { ok: false, status: 400, error: 'Anular pagamento ja registado exige um motivo detalhado (minimo 10 caracteres).' };
+  }
+  // Anular passou a ser a única saída para um documento numerado (reverter
+  // recusa-o). Se a anulação não deixar motivo, o rasto fica pior do que era.
+  if (!wasPaid && payment.invoiceNumber && reason.length < 10) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Anular a fatura ${payment.invoiceNumber} exige um motivo detalhado (minimo 10 caracteres).`
+    };
   }
 
   const stampedReason = reason

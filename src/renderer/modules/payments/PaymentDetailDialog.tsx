@@ -196,7 +196,12 @@ export function PaymentDetailDialog({
 
       {showActionForm && actionMode === 'cancel' && (() => {
         const wasPaid = payment.status === 'paid';
-        const minLen = wasPaid ? 10 : 3;
+        // Anular é a única saída para um documento já numerado — reverter
+        // recusa-o. Nesse caso o motivo tem de valer alguma coisa, e a barra é
+        // a mesma do backend (10 caracteres), senão a interface deixa escrever
+        // três letras e o pedido leva com um 400.
+        const isDocument = wasPaid || Boolean(payment.invoiceNumber);
+        const minLen = isDocument ? 10 : 3;
         return (
           <form
             className={`payment-action-form payment-action-form--cancel${wasPaid ? ' payment-action-form--cancel-paid' : ''}`}
@@ -217,12 +222,18 @@ export function PaymentDetailDialog({
                   {' '}como invalida, congela os numeros e regista a anulacao no audit log.
                   Use para corrigir erros de faturacao no valor.
                 </small>
+              ) : payment.invoiceNumber ? (
+                <small>
+                  A fatura <strong>{payment.invoiceNumber}</strong> ja foi emitida, por isso a
+                  cobranca nao pode ser revertida: fica anulada e o documento mantem-se, com o
+                  motivo registado nas notas.
+                </small>
               ) : (
                 <small>O pagamento e marcado anulado e o motivo fica registado nas notas.</small>
               )}
             </div>
             <div>
-              <span className="field-label">Motivo {wasPaid && <em className="payment-form-hint">(minimo 10 caracteres)</em>}</span>
+              <span className="field-label">Motivo {isDocument && <em className="payment-form-hint">(minimo 10 caracteres)</em>}</span>
               <div className="reason-chips" role="list" aria-label="Motivos sugeridos">
                 {(wasPaid ? CANCEL_REASON_CHIPS_PAID : CANCEL_REASON_CHIPS_PENDING).map((suggestion) => {
                   const active = cancelReason.trim() === suggestion;
