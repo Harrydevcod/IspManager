@@ -87,6 +87,25 @@ describe('TopologyNodeContent', () => {
     )).not.toBeNull();
   });
 
+  test('marks the live probe reading, and leaves it unmarked when nobody measured', async () => {
+    const { container } = await mount();
+    // O fixture nunca foi sondado: sem leitura não há marca, porque ausência de
+    // medição não é "de pé".
+    expect(container.querySelector('.topology-node')?.hasAttribute('data-live')).toBe(false);
+
+    await act(async () => {
+      root?.render(
+        <TopologyNodeContent
+          node={{ ...backboneOne, liveState: 'down' }}
+          selected={false}
+          onSelect={vi.fn()}
+          onToggle={vi.fn()}
+        />
+      );
+    });
+    expect(container.querySelector('.topology-node')?.getAttribute('data-live')).toBe('down');
+  });
+
   test('prioritizes physical identity, location and CPE count in backbone metadata', async () => {
     const { container } = await mount(false, 3);
 

@@ -53,6 +53,8 @@ export type TopologyBackboneNode = {
   provisional: boolean;
   administrativeState: TopologyAdministrativeState;
   issueCodes: TopologyIssueCode[];
+  /** Última leitura da sonda ICMP. `null` = sem IP, ou ainda por sondar. */
+  liveState: 'up' | 'down' | null;
   /**
    * As unidades a montante, ou a raiz quando recebe directamente da Internet.
    * Mais do que uma significa agregação multi-WAN: o equipamento soma links.
@@ -78,6 +80,8 @@ export type TopologyClientDeviceNode = {
   startDate: string;
   administrativeState: TopologyAdministrativeState;
   issueCodes: TopologyIssueCode[];
+  /** Última leitura da sonda ICMP. `null` = sem IP, ou ainda por sondar. */
+  liveState: 'up' | 'down' | null;
   parentId: 'root:isp' | `backbone:${number}`;
   relationship?: TopologyRelationship;
   clients: TopologyClientAssociation[];

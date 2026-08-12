@@ -4,6 +4,16 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## Por lançar
+
+### Adicionado
+
+- **rede:** Sonda de disponibilidade — o ISPM passa a fazer ping periódico aos equipamentos com IP registado e a dizer quais estão de pé. Um equipamento só se declara em baixo ao fim de três falhas seguidas (um ping perdido numa ligação rádio é normal, não é avaria) e volta a subir à primeira resposta. Liga-se em Definições → Rede, com intervalo, limiar de falhas e a opção de sondar também as CPEs dos clientes; há um botão "Testar agora" para experimentar antes de ligar. **Só lê a rede** — não altera nada em nenhum equipamento
+- **relatorios:** Cartão "Disponibilidade" no painel Operação, e a queda passa a ser conclusão a vermelho com o número de clientes e o MRR que ficam por trás. Um equipamento que anda a cair e a voltar aparece a amarelo, antes de se avariar de vez
+- **topologia:** O nó do mapa mostra a última leitura da sonda — ponto verde de pé, vermelho sem resposta. Sem leitura não há ponto: o que não foi medido não se pinta de verde
+
+A disponibilidade é contada sobre o tempo **observado**: a sonda só corre com a aplicação aberta, e as horas em que ninguém mediu não contam nem como rede de pé nem como avaria.
+
 ## [1.10.1](https://github.com/Harrydevcod/IspManager/releases/tag/v1.10.1) — 2026-08-11
 
 ### Adicionado

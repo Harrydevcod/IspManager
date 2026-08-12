@@ -66,6 +66,26 @@
 
 .topology-node[data-state='attention'] { border-color: color-mix(in oklch, var(--warn) 55%, var(--border)); }
 
+/* Sonda de rede: um ponto no canto do nó com a última leitura. Sem leitura não
+   há ponto — ausência é "não sei", e não se pinta de verde o que não se mediu. */
+.topology-node[data-live]::after {
+  content: '';
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--topology-up);
+}
+
+.topology-node[data-live='down']::after {
+  background: var(--topology-down);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--danger) 22%, transparent);
+}
+
+.topology-node[data-live='down'] { border-color: color-mix(in oklch, var(--danger) 55%, var(--border)); }
+
 .topology-node[data-selected] {
   border-color: var(--topology-accent);
   box-shadow:

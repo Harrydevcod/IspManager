@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { listBackups } from './backup';
 import { jobHealth } from './jobRuns';
+import { loadNetworkStatus } from './network-probe';
 import { DEFAULT_POSTPAID_BILLING_DAY } from '../../shared/billing-period';
 import {
   worstSeverity,
@@ -143,6 +144,15 @@ function loadNetwork(db: Database.Database): OperationsNetwork {
     else uplinks.set(row.deviceId, [row.upstreamName]);
   }
 
+  // Estado vivo da sonda ICMP, se estiver a correr. Indexado por equipamento
+  // para o mapa e a lista lerem a mesma leitura.
+  const probeStatus = loadNetworkStatus(db);
+  const live = new Map(
+    probeStatus.targets
+      .filter((target) => target.kind === 'backbone')
+      .map((target) => [target.id, target])
+  );
+
   const attributedMrr = rows.reduce((sum, row) => sum + num(row.mrrCve), 0);
   const devices: OperationsBackboneNode[] = rows.map((row) => ({
     backboneDeviceId: row.backboneDeviceId,
@@ -155,7 +165,10 @@ function loadNetwork(db: Database.Database): OperationsNetwork {
     clientCount: num(row.clientCount),
     serviceCount: num(row.serviceCount),
     mrrCve: num(row.mrrCve),
-    mrrShare: share(num(row.mrrCve), attributedMrr)
+    mrrShare: share(num(row.mrrCve), attributedMrr),
+    liveState: live.get(row.backboneDeviceId)?.state ?? null,
+    liveSince: live.get(row.backboneDeviceId)?.since ?? null,
+    uptime: live.get(row.backboneDeviceId)?.uptime ?? null
   }));
 
   // Raiz = equipamento sem uplink definido. Tudo o que está a jusante depende
@@ -245,12 +258,43 @@ function loadNetwork(db: Database.Database): OperationsNetwork {
     });
   }
 
+  // Equipamento em baixo é a única coisa nesta secção que se mede no presente:
+  // vem à frente das restantes conclusões, ordenado por quem tem mais clientes.
+  const down = devices
+    .filter((device) => device.liveState === 'down')
+    .sort((a, b) => b.clientCount - a.clientCount);
+  for (const device of down) {
+    findings.unshift({
+      code: 'network.device-down',
+      severity: device.clientCount > 0 ? 'red' : 'amber',
+      title: `${device.name} não responde`,
+      detail: `Sem resposta ao ping desde ${device.liveSince ?? 'a última leitura'}${device.clientCount > 0 ? ` — ${device.clientCount} cliente(s), ${cve(device.mrrCve)}/mês por trás` : ''}.`
+    });
+  }
+
+  for (const device of devices) {
+    if (device.liveState === 'up' && device.uptime !== null && device.uptime < 0.99 && device.clientCount > 0) {
+      findings.push({
+        code: 'network.flapping',
+        severity: 'amber',
+        title: `${device.name} instável`,
+        detail: `${pct(device.uptime)} de disponibilidade no tempo observado. Uma ligação que cai e volta gasta-se em chamadas antes de se avariar de vez.`
+      });
+    }
+  }
+
   return {
     devices,
     rootDevices,
     servicesWithoutBackbone,
     identification,
     concentrationThreshold: CONCENTRATION_THRESHOLD,
+    probe: {
+      enabled: probeStatus.enabled,
+      lastRunAt: probeStatus.lastRunAt,
+      downCount: down.length,
+      neverProbed: probeStatus.neverProbed
+    },
     findings
   };
 }

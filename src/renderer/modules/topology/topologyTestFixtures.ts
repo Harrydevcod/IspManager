@@ -23,6 +23,7 @@ export const backboneOne: TopologyBackboneNode = {
   provisional: false,
   administrativeState: 'active',
   issueCodes: [],
+  liveState: null,
   parentIds: ['root:isp'],
   relationship: 'defined_link'
 };
@@ -108,6 +109,7 @@ function clientDevice(
     startDate: '2026-07-01',
     administrativeState: assignmentId === 200 ? 'inactive' : 'active',
     issueCodes: assignmentId === 200 ? ['inactive'] : [],
+    liveState: null,
     parentId: `backbone:${backboneDeviceId}`,
     relationship: 'defined_link',
     clients: [{

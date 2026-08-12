@@ -461,6 +461,33 @@ export const jobRuns = sqliteTable('job_runs', {
   summaryJson: text('summary_json')
 });
 
+// Sonda de rede: estado atual por equipamento (migration 0037).
+export const networkProbeState = sqliteTable('network_probe_state', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  targetKind: text('target_kind').notNull(),
+  targetId: integer('target_id').notNull(),
+  ipAddress: text('ip_address').notNull(),
+  state: text('state').notNull(),
+  rttMs: integer('rtt_ms'),
+  consecutiveFails: integer('consecutive_fails').notNull().default(0),
+  lastOkAt: text('last_ok_at'),
+  lastChangeAt: text('last_change_at').notNull().default('CURRENT_TIMESTAMP'),
+  checkedAt: text('checked_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
+// Sonda de rede: só as transições de estado (migration 0037).
+export const networkProbeEvents = sqliteTable('network_probe_events', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  targetKind: text('target_kind').notNull(),
+  targetId: integer('target_id').notNull(),
+  ipAddress: text('ip_address').notNull(),
+  fromState: text('from_state'),
+  toState: text('to_state').notNull(),
+  at: text('at').notNull().default('CURRENT_TIMESTAMP'),
+  durationSeconds: integer('duration_seconds'),
+  gapBefore: integer('gap_before').notNull().default(0)
+});
+
 /**
  * Inferred row types — one `select` (read) and `insert` (write) per table.
  * Prefer these over hand-written `as { ... }` casts in raw queries: renaming a
@@ -524,3 +551,5 @@ export type DocumentSequence = typeof documentSequences.$inferSelect;
 export type LoginThrottleRow = typeof loginThrottle.$inferSelect;
 export type JobRun = typeof jobRuns.$inferSelect;
 export type NewJobRun = typeof jobRuns.$inferInsert;
+export type NetworkProbeStateRow = typeof networkProbeState.$inferSelect;
+export type NetworkProbeEventRow = typeof networkProbeEvents.$inferSelect;

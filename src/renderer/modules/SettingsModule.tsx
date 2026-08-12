@@ -1,4 +1,4 @@
-import { Activity, Banknote, Building2, DatabaseBackup, KeyRound, MessageCircle, Smartphone } from 'lucide-react';
+import { Activity, Banknote, Building2, DatabaseBackup, KeyRound, MessageCircle, Radar, Smartphone } from 'lucide-react';
 import QRCode from 'qrcode';
 import type { FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -29,16 +29,18 @@ import { CompanyTab } from './settings/CompanyTab';
 import { SmsTab } from './settings/SmsTab';
 import { WhatsappTab } from './settings/WhatsappTab';
 import { emptyBankAccount, type BankAccountForm, type SettingsFormState } from './settings/settingsForm';
+import { NetworkTab } from './settings/NetworkTab';
 import { JobHealthPanel } from './JobHealthPanel';
 import { LicensePanel } from './LicensePanel';
 
-type SettingsTab = 'company' | 'billing' | 'whatsapp' | 'sms' | 'backups' | 'jobs' | 'license';
+type SettingsTab = 'company' | 'billing' | 'whatsapp' | 'sms' | 'network' | 'backups' | 'jobs' | 'license';
 
 const TABS: { id: SettingsTab; label: string; icon: typeof Building2 }[] = [
   { id: 'company', label: 'Empresa', icon: Building2 },
   { id: 'billing', label: 'Faturação', icon: Banknote },
   { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
   { id: 'sms', label: 'SMS', icon: Smartphone },
+  { id: 'network', label: 'Rede', icon: Radar },
   { id: 'backups', label: 'Backups', icon: DatabaseBackup },
   { id: 'jobs', label: 'Automatismos', icon: Activity },
   { id: 'license', label: 'Licença', icon: KeyRound }
@@ -93,8 +95,14 @@ export function SettingsModule() {
     smsInvoiceIssuedTemplate: fallbackSmsInvoiceIssuedTemplate,
     smsReceiptConfirmedTemplate: fallbackSmsReceiptConfirmedTemplate,
     smsPaymentOverdueTemplate: fallbackSmsPaymentOverdueTemplate,
-    smsSuspensionNoticeTemplate: fallbackSmsSuspensionNoticeTemplate
+    smsSuspensionNoticeTemplate: fallbackSmsSuspensionNoticeTemplate,
+    networkProbeEnabled: false,
+    networkProbeIntervalSeconds: '60',
+    networkProbeIncludeClients: false,
+    networkProbeFailThreshold: '3'
   });
+  const [probeBusy, setProbeBusy] = useState(false);
+  const [probeMessage, setProbeMessage] = useState('');
   const [smsStatus, setSmsStatus] = useState<SmsStatus | null>(null);
   const [smsReportMonth, setSmsReportMonth] = useState(currentSmsReportMonth);
   const [smsReport, setSmsReport] = useState<SmsMonthlyReport | null>(null);
@@ -295,7 +303,7 @@ export function SettingsModule() {
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
         }
-        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes'> & { defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number }>;
+        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold'> & { defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number }>;
       })
       .then((settings) => {
         const loadedForm = {
@@ -310,7 +318,9 @@ export function SettingsModule() {
           whatsappSuspensionNoticeDays: String(settings.whatsappSuspensionNoticeDays),
           noticeCooldownDays: String(settings.noticeCooldownDays),
           smsDispatchIntervalSeconds: String(settings.smsDispatchIntervalSeconds),
-          smsRetryGraceMinutes: String(settings.smsRetryGraceMinutes)
+          smsRetryGraceMinutes: String(settings.smsRetryGraceMinutes),
+          networkProbeIntervalSeconds: String(settings.networkProbeIntervalSeconds),
+          networkProbeFailThreshold: String(settings.networkProbeFailThreshold)
         };
         setForm(loadedForm);
         setLastSavedForm(loadedForm);
@@ -421,7 +431,9 @@ export function SettingsModule() {
           whatsappSuspensionNoticeDays: Number(savedForm.whatsappSuspensionNoticeDays),
           noticeCooldownDays: Number(savedForm.noticeCooldownDays),
           smsDispatchIntervalSeconds: Number(savedForm.smsDispatchIntervalSeconds),
-          smsRetryGraceMinutes: Number(savedForm.smsRetryGraceMinutes)
+          smsRetryGraceMinutes: Number(savedForm.smsRetryGraceMinutes),
+          networkProbeIntervalSeconds: Number(savedForm.networkProbeIntervalSeconds),
+          networkProbeFailThreshold: Number(savedForm.networkProbeFailThreshold)
         })
       });
 
@@ -438,6 +450,26 @@ export function SettingsModule() {
       setMessage({ tone: 'error', text: 'Falha de rede ao gravar configuracoes.', placement: 'save' });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function probeNetworkNow() {
+    setProbeBusy(true);
+    setProbeMessage('');
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/network/probe', { method: 'POST' });
+      const result = await response.json() as { skipped?: boolean; checked?: number; up?: number; down?: number };
+      if (!response.ok) {
+        setProbeMessage('Nao foi possivel sondar a rede.');
+      } else if (result.skipped) {
+        setProbeMessage('Nenhum equipamento com IP registado para sondar.');
+      } else {
+        setProbeMessage(`${result.checked} equipamento(s) sondados: ${result.up} de pé, ${result.down} sem resposta.`);
+      }
+    } catch {
+      setProbeMessage('Falha de rede ao sondar.');
+    } finally {
+      setProbeBusy(false);
     }
   }
 
@@ -546,6 +578,17 @@ export function SettingsModule() {
             onDetectPhone={() => void detectSmsPhone()}
             onCreatePairing={() => void createSmsPairing()}
             onRevokePairing={() => void revokeSmsPairing()}
+          />
+        )}
+
+        {activeTab === 'network' && (
+          <NetworkTab
+            form={form}
+            onUpdate={updateForm}
+            onToggle={toggleForm}
+            probeBusy={probeBusy}
+            probeMessage={probeMessage}
+            onProbeNow={() => void probeNetworkNow()}
           />
         )}
 
