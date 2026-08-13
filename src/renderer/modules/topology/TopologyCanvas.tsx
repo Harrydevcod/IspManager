@@ -156,8 +156,10 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
           <div className="topology-legend" aria-label="Legenda da topologia">
             <span><i data-tone="active" /> Configurado</span>
             <span><i data-tone="attention" /> Requer atenção</span>
+            <span><i data-tone="live-up" /> De pé</span>
+            <span><i data-tone="live-down" /> Não responde</span>
             <span><b /> Ligação definida</span>
-            <small>As linhas são administrativas; não indicam conectividade em tempo real.</small>
+            <small>As linhas são administrativas. O ponto no canto é a última leitura da sonda; sem ponto, ninguém mediu.</small>
           </div>
         )}
       </div>

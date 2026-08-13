@@ -288,6 +288,8 @@
 }
 
 .topology-legend i[data-tone='attention'] { background: var(--topology-amber); }
+.topology-legend i[data-tone='live-up'] { background: var(--topology-up); }
+.topology-legend i[data-tone='live-down'] { background: var(--topology-down); }
 
 .topology-legend b {
   width: 1.1rem;

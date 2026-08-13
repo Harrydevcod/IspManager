@@ -3,6 +3,7 @@ import { getSqliteDatabase } from '../db/database';
 import { listBackups } from './backup';
 import { jobHealth } from './jobRuns';
 import { loadNetworkStatus } from './network-probe';
+import { formatPtDateTime } from '../../shared/date';
 import { DEFAULT_POSTPAID_BILLING_DAY } from '../../shared/billing-period';
 import {
   worstSeverity,
@@ -268,7 +269,7 @@ function loadNetwork(db: Database.Database): OperationsNetwork {
       code: 'network.device-down',
       severity: device.clientCount > 0 ? 'red' : 'amber',
       title: `${device.name} não responde`,
-      detail: `Sem resposta ao ping desde ${device.liveSince ?? 'a última leitura'}${device.clientCount > 0 ? ` — ${device.clientCount} cliente(s), ${cve(device.mrrCve)}/mês por trás` : ''}.`
+      detail: `Sem resposta ao ping desde ${device.liveSince ? formatPtDateTime(device.liveSince) : 'a última leitura'}${device.clientCount > 0 ? ` — ${device.clientCount} cliente(s), ${cve(device.mrrCve)}/mês por trás` : ''}.`
     });
   }
 
