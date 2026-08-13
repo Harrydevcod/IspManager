@@ -390,6 +390,7 @@ function TopologyStage({
   nodes,
   edges,
   legendVisible,
+  minimapVisible,
   inspectorVisible,
   tools,
   toolsSlot,
@@ -403,6 +404,7 @@ function TopologyStage({
   nodes: TopologyCanvasNode[];
   edges: TopologyFlowEdge[];
   legendVisible: boolean;
+  minimapVisible: boolean;
   inspectorVisible: boolean;
   tools: CanvasToolsProps;
   toolsSlot: HTMLElement | null;
@@ -427,6 +429,7 @@ function TopologyStage({
             nodes={nodes}
             edges={edges}
             legendVisible={legendVisible}
+            minimapVisible={minimapVisible}
             connectable={authoring.canManage}
             onConnectNodes={authoring.connectNodes}
           />
@@ -470,6 +473,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
   const canvasRef = useRef<TopologyCanvasHandle>(null);
   const [labelsVisible, setLabelsVisible] = useState(false);
   const [legendVisible, setLegendVisible] = useState(true);
+  const [minimapVisible, setMinimapVisible] = useState(true);
   // O mapa abre inteiro: o inspetor só aparece quando houver nó selecionado.
   const [inspectorVisible, setInspectorVisible] = useState(false);
   const [direction, setDirection] = useState<TopologyDirection>('TB');
@@ -507,6 +511,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
   const tools: CanvasToolsProps = {
     labelsVisible,
     legendVisible,
+    minimapVisible,
     inspectorVisible,
     allBranchesExpanded: workspace.allBranchesExpanded,
     hasBackbones: workspace.snapshot.backbones.length > 0,
@@ -515,6 +520,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
     onRefresh: () => { void workspace.refresh(); },
     onToggleLabels: () => setLabelsVisible((visible) => !visible),
     onToggleLegend: () => setLegendVisible((visible) => !visible),
+    onToggleMinimap: () => setMinimapVisible((visible) => !visible),
     onToggleInspector: () => setInspectorVisible((visible) => !visible),
     onToggleDirection: () => setDirection((current) => current === 'LR' ? 'TB' : 'LR'),
     onToggleAllBranches: workspace.toggleAllBranches,
@@ -553,6 +559,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
         nodes={nodes}
         edges={edges}
         legendVisible={legendVisible}
+        minimapVisible={minimapVisible}
         inspectorVisible={inspectorVisible}
         tools={tools}
         toolsSlot={props.toolsSlot}
