@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { act, type ReactNode } from 'react';
+import { act, useState, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { TopologySearchResponse } from '../../../shared/topology';
@@ -133,20 +133,34 @@ async function mountModule(topologyApi = api()): Promise<HTMLElement> {
   );
 }
 
-async function mountMap(topologyApi = api()): Promise<HTMLElement> {
-  return mountWith(
-    <TopologyMapView
+/**
+ * O mapa desenha os controlos por portal, num slot que na aplicação vive na tira
+ * das abas. Aqui o slot fica ao lado do mapa para os botões continuarem dentro
+ * do contentor que os testes interrogam.
+ */
+function MapHarness({ topologyApi }: { topologyApi: ReturnType<typeof api> }) {
+  const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+  return (
+    <>
+      <div ref={setSlot} />
+      <TopologyMapView
         api={topologyApi}
         onOpenClient={() => undefined}
         onOpenService={() => undefined}
         onOpenStock={() => undefined}
-      revision={0}
-      active
-      focusBackboneDeviceId={null}
-      onFocusHandled={() => undefined}
-      onMutation={() => undefined}
-    />
+        revision={0}
+        active
+        focusBackboneDeviceId={null}
+        onFocusHandled={() => undefined}
+        onMutation={() => undefined}
+        toolsSlot={slot}
+      />
+    </>
   );
+}
+
+async function mountMap(topologyApi = api()): Promise<HTMLElement> {
+  return mountWith(<MapHarness topologyApi={topologyApi} />);
 }
 
 function button(container: HTMLElement, name: string): HTMLButtonElement {
@@ -350,6 +364,25 @@ describe('TopologyModule tab shell', () => {
     expect(container.textContent).toContain('Equipamento backbone');
     expect(container.textContent).toContain('Backbone físico Fogo');
     expect(canvasNodeLookups).toHaveBeenCalledWith('backbone:77');
+  });
+
+  test('parks the map controls in the tab strip, and only while the map is showing', async () => {
+    const container = await mountModule();
+    expect(container.querySelector('.topology-tabs [role="toolbar"]')).toBeNull();
+
+    await act(async () => {
+      tab(container, 'Topologia').click();
+      await vi.dynamicImportSettled();
+      await Promise.resolve();
+    });
+
+    const tools = container.querySelector('.topology-tabs [role="toolbar"]');
+    expect(tools?.getAttribute('aria-label')).toBe('Controlos do mapa');
+    // Fora do canvas: é isso que impede os botões de taparem o grafo.
+    expect(container.querySelector('.topology-canvas-shell [role="toolbar"]')).toBeNull();
+
+    await act(async () => { tab(container, 'Backbone').click(); });
+    expect(container.querySelector('.topology-tabs [role="toolbar"]')).toBeNull();
   });
 });
 
