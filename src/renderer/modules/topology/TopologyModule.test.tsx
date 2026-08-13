@@ -498,6 +498,26 @@ describe('TopologyModule branch interaction', () => {
     expect(inspector()).toBeNull();
   });
 
+  test('hides and restores the minimap and the legend from the toolbar', async () => {
+    const container = await mountMap();
+    const minimap = () => container.querySelector('.topology-minimap');
+    const legend = () => container.querySelector('[aria-label="Legenda da topologia"]');
+    // Ambos entram abertos: o mapa mostra tudo até alguém pedir espaço.
+    expect(minimap()).not.toBeNull();
+    expect(legend()).not.toBeNull();
+
+    await act(async () => { button(container, 'Ocultar o mini-mapa').click(); });
+    expect(minimap()).toBeNull();
+    expect(legend()).not.toBeNull();
+    expect(button(container, 'Mostrar o mini-mapa').getAttribute('aria-pressed')).toBe('false');
+
+    await act(async () => { button(container, 'Ocultar a legenda').click(); });
+    expect(legend()).toBeNull();
+
+    await act(async () => { button(container, 'Mostrar o mini-mapa').click(); });
+    expect(minimap()).not.toBeNull();
+  });
+
   test('opens and closes every branch from one control, without refetching', async () => {
     const topologyApi = api();
     const container = await mountMap(topologyApi);

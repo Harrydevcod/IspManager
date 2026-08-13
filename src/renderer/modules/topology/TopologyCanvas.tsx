@@ -32,6 +32,7 @@ type TopologyCanvasProps = {
   nodes: TopologyCanvasNode[];
   edges: TopologyFlowEdge[];
   legendVisible: boolean;
+  minimapVisible: boolean;
   /** Permite arrastar uma ligação entre unidades de backbone. */
   connectable?: boolean;
   onConnectNodes?: (sourceNodeId: string, targetNodeId: string) => void;
@@ -97,6 +98,7 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
     nodes,
     edges,
     legendVisible,
+    minimapVisible,
     connectable = false,
     onConnectNodes
   }, ref) {
@@ -143,14 +145,16 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
               para calcular a escala do desenho e o mapeamento do arrasto. Uma
               caixa encolhida só por CSS deixava o SVG nos 200×150 por omissão —
               com todos os ramos abertos o grafo transbordava para fora dela. */}
-          <MiniMap
-            className="topology-minimap"
-            style={{ width: 180, height: 120 }}
-            pannable
-            zoomable
-            nodeColor={miniMapColor}
-            maskColor="color-mix(in oklch, var(--bg) 72%, transparent)"
-          />
+          {minimapVisible && (
+            <MiniMap
+              className="topology-minimap"
+              style={{ width: 180, height: 120 }}
+              pannable
+              zoomable
+              nodeColor={miniMapColor}
+              maskColor="color-mix(in oklch, var(--bg) 72%, transparent)"
+            />
+          )}
         </ReactFlow>
         {legendVisible && (
           <div className="topology-legend" aria-label="Legenda da topologia">

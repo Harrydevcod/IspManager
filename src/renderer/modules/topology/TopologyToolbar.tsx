@@ -6,6 +6,7 @@ import {
   Filter,
   Focus,
   ListTree,
+  Map,
   Minus,
   MoveHorizontal,
   MoveVertical,
@@ -32,6 +33,7 @@ export type SearchState = 'idle' | 'loading' | 'error';
 export type CanvasToolsProps = {
   labelsVisible: boolean;
   legendVisible: boolean;
+  minimapVisible: boolean;
   inspectorVisible: boolean;
   allBranchesExpanded: boolean;
   hasBackbones: boolean;
@@ -40,6 +42,7 @@ export type CanvasToolsProps = {
   onRefresh: () => void;
   onToggleLabels: () => void;
   onToggleLegend: () => void;
+  onToggleMinimap: () => void;
   onToggleInspector: () => void;
   onToggleDirection: () => void;
   onToggleAllBranches: () => void;
@@ -299,6 +302,13 @@ export function CanvasTools(props: CanvasToolsProps) {
         onClick={props.onToggleLegend}
       >
         <ListTree size={15} />
+      </ToolButton>
+      <ToolButton
+        label={props.minimapVisible ? 'Ocultar o mini-mapa' : 'Mostrar o mini-mapa'}
+        pressed={props.minimapVisible}
+        onClick={props.onToggleMinimap}
+      >
+        <Map size={15} />
       </ToolButton>
       <ToolButton
         label={props.inspectorVisible ? 'Ocultar o inspetor' : 'Mostrar o inspetor'}
