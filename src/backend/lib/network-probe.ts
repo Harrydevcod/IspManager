@@ -136,14 +136,14 @@ export function loadProbeTargets(db: Database.Database, includeClients: boolean)
   if (!includeClients) return targets;
 
   const assignments = db.prepare(`
-    SELECT a.id, c.name AS name, a.ip_address AS ipAddress
+    SELECT a.id, c.full_name AS name, a.ip_address AS ipAddress
     FROM service_device_assignments a
     JOIN services s ON s.id = a.service_id
     JOIN clients c ON c.id = s.client_id
     WHERE a.end_date IS NULL
       AND s.status = 'active'
       AND a.ip_address IS NOT NULL AND TRIM(a.ip_address) <> ''
-    ORDER BY c.name
+    ORDER BY c.full_name
   `).all() as Array<{ id: number; name: string; ipAddress: string }>;
 
   for (const row of assignments) {
@@ -344,18 +344,18 @@ export function loadNetworkStatus(db: Database.Database, windowDays = 30): Netwo
   const now = sqlNow();
   const windowStart = new Date(Date.now() - windowDays * 86_400_000).toISOString().slice(0, 19).replace('T', ' ');
 
-  const targets = loadProbeTargets(db, config.includeClients);
+  // Mostra-se tudo o que foi lido, mesmo o que a definição já não sonda: uma
+  // leitura feita não desaparece do painel só porque se desligou a opção. A
+  // definição decide o que a sonda toca, não o que se sabe.
+  const known = loadProbeTargets(db, true);
+  const configured = config.includeClients ? known : known.filter((target) => target.kind === 'backbone');
   const states = new Map(loadProbeStates(db).map((row) => [`${row.targetKind}:${row.targetId}`, row]));
   const events = loadProbeEvents(db, windowStart);
 
   const result: NetworkTargetStatus[] = [];
-  let neverProbed = 0;
-  for (const target of targets) {
+  for (const target of known) {
     const state = states.get(`${target.kind}:${target.id}`);
-    if (!state) {
-      neverProbed += 1;
-      continue;
-    }
+    if (!state) continue;
     const mine = events.filter((event) => event.kind === target.kind && event.id === target.id);
     const uptime = computeUptime({
       events: mine,
@@ -392,7 +392,8 @@ export function loadNetworkStatus(db: Database.Database, windowDays = 30): Netwo
     lastRunAt,
     targets: result,
     downCount: result.filter((item) => item.state === 'down').length,
-    neverProbed,
+    // Por sondar é só o que a sonda devia ler e ainda não leu.
+    neverProbed: configured.filter((target) => !states.has(`${target.kind}:${target.id}`)).length,
     windowDays
   };
 }

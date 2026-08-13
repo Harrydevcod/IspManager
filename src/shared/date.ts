@@ -5,7 +5,14 @@
 // (dd-mm-aaaa), não a barra pt-PT por defeito.
 export function parseDate(value: string | null | undefined): Date | null {
   if (!value) return null;
-  const source = value.includes('T') ? value : `${value.slice(0, 10)}T00:00:00`;
+  const source = value.includes('T')
+    ? value
+    // 'AAAA-MM-DD hh:mm:ss' é o que o SQLite escreve com datetime('now'), e é
+    // UTC. Sem isto o tempo caía para 00:00 — uma leitura da sonda feita às
+    // 05:14 aparecia à meia-noite.
+    : /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(value)
+      ? `${value.replace(' ', 'T')}Z`
+      : `${value.slice(0, 10)}T00:00:00`;
   const date = new Date(source);
   return Number.isNaN(date.getTime()) ? null : date;
 }

@@ -32,8 +32,12 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  // Filhos primeiro: as atribuições dependem de serviços, clientes e catálogo.
   db.prepare('DELETE FROM network_probe_events').run();
   db.prepare('DELETE FROM network_probe_state').run();
+  db.prepare('DELETE FROM service_device_assignments').run();
+  db.prepare('DELETE FROM services').run();
+  db.prepare('DELETE FROM clients').run();
   db.prepare('DELETE FROM backbone_devices').run();
   db.prepare('DELETE FROM equipment_catalog').run();
 });
@@ -52,6 +56,24 @@ function seedBackbone(name: string, ip: string | null, status = 'active'): numbe
   return db.prepare(`
     INSERT INTO backbone_devices (catalog_id, name, ip_address, status) VALUES (?, ?, ?, ?)
   `).run(catalogId, name, ip, status).lastInsertRowid as number;
+}
+
+/** Um CPE de cliente com IP fixo, para o caminho `includeClients`. */
+function seedClientDevice(clientName: string, ip: string, serviceStatus = 'active'): number {
+  const catalogId = db.prepare(`
+    INSERT INTO equipment_catalog (category, type, brand, model, is_serialized, purchase_price_cve, stock_total, active)
+    VALUES ('equipamento', 'cpe', 'TP-Link', ?, 1, 3000, 5, 1)
+  `).run(`CPE ${clientName}`).lastInsertRowid as number;
+  const clientId = db.prepare(`
+    INSERT INTO clients (client_code, full_name, status) VALUES (?, ?, 'active')
+  `).run(`CLI-${ip}`, clientName).lastInsertRowid as number;
+  const serviceId = db.prepare(`
+    INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 2500, 10, ?)
+  `).run(clientId, serviceStatus).lastInsertRowid as number;
+  return db.prepare(`
+    INSERT INTO service_device_assignments (service_id, catalog_id, ip_address, start_date)
+    VALUES (?, ?, ?, '2026-01-01')
+  `).run(serviceId, catalogId, ip).lastInsertRowid as number;
 }
 
 /** Sonda que responde conforme o IP, para separar vivos de mortos. */
@@ -120,6 +142,23 @@ describe('runNetworkProbe', () => {
     expect(summary.up).toBe(1);
     const rows = probe.loadProbeStates(db);
     expect(rows.map((row) => row.ipAddress)).toEqual(['10.0.0.1']);
+  });
+
+  // Este caminho não estava coberto e passou uma coluna inexistente (`c.name`
+  // em vez de `c.full_name`) para produção: o job morria e o painel Operação
+  // recusava o pedido inteiro. Cobre-se aqui com clientes a sério.
+  test('com clientes ligados, sonda também as CPEs e trá-las com o nome do cliente', async () => {
+    seedBackbone('Torre', '10.0.0.1');
+    seedClientDevice('Ana Silva', '192.168.1.50');
+    seedClientDevice('Cancelado', '192.168.1.51', 'cancelled');
+
+    const summary = await probe.runNetworkProbe(db, { includeClients: true, failThreshold: 3, ping: pingerFor([]) });
+
+    // O serviço cancelado não entra: já não é rede que se monitorize.
+    expect(summary.checked).toBe(2);
+    const status = probe.loadNetworkStatus(db);
+    const cpe = status.targets.find((target) => target.kind === 'assignment');
+    expect(cpe).toMatchObject({ name: 'Ana Silva', ipAddress: '192.168.1.50', state: 'up' });
   });
 
   test('sem equipamentos com IP, o job salta em vez de fingir que correu', async () => {

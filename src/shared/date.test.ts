@@ -24,6 +24,16 @@ describe('pt-PT date formatting', () => {
     expect(formatted).toContain('14:30');
   });
 
+  test('keeps the time of a SQLite timestamp, read as UTC', () => {
+    // datetime('now') escreve 'AAAA-MM-DD hh:mm:ss' em UTC; o tempo não se perde.
+    const formatted = formatPtDateTime('2026-08-13 05:14:56');
+    const expected = new Intl.DateTimeFormat('pt-PT', {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    }).format(new Date('2026-08-13T05:14:56Z')).replace(/\//g, '-');
+    expect(formatted).toBe(expected);
+    expect(formatted).not.toContain('00:00');
+  });
+
   test('uses stable fallback for missing or invalid values', () => {
     expect(formatPtDate(null)).toBe('-');
     expect(formatPtDate('invalid')).toBe('-');
