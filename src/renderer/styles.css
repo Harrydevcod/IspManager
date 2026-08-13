@@ -5660,6 +5660,31 @@ button.danger:disabled {
   width: fit-content;
 }
 
+/* Confiança no router: a impressão digital é para ser lida em voz alta contra o
+   Winbox, por isso vive em monoespaçado e quebra em vez de esticar o painel. */
+.settings-router-fingerprint {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  word-break: break-all;
+  max-width: 62ch;
+}
+
+.settings-router-cert {
+  display: grid;
+  gap: var(--space-1-5);
+  justify-items: start;
+}
+
+.settings-router-cert p {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
 /* Relatório SMS: superfície editorial compacta. O cabeçalho e os estados
    respondem à largura do próprio painel, não à viewport da aplicação. */
 .sms-delivery-report {

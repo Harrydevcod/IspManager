@@ -56,7 +56,7 @@ export type SettingsFormState = {
   routerosPort: string;
   routerosUser: string;
   routerosPassword: string;
-  routerosTlsFingerprint: string;
+  routerosTlsCert: string;
   routerosDryRun: boolean;
   routerosIntervalSeconds: string;
   routerosMaxDisablesPerRun: string;

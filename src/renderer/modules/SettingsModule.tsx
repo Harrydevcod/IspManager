@@ -105,7 +105,7 @@ export function SettingsModule() {
     routerosPort: '443',
     routerosUser: '',
     routerosPassword: '',
-    routerosTlsFingerprint: '',
+    routerosTlsCert: '',
     routerosDryRun: true,
     routerosIntervalSeconds: '120',
     routerosMaxDisablesPerRun: '5'
@@ -114,7 +114,7 @@ export function SettingsModule() {
   const [probeMessage, setProbeMessage] = useState('');
   const [routerBusy, setRouterBusy] = useState(false);
   const [routerMessage, setRouterMessage] = useState('');
-  const [routerFingerprint, setRouterFingerprint] = useState('');
+  const [routerCert, setRouterCert] = useState<{ pem: string; fingerprint: string } | null>(null);
   const [smsStatus, setSmsStatus] = useState<SmsStatus | null>(null);
   const [smsReportMonth, setSmsReportMonth] = useState(currentSmsReportMonth);
   const [smsReport, setSmsReport] = useState<SmsMonthlyReport | null>(null);
@@ -494,18 +494,21 @@ export function SettingsModule() {
   async function testRouterNow() {
     setRouterBusy(true);
     setRouterMessage('');
-    setRouterFingerprint('');
+    setRouterCert(null);
     try {
       const response = await authFetch('http://127.0.0.1:3001/api/network/router/test', { method: 'POST' });
       const result = await response.json() as {
-        ok?: boolean; version?: string; boardName?: string; error?: string; fingerprint?: string | null;
+        ok?: boolean; version?: string; boardName?: string; error?: string;
+        fingerprint?: string | null; certificate?: string | null;
       };
       if (response.ok && result.ok) {
         setRouterMessage(`Ligado: ${result.boardName} com RouterOS ${result.version}.`);
       } else {
         setRouterMessage(result.error || 'Nao foi possivel contactar o router.');
         // Certificado próprio: em vez de mandar desligar o TLS, propõe fixá-lo.
-        if (result.fingerprint) setRouterFingerprint(result.fingerprint);
+        if (result.certificate && result.fingerprint) {
+          setRouterCert({ pem: result.certificate, fingerprint: result.fingerprint });
+        }
       }
     } catch {
       setRouterMessage('Falha de rede ao contactar o router.');
@@ -632,12 +635,17 @@ export function SettingsModule() {
             onProbeNow={() => void probeNetworkNow()}
             routerBusy={routerBusy}
             routerMessage={routerMessage}
-            routerFingerprint={routerFingerprint}
+            routerFingerprint={routerCert?.fingerprint ?? ''}
             onRouterTest={() => void testRouterNow()}
-            onTrustFingerprint={() => {
-              updateForm('routerosTlsFingerprint', routerFingerprint);
-              setRouterFingerprint('');
-              setRouterMessage('Impressão digital preenchida. Grave as definições e teste outra vez.');
+            onTrustCertificate={() => {
+              if (!routerCert) return;
+              updateForm('routerosTlsCert', routerCert.pem);
+              setRouterCert(null);
+              setRouterMessage('Certificado fixado no formulário. Grave as definições e teste outra vez.');
+            }}
+            onForgetCertificate={() => {
+              updateForm('routerosTlsCert', '');
+              setRouterMessage('Certificado esquecido. Grave as definições para aplicar.');
             }}
           />
         )}

@@ -117,7 +117,8 @@ const settingsSchema = z.object({
   routerosPort: z.coerce.number().int().min(1).max(65535).optional().default(443),
   routerosUser: z.string().trim().max(64).optional().default(''),
   routerosPassword: z.string().max(128).optional().default(''),
-  routerosTlsFingerprint: z.string().trim().max(200).optional().default(''),
+  // Certificado do router em PEM: é ele a âncora de confiança da ligação.
+  routerosTlsCert: z.string().trim().max(8000).optional().default(''),
   // Sem `strictOptionalBoolean`: este tem de vir ligado por omissão, porque o
   // valor por omissão errado aqui corta clientes a sério.
   routerosDryRun: z.preprocess((value) => {
@@ -191,7 +192,7 @@ const defaultSettings = {
   routerosPort: 443,
   routerosUser: '',
   routerosPassword: '',
-  routerosTlsFingerprint: '',
+  routerosTlsCert: '',
   routerosDryRun: true,
   routerosIntervalSeconds: 120,
   routerosMaxDisablesPerRun: 5,

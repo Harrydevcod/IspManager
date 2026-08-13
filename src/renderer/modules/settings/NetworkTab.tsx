@@ -11,9 +11,11 @@ type NetworkTabProps = {
   onProbeNow: () => void;
   routerBusy: boolean;
   routerMessage: string;
+  /** Impressão digital lida na última tentativa recusada, para confirmação humana. */
   routerFingerprint: string;
   onRouterTest: () => void;
-  onTrustFingerprint: () => void;
+  onTrustCertificate: () => void;
+  onForgetCertificate: () => void;
 };
 
 export function NetworkTab({
@@ -27,7 +29,8 @@ export function NetworkTab({
   routerMessage,
   routerFingerprint,
   onRouterTest,
-  onTrustFingerprint
+  onTrustCertificate,
+  onForgetCertificate
 }: NetworkTabProps) {
   return (
     <>
@@ -115,12 +118,17 @@ export function NetworkTab({
             onChange={(event) => onUpdate('routerosPassword', event.target.value)}
             hint="Fica guardada nesta máquina e nunca volta a sair em claro."
           />
-          <Field
-            label="Impressão digital do certificado (SHA-256)"
-            value={form.routerosTlsFingerprint}
-            onChange={(event) => onUpdate('routerosTlsFingerprint', event.target.value)}
-            hint="O certificado do router é próprio. Fixá-lo aqui é o que permite confiar na ligação sem desligar a verificação."
-          />
+          <div className="settings-router-cert wide-field">
+            <span className="field-label">Certificado do router</span>
+            <p>
+              {form.routerosTlsCert
+                ? 'Fixado. A ligação só é aceite se o router apresentar exatamente este certificado.'
+                : 'Nenhum. O router usa certificado próprio: teste a ligação e confirme a impressão digital para o fixar.'}
+            </p>
+            {form.routerosTlsCert && (
+              <Button variant="ghost" onClick={onForgetCertificate}>Esquecer certificado</Button>
+            )}
+          </div>
           <Toggle
             title="Ensaio (não altera nada no router)"
             description="Calcula tudo o que faria — cortes, reposições, secrets em falta, velocidades — e mostra o relatório sem tocar no router. Desligue só depois de conferir o relatório contra o parque real."
@@ -149,12 +157,18 @@ export function NetworkTab({
       )}
       <div className="settings-test-whatsapp" aria-label="Teste de ligação ao router">
         <span>{routerMessage || 'Lê a versão do RouterOS para confirmar endereço, credenciais e certificado.'}</span>
+        {routerFingerprint && (
+          <code className="settings-router-fingerprint">
+            SHA-256 {routerFingerprint}
+          </code>
+        )}
         <div className="form-actions">
           {routerFingerprint && (
             <Button
               variant="secondary"
-              onClick={onTrustFingerprint}
+              onClick={onTrustCertificate}
               leadingIcon={<ShieldCheck size={14} aria-hidden />}
+              title={`SHA-256 ${routerFingerprint}`}
             >
               Confiar neste certificado
             </Button>

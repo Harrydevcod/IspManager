@@ -1,4 +1,6 @@
+import { X509Certificate } from 'node:crypto';
 import { request as httpsRequest } from 'node:https';
+import { connect as tlsConnect } from 'node:tls';
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 
@@ -19,8 +21,8 @@ export type RouterConfig = {
   password: string;
   dryRun: boolean;
   intervalSeconds: number;
-  /** SHA-256 do certificado do router, formato `AA:BB:...`. Vazio = sem pinning. */
-  fingerprint: string;
+  /** Certificado do router em PEM. Vazio = validação normal de cadeia. */
+  tlsCert: string;
   maxDisablesPerRun: number;
 };
 
@@ -52,7 +54,7 @@ export function readRouterConfig(db: Database.Database): RouterConfig {
     // seria a forma mais estúpida de cortar clientes a sério sem querer.
     dryRun: getSetting(db, 'routerosDryRun') !== 'false',
     intervalSeconds: numberSetting(db, 'routerosIntervalSeconds', DEFAULT_INTERVAL_SECONDS, 30, 3600),
-    fingerprint: getSetting(db, 'routerosTlsFingerprint').toUpperCase(),
+    tlsCert: getSetting(db, 'routerosTlsCert'),
     maxDisablesPerRun: numberSetting(db, 'routerosMaxDisablesPerRun', DEFAULT_MAX_DISABLES, 1, 500)
   };
 }
@@ -70,14 +72,14 @@ export function isRouterConfigured(config: RouterConfig): boolean {
 
 export class RouterError extends Error {
   readonly status: number;
-  /** Impressão digital lida na ligação, quando o erro foi de certificado. */
-  readonly fingerprint?: string;
+  /** 'untrusted' quando a ligação caiu por o certificado não ser de confiança. */
+  readonly certIssue?: string;
 
-  constructor(message: string, status = 0, fingerprint?: string) {
+  constructor(message: string, status = 0, certIssue?: string) {
     super(message);
     this.name = 'RouterError';
     this.status = status;
-    this.fingerprint = fingerprint;
+    this.certIssue = certIssue;
   }
 }
 
@@ -91,19 +93,52 @@ export type RouterRequest = {
 
 export type RouterTransport = (req: RouterRequest) => Promise<unknown>;
 
+export function fingerprintOf(pem: string): string {
+  return new X509Certificate(pem).fingerprint256.toUpperCase();
+}
+
+/**
+ * Lê o certificado que o router apresenta, **sem enviar credenciais**: só o
+ * aperto de mão TLS. É o que permite mostrar a impressão digital ao operador
+ * para ele confirmar antes de a fixar.
+ */
+export function fetchRouterCertificate(config: RouterConfig): Promise<{ pem: string; fingerprint: string }> {
+  return new Promise((resolve, reject) => {
+    const socket = tlsConnect(
+      { host: config.host, port: config.port, rejectUnauthorized: false, timeout: REQUEST_TIMEOUT_MS },
+      () => {
+        const cert = socket.getPeerCertificate();
+        socket.destroy();
+        if (!cert?.raw) {
+          reject(new RouterError('O router nao apresentou certificado'));
+          return;
+        }
+        const pem = `-----BEGIN CERTIFICATE-----\n${cert.raw.toString('base64').replace(/(.{64})/g, '$1\n')}\n-----END CERTIFICATE-----\n`;
+        resolve({ pem, fingerprint: cert.fingerprint256?.toUpperCase() ?? fingerprintOf(pem) });
+      }
+    );
+    socket.on('timeout', () => socket.destroy(new RouterError('O router nao respondeu a tempo')));
+    socket.on('error', (err) => reject(err instanceof RouterError ? err : new RouterError(err.message)));
+  });
+}
+
 /**
  * Transporte HTTPS.
  *
- * O certificado do RouterOS é auto-assinado por natureza (o router não tem um
- * nome público nem um CA a assiná-lo), por isso a validação de cadeia é
- * substituída — não abandonada — por *pinning*: aceita-se exatamente um
- * certificado, o que o operador confirmou. Sem impressão digital gravada, a
- * validação normal fica em vigor e a ligação falha com a impressão digital lida
- * no erro, para a UI poder oferecer "confiar neste router".
+ * O certificado do RouterOS é auto-assinado por natureza (o router não tem nome
+ * público nem um CA que o assine). A verificação de TLS **nunca é desligada**:
+ * o certificado que o operador confirmou passa a ser a própria âncora de
+ * confiança (`ca`), e a identidade é confirmada em `checkServerIdentity`, que o
+ * Node chama *antes* de escrever fosse o que fosse no socket — as credenciais
+ * não chegam a sair se o certificado não for exatamente aquele.
+ *
+ * Sem certificado fixado vale a validação normal de cadeia, e o erro devolve a
+ * impressão digital lida para a UI poder propor fixá-la.
  */
 export function createTransport(config: RouterConfig): RouterTransport {
   const auth = `${config.user}:${config.password}`;
-  const pinned = config.fingerprint;
+  const pinnedPem = config.tlsCert.trim();
+  const pinnedFingerprint = pinnedPem ? fingerprintOf(pinnedPem) : '';
 
   return (req) =>
     new Promise((resolve, reject) => {
@@ -115,7 +150,18 @@ export function createTransport(config: RouterConfig): RouterTransport {
           path: `/rest${req.path}`,
           method: req.method,
           auth,
-          rejectUnauthorized: !pinned,
+          rejectUnauthorized: true,
+          ...(pinnedPem
+            ? {
+                ca: [pinnedPem],
+                // O nome no certificado do router não corresponde a nada
+                // resolvível; a identidade aqui é o próprio certificado.
+                checkServerIdentity: (_host: string, cert: { fingerprint256?: string }) =>
+                  cert.fingerprint256?.toUpperCase() === pinnedFingerprint
+                    ? undefined
+                    : new RouterError('O certificado do router nao e o que esta fixado nas definicoes')
+              }
+            : {}),
           timeout: REQUEST_TIMEOUT_MS,
           headers: {
             accept: 'application/json',
@@ -150,39 +196,22 @@ export function createTransport(config: RouterConfig): RouterTransport {
         }
       );
 
-      if (pinned) {
-        call.on('socket', (socket) => {
-          socket.on('secureConnect', () => {
-            const actual = (socket as import('node:tls').TLSSocket).getPeerCertificate()?.fingerprint256?.toUpperCase() ?? '';
-            if (actual !== pinned) {
-              call.destroy(
-                new RouterError(
-                  'O certificado do router não é o que está fixado nas definições. Ligação recusada.',
-                  0,
-                  actual
-                )
-              );
-            }
-          });
-        });
-      }
-
       call.on('timeout', () => call.destroy(new RouterError('O router não respondeu a tempo')));
       call.on('error', (err: NodeJS.ErrnoException) => {
         if (err instanceof RouterError) {
           reject(err);
           return;
         }
-        // Cadeia inválida sem pinning: devolve a impressão digital para a UI
-        // poder propor fixá-la em vez de mandar o operador desligar o TLS.
-        const cert = (call as unknown as { socket?: import('node:tls').TLSSocket }).socket?.getPeerCertificate?.();
+        const selfSigned = err.code === 'SELF_SIGNED_CERT_IN_CHAIN' || err.code === 'DEPTH_ZERO_SELF_SIGNED_CERT';
         reject(
           new RouterError(
-            err.code === 'SELF_SIGNED_CERT_IN_CHAIN' || err.code === 'DEPTH_ZERO_SELF_SIGNED_CERT'
+            selfSigned
               ? 'O router usa um certificado próprio. Confirme a impressão digital para confiar nele.'
               : err.message,
             0,
-            cert?.fingerprint256?.toUpperCase()
+            // Marca para a rota poder ir buscar o certificado (sem credenciais)
+            // e propor fixá-lo, em vez de sugerir desligar o TLS.
+            selfSigned ? 'untrusted' : undefined
           )
         );
       });
