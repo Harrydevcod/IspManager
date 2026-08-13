@@ -164,6 +164,56 @@ export function createService(db: Database, data: ServiceInput, userId: number |
   }
 }
 
+export type ServiceStatus = 'active' | 'suspended' | 'cancelled';
+
+export type ServiceStatusChange = {
+  changed: boolean;
+  previous: ServiceStatus;
+  next: ServiceStatus;
+};
+
+const STATUS_EVENT: Record<ServiceStatus, 'reativacao' | 'suspensao' | 'cancelamento'> = {
+  active: 'reativacao',
+  suspended: 'suspensao',
+  cancelled: 'cancelamento'
+};
+
+/**
+ * O único sítio por onde o estado de um serviço muda.
+ *
+ * Antes o estado era mais um campo do formulário e a cascata do cliente era um
+ * UPDATE à parte: um serviço passava a suspenso sem data, sem motivo e sem
+ * aparecer na história do cliente. Aqui a mudança fica registada em
+ * `service_events`, com o motivo.
+ *
+ * É também a costura onde entra o dia em que houver um router com API: um
+ * controlo de acesso na rede reage a esta transição, e não a cada chamador
+ * (ver `docs/adr/0007-controlo-de-acesso-na-rede.md`). Enquanto não houver
+ * router, cortar continua a ser trabalho de campo — mas a intenção fica escrita.
+ */
+export function changeServiceStatus(
+  db: Database,
+  id: number,
+  next: ServiceStatus,
+  options: { reason?: string | null; actorId?: number | null } = {}
+): ServiceOpResult<ServiceStatusChange> {
+  const row = db.prepare('SELECT status FROM services WHERE id = ?').get(id) as { status: ServiceStatus } | undefined;
+  if (!row) {
+    return { ok: false, status: 404, error: 'Servico nao encontrado' };
+  }
+  if (row.status === next) {
+    return { ok: true, value: { changed: false, previous: row.status, next } };
+  }
+
+  db.prepare(`UPDATE services SET status = ?, updated_at = datetime('now') WHERE id = ?`).run(next, id);
+  db.prepare(`
+    INSERT INTO service_events (service_id, event_type, notes, created_by)
+    VALUES (?, ?, ?, ?)
+  `).run(id, STATUS_EVENT[next], options.reason?.trim() || null, options.actorId ?? null);
+
+  return { ok: true, value: { changed: true, previous: row.status, next } };
+}
+
 export function updateService(db: Database, id: number, data: ServiceInput): ServiceOpResult<void> {
   const validationError = validateServicePayload(data);
   if (validationError) {
@@ -187,6 +237,7 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
     }
   }
 
+  // O estado sai deste UPDATE: passa por `changeServiceStatus`, que o regista.
   db.prepare(`
     UPDATE services
     SET client_id = ?,
@@ -194,7 +245,6 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
         monthly_value_cve = ?,
         activation_date = ?,
         due_day = ?,
-        status = ?,
         technical_notes = ?,
         audiovisual_mode = ?,
         audiovisual_monthly_cve = ?,
@@ -207,13 +257,17 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
     data.monthlyValueCve,
     data.activationDate || null,
     data.dueDay,
-    data.status,
     data.technicalNotes || null,
     data.audiovisualMode,
     data.audiovisualMonthlyCve,
     data.audiovisualAnnualCve,
     id
   );
+
+  const statusResult = changeServiceStatus(db, id, data.status, { reason: 'Alteração no formulário do serviço' });
+  if (!statusResult.ok) {
+    return statusResult;
+  }
 
   return { ok: true, value: undefined };
 }
