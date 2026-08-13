@@ -1,5 +1,5 @@
 import {
-  AlertTriangle, CheckCircle2, Download, MessageSquareWarning,
+  Activity, AlertTriangle, CheckCircle2, Download, MessageSquareWarning,
   Network, PackageSearch, RefreshCw, ShieldAlert
 } from 'lucide-react';
 import { useState } from 'react';
@@ -139,6 +139,12 @@ export function OperationsStatusPanel({ active }: { active: boolean }) {
     { label: 'Por vencer', value: billing.wallet.pendingNotDueCve, color: 'var(--warn)' },
     { label: 'Anulado', value: billing.wallet.cancelledCve, color: 'var(--text-3)' }
   ];
+
+  // Só quem a sonda já leu: quem tem IP mas nunca foi sondado sai no rodapé.
+  // Em baixo primeiro — é a linha que exige decisão agora.
+  const probedDevices = network.devices
+    .filter((device) => device.liveState !== null)
+    .sort((a, b) => (a.liveState === b.liveState ? b.clientCount - a.clientCount : a.liveState === 'down' ? -1 : 1));
 
   const backboneRows: BarRow[] = network.devices.map((device) => ({
     key: device.backboneDeviceId,
@@ -363,11 +369,39 @@ export function OperationsStatusPanel({ active }: { active: boolean }) {
         <Panel title="Clientes por zona">
           <BarChart rows={zoneRows} ariaLabel="Clientes ativos por zona" />
         </Panel>
+        <Panel
+          title="Disponibilidade"
+          meta={network.probe.lastRunAt ? `leitura de ${formatPtDateTime(network.probe.lastRunAt)}` : undefined}
+          span
+        >
+          {probedDevices.length === 0 ? (
+            <EmptyState
+              size="sm"
+              icon={Activity}
+              title={network.probe.enabled ? 'Sonda ligada, sem leituras' : 'Sonda desligada'}
+              description={network.probe.enabled
+                ? 'A primeira ronda de pings ainda não terminou, ou nenhum equipamento tem IP registado.'
+                : 'Liga a sonda de rede em Definições para veres aqui que antenas estão de pé.'}
+            />
+          ) : (
+            <ul className="ops-fleet">
+              {probedDevices.map((device) => (
+                <li key={device.backboneDeviceId} className={device.liveState === 'down' ? 'is-red' : device.uptime !== null && device.uptime < 0.99 ? 'is-amber' : ''}>
+                  <strong>{device.name}</strong>
+                  <small>{device.ipAddress}</small>
+                  <span>{device.uptime === null ? '—' : pct(device.uptime)}</span>
+                  <span className="ops-fleet-stock">{device.liveState === 'down' ? 'não responde' : 'de pé'}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
       </div>
       <FindingList findings={network.findings} />
       <p className="ops-note">
         Identificação: {network.identification.backboneWithIp}/{network.identification.backboneTotal} backbone com IP,
         {' '}{network.identification.assignmentWithMac}/{network.identification.assignmentTotal} equipamentos em campo com MAC.
+        {network.probe.neverProbed > 0 && ` ${network.probe.neverProbed} com IP por sondar.`}
       </p>
 
       <SectionTitle>Parque e stock</SectionTitle>

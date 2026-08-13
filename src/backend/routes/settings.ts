@@ -108,6 +108,10 @@ const settingsSchema = z.object({
   smsReceiptConfirmedTemplate: z.string().trim().max(320).optional().nullable(),
   smsPaymentOverdueTemplate: z.string().trim().max(320).optional().nullable(),
   smsSuspensionNoticeTemplate: z.string().trim().max(320).optional().nullable(),
+  networkProbeEnabled: strictOptionalBoolean,
+  networkProbeIntervalSeconds: z.coerce.number().int().min(30).max(3600).optional().default(60),
+  networkProbeIncludeClients: strictOptionalBoolean,
+  networkProbeFailThreshold: z.coerce.number().int().min(1).max(10).optional().default(3),
   backupDir: z.string().trim().max(500).optional().nullable()
 });
 
@@ -153,6 +157,10 @@ const defaultSettings = {
   smsReceiptConfirmedTemplate: fallbackSmsReceiptConfirmedTemplate,
   smsPaymentOverdueTemplate: fallbackSmsPaymentOverdueTemplate,
   smsSuspensionNoticeTemplate: fallbackSmsSuspensionNoticeTemplate,
+  networkProbeEnabled: false,
+  networkProbeIntervalSeconds: 60,
+  networkProbeIncludeClients: false,
+  networkProbeFailThreshold: 3,
   backupDir: ''
 };
 
@@ -195,9 +203,15 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       } else if (row.key === 'smsRetryGraceMinutes') {
         const n = Number(row.value);
         settings.smsRetryGraceMinutes = Number.isFinite(n) ? n : defaultSettings.smsRetryGraceMinutes;
+      } else if (row.key === 'networkProbeIntervalSeconds') {
+        const n = Number(row.value);
+        settings.networkProbeIntervalSeconds = Number.isFinite(n) ? n : defaultSettings.networkProbeIntervalSeconds;
+      } else if (row.key === 'networkProbeFailThreshold') {
+        const n = Number(row.value);
+        settings.networkProbeFailThreshold = Number.isFinite(n) ? n : defaultSettings.networkProbeFailThreshold;
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
-      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'audiovisualEnabled') {
+      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients') {
         settings[row.key] = row.value === 'true' || row.value === '1';
       } else if (row.key === 'bankAccounts') {
         try {

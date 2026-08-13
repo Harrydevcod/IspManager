@@ -48,6 +48,12 @@ export type OperationsBackboneNode = {
   mrrCve: number;
   /** Quota do MRR total atribuído, 0–1. Acima de `concentrationThreshold` é risco. */
   mrrShare: number;
+  /** Última leitura da sonda. `null` = sem IP, ou nunca sondado. */
+  liveState: 'up' | 'down' | null;
+  /** Desde quando está no estado atual. */
+  liveSince: string | null;
+  /** Disponibilidade no tempo observado pela sonda, 0–1. `null` sem leituras. */
+  uptime: number | null;
 };
 
 export type OperationsNetwork = {
@@ -69,6 +75,14 @@ export type OperationsNetwork = {
   };
   /** Fração acima da qual um único equipamento é considerado concentração. */
   concentrationThreshold: number;
+  /** Estado da sonda ICMP: desligada, sem leituras, ou a medir. */
+  probe: {
+    enabled: boolean;
+    lastRunAt: string | null;
+    downCount: number;
+    /** Equipamentos com IP que a sonda ainda não leu. */
+    neverProbed: number;
+  };
   findings: OperationsFinding[];
 };
 

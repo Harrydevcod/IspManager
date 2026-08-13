@@ -47,6 +47,10 @@ export type SettingsFormState = {
   smsReceiptConfirmedTemplate: string;
   smsPaymentOverdueTemplate: string;
   smsSuspensionNoticeTemplate: string;
+  networkProbeEnabled: boolean;
+  networkProbeIntervalSeconds: string;
+  networkProbeIncludeClients: boolean;
+  networkProbeFailThreshold: string;
 };
 
 export const emptyBankAccount: BankAccountForm = {

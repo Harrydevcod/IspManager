@@ -171,6 +171,7 @@ export function TopologyNodeContent({
       data-kind={node.kind}
       data-flow={flow}
       data-state={node.issueCodes.length > 0 ? 'attention' : node.administrativeState}
+      data-live={node.kind === 'logical-root' ? undefined : node.liveState ?? undefined}
       data-selected={selected || undefined}
     >
       <NodeSelectControl node={node} branchCount={branchCount} onSelect={onSelect} />

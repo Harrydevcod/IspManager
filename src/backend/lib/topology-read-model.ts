@@ -30,6 +30,7 @@ type BackboneRow = EquipmentRow & {
   zone: string | null;
   status: 'active' | 'maintenance';
   provisional: number;
+  liveState: 'up' | 'down' | null;
 };
 
 type AssignmentRow = EquipmentRow & {
@@ -43,6 +44,7 @@ type AssignmentRow = EquipmentRow & {
   macAddress: string | null;
   startDate: string;
   isSerialized: number;
+  liveState: 'up' | 'down' | null;
 };
 
 type AssociationRow = {
@@ -79,9 +81,12 @@ function loadBackboneRows(db: Database.Database): BackboneRow[] {
       bd.serial_number AS serialNumber, bd.asset_tag AS assetTag,
       bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
       bd.island, bd.zone, bd.status, bd.provisional,
-      ec.brand, ec.model, ec.type AS catalogType
+      ec.brand, ec.model, ec.type AS catalogType,
+      probe.state AS liveState
     FROM backbone_devices bd
     JOIN equipment_catalog ec ON ec.id = bd.catalog_id
+    LEFT JOIN network_probe_state probe
+      ON probe.target_kind = 'backbone' AND probe.target_id = bd.id
     WHERE bd.status <> 'retired'
     ORDER BY bd.name COLLATE NOCASE, bd.id
   `).all() as BackboneRow[];
@@ -124,9 +129,12 @@ function loadBackboneRow(
       bd.serial_number AS serialNumber, bd.asset_tag AS assetTag,
       bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
       bd.island, bd.zone, bd.status, bd.provisional,
-      ec.brand, ec.model, ec.type AS catalogType
+      ec.brand, ec.model, ec.type AS catalogType,
+      probe.state AS liveState
     FROM backbone_devices bd
     JOIN equipment_catalog ec ON ec.id = bd.catalog_id
+    LEFT JOIN network_probe_state probe
+      ON probe.target_kind = 'backbone' AND probe.target_id = bd.id
     WHERE bd.id = ? AND bd.status <> 'retired'
   `).get(backboneDeviceId) as BackboneRow | undefined;
 }
@@ -142,11 +150,14 @@ function loadAssignmentRows(
       ec.is_serialized AS isSerialized, a.serial_number AS serialNumber,
       a.asset_tag AS assetTag, a.ip_address AS ipAddress,
       a.mac_address AS macAddress, a.start_date AS startDate,
-      active_link.backbone_device_id AS backboneDeviceId
+      active_link.backbone_device_id AS backboneDeviceId,
+      probe.state AS liveState
     FROM service_device_assignments a
     JOIN equipment_catalog ec ON ec.id = a.catalog_id
     LEFT JOIN backbone_assignment_links active_link
       ON active_link.assignment_id = a.id AND active_link.ended_at IS NULL
+    LEFT JOIN network_probe_state probe
+      ON probe.target_kind = 'assignment' AND probe.target_id = a.id
     WHERE a.end_date IS NULL
       AND (? IS NULL OR active_link.backbone_device_id = ?)
     ORDER BY a.id
@@ -253,6 +264,7 @@ function backboneNode(row: BackboneRow, uplinks: number[] = []): TopologyBackbon
     provisional,
     administrativeState: inactive ? 'inactive' : 'active',
     issueCodes,
+    liveState: row.liveState,
     parentIds: uplinks.length === 0
       ? ['root:isp']
       : uplinks.map((upstreamId) => `backbone:${upstreamId}` as const),
@@ -300,6 +312,7 @@ function clientDeviceNode(
     startDate: row.startDate,
     administrativeState: row.active === 1 ? 'active' : 'inactive',
     issueCodes: clientDeviceIssues(row, clients),
+    liveState: row.liveState,
     parentId: backboneParentId ?? 'root:isp',
     relationship: backboneParentId ? 'defined_link' : undefined,
     clients

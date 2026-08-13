@@ -33,6 +33,8 @@ import { runAudiovisualAnnualIfDue } from './lib/audiovisual-billing';
 import { runOverdueNoticesIfDue } from './lib/notices';
 import { pollWhatsappDeliveryIfDue, runWhatsappOutboxIfDue } from './lib/whatsapp-outbox';
 import { pollSmsStatusIfDue, runSmsOutboxIfDue, smsDispatchIntervalMs } from './lib/sms-outbox';
+import { registerNetworkRoutes } from './routes/network';
+import { networkProbeIntervalMs, runNetworkProbeIfDue } from './lib/network-probe';
 import { runJob, runJobSync } from './lib/jobRuns';
 
 let serverStarted = false;
@@ -140,6 +142,7 @@ export async function createBackendApp() {
   await registerJobRoutes(app);
   await registerTopologyRoutes(app);
   await registerTopologyManagementRoutes(app);
+  await registerNetworkRoutes(app);
 
   // Automatic overdue/suspension WhatsApp notices — opt-in via the
   // `autoNoticesEnabled` setting (off by default). Fire-and-forget: the send
@@ -203,6 +206,19 @@ export async function createBackendApp() {
     drainSms();
     scheduleDrain();
     setInterval(pollSms, 60_000).unref();
+  }
+
+  // Sonda de rede: ping periódico aos equipamentos com IP. Desligada por
+  // definição até alguém a ligar em Definições; sem guarda de licenciamento
+  // porque só lê a rede e não escreve nada do negócio. Opt-out com
+  // ISPM_NETWORK_PROBE=off. Auto-reagendada, para o intervalo mudar a quente.
+  if (process.env.ISPM_NETWORK_PROBE !== 'off' && !process.env.VITEST) {
+    const probeTick = () => { void runJob('network_probe', runNetworkProbeIfDue).catch((err) => app.log.error({ err }, 'network probe failed')); };
+    const scheduleProbe = () => {
+      setTimeout(() => { probeTick(); scheduleProbe(); }, networkProbeIntervalMs()).unref();
+    };
+    probeTick();
+    scheduleProbe();
   }
 
   return app;

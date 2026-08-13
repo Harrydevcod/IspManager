@@ -152,6 +152,8 @@
   --topology-accent: var(--accent);
   --topology-accent-deep: var(--accent-2);
   --topology-amber: var(--warn);
+  --topology-down: var(--danger);
+  --topology-up: var(--success);
   display: grid;
   /* A linha do mapa fica-se pelo que sobra. Um piso rígido aqui, dentro de uma
      altura fixa e com overflow hidden, empurrava o fundo do canvas para fora da
