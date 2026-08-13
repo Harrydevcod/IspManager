@@ -2,8 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { loadNetworkStatus, loadProbeEvents, readProbeConfig, runNetworkProbe } from '../lib/network-probe';
+import { createTransport, isRouterConfigured, readRouterConfig, RouterError, testConnection } from '../lib/routeros';
 import { runJob } from '../lib/jobRuns';
-import { requireAuth } from './auth';
+import { requireAuth, requireRole } from './auth';
 
 const statusQuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(90).default(30)
@@ -20,6 +21,7 @@ const eventsQuerySchema = z.object({
 
 export async function registerNetworkRoutes(app: FastifyInstance) {
   const readOnly = { preHandler: requireAuth() };
+  const adminOnly = { preHandler: requireRole(['admin']) };
 
   app.get('/api/network/status', readOnly, async (request, reply) => {
     const parsed = statusQuerySchema.safeParse(request.query);
@@ -49,5 +51,26 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       includeClients: config.includeClients,
       failThreshold: config.failThreshold
     }));
+  });
+
+  // Teste de ligação ao MikroTik. Só lê `/system/resource`: serve para provar
+  // credenciais e certificado antes de alguém ligar a reconciliação.
+  app.post('/api/network/router/test', adminOnly, async (_request, reply) => {
+    const config = readRouterConfig(getSqliteDatabase());
+    if (!isRouterConfigured(config)) {
+      return reply.status(400).send({ error: 'Configure primeiro o endereco e o utilizador do router' });
+    }
+    try {
+      const info = await testConnection(createTransport(config));
+      return { ok: true, ...info };
+    } catch (err) {
+      const routerError = err instanceof RouterError ? err : null;
+      return reply.status(502).send({
+        error: routerError?.message ?? (err instanceof Error ? err.message : 'Falha ao contactar o router'),
+        // Devolvida para a UI poder propor fixar este certificado em vez de
+        // sugerir a alguem desligar a verificacao de TLS.
+        fingerprint: routerError?.fingerprint ?? null
+      });
+    }
   });
 }

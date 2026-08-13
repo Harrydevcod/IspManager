@@ -99,10 +99,22 @@ export function SettingsModule() {
     networkProbeEnabled: false,
     networkProbeIntervalSeconds: '60',
     networkProbeIncludeClients: false,
-    networkProbeFailThreshold: '3'
+    networkProbeFailThreshold: '3',
+    routerosEnabled: false,
+    routerosHost: '',
+    routerosPort: '443',
+    routerosUser: '',
+    routerosPassword: '',
+    routerosTlsFingerprint: '',
+    routerosDryRun: true,
+    routerosIntervalSeconds: '120',
+    routerosMaxDisablesPerRun: '5'
   });
   const [probeBusy, setProbeBusy] = useState(false);
   const [probeMessage, setProbeMessage] = useState('');
+  const [routerBusy, setRouterBusy] = useState(false);
+  const [routerMessage, setRouterMessage] = useState('');
+  const [routerFingerprint, setRouterFingerprint] = useState('');
   const [smsStatus, setSmsStatus] = useState<SmsStatus | null>(null);
   const [smsReportMonth, setSmsReportMonth] = useState(currentSmsReportMonth);
   const [smsReport, setSmsReport] = useState<SmsMonthlyReport | null>(null);
@@ -303,7 +315,7 @@ export function SettingsModule() {
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
         }
-        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold'> & { defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number }>;
+        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold' | 'routerosPort' | 'routerosIntervalSeconds' | 'routerosMaxDisablesPerRun'> & { defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number; routerosPort: number; routerosIntervalSeconds: number; routerosMaxDisablesPerRun: number }>;
       })
       .then((settings) => {
         const loadedForm = {
@@ -320,7 +332,10 @@ export function SettingsModule() {
           smsDispatchIntervalSeconds: String(settings.smsDispatchIntervalSeconds),
           smsRetryGraceMinutes: String(settings.smsRetryGraceMinutes),
           networkProbeIntervalSeconds: String(settings.networkProbeIntervalSeconds),
-          networkProbeFailThreshold: String(settings.networkProbeFailThreshold)
+          networkProbeFailThreshold: String(settings.networkProbeFailThreshold),
+          routerosPort: String(settings.routerosPort),
+          routerosIntervalSeconds: String(settings.routerosIntervalSeconds),
+          routerosMaxDisablesPerRun: String(settings.routerosMaxDisablesPerRun)
         };
         setForm(loadedForm);
         setLastSavedForm(loadedForm);
@@ -433,7 +448,10 @@ export function SettingsModule() {
           smsDispatchIntervalSeconds: Number(savedForm.smsDispatchIntervalSeconds),
           smsRetryGraceMinutes: Number(savedForm.smsRetryGraceMinutes),
           networkProbeIntervalSeconds: Number(savedForm.networkProbeIntervalSeconds),
-          networkProbeFailThreshold: Number(savedForm.networkProbeFailThreshold)
+          networkProbeFailThreshold: Number(savedForm.networkProbeFailThreshold),
+          routerosPort: Number(savedForm.routerosPort),
+          routerosIntervalSeconds: Number(savedForm.routerosIntervalSeconds),
+          routerosMaxDisablesPerRun: Number(savedForm.routerosMaxDisablesPerRun)
         })
       });
 
@@ -470,6 +488,29 @@ export function SettingsModule() {
       setProbeMessage('Falha de rede ao sondar.');
     } finally {
       setProbeBusy(false);
+    }
+  }
+
+  async function testRouterNow() {
+    setRouterBusy(true);
+    setRouterMessage('');
+    setRouterFingerprint('');
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/network/router/test', { method: 'POST' });
+      const result = await response.json() as {
+        ok?: boolean; version?: string; boardName?: string; error?: string; fingerprint?: string | null;
+      };
+      if (response.ok && result.ok) {
+        setRouterMessage(`Ligado: ${result.boardName} com RouterOS ${result.version}.`);
+      } else {
+        setRouterMessage(result.error || 'Nao foi possivel contactar o router.');
+        // Certificado próprio: em vez de mandar desligar o TLS, propõe fixá-lo.
+        if (result.fingerprint) setRouterFingerprint(result.fingerprint);
+      }
+    } catch {
+      setRouterMessage('Falha de rede ao contactar o router.');
+    } finally {
+      setRouterBusy(false);
     }
   }
 
@@ -589,6 +630,15 @@ export function SettingsModule() {
             probeBusy={probeBusy}
             probeMessage={probeMessage}
             onProbeNow={() => void probeNetworkNow()}
+            routerBusy={routerBusy}
+            routerMessage={routerMessage}
+            routerFingerprint={routerFingerprint}
+            onRouterTest={() => void testRouterNow()}
+            onTrustFingerprint={() => {
+              updateForm('routerosTlsFingerprint', routerFingerprint);
+              setRouterFingerprint('');
+              setRouterMessage('Impressão digital preenchida. Grave as definições e teste outra vez.');
+            }}
           />
         )}
 

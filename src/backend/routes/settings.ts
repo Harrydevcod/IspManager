@@ -112,8 +112,33 @@ const settingsSchema = z.object({
   networkProbeIntervalSeconds: z.coerce.number().int().min(30).max(3600).optional().default(60),
   networkProbeIncludeClients: strictOptionalBoolean,
   networkProbeFailThreshold: z.coerce.number().int().min(1).max(10).optional().default(3),
+  routerosEnabled: strictOptionalBoolean,
+  routerosHost: z.string().trim().max(255).optional().default(''),
+  routerosPort: z.coerce.number().int().min(1).max(65535).optional().default(443),
+  routerosUser: z.string().trim().max(64).optional().default(''),
+  routerosPassword: z.string().max(128).optional().default(''),
+  routerosTlsFingerprint: z.string().trim().max(200).optional().default(''),
+  // Sem `strictOptionalBoolean`: este tem de vir ligado por omissão, porque o
+  // valor por omissão errado aqui corta clientes a sério.
+  routerosDryRun: z.preprocess((value) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'false' || normalized === '0') return false;
+      if (normalized === 'true' || normalized === '1') return true;
+    }
+    return value;
+  }, z.boolean().optional().default(true)),
+  routerosIntervalSeconds: z.coerce.number().int().min(30).max(3600).optional().default(120),
+  routerosMaxDisablesPerRun: z.coerce.number().int().min(1).max(500).optional().default(5),
   backupDir: z.string().trim().max(500).optional().nullable()
 });
+
+/**
+ * A senha do router nunca sai do backend em claro: o GET devolve este sentinela
+ * e o PUT que o receba de volta mantém a que está guardada.
+ */
+export const SECRET_MASK = '••••••••';
 
 const defaultSettings = {
   companyName: 'ISPM',
@@ -161,6 +186,15 @@ const defaultSettings = {
   networkProbeIntervalSeconds: 60,
   networkProbeIncludeClients: false,
   networkProbeFailThreshold: 3,
+  routerosEnabled: false,
+  routerosHost: '',
+  routerosPort: 443,
+  routerosUser: '',
+  routerosPassword: '',
+  routerosTlsFingerprint: '',
+  routerosDryRun: true,
+  routerosIntervalSeconds: 120,
+  routerosMaxDisablesPerRun: 5,
   backupDir: ''
 };
 
@@ -209,9 +243,17 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       } else if (row.key === 'networkProbeFailThreshold') {
         const n = Number(row.value);
         settings.networkProbeFailThreshold = Number.isFinite(n) ? n : defaultSettings.networkProbeFailThreshold;
+      } else if (row.key === 'routerosPort' || row.key === 'routerosIntervalSeconds' || row.key === 'routerosMaxDisablesPerRun') {
+        const n = Number(row.value);
+        settings[row.key] = Number.isFinite(n) ? n : defaultSettings[row.key];
+      } else if (row.key === 'routerosDryRun') {
+        // Só um "false" explícito desliga o ensaio.
+        settings.routerosDryRun = row.value !== 'false' && row.value !== '0';
+      } else if (row.key === 'routerosPassword') {
+        settings.routerosPassword = row.value ? SECRET_MASK : '';
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
-      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients') {
+      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled') {
         settings[row.key] = row.value === 'true' || row.value === '1';
       } else if (row.key === 'bankAccounts') {
         try {
@@ -278,6 +320,9 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
 
     const run = db.transaction(() => {
       for (const [key, value] of Object.entries(parsed.data)) {
+        // Gravar a máscara apagaria a senha do router à primeira gravação de
+        // qualquer outra definição: quem a devolve intacta não a quer mudar.
+        if (key === 'routerosPassword' && value === SECRET_MASK) continue;
         save.run(key, key === 'bankAccounts' ? JSON.stringify(value ?? []) : String(value ?? ''));
       }
     });
@@ -293,6 +338,6 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         backupDirChanged: wantedBackupDir.length > 0
       }
     });
-    return parsed.data;
+    return { ...parsed.data, routerosPassword: parsed.data.routerosPassword ? SECRET_MASK : '' };
   });
 }

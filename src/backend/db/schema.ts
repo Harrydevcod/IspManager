@@ -74,7 +74,9 @@ export const internetPlans = sqliteTable('internet_plans', {
   description: text('description'),
   active: integer('active', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
-  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
+  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP'),
+  downloadMbps: integer('download_mbps'),
+  uploadMbps: integer('upload_mbps')
 });
 
 export const services = sqliteTable('services', {
@@ -91,7 +93,9 @@ export const services = sqliteTable('services', {
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP'),
   audiovisualMode: text('audiovisual_mode').notNull().default('none'),
   audiovisualMonthlyCve: real('audiovisual_monthly_cve').notNull().default(0),
-  audiovisualAnnualCve: real('audiovisual_annual_cve').notNull().default(0)
+  audiovisualAnnualCve: real('audiovisual_annual_cve').notNull().default(0),
+  pppoeUsername: text('pppoe_username'),
+  pppoePassword: text('pppoe_password')
 });
 
 export const payments = sqliteTable('payments', {
@@ -488,6 +492,22 @@ export const networkProbeEvents = sqliteTable('network_probe_events', {
   gapBefore: integer('gap_before').notNull().default(0)
 });
 
+/** Realidade lida do MikroTik por serviço. A intenção vive em `services.status`. */
+export const serviceNetworkState = sqliteTable('service_network_state', {
+  serviceId: integer('service_id').primaryKey(),
+  secretId: text('secret_id'),
+  routerEnabled: integer('router_enabled'),
+  desiredEnabled: integer('desired_enabled').notNull().default(1),
+  rateLimit: text('rate_limit'),
+  online: integer('online').notNull().default(0),
+  address: text('address'),
+  uptime: text('uptime'),
+  lastOnlineAt: text('last_online_at'),
+  divergence: text('divergence'),
+  lastError: text('last_error'),
+  checkedAt: text('checked_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
 /**
  * Inferred row types — one `select` (read) and `insert` (write) per table.
  * Prefer these over hand-written `as { ... }` casts in raw queries: renaming a
@@ -553,3 +573,4 @@ export type JobRun = typeof jobRuns.$inferSelect;
 export type NewJobRun = typeof jobRuns.$inferInsert;
 export type NetworkProbeStateRow = typeof networkProbeState.$inferSelect;
 export type NetworkProbeEventRow = typeof networkProbeEvents.$inferSelect;
+export type ServiceNetworkStateRow = typeof serviceNetworkState.$inferSelect;
