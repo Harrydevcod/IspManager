@@ -4,7 +4,7 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
-## Por lançar
+## [1.11.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.11.0) — 2026-08-13
 
 ### Adicionado
 
@@ -13,9 +13,15 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 - **topologia:** O nó do mapa mostra a última leitura da sonda — ponto verde de pé, vermelho sem resposta. Sem leitura não há ponto: o que não foi medido não se pinta de verde
 
 A disponibilidade é contada sobre o tempo **observado**: a sonda só corre com a aplicação aberta, e as horas em que ninguém mediu não contam nem como rede de pé nem como avaria.
+
 ### Alterado
 
 - **serviços:** Suspender, reativar ou cancelar um serviço passa a ficar registado na história do cliente, com data e motivo. Até aqui o estado era só mais um campo do formulário: um serviço passava a suspenso em silêncio, e três meses depois ninguém sabia quando nem porquê. A cascata do cliente também passa a registar serviço a serviço
+
+### Corrigido
+
+- **faturação:** Reverter um mês deixa de apagar faturas já numeradas. Antes, tanto o "reverter mês" como o reverter de uma cobrança individual apagavam a linha do pagamento — e, como o número de fatura nasce na geração e não na impressão, isso abria buracos permanentes na sequência FT-AAAA. Agora um documento numerado só se **anula**, com motivo registado (mínimo 10 caracteres) para a trilha de auditoria; apaga-se apenas o que nunca chegou a ser documento. A pré-visualização do reverter mostra separadamente as cobranças que vão ser apagadas e as faturas protegidas
+- **datas:** As horas gravadas pelo sistema deixam de aparecer à meia-noite. Um registo feito às 05:19 mostrava "00:00" porque o formatador só reconhecia o formato com "T" no meio
 
 ## [1.10.1](https://github.com/Harrydevcod/IspManager/releases/tag/v1.10.1) — 2026-08-11
 
