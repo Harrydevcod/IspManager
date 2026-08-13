@@ -6,6 +6,7 @@ import { clients } from '../db/schema';
 import { recordAudit } from '../lib/audit';
 import { buildClientsImportTemplate } from '../lib/clients-import-template';
 import { loadCompanyOpexContext } from '../lib/opex';
+import { changeServiceStatus } from '../lib/services';
 import { requireAuth, requireRole } from './auth';
 
 function addMonthsIso(isoDate: string, months: number): string {
@@ -343,17 +344,25 @@ export async function registerClientRoutes(app: FastifyInstance) {
       // mensalidade. Idempotente — só toca em serviços ainda 'active', e nunca
       // reativa um serviço já cancelado (estado mais terminal que suspenso).
       if (client.status === 'cancelled' || client.status === 'suspended') {
-        const cascade = getSqliteDatabase()
-          .prepare(`UPDATE services SET status = ?, updated_at = datetime('now') WHERE client_id = ? AND status = 'active'`)
-          .run(client.status, client.id);
-        if (cascade.changes > 0) {
+        const sqlite = getSqliteDatabase();
+        const affected = sqlite
+          .prepare(`SELECT id FROM services WHERE client_id = ? AND status = 'active'`)
+          .all(client.id) as Array<{ id: number }>;
+        // Um a um pela mesma porta que qualquer outra mudança de estado: cada
+        // serviço fica com a sua entrada na história, com o motivo.
+        for (const service of affected) {
+          changeServiceStatus(sqlite, service.id, client.status, {
+            reason: `Cascata do cliente ${client.fullName} (${client.status === 'cancelled' ? 'cancelado' : 'suspenso'})`
+          });
+        }
+        if (affected.length > 0) {
           const cancelled = client.status === 'cancelled';
           recordAudit(request, {
             action: cancelled ? 'cancel' : 'suspend',
             entityType: 'service',
             entityId: client.id,
-            summary: `${cancelled ? 'Cancelou' : 'Suspendeu'} ${cascade.changes} servico(s) em cascata do cliente ${client.fullName}`,
-            metadata: { clientCode: client.clientCode, status: client.status, affectedServices: cascade.changes }
+            summary: `${cancelled ? 'Cancelou' : 'Suspendeu'} ${affected.length} servico(s) em cascata do cliente ${client.fullName}`,
+            metadata: { clientCode: client.clientCode, status: client.status, affectedServices: affected.length }
           });
         }
       }

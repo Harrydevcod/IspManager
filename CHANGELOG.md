@@ -13,6 +13,9 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 - **topologia:** O nó do mapa mostra a última leitura da sonda — ponto verde de pé, vermelho sem resposta. Sem leitura não há ponto: o que não foi medido não se pinta de verde
 
 A disponibilidade é contada sobre o tempo **observado**: a sonda só corre com a aplicação aberta, e as horas em que ninguém mediu não contam nem como rede de pé nem como avaria.
+### Alterado
+
+- **serviços:** Suspender, reativar ou cancelar um serviço passa a ficar registado na história do cliente, com data e motivo. Até aqui o estado era só mais um campo do formulário: um serviço passava a suspenso em silêncio, e três meses depois ninguém sabia quando nem porquê. A cascata do cliente também passa a registar serviço a serviço
 
 ## [1.10.1](https://github.com/Harrydevcod/IspManager/releases/tag/v1.10.1) — 2026-08-11
 
