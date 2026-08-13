@@ -1,7 +1,27 @@
 .topology-shell {
+  /* Aliases sobre os tokens da app: o mapa herda tema, acento e superfícies
+     em vez de declarar uma paleta própria. Nada aqui pode ser uma cor literal.
+     Vivem na casca e não em `.topology-module` porque os controlos do mapa são
+     desenhados na tira das abas, que está fora do módulo. */
+  --topology-ink: var(--text);
+  --topology-muted: var(--text-2);
+  --topology-faint: var(--text-2);
+  --topology-bg: var(--bg);
+  --topology-surface: var(--surface);
+  --topology-raised: var(--surface-2);
+  --topology-line: var(--border);
+  --topology-accent: var(--accent);
+  --topology-accent-deep: var(--accent-2);
+  --topology-amber: var(--warn);
+  --topology-down: var(--danger);
+  --topology-up: var(--success);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
+  /* Os controlos do mapa passam a viver na tira das abas, fora de
+     `.topology-module`. As @container que os adaptam a ecrã estreito precisam de
+     um contentor que continue a abraçá-los. */
+  container-type: inline-size;
 }
 
 .topology-tabs {
@@ -21,7 +41,25 @@
     color-mix(in oklch, var(--surface-2) 76%, var(--surface));
 }
 
-.topology-tabs button {
+.topology-tabs-list {
+  display: flex;
+  align-items: end;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+/* A tira tinha largura a sobrar à direita das duas abas: é onde os controlos do
+   mapa se pousam, sem roubar altura nem tapar o grafo. */
+.topology-tabs-tools {
+  display: flex;
+  align-self: center;
+  min-width: 0;
+  margin-left: auto;
+}
+
+/* Só as abas — os botões-ícone dos controlos partilham a tira e não podem
+   herdar a moldura nem o `min-width` de aba. */
+.topology-tabs [role='tab'] {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -41,7 +79,7 @@
   cursor: pointer;
 }
 
-.topology-tabs button::after {
+.topology-tabs [role='tab']::after {
   position: absolute;
   right: 1rem;
   bottom: 0;
@@ -51,23 +89,23 @@
   content: '';
 }
 
-.topology-tabs button:hover {
+.topology-tabs [role='tab']:hover {
   color: var(--text);
   background: color-mix(in oklch, var(--surface-3) 54%, transparent);
 }
 
-.topology-tabs button[aria-selected='true'] {
+.topology-tabs [role='tab'][aria-selected='true'] {
   border-color: var(--border);
   background: var(--surface);
   color: var(--text);
 }
 
-.topology-tabs button[aria-selected='true']::after {
+.topology-tabs [role='tab'][aria-selected='true']::after {
   background: var(--accent);
   box-shadow: 0 0 1rem color-mix(in oklch, var(--accent) 45%, transparent);
 }
 
-.topology-tabs button:focus-visible {
+.topology-tabs [role='tab']:focus-visible {
   z-index: 1;
   outline: 2px solid var(--accent);
   outline-offset: -3px;
@@ -126,7 +164,9 @@
     padding-inline: 0.35rem;
   }
 
-  .topology-tabs button {
+  .topology-tabs-list { flex: 1; }
+
+  .topology-tabs [role='tab'] {
     flex: 1;
     min-width: 0;
   }
@@ -140,20 +180,6 @@
 }
 
 .topology-module {
-  /* Aliases sobre os tokens da app: o mapa herda tema, acento e superfícies
-     em vez de declarar uma paleta própria. Nada aqui pode ser uma cor literal. */
-  --topology-ink: var(--text);
-  --topology-muted: var(--text-2);
-  --topology-faint: var(--text-2);
-  --topology-bg: var(--bg);
-  --topology-surface: var(--surface);
-  --topology-raised: var(--surface-2);
-  --topology-line: var(--border);
-  --topology-accent: var(--accent);
-  --topology-accent-deep: var(--accent-2);
-  --topology-amber: var(--warn);
-  --topology-down: var(--danger);
-  --topology-up: var(--success);
   display: grid;
   /* A linha do mapa fica-se pelo que sobra. Um piso rígido aqui, dentro de uma
      altura fixa e com overflow hidden, empurrava o fundo do canvas para fora da
@@ -502,22 +528,21 @@
   line-height: 1.4;
 }
 
-/* Pousados sobre o mapa, no canto de onde se lê primeiro. Botões separados e não
-   um bloco segmentado: com seis controlos a laje encostada lia-se como uma peça
-   só. Apertado dentro do grupo, folgado entre grupos. */
+/* Na tira das abas, encostados à direita. Botões separados e não um bloco
+   segmentado: com nove controlos a laje encostada lia-se como uma peça só.
+   Apertado dentro do grupo, folgado entre grupos. Sem moldura à volta: cada
+   botão já tem a sua, e a tira já é cromo — emoldurar outra vez era moldura
+   dentro de moldura. Numa janela estreita o grupo rola em vez de empurrar as
+   abas para fora. */
 .topology-canvas-tools {
-  position: absolute;
-  top: var(--space-3);
-  left: var(--space-3);
-  z-index: 8;
   display: flex;
+  min-width: 0;
   gap: var(--space-1);
-  padding: var(--space-1);
-  border: 1px solid var(--topology-line);
-  border-radius: var(--r2);
-  background: color-mix(in oklch, var(--topology-surface) 92%, transparent);
-  box-shadow: var(--shadow-1);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+
+.topology-canvas-tools::-webkit-scrollbar { display: none; }
 
 .topology-canvas-tools > span { width: var(--space-2); }
 

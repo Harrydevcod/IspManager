@@ -5,6 +5,7 @@ import './TopologyInspector.css';
 
 import { AlertTriangle, Network, RotateCw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type {
   TopologyBackboneBranch,
   TopologyNode,
@@ -36,6 +37,8 @@ export type TopologyMapViewProps = TopologyModuleProps & {
   focusBackboneDeviceId: number | null;
   onFocusHandled: () => void;
   onMutation: () => void;
+  /** Onde os controlos do mapa são desenhados: a tira das abas, fora do canvas. */
+  toolsSlot: HTMLElement | null;
 };
 
 type MapAuthoring = ReturnType<typeof useMapAuthoring>;
@@ -389,6 +392,7 @@ function TopologyStage({
   legendVisible,
   inspectorVisible,
   tools,
+  toolsSlot,
   onCloseInspector,
   authoring,
   canvasRef
@@ -401,6 +405,7 @@ function TopologyStage({
   legendVisible: boolean;
   inspectorVisible: boolean;
   tools: CanvasToolsProps;
+  toolsSlot: HTMLElement | null;
   onCloseInspector: () => void;
   authoring: MapAuthoring;
   canvasRef: React.RefObject<TopologyCanvasHandle | null>;
@@ -425,9 +430,10 @@ function TopologyStage({
             connectable={authoring.canManage}
             onConnectNodes={authoring.connectNodes}
           />
-          {/* Os controlos vivem sobre o mapa, como em qualquer canvas: pousados
-              no canto, não numa segunda linha de barra a comer altura. */}
-          <CanvasTools {...tools} />
+          {/* Os controlos saem daqui por portal para a tira das abas: em cima do
+              canvas tapavam a raiz do grafo, que é onde o dagre começa a desenhar.
+              O estado deles continua neste componente — o portal move o DOM. */}
+          {toolsSlot && createPortal(<CanvasTools {...tools} />, toolsSlot)}
           {(snapshot.backbones.length === 0 || filteredEmpty) && (
             <EmptyCanvas filtered={hasActiveFilters(workspace.filters)} />
           )}
@@ -549,6 +555,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
         legendVisible={legendVisible}
         inspectorVisible={inspectorVisible}
         tools={tools}
+        toolsSlot={props.toolsSlot}
         onCloseInspector={() => {
           setInspectorVisible(false);
           workspace.setSelectedNode(null);

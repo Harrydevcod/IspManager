@@ -28,7 +28,7 @@ import type { TopologyDirection } from './topology-layout';
 
 export type SearchState = 'idle' | 'loading' | 'error';
 
-/** O que se controla sobre o mapa — flutua no canto do canvas, não na barra. */
+/** O que se controla sobre o mapa — mora na tira das abas, não sobre o canvas. */
 export type CanvasToolsProps = {
   labelsVisible: boolean;
   legendVisible: boolean;
