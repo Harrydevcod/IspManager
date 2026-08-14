@@ -2713,6 +2713,9 @@ h2 {
 
 .client-form label {
   display: grid;
+  /* Sem isto o campo estica para preencher a altura da linha da grelha, e dois
+     campos lado a lado com dicas de tamanhos diferentes ficam desalinhados. */
+  align-content: start;
   gap: var(--space-1-5);
   color: var(--text-3);
   font-size: var(--fs-sm);
