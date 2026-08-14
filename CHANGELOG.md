@@ -4,6 +4,12 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## Por lançar
+
+### Corrigido
+
+- **pagamentos:** "Em atraso" passa a ser quem tem a data de vencimento passada, e não só quem foi marcado à mão. O estado `overdue` nunca é escrito sozinho, por isso o cartão "Atraso" mostrava `0$00` em todos os meses e o filtro Atraso devolvia sempre uma lista vazia — os 14.000$ de dívida real estavam escondidos dentro de "Pendente". A etiqueta de cada linha acompanha, e o lembrete de WhatsApp/SMS deixa de mandar "fatura emitida" a quem já está semanas em atraso
+
 ## [1.11.2](https://github.com/Harrydevcod/IspManager/releases/tag/v1.11.2) — 2026-08-14
 
 ### Corrigido

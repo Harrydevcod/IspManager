@@ -7,6 +7,7 @@ import { downloadAuthenticated, printAuthenticated, useAuthenticatedObjectUrl } 
 import { compareNumber, compareText, paginateRows, sortRows, type SortState } from '../lib/listView';
 import { runBulk, summarizeBulk } from '../lib/bulkRun';
 import { useRowSelection } from '../lib/useRowSelection';
+import { effectivePaymentStatus } from '../lib/status';
 import { defaultPostpaidReferenceMonth } from '../../shared/billing-period';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
@@ -224,11 +225,14 @@ export function PaymentsModule({
 
   function whatsappMessageFor(payment: PaymentRow) {
     const daysOverdue = Math.max(0, Math.floor((Date.now() - new Date(`${payment.dueDate}T00:00:00`).getTime()) / 86_400_000));
-    const template = payment.status === 'paid'
+    // Estado efetivo: senão um cliente com 40 dias de atraso recebia a mensagem
+    // de "fatura emitida", porque a coluna status continua em 'pending'.
+    const status = effectivePaymentStatus(payment);
+    const template = status === 'paid'
       ? whatsappReceiptTemplate
-      : payment.status === 'overdue' && daysOverdue >= whatsappSuspensionNoticeDays
+      : status === 'overdue' && daysOverdue >= whatsappSuspensionNoticeDays
         ? whatsappSuspensionTemplate
-        : payment.status === 'overdue'
+        : status === 'overdue'
           ? whatsappOverdueTemplate
           : payment.invoiceNumber
             ? whatsappInvoiceReadyTemplate
@@ -778,7 +782,7 @@ export function PaymentsModule({
   const filteredPayments = useMemo(
     () => (statusFilter === 'all'
       ? periodPayments
-      : periodPayments.filter((payment) => payment.status === statusFilter)),
+      : periodPayments.filter((payment) => effectivePaymentStatus(payment) === statusFilter)),
     [periodPayments, statusFilter]
   );
   const visiblePayments = useMemo(() => sortRows(filteredPayments, sortState, {
@@ -812,13 +816,14 @@ export function PaymentsModule({
 
   const totals = useMemo(() => periodPayments.reduce(
     (acc, payment) => {
-      if (payment.status === 'pending') {
+      const status = effectivePaymentStatus(payment);
+      if (status === 'pending') {
         acc.pending.count += 1;
         acc.pending.sum += payment.amountCve;
-      } else if (payment.status === 'paid') {
+      } else if (status === 'paid') {
         acc.paid.count += 1;
         acc.paid.sum += payment.amountCve;
-      } else if (payment.status === 'overdue') {
+      } else if (status === 'overdue') {
         acc.overdue.count += 1;
         acc.overdue.sum += payment.amountCve;
       }

@@ -2,6 +2,7 @@ import type { FormEvent } from 'react';
 import { CheckCircle2, Download, FileText, MessageCircle, Printer, ReceiptText, RotateCcw, X } from 'lucide-react';
 import { Button, Dialog, Field, Message, Select, Textarea } from '../../components';
 import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
+import { effectivePaymentStatus } from '../../lib/status';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
 import { paymentStatusLabel, type PaymentRow } from '../../types';
 
@@ -289,9 +290,9 @@ export function PaymentDetailDialog({
         >
           <div>
             <p className="eyebrow">
-              {payment.status === 'paid'
+              {effectivePaymentStatus(payment) === 'paid'
                 ? 'Recibo WhatsApp'
-                : payment.status === 'overdue'
+                : effectivePaymentStatus(payment) === 'overdue'
                   ? 'Aviso WhatsApp'
                   : 'Fatura WhatsApp'}
             </p>

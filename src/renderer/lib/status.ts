@@ -1,4 +1,23 @@
+import type { PaymentRow, PaymentStatus } from '../types';
+
 type BadgeTone = 'success' | 'danger' | 'info' | 'neutral' | 'accent';
+
+/**
+ * Estado efetivo do pagamento: "em atraso" deriva da data de vencimento.
+ * A coluna `status` só passa a 'overdue' quando alguém marca o pagamento à
+ * mão — ninguém marca — por isso um pendente com a data passada é atraso,
+ * diga o que disser a coluna. Mesma regra do overdueSqlPredicate no backend.
+ *
+ * O "hoje" é UTC como em todo o lado (o SQLite compara com date('now'), que
+ * também é UTC): se divergissem, cliente e servidor discordavam à meia-noite.
+ */
+export function effectivePaymentStatus(
+  payment: Pick<PaymentRow, 'status' | 'dueDate'>,
+  today = new Date().toISOString().slice(0, 10)
+): PaymentStatus {
+  if (payment.status === 'pending' && payment.dueDate < today) return 'overdue';
+  return payment.status;
+}
 
 type ClientOrServiceStatus = 'active' | 'suspended' | 'cancelled';
 

@@ -11,7 +11,13 @@ import type { PaymentRow } from '../types';
 
 const referenceMonth = defaultPostpaidReferenceMonth();
 
-function row(id: number, status: PaymentRow['status'], amountCve: number): PaymentRow {
+function isoInDays(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function row(id: number, status: PaymentRow['status'], amountCve: number, dueDate: string): PaymentRow {
   return {
     id,
     clientName: `Cliente ${id}`,
@@ -20,8 +26,8 @@ function row(id: number, status: PaymentRow['status'], amountCve: number): Payme
     clientPhone: null,
     referenceMonth,
     amountCve,
-    dueDate: `${referenceMonth}-10`,
-    paymentDate: status === 'paid' ? `${referenceMonth}-12` : null,
+    dueDate,
+    paymentDate: status === 'paid' ? dueDate : null,
     paymentMethod: null,
     status,
     invoiceNumber: null,
@@ -30,10 +36,12 @@ function row(id: number, status: PaymentRow['status'], amountCve: number): Payme
   };
 }
 
+// O vencido é um 'pending' com a data passada — o estado 'overdue' na coluna só
+// existe quando alguém marca à mão, e é isso que estes testes protegem.
 const payments: PaymentRow[] = [
-  row(1, 'pending', 1000),
-  row(2, 'paid', 2000),
-  row(3, 'overdue', 3000)
+  row(1, 'pending', 1000, isoInDays(15)),
+  row(2, 'paid', 2000, isoInDays(-20)),
+  row(3, 'pending', 3000, isoInDays(-15))
 ];
 
 const roots: Root[] = [];
@@ -111,6 +119,21 @@ describe('totais de pagamentos', () => {
     const container = await mount();
     expect(statusSelect(container).value).toBe('pending');
     expect(chipAmounts(container)).toEqual(['1.000$00', '3.000$00', '2.000$00']);
+  });
+
+  test('o pendente com a data passada conta como atraso, e o filtro devolve-o', async () => {
+    const container = await mount();
+    const select = statusSelect(container);
+
+    await act(async () => {
+      select.value = 'overdue';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    // Antes: o chip Atraso e a lista ficavam sempre vazios, porque nenhuma
+    // linha chega com status = 'overdue'.
+    expect(chipAmounts(container)[1]).toBe('3.000$00');
+    expect(container.querySelectorAll('.data-table-row')).toHaveLength(1);
   });
 
   test('nao mexe nos totais quando o estado muda, so na lista', async () => {
