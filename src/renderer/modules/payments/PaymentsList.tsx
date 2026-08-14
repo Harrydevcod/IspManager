@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, FileText, MessageCircle, ReceiptText, Rota
 import { Badge, DataTable, EmptyState, RowActionsMenu, type DataTableSelection, type RowActionGroup } from '../../components';
 import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
 import type { SortState } from '../../lib/listView';
+import { effectivePaymentStatus } from '../../lib/status';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
 import { paymentStatusLabel, type PaymentRow, type SmsEventType } from '../../types';
 
@@ -89,7 +90,12 @@ export function PaymentsList({
           header: 'Estado',
           sortKey: 'status',
           align: 'center',
-          cell: (p) => <Badge tone={paymentStatusTone(p.status)}>{paymentStatusLabel(p.status)}</Badge>
+          // A etiqueta segue o estado efetivo: um pendente com a data passada
+          // lê-se "Em atraso", senão o filtro devolvia linhas a dizer Pendente.
+          cell: (p) => {
+            const status = effectivePaymentStatus(p);
+            return <Badge tone={paymentStatusTone(status)}>{paymentStatusLabel(status)}</Badge>;
+          }
         },
         {
           header: 'Valor',
@@ -102,9 +108,12 @@ export function PaymentsList({
       actions={(p) => {
         if (p.status === 'cancelled') return null;
         const hasPhone = Boolean(normalizeWhatsappPhone(p.clientPhone));
-        const smsEvent: SmsEventType = p.status === 'paid'
+        // O aviso segue o estado efetivo; as ações de gestão ("Marcar atraso",
+        // "Reverter") continuam a olhar para p.status, que é o que gravam.
+        const effective = effectivePaymentStatus(p);
+        const smsEvent: SmsEventType = effective === 'paid'
           ? 'receipt_confirmed'
-          : p.status === 'overdue' ? 'payment_overdue' : 'invoice_issued';
+          : effective === 'overdue' ? 'payment_overdue' : 'invoice_issued';
 
         const acao: RowActionGroup = {
           label: 'Ação',
@@ -141,9 +150,9 @@ export function PaymentsList({
                   disabled: submitting
                 },
                 {
-                  label: p.status === 'paid'
+                  label: effective === 'paid'
                     ? 'Enviar recibo por SMS (Android)'
-                    : p.status === 'overdue' ? 'Enviar aviso por SMS (Android)' : 'Enviar fatura por SMS (Android)',
+                    : effective === 'overdue' ? 'Enviar aviso por SMS (Android)' : 'Enviar fatura por SMS (Android)',
                   icon: <Smartphone size={15} aria-hidden />,
                   onClick: () => onSendSms(p, smsEvent),
                   disabled: submitting
