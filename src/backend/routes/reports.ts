@@ -4,6 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { requireRole } from './auth';
 import { computeIncompleteFlags, findDuplicateGroups, type DqClient } from '../lib/data-quality';
 import { recordAudit } from '../lib/audit';
+import { overdueSqlPredicate } from '../lib/payments';
 import { loadOperationsStatus } from '../lib/operations-status';
 import { buildOperationsStatusPdf } from '../lib/operations-export';
 
@@ -79,8 +80,8 @@ export async function registerReportRoutes(app: FastifyInstance) {
     }
     const paymentWhereSql = paymentWhere.length ? `WHERE ${paymentWhere.join(' AND ')}` : '';
     const overdueWhereSql = paymentWhere.length
-      ? `WHERE py.status = 'overdue' AND ${paymentWhere.map((condition) => `py.${condition}`).join(' AND ')}`
-      : "WHERE py.status = 'overdue'";
+      ? `WHERE ${overdueSqlPredicate('py')} AND ${paymentWhere.map((condition) => `py.${condition}`).join(' AND ')}`
+      : `WHERE ${overdueSqlPredicate('py')}`;
 
     const db = getSqliteDatabase();
 
@@ -88,8 +89,8 @@ export async function registerReportRoutes(app: FastifyInstance) {
       SELECT
         (SELECT count(*) FROM clients) AS totalClients,
         (SELECT count(*) FROM services WHERE status = 'active') AS activeServices,
-        (SELECT count(*) FROM payments WHERE status = 'overdue') AS overduePayments,
-        (SELECT coalesce(sum(amount_cve), 0) FROM payments WHERE status = 'overdue') AS overdueAmountCve,
+        (SELECT count(*) FROM payments WHERE ${overdueSqlPredicate()}) AS overduePayments,
+        (SELECT coalesce(sum(amount_cve), 0) FROM payments WHERE ${overdueSqlPredicate()}) AS overdueAmountCve,
         (SELECT coalesce(sum(amount_cve), 0) FROM payments WHERE status = 'paid') AS paidAmountCve,
         (
           SELECT coalesce(sum(stock_total * (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve)), 0)

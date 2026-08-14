@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getSqliteDatabase } from '../db/database';
+import { overdueSqlPredicate } from '../lib/payments';
 import { requireAuth } from './auth';
 
 type DashboardMetricRow = {
@@ -72,7 +73,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         (SELECT count(*) FROM clients WHERE status = 'active') AS activeClients,
         (SELECT count(*) FROM clients WHERE status = 'suspended') AS suspendedClients,
         (SELECT count(*) FROM clients WHERE status = 'cancelled') AS cancelledClients,
-        (SELECT count(*) FROM payments WHERE status = 'overdue') AS overduePayments,
+        (SELECT count(*) FROM payments WHERE ${overdueSqlPredicate()}) AS overduePayments,
         (SELECT count(*) FROM payments WHERE status = 'pending') AS pendingPayments,
         (SELECT count(*) FROM equipment_catalog WHERE active = 1 AND stock_total <= 3) AS lowStockModels,
         (SELECT count(*) FROM services WHERE status = 'active') AS activeServices,
@@ -177,8 +178,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
              CAST(julianday('now') - julianday(payments.due_date) AS INTEGER) AS daysOverdue
       FROM payments
       JOIN clients ON clients.id = payments.client_id
-      WHERE (payments.status = 'overdue'
-             OR (payments.status = 'pending' AND payments.due_date < date('now')))
+      WHERE ${overdueSqlPredicate('payments')}
         AND julianday('now') - julianday(payments.due_date) >= 30
       ORDER BY payments.due_date ASC
       LIMIT 5

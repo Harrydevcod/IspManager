@@ -3,6 +3,7 @@ import { getSqliteDatabase } from '../db/database';
 import { listBackups } from './backup';
 import { jobHealth } from './jobRuns';
 import { loadNetworkStatus } from './network-probe';
+import { overdueSqlPredicate } from './payments';
 import { formatPtDateTime } from '../../shared/date';
 import { DEFAULT_POSTPAID_BILLING_DAY } from '../../shared/billing-period';
 import {
@@ -522,8 +523,8 @@ function loadBilling(
   const wallet = db.prepare(`
     SELECT
       COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_cve END), 0) AS paidCve,
-      COALESCE(SUM(CASE WHEN status IN ('pending','overdue') AND date(due_date) < date('now') THEN amount_cve END), 0) AS overdueCve,
-      COUNT(CASE WHEN status IN ('pending','overdue') AND date(due_date) < date('now') THEN 1 END) AS overdueCount,
+      COALESCE(SUM(CASE WHEN ${overdueSqlPredicate()} THEN amount_cve END), 0) AS overdueCve,
+      COUNT(CASE WHEN ${overdueSqlPredicate()} THEN 1 END) AS overdueCount,
       COALESCE(SUM(CASE WHEN status = 'pending' AND date(due_date) >= date('now') THEN amount_cve END), 0) AS pendingNotDueCve,
       COUNT(CASE WHEN status = 'pending' AND date(due_date) >= date('now') THEN 1 END) AS pendingNotDueCount,
       COALESCE(SUM(CASE WHEN status = 'cancelled' THEN amount_cve END), 0) AS cancelledCve
@@ -559,7 +560,7 @@ function loadBilling(
       CASE WHEN c.status = 'cancelled' THEN 1 ELSE 0 END AS clientCancelled
     FROM payments p
     JOIN clients c ON c.id = p.client_id
-    WHERE p.status IN ('pending','overdue') AND date(p.due_date) < date('now')
+    WHERE ${overdueSqlPredicate('p')}
     GROUP BY c.id
     ORDER BY amountCve DESC, maxDaysOverdue DESC
   `).all() as Array<Omit<OperationsDebtor, 'clientCancelled'> & { clientCancelled: number }>;

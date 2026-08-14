@@ -8,6 +8,7 @@ import {
   fallbackWhatsappTemplate,
   renderWhatsappTemplate
 } from '../../shared/whatsapp';
+import { overdueSqlPredicate } from '../lib/payments';
 import { normalizeUltraMsgPhone, sendViaUltraMsg } from '../lib/ultramsg';
 import { enqueueWhatsapp, runWhatsappOutboxIfDue } from '../lib/whatsapp-outbox';
 
@@ -157,8 +158,7 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
         CAST(julianday('now') - julianday(py.due_date) AS INTEGER) AS daysOverdue
       FROM payments py
       JOIN clients c ON c.id = py.client_id
-      WHERE (py.status = 'overdue'
-             OR (py.status = 'pending' AND py.due_date < date('now')))
+      WHERE ${overdueSqlPredicate('py')}
       ORDER BY py.due_date ASC
     `).all() as OverdueCandidate[];
 

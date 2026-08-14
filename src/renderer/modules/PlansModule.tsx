@@ -55,9 +55,14 @@ function typeLabel(type: PlanRow['connectionType']): string {
 }
 
 /** "100/50" → "100/50 Mbps"; keeps whatever unit the user typed if present. */
-function speedDisplay(down: string, up: string): { value: string; unit: string } {
-  const value = `${down}/${up}`;
-  const userSuppliedUnit = /[a-zA-Z]/.test(down + up);
+export function speedDisplay(plan: PlanRow): { value: string; unit: string } {
+  // Os Mbps numericos sao a fonte de verdade desde a migracao 0041; o texto
+  // legado ("20 Mb/s") so aparece em planos que ainda nao foram convertidos.
+  if (plan.downloadMbps != null && plan.uploadMbps != null) {
+    return { value: `${plan.downloadMbps}/${plan.uploadMbps}`, unit: 'Mbps' };
+  }
+  const value = `${plan.downloadSpeed}/${plan.uploadSpeed}`;
+  const userSuppliedUnit = /[a-zA-Z]/.test(plan.downloadSpeed + plan.uploadSpeed);
   return { value, unit: userSuppliedUnit ? '' : 'Mbps' };
 }
 
@@ -242,7 +247,7 @@ export function PlansModule() {
         <div className="plans-list" role="list">
           {visiblePlans.map((plan) => {
             const Icon = iconForType(plan.connectionType);
-            const speed = speedDisplay(plan.downloadSpeed, plan.uploadSpeed);
+            const speed = speedDisplay(plan);
             const interactive = canManagePlans;
             const classes = ['plan-item'];
             if (interactive) classes.push('is-interactive');

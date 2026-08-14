@@ -320,6 +320,18 @@ export function payPayment(
   return { ok: true, value: selectPayment(db, id)! };
 }
 
+/**
+ * "Vencido" deriva da data, não do estado: `status = 'overdue'` só aparece
+ * quando alguém marca o pagamento à mão (markPaymentOverdue), por isso um
+ * read model que conte só esse estado dá zero enquanto há dívida real na
+ * carteira. Todos os painéis partilham este predicado para não discordarem.
+ */
+export function overdueSqlPredicate(alias = ''): string {
+  const col = alias ? `${alias}.` : '';
+  return `(${col}status = 'overdue'`
+    + ` OR (${col}status = 'pending' AND date(${col}due_date) < date('now')))`;
+}
+
 export function markPaymentOverdue(db: Database, id: number): PaymentOpResult<PaymentRecord> {
   const payment = db.prepare('SELECT id, status FROM payments WHERE id = ?').get(id) as { id: number; status: PaymentStatus } | undefined;
   if (!payment) {

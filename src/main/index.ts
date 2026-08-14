@@ -8,6 +8,21 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 
 let mainWindow: BrowserWindow | null = null;
 
+/**
+ * Uma instância só. Sem isto, abrir o atalho duas vezes deixa um processo
+ * fantasma: o segundo backend rebenta com EADDRINUSE em 127.0.0.1:3001 e fica
+ * uma janela em branco a mexer na mesma BD SQLite.
+ */
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  });
+}
+
 /** Ícone da app (favicon.png do renderer) — janela, updater e diálogo Sobre. */
 function appIconPath(): string {
   return isDevelopment
