@@ -12,8 +12,8 @@ type PaymentsTotalsProps = {
 
 export function PaymentsTotals({ totals }: PaymentsTotalsProps) {
   return (
-    <div className="payments-totals" aria-label="Totais filtrados">
-      <span className="payments-totals-label">Totais (filtrados)</span>
+    <div className="payments-totals" aria-label="Totais do periodo">
+      <span className="payments-totals-label">Totais do período</span>
       <span className="payments-total-chip pending">
         <small>Pendente</small>
         <strong>{formatCve(totals.pending.sum)}</strong>

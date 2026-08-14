@@ -761,9 +761,11 @@ export function PaymentsModule({
   }
 
   const normalizedSearch = search.trim().toLowerCase();
-  const filteredPayments = useMemo(() => payments.filter((payment) => {
+  // Base dos totais: mês e pesquisa, sem o estado. Os chips comparam as três
+  // parcelas do período umas com as outras, e o ecrã abre filtrado a Pendente —
+  // se seguissem o filtro, "Atraso" e "Pago" estariam sempre a zero.
+  const periodPayments = useMemo(() => payments.filter((payment) => {
       const monthMatches = showAllMonths || payment.referenceMonth === referenceMonth;
-      const statusMatches = statusFilter === 'all' || payment.status === statusFilter;
       const searchMatches = !normalizedSearch
         || payment.clientName.toLowerCase().includes(normalizedSearch)
         || (payment.invoiceNumber || '').toLowerCase().includes(normalizedSearch)
@@ -771,8 +773,14 @@ export function PaymentsModule({
         || (payment.clientNif || '').toLowerCase().includes(normalizedSearch)
         || (payment.clientPhone || '').toLowerCase().includes(normalizedSearch)
         || (payment.clientCode || '').toLowerCase().includes(normalizedSearch);
-      return monthMatches && statusMatches && searchMatches;
-    }), [payments, normalizedSearch, referenceMonth, showAllMonths, statusFilter]);
+      return monthMatches && searchMatches;
+    }), [payments, normalizedSearch, referenceMonth, showAllMonths]);
+  const filteredPayments = useMemo(
+    () => (statusFilter === 'all'
+      ? periodPayments
+      : periodPayments.filter((payment) => payment.status === statusFilter)),
+    [periodPayments, statusFilter]
+  );
   const visiblePayments = useMemo(() => sortRows(filteredPayments, sortState, {
     dueDate: (a, b) => a.dueDate.localeCompare(b.dueDate) || compareText(a.clientName, b.clientName),
     clientName: (a, b) => compareText(a.clientName, b.clientName) || a.dueDate.localeCompare(b.dueDate),
@@ -802,7 +810,7 @@ export function PaymentsModule({
   const previewPayment = selectedPayment || pagedPayments.rows[0] || null;
   void whatsappTick; // re-render when reminder flag changes
 
-  const totals = visiblePayments.reduce(
+  const totals = useMemo(() => periodPayments.reduce(
     (acc, payment) => {
       if (payment.status === 'pending') {
         acc.pending.count += 1;
@@ -821,7 +829,7 @@ export function PaymentsModule({
       paid: { count: 0, sum: 0 },
       overdue: { count: 0, sum: 0 }
     }
-  );
+  ), [periodPayments]);
 
   const showActionForm = actionMode !== null && actionPaymentId !== null && selectedPayment?.id === actionPaymentId;
 
