@@ -130,3 +130,71 @@ describe('updateService', () => {
     expect(db.prepare('SELECT monthly_value_cve AS value FROM services WHERE id = ?').get(id)).toEqual({ value: 3000 });
   });
 });
+
+describe('identidade PPPoE de um serviço novo', () => {
+  const payload = {
+    clientId: 0,
+    planId: null,
+    monthlyValueCve: 2500,
+    dueDay: 10,
+    activationDate: null,
+    status: 'active' as const,
+    technicalNotes: null,
+    audiovisualMode: 'none' as const,
+    audiovisualMonthlyCve: 0,
+    audiovisualAnnualCve: 0,
+    items: null,
+    installCosts: null
+  };
+
+  function newClient(name = 'João Sá Nunes'): number {
+    return Number(db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLI-900', ?, 'active')`)
+      .run(name).lastInsertRowid);
+  }
+
+  function pppoeOf(serviceId: number) {
+    return db.prepare('SELECT pppoe_username AS username, pppoe_password AS password FROM services WHERE id = ?')
+      .get(serviceId) as { username: string | null; password: string | null };
+  }
+
+  beforeEach(() => {
+    db.prepare(`DELETE FROM app_settings WHERE key = 'routerosEnabled'`).run();
+  });
+
+  test('sem router configurado não se inventam credenciais que ninguém usa', () => {
+    const clientId = newClient();
+    const created = services.createService(db, { ...payload, clientId }, null);
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    expect(pppoeOf(created.value.serviceId)).toEqual({ username: null, password: null });
+  });
+
+  test('com o router ligado o serviço nasce com utilizador e senha, sem acentos', () => {
+    db.prepare(`INSERT OR REPLACE INTO app_settings (key, value) VALUES ('routerosEnabled', 'true')`).run();
+    const clientId = newClient();
+
+    const created = services.createService(db, { ...payload, clientId }, null);
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const pppoe = pppoeOf(created.value.serviceId);
+    expect(pppoe.username).toBe(`joao-sa-nunes-${created.value.serviceId}`);
+    expect(pppoe.password?.length).toBeGreaterThan(8);
+  });
+
+  test('um serviço antigo ganha identidade pela gravação do formulário', () => {
+    const clientId = newClient('Ana Lima');
+    const created = services.createService(db, { ...payload, clientId }, null);
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    services.updateService(db, created.value.serviceId, {
+      ...payload,
+      clientId,
+      pppoeUsername: 'ana-lima-antiga',
+      pppoePassword: 'senha-do-terreno'
+    });
+
+    expect(pppoeOf(created.value.serviceId)).toEqual({ username: 'ana-lima-antiga', password: 'senha-do-terreno' });
+  });
+});

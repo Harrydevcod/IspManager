@@ -1,6 +1,29 @@
-import { Radar, Router, ShieldCheck } from 'lucide-react';
+import { Radar, RefreshCw, Router, ShieldCheck } from 'lucide-react';
 import { Button, Field, Toggle } from '../../components';
 import type { SettingsFormState, ToggleField, UpdateField } from './settingsForm';
+
+export type RouterEnforcementState = {
+  services: Array<{
+    serviceId: number;
+    clientName: string;
+    username: string;
+    online: number;
+    divergence: string | null;
+    lastError: string | null;
+  }>;
+  online: number;
+  divergences: number;
+  enabled: boolean;
+  dryRun: boolean;
+  configured: boolean;
+};
+
+const DIVERGENCE_LABEL: Record<string, string> = {
+  missing_secret: 'Sem utilizador no router',
+  state: 'Estado diferente do ISPM',
+  rate_limit: 'Velocidade diferente do plano',
+  orphan_secret: 'Utilizador sem serviço'
+};
 
 type NetworkTabProps = {
   form: SettingsFormState;
@@ -16,6 +39,10 @@ type NetworkTabProps = {
   onRouterTest: () => void;
   onTrustCertificate: () => void;
   onForgetCertificate: () => void;
+  routerState: RouterEnforcementState | null;
+  enforceBusy: boolean;
+  enforceMessage: string;
+  onEnforceNow: () => void;
 };
 
 export function NetworkTab({
@@ -30,8 +57,13 @@ export function NetworkTab({
   routerFingerprint,
   onRouterTest,
   onTrustCertificate,
-  onForgetCertificate
+  onForgetCertificate,
+  routerState,
+  enforceBusy,
+  enforceMessage,
+  onEnforceNow
 }: NetworkTabProps) {
+  const divergent = (routerState?.services ?? []).filter((row) => row.divergence || row.lastError);
   return (
     <>
       <Toggle
@@ -183,6 +215,40 @@ export function NetworkTab({
           </Button>
         </div>
       </div>
+
+      {routerState?.configured && (
+        <section className="settings-router-state wide-field" aria-label="Estado da reconciliação">
+          <p className="settings-router-summary">
+            {routerState.services.length} serviço(s) com PPPoE · {routerState.online} online agora ·{' '}
+            {routerState.divergences} divergência(s)
+            {routerState.dryRun ? ' · em ensaio' : ''}
+          </p>
+          {divergent.length > 0 && (
+            <ul className="settings-router-divergences">
+              {divergent.slice(0, 12).map((row) => (
+                <li key={row.serviceId}>
+                  <strong>{row.clientName}</strong>
+                  <span>{row.username}</span>
+                  <em>{row.lastError || DIVERGENCE_LABEL[row.divergence ?? ''] || row.divergence}</em>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="settings-test-whatsapp">
+            <span>{enforceMessage || 'Compara o ISPM com o router e aplica a diferença — respeitando o ensaio.'}</span>
+            <div className="form-actions">
+              <Button
+                variant="secondary"
+                onClick={onEnforceNow}
+                loading={enforceBusy}
+                leadingIcon={<RefreshCw size={14} aria-hidden />}
+              >
+                Reconciliar agora
+              </Button>
+            </div>
+          </div>
+        </section>
+      )}
     </>
   );
 }

@@ -5677,6 +5677,54 @@ button.danger:disabled {
   justify-items: start;
 }
 
+/* Estado da reconciliação: uma linha de resumo e, só quando há alguma coisa
+   errada, a lista do que está diferente. Sem divergências não ocupa espaço. */
+.settings-router-state {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.settings-router-summary {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.settings-router-divergences {
+  display: grid;
+  gap: var(--space-1-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-router-divergences li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: var(--space-3);
+  align-items: baseline;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2, var(--surface));
+  font-size: var(--fs-sm);
+}
+
+.settings-router-divergences span {
+  color: var(--text-3);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+.settings-router-divergences em {
+  color: var(--warn, var(--text-2));
+  font-style: normal;
+  font-weight: 600;
+}
+
 .settings-router-cert p {
   margin: 0;
   max-width: 62ch;

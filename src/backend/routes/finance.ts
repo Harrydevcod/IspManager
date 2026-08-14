@@ -50,6 +50,13 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         s.audiovisual_mode AS audiovisualMode,
         s.audiovisual_monthly_cve AS audiovisualMonthlyCve,
         s.audiovisual_annual_cve AS audiovisualAnnualCve,
+        s.pppoe_username AS pppoeUsername,
+        s.pppoe_password AS pppoePassword,
+        -- Realidade lida do router (ADR 0007): a lista mostra quem está mesmo
+        -- online, sem ir buscá-lo serviço a serviço.
+        n.online AS routerOnline,
+        n.router_enabled AS routerEnabled,
+        n.divergence AS routerDivergence,
         -- IPs dos equipamentos ativos: chave de identificacao das antenas para
         -- manutencao remota, por isso vem ja na lista e nao so no detalhe.
         -- Pela vista assignment_services, para uma antena partilhada aparecer em
@@ -63,6 +70,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       FROM services s
       JOIN clients c ON c.id = s.client_id
       LEFT JOIN internet_plans p ON p.id = s.plan_id
+      LEFT JOIN service_network_state n ON n.service_id = s.id
       ORDER BY c.full_name
     `).all();
   });

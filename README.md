@@ -18,6 +18,7 @@ Aplicação desktop offline-first construída para correr na operação diária 
 | **OS técnicas** | Kanban de ordens de serviço (aguarda → agendada → em curso → concluída) |
 | **Stock** | Catálogo de equipamento, movimentos, custo aterrado, atribuições |
 | **Relatórios** | Receita por mês, clientes em atraso, valor de inventário |
+| **Rede** | Sonda ICMP de disponibilidade e controlo de acesso no MikroTik: corte/reposição, aprovisionamento PPPoE e velocidade por plano (ADR 0007 e 0008) |
 | **Utilizadores** | Multi-perfil (admin / operadora / técnico), gestão de contas |
 | **Auditoria** | Registo imutável de quem fez o quê, quando |
 | **Configurações** | Backup/restore, parâmetros do sistema |

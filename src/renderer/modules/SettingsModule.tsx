@@ -29,7 +29,7 @@ import { CompanyTab } from './settings/CompanyTab';
 import { SmsTab } from './settings/SmsTab';
 import { WhatsappTab } from './settings/WhatsappTab';
 import { emptyBankAccount, type BankAccountForm, type SettingsFormState } from './settings/settingsForm';
-import { NetworkTab } from './settings/NetworkTab';
+import { NetworkTab, type RouterEnforcementState } from './settings/NetworkTab';
 import { JobHealthPanel } from './JobHealthPanel';
 import { LicensePanel } from './LicensePanel';
 
@@ -115,6 +115,9 @@ export function SettingsModule() {
   const [routerBusy, setRouterBusy] = useState(false);
   const [routerMessage, setRouterMessage] = useState('');
   const [routerCert, setRouterCert] = useState<{ pem: string; fingerprint: string } | null>(null);
+  const [routerState, setRouterState] = useState<RouterEnforcementState | null>(null);
+  const [enforceBusy, setEnforceBusy] = useState(false);
+  const [enforceMessage, setEnforceMessage] = useState('');
   const [smsStatus, setSmsStatus] = useState<SmsStatus | null>(null);
   const [smsReportMonth, setSmsReportMonth] = useState(currentSmsReportMonth);
   const [smsReport, setSmsReport] = useState<SmsMonthlyReport | null>(null);
@@ -404,6 +407,12 @@ export function SettingsModule() {
     return () => window.clearTimeout(timeout);
   }, [message]);
 
+  // O estado do router só se lê quando a aba Rede está aberta: não vale a pena
+  // uma leitura em cada arranque das Definições.
+  useEffect(() => {
+    if (activeTab === 'network') void loadRouterState();
+  }, [activeTab]);
+
   useEffect(() => {
     if (!testMessage || testMessage.tone === 'error') return;
     const timeout = window.setTimeout(() => {
@@ -488,6 +497,44 @@ export function SettingsModule() {
       setProbeMessage('Falha de rede ao sondar.');
     } finally {
       setProbeBusy(false);
+    }
+  }
+
+  async function loadRouterState() {
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/network/enforcement');
+      if (!response.ok) return;
+      setRouterState(await response.json() as RouterEnforcementState);
+    } catch {
+      // O painel do router é informativo: falhar a leitura não estraga as Definições.
+    }
+  }
+
+  async function enforceNow() {
+    setEnforceBusy(true);
+    setEnforceMessage('');
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/network/enforce', { method: 'POST' });
+      const result = await response.json() as {
+        error?: string; skipped?: boolean; aborted?: boolean; reason?: string;
+        dryRun?: boolean; planned?: number; applied?: number; failed?: number; divergences?: number;
+      };
+      if (!response.ok) {
+        setEnforceMessage(result.error || 'Nao foi possivel reconciliar.');
+      } else if (result.skipped) {
+        setEnforceMessage(result.reason || 'Nada a reconciliar.');
+      } else if (result.aborted) {
+        setEnforceMessage(`Travado por seguranca: ${result.reason}. Nada foi alterado no router.`);
+      } else if (result.dryRun) {
+        setEnforceMessage(`Ensaio: ${result.planned} alteracao(oes) por aplicar, ${result.divergences} divergencia(s). Nada foi alterado.`);
+      } else {
+        setEnforceMessage(`${result.applied} alteracao(oes) aplicadas, ${result.failed} falha(s).`);
+      }
+      await loadRouterState();
+    } catch {
+      setEnforceMessage('Falha de rede ao reconciliar.');
+    } finally {
+      setEnforceBusy(false);
     }
   }
 
@@ -643,6 +690,10 @@ export function SettingsModule() {
               setRouterCert(null);
               setRouterMessage('Certificado fixado no formulário. Grave as definições e teste outra vez.');
             }}
+            routerState={routerState}
+            enforceBusy={enforceBusy}
+            enforceMessage={enforceMessage}
+            onEnforceNow={() => void enforceNow()}
             onForgetCertificate={() => {
               updateForm('routerosTlsCert', '');
               setRouterMessage('Certificado esquecido. Grave as definições para aplicar.');

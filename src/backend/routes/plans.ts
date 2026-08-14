@@ -11,6 +11,10 @@ const planSchema = z.object({
   monthlyPriceCve: z.coerce.number().min(0),
   installationFeeCve: z.coerce.number().min(0).default(0),
   description: z.string().trim().optional().nullable(),
+  // Velocidade legivel por maquina: e daqui que sai o rate-limit no MikroTik.
+  // Nulo = sem limite definido; a reconciliacao nao adivinha a partir do texto.
+  downloadMbps: z.coerce.number().int().min(1).max(10000).optional().nullable(),
+  uploadMbps: z.coerce.number().int().min(1).max(10000).optional().nullable(),
   active: z.coerce.boolean().default(true)
 });
 
@@ -28,6 +32,8 @@ export async function registerPlanRoutes(app: FastifyInstance) {
         connection_type AS connectionType,
         monthly_price_cve AS monthlyPriceCve,
         installation_fee_cve AS installationFeeCve,
+        download_mbps AS downloadMbps,
+        upload_mbps AS uploadMbps,
         description,
         active,
         created_at AS createdAt,
@@ -49,6 +55,8 @@ export async function registerPlanRoutes(app: FastifyInstance) {
         connection_type AS connectionType,
         monthly_price_cve AS monthlyPriceCve,
         installation_fee_cve AS installationFeeCve,
+        download_mbps AS downloadMbps,
+        upload_mbps AS uploadMbps,
         description,
         active
       FROM internet_plans
@@ -72,9 +80,9 @@ export async function registerPlanRoutes(app: FastifyInstance) {
     const result = db.prepare(`
       INSERT INTO internet_plans (
         name, download_speed, upload_speed, connection_type, monthly_price_cve,
-        installation_fee_cve, description, active, created_at, updated_at
+        installation_fee_cve, description, active, download_mbps, upload_mbps, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     `).run(
       parsed.data.name,
       parsed.data.downloadSpeed,
@@ -83,7 +91,9 @@ export async function registerPlanRoutes(app: FastifyInstance) {
       parsed.data.monthlyPriceCve,
       parsed.data.installationFeeCve,
       parsed.data.description || null,
-      parsed.data.active ? 1 : 0
+      parsed.data.active ? 1 : 0,
+      parsed.data.downloadMbps ?? null,
+      parsed.data.uploadMbps ?? null
     );
 
     return reply.status(201).send({ id: result.lastInsertRowid });
@@ -107,6 +117,8 @@ export async function registerPlanRoutes(app: FastifyInstance) {
           installation_fee_cve = ?,
           description = ?,
           active = ?,
+          download_mbps = ?,
+          upload_mbps = ?,
           updated_at = datetime('now')
       WHERE id = ?
     `).run(
@@ -118,6 +130,8 @@ export async function registerPlanRoutes(app: FastifyInstance) {
       parsed.data.installationFeeCve,
       parsed.data.description || null,
       parsed.data.active ? 1 : 0,
+      parsed.data.downloadMbps ?? null,
+      parsed.data.uploadMbps ?? null,
       id
     );
 

@@ -62,6 +62,13 @@ export type ServiceRow = {
   audiovisualAnnualCve: number;
   /** IPs dos equipamentos ativos, separados por vírgula. Null se não houver nenhum. */
   deviceIps: string | null;
+  /** Identidade no MikroTik. Null = serviço fora do controlo de acesso. */
+  pppoeUsername: string | null;
+  pppoePassword: string | null;
+  /** Realidade lida do router (ADR 0007); null enquanto nunca foi lido. */
+  routerOnline: number | null;
+  routerEnabled: number | null;
+  routerDivergence: string | null;
 };
 
 export type AudiovisualConfig = {
@@ -133,6 +140,9 @@ export type PlanRow = {
   installationFeeCve: number;
   description: string | null;
   active: number;
+  /** Débito em Mbps. Null = sem limite definido; o router fica como está. */
+  downloadMbps: number | null;
+  uploadMbps: number | null;
 };
 
 export type StockCatalogRow = {
