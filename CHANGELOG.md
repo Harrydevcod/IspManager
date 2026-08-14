@@ -4,6 +4,14 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## Por lançar
+
+### Corrigido
+
+- **cobranca:** O que está vencido passa a contar-se pela data e não pelo estado. O painel principal contava só os pagamentos marcados em atraso à mão — ninguém marca — por isso anunciava "Sem alertas criticos" com 14.000$ vencidos na carteira, enquanto o painel Operação, que já contava pela data, gritava crítico. Os dois painéis, o relatório de Atrasos e os avisos de WhatsApp passam a partilhar a mesma definição
+- **planos:** A lista mostrava a velocidade duas vezes ("20 Mb/s/20Mb/s") porque juntava o texto antigo em vez de usar os Mbps do plano
+- **app:** Abrir o atalho com a aplicação já aberta deixava um processo pendurado a disputar a mesma base de dados — agora traz a janela existente para a frente
+
 ## [1.11.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.11.0) — 2026-08-14
 
 ### Adicionado

@@ -278,6 +278,30 @@ describe('GET /api/dashboard/summary', () => {
     expect(body.paidPrevMonthCve).toBe(0);
   });
 
+  test('conta como atraso o pendente cuja data ja passou, sem esperar pelo estado overdue', async () => {
+    db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('C003', 'Cliente Vencido', 'active')`).run();
+    const clientId = db.prepare(`SELECT id FROM clients WHERE client_code = 'C003'`).get() as { id: number };
+    db.prepare(`INSERT INTO internet_plans (name, connection_type, monthly_price_cve, active) VALUES ('Plano C', 'radio', 3000, 1)`).run();
+    const planId = db.prepare(`SELECT id FROM internet_plans WHERE name = 'Plano C'`).get() as { id: number };
+    db.prepare(`
+      INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status)
+      VALUES (?, ?, 3000, 1, 'active')
+    `).run(clientId.id, planId.id);
+    const serviceId = db.prepare(`SELECT id FROM services LIMIT 1`).get() as { id: number };
+
+    const tenDaysAgo = new Date();
+    tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+    const dueDate = tenDaysAgo.toISOString().slice(0, 10);
+
+    db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+      VALUES (?, ?, ?, 3000, ?, 'pending')
+    `).run(clientId.id, serviceId.id, dueDate.slice(0, 7), dueDate);
+
+    const body = (await app.inject({ method: 'GET', url: '/api/dashboard/summary' })).json();
+    expect(body.overduePayments).toBe(1);
+  });
+
   test('flags critical overdue payments older than 30 days', async () => {
     db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('C002', 'Cliente Atrasado', 'active')`).run();
     const clientId = db.prepare(`SELECT id FROM clients WHERE client_code = 'C002'`).get() as { id: number };

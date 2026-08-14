@@ -120,8 +120,10 @@ describe('GET /api/reports/summary', () => {
 
     expect(body.metrics.totalClients).toBe(3);
     expect(body.metrics.activeServices).toBe(2);
-    expect(body.metrics.overduePayments).toBe(2);
-    expect(body.metrics.overdueAmountCve).toBe(9000);
+    // Os dois da Bruno mais o pendente da Ana, cuja data de vencimento já
+    // passou — vencido é a data, não o estado ter sido marcado à mão.
+    expect(body.metrics.overduePayments).toBe(3);
+    expect(body.metrics.overdueAmountCve).toBe(13500);
     expect(body.metrics.paidAmountCve).toBe(4500);
     // 10 * (5000+200+100+50) + 2 * (3000+100+50+25) = 53500 + 6350 = 59850
     expect(body.metrics.stockValueCve).toBe(59850);
@@ -170,8 +172,9 @@ describe('GET /api/reports/summary', () => {
     const response = await app.inject({ method: 'GET', url: '/api/reports/summary' });
     const body = response.json() as ReportSummary;
 
-    expect(body.overdueClients).toHaveLength(1);
-    expect(body.overdueClients[0]).toMatchObject({
+    expect(body.overdueClients).toHaveLength(2);
+    expect(body.overdueClients.map((row) => row.clientName)).toContain('Ana Lima');
+    expect(body.overdueClients.find((row) => row.clientName === 'Bruno Costa')).toMatchObject({
       clientName: 'Bruno Costa',
       clientCode: 'CLT-0002',
       phone: '9222222',
