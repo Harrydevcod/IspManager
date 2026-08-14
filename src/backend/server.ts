@@ -35,6 +35,8 @@ import { pollWhatsappDeliveryIfDue, runWhatsappOutboxIfDue } from './lib/whatsap
 import { pollSmsStatusIfDue, runSmsOutboxIfDue, smsDispatchIntervalMs } from './lib/sms-outbox';
 import { registerNetworkRoutes } from './routes/network';
 import { networkProbeIntervalMs, runNetworkProbeIfDue } from './lib/network-probe';
+import { runNetworkEnforcementIfDue } from './lib/network-enforcement';
+import { routerosIntervalMs } from './lib/routeros';
 import { runJob, runJobSync } from './lib/jobRuns';
 
 let serverStarted = false;
@@ -219,6 +221,23 @@ export async function createBackendApp() {
     };
     probeTick();
     scheduleProbe();
+  }
+
+  // Reconciliação do acesso na rede (ADR 0007): compara a intenção da BD com o
+  // que está no MikroTik e aplica a diferença. Desligada em Definições até
+  // alguém a ligar, e em ensaio até alguém desligar o ensaio. Guarda de licença
+  // como os outros jobs que escrevem. Opt-out com ISPM_ROUTEROS=off.
+  if (process.env.ISPM_ROUTEROS !== 'off' && !process.env.VITEST) {
+    const enforcementTick = () => {
+      if (!licenseAllowsWrites()) return;
+      void runJob('network_enforcement', runNetworkEnforcementIfDue)
+        .catch((err) => app.log.error({ err }, 'network enforcement failed'));
+    };
+    const scheduleEnforcement = () => {
+      setTimeout(() => { enforcementTick(); scheduleEnforcement(); }, routerosIntervalMs()).unref();
+    };
+    enforcementTick();
+    scheduleEnforcement();
   }
 
   return app;

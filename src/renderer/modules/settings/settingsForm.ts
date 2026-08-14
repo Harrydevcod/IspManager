@@ -51,6 +51,15 @@ export type SettingsFormState = {
   networkProbeIntervalSeconds: string;
   networkProbeIncludeClients: boolean;
   networkProbeFailThreshold: string;
+  routerosEnabled: boolean;
+  routerosHost: string;
+  routerosPort: string;
+  routerosUser: string;
+  routerosPassword: string;
+  routerosTlsCert: string;
+  routerosDryRun: boolean;
+  routerosIntervalSeconds: string;
+  routerosMaxDisablesPerRun: string;
 };
 
 export const emptyBankAccount: BankAccountForm = {

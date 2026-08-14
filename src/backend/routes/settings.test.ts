@@ -229,3 +229,47 @@ describe('settings SMS validation', () => {
     expect(readResponse.json().bankAccounts).toEqual(bankAccounts);
   });
 });
+
+describe('definicoes do MikroTik', () => {
+  const MASK = '••••••••';
+
+  test('a senha do router nunca sai em claro e a mascara nao a apaga', async () => {
+    const saved = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, routerosHost: '192.168.88.1', routerosUser: 'ispm', routerosPassword: 'segredo' }
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().routerosPassword).toBe(MASK);
+
+    const read = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(read.json().routerosPassword).toBe(MASK);
+    expect((db.prepare(`SELECT value FROM app_settings WHERE key='routerosPassword'`).get() as { value: string }).value)
+      .toBe('segredo');
+
+    // Gravar outra definicao qualquer devolve a mascara ao servidor: a senha fica.
+    await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, routerosHost: '192.168.88.1', routerosUser: 'ispm', routerosPassword: MASK }
+    });
+    expect((db.prepare(`SELECT value FROM app_settings WHERE key='routerosPassword'`).get() as { value: string }).value)
+      .toBe('segredo');
+  });
+
+  test('o ensaio (dry-run) so se desliga com um false explicito', async () => {
+    const semChave = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(semChave.json().routerosDryRun).toBe(true);
+
+    await app.inject({ method: 'PUT', url: '/api/settings', payload: { ...validSettings } });
+    expect((await app.inject({ method: 'GET', url: '/api/settings' })).json().routerosDryRun).toBe(true);
+
+    await app.inject({ method: 'PUT', url: '/api/settings', payload: { ...validSettings, routerosDryRun: false } });
+    expect((await app.inject({ method: 'GET', url: '/api/settings' })).json().routerosDryRun).toBe(false);
+  });
+
+  test('testar ligacao sem router configurado responde 400 em vez de tentar ligar', async () => {
+    const response = await app.inject({ method: 'POST', url: '/api/network/router/test' });
+    expect(response.statusCode).toBe(400);
+  });
+});

@@ -12,6 +12,8 @@ type PlanFormState = {
   name: string;
   downloadSpeed: string;
   uploadSpeed: string;
+  downloadMbps: string;
+  uploadMbps: string;
   connectionType: 'radio' | 'fibra' | 'cabo' | 'outro';
   monthlyPriceCve: string;
   installationFeeCve: string;
@@ -24,6 +26,8 @@ function emptyPlanForm(): PlanFormState {
     name: '',
     downloadSpeed: '',
     uploadSpeed: '',
+    downloadMbps: '',
+    uploadMbps: '',
     connectionType: 'fibra',
     monthlyPriceCve: '',
     installationFeeCve: '',
@@ -100,6 +104,8 @@ export function PlansModule() {
       name: plan.name,
       downloadSpeed: plan.downloadSpeed,
       uploadSpeed: plan.uploadSpeed,
+      downloadMbps: plan.downloadMbps == null ? '' : String(plan.downloadMbps),
+      uploadMbps: plan.uploadMbps == null ? '' : String(plan.uploadMbps),
       connectionType: plan.connectionType,
       monthlyPriceCve: String(plan.monthlyPriceCve),
       installationFeeCve: String(plan.installationFeeCve),
@@ -125,6 +131,10 @@ export function PlansModule() {
         ...form,
         monthlyPriceCve: Number(form.monthlyPriceCve),
         installationFeeCve: Number(form.installationFeeCve || 0),
+        // Vazio = sem limite definido: o router fica como esta, em vez de
+        // receber um zero que cortaria a velocidade toda.
+        downloadMbps: form.downloadMbps ? Number(form.downloadMbps) : null,
+        uploadMbps: form.uploadMbps ? Number(form.uploadMbps) : null,
         active: form.active === '1'
       })
     });
@@ -325,6 +335,24 @@ export function PlansModule() {
           </Select>
           <Field label="Download" required value={form.downloadSpeed} onChange={(event) => updateForm('downloadSpeed', event.target.value)} />
           <Field label="Upload" required value={form.uploadSpeed} onChange={(event) => updateForm('uploadSpeed', event.target.value)} />
+          <Field
+            label="Download (Mbps)"
+            type="number"
+            min={1}
+            max={10000}
+            value={form.downloadMbps}
+            onChange={(event) => updateForm('downloadMbps', event.target.value)}
+            hint="Número usado para limitar a velocidade no router. Em branco, o router fica como está."
+          />
+          <Field
+            label="Upload (Mbps)"
+            type="number"
+            min={1}
+            max={10000}
+            value={form.uploadMbps}
+            onChange={(event) => updateForm('uploadMbps', event.target.value)}
+            hint="Idem. Os dois campos são precisos para o limite ser aplicado."
+          />
           <Field label="Mensalidade CVE" required type="number" min={0} value={form.monthlyPriceCve} onChange={(event) => updateForm('monthlyPriceCve', event.target.value)} />
           <Field label="Instalacao CVE" type="number" min={0} value={form.installationFeeCve} onChange={(event) => updateForm('installationFeeCve', event.target.value)} />
           <Field wide label="Descricao" value={form.description} onChange={(event) => updateForm('description', event.target.value)} />

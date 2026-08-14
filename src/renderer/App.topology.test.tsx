@@ -66,7 +66,12 @@ const services: ServiceRow[] = [
     audiovisualMode: 'none',
     audiovisualMonthlyCve: 0,
     audiovisualAnnualCve: 0,
-    deviceIps: null
+    deviceIps: null,
+    pppoeUsername: null,
+    pppoePassword: null,
+    routerOnline: null,
+    routerEnabled: null,
+    routerDivergence: null
   },
   {
     id: 11,
@@ -82,7 +87,12 @@ const services: ServiceRow[] = [
     audiovisualMode: 'none',
     audiovisualMonthlyCve: 0,
     audiovisualAnnualCve: 0,
-    deviceIps: null
+    deviceIps: null,
+    pppoeUsername: null,
+    pppoePassword: null,
+    routerOnline: null,
+    routerEnabled: null,
+    routerDivergence: null
   }
 ];
 

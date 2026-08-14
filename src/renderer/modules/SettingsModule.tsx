@@ -29,7 +29,7 @@ import { CompanyTab } from './settings/CompanyTab';
 import { SmsTab } from './settings/SmsTab';
 import { WhatsappTab } from './settings/WhatsappTab';
 import { emptyBankAccount, type BankAccountForm, type SettingsFormState } from './settings/settingsForm';
-import { NetworkTab } from './settings/NetworkTab';
+import { NetworkTab, type RouterEnforcementState } from './settings/NetworkTab';
 import { JobHealthPanel } from './JobHealthPanel';
 import { LicensePanel } from './LicensePanel';
 
@@ -99,10 +99,25 @@ export function SettingsModule() {
     networkProbeEnabled: false,
     networkProbeIntervalSeconds: '60',
     networkProbeIncludeClients: false,
-    networkProbeFailThreshold: '3'
+    networkProbeFailThreshold: '3',
+    routerosEnabled: false,
+    routerosHost: '',
+    routerosPort: '443',
+    routerosUser: '',
+    routerosPassword: '',
+    routerosTlsCert: '',
+    routerosDryRun: true,
+    routerosIntervalSeconds: '120',
+    routerosMaxDisablesPerRun: '5'
   });
   const [probeBusy, setProbeBusy] = useState(false);
   const [probeMessage, setProbeMessage] = useState('');
+  const [routerBusy, setRouterBusy] = useState(false);
+  const [routerMessage, setRouterMessage] = useState('');
+  const [routerCert, setRouterCert] = useState<{ pem: string; fingerprint: string } | null>(null);
+  const [routerState, setRouterState] = useState<RouterEnforcementState | null>(null);
+  const [enforceBusy, setEnforceBusy] = useState(false);
+  const [enforceMessage, setEnforceMessage] = useState('');
   const [smsStatus, setSmsStatus] = useState<SmsStatus | null>(null);
   const [smsReportMonth, setSmsReportMonth] = useState(currentSmsReportMonth);
   const [smsReport, setSmsReport] = useState<SmsMonthlyReport | null>(null);
@@ -303,7 +318,7 @@ export function SettingsModule() {
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
         }
-        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold'> & { defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number }>;
+        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold' | 'routerosPort' | 'routerosIntervalSeconds' | 'routerosMaxDisablesPerRun'> & { defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number; routerosPort: number; routerosIntervalSeconds: number; routerosMaxDisablesPerRun: number }>;
       })
       .then((settings) => {
         const loadedForm = {
@@ -320,7 +335,10 @@ export function SettingsModule() {
           smsDispatchIntervalSeconds: String(settings.smsDispatchIntervalSeconds),
           smsRetryGraceMinutes: String(settings.smsRetryGraceMinutes),
           networkProbeIntervalSeconds: String(settings.networkProbeIntervalSeconds),
-          networkProbeFailThreshold: String(settings.networkProbeFailThreshold)
+          networkProbeFailThreshold: String(settings.networkProbeFailThreshold),
+          routerosPort: String(settings.routerosPort),
+          routerosIntervalSeconds: String(settings.routerosIntervalSeconds),
+          routerosMaxDisablesPerRun: String(settings.routerosMaxDisablesPerRun)
         };
         setForm(loadedForm);
         setLastSavedForm(loadedForm);
@@ -389,6 +407,12 @@ export function SettingsModule() {
     return () => window.clearTimeout(timeout);
   }, [message]);
 
+  // O estado do router só se lê quando a aba Rede está aberta: não vale a pena
+  // uma leitura em cada arranque das Definições.
+  useEffect(() => {
+    if (activeTab === 'network') void loadRouterState();
+  }, [activeTab]);
+
   useEffect(() => {
     if (!testMessage || testMessage.tone === 'error') return;
     const timeout = window.setTimeout(() => {
@@ -433,7 +457,10 @@ export function SettingsModule() {
           smsDispatchIntervalSeconds: Number(savedForm.smsDispatchIntervalSeconds),
           smsRetryGraceMinutes: Number(savedForm.smsRetryGraceMinutes),
           networkProbeIntervalSeconds: Number(savedForm.networkProbeIntervalSeconds),
-          networkProbeFailThreshold: Number(savedForm.networkProbeFailThreshold)
+          networkProbeFailThreshold: Number(savedForm.networkProbeFailThreshold),
+          routerosPort: Number(savedForm.routerosPort),
+          routerosIntervalSeconds: Number(savedForm.routerosIntervalSeconds),
+          routerosMaxDisablesPerRun: Number(savedForm.routerosMaxDisablesPerRun)
         })
       });
 
@@ -470,6 +497,70 @@ export function SettingsModule() {
       setProbeMessage('Falha de rede ao sondar.');
     } finally {
       setProbeBusy(false);
+    }
+  }
+
+  async function loadRouterState() {
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/network/enforcement');
+      if (!response.ok) return;
+      setRouterState(await response.json() as RouterEnforcementState);
+    } catch {
+      // O painel do router é informativo: falhar a leitura não estraga as Definições.
+    }
+  }
+
+  async function enforceNow() {
+    setEnforceBusy(true);
+    setEnforceMessage('');
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/network/enforce', { method: 'POST' });
+      const result = await response.json() as {
+        error?: string; skipped?: boolean; aborted?: boolean; reason?: string;
+        dryRun?: boolean; planned?: number; applied?: number; failed?: number; divergences?: number;
+      };
+      if (!response.ok) {
+        setEnforceMessage(result.error || 'Nao foi possivel reconciliar.');
+      } else if (result.skipped) {
+        setEnforceMessage(result.reason || 'Nada a reconciliar.');
+      } else if (result.aborted) {
+        setEnforceMessage(`Travado por seguranca: ${result.reason}. Nada foi alterado no router.`);
+      } else if (result.dryRun) {
+        setEnforceMessage(`Ensaio: ${result.planned} alteracao(oes) por aplicar, ${result.divergences} divergencia(s). Nada foi alterado.`);
+      } else {
+        setEnforceMessage(`${result.applied} alteracao(oes) aplicadas, ${result.failed} falha(s).`);
+      }
+      await loadRouterState();
+    } catch {
+      setEnforceMessage('Falha de rede ao reconciliar.');
+    } finally {
+      setEnforceBusy(false);
+    }
+  }
+
+  async function testRouterNow() {
+    setRouterBusy(true);
+    setRouterMessage('');
+    setRouterCert(null);
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/network/router/test', { method: 'POST' });
+      const result = await response.json() as {
+        ok?: boolean; version?: string; boardName?: string; error?: string;
+        fingerprint?: string | null; certificate?: string | null;
+      };
+      if (response.ok && result.ok) {
+        setRouterMessage(`Ligado: ${result.boardName} com RouterOS ${result.version}.`);
+      } else {
+        setRouterMessage(result.error || 'Nao foi possivel contactar o router.');
+        // Certificado próprio: em vez de mandar desligar o TLS, propõe fixá-lo.
+        if (result.certificate && result.fingerprint) {
+          setRouterCert({ pem: result.certificate, fingerprint: result.fingerprint });
+        }
+      }
+    } catch {
+      setRouterMessage('Falha de rede ao contactar o router.');
+    } finally {
+      setRouterBusy(false);
     }
   }
 
@@ -589,6 +680,24 @@ export function SettingsModule() {
             probeBusy={probeBusy}
             probeMessage={probeMessage}
             onProbeNow={() => void probeNetworkNow()}
+            routerBusy={routerBusy}
+            routerMessage={routerMessage}
+            routerFingerprint={routerCert?.fingerprint ?? ''}
+            onRouterTest={() => void testRouterNow()}
+            onTrustCertificate={() => {
+              if (!routerCert) return;
+              updateForm('routerosTlsCert', routerCert.pem);
+              setRouterCert(null);
+              setRouterMessage('Certificado fixado no formulário. Grave as definições e teste outra vez.');
+            }}
+            routerState={routerState}
+            enforceBusy={enforceBusy}
+            enforceMessage={enforceMessage}
+            onEnforceNow={() => void enforceNow()}
+            onForgetCertificate={() => {
+              updateForm('routerosTlsCert', '');
+              setRouterMessage('Certificado esquecido. Grave as definições para aplicar.');
+            }}
           />
         )}
 

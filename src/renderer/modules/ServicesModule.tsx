@@ -40,6 +40,8 @@ type ServiceFormState = {
   activationDate: string;
   status: 'active' | 'suspended' | 'cancelled';
   technicalNotes: string;
+  pppoeUsername: string;
+  pppoePassword: string;
   audiovisualMode: 'none' | 'monthly' | 'annual';
   audiovisualMonthlyCve: string;
   audiovisualAnnualCve: string;
@@ -54,6 +56,8 @@ function emptyServiceForm(): ServiceFormState {
     activationDate: new Date().toISOString().slice(0, 10),
     status: 'active',
     technicalNotes: '',
+    pppoeUsername: '',
+    pppoePassword: '',
     audiovisualMode: 'none',
     audiovisualMonthlyCve: '',
     audiovisualAnnualCve: ''
@@ -182,6 +186,8 @@ export function ServicesModule({
       activationDate: service.activationDate || new Date().toISOString().slice(0, 10),
       status: service.status,
       technicalNotes: service.technicalNotes || '',
+      pppoeUsername: service.pppoeUsername || '',
+      pppoePassword: service.pppoePassword || '',
       audiovisualMode: service.audiovisualMode,
       audiovisualMonthlyCve: service.audiovisualMonthlyCve ? String(service.audiovisualMonthlyCve) : '',
       audiovisualAnnualCve: service.audiovisualAnnualCve ? String(service.audiovisualAnnualCve) : ''
@@ -654,6 +660,8 @@ export function ServicesModule({
         activationDate: form.activationDate,
         status: form.status,
         technicalNotes: form.technicalNotes,
+        pppoeUsername: form.pppoeUsername,
+        pppoePassword: form.pppoePassword,
         audiovisualMode: form.audiovisualMode,
         audiovisualMonthlyCve: form.audiovisualMode === 'monthly' ? Number(form.audiovisualMonthlyCve || 0) : 0,
         audiovisualAnnualCve: form.audiovisualMode === 'annual' ? Number(form.audiovisualAnnualCve || 0) : 0,
@@ -862,6 +870,18 @@ export function ServicesModule({
             <option value="suspended">Suspenso</option>
             <option value="cancelled">Cancelado</option>
           </Select>
+          <Field
+            label="Utilizador PPPoE"
+            value={form.pppoeUsername}
+            onChange={(event) => updateForm('pppoeUsername', event.target.value)}
+            hint="Identidade deste cliente no router. Em branco, o serviço fica fora do controlo de acesso."
+          />
+          <Field
+            label="Senha PPPoE"
+            value={form.pppoePassword}
+            onChange={(event) => updateForm('pppoePassword', event.target.value)}
+            hint="É esta que o cliente configura no equipamento dele."
+          />
           <Field wide label="Notas tecnicas" value={form.technicalNotes} onChange={(event) => updateForm('technicalNotes', event.target.value)} />
 
           {avConfig?.enabled && (

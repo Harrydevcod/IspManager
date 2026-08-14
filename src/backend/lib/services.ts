@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
 import {
@@ -40,10 +41,44 @@ export const serviceSchema = z.object({
   audiovisualMonthlyCve: z.coerce.number().min(0).optional().default(0),
   audiovisualAnnualCve: z.coerce.number().min(0).optional().default(0),
   items: z.array(serviceItemSchema).optional().nullable(),
-  installCosts: z.array(installCostSchema).optional().nullable()
+  installCosts: z.array(installCostSchema).optional().nullable(),
+  // Identidade do cliente no router (ADR 0007). Vazio = serviço fora do
+  // controlo de acesso; a reconciliação ignora-o por completo.
+  pppoeUsername: z.string().trim().max(64).optional().nullable(),
+  pppoePassword: z.string().trim().max(64).optional().nullable()
 });
 
 export type ServiceInput = z.infer<typeof serviceSchema>;
+
+/**
+ * Credenciais PPPoE de um serviço novo. Nascem só na base de dados: o secret no
+ * router é criado depois pela reconciliação (ADR 0007), para não haver uma
+ * chamada de rede dentro de uma transação SQL.
+ */
+export function pppoeUsernameFor(clientName: string, serviceId: number): string {
+  const slug = clientName
+    .normalize('NFD')
+    // Tira acentos: "João" tem de dar "joao-12", não "joa-o-12".
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 24)
+    .replace(/-$/, '');
+  return `${slug || 'cliente'}-${serviceId}`;
+}
+
+export function generatePppoePassword(): string {
+  return randomBytes(9).toString('base64url');
+}
+
+/** Verdadeiro quando o controlo de acesso no MikroTik está ligado nas definições. */
+function routerIntegrationOn(db: Database): boolean {
+  const row = db.prepare(`SELECT value FROM app_settings WHERE key = 'routerosEnabled'`).get() as
+    | { value: string }
+    | undefined;
+  return row?.value?.trim() === 'true';
+}
 
 export type ServiceOpResult<T> = { ok: true; value: T } | { ok: false; status: number; error: string };
 
@@ -136,6 +171,17 @@ export function createService(db: Database, data: ServiceInput, userId: number |
       data.audiovisualAnnualCve
     );
     const serviceId = Number(inserted.lastInsertRowid);
+
+    // Com o router ligado, um serviço novo já nasce com identidade na rede. Sem
+    // router, não se inventam credenciais que ninguém vai usar.
+    const wantsPppoe = data.pppoeUsername?.trim() || routerIntegrationOn(db);
+    if (wantsPppoe) {
+      db.prepare('UPDATE services SET pppoe_username = ?, pppoe_password = ? WHERE id = ?').run(
+        data.pppoeUsername?.trim() || pppoeUsernameFor(client.fullName, serviceId),
+        data.pppoePassword?.trim() || generatePppoePassword(),
+        serviceId
+      );
+    }
 
     const install = items.length > 0
       ? installItemsWithinTx(db, { serviceId, clientName: client.fullName, items, userId })
@@ -249,6 +295,8 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
         audiovisual_mode = ?,
         audiovisual_monthly_cve = ?,
         audiovisual_annual_cve = ?,
+        pppoe_username = ?,
+        pppoe_password = ?,
         updated_at = datetime('now')
     WHERE id = ?
   `).run(
@@ -261,6 +309,8 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
     data.audiovisualMode,
     data.audiovisualMonthlyCve,
     data.audiovisualAnnualCve,
+    data.pppoeUsername?.trim() || null,
+    data.pppoePassword?.trim() || null,
     id
   );
 
