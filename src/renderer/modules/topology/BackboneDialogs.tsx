@@ -16,6 +16,11 @@ import { Badge, Button, Combobox, Dialog, Field, Select, Textarea, Toggle } from
 type EditorProps = {
   open: boolean;
   backbone: BackboneDeviceDetail | null;
+  /**
+   * Valores trazidos da rede pela aba Descoberta. Só valem na criação: numa
+   * edição o registo existente é sempre a fonte.
+   */
+  prefill?: { ipAddress: string; macAddress: string | null } | null;
   pending: boolean;
   error: string | null;
   catalogs: BackboneCatalogOption[];
@@ -42,7 +47,12 @@ type EditorState = {
   upstreamDeviceIds: number[];
 };
 
-function editorState(backbone: BackboneDeviceDetail | null): EditorState {
+function editorState(
+  backbone: BackboneDeviceDetail | null,
+  prefill: EditorProps['prefill'] = null
+): EditorState {
+  // O prefill só entra quando não há registo a editar.
+  const seed = backbone ? null : prefill;
   return {
     catalogId: backbone?.catalogId ?? null,
     upstreamDeviceIds: backbone?.upstreams.map((unit) => unit.id) ?? [],
@@ -50,8 +60,8 @@ function editorState(backbone: BackboneDeviceDetail | null): EditorState {
     status: backbone?.status ?? 'active',
     serialNumber: backbone?.serialNumber ?? '',
     assetTag: backbone?.assetTag ?? '',
-    ipAddress: backbone?.ipAddress ?? '',
-    macAddress: backbone?.macAddress ?? '',
+    ipAddress: backbone?.ipAddress ?? seed?.ipAddress ?? '',
+    macAddress: backbone?.macAddress ?? seed?.macAddress ?? '',
     island: backbone?.island ?? '',
     zone: backbone?.zone ?? '',
     notes: backbone?.notes ?? ''
@@ -65,6 +75,7 @@ function nullable(value: string): string | null {
 export function BackboneEditorDialog({
   open,
   backbone,
+  prefill = null,
   pending,
   error,
   catalogs,
@@ -75,7 +86,7 @@ export function BackboneEditorDialog({
   onClose,
   onSubmit
 }: EditorProps) {
-  const [form, setForm] = useState<EditorState>(() => editorState(backbone));
+  const [form, setForm] = useState<EditorState>(() => editorState(backbone, prefill));
   const [validation, setValidation] = useState<string | null>(null);
 
   // ponytail: a lista é a página de backbones ativos já carregada (25). Chega para
@@ -95,9 +106,9 @@ export function BackboneEditorDialog({
 
   useEffect(() => {
     if (!open) return;
-    setForm(editorState(backbone));
+    setForm(editorState(backbone, prefill));
     setValidation(null);
-  }, [backbone, open]);
+  }, [backbone, open, prefill]);
 
   function update<K extends keyof EditorState>(key: K, value: EditorState[K]) {
     setForm((current) => ({ ...current, [key]: value }));

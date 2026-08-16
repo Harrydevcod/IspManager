@@ -324,6 +324,28 @@ app.whenReady().then(async () => {
     await shell.openPath(dir);
   });
 
+  /**
+   * Abre um URL no browser do sistema — usado pela descoberta de rede para
+   * chegar à interface web de um equipamento encontrado.
+   *
+   * A lista branca de esquemas é a razão de existir deste handler. O URL nasce
+   * de um endereço lido da rede; entregá-lo a `openExternal` sem filtro deixaria
+   * passar `file:`, `javascript:` e qualquer protocolo registado no sistema
+   * operativo — execução arbitrária a partir de dados que não controlamos.
+   */
+  ipcMain.handle('shell:open-external', async (_event, url: string) => {
+    if (typeof url !== 'string' || url.length > 2048) return false;
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return false;
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    await shell.openExternal(parsed.toString());
+    return true;
+  });
+
   registerDocumentSave();
   registerDocumentPrint();
 

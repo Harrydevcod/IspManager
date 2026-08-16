@@ -13,6 +13,7 @@ let closeDatabaseForTests: () => void;
 const TABLES_TO_CLEAR = [
   'network_probe_events',
   'network_probe_state',
+  'network_discovery_hosts',
   'backbone_devices',
   'equipment_catalog',
   'app_settings'
@@ -120,5 +121,145 @@ describe('POST /api/network/probe', () => {
     const response = await app.inject({ method: 'POST', url: '/api/network/probe' });
     expect(response.statusCode).toBe(200);
     expect(response.json().skipped).toBe(true);
+  });
+});
+
+// TEST-NET-3 (RFC 5737): endereços reservados para documentação. Nunca vão
+// aparecer na tabela ARP real da máquina que corre os testes, o que deixa as
+// asserções sobre o cruzamento determinísticas.
+const RANGE = ['203.0.113.1', '203.0.113.2', '203.0.113.3', '203.0.113.4'];
+
+async function discoveryContext(body: Record<string, unknown> = {}) {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/network/discovery',
+    payload: { rangeIps: RANGE, alive: [], includeRouter: false, ...body }
+  });
+  expect(response.statusCode).toBe(200);
+  return response.json();
+}
+
+type ReportRow = {
+  ip: string;
+  category: string;
+  alive: boolean;
+  rttMs: number | null;
+  registeredAs: Array<{ name: string }>;
+};
+
+function rowFor(body: { rows: ReportRow[] }, ip: string): ReportRow {
+  const row = body.rows.find((item) => item.ip === ip);
+  if (!row) throw new Error(`Sem linha para ${ip} no relatório`);
+  return row;
+}
+
+describe('POST /api/network/discovery/sweep', () => {
+  test('recusa mais endereços do que cabem num lote', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/network/discovery/sweep',
+      payload: { ips: Array.from({ length: 65 }, (_, i) => `10.0.0.${i + 1}`), range: '10.0.0.0/24', batchIndex: 0 }
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  test('recusa um endereço que não é IPv4 — o valor vai para a linha de comando', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/network/discovery/sweep',
+      payload: { ips: ['10.0.0.1', '; rm -rf /'], range: '10.0.0.0/24', batchIndex: 0 }
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  test('recusa corpo sem intervalo', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/network/discovery/sweep',
+      payload: { ips: ['10.0.0.1'], batchIndex: 0 }
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  test('devolve uma linha por endereço pedido', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/network/discovery/sweep',
+      payload: { ips: ['203.0.113.1', '203.0.113.2'], range: '203.0.113.1-2', batchIndex: 0 }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().results.map((r: { ip: string }) => r.ip)).toEqual(['203.0.113.1', '203.0.113.2']);
+  });
+});
+
+describe('POST /api/network/discovery', () => {
+  test('um equipamento registado que não responde fica ausente', async () => {
+    seedBackbone('Torre Norte', '203.0.113.2');
+    const body = await discoveryContext();
+    expect(rowFor(body, '203.0.113.2')).toMatchObject({ category: 'ausente', alive: false });
+    expect(body.counts.ausente).toBe(1);
+  });
+
+  test('um endereço vivo sem registo é desconhecido', async () => {
+    const body = await discoveryContext({ alive: [{ ip: '203.0.113.3', rttMs: 5 }] });
+    expect(rowFor(body, '203.0.113.3')).toMatchObject({ category: 'desconhecido', alive: true, rttMs: 5 });
+  });
+
+  test('um endereço vivo com registo é registado e traz o nome', async () => {
+    seedBackbone('Torre Sul', '203.0.113.1');
+    const body = await discoveryContext({ alive: [{ ip: '203.0.113.1', rttMs: 2 }] });
+    expect(rowFor(body, '203.0.113.1')).toMatchObject({ category: 'registado' });
+    expect(rowFor(body, '203.0.113.1').registeredAs[0].name).toBe('Torre Sul');
+  });
+
+  test('o mesmo IP em dois equipamentos é assinalado como duplicado', async () => {
+    seedBackbone('Torre A', '203.0.113.4');
+    seedBackbone('Torre B', '203.0.113.4');
+    const body = await discoveryContext();
+    expect(rowFor(body, '203.0.113.4')).toMatchObject({ category: 'duplicado' });
+    expect(body.counts.duplicado).toBe(1);
+  });
+
+  test('sugere o primeiro endereço livre do intervalo', async () => {
+    seedBackbone('Torre Norte', '203.0.113.1');
+    const body = await discoveryContext({ alive: [{ ip: '203.0.113.2', rttMs: 1 }] });
+    expect(body.nextFreeIp).toBe('203.0.113.3');
+    expect(body.freeIps).toEqual(['203.0.113.3', '203.0.113.4']);
+  });
+
+  test('sem MikroTik configurado responde na mesma, sem enriquecimento', async () => {
+    const body = await discoveryContext({ includeRouter: true });
+    expect(body.routerConfigured).toBe(false);
+    expect(body.routerEnriched).toBe(false);
+  });
+
+  test('guarda o histórico: a segunda passagem incrementa sem perder o first_seen_at', async () => {
+    await discoveryContext({ alive: [{ ip: '203.0.113.3', rttMs: 5 }] });
+    const first = db.prepare(
+      `SELECT first_seen_at AS firstSeenAt, times_seen AS timesSeen FROM network_discovery_hosts WHERE ip_address = ?`
+    ).get('203.0.113.3') as { firstSeenAt: string; timesSeen: number };
+
+    await discoveryContext({ alive: [{ ip: '203.0.113.3', rttMs: 6 }] });
+    const second = db.prepare(
+      `SELECT first_seen_at AS firstSeenAt, times_seen AS timesSeen FROM network_discovery_hosts WHERE ip_address = ?`
+    ).get('203.0.113.3') as { firstSeenAt: string; timesSeen: number };
+
+    expect(second.timesSeen).toBe(first.timesSeen + 1);
+    expect(second.firstSeenAt).toBe(first.firstSeenAt);
+  });
+
+  test('recusa um intervalo acima do teto', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/network/discovery',
+      payload: { rangeIps: Array.from({ length: 1025 }, (_, i) => `10.0.${Math.floor(i / 256)}.${i % 256}`) }
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  test('sem intervalo varrido responde na mesma, sem endereços livres', async () => {
+    const body = await discoveryContext({ rangeIps: [] });
+    expect(body.freeIps).toEqual([]);
+    expect(body.nextFreeIp).toBeNull();
   });
 });

@@ -163,7 +163,8 @@ export function loadProbeStates(db: Database.Database): ProbeStateRow[] {
 
 // ---------------------------------------------------------------- execução
 
-async function mapWithLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+/** Exportado para a descoberta de rede a reutilizar — mesmo pool, outro ritmo. */
+export async function mapWithLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results = new Array<R>(items.length);
   let next = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {

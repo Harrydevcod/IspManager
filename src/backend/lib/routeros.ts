@@ -292,6 +292,58 @@ export async function listActive(transport: RouterTransport): Promise<RouterActi
     .filter((session) => session.name);
 }
 
+export type RouterArpEntry = {
+  address: string;
+  macAddress: string | null;
+  iface: string | null;
+  dynamic: boolean;
+};
+
+export type RouterDhcpLease = {
+  address: string;
+  macAddress: string | null;
+  hostName: string | null;
+  status: string | null;
+};
+
+/**
+ * Tabela ARP do router.
+ *
+ * O ARP da máquina onde o ISPM corre só conhece o segmento em que ela está; o
+ * do router conhece todas as redes que encaminha, que é onde vivem os clientes.
+ * É leitura pura — não depende de a reconciliação estar ligada nem lhe toca.
+ */
+export async function listArp(transport: RouterTransport): Promise<RouterArpEntry[]> {
+  const raw = await transport({ method: 'GET', path: '/ip/arp?.proplist=address,mac-address,interface,dynamic' });
+  return asArray(raw)
+    .map((row) => ({
+      address: str(row.address) ?? '',
+      macAddress: str(row['mac-address']),
+      iface: str(row.interface),
+      dynamic: toBool(row.dynamic)
+    }))
+    .filter((entry) => entry.address);
+}
+
+/**
+ * Concessões DHCP. É a única fonte que traz o nome que o próprio equipamento
+ * anuncia (`host-name`) — o DNS inverso raramente responde numa LAN destas.
+ */
+export async function listDhcpLeases(transport: RouterTransport): Promise<RouterDhcpLease[]> {
+  const raw = await transport({
+    method: 'GET',
+    path: '/ip/dhcp-server/lease?.proplist=address,mac-address,host-name,status'
+  });
+  return asArray(raw)
+    .map((row) => ({
+      address: str(row.address) ?? '',
+      macAddress: str(row['mac-address']),
+      hostName: str(row['host-name']),
+      status: str(row.status)
+    }))
+    .filter((lease) => lease.address);
+}
+
 export type NewSecret = {
   name: string;
   password: string;
