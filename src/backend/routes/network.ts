@@ -6,12 +6,27 @@ import {
   createTransport,
   fetchRouterCertificate,
   isRouterConfigured,
+  listArp,
+  listDhcpLeases,
   readRouterConfig,
   RouterError,
   testConnection
 } from '../lib/routeros';
 import { loadNetworkEnforcementState, runNetworkEnforcement } from '../lib/network-enforcement';
+import {
+  loadRegisteredIps,
+  loadSeenHosts,
+  normalizeMac,
+  persistSeen,
+  readLocalArp,
+  resolveNames,
+  sweep,
+  type DiscoveredHost
+} from '../lib/network-discovery';
+import { crossReference, type ObservedHost } from '../lib/network-inventory';
 import { runJob } from '../lib/jobRuns';
+import { recordAudit } from '../lib/audit';
+import { isIpv4, SWEEP_BATCH_SIZE } from '../../shared/ip-range';
 import { requireAuth, requireRole } from './auth';
 
 const statusQuerySchema = z.object({
@@ -25,6 +40,23 @@ const eventsParamsSchema = z.object({
 
 const eventsQuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(90).default(30)
+}).strict();
+
+const sweepBodySchema = z.object({
+  ips: z.array(z.string()).min(1).max(SWEEP_BATCH_SIZE),
+  range: z.string().min(1).max(64),
+  batchIndex: z.number().int().min(0)
+}).strict();
+
+const contextBodySchema = z.object({
+  // O intervalo varrido, já expandido pelo renderer. Vazio quando a aba abre
+  // sem ninguém ter varrido nada ainda.
+  rangeIps: z.array(z.string()).max(1024).default([]),
+  alive: z.array(z.object({
+    ip: z.string(),
+    rttMs: z.number().nullable()
+  })).max(1024).default([]),
+  includeRouter: z.boolean().default(true)
 }).strict();
 
 export async function registerNetworkRoutes(app: FastifyInstance) {
@@ -92,6 +124,115 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
         error: err instanceof RouterError ? err.message : 'Falha ao contactar o router'
       });
     }
+  });
+
+  // ------------------------------------------------------ descoberta de rede
+
+  /**
+   * Varre um lote de endereços. **Só ICMP** — sem ARP e sem router, que são
+   * caros e globais e por isso vivem na rota de contexto. O varrimento chega em
+   * lotes para a barra de progresso ser real e o botão de parar funcionar; se
+   * cada lote também lesse a tabela ARP e chamasse o MikroTik, um /24 fazia esse
+   * trabalho quatro vezes para dar exatamente a mesma resposta.
+   */
+  app.post('/api/network/discovery/sweep', readOnly, async (request, reply) => {
+    const parsed = sweepBodySchema.safeParse(request.body);
+    if (!parsed.success || !parsed.data.ips.every(isIpv4)) {
+      return reply.status(400).send({ error: 'Parametros invalidos' });
+    }
+    const { ips, range, batchIndex } = parsed.data;
+
+    // Uma linha de auditoria por varrimento, não por lote (ADR 0007: nada
+    // acontece sem rasto, mas o rasto é do ato, não do transporte).
+    if (batchIndex === 0) {
+      recordAudit(request, {
+        action: 'network_discovery_scan',
+        entityType: 'network',
+        summary: range,
+        metadata: { range }
+      });
+    }
+
+    const results = await runJob('network_discovery_sweep', () => sweep(ips));
+    const alive = results.filter((row) => row.ok).map((row) => row.ip);
+    // DNS inverso só sobre quem respondeu — perguntar por 254 endereços mortos
+    // é esperar 254 timeouts para não descobrir nada.
+    const names = await resolveNames(alive);
+
+    return {
+      results: results.map((row) => ({ ...row, hostname: names.get(row.ip) ?? null }))
+    };
+  });
+
+  /**
+   * O retrato completo: junta o que respondeu ao ARP local, ao ARP/leases do
+   * router, ao histórico e ao que o ISPM diz que devia lá estar.
+   *
+   * É `POST` porque escreve (o histórico) e porque recebe a lista de endereços
+   * vivos, que não cabe numa query string.
+   */
+  app.post('/api/network/discovery', readOnly, async (request, reply) => {
+    const parsed = contextBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Parametros invalidos' });
+    }
+    const { rangeIps, alive, includeRouter } = parsed.data;
+    const db = getSqliteDatabase();
+
+    const byIp = new Map<string, ObservedHost>();
+    for (const entry of alive) {
+      if (!isIpv4(entry.ip)) continue;
+      byIp.set(entry.ip, { ip: entry.ip, mac: null, hostname: null, source: 'ping', rttMs: entry.rttMs });
+    }
+
+    const attach = (ip: string, mac: string | null, hostname: string | null, source: ObservedHost['source']) => {
+      if (!isIpv4(ip)) return;
+      const existing = byIp.get(ip);
+      if (existing) {
+        existing.mac = existing.mac ?? mac;
+        existing.hostname = existing.hostname ?? hostname;
+        return;
+      }
+      // Um equipamento que ignora ICMP mas está na tabela ARP está na rede na
+      // mesma — e é justamente o que um firewall bem configurado faz.
+      byIp.set(ip, { ip, mac, hostname, source, rttMs: null });
+    };
+
+    for (const entry of await readLocalArp()) attach(entry.ip, entry.mac, null, 'arp');
+
+    let routerEnriched = false;
+    const config = readRouterConfig(db);
+    if (includeRouter && isRouterConfigured(config)) {
+      const transport = createTransport(config);
+      // Cada chamada falha por si: o router em baixo nunca pode derrubar a
+      // página, só tira-lhe o enriquecimento.
+      const [arp, leases] = await Promise.all([
+        listArp(transport).catch(() => null),
+        listDhcpLeases(transport).catch(() => null)
+      ]);
+      routerEnriched = arp !== null || leases !== null;
+      for (const entry of arp ?? []) attach(entry.address, normalizeMac(entry.macAddress), null, 'router');
+      for (const lease of leases ?? []) {
+        attach(lease.address, normalizeMac(lease.macAddress), lease.hostName, 'router');
+      }
+    }
+
+    const observed = [...byIp.values()];
+    persistSeen(db, observed.map((host): DiscoveredHost => ({
+      ip: host.ip,
+      mac: host.mac,
+      hostname: host.hostname,
+      source: host.source
+    })));
+
+    const report = crossReference({
+      rangeIps,
+      observed,
+      registered: loadRegisteredIps(db),
+      seen: loadSeenHosts(db)
+    });
+
+    return { ...report, routerEnriched, routerConfigured: isRouterConfigured(config) };
   });
 
   // Teste de ligação ao MikroTik. Só lê `/system/resource`: serve para provar

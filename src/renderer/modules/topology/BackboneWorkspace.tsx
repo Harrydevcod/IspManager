@@ -19,11 +19,17 @@ import { BackboneList } from './BackboneList';
 import { useBackboneWorkspace } from './useBackboneWorkspace';
 import './BackboneWorkspace.css';
 
+/** Valores que a Descoberta traz da rede para o formulário de registo. */
+export type BackbonePrefill = { ipAddress: string; macAddress: string | null };
+
 export type BackboneWorkspaceProps = {
   /** Sobe quando o mapa regista ou liga uma unidade: refresca sem remontar. */
   revision?: number;
   onMutation: () => void;
   onViewTopology: (backboneDeviceId: number) => void;
+  /** Abre o formulário de criação já preenchido (vem da aba Descoberta). */
+  prefill?: BackbonePrefill | null;
+  onPrefillHandled?: () => void;
 };
 
 type MappingState = {
@@ -35,7 +41,9 @@ type MappingState = {
 export function BackboneWorkspace({
   revision = 0,
   onMutation,
-  onViewTopology
+  onViewTopology,
+  prefill = null,
+  onPrefillHandled
 }: BackboneWorkspaceProps) {
   const auth = useAuth();
   const canManage = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
@@ -43,6 +51,7 @@ export function BackboneWorkspace({
   const workspace = useBackboneWorkspace(api, onMutation);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingBackbone, setEditingBackbone] = useState<BackboneDeviceDetail | null>(null);
+  const [createPrefill, setCreatePrefill] = useState<BackbonePrefill | null>(null);
   const [mapping, setMapping] = useState<MappingState>(null);
   const [unlinking, setUnlinking] = useState<BackboneAssignmentSummary | null>(null);
   const [editorAttempted, setEditorAttempted] = useState(false);
@@ -125,11 +134,24 @@ export function BackboneWorkspace({
     workspace.selectBackbone(null);
   }
 
-  function openCreate() {
+  function openCreate(seed: BackbonePrefill | null = null) {
+    setCreatePrefill(seed);
     setEditingBackbone(null);
     setEditorAttempted(false);
     setEditorOpen(true);
   }
+
+  // Um endereço que veio da Descoberta abre o formulário de criação já com o
+  // IP e o MAC. O valor é copiado para estado local antes de avisar o pai:
+  // avisá-lo primeiro limpava a prop antes de o diálogo chegar a lê-la.
+  // Quem não pode gerir backbones não ganha aqui um atalho para o formulário —
+  // a permissão é a mesma do botão "Registar".
+  useEffect(() => {
+    if (!prefill) return;
+    if (canManage) openCreate(prefill);
+    onPrefillHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill]);
 
   function openEdit() {
     if (!selected) return;
@@ -242,7 +264,7 @@ export function BackboneWorkspace({
           <p>Identidade, implantação e ligações verificáveis do inventário.</p>
         </div>
         {canManage && (
-          <Button leadingIcon={<Plus size={16} aria-hidden />} onClick={openCreate}>
+          <Button leadingIcon={<Plus size={16} aria-hidden />} onClick={() => openCreate()}>
             Novo backbone
           </Button>
         )}
@@ -307,6 +329,7 @@ export function BackboneWorkspace({
           <BackboneEditorDialog
             open={editorOpen}
             backbone={editingBackbone}
+            prefill={createPrefill}
             pending={workspace.mutationState.pending}
             error={editorError}
             catalogs={workspace.catalogs}
@@ -314,7 +337,7 @@ export function BackboneWorkspace({
             catalogError={workspace.catalogError}
             upstreamOptions={workspace.destinations.items}
             onCatalogRetry={() => void workspace.refreshCatalogs()}
-            onClose={() => setEditorOpen(false)}
+            onClose={() => { setEditorOpen(false); setCreatePrefill(null); }}
             onSubmit={saveBackbone}
           />
           <BackboneMappingDialog

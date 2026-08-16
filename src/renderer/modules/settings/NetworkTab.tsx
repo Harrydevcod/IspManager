@@ -115,19 +115,19 @@ export function NetworkTab({
       </div>
 
       <Toggle
-        title="Router MikroTik"
-        description="Liga o ISPM ao router para cortar e repor clientes sozinho, aprovisionar o acesso PPPoE e mostrar quem está mesmo online. Enquanto o ensaio estiver ligado, nada é alterado no router."
+        title="Router de gestão do ISP"
+        description="O MikroTik da operadora, à cabeça da rede. Liga o ISPM a ele para cortar e repor clientes sozinho, aprovisionar o acesso PPPoE e mostrar quem está mesmo online. Enquanto o ensaio estiver ligado, nada é alterado no router. Não é o router do cliente: o ISPM nunca se liga a equipamento que esteja em casa de alguém."
         checked={form.routerosEnabled}
         onChange={(event) => onToggle('routerosEnabled', event.target.checked)}
       />
       {form.routerosEnabled && (
         <>
           <Field
-            label="Endereço do router"
+            label="Endereço do router de gestão"
             value={form.routerosHost}
             onChange={(event) => onUpdate('routerosHost', event.target.value)}
             placeholder="192.168.88.1"
-            hint="IP na LAN. O serviço www-ssl tem de estar ligado no RouterOS."
+            hint="IP do router da operadora na LAN. O serviço www-ssl tem de estar ligado no RouterOS."
           />
           <Field
             label="Porta"

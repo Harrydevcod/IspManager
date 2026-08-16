@@ -513,6 +513,19 @@ export const serviceNetworkState = sqliteTable('service_network_state', {
   checkedAt: text('checked_at').notNull().default('CURRENT_TIMESTAMP')
 });
 
+// Descoberta de rede: o que já foi visto na rede e desde quando (migration 0042).
+export const networkDiscoveryHosts = sqliteTable('network_discovery_hosts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ipAddress: text('ip_address').notNull().unique(),
+  macAddress: text('mac_address'),
+  hostname: text('hostname'),
+  vendor: text('vendor'),
+  source: text('source').notNull().default('ping'),
+  firstSeenAt: text('first_seen_at').notNull().default('CURRENT_TIMESTAMP'),
+  lastSeenAt: text('last_seen_at').notNull().default('CURRENT_TIMESTAMP'),
+  timesSeen: integer('times_seen').notNull().default(1)
+});
+
 /**
  * Inferred row types — one `select` (read) and `insert` (write) per table.
  * Prefer these over hand-written `as { ... }` casts in raw queries: renaming a
@@ -579,3 +592,4 @@ export type NewJobRun = typeof jobRuns.$inferInsert;
 export type NetworkProbeStateRow = typeof networkProbeState.$inferSelect;
 export type NetworkProbeEventRow = typeof networkProbeEvents.$inferSelect;
 export type ServiceNetworkStateRow = typeof serviceNetworkState.$inferSelect;
+export type NetworkDiscoveryHostRow = typeof networkDiscoveryHosts.$inferSelect;

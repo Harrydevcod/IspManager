@@ -38,14 +38,31 @@ vi.mock('@xyflow/react', async (importOriginal) => {
 vi.mock('./BackboneWorkspace', () => ({
   BackboneWorkspace: ({
     onMutation,
-    onViewTopology
+    onViewTopology,
+    prefill
   }: {
     onMutation: () => void;
     onViewTopology: (backboneDeviceId: number) => void;
+    prefill?: { ipAddress: string; macAddress: string | null } | null;
   }) => (
     <section aria-label="Gestão de backbone">
       <Button onClick={onMutation}>Concluir ligação</Button>
       <Button onClick={() => onViewTopology(77)}>Ver na Topologia</Button>
+      {prefill ? <p>Prefill {prefill.ipAddress}</p> : null}
+    </section>
+  )
+}));
+
+vi.mock('./discovery/DiscoveryWorkspace', () => ({
+  DiscoveryWorkspace: ({
+    onRegisterBackbone
+  }: {
+    onRegisterBackbone: (prefill: { ipAddress: string; macAddress: string | null }) => void;
+  }) => (
+    <section aria-label="Descoberta de rede">
+      <Button onClick={() => onRegisterBackbone({ ipAddress: '192.168.1.42', macAddress: null })}>
+        Registar como backbone
+      </Button>
     </section>
   )
 }));
@@ -249,6 +266,53 @@ describe('TopologyModule tab shell', () => {
 
     expect(backboneTab.getAttribute('aria-selected')).toBe('true');
     expect(document.activeElement).toBe(backboneTab);
+  });
+
+  test('arrow keys reach the third tab and wrap around', async () => {
+    const container = await mountModule();
+    const names = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+      .map((node) => node.textContent?.trim());
+    expect(names).toEqual(['Backbone', 'Topologia', 'Descoberta']);
+
+    async function arrow(from: HTMLButtonElement, key: 'ArrowRight' | 'ArrowLeft') {
+      from.focus();
+      await act(async () => {
+        from.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+        await vi.dynamicImportSettled();
+      });
+    }
+
+    await arrow(tab(container, 'Backbone'), 'ArrowRight');
+    await arrow(tab(container, 'Topologia'), 'ArrowRight');
+    expect(tab(container, 'Descoberta').getAttribute('aria-selected')).toBe('true');
+
+    // A envolvência é o que um alternador binário não dava: da última volta à primeira.
+    await arrow(tab(container, 'Descoberta'), 'ArrowRight');
+    expect(tab(container, 'Backbone').getAttribute('aria-selected')).toBe('true');
+
+    await arrow(tab(container, 'Backbone'), 'ArrowLeft');
+    expect(tab(container, 'Descoberta').getAttribute('aria-selected')).toBe('true');
+  });
+
+  test('the discovery panel stays unmounted until the tab is opened', async () => {
+    const container = await mountModule();
+    expect(container.textContent).not.toContain('Registar como backbone');
+
+    await act(async () => { tab(container, 'Descoberta').click(); });
+    expect(container.textContent).toContain('Registar como backbone');
+  });
+
+  test('registering a discovered address switches to Backbone carrying the prefill', async () => {
+    const container = await mountModule();
+    await act(async () => { tab(container, 'Descoberta').click(); });
+
+    const register = [...container.querySelectorAll<HTMLButtonElement>('button')]
+      .find((node) => node.textContent?.trim() === 'Registar como backbone');
+    await act(async () => { register?.click(); });
+
+    expect(tab(container, 'Backbone').getAttribute('aria-selected')).toBe('true');
+    expect(container.querySelector('[role="tabpanel"]:not([hidden])')?.textContent)
+      .toContain('Prefill 192.168.1.42');
   });
 
   test('reloads the map after a management mutation without closing the open branch', async () => {

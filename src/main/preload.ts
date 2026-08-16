@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('ispm', {
   chooseBackupFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:choose-backup-file'),
   chooseBackupDir: (): Promise<string | null> => ipcRenderer.invoke('dialog:choose-backup-dir'),
   openBackupDir: (dir: string): Promise<void> => ipcRenderer.invoke('backups:open-dir', dir),
+  // Abre a interface web de um equipamento no browser do sistema. O esquema é
+  // validado do lado do main — ver `shell:open-external`.
+  openExternal: (url: string): Promise<boolean> => ipcRenderer.invoke('shell:open-external', url),
   saveDocument: (
     filename: string,
     data: Uint8Array

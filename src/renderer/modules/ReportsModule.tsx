@@ -2,6 +2,7 @@ import { Activity, AlertTriangle, Banknote, Cable, CheckCircle2, CopyX, Download
 import { useEffect, useState } from 'react';
 import { Button, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, ModuleHeaderActions, SkeletonList } from '../components';
 import { authFetch } from '../lib/auth';
+import { downloadCsv } from '../lib/csv';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
 import { OperationsStatusPanel } from './reports/OperationsStatusPanel';
@@ -109,15 +110,6 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
     if (nextView !== 'incomplete') setIssue(null);
   }
 
-  function csvValue(value: string | number | null) {
-    const raw = String(value ?? '');
-    // Neutralize spreadsheet formula injection (CWE-1236): a cell that opens with
-    // =, +, -, @, tab or CR is treated as a formula by Excel/Sheets. Prefix with a
-    // single quote so it renders as literal text.
-    const text = (/^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw).replace(/"/g, '""');
-    return `"${text}"`;
-  }
-
   function exportCsv() {
     // "Operação" exporta em PDF a partir do próprio painel — o seu conteúdo é
     // narrativo (riscos, ações) e não cabe numa grelha de células.
@@ -154,14 +146,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
       ];
     }
 
-    const csv = rows.map((row) => row.map(csvValue).join(';')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `ispm-relatorio-${view}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(`ispm-relatorio-${view}.csv`, rows);
   }
 
   async function sendOverdueWhatsapp(row: ReportsSummary['overdueClients'][number]) {

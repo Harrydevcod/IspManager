@@ -3,7 +3,8 @@ import './TopologyModule.css';
 import { lazy, Suspense, useCallback, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Button } from '../../components';
-import { BackboneWorkspace } from './BackboneWorkspace';
+import { BackboneWorkspace, type BackbonePrefill } from './BackboneWorkspace';
+import { DiscoveryWorkspace } from './discovery/DiscoveryWorkspace';
 import type { TopologyApi } from './topology-api';
 
 const TopologyMapView = lazy(() => import('./TopologyMapView'));
@@ -15,11 +16,12 @@ export type TopologyModuleProps = {
   onOpenStock: (catalogId: number) => void;
 };
 
-type TopologyTab = 'backbone' | 'topology';
+type TopologyTab = 'backbone' | 'topology' | 'discovery';
 
 const tabs: ReadonlyArray<{ id: TopologyTab; label: string }> = [
   { id: 'backbone', label: 'Backbone' },
-  { id: 'topology', label: 'Topologia' }
+  { id: 'topology', label: 'Topologia' },
+  { id: 'discovery', label: 'Descoberta' }
 ];
 
 function MapLoadingFallback() {
@@ -37,6 +39,8 @@ export default function TopologyModule(props: TopologyModuleProps) {
   const [backboneRevision, setBackboneRevision] = useState(0);
   const [focusBackboneDeviceId, setFocusBackboneDeviceId] = useState<number | null>(null);
   const [mapVisited, setMapVisited] = useState(false);
+  const [discoveryVisited, setDiscoveryVisited] = useState(false);
+  const [backbonePrefill, setBackbonePrefill] = useState<BackbonePrefill | null>(null);
   // Os controlos do mapa entram aqui por portal: pertencem ao mapa, mas o sítio
   // onde não tapam o grafo é a tira das abas, que é deste componente.
   const [toolsSlot, setToolsSlot] = useState<HTMLDivElement | null>(null);
@@ -44,6 +48,7 @@ export default function TopologyModule(props: TopologyModuleProps) {
 
   const selectTab = useCallback((tab: TopologyTab, moveFocus = false) => {
     if (tab === 'topology') setMapVisited(true);
+    if (tab === 'discovery') setDiscoveryVisited(true);
     setActiveTab(tab);
     if (moveFocus) {
       queueMicrotask(() => {
@@ -54,12 +59,24 @@ export default function TopologyModule(props: TopologyModuleProps) {
     }
   }, []);
 
+  // Navegação por índice com envolvência nas pontas: com três abas, um
+  // alternador binário deixava a terceira inalcançável pelo teclado.
   function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
-    const nextTab: TopologyTab = activeTab === 'backbone' ? 'topology' : 'backbone';
-    selectTab(nextTab, true);
+    const current = tabs.findIndex((tab) => tab.id === activeTab);
+    const step = event.key === 'ArrowRight' ? 1 : tabs.length - 1;
+    selectTab(tabs[(current + step) % tabs.length].id, true);
   }
+
+  // Vem da Descoberta: abre o formulário de backbone na aba ao lado, já com o
+  // endereço e o MAC que foram encontrados na rede.
+  const handleRegisterBackbone = useCallback((prefill: BackbonePrefill) => {
+    setBackbonePrefill(prefill);
+    setActiveTab('backbone');
+  }, []);
+
+  const handlePrefillHandled = useCallback(() => setBackbonePrefill(null), []);
 
   function handleMutation() {
     setFocusBackboneDeviceId(null);
@@ -125,6 +142,8 @@ export default function TopologyModule(props: TopologyModuleProps) {
           revision={backboneRevision}
           onMutation={handleMutation}
           onViewTopology={handleViewTopology}
+          prefill={backbonePrefill}
+          onPrefillHandled={handlePrefillHandled}
         />
       </div>
 
@@ -147,6 +166,23 @@ export default function TopologyModule(props: TopologyModuleProps) {
               toolsSlot={toolsSlot}
             />
           </Suspense>
+        )}
+      </div>
+
+      <div
+        id="topology-panel-discovery"
+        className="topology-tab-panel"
+        role="tabpanel"
+        aria-labelledby="topology-tab-discovery"
+        hidden={activeTab !== 'discovery'}
+      >
+        {/* Sem `lazy`: a Descoberta é tabela e cartões, já no bundle. A guarda
+            de visita existe só para não pedir a rede a quem nunca abriu a aba. */}
+        {discoveryVisited && (
+          <DiscoveryWorkspace
+            active={activeTab === 'discovery'}
+            onRegisterBackbone={handleRegisterBackbone}
+          />
         )}
       </div>
     </section>
