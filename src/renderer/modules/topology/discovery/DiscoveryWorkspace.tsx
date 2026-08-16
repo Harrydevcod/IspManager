@@ -65,6 +65,18 @@ const LABEL: Record<DiscoveryCategory, string> = {
 
 const api = createDiscoveryApi();
 
+/**
+ * De onde veio o MAC. "Router" é sempre o **router de gestão do ISP** — o
+ * ISPM nunca se liga ao equipamento de um cliente, mesmo quando esse
+ * equipamento é ele próprio um MikroTik e aparece nesta lista.
+ */
+function sourceLabel(source: string | null): string {
+  if (source === 'router') return 'Visto na tabela do router de gestão';
+  if (source === 'arp') return 'Visto na tabela ARP desta máquina';
+  if (source === 'ping') return 'Respondeu ao ping';
+  return 'Origem desconhecida';
+}
+
 /** O nome do dono ganha ao que a máquina anuncia — é o que o operador procura. */
 function displayName(row: DiscoveryRow): string {
   if (row.registeredAs.length > 0) {
@@ -132,11 +144,11 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
           disabled={scanning}
         />
         <Toggle
-          title="Consultar o router"
+          title="Consultar o router de gestão"
           description={
             report && !report.routerConfigured
-              ? 'Sem MikroTik configurado nas definições'
-              : 'Junta a tabela ARP e as concessões DHCP do MikroTik'
+              ? 'Sem router de gestão configurado nas definições'
+              : 'Junta o ARP e as concessões DHCP do router da operadora'
           }
           wide={false}
           checked={discovery.includeRouter}
@@ -181,7 +193,7 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
 
       {report && discovery.includeRouter && report.routerConfigured && !report.routerEnriched ? (
         <Message tone="neutral">
-          O router não respondeu — a lista mostra só o que a máquina local conseguiu ver.
+          O router de gestão não respondeu — a lista mostra só o que a máquina local conseguiu ver.
         </Message>
       ) : null}
 
@@ -251,7 +263,7 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
           {
             header: 'MAC',
             cell: (row) => row.mac
-              ? <code className="discovery-mac" title={`Visto por: ${row.source ?? 'desconhecido'}`}>{row.mac}</code>
+              ? <code className="discovery-mac" title={sourceLabel(row.source)}>{row.mac}</code>
               : <span className="discovery-muted">—</span>
           },
           { header: 'Fabricante', cell: (row) => row.vendor ?? <span className="discovery-muted">—</span> },

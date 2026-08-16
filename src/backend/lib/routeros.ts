@@ -307,11 +307,19 @@ export type RouterDhcpLease = {
 };
 
 /**
- * Tabela ARP do router.
+ * Tabela ARP do **router de gestão do ISP** — o MikroTik à cabeça da rede,
+ * configurado em `app_settings`. Nunca o de um cliente.
+ *
+ * A distinção importa: há clientes com MikroTiks próprios em casa, e esses
+ * aparecem na descoberta de rede como equipamentos quaisquer. O ISPM tem um
+ * único router configurado e todo o transporte sai de `readRouterConfig` — não
+ * há caminho de código que ligue a um equipamento descoberto, e não deve passar
+ * a haver.
  *
  * O ARP da máquina onde o ISPM corre só conhece o segmento em que ela está; o
- * do router conhece todas as redes que encaminha, que é onde vivem os clientes.
- * É leitura pura — não depende de a reconciliação estar ligada nem lhe toca.
+ * do router de gestão conhece todas as redes que encaminha, que é onde vivem os
+ * clientes. É leitura pura — não depende de a reconciliação estar ligada nem
+ * lhe toca.
  */
 export async function listArp(transport: RouterTransport): Promise<RouterArpEntry[]> {
   const raw = await transport({ method: 'GET', path: '/ip/arp?.proplist=address,mac-address,interface,dynamic' });
