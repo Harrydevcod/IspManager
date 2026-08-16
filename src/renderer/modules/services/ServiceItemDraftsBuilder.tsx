@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { Button, Field, Message, Select } from '../../components';
 import { takesStaticIp } from '../../../shared/equipment';
+import { formatCve } from '../../lib/format';
 import type { StockCatalogRow } from '../../types';
 import { IpField } from './IpField';
 
@@ -13,10 +14,14 @@ export type ItemDraft = {
   ipAddress: string;
   macAddress: string;
   notes: string;
+  /** 'cliente' = trazido pelo cliente; não entra no aluguer da mensalidade. */
+  ownership: 'isp' | 'cliente';
 };
 
 export function emptyItemDraft(category: 'equipamento' | 'material' = 'equipamento'): ItemDraft {
-  return { category, catalogId: '', quantity: '1', serialNumber: '', assetTag: '', ipAddress: '', macAddress: '', notes: '' };
+  // Por omissão o equipamento é do ISP e é alugado — é o caso comum, e o que
+  // não se escolhe por engano é o que não gera receita por engano.
+  return { category, catalogId: '', quantity: '1', serialNumber: '', assetTag: '', ipAddress: '', macAddress: '', notes: '', ownership: 'isp' };
 }
 
 type ServiceItemDraftsBuilderProps = {
@@ -85,6 +90,21 @@ export function ServiceItemDraftsBuilder({ drafts, catalog, onChange, ipPrefix }
                   {takesStaticIp(selectedItem?.type) && (
                     <IpField value={draft.ipAddress} prefix={ipPrefix} onChange={(ipAddress) => update(index, { ipAddress })} />
                   )}
+                  <Select
+                    label="Propriedade"
+                    value={draft.ownership}
+                    onChange={(event) => update(index, { ownership: event.target.value as 'isp' | 'cliente' })}
+                    hint={
+                      draft.ownership === 'cliente'
+                        ? 'Não entra na mensalidade'
+                        : selectedItem && selectedItem.rentalFeeCve > 0
+                          ? `Soma ${formatCve(selectedItem.rentalFeeCve)}/mês à mensalidade`
+                          : 'Sem aluguer definido no catálogo'
+                    }
+                  >
+                    <option value="isp">Alugado ao cliente</option>
+                    <option value="cliente">Do cliente</option>
+                  </Select>
                 </>
               )}
               <Field wide label="Notas" value={draft.notes} onChange={(event) => update(index, { notes: event.target.value })} />

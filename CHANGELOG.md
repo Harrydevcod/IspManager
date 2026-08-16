@@ -4,6 +4,18 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## Por lançar
+
+### Adicionado
+
+- **faturação:** o **aluguer do equipamento** passa a ser cobrado por linha própria na mensalidade, em vez de estar embutido à mão no preço. Cada equipamento instalado que seja do ISP soma a sua renda ao plano, e a fatura mostra o que é o quê
+- **equipamento do cliente:** um equipamento pode agora ser **do cliente** — porque ele o trouxe, ou porque o comprou. Nesse caso não gera renda nenhuma e a linha desaparece da fatura seguinte. A compra fica registada com data e valor, e emite a cobrança correspondente (preço sugerido pelo catálogo, editável; a zero passa a ser dele sem faturar nada)
+- **planos:** botão **aplicar o preço aos serviços ativos**. O valor mensal de cada serviço é copiado do plano quando o serviço é criado, por isso mudar o preço do plano nunca alterava quem já lá estava. Antes de aplicar mostra, cliente a cliente, a última fatura, o aluguer e o valor novo — e quantos sobem, descem ou ficam iguais
+
+### Notas de migração
+
+> **Importante — a ordem interessa.** O aluguer entra em vigor assim que esta versão arrancar. Enquanto os serviços tiverem o valor mensal antigo, a próxima fatura será *valor antigo + aluguer*. Depois de instalar: abrir **Planos**, pôr o preço no valor certo, e usar **aplicar aos serviços ativos**. O diálogo mostra o impacto antes de escrever fosse o que for. Fazer uma cópia de segurança primeiro (Definições › Backups, um clique).
+
 ## [1.11.3](https://github.com/Harrydevcod/IspManager/releases/tag/v1.11.3) — 2026-08-14
 
 ### Corrigido

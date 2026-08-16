@@ -213,3 +213,96 @@
     text-align: left;
   }
 }
+
+/* ---------------------------------------------- alinhar preços dos serviços */
+
+.reprice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.reprice-lead {
+  margin: 0;
+  max-width: 72ch;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.reprice-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s4);
+  padding: var(--s3) var(--s4);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.reprice-summary strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.reprice-summary-muted {
+  margin-inline-start: auto;
+  color: var(--text-3);
+}
+
+/* A tabela pode passar dos 20 clientes; rola dentro de si, nunca o diálogo. */
+.reprice-table-scroll {
+  max-block-size: 46vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+}
+
+.reprice-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.reprice-table th,
+.reprice-table td {
+  padding: var(--s2) var(--s3);
+  text-align: end;
+  white-space: nowrap;
+  border-block-end: 1px solid var(--border);
+}
+
+.reprice-table th:first-child,
+.reprice-table td:first-child {
+  text-align: start;
+  white-space: normal;
+}
+
+.reprice-table th {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: var(--z-base);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.reprice-table td {
+  font-variant-numeric: tabular-nums;
+}
+
+.reprice-table tbody tr:last-child td {
+  border-block-end: 0;
+}
+
+/* Já alinhado: continua visível para se ver que não foi esquecido, mas recua. */
+.reprice-table tr.is-aligned td {
+  color: var(--text-3);
+}
+
+.reprice-table td.is-up { color: var(--danger); }
+.reprice-table td.is-down { color: var(--success); }
