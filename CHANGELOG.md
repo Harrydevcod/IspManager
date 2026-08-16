@@ -4,6 +4,16 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## Por lançar
+
+### Adicionado
+
+- **rede:** nova aba **Descoberta** na Topologia — varre um intervalo de endereços e cruza o que encontra com o que o ISPM já sabe. Responde às quatro perguntas que um scanner sozinho não responde: **quem está na rede sem estar registado**, **que equipamento registado deixou de responder**, **que IP está atribuído a dois serviços ao mesmo tempo** e **qual é o próximo endereço livre** para a instalação seguinte. Junta três fontes — o ping, a tabela ARP da máquina e, quando está configurado, o ARP e as concessões DHCP do router de gestão — e mostra MAC, fabricante e desde quando cada equipamento é visto na rede
+- **rede:** o router da operadora passa a chamar-se **router de gestão do ISP** em toda a interface. Há clientes com MikroTiks próprios em casa e esses aparecem na descoberta como equipamentos quaisquer — o ISPM liga-se apenas ao router configurado nas Definições, nunca a equipamento de um cliente
+- **rede:** sobre cada endereço encontrado dá para abrir a interface web do equipamento, registá-lo como backbone com o IP e o MAC já preenchidos, atribuí-lo ao equipamento instalado de um serviço, ou exportar a lista em CSV
+- **rede:** o fabricante vem do registo oficial de OUI do IEEE (39.935 prefixos, gerados por `scripts/fetch-oui.cjs` e incluídos na aplicação — nunca é consultado online). Telemóveis e portáteis modernos usam endereços aleatórios e ficam sem fabricante, que é o que são
+- Só ICMP: a ferramenta não varre portos nem procura partilhas. Cada varrimento fica registado na auditoria com o intervalo e o autor
+
 ## [1.11.3](https://github.com/Harrydevcod/IspManager/releases/tag/v1.11.3) — 2026-08-14
 
 ### Corrigido

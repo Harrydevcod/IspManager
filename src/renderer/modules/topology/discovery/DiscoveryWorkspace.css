@@ -1,0 +1,214 @@
+/* Descoberta de rede — 3.ª aba da Topologia.
+   Tokens de styles.css; nenhum literal de cor, z-index ou breakpoint. */
+
+.discovery-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  /* `stretch` e não `start`: o painel ocupa a altura da aba e a tabela cresce
+     com ela, em vez de deixar um vazio por baixo da última linha. */
+  align-self: stretch;
+  min-height: 0;
+}
+
+/* ------------------------------------------------------------------ barra */
+
+.discovery-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s4);
+  padding: var(--s3) var(--s4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+}
+
+/* O campo do intervalo não estica o painel todo: tem a largura do que se
+   escreve nele (`192.168.100.1-254` são 18 caracteres). */
+.discovery-range {
+  flex: 0 1 auto;
+  max-width: 24ch;
+}
+
+.discovery-toolbar .field-toggle {
+  flex: 0 1 auto;
+  max-width: 34ch;
+}
+
+.discovery-toolbar-actions {
+  display: flex;
+  gap: var(--s2);
+  margin-inline-start: auto;
+}
+
+/* -------------------------------------------------------------- progresso */
+
+.discovery-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.discovery-progress progress {
+  flex: 1;
+  block-size: 3px;
+  inline-size: 100%;
+  appearance: none;
+  border: 0;
+  border-radius: var(--rpill);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.discovery-progress progress::-webkit-progress-bar {
+  background: var(--surface-3);
+}
+
+.discovery-progress progress::-webkit-progress-value {
+  background: var(--accent);
+  transition: inline-size var(--motion-base) var(--ease-out);
+}
+
+.discovery-progress progress::-moz-progress-bar {
+  background: var(--accent);
+}
+
+/* ------------------------------------------------------------------ chips */
+
+.discovery-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.discovery-chips .btn.is-active {
+  background: var(--surface-3);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border-2);
+}
+
+.discovery-chip-count {
+  margin-inline-start: var(--s2);
+  padding-inline: var(--s2);
+  border-radius: var(--rpill);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.discovery-chips .btn.is-active .discovery-chip-count {
+  background: var(--surface);
+  color: var(--text-2);
+}
+
+/* ---------------------------------------------------------------- tabela */
+
+.discovery-ip,
+.discovery-mac,
+.discovery-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.discovery-ip {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.discovery-mac {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  letter-spacing: -0.01em;
+}
+
+.discovery-muted {
+  color: var(--text-3);
+}
+
+/* --------------------------------------------------- diálogo de atribuição */
+
+.discovery-assign {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.discovery-assign-lead {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  max-width: 62ch;
+}
+
+.discovery-assign-lead code {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.discovery-assign .field {
+  max-width: 42ch;
+}
+
+.discovery-assign-empty {
+  margin: 0;
+  padding: var(--s5) 0;
+  text-align: center;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.discovery-assign-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-block-size: 42vh;
+  overflow-y: auto;
+}
+
+.discovery-assign-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+}
+
+.discovery-assign-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.discovery-assign-who strong {
+  font-size: var(--fs-base);
+  font-weight: 600;
+}
+
+.discovery-assign-who span {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.discovery-assign-who small {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .discovery-toolbar-actions {
+    margin-inline-start: 0;
+    inline-size: 100%;
+  }
+}
