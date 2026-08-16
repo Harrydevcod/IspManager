@@ -176,6 +176,11 @@ export const serviceDeviceAssignments = sqliteTable('service_device_assignments'
   notes: text('notes'),
   startDate: text('start_date').notNull().default("date('now')"),
   endDate: text('end_date'),
+  // 'isp' = alugado ao cliente · 'cliente' = é dele, não paga renda (migração 0043).
+  ownership: text('ownership').notNull().default('isp'),
+  ownedSince: text('owned_since'),
+  /** Renda em vigor no momento da instalação — instantâneo, não o preço atual do catálogo. */
+  rentalFeeCve: real('rental_fee_cve').notNull().default(0),
   createdBy: integer('created_by'),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')

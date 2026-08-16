@@ -1,4 +1,4 @@
-import { Activity, Cable, Pencil, Plus, Wifi } from 'lucide-react';
+import { Activity, Cable, Pencil, Plus, Tags, Wifi } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
@@ -6,6 +6,7 @@ import { Button, Dialog, EmptyState, ErrorRetry, Field, FilterBar, ModuleHeaderA
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import type { PlanRow } from '../types';
+import { RepriceDialog } from './plans/RepriceDialog';
 import './PlansModule.css';
 
 type PlanFormState = {
@@ -71,6 +72,9 @@ export function PlansModule() {
   const auth = useAuth();
   const canManagePlans = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
   const [plans, setPlans] = useState<PlanRow[]>([]);
+  // Só admin alinha preços: mexe na fatura de dezenas de clientes de uma vez.
+  const canReprice = auth.isAuthBypassed || auth.hasRole('admin');
+  const [repricePlan, setRepricePlan] = useState<PlanRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -295,6 +299,20 @@ export function PlansModule() {
                 </div>
                 {interactive && (
                   <div className="plan-item-actions" onClick={(event) => event.stopPropagation()}>
+                    {canReprice && (
+                      <Button
+                        variant="icon"
+                        size="sm"
+                        title="Aplicar este preço aos serviços ativos"
+                        aria-label={`Aplicar preço do plano ${plan.name} aos serviços ativos`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setRepricePlan(plan);
+                        }}
+                      >
+                        <Tags size={14} aria-hidden />
+                      </Button>
+                    )}
                     <Button
                       variant="icon"
                       size="sm"
@@ -367,6 +385,24 @@ export function PlansModule() {
           </Select>
         </form>
       </Dialog>
+
+      {repricePlan && (
+        <RepriceDialog
+          planId={repricePlan.id}
+          planName={repricePlan.name}
+          onClose={() => setRepricePlan(null)}
+          onApplied={(updated) => {
+            setRepricePlan(null);
+            toast(
+              updated === 0
+                ? 'Todos os serviços já estavam alinhados com o preço do plano.'
+                : `${updated} serviço(s) alinhado(s) ao preço do plano.`,
+              'success'
+            );
+            void loadPlans();
+          }}
+        />
+      )}
     </section>
   );
 }

@@ -16,6 +16,11 @@ export type DeviceInput = {
   macAddress?: string | null;
   technicianId?: number | null;
   notes?: string | null;
+  /**
+   * 'cliente' = equipamento que o cliente trouxe, não gera renda nem cobrança de
+   * compra. Por omissão o equipamento é do ISP e é alugado.
+   */
+  ownership?: 'isp' | 'cliente' | null;
 };
 
 export type ServiceItemInput = DeviceInput & { quantity?: number | null };
@@ -29,6 +34,8 @@ export type InstallCostInput = {
 export type CatalogIdentity = {
   id: number;
   stockTotal: number;
+  /** Renda mensal em vigor para o modelo — copiada para a atribuição na instalação. */
+  rentalFeeCve: number;
   landedCostCve: number;
 };
 
@@ -59,6 +66,7 @@ export function loadCatalogIdentity(db: Database.Database, id: number): CatalogI
     SELECT
       id,
       stock_total AS stockTotal,
+      rental_fee_cve AS rentalFeeCve,
       (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve) AS landedCostCve
     FROM equipment_catalog
     WHERE id = ?
@@ -71,6 +79,7 @@ export function loadCatalogKind(db: Database.Database, id: number): CatalogKind 
       id,
       is_serialized AS isSerialized,
       stock_total AS stockTotal,
+      rental_fee_cve AS rentalFeeCve,
       (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve) AS landedCostCve
     FROM equipment_catalog
     WHERE id = ?
@@ -239,12 +248,19 @@ export function installDeviceWithinTx(
   const notes = cleanValue(device.notes);
   const technicianId = device.technicianId || null;
 
+  // Equipamento do cliente não gera renda; a renda do ISP é copiada do catálogo
+  // agora e fica congelada nesta atribuição — mudar o preço do modelo no
+  // catálogo não pode reescrever a fatura de quem já o tem instalado.
+  const ownership = device.ownership === 'cliente' ? 'cliente' : 'isp';
+  const rentalFeeCve = ownership === 'cliente' ? 0 : freshCatalog.rentalFeeCve;
+
   const assignment = db.prepare(`
     INSERT INTO service_device_assignments (
       service_id, catalog_id, serial_number, asset_tag, ip_address, mac_address,
-      technician_id, notes, start_date, end_date, created_by, created_at, updated_at
+      technician_id, notes, start_date, end_date, ownership, owned_since, rental_fee_cve,
+      created_by, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, date('now'), NULL, ?, datetime('now'), datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, date('now'), NULL, ?, ?, ?, ?, datetime('now'), datetime('now'))
   `).run(
     serviceId,
     device.catalogId,
@@ -254,6 +270,10 @@ export function installDeviceWithinTx(
     macAddress,
     technicianId,
     notes,
+    ownership,
+    // Equipamento que o cliente já trouxe é dele desde o primeiro dia.
+    ownership === 'cliente' ? new Date().toISOString().slice(0, 10) : null,
+    rentalFeeCve,
     technicianId
   );
 

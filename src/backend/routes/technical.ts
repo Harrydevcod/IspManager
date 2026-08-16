@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { STATIC_IP_EQUIPMENT_TYPES } from '../../shared/equipment';
 import { getSqliteDatabase } from '../db/database';
-import { recordAudit } from '../lib/audit';
+import { recordAudit, recordAuditStrict } from '../lib/audit';
 import { SHARED_WITH_NAMES_SQL, sharerServices } from '../lib/deviceShares';
 import {
   IP_FORMAT_ERROR,
@@ -19,6 +19,7 @@ import {
   type InstallCostInput,
   type ServiceItemInput
 } from '../lib/serviceInstall';
+import { insertEquipmentPurchase } from '../lib/billing';
 import { requireAuth, requireRole } from './auth';
 
 const deviceAssignmentSchema = z.object({
@@ -28,7 +29,9 @@ const deviceAssignmentSchema = z.object({
   ipAddress: z.string().trim().optional().nullable(),
   macAddress: z.string().trim().optional().nullable(),
   technicianId: z.coerce.number().int().positive().optional().nullable(),
-  notes: z.string().trim().optional().nullable()
+  notes: z.string().trim().optional().nullable(),
+  /** 'cliente' = equipamento que o cliente trouxe; não gera renda. */
+  ownership: z.enum(['isp', 'cliente']).optional().nullable()
 });
 
 const batchItemsSchema = z.object({
@@ -40,7 +43,8 @@ const batchItemsSchema = z.object({
     ipAddress: z.string().trim().optional().nullable(),
     macAddress: z.string().trim().optional().nullable(),
     technicianId: z.coerce.number().int().positive().optional().nullable(),
-    notes: z.string().trim().optional().nullable()
+    notes: z.string().trim().optional().nullable(),
+    ownership: z.enum(['isp', 'cliente']).optional().nullable()
   })).optional().nullable(),
   installCosts: z.array(z.object({
     kind: z.enum(['mao_de_obra', 'transporte', 'outro']).default('mao_de_obra'),
@@ -62,6 +66,13 @@ const deviceIdentitySchema = z.object({
   ipAddress: z.string().trim().optional().nullable(),
   macAddress: z.string().trim().optional().nullable(),
   notes: z.string().trim().optional().nullable()
+});
+
+const purchaseSchema = z.object({
+  // Editável: equipamento com dois anos de uso não se vende ao preço de novo, e
+  // zero é legítimo (oferecido ao fim de contrato, ou já pago por fora).
+  amountCve: z.coerce.number().min(0).max(10_000_000),
+  notes: z.string().trim().max(500).optional().nullable()
 });
 
 const shareSchema = z.object({
@@ -110,6 +121,8 @@ function loadUser(id: number) {
 
 export async function registerTechnicalRoutes(app: FastifyInstance) {
   const canWriteTechnical = { preHandler: requireRole(['admin', 'operator', 'technician']) };
+  // Vender equipamento e emitir a cobrança é ato comercial, não trabalho de campo.
+  const canManageBilling = { preHandler: requireRole(['admin', 'operator']) };
 
   app.get('/api/services/:id/technical-history', { preHandler: requireAuth() }, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
@@ -140,6 +153,10 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         a.notes,
         a.start_date AS startDate,
         a.end_date AS endDate,
+        a.ownership,
+        a.owned_since AS ownedSince,
+        a.rental_fee_cve AS rentalFeeCve,
+        ec.selling_price_cve AS sellingPriceCve,
         a.created_by AS createdBy,
         cu.full_name AS createdByName,
         a.created_at AS createdAt,
@@ -689,6 +706,70 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       metadata: { catalogId: parsed.data.catalogId, replacementAssignmentId: result.assignmentId }
     });
     return reply.status(201).send(result);
+  });
+
+  /**
+   * O cliente compra o equipamento que tinha alugado.
+   *
+   * Emite a cobrança única e vira a propriedade no mesmo passo — a partir da
+   * fatura seguinte a linha de aluguer desaparece. Não é trabalho de técnico:
+   * é uma venda, e por isso fica em `admin`/`operator`.
+   */
+  app.post('/api/service-device-assignments/:id/purchase', canManageBilling, async (request, reply) => {
+    const assignmentId = Number((request.params as { id: string }).id);
+    const parsed = purchaseSchema.safeParse(request.body ?? {});
+    if (!Number.isInteger(assignmentId) || assignmentId <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Dados de compra invalidos' });
+    }
+
+    const db = getSqliteDatabase();
+    const current = db.prepare(`
+      SELECT a.id, a.service_id AS serviceId, a.end_date AS endDate, a.ownership,
+             s.client_id AS clientId,
+             TRIM(COALESCE(ec.brand, '') || ' ' || ec.model) AS label
+      FROM service_device_assignments a
+      JOIN services s ON s.id = a.service_id
+      JOIN equipment_catalog ec ON ec.id = a.catalog_id
+      WHERE a.id = ?
+    `).get(assignmentId) as {
+      id: number; serviceId: number; endDate: string | null;
+      ownership: string; clientId: number; label: string;
+    } | undefined;
+
+    if (!current) {
+      return reply.status(404).send({ error: 'Atribuicao nao encontrada' });
+    }
+    if (current.endDate) {
+      return reply.status(400).send({ error: 'Atribuicao ja encerrada' });
+    }
+    if (current.ownership === 'cliente') {
+      return reply.status(409).send({ error: 'Este equipamento ja e do cliente' });
+    }
+
+    const result = db.transaction(() => {
+      const purchase = insertEquipmentPurchase(db, {
+        assignmentId,
+        serviceId: current.serviceId,
+        clientId: current.clientId,
+        amountCve: parsed.data.amountCve,
+        label: current.label
+      });
+      recordAuditStrict(db, request, {
+        action: 'equipment_purchase',
+        entityType: 'service_device_assignment',
+        entityId: assignmentId,
+        summary: `Cliente comprou ${current.label} por ${parsed.data.amountCve} CVE`,
+        metadata: {
+          serviceId: current.serviceId,
+          amountCve: parsed.data.amountCve,
+          paymentId: purchase.paymentId,
+          notes: parsed.data.notes ?? null
+        }
+      });
+      return purchase;
+    })();
+
+    return reply.send({ ok: true, paymentId: result.paymentId });
   });
 
   app.post('/api/service-device-assignments/:id/return', canWriteTechnical, async (request, reply) => {

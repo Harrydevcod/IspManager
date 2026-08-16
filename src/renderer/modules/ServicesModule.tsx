@@ -11,6 +11,7 @@ import type { AudiovisualConfig, Client, DeviceAssignment, PlanRow, ServiceEvent
 import { BulkIpDialog, type ActiveAssignment } from './services/BulkIpDialog';
 import { IpField } from './services/IpField';
 import { ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
+import { PurchaseDeviceDialog } from './services/PurchaseDeviceDialog';
 import { ServiceItemDraftsBuilder, emptyItemDraft, type ItemDraft } from './services/ServiceItemDraftsBuilder';
 
 type EventFormState = {
@@ -106,6 +107,8 @@ export function ServicesModule({
   const [showEventDialog, setShowEventDialog] = useState(false);
   const [eventForm, setEventForm] = useState<EventFormState>(emptyEventForm());
   const [replaceTarget, setReplaceTarget] = useState<DeviceAssignment | null>(null);
+  const [purchaseTarget, setPurchaseTarget] = useState<DeviceAssignment | null>(null);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [replaceDraft, setReplaceDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
   const [editTarget, setEditTarget] = useState<DeviceAssignment | null>(null);
   const [editDraft, setEditDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
@@ -365,7 +368,8 @@ export function ServicesModule({
               assetTag: draft.assetTag || null,
               ipAddress: draft.ipAddress || null,
               macAddress: draft.macAddress || null,
-              notes: draft.notes || null
+              notes: draft.notes || null,
+              ownership: draft.ownership
             }
           : {
               catalogId: Number(draft.catalogId),
@@ -487,6 +491,40 @@ export function ServicesModule({
       void loadServices();
     } catch {
       toast('Falha de rede ao remover equipamento.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function purchaseDevice(amountCve: number, notes: string | null) {
+    if (!selectedService || !purchaseTarget) return;
+    setSubmitting(true);
+    setPurchaseError(null);
+    try {
+      const response = await authFetch(
+        `http://127.0.0.1:3001/api/service-device-assignments/${purchaseTarget.id}/purchase`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amountCve, notes })
+        }
+      );
+      const data = await response.json() as { error?: string; paymentId?: number | null };
+      if (!response.ok) {
+        setPurchaseError(data.error || 'Nao foi possivel registar a compra.');
+        return;
+      }
+      toast(
+        data.paymentId
+          ? 'Compra registada. A cobranca foi emitida e o aluguer para na proxima fatura.'
+          : 'Equipamento passou a ser do cliente. O aluguer para na proxima fatura.',
+        'success'
+      );
+      setPurchaseTarget(null);
+      await loadTechnicalHistory(selectedService.id);
+      void loadServices();
+    } catch {
+      setPurchaseError('Falha de rede ao registar a compra.');
     } finally {
       setSubmitting(false);
     }
@@ -766,6 +804,7 @@ export function ServicesModule({
           onUnshareDevice={(assignment) => void unshareDevice(assignment)}
           onReplaceDevice={openReplaceDialog}
           onReturnDevice={(assignment) => void returnDevice(assignment)}
+          onPurchaseDevice={(assignment) => { setPurchaseError(null); setPurchaseTarget(assignment); }}
           onAddEvent={openEventDialog}
         />
       )}
@@ -1142,6 +1181,16 @@ export function ServicesModule({
           <Field wide label="Notas" value={editDraft.notes} onChange={(event) => setEditDraft((current) => ({ ...current, notes: event.target.value }))} />
         </form>
       </Dialog>
+
+      {purchaseTarget && (
+        <PurchaseDeviceDialog
+          assignment={purchaseTarget}
+          submitting={submitting}
+          error={purchaseError}
+          onClose={() => setPurchaseTarget(null)}
+          onConfirm={(amountCve, notes) => void purchaseDevice(amountCve, notes)}
+        />
+      )}
     </section>
   );
 }

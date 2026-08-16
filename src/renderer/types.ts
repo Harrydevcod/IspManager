@@ -639,6 +639,13 @@ export type DeviceAssignment = {
   /** Clientes servidos por partilha, separados por vírgula. */
   sharedWithNames: string | null;
   shareCount: number;
+  /** 'isp' = alugado ao cliente · 'cliente' = é dele e não paga renda. */
+  ownership: 'isp' | 'cliente';
+  ownedSince: string | null;
+  /** Renda mensal congelada na atribuição (0 quando é do cliente). */
+  rentalFeeCve: number;
+  /** Preço de venda do catálogo — sugestão para a compra. */
+  sellingPriceCve: number;
 };
 
 export type MaterialLine = {

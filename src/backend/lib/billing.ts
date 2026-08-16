@@ -3,10 +3,13 @@ import { allocateDocumentNumber } from './numbering';
 import { loadAudiovisualConfig } from './audiovisual';
 
 export type BillingLine = {
-  kind: 'internet' | 'audiovisual';
+  kind: 'internet' | 'audiovisual' | 'instalacao' | 'aluguer' | 'equipamento';
   description: string;
   amountCve: number;
 };
+
+/** Um equipamento instalado que o ISP aluga ao cliente. */
+export type RentalLine = { assignmentId: number; label: string; amountCve: number };
 
 export type BillingPreviewRow = {
   serviceId: number;
@@ -23,13 +26,19 @@ const INTERNET_LINE_DESCRIPTION = 'Servico de Internet';
 
 /**
  * Composição mensal de um serviço: linha de internet (se houver mensalidade) +
- * linha audiovisual (se a modalidade for mensal). A anuidade NÃO entra aqui — é
- * faturada à parte. Fonte única usada pela geração mensal e pela regeneração de
- * uma mensalidade anulada, para que o total nunca divirja entre os dois caminhos.
+ * linha audiovisual (se a modalidade for mensal) + uma linha por equipamento
+ * alugado. A anuidade NÃO entra aqui — é faturada à parte. Fonte única usada
+ * pela geração mensal e pela regeneração de uma mensalidade anulada, para que o
+ * total nunca divirja entre os dois caminhos.
+ *
+ * O aluguer vem em linhas separadas, uma por equipamento, para o cliente ver
+ * porque paga o que paga — e para a linha simplesmente desaparecer da fatura
+ * seguinte no dia em que ele comprar o equipamento.
  */
 export function buildMonthlyServiceLines(
   svc: { monthlyValueCve: number; audiovisualMode: 'none' | 'monthly' | 'annual'; audiovisualMonthlyCve: number },
-  audiovisualLabel: string
+  audiovisualLabel: string,
+  rentals: RentalLine[] = []
 ): BillingLine[] {
   const lines: BillingLine[] = [];
   if (svc.monthlyValueCve > 0) {
@@ -38,7 +47,51 @@ export function buildMonthlyServiceLines(
   if (svc.audiovisualMode === 'monthly' && svc.audiovisualMonthlyCve > 0) {
     lines.push({ kind: 'audiovisual', description: audiovisualLabel, amountCve: svc.audiovisualMonthlyCve });
   }
+  for (const rental of rentals) {
+    if (rental.amountCve > 0) {
+      lines.push({ kind: 'aluguer', description: `${RENTAL_LINE_PREFIX} ${rental.label}`, amountCve: rental.amountCve });
+    }
+  }
   return lines;
+}
+
+const RENTAL_LINE_PREFIX = 'Aluguer —';
+
+/**
+ * Equipamento que gera renda, por serviço.
+ *
+ * Três filtros, cada um com uma razão:
+ *  - `end_date IS NULL` — já foi retirado, não se cobra.
+ *  - `ownership = 'isp'` — é do cliente, não se cobra. É esta a linha que
+ *    desaparece da fatura quando ele compra o equipamento.
+ *  - `rental_fee_cve > 0` — material e equipamento sem renda não geram linhas
+ *    de 0$ a sujar a fatura.
+ *
+ * A partilha (`service_device_shares`, migração 0030) resolve-se por omissão: a
+ * query só olha para `service_device_assignments.service_id`, portanto quem
+ * entra por partilha não é faturado — paga o titular da unidade física, uma vez.
+ * Há um teste a fixar isto de propósito.
+ */
+export function loadServiceRentals(db: DatabaseType): Map<number, RentalLine[]> {
+  const rows = db.prepare(`
+    SELECT a.id AS assignmentId, a.service_id AS serviceId,
+           a.rental_fee_cve AS amountCve,
+           TRIM(COALESCE(ec.brand, '') || ' ' || ec.model) AS label
+    FROM service_device_assignments a
+    JOIN equipment_catalog ec ON ec.id = a.catalog_id
+    WHERE a.end_date IS NULL
+      AND a.ownership = 'isp'
+      AND a.rental_fee_cve > 0
+    ORDER BY a.service_id, a.id
+  `).all() as Array<{ assignmentId: number; serviceId: number; amountCve: number; label: string }>;
+
+  const byService = new Map<number, RentalLine[]>();
+  for (const row of rows) {
+    const list = byService.get(row.serviceId) ?? [];
+    list.push({ assignmentId: row.assignmentId, label: row.label, amountCve: row.amountCve });
+    byService.set(row.serviceId, list);
+  }
+  return byService;
 }
 
 export function sumLines(lines: BillingLine[]): number {
@@ -103,6 +156,9 @@ export function dueDateFor(_referenceMonth: string, _dueDay: number): string {
  */
 export function computeMonthlyBilling(db: DatabaseType, referenceMonth: string): BillingPreview {
   const audiovisual = loadAudiovisualConfig(db);
+  // Uma leitura para todos os serviços, em vez de uma por serviço dentro do
+  // ciclo: 26 serviços dariam 26 queries para responder à mesma pergunta.
+  const rentalsByService = loadServiceRentals(db);
   const services = db.prepare(`
     SELECT
       s.id AS serviceId,
@@ -146,7 +202,7 @@ export function computeMonthlyBilling(db: DatabaseType, referenceMonth: string):
   const dueIso = dueDateFromIssue(issueIso, PAYMENT_DUE_DAYS);
 
   for (const svc of services) {
-    const lines = buildMonthlyServiceLines(svc, audiovisual.label);
+    const lines = buildMonthlyServiceLines(svc, audiovisual.label, rentalsByService.get(svc.serviceId) ?? []);
     const total = sumLines(lines);
     // Serviço sem valor mensal (ex.: standalone anual) não gera fatura mensal vazia.
     if (total <= 0) continue;
@@ -265,4 +321,78 @@ export function insertInstallationFeeIfDue(
   `).run(paymentId, INSTALLATION_LINE_DESCRIPTION, params.amountCve);
 
   return { paymentId };
+}
+
+/**
+ * Chave de competência da compra de equipamento: uma por **atribuição**, não uma
+ * constante por serviço como a instalação. A instalação acontece uma vez na vida
+ * do serviço; a compra de equipamento pode acontecer várias vezes — o cliente
+ * compra o router este mês e a antena para o ano. A chave por atribuição mantém
+ * a idempotência que o índice `(service_id, reference_month)` garante, sem
+ * bloquear a segunda compra.
+ */
+export function equipmentPurchaseReference(assignmentId: number): string {
+  return `EQUIP-${assignmentId}`;
+}
+
+export type EquipmentPurchaseInput = {
+  assignmentId: number;
+  serviceId: number;
+  clientId: number;
+  amountCve: number;
+  label: string;
+};
+
+/**
+ * O cliente compra o equipamento que tinha alugado.
+ *
+ * Emite a cobrança única e vira a propriedade no mesmo passo — não são dois
+ * atos, é um: o que faz o aluguer parar é a compra estar registada. A partir da
+ * fatura seguinte a linha de aluguer deixa de existir; a mensalidade deste mês,
+ * se já foi emitida, não se toca (documento numerado não se altera).
+ *
+ * MUST correr dentro de uma transação do chamador.
+ */
+export function insertEquipmentPurchase(
+  db: DatabaseType,
+  input: EquipmentPurchaseInput
+): { paymentId: number | null; alreadyOwned: boolean } {
+  const current = db.prepare(`
+    SELECT ownership FROM service_device_assignments WHERE id = ?
+  `).get(input.assignmentId) as { ownership: string } | undefined;
+  if (current?.ownership === 'cliente') return { paymentId: null, alreadyOwned: true };
+
+  const reference = equipmentPurchaseReference(input.assignmentId);
+  const exists = db.prepare(`
+    SELECT 1 FROM payments WHERE service_id = ? AND reference_month = ? AND status != 'cancelled'
+  `).get(input.serviceId, reference);
+
+  let paymentId: number | null = null;
+  // Preço a zero é legítimo: equipamento oferecido ao fim de anos de contrato,
+  // ou já pago por fora. Vira a propriedade na mesma, sem emitir fatura de 0$.
+  if (!exists && input.amountCve > 0) {
+    const inserted = db.prepare(`
+      INSERT INTO payments (
+        client_id, service_id, reference_month, amount_cve, due_date,
+        status, invoice_number, invoice_date, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
+    `).run(input.clientId, input.serviceId, reference, input.amountCve, dueDateFromIssue(todayIso()));
+    paymentId = Number(inserted.lastInsertRowid);
+
+    db.prepare('UPDATE payments SET invoice_number = ? WHERE id = ? AND invoice_number IS NULL')
+      .run(allocateDocumentNumber('invoice'), paymentId);
+    db.prepare(`
+      INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order)
+      VALUES (?, 'equipamento', ?, ?, 0)
+    `).run(paymentId, `Compra de equipamento — ${input.label}`, input.amountCve);
+  }
+
+  db.prepare(`
+    UPDATE service_device_assignments
+    SET ownership = 'cliente', owned_since = date('now'), updated_at = datetime('now')
+    WHERE id = ?
+  `).run(input.assignmentId);
+
+  return { paymentId, alreadyOwned: false };
 }

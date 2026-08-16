@@ -43,6 +43,8 @@ type ServiceDetailDialogProps = {
   onUnshareDevice: (assignment: DeviceAssignment) => void;
   onReplaceDevice: (assignment: DeviceAssignment) => void;
   onReturnDevice: (assignment: DeviceAssignment) => void;
+  /** O cliente compra o equipamento que tinha alugado — pára a renda. */
+  onPurchaseDevice: (assignment: DeviceAssignment) => void;
   onAddEvent: () => void;
 };
 
@@ -63,12 +65,20 @@ export function ServiceDetailDialog({
   onUnshareDevice,
   onReplaceDevice,
   onReturnDevice,
+  onPurchaseDevice,
   onAddEvent
 }: ServiceDetailDialogProps) {
   // Fonte fresca após uma edição; enquanto o histórico carrega usa o valor da lista.
   const activeIps = technicalHistory
     ? technicalHistory.assignments.filter((a) => !a.endDate && a.ipAddress).map((a) => a.ipAddress).join(', ')
     : service.deviceIps;
+
+  // Aluguer do equipamento instalado que é do ISP. É a mesma conta que o
+  // servidor faz para a fatura; aqui serve para o número no ecrã bater certo
+  // com o número no papel, que é a pergunta que o cliente faz ao telefone.
+  const rentals = (technicalHistory?.assignments ?? [])
+    .filter((a) => !a.endDate && a.isOwner && a.ownership === 'isp' && a.rentalFeeCve > 0);
+  const rentalTotalCve = rentals.reduce((sum, a) => sum + a.rentalFeeCve, 0);
 
   return (
     <Dialog
@@ -99,12 +109,22 @@ export function ServiceDetailDialog({
         <div>
           <dt>Mensalidade</dt>
           <dd>
-            {formatCve(monthlyTotalCve)}
-            {service.audiovisualMode === 'monthly' && (
-              <small className="muted"> (NET + TVM)</small>
+            {formatCve(monthlyTotalCve + rentalTotalCve)}
+            {(rentalTotalCve > 0 || service.audiovisualMode === 'monthly') && (
+              <small className="muted">
+                {' '}({formatCve(monthlyTotalCve)}
+                {service.audiovisualMode === 'monthly' ? ' NET+TVM' : ' plano'}
+                {rentalTotalCve > 0 ? ` + ${formatCve(rentalTotalCve)} aluguer` : ''})
+              </small>
             )}
           </dd>
         </div>
+        {rentalTotalCve > 0 && (
+          <div>
+            <dt>Aluguer de equipamento</dt>
+            <dd>{formatCve(rentalTotalCve)} / mês · {rentals.length} equipamento(s)</dd>
+          </div>
+        )}
         {service.audiovisualMode !== 'none' && (
           <div>
             <dt>{audiovisualLabel || 'Conteúdos audiovisuais'}</dt>
@@ -157,6 +177,13 @@ export function ServiceDetailDialog({
                       <span className="technical-item-type"> · {assignment.catalogType}</span>
                     </strong>
                     {!assignment.isOwner && <Badge tone="info">Partilhada</Badge>}
+                    {Boolean(assignment.isOwner) && (
+                      assignment.ownership === 'cliente'
+                        ? <Badge tone="accent">Do cliente</Badge>
+                        : assignment.rentalFeeCve > 0
+                          ? <Badge tone="neutral">{`Alugado · ${formatCve(assignment.rentalFeeCve)}/mês`}</Badge>
+                          : null
+                    )}
                     {Boolean(assignment.isOwner) && assignment.shareCount > 0 && (
                       <Badge tone="info">Serve {assignment.shareCount + 1} serviços</Badge>
                     )}
@@ -169,6 +196,9 @@ export function ServiceDetailDialog({
                     {assignment.assetTag && <div><dt>Tag</dt><dd>{assignment.assetTag}</dd></div>}
                     <div><dt>Inicio</dt><dd>{formatPtDate(assignment.startDate)}</dd></div>
                     {assignment.endDate && <div><dt>Fim</dt><dd>{formatPtDate(assignment.endDate)}</dd></div>}
+                    {assignment.ownedSince && (
+                      <div><dt>Do cliente desde</dt><dd>{formatPtDate(assignment.ownedSince)}</dd></div>
+                    )}
                     {assignment.sharedWithNames && (
                       <div><dt>Também serve</dt><dd>{assignment.sharedWithNames}</dd></div>
                     )}
@@ -184,6 +214,17 @@ export function ServiceDetailDialog({
                           <Button variant="secondary" size="sm" disabled={submitting} onClick={() => onReplaceDevice(assignment)}>
                             Substituir
                           </Button>
+                          {canManage && assignment.ownership === 'isp' && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              disabled={submitting}
+                              leadingIcon={<Coins size={14} aria-hidden />}
+                              onClick={() => onPurchaseDevice(assignment)}
+                            >
+                              Cliente comprou
+                            </Button>
+                          )}
                           <Button variant="danger" size="sm" disabled={submitting} onClick={() => onReturnDevice(assignment)}>
                             Remover
                           </Button>
