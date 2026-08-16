@@ -71,7 +71,12 @@ jobs:
           # Os dois jobs correm em paralelo: quem chegar primeiro cria, o outro
           # falha aqui e segue — o upload é que tem de ser fiável.
           gh release create "$TAG" --title "$TAG" --notes-from-tag || true
-          gh release upload "$TAG" release/*.dmg --clobber
+          for tentativa in 1 2 3; do
+            gh release upload "$TAG" release/*.dmg --clobber && exit 0
+            echo "tentativa $tentativa falhou — repetir em 15s"
+            sleep 15
+          done
+          exit 1
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -106,7 +111,17 @@ jobs:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           gh release create "$TAG" --title "$TAG" --notes-from-tag || true
-          gh release upload "$TAG" release/*.AppImage release/latest-linux.yml --clobber
+          # O upload devolveu HTTP 404 na v1.11.2 e na v1.11.3 **depois** de o
+          # AppImage ter subido intacto (tamanho igual ao do latest-linux.yml),
+          # deixando o job vermelho com a release boa. Repetir é seguro: o
+          # --clobber substitui o que já lá esteja, e só desistimos ao fim de
+          # três tentativas — um erro a sério continua a dar vermelho.
+          for tentativa in 1 2 3; do
+            gh release upload "$TAG" release/*.AppImage release/latest-linux.yml --clobber && exit 0
+            echo "tentativa $tentativa falhou — repetir em 15s"
+            sleep 15
+          done
+          exit 1
 
       - uses: actions/upload-artifact@v4
         if: always()
