@@ -6,6 +6,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.12.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.12.0) — 2026-08-17
+
 ### Adicionado
 
 - **faturação:** o **aluguer do equipamento** passa a ser cobrado por linha própria na mensalidade, em vez de estar embutido à mão no preço. Cada equipamento instalado que seja do ISP soma a sua renda ao plano, e a fatura mostra o que é o quê
@@ -15,6 +17,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 - **rede:** o router da operadora passa a chamar-se **router de gestão do ISP** em toda a interface. Há clientes com MikroTiks próprios em casa e esses aparecem na descoberta como equipamentos quaisquer — o ISPM liga-se apenas ao router configurado nas Definições, nunca a equipamento de um cliente
 - **rede:** sobre cada endereço encontrado dá para abrir a interface web do equipamento, registá-lo como backbone com o IP e o MAC já preenchidos, atribuí-lo ao equipamento instalado de um serviço, ou exportar a lista em CSV
 - **rede:** o fabricante vem do registo oficial de OUI do IEEE (39.935 prefixos, gerados por `scripts/fetch-oui.cjs` e incluídos na aplicação — nunca é consultado online). Telemóveis e portáteis modernos usam endereços aleatórios e ficam sem fabricante, que é o que são
+- **rede:** um endereço só entra nos **livres** quando o registo que o ocupa for libertado — retirar o equipamento, limpar o IP, abater o backbone. O CPE de um cliente suspenso continua instalado em casa dele: não responde porque está cortado, e aparece como **Reservado**, nunca como livre. Dar esse endereço a outra instalação seria um conflito no dia em que o cliente pagar
+- **rede:** a lista ordena-se por endereço ou por estado, e por estado é por urgência — desconhecido, duplicado, sem resposta, reservado, registado
 - Só ICMP: a ferramenta não varre portos nem procura partilhas. Cada varrimento fica registado na auditoria com o intervalo e o autor
 
 ### Notas de migração
