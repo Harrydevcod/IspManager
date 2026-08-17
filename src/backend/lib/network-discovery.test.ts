@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import {
+  loadRegisteredIps,
   loadSeenHosts,
   normalizeMac,
   parseArpTable,
@@ -173,6 +174,76 @@ const host = (over: Partial<DiscoveredHost> = {}): DiscoveredHost => ({
   hostname: null,
   source: 'ping',
   ...over
+});
+
+// ----------------------------------------------------- endereços ocupados
+
+function seedCatalog(db: Database.Database, model: string): number {
+  return db.prepare(`
+    INSERT INTO equipment_catalog (category, type, brand, model, is_serialized, purchase_price_cve, stock_total, active)
+    VALUES ('equipamento', 'cpe', 'TP-Link', ?, 1, 3000, 5, 1)
+  `).run(model).lastInsertRowid as number;
+}
+
+function seedAssignment(
+  db: Database.Database,
+  ip: string,
+  options: { serviceStatus?: string; endDate?: string | null } = {}
+): void {
+  const catalogId = seedCatalog(db, `CPE ${ip}`);
+  const clientId = db.prepare(`
+    INSERT INTO clients (client_code, full_name, status) VALUES (?, ?, 'active')
+  `).run(`CLI-${ip}`, `Cliente ${ip}`).lastInsertRowid as number;
+  const serviceId = db.prepare(`
+    INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 2500, 10, ?)
+  `).run(clientId, options.serviceStatus ?? 'active').lastInsertRowid as number;
+  db.prepare(`
+    INSERT INTO service_device_assignments (service_id, catalog_id, ip_address, start_date, end_date)
+    VALUES (?, ?, ?, '2026-01-01', ?)
+  `).run(serviceId, catalogId, ip, options.endDate ?? null);
+}
+
+function seedBackbone(db: Database.Database, ip: string, status: string): void {
+  const catalogId = seedCatalog(db, `Antena ${ip}`);
+  db.prepare(`
+    INSERT INTO backbone_devices (catalog_id, name, ip_address, status) VALUES (?, ?, ?, ?)
+  `).run(catalogId, `Antena ${ip}`, ip, status);
+}
+
+describe('loadRegisteredIps', () => {
+  test('o equipamento instalado ocupa o endereço mesmo com o serviço parado', () => {
+    const db = freshDb();
+    seedAssignment(db, '192.168.1.10', { serviceStatus: 'active' });
+    seedAssignment(db, '192.168.1.11', { serviceStatus: 'suspended' });
+    seedAssignment(db, '192.168.1.12', { serviceStatus: 'cancelled' });
+
+    const rows = loadRegisteredIps(db);
+    expect(rows.map((r) => r.ip).sort()).toEqual(['192.168.1.10', '192.168.1.11', '192.168.1.12']);
+    // O `active` separa quem devia estar de pé de quem está cortado.
+    expect(rows.find((r) => r.ip === '192.168.1.10')?.active).toBe(true);
+    expect(rows.find((r) => r.ip === '192.168.1.11')?.active).toBe(false);
+    expect(rows.find((r) => r.ip === '192.168.1.12')?.active).toBe(false);
+    db.close();
+  });
+
+  test('retirar o equipamento é o que liberta o endereço', () => {
+    const db = freshDb();
+    seedAssignment(db, '192.168.1.13', { endDate: '2026-08-01' });
+    expect(loadRegisteredIps(db)).toEqual([]);
+    db.close();
+  });
+
+  test('backbone ocupa até ser abatido; em manutenção ainda devia responder', () => {
+    const db = freshDb();
+    seedBackbone(db, '192.168.1.20', 'active');
+    seedBackbone(db, '192.168.1.21', 'maintenance');
+    seedBackbone(db, '192.168.1.22', 'retired');
+
+    const rows = loadRegisteredIps(db);
+    expect(rows.map((r) => r.ip).sort()).toEqual(['192.168.1.20', '192.168.1.21']);
+    expect(rows.every((r) => r.active)).toBe(true);
+    db.close();
+  });
 });
 
 describe('persistSeen', () => {

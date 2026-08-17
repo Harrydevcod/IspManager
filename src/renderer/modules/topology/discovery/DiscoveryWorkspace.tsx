@@ -29,6 +29,8 @@ import {
 } from '../../../components';
 import { downloadCsv } from '../../../lib/csv';
 import { formatPtDateTime } from '../../../lib/format';
+import { compareNumber, sortRows, type SortState } from '../../../lib/listView';
+import { ipToInt } from '../../../../shared/ip-range';
 import { createDiscoveryApi, type DiscoveryCategory, type DiscoveryRow } from './discovery-api';
 import { useDiscovery } from './useDiscovery';
 import { AssignIpDialog } from './AssignIpDialog';
@@ -46,6 +48,7 @@ const FILTERS: ReadonlyArray<{ id: Filter; label: string }> = [
   { id: 'desconhecido', label: 'Desconhecidos' },
   { id: 'registado', label: 'Registados' },
   { id: 'ausente', label: 'Sem resposta' },
+  { id: 'reservado', label: 'Reservados' },
   { id: 'duplicado', label: 'Duplicados' }
 ];
 
@@ -53,6 +56,8 @@ const TONE: Record<DiscoveryCategory, 'danger' | 'success' | 'warn' | 'neutral'>
   desconhecido: 'danger',
   registado: 'success',
   ausente: 'warn',
+  // Reservado não é avaria: está cortado de propósito e o endereço é dele.
+  reservado: 'neutral',
   duplicado: 'danger'
 };
 
@@ -60,8 +65,46 @@ const LABEL: Record<DiscoveryCategory, string> = {
   desconhecido: 'Desconhecido',
   registado: 'Registado',
   ausente: 'Sem resposta',
+  reservado: 'Reservado',
   duplicado: 'Duplicado'
 };
+
+/**
+ * Ordenar por estado é ordenar por urgência, não por ordem alfabética: quem
+ * está na rede sem registo e os IPs em conflito primeiro, quem está em ordem no
+ * fim. Alfabético punha "Desconhecido" e "Duplicado" a alternar sem razão.
+ */
+const SEVERITY: Record<DiscoveryCategory, number> = {
+  desconhecido: 0,
+  duplicado: 1,
+  ausente: 2,
+  reservado: 3,
+  registado: 4
+};
+
+export type DiscoverySortKey = 'ip' | 'estado';
+
+/** O varrimento chega ordenado por endereço; é essa a vista de partida. */
+const DEFAULT_SORT: SortState<DiscoverySortKey> = { key: 'ip', direction: 'asc' };
+
+/**
+ * Filtra pelo estado escolhido nos chips e ordena.
+ *
+ * Empate resolve-se pela ordem de chegada, que é a do endereço (o `sortRows` é
+ * estável) — por isso ordenar por estado agrupa os estados sem baralhar os IPs
+ * lá dentro.
+ */
+export function orderDiscoveryRows(
+  rows: readonly DiscoveryRow[],
+  filter: Filter,
+  sort: SortState<DiscoverySortKey>
+): DiscoveryRow[] {
+  const visible = filter === 'todos' ? rows : rows.filter((row) => row.category === filter);
+  return sortRows(visible, sort, {
+    ip: (a, b) => compareNumber(ipToInt(a.ip), ipToInt(b.ip)),
+    estado: (a, b) => compareNumber(SEVERITY[a.category], SEVERITY[b.category])
+  });
+}
 
 const api = createDiscoveryApi();
 
@@ -89,13 +132,14 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
   const discovery = useDiscovery(active, api);
   const { report, progress, scanning } = discovery;
   const [filter, setFilter] = useState<Filter>('todos');
+  const [sort, setSort] = useState<SortState<DiscoverySortKey>>(DEFAULT_SORT);
   const [assigning, setAssigning] = useState<DiscoveryRow | null>(null);
   const { toast } = useToast();
 
-  const rows = useMemo(() => {
-    if (!report) return [];
-    return filter === 'todos' ? report.rows : report.rows.filter((row) => row.category === filter);
-  }, [report, filter]);
+  const rows = useMemo(
+    () => (report ? orderDiscoveryRows(report.rows, filter, sort) : []),
+    [report, filter, sort]
+  );
 
   async function copy(value: string, what: string) {
     try {
@@ -130,6 +174,8 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
   }
 
   const counts = report?.counts;
+  /** Só há router para consultar depois de o relatório o confirmar. */
+  const routerAvailable = report?.routerConfigured ?? false;
 
   return (
     <section className="discovery-workspace" aria-label="Descoberta de equipamentos na rede">
@@ -143,16 +189,21 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
           hint="Aceita 192.168.1.0/24 ou 192.168.1.1-254"
           disabled={scanning}
         />
+        {/* Ligado só quando há mesmo router para consultar. Um interruptor a
+            verde sem router configurado promete o que a rota nunca faz — ela
+            exige `isRouterConfigured` antes de contactar seja o que for. Antes
+            do primeiro relatório ainda não se sabe, e não saber mostra-se
+            desligado: é preferível a anunciar uma capacidade por confirmar. */}
         <Toggle
           title="Consultar o router de gestão"
           description={
-            report && !report.routerConfigured
-              ? 'Sem router de gestão configurado nas definições'
-              : 'Junta o ARP e as concessões DHCP do router da operadora'
+            routerAvailable
+              ? 'Junta o ARP e as concessões DHCP do router de gestão do ISP'
+              : 'Configure o router em Definições › Rede'
           }
           wide={false}
-          checked={discovery.includeRouter}
-          disabled={scanning || (report ? !report.routerConfigured : false)}
+          checked={discovery.includeRouter && routerAvailable}
+          disabled={scanning || !routerAvailable}
           onChange={(event) => discovery.setIncludeRouter(event.target.checked)}
         />
         <div className="discovery-toolbar-actions">
@@ -223,12 +274,21 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
             trend={counts.duplicado > 0 ? `${counts.duplicado} com IP duplicado` : 'registados que não responderam'}
             onActivate={() => setFilter(counts.duplicado > 0 ? 'duplicado' : 'ausente')}
           />
+          {/* Antes do primeiro varrimento não há livres nenhuns a declarar: um
+              zero aqui leria-se como "a rede está cheia", que é o oposto do que
+              se sabe. O traço diz a verdade — ainda não se perguntou. */}
           <MetricCard
             icon={Globe}
             tone="info"
             label="Endereços livres"
-            value={String(counts.livre)}
-            trend={report?.nextFreeIp ? `próximo: ${report.nextFreeIp}` : 'nada livre neste intervalo'}
+            value={report && report.rangeSize > 0 ? String(counts.livre) : '—'}
+            trend={
+              !report || report.rangeSize === 0
+                ? 'varra o intervalo para contar'
+                : report.nextFreeIp
+                  ? `próximo: ${report.nextFreeIp}`
+                  : 'nada livre neste intervalo'
+            }
           />
         </MetricGrid>
       ) : null}
@@ -251,14 +311,20 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
         </div>
       ) : null}
 
-      <DataTable<DiscoveryRow>
+      <DataTable<DiscoveryRow, DiscoverySortKey>
         rows={rows}
         rowKey={(row) => row.ip}
         gridTemplateColumns="minmax(130px, 0.8fr) 130px minmax(160px, 1.4fr) minmax(150px, 1fr) minmax(110px, 0.8fr) 90px minmax(140px, 1fr)"
         stickyHeader
+        sort={sort}
+        onSortChange={setSort}
         columns={[
-          { header: 'Endereço', cell: (row) => <code className="discovery-ip">{row.ip}</code> },
-          { header: 'Estado', cell: (row) => <Badge tone={TONE[row.category]}>{LABEL[row.category]}</Badge> },
+          { header: 'Endereço', sortKey: 'ip', cell: (row) => <code className="discovery-ip">{row.ip}</code> },
+          {
+            header: 'Estado',
+            sortKey: 'estado',
+            cell: (row) => <Badge tone={TONE[row.category]}>{LABEL[row.category]}</Badge>
+          },
           { header: 'Nome', cell: (row) => displayName(row) },
           {
             header: 'MAC',

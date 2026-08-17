@@ -151,33 +151,58 @@ export type RegisteredIp = {
   kind: 'backbone' | 'assignment';
   id: number;
   name: string;
+  /** `false` = ocupa o endereço mas não se espera que responda (ver abaixo). */
+  active: boolean;
 };
 
 /**
- * Todos os IPs que o ISPM diz ter na rede. Backbone e atribuições ativas de
- * equipamento — as duas colunas onde um IP significa "isto devia estar lá".
+ * Todos os IPs que o ISPM diz ter na rede. Backbone e equipamento instalado em
+ * serviços — as duas colunas onde um IP significa "isto está ocupado".
+ *
+ * **Ocupado não é o mesmo que ativo.** O CPE de um cliente suspenso continua em
+ * casa dele com o mesmo endereço: não responde ao ping porque foi cortado, mas
+ * dar esse IP a outra instalação é um conflito no terreno no dia em que ele
+ * pagar. O que liberta um endereço é o registo acabar — retirar o equipamento
+ * (`end_date`), limpar o IP, abater o backbone — nunca o estado do serviço.
+ *
+ * Daí o `active`: diz quem devia estar de pé, para o cruzamento separar uma
+ * avaria (`ausente`) de um endereço reservado por um serviço parado
+ * (`reservado`). A sonda (`network-probe.ts`) é que filtra por serviço ativo,
+ * porque a pergunta dela é outra: "quem devia estar a responder?".
  */
 export function loadRegisteredIps(db: Database.Database): RegisteredIp[] {
   const backbones = db.prepare(`
-    SELECT ip_address AS ip, id, name
+    SELECT ip_address AS ip, id, name, status
     FROM backbone_devices
-    WHERE status IN ('active','maintenance')
+    WHERE status <> 'retired'
       AND ip_address IS NOT NULL AND TRIM(ip_address) <> ''
-  `).all() as Array<{ ip: string; id: number; name: string }>;
+  `).all() as Array<{ ip: string; id: number; name: string; status: string }>;
 
   const assignments = db.prepare(`
-    SELECT a.ip_address AS ip, a.id, c.full_name AS name
+    SELECT a.ip_address AS ip, a.id, c.full_name AS name, s.status
     FROM service_device_assignments a
     JOIN services s ON s.id = a.service_id
     JOIN clients c ON c.id = s.client_id
     WHERE a.end_date IS NULL
-      AND s.status = 'active'
       AND a.ip_address IS NOT NULL AND TRIM(a.ip_address) <> ''
-  `).all() as Array<{ ip: string; id: number; name: string }>;
+  `).all() as Array<{ ip: string; id: number; name: string; status: string }>;
 
   return [
-    ...backbones.map((row) => ({ ip: row.ip.trim(), kind: 'backbone' as const, id: row.id, name: row.name })),
-    ...assignments.map((row) => ({ ip: row.ip.trim(), kind: 'assignment' as const, id: row.id, name: row.name }))
+    ...backbones.map((row) => ({
+      ip: row.ip.trim(),
+      kind: 'backbone' as const,
+      id: row.id,
+      name: row.name,
+      // Em manutenção continua a ser equipamento nosso que devia estar de pé.
+      active: row.status === 'active' || row.status === 'maintenance'
+    })),
+    ...assignments.map((row) => ({
+      ip: row.ip.trim(),
+      kind: 'assignment' as const,
+      id: row.id,
+      name: row.name,
+      active: row.status === 'active'
+    }))
   ];
 }
 

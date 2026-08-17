@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, createElement } from 'react';
+import { act, createElement, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { useDiscovery, type UseDiscovery } from './useDiscovery';
@@ -9,10 +9,11 @@ const roots: Root[] = [];
 
 const emptyReport = (over: Partial<DiscoveryReport> = {}): DiscoveryReport => ({
   rows: [],
-  counts: { desconhecido: 0, registado: 0, ausente: 0, duplicado: 0, livre: 0 },
+  counts: { desconhecido: 0, registado: 0, ausente: 0, reservado: 0, duplicado: 0, livre: 0 },
   freeIps: [],
   nextFreeIp: null,
   registeredIps: [],
+  rangeSize: 0,
   routerEnriched: false,
   routerConfigured: false,
   ...over
@@ -28,8 +29,19 @@ function fakeApi(over: Partial<DiscoveryApi> = {}): DiscoveryApi {
   } as unknown as DiscoveryApi;
 }
 
-/** Sonda: expõe o valor do hook a cada render, no estilo dos outros testes. */
-async function mountHook(active: boolean, api: DiscoveryApi): Promise<() => UseDiscovery> {
+/**
+ * Sonda: expõe o valor do hook a cada render, no estilo dos outros testes.
+ *
+ * `strict` monta dentro de `<StrictMode>`, que é como a aplicação corre em
+ * desenvolvimento: o React faz montar → limpar → montar no mesmo componente.
+ * Sem isto, um efeito que se desarme a si próprio na limpeza passa a suite toda
+ * e deixa a aba morta na app — foi exatamente o que aconteceu.
+ */
+async function mountHook(
+  active: boolean,
+  api: DiscoveryApi,
+  options: { strict?: boolean } = {}
+): Promise<() => UseDiscovery> {
   let latest: UseDiscovery | null = null;
   function Probe() {
     latest = useDiscovery(active, api);
@@ -39,7 +51,8 @@ async function mountHook(active: boolean, api: DiscoveryApi): Promise<() => UseD
   document.body.append(container);
   const root = createRoot(container);
   roots.push(root);
-  await act(async () => { root.render(createElement(Probe)); });
+  const tree = options.strict ? createElement(StrictMode, null, createElement(Probe)) : createElement(Probe);
+  await act(async () => { root.render(tree); });
   await act(async () => { await Promise.resolve(); });
   return () => {
     if (!latest) throw new Error('hook ainda não montou');
@@ -87,6 +100,20 @@ describe('useDiscovery — carregamento inicial', () => {
     );
     const hook = await mountHook(true, api);
     await settle();
+    expect(hook().range).toBe('10.20.30.1-254');
+  });
+
+  test('em StrictMode a montagem dupla não deixa o botão preso a carregar', async () => {
+    const api = fakeApi();
+    (api.fetchContext as ReturnType<typeof vi.fn>).mockResolvedValue(
+      emptyReport({ registeredIps: ['10.20.30.5'] })
+    );
+    const hook = await mountHook(true, api, { strict: true });
+    await settle();
+
+    // O botão "Varrer" recebe `loading` — preso a `true` fica inclicável.
+    expect(hook().loading).toBe(false);
+    expect(hook().report).not.toBeNull();
     expect(hook().range).toBe('10.20.30.1-254');
   });
 
@@ -188,6 +215,25 @@ describe('useDiscovery — varrimento', () => {
     const last = (api.fetchContext as ReturnType<typeof vi.fn>).mock.calls.at(-1);
     expect(last?.[0].alive).toHaveLength(64);
     expect(hook().scanning).toBe(false);
+  });
+
+  test('recarregar depois de varrer repete o mesmo intervalo', async () => {
+    const api = fakeApi();
+    const hook = await mountHook(true, api);
+    await settle();
+
+    await act(async () => { hook().setRange('192.168.1.1-10'); });
+    await act(async () => { hook().scan(); });
+    await settle(20);
+
+    // Atribuir um IP chama `refresh`: sem o intervalo, a contagem de livres
+    // caía a zero logo a seguir a alguém ter varrido.
+    await act(async () => { hook().refresh(); });
+    await settle();
+
+    const last = (api.fetchContext as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+    expect(last?.[0].rangeIps).toHaveLength(10);
+    expect(last?.[0].alive).toHaveLength(10);
   });
 
   test('uma falha a meio é reportada e não deixa a barra presa', async () => {
