@@ -13,6 +13,7 @@ const emptyReport = (over: Partial<DiscoveryReport> = {}): DiscoveryReport => ({
   freeIps: [],
   nextFreeIp: null,
   registeredIps: [],
+  rangeSize: 0,
   routerEnriched: false,
   routerConfigured: false,
   ...over
@@ -214,6 +215,25 @@ describe('useDiscovery — varrimento', () => {
     const last = (api.fetchContext as ReturnType<typeof vi.fn>).mock.calls.at(-1);
     expect(last?.[0].alive).toHaveLength(64);
     expect(hook().scanning).toBe(false);
+  });
+
+  test('recarregar depois de varrer repete o mesmo intervalo', async () => {
+    const api = fakeApi();
+    const hook = await mountHook(true, api);
+    await settle();
+
+    await act(async () => { hook().setRange('192.168.1.1-10'); });
+    await act(async () => { hook().scan(); });
+    await settle(20);
+
+    // Atribuir um IP chama `refresh`: sem o intervalo, a contagem de livres
+    // caía a zero logo a seguir a alguém ter varrido.
+    await act(async () => { hook().refresh(); });
+    await settle();
+
+    const last = (api.fetchContext as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+    expect(last?.[0].rangeIps).toHaveLength(10);
+    expect(last?.[0].alive).toHaveLength(10);
   });
 
   test('uma falha a meio é reportada e não deixa a barra presa', async () => {

@@ -45,6 +45,15 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
   const stoppedRef = useRef(false);
   const mountedRef = useRef(true);
 
+  /**
+   * O último varrimento, para o `refresh` o repetir em vez de o deitar fora.
+   *
+   * Sem isto, atribuir um IP a um serviço recarregava o contexto sem intervalo
+   * nenhum e a contagem de livres caía a zero logo a seguir a alguém ter
+   * varrido — o mesmo número, com o mesmo aspeto, a dizer o contrário.
+   */
+  const lastScanRef = useRef<{ rangeIps: string[]; alive: Array<{ ip: string; rttMs: number | null }> } | null>(null);
+
   // O corpo repõe a bandeira: em StrictMode o React monta, limpa e volta a
   // montar o mesmo componente, e uma limpeza que só desarme deixa o hook morto
   // para sempre — sem carregar nada e sem largar o `loading`.
@@ -78,7 +87,8 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
     abortRef.current = controller;
     setLoading(true);
     setError(null);
-    loadContext([], [], controller.signal)
+    const last = lastScanRef.current;
+    loadContext(last?.rangeIps ?? [], last?.alive ?? [], controller.signal)
       .catch((err: unknown) => {
         if (controller.signal.aborted || !mountedRef.current) return;
         setError(err instanceof Error ? err.message : 'Falha ao ler o estado da rede');
@@ -152,8 +162,10 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
 
         // Parar não deita fora o que já se descobriu — o cruzamento corre com
         // os endereços que deram tempo de responder.
+        const rangeIps = stoppedRef.current ? alive.map((a) => a.ip) : ips;
+        lastScanRef.current = { rangeIps, alive };
         if (mountedRef.current) {
-          await loadContext(stoppedRef.current ? alive.map((a) => a.ip) : ips, alive);
+          await loadContext(rangeIps, alive);
         }
       } catch (err: unknown) {
         if (!mountedRef.current) return;

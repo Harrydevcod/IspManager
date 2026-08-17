@@ -28,6 +28,8 @@ export type DiscoveryReport = {
   freeIps: string[];
   nextFreeIp: string | null;
   registeredIps: string[];
+  /** Zero = ainda não se varreu nada; ver a nota no relatório do backend. */
+  rangeSize: number;
   routerEnriched: boolean;
   routerConfigured: boolean;
 };

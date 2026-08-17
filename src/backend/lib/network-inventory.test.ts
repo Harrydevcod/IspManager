@@ -94,6 +94,14 @@ describe('crossReference — endereços livres', () => {
     const result = report({ rangeIps: [], registered: [registered('10.9.9.9')] });
     expect(result.freeIps).toEqual([]);
     expect(result.nextFreeIp).toBeNull();
+    // "Ainda não perguntei" tem de ser distinguível de "não há nada livre",
+    // senão a interface mostra um zero que é mentira.
+    expect(result.rangeSize).toBe(0);
+  });
+
+  test('o relatório diz quantos endereços foram varridos', () => {
+    const result = report({ observed: [observed('192.168.1.3')] });
+    expect(result.rangeSize).toBe(RANGE.length);
   });
 
   test('intervalo cheio não sugere endereço nenhum', () => {

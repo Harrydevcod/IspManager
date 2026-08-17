@@ -223,12 +223,21 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
             trend={counts.duplicado > 0 ? `${counts.duplicado} com IP duplicado` : 'registados que não responderam'}
             onActivate={() => setFilter(counts.duplicado > 0 ? 'duplicado' : 'ausente')}
           />
+          {/* Antes do primeiro varrimento não há livres nenhuns a declarar: um
+              zero aqui leria-se como "a rede está cheia", que é o oposto do que
+              se sabe. O traço diz a verdade — ainda não se perguntou. */}
           <MetricCard
             icon={Globe}
             tone="info"
             label="Endereços livres"
-            value={String(counts.livre)}
-            trend={report?.nextFreeIp ? `próximo: ${report.nextFreeIp}` : 'nada livre neste intervalo'}
+            value={report && report.rangeSize > 0 ? String(counts.livre) : '—'}
+            trend={
+              !report || report.rangeSize === 0
+                ? 'varra o intervalo para contar'
+                : report.nextFreeIp
+                  ? `próximo: ${report.nextFreeIp}`
+                  : 'nada livre neste intervalo'
+            }
           />
         </MetricGrid>
       ) : null}

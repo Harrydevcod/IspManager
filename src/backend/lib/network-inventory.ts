@@ -37,6 +37,12 @@ export type DiscoveryReport = {
   freeIps: string[];
   nextFreeIp: string | null;
   registeredIps: string[];
+  /**
+   * Quantos endereços foram varridos. Zero significa "ainda não se perguntou",
+   * que não é a mesma coisa que "não há nada livre" — sem isto a interface não
+   * consegue distinguir os dois e mostra um zero que é mentira.
+   */
+  rangeSize: number;
 };
 
 export type ObservedHost = {
@@ -124,6 +130,7 @@ export function crossReference(input: CrossRefInput): DiscoveryReport {
     counts,
     freeIps,
     nextFreeIp: freeIps[0] ?? null,
-    registeredIps: [...registeredByIp.keys()]
+    registeredIps: [...registeredByIp.keys()],
+    rangeSize: rangeSet.size
   };
 }
