@@ -85,6 +85,27 @@ function issueInvoice(serviceId: number, referenceMonth: string, amountCve: numb
   `).run(clientId, serviceId, referenceMonth, amountCve);
 }
 
+/** Fatura com linhas — é assim que saem as mensalidades desde o audiovisual. */
+function issueInvoiceWithLines(
+  serviceId: number,
+  referenceMonth: string,
+  lines: Array<{ kind: string; amountCve: number }>
+) {
+  const clientId = (db.prepare('SELECT client_id AS c FROM services WHERE id = ?')
+    .get(serviceId) as { c: number }).c;
+  const total = lines.reduce((sum, line) => sum + line.amountCve, 0);
+  const paymentId = Number(db.prepare(`
+    INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+    VALUES (?, ?, ?, ?, date('now'), 'pending')
+  `).run(clientId, serviceId, referenceMonth, total).lastInsertRowid);
+  lines.forEach((line, index) => {
+    db.prepare(`
+      INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(paymentId, line.kind, line.kind, line.amountCve, index);
+  });
+}
+
 const preview = (planId: number) =>
   app.inject({ method: 'GET', url: `/api/plans/${planId}/reprice-preview` });
 
@@ -124,6 +145,36 @@ describe('GET /api/plans/:id/reprice-preview', () => {
     // A fatura fica igual, mas o valor guardado no serviço tem de mudar.
     expect(row.deltaCve).toBe(0);
     expect(row.changed).toBe(true);
+  });
+
+  // O caso do Anderson: paga 3500 = 3000 de internet + 500 de audiovisual. O
+  // audiovisual continua a ser cobrado por cima depois do acerto, por isso
+  // compará-lo com o total anunciava uma descida de 500 que não existe.
+  test('o audiovisual da fatura não entra na comparação', async () => {
+    const planId = seedPlan(2500);
+    const serviceId = seedService(planId, 'Anderson', 3000);
+    assign(serviceId, seedCatalog('CPE 510', 250), 250);
+    assign(serviceId, seedCatalog('Archer C20', 250), 250);
+    issueInvoiceWithLines(serviceId, '2026-07', [
+      { kind: 'internet', amountCve: 3000 },
+      { kind: 'audiovisual', amountCve: 500 }
+    ]);
+
+    const row = (await preview(planId)).json().rows[0];
+    expect(row.lastInvoiceCve).toBe(3000);
+    expect(row.newTotalCve).toBe(3000);
+    expect(row.deltaCve).toBe(0);
+  });
+
+  test('fatura antiga sem linhas continua a servir de comparação', async () => {
+    const planId = seedPlan(2500);
+    const serviceId = seedService(planId, 'Maria', 2500);
+    assign(serviceId, seedCatalog('MW325R', 250), 250);
+    issueInvoice(serviceId, '2026-07', 2500);
+
+    const row = (await preview(planId)).json().rows[0];
+    expect(row.lastInvoiceCve).toBe(2500);
+    expect(row.deltaCve).toBe(250);
   });
 
   test('a diferença mede-se contra a última mensalidade, não contra cobranças avulsas', async () => {

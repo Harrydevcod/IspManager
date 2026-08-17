@@ -124,7 +124,9 @@ export function RepriceDialog({ planId, planName, onClose, onApplied }: Props) {
                   <thead>
                     <tr>
                       <th scope="col">Cliente</th>
-                      <th scope="col">Última fatura</th>
+                      {/* Só a parte de internet: o audiovisual não entra aqui
+                          nem no total novo, continua a ser cobrado por cima. */}
+                      <th scope="col">Última mensalidade</th>
                       <th scope="col">Aluguer</th>
                       <th scope="col">Nova fatura</th>
                       <th scope="col">Diferença</th>

@@ -254,7 +254,16 @@ function repriceRows(db: DatabaseType, planId: number, monthlyPriceCve: number):
              -- Só mensalidades: 'YYYY-MM'. As chaves fixas ('INSTALACAO',
              -- 'AV-...', 'EQUIP-...') são cobranças avulsas e não servem de
              -- termo de comparação para o valor mensal.
-             SELECT p.amount_cve
+             --
+             -- E dentro da mensalidade, só a linha de internet: o audiovisual
+             -- viaja na mesma fatura e continua a ser cobrado por cima depois
+             -- do acerto, por isso compará-lo com o total anunciava uma descida
+             -- do tamanho do audiovisual que não existe. Faturas antigas não
+             -- têm linhas — aí o total é a melhor aproximação que há.
+             SELECT COALESCE((
+               SELECT SUM(l.amount_cve) FROM payment_lines l
+               WHERE l.payment_id = p.id AND l.kind = 'internet'
+             ), p.amount_cve)
              FROM payments p
              WHERE p.service_id = s.id
                AND p.status != 'cancelled'
