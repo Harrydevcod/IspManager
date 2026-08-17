@@ -528,6 +528,55 @@ describe('device identity (IP fixo)', () => {
     expect(counts(catalog.lastInsertRowid)).toEqual(before);
   });
 
+  test('patch corrige o aluguer do equipamento instalado', async () => {
+    const { catalog, service } = seedBaseService();
+    const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid);
+    db.prepare('UPDATE service_device_assignments SET rental_fee_cve = 500 WHERE id = ?').run(assignmentId);
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/service-device-assignments/${assignmentId}`,
+      payload: { rentalFeeCve: 250 }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(db.prepare('SELECT rental_fee_cve AS r FROM service_device_assignments WHERE id = ?').get(assignmentId))
+      .toEqual({ r: 250 });
+    // O aluguer entra no que o cliente paga: o antes e o depois ficam escritos.
+    const audit = db.prepare(`SELECT metadata_json AS m FROM audit_logs WHERE action='update_device' ORDER BY id DESC LIMIT 1`).get() as { m: string };
+    expect(JSON.parse(audit.m)).toMatchObject({ rentalFeeCve: 250, previousRentalFeeCve: 500 });
+  });
+
+  test('um patch sem aluguer não lhe mexe', async () => {
+    const { catalog, service } = seedBaseService();
+    const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid);
+    db.prepare('UPDATE service_device_assignments SET rental_fee_cve = 250 WHERE id = ?').run(assignmentId);
+
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/service-device-assignments/${assignmentId}`,
+      payload: { notes: 'só uma nota' }
+    });
+
+    expect(db.prepare('SELECT rental_fee_cve AS r FROM service_device_assignments WHERE id = ?').get(assignmentId))
+      .toEqual({ r: 250 });
+  });
+
+  test('equipamento do cliente não aceita aluguer', async () => {
+    const { catalog, service } = seedBaseService();
+    const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, { ownership: 'cliente' });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/service-device-assignments/${assignmentId}`,
+      payload: { rentalFeeCve: 250 }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(db.prepare('SELECT rental_fee_cve AS r FROM service_device_assignments WHERE id = ?').get(assignmentId))
+      .toEqual({ r: 0 });
+  });
+
   test('patch rejects a malformed IPv4 and leaves the row untouched', async () => {
     const { catalog, service } = seedBaseService();
     const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, { ipAddress: '192.168.1.10' });

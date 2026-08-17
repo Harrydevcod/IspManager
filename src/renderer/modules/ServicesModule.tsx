@@ -112,6 +112,8 @@ export function ServicesModule({
   const [replaceDraft, setReplaceDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
   const [editTarget, setEditTarget] = useState<DeviceAssignment | null>(null);
   const [editDraft, setEditDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
+  /** Fora do `ItemDraft` porque este é o aluguer desta atribuição, não do modelo. */
+  const [editRental, setEditRental] = useState('0');
   const [submitting, setSubmitting] = useState(false);
   const [showBulkIp, setShowBulkIp] = useState(false);
   const [deviceMode, setDeviceMode] = useState<'install' | 'share'>('install');
@@ -590,6 +592,7 @@ export function ServicesModule({
       macAddress: assignment.macAddress || '',
       notes: assignment.notes || ''
     });
+    setEditRental(String(assignment.rentalFeeCve ?? 0));
   }
 
   function closeEditDialog() {
@@ -612,7 +615,9 @@ export function ServicesModule({
           assetTag: editDraft.assetTag || null,
           ipAddress: editDraft.ipAddress || null,
           macAddress: editDraft.macAddress || null,
-          notes: editDraft.notes || null
+          notes: editDraft.notes || null,
+          // Só do ISP tem aluguer; do cliente o servidor recusa e faz bem.
+          ...(editTarget.ownership === 'isp' ? { rentalFeeCve: Number(editRental) || 0 } : {})
         })
       });
       const data = await response.json() as { error?: string };
@@ -1178,6 +1183,18 @@ export function ServicesModule({
           <Field label="MAC" value={editDraft.macAddress} onChange={(event) => setEditDraft((current) => ({ ...current, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
           <Field label="Serial" value={editDraft.serialNumber} onChange={(event) => setEditDraft((current) => ({ ...current, serialNumber: event.target.value }))} />
           <Field label="Asset tag" value={editDraft.assetTag} onChange={(event) => setEditDraft((current) => ({ ...current, assetTag: event.target.value }))} />
+          {/* Equipamento do cliente não gera renda, por isso o campo nem aparece. */}
+          {editTarget?.ownership === 'isp' && (
+            <Field
+              label="Aluguer / mês"
+              type="number"
+              min="0"
+              step="50"
+              value={editRental}
+              onChange={(event) => setEditRental(event.target.value)}
+              hint="Vale a partir da próxima fatura; as já emitidas não mudam"
+            />
+          )}
           <Field wide label="Notas" value={editDraft.notes} onChange={(event) => setEditDraft((current) => ({ ...current, notes: event.target.value }))} />
         </form>
       </Dialog>
