@@ -45,9 +45,15 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
   const stoppedRef = useRef(false);
   const mountedRef = useRef(true);
 
-  useEffect(() => () => {
-    mountedRef.current = false;
-    abortRef.current?.abort();
+  // O corpo repõe a bandeira: em StrictMode o React monta, limpa e volta a
+  // montar o mesmo componente, e uma limpeza que só desarme deixa o hook morto
+  // para sempre — sem carregar nada e sem largar o `loading`.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+    };
   }, []);
 
   const setRange = useCallback((value: string) => {
@@ -78,14 +84,34 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
         setError(err instanceof Error ? err.message : 'Falha ao ler o estado da rede');
       })
       .finally(() => {
-        if (mountedRef.current && !controller.signal.aborted) setLoading(false);
+        // Larga o `loading` quando quem o ligou ainda é o pedido em curso. Sair
+        // só por causa do `abort()` deixava o botão "Varrer" a rodar para
+        // sempre, e é ele que dispara o varrimento.
+        if (mountedRef.current && abortRef.current === controller) setLoading(false);
       });
   }, [loadContext]);
 
   // Só à entrada da aba: montar o painel não deve custar um pedido a quem está
   // a olhar para o mapa ao lado.
+  //
+  // O pedido é deste efeito — controlador próprio, abortado na limpeza — para a
+  // passagem que o StrictMode deita fora ser substituída pela seguinte. A
+  // guarda olha apenas para `report`: olhar também para `loading` travava essa
+  // segunda passagem, que é justamente a que fica.
   useEffect(() => {
-    if (active && report === null && !loading) refresh();
+    if (!active || report !== null) return;
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    loadContext([], [], controller.signal)
+      .catch((err: unknown) => {
+        if (controller.signal.aborted || !mountedRef.current) return;
+        setError(err instanceof Error ? err.message : 'Falha ao ler o estado da rede');
+      })
+      .finally(() => {
+        if (mountedRef.current && !controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
