@@ -9,7 +9,7 @@ const roots: Root[] = [];
 
 const emptyReport = (over: Partial<DiscoveryReport> = {}): DiscoveryReport => ({
   rows: [],
-  counts: { desconhecido: 0, registado: 0, ausente: 0, duplicado: 0, livre: 0 },
+  counts: { desconhecido: 0, registado: 0, ausente: 0, reservado: 0, duplicado: 0, livre: 0 },
   freeIps: [],
   nextFreeIp: null,
   registeredIps: [],

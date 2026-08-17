@@ -4,9 +4,10 @@ const API_BASE = 'http://127.0.0.1:3001';
 
 export type DiscoveryFetcher = (input: string, init?: RequestInit) => Promise<Response>;
 
-export type DiscoveryCategory = 'desconhecido' | 'registado' | 'ausente' | 'duplicado';
+export type DiscoveryCategory = 'desconhecido' | 'registado' | 'ausente' | 'reservado' | 'duplicado';
 
-export type RegisteredRef = { kind: 'backbone' | 'assignment'; id: number; name: string };
+/** `active: false` — ocupa o endereço mas não se espera que responda. */
+export type RegisteredRef = { kind: 'backbone' | 'assignment'; id: number; name: string; active: boolean };
 
 export type DiscoveryRow = {
   ip: string;

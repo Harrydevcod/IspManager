@@ -46,6 +46,7 @@ const FILTERS: ReadonlyArray<{ id: Filter; label: string }> = [
   { id: 'desconhecido', label: 'Desconhecidos' },
   { id: 'registado', label: 'Registados' },
   { id: 'ausente', label: 'Sem resposta' },
+  { id: 'reservado', label: 'Reservados' },
   { id: 'duplicado', label: 'Duplicados' }
 ];
 
@@ -53,6 +54,8 @@ const TONE: Record<DiscoveryCategory, 'danger' | 'success' | 'warn' | 'neutral'>
   desconhecido: 'danger',
   registado: 'success',
   ausente: 'warn',
+  // Reservado não é avaria: está cortado de propósito e o endereço é dele.
+  reservado: 'neutral',
   duplicado: 'danger'
 };
 
@@ -60,6 +63,7 @@ const LABEL: Record<DiscoveryCategory, string> = {
   desconhecido: 'Desconhecido',
   registado: 'Registado',
   ausente: 'Sem resposta',
+  reservado: 'Reservado',
   duplicado: 'Duplicado'
 };
 

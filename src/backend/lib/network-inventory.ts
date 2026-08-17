@@ -13,9 +13,9 @@ import { vendorForMac, type RegisteredIp, type SeenHostRow } from './network-dis
  * testes cobrirem as cinco categorias sem levantar base de dados nenhuma.
  */
 
-export type DiscoveryCategory = 'desconhecido' | 'registado' | 'ausente' | 'duplicado';
+export type DiscoveryCategory = 'desconhecido' | 'registado' | 'ausente' | 'reservado' | 'duplicado';
 
-export type RegisteredRef = { kind: 'backbone' | 'assignment'; id: number; name: string };
+export type RegisteredRef = { kind: 'backbone' | 'assignment'; id: number; name: string; active: boolean };
 
 export type DiscoveryRow = {
   ip: string;
@@ -74,7 +74,7 @@ export function crossReference(input: CrossRefInput): DiscoveryReport {
   const registeredByIp = new Map<string, RegisteredRef[]>();
   for (const entry of input.registered) {
     const list = registeredByIp.get(entry.ip) ?? [];
-    list.push({ kind: entry.kind, id: entry.id, name: entry.name });
+    list.push({ kind: entry.kind, id: entry.id, name: entry.name, active: entry.active });
     registeredByIp.set(entry.ip, list);
   }
 
@@ -95,10 +95,14 @@ export function crossReference(input: CrossRefInput): DiscoveryReport {
 
     // Ordem deliberada: o duplicado tapa tudo o resto porque é o único que é
     // sempre um erro de dados a corrigir; e um IP vivo sem dono é o achado.
+    //
+    // Quem não responde separa-se em dois: `ausente` é avaria — alguém que
+    // devia estar de pé e não está; `reservado` é o CPE do cliente cortado,
+    // que está em baixo de propósito e continua a ocupar o endereço.
     const category: DiscoveryCategory =
       refs.length > 1 ? 'duplicado'
         : observed ? (refs.length === 0 ? 'desconhecido' : 'registado')
-          : 'ausente';
+          : refs.some((ref) => ref.active) ? 'ausente' : 'reservado';
 
     rows.push({
       ip,
@@ -122,7 +126,7 @@ export function crossReference(input: CrossRefInput): DiscoveryReport {
     .filter((ip) => !observedByIp.has(ip) && !registeredByIp.has(ip))
     .sort(byIpOrder);
 
-  const counts = { desconhecido: 0, registado: 0, ausente: 0, duplicado: 0, livre: freeIps.length };
+  const counts = { desconhecido: 0, registado: 0, ausente: 0, reservado: 0, duplicado: 0, livre: freeIps.length };
   for (const row of rows) counts[row.category] += 1;
 
   return {

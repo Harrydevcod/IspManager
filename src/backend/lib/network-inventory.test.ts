@@ -18,6 +18,7 @@ const registered = (ip: string, over: Partial<RegisteredIp> = {}): RegisteredIp 
   kind: 'assignment',
   id: 1,
   name: 'Sr. Silva',
+  active: true,
   ...over
 });
 
@@ -39,7 +40,7 @@ describe('crossReference — as categorias', () => {
       registered: [registered('192.168.1.2')]
     });
     expect(rows[0].category).toBe('registado');
-    expect(rows[0].registeredAs).toEqual([{ kind: 'assignment', id: 1, name: 'Sr. Silva' }]);
+    expect(rows[0].registeredAs).toEqual([{ kind: 'assignment', id: 1, name: 'Sr. Silva', active: true }]);
     expect(counts.registado).toBe(1);
   });
 
@@ -47,6 +48,25 @@ describe('crossReference — as categorias', () => {
     const { rows, counts } = report({ registered: [registered('192.168.1.2')] });
     expect(rows[0]).toMatchObject({ category: 'ausente', alive: false, rttMs: null });
     expect(counts.ausente).toBe(1);
+  });
+
+  test('registo parado e sem resposta é reservado, não avaria', () => {
+    const { rows, counts } = report({ registered: [registered('192.168.1.2', { active: false })] });
+    expect(rows[0]).toMatchObject({ category: 'reservado', alive: false });
+    expect(counts.reservado).toBe(1);
+    expect(counts.ausente).toBe(0);
+  });
+
+  test('um registo ativo no mesmo IP manda: continua a ser avaria', () => {
+    const { rows } = report({
+      registered: [
+        registered('192.168.1.2', { id: 1, active: false }),
+        registered('192.168.1.2', { id: 1, active: true })
+      ]
+    });
+    // Dois registos no mesmo IP são duplicado; o que interessa aqui é que a
+    // presença de um ativo nunca deixa o endereço passar por reservado.
+    expect(rows[0].category).not.toBe('reservado');
   });
 
   test('o mesmo IP em dois registos é duplicado, mesmo estando vivo', () => {
@@ -97,6 +117,12 @@ describe('crossReference — endereços livres', () => {
     // "Ainda não perguntei" tem de ser distinguível de "não há nada livre",
     // senão a interface mostra um zero que é mentira.
     expect(result.rangeSize).toBe(0);
+  });
+
+  test('um endereço reservado nunca entra nos livres', () => {
+    const result = report({ registered: [registered('192.168.1.2', { active: false })] });
+    expect(result.freeIps).not.toContain('192.168.1.2');
+    expect(result.nextFreeIp).toBe('192.168.1.1');
   });
 
   test('o relatório diz quantos endereços foram varridos', () => {
