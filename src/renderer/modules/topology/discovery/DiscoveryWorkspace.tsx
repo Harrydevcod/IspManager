@@ -174,6 +174,8 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
   }
 
   const counts = report?.counts;
+  /** Só há router para consultar depois de o relatório o confirmar. */
+  const routerAvailable = report?.routerConfigured ?? false;
 
   return (
     <section className="discovery-workspace" aria-label="Descoberta de equipamentos na rede">
@@ -187,16 +189,21 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
           hint="Aceita 192.168.1.0/24 ou 192.168.1.1-254"
           disabled={scanning}
         />
+        {/* Ligado só quando há mesmo router para consultar. Um interruptor a
+            verde sem router configurado promete o que a rota nunca faz — ela
+            exige `isRouterConfigured` antes de contactar seja o que for. Antes
+            do primeiro relatório ainda não se sabe, e não saber mostra-se
+            desligado: é preferível a anunciar uma capacidade por confirmar. */}
         <Toggle
           title="Consultar o router de gestão"
           description={
-            report && !report.routerConfigured
-              ? 'Sem router de gestão configurado nas definições'
-              : 'Junta o ARP e as concessões DHCP do router da operadora'
+            routerAvailable
+              ? 'Junta o ARP e as concessões DHCP do router de gestão do ISP'
+              : 'Configure o router em Definições › Rede'
           }
           wide={false}
-          checked={discovery.includeRouter}
-          disabled={scanning || (report ? !report.routerConfigured : false)}
+          checked={discovery.includeRouter && routerAvailable}
+          disabled={scanning || !routerAvailable}
           onChange={(event) => discovery.setIncludeRouter(event.target.checked)}
         />
         <div className="discovery-toolbar-actions">
