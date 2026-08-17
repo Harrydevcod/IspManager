@@ -29,6 +29,8 @@ import {
 } from '../../../components';
 import { downloadCsv } from '../../../lib/csv';
 import { formatPtDateTime } from '../../../lib/format';
+import { compareNumber, sortRows, type SortState } from '../../../lib/listView';
+import { ipToInt } from '../../../../shared/ip-range';
 import { createDiscoveryApi, type DiscoveryCategory, type DiscoveryRow } from './discovery-api';
 import { useDiscovery } from './useDiscovery';
 import { AssignIpDialog } from './AssignIpDialog';
@@ -67,6 +69,43 @@ const LABEL: Record<DiscoveryCategory, string> = {
   duplicado: 'Duplicado'
 };
 
+/**
+ * Ordenar por estado é ordenar por urgência, não por ordem alfabética: quem
+ * está na rede sem registo e os IPs em conflito primeiro, quem está em ordem no
+ * fim. Alfabético punha "Desconhecido" e "Duplicado" a alternar sem razão.
+ */
+const SEVERITY: Record<DiscoveryCategory, number> = {
+  desconhecido: 0,
+  duplicado: 1,
+  ausente: 2,
+  reservado: 3,
+  registado: 4
+};
+
+export type DiscoverySortKey = 'ip' | 'estado';
+
+/** O varrimento chega ordenado por endereço; é essa a vista de partida. */
+const DEFAULT_SORT: SortState<DiscoverySortKey> = { key: 'ip', direction: 'asc' };
+
+/**
+ * Filtra pelo estado escolhido nos chips e ordena.
+ *
+ * Empate resolve-se pela ordem de chegada, que é a do endereço (o `sortRows` é
+ * estável) — por isso ordenar por estado agrupa os estados sem baralhar os IPs
+ * lá dentro.
+ */
+export function orderDiscoveryRows(
+  rows: readonly DiscoveryRow[],
+  filter: Filter,
+  sort: SortState<DiscoverySortKey>
+): DiscoveryRow[] {
+  const visible = filter === 'todos' ? rows : rows.filter((row) => row.category === filter);
+  return sortRows(visible, sort, {
+    ip: (a, b) => compareNumber(ipToInt(a.ip), ipToInt(b.ip)),
+    estado: (a, b) => compareNumber(SEVERITY[a.category], SEVERITY[b.category])
+  });
+}
+
 const api = createDiscoveryApi();
 
 /**
@@ -93,13 +132,14 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
   const discovery = useDiscovery(active, api);
   const { report, progress, scanning } = discovery;
   const [filter, setFilter] = useState<Filter>('todos');
+  const [sort, setSort] = useState<SortState<DiscoverySortKey>>(DEFAULT_SORT);
   const [assigning, setAssigning] = useState<DiscoveryRow | null>(null);
   const { toast } = useToast();
 
-  const rows = useMemo(() => {
-    if (!report) return [];
-    return filter === 'todos' ? report.rows : report.rows.filter((row) => row.category === filter);
-  }, [report, filter]);
+  const rows = useMemo(
+    () => (report ? orderDiscoveryRows(report.rows, filter, sort) : []),
+    [report, filter, sort]
+  );
 
   async function copy(value: string, what: string) {
     try {
@@ -264,14 +304,20 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
         </div>
       ) : null}
 
-      <DataTable<DiscoveryRow>
+      <DataTable<DiscoveryRow, DiscoverySortKey>
         rows={rows}
         rowKey={(row) => row.ip}
         gridTemplateColumns="minmax(130px, 0.8fr) 130px minmax(160px, 1.4fr) minmax(150px, 1fr) minmax(110px, 0.8fr) 90px minmax(140px, 1fr)"
         stickyHeader
+        sort={sort}
+        onSortChange={setSort}
         columns={[
-          { header: 'Endereço', cell: (row) => <code className="discovery-ip">{row.ip}</code> },
-          { header: 'Estado', cell: (row) => <Badge tone={TONE[row.category]}>{LABEL[row.category]}</Badge> },
+          { header: 'Endereço', sortKey: 'ip', cell: (row) => <code className="discovery-ip">{row.ip}</code> },
+          {
+            header: 'Estado',
+            sortKey: 'estado',
+            cell: (row) => <Badge tone={TONE[row.category]}>{LABEL[row.category]}</Badge>
+          },
           { header: 'Nome', cell: (row) => displayName(row) },
           {
             header: 'MAC',
