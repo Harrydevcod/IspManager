@@ -65,7 +65,14 @@ const deviceIdentitySchema = z.object({
   assetTag: z.string().trim().optional().nullable(),
   ipAddress: z.string().trim().optional().nullable(),
   macAddress: z.string().trim().optional().nullable(),
-  notes: z.string().trim().optional().nullable()
+  notes: z.string().trim().optional().nullable(),
+  /**
+   * A renda vale a partir da proxima fatura e nao reescreve as passadas — cada
+   * mensalidade ja emitida guarda as suas proprias linhas. E editavel porque
+   * nasce copiada do catalogo na instalacao e fica congelada: sem isto, mudar o
+   * preco no catalogo deixava o parque instalado a derivar sem conserto.
+   */
+  rentalFeeCve: z.coerce.number().min(0).max(1_000_000).optional().nullable()
 });
 
 const purchaseSchema = z.object({
@@ -487,13 +494,16 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         asset_tag AS assetTag,
         ip_address AS ipAddress,
         mac_address AS macAddress,
-        notes
+        notes,
+        ownership,
+        rental_fee_cve AS rentalFeeCve
       FROM service_device_assignments
       WHERE id = ?
     `).get(assignmentId) as {
       id: number; serviceId: number; endDate: string | null;
       serialNumber: string | null; assetTag: string | null;
       ipAddress: string | null; macAddress: string | null; notes: string | null;
+      ownership: string; rentalFeeCve: number;
     } | undefined;
 
     if (!current) {
@@ -511,8 +521,16 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       assetTag: merge(parsed.data.assetTag, current.assetTag),
       ipAddress: merge(parsed.data.ipAddress, current.ipAddress),
       macAddress: merge(parsed.data.macAddress, current.macAddress),
-      notes: merge(parsed.data.notes, current.notes)
+      notes: merge(parsed.data.notes, current.notes),
+      rentalFeeCve: parsed.data.rentalFeeCve == null ? current.rentalFeeCve : Math.round(parsed.data.rentalFeeCve)
     };
+
+    // Equipamento do cliente nao gera renda — a faturacao so soma o que e do
+    // ISP, portanto aceitar uma renda aqui era guardar um numero que nunca sai
+    // em fatura nenhuma.
+    if (current.ownership === 'cliente' && next.rentalFeeCve > 0) {
+      return reply.status(400).send({ error: 'Equipamento do cliente nao tem aluguer' });
+    }
 
     // So o que muda e validado: dados legados duplicados (nao ha indice unico) nao
     // podem bloquear a correcao de um campo que o tecnico nem tocou.
@@ -533,9 +551,13 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
           ip_address = ?,
           mac_address = ?,
           notes = ?,
+          rental_fee_cve = ?,
           updated_at = datetime('now')
       WHERE id = ?
-    `).run(next.serialNumber, next.assetTag, next.ipAddress, next.macAddress, next.notes, assignmentId);
+    `).run(
+      next.serialNumber, next.assetTag, next.ipAddress, next.macAddress, next.notes,
+      next.rentalFeeCve, assignmentId
+    );
 
     recordAudit(request, {
       action: 'update_device',
@@ -545,7 +567,10 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       metadata: {
         serviceId: current.serviceId,
         ipAddress: next.ipAddress,
-        previousIpAddress: current.ipAddress
+        previousIpAddress: current.ipAddress,
+        // O aluguer entra no que o cliente paga: quem o mudou fica escrito.
+        rentalFeeCve: next.rentalFeeCve,
+        previousRentalFeeCve: current.rentalFeeCve
       }
     });
     return reply.status(200).send({ assignmentId, ...next });
