@@ -6,6 +6,17 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.13.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.13.0) — 2026-08-17
+
+### Adicionado
+
+- **equipamento:** o **aluguer de um equipamento já instalado** passa a corrigir-se no diálogo de editar equipamento. A renda nasce copiada do catálogo na instalação e fica congelada na atribuição — é isso que faz uma fatura antiga continuar a valer o que valia —, mas até agora não havia forma nenhuma de a acertar depois. O campo só aparece em equipamento do ISP, vale a partir da fatura seguinte, e o antes e o depois ficam na auditoria
+- **manutenção:** `scripts/align-rentals-to-catalog.cjs` acerta em bloco o aluguer do parque instalado ao preço do catálogo, para quando o preço muda. Simula por omissão, escreve com `--apply`, só toca em equipamento instalado e do ISP, e deixa rasto na auditoria
+
+### Corrigido
+
+- **planos:** o diálogo de **aplicar o preço aos serviços ativos** comparava o total novo com o valor **inteiro** da última fatura. Como o audiovisual viaja na mesma fatura, quem o tem via anunciada uma descida do tamanho do audiovisual que não existe — esse valor continua a ser cobrado por cima. Passa a comparar com a linha de internet, e a coluna chama-se **Última mensalidade**
+
 ## [1.12.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.12.0) — 2026-08-17
 
 ### Adicionado
