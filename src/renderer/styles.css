@@ -4264,6 +4264,96 @@ label.field-toggle {
   max-width: 28ch;
 }
 
+/* Devolução: uma linha por unidade, o estado à direita, sem campos a atravessar
+   o ecrã todo. A grelha é 1fr + auto para o par nome/decisão ficar sempre alinhado. */
+.service-return {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.service-return-lead {
+  margin: 0;
+  max-width: 68ch;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.service-return-lead strong {
+  color: var(--text);
+}
+
+.service-return-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.service-return-section h4 {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.service-return-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface-2);
+}
+
+.service-return-row.blocked {
+  border-color: color-mix(in oklch, var(--warn) 40%, var(--border));
+}
+
+.service-return-row.muted-row {
+  opacity: 0.7;
+}
+
+.service-return-row select {
+  min-width: 22ch;
+}
+
+.service-return-row .field-toggle {
+  margin: 0;
+}
+
+.service-return-qty {
+  width: 14ch;
+}
+
+.service-return-qty input {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.service-return-error {
+  grid-column: 1 / -1;
+  color: var(--danger);
+  font-size: var(--fs-xs);
+}
+
+.service-return-summary {
+  margin: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.technical-section-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
 .technical-item {
   padding: var(--space-3);
   border: 1px solid var(--border);

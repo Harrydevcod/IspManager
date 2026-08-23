@@ -1,4 +1,4 @@
-import { Cable, Coins, History, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
+import { Cable, Coins, History, PackageCheck, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
 import { Badge, Button, Dialog, EmptyState, Message } from '../../components';
 import { formatCve, formatPtDate, formatPtDateTime } from '../../lib/format';
 import { statusLabel, statusTone } from '../../lib/status';
@@ -18,6 +18,12 @@ const eventTypeTone: Record<ServiceEventType, 'success' | 'info' | 'neutral' | '
   troca_equipamento: 'info',
   visita: 'neutral',
   alteracao_servico: 'accent'
+};
+
+export const RETURN_CONDITION_LABELS: Record<'bom' | 'avariado' | 'nao_devolvido', string> = {
+  bom: 'Bom estado',
+  avariado: 'Avariado',
+  nao_devolvido: 'Nao devolvido'
 };
 
 const INSTALL_COST_LABELS: Record<'mao_de_obra' | 'transporte' | 'outro', string> = {
@@ -42,7 +48,10 @@ type ServiceDetailDialogProps = {
   onEditDevice: (assignment: DeviceAssignment) => void;
   onUnshareDevice: (assignment: DeviceAssignment) => void;
   onReplaceDevice: (assignment: DeviceAssignment) => void;
+  /** Devolver uma unidade — abre o painel de devolução focado nela. */
   onReturnDevice: (assignment: DeviceAssignment) => void;
+  /** Painel de devolução do serviço inteiro (equipamento + material). */
+  onOpenReturns: () => void;
   /** O cliente compra o equipamento que tinha alugado — pára a renda. */
   onPurchaseDevice: (assignment: DeviceAssignment) => void;
   onAddEvent: () => void;
@@ -65,6 +74,7 @@ export function ServiceDetailDialog({
   onUnshareDevice,
   onReplaceDevice,
   onReturnDevice,
+  onOpenReturns,
   onPurchaseDevice,
   onAddEvent
 }: ServiceDetailDialogProps) {
@@ -79,6 +89,14 @@ export function ServiceDetailDialog({
   const rentals = (technicalHistory?.assignments ?? [])
     .filter((a) => !a.endDate && a.isOwner && a.ownership === 'isp' && a.rentalFeeCve > 0);
   const rentalTotalCve = rentals.reduce((sum, a) => sum + a.rentalFeeCve, 0);
+
+  // O que ainda está em casa do cliente: equipamento do ISP por fechar e material
+  // por recuperar. Num serviço cancelado isto é uma dívida física, e diz-se.
+  const pendingDevices = (technicalHistory?.assignments ?? [])
+    .filter((a) => !a.endDate && a.isOwner && a.ownership === 'isp').length;
+  const pendingMaterials = (technicalHistory?.materialReturns ?? [])
+    .filter((m) => m.consumed - m.recovered > 0).length;
+  const hasPendingReturns = pendingDevices + pendingMaterials > 0;
 
   return (
     <Dialog
@@ -137,7 +155,15 @@ export function ServiceDetailDialog({
         )}
         <div><dt>Vencimento</dt><dd>Dia {service.dueDay}</dd></div>
         <div><dt>Ativado em</dt><dd>{formatPtDate(service.activationDate)}</dd></div>
-        <div><dt>Estado</dt><dd><Badge tone={statusTone(service.status)}>{statusLabel(service.status)}</Badge></dd></div>
+        <div>
+          <dt>Estado</dt>
+          <dd>
+            <Badge tone={statusTone(service.status)}>{statusLabel(service.status)}</Badge>
+            {service.status === 'cancelled' && hasPendingReturns && (
+              <> <Badge tone="warn">Equipamento por devolver</Badge></>
+            )}
+          </dd>
+        </div>
       </dl>
 
       <section className="technical-section">
@@ -151,9 +177,21 @@ export function ServiceDetailDialog({
             </h3>
           </div>
           {canRecordTechnical && (
-            <Button variant="secondary" size="sm" className="technical-add" leadingIcon={<Plus size={14} aria-hidden />} onClick={onAddDevice}>
-              Adicionar
-            </Button>
+            <div className="technical-section-actions">
+              {hasPendingReturns && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leadingIcon={<PackageCheck size={14} aria-hidden />}
+                  onClick={onOpenReturns}
+                >
+                  Devolução
+                </Button>
+              )}
+              <Button variant="secondary" size="sm" className="technical-add" leadingIcon={<Plus size={14} aria-hidden />} onClick={onAddDevice}>
+                Adicionar
+              </Button>
+            </div>
           )}
         </header>
         {historyLoading && !technicalHistory && <Message>A carregar historico...</Message>}
@@ -196,6 +234,9 @@ export function ServiceDetailDialog({
                     {assignment.assetTag && <div><dt>Tag</dt><dd>{assignment.assetTag}</dd></div>}
                     <div><dt>Inicio</dt><dd>{formatPtDate(assignment.startDate)}</dd></div>
                     {assignment.endDate && <div><dt>Fim</dt><dd>{formatPtDate(assignment.endDate)}</dd></div>}
+                    {assignment.returnCondition && (
+                      <div><dt>Devolvido</dt><dd>{RETURN_CONDITION_LABELS[assignment.returnCondition]}</dd></div>
+                    )}
                     {assignment.ownedSince && (
                       <div><dt>Do cliente desde</dt><dd>{formatPtDate(assignment.ownedSince)}</dd></div>
                     )}
@@ -226,7 +267,7 @@ export function ServiceDetailDialog({
                             </Button>
                           )}
                           <Button variant="danger" size="sm" disabled={submitting} onClick={() => onReturnDevice(assignment)}>
-                            Remover
+                            Devolver
                           </Button>
                         </>
                       ) : (

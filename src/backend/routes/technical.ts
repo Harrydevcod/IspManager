@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { STATIC_IP_EQUIPMENT_TYPES } from '../../shared/equipment';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit, recordAuditStrict } from '../lib/audit';
-import { SHARED_WITH_NAMES_SQL, sharerServices } from '../lib/deviceShares';
+import { SHARED_WITH_NAMES_SQL } from '../lib/deviceShares';
 import {
   IP_FORMAT_ERROR,
   checkDeviceIdentity,
@@ -19,6 +19,12 @@ import {
   type InstallCostInput,
   type ServiceItemInput
 } from '../lib/serviceInstall';
+import {
+  mapReturnError,
+  processServiceReturn,
+  returnAssignmentWithinTx,
+  type ReturnCondition
+} from '../lib/serviceReturn';
 import { insertEquipmentPurchase } from '../lib/billing';
 import { requireAuth, requireRole } from './auth';
 
@@ -94,7 +100,26 @@ const bulkIpSchema = z.object({
   })).min(1).max(1000)
 });
 
+const returnConditionSchema = z.enum(['bom', 'avariado', 'nao_devolvido']);
+
 const deviceReturnSchema = z.object({
+  /** Como a unidade voltou. Só 'bom' repõe stock; o resto é perda registada. */
+  condition: returnConditionSchema.optional().nullable(),
+  technicianId: z.coerce.number().int().positive().optional().nullable(),
+  notes: z.string().trim().optional().nullable()
+});
+
+const serviceReturnSchema = z.object({
+  devices: z.array(z.object({
+    assignmentId: z.coerce.number().int().positive(),
+    condition: returnConditionSchema.default('bom'),
+    notes: z.string().trim().optional().nullable()
+  })).optional().nullable(),
+  materials: z.array(z.object({
+    catalogId: z.coerce.number().int().positive(),
+    quantity: z.coerce.number().int().positive(),
+    notes: z.string().trim().optional().nullable()
+  })).optional().nullable(),
   technicianId: z.coerce.number().int().positive().optional().nullable(),
   notes: z.string().trim().optional().nullable()
 });
@@ -163,6 +188,7 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         a.ownership,
         a.owned_since AS ownedSince,
         a.rental_fee_cve AS rentalFeeCve,
+        a.return_condition AS returnCondition,
         ec.selling_price_cve AS sellingPriceCve,
         a.created_by AS createdBy,
         cu.full_name AS createdByName,
@@ -220,6 +246,27 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       ORDER BY ml.created_at DESC, ml.id DESC
     `).all(id);
 
+    // Material por artigo: quanto saiu para este servico e quanto ja voltou.
+    // Agregado (e nao por linha) porque a devolucao e parcial e sobre o artigo:
+    // 50 m de cabo em duas linhas continuam a ser 50 m para recuperar.
+    const materialReturns = db.prepare(`
+      SELECT
+        ml.catalog_id AS catalogId,
+        ec.brand,
+        ec.model,
+        ec.unit_of_measure AS unitOfMeasure,
+        SUM(ml.quantity) AS consumed,
+        COALESCE((
+          SELECT SUM(sm.quantity) FROM stock_movements sm
+          WHERE sm.service_id = ml.service_id AND sm.catalog_id = ml.catalog_id AND sm.type = 'devolucao'
+        ), 0) AS recovered
+      FROM service_material_lines ml
+      JOIN equipment_catalog ec ON ec.id = ml.catalog_id
+      WHERE ml.service_id = ?
+      GROUP BY ml.catalog_id, ec.brand, ec.model, ec.unit_of_measure
+      ORDER BY ec.model
+    `).all(id);
+
     const installCosts = db.prepare(`
       SELECT
         ic.id,
@@ -235,7 +282,7 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       ORDER BY ic.created_at DESC, ic.id DESC
     `).all(id);
 
-    return { serviceId: service.id, assignments, materials, installCosts, events };
+    return { serviceId: service.id, assignments, materials, materialReturns, installCosts, events };
   });
 
   app.post('/api/services/:id/items', canWriteTechnical, async (request, reply) => {
@@ -806,16 +853,12 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
 
     const db = getSqliteDatabase();
     const current = db.prepare(`
-      SELECT id, service_id AS serviceId, catalog_id AS catalogId, end_date AS endDate
+      SELECT service_id AS serviceId, catalog_id AS catalogId
       FROM service_device_assignments
       WHERE id = ?
-    `).get(assignmentId) as { id: number; serviceId: number; catalogId: number; endDate: string | null } | undefined;
-
+    `).get(assignmentId) as { serviceId: number; catalogId: number } | undefined;
     if (!current) {
       return reply.status(404).send({ error: 'Atribuicao nao encontrada' });
-    }
-    if (current.endDate) {
-      return reply.status(400).send({ error: 'Atribuicao ja encerrada' });
     }
     const service = loadService(current.serviceId);
     if (!service) {
@@ -825,93 +868,98 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: 'Tecnico nao encontrado' });
     }
 
-    // Devolver é remoção física: os serviços partilhados ficariam sem sinal. O
-    // operador desassocia-os primeiro — promover um deles a titular em silêncio
-    // seria esperto de mais para as 3 da manhã.
-    const sharers = sharerServices(db, assignmentId);
-    if (sharers.length > 0) {
-      return reply.status(409).send({
-        error: `Esta antena serve tambem ${sharers.length} servico(s): ${sharers.map((sharer) => sharer.clientName).join(', ')}. Remova as partilhas primeiro.`
-      });
-    }
-
-    const notes = cleanValue(parsed.data.notes);
-    const catalog = loadCatalogIdentity(db, current.catalogId);
-
-    const run = db.transaction(() => {
-      const updated = db.prepare(`
-        UPDATE service_device_assignments
-        SET end_date = date('now'),
-            updated_at = datetime('now')
-        WHERE id = ? AND end_date IS NULL
-      `).run(assignmentId);
-      if (updated.changes === 0) {
-        throw new Error('already_closed');
-      }
-
-      db.prepare(`
-        UPDATE backbone_assignment_links
-        SET ended_at = datetime('now'),
-            ended_by = ?,
-            change_reason = COALESCE(change_reason, 'assignment_closed'),
-            updated_at = datetime('now')
-        WHERE assignment_id = ? AND ended_at IS NULL
-      `).run(request.user?.id ?? parsed.data.technicianId ?? null, assignmentId);
-
-      db.prepare(`
-        INSERT INTO stock_movements (
-          catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
-        )
-        VALUES (?, 'devolucao', 1, ?, ?, ?, ?, ?, ?)
-      `).run(
-        current.catalogId,
-        catalog?.landedCostCve ?? 0,
-        `Devolucao servico ${current.serviceId}`,
-        notes,
-        current.serviceId,
-        service.clientName,
-        request.user?.id || null
-      );
-
-      db.prepare(`
-        UPDATE equipment_catalog
-        SET stock_total = stock_total + 1,
-            updated_at = datetime('now')
-        WHERE id = ?
-      `).run(current.catalogId);
-
-      const event = db.prepare(`
-        INSERT INTO service_events (
-          service_id, event_type, notes, technician_id, created_by, created_at
-        )
-        VALUES (?, 'alteracao_servico', ?, ?, ?, datetime('now'))
-      `).run(
-        current.serviceId,
-        notes,
-        parsed.data.technicianId || null,
-        parsed.data.technicianId || null
-      );
-
-      return { eventId: event.lastInsertRowid };
-    });
-
-    let result: { eventId: string | number | bigint };
+    let result: { eventId: number | bigint; condition: ReturnCondition; restoredStock: boolean };
     try {
-      result = run();
+      result = db.transaction(() => returnAssignmentWithinTx(db, {
+        assignmentId,
+        clientName: service.clientName,
+        condition: parsed.data.condition,
+        notes: parsed.data.notes,
+        technicianId: parsed.data.technicianId,
+        userId: request.user?.id ?? null
+      }))();
     } catch (error) {
-      if (error instanceof Error && error.message === 'already_closed') {
-        return reply.status(400).send({ error: 'Atribuicao ja encerrada' });
+      const mapped = mapReturnError(error);
+      if (mapped) {
+        return reply.status(mapped.status).send({ error: mapped.error });
       }
       throw error;
     }
+
     recordAudit(request, {
       action: 'return_device',
       entityType: 'service_device_assignment',
       entityId: assignmentId,
-      summary: `Removeu equipamento atribuido ${assignmentId}`,
-      metadata: { catalogId: current.catalogId, serviceId: current.serviceId }
+      summary: `Devolveu equipamento atribuido ${assignmentId} (${result.condition})`,
+      metadata: {
+        catalogId: current.catalogId,
+        serviceId: current.serviceId,
+        condition: result.condition,
+        restoredStock: result.restoredStock
+      }
     });
-    return reply.status(200).send({ assignmentId, eventId: result.eventId });
+    return reply.status(200).send({
+      assignmentId,
+      eventId: result.eventId,
+      condition: result.condition,
+      restoredStock: result.restoredStock
+    });
+  });
+
+  /**
+   * Devolucao em lote — o momento do cancelamento. Fecha os equipamentos do ISP
+   * com o estado de cada um e recupera o material que o tecnico trouxe, tudo na
+   * mesma transacao: ou o servico fica fechado, ou nada muda.
+   */
+  app.post('/api/services/:id/returns', canWriteTechnical, async (request, reply) => {
+    const serviceId = Number((request.params as { id: string }).id);
+    const parsed = serviceReturnSchema.safeParse(request.body ?? {});
+    if (!Number.isInteger(serviceId) || serviceId <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Dados de devolucao invalidos' });
+    }
+
+    const devices = parsed.data.devices ?? [];
+    const materials = parsed.data.materials ?? [];
+    if (devices.length === 0 && materials.length === 0) {
+      return reply.status(400).send({ error: 'Indique pelo menos um equipamento ou material' });
+    }
+
+    const db = getSqliteDatabase();
+    const service = loadService(serviceId);
+    if (!service) {
+      return reply.status(404).send({ error: 'Servico nao encontrado' });
+    }
+    if (parsed.data.technicianId && !loadUser(parsed.data.technicianId)) {
+      return reply.status(404).send({ error: 'Tecnico nao encontrado' });
+    }
+
+    let result;
+    try {
+      result = db.transaction(() => processServiceReturn(db, {
+        serviceId,
+        clientName: service.clientName,
+        devices,
+        materials,
+        technicianId: parsed.data.technicianId,
+        notes: parsed.data.notes,
+        userId: request.user?.id ?? null
+      }))();
+    } catch (error) {
+      const mapped = mapReturnError(error);
+      if (mapped) {
+        return reply.status(mapped.status).send({ error: mapped.error });
+      }
+      throw error;
+    }
+
+    recordAudit(request, {
+      action: 'return_batch',
+      entityType: 'service',
+      entityId: serviceId,
+      summary: `Devolucao no servico ${serviceId}: ${result.devices.length} equipamento(s), ${result.materials.length} material(is)`,
+      metadata: { devices: result.devices, materials: result.materials, eventId: result.eventId }
+    });
+    return reply.status(200).send({ serviceId, ...result });
   });
 
   app.post('/api/services/:id/technical-events', canWriteTechnical, async (request, reply) => {

@@ -618,6 +618,9 @@ export type WhatsappMessageData = {
   phone: string | null;
 };
 
+/** Estado em que o equipamento voltou na devolução. */
+export type ReturnCondition = 'bom' | 'avariado' | 'nao_devolvido';
+
 export type DeviceAssignment = {
   id: number;
   serviceId: number;
@@ -641,6 +644,8 @@ export type DeviceAssignment = {
   shareCount: number;
   /** 'isp' = alugado ao cliente · 'cliente' = é dele e não paga renda. */
   ownership: 'isp' | 'cliente';
+  /** Como voltou: só 'bom' repôs stock. NULL enquanto instalado. */
+  returnCondition: ReturnCondition | null;
   ownedSince: string | null;
   /** Renda mensal congelada na atribuição (0 quando é do cliente). */
   rentalFeeCve: number;
@@ -659,6 +664,16 @@ export type MaterialLine = {
   unitCostCve: number;
   notes: string | null;
   createdAt: string;
+};
+
+/** Material por artigo: quanto saiu para o serviço e quanto já voltou. */
+export type MaterialReturnLine = {
+  catalogId: number;
+  brand: string | null;
+  model: string;
+  unitOfMeasure: string;
+  consumed: number;
+  recovered: number;
 };
 
 export type ServiceEventType = 'instalacao' | 'manutencao' | 'troca_equipamento' | 'visita' | 'alteracao_servico';
@@ -684,6 +699,7 @@ export type TechnicalHistory = {
   serviceId: number;
   assignments: DeviceAssignment[];
   materials: MaterialLine[];
+  materialReturns: MaterialReturnLine[];
   installCosts: InstallCost[];
   events: ServiceEvent[];
 };

@@ -328,6 +328,71 @@ describe('technical routes', () => {
     expect(second.json()).toEqual({ error: 'Atribuicao ja encerrada' });
   });
 
+  test('devolucao em lote fecha o servico e repoe so o que voltou inteiro', async () => {
+    const { catalog, service } = seedBaseService();
+    const serviceId = Number(service.lastInsertRowid);
+    const catalogId = Number(catalog.lastInsertRowid);
+    const cabo = db.prepare(`
+      INSERT INTO equipment_catalog (type, brand, model, unit_of_measure, is_serialized, purchase_price_cve, stock_total, active)
+      VALUES ('cabo', 'Teste', 'Cabo Tec', 'm', 0, 100, 200, 1)
+    `).run();
+    const caboId = Number(cabo.lastInsertRowid);
+
+    const install = await app.inject({
+      method: 'POST',
+      url: `/api/services/${serviceId}/items`,
+      payload: {
+        items: [
+          { catalogId, serialNumber: 'SN-A' },
+          { catalogId, serialNumber: 'SN-B' },
+          { catalogId: caboId, quantity: 50 }
+        ]
+      }
+    });
+    expect(install.statusCode).toBe(201);
+    const stockAfterInstall = db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?')
+      .get(catalogId) as { s: number };
+    expect(stockAfterInstall.s).toBe(8);
+
+    const assignments = db.prepare(`
+      SELECT id FROM service_device_assignments WHERE service_id = ? ORDER BY id
+    `).all(serviceId) as Array<{ id: number }>;
+
+    const result = await app.inject({
+      method: 'POST',
+      url: `/api/services/${serviceId}/returns`,
+      payload: {
+        devices: [
+          { assignmentId: assignments[0].id, condition: 'bom' },
+          { assignmentId: assignments[1].id, condition: 'nao_devolvido' }
+        ],
+        materials: [{ catalogId: caboId, quantity: 30 }]
+      }
+    });
+
+    expect(result.statusCode).toBe(200);
+    const stock = db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?')
+      .get(catalogId) as { s: number };
+    expect(stock.s).toBe(9);
+    const caboStock = db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?')
+      .get(caboId) as { s: number };
+    expect(caboStock.s).toBe(180);
+    const open = db.prepare(`
+      SELECT COUNT(*) AS total FROM service_device_assignments WHERE service_id = ? AND end_date IS NULL
+    `).get(serviceId) as { total: number };
+    expect(open.total).toBe(0);
+  });
+
+  test('devolucao em lote vazia e recusada', async () => {
+    const { service } = seedBaseService();
+    const result = await app.inject({
+      method: 'POST',
+      url: `/api/services/${Number(service.lastInsertRowid)}/returns`,
+      payload: { devices: [], materials: [] }
+    });
+    expect(result.statusCode).toBe(400);
+  });
+
   test('returns 404 when returning an unknown assignment', async () => {
     seedBaseService();
     const result = await app.inject({
