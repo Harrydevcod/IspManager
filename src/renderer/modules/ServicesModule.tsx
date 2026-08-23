@@ -7,11 +7,12 @@ import { formatCve } from '../lib/format';
 import { takesStaticIp } from '../../shared/equipment';
 import { suggestIpPrefix } from '../lib/ip';
 import { statusLabel, statusTone } from '../lib/status';
-import type { AudiovisualConfig, Client, DeviceAssignment, PlanRow, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
+import type { AudiovisualConfig, Client, DeviceAssignment, PlanRow, ReturnCondition, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
 import { BulkIpDialog, type ActiveAssignment } from './services/BulkIpDialog';
 import { IpField } from './services/IpField';
 import { ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
 import { PurchaseDeviceDialog } from './services/PurchaseDeviceDialog';
+import { ServiceReturnDialog } from './services/ServiceReturnDialog';
 import { ServiceItemDraftsBuilder, emptyItemDraft, type ItemDraft } from './services/ServiceItemDraftsBuilder';
 
 type EventFormState = {
@@ -109,6 +110,11 @@ export function ServicesModule({
   const [replaceTarget, setReplaceTarget] = useState<DeviceAssignment | null>(null);
   const [purchaseTarget, setPurchaseTarget] = useState<DeviceAssignment | null>(null);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
+  /** Painel de devolução: serviço + histórico no momento em que abriu. */
+  const [returnTarget, setReturnTarget] = useState<
+    { service: ServiceRow; history: TechnicalHistory; focusAssignmentId: number | null } | null
+  >(null);
+  const [returnError, setReturnError] = useState<string | null>(null);
   const [replaceDraft, setReplaceDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
   const [editTarget, setEditTarget] = useState<DeviceAssignment | null>(null);
   const [editDraft, setEditDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
@@ -209,18 +215,23 @@ export function ServicesModule({
     setLaborCve('');
   }
 
-  async function loadTechnicalHistory(serviceId: number) {
+  async function loadTechnicalHistory(serviceId: number): Promise<TechnicalHistory> {
+    const empty: TechnicalHistory = {
+      serviceId, assignments: [], materials: [], materialReturns: [], installCosts: [], events: []
+    };
     setHistoryLoading(true);
     try {
       const response = await authFetch(`http://127.0.0.1:3001/api/services/${serviceId}/technical-history`);
       if (!response.ok) {
-        setTechnicalHistory({ serviceId, assignments: [], materials: [], installCosts: [], events: [] });
-        return;
+        setTechnicalHistory(empty);
+        return empty;
       }
       const data = await response.json() as TechnicalHistory;
       setTechnicalHistory(data);
+      return data;
     } catch {
-      setTechnicalHistory({ serviceId, assignments: [], materials: [], installCosts: [], events: [] });
+      setTechnicalHistory(empty);
+      return empty;
     } finally {
       setHistoryLoading(false);
     }
@@ -467,32 +478,60 @@ export function ServicesModule({
     }
   }
 
-  async function returnDevice(assignment: DeviceAssignment) {
-    if (!selectedService) return;
-    const label = assignment.brand ? `${assignment.brand} ${assignment.model}` : assignment.model;
-    if (!(await confirm({
-      title: 'Remover equipamento',
-      message: `Remover ${label}${assignment.serialNumber ? ` (${assignment.serialNumber})` : ''} deste serviço? O stock será reposto.`,
-      tone: 'danger',
-      confirmLabel: 'Remover'
-    }))) return;
+  /** Há alguma coisa em casa do cliente por fechar? */
+  function hasPendingReturns(history: TechnicalHistory) {
+    const devices = history.assignments.filter((a) => !a.endDate && a.isOwner && a.ownership === 'isp');
+    const materials = history.materialReturns.filter((m) => m.consumed - m.recovered > 0);
+    return devices.length + materials.length > 0;
+  }
+
+  /**
+   * Abre o painel de devolução. No cancelamento entra sozinho (`onlyIfPending`),
+   * e cala-se quando não há nada por devolver — não vale um modal vazio.
+   */
+  async function openReturns(
+    service: ServiceRow,
+    options: { focusAssignmentId?: number | null; onlyIfPending?: boolean } = {}
+  ) {
+    const history = technicalHistory?.serviceId === service.id
+      ? technicalHistory
+      : await loadTechnicalHistory(service.id);
+    if (options.onlyIfPending && !hasPendingReturns(history)) return;
+    setReturnError(null);
+    setReturnTarget({ service, history, focusAssignmentId: options.focusAssignmentId ?? null });
+  }
+
+  async function submitReturns(payload: {
+    devices: Array<{ assignmentId: number; condition: ReturnCondition }>;
+    materials: Array<{ catalogId: number; quantity: number }>;
+    notes: string | null;
+  }) {
+    if (!returnTarget) return;
     setSubmitting(true);
+    setReturnError(null);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/service-device-assignments/${assignment.id}/return`, {
+      const response = await authFetch(`http://127.0.0.1:3001/api/services/${returnTarget.service.id}/returns`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
+        body: JSON.stringify(payload)
       });
       const data = await response.json() as { error?: string };
       if (!response.ok) {
-        toast(data.error || 'Nao foi possivel remover o equipamento.', 'error');
+        setReturnError(data.error || 'Não foi possível registar a devolução.');
         return;
       }
-      toast('Equipamento removido e stock reposto.', 'success');
-      await loadTechnicalHistory(selectedService.id);
+      const backToStock = payload.devices.filter((device) => device.condition === 'bom').length;
+      toast(
+        backToStock === payload.devices.length
+          ? 'Devolução registada e stock reposto.'
+          : `Devolução registada. ${backToStock} de volta ao stock, ${payload.devices.length - backToStock} como perda.`,
+        'success'
+      );
+      setReturnTarget(null);
+      await loadTechnicalHistory(returnTarget.service.id);
       void loadServices();
     } catch {
-      toast('Falha de rede ao remover equipamento.', 'error');
+      setReturnError('Falha de rede ao registar a devolucao.');
     } finally {
       setSubmitting(false);
     }
@@ -727,8 +766,15 @@ export function ServicesModule({
           : 'Servico criado.',
       'success'
     );
+    // O cancelamento é o momento em que o material volta. Abrir o painel aqui é
+    // a diferença entre fechar o serviço e ficar com uma antena perdida na rua.
+    const cancelled = Boolean(editingService) && form.status === 'cancelled' && editingService?.status !== 'cancelled';
+    const cancelledService = editingService ? { ...editingService, status: 'cancelled' as const } : null;
     closeForm();
     await loadServices();
+    if (cancelled && cancelledService && canRecordTechnical) {
+      await openReturns(cancelledService, { onlyIfPending: true });
+    }
   }
 
   const visibleServices = services.filter((service) => {
@@ -808,7 +854,8 @@ export function ServicesModule({
           onEditDevice={openEditDialog}
           onUnshareDevice={(assignment) => void unshareDevice(assignment)}
           onReplaceDevice={openReplaceDialog}
-          onReturnDevice={(assignment) => void returnDevice(assignment)}
+          onReturnDevice={(assignment) => void openReturns(selectedService, { focusAssignmentId: assignment.id })}
+          onOpenReturns={() => void openReturns(selectedService)}
           onPurchaseDevice={(assignment) => { setPurchaseError(null); setPurchaseTarget(assignment); }}
           onAddEvent={openEventDialog}
         />
@@ -1198,6 +1245,19 @@ export function ServicesModule({
           <Field wide label="Notas" value={editDraft.notes} onChange={(event) => setEditDraft((current) => ({ ...current, notes: event.target.value }))} />
         </form>
       </Dialog>
+
+      {returnTarget && (
+        <ServiceReturnDialog
+          clientName={returnTarget.service.clientName}
+          assignments={returnTarget.history.assignments}
+          materialReturns={returnTarget.history.materialReturns}
+          focusAssignmentId={returnTarget.focusAssignmentId}
+          submitting={submitting}
+          error={returnError}
+          onClose={() => setReturnTarget(null)}
+          onConfirm={(payload) => void submitReturns(payload)}
+        />
+      )}
 
       {purchaseTarget && (
         <PurchaseDeviceDialog

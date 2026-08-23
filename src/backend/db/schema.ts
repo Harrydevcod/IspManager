@@ -181,6 +181,8 @@ export const serviceDeviceAssignments = sqliteTable('service_device_assignments'
   ownedSince: text('owned_since'),
   /** Renda em vigor no momento da instalação — instantâneo, não o preço atual do catálogo. */
   rentalFeeCve: real('rental_fee_cve').notNull().default(0),
+  /** Como voltou: 'bom' | 'avariado' | 'nao_devolvido'. NULL enquanto ativo (migração 0044). */
+  returnCondition: text('return_condition'),
   createdBy: integer('created_by'),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
