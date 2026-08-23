@@ -23,7 +23,7 @@ const eventTypeTone: Record<ServiceEventType, 'success' | 'info' | 'neutral' | '
 export const RETURN_CONDITION_LABELS: Record<'bom' | 'avariado' | 'nao_devolvido', string> = {
   bom: 'Bom estado',
   avariado: 'Avariado',
-  nao_devolvido: 'Nao devolvido'
+  nao_devolvido: 'Não devolvido'
 };
 
 const INSTALL_COST_LABELS: Record<'mao_de_obra' | 'transporte' | 'outro', string> = {

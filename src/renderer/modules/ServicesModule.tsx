@@ -517,14 +517,14 @@ export function ServicesModule({
       });
       const data = await response.json() as { error?: string };
       if (!response.ok) {
-        setReturnError(data.error || 'Nao foi possivel registar a devolucao.');
+        setReturnError(data.error || 'Não foi possível registar a devolução.');
         return;
       }
       const backToStock = payload.devices.filter((device) => device.condition === 'bom').length;
       toast(
         backToStock === payload.devices.length
-          ? 'Devolucao registada e stock reposto.'
-          : `Devolucao registada. ${backToStock} de volta ao stock, ${payload.devices.length - backToStock} como perda.`,
+          ? 'Devolução registada e stock reposto.'
+          : `Devolução registada. ${backToStock} de volta ao stock, ${payload.devices.length - backToStock} como perda.`,
         'success'
       );
       setReturnTarget(null);
