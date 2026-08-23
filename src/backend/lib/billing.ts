@@ -34,17 +34,28 @@ const INTERNET_LINE_DESCRIPTION = 'Servico de Internet';
  * O aluguer vem em linhas separadas, uma por equipamento, para o cliente ver
  * porque paga o que paga — e para a linha simplesmente desaparecer da fatura
  * seguinte no dia em que ele comprar o equipamento.
+ *
+ * Serviço **suspenso** perde o serviço mas não o equipamento: o corte tira-lhe a
+ * internet e o audiovisual, o router do ISP continua em casa dele e continua a
+ * ser cobrado. Ficam só as linhas de aluguer. Quando devolver, a atribuição
+ * fecha, não sobra linha nenhuma e o total a zero impede a fatura de nascer.
  */
 export function buildMonthlyServiceLines(
-  svc: { monthlyValueCve: number; audiovisualMode: 'none' | 'monthly' | 'annual'; audiovisualMonthlyCve: number },
+  svc: {
+    monthlyValueCve: number;
+    audiovisualMode: 'none' | 'monthly' | 'annual';
+    audiovisualMonthlyCve: number;
+    status?: 'active' | 'suspended' | 'cancelled';
+  },
   audiovisualLabel: string,
   rentals: RentalLine[] = []
 ): BillingLine[] {
   const lines: BillingLine[] = [];
-  if (svc.monthlyValueCve > 0) {
+  const suspended = svc.status === 'suspended';
+  if (!suspended && svc.monthlyValueCve > 0) {
     lines.push({ kind: 'internet', description: INTERNET_LINE_DESCRIPTION, amountCve: svc.monthlyValueCve });
   }
-  if (svc.audiovisualMode === 'monthly' && svc.audiovisualMonthlyCve > 0) {
+  if (!suspended && svc.audiovisualMode === 'monthly' && svc.audiovisualMonthlyCve > 0) {
     lines.push({ kind: 'audiovisual', description: audiovisualLabel, amountCve: svc.audiovisualMonthlyCve });
   }
   for (const rental of rentals) {
@@ -168,11 +179,15 @@ export function computeMonthlyBilling(db: DatabaseType, referenceMonth: string):
       s.monthly_value_cve AS monthlyValueCve,
       s.audiovisual_mode AS audiovisualMode,
       s.audiovisual_monthly_cve AS audiovisualMonthlyCve,
-      s.due_day AS dueDay
+      s.due_day AS dueDay,
+      s.status AS status
     FROM services s
     JOIN clients c ON c.id = s.client_id
     LEFT JOIN internet_plans p ON p.id = s.plan_id
-    WHERE s.status = 'active'
+    -- Suspenso entra na corrida por causa do aluguer: quem ficou com o
+    -- equipamento do ISP continua a pagá-lo. buildMonthlyServiceLines corta-lhe
+    -- o plano e o audiovisual; se já devolveu tudo, o total dá 0 e não há fatura.
+    WHERE s.status IN ('active', 'suspended')
       -- Regra de negócio: clientes cancelados não geram mensalidades, mesmo
       -- que um serviço tenha ficado 'active'. O cancelamento do cliente não
       -- propaga automaticamente para os serviços, por isso filtramos aqui.
@@ -187,6 +202,7 @@ export function computeMonthlyBilling(db: DatabaseType, referenceMonth: string):
     audiovisualMode: 'none' | 'monthly' | 'annual';
     audiovisualMonthlyCve: number;
     dueDay: number;
+    status: 'active' | 'suspended';
   }>;
 
   // Só uma cobrança *não anulada* por serviço/mês bloqueia a geração. Uma
@@ -226,7 +242,9 @@ export function computeMonthlyBilling(db: DatabaseType, referenceMonth: string):
   const totalCve = toCreate.reduce((sum, item) => sum + item.amountCve, 0);
   return {
     referenceMonth,
-    activeServices: services.length,
+    // Continua a contar só os ativos: os suspensos que entram na corrida entram
+    // pelo aluguer, não são serviço ativo e não devem inflacionar o número.
+    activeServices: services.filter((svc) => svc.status === 'active').length,
     alreadyBilled,
     toCreate,
     totalCve

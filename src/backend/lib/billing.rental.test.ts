@@ -121,6 +121,21 @@ describe('buildMonthlyServiceLines — aluguer', () => {
     );
     expect(lines.map((l) => l.kind)).toEqual(['internet', 'audiovisual', 'aluguer']);
   });
+
+  test('suspenso paga o aluguer mas não o plano nem o audiovisual', () => {
+    const lines = buildMonthlyServiceLines(
+      { monthlyValueCve: 2500, audiovisualMode: 'monthly', audiovisualMonthlyCve: 1000, status: 'suspended' },
+      'Audiovisual',
+      [rental('CPE 510', 250)]
+    );
+    expect(lines.map((l) => l.kind)).toEqual(['aluguer']);
+    expect(billing.sumLines(lines)).toBe(250);
+  });
+
+  test('suspenso que já devolveu o equipamento não gera linha nenhuma', () => {
+    const lines = buildMonthlyServiceLines({ ...svc, status: 'suspended' }, 'AV', []);
+    expect(lines).toHaveLength(0);
+  });
 });
 
 // ------------------------------------------------------- que equipamento conta
@@ -321,5 +336,50 @@ describe('insertEquipmentPurchase', () => {
       .get(assignmentId) as { ownership: string };
     expect(row.ownership).toBe('cliente');
     expect(billing.loadServiceRentals(db).get(ids.serviceId)).toBeUndefined();
+  });
+});
+
+// ----------------------------------------------------- suspenso com equipamento
+
+describe('computeMonthlyBilling — serviço suspenso', () => {
+  function suspend(serviceId: number): void {
+    db.prepare(`UPDATE services SET status = 'suspended' WHERE id = ?`).run(serviceId);
+  }
+
+  test('quem foi cortado e ficou com o equipamento continua a ser faturado — só a renda', () => {
+    const ids = seedService('Cortado');
+    assign(ids.serviceId, seedCatalog('CPE 510', 250));
+    suspend(ids.serviceId);
+
+    const preview = billing.computeMonthlyBilling(db, '2026-08');
+    const row = preview.toCreate.find((item) => item.serviceId === ids.serviceId)!;
+    expect(row.amountCve).toBe(250);
+    expect(row.lines.map((l) => l.kind)).toEqual(['aluguer']);
+    // O suspenso entra na fatura mas não conta como serviço ativo.
+    expect(preview.activeServices).toBe(0);
+  });
+
+  test('suspenso sem equipamento do ISP não gera fatura', () => {
+    const ids = seedService('CortadoSemNada');
+    suspend(ids.serviceId);
+
+    const preview = billing.computeMonthlyBilling(db, '2026-08');
+    expect(preview.toCreate).toHaveLength(0);
+  });
+
+  test('suspenso que devolveu o equipamento deixa de ser faturado', () => {
+    const ids = seedService('Devolveu');
+    assign(ids.serviceId, seedCatalog('CPE 510', 250), { endDate: '2026-08-01' });
+    suspend(ids.serviceId);
+
+    expect(billing.computeMonthlyBilling(db, '2026-08').toCreate).toHaveLength(0);
+  });
+
+  test('cancelado não gera fatura, mesmo com equipamento por devolver', () => {
+    const ids = seedService('Cancelado');
+    assign(ids.serviceId, seedCatalog('CPE 510', 250));
+    db.prepare(`UPDATE services SET status = 'cancelled' WHERE id = ?`).run(ids.serviceId);
+
+    expect(billing.computeMonthlyBilling(db, '2026-08').toCreate).toHaveLength(0);
   });
 });
