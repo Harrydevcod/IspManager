@@ -303,14 +303,55 @@ function loadNetwork(db: Database.Database): OperationsNetwork {
 
 // -------------------------------------------------------------- clientes
 
+/**
+ * MRR = o que a geração mensal vai mesmo emitir, não a soma dos planos.
+ *
+ * Espelha `buildMonthlyServiceLines`, linha por linha:
+ *  - plano e audiovisual **mensal** só ao serviço ativo;
+ *  - aluguer do equipamento do ISP também ao **suspenso** — quem foi cortado e
+ *    ficou com o router continua a pagá-lo até devolver;
+ *  - cliente cancelado nunca conta, mesmo com o serviço por fechar.
+ *
+ * Sem isto o MRR ignorava o aluguer por inteiro e ficava abaixo do faturado.
+ * `mrrActiveCve` é o denominador honesto do ARPU: receita dos ativos a dividir
+ * por serviços ativos, sem a renda dos cortados pelo meio.
+ */
+function loadMrr(db: Database.Database): { mrrCve: number; mrrActiveCve: number } {
+  return db.prepare(`
+    SELECT
+      COALESCE(SUM(mrr), 0) AS mrrCve,
+      COALESCE(SUM(CASE WHEN status = 'active' THEN mrr ELSE 0 END), 0) AS mrrActiveCve
+    FROM (
+      SELECT
+        s.status AS status,
+        CASE WHEN s.status = 'active'
+          THEN s.monthly_value_cve
+             + CASE WHEN s.audiovisual_mode = 'monthly' THEN s.audiovisual_monthly_cve ELSE 0 END
+          ELSE 0
+        END
+        + COALESCE((
+            SELECT SUM(a.rental_fee_cve)
+            FROM service_device_assignments a
+            WHERE a.service_id = s.id AND a.end_date IS NULL AND a.ownership = 'isp'
+          ), 0) AS mrr
+      FROM services s
+      JOIN clients c ON c.id = s.client_id
+      WHERE s.status IN ('active', 'suspended') AND c.status != 'cancelled'
+    )
+  `).get() as { mrrCve: number; mrrActiveCve: number };
+}
+
 function loadCustomers(db: Database.Database, from: string, previousFrom: string): OperationsCustomers {
+  const mrr = loadMrr(db);
   const totals = db.prepare(`
     SELECT
       (SELECT COUNT(*) FROM clients WHERE status = 'active') AS active,
       (SELECT COUNT(*) FROM clients WHERE status = 'suspended') AS suspended,
       (SELECT COUNT(*) FROM clients WHERE status = 'cancelled') AS cancelled,
-      (SELECT COUNT(*) FROM services WHERE status = 'active') AS activeServices,
-      (SELECT COALESCE(SUM(monthly_value_cve + audiovisual_monthly_cve), 0) FROM services WHERE status = 'active') AS mrrCve,
+      -- Mesmo recorte do MRR: serviço ativo de cliente não cancelado. É o
+      -- denominador do ARPU, tem de contar só o que está no numerador.
+      (SELECT COUNT(*) FROM services s JOIN clients c ON c.id = s.client_id
+        WHERE s.status = 'active' AND c.status != 'cancelled') AS activeServices,
       (SELECT COUNT(*) FROM clients WHERE date(created_at) >= @from) AS newClients,
       (SELECT COUNT(*) FROM clients WHERE date(created_at) >= @previousFrom AND date(created_at) < @from) AS newClientsPrevious,
       (SELECT COUNT(*) FROM services WHERE date(COALESCE(activation_date, created_at)) >= @from) AS activations,
@@ -378,8 +419,8 @@ function loadCustomers(db: Database.Database, from: string, previousFrom: string
     suspended: num(totals.suspended),
     cancelled: num(totals.cancelled),
     activeServices: num(totals.activeServices),
-    mrrCve: num(totals.mrrCve),
-    arpuCve: num(totals.activeServices) > 0 ? num(totals.mrrCve) / num(totals.activeServices) : 0,
+    mrrCve: num(mrr.mrrCve),
+    arpuCve: num(totals.activeServices) > 0 ? num(mrr.mrrActiveCve) / num(totals.activeServices) : 0,
     newClients: num(totals.newClients),
     newClientsPrevious: num(totals.newClientsPrevious),
     activations: num(totals.activations),

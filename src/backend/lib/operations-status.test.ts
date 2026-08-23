@@ -116,6 +116,19 @@ function attachServiceToBackbone(serviceId: number, catalogId: number, backboneI
   `).run(backboneId, Number(assignment.lastInsertRowid));
 }
 
+/** Equipamento instalado com renda. Por omissão é do ISP e continua instalado. */
+function rentDevice(
+  serviceId: number,
+  catalogId: number,
+  rentalFeeCve: number,
+  opts: { ownership?: string; endDate?: string | null } = {}
+): void {
+  db.prepare(`
+    INSERT INTO service_device_assignments (service_id, catalog_id, start_date, end_date, ownership, rental_fee_cve)
+    VALUES (?, ?, date('now'), ?, ?, ?)
+  `).run(serviceId, catalogId, opts.endDate ?? null, opts.ownership ?? 'isp', rentalFeeCve);
+}
+
 function daysAgo(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
 }
@@ -143,13 +156,67 @@ describe('loadOperationsStatus', () => {
     insertService(a, plan, 3000);
     const serviceB = insertService(b, plan, 3000);
     insertService(c, plan, 3000, 'cancelled');
-    db.prepare(`UPDATE services SET audiovisual_monthly_cve = 500 WHERE id = ?`).run(serviceB);
+    db.prepare(`UPDATE services SET audiovisual_mode = 'monthly', audiovisual_monthly_cve = 500 WHERE id = ?`)
+      .run(serviceB);
 
     const status = loadOperationsStatus(db);
 
     expect(status.customers.activeServices).toBe(2);
     expect(status.customers.mrrCve).toBe(6500);
     expect(status.customers.arpuCve).toBe(3250);
+  });
+
+  test('audiovisual anual não entra no MRR mensal', () => {
+    const plan = insertPlan('Standard', 3000);
+    const service = insertService(insertClient('C001', 'Ana'), plan, 3000);
+    db.prepare(`UPDATE services SET audiovisual_mode = 'annual', audiovisual_monthly_cve = 500 WHERE id = ?`)
+      .run(service);
+
+    expect(loadOperationsStatus(db).customers.mrrCve).toBe(3000);
+  });
+
+  test('o aluguer do equipamento do ISP entra no MRR', () => {
+    const plan = insertPlan('Standard', 2500);
+    const service = insertService(insertClient('C001', 'Ana'), plan, 2500);
+    rentDevice(service, insertCatalog('CPE 510', 5), 250);
+
+    const status = loadOperationsStatus(db);
+    expect(status.customers.mrrCve).toBe(2750);
+    expect(status.customers.arpuCve).toBe(2750);
+  });
+
+  test('suspenso com equipamento por devolver entra no MRR só com a renda', () => {
+    const plan = insertPlan('Standard', 2500);
+    const active = insertService(insertClient('C001', 'Ana'), plan, 2500);
+    const cut = insertService(insertClient('C002', 'Bruno'), plan, 2500, 'suspended');
+    rentDevice(cut, insertCatalog('CPE 510', 5), 250);
+
+    const status = loadOperationsStatus(db);
+    expect(status.customers.activeServices).toBe(1);
+    expect(status.customers.mrrCve).toBe(2750);
+    // ARPU é dos ativos: a renda do cortado não infla o valor por serviço ativo.
+    expect(status.customers.arpuCve).toBe(2500);
+    expect(active).toBeGreaterThan(0);
+  });
+
+  test('equipamento comprado pelo cliente ou já devolvido não conta no MRR', () => {
+    const plan = insertPlan('Standard', 2500);
+    const service = insertService(insertClient('C001', 'Ana'), plan, 2500);
+    rentDevice(service, insertCatalog('Comprado', 5), 250, { ownership: 'cliente' });
+    rentDevice(service, insertCatalog('Devolvido', 5), 250, { endDate: daysAgo(1) });
+
+    expect(loadOperationsStatus(db).customers.mrrCve).toBe(2500);
+  });
+
+  test('serviço de cliente cancelado não conta nem no MRR nem nos serviços ativos', () => {
+    const plan = insertPlan('Standard', 2500);
+    const client = insertClient('C001', 'Ana', { status: 'cancelled' });
+    const service = insertService(client, plan, 2500);
+    rentDevice(service, insertCatalog('CPE 510', 5), 250);
+
+    const status = loadOperationsStatus(db);
+    expect(status.customers.activeServices).toBe(0);
+    expect(status.customers.mrrCve).toBe(0);
   });
 
   test('conta o MRR uma vez por serviço mesmo com vários equipamentos no mesmo backbone', () => {

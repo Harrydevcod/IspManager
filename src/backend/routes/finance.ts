@@ -215,7 +215,9 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         py.receipt_date AS receiptDate,
         CASE
           WHEN py.status = 'cancelled'
-            AND s.status = 'active'
+            -- Espelha regenerateMonthlyPayment: só o serviço cancelado bloqueia.
+            -- O suspenso regenera a fatura de aluguer que lhe foi anulada.
+            AND s.status != 'cancelled'
             AND c.status != 'cancelled'
             AND NOT EXISTS (
               SELECT 1

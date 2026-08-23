@@ -1,5 +1,5 @@
 import type { Database } from 'better-sqlite3';
-import { buildMonthlyServiceLines, dueDateFromIssue, sumLines, todayIso, type BillingLine } from './billing';
+import { buildMonthlyServiceLines, dueDateFromIssue, loadServiceRentals, sumLines, todayIso, type BillingLine } from './billing';
 import { isAudiovisualAnnualReference, loadAudiovisualConfig } from './audiovisual';
 import { allocateDocumentNumber } from './numbering';
 import { validatePaymentDates } from '../../shared/payment-dates';
@@ -211,7 +211,7 @@ export function regeneratePayment(db: Database, id: number): PaymentOpResult<{
   if (payment.status !== 'cancelled') {
     return { ok: false, status: 400, error: 'Apenas pagamentos anulados podem regenerar mensalidade' };
   }
-  if (payment.serviceStatus !== 'active') {
+  if (payment.serviceStatus === 'cancelled') {
     return { ok: false, status: 400, error: 'Servico cancelado nao pode regenerar mensalidade' };
   }
   if (payment.clientStatus === 'cancelled') {
@@ -236,7 +236,11 @@ export function regeneratePayment(db: Database, id: number): PaymentOpResult<{
         const annual = payment.audiovisualAnnualCve > 0 ? payment.audiovisualAnnualCve : config.annualCve;
         return annual > 0 ? [{ kind: 'audiovisual' as const, description: config.label, amountCve: annual }] : [];
       })()
-    : buildMonthlyServiceLines(payment, config.label);
+    : buildMonthlyServiceLines(
+        { ...payment, status: payment.serviceStatus },
+        config.label,
+        loadServiceRentals(db).get(payment.serviceId) ?? []
+      );
   const amountCve = sumLines(lines);
   if (amountCve <= 0) {
     return { ok: false, status: 400, error: 'Servico sem valor a regenerar' };
