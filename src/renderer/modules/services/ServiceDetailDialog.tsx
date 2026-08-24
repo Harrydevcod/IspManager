@@ -238,6 +238,9 @@ export function ServiceDetailDialog({
           <ul className="technical-list">
             {technicalHistory.assignments.map((assignment: DeviceAssignment) => {
               const active = !assignment.endDate;
+              const alsoServed = assignment.sharedWith
+                .filter((row) => row.serviceId !== service.id)
+                .map((row) => row.clientName);
               return (
                 <li key={assignment.id} className={active ? 'technical-item active' : 'technical-item past'}>
                   <div className="technical-item-head">
@@ -271,8 +274,12 @@ export function ServiceDetailDialog({
                     {assignment.ownedSince && (
                       <div><dt>Do cliente desde</dt><dd>{formatPtDate(assignment.ownedSince)}</dd></div>
                     )}
-                    {assignment.sharedWithNames && (
-                      <div><dt>Também serve</dt><dd>{assignment.sharedWithNames}</dd></div>
+                    {/* A partilha inclui o serviço aberto; aqui só interessam os outros. */}
+                    {!assignment.isOwner && assignment.ownerClientName && (
+                      <div><dt>Titular</dt><dd>{assignment.ownerClientName}</dd></div>
+                    )}
+                    {alsoServed.length > 0 && (
+                      <div><dt>Também serve</dt><dd>{alsoServed.join(', ')}</dd></div>
                     )}
                   </dl>
                   {assignment.notes && <p className="technical-item-notes">{assignment.notes}</p>}
