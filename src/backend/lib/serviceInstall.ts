@@ -277,27 +277,32 @@ export function installDeviceWithinTx(
     technicianId
   );
 
-  db.prepare(`
-    INSERT INTO stock_movements (
-      catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
-    )
-    VALUES (?, 'saida', 1, ?, ?, ?, ?, ?, ?)
-  `).run(
-    device.catalogId,
-    freshCatalog.landedCostCve,
-    `Instalacao servico ${serviceId}`,
-    notes,
-    serviceId,
-    clientName,
-    userId
-  );
+  // Equipamento do cliente nunca esteve no armazem: comprou-o ele, ou herdou-o da
+  // operadora anterior. Dar-lhe baixa aqui inventava uma saida de stock e um custo
+  // que a empresa nunca teve. So o material do ISP consome inventario.
+  if (ownership === 'isp') {
+    db.prepare(`
+      INSERT INTO stock_movements (
+        catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
+      )
+      VALUES (?, 'saida', 1, ?, ?, ?, ?, ?, ?)
+    `).run(
+      device.catalogId,
+      freshCatalog.landedCostCve,
+      `Instalacao servico ${serviceId}`,
+      notes,
+      serviceId,
+      clientName,
+      userId
+    );
 
-  db.prepare(`
-    UPDATE equipment_catalog
-    SET stock_total = stock_total - 1,
-        updated_at = datetime('now')
-    WHERE id = ?
-  `).run(device.catalogId);
+    db.prepare(`
+      UPDATE equipment_catalog
+      SET stock_total = stock_total - 1,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(device.catalogId);
+  }
 
   let eventId: number | bigint = 0;
   if (!params.skipEvent) {

@@ -110,7 +110,10 @@ export function returnAssignmentWithinTx(
     WHERE assignment_id = ? AND ended_at IS NULL
   `).run(params.userId ?? params.technicianId ?? null, params.assignmentId);
 
-  const restoredStock = condition === 'bom';
+  // Espelho da instalacao: o que e do cliente nunca saiu do armazem, por isso
+  // tambem nao volta a ele — inflar o stock com equipamento alheio seria pior do
+  // que nao registar nada.
+  const restoredStock = condition === 'bom' && current.ownership !== 'cliente';
   if (restoredStock) {
     const catalog = loadCatalogIdentity(db, current.catalogId);
     db.prepare(`
