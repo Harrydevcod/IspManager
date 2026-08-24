@@ -627,6 +627,31 @@ describe('device identity (IP fixo)', () => {
       .toEqual({ r: 250 });
   });
 
+  test('equipamento do cliente não consome stock, nem ao instalar nem ao devolver', async () => {
+    const { catalog, service } = seedBaseService();
+    const stockBefore = (db.prepare('SELECT stock_total AS n FROM equipment_catalog WHERE id = ?')
+      .get(catalog.lastInsertRowid) as { n: number }).n;
+    const movementsBefore = (db.prepare('SELECT COUNT(*) AS n FROM stock_movements').get() as { n: number }).n;
+
+    const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, { ownership: 'cliente' });
+
+    // Nunca esteve no armazém: comprou-o o cliente, ou herdou-o da operadora anterior.
+    expect(db.prepare('SELECT stock_total AS n FROM equipment_catalog WHERE id = ?').get(catalog.lastInsertRowid))
+      .toEqual({ n: stockBefore });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM stock_movements').get()).toEqual({ n: movementsBefore });
+
+    const returned = await app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${assignmentId}/return`,
+      payload: { condition: 'bom' }
+    });
+
+    expect(returned.statusCode).toBe(200);
+    expect(db.prepare('SELECT stock_total AS n FROM equipment_catalog WHERE id = ?').get(catalog.lastInsertRowid))
+      .toEqual({ n: stockBefore });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM stock_movements').get()).toEqual({ n: movementsBefore });
+  });
+
   test('equipamento do cliente não aceita aluguer', async () => {
     const { catalog, service } = seedBaseService();
     const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, { ownership: 'cliente' });
