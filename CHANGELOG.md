@@ -6,6 +6,20 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.14.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.14.0) — 2026-08-24
+
+Uma versão sobre o que acontece ao **equipamento** quando um cliente sai, muda de casa ou é substituído por outro. Tudo o que era feito à mão na base de dados — ou não era feito de todo — passa a ter um caminho com registo, auditoria e efeito certo na fatura.
+
+### Adicionado
+
+- **equipamento:** ao **cancelar um serviço** abre-se o painel de **devolução**: marca-se o que voltou e em que estado. Só o que volta em **bom estado** regressa ao stock — avariado ou não devolvido fica registado como perda, com o custo onde já estava. O material recupera-se parcialmente, nunca mais do que o que foi consumido. O aluguer pára em todos os casos, a partir da mensalidade seguinte
+- **serviços:** **transferir o titular** de um serviço, para um cliente novo ou para um que regressa. O histórico de faturação **não se move** — quem foi faturado foi faturado. No modo *fica no mesmo local* mantém-se equipamento, IP e antena; no modo *recolhido e reinstalado* liberta-se o IP, fecha-se a ligação à antena antiga e geram-se novas credenciais PPPoE, porque o inquilino anterior conhece as antigas
+- **equipamento:** **passar a titularidade de uma antena partilhada** a um dos serviços que ela já serve — o prédio com uma antena e um switch, ou as casas coladas. Quando o titular saía, a antena ficava órfã: a devolução era recusada e a única saída era desassociar os vizinhos à mão. Agora promove-se um deles, dos dois lados (*Passar titularidade* no titular, *Assumir antena* no vizinho), sem baixa de stock nem reinstalação: a renda passa a sair na fatura do novo titular e o destino do titular antigo é escolha explícita do operador
+
+### Corrigido
+
+- **faturação:** um serviço **suspenso** que ficou com o equipamento do ISP em casa deixava de ser faturado por inteiro — incluindo a **renda do equipamento**, que continua a ser devida enquanto a unidade não voltar. O suspenso passa a pagar só a renda, e a previsão de receita espelha o que é realmente faturado
+
 ## [1.13.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.13.0) — 2026-08-17
 
 ### Adicionado
