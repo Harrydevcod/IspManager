@@ -676,7 +676,22 @@ export type MaterialReturnLine = {
   recovered: number;
 };
 
-export type ServiceEventType = 'instalacao' | 'manutencao' | 'troca_equipamento' | 'visita' | 'alteracao_servico';
+/** Os que o operador escreve à mão (formulário de evento, ordens de serviço). */
+export type ManualServiceEventType = 'instalacao' | 'manutencao' | 'troca_equipamento' | 'visita' | 'alteracao_servico';
+
+/**
+ * Tudo o que aparece na cronologia. Além dos manuais, o backend grava sozinho as
+ * mudanças de estado, o que a rede aplicou e a transferência de titular — esses
+ * nunca se criam à mão.
+ */
+export type ServiceEventType =
+  | ManualServiceEventType
+  | 'suspensao'
+  | 'reativacao'
+  | 'cancelamento'
+  | 'corte_rede'
+  | 'reposicao_rede'
+  | 'transferencia';
 
 export type ServiceEvent = {
   id: number;
@@ -742,7 +757,7 @@ export type WorkOrder = {
   description: string | null;
   status: WorkOrderStatus;
   priority: WorkOrderPriority;
-  eventType: ServiceEventType | null;
+  eventType: ManualServiceEventType | null;
   assignedTo: string | null;
   scheduledAt: string | null;
   startedAt: string | null;

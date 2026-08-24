@@ -15,6 +15,7 @@ import {
   revertPayment
 } from '../lib/payments';
 import { createService, deleteService, serviceSchema, updateService } from '../lib/services';
+import { serviceTransferSchema, transferService } from '../lib/serviceTransfer';
 import { requireAuth, requireRole } from './auth';
 
 const monthSchema = z.object({
@@ -164,6 +165,41 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       metadata: { clientId: parsed.data.clientId, planId: parsed.data.planId ?? null, status: parsed.data.status }
     });
     return { ok: true };
+  });
+
+  // Transferir o titular: a casa muda de inquilino, ou o equipamento é recolhido
+  // e reinstalado noutro cliente. O histórico de faturação fica com quem foi
+  // faturado; o serviço vivo segue para o novo titular, com registo na cronologia.
+  app.post('/api/services/:id/transfer', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const parsed = serviceTransferSchema.safeParse(request.body);
+    if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Dados de transferencia invalidos' });
+    }
+
+    const result = transferService(getSqliteDatabase(), id, parsed.data, request.user?.id ?? null);
+    if (!result.ok) {
+      return reply.status(result.status).send({ error: result.error });
+    }
+    const transfer = result.value;
+
+    recordAudit(request, {
+      action: 'transfer',
+      entityType: 'service',
+      entityId: id,
+      summary: `Transferiu servico ${id} de ${transfer.fromClient.name} para ${transfer.toClient.name}`,
+      metadata: {
+        fromClientId: transfer.fromClient.id,
+        toClientId: transfer.toClient.id,
+        mode: transfer.mode,
+        clientReactivated: transfer.clientReactivated,
+        previousStatus: transfer.previousStatus,
+        status: transfer.status,
+        freedIps: transfer.freedIps,
+        pppoeRegenerated: transfer.pppoeRegenerated
+      }
+    });
+    return transfer;
   });
 
   // Apagar um serviço criado por engano. Regra fiscal absoluta: um serviço que já

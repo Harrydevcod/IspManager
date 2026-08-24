@@ -7,16 +7,17 @@ import { formatCve } from '../lib/format';
 import { takesStaticIp } from '../../shared/equipment';
 import { suggestIpPrefix } from '../lib/ip';
 import { statusLabel, statusTone } from '../lib/status';
-import type { AudiovisualConfig, Client, DeviceAssignment, PlanRow, ReturnCondition, ServiceEventType, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
+import type { AudiovisualConfig, Client, DeviceAssignment, ManualServiceEventType, PlanRow, ReturnCondition, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
 import { BulkIpDialog, type ActiveAssignment } from './services/BulkIpDialog';
 import { IpField } from './services/IpField';
-import { ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
+import { MANUAL_EVENT_TYPES, ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
 import { PurchaseDeviceDialog } from './services/PurchaseDeviceDialog';
 import { ServiceReturnDialog } from './services/ServiceReturnDialog';
+import { TransferServiceDialog, type TransferResult } from './services/TransferServiceDialog';
 import { ServiceItemDraftsBuilder, emptyItemDraft, type ItemDraft } from './services/ServiceItemDraftsBuilder';
 
 type EventFormState = {
-  eventType: ServiceEventType;
+  eventType: ManualServiceEventType;
   notes: string;
 };
 
@@ -115,6 +116,8 @@ export function ServicesModule({
     { service: ServiceRow; history: TechnicalHistory; focusAssignmentId: number | null } | null
   >(null);
   const [returnError, setReturnError] = useState<string | null>(null);
+  /** Serviço a mudar de titular: a casa mudou de inquilino ou o material vai para outro sítio. */
+  const [transferTarget, setTransferTarget] = useState<ServiceRow | null>(null);
   const [replaceDraft, setReplaceDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
   const [editTarget, setEditTarget] = useState<DeviceAssignment | null>(null);
   const [editDraft, setEditDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
@@ -478,6 +481,18 @@ export function ServicesModule({
     }
   }
 
+  /**
+   * Depois da transferência o serviço é de outro titular, por isso a lista e o
+   * detalhe aberto ficam desatualizados. Os avisos do servidor (sem equipamento,
+   * IP por definir) valem um toast — são a próxima tarefa do técnico.
+   */
+  async function finishTransfer(result: TransferResult) {
+    toast(`Servico transferido para ${result.toClient.name}.`, 'success');
+    for (const warning of result.warnings) toast(warning, 'info');
+    setSelectedService(null);
+    await loadServices();
+  }
+
   /** Há alguma coisa em casa do cliente por fechar? */
   function hasPendingReturns(history: TechnicalHistory) {
     const devices = history.assignments.filter((a) => !a.endDate && a.isOwner && a.ownership === 'isp');
@@ -837,6 +852,14 @@ export function ServicesModule({
         <small>{visibleServices.length} servicos</small>
       </FilterBar>
 
+      {transferTarget && (
+        <TransferServiceDialog
+          service={transferTarget}
+          onClose={() => setTransferTarget(null)}
+          onDone={(result) => { setTransferTarget(null); void finishTransfer(result); }}
+        />
+      )}
+
       {selectedService && (
         <ServiceDetailDialog
           service={selectedService}
@@ -858,6 +881,7 @@ export function ServicesModule({
           onOpenReturns={() => void openReturns(selectedService)}
           onPurchaseDevice={(assignment) => { setPurchaseError(null); setPurchaseTarget(assignment); }}
           onAddEvent={openEventDialog}
+          onTransfer={() => setTransferTarget(selectedService)}
         />
       )}
 
@@ -1142,8 +1166,8 @@ export function ServicesModule({
         }
       >
         <form id="event-form" className="client-form" onSubmit={submitEvent}>
-          <Select wide label="Tipo de evento" required value={eventForm.eventType} onChange={(event) => setEventForm((c) => ({ ...c, eventType: event.target.value as ServiceEventType }))}>
-            {(Object.keys(eventTypeLabel) as ServiceEventType[]).map((key) => (
+          <Select wide label="Tipo de evento" required value={eventForm.eventType} onChange={(event) => setEventForm((c) => ({ ...c, eventType: event.target.value as ManualServiceEventType }))}>
+            {MANUAL_EVENT_TYPES.map((key) => (
               <option key={key} value={key}>{eventTypeLabel[key]}</option>
             ))}
           </Select>
