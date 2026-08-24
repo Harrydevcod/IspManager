@@ -6,6 +6,12 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.14.1](https://github.com/Harrydevcod/IspManager/releases/tag/v1.14.1) — 2026-08-24
+
+### Corrigido
+
+- **stock:** registar um equipamento como **do cliente** — o router que ele comprou, ou herdou da operadora anterior — descontava uma unidade do armazém e escrevia um custo de aquisição que a empresa nunca teve. Com os artigos de router a zero, o registo seguinte punha o inventário negativo. A devolução tinha o erro espelhado: repunha stock de uma unidade que nunca lá esteve. Passa a valer a regra simples — **equipamento do cliente nunca toca em inventário**, nem ao instalar nem ao devolver. A troca física continua a descontar, porque aí a unidade nova é sempre do ISP
+
 ## [1.14.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.14.0) — 2026-08-24
 
 Uma versão sobre o que acontece ao **equipamento** quando um cliente sai, muda de casa ou é substituído por outro. Tudo o que era feito à mão na base de dados — ou não era feito de todo — passa a ter um caminho com registo, auditoria e efeito certo na fatura.
