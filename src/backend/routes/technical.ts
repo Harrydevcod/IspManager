@@ -3,7 +3,12 @@ import { z } from 'zod';
 import { STATIC_IP_EQUIPMENT_TYPES } from '../../shared/equipment';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit, recordAuditStrict } from '../lib/audit';
-import { SHARED_WITH_NAMES_SQL } from '../lib/deviceShares';
+import {
+  SHARED_WITH_NAMES_SQL,
+  SHARED_WITH_SQL,
+  promoteAssignmentOwner,
+  promoteOwnerSchema
+} from '../lib/deviceShares';
 import {
   IP_FORMAT_ERROR,
   checkDeviceIdentity,
@@ -198,6 +203,9 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         -- vem partilhada de outro. Só o titular manipula a unidade física.
         asv.is_owner AS isOwner,
         ${SHARED_WITH_NAMES_SQL} AS sharedWithNames,
+        ${SHARED_WITH_SQL} AS sharedWithJson,
+        (SELECT c2.full_name FROM services s2 JOIN clients c2 ON c2.id = s2.client_id
+          WHERE s2.id = a.service_id) AS ownerClientName,
         (SELECT COUNT(*) FROM service_device_shares sh WHERE sh.assignment_id = a.id) AS shareCount
       FROM assignment_services asv
       JOIN service_device_assignments a ON a.id = asv.assignment_id
@@ -282,7 +290,14 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       ORDER BY ic.created_at DESC, ic.id DESC
     `).all(id);
 
-    return { serviceId: service.id, assignments, materials, materialReturns, installCosts, events };
+    // `sharedWithJson` vem da BD como texto; o cliente escolhe um destes serviços
+    // para lhe passar a titularidade da antena.
+    const assignmentsOut = (assignments as Array<Record<string, unknown>>).map(({ sharedWithJson, ...rest }) => ({
+      ...rest,
+      sharedWith: JSON.parse((sharedWithJson as string) ?? '[]') as Array<{ serviceId: number; clientName: string }>
+    }));
+
+    return { serviceId: service.id, assignments: assignmentsOut, materials, materialReturns, installCosts, events };
   });
 
   app.post('/api/services/:id/items', canWriteTechnical, async (request, reply) => {
@@ -515,6 +530,40 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       metadata: { serviceId }
     });
     return reply.status(200).send({ removed: removed.changes });
+  });
+
+  /**
+   * Passa a titularidade da antena a um dos servicos que ela ja serve.
+   *
+   * O titular e a ancora do que e fisico — stock, IP, devolucao e renda — por isso
+   * quando ele sai a unidade tem de mudar de dono em vez de ficar orfa. Guarda de
+   * faturacao e nao tecnica: isto move uma renda mensal de um cliente para outro.
+   */
+  app.post('/api/service-device-assignments/:id/owner', canManageBilling, async (request, reply) => {
+    const assignmentId = Number((request.params as { id: string }).id);
+    const parsed = promoteOwnerSchema.safeParse(request.body ?? {});
+    if (!Number.isInteger(assignmentId) || assignmentId <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Dados de titularidade invalidos' });
+    }
+
+    const db = getSqliteDatabase();
+    const result = promoteAssignmentOwner(db, assignmentId, parsed.data, request.user?.id ?? null);
+    if (!result.ok) {
+      return reply.status(result.status).send({ error: result.error });
+    }
+
+    recordAudit(request, {
+      action: 'transfer_device_owner',
+      entityType: 'service_device_assignment',
+      entityId: assignmentId,
+      summary: `Titularidade do equipamento ${assignmentId}: ${result.value.fromClientName} para ${result.value.toClientName}`,
+      metadata: {
+        fromServiceId: result.value.fromServiceId,
+        toServiceId: result.value.toServiceId,
+        keepPreviousAsShare: result.value.keptPreviousAsShare
+      }
+    });
+    return reply.status(200).send(result.value);
   });
 
   /**

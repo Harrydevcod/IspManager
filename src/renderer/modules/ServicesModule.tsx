@@ -13,6 +13,7 @@ import { IpField } from './services/IpField';
 import { MANUAL_EVENT_TYPES, ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
 import { PurchaseDeviceDialog } from './services/PurchaseDeviceDialog';
 import { ServiceReturnDialog } from './services/ServiceReturnDialog';
+import { DeviceOwnerDialog, type PromoteOwnerResult } from './services/DeviceOwnerDialog';
 import { TransferServiceDialog, type TransferResult } from './services/TransferServiceDialog';
 import { ServiceItemDraftsBuilder, emptyItemDraft, type ItemDraft } from './services/ServiceItemDraftsBuilder';
 
@@ -87,6 +88,7 @@ export function ServicesModule({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedService, setSelectedService] = useState<ServiceRow | null>(null);
+  const [ownerTarget, setOwnerTarget] = useState<DeviceAssignment | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [avConfig, setAvConfig] = useState<AudiovisualConfig | null>(null);
@@ -493,6 +495,16 @@ export function ServicesModule({
     await loadServices();
   }
 
+  /**
+   * A antena mudou de dono: o serviço aberto pode ter passado a titular ou
+   * deixado de o ser, por isso o histórico técnico tem de voltar da BD.
+   */
+  async function finishPromoteOwner(result: PromoteOwnerResult) {
+    toast(`Titularidade da antena passou para ${result.toClientName}.`, 'success');
+    if (selectedService) await loadTechnicalHistory(selectedService.id);
+    await loadServices();
+  }
+
   /** Há alguma coisa em casa do cliente por fechar? */
   function hasPendingReturns(history: TechnicalHistory) {
     const devices = history.assignments.filter((a) => !a.endDate && a.isOwner && a.ownership === 'isp');
@@ -860,6 +872,16 @@ export function ServicesModule({
         />
       )}
 
+      {selectedService && ownerTarget && (
+        <DeviceOwnerDialog
+          assignment={ownerTarget}
+          currentServiceId={selectedService.id}
+          currentClientName={selectedService.clientName}
+          onClose={() => setOwnerTarget(null)}
+          onDone={(result) => { setOwnerTarget(null); void finishPromoteOwner(result); }}
+        />
+      )}
+
       {selectedService && (
         <ServiceDetailDialog
           service={selectedService}
@@ -876,6 +898,7 @@ export function ServicesModule({
           onAddDevice={openDeviceDialog}
           onEditDevice={openEditDialog}
           onUnshareDevice={(assignment) => void unshareDevice(assignment)}
+          onPromoteOwner={setOwnerTarget}
           onReplaceDevice={openReplaceDialog}
           onReturnDevice={(assignment) => void openReturns(selectedService, { focusAssignmentId: assignment.id })}
           onOpenReturns={() => void openReturns(selectedService)}
