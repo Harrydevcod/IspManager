@@ -1013,6 +1013,73 @@ describe('antena partilhada', () => {
     expect((await share(closed, service2.lastInsertRowid)).statusCode).toBe(400);
   });
 
+  test('promoting a sharer moves the antenna, its rental and the history', async () => {
+    const { antenna, service, service2 } = seedTwoServices();
+    const assignmentId = await installAntenna(service.lastInsertRowid, antenna.lastInsertRowid, { ipAddress: '192.168.1.10' });
+    await share(assignmentId, service2.lastInsertRowid);
+    const stockBefore = stockOf(antenna.lastInsertRowid);
+
+    const promoted = await app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${assignmentId}/owner`,
+      payload: { serviceId: service2.lastInsertRowid }
+    });
+
+    expect(promoted.statusCode).toBe(200);
+    expect(promoted.json()).toMatchObject({ toClientName: 'Vizinho Tec', keptPreviousAsShare: false });
+    expect(stockOf(antenna.lastInsertRowid)).toBe(stockBefore);
+    expect(db.prepare('SELECT service_id AS s FROM service_device_assignments WHERE id = ?').get(assignmentId))
+      .toEqual({ s: service2.lastInsertRowid });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM service_device_shares').get()).toEqual({ n: 0 });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'transfer_device_owner'").get())
+      .toEqual({ n: 1 });
+
+    // O antigo titular deixa de ver a antena; o novo passa a ser o titular dela.
+    const previous = await app.inject({ method: 'GET', url: `/api/services/${service.lastInsertRowid}/technical-history` });
+    expect((previous.json() as { assignments: unknown[] }).assignments).toHaveLength(0);
+    const current = await app.inject({ method: 'GET', url: `/api/services/${service2.lastInsertRowid}/technical-history` });
+    expect((current.json() as { assignments: Array<{ isOwner: number }> }).assignments[0]).toMatchObject({ isOwner: 1 });
+
+    // Sem partilhas por fechar, a devolucao ja passa.
+    const returned = await app.inject({ method: 'POST', url: `/api/service-device-assignments/${assignmentId}/return`, payload: {} });
+    expect(returned.statusCode).toBe(200);
+  });
+
+  test('promoting keeps the previous owner when asked, and refuses a stranger', async () => {
+    const { antenna, service, service2 } = seedTwoServices();
+    const assignmentId = await installAntenna(service.lastInsertRowid, antenna.lastInsertRowid);
+    await share(assignmentId, service2.lastInsertRowid);
+
+    const stranger = await app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${assignmentId}/owner`,
+      payload: { serviceId: 9999 }
+    });
+    expect(stranger.statusCode).toBe(404);
+
+    const kept = await app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${assignmentId}/owner`,
+      payload: { serviceId: service2.lastInsertRowid, keepPreviousAsShare: true }
+    });
+    expect(kept.statusCode).toBe(200);
+
+    const history = await app.inject({ method: 'GET', url: `/api/services/${service2.lastInsertRowid}/technical-history` });
+    const rows = (history.json() as {
+      assignments: Array<{ isOwner: number; shareCount: number; sharedWith: Array<{ serviceId: number; clientName: string }> }>;
+    }).assignments;
+    expect(rows[0]).toMatchObject({ isOwner: 1, shareCount: 1 });
+    expect(rows[0].sharedWith).toEqual([{ serviceId: service.lastInsertRowid, clientName: 'Cliente Tec' }]);
+
+    // Ja e o titular: promove-lo outra vez nao faz sentido.
+    const again = await app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${assignmentId}/owner`,
+      payload: { serviceId: service2.lastInsertRowid }
+    });
+    expect(again.statusCode).toBe(409);
+  });
+
   test('return is refused while another service depends on the antenna', async () => {
     const { antenna, service, service2 } = seedTwoServices();
     const assignmentId = await installAntenna(service.lastInsertRowid, antenna.lastInsertRowid);

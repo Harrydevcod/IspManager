@@ -641,6 +641,10 @@ export type DeviceAssignment = {
   isOwner: number;
   /** Clientes servidos por partilha, separados por vírgula. */
   sharedWithNames: string | null;
+  /** Os mesmos serviços com id: candidatos a assumir a titularidade da antena. */
+  sharedWith: Array<{ serviceId: number; clientName: string }>;
+  /** Cliente titular da unidade física — pode não ser o serviço que está aberto. */
+  ownerClientName: string | null;
   shareCount: number;
   /** 'isp' = alugado ao cliente · 'cliente' = é dele e não paga renda. */
   ownership: 'isp' | 'cliente';

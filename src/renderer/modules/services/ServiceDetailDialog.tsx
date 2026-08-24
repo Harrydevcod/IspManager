@@ -70,6 +70,7 @@ type ServiceDetailDialogProps = {
   onAddDevice: () => void;
   onEditDevice: (assignment: DeviceAssignment) => void;
   onUnshareDevice: (assignment: DeviceAssignment) => void;
+  onPromoteOwner: (assignment: DeviceAssignment) => void;
   onReplaceDevice: (assignment: DeviceAssignment) => void;
   /** Devolver uma unidade — abre o painel de devolução focado nela. */
   onReturnDevice: (assignment: DeviceAssignment) => void;
@@ -97,6 +98,7 @@ export function ServiceDetailDialog({
   onAddDevice,
   onEditDevice,
   onUnshareDevice,
+  onPromoteOwner,
   onReplaceDevice,
   onReturnDevice,
   onOpenReturns,
@@ -236,6 +238,9 @@ export function ServiceDetailDialog({
           <ul className="technical-list">
             {technicalHistory.assignments.map((assignment: DeviceAssignment) => {
               const active = !assignment.endDate;
+              const alsoServed = assignment.sharedWith
+                .filter((row) => row.serviceId !== service.id)
+                .map((row) => row.clientName);
               return (
                 <li key={assignment.id} className={active ? 'technical-item active' : 'technical-item past'}>
                   <div className="technical-item-head">
@@ -269,8 +274,12 @@ export function ServiceDetailDialog({
                     {assignment.ownedSince && (
                       <div><dt>Do cliente desde</dt><dd>{formatPtDate(assignment.ownedSince)}</dd></div>
                     )}
-                    {assignment.sharedWithNames && (
-                      <div><dt>Também serve</dt><dd>{assignment.sharedWithNames}</dd></div>
+                    {/* A partilha inclui o serviço aberto; aqui só interessam os outros. */}
+                    {!assignment.isOwner && assignment.ownerClientName && (
+                      <div><dt>Titular</dt><dd>{assignment.ownerClientName}</dd></div>
+                    )}
+                    {alsoServed.length > 0 && (
+                      <div><dt>Também serve</dt><dd>{alsoServed.join(', ')}</dd></div>
                     )}
                   </dl>
                   {assignment.notes && <p className="technical-item-notes">{assignment.notes}</p>}
@@ -295,15 +304,38 @@ export function ServiceDetailDialog({
                               Cliente comprou
                             </Button>
                           )}
+                          {canManage && assignment.shareCount > 0 && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              disabled={submitting}
+                              onClick={() => onPromoteOwner(assignment)}
+                            >
+                              Passar titularidade
+                            </Button>
+                          )}
                           <Button variant="danger" size="sm" disabled={submitting} onClick={() => onReturnDevice(assignment)}>
                             Devolver
                           </Button>
                         </>
                       ) : (
-                        // A unidade física pertence a outro serviço: daqui só se corta a ligação.
-                        <Button variant="danger" size="sm" disabled={submitting} onClick={() => onUnshareDevice(assignment)}>
-                          Desassociar
-                        </Button>
+                        // A unidade física pertence a outro serviço: daqui corta-se a
+                        // ligação ou assume-se a antena, quando o titular sai.
+                        <>
+                          {canManage && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              disabled={submitting}
+                              onClick={() => onPromoteOwner(assignment)}
+                            >
+                              Assumir antena
+                            </Button>
+                          )}
+                          <Button variant="danger" size="sm" disabled={submitting} onClick={() => onUnshareDevice(assignment)}>
+                            Desassociar
+                          </Button>
+                        </>
                       )}
                     </div>
                   )}
