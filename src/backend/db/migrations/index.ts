@@ -40,6 +40,7 @@ import m0041 from './0041_plan_mbps_slash_units';
 import m0042 from './0042_network_discovery';
 import m0043 from './0043_equipment_rental';
 import m0044 from './0044_return_condition';
+import m0045 from './0045_service_events_transferencia';
 
 /**
  * The migration chain, in the order new migrations are appended.
@@ -50,6 +51,6 @@ import m0044 from './0044_return_condition';
  * the runner enforces this via checksum drift detection.
  */
 // 0021 (money_centavos) ficou por usar — o runner ordena por versão e tolera o gap.
-export const migrations: Migration[] = [m0001, m0002, m0003, m0004, m0005, m0006, m0007, m0008, m0009, m0010, m0011, m0012, m0013, m0014, m0015, m0016, m0017, m0018, m0019, m0020, m0022, m0023, m0024, m0025, m0026, m0027, m0028, m0029, m0030, m0033, m0034, m0035, m0036, m0037, m0038, m0039, m0040, m0041, m0042, m0043, m0044];
+export const migrations: Migration[] = [m0001, m0002, m0003, m0004, m0005, m0006, m0007, m0008, m0009, m0010, m0011, m0012, m0013, m0014, m0015, m0016, m0017, m0018, m0019, m0020, m0022, m0023, m0024, m0025, m0026, m0027, m0028, m0029, m0030, m0033, m0034, m0035, m0036, m0037, m0038, m0039, m0040, m0041, m0042, m0043, m0044, m0045];
 
 export type { Migration } from './types';

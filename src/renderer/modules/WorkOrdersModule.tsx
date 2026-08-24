@@ -6,7 +6,7 @@ import { authFetch, useAuth } from '../lib/auth';
 import { formatPtDate } from '../lib/format';
 import './WorkOrdersModule.css';
 import type {
-  ServiceEventType,
+  ManualServiceEventType,
   ServiceRow,
   WorkOrder,
   WorkOrderBoard,
@@ -36,7 +36,7 @@ const PRIORITY_TAG: Record<WorkOrderPriority, string> = {
   baixa: 'P3'
 };
 
-const EVENT_LABEL: Record<ServiceEventType, string> = {
+const EVENT_LABEL: Record<ManualServiceEventType, string> = {
   instalacao: 'Instalacao',
   manutencao: 'Manutencao',
   troca_equipamento: 'Troca de equipamento',
@@ -72,7 +72,7 @@ type FormState = {
   description: string;
   status: WorkOrderStatus;
   priority: WorkOrderPriority;
-  eventType: '' | ServiceEventType;
+  eventType: '' | ManualServiceEventType;
   assignedTo: string;
   scheduledAt: string;
   completionNotes: string;
@@ -464,7 +464,7 @@ export function WorkOrdersModule() {
 
           <Select label="Tipo de evento" value={form.eventType} onChange={(event) => setForm({ ...form, eventType: event.target.value as FormState['eventType'] })}>
             <option value="">(nao definido)</option>
-            {(Object.keys(EVENT_LABEL) as ServiceEventType[]).map((type) => (
+            {(Object.keys(EVENT_LABEL) as ManualServiceEventType[]).map((type) => (
               <option key={type} value={type}>
                 {EVENT_LABEL[type]}
               </option>

@@ -1,8 +1,9 @@
-import { Cable, MessageCircle, Pencil, Plus, Upload, UsersRound, Wallet } from 'lucide-react';
+import { ArrowRightLeft, Cable, MessageCircle, Pencil, Plus, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, BulkActionBar, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { ClientImportDialog } from './clients/import';
+import { TransferServiceDialog } from './services/TransferServiceDialog';
 import { authFetch, useAuth } from '../lib/auth';
 import { CV_ISLANDS, DEFAULT_ISLAND, isKnownIsland } from '../lib/islands';
 import { formatCve, formatPtDate } from '../lib/format';
@@ -81,6 +82,8 @@ export function ClientsModule({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  /** Cliente que vai receber um serviço já existente (transferência de titular). */
+  const [transferTo, setTransferTo] = useState<Client | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
@@ -461,6 +464,24 @@ export function ClientsModule({
         <small>{visibleClients.length} clientes</small>
       </FilterBar>
 
+      {/*
+        O outro lado da transferência: o cliente novo (ou o que regressou) recebe
+        um serviço que já existe, em vez de se criar tudo de raiz.
+      */}
+      {transferTo && (
+        <TransferServiceDialog
+          toClient={transferTo}
+          onClose={() => setTransferTo(null)}
+          onDone={(result) => {
+            setTransferTo(null);
+            setSelectedClient(null);
+            toast(`Servico ${result.serviceId} transferido para ${result.toClient.name}.`, 'success');
+            for (const warning of result.warnings) toast(warning, 'info');
+            void loadClients();
+          }}
+        />
+      )}
+
       {selectedClient && (
         <Dialog
           open
@@ -487,6 +508,16 @@ export function ClientsModule({
               >
                 Instalar equipamento
               </Button>
+              {canManageClients && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leadingIcon={<ArrowRightLeft size={16} aria-hidden />}
+                  onClick={() => setTransferTo(selectedClient)}
+                >
+                  Receber servico
+                </Button>
+              )}
               {canManageClients && (
                 <Button variant="secondary" size="sm" leadingIcon={<Pencil size={16} aria-hidden />} onClick={() => editClient(selectedClient)}>
                   Editar

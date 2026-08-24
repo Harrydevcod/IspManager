@@ -1,23 +1,46 @@
-import { Cable, Coins, History, PackageCheck, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
+import { ArrowRightLeft, Cable, Coins, History, PackageCheck, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
 import { Badge, Button, Dialog, EmptyState, Message } from '../../components';
 import { formatCve, formatPtDate, formatPtDateTime } from '../../lib/format';
 import { statusLabel, statusTone } from '../../lib/status';
-import type { DeviceAssignment, ServiceEvent, ServiceEventType, ServiceRow, TechnicalHistory } from '../../types';
+import type { DeviceAssignment, ManualServiceEventType, ServiceEvent, ServiceEventType, ServiceRow, TechnicalHistory } from '../../types';
+
+/** Os tipos que o operador escolhe no formulário de evento. */
+export const MANUAL_EVENT_TYPES: ManualServiceEventType[] = [
+  'instalacao',
+  'manutencao',
+  'troca_equipamento',
+  'visita',
+  'alteracao_servico'
+];
 
 export const eventTypeLabel: Record<ServiceEventType, string> = {
   instalacao: 'Instalacao',
   manutencao: 'Manutencao',
   troca_equipamento: 'Troca de equipamento',
   visita: 'Visita tecnica',
-  alteracao_servico: 'Alteracao de servico'
+  alteracao_servico: 'Alteracao de servico',
+  // Escritos pelo backend: estado do serviço, o que a rede aplicou e a
+  // transferência de titular.
+  suspensao: 'Suspensao',
+  reativacao: 'Reativacao',
+  cancelamento: 'Cancelamento',
+  corte_rede: 'Corte na rede',
+  reposicao_rede: 'Reposicao na rede',
+  transferencia: 'Transferencia de titular'
 };
 
-const eventTypeTone: Record<ServiceEventType, 'success' | 'info' | 'neutral' | 'accent'> = {
+const eventTypeTone: Record<ServiceEventType, 'success' | 'info' | 'neutral' | 'accent' | 'warn' | 'danger'> = {
   instalacao: 'success',
   manutencao: 'info',
   troca_equipamento: 'info',
   visita: 'neutral',
-  alteracao_servico: 'accent'
+  alteracao_servico: 'accent',
+  suspensao: 'warn',
+  reativacao: 'success',
+  cancelamento: 'danger',
+  corte_rede: 'warn',
+  reposicao_rede: 'success',
+  transferencia: 'accent'
 };
 
 export const RETURN_CONDITION_LABELS: Record<'bom' | 'avariado' | 'nao_devolvido', string> = {
@@ -55,6 +78,8 @@ type ServiceDetailDialogProps = {
   /** O cliente compra o equipamento que tinha alugado — pára a renda. */
   onPurchaseDevice: (assignment: DeviceAssignment) => void;
   onAddEvent: () => void;
+  /** Mudar o titular: a casa mudou de inquilino, ou o material vai para outro cliente. */
+  onTransfer: () => void;
 };
 
 export function ServiceDetailDialog({
@@ -76,7 +101,8 @@ export function ServiceDetailDialog({
   onReturnDevice,
   onOpenReturns,
   onPurchaseDevice,
-  onAddEvent
+  onAddEvent,
+  onTransfer
 }: ServiceDetailDialogProps) {
   // Fonte fresca após uma edição; enquanto o histórico carrega usa o valor da lista.
   const activeIps = technicalHistory
@@ -111,6 +137,9 @@ export function ServiceDetailDialog({
             <>
               <Button variant="secondary" size="sm" leadingIcon={<Pencil size={16} aria-hidden />} onClick={() => onEdit(service)}>
                 Editar
+              </Button>
+              <Button variant="secondary" size="sm" leadingIcon={<ArrowRightLeft size={16} aria-hidden />} onClick={onTransfer}>
+                Transferir titular
               </Button>
               <Button variant="danger" size="sm" disabled={submitting} leadingIcon={<Trash2 size={16} aria-hidden />} onClick={() => onDelete(service)}>
                 Apagar

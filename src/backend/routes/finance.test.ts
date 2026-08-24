@@ -1505,3 +1505,64 @@ describe('finance routes', () => {
     expect(res.statusCode).toBe(200);
   });
 });
+
+describe('service transfer route', () => {
+  function seedTransfer() {
+    const from = db.prepare(`
+      INSERT INTO clients (client_code, full_name, island, zone, status)
+      VALUES ('CLT-T1', 'Ana Silva', 'Santiago', 'Praia', 'cancelled')
+    `).run();
+    const to = db.prepare(`
+      INSERT INTO clients (client_code, full_name, island, zone, status)
+      VALUES ('CLT-T2', 'Bruno Tavares', 'Santiago', 'Praia', 'cancelled')
+    `).run();
+    const service = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
+      VALUES (?, 2500, 10, 'cancelled')
+    `).run(from.lastInsertRowid);
+    return {
+      fromId: Number(from.lastInsertRowid),
+      toId: Number(to.lastInsertRowid),
+      serviceId: Number(service.lastInsertRowid)
+    };
+  }
+
+  test('transfere o titular, reativa quem regressa e regista no audit', async () => {
+    const fixture = seedTransfer();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/services/${fixture.serviceId}/transfer`,
+      payload: { toClientId: fixture.toId, mode: 'manter', reason: 'Cliente regressou' }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      mode: 'manter',
+      clientReactivated: true,
+      previousStatus: 'cancelled',
+      status: 'active',
+      toClient: { id: fixture.toId, name: 'Bruno Tavares' }
+    });
+    expect(db.prepare('SELECT client_id AS clientId, status FROM services WHERE id = ?').get(fixture.serviceId))
+      .toEqual({ clientId: fixture.toId, status: 'active' });
+    const audit = db.prepare(`
+      SELECT action FROM audit_logs
+      WHERE entity_type = 'service' AND entity_id = ? AND action = 'transfer'
+    `).get(String(fixture.serviceId));
+    expect(audit).toBeTruthy();
+  });
+
+  test('recusa payload invalido', async () => {
+    const fixture = seedTransfer();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/services/${fixture.serviceId}/transfer`,
+      payload: { toClientId: 0 }
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+});
+
