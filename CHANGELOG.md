@@ -6,6 +6,16 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.14.3](https://github.com/Harrydevcod/IspManager/releases/tag/v1.14.3) — 2026-08-25
+
+### Adicionado
+
+- **interface:** o **botão direito** passa a abrir menu. Em campos de texto dá Anular, Refazer, Cortar, Copiar, Colar e Selecionar tudo, com os comandos desativados quando não se aplicam; sobre texto selecionado fora de um campo dá Copiar. Antes não fazia nada em lado nenhum da aplicação
+
+### Corrigido
+
+- **interface:** **copiar texto fora dos campos de formulário** — o IP numa lista, o serial numa ficha, o valor numa tabela. Na lista de Serviços nem selecionar era possível; nas restantes listas o texto selecionava-se, mas o clique que fecha o arrasto abria o detalhe por cima da seleção. Agora arrastar sobre o texto selecciona e não abre nada; o clique simples continua a abrir a linha, e o teclado (Enter/Espaço) também
+
 ## [1.14.2](https://github.com/Harrydevcod/IspManager/releases/tag/v1.14.2) — 2026-08-24
 
 ### Corrigido
