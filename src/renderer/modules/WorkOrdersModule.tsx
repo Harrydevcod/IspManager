@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button, Dialog, ErrorRetry, Field, ModuleHeaderActions, Select, Skeleton, Textarea, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatPtDate } from '../lib/format';
+import { hasTextSelection } from '../lib/textSelection';
 import './WorkOrdersModule.css';
 import type {
   ManualServiceEventType,
@@ -372,7 +373,7 @@ export function WorkOrdersModule() {
                         draggable
                         onDragStart={(event) => handleDragStart(event, order)}
                         onDragEnd={handleDragEnd}
-                        onClick={() => openEdit(order)}
+                        onClick={() => { if (!hasTextSelection()) openEdit(order); }}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
