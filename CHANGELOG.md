@@ -6,6 +6,12 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.14.2](https://github.com/Harrydevcod/IspManager/releases/tag/v1.14.2) — 2026-08-24
+
+### Corrigido
+
+- **stock:** registar equipamento **do cliente** continuava a exigir stock do artigo. A 1.14.1 tirou-lhe o desconto de inventário, mas as guardas que pedem stock corriam antes de olhar à propriedade — e com o artigo a zero, que é o caso normal de um router que o cliente comprou ou herdou da operadora anterior, o registo era recusado com *"Stock insuficiente"*. A única saída era inventar unidades no armazém, exatamente o que a versão anterior tinha ido corrigir. Agora a exigência de stock aplica-se **só a equipamento do ISP**, e no formulário escolhe-se **Propriedade → Do cliente** para a lista abrir com os artigos a zero disponíveis
+
 ## [1.14.1](https://github.com/Harrydevcod/IspManager/releases/tag/v1.14.1) — 2026-08-24
 
 ### Corrigido
