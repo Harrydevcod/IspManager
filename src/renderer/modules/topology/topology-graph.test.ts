@@ -82,7 +82,8 @@ describe('topology graph composition', () => {
     );
 
     expect(graph.nodes.filter((node) => node.id === 'assignment:100')).toHaveLength(1);
-    expect(graph.nodes).toHaveLength(5);
+    // Raiz, dois backbones, a antena e o router do cliente, e a antena do ramo 2.
+    expect(graph.nodes).toHaveLength(6);
     expect(graph.edges.filter((edge) => (
       edge.id === 'client-link:backbone:10:assignment:100'
     ))).toHaveLength(1);

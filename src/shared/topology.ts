@@ -1,3 +1,9 @@
+/**
+ * O equipamento do cliente que fala directamente com o backbone. O router de
+ * casa não é um deles: pende da antena, tal como na instalação real.
+ */
+export const BACKBONE_UPLINK_TYPES = ['cpe', 'antena'] as const;
+
 export type TopologyIssueCode =
   | 'inactive'
   | 'missing_ip'
@@ -82,7 +88,17 @@ export type TopologyClientDeviceNode = {
   issueCodes: TopologyIssueCode[];
   /** Última leitura da sonda ICMP. `null` = sem IP, ou ainda por sondar. */
   liveState: 'up' | 'down' | null;
-  parentId: 'root:isp' | `backbone:${number}`;
+  /**
+   * O equipamento imediatamente a montante. Uma antena/CPE pende do backbone;
+   * o router do cliente pende da antena dele, que é quem fala com o backbone.
+   */
+  parentId: 'root:isp' | `backbone:${number}` | `assignment:${number}`;
+  /**
+   * A antena de backbone na raiz do ramo, a vários saltos de distância se for
+   * preciso. Guardada em vez de deduzida do `parentId`: quem pende de outro
+   * equipamento do cliente não tem o backbone no pai.
+   */
+  backboneDeviceId: number | null;
   relationship?: TopologyRelationship;
   clients: TopologyClientAssociation[];
 };
@@ -101,10 +117,11 @@ export type TopologyCoreLinkEdge = {
   relationship: TopologyRelationship;
 };
 
+/** Backbone→equipamento, ou equipamento→equipamento dentro da casa do cliente. */
 export type TopologyClientLinkEdge = {
-  id: `client-link:backbone:${number}:assignment:${number}`;
+  id: `client-link:${`backbone:${number}` | `assignment:${number}`}:assignment:${number}`;
   kind: 'client-link';
-  source: `backbone:${number}`;
+  source: `backbone:${number}` | `assignment:${number}`;
   target: `assignment:${number}`;
   relationship: TopologyRelationship;
 };
@@ -148,8 +165,8 @@ export type TopologyBackboneBranch = {
 };
 
 export type TopologyAncestor = {
-  id: 'root:isp' | `backbone:${number}`;
-  kind: 'logical-root' | 'backbone';
+  id: 'root:isp' | `backbone:${number}` | `assignment:${number}`;
+  kind: 'logical-root' | 'backbone' | 'client-device';
   label: string;
   relationship?: TopologyRelationship;
 };

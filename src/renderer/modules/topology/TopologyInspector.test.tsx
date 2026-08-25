@@ -94,7 +94,7 @@ test('shows the physical backbone identity and preserves Stock navigation', asyn
   expect(container.textContent).toContain('10.20.0.1');
   expect(container.textContent).toContain('AA:BB:CC:DD:EE:10');
   expect(container.textContent).toContain('São Vicente · Monte Verde');
-  expect(container.textContent).toContain('CPE no ramo1');
+  expect(container.textContent).toContain('Equipamentos no ramo2');
 
   const openStock = [...container.querySelectorAll('button')]
     .find((candidate) => candidate.textContent?.trim() === 'Abrir no Stock');
@@ -158,7 +158,7 @@ test('distinguishes linked CPE from assignments without a defined link', async (
     );
   });
 
-  expect(container.textContent).toContain('CPE físicas3');
+  expect(container.textContent).toContain('Equipamentos3');
   expect(container.textContent).toContain('Com ligação1');
   expect(container.textContent).toContain('Sem ligação2');
 });

@@ -523,6 +523,92 @@ describe('GET /api/topology/backbones/:id/clients', () => {
     });
   });
 
+  /**
+   * O router de casa liga-se à antena do cliente, e é essa antena que fala com
+   * o backbone. Desenhá-lo ao lado da antena punha o cliente duas vezes no mapa.
+   */
+  test('hangs the client router on the client antenna instead of the backbone', async () => {
+    const { backboneDeviceId, sharedAssignmentId } = seedTopology();
+    const serviceId = (db.prepare(
+      'SELECT service_id AS id FROM service_device_assignments WHERE id = ?'
+    ).get(sharedAssignmentId) as { id: number }).id;
+    const routerAssignmentId = insertAssignment({
+      serviceId,
+      catalogId: insertCatalog({ model: 'Archer C20', type: 'router', serialized: 0 }),
+      ip: '192.168.0.1'
+    });
+
+    const body = (await app.inject({
+      method: 'GET',
+      url: `/api/topology/backbones/${backboneDeviceId}/clients`
+    })).json();
+
+    expect(body.nodes.map((node: { assignmentId: number }) => node.assignmentId).sort())
+      .toEqual([sharedAssignmentId, routerAssignmentId].sort());
+    expect(body.nodes.find((node: { assignmentId: number }) => (
+      node.assignmentId === routerAssignmentId
+    ))).toMatchObject({
+      parentId: `assignment:${sharedAssignmentId}`,
+      backboneDeviceId,
+      relationship: 'defined_link'
+    });
+    expect(body.edges).toContainEqual({
+      id: `client-link:assignment:${sharedAssignmentId}:assignment:${routerAssignmentId}`,
+      kind: 'client-link',
+      source: `assignment:${sharedAssignmentId}`,
+      target: `assignment:${routerAssignmentId}`,
+      relationship: 'defined_link'
+    });
+    expect(body.stats.assignmentCount).toBe(2);
+  });
+
+  /** Entrada antiga, feita quando nada impedia ligar um router ao backbone. */
+  test('keeps a wrongly linked router under the antenna it is really behind', async () => {
+    const { backboneDeviceId, sharedAssignmentId } = seedTopology();
+    const serviceId = (db.prepare(
+      'SELECT service_id AS id FROM service_device_assignments WHERE id = ?'
+    ).get(sharedAssignmentId) as { id: number }).id;
+    const routerAssignmentId = insertAssignment({
+      serviceId,
+      catalogId: insertCatalog({ model: 'AC12', type: 'router', serialized: 0 }),
+      ip: '192.168.0.2'
+    });
+    linkAssignment(backboneDeviceId, routerAssignmentId);
+
+    const body = (await app.inject({
+      method: 'GET',
+      url: `/api/topology/backbones/${backboneDeviceId}/clients`
+    })).json();
+
+    expect(body.nodes.find((node: { assignmentId: number }) => (
+      node.assignmentId === routerAssignmentId
+    )).parentId).toBe(`assignment:${sharedAssignmentId}`);
+    expect(body.edges.map((edge: { id: string }) => edge.id))
+      .not.toContain(`client-link:backbone:${backboneDeviceId}:assignment:${routerAssignmentId}`);
+  });
+
+  /** Antena partilhada: o vizinho chega à antena pelo serviço dele. */
+  test('finds the shared antenna from the neighbour service', async () => {
+    const { backboneDeviceId, sharedAssignmentId } = seedTopology();
+    const neighbourServiceId = (db.prepare(`
+      SELECT service_id AS id FROM service_device_shares WHERE assignment_id = ?
+    `).get(sharedAssignmentId) as { id: number }).id;
+    const routerAssignmentId = insertAssignment({
+      serviceId: neighbourServiceId,
+      catalogId: insertCatalog({ model: 'MW325R', type: 'router', serialized: 0 }),
+      ip: '192.168.0.3'
+    });
+
+    const body = (await app.inject({
+      method: 'GET',
+      url: `/api/topology/backbones/${backboneDeviceId}/clients`
+    })).json();
+
+    expect(body.nodes.find((node: { assignmentId: number }) => (
+      node.assignmentId === routerAssignmentId
+    )).parentId).toBe(`assignment:${sharedAssignmentId}`);
+  });
+
   test.each([
     ['/api/topology/backbones/not-a-number/clients', 400],
     ['/api/topology/backbones/0/clients', 400],
@@ -581,6 +667,42 @@ describe('GET /api/topology/search', () => {
         id: `backbone:${backboneDeviceId}`,
         kind: 'backbone',
         label: 'Monte Verde Principal',
+        relationship: 'defined_link'
+      }
+    ]);
+  });
+
+  test('puts the client antenna in the chain of the router behind it', async () => {
+    const { backboneDeviceId, sharedAssignmentId } = seedTopology();
+    const serviceId = (db.prepare(
+      'SELECT service_id AS id FROM service_device_assignments WHERE id = ?'
+    ).get(sharedAssignmentId) as { id: number }).id;
+    const routerAssignmentId = insertAssignment({
+      serviceId,
+      catalogId: insertCatalog({ model: 'Archer C20', type: 'router', serialized: 0 }),
+      ip: '192.168.0.1'
+    });
+
+    const body = (await app.inject({
+      method: 'GET',
+      url: '/api/topology/search?q=CLI-001'
+    })).json();
+    const result = body.results.find((item: { node: { assignmentId?: number } }) => (
+      item.node.assignmentId === routerAssignmentId
+    ));
+
+    expect(result.ancestors).toEqual([
+      { id: 'root:isp', kind: 'logical-root', label: 'Internet' },
+      {
+        id: `backbone:${backboneDeviceId}`,
+        kind: 'backbone',
+        label: 'Monte Verde Principal',
+        relationship: 'defined_link'
+      },
+      {
+        id: `assignment:${sharedAssignmentId}`,
+        kind: 'client-device',
+        label: 'Ubiquiti LiteBeam 5AC',
         relationship: 'defined_link'
       }
     ]);

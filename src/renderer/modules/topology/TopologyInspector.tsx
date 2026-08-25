@@ -81,7 +81,7 @@ function RootDetails({ snapshot }: { snapshot: TopologySnapshot }) {
     <dl className="topology-inspector-details">
       <Detail label="Ligações à Internet" value={uplinkCount} />
       <Detail label="Backbones" value={snapshot.stats.backboneCount} />
-      <Detail label="CPE físicas" value={snapshot.stats.assignmentCount} />
+      <Detail label="Equipamentos" value={snapshot.stats.assignmentCount} />
       <Detail label="Com ligação" value={snapshot.stats.mappedAssignmentCount} />
       <Detail label="Sem ligação" value={snapshot.stats.unmappedAssignmentCount} />
       {/* Serviço vivo sem CPE instalada: não é "sem ligação", não existe no mapa. */}
@@ -170,7 +170,7 @@ function BackboneDetails({
           value={[node.island, node.zone].filter(Boolean).join(' · ') || 'Não indicada'}
         />
         <Detail label="Identidade" value={node.provisional ? 'Provisória' : 'Confirmada'} />
-        <Detail label="CPE no ramo" value={branch?.stats.assignmentCount ?? 'Ramo fechado'} />
+        <Detail label="Equipamentos no ramo" value={branch?.stats.assignmentCount ?? 'Ramo fechado'} />
       </dl>
       {/* Quem está a olhar para a antena já não precisa de a ir procurar ao
           seletor da barra. */}
@@ -193,6 +193,15 @@ function BackboneDetails({
   );
 }
 
+/** Antena/CPE pende do backbone; o resto pende da antena do próprio cliente. */
+function clientDeviceUplink(node: TopologyClientDeviceNode): string {
+  if (node.parentId === 'root:isp') return 'Sem ligação definida';
+  if (node.parentId.startsWith('assignment:')) {
+    return `Antena do cliente #${node.parentId.slice('assignment:'.length)}`;
+  }
+  return `Backbone físico #${node.parentId.slice('backbone:'.length)}`;
+}
+
 function DeviceDetails({
   node,
   onOpenStock
@@ -210,12 +219,7 @@ function DeviceDetails({
         <Detail label="IP configurado" value={node.ipAddress ?? 'Em falta'} />
         <Detail label="MAC" value={node.macAddress ?? 'Não indicado'} />
         <Detail label="Desde" value={node.startDate} />
-        <Detail
-          label="Ligação"
-          value={node.parentId === 'root:isp'
-            ? 'Sem ligação definida'
-            : `Backbone físico #${node.parentId.slice('backbone:'.length)}`}
-        />
+        <Detail label="Ligação" value={clientDeviceUplink(node)} />
       </dl>
       <Button
         variant="secondary"

@@ -112,7 +112,7 @@ describe('TopologyNodeContent', () => {
     expect(container.textContent).toContain('Rocket Prism');
     expect(container.textContent).toContain('10.20.0.1');
     expect(container.textContent).toContain('São Vicente · Monte Verde');
-    expect(container.textContent).toContain('3 CPE');
+    expect(container.textContent).toContain('3 equipamentos');
     expect(container.textContent).not.toContain('inventário');
   });
 });

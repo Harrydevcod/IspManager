@@ -119,8 +119,8 @@ function branchForNode(
 ): TopologyBackboneBranch | undefined {
   if (!node || node.kind === 'logical-root') return undefined;
   if (node.kind === 'backbone') return branches.get(node.backboneDeviceId);
-  const parent = Number(node.parentId.replace('backbone:', ''));
-  return branches.get(parent);
+  // O ramo é o do backbone na raiz: o pai imediato pode ser a antena do cliente.
+  return node.backboneDeviceId === null ? undefined : branches.get(node.backboneDeviceId);
 }
 
 function TopologyLoading() {
@@ -364,7 +364,7 @@ function TopologyStatsBar({
       )}
       <dl className="topology-stats" aria-label="Resumo factual">
         <div><dt>Backbones</dt><dd>{snapshot.stats.backboneCount}</dd></div>
-        <div><dt>CPE ligadas</dt><dd>{snapshot.stats.mappedAssignmentCount}</dd></div>
+        <div><dt>Equipamentos ligados</dt><dd>{snapshot.stats.mappedAssignmentCount}</dd></div>
         <div data-tone={snapshot.stats.unmappedAssignmentCount > 0 ? 'attention' : undefined}>
           <dt>Sem ligação</dt><dd>{snapshot.stats.unmappedAssignmentCount}</dd>
         </div>

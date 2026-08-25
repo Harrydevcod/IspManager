@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { BACKBONE_UPLINK_TYPES } from '../../shared/topology';
 import type {
   TopologyBackboneBranch,
   TopologyBackboneNode,
@@ -37,6 +38,7 @@ type AssignmentRow = EquipmentRow & {
   catalogId: number;
   active: number;
   assignmentId: number;
+  parentAssignmentId: number | null;
   backboneDeviceId: number | null;
   serialNumber: string | null;
   assetTag: string | null;
@@ -73,6 +75,63 @@ type AggregateRow = {
 function equipmentLabel(row: Pick<EquipmentRow, 'brand' | 'model'>): string {
   return [row.brand, row.model].filter(Boolean).join(' ');
 }
+
+const UPLINK_TYPE_LIST = BACKBONE_UPLINK_TYPES.map((type) => `'${type}'`).join(', ');
+
+/**
+ * Onde fica cada atribuição ativa na rede, tal como está instalada:
+ *
+ * - `anchor` — a antena/CPE do cliente ligada a um backbone. É a única coisa
+ *   que fala com a rede do ISP.
+ * - `downstream` — tudo o resto que o serviço tenha instalado (o router de
+ *   casa) pende dessa antena. A ligação passa por `assignment_services`, por
+ *   isso o vizinho de uma antena partilhada encontra-a na mesma.
+ * - `placement` — junta as duas: pai imediato e a antena de backbone na raiz
+ *   do ramo, que um router só alcança em dois saltos.
+ *
+ * Um router com um link directo ao backbone (entrada errada, feita antes de
+ * isto existir) é colocado à mesma debaixo da antena do cliente: a instalação
+ * física manda mais do que a linha na tabela.
+ */
+const PLACEMENT_CTE = `
+  WITH anchor AS (
+    SELECT a.id AS assignmentId, link.backbone_device_id AS backboneDeviceId
+    FROM service_device_assignments a
+    JOIN equipment_catalog ec ON ec.id = a.catalog_id
+    JOIN backbone_assignment_links link
+      ON link.assignment_id = a.id AND link.ended_at IS NULL
+    WHERE a.end_date IS NULL AND ec.type IN (${UPLINK_TYPE_LIST})
+  ),
+  downstream AS (
+    SELECT own.assignment_id AS assignmentId, MIN(anchor.assignmentId) AS parentAssignmentId
+    FROM assignment_services own
+    JOIN service_device_assignments child
+      ON child.id = own.assignment_id AND child.end_date IS NULL
+    JOIN equipment_catalog child_catalog ON child_catalog.id = child.catalog_id
+    JOIN assignment_services sibling ON sibling.service_id = own.service_id
+    JOIN anchor ON anchor.assignmentId = sibling.assignment_id
+    WHERE child_catalog.type NOT IN (${UPLINK_TYPE_LIST})
+    GROUP BY own.assignment_id
+  ),
+  placement AS (
+    SELECT
+      a.id AS assignmentId,
+      downstream.parentAssignmentId AS parentAssignmentId,
+      COALESCE(
+        anchor.backboneDeviceId,
+        parent_anchor.backboneDeviceId,
+        own_link.backbone_device_id
+      ) AS backboneDeviceId
+    FROM service_device_assignments a
+    LEFT JOIN anchor ON anchor.assignmentId = a.id
+    LEFT JOIN downstream ON downstream.assignmentId = a.id
+    LEFT JOIN anchor parent_anchor
+      ON parent_anchor.assignmentId = downstream.parentAssignmentId
+    LEFT JOIN backbone_assignment_links own_link
+      ON own_link.assignment_id = a.id AND own_link.ended_at IS NULL
+    WHERE a.end_date IS NULL
+  )
+`;
 
 function loadBackboneRows(db: Database.Database): BackboneRow[] {
   return db.prepare(`
@@ -144,22 +203,22 @@ function loadAssignmentRows(
   backboneDeviceId: number | null = null
 ): AssignmentRow[] {
   return db.prepare(`
+    ${PLACEMENT_CTE}
     SELECT
       a.id AS assignmentId, a.catalog_id AS catalogId, ec.brand, ec.model,
       ec.type AS catalogType, ec.active,
       ec.is_serialized AS isSerialized, a.serial_number AS serialNumber,
       a.asset_tag AS assetTag, a.ip_address AS ipAddress,
       a.mac_address AS macAddress, a.start_date AS startDate,
-      active_link.backbone_device_id AS backboneDeviceId,
+      placement.parentAssignmentId, placement.backboneDeviceId,
       probe.state AS liveState
     FROM service_device_assignments a
     JOIN equipment_catalog ec ON ec.id = a.catalog_id
-    LEFT JOIN backbone_assignment_links active_link
-      ON active_link.assignment_id = a.id AND active_link.ended_at IS NULL
+    JOIN placement ON placement.assignmentId = a.id
     LEFT JOIN network_probe_state probe
       ON probe.target_kind = 'assignment' AND probe.target_id = a.id
     WHERE a.end_date IS NULL
-      AND (? IS NULL OR active_link.backbone_device_id = ?)
+      AND (? IS NULL OR placement.backboneDeviceId = ?)
     ORDER BY a.id
   `).all(backboneDeviceId, backboneDeviceId) as AssignmentRow[];
 }
@@ -169,6 +228,7 @@ function loadAssociationRows(
   backboneDeviceId: number | null = null
 ): AssociationRow[] {
   return db.prepare(`
+    ${PLACEMENT_CTE}
     SELECT
       asv.assignment_id AS assignmentId, s.id AS serviceId,
       s.status AS serviceStatus, s.plan_id AS planId, p.name AS planName,
@@ -176,13 +236,12 @@ function loadAssociationRows(
       c.status AS clientStatus, c.island, c.zone
     FROM assignment_services asv
     JOIN service_device_assignments a ON a.id = asv.assignment_id
-    LEFT JOIN backbone_assignment_links active_link
-      ON active_link.assignment_id = a.id AND active_link.ended_at IS NULL
+    JOIN placement ON placement.assignmentId = a.id
     JOIN services s ON s.id = asv.service_id
     JOIN clients c ON c.id = s.client_id
     LEFT JOIN internet_plans p ON p.id = s.plan_id
     WHERE a.end_date IS NULL
-      AND (? IS NULL OR active_link.backbone_device_id = ?)
+      AND (? IS NULL OR placement.backboneDeviceId = ?)
     ORDER BY asv.assignment_id, c.full_name COLLATE NOCASE, s.id
   `).all(backboneDeviceId, backboneDeviceId) as AssociationRow[];
 }
@@ -289,13 +348,18 @@ function clientDeviceIssues(
   return issues;
 }
 
+/** A antena do cliente primeiro: o router pende dela, não do backbone. */
+function clientParentId(row: AssignmentRow): TopologyClientDeviceNode['parentId'] {
+  if (row.parentAssignmentId !== null) return `assignment:${row.parentAssignmentId}`;
+  if (row.backboneDeviceId !== null) return `backbone:${row.backboneDeviceId}`;
+  return 'root:isp';
+}
+
 function clientDeviceNode(
   row: AssignmentRow,
   clients: TopologyClientAssociation[]
 ): TopologyClientDeviceNode {
-  const backboneParentId = row.backboneDeviceId === null
-    ? null
-    : `backbone:${row.backboneDeviceId}` as const;
+  const parentId = clientParentId(row);
   return {
     id: `assignment:${row.assignmentId}`,
     kind: 'client-device',
@@ -313,24 +377,23 @@ function clientDeviceNode(
     administrativeState: row.active === 1 ? 'active' : 'inactive',
     issueCodes: clientDeviceIssues(row, clients),
     liveState: row.liveState,
-    parentId: backboneParentId ?? 'root:isp',
-    relationship: backboneParentId ? 'defined_link' : undefined,
+    parentId,
+    backboneDeviceId: row.backboneDeviceId,
+    relationship: parentId === 'root:isp' ? undefined : 'defined_link',
     clients
   };
 }
 
 function loadAggregateRow(db: Database.Database): AggregateRow {
   return db.prepare(`
+    ${PLACEMENT_CTE}
     SELECT
       (SELECT COUNT(*) FROM service_device_assignments WHERE end_date IS NULL)
         AS assignmentCount,
-      (SELECT COUNT(*)
-       FROM service_device_assignments a
-       WHERE a.end_date IS NULL AND EXISTS (
-         SELECT 1
-         FROM backbone_assignment_links active_link
-         WHERE active_link.assignment_id = a.id AND active_link.ended_at IS NULL
-       ))
+      -- Quem chega ao backbone, seja de forma directa ou pela antena do
+      -- cliente. Contar só os links directos dava os routers como "sem
+      -- ligação" enquanto o mapa os mostra pendurados na antena.
+      (SELECT COUNT(*) FROM placement WHERE backboneDeviceId IS NOT NULL)
         AS mappedAssignmentCount,
       (SELECT COUNT(DISTINCT s.client_id)
        FROM assignment_services av
@@ -398,17 +461,19 @@ function coreLinks(backbone: TopologyBackboneNode): TopologyCoreLinkEdge[] {
   }));
 }
 
-function clientLink(
-  backbone: TopologyBackboneNode,
-  node: TopologyClientDeviceNode
-): TopologyClientLinkEdge {
-  return {
-    id: `client-link:backbone:${backbone.backboneDeviceId}:assignment:${node.assignmentId}`,
+/**
+ * A aresta que sustenta o nó: a antena de backbone para a antena do cliente, a
+ * antena do cliente para o router dele. Sem pai não há aresta nenhuma.
+ */
+function clientLink(node: TopologyClientDeviceNode): TopologyClientLinkEdge[] {
+  if (node.parentId === 'root:isp') return [];
+  return [{
+    id: `client-link:${node.parentId}:${node.id}`,
     kind: 'client-link',
-    source: backbone.id,
+    source: node.parentId,
     target: node.id,
     relationship: 'defined_link'
-  };
+  }];
 }
 
 function buildClientDevices(
@@ -477,7 +542,7 @@ export function loadBackboneBranch(
     generatedAt: now.toISOString(),
     backbone,
     nodes,
-    edges: nodes.map((node) => clientLink(backbone, node)),
+    edges: nodes.flatMap(clientLink),
     stats: branchStats(nodes)
   };
 }

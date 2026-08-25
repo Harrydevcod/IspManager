@@ -47,7 +47,7 @@ export type TopologyCanvasNode = Node<
 function nodeMeta(node: TopologyNode, branchCount?: number): string {
   if (node.kind === 'logical-root') return 'Raiz lógica · mapa físico';
   if (node.kind === 'backbone') {
-    const count = branchCount === undefined ? 'CPE por carregar' : `${branchCount} CPE`;
+    const count = branchCount === undefined ? 'Ramo por carregar' : `${branchCount} equipamentos`;
     const location = [node.island, node.zone].filter(Boolean).join(' · ');
     return [
       node.model,

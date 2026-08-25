@@ -111,6 +111,7 @@ function clientDevice(
     issueCodes: assignmentId === 200 ? ['inactive'] : [],
     liveState: null,
     parentId: `backbone:${backboneDeviceId}`,
+    backboneDeviceId,
     relationship: 'defined_link',
     clients: [{
       id: clientId,
@@ -133,18 +134,33 @@ function clientDevice(
 export const deviceOne = clientDevice(100, 10, 10, 1, 'São Vicente', 'Mindelo');
 export const deviceTwo = clientDevice(200, 20, 20, 2, 'Sal', 'Espargos');
 
+/** O router de casa: pende da antena do cliente, não da antena do backbone. */
+export const routerOne: TopologyClientDeviceNode = {
+  ...clientDevice(101, 10, 11, 1, 'São Vicente', 'Mindelo'),
+  label: 'Router 101',
+  model: 'Router 101',
+  catalogType: 'router',
+  parentId: 'assignment:100'
+};
+
 export const branchOne: TopologyBackboneBranch = {
   generatedAt: '2026-07-28T12:01:00.000Z',
   backbone: backboneOne,
-  nodes: [deviceOne],
+  nodes: [deviceOne, routerOne],
   edges: [{
     id: 'client-link:backbone:10:assignment:100',
     kind: 'client-link',
     source: 'backbone:10',
     target: 'assignment:100',
     relationship: 'defined_link'
+  }, {
+    id: 'client-link:assignment:100:assignment:101',
+    kind: 'client-link',
+    source: 'assignment:100',
+    target: 'assignment:101',
+    relationship: 'defined_link'
   }],
-  stats: { assignmentCount: 1, clientCount: 1, serviceCount: 1, attentionCount: 0 }
+  stats: { assignmentCount: 2, clientCount: 1, serviceCount: 1, attentionCount: 0 }
 };
 
 export const branchTwo: TopologyBackboneBranch = {
