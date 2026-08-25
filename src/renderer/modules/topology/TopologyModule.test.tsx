@@ -477,10 +477,13 @@ describe('TopologyModule branch interaction', () => {
         ...branchOne.nodes[0],
         parentId: 'backbone:77' as const
       }],
+      clientNodes: [],
       edges: [{
-        ...branchOne.edges[0],
         id: 'client-link:backbone:77:assignment:100' as const,
-        source: 'backbone:77' as const
+        kind: 'client-link' as const,
+        source: 'backbone:77' as const,
+        target: 'assignment:100' as const,
+        relationship: 'defined_link' as const
       }]
     };
     const topologyApi = api({
@@ -806,7 +809,7 @@ test('surfaces the number of CPE assignments without a defined backbone link', a
   });
   const container = await mountMap(topologyApi);
 
-  expect(container.textContent).toContain('CPE ligadas2');
+  expect(container.textContent).toContain('Equipamentos ligados2');
   expect(container.textContent).toContain('Sem ligação2');
 });
 
@@ -852,7 +855,7 @@ test('identifies a search result that has no defined backbone link', async () =>
     await Promise.resolve();
   });
 
-  expect(container.textContent).toContain('CPE física · sem ligação definida');
+  expect(container.textContent).toContain('Equipamento do cliente · sem ligação definida');
   vi.useRealTimers();
 });
 

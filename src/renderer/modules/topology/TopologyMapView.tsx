@@ -93,6 +93,18 @@ function decorateNodes(graph: TopologyGraph, state: NodeDecorators): TopologyCan
   });
 }
 
+/**
+ * A linha até ao cliente não é um cabo — é titularidade. Tracejada, para não se
+ * confundir com as ligações físicas que o resto do mapa desenha (ADR 0005).
+ */
+function edgeStroke(kind: string | undefined) {
+  if (kind === 'core-link') return { stroke: 'var(--accent-2)', strokeWidth: 1.8 };
+  if (kind === 'ownership') {
+    return { stroke: 'var(--border-2)', strokeWidth: 1, strokeDasharray: '3 4' };
+  }
+  return { stroke: 'var(--border-2)', strokeWidth: 1.25 };
+}
+
 function decorateEdges(graph: TopologyGraph, labelsVisible: boolean): TopologyFlowEdge[] {
   return graph.edges.map((edge) => ({
     ...edge,
@@ -104,12 +116,7 @@ function decorateEdges(graph: TopologyGraph, labelsVisible: boolean): TopologyFl
     labelBgStyle: { fill: 'var(--surface)', fillOpacity: 0.96 },
     labelBgPadding: [6, 3] as [number, number],
     labelBgBorderRadius: 3,
-    style: {
-      stroke: edge.data?.topology.kind === 'core-link'
-        ? 'var(--accent-2)'
-        : 'var(--border-2)',
-      strokeWidth: edge.data?.topology.kind === 'core-link' ? 1.8 : 1.25
-    }
+    style: edgeStroke(edge.data?.topology.kind)
   }));
 }
 
@@ -119,8 +126,13 @@ function branchForNode(
 ): TopologyBackboneBranch | undefined {
   if (!node || node.kind === 'logical-root') return undefined;
   if (node.kind === 'backbone') return branches.get(node.backboneDeviceId);
-  const parent = Number(node.parentId.replace('backbone:', ''));
-  return branches.get(parent);
+  // O ramo é o do backbone na raiz: o pai imediato pode ser a antena do cliente.
+  if (node.kind === 'client-device') {
+    return node.backboneDeviceId === null ? undefined : branches.get(node.backboneDeviceId);
+  }
+  return [...branches.values()].find((branch) => (
+    branch.clientNodes.some((item) => item.id === node.id)
+  ));
 }
 
 function TopologyLoading() {
@@ -364,7 +376,7 @@ function TopologyStatsBar({
       )}
       <dl className="topology-stats" aria-label="Resumo factual">
         <div><dt>Backbones</dt><dd>{snapshot.stats.backboneCount}</dd></div>
-        <div><dt>CPE ligadas</dt><dd>{snapshot.stats.mappedAssignmentCount}</dd></div>
+        <div><dt>Equipamentos ligados</dt><dd>{snapshot.stats.mappedAssignmentCount}</dd></div>
         <div data-tone={snapshot.stats.unmappedAssignmentCount > 0 ? 'attention' : undefined}>
           <dt>Sem ligação</dt><dd>{snapshot.stats.unmappedAssignmentCount}</dd>
         </div>

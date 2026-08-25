@@ -115,14 +115,25 @@ function passesFilters(
 /** A primeira alimentação declarada, ou a raiz quando não há nenhuma. */
 function firstParentId(
   node: TopologyBackboneNode | TopologyClientDeviceNode
-): 'root:isp' | `backbone:${number}` {
+): 'root:isp' | `backbone:${number}` | `assignment:${number}` {
   return node.kind === 'backbone' ? node.parentIds[0] ?? 'root:isp' : node.parentId;
+}
+
+function ancestorOf(
+  node: TopologyBackboneNode | TopologyClientDeviceNode
+): TopologyAncestor {
+  return {
+    id: node.id,
+    kind: node.kind,
+    label: node.label,
+    relationship: 'defined_link'
+  };
 }
 
 /**
  * Caminho ordenado da raiz até ao pai imediato. Com a cadeia física explícita,
  * um CPE pode estar a vários saltos da Internet (Starlink → router → AP → CPE),
- * por isso subimos até à raiz em vez de devolver só o pai.
+ * e o router do cliente pende do CPE, um salto mais abaixo ainda.
  *
  * Onde há agregação multi-WAN existe mais do que um caminho até à Internet:
  * seguimos o primeiro (a lista vem ordenada por nome, logo é estável). O painel
@@ -131,22 +142,20 @@ function firstParentId(
  */
 function ancestors(
   node: TopologyBackboneNode | TopologyClientDeviceNode,
-  backbones: Map<number, TopologyBackboneNode>
+  backbones: Map<number, TopologyBackboneNode>,
+  clientDevices: Map<number, TopologyClientDeviceNode>
 ): TopologyAncestor[] {
   const chain: TopologyAncestor[] = [];
   const visited = new Set<string>();
   let parentId = firstParentId(node);
   while (parentId !== 'root:isp' && !visited.has(parentId)) {
     visited.add(parentId);
-    const backbone = backbones.get(Number(parentId.slice('backbone:'.length)));
-    if (!backbone) break;
-    chain.unshift({
-      id: backbone.id,
-      kind: 'backbone',
-      label: backbone.label,
-      relationship: 'defined_link'
-    });
-    parentId = firstParentId(backbone);
+    const parent = parentId.startsWith('assignment:')
+      ? clientDevices.get(Number(parentId.slice('assignment:'.length)))
+      : backbones.get(Number(parentId.slice('backbone:'.length)));
+    if (!parent) break;
+    chain.unshift(ancestorOf(parent));
+    parentId = firstParentId(parent);
   }
   return [{ id: 'root:isp', kind: 'logical-root', label: 'Internet' }, ...chain];
 }
@@ -154,12 +163,13 @@ function ancestors(
 function resultFor(
   node: TopologyBackboneNode | TopologyClientDeviceNode,
   matches: string[],
-  backbones: Map<number, TopologyBackboneNode>
+  backbones: Map<number, TopologyBackboneNode>,
+  clientDevices: Map<number, TopologyClientDeviceNode>
 ): TopologySearchResult {
   return {
     node,
     matchedFields: matches,
-    ancestors: ancestors(node, backbones)
+    ancestors: ancestors(node, backbones, clientDevices)
   };
 }
 
@@ -177,11 +187,12 @@ export function searchTopology(
     zone: options.zone
   };
   const backbones = new Map(snapshot.backbones.map((item) => [item.backboneDeviceId, item]));
+  const clientDevices = new Map(snapshot.clientDevices.map((item) => [item.assignmentId, item]));
   const nodes = [...snapshot.backbones, ...snapshot.clientDevices];
   const results = nodes.flatMap((node) => {
     const matches = matchedFields(node, query);
     return matches.length > 0 && passesFilters(node, filters)
-      ? [resultFor(node, matches, backbones)]
+      ? [resultFor(node, matches, backbones, clientDevices)]
       : [];
   }).slice(0, options.limit);
   return { generatedAt: now.toISOString(), query, filters, results };

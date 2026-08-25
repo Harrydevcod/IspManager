@@ -296,8 +296,10 @@ describe('GET /api/topology', () => {
     expect(body.stats).toEqual({
       backboneCount: 2,
       assignmentCount: 3,
-      mappedAssignmentCount: 2,
-      unmappedAssignmentCount: 1,
+      // A CPE sem link do serviço da Maria fica atrás da que está ligada, como
+      // um ponto de acesso na segunda saída — logo também chega ao backbone.
+      mappedAssignmentCount: 3,
+      unmappedAssignmentCount: 0,
       clientCount: 3,
       serviceCount: 3,
       servicesWithoutDeviceCount: 0,
@@ -501,26 +503,206 @@ describe('GET /api/topology/backbones/:id/clients', () => {
       source: `backbone:${backboneDeviceId}`,
       target: `assignment:${sharedAssignmentId}`,
       relationship: 'defined_link'
-    }]);
+    }, ...body.clientNodes.map((client: { id: string }) => ({
+      id: `ownership:assignment:${sharedAssignmentId}:${client.id}`,
+      kind: 'ownership',
+      source: `assignment:${sharedAssignmentId}`,
+      target: client.id,
+      relationship: 'defined_link'
+    }))]);
+    // Antena partilhada: dois donos, dois cards, ambos pendurados nela.
+    expect(body.clientNodes).toHaveLength(2);
+    expect(body.clientNodes.map((client: { clientCode: string }) => client.clientCode).sort())
+      .toEqual(['CLI-001', 'CLI-003']);
+    expect(body.clientNodes.every((client: { parentId: string }) => (
+      client.parentId === `assignment:${sharedAssignmentId}`
+    ))).toBe(true);
     expect(body).not.toHaveProperty('clients');
   });
 
   test('excludes ended assignments even when their explicit link is still active', async () => {
-    const { provisionalBackboneDeviceId, inactiveAssignmentId } = seedTopology();
+    const {
+      provisionalBackboneDeviceId, inactiveAssignmentId, incompleteAssignmentId
+    } = seedTopology();
     const body = (await app.inject({
       method: 'GET',
       url: `/api/topology/backbones/${provisionalBackboneDeviceId}/clients`
     })).json();
 
-    expect(body.nodes.map((node: { assignmentId: number }) => node.assignmentId))
-      .toEqual([inactiveAssignmentId]);
-    expect(body.edges).toHaveLength(1);
+    // A atribuição terminada fica de fora; a que perdeu o link fica atrás da que
+    // ainda o tem, porque continua instalada no mesmo serviço.
+    expect(body.nodes.map((node: { assignmentId: number }) => node.assignmentId).sort())
+      .toEqual([incompleteAssignmentId, inactiveAssignmentId].sort());
     expect(body.stats).toEqual({
-      assignmentCount: 1,
+      assignmentCount: 2,
       clientCount: 1,
       serviceCount: 1,
-      attentionCount: 1
+      attentionCount: 2
     });
+  });
+
+  /**
+   * O router de casa liga-se à antena do cliente, e é essa antena que fala com
+   * o backbone. Desenhá-lo ao lado da antena punha o cliente duas vezes no mapa.
+   */
+  test('hangs the client router on the client antenna instead of the backbone', async () => {
+    const { backboneDeviceId, sharedAssignmentId } = seedTopology();
+    const serviceId = (db.prepare(
+      'SELECT service_id AS id FROM service_device_assignments WHERE id = ?'
+    ).get(sharedAssignmentId) as { id: number }).id;
+    const routerAssignmentId = insertAssignment({
+      serviceId,
+      catalogId: insertCatalog({ model: 'Archer C20', type: 'router', serialized: 0 }),
+      ip: '192.168.0.1'
+    });
+
+    const body = (await app.inject({
+      method: 'GET',
+      url: `/api/topology/backbones/${backboneDeviceId}/clients`
+    })).json();
+
+    expect(body.nodes.map((node: { assignmentId: number }) => node.assignmentId).sort())
+      .toEqual([sharedAssignmentId, routerAssignmentId].sort());
+    expect(body.nodes.find((node: { assignmentId: number }) => (
+      node.assignmentId === routerAssignmentId
+    ))).toMatchObject({
+      parentId: `assignment:${sharedAssignmentId}`,
+      backboneDeviceId,
+      relationship: 'defined_link'
+    });
+    expect(body.edges).toContainEqual({
+      id: `client-link:assignment:${sharedAssignmentId}:assignment:${routerAssignmentId}`,
+      kind: 'client-link',
+      source: `assignment:${sharedAssignmentId}`,
+      target: `assignment:${routerAssignmentId}`,
+      relationship: 'defined_link'
+    });
+    expect(body.stats.assignmentCount).toBe(2);
+  });
+
+  /** Entrada antiga, feita quando nada impedia ligar um router ao backbone. */
+  test('keeps a wrongly linked router under the antenna it is really behind', async () => {
+    const { backboneDeviceId, sharedAssignmentId } = seedTopology();
+    const serviceId = (db.prepare(
+      'SELECT service_id AS id FROM service_device_assignments WHERE id = ?'
+    ).get(sharedAssignmentId) as { id: number }).id;
+    const routerAssignmentId = insertAssignment({
+      serviceId,
+      catalogId: insertCatalog({ model: 'AC12', type: 'router', serialized: 0 }),
+      ip: '192.168.0.2'
+    });
+    linkAssignment(backboneDeviceId, routerAssignmentId);
+
+    const body = (await app.inject({
+      method: 'GET',
+      url: `/api/topology/backbones/${backboneDeviceId}/clients`
+    })).json();
+
+    expect(body.nodes.find((node: { assignmentId: number }) => (
+      node.assignmentId === routerAssignmentId
+    )).parentId).toBe(`assignment:${sharedAssignmentId}`);
+    expect(body.edges.map((edge: { id: string }) => edge.id))
+      .not.toContain(`client-link:backbone:${backboneDeviceId}:assignment:${routerAssignmentId}`);
+  });
+
+  /** Antena partilhada: o vizinho chega à antena pelo serviço dele. */
+  test('finds the shared antenna from the neighbour service', async () => {
+    const { backboneDeviceId, sharedAssignmentId } = seedTopology();
+    const neighbourServiceId = (db.prepare(`
+      SELECT service_id AS id FROM service_device_shares WHERE assignment_id = ?
+    `).get(sharedAssignmentId) as { id: number }).id;
+    const routerAssignmentId = insertAssignment({
+      serviceId: neighbourServiceId,
+      catalogId: insertCatalog({ model: 'MW325R', type: 'router', serialized: 0 }),
+      ip: '192.168.0.3'
+    });
+
+    const body = (await app.inject({
+      method: 'GET',
+      url: `/api/topology/backbones/${backboneDeviceId}/clients`
+    })).json();
+
+    expect(body.nodes.find((node: { assignmentId: number }) => (
+      node.assignmentId === routerAssignmentId
+    )).parentId).toBe(`assignment:${sharedAssignmentId}`);
+  });
+
+  /** O caso comum: a cadeia do cliente acaba no router de casa dele. */
+  test('ends the chain on the client, hanging from the deepest device of the service', async () => {
+    const { backboneDeviceId, sharedAssignmentId } = seedTopology();
+    const serviceId = (db.prepare(
+      'SELECT service_id AS id FROM service_device_assignments WHERE id = ?'
+    ).get(sharedAssignmentId) as { id: number }).id;
+    const routerAssignmentId = insertAssignment({
+      serviceId,
+      catalogId: insertCatalog({ model: 'Archer C20', type: 'router', serialized: 0 }),
+      ip: '192.168.0.1'
+    });
+
+    const body = (await app.inject({
+      method: 'GET',
+      url: `/api/topology/backbones/${backboneDeviceId}/clients`
+    })).json();
+    const owner = body.clientNodes.find((client: { clientCode: string }) => (
+      client.clientCode === 'CLI-001'
+    ));
+
+    expect(owner).toMatchObject({
+      kind: 'client',
+      label: 'José Andrade',
+      parentId: `assignment:${routerAssignmentId}`,
+      planName: 'Fibra Pro',
+      serviceStatus: 'active',
+      administrativeState: 'active'
+    });
+    expect(body.edges).toContainEqual({
+      id: `ownership:assignment:${routerAssignmentId}:${owner.id}`,
+      kind: 'ownership',
+      source: `assignment:${routerAssignmentId}`,
+      target: owner.id,
+      relationship: 'defined_link'
+    });
+    // As contas do ramo contam equipamento, não gente.
+    expect(body.stats.assignmentCount).toBe(2);
+  });
+
+  /**
+   * O ponto de acesso ligado à segunda saída de rede da antena. No catálogo é
+   * uma antena como outra qualquer — o que o distingue é não ter link ao
+   * backbone. Pelo tipo ficava órfão; pela ligação fica onde está montado.
+   */
+  test('hangs an access point on the antenna it is plugged into, not on the root', async () => {
+    const { backboneDeviceId, sharedAssignmentId } = seedTopology();
+    const neighbourServiceId = (db.prepare(`
+      SELECT service_id AS id FROM service_device_shares WHERE assignment_id = ?
+    `).get(sharedAssignmentId) as { id: number }).id;
+    const accessPointId = insertAssignment({
+      serviceId: neighbourServiceId,
+      catalogId: insertCatalog({ model: 'NanoStation AC Loco', type: 'antena' }),
+      serial: 'SN-AP-001',
+      ip: '192.168.0.9'
+    });
+
+    const body = (await app.inject({
+      method: 'GET',
+      url: `/api/topology/backbones/${backboneDeviceId}/clients`
+    })).json();
+
+    expect(body.nodes.find((node: { assignmentId: number }) => (
+      node.assignmentId === accessPointId
+    ))).toMatchObject({
+      parentId: `assignment:${sharedAssignmentId}`,
+      backboneDeviceId,
+      relationship: 'defined_link'
+    });
+    // E o vizinho passa a pender do ponto de acesso: a cadeia dele acaba ali.
+    expect(body.clientNodes.find((client: { clientCode: string }) => (
+      client.clientCode === 'CLI-003'
+    ))).toMatchObject({ parentId: `assignment:${accessPointId}` });
+    // O titular continua pendurado na antena: o AP é do vizinho, não dele.
+    expect(body.clientNodes.find((client: { clientCode: string }) => (
+      client.clientCode === 'CLI-001'
+    ))).toMatchObject({ parentId: `assignment:${sharedAssignmentId}` });
   });
 
   test.each([
@@ -586,6 +768,42 @@ describe('GET /api/topology/search', () => {
     ]);
   });
 
+  test('puts the client antenna in the chain of the router behind it', async () => {
+    const { backboneDeviceId, sharedAssignmentId } = seedTopology();
+    const serviceId = (db.prepare(
+      'SELECT service_id AS id FROM service_device_assignments WHERE id = ?'
+    ).get(sharedAssignmentId) as { id: number }).id;
+    const routerAssignmentId = insertAssignment({
+      serviceId,
+      catalogId: insertCatalog({ model: 'Archer C20', type: 'router', serialized: 0 }),
+      ip: '192.168.0.1'
+    });
+
+    const body = (await app.inject({
+      method: 'GET',
+      url: '/api/topology/search?q=CLI-001'
+    })).json();
+    const result = body.results.find((item: { node: { assignmentId?: number } }) => (
+      item.node.assignmentId === routerAssignmentId
+    ));
+
+    expect(result.ancestors).toEqual([
+      { id: 'root:isp', kind: 'logical-root', label: 'Internet' },
+      {
+        id: `backbone:${backboneDeviceId}`,
+        kind: 'backbone',
+        label: 'Monte Verde Principal',
+        relationship: 'defined_link'
+      },
+      {
+        id: `assignment:${sharedAssignmentId}`,
+        kind: 'client-device',
+        label: 'Ubiquiti LiteBeam 5AC',
+        relationship: 'defined_link'
+      }
+    ]);
+  });
+
   test('returns the whole upstream chain as ancestors, ordered from the root down', async () => {
     const { backboneDeviceId, backboneCatalogId, sharedAssignmentId } = seedTopology();
     const starlinkId = insertBackboneDevice({
@@ -618,16 +836,24 @@ describe('GET /api/topology/search', () => {
 
   test('keeps CPE without a factual backbone lineage attached only to the logical root', async () => {
     const fixture = seedTopology();
+    // Sozinha no serviço dela: sem antena ligada por perto, não há de onde pender.
+    const planId = (db.prepare('SELECT id FROM internet_plans LIMIT 1').get() as { id: number }).id;
+    const orphanClientId = insertClient('CLI-006', 'Cliente Sem Antena', 'active', 'Sal', 'Espargos');
+    const orphanAssignmentId = insertAssignment({
+      serviceId: insertService(orphanClientId, planId, 'active'),
+      catalogId: fixture.clientCatalogId,
+      serial: 'SN-ORPHAN'
+    });
     const body = (await app.inject({
       method: 'GET',
       url: '/api/topology/search?q=litebeam'
     })).json();
     const result = body.results.find((item: { node: { assignmentId?: number } }) => (
-      item.node.assignmentId === fixture.incompleteAssignmentId
+      item.node.assignmentId === orphanAssignmentId
     ));
 
     expect(result.node).toMatchObject({
-      id: `assignment:${fixture.incompleteAssignmentId}`,
+      id: `assignment:${orphanAssignmentId}`,
       kind: 'client-device',
       parentId: 'root:isp'
     });

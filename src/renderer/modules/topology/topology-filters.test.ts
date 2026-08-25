@@ -16,14 +16,19 @@ describe('topology factual filters', () => {
       zone: 'mindelo'
     });
 
+    // O router e o card do cliente entram com a antena: mesmo cliente, mesma zona.
     expect(filtered.nodes.map((node) => node.id).sort()).toEqual([
       'assignment:100',
+      'assignment:101',
       'backbone:10',
+      'client:1@10',
       'root:isp'
     ]);
     expect(filtered.edges.map((edge) => edge.id).sort()).toEqual([
+      'client-link:assignment:100:assignment:101',
       'client-link:backbone:10:assignment:100',
-      'core-link:root:isp:backbone:10'
+      'core-link:root:isp:backbone:10',
+      'ownership:assignment:101:client:1@10'
     ]);
   });
 

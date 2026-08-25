@@ -9,6 +9,7 @@ import {
 import type {
   TopologyBackboneBranch,
   TopologyClientDeviceNode,
+  TopologyClientNode,
   TopologyIssueCode,
   TopologyNode,
   TopologySnapshot
@@ -81,7 +82,7 @@ function RootDetails({ snapshot }: { snapshot: TopologySnapshot }) {
     <dl className="topology-inspector-details">
       <Detail label="Ligações à Internet" value={uplinkCount} />
       <Detail label="Backbones" value={snapshot.stats.backboneCount} />
-      <Detail label="CPE físicas" value={snapshot.stats.assignmentCount} />
+      <Detail label="Equipamentos" value={snapshot.stats.assignmentCount} />
       <Detail label="Com ligação" value={snapshot.stats.mappedAssignmentCount} />
       <Detail label="Sem ligação" value={snapshot.stats.unmappedAssignmentCount} />
       {/* Serviço vivo sem CPE instalada: não é "sem ligação", não existe no mapa. */}
@@ -170,7 +171,7 @@ function BackboneDetails({
           value={[node.island, node.zone].filter(Boolean).join(' · ') || 'Não indicada'}
         />
         <Detail label="Identidade" value={node.provisional ? 'Provisória' : 'Confirmada'} />
-        <Detail label="CPE no ramo" value={branch?.stats.assignmentCount ?? 'Ramo fechado'} />
+        <Detail label="Equipamentos no ramo" value={branch?.stats.assignmentCount ?? 'Ramo fechado'} />
       </dl>
       {/* Quem está a olhar para a antena já não precisa de a ir procurar ao
           seletor da barra. */}
@@ -193,6 +194,15 @@ function BackboneDetails({
   );
 }
 
+/** Antena/CPE pende do backbone; o resto pende da antena do próprio cliente. */
+function clientDeviceUplink(node: TopologyClientDeviceNode): string {
+  if (node.parentId === 'root:isp') return 'Sem ligação definida';
+  if (node.parentId.startsWith('assignment:')) {
+    return `Antena do cliente #${node.parentId.slice('assignment:'.length)}`;
+  }
+  return `Backbone físico #${node.parentId.slice('backbone:'.length)}`;
+}
+
 function DeviceDetails({
   node,
   onOpenStock
@@ -210,12 +220,7 @@ function DeviceDetails({
         <Detail label="IP configurado" value={node.ipAddress ?? 'Em falta'} />
         <Detail label="MAC" value={node.macAddress ?? 'Não indicado'} />
         <Detail label="Desde" value={node.startDate} />
-        <Detail
-          label="Ligação"
-          value={node.parentId === 'root:isp'
-            ? 'Sem ligação definida'
-            : `Backbone físico #${node.parentId.slice('backbone:'.length)}`}
-        />
+        <Detail label="Ligação" value={clientDeviceUplink(node)} />
       </dl>
       <Button
         variant="secondary"
@@ -270,6 +275,45 @@ function ClientAssociations({
         </article>
       ))}
     </section>
+  );
+}
+
+/** O fim da cadeia: quem é servido ali, e as portas para o ficheiro dele. */
+function ClientDetails({
+  node,
+  onOpenClient,
+  onOpenService
+}: Pick<TopologyInspectorProps, 'onOpenClient' | 'onOpenService'> & {
+  node: TopologyClientNode;
+}) {
+  return (
+    <>
+      <dl className="topology-inspector-details">
+        {/* O estado do cliente já está nos crachás do cabeçalho. */}
+        <Detail label="Código" value={node.clientCode} />
+        <Detail label="Serviço" value={`#${node.serviceId} · ${statusLabel(node.serviceStatus)}`} />
+        <Detail label="Plano" value={node.planName ?? 'Sem plano'} />
+        <Detail
+          label="Localização"
+          value={[node.island, node.zone].filter(Boolean).join(' · ') || 'Não indicada'}
+        />
+        <Detail label="Servido por" value={`Equipamento #${node.parentId.slice('assignment:'.length)}`} />
+      </dl>
+      <Button
+        variant="secondary"
+        className="topology-inspector-action"
+        onClick={() => onOpenClient(node.clientId)}
+      >
+        Abrir cliente <ArrowUpRight size={14} aria-hidden />
+      </Button>
+      <Button
+        variant="secondary"
+        className="topology-inspector-action"
+        onClick={() => onOpenService(node.clientId, node.serviceId)}
+      >
+        Abrir serviço <ArrowUpRight size={14} aria-hidden />
+      </Button>
+    </>
   );
 }
 
@@ -330,6 +374,13 @@ export function TopologyInspector(props: TopologyInspectorProps) {
                 onOpenService={props.onOpenService}
               />
             </>
+          )}
+          {node.kind === 'client' && (
+            <ClientDetails
+              node={node}
+              onOpenClient={props.onOpenClient}
+              onOpenService={props.onOpenService}
+            />
           )}
           <p className="topology-lineage-note">
             Este mapa representa ligações definidas e configuração administrativa;

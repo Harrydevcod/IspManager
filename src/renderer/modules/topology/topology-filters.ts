@@ -1,6 +1,7 @@
 import type {
   TopologyAdministrativeState,
   TopologyClientDeviceNode,
+  TopologyClientNode,
   TopologyNode
 } from '../../../shared/topology';
 import {
@@ -32,16 +33,28 @@ function hasFilters(filters: TopologyGraphFilters): boolean {
     || Boolean(normalize(filters.zone));
 }
 
-function matchesLocation(
-  node: TopologyClientDeviceNode,
+function matchesPlace(
+  place: { island: string | null; zone: string | null },
   filters: TopologyGraphFilters
 ): boolean {
   const island = normalize(filters.island);
   const zone = normalize(filters.zone);
-  return node.clients.some((client) => (
-    (!island || normalize(client.island) === island)
-    && (!zone || normalize(client.zone) === zone)
-  ));
+  return (!island || normalize(place.island) === island)
+    && (!zone || normalize(place.zone) === zone);
+}
+
+function matchesLocation(
+  node: TopologyClientDeviceNode,
+  filters: TopologyGraphFilters
+): boolean {
+  return node.clients.some((client) => matchesPlace(client, filters));
+}
+
+function matchesClientLocation(
+  node: TopologyClientNode,
+  filters: TopologyGraphFilters
+): boolean {
+  return matchesPlace(node, filters);
 }
 
 function matchesNode(node: TopologyNode, filters: TopologyGraphFilters): boolean {
@@ -55,6 +68,11 @@ function matchesNode(node: TopologyNode, filters: TopologyGraphFilters): boolean
     && (node.issueCodes.length > 0) !== filters.attention
   ) return false;
   if (!filters.island && !filters.zone) return true;
+  /*
+   * O card de cliente tem de responder por si: `collectAncestors` só sobe, por
+   * isso um filho que não corresponda desaparece mesmo que o pai fique.
+   */
+  if (node.kind === 'client') return matchesClientLocation(node, filters);
   return node.kind === 'client-device' && matchesLocation(node, filters);
 }
 

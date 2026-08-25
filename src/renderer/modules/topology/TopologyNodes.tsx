@@ -5,7 +5,8 @@ import {
   Loader2,
   Network,
   RadioTower,
-  RotateCw
+  RotateCw,
+  User
 } from 'lucide-react';
 import { Handle, Position } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
@@ -46,8 +47,11 @@ export type TopologyCanvasNode = Node<
 
 function nodeMeta(node: TopologyNode, branchCount?: number): string {
   if (node.kind === 'logical-root') return 'Raiz lógica · mapa físico';
+  if (node.kind === 'client') {
+    return [node.clientCode, node.planName ?? 'Sem plano'].join(' · ');
+  }
   if (node.kind === 'backbone') {
-    const count = branchCount === undefined ? 'CPE por carregar' : `${branchCount} CPE`;
+    const count = branchCount === undefined ? 'Ramo por carregar' : `${branchCount} equipamentos`;
     const location = [node.island, node.zone].filter(Boolean).join(' · ');
     return [
       node.model,
@@ -68,6 +72,7 @@ function nodeStatusLabel(node: TopologyNode): string {
 function nodeIcon(node: TopologyNode) {
   if (node.kind === 'logical-root') return <Network size={17} aria-hidden />;
   if (node.kind === 'backbone') return <RadioTower size={17} aria-hidden />;
+  if (node.kind === 'client') return <User size={16} aria-hidden />;
   return <Box size={16} aria-hidden />;
 }
 
@@ -165,13 +170,15 @@ export function TopologyNodeContent({
   onToggle,
   onRetry
 }: TopologyNodeContentProps) {
+  // Sem sonda não há ponto: a raiz é lógica e um cliente é uma pessoa.
+  const liveState = 'liveState' in node ? node.liveState ?? undefined : undefined;
   return (
     <article
       className="topology-node"
       data-kind={node.kind}
       data-flow={flow}
       data-state={node.issueCodes.length > 0 ? 'attention' : node.administrativeState}
-      data-live={node.kind === 'logical-root' ? undefined : node.liveState ?? undefined}
+      data-live={liveState}
       data-selected={selected || undefined}
     >
       <NodeSelectControl node={node} branchCount={branchCount} onSelect={onSelect} />
@@ -196,13 +203,15 @@ function NodeHandles({ kind, source, target, connectable }: {
   target: Position;
   connectable: boolean;
 }) {
-  const spine = connectable && kind !== 'client-device';
+  const spine = connectable && kind !== 'client-device' && kind !== 'client';
   return (
     <>
       {kind !== 'logical-root' && (
         <Handle type="target" position={target} isConnectable={spine} />
       )}
-      {kind !== 'client-device' && (
+      {/* Só uma pessoa não tem jusante. A antena do cliente tem: o router dele
+          pendura-se nela, e sem esta âncora a linha não tinha onde encostar. */}
+      {kind !== 'client' && (
         <Handle type="source" position={source} isConnectable={spine} />
       )}
     </>
@@ -237,5 +246,6 @@ function TopologyNodeRenderer({
 export const topologyNodeTypes = {
   'logical-root': TopologyNodeRenderer,
   backbone: TopologyNodeRenderer,
-  'client-device': TopologyNodeRenderer
+  'client-device': TopologyNodeRenderer,
+  client: TopologyNodeRenderer
 };

@@ -1,4 +1,6 @@
 import type Database from 'better-sqlite3';
+import { BACKBONE_UPLINK_TYPES, BACKBONE_UPLINK_TYPES_SQL } from '../../shared/topology';
+import { PLACEMENT_CTE } from './topology-read-model';
 import type {
   AssignmentBackboneInput,
   AssignmentListQuery,
@@ -142,8 +144,16 @@ function assignmentSearchClause(query: string | null, params: unknown[]): string
   return ` AND (${fields.map((field) => `lower(trim(coalesce(${field}, ''))) LIKE ? ESCAPE '\\'`).join(' OR ')})`;
 }
 
-function activeAssignmentRow(db: Database.Database, assignmentId: number): { id: number } {
-  const row = db.prepare('SELECT id FROM service_device_assignments WHERE id = ? AND end_date IS NULL').get(assignmentId) as { id: number } | undefined;
+function activeAssignmentRow(
+  db: Database.Database,
+  assignmentId: number
+): { id: number; catalogType: string } {
+  const row = db.prepare(`
+    SELECT a.id, ec.type AS catalogType
+    FROM service_device_assignments a
+    JOIN equipment_catalog ec ON ec.id = a.catalog_id
+    WHERE a.id = ? AND a.end_date IS NULL
+  `).get(assignmentId) as { id: number; catalogType: string } | undefined;
   if (!row) throw new BackboneValidationError('Atribuição ativa não encontrada');
   return row;
 }
@@ -299,8 +309,23 @@ export function listAssignments(
 ): BackbonePage<BackboneAssignmentSummary> {
   const params: unknown[] = [];
   let where = 'WHERE a.end_date IS NULL';
+  let cte = '';
   if (query.mapping === 'linked') where += ' AND link.id IS NOT NULL';
-  if (query.mapping === 'unlinked') where += ' AND link.id IS NULL';
+  /*
+   * "Por ligar" é quem ainda pode vir a ligar-se: só a antena/CPE fala com o
+   * backbone, e mesmo essa deixa de estar à espera quando já está instalada a
+   * jusante de outra — o ponto de acesso na segunda saída da antena do cliente
+   * é uma antena sem link que ninguém vai ligar ao backbone. Contá-los dava uma
+   * dívida impossível de saldar. `linked` fica completa de propósito: uma
+   * ligação antiga a um router tem de continuar visível para se poder desfazer.
+   */
+  if (query.mapping === 'unlinked') {
+    cte = PLACEMENT_CTE;
+    where += ` AND link.id IS NULL AND ec.type IN (${BACKBONE_UPLINK_TYPES_SQL})
+      AND a.id NOT IN (
+        SELECT assignmentId FROM placement WHERE parentAssignmentId IS NOT NULL
+      )`;
+  }
   if (query.backboneDeviceId !== undefined) {
     where += ' AND link.backbone_device_id = ?';
     params.push(query.backboneDeviceId);
@@ -313,9 +338,10 @@ export function listAssignments(
     JOIN clients c ON c.id = s.client_id
     LEFT JOIN backbone_assignment_links link ON link.assignment_id = a.id AND link.ended_at IS NULL
     LEFT JOIN backbone_devices bd ON bd.id = link.backbone_device_id`;
-  const total = Number((db.prepare(`SELECT COUNT(*) AS count ${from} ${where}`).get(...params) as { count: number }).count);
+  const total = Number((db.prepare(`${cte} SELECT COUNT(*) AS count ${from} ${where}`).get(...params) as { count: number }).count);
   const bounds = pageBounds(query.page, query.pageSize, total);
   const items = db.prepare(`
+    ${cte}
     SELECT ${ASSIGNMENT_COLUMNS} ${from} ${where}
     ORDER BY c.full_name COLLATE NOCASE, a.id
     LIMIT ? OFFSET ?
@@ -451,7 +477,17 @@ export function setAssignmentBackbone(
   }
   const reason = normalizeOptional(input.reason);
   const transfer = db.transaction(() => {
-    activeAssignmentRow(db, assignmentId);
+    const assignmentRow = activeAssignmentRow(db, assignmentId);
+    /*
+     * Só a antena/CPE do cliente fala com o backbone. O router de casa liga-se
+     * a essa antena, e o mapa coloca-o lá sozinho — pendurá-lo na antena do
+     * backbone desenhava-o ao lado do CPE e o cliente aparecia duas vezes.
+     */
+    if (!(BACKBONE_UPLINK_TYPES as readonly string[]).includes(assignmentRow.catalogType)) {
+      throw new BackboneValidationError(
+        'Só antenas e CPE ligam ao backbone; o resto do equipamento pende da antena do cliente'
+      );
+    }
     const backbone = db.prepare('SELECT id, status FROM backbone_devices WHERE id = ?').get(input.backboneDeviceId) as { id: number; status: BackboneStatus } | undefined;
     if (!backbone) throw new BackboneNotFoundError('Backbone não encontrado');
     if (backbone.status === 'retired') throw new BackboneValidationError('Não é possível associar um backbone retirado');

@@ -100,8 +100,10 @@ function SearchResults({
               {result.node.kind === 'backbone'
                 ? 'Backbone físico'
                 : result.node.parentId === 'root:isp'
-                  ? 'CPE física · sem ligação definida'
-                  : 'CPE física'}
+                  ? 'Equipamento do cliente · sem ligação definida'
+                  : result.node.parentId.startsWith('assignment:')
+                    ? 'Equipamento do cliente · atrás da antena dele'
+                    : 'Antena do cliente'}
             </small>
           </span>
           <em>{result.matchedFields.join(' · ')}</em>

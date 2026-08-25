@@ -128,6 +128,57 @@ describe('backbone management repository', () => {
       .toThrow(BackboneValidationError);
   });
 
+  /**
+   * "Por ligar" é uma dívida que alguém pode saldar. O router do cliente não
+   * pertence a essa conta nem à lista de candidatos: pende da antena dele.
+   */
+  test('leaves equipment that can never reach the backbone out of the pending list', () => {
+    db = freshDb();
+    const fixture = seed(db);
+    const routerCatalogId = Number(db.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, is_serialized, purchase_price_cve, stock_total, active)
+      VALUES ('equipamento', 'router', 'TP-Link', 'Archer C20', 0, 2000, 10, 1)
+    `).run().lastInsertRowid);
+    const routerAssignmentId = Number(db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id)
+      SELECT service_id, ? FROM service_device_assignments WHERE id = ?
+    `).run(routerCatalogId, fixture.activeAssignmentId).lastInsertRowid);
+
+    const pending = listAssignments(db, { mapping: 'unlinked', page: 1, pageSize: 25 });
+    expect(pending.items.map((item) => item.id)).toEqual([fixture.activeAssignmentId]);
+    expect(pending.total).toBe(1);
+
+    // Sem filtro continua a ver-se tudo: o inventário não esconde equipamento.
+    expect(listAssignments(db, { mapping: 'all', page: 1, pageSize: 25 }).items.map((item) => item.id))
+      .toContain(routerAssignmentId);
+
+    // Uma antena instalada atrás de outra — o ponto de acesso na segunda saída —
+    // também não está à espera de backbone: já tem por onde chegar lá.
+    const backboneForAnchor = createBackbone(db, input(fixture.catalogId, {
+      name: 'Core Ancora', serialNumber: 'SN-ANC', assetTag: 'AT-ANC'
+    }), null);
+    setAssignmentBackbone(db, fixture.activeAssignmentId, {
+      backboneDeviceId: backboneForAnchor.id, reason: null
+    }, null);
+    const accessPointId = Number(db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id)
+      SELECT service_id, ? FROM service_device_assignments WHERE id = ?
+    `).run(fixture.otherCatalogId, fixture.activeAssignmentId).lastInsertRowid);
+    expect(listAssignments(db, { mapping: 'unlinked', page: 1, pageSize: 25 }).items)
+      .toEqual([]);
+    expect(listAssignments(db, { mapping: 'all', page: 1, pageSize: 25 }).items.map((item) => item.id))
+      .toContain(accessPointId);
+
+    // Uma ligação antiga a um router tem de continuar à vista para se desfazer.
+    const backbone = createBackbone(db, input(fixture.catalogId), null);
+    db.prepare(`
+      INSERT INTO backbone_assignment_links (backbone_device_id, assignment_id) VALUES (?, ?)
+    `).run(backbone.id, routerAssignmentId);
+    expect(listAssignments(db, {
+      mapping: 'linked', backboneDeviceId: backbone.id, page: 1, pageSize: 25
+    }).items.map((item) => item.id)).toEqual([routerAssignmentId]);
+  });
+
   test('updates optimistically and rejects stale or retired-with-links changes', () => {
     db = freshDb();
     const fixture = seed(db);
@@ -170,6 +221,43 @@ describe('backbone management repository', () => {
       .toEqual({ count: 0 });
     expect(db.prepare('SELECT ended_by AS endedBy, change_reason AS reason FROM backbone_assignment_links WHERE assignment_id = ? ORDER BY id DESC LIMIT 1').get(fixture.activeAssignmentId))
       .toEqual({ endedBy: fixture.actorId, reason: 'Retirado' });
+  });
+
+  /**
+   * O router do cliente entra no mapa pela antena dele. Aceitar aqui um link
+   * directo desenhava-o ao lado da antena, com o cliente repetido no mapa.
+   */
+  test('refuses to hang anything other than an antenna or CPE on the backbone', () => {
+    db = freshDb();
+    const database = db;
+    const fixture = seed(database);
+    const backbone = createBackbone(database, input(fixture.catalogId), null);
+    const routerCatalogId = Number(database.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, is_serialized, purchase_price_cve, stock_total, active)
+      VALUES ('equipamento', 'router', 'TP-Link', 'Archer C20', 0, 2000, 10, 1)
+    `).run().lastInsertRowid);
+    const routerAssignmentId = Number(database.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id)
+      SELECT service_id, ? FROM service_device_assignments WHERE id = ?
+    `).run(routerCatalogId, fixture.activeAssignmentId).lastInsertRowid);
+
+    expect(() => setAssignmentBackbone(
+      database,
+      routerAssignmentId,
+      { backboneDeviceId: backbone.id, reason: 'Instalação' },
+      fixture.actorId
+    )).toThrow(/Só antenas e CPE ligam ao backbone/);
+    expect(database.prepare(
+      'SELECT COUNT(*) AS count FROM backbone_assignment_links WHERE assignment_id = ?'
+    ).get(routerAssignmentId)).toEqual({ count: 0 });
+
+    // A antena do mesmo serviço continua a poder ligar-se.
+    expect(() => setAssignmentBackbone(
+      database,
+      fixture.activeAssignmentId,
+      { backboneDeviceId: backbone.id, reason: 'Instalação' },
+      fixture.actorId
+    )).not.toThrow();
   });
 
   test('keeps the current active link when a transfer insert is rejected', () => {
