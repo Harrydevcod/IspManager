@@ -128,6 +128,40 @@ function buildAppMenu() {
 }
 
 /**
+ * Menu do botão direito. O Electron não traz nenhum, por isso sem isto o clique
+ * direito não faz nada em lado nenhum da aplicação — nem num campo de texto.
+ *
+ * Os mesmos `role:` e as mesmas palavras do menu Editar: o vocabulário não pode
+ * mudar consoante o sítio onde se carrega. Fora de um campo só se oferece Copiar,
+ * porque colar ou cortar não têm onde ir.
+ */
+function registerContextMenu(contents: Electron.WebContents) {
+  contents.on('context-menu', (_event, params) => {
+    const hasSelection = params.selectionText.trim().length > 0;
+
+    const items: Electron.MenuItemConstructorOptions[] = params.isEditable
+      ? [
+        { role: 'undo', label: 'Anular', enabled: params.editFlags.canUndo },
+        { role: 'redo', label: 'Refazer', enabled: params.editFlags.canRedo },
+        { type: 'separator' },
+        { role: 'cut', label: 'Cortar', enabled: params.editFlags.canCut && hasSelection },
+        { role: 'copy', label: 'Copiar', enabled: params.editFlags.canCopy && hasSelection },
+        { role: 'paste', label: 'Colar', enabled: params.editFlags.canPaste },
+        { role: 'selectAll', label: 'Selecionar tudo' }
+      ]
+      : hasSelection
+        ? [{ role: 'copy', label: 'Copiar' }]
+        : [];
+
+    // Sem nada útil para oferecer, não se abre um menu vazio.
+    if (items.length === 0) {
+      return;
+    }
+    Menu.buildFromTemplate(items).popup({ window: BrowserWindow.fromWebContents(contents) ?? undefined });
+  });
+}
+
+/**
  * Guardar documentos (faturas/recibos/relatórios PDF/CSV) com diálogo nativo
  * "Guardar como". O renderer manda os bytes já obtidos (com o header de auth) e
  * o nome informativo; aqui escolhemos o local e escrevemos.
@@ -271,6 +305,8 @@ async function createWindow() {
       nodeIntegration: false
     }
   });
+
+  registerContextMenu(mainWindow.webContents);
 
   mainWindow.webContents.on('preload-error', (_e, preloadPath, error) => {
     console.error('[preload-error]', preloadPath, error);

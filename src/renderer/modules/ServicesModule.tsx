@@ -7,6 +7,7 @@ import { formatCve } from '../lib/format';
 import { takesStaticIp } from '../../shared/equipment';
 import { suggestIpPrefix } from '../lib/ip';
 import { statusLabel, statusTone } from '../lib/status';
+import { hasTextSelection } from '../lib/textSelection';
 import type { AudiovisualConfig, Client, DeviceAssignment, ManualServiceEventType, PlanRow, ReturnCondition, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
 import { BulkIpDialog, type ActiveAssignment } from './services/BulkIpDialog';
 import { IpField } from './services/IpField';
@@ -916,7 +917,7 @@ export function ServicesModule({
             key={service.id}
             role="button"
             tabIndex={0}
-            onClick={() => setSelectedService(service)}
+            onClick={() => { if (!hasTextSelection()) setSelectedService(service); }}
             onKeyDown={(event) => {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { hasTextSelection } from '../lib/textSelection';
 
 /**
  * Source of truth: PaymentsModule's compact payment list.
@@ -46,7 +47,7 @@ export function DataList<T>({
           <button
             type="button"
             className="payment-summary-button"
-            onClick={onRowClick ? () => onRowClick(row) : undefined}
+            onClick={onRowClick ? () => { if (!hasTextSelection()) onRowClick(row); } : undefined}
           >
             {columns.map((col, i) => (
               <span key={i}>{col.cell(row)}</span>

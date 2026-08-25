@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
+import { hasTextSelection } from '../lib/textSelection';
 import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
 import type { SortDirection, SortState } from '../lib/listView';
 import type { SelectAllState } from '../lib/useRowSelection';
@@ -98,6 +99,12 @@ export function DataTable<T, K extends string = string>({
     onRowClick?.(row);
   }
 
+  /** O rato passa pela guarda; o teclado (Enter/Espaco) nunca deixa selecao atras. */
+  function handleRowClick(row: T) {
+    if (hasTextSelection()) return;
+    activateRow(row);
+  }
+
   function handleRowKeyDown(event: KeyboardEvent<HTMLDivElement>, row: T) {
     if (!onRowClick) return;
     if (event.key === 'Enter' || event.key === ' ') {
@@ -162,7 +169,7 @@ export function DataTable<T, K extends string = string>({
           style={gridStyle}
           key={key}
           tabIndex={onRowClick ? 0 : undefined}
-          onClick={onRowClick ? () => activateRow(row) : undefined}
+          onClick={onRowClick ? () => handleRowClick(row) : undefined}
           onKeyDown={(event) => handleRowKeyDown(event, row)}
         >
           {selection && (

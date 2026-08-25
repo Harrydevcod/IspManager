@@ -3909,7 +3909,8 @@ label.field-toggle {
    each action so the inline actions don't trigger the row click. */
 .module-row.interactive {
   cursor: pointer;
-  user-select: none;
+  /* Sem `user-select: none`: a linha é clicável mas o texto é conteúdo que se
+     copia (IP, valor, nome). O clique é que cede — ver `hasTextSelection`. */
 }
 .module-row.interactive:focus-visible {
   outline: 2px solid var(--ring);
