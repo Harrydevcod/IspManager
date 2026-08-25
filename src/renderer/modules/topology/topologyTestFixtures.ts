@@ -2,6 +2,7 @@ import type {
   TopologyBackboneBranch,
   TopologyBackboneNode,
   TopologyClientDeviceNode,
+  TopologyClientNode,
   TopologySnapshot
 } from '../../../shared/topology';
 
@@ -143,10 +144,28 @@ export const routerOne: TopologyClientDeviceNode = {
   parentId: 'assignment:100'
 };
 
+/** O fim da cadeia: quem é servido pelo router acima. */
+export const clientOne: TopologyClientNode = {
+  id: 'client:1@10',
+  kind: 'client',
+  clientId: 1,
+  serviceId: 10,
+  clientCode: 'CLI-1',
+  label: 'Cliente 1',
+  island: 'São Vicente',
+  zone: 'Mindelo',
+  planName: 'Pro',
+  serviceStatus: 'active',
+  administrativeState: 'active',
+  issueCodes: [],
+  parentId: 'assignment:101'
+};
+
 export const branchOne: TopologyBackboneBranch = {
   generatedAt: '2026-07-28T12:01:00.000Z',
   backbone: backboneOne,
   nodes: [deviceOne, routerOne],
+  clientNodes: [clientOne],
   edges: [{
     id: 'client-link:backbone:10:assignment:100',
     kind: 'client-link',
@@ -159,6 +178,12 @@ export const branchOne: TopologyBackboneBranch = {
     source: 'assignment:100',
     target: 'assignment:101',
     relationship: 'defined_link'
+  }, {
+    id: 'ownership:assignment:101:client:1@10',
+    kind: 'ownership',
+    source: 'assignment:101',
+    target: 'client:1@10',
+    relationship: 'defined_link'
   }],
   stats: { assignmentCount: 2, clientCount: 1, serviceCount: 1, attentionCount: 0 }
 };
@@ -167,6 +192,7 @@ export const branchTwo: TopologyBackboneBranch = {
   generatedAt: '2026-07-28T12:02:00.000Z',
   backbone: backboneTwo,
   nodes: [deviceTwo],
+  clientNodes: [],
   edges: [{
     id: 'client-link:backbone:20:assignment:200',
     kind: 'client-link',

@@ -6,8 +6,10 @@ import type {
   TopologyClientAssociation,
   TopologyClientDeviceNode,
   TopologyClientLinkEdge,
+  TopologyClientNode,
   TopologyCoreLinkEdge,
   TopologyIssueCode,
+  TopologyOwnershipEdge,
   TopologyServiceAssociation,
   TopologySnapshot,
   TopologyStats
@@ -81,9 +83,12 @@ function equipmentLabel(row: Pick<EquipmentRow, 'brand' | 'model'>): string {
  *
  * - `anchor` — a antena/CPE do cliente ligada a um backbone. É a única coisa
  *   que fala com a rede do ISP.
- * - `downstream` — tudo o resto que o serviço tenha instalado (o router de
- *   casa) pende dessa antena. A ligação passa por `assignment_services`, por
- *   isso o vizinho de uma antena partilhada encontra-a na mesma.
+ * - `downstream` — tudo o resto que o serviço tenha instalado pende dessa
+ *   antena: o router de casa, e também o ponto de acesso que alguém ligou à
+ *   segunda saída de rede da antena. O critério é ser ou não âncora, nunca o
+ *   tipo de catálogo — um AP está tipificado como antena e nem por isso fala
+ *   com o backbone. A ligação passa por `assignment_services`, por isso o
+ *   vizinho de uma antena partilhada encontra-a na mesma.
  * - `placement` — junta as duas: pai imediato e a antena de backbone na raiz
  *   do ramo, que um router só alcança em dois saltos.
  *
@@ -91,7 +96,7 @@ function equipmentLabel(row: Pick<EquipmentRow, 'brand' | 'model'>): string {
  * isto existir) é colocado à mesma debaixo da antena do cliente: a instalação
  * física manda mais do que a linha na tabela.
  */
-const PLACEMENT_CTE = `
+export const PLACEMENT_CTE = `
   WITH anchor AS (
     SELECT a.id AS assignmentId, link.backbone_device_id AS backboneDeviceId
     FROM service_device_assignments a
@@ -105,10 +110,9 @@ const PLACEMENT_CTE = `
     FROM assignment_services own
     JOIN service_device_assignments child
       ON child.id = own.assignment_id AND child.end_date IS NULL
-    JOIN equipment_catalog child_catalog ON child_catalog.id = child.catalog_id
     JOIN assignment_services sibling ON sibling.service_id = own.service_id
     JOIN anchor ON anchor.assignmentId = sibling.assignment_id
-    WHERE child_catalog.type NOT IN (${BACKBONE_UPLINK_TYPES_SQL})
+    WHERE own.assignment_id NOT IN (SELECT assignmentId FROM anchor)
     GROUP BY own.assignment_id
   ),
   placement AS (
@@ -382,6 +386,94 @@ function clientDeviceNode(
   };
 }
 
+/**
+ * A que distância do backbone está cada equipamento do ramo. Serve para saber
+ * onde acaba a cadeia de um serviço: o cliente pendura-se no mais fundo.
+ */
+function depthByAssignment(rows: AssignmentRow[]): Map<number, number> {
+  const parents = new Map(rows.map((row) => [row.assignmentId, row.parentAssignmentId]));
+  const depths = new Map<number, number>();
+  const depthOf = (assignmentId: number, seen: Set<number>): number => {
+    const cached = depths.get(assignmentId);
+    if (cached !== undefined) return cached;
+    const parent = parents.get(assignmentId) ?? null;
+    // Dados em ciclo não podem prender a leitura: quem já foi visitado é raiz.
+    const depth = parent === null || seen.has(assignmentId)
+      ? 0
+      : 1 + depthOf(parent, new Set(seen).add(assignmentId));
+    depths.set(assignmentId, depth);
+    return depth;
+  };
+  for (const row of rows) depthOf(row.assignmentId, new Set());
+  return depths;
+}
+
+/** Empate na profundidade resolve-se pelo id: o mapa tem de ser estável. */
+function deeperAssignment(
+  current: AssociationRow,
+  candidate: AssociationRow,
+  depths: Map<number, number>
+): AssociationRow {
+  const currentDepth = depths.get(current.assignmentId) ?? 0;
+  const candidateDepth = depths.get(candidate.assignmentId) ?? 0;
+  if (candidateDepth !== currentDepth) {
+    return candidateDepth > currentDepth ? candidate : current;
+  }
+  return candidate.assignmentId < current.assignmentId ? candidate : current;
+}
+
+function clientNode(row: AssociationRow): TopologyClientNode {
+  const issueCodes: TopologyIssueCode[] = [];
+  if (row.clientStatus !== 'active') issueCodes.push('inactive');
+  if (row.serviceStatus === 'suspended') issueCodes.push('suspended_service');
+  return {
+    id: `client:${row.clientId}@${row.serviceId}`,
+    kind: 'client',
+    clientId: row.clientId,
+    serviceId: row.serviceId,
+    clientCode: row.clientCode,
+    label: row.fullName,
+    island: row.island,
+    zone: row.zone,
+    planName: row.planName,
+    serviceStatus: row.serviceStatus,
+    administrativeState: row.clientStatus === 'active' ? 'active' : 'inactive',
+    issueCodes,
+    parentId: `assignment:${row.assignmentId}`
+  };
+}
+
+/**
+ * Um card por serviço servido no ramo, pendurado no equipamento onde a cadeia
+ * dele acaba. Numa antena partilhada são dois cards a profundidades diferentes:
+ * o titular por baixo do router dele, o vizinho na própria antena.
+ */
+function clientNodesFor(
+  rows: AssignmentRow[],
+  associations: AssociationRow[]
+): TopologyClientNode[] {
+  const depths = depthByAssignment(rows);
+  const deepest = new Map<string, AssociationRow>();
+  for (const row of associations) {
+    const key = `${row.clientId}@${row.serviceId}`;
+    const current = deepest.get(key);
+    deepest.set(key, current ? deeperAssignment(current, row, depths) : row);
+  }
+  return [...deepest.values()]
+    .map(clientNode)
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function ownershipLink(node: TopologyClientNode): TopologyOwnershipEdge {
+  return {
+    id: `ownership:${node.parentId}:${node.id}`,
+    kind: 'ownership',
+    source: node.parentId,
+    target: node.id,
+    relationship: 'defined_link'
+  };
+}
+
 function loadAggregateRow(db: Database.Database): AggregateRow {
   return db.prepare(`
     ${PLACEMENT_CTE}
@@ -532,15 +624,16 @@ export function loadBackboneBranch(
   const row = loadBackboneRow(db, backboneDeviceId);
   if (!row) return null;
   const backbone = backboneNode(row, loadVisibleUplinks(db, backboneDeviceId).get(backboneDeviceId) ?? []);
-  const nodes = buildClientDevices(
-    loadAssignmentRows(db, backboneDeviceId),
-    loadAssociationRows(db, backboneDeviceId)
-  );
+  const assignmentRows = loadAssignmentRows(db, backboneDeviceId);
+  const associationRows = loadAssociationRows(db, backboneDeviceId);
+  const nodes = buildClientDevices(assignmentRows, associationRows);
+  const clientNodes = clientNodesFor(assignmentRows, associationRows);
   return {
     generatedAt: now.toISOString(),
     backbone,
     nodes,
-    edges: nodes.flatMap(clientLink),
+    clientNodes,
+    edges: [...nodes.flatMap(clientLink), ...clientNodes.map(ownershipLink)],
     stats: branchStats(nodes)
   };
 }

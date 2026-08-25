@@ -64,6 +64,14 @@
   background: var(--surface);
 }
 
+/* A pessoa fecha a cadeia: mais discreta que o equipamento e sem a moldura
+   cheia, para se ler como destino e não como mais uma caixa na rede. */
+.topology-node[data-kind='client'] {
+  border-style: dashed;
+  border-color: color-mix(in oklch, var(--border-2) 70%, transparent);
+  background: color-mix(in oklch, var(--surface) 60%, transparent);
+}
+
 .topology-node[data-state='attention'] { border-color: color-mix(in oklch, var(--warn) 55%, var(--border)); }
 
 /* Sonda de rede: um ponto no canto do nó com a última leitura. Sem leitura não

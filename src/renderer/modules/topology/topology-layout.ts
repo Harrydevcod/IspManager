@@ -21,7 +21,10 @@ const ANCHORS: Record<TopologyDirection, { source: Position; target: Position }>
 const SIZES: Record<TopologyFlowNode['type'], NodeSize> = {
   'logical-root': { width: 180, height: 72 },
   backbone: { width: 240, height: 104 },
-  'client-device': { width: 260, height: 128 }
+  'client-device': { width: 260, height: 128 },
+  // Fecha a cadeia sem competir com o equipamento: mais baixo, sem estado nem
+  // controlo de ramo para desenhar.
+  client: { width: 240, height: 88 }
 };
 
 function compareById<T extends { id: string }>(left: T, right: T): number {

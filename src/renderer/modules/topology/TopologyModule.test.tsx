@@ -477,10 +477,13 @@ describe('TopologyModule branch interaction', () => {
         ...branchOne.nodes[0],
         parentId: 'backbone:77' as const
       }],
+      clientNodes: [],
       edges: [{
-        ...branchOne.edges[0],
         id: 'client-link:backbone:77:assignment:100' as const,
-        source: 'backbone:77' as const
+        kind: 'client-link' as const,
+        source: 'backbone:77' as const,
+        target: 'assignment:100' as const,
+        relationship: 'defined_link' as const
       }]
     };
     const topologyApi = api({

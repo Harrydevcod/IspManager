@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { BACKBONE_UPLINK_TYPES, BACKBONE_UPLINK_TYPES_SQL } from '../../shared/topology';
+import { PLACEMENT_CTE } from './topology-read-model';
 import type {
   AssignmentBackboneInput,
   AssignmentListQuery,
@@ -308,16 +309,22 @@ export function listAssignments(
 ): BackbonePage<BackboneAssignmentSummary> {
   const params: unknown[] = [];
   let where = 'WHERE a.end_date IS NULL';
+  let cte = '';
   if (query.mapping === 'linked') where += ' AND link.id IS NOT NULL';
   /*
    * "Por ligar" é quem ainda pode vir a ligar-se: só a antena/CPE fala com o
-   * backbone. Um router nunca lá chega — pende da antena do cliente — por isso
-   * contá-lo aqui dava uma dívida que ninguém pode saldar. `linked` fica
-   * completa de propósito: uma ligação antiga a um router tem de continuar
-   * visível para se poder desfazer.
+   * backbone, e mesmo essa deixa de estar à espera quando já está instalada a
+   * jusante de outra — o ponto de acesso na segunda saída da antena do cliente
+   * é uma antena sem link que ninguém vai ligar ao backbone. Contá-los dava uma
+   * dívida impossível de saldar. `linked` fica completa de propósito: uma
+   * ligação antiga a um router tem de continuar visível para se poder desfazer.
    */
   if (query.mapping === 'unlinked') {
-    where += ` AND link.id IS NULL AND ec.type IN (${BACKBONE_UPLINK_TYPES_SQL})`;
+    cte = PLACEMENT_CTE;
+    where += ` AND link.id IS NULL AND ec.type IN (${BACKBONE_UPLINK_TYPES_SQL})
+      AND a.id NOT IN (
+        SELECT assignmentId FROM placement WHERE parentAssignmentId IS NOT NULL
+      )`;
   }
   if (query.backboneDeviceId !== undefined) {
     where += ' AND link.backbone_device_id = ?';
@@ -331,9 +338,10 @@ export function listAssignments(
     JOIN clients c ON c.id = s.client_id
     LEFT JOIN backbone_assignment_links link ON link.assignment_id = a.id AND link.ended_at IS NULL
     LEFT JOIN backbone_devices bd ON bd.id = link.backbone_device_id`;
-  const total = Number((db.prepare(`SELECT COUNT(*) AS count ${from} ${where}`).get(...params) as { count: number }).count);
+  const total = Number((db.prepare(`${cte} SELECT COUNT(*) AS count ${from} ${where}`).get(...params) as { count: number }).count);
   const bounds = pageBounds(query.page, query.pageSize, total);
   const items = db.prepare(`
+    ${cte}
     SELECT ${ASSIGNMENT_COLUMNS} ${from} ${where}
     ORDER BY c.full_name COLLATE NOCASE, a.id
     LIMIT ? OFFSET ?

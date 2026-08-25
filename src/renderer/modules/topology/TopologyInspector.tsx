@@ -9,6 +9,7 @@ import {
 import type {
   TopologyBackboneBranch,
   TopologyClientDeviceNode,
+  TopologyClientNode,
   TopologyIssueCode,
   TopologyNode,
   TopologySnapshot
@@ -277,6 +278,45 @@ function ClientAssociations({
   );
 }
 
+/** O fim da cadeia: quem é servido ali, e as portas para o ficheiro dele. */
+function ClientDetails({
+  node,
+  onOpenClient,
+  onOpenService
+}: Pick<TopologyInspectorProps, 'onOpenClient' | 'onOpenService'> & {
+  node: TopologyClientNode;
+}) {
+  return (
+    <>
+      <dl className="topology-inspector-details">
+        {/* O estado do cliente já está nos crachás do cabeçalho. */}
+        <Detail label="Código" value={node.clientCode} />
+        <Detail label="Serviço" value={`#${node.serviceId} · ${statusLabel(node.serviceStatus)}`} />
+        <Detail label="Plano" value={node.planName ?? 'Sem plano'} />
+        <Detail
+          label="Localização"
+          value={[node.island, node.zone].filter(Boolean).join(' · ') || 'Não indicada'}
+        />
+        <Detail label="Servido por" value={`Equipamento #${node.parentId.slice('assignment:'.length)}`} />
+      </dl>
+      <Button
+        variant="secondary"
+        className="topology-inspector-action"
+        onClick={() => onOpenClient(node.clientId)}
+      >
+        Abrir cliente <ArrowUpRight size={14} aria-hidden />
+      </Button>
+      <Button
+        variant="secondary"
+        className="topology-inspector-action"
+        onClick={() => onOpenService(node.clientId, node.serviceId)}
+      >
+        Abrir serviço <ArrowUpRight size={14} aria-hidden />
+      </Button>
+    </>
+  );
+}
+
 function EmptyInspector() {
   return (
     <div className="topology-inspector-empty">
@@ -334,6 +374,13 @@ export function TopologyInspector(props: TopologyInspectorProps) {
                 onOpenService={props.onOpenService}
               />
             </>
+          )}
+          {node.kind === 'client' && (
+            <ClientDetails
+              node={node}
+              onOpenClient={props.onOpenClient}
+              onOpenService={props.onOpenService}
+            />
           )}
           <p className="topology-lineage-note">
             Este mapa representa ligações definidas e configuração administrativa;

@@ -63,6 +63,7 @@ function mergeBranch(
 ): void {
   nodes.set(branch.backbone.id, toFlowNode(branch.backbone));
   branch.nodes.forEach((node) => nodes.set(node.id, toFlowNode(node)));
+  branch.clientNodes.forEach((node) => nodes.set(node.id, toFlowNode(node)));
   branch.edges.forEach((edge) => edges.set(edge.id, toFlowEdge(edge)));
 }
 

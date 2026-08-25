@@ -152,6 +152,23 @@ describe('backbone management repository', () => {
     expect(listAssignments(db, { mapping: 'all', page: 1, pageSize: 25 }).items.map((item) => item.id))
       .toContain(routerAssignmentId);
 
+    // Uma antena instalada atrás de outra — o ponto de acesso na segunda saída —
+    // também não está à espera de backbone: já tem por onde chegar lá.
+    const backboneForAnchor = createBackbone(db, input(fixture.catalogId, {
+      name: 'Core Ancora', serialNumber: 'SN-ANC', assetTag: 'AT-ANC'
+    }), null);
+    setAssignmentBackbone(db, fixture.activeAssignmentId, {
+      backboneDeviceId: backboneForAnchor.id, reason: null
+    }, null);
+    const accessPointId = Number(db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id)
+      SELECT service_id, ? FROM service_device_assignments WHERE id = ?
+    `).run(fixture.otherCatalogId, fixture.activeAssignmentId).lastInsertRowid);
+    expect(listAssignments(db, { mapping: 'unlinked', page: 1, pageSize: 25 }).items)
+      .toEqual([]);
+    expect(listAssignments(db, { mapping: 'all', page: 1, pageSize: 25 }).items.map((item) => item.id))
+      .toContain(accessPointId);
+
     // Uma ligação antiga a um router tem de continuar à vista para se desfazer.
     const backbone = createBackbone(db, input(fixture.catalogId), null);
     db.prepare(`

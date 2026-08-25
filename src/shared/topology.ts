@@ -18,7 +18,13 @@ export type TopologyIssueCode =
 
 export type TopologyAdministrativeState = 'active' | 'inactive';
 export type TopologyRelationship = 'defined_link';
-export type TopologyNodeId = 'root:isp' | `backbone:${number}` | `assignment:${number}`;
+/** Cliente: o par com o serviço, porque é o serviço que está ligado ali. */
+export type TopologyClientNodeId = `client:${number}@${number}`;
+export type TopologyNodeId =
+  | 'root:isp'
+  | `backbone:${number}`
+  | `assignment:${number}`
+  | TopologyClientNodeId;
 
 export type TopologyServiceAssociation = {
   id: number;
@@ -108,10 +114,33 @@ export type TopologyClientDeviceNode = {
   clients: TopologyClientAssociation[];
 };
 
+/**
+ * Quem é servido no fim da cadeia. Pende do equipamento mais fundo do serviço —
+ * o router de casa quando existe, a antena quando o serviço não tem mais nada.
+ * Não tem `liveState`: não se sonda uma pessoa.
+ */
+export type TopologyClientNode = {
+  id: TopologyClientNodeId;
+  kind: 'client';
+  clientId: number;
+  serviceId: number;
+  clientCode: string;
+  /** O nome do cliente: é isto que se lê no card. */
+  label: string;
+  island: string | null;
+  zone: string | null;
+  planName: string | null;
+  serviceStatus: 'active' | 'suspended' | 'cancelled';
+  administrativeState: TopologyAdministrativeState;
+  issueCodes: TopologyIssueCode[];
+  parentId: `assignment:${number}`;
+};
+
 export type TopologyNode =
   | TopologyLogicalRootNode
   | TopologyBackboneNode
-  | TopologyClientDeviceNode;
+  | TopologyClientDeviceNode
+  | TopologyClientNode;
 
 /** Raiz→backbone ou backbone→backbone: a espinha dorsal, seja qual for a profundidade. */
 export type TopologyCoreLinkEdge = {
@@ -131,7 +160,23 @@ export type TopologyClientLinkEdge = {
   relationship: TopologyRelationship;
 };
 
-export type TopologyEdge = TopologyCoreLinkEdge | TopologyClientLinkEdge;
+/**
+ * Equipamento→cliente. Não é um cabo: é titularidade. Espécie própria para o
+ * traço poder ser outro — este mapa desenha ligações físicas (ADR 0005), e uma
+ * linha destas não pode passar por uma delas.
+ */
+export type TopologyOwnershipEdge = {
+  id: `ownership:assignment:${number}:${TopologyClientNodeId}`;
+  kind: 'ownership';
+  source: `assignment:${number}`;
+  target: TopologyClientNodeId;
+  relationship: TopologyRelationship;
+};
+
+export type TopologyEdge =
+  | TopologyCoreLinkEdge
+  | TopologyClientLinkEdge
+  | TopologyOwnershipEdge;
 
 export type TopologyStats = {
   backboneCount: number;
@@ -160,7 +205,10 @@ export type TopologyBackboneBranch = {
   generatedAt: string;
   backbone: TopologyBackboneNode;
   nodes: TopologyClientDeviceNode[];
-  edges: TopologyClientLinkEdge[];
+  /** As pessoas servidas neste ramo. Fora de `nodes` para as contas do ramo
+      continuarem a contar equipamento, não gente. */
+  clientNodes: TopologyClientNode[];
+  edges: (TopologyClientLinkEdge | TopologyOwnershipEdge)[];
   stats: {
     assignmentCount: number;
     clientCount: number;
