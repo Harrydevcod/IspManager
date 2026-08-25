@@ -62,11 +62,18 @@ export function ServiceItemDraftsBuilder({ drafts, catalog, onChange, ipPrefix }
                 label={isMaterial ? 'Material' : 'Equipamento'}
                 required
                 value={draft.catalogId}
+                hint={
+                  !isMaterial && draft.ownership === 'cliente'
+                    ? 'É do cliente: o stock do artigo não se aplica.'
+                    : undefined
+                }
                 onChange={(event) => update(index, { catalogId: event.target.value })}
               >
                 <option value="">{isMaterial ? 'Selecionar material' : 'Selecionar equipamento'}</option>
                 {categoryCatalog.map((item) => (
-                  <option key={item.id} value={item.id} disabled={item.stockTotal < 1}>
+                  // Sem stock só trava o que sai do armazém: o equipamento do cliente
+                  // regista-se com o artigo a zero, porque nunca foi nosso.
+                  <option key={item.id} value={item.id} disabled={draft.ownership === 'isp' && item.stockTotal < 1}>
                     {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} {item.unitOfMeasure}
                   </option>
                 ))}
