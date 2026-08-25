@@ -93,7 +93,9 @@ export function BackboneList({
 
       <div className="backbone-list-summary" aria-live="polite">
         <span><strong>{page.total}</strong> registados</span>
-        <span className="backbone-unlinked-count"><strong>{unlinkedCount}</strong> Sem ligação</span>
+        {/* Antenas e CPE à espera de backbone. O router do cliente nunca entra
+            nesta conta: pende da antena dele, não daqui. */}
+        <span className="backbone-unlinked-count"><strong>{unlinkedCount}</strong> por ligar</span>
       </div>
 
       <div className="backbone-list-scroll">

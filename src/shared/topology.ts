@@ -4,6 +4,11 @@
  */
 export const BACKBONE_UPLINK_TYPES = ['cpe', 'antena'] as const;
 
+/** A mesma lista, pronta a entrar numa cláusula SQL `IN`. */
+export const BACKBONE_UPLINK_TYPES_SQL = BACKBONE_UPLINK_TYPES
+  .map((type) => `'${type}'`)
+  .join(', ');
+
 export type TopologyIssueCode =
   | 'inactive'
   | 'missing_ip'

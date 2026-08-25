@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { BACKBONE_UPLINK_TYPES } from '../../shared/topology';
+import { BACKBONE_UPLINK_TYPES_SQL } from '../../shared/topology';
 import type {
   TopologyBackboneBranch,
   TopologyBackboneNode,
@@ -76,8 +76,6 @@ function equipmentLabel(row: Pick<EquipmentRow, 'brand' | 'model'>): string {
   return [row.brand, row.model].filter(Boolean).join(' ');
 }
 
-const UPLINK_TYPE_LIST = BACKBONE_UPLINK_TYPES.map((type) => `'${type}'`).join(', ');
-
 /**
  * Onde fica cada atribuição ativa na rede, tal como está instalada:
  *
@@ -100,7 +98,7 @@ const PLACEMENT_CTE = `
     JOIN equipment_catalog ec ON ec.id = a.catalog_id
     JOIN backbone_assignment_links link
       ON link.assignment_id = a.id AND link.ended_at IS NULL
-    WHERE a.end_date IS NULL AND ec.type IN (${UPLINK_TYPE_LIST})
+    WHERE a.end_date IS NULL AND ec.type IN (${BACKBONE_UPLINK_TYPES_SQL})
   ),
   downstream AS (
     SELECT own.assignment_id AS assignmentId, MIN(anchor.assignmentId) AS parentAssignmentId
@@ -110,7 +108,7 @@ const PLACEMENT_CTE = `
     JOIN equipment_catalog child_catalog ON child_catalog.id = child.catalog_id
     JOIN assignment_services sibling ON sibling.service_id = own.service_id
     JOIN anchor ON anchor.assignmentId = sibling.assignment_id
-    WHERE child_catalog.type NOT IN (${UPLINK_TYPE_LIST})
+    WHERE child_catalog.type NOT IN (${BACKBONE_UPLINK_TYPES_SQL})
     GROUP BY own.assignment_id
   ),
   placement AS (

@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { BACKBONE_UPLINK_TYPES } from '../../shared/topology';
+import { BACKBONE_UPLINK_TYPES, BACKBONE_UPLINK_TYPES_SQL } from '../../shared/topology';
 import type {
   AssignmentBackboneInput,
   AssignmentListQuery,
@@ -309,7 +309,16 @@ export function listAssignments(
   const params: unknown[] = [];
   let where = 'WHERE a.end_date IS NULL';
   if (query.mapping === 'linked') where += ' AND link.id IS NOT NULL';
-  if (query.mapping === 'unlinked') where += ' AND link.id IS NULL';
+  /*
+   * "Por ligar" é quem ainda pode vir a ligar-se: só a antena/CPE fala com o
+   * backbone. Um router nunca lá chega — pende da antena do cliente — por isso
+   * contá-lo aqui dava uma dívida que ninguém pode saldar. `linked` fica
+   * completa de propósito: uma ligação antiga a um router tem de continuar
+   * visível para se poder desfazer.
+   */
+  if (query.mapping === 'unlinked') {
+    where += ` AND link.id IS NULL AND ec.type IN (${BACKBONE_UPLINK_TYPES_SQL})`;
+  }
   if (query.backboneDeviceId !== undefined) {
     where += ' AND link.backbone_device_id = ?';
     params.push(query.backboneDeviceId);

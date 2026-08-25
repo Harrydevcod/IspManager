@@ -292,7 +292,7 @@ describe('Backbone workspace', () => {
 
     expect(container.querySelector('h1, h2, h3')?.textContent).toContain('Backbone');
     expect(button('Novo backbone')).toBeTruthy();
-    expect(container.textContent).toContain('Sem ligação');
+    expect(container.textContent).toContain('por ligar');
     expect(container.querySelector('.backbone-list')?.textContent).toContain('10.0.0.10');
   });
 

@@ -128,6 +128,40 @@ describe('backbone management repository', () => {
       .toThrow(BackboneValidationError);
   });
 
+  /**
+   * "Por ligar" é uma dívida que alguém pode saldar. O router do cliente não
+   * pertence a essa conta nem à lista de candidatos: pende da antena dele.
+   */
+  test('leaves equipment that can never reach the backbone out of the pending list', () => {
+    db = freshDb();
+    const fixture = seed(db);
+    const routerCatalogId = Number(db.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, is_serialized, purchase_price_cve, stock_total, active)
+      VALUES ('equipamento', 'router', 'TP-Link', 'Archer C20', 0, 2000, 10, 1)
+    `).run().lastInsertRowid);
+    const routerAssignmentId = Number(db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id)
+      SELECT service_id, ? FROM service_device_assignments WHERE id = ?
+    `).run(routerCatalogId, fixture.activeAssignmentId).lastInsertRowid);
+
+    const pending = listAssignments(db, { mapping: 'unlinked', page: 1, pageSize: 25 });
+    expect(pending.items.map((item) => item.id)).toEqual([fixture.activeAssignmentId]);
+    expect(pending.total).toBe(1);
+
+    // Sem filtro continua a ver-se tudo: o inventário não esconde equipamento.
+    expect(listAssignments(db, { mapping: 'all', page: 1, pageSize: 25 }).items.map((item) => item.id))
+      .toContain(routerAssignmentId);
+
+    // Uma ligação antiga a um router tem de continuar à vista para se desfazer.
+    const backbone = createBackbone(db, input(fixture.catalogId), null);
+    db.prepare(`
+      INSERT INTO backbone_assignment_links (backbone_device_id, assignment_id) VALUES (?, ?)
+    `).run(backbone.id, routerAssignmentId);
+    expect(listAssignments(db, {
+      mapping: 'linked', backboneDeviceId: backbone.id, page: 1, pageSize: 25
+    }).items.map((item) => item.id)).toEqual([routerAssignmentId]);
+  });
+
   test('updates optimistically and rejects stale or retired-with-links changes', () => {
     db = freshDb();
     const fixture = seed(db);
