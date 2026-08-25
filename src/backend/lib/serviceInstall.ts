@@ -143,17 +143,26 @@ export function checkDeviceIdentity(
   return null;
 }
 
+/** A propriedade da unidade, com o mesmo default em toda a instalacao: do ISP. */
+export function deviceOwnership(device: DeviceInput): 'isp' | 'cliente' {
+  return device.ownership === 'cliente' ? 'cliente' : 'isp';
+}
+
 /**
  * Validates that a device can be installed before opening a transaction: the model
- * exists, has stock, the technician (if any) is real, and no active assignment already
- * owns the serial/asset tag/IP. Returns a discriminated result so callers map it to a reply.
+ * exists, has stock (only ISP-owned units consume it), the technician (if any) is real,
+ * and no active assignment already owns the serial/asset tag/IP. Returns a discriminated
+ * result so callers map it to a reply.
  */
 export function preflightDeviceInstall(db: Database.Database, device: DeviceInput): PreflightResult {
   const catalog = loadCatalogIdentity(db, device.catalogId);
   if (!catalog) {
     return { ok: false, status: 404, error: 'Modelo nao encontrado' };
   }
-  if (catalog.stockTotal < 1) {
+  // So o material do ISP sai do armazem, por isso so ele precisa de ter stock. O
+  // router que o cliente comprou (ou herdou da operadora anterior) regista-se com
+  // o artigo a zero: e um registo do que esta em casa dele, nao uma saida.
+  if (deviceOwnership(device) === 'isp' && catalog.stockTotal < 1) {
     return { ok: false, status: 400, error: `Stock insuficiente. Disponivel: ${catalog.stockTotal}` };
   }
   if (device.technicianId) {
@@ -237,7 +246,10 @@ export function installDeviceWithinTx(
   if (!freshCatalog) {
     throw new Error('catalog_missing');
   }
-  if (freshCatalog.stockTotal < 1) {
+  // Equipamento do cliente não gera renda nem consome inventário: nunca esteve no
+  // armazém, por isso não precisa de stock para ser registado.
+  const ownership = deviceOwnership(device);
+  if (ownership === 'isp' && freshCatalog.stockTotal < 1) {
     throw new Error(`stock_insufficient:${freshCatalog.stockTotal}`);
   }
 
@@ -248,10 +260,9 @@ export function installDeviceWithinTx(
   const notes = cleanValue(device.notes);
   const technicianId = device.technicianId || null;
 
-  // Equipamento do cliente não gera renda; a renda do ISP é copiada do catálogo
-  // agora e fica congelada nesta atribuição — mudar o preço do modelo no
-  // catálogo não pode reescrever a fatura de quem já o tem instalado.
-  const ownership = device.ownership === 'cliente' ? 'cliente' : 'isp';
+  // A renda do ISP é copiada do catálogo agora e fica congelada nesta atribuição —
+  // mudar o preço do modelo no catálogo não pode reescrever a fatura de quem já o
+  // tem instalado. O equipamento do cliente nunca gera renda.
   const rentalFeeCve = ownership === 'cliente' ? 0 : freshCatalog.rentalFeeCve;
 
   const assignment = db.prepare(`

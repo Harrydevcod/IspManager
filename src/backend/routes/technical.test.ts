@@ -652,6 +652,33 @@ describe('device identity (IP fixo)', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM stock_movements').get()).toEqual({ n: movementsBefore });
   });
 
+  test('equipamento do cliente regista-se com o artigo a zero', async () => {
+    const { catalog, service } = seedBaseService();
+    // O caso real: o modelo existe no catálogo só para dar nome ao que está em casa
+    // do cliente, e a empresa não tem nenhuma unidade dele no armazém.
+    db.prepare('UPDATE equipment_catalog SET stock_total = 0 WHERE id = ?').run(catalog.lastInsertRowid);
+
+    const recusado = await app.inject({
+      method: 'POST',
+      url: `/api/services/${service.lastInsertRowid}/items`,
+      payload: { items: [{ catalogId: catalog.lastInsertRowid }] }
+    });
+    expect(recusado.statusCode).toBe(400);
+    expect((recusado.json() as { error: string }).error).toContain('Stock insuficiente');
+
+    const aceite = await app.inject({
+      method: 'POST',
+      url: `/api/services/${service.lastInsertRowid}/items`,
+      payload: { items: [{ catalogId: catalog.lastInsertRowid, ownership: 'cliente' }] }
+    });
+    expect(aceite.statusCode).toBe(201);
+    expect(db.prepare('SELECT stock_total AS n FROM equipment_catalog WHERE id = ?').get(catalog.lastInsertRowid))
+      .toEqual({ n: 0 });
+    expect(db.prepare(`
+      SELECT ownership, rental_fee_cve AS renda FROM service_device_assignments WHERE service_id = ?
+    `).get(service.lastInsertRowid)).toEqual({ ownership: 'cliente', renda: 0 });
+  });
+
   test('equipamento do cliente não aceita aluguer', async () => {
     const { catalog, service } = seedBaseService();
     const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, { ownership: 'cliente' });
