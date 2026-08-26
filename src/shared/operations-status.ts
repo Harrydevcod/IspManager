@@ -72,6 +72,8 @@ export type OperationsNetwork = {
     assignmentWithIp: number;
     assignmentWithMac: number;
     assignmentWithSerial: number;
+    /** Com MAC ou série — a mesma regra de identidade do aviso na topologia. */
+    assignmentIdentified: number;
   };
   /** Fração acima da qual um único equipamento é considerado concentração. */
   concentrationThreshold: number;

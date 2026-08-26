@@ -400,7 +400,7 @@ export function OperationsStatusPanel({ active }: { active: boolean }) {
       <FindingList findings={network.findings} />
       <p className="ops-note">
         Identificação: {network.identification.backboneWithIp}/{network.identification.backboneTotal} backbone com IP,
-        {' '}{network.identification.assignmentWithMac}/{network.identification.assignmentTotal} equipamentos em campo com MAC.
+        {' '}{network.identification.assignmentIdentified}/{network.identification.assignmentTotal} equipamentos em campo identificados (MAC ou série).
         {network.probe.neverProbed > 0 && ` ${network.probe.neverProbed} com IP por sondar.`}
       </p>
 

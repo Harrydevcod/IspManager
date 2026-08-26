@@ -207,7 +207,15 @@ function loadNetwork(db: Database.Database): OperationsNetwork {
       (SELECT COUNT(*) FROM service_device_assignments WHERE end_date IS NULL) AS assignmentTotal,
       (SELECT COUNT(*) FROM service_device_assignments WHERE end_date IS NULL AND NULLIF(TRIM(ip_address), '') IS NOT NULL) AS assignmentWithIp,
       (SELECT COUNT(*) FROM service_device_assignments WHERE end_date IS NULL AND NULLIF(TRIM(mac_address), '') IS NOT NULL) AS assignmentWithMac,
-      (SELECT COUNT(*) FROM service_device_assignments WHERE end_date IS NULL AND NULLIF(TRIM(serial_number), '') IS NOT NULL) AS assignmentWithSerial
+      (SELECT COUNT(*) FROM service_device_assignments WHERE end_date IS NULL AND NULLIF(TRIM(serial_number), '') IS NOT NULL) AS assignmentWithSerial,
+      -- Identificado = tem por onde ser reconhecido, seja MAC ou série. Mesma
+      -- regra do aviso na topologia; contar só MAC dizia que estava por
+      -- identificar equipamento que tem a etiqueta legível e registada.
+      (SELECT COUNT(*) FROM service_device_assignments
+       WHERE end_date IS NULL AND (
+         NULLIF(TRIM(mac_address), '') IS NOT NULL
+         OR NULLIF(TRIM(serial_number), '') IS NOT NULL
+       )) AS assignmentIdentified
   `).get() as OperationsNetwork['identification'];
 
   const findings: OperationsFinding[] = [];
@@ -1203,11 +1211,11 @@ function deriveActions(status: Omit<OperationsStatus, 'risks' | 'actions' | 'sev
     });
   }
 
-  if (network.identification.assignmentWithMac < network.identification.assignmentTotal) {
+  if (network.identification.assignmentIdentified < network.identification.assignmentTotal) {
     actions.push({
       code: 'A-INVENTARIO',
-      title: 'Registar MAC e número de série do parque',
-      detail: `${network.identification.assignmentWithMac} de ${network.identification.assignmentTotal} atribuições ativas têm MAC. Sem isso, cada avaria começa do zero.`,
+      title: 'Identificar o parque instalado',
+      detail: `${network.identification.assignmentIdentified} de ${network.identification.assignmentTotal} atribuições ativas têm MAC ou número de série. Sem isso, cada avaria começa do zero e uma unidade que volte não se sabe qual é.`,
       horizon: 'quarter',
       severity: 'amber',
       upsideCve: null
