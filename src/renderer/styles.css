@@ -4620,7 +4620,8 @@ label.field-toggle {
 .bulk-ip-head,
 .bulk-ip-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 168px;
+  /* O MAC é mais largo do que um IPv4: 17 caracteres fixos contra 15. */
+  grid-template-columns: minmax(0, 1fr) 168px 200px;
   gap: var(--space-5);
   align-items: center;
 }

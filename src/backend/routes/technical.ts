@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { normalizeMacAddress } from '../../shared/mac';
+import { MAC_FORMAT_ERROR, isMacAddress, normalizeMacAddress } from '../../shared/mac';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit, recordAuditStrict } from '../lib/audit';
 import {
@@ -97,11 +97,15 @@ const shareSchema = z.object({
   serviceId: z.coerce.number().int().positive()
 });
 
-/** Atribuição de IPs em massa: só o par (id, IP), para o ecrã de preenchimento. */
-const bulkIpSchema = z.object({
+/**
+ * Identificação em massa, para o ecrã de preenchimento: o IP da manutenção remota
+ * e o MAC que identifica a unidade. Campo ausente = não mexer; vazio = limpar.
+ */
+const bulkIdentitySchema = z.object({
   items: z.array(z.object({
     id: z.coerce.number().int().positive(),
-    ipAddress: z.string().trim().optional().nullable()
+    ipAddress: z.string().trim().optional().nullable(),
+    macAddress: z.string().trim().optional().nullable()
   })).min(1).max(1000)
 });
 
@@ -376,6 +380,7 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         e.type AS catalogType,
         a.serial_number AS serialNumber,
         a.ip_address AS ipAddress,
+        a.mac_address AS macAddress,
         ${SHARED_WITH_NAMES_SQL} AS sharedWithNames
       FROM service_device_assignments a
       JOIN services s ON s.id = a.service_id
@@ -392,53 +397,70 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
    * de colidir consigo proprio.
    */
   app.patch('/api/service-device-assignments', canWriteTechnical, async (request, reply) => {
-    const parsed = bulkIpSchema.safeParse(request.body);
+    const parsed = bulkIdentitySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Dados de atribuicao invalidos' });
     }
 
+    type Identity = { ipAddress: string | null; macAddress: string | null };
     const db = getSqliteDatabase();
     const active = new Map((db.prepare(`
-      SELECT id, ip_address AS ipAddress
+      SELECT id, ip_address AS ipAddress, mac_address AS macAddress
       FROM service_device_assignments
       WHERE end_date IS NULL
-    `).all() as Array<{ id: number; ipAddress: string | null }>).map((row) => [row.id, row.ipAddress]));
+    `).all() as Array<{ id: number } & Identity>).map((row) => [row.id, {
+      ipAddress: row.ipAddress,
+      macAddress: row.macAddress
+    }]));
 
-    const changes: Array<{ id: number; ipAddress: string | null }> = [];
+    const changes: Array<{ id: number } & Identity> = [];
     for (const item of parsed.data.items) {
-      if (!active.has(item.id)) {
+      const current = active.get(item.id);
+      if (!current) {
         return reply.status(404).send({ error: `Equipamento ${item.id} nao encontrado ou ja removido` });
       }
-      const ipAddress = cleanValue(item.ipAddress);
+      // Campo ausente fica como esta: o ecra pode mandar so a coluna que mexeu.
+      const ipAddress = item.ipAddress === undefined ? current.ipAddress : cleanValue(item.ipAddress);
+      const macAddress = item.macAddress === undefined
+        ? current.macAddress
+        : normalizeMacAddress(item.macAddress);
       if (ipAddress && !isIpv4(ipAddress)) {
         return reply.status(400).send({ error: IP_FORMAT_ERROR });
       }
-      if (ipAddress !== active.get(item.id)) {
-        changes.push({ id: item.id, ipAddress });
+      if (macAddress && !isMacAddress(macAddress)) {
+        return reply.status(400).send({ error: MAC_FORMAT_ERROR });
       }
-      active.set(item.id, ipAddress);
+      if (ipAddress !== current.ipAddress || macAddress !== current.macAddress) {
+        changes.push({ id: item.id, ipAddress, macAddress });
+      }
+      active.set(item.id, { ipAddress, macAddress });
     }
 
-    // Estado final: nenhum IP pode ficar em dois equipamentos ativos.
-    const seen = new Map<string, number>();
-    for (const [id, ipAddress] of active) {
-      if (!ipAddress) {
-        continue;
+    // Estado final, nao linha a linha: trocar dois IPs entre equipamentos passa,
+    // e nenhum identificador pode acabar em dois equipamentos ativos.
+    for (const field of ['ipAddress', 'macAddress'] as const) {
+      const label = field === 'ipAddress' ? 'IP' : 'MAC';
+      const seen = new Map<string, number>();
+      for (const [id, identity] of active) {
+        const value = identity[field];
+        if (!value) {
+          continue;
+        }
+        if (seen.has(value)) {
+          return reply.status(409).send({ error: `${label} ${value} ficaria em dois equipamentos ativos` });
+        }
+        seen.set(value, id);
       }
-      if (seen.has(ipAddress)) {
-        return reply.status(409).send({ error: `IP ${ipAddress} ficaria em dois equipamentos ativos` });
-      }
-      seen.set(ipAddress, id);
     }
 
     db.transaction(() => {
       const update = db.prepare(`
         UPDATE service_device_assignments
-        SET ip_address = ?, updated_at = datetime('now')
+        SET ip_address = ?, mac_address = ?, updated_at = datetime('now')
         WHERE id = ? AND end_date IS NULL
       `);
       for (const change of changes) {
-        update.run(change.ipAddress, change.id);
+        update.run(change.ipAddress, change.macAddress, change.id);
       }
     })();
 
@@ -447,7 +469,7 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         action: 'update_device',
         entityType: 'service_device_assignment',
         entityId: changes[0].id,
-        summary: `Atribuiu IP a ${changes.length} equipamento(s)`,
+        summary: `Identificou ${changes.length} equipamento(s)`,
         metadata: { changes }
       });
     }

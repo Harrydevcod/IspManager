@@ -49,7 +49,7 @@ const headerCases: HeaderCase[] = [
     ariaLabel: 'Ações de serviços',
     primaryCount: 1,
     actions: [
-      { label: 'Atribuir IPs', variant: 'secondary' },
+      { label: 'Identificar equipamentos', variant: 'secondary' },
       { label: 'Novo servico', variant: 'primary' }
     ]
   },

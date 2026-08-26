@@ -828,7 +828,7 @@ export function ServicesModule({
             ariaLabel="Ações de serviços"
             secondary={canRecordTechnical ? (
               <Button variant="secondary" leadingIcon={<Network size={16} aria-hidden />} onClick={() => setShowBulkIp(true)}>
-                Atribuir IPs
+                Identificar equipamentos
               </Button>
             ) : undefined}
             primary={canManageServices ? (
