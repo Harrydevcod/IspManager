@@ -1,19 +1,20 @@
 import { expect, test } from 'vitest';
-import { labelForType, takesStaticIp } from './equipment';
+import { labelForType, requiresStaticIp } from './equipment';
 
 /**
- * Quem leva IP fixo é o que aponta ao backbone. O ponto de acesso e o repetidor
- * ficam atrás da antena e apanham DHCP — é a decisão, e é fácil de inverter sem
- * dar por isso ao mexer na lista.
+ * Qualquer equipamento pode levar endereço fixo — quem instala é que decide. A
+ * lista diz só quem não pode ficar sem: o que aponta ao backbone, e é onde se vai
+ * bater quando a ligação cai. É fácil inverter isto sem dar por ela.
  */
-test('only backbone-facing equipment takes a static IP', () => {
-  expect(takesStaticIp('cpe')).toBe(true);
-  expect(takesStaticIp('antena')).toBe(true);
+test('only backbone-facing equipment is required to have a static IP', () => {
+  expect(requiresStaticIp('cpe')).toBe(true);
+  expect(requiresStaticIp('antena')).toBe(true);
 
-  expect(takesStaticIp('ap')).toBe(false);
-  expect(takesStaticIp('repetidor')).toBe(false);
-  expect(takesStaticIp('router')).toBe(false);
-  expect(takesStaticIp(null)).toBe(false);
+  expect(requiresStaticIp('ap')).toBe(false);
+  expect(requiresStaticIp('repetidor')).toBe(false);
+  expect(requiresStaticIp('router')).toBe(false);
+  expect(requiresStaticIp('Ponto de Acesso Externo')).toBe(false);
+  expect(requiresStaticIp(null)).toBe(false);
 });
 
 test('labels the predefined types and echoes hand-written ones', () => {

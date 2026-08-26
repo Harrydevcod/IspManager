@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Combobox, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, Select, SkeletonList, Textarea, Toggle, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
-import { takesStaticIp } from '../../shared/equipment';
+import { labelForType, requiresStaticIp } from '../../shared/equipment';
 import { suggestIpPrefix } from '../lib/ip';
 import { statusLabel, statusTone } from '../lib/status';
 import { hasTextSelection } from '../lib/textSelection';
@@ -1237,16 +1237,19 @@ export function ServicesModule({
             <option value="">Selecionar equipamento</option>
             {catalogList.filter((item) => item.category === 'equipamento').map((item) => (
               <option key={item.id} value={item.id} disabled={item.stockTotal < 1}>
-                {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} {item.unitOfMeasure}
+                {item.brand ? `${item.brand} ${item.model}` : item.model} - {labelForType(item.type)} - {item.stockTotal} {item.unitOfMeasure}
               </option>
             ))}
           </Select>
           <Field label="Serial" value={replaceDraft.serialNumber} onChange={(event) => setReplaceDraft((current) => ({ ...current, serialNumber: event.target.value }))} />
           <Field label="Asset tag" value={replaceDraft.assetTag} onChange={(event) => setReplaceDraft((current) => ({ ...current, assetTag: event.target.value }))} />
           <Field label="MAC" value={replaceDraft.macAddress} onChange={(event) => setReplaceDraft((current) => ({ ...current, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
-          {takesStaticIp(catalogList.find((item) => String(item.id) === replaceDraft.catalogId)?.type) && (
-            <IpField value={replaceDraft.ipAddress} prefix={ipPrefix} onChange={(ipAddress) => setReplaceDraft((current) => ({ ...current, ipAddress }))} />
-          )}
+          <IpField
+            value={replaceDraft.ipAddress}
+            prefix={ipPrefix}
+            required={requiresStaticIp(catalogList.find((item) => String(item.id) === replaceDraft.catalogId)?.type)}
+            onChange={(ipAddress) => setReplaceDraft((current) => ({ ...current, ipAddress }))}
+          />
           <Field wide label="Notas" value={replaceDraft.notes} onChange={(event) => setReplaceDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Motivo da substituicao" />
         </form>
       </Dialog>
@@ -1271,10 +1274,12 @@ export function ServicesModule({
           <Message>
             Corrige a identificação do equipamento instalado. O stock não é alterado e a atribuição mantém-se ativa.
           </Message>
-          {/* Routers apanham IP dinamico; mostra na mesma se a linha ja trouxer um IP para o poder limpar. */}
-          {(takesStaticIp(editTarget?.catalogType) || editDraft.ipAddress) && (
-            <IpField value={editDraft.ipAddress} prefix={ipPrefix} onChange={(ipAddress) => setEditDraft((current) => ({ ...current, ipAddress }))} />
-          )}
+          <IpField
+            value={editDraft.ipAddress}
+            prefix={ipPrefix}
+            required={requiresStaticIp(editTarget?.catalogType)}
+            onChange={(ipAddress) => setEditDraft((current) => ({ ...current, ipAddress }))}
+          />
           <Field label="MAC" value={editDraft.macAddress} onChange={(event) => setEditDraft((current) => ({ ...current, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
           <Field label="Serial" value={editDraft.serialNumber} onChange={(event) => setEditDraft((current) => ({ ...current, serialNumber: event.target.value }))} />
           <Field label="Asset tag" value={editDraft.assetTag} onChange={(event) => setEditDraft((current) => ({ ...current, assetTag: event.target.value }))} />

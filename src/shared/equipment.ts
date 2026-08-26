@@ -59,15 +59,26 @@ export const EQUIPMENT_TYPES_BY_CATEGORY: Record<
 };
 
 /**
- * Só o que aponta ao backbone leva IP fixo: o CPE e a antena são o que se
- * identifica e se vai lá ver quando a ligação cai.
+ * Qualquer equipamento pode levar IP fixo — quem instala é que sabe se aquela
+ * unidade vai ter endereço reservado ou apanhar DHCP. Esta lista não diz quem
+ * *pode*, diz quem **não pode ficar sem**: o CPE e a antena apontam ao backbone e
+ * são o que se vai lá ver quando a ligação cai.
  *
- * Tudo o que fica atrás da antena — o router do cliente, o repetidor, o ponto de
- * acesso — apanha DHCP de quem está acima e não se registam endereços para eles.
+ * Só o formulário insiste; as rotas continuam a aceitar endereço nulo em todos os
+ * caminhos, senão partia-se a importação e o equipamento que já lá está sem IP.
  */
-export const STATIC_IP_EQUIPMENT_TYPES: readonly EquipmentType[] = ['cpe', 'antena'];
+export const STATIC_IP_REQUIRED_TYPES: readonly EquipmentType[] = ['cpe', 'antena'];
 
-export function takesStaticIp(catalogType: string | null | undefined): boolean {
+export function requiresStaticIp(catalogType: string | null | undefined): boolean {
   const normalized = (catalogType || '').trim().toLowerCase();
-  return (STATIC_IP_EQUIPMENT_TYPES as readonly string[]).includes(normalized);
+  return (STATIC_IP_REQUIRED_TYPES as readonly string[]).includes(normalized);
 }
+
+/**
+ * A mesma regra para o SQL que conta atenções em bloco, para o total do mapa não
+ * discordar dos nós que o mapa desenha. Literais, não parâmetros: entra no meio
+ * de subconsultas já parametrizadas.
+ */
+export const STATIC_IP_REQUIRED_TYPES_SQL = STATIC_IP_REQUIRED_TYPES
+  .map((type) => `'${type}'`)
+  .join(', ');

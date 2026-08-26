@@ -6,7 +6,7 @@ import {
   RadioTower,
   X
 } from 'lucide-react';
-import { labelForType } from '../../../shared/equipment';
+import { labelForType, requiresStaticIp } from '../../../shared/equipment';
 import type {
   TopologyBackboneBranch,
   TopologyClientDeviceNode,
@@ -165,7 +165,7 @@ function BackboneDetails({
         <Detail label="Modelo" value={node.model} />
         <Detail label="Serial" value={node.serialNumber ?? 'Não indicado'} />
         <Detail label="Asset tag" value={node.assetTag ?? 'Não indicado'} />
-        <Detail label="IP configurado" value={node.ipAddress ?? 'Em falta'} />
+        <Detail label="IP configurado" value={node.ipAddress ?? (requiresStaticIp(node.catalogType) ? 'Em falta' : 'DHCP')} />
         <Detail label="MAC" value={node.macAddress ?? 'Não indicado'} />
         <Detail
           label="Localização"
@@ -218,7 +218,7 @@ function DeviceDetails({
         <Detail label="Modelo" value={`${node.brand ? `${node.brand} ` : ''}${node.model}`} />
         <Detail label="Serial" value={node.serialNumber ?? 'Não indicado'} />
         <Detail label="Asset tag" value={node.assetTag ?? 'Não indicado'} />
-        <Detail label="IP configurado" value={node.ipAddress ?? 'Em falta'} />
+        <Detail label="IP configurado" value={node.ipAddress ?? (requiresStaticIp(node.catalogType) ? 'Em falta' : 'DHCP')} />
         <Detail label="MAC" value={node.macAddress ?? 'Não indicado'} />
         <Detail label="Desde" value={node.startDate} />
         <Detail label="Ligação" value={clientDeviceUplink(node)} />

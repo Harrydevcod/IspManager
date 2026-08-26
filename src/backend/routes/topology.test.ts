@@ -901,6 +901,39 @@ describe('GET /api/topology/search', () => {
     expect(inactive.node.issueCodes).toEqual(['inactive']);
   });
 
+  /**
+   * Sem IP só é falta em quem tem de ter um. O router do cliente anda em DHCP por
+   * decisão de quem instalou, e acusá-lo enchia o mapa de avisos sobre nada — o
+   * CPE ao lado, esse, continua a acusar.
+   */
+  test('does not flag a missing IP on equipment that is allowed to use DHCP', async () => {
+    const fixture = seedTopology();
+    const { serviceId } = db.prepare(
+      'SELECT service_id AS serviceId FROM service_device_assignments WHERE id = ?'
+    ).get(fixture.incompleteAssignmentId) as { serviceId: number };
+    const attentionBefore = (await app.inject({ method: 'GET', url: '/api/topology' }))
+      .json().stats.assignmentAttentionCount as number;
+    const routerAssignmentId = insertAssignment({
+      serviceId,
+      catalogId: insertCatalog({ model: 'hAP ax lite', type: 'router' }),
+      serial: 'SN-DHCP-ROUTER'
+    });
+
+    const results = (await app.inject({
+      method: 'GET',
+      url: '/api/topology/search?q=sn-dhcp-router'
+    })).json().results as Array<{ node: { assignmentId?: number; issueCodes: string[] } }>;
+    const router = results.find((item) => item.node.assignmentId === routerAssignmentId);
+
+    expect(router).toBeDefined();
+    expect(router?.node.issueCodes).toEqual([]);
+
+    // O total de atenções sai de um SQL à parte: se discordar dos nós, o mapa
+    // anuncia problemas que nenhum equipamento mostra.
+    const stats = (await app.inject({ method: 'GET', url: '/api/topology' })).json().stats;
+    expect(stats.assignmentAttentionCount).toBe(attentionBefore);
+  });
+
   test('caps results at the requested limit and never above 50', async () => {
     const fixture = seedTopology();
     for (let index = 0; index < 55; index += 1) {

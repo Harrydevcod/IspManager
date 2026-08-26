@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { Button, Field, Message, Select } from '../../components';
-import { takesStaticIp } from '../../../shared/equipment';
+import { labelForType, requiresStaticIp } from '../../../shared/equipment';
 import { formatCve } from '../../lib/format';
 import type { StockCatalogRow } from '../../types';
 import { IpField } from './IpField';
@@ -74,7 +74,7 @@ export function ServiceItemDraftsBuilder({ drafts, catalog, onChange, ipPrefix }
                   // Sem stock só trava o que sai do armazém: o equipamento do cliente
                   // regista-se com o artigo a zero, porque nunca foi nosso.
                   <option key={item.id} value={item.id} disabled={draft.ownership === 'isp' && item.stockTotal < 1}>
-                    {item.brand ? `${item.brand} ${item.model}` : item.model} - {item.type} - {item.stockTotal} {item.unitOfMeasure}
+                    {item.brand ? `${item.brand} ${item.model}` : item.model} - {labelForType(item.type)} - {item.stockTotal} {item.unitOfMeasure}
                   </option>
                 ))}
               </Select>
@@ -93,10 +93,13 @@ export function ServiceItemDraftsBuilder({ drafts, catalog, onChange, ipPrefix }
                   <Field label="Serial" value={draft.serialNumber} onChange={(event) => update(index, { serialNumber: event.target.value })} />
                   <Field label="Asset tag" value={draft.assetTag} onChange={(event) => update(index, { assetTag: event.target.value })} />
                   <Field label="MAC" value={draft.macAddress} onChange={(event) => update(index, { macAddress: event.target.value })} placeholder="AA:BB:CC:DD:EE:FF" />
-                  {/* Router do cliente apanha IP dinâmico: o campo só aparece em antenas e APs. */}
-                  {takesStaticIp(selectedItem?.type) && (
-                    <IpField value={draft.ipAddress} prefix={ipPrefix} onChange={(ipAddress) => update(index, { ipAddress })} />
-                  )}
+                  {/* Qualquer equipamento pode levar endereço; só o CPE e a antena têm de levar. */}
+                  <IpField
+                    value={draft.ipAddress}
+                    prefix={ipPrefix}
+                    required={requiresStaticIp(selectedItem?.type)}
+                    onChange={(ipAddress) => update(index, { ipAddress })}
+                  />
                   <Select
                     label="Propriedade"
                     value={draft.ownership}

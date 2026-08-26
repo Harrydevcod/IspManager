@@ -809,22 +809,27 @@ describe('device identity (IP fixo)', () => {
     expect(response.statusCode).toBe(201);
   });
 
-  test('lists only antennas and access points, never client routers', async () => {
+  /**
+   * Quem leva endereco reservado decide-se na instalacao, nao pelo tipo: um
+   * router de gestao tambem pode querer um, e se nao aparecer nesta lista nao ha
+   * onde lho dar.
+   */
+  test('lists every active equipment, routers included, so any can take an IP', async () => {
     const { catalog, service } = seedBaseService();
     const antenna = db.prepare(`
       INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_cve, is_serialized, stock_total, active)
       VALUES ('equipamento','cpe','TP-Link','CPE 510', 4000, 1, 5, 1)
     `).run();
-    // seedBaseService() cria um catalogo type='router' — o IP dele e dinamico.
-    await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-ROUTER' });
+    // seedBaseService() cria um catalogo type='router'.
+    const router = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-ROUTER' });
     const cpe = await install(service.lastInsertRowid, antenna.lastInsertRowid, { serialNumber: 'SN-CPE' });
 
     const response = await app.inject({ method: 'GET', url: '/api/service-device-assignments' });
 
     expect(response.statusCode).toBe(200);
     const rows = response.json() as Array<{ id: number; serialNumber: string }>;
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ id: cpe.assignmentId, serialNumber: 'SN-CPE' });
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.id).sort()).toEqual([router.assignmentId, cpe.assignmentId].sort());
   });
 
   test('lists active assignments across services for bulk IP assignment', async () => {

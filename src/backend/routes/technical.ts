@@ -1,6 +1,5 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { STATIC_IP_EQUIPMENT_TYPES } from '../../shared/equipment';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit, recordAuditStrict } from '../lib/audit';
 import {
@@ -358,12 +357,13 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
   });
 
   /**
-   * Antenas e pontos de acesso ativos de todos os servicos — base do ecra de
-   * atribuicao de IPs. Routers de cliente ficam de fora: apanham IP dinamico.
+   * Todo o equipamento ativo dos servicos — base do ecra de atribuicao de IPs.
+   * Sem filtro por tipo: quem leva endereco reservado e quem apanha DHCP decide-se
+   * na instalacao, caso a caso, e um router de gestao tambem pode querer um. Aqui
+   * so ha equipamento; os materiais vivem em `service_material_lines`.
    */
   app.get('/api/service-device-assignments', { preHandler: requireAuth() }, async () => {
     const db = getSqliteDatabase();
-    const typePlaceholders = STATIC_IP_EQUIPMENT_TYPES.map(() => '?').join(', ');
     return db.prepare(`
       SELECT
         a.id,
@@ -381,9 +381,8 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       JOIN clients c ON c.id = s.client_id
       JOIN equipment_catalog e ON e.id = a.catalog_id
       WHERE a.end_date IS NULL
-        AND e.type IN (${typePlaceholders})
       ORDER BY c.full_name, a.id
-    `).all(...STATIC_IP_EQUIPMENT_TYPES);
+    `).all();
   });
 
   /**

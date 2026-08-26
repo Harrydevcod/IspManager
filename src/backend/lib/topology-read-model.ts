@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { STATIC_IP_REQUIRED_TYPES_SQL, requiresStaticIp } from '../../shared/equipment';
 import { BACKBONE_UPLINK_TYPES_SQL } from '../../shared/topology';
 import type {
   TopologyBackboneBranch,
@@ -339,7 +340,9 @@ function clientDeviceIssues(
 ): TopologyIssueCode[] {
   const issues: TopologyIssueCode[] = [];
   if (row.active !== 1) issues.push('inactive');
-  if (!row.ipAddress?.trim()) issues.push('missing_ip');
+  // Sem IP só é falta em quem tem de ter um. O resto anda em DHCP por decisão de
+  // quem instalou, e acusar isso enchia o mapa de avisos sobre nada.
+  if (requiresStaticIp(row.catalogType) && !row.ipAddress?.trim()) issues.push('missing_ip');
   const services = clients.flatMap((client) => client.services);
   if (services.some((service) => service.status === 'suspended')) {
     issues.push('suspended_service');
@@ -511,7 +514,10 @@ function loadAggregateRow(db: Database.Database): AggregateRow {
        JOIN equipment_catalog ec ON ec.id = a.catalog_id
        WHERE a.end_date IS NULL AND (
          ec.active <> 1
-         OR NULLIF(TRIM(a.ip_address), '') IS NULL
+         OR (
+           ec.type IN (${STATIC_IP_REQUIRED_TYPES_SQL})
+           AND NULLIF(TRIM(a.ip_address), '') IS NULL
+         )
          OR (ec.is_serialized = 1 AND NULLIF(TRIM(a.serial_number), '') IS NULL)
          OR EXISTS (
            SELECT 1 FROM assignment_services av
