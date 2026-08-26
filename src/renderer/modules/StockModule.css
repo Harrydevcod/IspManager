@@ -239,6 +239,18 @@
   white-space: nowrap;
 }
 
+/* Escrever um tipo que ainda nao existe: a caixa de texto toma o lugar da lista,
+   e o botao de voltar mora dentro da mesma celula do formulario. */
+.stock-new-type {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: start;
+}
+
+.stock-new-type .field {
+  width: 100%;
+}
+
 /* Tablet: collapse value under name. */
 @media (max-width: 960px) {
   .stock-item {

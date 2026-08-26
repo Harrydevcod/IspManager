@@ -380,6 +380,44 @@ describe('loadOperationsStatus', () => {
     expect(status.fleet.findings.map((finding) => finding.code)).toContain('fleet.no-spare');
   });
 
+  /**
+   * Identificado é ter por onde ser reconhecido — MAC ou série. Contar só MAC
+   * punha na lista de trabalho equipamento com a etiqueta registada, e mantinha a
+   * acção acesa para sempre num parque identificado por série.
+   */
+  test('conta como identificado o equipamento que tem MAC ou serie', () => {
+    const catalog = insertCatalog('CPE', 0);
+    const plan = insertPlan('Standard', 3000);
+    const service = insertService(insertClient('C070', 'Identificado'), plan, 3000);
+    const install = db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id, start_date, mac_address, serial_number)
+      VALUES (?, ?, date('now'), ?, ?)
+    `);
+    install.run(service, catalog, '9C:47:82:30:34:9B', null);
+    install.run(service, catalog, null, 'SN-ETIQUETA');
+
+    const status = loadOperationsStatus(db);
+
+    expect(status.network.identification.assignmentIdentified).toBe(2);
+    expect(status.network.identification.assignmentTotal).toBe(2);
+    expect(status.actions.map((action) => action.code)).not.toContain('A-INVENTARIO');
+  });
+
+  test('assinala o parque por identificar quando falta MAC e serie', () => {
+    const catalog = insertCatalog('CPE', 0);
+    const plan = insertPlan('Standard', 3000);
+    const service = insertService(insertClient('C071', 'Anonimo'), plan, 3000);
+    db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id, start_date)
+      VALUES (?, ?, date('now'))
+    `).run(service, catalog);
+
+    const status = loadOperationsStatus(db);
+
+    expect(status.network.identification.assignmentIdentified).toBe(0);
+    expect(status.actions.map((action) => action.code)).toContain('A-INVENTARIO');
+  });
+
   test('quantifica o acerto de tarifa dos servicos abaixo do preco de tabela', () => {
     const plan = insertPlan('Standard', 3000);
     const a = insertClient('C070', 'Antigo A');

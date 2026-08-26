@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { normalizeMacAddress } from '../../shared/mac';
 import { BACKBONE_UPLINK_TYPES, BACKBONE_UPLINK_TYPES_SQL } from '../../shared/topology';
 import { PLACEMENT_CTE } from './topology-read-model';
 import type {
@@ -47,9 +48,8 @@ function normalizeOptional(value: string | null): string | null {
   return normalized || null;
 }
 
-function normalizeMac(value: string | null): string | null {
-  return normalizeOptional(value)?.toUpperCase() ?? null;
-}
+/** Mesma forma canónica do equipamento instalado — ver `shared/mac.ts`. */
+const normalizeMac = normalizeMacAddress;
 
 function normalizeQuery(value: string | undefined): string | null {
   const normalized = value

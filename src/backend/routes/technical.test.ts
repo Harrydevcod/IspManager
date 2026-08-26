@@ -782,6 +782,34 @@ describe('device identity (IP fixo)', () => {
     expect(response.statusCode).toBe(400);
   });
 
+  /**
+   * O MAC passou a valer como identidade — dois equipamentos ativos com o mesmo
+   * MAC é sempre erro de registo, e guardá-lo em formatos diferentes escondia-o.
+   */
+  test('install canonicalizes the MAC and refuses a repeated one', async () => {
+    const { catalog, service } = seedBaseService();
+    const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, {
+      macAddress: '9c-47-82-30-34-9b'
+    });
+
+    expect(db.prepare('SELECT mac_address AS mac FROM service_device_assignments WHERE id = ?').get(assignmentId))
+      .toEqual({ mac: '9C:47:82:30:34:9B' });
+
+    // O mesmo equipamento, escrito de outra maneira, continua a ser o mesmo.
+    const { response } = await install(service.lastInsertRowid, catalog.lastInsertRowid, {
+      macAddress: '9C:47:82:30:34:9B'
+    });
+    expect(response.statusCode).toBe(409);
+  });
+
+  test('install rejects a malformed MAC', async () => {
+    const { catalog, service } = seedBaseService();
+    const { response } = await install(service.lastInsertRowid, catalog.lastInsertRowid, {
+      macAddress: '9C:47:82:30:34'
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
   test('install rejects two items in the same batch sharing an IP', async () => {
     const { catalog, service } = seedBaseService();
     const response = await app.inject({
@@ -809,22 +837,27 @@ describe('device identity (IP fixo)', () => {
     expect(response.statusCode).toBe(201);
   });
 
-  test('lists only antennas and access points, never client routers', async () => {
+  /**
+   * Quem leva endereco reservado decide-se na instalacao, nao pelo tipo: um
+   * router de gestao tambem pode querer um, e se nao aparecer nesta lista nao ha
+   * onde lho dar.
+   */
+  test('lists every active equipment, routers included, so any can take an IP', async () => {
     const { catalog, service } = seedBaseService();
     const antenna = db.prepare(`
       INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_cve, is_serialized, stock_total, active)
       VALUES ('equipamento','cpe','TP-Link','CPE 510', 4000, 1, 5, 1)
     `).run();
-    // seedBaseService() cria um catalogo type='router' — o IP dele e dinamico.
-    await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-ROUTER' });
+    // seedBaseService() cria um catalogo type='router'.
+    const router = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-ROUTER' });
     const cpe = await install(service.lastInsertRowid, antenna.lastInsertRowid, { serialNumber: 'SN-CPE' });
 
     const response = await app.inject({ method: 'GET', url: '/api/service-device-assignments' });
 
     expect(response.statusCode).toBe(200);
     const rows = response.json() as Array<{ id: number; serialNumber: string }>;
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ id: cpe.assignmentId, serialNumber: 'SN-CPE' });
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.id).sort()).toEqual([router.assignmentId, cpe.assignmentId].sort());
   });
 
   test('lists active assignments across services for bulk IP assignment', async () => {
@@ -962,6 +995,87 @@ describe('device identity (IP fixo)', () => {
 
     expect(response.statusCode).toBe(200);
     expect(db.prepare('SELECT ip_address AS ip FROM service_device_assignments WHERE id = ?').get(a.assignmentId)).toEqual({ ip: null });
+  });
+
+  /**
+   * O ecrã de identificação escreve as duas colunas de uma vez: é lá que se
+   * apanham os equipamentos que estão no terreno sem identidade nenhuma.
+   */
+  test('bulk writes the MAC alongside the IP, canonicalized', async () => {
+    const { catalog, service } = seedBaseService();
+    const a = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-A' });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/service-device-assignments',
+      payload: { items: [{ id: a.assignmentId, ipAddress: '192.168.1.31', macAddress: '9c-47-82-30-34-9b' }] }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(db.prepare(
+      'SELECT ip_address AS ip, mac_address AS mac FROM service_device_assignments WHERE id = ?'
+    ).get(a.assignmentId)).toEqual({ ip: '192.168.1.31', mac: '9C:47:82:30:34:9B' });
+  });
+
+  test('bulk refuses a MAC that would end up on two active devices', async () => {
+    const { catalog, service } = seedBaseService();
+    const a = await install(service.lastInsertRowid, catalog.lastInsertRowid, {
+      serialNumber: 'SN-A', macAddress: '9C:47:82:30:34:9B'
+    });
+    const b = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-B' });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/service-device-assignments',
+      payload: { items: [{ id: b.assignmentId, macAddress: '9c:47:82:30:34:9b' }] }
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(db.prepare('SELECT mac_address AS mac FROM service_device_assignments WHERE id = ?').get(b.assignmentId))
+      .toEqual({ mac: null });
+    expect(db.prepare('SELECT mac_address AS mac FROM service_device_assignments WHERE id = ?').get(a.assignmentId))
+      .toEqual({ mac: '9C:47:82:30:34:9B' });
+  });
+
+  test('bulk writes nothing when one MAC is malformed', async () => {
+    const { catalog, service } = seedBaseService();
+    const a = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-A' });
+    const b = await install(service.lastInsertRowid, catalog.lastInsertRowid, { serialNumber: 'SN-B' });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/service-device-assignments',
+      payload: {
+        items: [
+          { id: a.assignmentId, macAddress: '9C:47:82:30:34:9B' },
+          { id: b.assignmentId, macAddress: 'bananeira' }
+        ]
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(db.prepare(
+      "SELECT COUNT(*) AS n FROM service_device_assignments WHERE mac_address IS NOT NULL"
+    ).get()).toEqual({ n: 0 });
+  });
+
+  /** Coluna ausente é coluna que não se mexe — o IP de quem já o tinha fica. */
+  test('bulk leaves a field alone when the payload omits it', async () => {
+    const { catalog, service } = seedBaseService();
+    const a = await install(service.lastInsertRowid, catalog.lastInsertRowid, {
+      serialNumber: 'SN-A', ipAddress: '192.168.1.44'
+    });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/service-device-assignments',
+      payload: { items: [{ id: a.assignmentId, macAddress: '9C:47:82:30:34:9B' }] }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(db.prepare(
+      'SELECT ip_address AS ip, mac_address AS mac FROM service_device_assignments WHERE id = ?'
+    ).get(a.assignmentId)).toEqual({ ip: '192.168.1.44', mac: '9C:47:82:30:34:9B' });
   });
 
   test('replace rejects an IP owned by another active assignment', async () => {

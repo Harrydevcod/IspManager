@@ -6,6 +6,7 @@ import {
   RadioTower,
   X
 } from 'lucide-react';
+import { labelForType, requiresStaticIp } from '../../../shared/equipment';
 import type {
   TopologyBackboneBranch,
   TopologyClientDeviceNode,
@@ -35,7 +36,7 @@ const ISSUE_LABELS: Record<TopologyIssueCode, string> = {
   inactive: 'Inativo',
   missing_ip: 'IP em falta',
   suspended_service: 'Serviço suspenso',
-  incomplete_configuration: 'Configuração incompleta',
+  incomplete_configuration: 'Sem série nem MAC',
   provisional_identity: 'Identidade provisória'
 };
 
@@ -159,12 +160,12 @@ function BackboneDetails({
         <Detail label="Unidade física" value={`#${node.backboneDeviceId}`} />
         <UpstreamList node={node} snapshot={snapshot} onDisconnect={onDisconnectUpstream} />
         <Detail label="Catálogo" value={`#${node.catalogId}`} />
-        <Detail label="Tipo" value={node.catalogType} />
+        <Detail label="Tipo" value={labelForType(node.catalogType)} />
         <Detail label="Marca" value={node.brand ?? 'Não indicada'} />
         <Detail label="Modelo" value={node.model} />
         <Detail label="Serial" value={node.serialNumber ?? 'Não indicado'} />
         <Detail label="Asset tag" value={node.assetTag ?? 'Não indicado'} />
-        <Detail label="IP configurado" value={node.ipAddress ?? 'Em falta'} />
+        <Detail label="IP configurado" value={node.ipAddress ?? (requiresStaticIp(node.catalogType) ? 'Em falta' : 'DHCP')} />
         <Detail label="MAC" value={node.macAddress ?? 'Não indicado'} />
         <Detail
           label="Localização"
@@ -217,7 +218,7 @@ function DeviceDetails({
         <Detail label="Modelo" value={`${node.brand ? `${node.brand} ` : ''}${node.model}`} />
         <Detail label="Serial" value={node.serialNumber ?? 'Não indicado'} />
         <Detail label="Asset tag" value={node.assetTag ?? 'Não indicado'} />
-        <Detail label="IP configurado" value={node.ipAddress ?? 'Em falta'} />
+        <Detail label="IP configurado" value={node.ipAddress ?? (requiresStaticIp(node.catalogType) ? 'Em falta' : 'DHCP')} />
         <Detail label="MAC" value={node.macAddress ?? 'Não indicado'} />
         <Detail label="Desde" value={node.startDate} />
         <Detail label="Ligação" value={clientDeviceUplink(node)} />

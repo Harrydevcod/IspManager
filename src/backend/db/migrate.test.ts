@@ -94,6 +94,60 @@ describe('runMigrations', () => {
       .toEqual({ category: 'equipamento', isSerialized: 1 });
   });
 
+  /**
+   * Desde a 0047 o tipo é do operador: escreve o que tiver na mão, e a base só
+   * exige que não venha vazio. Os predefinidos continuam a entrar como sempre.
+   */
+  test('accepts any non-empty catalog type', () => {
+    const db = freshDb();
+    runMigrations(db);
+
+    const predefined = db.prepare(`
+      INSERT INTO equipment_catalog (type, model, stock_total, active)
+      VALUES ('repetidor', 'iwipi Wi-Fi Repeater', 1, 1)
+    `).run().lastInsertRowid;
+    expect(db.prepare('SELECT type FROM equipment_catalog WHERE id = ?').get(predefined))
+      .toEqual({ type: 'repetidor' });
+
+    const handWritten = db.prepare(`
+      INSERT INTO equipment_catalog (type, model, stock_total, active)
+      VALUES ('Ponto de Acesso', 'TP-Link EAP225', 1, 1)
+    `).run().lastInsertRowid;
+    expect(db.prepare('SELECT type FROM equipment_catalog WHERE id = ?').get(handWritten))
+      .toEqual({ type: 'Ponto de Acesso' });
+
+    for (const empty of ['', '   ']) {
+      expect(() => db.prepare(`
+        INSERT INTO equipment_catalog (type, model) VALUES (?, 'Sem tipo')
+      `).run(empty)).toThrow(/CHECK constraint failed/);
+    }
+  });
+
+  /** Reconstruir a tabela não pode perder linhas nem trocar ids. */
+  test('keeps catalog identity across the repeater rebuild', () => {
+    const db = freshDb();
+    runMigrations(db, migrations.filter((migration) => migration.version < 46));
+
+    const kept = db.prepare(`
+      INSERT INTO equipment_catalog (type, brand, model, stock_total, rental_fee_cve)
+      VALUES ('antena', 'TP-Link', 'CPE710', 4, 250)
+    `).run().lastInsertRowid;
+
+    db.pragma('foreign_keys = ON');
+    runMigrations(db, migrations);
+
+    expect(db.prepare(`
+      SELECT id, type, brand, model, stock_total AS stock, rental_fee_cve AS rental
+      FROM equipment_catalog WHERE id = ?
+    `).get(kept)).toEqual({
+      id: Number(kept), type: 'antena', brand: 'TP-Link', model: 'CPE710', stock: 4, rental: 250
+    });
+    expect(db.prepare(`
+      SELECT COUNT(*) AS count FROM sqlite_master
+      WHERE type = 'index' AND name IN ('idx_eq_catalog_type', 'idx_eq_catalog_category')
+    `).get()).toEqual({ count: 2 });
+  });
+
   test('is idempotent — running twice applies nothing the second time', () => {
     const db = freshDb();
 

@@ -7,7 +7,7 @@ import { requireAuth, requireRole } from './auth';
 
 const catalogSchema = z.object({
   category: z.enum(['equipamento', 'material']).default('equipamento'),
-  type: z.enum(['cpe', 'router', 'antena', 'switch', 'cabo', 'conector', 'ficha', 'suporte', 'outro']),
+  type: z.string().trim().min(1).max(40),
   brand: z.string().trim().optional().nullable(),
   model: z.string().trim().min(1),
   description: z.string().trim().optional().nullable(),

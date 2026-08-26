@@ -1,4 +1,5 @@
 import { ArrowRightLeft, Cable, Coins, History, PackageCheck, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
+import { labelForType } from '../../../shared/equipment';
 import { Badge, Button, Dialog, EmptyState, Message } from '../../components';
 import { formatCve, formatPtDate, formatPtDateTime } from '../../lib/format';
 import { statusLabel, statusTone } from '../../lib/status';
@@ -246,7 +247,7 @@ export function ServiceDetailDialog({
                   <div className="technical-item-head">
                     <strong>
                       {assignment.brand ? `${assignment.brand} ${assignment.model}` : assignment.model}
-                      <span className="technical-item-type"> · {assignment.catalogType}</span>
+                      <span className="technical-item-type"> · {labelForType(assignment.catalogType)}</span>
                     </strong>
                     {!assignment.isOwner && <Badge tone="info">Partilhada</Badge>}
                     {Boolean(assignment.isOwner) && (
@@ -367,7 +368,7 @@ export function ServiceDetailDialog({
               <li key={material.id} className="technical-item active">
                 <div className="technical-item-head">
                   <strong>{material.brand ? `${material.brand} ${material.model}` : material.model}</strong>
-                  <Badge tone="neutral">{material.catalogType}</Badge>
+                  <Badge tone="neutral">{labelForType(material.catalogType)}</Badge>
                 </div>
                 <dl className="technical-item-meta">
                   <div><dt>Quantidade</dt><dd>{material.quantity} {material.unitOfMeasure}</dd></div>

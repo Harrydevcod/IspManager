@@ -6,6 +6,24 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+### Adicionado
+
+- **stock:** o **tipo de equipamento** deixa de ser uma lista fechada. No formulário há **"+ Novo tipo…"**, que troca a lista por uma caixa de texto para escrever o que faltar — o tipo passa a existir a partir daí e reaparece na lista e no filtro. Escrever um que já exista com outra caixa adota o existente, em vez de criar um gémeo. Antes, um equipamento que o vocabulário não previsse obrigava a esperar por uma versão nova da aplicação
+- **stock:** **Ponto de Acesso** e **Repetidor WiFi** juntam-se aos tipos de fábrica, com ícone próprio
+- **serviços:** o ecrã de atribuição em massa passa a ser **"Identificar equipamentos"** e ganha a coluna **MAC** ao lado do IP, com um filtro **"Por identificar"** que lista o equipamento sem MAC nem número de série. É onde se regista de uma vez o parque que está no terreno sem identidade
+
+### Alterado
+
+- **rede:** o **IP fixo** passa a ser escolha da instalação, não do tipo de equipamento. O campo aparece em todo o equipamento e deixá-lo vazio significa DHCP; o CPE e a antena continuam a pedir endereço, porque são o que aponta ao backbone. Antes, um router de gestão ou um ponto de acesso não conseguiam receber endereço — o campo nem aparecia — e não apareciam no ecrã de atribuição
+- **topologia:** o aviso **"Configuração incompleta"** passa a **"Sem série nem MAC"** e só acusa quem não tem nenhuma das duas identidades. Antes exigia número de série, e marcava praticamente todo o parque
+- **operação:** o painel do Estado da operação mede a identificação do parque por **MAC ou série**, a mesma regra do resto da aplicação
+
+### Corrigido
+
+- **equipamento:** o **MAC** passa a ser validado e único entre equipamentos ativos, e é guardado sempre na mesma forma (`AA:BB:CC:DD:EE:FF`), venha escrito com dois-pontos, hífenes ou sem nada. Antes gravava-se qualquer texto e dois equipamentos podiam ficar com o mesmo MAC sem ninguém dar por isso
+- **topologia:** o aviso de **IP em falta** deixa de acusar os routers de cliente, que apanham endereço por DHCP por desenho
+- **stock e serviços:** o tipo do equipamento era mostrado em cru (`repetidor`) na tabela do stock, no detalhe do serviço e no inspetor da topologia, em vez do nome
+
 ## [1.14.3](https://github.com/Harrydevcod/IspManager/releases/tag/v1.14.3) — 2026-08-25
 
 ### Adicionado

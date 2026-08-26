@@ -9,6 +9,8 @@ type IpFieldProps = {
   ariaLabel?: string;
   /** Em tabelas, o cabeçalho já diz "IP": o label fica só para leitores de ecrã. */
   hideLabel?: boolean;
+  /** CPE e antena não podem ficar sem endereço; o resto pode andar em DHCP. */
+  required?: boolean;
 };
 
 /**
@@ -16,12 +18,16 @@ type IpFieldProps = {
  * para só faltar o último octeto, e desiste dela se o utilizador sair sem escrever
  * nada. É sugestão, não regra — o campo continua livre para outra faixa ou classe.
  */
-export function IpField({ value, onChange, prefix, ariaLabel, hideLabel }: IpFieldProps) {
+export function IpField({ value, onChange, prefix, ariaLabel, hideLabel, required }: IpFieldProps) {
   return (
     <Field
       label="IP"
       hideLabel={hideLabel}
       aria-label={ariaLabel}
+      required={required}
+      // Deixar em branco é uma decisão, não um esquecimento: dizê-lo poupa a
+      // dúvida de quem instala um router e não sabe se pode saltar o campo.
+      hint={required || hideLabel ? undefined : 'Vazio = DHCP'}
       value={value}
       placeholder={`${prefix}10`}
       onChange={(event) => onChange(event.target.value)}
