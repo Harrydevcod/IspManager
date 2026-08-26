@@ -782,6 +782,34 @@ describe('device identity (IP fixo)', () => {
     expect(response.statusCode).toBe(400);
   });
 
+  /**
+   * O MAC passou a valer como identidade — dois equipamentos ativos com o mesmo
+   * MAC é sempre erro de registo, e guardá-lo em formatos diferentes escondia-o.
+   */
+  test('install canonicalizes the MAC and refuses a repeated one', async () => {
+    const { catalog, service } = seedBaseService();
+    const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, {
+      macAddress: '9c-47-82-30-34-9b'
+    });
+
+    expect(db.prepare('SELECT mac_address AS mac FROM service_device_assignments WHERE id = ?').get(assignmentId))
+      .toEqual({ mac: '9C:47:82:30:34:9B' });
+
+    // O mesmo equipamento, escrito de outra maneira, continua a ser o mesmo.
+    const { response } = await install(service.lastInsertRowid, catalog.lastInsertRowid, {
+      macAddress: '9C:47:82:30:34:9B'
+    });
+    expect(response.statusCode).toBe(409);
+  });
+
+  test('install rejects a malformed MAC', async () => {
+    const { catalog, service } = seedBaseService();
+    const { response } = await install(service.lastInsertRowid, catalog.lastInsertRowid, {
+      macAddress: '9C:47:82:30:34'
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
   test('install rejects two items in the same batch sharing an IP', async () => {
     const { catalog, service } = seedBaseService();
     const response = await app.inject({

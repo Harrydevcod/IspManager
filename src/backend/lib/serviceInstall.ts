@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
+import { MAC_FORMAT_ERROR, isMacAddress, normalizeMacAddress } from '../../shared/mac';
 
 /**
  * Shared equipment-installation logic, used both by the standalone device-assignment
@@ -97,10 +98,13 @@ export function isIpv4(value: string): boolean {
 const IDENTITY_FIELDS = [
   { key: 'serialNumber', column: 'serial_number', label: 'Serial' },
   { key: 'assetTag', column: 'asset_tag', label: 'Asset tag' },
-  { key: 'ipAddress', column: 'ip_address', label: 'IP' }
+  { key: 'ipAddress', column: 'ip_address', label: 'IP' },
+  // O MAC vale como identidade no mapa desde que a série deixou de ser exigida:
+  // se dois equipamentos ativos partilham um, um deles está mal registado.
+  { key: 'macAddress', column: 'mac_address', label: 'MAC' }
 ] as const;
 
-export type DeviceIdentity = Pick<DeviceInput, 'serialNumber' | 'assetTag' | 'ipAddress'>;
+export type DeviceIdentity = Pick<DeviceInput, 'serialNumber' | 'assetTag' | 'ipAddress' | 'macAddress'>;
 
 export type IdentityIssue = { status: number; error: string };
 
@@ -124,8 +128,13 @@ export function checkDeviceIdentity(
     return { status: 400, error: IP_FORMAT_ERROR };
   }
 
+  const macAddress = normalizeMacAddress(device.macAddress);
+  if (macAddress && !isMacAddress(macAddress)) {
+    return { status: 400, error: MAC_FORMAT_ERROR };
+  }
+
   for (const field of IDENTITY_FIELDS) {
-    const value = cleanValue(device[field.key]);
+    const value = field.key === 'macAddress' ? macAddress : cleanValue(device[field.key]);
     if (!value) {
       continue;
     }
@@ -205,7 +214,11 @@ export function preflightItems(db: Database.Database, items: ServiceItemInput[])
         return result;
       }
       for (const field of IDENTITY_FIELDS) {
-        const value = cleanValue(item[field.key]);
+        // Canónico antes de comparar: senão `aa-bb-...` e `AA:BB:...` no mesmo
+        // lote passavam por dois equipamentos diferentes.
+        const value = field.key === 'macAddress'
+          ? normalizeMacAddress(item[field.key])
+          : cleanValue(item[field.key]);
         if (!value) {
           continue;
         }
@@ -256,7 +269,7 @@ export function installDeviceWithinTx(
   const serialNumber = cleanValue(device.serialNumber);
   const assetTag = cleanValue(device.assetTag);
   const ipAddress = cleanValue(device.ipAddress);
-  const macAddress = cleanValue(device.macAddress);
+  const macAddress = normalizeMacAddress(device.macAddress);
   const notes = cleanValue(device.notes);
   const technicianId = device.technicianId || null;
 

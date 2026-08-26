@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { normalizeMacAddress } from '../../shared/mac';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit, recordAuditStrict } from '../lib/audit';
 import {
@@ -615,7 +616,7 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       serialNumber: merge(parsed.data.serialNumber, current.serialNumber),
       assetTag: merge(parsed.data.assetTag, current.assetTag),
       ipAddress: merge(parsed.data.ipAddress, current.ipAddress),
-      macAddress: merge(parsed.data.macAddress, current.macAddress),
+      macAddress: normalizeMacAddress(merge(parsed.data.macAddress, current.macAddress)),
       notes: merge(parsed.data.notes, current.notes),
       rentalFeeCve: parsed.data.rentalFeeCve == null ? current.rentalFeeCve : Math.round(parsed.data.rentalFeeCve)
     };
@@ -633,7 +634,8 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
     const conflict = checkDeviceIdentity(db, {
       serialNumber: changed(next.serialNumber, current.serialNumber),
       assetTag: changed(next.assetTag, current.assetTag),
-      ipAddress: changed(next.ipAddress, current.ipAddress)
+      ipAddress: changed(next.ipAddress, current.ipAddress),
+      macAddress: changed(next.macAddress, current.macAddress)
     }, assignmentId);
     if (conflict) {
       return reply.status(conflict.status).send({ error: conflict.error });
@@ -708,10 +710,10 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
     const serialNumber = cleanValue(parsed.data.serialNumber);
     const assetTag = cleanValue(parsed.data.assetTag);
     const ipAddress = cleanValue(parsed.data.ipAddress);
-    const macAddress = cleanValue(parsed.data.macAddress);
+    const macAddress = normalizeMacAddress(parsed.data.macAddress);
     const notes = cleanValue(parsed.data.notes);
 
-    const conflict = checkDeviceIdentity(db, { serialNumber, assetTag, ipAddress }, assignmentId);
+    const conflict = checkDeviceIdentity(db, { serialNumber, assetTag, ipAddress, macAddress }, assignmentId);
     if (conflict) {
       return reply.status(conflict.status).send({ error: conflict.error });
     }
