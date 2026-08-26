@@ -6,6 +6,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.15.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.15.0) — 2026-08-26
+
 ### Adicionado
 
 - **stock:** o **tipo de equipamento** deixa de ser uma lista fechada. No formulário há **"+ Novo tipo…"**, que troca a lista por uma caixa de texto para escrever o que faltar — o tipo passa a existir a partir daí e reaparece na lista e no filtro. Escrever um que já exista com outra caixa adota o existente, em vez de criar um gémeo. Antes, um equipamento que o vocabulário não previsse obrigava a esperar por uma versão nova da aplicação
