@@ -152,3 +152,63 @@ test('does not send the removed backbone quantity in catalog payloads', async ()
   const payload = JSON.parse(String(createCall[1]?.body)) as Record<string, unknown>;
   expect(payload).not.toHaveProperty('backboneQty');
 });
+
+/**
+ * O tipo deixou de ser lista fechada: quem tem o equipamento na mão escreve o
+ * tipo que faltar. Só que "ROUTER" não é um tipo novo — é o que já lá está.
+ */
+test('lets the operator write a new type, and adopts an existing one when it matches', async () => {
+  const container = await mount();
+
+  async function createWithType(typed: string): Promise<string> {
+    const create = [...container.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === 'Novo equipamento');
+    if (!create) throw new Error('Create catalog action not found');
+    await act(async () => create.click());
+
+    // O filtro da barra também se chama "Tipo": procurar sempre dentro do formulário.
+    const form = document.querySelector('#catalog-form');
+    if (!form) throw new Error('Catalog form not found');
+    const typeSelect = [...form.querySelectorAll('label')]
+      .find((label) => label.querySelector('.field-label')?.textContent === 'Tipo')
+      ?.querySelector('select');
+    if (!typeSelect) throw new Error('Type select not found');
+    const selectSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+    await act(async () => {
+      selectSetter?.call(typeSelect, '__novo_tipo__');
+      typeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    const inputSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    const fill = async (labelText: string, value: string) => {
+      const input = [...form.querySelectorAll('label')]
+        .find((label) => label.querySelector('.field-label')?.textContent === labelText)
+        ?.querySelector('input');
+      if (!input) throw new Error(`${labelText} input not found`);
+      await act(async () => {
+        inputSetter?.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    };
+    await fill('Novo tipo', typed);
+    await fill('Modelo', 'Equipamento novo');
+
+    const save = [...document.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === 'Gravar equipamento');
+    if (!save) throw new Error('Save catalog action not found');
+    await act(async () => {
+      save.click();
+      await Promise.resolve();
+    });
+
+    const calls = vi.mocked(fetch).mock.calls.filter(([input, init]) => (
+      String(input).endsWith('/api/equipment-catalog') && init?.method === 'POST'
+    ));
+    const last = calls[calls.length - 1];
+    if (!last) throw new Error('Catalog request not found');
+    return (JSON.parse(String(last[1]?.body)) as { type: string }).type;
+  }
+
+  expect(await createWithType('  Ponto de Acesso  ')).toBe('Ponto de Acesso');
+  expect(await createWithType('ROUTER')).toBe('router');
+});

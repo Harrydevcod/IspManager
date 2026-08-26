@@ -6,6 +6,7 @@ import {
   RadioTower,
   X
 } from 'lucide-react';
+import { labelForType } from '../../../shared/equipment';
 import type {
   TopologyBackboneBranch,
   TopologyClientDeviceNode,
@@ -159,7 +160,7 @@ function BackboneDetails({
         <Detail label="Unidade física" value={`#${node.backboneDeviceId}`} />
         <UpstreamList node={node} snapshot={snapshot} onDisconnect={onDisconnectUpstream} />
         <Detail label="Catálogo" value={`#${node.catalogId}`} />
-        <Detail label="Tipo" value={node.catalogType} />
+        <Detail label="Tipo" value={labelForType(node.catalogType)} />
         <Detail label="Marca" value={node.brand ?? 'Não indicada'} />
         <Detail label="Modelo" value={node.model} />
         <Detail label="Serial" value={node.serialNumber ?? 'Não indicado'} />

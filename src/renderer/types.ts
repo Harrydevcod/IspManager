@@ -1,4 +1,3 @@
-import type { EquipmentType } from '../shared/equipment';
 
 declare global {
   interface Window {
@@ -151,7 +150,7 @@ export type PlanRow = {
 export type StockCatalogRow = {
   id: number;
   category: 'equipamento' | 'material';
-  type: EquipmentType;
+  type: string;
   brand: string | null;
   model: string;
   supplier: string | null;

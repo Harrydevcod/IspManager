@@ -1,18 +1,20 @@
 /**
- * O vocabulário de tipos do catálogo de stock, num sítio só.
+ * Os tipos de catálogo que vêm de fábrica — sugestões, não o universo.
  *
- * Estava escrito em quatro: o `z.enum` da rota, a união do renderer e os dois
- * `<select>` do Stock. Acrescentar um tipo obrigava a acertar os quatro à mão, e
- * bastava esquecer um para o formulário oferecer algo que a API recusa.
+ * O tipo é texto livre desde a migração 0047: o operador escreve o que faltar no
+ * próprio formulário do Stock e a base só exige que não venha vazio. Esta lista
+ * é o que se oferece primeiro no `<select>`, e é dela que saem os rótulos e as
+ * duas abas do catálogo.
  *
- * O CHECK de `equipment_catalog.type` na base é a outra cópia, e essa não sai
- * daqui — vive numa migração, porque o SQLite não altera um CHECK no sítio. Um
- * tipo novo é uma linha aqui e uma migração de reconstrução (ver a 0046).
+ * Um tipo escrito à mão é só uma etiqueta. Comportamento — levar IP fixo, poder
+ * ligar ao backbone — continua a sair das listas fixas mais abaixo e de
+ * `BACKBONE_UPLINK_TYPES` em `topology.ts`, e essas só mudam por código.
  */
 export const EQUIPMENT_TYPES = [
   'cpe',
   'router',
   'antena',
+  'ap',
   'repetidor',
   'switch',
   'cabo',
@@ -29,6 +31,7 @@ export const EQUIPMENT_TYPE_LABELS: Record<EquipmentType, string> = {
   cpe: 'CPE',
   router: 'Router',
   antena: 'Antena',
+  ap: 'Ponto de Acesso',
   repetidor: 'Repetidor WiFi',
   switch: 'Switch',
   cabo: 'Cabo',
@@ -38,22 +41,29 @@ export const EQUIPMENT_TYPE_LABELS: Record<EquipmentType, string> = {
   outro: 'Outro'
 };
 
+/**
+ * O rótulo de um tipo. Os predefinidos têm nome de gente no registo acima; um
+ * tipo escrito à mão mostra-se à letra, tal como o operador o escreveu.
+ */
+export function labelForType(type: string): string {
+  return EQUIPMENT_TYPE_LABELS[type as EquipmentType] ?? type;
+}
+
 /** O Stock separa o catálogo em duas abas; "outro" serve as duas. */
 export const EQUIPMENT_TYPES_BY_CATEGORY: Record<
   'equipamento' | 'material',
   readonly EquipmentType[]
 > = {
-  equipamento: ['cpe', 'router', 'antena', 'repetidor', 'switch', 'outro'],
+  equipamento: ['cpe', 'router', 'antena', 'ap', 'repetidor', 'switch', 'outro'],
   material: ['cabo', 'conector', 'ficha', 'suporte', 'outro']
 };
 
 /**
- * Só as antenas CPE e os pontos de acesso levam IP fixo — são o que se identifica
- * para manutenção remota. Os routers do cliente apanham IP dinâmico por DHCP e não
- * interessam para esse efeito.
+ * Só o que aponta ao backbone leva IP fixo: o CPE e a antena são o que se
+ * identifica e se vai lá ver quando a ligação cai.
  *
- * O repetidor fica de fora até alguém decidir o contrário: os que estão no terreno
- * apanham DHCP da antena a que estão ligados.
+ * Tudo o que fica atrás da antena — o router do cliente, o repetidor, o ponto de
+ * acesso — apanha DHCP de quem está acima e não se registam endereços para eles.
  */
 export const STATIC_IP_EQUIPMENT_TYPES: readonly EquipmentType[] = ['cpe', 'antena'];
 

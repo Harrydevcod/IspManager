@@ -95,23 +95,32 @@ describe('runMigrations', () => {
   });
 
   /**
-   * O repetidor com entrada de cabo que faz de ponto de acesso é o caso real —
-   * até aqui só cabia como `router`, que não é o que ele faz.
+   * Desde a 0047 o tipo é do operador: escreve o que tiver na mão, e a base só
+   * exige que não venha vazio. Os predefinidos continuam a entrar como sempre.
    */
-  test('accepts the repeater type without opening the catalog to anything else', () => {
+  test('accepts any non-empty catalog type', () => {
     const db = freshDb();
     runMigrations(db);
 
-    const id = db.prepare(`
+    const predefined = db.prepare(`
       INSERT INTO equipment_catalog (type, model, stock_total, active)
       VALUES ('repetidor', 'iwipi Wi-Fi Repeater', 1, 1)
     `).run().lastInsertRowid;
-    expect(db.prepare('SELECT type FROM equipment_catalog WHERE id = ?').get(id))
+    expect(db.prepare('SELECT type FROM equipment_catalog WHERE id = ?').get(predefined))
       .toEqual({ type: 'repetidor' });
 
-    expect(() => db.prepare(`
-      INSERT INTO equipment_catalog (type, model) VALUES ('bananeira', 'Nada disto')
-    `).run()).toThrow(/CHECK constraint failed/);
+    const handWritten = db.prepare(`
+      INSERT INTO equipment_catalog (type, model, stock_total, active)
+      VALUES ('Ponto de Acesso', 'TP-Link EAP225', 1, 1)
+    `).run().lastInsertRowid;
+    expect(db.prepare('SELECT type FROM equipment_catalog WHERE id = ?').get(handWritten))
+      .toEqual({ type: 'Ponto de Acesso' });
+
+    for (const empty of ['', '   ']) {
+      expect(() => db.prepare(`
+        INSERT INTO equipment_catalog (type, model) VALUES (?, 'Sem tipo')
+      `).run(empty)).toThrow(/CHECK constraint failed/);
+    }
   });
 
   /** Reconstruir a tabela não pode perder linhas nem trocar ids. */

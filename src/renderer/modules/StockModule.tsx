@@ -1,8 +1,8 @@
-import { Activity, ArrowDownUp, Banknote, Boxes, Cable, Gauge, HardDrive, Network, Pencil, Plus, Radio, Router, Users } from 'lucide-react';
+import { Activity, Antenna, ArrowDownUp, Banknote, Boxes, Cable, Gauge, HardDrive, Network, Pencil, Plus, Radio, Router, Users, Wifi } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { EQUIPMENT_TYPES_BY_CATEGORY, EQUIPMENT_TYPE_LABELS } from '../../shared/equipment';
+import { EQUIPMENT_TYPES_BY_CATEGORY, labelForType } from '../../shared/equipment';
 import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
@@ -61,15 +61,21 @@ function emptyMovementForm(): StockMovementFormState {
   return { type: 'entrada', quantity: '1', unitCostCve: '', supplier: '', reference: '', notes: '' };
 }
 
+/** Os tipos escritos à mão caem no genérico — só os de fábrica têm cara própria. */
 function iconForType(type: StockCatalogRow['type']): LucideIcon {
   switch (type) {
-    case 'cpe':    return HardDrive;
-    case 'router': return Router;
-    case 'antena': return Radio;
-    case 'switch': return Network;
-    default:       return Boxes;
+    case 'cpe':       return HardDrive;
+    case 'router':    return Router;
+    case 'antena':    return Radio;
+    case 'ap':        return Antenna;
+    case 'repetidor': return Wifi;
+    case 'switch':    return Network;
+    default:          return Boxes;
   }
 }
+
+/** Opção sentinela do `<select>` de tipo: escrever um que ainda não existe. */
+const NEW_TYPE_OPTION = '__novo_tipo__';
 
 function movementTone(type: StockMovement['type']): 'success' | 'danger' | 'info' {
   if (type === 'entrada') return 'success';
@@ -101,9 +107,10 @@ export function StockModule({
   const [editingCatalog, setEditingCatalog] = useState<StockCatalogRow | null>(null);
   const [search, setSearch] = useState('');
   const [stockTab, setStockTab] = useState<'equipamento' | 'material'>('equipamento');
-  const [typeFilter, setTypeFilter] = useState<'all' | StockCatalogRow['type']>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out'>('all');
   const [catalogForm, setCatalogForm] = useState<StockFormState>(emptyCatalogForm());
+  const [writingNewType, setWritingNewType] = useState(false);
   const [movementForm, setMovementForm] = useState<StockMovementFormState>(emptyMovementForm());
   const [sortState, setSortState] = useState<SortState<StockSortKey>>(DEFAULT_STOCK_SORT);
   const [stockPage, setStockPage] = useState(1);
@@ -174,6 +181,7 @@ export function StockModule({
 
   function openCreateCatalog() {
     setEditingCatalog(null);
+    setWritingNewType(false);
     setCatalogForm(stockTab === 'material'
       ? { ...emptyCatalogForm(), category: 'material', isSerialized: '0', type: 'cabo', unitOfMeasure: 'metro' }
       : emptyCatalogForm());
@@ -182,6 +190,7 @@ export function StockModule({
 
   function editCatalog(catalog: StockCatalogRow) {
     setEditingCatalog(catalog);
+    setWritingNewType(false);
     setCatalogForm({
       category: catalog.category,
       type: catalog.type,
@@ -202,6 +211,7 @@ export function StockModule({
   function closeCatalogForm() {
     setEditingCatalog(null);
     setShowCatalogForm(false);
+    setWritingNewType(false);
     setCatalogForm(emptyCatalogForm());
   }
 
@@ -218,11 +228,17 @@ export function StockModule({
   async function saveCatalog(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const url = editingCatalog ? `http://127.0.0.1:3001/api/equipment-catalog/${editingCatalog.id}` : 'http://127.0.0.1:3001/api/equipment-catalog';
+    // Um tipo escrito à mão que já exista com outra caixa é o mesmo tipo: adota-se
+    // o que está no catálogo, para não ficarem dois gémeos na lista.
+    const typed = catalogForm.type.trim();
+    const type = typeOptionsByCategory[catalogForm.category]
+      .find((option) => option.toLowerCase() === typed.toLowerCase()) || typed;
     const response = await authFetch(url, {
       method: editingCatalog ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...catalogForm,
+        type,
         purchasePriceCve: Number(catalogForm.purchasePriceCve || 0),
         sellingPriceCve: Number(catalogForm.sellingPriceCve || 0),
         rentalFeeCve: Number(catalogForm.rentalFeeCve || 0),
@@ -300,6 +316,25 @@ export function StockModule({
     };
   }, [summary, stockTab]);
 
+  /**
+   * Os tipos que o catálogo já usa juntam-se aos de fábrica. Não há tabela de
+   * tipos: um tipo escrito à mão existe enquanto houver artigos com ele, e é daí
+   * que volta a aparecer na lista — no filtro e no formulário.
+   */
+  const typeOptionsByCategory = useMemo(() => {
+    const build = (category: 'equipamento' | 'material') => {
+      const options: string[] = [...EQUIPMENT_TYPES_BY_CATEGORY[category]];
+      const seen = new Set(options.map((type) => type.toLowerCase()));
+      for (const row of summary?.rows || []) {
+        if (row.category !== category || seen.has(row.type.toLowerCase())) continue;
+        seen.add(row.type.toLowerCase());
+        options.push(row.type);
+      }
+      return options;
+    };
+    return { equipamento: build('equipamento'), material: build('material') };
+  }, [summary]);
+
   const filteredStockRows = useMemo(() => (summary?.rows || []).filter((item) => {
     const normalizedSearch = search.trim().toLowerCase();
     const label = `${item.brand || ''} ${item.model} ${item.supplier || ''}`.toLowerCase();
@@ -325,6 +360,56 @@ export function StockModule({
   useEffect(() => {
     setStockPage(1);
   }, [search, stockTab, typeFilter, stockFilter, sortState, stockPageSize]);
+
+  /**
+   * O tipo é o mesmo campo nas duas abas do formulário, e é o único que se pode
+   * inventar: escolher "+ Novo tipo…" troca a lista por uma caixa de texto.
+   */
+  function renderTypeField() {
+    const options = typeOptionsByCategory[catalogForm.category];
+    if (writingNewType) {
+      return (
+        <div className="stock-new-type">
+          <Field
+            label="Novo tipo"
+            required
+            // Quem escolheu "+ Novo tipo…" quer escrever já, não caçar o campo.
+            autoFocus
+            maxLength={40}
+            value={catalogForm.type}
+            onChange={(event) => updateCatalogForm('type', event.target.value)}
+            placeholder="Ex.: Ponto de Acesso"
+          />
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={() => { setWritingNewType(false); updateCatalogForm('type', options[0]); }}
+          >
+            Escolher da lista
+          </Button>
+        </div>
+      );
+    }
+    return (
+      <Select
+        label="Tipo"
+        value={catalogForm.type}
+        onChange={(event) => {
+          if (event.target.value === NEW_TYPE_OPTION) {
+            setWritingNewType(true);
+            updateCatalogForm('type', '');
+            return;
+          }
+          updateCatalogForm('type', event.target.value);
+        }}
+      >
+        {options.map((type) => (
+          <option key={type} value={type}>{labelForType(type)}</option>
+        ))}
+        <option value={NEW_TYPE_OPTION}>+ Novo tipo…</option>
+      </Select>
+    );
+  }
 
   return (
     <section className="module-panel">
@@ -381,10 +466,10 @@ export function StockModule({
       <div className="stock-filter-sticky">
         <FilterBar>
           <Field type="search" label="Buscar" aria-label="Pesquisar stock" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Marca, modelo ou fornecedor" />
-          <Select label="Tipo" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | StockCatalogRow['type'])}>
+          <Select label="Tipo" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
             <option value="all">Todos</option>
-            {EQUIPMENT_TYPES_BY_CATEGORY[stockTab].map((type) => (
-              <option key={type} value={type}>{EQUIPMENT_TYPE_LABELS[type]}</option>
+            {typeOptionsByCategory[stockTab].map((type) => (
+              <option key={type} value={type}>{labelForType(type)}</option>
             ))}
           </Select>
           <Select label="Stock" value={stockFilter} onChange={(event) => setStockFilter(event.target.value as 'all' | 'low' | 'out')}>
@@ -564,7 +649,7 @@ export function StockModule({
               {
                 header: 'Tipo',
                 sortKey: 'type',
-                cell: (item) => <span>{item.type}</span>
+                cell: (item) => <span>{labelForType(item.type)}</span>
               },
               {
                 header: 'Stock',
@@ -659,11 +744,7 @@ export function StockModule({
         <form id="catalog-form" className="client-form" onSubmit={saveCatalog}>
           {catalogForm.category === 'material' ? (
             <>
-              <Select label="Tipo" value={catalogForm.type} onChange={(event) => updateCatalogForm('type', event.target.value)}>
-                {EQUIPMENT_TYPES_BY_CATEGORY.material.map((type) => (
-                  <option key={type} value={type}>{EQUIPMENT_TYPE_LABELS[type]}</option>
-                ))}
-              </Select>
+              {renderTypeField()}
               <Field label="Designacao" required value={catalogForm.model} onChange={(event) => updateCatalogForm('model', event.target.value)} placeholder="Ex.: Cabo UTP Cat6" />
               <Select label="Unidade de medida" value={catalogForm.unitOfMeasure} onChange={(event) => updateCatalogForm('unitOfMeasure', event.target.value)}>
                 <option value="metro">Metro</option>
@@ -678,11 +759,7 @@ export function StockModule({
             </>
           ) : (
             <>
-              <Select label="Tipo" value={catalogForm.type} onChange={(event) => updateCatalogForm('type', event.target.value)}>
-                {EQUIPMENT_TYPES_BY_CATEGORY.equipamento.map((type) => (
-                  <option key={type} value={type}>{EQUIPMENT_TYPE_LABELS[type]}</option>
-                ))}
-              </Select>
+              {renderTypeField()}
               <Field label="Marca" value={catalogForm.brand} onChange={(event) => updateCatalogForm('brand', event.target.value)} />
               <Field label="Modelo" required value={catalogForm.model} onChange={(event) => updateCatalogForm('model', event.target.value)} />
               <Field label="Fornecedor" value={catalogForm.supplier} onChange={(event) => updateCatalogForm('supplier', event.target.value)} />
