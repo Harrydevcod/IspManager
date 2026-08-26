@@ -2,6 +2,7 @@ import { Activity, ArrowDownUp, Banknote, Boxes, Cable, Gauge, HardDrive, Networ
 import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { EQUIPMENT_TYPES_BY_CATEGORY, EQUIPMENT_TYPE_LABELS } from '../../shared/equipment';
 import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
@@ -382,23 +383,9 @@ export function StockModule({
           <Field type="search" label="Buscar" aria-label="Pesquisar stock" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Marca, modelo ou fornecedor" />
           <Select label="Tipo" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | StockCatalogRow['type'])}>
             <option value="all">Todos</option>
-            {stockTab === 'equipamento' ? (
-              <>
-                <option value="cpe">CPE</option>
-                <option value="router">Router</option>
-                <option value="antena">Antena</option>
-                <option value="switch">Switch</option>
-                <option value="outro">Outro</option>
-              </>
-            ) : (
-              <>
-                <option value="cabo">Cabo</option>
-                <option value="conector">Conector</option>
-                <option value="ficha">Ficha</option>
-                <option value="suporte">Suporte</option>
-                <option value="outro">Outro</option>
-              </>
-            )}
+            {EQUIPMENT_TYPES_BY_CATEGORY[stockTab].map((type) => (
+              <option key={type} value={type}>{EQUIPMENT_TYPE_LABELS[type]}</option>
+            ))}
           </Select>
           <Select label="Stock" value={stockFilter} onChange={(event) => setStockFilter(event.target.value as 'all' | 'low' | 'out')}>
             <option value="all">Todos</option>
@@ -673,11 +660,9 @@ export function StockModule({
           {catalogForm.category === 'material' ? (
             <>
               <Select label="Tipo" value={catalogForm.type} onChange={(event) => updateCatalogForm('type', event.target.value)}>
-                <option value="cabo">Cabo</option>
-                <option value="conector">Conector</option>
-                <option value="ficha">Ficha</option>
-                <option value="suporte">Suporte</option>
-                <option value="outro">Outro</option>
+                {EQUIPMENT_TYPES_BY_CATEGORY.material.map((type) => (
+                  <option key={type} value={type}>{EQUIPMENT_TYPE_LABELS[type]}</option>
+                ))}
               </Select>
               <Field label="Designacao" required value={catalogForm.model} onChange={(event) => updateCatalogForm('model', event.target.value)} placeholder="Ex.: Cabo UTP Cat6" />
               <Select label="Unidade de medida" value={catalogForm.unitOfMeasure} onChange={(event) => updateCatalogForm('unitOfMeasure', event.target.value)}>
@@ -694,11 +679,9 @@ export function StockModule({
           ) : (
             <>
               <Select label="Tipo" value={catalogForm.type} onChange={(event) => updateCatalogForm('type', event.target.value)}>
-                <option value="cpe">CPE</option>
-                <option value="router">Router</option>
-                <option value="antena">Antena</option>
-                <option value="switch">Switch</option>
-                <option value="outro">Outro</option>
+                {EQUIPMENT_TYPES_BY_CATEGORY.equipamento.map((type) => (
+                  <option key={type} value={type}>{EQUIPMENT_TYPE_LABELS[type]}</option>
+                ))}
               </Select>
               <Field label="Marca" value={catalogForm.brand} onChange={(event) => updateCatalogForm('brand', event.target.value)} />
               <Field label="Modelo" required value={catalogForm.model} onChange={(event) => updateCatalogForm('model', event.target.value)} />

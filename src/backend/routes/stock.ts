@@ -2,12 +2,13 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
+import { EQUIPMENT_TYPES } from '../../shared/equipment';
 import { SHARED_WITH_NAMES_SQL } from '../lib/deviceShares';
 import { requireAuth, requireRole } from './auth';
 
 const catalogSchema = z.object({
   category: z.enum(['equipamento', 'material']).default('equipamento'),
-  type: z.enum(['cpe', 'router', 'antena', 'switch', 'cabo', 'conector', 'ficha', 'suporte', 'outro']),
+  type: z.enum(EQUIPMENT_TYPES),
   brand: z.string().trim().optional().nullable(),
   model: z.string().trim().min(1),
   description: z.string().trim().optional().nullable(),

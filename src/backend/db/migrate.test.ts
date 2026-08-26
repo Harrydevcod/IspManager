@@ -94,6 +94,51 @@ describe('runMigrations', () => {
       .toEqual({ category: 'equipamento', isSerialized: 1 });
   });
 
+  /**
+   * O repetidor com entrada de cabo que faz de ponto de acesso é o caso real —
+   * até aqui só cabia como `router`, que não é o que ele faz.
+   */
+  test('accepts the repeater type without opening the catalog to anything else', () => {
+    const db = freshDb();
+    runMigrations(db);
+
+    const id = db.prepare(`
+      INSERT INTO equipment_catalog (type, model, stock_total, active)
+      VALUES ('repetidor', 'iwipi Wi-Fi Repeater', 1, 1)
+    `).run().lastInsertRowid;
+    expect(db.prepare('SELECT type FROM equipment_catalog WHERE id = ?').get(id))
+      .toEqual({ type: 'repetidor' });
+
+    expect(() => db.prepare(`
+      INSERT INTO equipment_catalog (type, model) VALUES ('bananeira', 'Nada disto')
+    `).run()).toThrow(/CHECK constraint failed/);
+  });
+
+  /** Reconstruir a tabela não pode perder linhas nem trocar ids. */
+  test('keeps catalog identity across the repeater rebuild', () => {
+    const db = freshDb();
+    runMigrations(db, migrations.filter((migration) => migration.version < 46));
+
+    const kept = db.prepare(`
+      INSERT INTO equipment_catalog (type, brand, model, stock_total, rental_fee_cve)
+      VALUES ('antena', 'TP-Link', 'CPE710', 4, 250)
+    `).run().lastInsertRowid;
+
+    db.pragma('foreign_keys = ON');
+    runMigrations(db, migrations);
+
+    expect(db.prepare(`
+      SELECT id, type, brand, model, stock_total AS stock, rental_fee_cve AS rental
+      FROM equipment_catalog WHERE id = ?
+    `).get(kept)).toEqual({
+      id: Number(kept), type: 'antena', brand: 'TP-Link', model: 'CPE710', stock: 4, rental: 250
+    });
+    expect(db.prepare(`
+      SELECT COUNT(*) AS count FROM sqlite_master
+      WHERE type = 'index' AND name IN ('idx_eq_catalog_type', 'idx_eq_catalog_category')
+    `).get()).toEqual({ count: 2 });
+  });
+
   test('is idempotent — running twice applies nothing the second time', () => {
     const db = freshDb();
 

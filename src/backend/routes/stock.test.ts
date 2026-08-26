@@ -99,6 +99,27 @@ describe('POST /api/equipment-catalog with materials', () => {
     `).get(id)).toEqual({ category: 'material', type: 'cabo', unit: 'metro', serialized: 0 });
   });
 
+  /** O que está atrás da antena do cliente nem sempre é um router. */
+  test('creates a wifi repeater, the equipment behind the client antenna', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/equipment-catalog',
+      payload: {
+        category: 'equipamento',
+        type: 'repetidor',
+        brand: 'iwipi',
+        model: 'Wi-Fi Repeater',
+        purchasePriceCve: 1500,
+        stockTotal: 2
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    const id = (response.json() as { id: number }).id;
+    expect(db.prepare('SELECT type FROM equipment_catalog WHERE id = ?').get(id))
+      .toEqual({ type: 'repetidor' });
+  });
+
   test('summary returns category, unit and isSerialized', async () => {
     db.prepare(`
       INSERT INTO equipment_catalog (category, type, model, unit_of_measure, is_serialized, stock_total, active)

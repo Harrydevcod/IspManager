@@ -1,3 +1,5 @@
+import type { EquipmentType } from '../shared/equipment';
+
 declare global {
   interface Window {
     ispm?: {
@@ -149,7 +151,7 @@ export type PlanRow = {
 export type StockCatalogRow = {
   id: number;
   category: 'equipamento' | 'material';
-  type: 'cpe' | 'router' | 'antena' | 'switch' | 'cabo' | 'conector' | 'ficha' | 'suporte' | 'outro';
+  type: EquipmentType;
   brand: string | null;
   model: string;
   supplier: string | null;
