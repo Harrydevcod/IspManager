@@ -347,7 +347,10 @@ function clientDeviceIssues(
   if (services.some((service) => service.status === 'suspended')) {
     issues.push('suspended_service');
   }
-  if (row.isSerialized === 1 && !row.serialNumber?.trim()) {
+  // Identificar a unidade é o que interessa, e no terreno isso faz-se pelo MAC
+  // tanto como pela série — a caixa raramente volta com a etiqueta legível. Só
+  // quem não tem nenhum dos dois é que fica mesmo por identificar.
+  if (row.isSerialized === 1 && !row.serialNumber?.trim() && !row.macAddress?.trim()) {
     issues.push('incomplete_configuration');
   }
   return issues;
@@ -518,7 +521,11 @@ function loadAggregateRow(db: Database.Database): AggregateRow {
            ec.type IN (${STATIC_IP_REQUIRED_TYPES_SQL})
            AND NULLIF(TRIM(a.ip_address), '') IS NULL
          )
-         OR (ec.is_serialized = 1 AND NULLIF(TRIM(a.serial_number), '') IS NULL)
+         OR (
+           ec.is_serialized = 1
+           AND NULLIF(TRIM(a.serial_number), '') IS NULL
+           AND NULLIF(TRIM(a.mac_address), '') IS NULL
+         )
          OR EXISTS (
            SELECT 1 FROM assignment_services av
            JOIN services s ON s.id = av.service_id

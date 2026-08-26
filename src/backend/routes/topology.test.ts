@@ -912,7 +912,7 @@ describe('GET /api/topology/search', () => {
       'SELECT service_id AS serviceId FROM service_device_assignments WHERE id = ?'
     ).get(fixture.incompleteAssignmentId) as { serviceId: number };
     const attentionBefore = (await app.inject({ method: 'GET', url: '/api/topology' }))
-      .json().stats.assignmentAttentionCount as number;
+      .json().stats.attentionCount as number;
     const routerAssignmentId = insertAssignment({
       serviceId,
       catalogId: insertCatalog({ model: 'hAP ax lite', type: 'router' }),
@@ -931,7 +931,42 @@ describe('GET /api/topology/search', () => {
     // O total de atenções sai de um SQL à parte: se discordar dos nós, o mapa
     // anuncia problemas que nenhum equipamento mostra.
     const stats = (await app.inject({ method: 'GET', url: '/api/topology' })).json().stats;
-    expect(stats.assignmentAttentionCount).toBe(attentionBefore);
+    expect(stats.attentionCount).toBe(attentionBefore);
+  });
+
+  /**
+   * No terreno a unidade identifica-se pelo MAC tanto como pela série — a etiqueta
+   * da caixa raramente volta legível. Exigir série marcava como por configurar
+   * equipamento que está perfeitamente identificado.
+   */
+  test('accepts the MAC as identity, and only flags equipment with neither', async () => {
+    const fixture = seedTopology();
+    const { serviceId } = db.prepare(
+      'SELECT service_id AS serviceId FROM service_device_assignments WHERE id = ?'
+    ).get(fixture.incompleteAssignmentId) as { serviceId: number };
+    const attentionBefore = (await app.inject({ method: 'GET', url: '/api/topology' }))
+      .json().stats.attentionCount as number;
+    const catalogId = insertCatalog({ model: 'LiteBeam M5', type: 'cpe' });
+    const withMac = insertAssignment({
+      serviceId,
+      catalogId,
+      ip: '192.168.1.201',
+      mac: 'AA:BB:CC:DD:EE:01'
+    });
+    const withNothing = insertAssignment({ serviceId, catalogId, ip: '192.168.1.202' });
+
+    const issuesOf = async (assignmentId: number, query: string) => {
+      const results = (await app.inject({ method: 'GET', url: `/api/topology/search?q=${query}` }))
+        .json().results as Array<{ node: { assignmentId?: number; issueCodes: string[] } }>;
+      return results.find((item) => item.node.assignmentId === assignmentId)?.node.issueCodes;
+    };
+
+    expect(await issuesOf(withMac, '192.168.1.201')).toEqual([]);
+    expect(await issuesOf(withNothing, '192.168.1.202')).toEqual(['incomplete_configuration']);
+
+    // Só o que não tem identidade nenhuma é que soma ao total.
+    const stats = (await app.inject({ method: 'GET', url: '/api/topology' })).json().stats;
+    expect(stats.attentionCount).toBe(attentionBefore + 1);
   });
 
   test('caps results at the requested limit and never above 50', async () => {
