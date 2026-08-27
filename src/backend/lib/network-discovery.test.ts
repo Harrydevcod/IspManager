@@ -6,6 +6,7 @@ import {
   loadSeenHosts,
   normalizeMac,
   parseArpTable,
+  persistModel,
   persistSeen,
   sweep,
   vendorForMac,
@@ -290,6 +291,84 @@ describe('persistSeen', () => {
     persistSeen(db, [host()]);
     persistSeen(db, []);
     expect(loadSeenHosts(db)).toHaveLength(1);
+    db.close();
+  });
+});
+
+// ------------------------------------------------------------- modelo
+
+describe('loadRegisteredIps — modelo do catálogo', () => {
+  test('o registo traz marca e modelo já compostos', () => {
+    const db = freshDb();
+    seedAssignment(db, '192.168.1.30');
+    seedBackbone(db, '192.168.1.31', 'active');
+
+    const rows = loadRegisteredIps(db);
+    expect(rows.find((r) => r.ip === '192.168.1.30')?.model).toBe('TP-Link CPE 192.168.1.30');
+    expect(rows.find((r) => r.ip === '192.168.1.31')?.model).toBe('TP-Link Antena 192.168.1.31');
+    db.close();
+  });
+});
+
+describe('persistModel — precedência entre fontes', () => {
+  /** A linha do endereço tem de existir: é o varrimento que a cria. */
+  function fresh(ip: string): Database.Database {
+    const db = freshDb();
+    persistSeen(db, [host({ ip })]);
+    return db;
+  }
+
+  function modelOf(db: Database.Database, ip: string) {
+    return db.prepare(
+      `SELECT model, model_source AS source, model_detail AS detail FROM network_discovery_hosts WHERE ip_address = ?`
+    ).get(ip) as { model: string | null; source: string | null; detail: string | null } | undefined;
+  }
+
+  test('uma fonte melhor substitui a pior', () => {
+    const db = fresh('192.168.1.50');
+    expect(persistModel(db, { ip: '192.168.1.50', model: 'CPE-web', source: 'http' })).toBe(true);
+    expect(persistModel(db, { ip: '192.168.1.50', model: 'CPE710', source: 'snmp' })).toBe(true);
+    expect(modelOf(db, '192.168.1.50')?.model).toBe('CPE710');
+    db.close();
+  });
+
+  test('uma fonte pior NÃO apaga a melhor', () => {
+    const db = fresh('192.168.1.51');
+    persistModel(db, { ip: '192.168.1.51', model: 'CPE710', source: 'snmp' });
+    expect(persistModel(db, { ip: '192.168.1.51', model: 'Login', source: 'http' })).toBe(false);
+    expect(modelOf(db, '192.168.1.51')?.model).toBe('CPE710');
+    db.close();
+  });
+
+  test('a mesma fonte volta a escrever — o equipamento pode ter sido trocado', () => {
+    const db = fresh('192.168.1.52');
+    persistModel(db, { ip: '192.168.1.52', model: 'CPE210', source: 'snmp' });
+    expect(persistModel(db, { ip: '192.168.1.52', model: 'CPE710', source: 'snmp' })).toBe(true);
+    expect(modelOf(db, '192.168.1.52')?.model).toBe('CPE710');
+    db.close();
+  });
+
+  test('sem modelo legível guarda a prova e não toca no modelo que lá está', () => {
+    const db = fresh('192.168.1.53');
+    persistModel(db, { ip: '192.168.1.53', model: 'CPE710', source: 'snmp' });
+    expect(persistModel(db, { ip: '192.168.1.53', model: null, source: 'http', detail: 'http 200 | title=Login' })).toBe(false);
+    const row = modelOf(db, '192.168.1.53');
+    expect(row?.model).toBe('CPE710');
+    expect(row?.detail).toBe('http 200 | title=Login');
+    db.close();
+  });
+
+  test('vizinho do router num endereço nunca varrido cria a linha', () => {
+    const db = freshDb();
+    expect(persistModel(db, { ip: '10.0.0.7', model: 'RB951Ui-2HnD', source: 'router' })).toBe(true);
+    expect(modelOf(db, '10.0.0.7')?.model).toBe('RB951Ui-2HnD');
+    db.close();
+  });
+
+  test('uma sondagem sobre um endereço sem linha não inventa avistamento', () => {
+    const db = freshDb();
+    expect(persistModel(db, { ip: '10.0.0.8', model: 'CPE710', source: 'snmp' })).toBe(false);
+    expect(modelOf(db, '10.0.0.8')).toBeUndefined();
     db.close();
   });
 });

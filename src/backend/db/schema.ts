@@ -525,7 +525,13 @@ export const networkDiscoveryHosts = sqliteTable('network_discovery_hosts', {
   source: text('source').notNull().default('ping'),
   firstSeenAt: text('first_seen_at').notNull().default('CURRENT_TIMESTAMP'),
   lastSeenAt: text('last_seen_at').notNull().default('CURRENT_TIMESTAMP'),
-  timesSeen: integer('times_seen').notNull().default(1)
+  timesSeen: integer('times_seen').notNull().default(1),
+  model: text('model'),
+  /** `http` | `router` | `snmp` — ver `MODEL_SOURCE_RANK` em network-discovery. */
+  modelSource: text('model_source'),
+  /** Resposta em bruto que originou o modelo, para se poder explicar um erro. */
+  modelDetail: text('model_detail'),
+  modelSeenAt: text('model_seen_at')
 });
 
 /**

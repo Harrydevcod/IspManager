@@ -120,6 +120,55 @@ function sourceLabel(source: string | null): string {
   return 'Origem desconhecida';
 }
 
+/**
+ * Quanto vale o modelo que está na linha.
+ *
+ * Dizer só "CPE710" esconde a diferença entre o aparelho ter-se identificado e
+ * alguém o ter escrito num formulário há dois anos. Quando as duas coisas
+ * discordam é justamente a origem que decide em quem acreditar.
+ */
+const MODEL_SOURCE_LABEL: Record<string, string> = {
+  registo: 'Modelo registado no ISPM',
+  snmp: 'O equipamento identificou-se por SNMP',
+  router: 'Anunciado ao router de gestão',
+  http: 'Lido na interface web do equipamento'
+};
+
+/**
+ * Que aparelho é: o modelo quando se sabe, o fabricante quando só se sabe isso.
+ *
+ * Uma coluna e não duas. O fabricante sozinho — tudo o que o OUI do MAC dá — é
+ * o degrau abaixo do modelo, não uma informação a par dele; empilhá-los na
+ * mesma célula diz a mesma coisa sem roubar largura às outras colunas.
+ */
+function DeviceCell({ row }: { row: DiscoveryRow }) {
+  if (!row.model) {
+    return row.vendor
+      ? (
+        <div className="discovery-device">
+          <span>{row.vendor}</span>
+          <span className="discovery-device-meta" title="Fabricante deduzido do MAC">fabricante</span>
+        </div>
+      )
+      : <span className="discovery-muted">—</span>;
+  }
+
+  const source = row.modelSource ?? 'registo';
+  return (
+    <div className={row.modelMismatch ? 'discovery-device is-mismatch' : 'discovery-device'}>
+      <span className="discovery-model" title={MODEL_SOURCE_LABEL[source]}>{row.model}</span>
+      <span
+        className="discovery-device-meta"
+        title={row.modelMismatch
+          ? 'O equipamento na rede não é o que está registado — provavelmente foi trocado no terreno'
+          : MODEL_SOURCE_LABEL[source]}
+      >
+        {row.modelMismatch ? 'não bate com a rede' : source}
+      </span>
+    </div>
+  );
+}
+
 /** O nome do dono ganha ao que a máquina anuncia — é o que o operador procura. */
 function displayName(row: DiscoveryRow): string {
   if (row.registeredAs.length > 0) {
@@ -160,13 +209,15 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
   function exportCsv() {
     if (!report) return;
     downloadCsv('ispm-descoberta-rede.csv', [
-      ['IP', 'Estado', 'Nome', 'MAC', 'Fabricante', 'Latencia ms', 'Visto pela primeira vez'],
+      ['IP', 'Estado', 'Nome', 'MAC', 'Fabricante', 'Modelo', 'Origem do modelo', 'Latencia ms', 'Visto pela primeira vez'],
       ...rows.map((row) => [
         row.ip,
         LABEL[row.category],
         displayName(row),
         row.mac ?? '',
         row.vendor ?? '',
+        row.model ?? '',
+        row.modelSource ?? '',
         row.rttMs ?? '',
         row.firstSeenAt ?? ''
       ])
@@ -206,6 +257,17 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
           disabled={scanning || !routerAvailable}
           onChange={(event) => discovery.setIncludeRouter(event.target.checked)}
         />
+        {/* Desligado por omissão: é o único caminho da aba que sai do ICMP e vai
+            bater à porta do equipamento do cliente. Fica ao lado do interruptor
+            do router porque a pergunta é a mesma — até onde é que isto vai. */}
+        <Toggle
+          title="Identificar modelos"
+          description="Pergunta a cada equipamento vivo que aparelho é. Demora mais."
+          wide={false}
+          checked={discovery.identifyModels}
+          disabled={scanning}
+          onChange={(event) => discovery.setIdentifyModels(event.target.checked)}
+        />
         <div className="discovery-toolbar-actions">
           {scanning ? (
             <Button variant="secondary" leadingIcon={<Square size={16} aria-hidden />} onClick={discovery.stop}>
@@ -234,7 +296,9 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
       {progress ? (
         <div className="discovery-progress" role="status" aria-live="polite">
           <progress value={progress.done} max={progress.total} />
-          <span>{progress.done} / {progress.total} endereços</span>
+          <span>
+            {progress.done} / {progress.total} {progress.phase === 'identify' ? 'a identificar' : 'endereços'}
+          </span>
         </div>
       ) : null}
 
@@ -314,7 +378,7 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
       <DataTable<DiscoveryRow, DiscoverySortKey>
         rows={rows}
         rowKey={(row) => row.ip}
-        gridTemplateColumns="minmax(130px, 0.8fr) 130px minmax(160px, 1.4fr) minmax(150px, 1fr) minmax(110px, 0.8fr) 90px minmax(140px, 1fr)"
+        gridTemplateColumns="minmax(130px, 0.8fr) 130px minmax(160px, 1.4fr) minmax(150px, 1fr) minmax(150px, 1.1fr) 90px minmax(140px, 1fr)"
         stickyHeader
         sort={sort}
         onSortChange={setSort}
@@ -332,7 +396,7 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
               ? <code className="discovery-mac" title={sourceLabel(row.source)}>{row.mac}</code>
               : <span className="discovery-muted">—</span>
           },
-          { header: 'Fabricante', cell: (row) => row.vendor ?? <span className="discovery-muted">—</span> },
+          { header: 'Equipamento', cell: (row) => <DeviceCell row={row} /> },
           {
             header: 'Latência',
             align: 'end',

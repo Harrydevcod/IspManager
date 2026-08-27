@@ -129,6 +129,38 @@
   color: var(--text-3);
 }
 
+/* Modelo em cima, de onde veio em baixo: a linha inteira cabe na altura de
+   uma célula normal, portanto a tabela não cresce por causa desta coluna. */
+.discovery-device {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.discovery-model {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.discovery-device-meta {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  line-height: 1.2;
+}
+
+/* O registo diz uma coisa e o aparelho responde outra. Avisa, não alarma: é
+   um desencontro de dados, não uma avaria na rede. */
+.discovery-device.is-mismatch .discovery-model {
+  color: var(--warn);
+}
+
+.discovery-device.is-mismatch .discovery-device-meta {
+  color: var(--warn);
+}
+
 /* --------------------------------------------------- diálogo de atribuição */
 
 .discovery-assign {

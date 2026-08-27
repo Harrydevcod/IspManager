@@ -1,22 +1,27 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
-import { loadNetworkStatus, loadProbeEvents, readProbeConfig, runNetworkProbe } from '../lib/network-probe';
+import { loadNetworkStatus, loadProbeEvents, mapWithLimit, readProbeConfig, runNetworkProbe } from '../lib/network-probe';
 import {
   createTransport,
   fetchRouterCertificate,
   isRouterConfigured,
   listArp,
   listDhcpLeases,
+  listNeighbors,
+  neighborModel,
   readRouterConfig,
   RouterError,
-  testConnection
+  testConnection,
+  type RouterNeighbor
 } from '../lib/routeros';
+import { identifyModel } from '../lib/device-model';
 import { loadNetworkEnforcementState, runNetworkEnforcement } from '../lib/network-enforcement';
 import {
   loadRegisteredIps,
   loadSeenHosts,
   normalizeMac,
+  persistModel,
   persistSeen,
   readLocalArp,
   resolveNames,
@@ -47,6 +52,18 @@ const sweepBodySchema = z.object({
   range: z.string().min(1).max(64),
   batchIndex: z.number().int().min(0)
 }).strict();
+
+const identifyBodySchema = z.object({
+  ips: z.array(z.string()).min(1).max(SWEEP_BATCH_SIZE),
+  batchIndex: z.number().int().min(0).default(0)
+}).strict();
+
+/**
+ * Mais apertado que o do varrimento (32): aqui cada endereço pode custar um
+ * timeout de SNMP **e** um aperto de mão TCP a seguir, e o alvo é equipamento
+ * de cliente com CPU de router doméstico, não a nossa máquina.
+ */
+const IDENTIFY_CONCURRENCY = 8;
 
 const contextBodySchema = z.object({
   // O intervalo varrido, já expandido pelo renderer. Vazio quando a aba abre
@@ -201,20 +218,29 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     for (const entry of await readLocalArp()) attach(entry.ip, entry.mac, null, 'arp');
 
     let routerEnriched = false;
+    let routerNeighbors: RouterNeighbor[] = [];
     const config = readRouterConfig(db);
     if (includeRouter && isRouterConfigured(config)) {
       const transport = createTransport(config);
       // Cada chamada falha por si: o router em baixo nunca pode derrubar a
       // página, só tira-lhe o enriquecimento.
-      const [arp, leases] = await Promise.all([
+      const [arp, leases, neighbors] = await Promise.all([
         listArp(transport).catch(() => null),
-        listDhcpLeases(transport).catch(() => null)
+        listDhcpLeases(transport).catch(() => null),
+        listNeighbors(transport).catch(() => null)
       ]);
-      routerEnriched = arp !== null || leases !== null;
+      routerEnriched = arp !== null || leases !== null || neighbors !== null;
       for (const entry of arp ?? []) attach(entry.address, normalizeMac(entry.macAddress), null, 'router');
       for (const lease of leases ?? []) {
         attach(lease.address, normalizeMac(lease.macAddress), lease.hostName, 'router');
       }
+      // Os vizinhos são a única fonte de modelo que não custa um pacote por
+      // equipamento: uma pergunta ao router e vem o que cada um já anunciou
+      // sozinho. O `identity` também serve de nome onde o DNS inverso calou.
+      for (const neighbor of neighbors ?? []) {
+        attach(neighbor.address, normalizeMac(neighbor.macAddress), neighbor.identity, 'router');
+      }
+      routerNeighbors = neighbors ?? [];
     }
 
     const observed = [...byIp.values()];
@@ -225,6 +251,19 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       source: host.source
     })));
 
+    // Depois do `persistSeen`, que é quem garante que a linha do endereço já
+    // existe para o modelo ter onde pousar.
+    for (const neighbor of routerNeighbors) {
+      const model = neighborModel(neighbor);
+      if (!model || !isIpv4(neighbor.address)) continue;
+      persistModel(db, {
+        ip: neighbor.address,
+        model,
+        source: 'router',
+        detail: [neighbor.platform, neighbor.board, neighbor.version].filter(Boolean).join(' ') || null
+      });
+    }
+
     const report = crossReference({
       rangeIps,
       observed,
@@ -233,6 +272,53 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     });
 
     return { ...report, routerEnriched, routerConfigured: isRouterConfigured(config) };
+  });
+
+  /**
+   * Perguntar a cada equipamento que aparelho ele é.
+   *
+   * Rota à parte do varrimento por uma razão prática: sondar é lento (um
+   * datagrama SNMP com timeout, e uma ligação TCP quando o SNMP cala) e a
+   * interface tem de conseguir mostrar progresso e ser interrompida a meio. Em
+   * lotes, exatamente como o varrimento já faz.
+   *
+   * Também é o único ponto do ISPM que toca em equipamento de cliente sem ser
+   * por ICMP — daí a linha de auditoria e daí ficar desligado por omissão na
+   * interface.
+   */
+  app.post('/api/network/discovery/identify', readOnly, async (request, reply) => {
+    const parsed = identifyBodySchema.safeParse(request.body);
+    if (!parsed.success || !parsed.data.ips.every(isIpv4)) {
+      return reply.status(400).send({ error: 'Parametros invalidos' });
+    }
+    const { ips, batchIndex } = parsed.data;
+    const db = getSqliteDatabase();
+
+    if (batchIndex === 0) {
+      recordAudit(request, {
+        action: 'network_discovery_identify',
+        entityType: 'network',
+        summary: `${ips.length} endereco(s)`,
+        metadata: { first: ips[0] }
+      });
+    }
+
+    const probes = await runJob('network_discovery_identify', () =>
+      mapWithLimit(ips, IDENTIFY_CONCURRENCY, async (ip) => ({ ip, probe: await identifyModel(ip) }))
+    );
+
+    for (const { ip, probe } of probes) {
+      if (!probe) continue;
+      persistModel(db, { ip, model: probe.model, source: probe.source, detail: probe.detail });
+    }
+
+    return {
+      results: probes.map(({ ip, probe }) => ({
+        ip,
+        model: probe?.model ?? null,
+        modelSource: probe?.model ? probe.source : null
+      }))
+    };
   });
 
   // Teste de ligação ao MikroTik. Só lê `/system/resource`: serve para provar
