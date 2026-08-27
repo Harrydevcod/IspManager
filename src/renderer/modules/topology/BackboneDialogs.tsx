@@ -1,5 +1,6 @@
 import { AlertTriangle, ChevronLeft, ChevronRight, Link2, Search, Unlink, X } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { sameModel } from '../../../shared/model-match';
 import type {
   BackboneAssignmentSummary,
   BackboneDeviceDetail,
@@ -10,6 +11,7 @@ import type {
 } from '../../../shared/backbone';
 import type { BackboneMutationState } from './useBackboneWorkspace';
 import type { BackboneCatalogOption } from './backbone-api';
+import type { BackbonePrefill } from './BackboneWorkspace';
 import { CV_ISLANDS, isKnownIsland } from '../../lib/islands';
 import { Badge, Button, Combobox, Dialog, Field, Select, Textarea, Toggle } from '../../components';
 
@@ -20,7 +22,7 @@ type EditorProps = {
    * Valores trazidos da rede pela aba Descoberta. Só valem na criação: numa
    * edição o registo existente é sempre a fonte.
    */
-  prefill?: { ipAddress: string; macAddress: string | null } | null;
+  prefill?: BackbonePrefill | null;
   pending: boolean;
   error: string | null;
   catalogs: BackboneCatalogOption[];
@@ -47,16 +49,29 @@ type EditorState = {
   upstreamDeviceIds: number[];
 };
 
+/**
+ * O item do catálogo que corresponde ao modelo que a rede respondeu.
+ *
+ * `null` quando não há um só — com dois candidatos, escolher um seria decidir
+ * por quem está a registar, e a lista fica como estava para ele escolher.
+ */
+function guessCatalog(catalogs: BackboneCatalogOption[], model: string | null | undefined): number | null {
+  if (!model) return null;
+  const hits = catalogs.filter((item) => sameModel([item.brand, item.model].filter(Boolean).join(' '), model));
+  return hits.length === 1 ? hits[0].id : null;
+}
+
 function editorState(
   backbone: BackboneDeviceDetail | null,
-  prefill: EditorProps['prefill'] = null
+  prefill: EditorProps['prefill'] = null,
+  catalogs: BackboneCatalogOption[] = []
 ): EditorState {
   // O prefill só entra quando não há registo a editar.
   const seed = backbone ? null : prefill;
   return {
-    catalogId: backbone?.catalogId ?? null,
+    catalogId: backbone?.catalogId ?? guessCatalog(catalogs, seed?.model),
     upstreamDeviceIds: backbone?.upstreams.map((unit) => unit.id) ?? [],
-    name: backbone?.name ?? '',
+    name: backbone?.name ?? seed?.name ?? '',
     status: backbone?.status ?? 'active',
     serialNumber: backbone?.serialNumber ?? '',
     assetTag: backbone?.assetTag ?? '',
@@ -86,7 +101,7 @@ export function BackboneEditorDialog({
   onClose,
   onSubmit
 }: EditorProps) {
-  const [form, setForm] = useState<EditorState>(() => editorState(backbone, prefill));
+  const [form, setForm] = useState<EditorState>(() => editorState(backbone, prefill, catalogs));
   const [validation, setValidation] = useState<string | null>(null);
 
   // ponytail: a lista é a página de backbones ativos já carregada (25). Chega para
@@ -106,9 +121,11 @@ export function BackboneEditorDialog({
 
   useEffect(() => {
     if (!open) return;
-    setForm(editorState(backbone, prefill));
+    // `catalogs` entra nas dependências porque a lista chega depois de o
+    // diálogo abrir: sem isso o item adivinhado pelo modelo nunca era escolhido.
+    setForm(editorState(backbone, prefill, catalogs));
     setValidation(null);
-  }, [backbone, open, prefill]);
+  }, [backbone, open, prefill, catalogs]);
 
   function update<K extends keyof EditorState>(key: K, value: EditorState[K]) {
     setForm((current) => ({ ...current, [key]: value }));

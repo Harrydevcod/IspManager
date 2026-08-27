@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
-import { crossReference, sameModel, type CrossRefInput, type ObservedHost } from './network-inventory';
-import type { RegisteredIp, SeenHostRow } from './network-discovery';
+import { crossReference, type CrossRefInput, type ObservedHost } from './network-inventory';
+import { sameModel } from '../../shared/model-match';
+import type { RegisteredDevice, SeenHostRow } from './network-discovery';
 
 const RANGE = ['192.168.1.1', '192.168.1.2', '192.168.1.3', '192.168.1.4', '192.168.1.5'];
 
@@ -13,12 +14,15 @@ const observed = (ip: string, over: Partial<ObservedHost> = {}): ObservedHost =>
   ...over
 });
 
-const registered = (ip: string, over: Partial<RegisteredIp> = {}): RegisteredIp => ({
+const registered = (ip: string, over: Partial<RegisteredDevice> = {}): RegisteredDevice => ({
   ip,
+  mac: null,
   kind: 'assignment',
   id: 1,
   name: 'Sr. Silva',
   model: null,
+  catalogId: null,
+  catalogType: null,
   active: true,
   ...over
 });

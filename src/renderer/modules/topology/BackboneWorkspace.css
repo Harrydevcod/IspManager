@@ -174,7 +174,7 @@
 }
 
 .backbone-unlinked-count strong {
-  color: var(--warning);
+  color: var(--warn);
 }
 
 .backbone-list-scroll {
@@ -768,7 +768,7 @@
   border: 1px solid var(--border-2);
   border-radius: var(--rpill);
   background: var(--surface-3);
-  color: var(--text-1);
+  color: var(--text);
   font-size: var(--fs-xs);
   line-height: 1.4;
 }
@@ -790,7 +790,7 @@
 
 .backbone-uplink-chips button:hover {
   background: var(--surface-2);
-  color: var(--text-1);
+  color: var(--text);
 }
 
 .backbone-uplink-chips button:focus-visible {

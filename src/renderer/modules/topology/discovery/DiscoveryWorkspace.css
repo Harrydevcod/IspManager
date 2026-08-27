@@ -4,7 +4,7 @@
 .discovery-workspace {
   display: flex;
   flex-direction: column;
-  gap: var(--s4);
+  gap: var(--space-4);
   /* `stretch` e não `start`: o painel ocupa a altura da aba e a tabela cresce
      com ela, em vez de deixar um vazio por baixo da última linha. */
   align-self: stretch;
@@ -17,8 +17,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: var(--s4);
-  padding: var(--s3) var(--s4);
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r2);
@@ -38,7 +38,7 @@
 
 .discovery-toolbar-actions {
   display: flex;
-  gap: var(--s2);
+  gap: var(--space-2);
   margin-inline-start: auto;
 }
 
@@ -47,7 +47,7 @@
 .discovery-progress {
   display: flex;
   align-items: center;
-  gap: var(--s3);
+  gap: var(--space-3);
   font-size: var(--fs-sm);
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
@@ -82,7 +82,7 @@
 .discovery-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s2);
+  gap: var(--space-2);
 }
 
 .discovery-chips .btn.is-active {
@@ -92,8 +92,8 @@
 }
 
 .discovery-chip-count {
-  margin-inline-start: var(--s2);
-  padding-inline: var(--s2);
+  margin-inline-start: var(--space-2);
+  padding-inline: var(--space-2);
   border-radius: var(--rpill);
   background: var(--surface-2);
   color: var(--text-3);
@@ -166,7 +166,7 @@
 .discovery-assign {
   display: flex;
   flex-direction: column;
-  gap: var(--s4);
+  gap: var(--space-4);
 }
 
 .discovery-assign-lead {
@@ -187,7 +187,7 @@
 
 .discovery-assign-empty {
   margin: 0;
-  padding: var(--s5) 0;
+  padding: var(--space-5) 0;
   text-align: center;
   color: var(--text-3);
   font-size: var(--fs-sm);
@@ -196,7 +196,7 @@
 .discovery-assign-list {
   display: flex;
   flex-direction: column;
-  gap: var(--s1);
+  gap: var(--space-1);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -208,8 +208,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--s4);
-  padding: var(--s3);
+  gap: var(--space-4);
+  padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--r1);
   background: var(--surface-2);
@@ -243,4 +243,148 @@
     margin-inline-start: 0;
     inline-size: 100%;
   }
+}
+
+/* ------------------------------------------------ aplicar ao registo */
+
+.reconcile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface);
+}
+
+.reconcile-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.reconcile-head h3 {
+  margin: 0;
+  font-size: var(--fs-base);
+}
+
+.reconcile-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.reconcile-group-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* A frase explica porquê. Fica clara mas discreta: quem já sabe salta-a. */
+.reconcile-hint {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  /* Sem isto a frase atravessa o ecrã todo e deixa de se ler como uma nota. */
+  max-width: 74ch;
+}
+
+.reconcile-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.2fr) 120px minmax(200px, 1.6fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+}
+
+.reconcile-who {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reconcile-ip,
+.reconcile-model {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* O antes e o depois na mesma linha — é a comparação que decide o clique. */
+.reconcile-change {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.reconcile-before {
+  text-decoration: line-through;
+}
+
+.reconcile-after {
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reconcile-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+@media (max-width: 900px) {
+  .reconcile-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .reconcile-actions {
+    justify-content: flex-start;
+  }
+}
+
+.batch-register {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* A lista pode ser longa numa migração; rola dentro do diálogo em vez de o
+   esticar até o botão de registar sair do ecrã. */
+.batch-register-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+/* Os órfãos não têm antes-e-depois: têm uma lista de candidatos que precisa de
+   espaço para dobrar em vez de sair pela direita. */
+.reconcile-row.is-orphan {
+  grid-template-columns: minmax(140px, 1fr) minmax(160px, 1.2fr) minmax(0, 2fr);
+  align-items: start;
+}
+
+.reconcile-model {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reconcile-candidates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
 }

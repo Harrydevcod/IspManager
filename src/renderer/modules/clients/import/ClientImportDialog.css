@@ -37,7 +37,7 @@
   border-color: var(--accent);
   border-style: solid;
   background: color-mix(in oklch, var(--accent) 5%, var(--surface));
-  color: var(--text-1);
+  color: var(--text);
   outline: none;
 }
 
@@ -47,7 +47,7 @@
   font-size: clamp(15px, 1.6vw, 18px);
   font-weight: 500;
   letter-spacing: var(--tracking-tight, -0.018em);
-  color: var(--text-1);
+  color: var(--text);
 }
 
 .import-dropzone-hint {
@@ -175,7 +175,7 @@
   align-items: center;
   gap: var(--space-2);
   font-size: 13px;
-  color: var(--text-1);
+  color: var(--text);
   font-weight: 500;
 }
 
@@ -248,7 +248,7 @@
   border: 1px solid var(--border);
   border-radius: var(--r1);
   background: var(--surface);
-  color: var(--text-1);
+  color: var(--text);
   font-size: 12px;
   padding: var(--space-1-5) var(--space-2);
   cursor: pointer;
@@ -358,7 +358,7 @@
   font-weight: 200;
   line-height: 1;
   letter-spacing: -0.03em;
-  color: var(--text-1);
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -388,7 +388,7 @@
   font-family: var(--font-display, var(--font-ui));
   font-size: 22px;
   font-weight: 400;
-  color: var(--text-1);
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 

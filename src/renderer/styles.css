@@ -771,7 +771,11 @@ h2 {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(156px, 1fr));
+  /* `auto-fit`, não um número fixo: com cinco colunas fixas, um painel de
+     quatro cartões deixava uma coluna vazia e um painel de um cartão deixava
+     quatro — um vazio grande à direita que não diz nada. As colunas que sobram
+     colapsam e os cartões esticam para a largura toda. */
+  grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-3);
 }
@@ -1434,7 +1438,7 @@ h2 {
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--text-1) 8%, transparent), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--text) 8%, transparent), transparent);
   animation: skeleton-sweep 1.3s ease-in-out infinite;
 }
 @keyframes skeleton-sweep {
@@ -4246,7 +4250,7 @@ label.field-toggle {
 .purchase-device {
   display: flex;
   flex-direction: column;
-  gap: var(--s4);
+  gap: var(--space-4);
 }
 
 .purchase-device-lead {
@@ -4795,9 +4799,6 @@ label.field-toggle {
   .operations-brief-rail > div {
     min-height: 104px;
   }
-  .metric-grid {
-    grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
-  }
 }
 
 /* Revenue chart: stacked vertical bars (paid base + pending top).
@@ -4925,7 +4926,7 @@ label.field-toggle {
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
-  color: var(--text-1);
+  color: var(--text);
 }
 .bar-tooltip-rows .dot {
   width: 8px;
@@ -4942,7 +4943,7 @@ label.field-toggle {
 }
 .bar-tooltip-rows .bar-tooltip-total dt {
   font-weight: 600;
-  color: var(--text-1);
+  color: var(--text);
 }
 .bar-tooltip-rows .bar-tooltip-total dd {
   font-weight: 600;
@@ -5271,7 +5272,7 @@ label.field-toggle {
   font-size: clamp(22px, 3vw, 28px);
   font-weight: 400;
   letter-spacing: -0.022em;
-  color: var(--text-1);
+  color: var(--text);
   line-height: 1.15;
 }
 
@@ -5416,7 +5417,7 @@ label.field-toggle {
   font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
-  color: var(--text-1);
+  color: var(--text);
   background: color-mix(in oklch, var(--bg) 60%, transparent);
   border: 1px solid var(--border);
   border-radius: var(--r1);
@@ -5553,7 +5554,7 @@ label.field-toggle {
   margin: 0;
   font-size: 12.5px;
   font-weight: 500;
-  color: var(--text-1);
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5668,7 +5669,7 @@ button.danger:disabled {
 }
 .reason-chip:hover:not(:disabled) {
   border-color: color-mix(in oklch, var(--accent) 45%, var(--border));
-  color: var(--text-1);
+  color: var(--text);
 }
 .reason-chip:disabled {
   opacity: 0.45;
@@ -6127,7 +6128,7 @@ button.danger:disabled {
 .client-profitability-grid dd {
   margin: 0;
   color: var(--text);
-  font-size: var(--fs-md);
+  font-size: var(--fs-base);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
