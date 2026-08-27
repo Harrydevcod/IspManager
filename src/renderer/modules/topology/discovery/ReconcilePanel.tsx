@@ -205,16 +205,18 @@ function OrphanGroup({ orphans }: { orphans: Orphan[] }) {
         </span>
       </div>
       {orphans.map((orphan) => (
-        <div className="reconcile-row" key={`${orphan.targetKind}:${orphan.targetId}`}>
+        <div className="reconcile-row is-orphan" key={`${orphan.targetKind}:${orphan.targetId}`}>
           <span className="reconcile-who">{orphan.name}</span>
-          <span className="reconcile-model">{orphan.model ?? '—'}</span>
-          <span className="reconcile-change">
-            {orphan.candidates.length === 1
-              ? '1 candidato na rede'
-              : `${orphan.candidates.length} candidatos na rede`}
-          </span>
-          <span className="reconcile-actions">
-            <code className="reconcile-ip">{orphan.candidates.map((c) => c.ip).join(' · ')}</code>
+          {/* O catálogo guarda descrições comerciais compridas no campo do
+              modelo; numa linha de lista isso empurra tudo para baixo. Fica
+              numa linha só, com o texto inteiro na dica. */}
+          <span className="reconcile-model" title={orphan.model ?? undefined}>{orphan.model ?? '—'}</span>
+          <span className="reconcile-candidates">
+            {orphan.candidates.map((candidate) => (
+              <code className="reconcile-ip" key={candidate.ip} title={candidate.vendor ?? undefined}>
+                {candidate.ip}
+              </code>
+            ))}
           </span>
         </div>
       ))}
