@@ -160,10 +160,11 @@ function DeviceCell({ row }: { row: DiscoveryRow }) {
       <span
         className="discovery-device-meta"
         title={row.modelMismatch
-          ? 'O equipamento na rede não é o que está registado — provavelmente foi trocado no terreno'
+          ? `O equipamento na rede responde "${row.probedModel}" — provavelmente foi trocado no terreno sem atualizar o registo`
           : MODEL_SOURCE_LABEL[source]}
       >
-        {row.modelMismatch ? 'não bate com a rede' : source}
+        {/* Dizer que não bate sem dizer com o quê é metade de um aviso. */}
+        {row.modelMismatch ? `rede: ${row.probedModel}` : source}
       </span>
     </div>
   );
@@ -209,7 +210,7 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
   function exportCsv() {
     if (!report) return;
     downloadCsv('ispm-descoberta-rede.csv', [
-      ['IP', 'Estado', 'Nome', 'MAC', 'Fabricante', 'Modelo', 'Origem do modelo', 'Latencia ms', 'Visto pela primeira vez'],
+      ['IP', 'Estado', 'Nome', 'MAC', 'Fabricante', 'Modelo', 'Origem do modelo', 'Modelo na rede', 'Latencia ms', 'Visto pela primeira vez'],
       ...rows.map((row) => [
         row.ip,
         LABEL[row.category],
@@ -218,6 +219,7 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
         row.vendor ?? '',
         row.model ?? '',
         row.modelSource ?? '',
+        row.probedModel ?? '',
         row.rttMs ?? '',
         row.firstSeenAt ?? ''
       ])

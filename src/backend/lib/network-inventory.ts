@@ -85,6 +85,14 @@ export type DiscoveryRow = {
    * o sistema — a descoberta está certa e o registo está velho.
    */
   modelMismatch: boolean;
+  /**
+   * O que a **rede** respondeu, mesmo quando é o registo que se mostra.
+   *
+   * Existe por causa do aviso: dizer "não bate com a rede" sem dizer com o quê
+   * é metade de um aviso. Com o modelo à frente, quem está a olhar decide ali
+   * se vai corrigir o registo ou ver o equipamento.
+   */
+  probedModel: string | null;
 };
 
 export type DiscoveryReport = {
@@ -176,6 +184,7 @@ export function crossReference(input: CrossRefInput): DiscoveryReport {
       model,
       modelSource,
       modelMismatch: Boolean(registeredModel && probedModel && !sameModel(registeredModel, probedModel)),
+      probedModel,
       hostname: observed?.hostname ?? history?.hostname ?? null,
       vendor: vendorForMac(mac) ?? history?.vendor ?? null,
       category,

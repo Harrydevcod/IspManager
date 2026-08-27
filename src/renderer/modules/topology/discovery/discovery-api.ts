@@ -34,6 +34,8 @@ export type DiscoveryRow = {
   modelSource: RowModelSource | null;
   /** Registo e aparelho discordam — quase sempre equipamento trocado no terreno. */
   modelMismatch: boolean;
+  /** O que a rede respondeu, mesmo quando é o modelo do registo que se mostra. */
+  probedModel: string | null;
 };
 
 export type DiscoveryReport = {

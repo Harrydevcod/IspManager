@@ -257,7 +257,10 @@ describe('crossReference — que aparelho é', () => {
       }]
     });
 
-    expect(rows.find((r) => r.ip === '192.168.1.3')?.modelMismatch).toBe(true);
+    const row = rows.find((r) => r.ip === '192.168.1.3');
+    expect(row?.modelMismatch).toBe(true);
+    // Sem isto o aviso dizia "não bate" e calava-se sobre com o quê.
+    expect(row?.probedModel).toBe('CPE710(EU) v2.0');
   });
 
   test('sem registo, vale o que a rede respondeu', () => {

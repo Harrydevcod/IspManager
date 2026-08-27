@@ -11,6 +11,7 @@ const row = (ip: string, category: DiscoveryCategory): DiscoveryRow => ({
   model: null,
   modelSource: null,
   modelMismatch: false,
+  probedModel: null,
   category,
   alive: category === 'registado' || category === 'desconhecido',
   rttMs: null,
