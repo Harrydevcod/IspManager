@@ -13,12 +13,14 @@ import type { ModelSource } from './network-discovery';
  *
  * - **SNMP `sysDescr`** — um datagrama, e a resposta é o aparelho a descrever-se
  *   a si próprio. É a melhor: não há interpretação pelo meio.
- * - **Banner HTTP** — o título da página de login e o cabeçalho `Server`. Custa
+ * - **Banner HTTP** — título, `WWW-Authenticate` e o princípio da página. Custa
  *   uma ligação TCP e é interpretação de HTML, que muda quando o firmware muda
  *   de tema.
  *
- * Tenta-se SNMP primeiro por ser mais barato *e* melhor — quando responde, nem
- * se chega a bater à porta do servidor web.
+ * Os dois correm ao mesmo tempo e o SNMP ganha se responder. Começou por ser em
+ * série — perguntar ao exato e só depois ao interpretado — até a rede real
+ * mostrar que o SNMP responde em **0 de 42** equipamentos deste parque: esperar
+ * pelo silêncio dele pagava-se em cada endereço sem comprar nada.
  *
  * Tudo aqui é leitura e anónimo: nunca se envia uma credencial, nunca se faz
  * POST, nunca se segue um redirecionamento.
@@ -29,6 +31,13 @@ export const SNMP_COMMUNITY = 'public';
 export const PROBE_TIMEOUT_MS = 1500;
 /** Chega e sobra para apanhar `<title>`; o resto da página não interessa. */
 const MAX_BODY_BYTES = 16 * 1024;
+/**
+ * Quanto do corpo se guarda para as assinaturas lerem. No parque real o
+ * `productInfo` dos Pharos aparece antes dos 500 bytes; 4 KB dá folga para
+ * firmware que empurre o cabeçalho da página para baixo, sem carregar meia
+ * página de JavaScript para memória por cada equipamento.
+ */
+const BODY_HEAD_BYTES = 4 * 1024;
 
 // ------------------------------------------------------------------- SNMP
 
@@ -178,6 +187,12 @@ export type HttpBanner = {
   /** `WWW-Authenticate: Basic realm="…"` — muito equipamento põe o modelo aqui. */
   realm: string | null;
   title: string | null;
+  /**
+   * O princípio da página. Existe porque o parque real obrigou: os CPE da TP-Link
+   * têm todos o título "Pharos" — o nome do sistema, igual em toda a gama — e o
+   * modelo só aparece numa variável de JavaScript no corpo.
+   */
+  bodyHead: string;
 };
 
 export function parseTitle(html: string): string | null {
@@ -228,12 +243,14 @@ function requestBanner(ip: string, scheme: 'http' | 'https', timeoutMs: number):
         });
         const done = () => {
           const header = response.headers['server'];
+          const body = Buffer.concat(chunks).toString('latin1');
           finish({
             scheme,
             status: response.statusCode ?? 0,
             server: (Array.isArray(header) ? header[0] : header)?.trim() || null,
             realm: parseRealm(response.headers['www-authenticate'] as string | undefined),
-            title: parseTitle(Buffer.concat(chunks).toString('latin1'))
+            title: parseTitle(body),
+            bodyHead: body.slice(0, BODY_HEAD_BYTES)
           });
         };
         response.on('end', done);
@@ -251,28 +268,90 @@ function requestBanner(ip: string, scheme: 'http' | 'https', timeoutMs: number):
   });
 }
 
-export async function readHttpBanner(ip: string, timeoutMs = PROBE_TIMEOUT_MS): Promise<HttpBanner | null> {
+/** Uma resposta que não traz título nem realm não disse nada sobre o aparelho. */
+function saysSomething(banner: HttpBanner | null): banner is HttpBanner {
+  return Boolean(banner && (banner.title || banner.realm));
+}
+
+/** O pedido é injetável para os testes não precisarem de abrir sockets. */
+export type BannerRequest = (ip: string, scheme: 'http' | 'https', timeoutMs: number) => Promise<HttpBanner | null>;
+
+export async function readHttpBanner(
+  ip: string,
+  timeoutMs = PROBE_TIMEOUT_MS,
+  request: BannerRequest = requestBanner
+): Promise<HttpBanner | null> {
   // 80 primeiro: a esmagadora maioria destes equipamentos serve lá, e poupa-se
   // o aperto de mão TLS quando responde.
-  return (await requestBanner(ip, 'http', timeoutMs)) ?? (await requestBanner(ip, 'https', timeoutMs));
+  const plain = await request(ip, 'http', timeoutMs);
+  if (saysSomething(plain)) return plain;
+
+  // Responder e não dizer nada não é o mesmo que não responder. Há equipamento
+  // — as NanoStation do parque, por exemplo — cujo `:80` é só um 302 de corpo
+  // vazio a mandar para o `:443`, onde está a página verdadeira. Parar no
+  // primeiro que responde deixava esses por identificar para sempre.
+  const secure = await request(ip, 'https', timeoutMs);
+  return saysSomething(secure) ? secure : (plain ?? secure);
 }
+
+/**
+ * O quarto valor do `productInfo` dos CPE da TP-Link → modelo.
+ *
+ * **Derivado do parque real, não de documentação.** A varredura de 2026-08-27
+ * encontrou 18 CPE: 16 com o código 276, todos registados como CPE 510, e 2 com
+ * o código 620, ambos registados como CPE710. Partição exata, sem uma exceção.
+ *
+ * O cabeçalho `Server` parecia servir para o mesmo e não serve: dividia o parque
+ * em 13 e 5, que não é a divisão dos modelos — é a da versão do firmware. Ter
+ * ido pelo caminho óbvio dava um mapa errado com todo o ar de estar certo.
+ *
+ * Um código que não esteja aqui não se adivinha: diz-se o código, para que a
+ * linha que falta se possa acrescentar com a mesma prova que estas duas têm.
+ */
+const PHAROS_PRODUCT_CODES: Record<string, string> = {
+  '276': 'CPE510',
+  '620': 'CPE710'
+};
 
 /**
  * Assinaturas que transformam um banner em nome de modelo.
  *
- * **Esta tabela escreve-se a partir do que a rede real respondeu, nunca de
- * memória.** Um mapa de fabricantes escrito de cabeça já acertou 0 em 54 neste
- * projeto e foi deitado fora; escrever aqui palpites sobre firmware seria o
- * mesmo erro com outra roupa. Corre-se `scripts/probe-models.cjs` contra a
- * rede, olha-se para as respostas, e só então se acrescenta uma linha.
+ * **Escritas a partir do que a rede real respondeu, nunca de memória.** Um mapa
+ * de fabricantes escrito de cabeça já acertou 0 em 54 neste projeto e foi
+ * deitado fora. Para acrescentar uma linha aqui: correr
+ * `scripts/probe-models.cjs`, olhar para as respostas, e confirmar contra o
+ * registo — foi assim que estas nasceram.
  *
- * Até lá o canal HTTP não inventa modelo nenhum — guarda o banner em bruto no
- * `model_detail`, que é exatamente a prova de que esta tabela precisa.
+ * A ordem conta. A dos Pharos vem primeiro porque a página deles também tem
+ * texto que as outras regras apanhariam.
  */
-export const HTTP_SIGNATURES: Array<{ test: RegExp; model: (match: RegExpExecArray) => string }> = [];
+export const HTTP_SIGNATURES: Array<{ test: RegExp; model: (match: RegExpExecArray) => string }> = [
+  {
+    // O título diz só "Pharos" — o nome do sistema, igual em toda a gama. O
+    // modelo está numa variável de JavaScript no corpo da página.
+    test: /var\s+productInfo\s*=\s*new\s+Array\(\s*"[^"]*"\s*,\s*"[^"]*"\s*,\s*\d+\s*,\s*(\d+)/,
+    model: (match) => PHAROS_PRODUCT_CODES[match[1]] ?? `Pharos (código ${match[1]})`
+  },
+  {
+    // Os switches e conversores da TP-Link põem a referência no próprio título.
+    // Ancorado ao início: o título é sempre a primeira parcela do `haystack`,
+    // portanto isto nunca apanha um "TL-" perdido no meio de uma página.
+    test: /^(TL-[A-Z0-9]+(?:-[A-Z0-9]+)*)(?=\s|\||$)/,
+    model: (match) => match[1]
+  },
+  {
+    // O router da Starlink. Não é um modelo, é o que ele responde ser — e é
+    // mais do que "Wi-Fi" para quem está a olhar para a linha.
+    test: /^Starlink(?=\s|\||$)/,
+    model: () => 'Starlink'
+  }
+];
 
 export function modelFromBanner(banner: HttpBanner): string | null {
-  const haystack = [banner.title, banner.realm, banner.server].filter(Boolean).join(' | ');
+  // As parcelas vazias mantêm-se para o `^` das assinaturas se referir sempre
+  // ao título e a mais nada.
+  const haystack = [banner.title ?? '', banner.realm ?? '', banner.server ?? '', banner.bodyHead]
+    .join(' | ');
   for (const signature of HTTP_SIGNATURES) {
     const match = signature.test.exec(haystack);
     if (match) return signature.model(match);
@@ -305,17 +384,27 @@ export type IdentifyDeps = {
   http?: (ip: string) => Promise<HttpBanner | null>;
 };
 
+/**
+ * Os dois canais correm **ao mesmo tempo**, não um a seguir ao outro.
+ *
+ * Em série parecia melhor: perguntar primeiro ao canal exato e só bater à porta
+ * do servidor web se ele calasse. A rede real desfez a ideia — no parque medido
+ * o SNMP respondeu em 0 de 42 equipamentos, portanto a espera pelo silêncio
+ * dele pagava-se em cada endereço e não comprava nada. Em paralelo custa o mais
+ * lento dos dois em vez da soma, e o SNMP continua a ganhar onde existir.
+ */
 export async function identifyModel(ip: string, deps: IdentifyDeps = {}): Promise<ModelProbe | null> {
   const snmp = deps.snmp ?? ((target: string) => snmpSysDescr(target));
-  const sysDescr = await snmp(ip);
+  const readBanner = deps.http ?? ((target: string) => readHttpBanner(target));
+
+  const [sysDescr, banner] = await Promise.all([snmp(ip), readBanner(ip)]);
+
   if (sysDescr) {
     // O `sysDescr` é o aparelho a apresentar-se: usa-se como está, cortado só
     // ao que cabe numa linha de tabela.
     return { model: sysDescr.slice(0, 120), source: 'snmp', detail: sysDescr };
   }
 
-  const readBanner = deps.http ?? ((target: string) => readHttpBanner(target));
-  const banner = await readBanner(ip);
   if (!banner) return null;
 
   return { model: modelFromBanner(banner), source: 'http', detail: describeBanner(banner) };

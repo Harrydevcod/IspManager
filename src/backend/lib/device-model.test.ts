@@ -7,6 +7,7 @@ import {
   parseRealm,
   parseSnmpString,
   parseTitle,
+  readHttpBanner,
   type HttpBanner
 } from './device-model';
 
@@ -131,17 +132,111 @@ const banner = (over: Partial<HttpBanner> = {}): HttpBanner => ({
   server: null,
   realm: null,
   title: null,
+  bodyHead: '',
   ...over
 });
 
+/**
+ * Corpo de uma página de CPE Pharos, tal como veio da rede em 2026-08-27.
+ * Copiado da sondagem, não inventado — é a única forma de este teste provar
+ * alguma coisa sobre o firmware real.
+ */
+const pharosBody = (code: string, region = 'EU') =>
+  `<HTML><BODY>
+redirected to https://192.168.1.111:443
+</BODY></HTML>
+` +
+  `<script language=JavaScript>
+var productInfo = new Array(
+"${region}",
+"pt",
+1,
+${code},
+0,0 );
+</script>`;
+
 describe('modelFromBanner', () => {
+  // Cada caso aqui saiu de um equipamento real do parque, confirmado contra o
+  // que o ISPM tem registado para esse endereço.
+
+  test('CPE510: o título diz só "Pharos" — o modelo está no productInfo', () => {
+    const row = banner({ status: 303, title: 'Pharos', server: 'TP-LINK HTTPD/1.0', bodyHead: pharosBody('276') });
+    expect(modelFromBanner(row)).toBe('CPE510');
+  });
+
+  test('CPE710: outro código, outro modelo', () => {
+    const row = banner({ status: 303, title: 'Pharos', server: 'HTTPD', bodyHead: pharosBody('620', 'UN') });
+    expect(modelFromBanner(row)).toBe('CPE710');
+  });
+
   /**
-   * A tabela de assinaturas nasce vazia de propósito — enche-se com o que a
-   * rede real responder, nunca com palpites. Este teste guarda essa decisão:
-   * enquanto não houver prova, o canal HTTP não inventa modelo nenhum.
+   * O `Server` dividia o parque medido em 13 e 5, e os modelos em 16 e 2 — não
+   * é o mesmo corte. Este teste fixa isso: dois equipamentos com o mesmo
+   * cabeçalho e códigos diferentes têm de dar modelos diferentes.
    */
-  test('sem assinaturas provadas não devolve modelo', () => {
-    expect(modelFromBanner(banner({ title: 'Login' }))).toBeNull();
+  test('o cabeçalho Server não decide o modelo — o código decide', () => {
+    const same = { status: 303, title: 'Pharos', server: 'TP-LINK HTTPD/1.0' };
+    expect(modelFromBanner(banner({ ...same, bodyHead: pharosBody('276') }))).toBe('CPE510');
+    expect(modelFromBanner(banner({ ...same, bodyHead: pharosBody('620') }))).toBe('CPE710');
+  });
+
+  test('um código Pharos desconhecido diz o código em vez de inventar um modelo', () => {
+    expect(modelFromBanner(banner({ title: 'Pharos', bodyHead: pharosBody('999') })))
+      .toBe('Pharos (código 999)');
+  });
+
+  test('os TL-* trazem a referência no título', () => {
+    expect(modelFromBanner(banner({ title: 'TL-S5-5KM' }))).toBe('TL-S5-5KM');
+    expect(modelFromBanner(banner({ title: 'TL-CPE500' }))).toBe('TL-CPE500');
+  });
+
+  test('o "TL-" só vale no título, não perdido no meio de uma página', () => {
+    expect(modelFromBanner(banner({ title: 'Login', bodyHead: 'compre o seu TL-WR841N hoje' }))).toBeNull();
+  });
+
+  test('o router da Starlink identifica-se', () => {
+    expect(modelFromBanner(banner({ title: 'Starlink' }))).toBe('Starlink');
+  });
+
+  /**
+   * No parque medido, o lighttpd das NanoStation e os títulos de lixo não
+   * chegam para dizer o modelo. Preferimos a coluna vazia a uma etiqueta
+   * inventada — o fabricante já vem do MAC.
+   */
+  test('o que não chega para identificar não se adivinha', () => {
+    expect(modelFromBanner(banner({ status: 302, server: 'lighttpd/1.4.54' }))).toBeNull();
+    expect(modelFromBanner(banner({ title: 'Opening...' }))).toBeNull();
+    expect(modelFromBanner(banner({ status: 302, server: 'GoAhead-Webs' }))).toBeNull();
+    expect(modelFromBanner(banner())).toBeNull();
+  });
+});
+
+describe('readHttpBanner — quando o :80 responde e não diz nada', () => {
+  // As NanoStation do parque servem no `:80` um 302 de corpo vazio que manda
+  // para o `:443`. Parar no primeiro que responde deixava-as por identificar.
+  test('um 302 vazio no :80 não impede a leitura do :443', async () => {
+    const seen: string[] = [];
+    const banners: Record<string, HttpBanner | null> = {
+      http: banner({ status: 302, server: 'lighttpd/1.4.54' }),
+      https: banner({ scheme: 'https', status: 200, title: 'Ubiquiti', server: 'lighttpd/1.4.54' })
+    };
+    // A ordem importa: o :443 só se paga quando o :80 não disse nada.
+    const result = await readHttpBanner('192.168.1.169', 10, async (_ip, scheme) => {
+      seen.push(scheme);
+      return banners[scheme];
+    });
+    expect(seen).toEqual(['http', 'https']);
+    expect(result?.title).toBe('Ubiquiti');
+  });
+
+  test('um :80 com título não paga o aperto de mão TLS', async () => {
+    const seen: string[] = [];
+    const result = await readHttpBanner('192.168.1.117', 10, async (_ip, scheme) => {
+      seen.push(scheme);
+      return banner({ title: 'TL-S5-5KM' });
+    });
+    expect(seen).toEqual(['http']);
+    expect(result?.title).toBe('TL-S5-5KM');
   });
 });
 
@@ -159,31 +254,48 @@ describe('describeBanner', () => {
 // --------------------------------------------------------- orquestração
 
 describe('identifyModel', () => {
-  test('o SNMP responde e nem se chega a bater à porta do servidor web', async () => {
-    let httpCalls = 0;
+  test('havendo SNMP é ele que manda, mesmo com o banner a responder também', async () => {
     const result = await identifyModel('192.168.1.10', {
       snmp: async () => 'CPE710(EU) v2.0',
+      http: async () => banner({ title: 'Pharos', bodyHead: pharosBody('276') })
+    });
+
+    expect(result).toEqual({ model: 'CPE710(EU) v2.0', source: 'snmp', detail: 'CPE710(EU) v2.0' });
+  });
+
+  /**
+   * Em série, o silêncio do SNMP pagava-se em cada endereço — e no parque
+   * medido ele calou-se em 42 de 42. Os dois canais têm de arrancar juntos.
+   */
+  test('os dois canais arrancam ao mesmo tempo', async () => {
+    const started: string[] = [];
+    await identifyModel('192.168.1.11', {
+      snmp: async () => {
+        started.push('snmp');
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return null;
+      },
       http: async () => {
-        httpCalls += 1;
+        started.push('http');
         return banner();
       }
     });
 
-    expect(result).toEqual({ model: 'CPE710(EU) v2.0', source: 'snmp', detail: 'CPE710(EU) v2.0' });
-    expect(httpCalls).toBe(0);
+    // O HTTP arrancou sem esperar que o SNMP desistisse.
+    expect(started).toEqual(['snmp', 'http']);
   });
 
   test('sem SNMP cai para o banner HTTP e guarda a prova', async () => {
     const result = await identifyModel('192.168.1.11', {
       snmp: async () => null,
-      http: async () => banner({ status: 401, title: 'Login', realm: 'CPE510' })
+      http: async () => banner({ status: 303, title: 'Pharos', server: 'HTTPD', bodyHead: pharosBody('620', 'UN') })
     });
 
-    // Sem assinatura provada não há modelo — mas fica a resposta em bruto, que
-    // é exatamente o que permite escrever a assinatura que falta.
     expect(result?.source).toBe('http');
-    expect(result?.model).toBeNull();
-    expect(result?.detail).toContain('realm=CPE510');
+    expect(result?.model).toBe('CPE710');
+    // O `detail` guarda o banner, não o corpo: é o que se lê para perceber uma
+    // linha errada, e 4 KB de página não cabem numa coluna.
+    expect(result?.detail).toBe('http 303 | title=Pharos | server=HTTPD');
   });
 
   test('quem não responde a nada não gera linha nenhuma', async () => {
