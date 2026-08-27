@@ -594,7 +594,7 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   background:
-    linear-gradient(180deg, color-mix(in oklch, var(--surface-2) 82%, transparent), var(--surface-1));
+    linear-gradient(180deg, color-mix(in oklch, var(--surface-2) 82%, transparent), var(--surface));
 }
 
 .investment-metrics span,
@@ -609,7 +609,7 @@
 
 .investment-metrics strong,
 .expenses-metrics strong {
-  color: var(--text-1);
+  color: var(--text);
   font-size: clamp(1.1rem, 1.8vw, 1.55rem);
   line-height: 1.1;
 }
