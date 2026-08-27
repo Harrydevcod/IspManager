@@ -18,10 +18,6 @@
   transition: r 180ms ease;
 }
 
-.expenses-metrics {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 /* Expenses (OPEX) module — editorial dark-first */
 .expenses-module {
   overflow: hidden;
@@ -584,7 +580,9 @@
 .investment-metrics,
 .expenses-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Dois cartoes numa grelha de quatro colunas deixavam metade da largura
+     vazia. Com `auto-fit` as colunas a mais colapsam e os cartoes esticam. */
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: var(--space-3);
 }
 

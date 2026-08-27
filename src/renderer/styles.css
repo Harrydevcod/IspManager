@@ -771,7 +771,11 @@ h2 {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(156px, 1fr));
+  /* `auto-fit`, não um número fixo: com cinco colunas fixas, um painel de
+     quatro cartões deixava uma coluna vazia e um painel de um cartão deixava
+     quatro — um vazio grande à direita que não diz nada. As colunas que sobram
+     colapsam e os cartões esticam para a largura toda. */
+  grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-3);
 }
@@ -4794,9 +4798,6 @@ label.field-toggle {
 @media (max-width: 1280px) {
   .operations-brief-rail > div {
     min-height: 104px;
-  }
-  .metric-grid {
-    grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
   }
 }
 
