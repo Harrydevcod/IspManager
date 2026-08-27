@@ -7,7 +7,16 @@ export type DiscoveryFetcher = (input: string, init?: RequestInit) => Promise<Re
 export type DiscoveryCategory = 'desconhecido' | 'registado' | 'ausente' | 'reservado' | 'duplicado';
 
 /** `active: false` — ocupa o endereço mas não se espera que responda. */
-export type RegisteredRef = { kind: 'backbone' | 'assignment'; id: number; name: string; active: boolean };
+export type RegisteredRef = {
+  kind: 'backbone' | 'assignment';
+  id: number;
+  name: string;
+  active: boolean;
+  model: string | null;
+};
+
+/** `registo` = o que o ISPM já sabia; os outros vieram de perguntar à rede. */
+export type RowModelSource = 'registo' | 'snmp' | 'router' | 'http';
 
 export type DiscoveryRow = {
   ip: string;
@@ -21,6 +30,12 @@ export type DiscoveryRow = {
   registeredAs: RegisteredRef[];
   firstSeenAt: string | null;
   lastSeenAt: string | null;
+  model: string | null;
+  modelSource: RowModelSource | null;
+  /** Registo e aparelho discordam — quase sempre equipamento trocado no terreno. */
+  modelMismatch: boolean;
+  /** O que a rede respondeu, mesmo quando é o modelo do registo que se mostra. */
+  probedModel: string | null;
 };
 
 export type DiscoveryReport = {
@@ -36,6 +51,8 @@ export type DiscoveryReport = {
 };
 
 export type SweepRow = { ip: string; ok: boolean; rttMs: number | null; hostname: string | null };
+
+export type IdentifyRow = { ip: string; model: string | null; modelSource: RowModelSource | null };
 
 async function readJson<T>(response: Response): Promise<T> {
   let payload: unknown = null;
@@ -61,6 +78,18 @@ export function createDiscoveryApi(fetcher: DiscoveryFetcher = authFetch) {
         body: JSON.stringify({ ips, range, batchIndex }),
         signal
       }).then(readJson<{ results: SweepRow[] }>),
+
+    /**
+     * Pergunta a cada equipamento que aparelho é. Lento e opcional: só corre
+     * com o interruptor ligado, e é o único caminho da aba que sai do ICMP.
+     */
+    identifyBatch: (ips: string[], batchIndex: number, signal?: AbortSignal) =>
+      fetcher(`${API_BASE}/api/network/discovery/identify`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ips, batchIndex }),
+        signal
+      }).then(readJson<{ results: IdentifyRow[] }>),
 
     /** O retrato completo: ARP local + router + histórico + cruzamento. */
     fetchContext: (

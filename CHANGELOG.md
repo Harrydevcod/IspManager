@@ -6,6 +6,12 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+### Adicionado
+
+- **descoberta:** a varredura passa a dizer **que aparelho é** cada endereço, não só de que marca. A coluna "Fabricante" dá lugar a **"Equipamento"**, que mostra o modelo quando se sabe e o fabricante quando é tudo o que há. O modelo vem de três sítios, por ordem de confiança: do **registo do ISPM** (o equipamento que já foi registado por alguém que o teve na mão), dos **vizinhos do router de gestão** (quem se anuncia por MNDP/CDP/LLDP), e de **perguntar ao próprio equipamento**. Por baixo do modelo fica escrito de onde veio. Medido no parque real: **26 dos 42 equipamentos vivos** ficam identificados — os CPE da TP-Link pelo modelo exato (CPE510, CPE710), os switches pela referência (TL-S5-5KM), e o router da Starlink. Quem não responde o suficiente continua a mostrar só o fabricante, em vez de uma etiqueta inventada
+- **descoberta:** quando o modelo registado **não bate certo** com o que o equipamento responde na rede, a linha fica a laranja e diz **o que a rede respondeu** (`rede: TL-CPE500`). Quase sempre quer dizer que o aparelho foi trocado no terreno e ninguém atualizou o sistema
+- **descoberta:** interruptor **"Identificar modelos"**, ao lado do do router. **Desligado por omissão**: é o único caminho da aba que sai do ping e vai bater à porta do equipamento do cliente. Ligado, a identificação corre a seguir à varredura e vai enchendo a tabela à medida que as respostas chegam. O CSV exportado leva o modelo e a origem
+
 ## [1.15.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.15.0) — 2026-08-26
 
 ### Adicionado

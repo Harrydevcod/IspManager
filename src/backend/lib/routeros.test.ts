@@ -10,6 +10,8 @@ import {
   removeActive,
   testConnection,
   type RouterRequest,
+  listNeighbors,
+  neighborModel,
   type RouterTransport
 } from './routeros';
 
@@ -143,5 +145,59 @@ describe('operações RouterOS', () => {
       throw new Error('ECONNREFUSED');
     }) as RouterTransport;
     await expect(listSecrets(transport)).rejects.toThrow('ECONNREFUSED');
+  });
+});
+
+describe('listNeighbors — modelo sem tocar em cada equipamento', () => {
+  test('lê os vizinhos que se anunciaram ao router de gestão', async () => {
+    const transport = fakeTransport([[
+      {
+        address: '10.0.0.2',
+        'mac-address': 'CC:2D:E0:11:22:33',
+        identity: 'torre-norte',
+        platform: 'MikroTik',
+        board: 'RB951Ui-2HnD',
+        version: '7.15.3'
+      }
+    ]]);
+
+    const [neighbor] = await listNeighbors(transport);
+    expect(neighbor.address).toBe('10.0.0.2');
+    expect(neighbor.board).toBe('RB951Ui-2HnD');
+    expect(neighbor.identity).toBe('torre-norte');
+    // Pede só as propriedades que interessam — o `/ip/neighbor` completo é
+    // muito maior e nada disso chega a ser usado.
+    expect(transport.calls[0].path).toContain('.proplist=');
+    expect(transport.calls[0].method).toBe('GET');
+  });
+
+  test('vizinho sem endereço não entra — não há onde o pousar', async () => {
+    const transport = fakeTransport([[{ identity: 'sem-ip', board: 'RB750' }]]);
+    expect(await listNeighbors(transport)).toEqual([]);
+  });
+});
+
+describe('neighborModel', () => {
+  const neighbor = (over: Partial<Awaited<ReturnType<typeof listNeighbors>>[number]> = {}) => ({
+    address: '10.0.0.2',
+    macAddress: null,
+    identity: null,
+    platform: null,
+    board: null,
+    version: null,
+    systemDescription: null,
+    ...over
+  });
+
+  test('o nome da placa é literalmente o modelo', () => {
+    expect(neighborModel(neighbor({ board: 'RB951Ui-2HnD', platform: 'MikroTik' }))).toBe('RB951Ui-2HnD');
+  });
+
+  test('sem placa serve a descrição LLDP, cortada', () => {
+    expect(neighborModel(neighbor({ systemDescription: 'X'.repeat(200) }))).toHaveLength(120);
+  });
+
+  test('o fabricante sozinho não passa por modelo', () => {
+    expect(neighborModel(neighbor({ platform: 'MikroTik' }))).toBeNull();
   });
 });

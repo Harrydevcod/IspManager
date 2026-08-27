@@ -153,7 +153,22 @@ export type RegisteredIp = {
   name: string;
   /** `false` = ocupa o endereço mas não se espera que responda (ver abaixo). */
   active: boolean;
+  /**
+   * Marca e modelo do catálogo, já compostos (`TP-Link CPE710`).
+   *
+   * Esta é a fonte de modelo mais exata que existe e não custa um único pacote
+   * na rede: o equipamento foi registado por alguém que o tinha na mão. Serve
+   * de referência para as sondagens — quando o que se descobre na rede não bate
+   * certo com isto, o que está errado é o registo, não a descoberta.
+   */
+  model: string | null;
 };
+
+/** `TP-Link` + `CPE710` → `TP-Link CPE710`; qualquer um em falta não estorva. */
+function catalogLabel(brand: string | null, model: string | null): string | null {
+  const label = [brand, model].map((part) => part?.trim()).filter(Boolean).join(' ');
+  return label || null;
+}
 
 /**
  * Todos os IPs que o ISPM diz ter na rede. Backbone e equipamento instalado em
@@ -171,21 +186,25 @@ export type RegisteredIp = {
  * porque a pergunta dela é outra: "quem devia estar a responder?".
  */
 export function loadRegisteredIps(db: Database.Database): RegisteredIp[] {
+  type Row = { ip: string; id: number; name: string; status: string; brand: string | null; model: string | null };
+
   const backbones = db.prepare(`
-    SELECT ip_address AS ip, id, name, status
-    FROM backbone_devices
-    WHERE status <> 'retired'
-      AND ip_address IS NOT NULL AND TRIM(ip_address) <> ''
-  `).all() as Array<{ ip: string; id: number; name: string; status: string }>;
+    SELECT b.ip_address AS ip, b.id, b.name, b.status, cat.brand, cat.model
+    FROM backbone_devices b
+    LEFT JOIN equipment_catalog cat ON cat.id = b.catalog_id
+    WHERE b.status <> 'retired'
+      AND b.ip_address IS NOT NULL AND TRIM(b.ip_address) <> ''
+  `).all() as Row[];
 
   const assignments = db.prepare(`
-    SELECT a.ip_address AS ip, a.id, c.full_name AS name, s.status
+    SELECT a.ip_address AS ip, a.id, c.full_name AS name, s.status, cat.brand, cat.model
     FROM service_device_assignments a
     JOIN services s ON s.id = a.service_id
     JOIN clients c ON c.id = s.client_id
+    LEFT JOIN equipment_catalog cat ON cat.id = a.catalog_id
     WHERE a.end_date IS NULL
       AND a.ip_address IS NOT NULL AND TRIM(a.ip_address) <> ''
-  `).all() as Array<{ ip: string; id: number; name: string; status: string }>;
+  `).all() as Row[];
 
   return [
     ...backbones.map((row) => ({
@@ -194,14 +213,16 @@ export function loadRegisteredIps(db: Database.Database): RegisteredIp[] {
       id: row.id,
       name: row.name,
       // Em manutenção continua a ser equipamento nosso que devia estar de pé.
-      active: row.status === 'active' || row.status === 'maintenance'
+      active: row.status === 'active' || row.status === 'maintenance',
+      model: catalogLabel(row.brand, row.model)
     })),
     ...assignments.map((row) => ({
       ip: row.ip.trim(),
       kind: 'assignment' as const,
       id: row.id,
       name: row.name,
-      active: row.status === 'active'
+      active: row.status === 'active',
+      model: catalogLabel(row.brand, row.model)
     }))
   ];
 }
@@ -224,7 +245,89 @@ export type SeenHostRow = {
   firstSeenAt: string;
   lastSeenAt: string;
   timesSeen: number;
+  model: string | null;
+  modelSource: string | null;
 };
+
+/**
+ * De onde veio um modelo, por ordem de quanto se pode confiar nele.
+ *
+ * `snmp` é o aparelho a responder `sysDescr` — diz de si próprio o que é.
+ * `router` é o MikroTik de gestão a repetir o que o vizinho anunciou por
+ * MNDP/CDP/LLDP: de segunda mão, mas ainda o protocolo a falar.
+ * `http` é a leitura do título de uma página de login, que é interpretação de
+ * HTML e muda quando o firmware muda de tema.
+ *
+ * A ordem existe para o palpite nunca apagar o facto: sem ela bastava uma
+ * sondagem HTTP a seguir a um SNMP para o modelo exato desaparecer da linha.
+ */
+export const MODEL_SOURCE_RANK: Record<string, number> = { http: 1, router: 2, snmp: 3 };
+
+export type ModelSource = 'http' | 'router' | 'snmp';
+
+export type ModelFinding = {
+  ip: string;
+  /**
+   * `null` quando o equipamento respondeu mas ninguém soube ler um modelo na
+   * resposta. Guarda-se na mesma pelo `detail`: é essa resposta em bruto que
+   * permite escrever a regra que falta, em vez de a adivinhar.
+   */
+  model: string | null;
+  source: ModelSource;
+  /** Resposta em bruto que originou o modelo, para se poder explicar um erro. */
+  detail?: string | null;
+};
+
+/**
+ * Guarda o modelo descoberto, **se** a fonte nova for pelo menos tão boa como a
+ * que lá está. Devolve se chegou a escrever.
+ *
+ * Fica fora do `persistSeen` de propósito: aquele corre com o range inteiro a
+ * cada varrimento e nunca tem modelo nenhum para gravar. Misturar as duas
+ * coisas era pôr uma comparação de precedência no caminho quente por nada.
+ */
+export function persistModel(db: Database.Database, finding: ModelFinding): boolean {
+  const current = db
+    .prepare(`SELECT model_source AS modelSource FROM network_discovery_hosts WHERE ip_address = ?`)
+    .get(finding.ip) as { modelSource: string | null } | undefined;
+
+  const incoming = MODEL_SOURCE_RANK[finding.source] ?? 0;
+
+  // Respondeu, mas sem modelo legível: fica só a prova, e o modelo que lá
+  // estiver não se toca — um banner por decifrar não apaga um `sysDescr`.
+  if (!finding.model) {
+    if (!current || !finding.detail) return false;
+    db.prepare(`UPDATE network_discovery_hosts SET model_detail = ? WHERE ip_address = ?`)
+      .run(finding.detail, finding.ip);
+    return false;
+  }
+
+  if (!current) {
+    // Um vizinho anunciado pelo router pode ser um endereço que o varrimento
+    // nunca tocou — o router encaminha redes que a nossa máquina não vê. Não é
+    // motivo para deitar fora o que ele disse, e a linha nasce aqui.
+    //
+    // As sondagens não têm esta necessidade: só correm sobre endereços que
+    // acabaram de ser varridos, portanto a linha já existe. Se não existir, o
+    // varrimento seguinte cria-a e a sondagem volta a encontrar o mesmo — não
+    // se inventa aqui um avistamento que ninguém registou.
+    if (finding.source !== 'router') return false;
+    db.prepare(`
+      INSERT INTO network_discovery_hosts (ip_address, source, model, model_source, model_detail, model_seen_at)
+      VALUES (@ip, 'router', @model, @source, @detail, CURRENT_TIMESTAMP)
+    `).run({ ip: finding.ip, model: finding.model, source: finding.source, detail: finding.detail ?? null });
+    return true;
+  }
+
+  if (incoming < (MODEL_SOURCE_RANK[current.modelSource ?? ''] ?? 0)) return false;
+
+  db.prepare(`
+    UPDATE network_discovery_hosts
+    SET model = @model, model_source = @source, model_detail = @detail, model_seen_at = CURRENT_TIMESTAMP
+    WHERE ip_address = @ip
+  `).run({ ip: finding.ip, model: finding.model, source: finding.source, detail: finding.detail ?? null });
+  return true;
+}
 
 /**
  * Regista o que foi visto e purga o que já não diz nada.
@@ -265,7 +368,8 @@ export function persistSeen(db: Database.Database, hosts: DiscoveredHost[]): voi
 export function loadSeenHosts(db: Database.Database): SeenHostRow[] {
   return db.prepare(`
     SELECT ip_address AS ipAddress, mac_address AS macAddress, hostname, vendor, source,
-           first_seen_at AS firstSeenAt, last_seen_at AS lastSeenAt, times_seen AS timesSeen
+           first_seen_at AS firstSeenAt, last_seen_at AS lastSeenAt, times_seen AS timesSeen,
+           model, model_source AS modelSource
     FROM network_discovery_hosts
   `).all() as SeenHostRow[];
 }

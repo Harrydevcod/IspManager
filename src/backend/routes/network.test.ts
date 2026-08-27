@@ -192,6 +192,38 @@ describe('POST /api/network/discovery/sweep', () => {
   });
 });
 
+describe('POST /api/network/discovery/identify', () => {
+  test('recusa mais endereços do que cabem num lote', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/network/discovery/identify',
+      payload: { ips: Array.from({ length: 65 }, (_, i) => `10.0.0.${i + 1}`), batchIndex: 0 }
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  test('recusa um endereço que não é IPv4', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/network/discovery/identify',
+      payload: { ips: ['10.0.0.1', 'nao-e-um-ip'], batchIndex: 0 }
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  test('devolve uma linha por endereço, sem modelo para quem não responde', async () => {
+    // 203.0.113.0/24 é TEST-NET-3: não encaminha para lado nenhum, portanto o
+    // teste exercita o caminho todo sem tocar em equipamento real.
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/network/discovery/identify',
+      payload: { ips: ['203.0.113.9'], batchIndex: 0 }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().results).toEqual([{ ip: '203.0.113.9', model: null, modelSource: null }]);
+  });
+});
+
 describe('POST /api/network/discovery', () => {
   test('um equipamento registado que não responde fica ausente', async () => {
     seedBackbone('Torre Norte', '203.0.113.2');

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { crossReference, type CrossRefInput, type ObservedHost } from './network-inventory';
+import { crossReference, sameModel, type CrossRefInput, type ObservedHost } from './network-inventory';
 import type { RegisteredIp, SeenHostRow } from './network-discovery';
 
 const RANGE = ['192.168.1.1', '192.168.1.2', '192.168.1.3', '192.168.1.4', '192.168.1.5'];
@@ -18,6 +18,7 @@ const registered = (ip: string, over: Partial<RegisteredIp> = {}): RegisteredIp 
   kind: 'assignment',
   id: 1,
   name: 'Sr. Silva',
+  model: null,
   active: true,
   ...over
 });
@@ -40,7 +41,9 @@ describe('crossReference — as categorias', () => {
       registered: [registered('192.168.1.2')]
     });
     expect(rows[0].category).toBe('registado');
-    expect(rows[0].registeredAs).toEqual([{ kind: 'assignment', id: 1, name: 'Sr. Silva', active: true }]);
+    expect(rows[0].registeredAs).toEqual([
+      { kind: 'assignment', id: 1, name: 'Sr. Silva', active: true, model: null }
+    ]);
     expect(counts.registado).toBe(1);
   });
 
@@ -142,6 +145,8 @@ describe('crossReference — fusão de fontes e histórico', () => {
     macAddress: '50:C7:BF:AA:BB:CC',
     hostname: 'cpe-silva',
     vendor: 'TP-LINK',
+    model: null,
+    modelSource: null,
     source: 'arp',
     firstSeenAt: '2026-01-05 10:00:00',
     lastSeenAt: '2026-08-01 10:00:00',
@@ -185,5 +190,108 @@ describe('crossReference — ordenação', () => {
       seen: []
     });
     expect(rows.map((r) => r.ip)).toEqual(['192.168.1.2', '192.168.1.10', '192.168.1.100']);
+  });
+});
+
+// ------------------------------------------------------------------ modelo
+
+describe('sameModel', () => {
+  test('o catálogo e o aparelho dizem o mesmo com palavras diferentes', () => {
+    expect(sameModel('TP-Link CPE710', 'CPE710')).toBe(true);
+    expect(sameModel('CPE710', 'CPE710(EU) v2.0')).toBe(true);
+    expect(sameModel('TL-WR841N', 'tl wr841n')).toBe(true);
+  });
+
+  test('aparelhos diferentes continuam diferentes', () => {
+    expect(sameModel('TP-Link CPE710', 'CPE210')).toBe(false);
+    expect(sameModel('RB951Ui-2HnD', 'CPE710')).toBe(false);
+  });
+});
+
+describe('crossReference — que aparelho é', () => {
+  const registeredCpe = (model: string | null) =>
+    registered('192.168.1.3', { kind: 'assignment', model });
+
+  test('o modelo do registo ganha ao sondado', () => {
+    const { rows } = crossReference({
+      rangeIps: RANGE,
+      observed: [observed('192.168.1.3')],
+      registered: [registeredCpe('TP-Link CPE710')],
+      seen: [{
+        ipAddress: '192.168.1.3',
+        macAddress: null,
+        hostname: null,
+        vendor: null,
+        model: 'CPE710(EU) v2.0',
+        modelSource: 'snmp',
+        source: 'ping',
+        firstSeenAt: '2026-01-05 10:00:00',
+        lastSeenAt: '2026-08-01 10:00:00',
+        timesSeen: 2
+      }]
+    });
+
+    const row = rows.find((r) => r.ip === '192.168.1.3');
+    expect(row?.model).toBe('TP-Link CPE710');
+    expect(row?.modelSource).toBe('registo');
+    // Os dois concordam — nada a assinalar.
+    expect(row?.modelMismatch).toBe(false);
+  });
+
+  test('registo e rede a discordarem levantam o aviso', () => {
+    const { rows } = crossReference({
+      rangeIps: RANGE,
+      observed: [observed('192.168.1.3')],
+      registered: [registeredCpe('TP-Link CPE210')],
+      seen: [{
+        ipAddress: '192.168.1.3',
+        macAddress: null,
+        hostname: null,
+        vendor: null,
+        model: 'CPE710(EU) v2.0',
+        modelSource: 'snmp',
+        source: 'ping',
+        firstSeenAt: '2026-01-05 10:00:00',
+        lastSeenAt: '2026-08-01 10:00:00',
+        timesSeen: 2
+      }]
+    });
+
+    const row = rows.find((r) => r.ip === '192.168.1.3');
+    expect(row?.modelMismatch).toBe(true);
+    // Sem isto o aviso dizia "não bate" e calava-se sobre com o quê.
+    expect(row?.probedModel).toBe('CPE710(EU) v2.0');
+  });
+
+  test('sem registo, vale o que a rede respondeu', () => {
+    const { rows } = crossReference({
+      rangeIps: RANGE,
+      observed: [observed('192.168.1.3')],
+      registered: [],
+      seen: [{
+        ipAddress: '192.168.1.3',
+        macAddress: null,
+        hostname: null,
+        vendor: null,
+        model: 'RB951Ui-2HnD',
+        modelSource: 'router',
+        source: 'router',
+        firstSeenAt: '2026-01-05 10:00:00',
+        lastSeenAt: '2026-08-01 10:00:00',
+        timesSeen: 2
+      }]
+    });
+
+    const row = rows.find((r) => r.ip === '192.168.1.3');
+    expect(row?.model).toBe('RB951Ui-2HnD');
+    expect(row?.modelSource).toBe('router');
+    expect(row?.modelMismatch).toBe(false);
+  });
+
+  test('sem modelo nenhum a linha não inventa um', () => {
+    const { rows } = report({ observed: [observed('192.168.1.3')] });
+    const row = rows.find((r) => r.ip === '192.168.1.3');
+    expect(row?.model).toBeNull();
+    expect(row?.modelSource).toBeNull();
   });
 });

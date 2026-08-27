@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { chunk, expandRange, SWEEP_BATCH_SIZE } from '../../../../shared/ip-range';
 import { suggestIpPrefix } from '../../../lib/ip';
-import { createDiscoveryApi, type DiscoveryApi, type DiscoveryReport } from './discovery-api';
+import { createDiscoveryApi, type DiscoveryApi, type DiscoveryReport, type IdentifyRow } from './discovery-api';
 
-export type ScanProgress = { done: number; total: number } | null;
+/**
+ * `phase` existe porque a identificação é muito mais lenta que o varrimento e
+ * corre a seguir a ele. Sem dizer em que fase vai, a barra parecia encravada a
+ * 100% durante o dobro do tempo.
+ */
+export type ScanProgress = { done: number; total: number; phase: 'sweep' | 'identify' } | null;
 
 export type UseDiscovery = {
   range: string;
   setRange: (value: string) => void;
   includeRouter: boolean;
   setIncludeRouter: (value: boolean) => void;
+  identifyModels: boolean;
+  setIdentifyModels: (value: boolean) => void;
   report: DiscoveryReport | null;
   loading: boolean;
   scanning: boolean;
@@ -21,6 +28,7 @@ export type UseDiscovery = {
 };
 
 const RANGE_STORAGE_KEY = 'ispm.discovery.range';
+const IDENTIFY_STORAGE_KEY = 'ispm.discovery.identifyModels';
 
 /**
  * O varrimento é sequencial de propósito.
@@ -35,6 +43,12 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
     return localStorage.getItem(RANGE_STORAGE_KEY) ?? '';
   });
   const [includeRouter, setIncludeRouter] = useState(true);
+  // Desligado por omissão: é o único caminho da aba que sai do ICMP e vai bater
+  // à porta do equipamento do cliente. Quem o liga escolhe ligá-lo.
+  const [identifyModels, setIdentifyModelsState] = useState(() => {
+    if (typeof localStorage === 'undefined') return false;
+    return localStorage.getItem(IDENTIFY_STORAGE_KEY) === '1';
+  });
   const [report, setReport] = useState<DiscoveryReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -68,6 +82,37 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
   const setRange = useCallback((value: string) => {
     setRangeState(value);
     if (typeof localStorage !== 'undefined') localStorage.setItem(RANGE_STORAGE_KEY, value);
+  }, []);
+
+  const setIdentifyModels = useCallback((value: boolean) => {
+    setIdentifyModelsState(value);
+    if (typeof localStorage !== 'undefined') localStorage.setItem(IDENTIFY_STORAGE_KEY, value ? '1' : '0');
+  }, []);
+
+  /**
+   * Cose os modelos descobertos nas linhas que já estão no ecrã.
+   *
+   * Em vez de pedir o retrato outra vez no fim, cada lote que volta aparece na
+   * tabela — que é o que torna a identificação suportável de ver: as colunas
+   * enchem-se à frente de quem está a olhar, em vez de ficarem vazias durante
+   * um minuto e mudarem todas de uma vez.
+   */
+  const mergeModels = useCallback((found: IdentifyRow[]) => {
+    const byIp = new Map(found.filter((row) => row.model).map((row) => [row.ip, row]));
+    if (byIp.size === 0) return;
+    setReport((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        rows: current.rows.map((row) => {
+          const hit = byIp.get(row.ip);
+          // O modelo do registo não se substitui pelo sondado: quando os dois
+          // discordam, o que interessa mostrar é a discordância.
+          if (!hit?.model || row.modelSource === 'registo') return row;
+          return { ...row, model: hit.model, modelSource: hit.modelSource };
+        })
+      };
+    });
   }, []);
 
   const loadContext = useCallback(async (
@@ -146,7 +191,7 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
 
     setError(null);
     setScanning(true);
-    setProgress({ done: 0, total: ips.length });
+    setProgress({ done: 0, total: ips.length, phase: 'sweep' });
 
     void (async () => {
       const alive: Array<{ ip: string; rttMs: number | null }> = [];
@@ -157,7 +202,11 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
           const { results } = await api.sweepBatch(batch, range, index, controller.signal);
           for (const row of results) if (row.ok) alive.push({ ip: row.ip, rttMs: row.rttMs });
           if (!mountedRef.current) return;
-          setProgress({ done: Math.min((index + 1) * SWEEP_BATCH_SIZE, ips.length), total: ips.length });
+          setProgress({
+            done: Math.min((index + 1) * SWEEP_BATCH_SIZE, ips.length),
+            total: ips.length,
+            phase: 'sweep'
+          });
         }
 
         // Parar não deita fora o que já se descobriu — o cruzamento corre com
@@ -166,6 +215,23 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
         lastScanRef.current = { rangeIps, alive };
         if (mountedRef.current) {
           await loadContext(rangeIps, alive);
+        }
+
+        // A identificação vem depois do cruzamento de propósito: o retrato já
+        // persistiu as linhas destes endereços, que é onde o modelo pousa.
+        if (identifyModels && mountedRef.current && !stoppedRef.current && !controller.signal.aborted) {
+          const targets = alive.map((entry) => entry.ip);
+          for (const [index, batch] of chunk(targets, SWEEP_BATCH_SIZE).entries()) {
+            if (stoppedRef.current || controller.signal.aborted) break;
+            const { results } = await api.identifyBatch(batch, index, controller.signal);
+            if (!mountedRef.current) return;
+            mergeModels(results);
+            setProgress({
+              done: Math.min((index + 1) * SWEEP_BATCH_SIZE, targets.length),
+              total: targets.length,
+              phase: 'identify'
+            });
+          }
         }
       } catch (err: unknown) {
         if (!mountedRef.current) return;
@@ -179,7 +245,7 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
         }
       }
     })();
-  }, [api, loadContext, range]);
+  }, [api, loadContext, range, identifyModels, mergeModels]);
 
   // O intervalo sugerido nasce dos equipamentos já registados — reutiliza o
   // `suggestIpPrefix` que os formulários de equipamento já usam.
@@ -193,6 +259,8 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
     setRange,
     includeRouter,
     setIncludeRouter,
+    identifyModels,
+    setIdentifyModels,
     report,
     loading,
     scanning,
@@ -201,5 +269,8 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
     scan,
     stop,
     refresh
-  }), [range, setRange, includeRouter, report, loading, scanning, progress, error, scan, stop, refresh]);
+  }), [
+    range, setRange, includeRouter, identifyModels, setIdentifyModels,
+    report, loading, scanning, progress, error, scan, stop, refresh
+  ]);
 }

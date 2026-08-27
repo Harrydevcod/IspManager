@@ -337,6 +337,62 @@ export async function listArp(transport: RouterTransport): Promise<RouterArpEntr
  * Concessões DHCP. É a única fonte que traz o nome que o próprio equipamento
  * anuncia (`host-name`) — o DNS inverso raramente responde numa LAN destas.
  */
+export type RouterNeighbor = {
+  address: string;
+  macAddress: string | null;
+  identity: string | null;
+  /** Quem fabrica: `MikroTik`, ou o que o vizinho anunciar por LLDP. */
+  platform: string | null;
+  /** O modelo, quando o protocolo o traz: `RB951Ui-2HnD`. */
+  board: string | null;
+  version: string | null;
+  systemDescription: string | null;
+};
+
+/**
+ * Vizinhos que o router de gestão vê anunciarem-se por MNDP, CDP ou LLDP.
+ *
+ * É a única fonte de **modelo** que não obriga a tocar em cada equipamento: em
+ * vez de bater à porta de 200 CPEs, pergunta-se uma vez a quem já os ouviu
+ * apresentarem-se sozinhos. Quem não fala nenhum destes protocolos não aparece
+ * aqui — e isso não é uma falha, é a razão de existirem os outros canais.
+ *
+ * Leitura pura, como `listArp`: não depende de a reconciliação estar ligada.
+ */
+export async function listNeighbors(transport: RouterTransport): Promise<RouterNeighbor[]> {
+  const raw = await transport({
+    method: 'GET',
+    path: '/ip/neighbor?.proplist=address,mac-address,identity,platform,board,version,system-description'
+  });
+  return asArray(raw)
+    .map((row) => ({
+      address: str(row.address) ?? '',
+      macAddress: str(row['mac-address']),
+      identity: str(row.identity),
+      platform: str(row.platform),
+      board: str(row.board),
+      version: str(row.version),
+      systemDescription: str(row['system-description'])
+    }))
+    .filter((entry) => entry.address);
+}
+
+/**
+ * O que se mostra como modelo a partir de um vizinho.
+ *
+ * `board` é o nome da placa e é literalmente o modelo — usa-se tal e qual.
+ * Sem ele resta a descrição LLDP, que é texto livre do fabricante: guarda-se
+ * porque diz mais do que nada, mas não se tenta extrair um modelo dela à
+ * força. `platform` sozinho é fabricante, não modelo, e não passa por modelo.
+ */
+export function neighborModel(entry: RouterNeighbor): string | null {
+  const board = entry.board?.trim();
+  if (board) return board;
+  const description = entry.systemDescription?.trim();
+  if (description) return description.slice(0, 120);
+  return null;
+}
+
 export async function listDhcpLeases(transport: RouterTransport): Promise<RouterDhcpLease[]> {
   const raw = await transport({
     method: 'GET',
