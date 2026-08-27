@@ -534,6 +534,16 @@ export const networkDiscoveryHosts = sqliteTable('network_discovery_hosts', {
   modelSeenAt: text('model_seen_at')
 });
 
+/** Propostas da descoberta que alguém mandou deixar em paz. Ver migração 0049. */
+export const networkDiscoveryDismissals = sqliteTable('network_discovery_dismissals', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  kind: text('kind').notNull(),
+  targetKind: text('target_kind').notNull(),
+  targetId: integer('target_id').notNull(),
+  dismissedBy: integer('dismissed_by'),
+  dismissedAt: text('dismissed_at').notNull().default("(datetime('now'))")
+});
+
 /**
  * Inferred row types — one `select` (read) and `insert` (write) per table.
  * Prefer these over hand-written `as { ... }` casts in raw queries: renaming a

@@ -564,6 +564,30 @@ describe('device identity (IP fixo)', () => {
     };
   }
 
+  test('a auditoria guarda o MAC anterior, nao so o novo', async () => {
+    // A descoberta passou a escrever MAC. Sem o anterior no rasto, uma troca de
+    // equipamento no terreno fica indistinguivel de um preenchimento.
+    const { catalog, service } = seedBaseService();
+    const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, {
+      serialNumber: 'SN-MAC', ipAddress: '192.168.1.30', macAddress: 'AA:BB:CC:DD:EE:10'
+    });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/service-device-assignments/${assignmentId}`,
+      payload: { macAddress: 'AA:BB:CC:DD:EE:11' }
+    });
+    expect(response.statusCode).toBe(200);
+
+    const audit = db.prepare(
+      `SELECT metadata_json AS metadata FROM audit_logs WHERE action = 'update_device' ORDER BY id DESC LIMIT 1`
+    ).get() as { metadata: string };
+    expect(JSON.parse(audit.metadata)).toMatchObject({
+      macAddress: 'AA:BB:CC:DD:EE:11',
+      previousMacAddress: 'AA:BB:CC:DD:EE:10'
+    });
+  });
+
   test('patch updates identification in place without touching stock', async () => {
     const { catalog, service } = seedBaseService();
     const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, {

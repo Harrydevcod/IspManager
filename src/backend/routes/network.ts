@@ -18,7 +18,7 @@ import {
 import { identifyModel } from '../lib/device-model';
 import { loadNetworkEnforcementState, runNetworkEnforcement } from '../lib/network-enforcement';
 import {
-  loadRegisteredIps,
+  loadRegisteredDevices,
   loadSeenHosts,
   normalizeMac,
   persistModel,
@@ -29,6 +29,7 @@ import {
   type DiscoveredHost
 } from '../lib/network-discovery';
 import { crossReference, type ObservedHost } from '../lib/network-inventory';
+import { buildProposals, dismissalKey, findOrphans, type ProposalKind } from '../lib/discovery-reconcile';
 import { runJob } from '../lib/jobRuns';
 import { recordAudit } from '../lib/audit';
 import { isIpv4, SWEEP_BATCH_SIZE } from '../../shared/ip-range';
@@ -64,6 +65,12 @@ const identifyBodySchema = z.object({
  * de cliente com CPU de router doméstico, não a nossa máquina.
  */
 const IDENTIFY_CONCURRENCY = 8;
+
+const dismissBodySchema = z.object({
+  kind: z.enum(['mac_em_falta', 'ip_em_falta', 'ip_mudou', 'modelo_diferente', 'backbone_ausente']),
+  targetKind: z.enum(['backbone', 'assignment']),
+  targetId: z.number().int().positive()
+}).strict();
 
 const contextBodySchema = z.object({
   // O intervalo varrido, já expandido pelo renderer. Vazio quando a aba abre
@@ -267,7 +274,7 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     const report = crossReference({
       rangeIps,
       observed,
-      registered: loadRegisteredIps(db),
+      registered: loadRegisteredDevices(db),
       seen: loadSeenHosts(db)
     });
 
@@ -319,6 +326,58 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
         modelSource: probe?.model ? probe.source : null
       }))
     };
+  });
+
+  /**
+   * O que a rede sabe e o registo ainda não — em forma de propostas.
+   *
+   * **Não escreve nada.** Aplicar é sempre um botão, e o botão chama as rotas de
+   * equipamento que já existem (`PATCH /api/service-device-assignments`,
+   * `PUT /api/topology/backbones/:id`, `POST .../replace`) com as validações que
+   * elas já têm. Se esta rota escrevesse, a descoberta passava a ser uma segunda
+   * porta para o registo, com metade das regras.
+   */
+  app.get('/api/network/discovery/proposals', readOnly, async () => {
+    const db = getSqliteDatabase();
+    const devices = loadRegisteredDevices(db);
+    const hosts = loadSeenHosts(db);
+
+    const dismissed = new Set(
+      (db.prepare(`SELECT kind, target_kind AS targetKind, target_id AS targetId FROM network_discovery_dismissals`)
+        .all() as Array<{ kind: ProposalKind; targetKind: string; targetId: number }>)
+        .map((row) => dismissalKey(row.kind, row.targetKind, row.targetId))
+    );
+
+    const claimedIps = new Set(devices.flatMap((device) => (device.ip ? [device.ip] : [])));
+    return {
+      proposals: buildProposals({ devices, hosts, dismissed }),
+      orphans: findOrphans(devices, hosts, claimedIps)
+    };
+  });
+
+  // Dispensar é a única escrita desta família de rotas — e escreve sobre a
+  // proposta, nunca sobre o equipamento.
+  app.post('/api/network/discovery/dismiss', readOnly, async (request, reply) => {
+    const parsed = dismissBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Parametros invalidos' });
+    }
+    const { kind, targetKind, targetId } = parsed.data;
+    const db = getSqliteDatabase();
+
+    db.prepare(`
+      INSERT OR IGNORE INTO network_discovery_dismissals (kind, target_kind, target_id, dismissed_by)
+      VALUES (?, ?, ?, ?)
+    `).run(kind, targetKind, targetId, request.user?.id ?? null);
+
+    recordAudit(request, {
+      action: 'network_discovery_dismiss',
+      entityType: targetKind === 'backbone' ? 'backbone_device' : 'service_device_assignment',
+      entityId: targetId,
+      summary: kind
+    });
+
+    return { ok: true };
   });
 
   // Teste de ligação ao MikroTik. Só lê `/system/resource`: serve para provar

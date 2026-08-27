@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import {
-  loadRegisteredIps,
+  loadRegisteredDevices,
   loadSeenHosts,
   normalizeMac,
   parseArpTable,
@@ -211,14 +211,14 @@ function seedBackbone(db: Database.Database, ip: string, status: string): void {
   `).run(catalogId, `Antena ${ip}`, ip, status);
 }
 
-describe('loadRegisteredIps', () => {
+describe('loadRegisteredDevices', () => {
   test('o equipamento instalado ocupa o endereço mesmo com o serviço parado', () => {
     const db = freshDb();
     seedAssignment(db, '192.168.1.10', { serviceStatus: 'active' });
     seedAssignment(db, '192.168.1.11', { serviceStatus: 'suspended' });
     seedAssignment(db, '192.168.1.12', { serviceStatus: 'cancelled' });
 
-    const rows = loadRegisteredIps(db);
+    const rows = loadRegisteredDevices(db);
     expect(rows.map((r) => r.ip).sort()).toEqual(['192.168.1.10', '192.168.1.11', '192.168.1.12']);
     // O `active` separa quem devia estar de pé de quem está cortado.
     expect(rows.find((r) => r.ip === '192.168.1.10')?.active).toBe(true);
@@ -230,7 +230,7 @@ describe('loadRegisteredIps', () => {
   test('retirar o equipamento é o que liberta o endereço', () => {
     const db = freshDb();
     seedAssignment(db, '192.168.1.13', { endDate: '2026-08-01' });
-    expect(loadRegisteredIps(db)).toEqual([]);
+    expect(loadRegisteredDevices(db)).toEqual([]);
     db.close();
   });
 
@@ -240,7 +240,7 @@ describe('loadRegisteredIps', () => {
     seedBackbone(db, '192.168.1.21', 'maintenance');
     seedBackbone(db, '192.168.1.22', 'retired');
 
-    const rows = loadRegisteredIps(db);
+    const rows = loadRegisteredDevices(db);
     expect(rows.map((r) => r.ip).sort()).toEqual(['192.168.1.20', '192.168.1.21']);
     expect(rows.every((r) => r.active)).toBe(true);
     db.close();
@@ -297,13 +297,13 @@ describe('persistSeen', () => {
 
 // ------------------------------------------------------------- modelo
 
-describe('loadRegisteredIps — modelo do catálogo', () => {
+describe('loadRegisteredDevices — modelo do catálogo', () => {
   test('o registo traz marca e modelo já compostos', () => {
     const db = freshDb();
     seedAssignment(db, '192.168.1.30');
     seedBackbone(db, '192.168.1.31', 'active');
 
-    const rows = loadRegisteredIps(db);
+    const rows = loadRegisteredDevices(db);
     expect(rows.find((r) => r.ip === '192.168.1.30')?.model).toBe('TP-Link CPE 192.168.1.30');
     expect(rows.find((r) => r.ip === '192.168.1.31')?.model).toBe('TP-Link Antena 192.168.1.31');
     db.close();

@@ -54,6 +54,30 @@ export type SweepRow = { ip: string; ok: boolean; rttMs: number | null; hostname
 
 export type IdentifyRow = { ip: string; model: string | null; modelSource: RowModelSource | null };
 
+export type ProposalKind = 'mac_em_falta' | 'ip_em_falta' | 'ip_mudou' | 'modelo_diferente' | 'backbone_ausente';
+
+/** Uma diferença entre o registo e a rede, com os dois lados à vista. */
+export type Proposal = {
+  kind: ProposalKind;
+  targetKind: 'backbone' | 'assignment';
+  targetId: number;
+  name: string;
+  current: string | null;
+  proposed: string;
+  ip: string;
+};
+
+/** Equipamento registado que a rede não consegue reconhecer, e quem pode ser. */
+export type Orphan = {
+  targetKind: 'backbone' | 'assignment';
+  targetId: number;
+  name: string;
+  model: string | null;
+  candidates: Array<{ ip: string; mac: string | null; vendor: string | null; model: string | null }>;
+};
+
+export type Reconciliation = { proposals: Proposal[]; orphans: Orphan[] };
+
 async function readJson<T>(response: Response): Promise<T> {
   let payload: unknown = null;
   try {
@@ -103,7 +127,30 @@ export function createDiscoveryApi(fetcher: DiscoveryFetcher = authFetch) {
         signal
       }).then(readJson<DiscoveryReport>),
 
-    /** Escreve o IP na atribuição de equipamento ativa — rota que já existia. */
+    /** O que a rede sabe e o registo ainda não. Só lê. */
+    fetchProposals: (signal?: AbortSignal) =>
+      fetcher(`${API_BASE}/api/network/discovery/proposals`, { signal }).then(readJson<Reconciliation>),
+
+    /** Dispensar escreve sobre a proposta, nunca sobre o equipamento. */
+    dismissProposal: (kind: ProposalKind, targetKind: string, targetId: number) =>
+      fetcher(`${API_BASE}/api/network/discovery/dismiss`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ kind, targetKind, targetId })
+      }).then(readJson<{ ok: true }>),
+
+    /**
+     * Escreve na atribuição de equipamento ativa — a rota do registo, com as
+     * validações dela. Só vão os campos que mudam: mandar um IP igual ao que já
+     * lá está enche a auditoria de trocas que não aconteceram.
+     */
+    patchAssignment: (assignmentId: number, patch: { ipAddress?: string; macAddress?: string }) =>
+      fetcher(`${API_BASE}/api/service-device-assignments/${assignmentId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(patch)
+      }).then(readJson<unknown>),
+
     assignIp: (assignmentId: number, ipAddress: string, macAddress: string | null) =>
       fetcher(`${API_BASE}/api/service-device-assignments/${assignmentId}`, {
         method: 'PATCH',

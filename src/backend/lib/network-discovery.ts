@@ -3,6 +3,7 @@ import { Resolver } from 'node:dns/promises';
 import type Database from 'better-sqlite3';
 import { mapWithLimit, systemPing, type Pinger } from './network-probe';
 import { ouiTable } from './oui-data';
+import { normalizeMacAddress } from '../../shared/mac';
 
 /**
  * Descoberta de equipamentos na rede — o varrimento e o cruzamento com o que o
@@ -146,8 +147,11 @@ export function vendorForMac(mac: string | null | undefined): string | null {
 
 // --------------------------------------------------- registos conhecidos
 
-export type RegisteredIp = {
-  ip: string;
+export type RegisteredDevice = {
+  /** `null` quando o registo ainda não tem endereço — é o caso de quem anda em DHCP. */
+  ip: string | null;
+  /** Canónico (`AA:BB:CC:...`) ou `null`. É por aqui que se casa quem anda em DHCP. */
+  mac: string | null;
   kind: 'backbone' | 'assignment';
   id: number;
   name: string;
@@ -162,6 +166,9 @@ export type RegisteredIp = {
    * certo com isto, o que está errado é o registo, não a descoberta.
    */
   model: string | null;
+  /** Para propor o item certo ao registar, e para saber quem é obrigado a ter IP fixo. */
+  catalogId: number | null;
+  catalogType: string | null;
 };
 
 /** `TP-Link` + `CPE710` → `TP-Link CPE710`; qualquer um em falta não estorva. */
@@ -171,8 +178,12 @@ function catalogLabel(brand: string | null, model: string | null): string | null
 }
 
 /**
- * Todos os IPs que o ISPM diz ter na rede. Backbone e equipamento instalado em
- * serviços — as duas colunas onde um IP significa "isto está ocupado".
+ * Todo o equipamento que o ISPM diz ter — backbone e o instalado em serviços.
+ *
+ * Devolve também quem **não tem endereço**: o router do cliente apanha IP por
+ * DHCP e há registos por preencher. Quem só quer endereços ocupados (o
+ * cruzamento) filtra pelo `ip` vazio; quem quer casar registo com rede (a
+ * reconciliação) precisa deles, porque é pelo MAC que se casam.
  *
  * **Ocupado não é o mesmo que ativo.** O CPE de um cliente suspenso continua em
  * casa dele com o mesmo endereço: não responde ao ping porque foi cortado, mas
@@ -185,44 +196,53 @@ function catalogLabel(brand: string | null, model: string | null): string | null
  * (`reservado`). A sonda (`network-probe.ts`) é que filtra por serviço ativo,
  * porque a pergunta dela é outra: "quem devia estar a responder?".
  */
-export function loadRegisteredIps(db: Database.Database): RegisteredIp[] {
-  type Row = { ip: string; id: number; name: string; status: string; brand: string | null; model: string | null };
+export function loadRegisteredDevices(db: Database.Database): RegisteredDevice[] {
+  type Row = {
+    ip: string | null; mac: string | null; id: number; name: string; status: string;
+    brand: string | null; model: string | null; catalogId: number | null; catalogType: string | null;
+  };
 
   const backbones = db.prepare(`
-    SELECT b.ip_address AS ip, b.id, b.name, b.status, cat.brand, cat.model
+    SELECT b.ip_address AS ip, b.mac_address AS mac, b.id, b.name, b.status,
+           cat.brand, cat.model, cat.id AS catalogId, cat.type AS catalogType
     FROM backbone_devices b
     LEFT JOIN equipment_catalog cat ON cat.id = b.catalog_id
     WHERE b.status <> 'retired'
-      AND b.ip_address IS NOT NULL AND TRIM(b.ip_address) <> ''
   `).all() as Row[];
 
   const assignments = db.prepare(`
-    SELECT a.ip_address AS ip, a.id, c.full_name AS name, s.status, cat.brand, cat.model
+    SELECT a.ip_address AS ip, a.mac_address AS mac, a.id, c.full_name AS name, s.status,
+           cat.brand, cat.model, cat.id AS catalogId, cat.type AS catalogType
     FROM service_device_assignments a
     JOIN services s ON s.id = a.service_id
     JOIN clients c ON c.id = s.client_id
     LEFT JOIN equipment_catalog cat ON cat.id = a.catalog_id
     WHERE a.end_date IS NULL
-      AND a.ip_address IS NOT NULL AND TRIM(a.ip_address) <> ''
   `).all() as Row[];
 
   return [
     ...backbones.map((row) => ({
-      ip: row.ip.trim(),
+      ip: row.ip?.trim() || null,
+      mac: normalizeMacAddress(row.mac),
       kind: 'backbone' as const,
       id: row.id,
       name: row.name,
       // Em manutenção continua a ser equipamento nosso que devia estar de pé.
       active: row.status === 'active' || row.status === 'maintenance',
-      model: catalogLabel(row.brand, row.model)
+      model: catalogLabel(row.brand, row.model),
+      catalogId: row.catalogId,
+      catalogType: row.catalogType
     })),
     ...assignments.map((row) => ({
-      ip: row.ip.trim(),
+      ip: row.ip?.trim() || null,
+      mac: normalizeMacAddress(row.mac),
       kind: 'assignment' as const,
       id: row.id,
       name: row.name,
       active: row.status === 'active',
-      model: catalogLabel(row.brand, row.model)
+      model: catalogLabel(row.brand, row.model),
+      catalogId: row.catalogId,
+      catalogType: row.catalogType
     }))
   ];
 }

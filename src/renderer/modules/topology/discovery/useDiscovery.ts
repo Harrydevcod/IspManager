@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { chunk, expandRange, SWEEP_BATCH_SIZE } from '../../../../shared/ip-range';
 import { suggestIpPrefix } from '../../../lib/ip';
-import { createDiscoveryApi, type DiscoveryApi, type DiscoveryReport, type IdentifyRow } from './discovery-api';
+import { createDiscoveryApi, type DiscoveryApi, type DiscoveryReport, type IdentifyRow, type Reconciliation } from './discovery-api';
 
 /**
  * `phase` existe porque a identificação é muito mais lenta que o varrimento e
@@ -18,6 +18,8 @@ export type UseDiscovery = {
   identifyModels: boolean;
   setIdentifyModels: (value: boolean) => void;
   report: DiscoveryReport | null;
+  /** O que a rede sabe e o registo ainda não. Vem com o retrato, não à parte. */
+  reconciliation: Reconciliation | null;
   loading: boolean;
   scanning: boolean;
   progress: ScanProgress;
@@ -50,6 +52,7 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
     return localStorage.getItem(IDENTIFY_STORAGE_KEY) === '1';
   });
   const [report, setReport] = useState<DiscoveryReport | null>(null);
+  const [reconciliation, setReconciliation] = useState<Reconciliation | null>(null);
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState<ScanProgress>(null);
@@ -123,6 +126,16 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
     const next = await api.fetchContext({ rangeIps, alive, includeRouter }, signal);
     if (!mountedRef.current) return null;
     setReport(next);
+
+    // As propostas leem-se depois do retrato porque é o retrato que persiste o
+    // que foi visto agora — pedi-las antes dava a fotografia do varrimento
+    // anterior. Falharem não estraga a página: a tabela vale por si.
+    try {
+      const found = await api.fetchProposals(signal);
+      if (mountedRef.current) setReconciliation(found);
+    } catch {
+      // Sem propostas a aba continua a responder "quem está na rede".
+    }
     return next;
   }, [api, includeRouter]);
 
@@ -262,6 +275,7 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
     identifyModels,
     setIdentifyModels,
     report,
+    reconciliation,
     loading,
     scanning,
     progress,
@@ -271,6 +285,6 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
     refresh
   }), [
     range, setRange, includeRouter, identifyModels, setIdentifyModels,
-    report, loading, scanning, progress, error, scan, stop, refresh
+    report, reconciliation, loading, scanning, progress, error, scan, stop, refresh
   ]);
 }

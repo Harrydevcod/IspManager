@@ -244,3 +244,127 @@
     inline-size: 100%;
   }
 }
+
+/* ------------------------------------------------ aplicar ao registo */
+
+.reconcile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  padding: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.reconcile-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.reconcile-head h3 {
+  margin: 0;
+  font-size: var(--fs-md);
+}
+
+.reconcile-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.reconcile-group-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* A frase explica porquê. Fica clara mas discreta: quem já sabe salta-a. */
+.reconcile-hint {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  /* Sem isto a frase atravessa o ecrã todo e deixa de se ler como uma nota. */
+  max-width: 74ch;
+}
+
+.reconcile-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.2fr) 120px minmax(200px, 1.6fr) auto;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.reconcile-who {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reconcile-ip,
+.reconcile-model {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* O antes e o depois na mesma linha — é a comparação que decide o clique. */
+.reconcile-change {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.reconcile-before {
+  text-decoration: line-through;
+}
+
+.reconcile-after {
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reconcile-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s2);
+}
+
+@media (max-width: 900px) {
+  .reconcile-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .reconcile-actions {
+    justify-content: flex-start;
+  }
+}
+
+.batch-register {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+/* A lista pode ser longa numa migração; rola dentro do diálogo em vez de o
+   esticar até o botão de registar sair do ecrã. */
+.batch-register-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  max-height: 46vh;
+  overflow-y: auto;
+}

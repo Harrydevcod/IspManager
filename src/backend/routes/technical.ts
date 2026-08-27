@@ -687,6 +687,10 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         serviceId: current.serviceId,
         ipAddress: next.ipAddress,
         previousIpAddress: current.ipAddress,
+        // O MAC é identidade — desde que a descoberta o passou a escrever, saber
+        // qual era antes é a diferença entre explicar uma troca e adivinhá-la.
+        macAddress: next.macAddress,
+        previousMacAddress: current.macAddress,
         // O aluguer entra no que o cliente paga: quem o mudou fica escrito.
         rentalFeeCve: next.rentalFeeCve,
         previousRentalFeeCve: current.rentalFeeCve

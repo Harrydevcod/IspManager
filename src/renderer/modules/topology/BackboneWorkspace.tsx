@@ -20,7 +20,14 @@ import { useBackboneWorkspace } from './useBackboneWorkspace';
 import './BackboneWorkspace.css';
 
 /** Valores que a Descoberta traz da rede para o formulário de registo. */
-export type BackbonePrefill = { ipAddress: string; macAddress: string | null };
+export type BackbonePrefill = {
+  ipAddress: string;
+  macAddress: string | null;
+  /** O nome que o aparelho anuncia, quando anuncia algum. */
+  name?: string | null;
+  /** O modelo que a rede respondeu — serve para escolher o item do catálogo. */
+  model?: string | null;
+};
 
 export type BackboneWorkspaceProps = {
   /** Sobe quando o mapa regista ou liga uma unidade: refresca sem remontar. */

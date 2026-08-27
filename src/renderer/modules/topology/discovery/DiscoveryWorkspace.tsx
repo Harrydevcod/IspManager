@@ -34,11 +34,21 @@ import { ipToInt } from '../../../../shared/ip-range';
 import { createDiscoveryApi, type DiscoveryCategory, type DiscoveryRow } from './discovery-api';
 import { useDiscovery } from './useDiscovery';
 import { AssignIpDialog } from './AssignIpDialog';
+import { ReconcilePanel } from './ReconcilePanel';
+import { BatchRegisterDialog, candidatesFor } from './BatchRegisterDialog';
 
 export type DiscoveryWorkspaceProps = {
   active: boolean;
-  /** Abre o formulário de backbone na aba ao lado, já com o IP e o MAC. */
-  onRegisterBackbone: (prefill: { ipAddress: string; macAddress: string | null }) => void;
+  /**
+   * Abre o formulário de backbone na aba ao lado, já com o que a rede disse:
+   * endereço, MAC, o nome anunciado e o modelo detetado.
+   */
+  onRegisterBackbone: (prefill: {
+    ipAddress: string;
+    macAddress: string | null;
+    name?: string | null;
+    model?: string | null;
+  }) => void;
 };
 
 type Filter = 'todos' | DiscoveryCategory;
@@ -184,6 +194,7 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
   const [filter, setFilter] = useState<Filter>('todos');
   const [sort, setSort] = useState<SortState<DiscoverySortKey>>(DEFAULT_SORT);
   const [assigning, setAssigning] = useState<DiscoveryRow | null>(null);
+  const [batchOpen, setBatchOpen] = useState(false);
   const { toast } = useToast();
 
   const rows = useMemo(
@@ -225,6 +236,8 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
       ])
     ]);
   }
+
+  const batchCandidates = useMemo(() => candidatesFor(report?.rows ?? []).length, [report]);
 
   const counts = report?.counts;
   /** Só há router para consultar depois de o relatório o confirmar. */
@@ -284,6 +297,18 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
               Varrer
             </Button>
           )}
+          {/* Só aparece quando há mesmo lote para registar — um botão que abre
+              um diálogo vazio é um convite falhado. */}
+          {batchCandidates > 0 ? (
+            <Button
+              variant="secondary"
+              leadingIcon={<Antenna size={16} aria-hidden />}
+              onClick={() => setBatchOpen(true)}
+              disabled={scanning}
+            >
+              Registar {batchCandidates}
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             leadingIcon={<Download size={16} aria-hidden />}
@@ -303,6 +328,8 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
           </span>
         </div>
       ) : null}
+
+      <ReconcilePanel data={discovery.reconciliation} api={api} onChanged={discovery.refresh} />
 
       {discovery.error ? (
         <ErrorRetry message={discovery.error} onRetry={discovery.refresh} />
@@ -427,7 +454,14 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
                   {
                     label: 'Registar como backbone',
                     icon: <Antenna size={14} aria-hidden />,
-                    onClick: () => onRegisterBackbone({ ipAddress: row.ip, macAddress: row.mac }),
+                    // Leva tudo o que a rede já disse: escrever à mão o que
+                    // está na linha ao lado é o trabalho que isto evita.
+                    onClick: () => onRegisterBackbone({
+                      ipAddress: row.ip,
+                      macAddress: row.mac,
+                      name: row.hostname,
+                      model: row.probedModel ?? row.model
+                    }),
                     disabled: row.registeredAs.some((ref) => ref.kind === 'backbone'),
                     title: row.registeredAs.some((ref) => ref.kind === 'backbone')
                       ? 'Este endereço já pertence a um backbone'
@@ -463,6 +497,13 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
             }
           />
         }
+      />
+
+      <BatchRegisterDialog
+        open={batchOpen}
+        rows={report?.rows ?? []}
+        onClose={() => setBatchOpen(false)}
+        onRegistered={discovery.refresh}
       />
 
       {assigning ? (

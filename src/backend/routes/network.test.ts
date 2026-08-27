@@ -15,6 +15,7 @@ const TABLES_TO_CLEAR = [
   'network_probe_state',
   'network_discovery_hosts',
   'backbone_devices',
+  'network_discovery_dismissals',
   'equipment_catalog',
   'app_settings'
 ];
@@ -293,5 +294,80 @@ describe('POST /api/network/discovery', () => {
     const body = await discoveryContext({ rangeIps: [] });
     expect(body.freeIps).toEqual([]);
     expect(body.nextFreeIp).toBeNull();
+  });
+});
+
+describe('GET /api/network/discovery/proposals', () => {
+  function seenHost(ip: string, mac: string | null, over: { model?: string; lastSeenAt?: string } = {}) {
+    db.prepare(`
+      INSERT INTO network_discovery_hosts (ip_address, mac_address, source, model, model_source, last_seen_at)
+      VALUES (?, ?, 'ping', ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+    `).run(ip, mac, over.model ?? null, over.model ? 'http' : null, over.lastSeenAt ?? null);
+  }
+
+  async function proposals() {
+    const response = await app.inject({ method: 'GET', url: '/api/network/discovery/proposals' });
+    expect(response.statusCode).toBe(200);
+    return response.json() as { proposals: Array<Record<string, unknown>>; orphans: unknown[] };
+  }
+
+  test('backbone com endereço e sem MAC ganha proposta de MAC', async () => {
+    seedBackbone('Torre Norte', '203.0.113.2');
+    seenHost('203.0.113.2', '50:C7:BF:AA:BB:CC');
+
+    const body = await proposals();
+    expect(body.proposals).toHaveLength(1);
+    expect(body.proposals[0]).toMatchObject({
+      kind: 'mac_em_falta',
+      targetKind: 'backbone',
+      proposed: '50:C7:BF:AA:BB:CC'
+    });
+  });
+
+  test('a rota não escreve nada — as propostas são só uma leitura', async () => {
+    const id = seedBackbone('Torre Norte', '203.0.113.2');
+    seenHost('203.0.113.2', '50:C7:BF:AA:BB:CC');
+
+    await proposals();
+    const row = db.prepare('SELECT mac_address AS mac FROM backbone_devices WHERE id = ?').get(id) as { mac: string | null };
+    expect(row.mac).toBeNull();
+  });
+
+  test('sem diferenças a lista vem vazia', async () => {
+    seedBackbone('Torre Norte', '203.0.113.2');
+    expect((await proposals()).proposals).toEqual([]);
+  });
+
+  test('dispensar tira a proposta e não volta no pedido seguinte', async () => {
+    const id = seedBackbone('Torre Norte', '203.0.113.2');
+    seenHost('203.0.113.2', '50:C7:BF:AA:BB:CC');
+    expect((await proposals()).proposals).toHaveLength(1);
+
+    const dismiss = await app.inject({
+      method: 'POST',
+      url: '/api/network/discovery/dismiss',
+      payload: { kind: 'mac_em_falta', targetKind: 'backbone', targetId: id }
+    });
+    expect(dismiss.statusCode).toBe(200);
+    expect((await proposals()).proposals).toEqual([]);
+  });
+
+  test('dispensar duas vezes não rebenta nem duplica', async () => {
+    const id = seedBackbone('Torre Norte', '203.0.113.2');
+    const payload = { kind: 'mac_em_falta', targetKind: 'backbone', targetId: id };
+    await app.inject({ method: 'POST', url: '/api/network/discovery/dismiss', payload });
+    const again = await app.inject({ method: 'POST', url: '/api/network/discovery/dismiss', payload });
+    expect(again.statusCode).toBe(200);
+    const count = db.prepare('SELECT COUNT(*) AS n FROM network_discovery_dismissals').get() as { n: number };
+    expect(count.n).toBe(1);
+  });
+
+  test('recusa uma proposta que não existe', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/network/discovery/dismiss',
+      payload: { kind: 'inventada', targetKind: 'backbone', targetId: 1 }
+    });
+    expect(response.statusCode).toBe(400);
   });
 });
