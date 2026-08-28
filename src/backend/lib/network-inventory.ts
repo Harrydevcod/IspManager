@@ -91,6 +91,17 @@ export type CrossRefInput = {
   observed: ObservedHost[];
   registered: RegisteredDevice[];
   seen: SeenHostRow[];
+  /**
+   * Nomes vindos do DNS inverso durante o varrimento, por endereço.
+   *
+   * Entram à parte das outras fontes de propósito, e **não se guardam**. A
+   * escrita em `network_discovery_hosts` é um `COALESCE`: o primeiro nome que
+   * lá entra fica para sempre. Um nome de DNS inverso é o mais fraco dos três
+   * — não é o aparelho a falar, é uma entrada que alguém criou e pode não ter
+   * apagado — e congelá-lo seria dar-lhe uma permanência que ele não merece.
+   * Aqui é recurso final e recalcula-se em cada varrimento.
+   */
+  dnsNames?: Record<string, string>;
 };
 
 function byIpOrder(a: string, b: string): number {
@@ -156,7 +167,7 @@ export function crossReference(input: CrossRefInput): DiscoveryReport {
       modelSource,
       modelMismatch: Boolean(registeredModel && probedModel && !sameModel(registeredModel, probedModel)),
       probedModel,
-      hostname: observed?.hostname ?? history?.hostname ?? null,
+      hostname: observed?.hostname ?? history?.hostname ?? input.dnsNames?.[ip] ?? null,
       vendor: vendorForMac(mac) ?? history?.vendor ?? null,
       category,
       alive: observed !== null,
