@@ -1,6 +1,7 @@
 import './DiscoveryWorkspace.css';
 
 import { useMemo, useState } from 'react';
+import { describeRange } from '../../../../shared/ip-range';
 import {
   Antenna,
   Copy,
@@ -49,6 +50,10 @@ export type DiscoveryWorkspaceProps = {
     name?: string | null;
     model?: string | null;
   }) => void;
+  /** Leva a proposta que não se aplica aqui ao sítio onde se aplica. */
+  onOpenService: (clientId: number, serviceId: number, assignmentId?: number) => void;
+  /** O mesmo para o backbone, que se resolve no separador ao lado. */
+  onOpenBackbone: () => void;
 };
 
 type Filter = 'todos' | DiscoveryCategory;
@@ -188,7 +193,7 @@ function displayName(row: DiscoveryRow): string {
   return row.hostname ?? '—';
 }
 
-export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWorkspaceProps) {
+export function DiscoveryWorkspace({ active, onRegisterBackbone, onOpenService, onOpenBackbone }: DiscoveryWorkspaceProps) {
   const discovery = useDiscovery(active, api);
   const { report, progress, scanning } = discovery;
   const [filter, setFilter] = useState<Filter>('todos');
@@ -239,6 +244,15 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
 
   const batchCandidates = useMemo(() => candidatesFor(report?.rows ?? []).length, [report]);
 
+  /**
+   * O que o campo vai varrer, dito antes de alguém carregar em "Varrer".
+   *
+   * `192.168.1.37` e `192.168.1.1-254` têm o mesmo aspeto dentro de um input, e
+   * o campo sobrevive à sessão em `localStorage`: um endereço solto lá deixado
+   * varria-se em silêncio, e a tabela vinha com uma linha sem dizer porquê.
+   */
+  const rangeSummary = useMemo(() => describeRange(discovery.range), [discovery.range]);
+
   const counts = report?.counts;
   /** Só há router para consultar depois de o relatório o confirmar. */
   const routerAvailable = report?.routerConfigured ?? false;
@@ -252,7 +266,8 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
           placeholder="192.168.1.1-254"
           value={discovery.range}
           onChange={(event) => discovery.setRange(event.target.value)}
-          hint="Aceita 192.168.1.0/24 ou 192.168.1.1-254"
+          hint={rangeSummary.hint}
+          error={rangeSummary.error}
           disabled={scanning}
         />
         {/* Ligado só quando há mesmo router para consultar. Um interruptor a
@@ -329,7 +344,13 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone }: DiscoveryWork
         </div>
       ) : null}
 
-      <ReconcilePanel data={discovery.reconciliation} api={api} onChanged={discovery.refresh} />
+      <ReconcilePanel
+        data={discovery.reconciliation}
+        api={api}
+        onChanged={discovery.refresh}
+        onOpenService={onOpenService}
+        onOpenBackbone={onOpenBackbone}
+      />
 
       {discovery.error ? (
         <ErrorRetry message={discovery.error} onRetry={discovery.refresh} />

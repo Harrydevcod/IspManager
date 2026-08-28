@@ -24,6 +24,8 @@ const registered = (ip: string, over: Partial<RegisteredDevice> = {}): Registere
   catalogId: null,
   catalogType: null,
   active: true,
+  serviceId: 7,
+  clientId: 3,
   ...over
 });
 

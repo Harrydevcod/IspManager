@@ -169,6 +169,16 @@ export type RegisteredDevice = {
   /** Para propor o item certo ao registar, e para saber quem é obrigado a ter IP fixo. */
   catalogId: number | null;
   catalogType: string | null;
+  /**
+   * A que serviço pertence o equipamento — `null` no backbone, que não tem dono.
+   *
+   * Não serve para casar registo com rede: serve para a reconciliação poder
+   * mandar quem está a olhar para a proposta ao sítio onde ela se resolve. Uma
+   * diferença de modelo corrige-se no serviço, e sem isto a única coisa que a
+   * proposta sabe é o id da atribuição, que não abre porta nenhuma.
+   */
+  serviceId: number | null;
+  clientId: number | null;
 };
 
 /** `TP-Link` + `CPE710` → `TP-Link CPE710`; qualquer um em falta não estorva. */
@@ -200,6 +210,7 @@ export function loadRegisteredDevices(db: Database.Database): RegisteredDevice[]
   type Row = {
     ip: string | null; mac: string | null; id: number; name: string; status: string;
     brand: string | null; model: string | null; catalogId: number | null; catalogType: string | null;
+    serviceId?: number | null; clientId?: number | null;
   };
 
   const backbones = db.prepare(`
@@ -212,7 +223,8 @@ export function loadRegisteredDevices(db: Database.Database): RegisteredDevice[]
 
   const assignments = db.prepare(`
     SELECT a.ip_address AS ip, a.mac_address AS mac, a.id, c.full_name AS name, s.status,
-           cat.brand, cat.model, cat.id AS catalogId, cat.type AS catalogType
+           cat.brand, cat.model, cat.id AS catalogId, cat.type AS catalogType,
+           s.id AS serviceId, s.client_id AS clientId
     FROM service_device_assignments a
     JOIN services s ON s.id = a.service_id
     JOIN clients c ON c.id = s.client_id
@@ -231,7 +243,9 @@ export function loadRegisteredDevices(db: Database.Database): RegisteredDevice[]
       active: row.status === 'active' || row.status === 'maintenance',
       model: catalogLabel(row.brand, row.model),
       catalogId: row.catalogId,
-      catalogType: row.catalogType
+      catalogType: row.catalogType,
+      serviceId: null,
+      clientId: null
     })),
     ...assignments.map((row) => ({
       ip: row.ip?.trim() || null,
@@ -242,7 +256,9 @@ export function loadRegisteredDevices(db: Database.Database): RegisteredDevice[]
       active: row.status === 'active',
       model: catalogLabel(row.brand, row.model),
       catalogId: row.catalogId,
-      catalogType: row.catalogType
+      catalogType: row.catalogType,
+      serviceId: row.serviceId ?? null,
+      clientId: row.clientId ?? null
     }))
   ];
 }

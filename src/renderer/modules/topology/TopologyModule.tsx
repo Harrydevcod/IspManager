@@ -12,7 +12,11 @@ const TopologyMapView = lazy(() => import('./TopologyMapView'));
 export type TopologyModuleProps = {
   api?: TopologyApi;
   onOpenClient: (clientId: number) => void;
-  onOpenService: (clientId: number, serviceId: number) => void;
+  /**
+   * O `assignmentId` é opcional porque só a Descoberta o sabe: o mapa manda
+   * abrir o serviço, a proposta de modelo manda abrir o equipamento dentro dele.
+   */
+  onOpenService: (clientId: number, serviceId: number, assignmentId?: number) => void;
   onOpenStock: (catalogId: number) => void;
 };
 
@@ -182,6 +186,8 @@ export default function TopologyModule(props: TopologyModuleProps) {
           <DiscoveryWorkspace
             active={activeTab === 'discovery'}
             onRegisterBackbone={handleRegisterBackbone}
+            onOpenService={props.onOpenService}
+            onOpenBackbone={() => selectTab('backbone')}
           />
         )}
       </div>

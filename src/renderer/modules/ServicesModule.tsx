@@ -10,6 +10,7 @@ import { statusLabel, statusTone } from '../lib/status';
 import { hasTextSelection } from '../lib/textSelection';
 import type { AudiovisualConfig, Client, DeviceAssignment, ManualServiceEventType, PlanRow, ReturnCondition, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
 import { BulkIpDialog, type ActiveAssignment } from './services/BulkIpDialog';
+import { findReplaceTarget } from './services/findReplaceTarget';
 import { IpField } from './services/IpField';
 import { MANUAL_EVENT_TYPES, ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
 import { PurchaseDeviceDialog } from './services/PurchaseDeviceDialog';
@@ -74,10 +75,13 @@ const DEFAULT_SERVICE_STATUS_FILTER: 'all' | ServiceRow['status'] = 'active';
 export function ServicesModule({
   focusClientId,
   focusServiceId,
+  focusAssignmentId,
   onFocusHandled
 }: {
   focusClientId?: number | null;
   focusServiceId?: number | null;
+  /** Vem da Descoberta: qual equipamento do serviço é que se vai substituir. */
+  focusAssignmentId?: number | null;
   onFocusHandled?: () => void;
 } = {}) {
   const { toast } = useToast();
@@ -112,6 +116,15 @@ export function ServicesModule({
   const [showEventDialog, setShowEventDialog] = useState(false);
   const [eventForm, setEventForm] = useState<EventFormState>(emptyEventForm());
   const [replaceTarget, setReplaceTarget] = useState<DeviceAssignment | null>(null);
+  /**
+   * O equipamento que a Descoberta mandou substituir, à espera da lista.
+   *
+   * O `focusServiceId` abre o serviço, mas as atribuições só chegam no pedido
+   * seguinte (`loadTechnicalHistory`) — por isso a abertura é em dois tempos:
+   * aqui guarda-se a intenção, e o efeito lá em baixo executa-a quando houver
+   * lista onde procurar.
+   */
+  const [pendingReplaceId, setPendingReplaceId] = useState<number | null>(null);
   const [purchaseTarget, setPurchaseTarget] = useState<DeviceAssignment | null>(null);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   /** Painel de devolução: serviço + histórico no momento em que abriu. */
@@ -270,6 +283,7 @@ export function ServicesModule({
         setSearch(service.clientName);
         setStatusFilter('all');
         setSelectedService(service);
+        setPendingReplaceId(focusAssignmentId ?? null);
       }
       onFocusHandled?.();
       return;
@@ -284,7 +298,27 @@ export function ServicesModule({
       }
     }
     onFocusHandled?.();
-  }, [focusClientId, focusServiceId, services, onFocusHandled]);
+  }, [focusClientId, focusServiceId, focusAssignmentId, services, onFocusHandled]);
+
+  /**
+   * Segundo tempo do atalho da Descoberta: a lista chegou, abre-se o diálogo.
+   *
+   * A confirmação do `serviceId` não é zelo a mais: o `technicalHistory` guarda
+   * a lista do serviço **anterior** até o pedido novo voltar, e sem ela o atalho
+   * procurava o equipamento na lista errada — e desistia por não o encontrar.
+   *
+   * A intenção limpa-se dispare ou não: se o equipamento já não existe, ou a
+   * permissão não chega, quem chegou aqui fica no serviço em foco — que
+   * continua a ser o sítio certo — e não com um atalho a tentar outra vez.
+   */
+  useEffect(() => {
+    if (pendingReplaceId === null) return;
+    if (!selectedService || technicalHistory?.serviceId !== selectedService.id) return;
+    const target = findReplaceTarget(technicalHistory.assignments, pendingReplaceId, canRecordTechnical);
+    setPendingReplaceId(null);
+    if (target) openReplaceDialog(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingReplaceId, selectedService, technicalHistory, canRecordTechnical]);
 
   function openDeviceDialog() {
     setAddItemDrafts([]);

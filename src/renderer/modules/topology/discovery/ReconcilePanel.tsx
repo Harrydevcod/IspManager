@@ -44,7 +44,7 @@ const GROUPS: Group[] = [
   {
     kind: 'modelo_diferente',
     title: 'Modelo diferente do registado',
-    hint: 'O aparelho na rede não é o que está registado. Não se corrige aqui: trocar o item do catálogo é mexer no stock, e o caminho certo é registar a troca de equipamento em Serviços.',
+    hint: 'O aparelho na rede não é o que está registado. Trocar o item do catálogo é mexer no stock — por isso a troca regista-se no serviço, e o botão leva-o lá.',
     applies: false
   },
   {
@@ -67,9 +67,13 @@ export type ReconcilePanelProps = {
   data: Reconciliation | null;
   api: DiscoveryApi;
   onChanged: () => void;
+  /** Abre o serviço com o diálogo de substituição já no equipamento certo. */
+  onOpenService: (clientId: number, serviceId: number, assignmentId?: number) => void;
+  /** Muda para o separador Backbone, onde o estado se altera. */
+  onOpenBackbone: () => void;
 };
 
-export function ReconcilePanel({ data, api, onChanged }: ReconcilePanelProps) {
+export function ReconcilePanel({ data, api, onChanged, onOpenService, onOpenBackbone }: ReconcilePanelProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -89,6 +93,35 @@ export function ReconcilePanel({ data, api, onChanged }: ReconcilePanelProps) {
   if (total === 0 && orphans.length === 0) return null;
 
   const key = (proposal: Proposal) => `${proposal.kind}:${proposal.targetKind}:${proposal.targetId}`;
+
+  /**
+   * Estas duas famílias não se aplicam aqui — e é isso que as tornava um beco.
+   *
+   * O painel sabia dizer onde é que se resolvem e deixava lá quem estava a ler:
+   * sair da aba, abrir Serviços, procurar o cliente, abrir o serviço, encontrar
+   * a linha do equipamento. O crachá passa a ser um botão que faz esse caminho.
+   *
+   * O destino é que decide: a substituição continua a ser a rota de Serviços,
+   * com as validações e o movimento de stock dela. Isto abre a porta, não passa
+   * por cima dela. Sem `serviceId` (backbone, ou uma proposta de uma versão
+   * anterior) o botão não aparece — não se promete uma porta que não existe.
+   */
+  function elsewhere(proposal: Proposal): { label: string; go: () => void } | null {
+    const { clientId, serviceId } = proposal;
+    if (proposal.kind === 'modelo_diferente' && clientId && serviceId) {
+      return {
+        label: 'Substituir em Serviços',
+        go: () => onOpenService(clientId, serviceId, proposal.targetId)
+      };
+    }
+    // Tudo o resto que não se aplica aqui é backbone: a ausência, e também um
+    // modelo diferente num equipamento nosso — esse não é uma troca, é a ficha
+    // do aparelho, e edita-se na lista do separador ao lado.
+    if (proposal.targetKind === 'backbone') {
+      return { label: 'Abrir no Backbone', go: onOpenBackbone };
+    }
+    return null;
+  }
 
   async function apply(proposal: Proposal) {
     if (proposal.targetKind !== 'assignment') return;
@@ -139,7 +172,9 @@ export function ReconcilePanel({ data, api, onChanged }: ReconcilePanelProps) {
               <span className="reconcile-hint">{group.hint}</span>
             </div>
 
-            {proposals.map((proposal) => (
+            {proposals.map((proposal) => {
+              const to = group.applies ? null : elsewhere(proposal);
+              return (
               <div className="reconcile-row" key={key(proposal)}>
                 <span className="reconcile-who">{proposal.name}</span>
                 <code className="reconcile-ip">{proposal.ip}</code>
@@ -160,9 +195,18 @@ export function ReconcilePanel({ data, api, onChanged }: ReconcilePanelProps) {
                     >
                       Aplicar
                     </Button>
+                  ) : to ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      leadingIcon={<Wrench size={14} aria-hidden />}
+                      onClick={to.go}
+                    >
+                      {to.label}
+                    </Button>
                   ) : (
                     <Badge tone="neutral">
-                      <Wrench size={12} aria-hidden /> em Serviços
+                      <Wrench size={12} aria-hidden /> noutro sítio
                     </Badge>
                   )}
                   <Button
@@ -176,7 +220,8 @@ export function ReconcilePanel({ data, api, onChanged }: ReconcilePanelProps) {
                   </Button>
                 </span>
               </div>
-            ))}
+              );
+            })}
           </div>
         );
       })}

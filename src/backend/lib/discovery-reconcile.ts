@@ -97,6 +97,15 @@ export type Proposal = {
   proposed: string;
   /** Onde o aparelho foi visto, para dar contexto à linha. */
   ip: string;
+  /**
+   * Para onde vai quem carrega na proposta que não se aplica aqui.
+   *
+   * `null` no backbone. O `targetId` sozinho é o id da atribuição, e o foco do
+   * módulo de Serviços chaveia pelo id do serviço — sem estes dois, a proposta
+   * de modelo diferente só sabe dizer onde é, e deixa lá a pessoa.
+   */
+  serviceId: number | null;
+  clientId: number | null;
 };
 
 export type ProposalInput = {
@@ -128,7 +137,14 @@ export function buildProposals(input: ProposalInput): Proposal[] {
   };
 
   for (const { device, host, via } of matchRegistryToNetwork(input.devices, input.hosts)) {
-    const base = { targetKind: device.kind, targetId: device.id, name: device.name, ip: host.ipAddress };
+    const base = {
+      targetKind: device.kind,
+      targetId: device.id,
+      name: device.name,
+      ip: host.ipAddress,
+      serviceId: device.serviceId,
+      clientId: device.clientId
+    };
     const hostMac = normalizeMacAddress(host.macAddress);
 
     if (via === 'ip' && !device.mac && hostMac) {
@@ -171,7 +187,10 @@ export function buildProposals(input: ProposalInput): Proposal[] {
       name: device.name,
       current: 'ativo',
       proposed: 'manutencao',
-      ip: device.ip
+      ip: device.ip,
+      // O backbone não tem dono: resolve-se no separador Backbone, não em Serviços.
+      serviceId: null,
+      clientId: null
     });
   }
 

@@ -118,3 +118,26 @@ export function chunk<T>(items: readonly T[], size: number): T[][] {
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
 }
+
+/**
+ * Quantos endereços é que o texto do campo vai varrer — para o dizer antes de
+ * alguém carregar em "Varrer".
+ *
+ * `192.168.1.37` e `192.168.1.1-254` têm exatamente o mesmo aspeto dentro de um
+ * input, e o campo sobrevive à sessão em `localStorage`. Sem esta contagem, um
+ * endereço solto lá deixado varre-se em silêncio: a barra pisca uma vez, a
+ * tabela vem com uma linha, e nada no ecrã diz que a rede nunca foi varrida.
+ */
+export function describeRange(input: string): { hint: string; error?: undefined } | { error: string; hint?: undefined } {
+  // O campo vazio ainda não é um erro: é o estado antes de o relatório sugerir
+  // o intervalo. Mostrar-lhe a vermelho "indique um intervalo" seria repreender
+  // quem acabou de abrir a aba.
+  if (!input.trim()) return { hint: 'Aceita 192.168.1.0/24 ou 192.168.1.1-254' };
+
+  try {
+    const total = expandRange(input).length;
+    return { hint: total === 1 ? '1 endereço — varre um só' : `${total} endereços` };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Intervalo inválido' };
+  }
+}
