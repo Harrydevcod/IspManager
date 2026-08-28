@@ -111,6 +111,13 @@ function AppShell() {
   const [focusClientId, setFocusClientId] = useState<number | null>(null);
   const [focusServiceClientId, setFocusServiceClientId] = useState<number | null>(null);
   const [focusServiceId, setFocusServiceId] = useState<number | null>(null);
+  /**
+   * Qual das atribuições do serviço é que se vai substituir.
+   *
+   * Anda agarrado ao `focusServiceId` — sozinho não diz nada, porque a lista de
+   * equipamento só existe depois de o serviço estar aberto.
+   */
+  const [focusAssignmentId, setFocusAssignmentId] = useState<number | null>(null);
   const [paymentsFocus, setPaymentsFocus] = useState<'overdue' | 'pending' | null>(null);
   const [paymentsMonth, setPaymentsMonth] = useState<string | null>(null);
   const [stockLowFocus, setStockLowFocus] = useState(false);
@@ -416,9 +423,11 @@ function AppShell() {
             <ServicesModule
               focusClientId={focusServiceClientId}
               focusServiceId={focusServiceId}
+              focusAssignmentId={focusAssignmentId}
               onFocusHandled={() => {
                 setFocusServiceClientId(null);
                 setFocusServiceId(null);
+                setFocusAssignmentId(null);
               }}
             />
           )}
@@ -429,9 +438,10 @@ function AppShell() {
                   setFocusClientId(id);
                   setSection('clients');
                 }}
-                onOpenService={(clientId, serviceId) => {
+                onOpenService={(clientId, serviceId, assignmentId) => {
                   setFocusServiceClientId(clientId);
                   setFocusServiceId(serviceId);
+                  setFocusAssignmentId(assignmentId ?? null);
                   setSection('services');
                 }}
                 onOpenStock={(catalogId) => {

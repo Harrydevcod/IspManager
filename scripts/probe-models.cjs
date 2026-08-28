@@ -13,6 +13,18 @@
  * assinaturas de firmware a partir de memória seria o mesmo erro. Aqui olha-se
  * primeiro.
  *
+ * A primeira medição (2026-08-27) matou dois canais e salvou um: SNMP 0/42,
+ * Pharos 0/42, HTTP 26/42. O mDNS entrou depois, com a pergunta que a app da
+ * Starlink responde de graça — quem é este aparelho, dito por ele próprio.
+ *
+ * **E o mDNS morreu aqui (2026-08-28, 43 vivos):** unicast `_services` 1/43,
+ * unicast `_device-info` 0/43, multicast 0/43. O único a responder anunciou
+ * `_airplay._tcp` — uma televisão de um cliente. É o retrato exato de porque é
+ * que a app da Starlink parece mágica e isto não: lá os clientes são telemóveis
+ * e portáteis, que se anunciam sozinhos; aqui são CPE e antenas, que não falam.
+ * O canal fica medido e não se implementa. As sondas ficam para o dia em que o
+ * parque mude.
+ *
  * Não escreve na base de dados. Não altera nada em equipamento nenhum. Só lê.
  *
  *   node scripts/probe-models.cjs 192.168.1.1-254
@@ -220,6 +232,113 @@ function pharosProbe(ip) {
 
 const printable = (buffer) => buffer.toString('latin1').replace(/[^\x20-\x7e]/g, '.');
 
+// ------------------------------------------------------------------ mDNS
+
+/**
+ * mDNS/Bonjour — o canal que faz a app da Starlink parecer mágica.
+ *
+ * Quem responde diz o nome **e** o modelo sem que ninguém tenha de interpretar
+ * HTML: o `_device-info._tcp` traz um TXT com `model=`. É a diferença entre o
+ * aparelho dizer o que é, e nós adivinharmos pelo título da página de login.
+ *
+ * Mede-se de duas maneiras porque a diferença entre elas decide tudo:
+ *
+ *   - **multicast** (224.0.0.251) apanha o segmento local e mais nada. Numa rede
+ *     como esta, a ponte sem fios até ao CPE do cliente costuma comer o
+ *     multicast, e então este número vem baixo sem o canal ser inútil.
+ *   - **unicast** manda a mesma pergunta ao endereço do equipamento, na porta
+ *     5353. É o que o `dns-sd -U` faz, e é encaminhável: se este responder, o
+ *     mDNS pode ser uma sondagem por equipamento como a do HTTP, que já se sabe
+ *     que chega lá.
+ *
+ * Não se interpreta nada aqui. Guarda-se o que voltou, tal como no Pharos: um
+ * canal só ganha assinaturas depois de haver respostas reais para as escrever.
+ */
+
+const MDNS_PORT = 5353;
+const MDNS_GROUP = '224.0.0.251';
+
+/** Os dois nomes que valem a pena: o que enumera serviços, e o que traz o modelo. */
+const MDNS_NAMES = ['_services._dns-sd._udp.local', '_device-info._tcp.local'];
+
+/**
+ * Um pedido DNS cru. O `qu` liga o bit de topo da classe ("quero a resposta em
+ * unicast"), sem o qual uma pergunta em multicast é respondida em multicast e
+ * não volta ao porto efémero de onde saiu.
+ */
+function dnsQuery(name, qu) {
+  const labels = name.split('.').filter(Boolean);
+  const size = 12 + labels.reduce((total, label) => total + 1 + label.length, 0) + 1 + 4;
+  const packet = Buffer.alloc(size);
+
+  packet.writeUInt16BE(Math.floor(Math.random() * 65535), 0); // id
+  packet.writeUInt16BE(0x0000, 2); // pergunta normal, sem recursão
+  packet.writeUInt16BE(1, 4); // uma pergunta
+
+  let offset = 12;
+  for (const label of labels) {
+    packet.writeUInt8(label.length, offset);
+    offset += 1;
+    offset += packet.write(label, offset, 'ascii');
+  }
+  packet.writeUInt8(0, offset);
+  offset += 1;
+  packet.writeUInt16BE(12, offset); // PTR
+  packet.writeUInt16BE(qu ? 0x8001 : 0x0001, offset + 2); // IN, com ou sem bit QU
+  return packet;
+}
+
+/** Pergunta a um endereço concreto. É esta que decide se o canal é encaminhável. */
+function mdnsUnicast(ip, name) {
+  return new Promise((resolve) => {
+    const socket = dgram.createSocket('udp4');
+    let done = false;
+    const finish = (value) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { socket.close(); } catch { /* já fechado */ }
+      resolve(value);
+    };
+    const timer = setTimeout(() => finish(null), TIMEOUT_MS);
+    socket.on('message', (reply) => finish({ hex: reply.toString('hex'), ascii: printable(reply) }));
+    socket.on('error', () => finish(null));
+    socket.send(dnsQuery(name, false), MDNS_PORT, ip, (error) => { if (error) finish(null); });
+  });
+}
+
+/**
+ * Uma pergunta ao grupo inteiro, e escuta-se quem aparecer.
+ *
+ * Não entra no grupo multicast de propósito: com o bit QU as respostas voltam em
+ * unicast ao porto efémero, e assim não se disputa a porta 5353 com um Bonjour
+ * que esteja instalado nesta máquina.
+ */
+function mdnsMulticast(waitMs) {
+  return new Promise((resolve) => {
+    const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+    const heard = new Map();
+
+    socket.on('message', (reply, info) => {
+      if (heard.has(info.address)) return;
+      heard.set(info.address, { hex: reply.toString('hex'), ascii: printable(reply) });
+    });
+    socket.on('error', () => { /* uma rede sem multicast não é um erro a reportar */ });
+
+    socket.bind(() => {
+      try { socket.setMulticastTTL(1); } catch { /* algumas interfaces recusam */ }
+      for (const name of MDNS_NAMES) {
+        socket.send(dnsQuery(name, true), MDNS_PORT, MDNS_GROUP, () => { /* falhar é um resultado */ });
+      }
+      setTimeout(() => {
+        try { socket.close(); } catch { /* já fechado */ }
+        resolve(Object.fromEntries(heard));
+      }, waitMs);
+    });
+  });
+}
+
+
 // ------------------------------------------------------------------ main
 
 async function main() {
@@ -243,22 +362,37 @@ async function main() {
   const alive = ips.filter((_, index) => aliveFlags[index]);
   console.log(`${alive.length} responderam. A sondar (isto demora)…`);
 
+  // O multicast corre uma vez para a rede toda — perguntá-lo a cada endereço
+  // seria a mesma pergunta repetida ao mesmo grupo.
+  console.log('  a ouvir mDNS em multicast (3 s)…');
+  const mdnsGroup = await mdnsMulticast(3000);
+
   let done = 0;
   const findings = await mapWithLimit(alive, CONCURRENCY, async (ip) => {
-    const [http80, https443, snmp, pharos] = await Promise.all([
+    const [http80, https443, snmp, pharos, mdnsServices, mdnsDevice] = await Promise.all([
       httpBanner(ip, 'http'),
       httpBanner(ip, 'https'),
       snmpSysDescr(ip),
-      pharosProbe(ip)
+      pharosProbe(ip),
+      mdnsUnicast(ip, MDNS_NAMES[0]),
+      mdnsUnicast(ip, MDNS_NAMES[1])
     ]);
     done += 1;
     process.stdout.write(`\r  ${done}/${alive.length}`);
-    return { ip, http80, https443, snmp, pharos };
+    return {
+      ip, http80, https443, snmp, pharos, mdnsServices, mdnsDevice,
+      // Se este endereço esteve entre os que responderam ao grupo.
+      mdnsMulticast: mdnsGroup[ip] ?? null
+    };
   });
   process.stdout.write('\n');
 
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, JSON.stringify({ range: rangeArg, at: stamp, findings }, null, 2), 'utf8');
+  fs.writeFileSync(
+    outPath,
+    JSON.stringify({ range: rangeArg, at: stamp, mdnsGroup, findings }, null, 2),
+    'utf8'
+  );
 
   const answered = (key) => findings.filter((row) => row[key]).length;
   console.log('');
@@ -268,6 +402,12 @@ async function main() {
   console.log(`  HTTPS :443  ${answered('https443')}/${alive.length}`);
   console.log(`  SNMP :161   ${answered('snmp')}/${alive.length}`);
   console.log(`  Pharos      ${answered('pharos')}/${alive.length}`);
+  console.log(`  mDNS unicast (_services)     ${answered('mdnsServices')}/${alive.length}`);
+  console.log(`  mDNS unicast (_device-info)  ${answered('mdnsDevice')}/${alive.length}`);
+  console.log(`  mDNS multicast               ${answered('mdnsMulticast')}/${alive.length}`);
+  // O unicast é a linha que decide: o multicast pode responder de tudo o que
+  // está neste segmento sem que nenhum CPE do outro lado da ponte apareça.
+  console.log(`  (ao grupo respondeu ${Object.keys(mdnsGroup).length}, incluindo fora do intervalo)`);
 }
 
 main().catch((error) => {

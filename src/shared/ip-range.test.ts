@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { chunk, expandRange, intToIp, ipToInt, isIpv4, MAX_SWEEP_HOSTS } from './ip-range';
+import { chunk, describeRange, expandRange, intToIp, ipToInt, isIpv4, MAX_SWEEP_HOSTS } from './ip-range';
 
 describe('ipToInt / intToIp', () => {
   test('vai e volta', () => {
@@ -106,5 +106,27 @@ describe('chunk', () => {
 
   test('tamanho inválido é erro', () => {
     expect(() => chunk([1], 0)).toThrow();
+  });
+});
+
+describe('describeRange', () => {
+  test('conta os endereços das três formas', () => {
+    expect(describeRange('192.168.1.1-254').hint).toBe('254 endereços');
+    expect(describeRange('192.168.1.0/24').hint).toBe('254 endereços');
+    expect(describeRange('192.168.1.10-192.168.1.19').hint).toBe('10 endereços');
+  });
+
+  test('um endereço solto diz que é um só — é o aviso todo', () => {
+    expect(describeRange('192.168.1.37').hint).toBe('1 endereço — varre um só');
+  });
+
+  test('o campo vazio é sugestão, não erro', () => {
+    expect(describeRange('  ').error).toBeUndefined();
+    expect(describeRange('').hint).toContain('192.168.1.0/24');
+  });
+
+  test('o intervalo inválido devolve a mensagem do expandRange', () => {
+    expect(describeRange('192.168.1.0/8').error).toContain('demasiado grande');
+    expect(describeRange('nao-e-um-ip').error).toContain('Endereço inválido');
   });
 });

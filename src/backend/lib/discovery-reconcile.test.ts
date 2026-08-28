@@ -12,6 +12,8 @@ const device = (over: Partial<RegisteredDevice> = {}): RegisteredDevice => ({
   model: null,
   catalogId: 5,
   catalogType: 'cpe',
+  serviceId: 7,
+  clientId: 3,
   ...over
 });
 
@@ -139,6 +141,17 @@ describe('buildProposals', () => {
     });
   });
 
+  test('a proposta de modelo carrega o serviço, que é onde a troca se regista', () => {
+    const [proposal] = buildProposals({
+      devices: [device({ mac: '50:C7:BF:AA:BB:CC', model: 'Tp-Link CN TL-S5-5KM' })],
+      hosts: [host({ model: 'TL-CPE500' })],
+      now: NOW
+    });
+    // Sem estes dois a proposta só sabe o id da atribuição, e o botão que leva
+    // a Serviços não tem para onde apontar.
+    expect(proposal).toMatchObject({ serviceId: 7, clientId: 3 });
+  });
+
   test('modelo que é o mesmo escrito de outra maneira não levanta proposta', () => {
     const proposals = buildProposals({
       devices: [device({ mac: '50:C7:BF:AA:BB:CC', model: 'TP-Link CPE 510 Ponto de Acesso' })],
@@ -178,7 +191,10 @@ describe('buildProposals', () => {
         targetKind: 'backbone',
         targetId: 9,
         current: 'ativo',
-        proposed: 'manutencao'
+        proposed: 'manutencao',
+        // O backbone não tem dono: nada para onde mandar em Serviços.
+        serviceId: null,
+        clientId: null
       });
     });
 

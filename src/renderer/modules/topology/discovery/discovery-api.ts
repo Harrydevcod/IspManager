@@ -52,6 +52,15 @@ export type DiscoveryReport = {
 
 export type SweepRow = { ip: string; ok: boolean; rttMs: number | null; hostname: string | null };
 
+/**
+ * O que sobrevive de um varrimento para o cruzamento que vem a seguir.
+ *
+ * Tem nome porque aparece em quatro sítios — o hook, o que ele guarda para o
+ * `refresh`, e a chamada — e alargá-lo em quatro sítios de cada vez que a
+ * varredura aprende mais uma coisa é como o `hostname` se perdeu da primeira vez.
+ */
+export type AliveHost = { ip: string; rttMs: number | null; hostname: string | null };
+
 export type IdentifyRow = { ip: string; model: string | null; modelSource: RowModelSource | null };
 
 export type ProposalKind = 'mac_em_falta' | 'ip_em_falta' | 'ip_mudou' | 'modelo_diferente' | 'backbone_ausente';
@@ -65,6 +74,9 @@ export type Proposal = {
   current: string | null;
   proposed: string;
   ip: string;
+  /** Para onde vai quem carrega numa proposta que não se aplica aqui. `null` no backbone. */
+  serviceId: number | null;
+  clientId: number | null;
 };
 
 /** Equipamento registado que a rede não consegue reconhecer, e quem pode ser. */
@@ -117,7 +129,7 @@ export function createDiscoveryApi(fetcher: DiscoveryFetcher = authFetch) {
 
     /** O retrato completo: ARP local + router + histórico + cruzamento. */
     fetchContext: (
-      input: { rangeIps: string[]; alive: Array<{ ip: string; rttMs: number | null }>; includeRouter: boolean },
+      input: { rangeIps: string[]; alive: AliveHost[]; includeRouter: boolean },
       signal?: AbortSignal
     ) =>
       fetcher(`${API_BASE}/api/network/discovery`, {

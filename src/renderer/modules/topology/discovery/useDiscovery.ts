@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { chunk, expandRange, SWEEP_BATCH_SIZE } from '../../../../shared/ip-range';
 import { suggestIpPrefix } from '../../../lib/ip';
-import { createDiscoveryApi, type DiscoveryApi, type DiscoveryReport, type IdentifyRow, type Reconciliation } from './discovery-api';
+import { createDiscoveryApi, type AliveHost, type DiscoveryApi, type DiscoveryReport, type IdentifyRow, type Reconciliation } from './discovery-api';
 
 /**
  * `phase` existe porque a identificação é muito mais lenta que o varrimento e
@@ -69,7 +69,7 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
    * nenhum e a contagem de livres caía a zero logo a seguir a alguém ter
    * varrido — o mesmo número, com o mesmo aspeto, a dizer o contrário.
    */
-  const lastScanRef = useRef<{ rangeIps: string[]; alive: Array<{ ip: string; rttMs: number | null }> } | null>(null);
+  const lastScanRef = useRef<{ rangeIps: string[]; alive: AliveHost[] } | null>(null);
 
   // O corpo repõe a bandeira: em StrictMode o React monta, limpa e volta a
   // montar o mesmo componente, e uma limpeza que só desarme deixa o hook morto
@@ -120,7 +120,7 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
 
   const loadContext = useCallback(async (
     rangeIps: string[],
-    alive: Array<{ ip: string; rttMs: number | null }>,
+    alive: AliveHost[],
     signal?: AbortSignal
   ) => {
     const next = await api.fetchContext({ rangeIps, alive, includeRouter }, signal);
@@ -207,13 +207,13 @@ export function useDiscovery(active: boolean, api: DiscoveryApi = createDiscover
     setProgress({ done: 0, total: ips.length, phase: 'sweep' });
 
     void (async () => {
-      const alive: Array<{ ip: string; rttMs: number | null }> = [];
+      const alive: AliveHost[] = [];
       const batches = chunk(ips, SWEEP_BATCH_SIZE);
       try {
         for (const [index, batch] of batches.entries()) {
           if (stoppedRef.current || controller.signal.aborted) break;
           const { results } = await api.sweepBatch(batch, range, index, controller.signal);
-          for (const row of results) if (row.ok) alive.push({ ip: row.ip, rttMs: row.rttMs });
+          for (const row of results) if (row.ok) alive.push({ ip: row.ip, rttMs: row.rttMs, hostname: row.hostname });
           if (!mountedRef.current) return;
           setProgress({
             done: Math.min((index + 1) * SWEEP_BATCH_SIZE, ips.length),

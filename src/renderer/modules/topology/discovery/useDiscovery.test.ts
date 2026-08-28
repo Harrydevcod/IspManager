@@ -176,8 +176,31 @@ describe('useDiscovery — varrimento', () => {
     await settle(20);
 
     const last = (api.fetchContext as ReturnType<typeof vi.fn>).mock.calls.at(-1);
-    expect(last?.[0].alive).toEqual([{ ip: '192.168.1.1', rttMs: 7 }]);
+    expect(last?.[0].alive).toEqual([{ ip: '192.168.1.1', rttMs: 7, hostname: null }]);
     expect(last?.[0].rangeIps).toHaveLength(4);
+  });
+
+  test('o nome que a varredura resolveu segue para o contexto', async () => {
+    // O `hostname` do varrimento já era calculado e ficava aqui: o contexto
+    // recebia `{ ip, rttMs }` e o nome morria no caminho.
+    const api = fakeApi();
+    (api.sweepBatch as ReturnType<typeof vi.fn>).mockImplementation(async (ips: string[]) => ({
+      results: ips.map((ip, index) => ({
+        ip,
+        ok: index === 0,
+        rttMs: index === 0 ? 7 : null,
+        hostname: index === 0 ? 'cpe-silva.lan' : null
+      }))
+    }));
+    const hook = await mountHook(true, api);
+    await settle();
+
+    await act(async () => { hook().setRange('192.168.1.1-4'); });
+    await act(async () => { hook().scan(); });
+    await settle(20);
+
+    const last = (api.fetchContext as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+    expect(last?.[0].alive).toEqual([{ ip: '192.168.1.1', rttMs: 7, hostname: 'cpe-silva.lan' }]);
   });
 
   test('um intervalo inválido não dispara pedidos e explica-se', async () => {

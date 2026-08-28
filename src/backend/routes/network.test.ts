@@ -145,6 +145,7 @@ type ReportRow = {
   category: string;
   alive: boolean;
   rttMs: number | null;
+  hostname: string | null;
   registeredAs: Array<{ name: string }>;
 };
 
@@ -294,6 +295,27 @@ describe('POST /api/network/discovery', () => {
     const body = await discoveryContext({ rangeIps: [] });
     expect(body.freeIps).toEqual([]);
     expect(body.nextFreeIp).toBeNull();
+  });
+
+  test('o nome do DNS inverso chega à linha em vez de se perder', async () => {
+    const body = await discoveryContext({
+      alive: [{ ip: '203.0.113.3', rttMs: 5, hostname: 'cpe-silva.lan' }]
+    });
+    expect(rowFor(body, '203.0.113.3').hostname).toBe('cpe-silva.lan');
+  });
+
+  test('o nome do DNS inverso não apaga o que já estava guardado', async () => {
+    // O `host-name` da concessão e o `identity` do vizinho vivem nesta tabela;
+    // o DNS inverso entra depois deles e só pode preencher o que ficou vazio.
+    db.prepare(`
+      INSERT INTO network_discovery_hosts (ip_address, hostname, source)
+      VALUES (?, ?, 'router')
+    `).run('203.0.113.3', 'nome-do-router');
+
+    const body = await discoveryContext({
+      alive: [{ ip: '203.0.113.3', rttMs: 5, hostname: 'nome-do-dns.lan' }]
+    });
+    expect(rowFor(body, '203.0.113.3').hostname).toBe('nome-do-router');
   });
 });
 

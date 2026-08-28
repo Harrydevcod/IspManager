@@ -78,7 +78,9 @@ const contextBodySchema = z.object({
   rangeIps: z.array(z.string()).max(1024).default([]),
   alive: z.array(z.object({
     ip: z.string(),
-    rttMs: z.number().nullable()
+    rttMs: z.number().nullable(),
+    /** O que o DNS inverso respondeu durante o varrimento, se respondeu. */
+    hostname: z.string().max(253).nullish()
   })).max(1024).default([]),
   includeRouter: z.boolean().default(true)
 }).strict();
@@ -250,6 +252,23 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       routerNeighbors = neighbors ?? [];
     }
 
+    // O nome do DNS inverso **não entra pelo `attach`**, e não é distração.
+    //
+    // Pelo `attach` ia parar ao `observed`, e o `observed` é o que se escreve.
+    // A escrita é um `COALESCE`: o primeiro nome que entra na linha fica lá para
+    // sempre. Congelar assim o mais fraco dos três nomes — o `identity` é o que
+    // o aparelho tem configurado, o `host-name` é o que ele anunciou ao pedir
+    // endereço, e isto é uma entrada de DNS que alguém criou e pode não ter
+    // apagado — daria ao palpite a permanência que só o facto merece.
+    //
+    // Segue à parte, para o cruzamento o usar como último recurso: preenche o
+    // que ficou vazio, não vai para a base, e recalcula-se no varrimento
+    // seguinte.
+    const dnsNames: Record<string, string> = {};
+    for (const entry of alive) {
+      if (entry.hostname && isIpv4(entry.ip)) dnsNames[entry.ip] = entry.hostname;
+    }
+
     const observed = [...byIp.values()];
     persistSeen(db, observed.map((host): DiscoveredHost => ({
       ip: host.ip,
@@ -275,7 +294,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       rangeIps,
       observed,
       registered: loadRegisteredDevices(db),
-      seen: loadSeenHosts(db)
+      seen: loadSeenHosts(db),
+      dnsNames
     });
 
     return { ...report, routerEnriched, routerConfigured: isRouterConfigured(config) };
