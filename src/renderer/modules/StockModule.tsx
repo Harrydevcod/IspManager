@@ -663,6 +663,11 @@ export function StockModule({
                       <span className="stock-item-level-dot" data-tone={tone} aria-hidden />
                       <span className="stock-item-level-value">{item.stockTotal}</span>
                       <span className="stock-item-level-unit">{item.unitOfMeasure || 'un.'}</span>
+                      {item.backboneCount > 0 ? (
+                        <span className="stock-item-level-backbone">
+                          +{item.backboneCount} no backbone
+                        </span>
+                      ) : null}
                     </span>
                   );
                 }

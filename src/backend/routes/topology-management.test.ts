@@ -91,7 +91,9 @@ function validBackbone(catalogId: number, name = 'Monte Verde'): Record<string, 
 }
 
 describe('topology management routes', () => {
-  test('creates a physical backbone without changing stock and records a narrow audit event', async () => {
+  // Este teste garantia o contrario ate a unidade de backbone passar a consumir
+  // inventario: registada, ela esta num poste, nao no armazem (migracao 0050).
+  test('creates a physical backbone, takes the unit out of stock and records a narrow audit event', async () => {
     const catalogId = insertCatalog();
     const beforeStock = db.prepare('SELECT stock_total AS stockTotal FROM equipment_catalog WHERE id = ?').get(catalogId) as { stockTotal: number };
     const beforeMovements = (db.prepare('SELECT COUNT(*) AS total FROM stock_movements').get() as { total: number }).total;
@@ -110,8 +112,9 @@ describe('topology management routes', () => {
       provisional: false,
       macAddress: 'AA:BB:CC:DD:EE:FF'
     });
-    expect(db.prepare('SELECT stock_total AS stockTotal FROM equipment_catalog WHERE id = ?').get(catalogId)).toEqual(beforeStock);
-    expect((db.prepare('SELECT COUNT(*) AS total FROM stock_movements').get() as { total: number }).total).toBe(beforeMovements);
+    expect(db.prepare('SELECT stock_total AS stockTotal FROM equipment_catalog WHERE id = ?').get(catalogId))
+      .toEqual({ stockTotal: beforeStock.stockTotal - 1 });
+    expect((db.prepare('SELECT COUNT(*) AS total FROM stock_movements').get() as { total: number }).total).toBe(beforeMovements + 1);
 
     const audit = db.prepare(`
       SELECT action, entity_type AS entityType, metadata_json AS metadataJson FROM audit_logs

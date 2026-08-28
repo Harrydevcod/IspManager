@@ -6,6 +6,10 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+### Corrigido
+
+- **Equipamento no backbone deixa de aparecer como disponível.** Uma antena registada no backbone está num poste, não no armazém, mas o Stock continuava a oferecê-la: o registo de backbone era o único caminho que tirava equipamento sem lhe dar baixa. Passa a dar: registar consome uma unidade, retirar devolve-a, e não se regista backbone de um modelo esgotado. A migração 0050 acerta as unidades já instaladas e deixa o acerto visível no histórico do artigo, em vez de mexer no número em silêncio. Na coluna Stock, os modelos com unidades no terreno dizem quantas.
+
 ## [1.17.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.17.0) — 2026-08-28
 
 ### Adicionado

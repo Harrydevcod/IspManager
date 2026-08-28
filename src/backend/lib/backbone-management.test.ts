@@ -439,3 +439,102 @@ describe('backbone management repository', () => {
     expect(relinked.upstreams.map((unit) => unit.id)).toEqual([router.id, first.id]);
   });
 });
+
+describe('backbone stock accounting', () => {
+  const stockOf = (database: Database.Database, catalogId: number) =>
+    (database.prepare('SELECT stock_total AS stock FROM equipment_catalog WHERE id = ?')
+      .get(catalogId) as { stock: number }).stock;
+
+  const movements = (database: Database.Database) =>
+    database.prepare(`
+      SELECT catalog_id AS catalogId, type, quantity, reference FROM stock_movements ORDER BY id
+    `).all();
+
+  test('registar um backbone da baixa da unidade no armazem', () => {
+    db = freshDb();
+    const fixture = seed(db);
+
+    createBackbone(db, input(fixture.catalogId), fixture.actorId);
+
+    expect(stockOf(db, fixture.catalogId)).toBe(9);
+    expect(movements(db)).toEqual([
+      { catalogId: fixture.catalogId, type: 'saida', quantity: 1, reference: 'Backbone Core Norte' }
+    ]);
+  });
+
+  test('sem stock nao ha backbone — e nada fica gravado a meio', () => {
+    db = freshDb();
+    const fixture = seed(db);
+    db.prepare('UPDATE equipment_catalog SET stock_total = 0 WHERE id = ?').run(fixture.catalogId);
+
+    expect(() => createBackbone(db!, input(fixture.catalogId), fixture.actorId))
+      .toThrow('Stock insuficiente. Disponivel: 0');
+
+    expect(db.prepare('SELECT COUNT(*) AS total FROM backbone_devices').get()).toEqual({ total: 0 });
+    expect(movements(db)).toEqual([]);
+  });
+
+  test('retirar devolve a unidade ao armazem e reactivar volta a tira-la', () => {
+    db = freshDb();
+    const fixture = seed(db);
+    const created = createBackbone(db, input(fixture.catalogId), fixture.actorId);
+
+    updateBackbone(db, created.id, input(fixture.catalogId, { status: 'retired' }), fixture.actorId);
+    expect(stockOf(db, fixture.catalogId)).toBe(10);
+
+    updateBackbone(db, created.id, input(fixture.catalogId, { status: 'active' }), fixture.actorId);
+    expect(stockOf(db, fixture.catalogId)).toBe(9);
+
+    expect(movements(db).map((row) => (row as { type: string }).type))
+      .toEqual(['saida', 'devolucao', 'saida']);
+  });
+
+  test('manutencao nao devolve nada: a unidade continua no poste', () => {
+    db = freshDb();
+    const fixture = seed(db);
+    const created = createBackbone(db, input(fixture.catalogId), fixture.actorId);
+
+    updateBackbone(db, created.id, input(fixture.catalogId, { status: 'maintenance' }), fixture.actorId);
+
+    expect(stockOf(db, fixture.catalogId)).toBe(9);
+    expect(movements(db)).toHaveLength(1);
+  });
+
+  test('reactivar sem stock e recusado', () => {
+    db = freshDb();
+    const fixture = seed(db);
+    const created = createBackbone(db, input(fixture.catalogId), fixture.actorId);
+    updateBackbone(db, created.id, input(fixture.catalogId, { status: 'retired' }), fixture.actorId);
+    db.prepare('UPDATE equipment_catalog SET stock_total = 0 WHERE id = ?').run(fixture.catalogId);
+
+    expect(() => updateBackbone(db!, created.id, input(fixture.catalogId, { status: 'active' }), fixture.actorId))
+      .toThrow('Stock insuficiente. Disponivel: 0');
+
+    expect(getBackbone(db, created.id)?.status).toBe('retired');
+    expect(stockOf(db, fixture.catalogId)).toBe(0);
+  });
+
+  test('corrigir o modelo move a unidade de um artigo para o outro', () => {
+    db = freshDb();
+    const fixture = seed(db);
+    const created = createBackbone(db, input(fixture.catalogId), fixture.actorId);
+
+    updateBackbone(db, created.id, input(fixture.otherCatalogId), fixture.actorId);
+
+    expect(stockOf(db, fixture.catalogId)).toBe(10);
+    expect(stockOf(db, fixture.otherCatalogId)).toBe(9);
+  });
+
+  test('editar o nome ou o IP nao mexe no stock', () => {
+    db = freshDb();
+    const fixture = seed(db);
+    const created = createBackbone(db, input(fixture.catalogId), fixture.actorId);
+
+    updateBackbone(db, created.id, input(fixture.catalogId, {
+      name: 'Core Norte II', ipAddress: '10.0.0.9'
+    }), fixture.actorId);
+
+    expect(stockOf(db, fixture.catalogId)).toBe(9);
+    expect(movements(db)).toHaveLength(1);
+  });
+});

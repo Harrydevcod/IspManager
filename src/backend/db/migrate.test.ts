@@ -476,4 +476,54 @@ describe('runMigrations', () => {
     expect(insertDuplicateLiveSerialIgnoringCase).toThrow();
     expect(insertDuplicateRetiredSerial).not.toThrow();
   });
+
+  test('regulariza o stock das unidades que ja estavam no backbone', () => {
+    const db = freshDb();
+    runMigrations(db, migrations.filter((migration) => migration.version < 50));
+
+    const emServico = db.prepare(`
+      INSERT INTO equipment_catalog (type, brand, model, stock_total, active)
+      VALUES ('antena', 'TP-Link', 'CPE710', 5, 1)
+    `).run().lastInsertRowid;
+    const soRetirados = db.prepare(`
+      INSERT INTO equipment_catalog (type, brand, model, stock_total, active)
+      VALUES ('cpe', 'Ubiquiti', 'LiteBeam', 4, 1)
+    `).run().lastInsertRowid;
+    // Um artigo ja corrigido a mao: acertar duas vezes daria saldo negativo.
+    const jaCorrigido = db.prepare(`
+      INSERT INTO equipment_catalog (type, brand, model, stock_total, active)
+      VALUES ('antena', 'Starlink', 'Standard V4', 1, 1)
+    `).run().lastInsertRowid;
+
+    const unidade = db.prepare(`
+      INSERT INTO backbone_devices (catalog_id, name, status) VALUES (?, ?, ?)
+    `);
+    unidade.run(emServico, 'Core Norte', 'active');
+    unidade.run(emServico, 'Core Sul', 'maintenance');
+    unidade.run(emServico, 'Core Velho', 'retired');
+    unidade.run(soRetirados, 'LiteBeam abatida', 'retired');
+    unidade.run(jaCorrigido, 'Starlink 1', 'active');
+    unidade.run(jaCorrigido, 'Starlink 2', 'active');
+
+    runMigrations(db, migrations);
+
+    const stock = (id: unknown) => (db.prepare(
+      'SELECT stock_total AS stock FROM equipment_catalog WHERE id = ?'
+    ).get(id) as { stock: number }).stock;
+
+    // Em manutencao continua no poste, por isso conta; retirada nao.
+    expect(stock(emServico)).toBe(3);
+    expect(stock(soRetirados)).toBe(4);
+    expect(stock(jaCorrigido)).toBe(0);
+
+    expect(db.prepare(`
+      SELECT catalog_id AS catalogId, type, quantity FROM stock_movements
+      WHERE reference = 'Regularizacao backbone' ORDER BY catalog_id
+    `).all()).toEqual([
+      { catalogId: emServico, type: 'saida', quantity: 2 },
+      { catalogId: jaCorrigido, type: 'saida', quantity: 2 }
+    ]);
+
+    db.close();
+  });
 });

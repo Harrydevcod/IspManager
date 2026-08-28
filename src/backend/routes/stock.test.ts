@@ -26,6 +26,7 @@ beforeEach(() => {
   db.exec(`
     DELETE FROM service_material_lines;
     DELETE FROM stock_movements;
+    DELETE FROM backbone_devices;
     DELETE FROM equipment_catalog;
   `);
 });
@@ -164,6 +165,23 @@ describe('POST /api/equipment-catalog with materials', () => {
     const row = body.rows.find((r) => r.model === 'RJ45');
     expect(row).toMatchObject({ category: 'material', unitOfMeasure: 'un', isSerialized: 0 });
     expect(row).not.toHaveProperty('backboneQty');
+  });
+
+  test('summary conta as unidades que estao no backbone', async () => {
+    const catalogId = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, stock_total, active)
+      VALUES ('equipamento','antena','TP-Link','CPE710',3,1)
+    `).run().lastInsertRowid;
+    const unidade = db.prepare('INSERT INTO backbone_devices (catalog_id, name, status) VALUES (?, ?, ?)');
+    unidade.run(catalogId, 'Core Norte', 'active');
+    unidade.run(catalogId, 'Core Sul', 'maintenance');
+    unidade.run(catalogId, 'Core Velho', 'retired');
+
+    const response = await app.inject({ method: 'GET', url: '/api/stock/summary' });
+    const body = response.json() as { rows: Array<{ model: string; backboneCount: number }> };
+
+    // A retirada ja voltou ao armazem: nao se conta duas vezes.
+    expect(body.rows.find((r) => r.model === 'CPE710')?.backboneCount).toBe(2);
   });
 });
 
