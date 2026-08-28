@@ -6,6 +6,22 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.17.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.17.0) — 2026-08-28
+
+### Adicionado
+
+- **descoberta:** o campo **"Intervalo"** passa a dizer **quantos endereços vai varrer, antes de varrer**: "254 endereços", "1 endereço — varre um só", ou a razão a vermelho quando o que lá está não é um intervalo válido. Um endereço solto continua a ser aceite — às vezes quer-se picar um só — mas deixa de o ser em silêncio. O campo guarda-se entre sessões, e `192.168.1.37` tem exatamente o mesmo aspeto que `192.168.1.1-254` dentro de uma caixa de texto: a diferença só aparecia depois de carregar em Varrer, com a barra a piscar uma vez e a tabela a vir com uma linha
+- **descoberta:** a proposta **"Modelo diferente do registado"** deixa de ser um beco. Onde estava um crachá cinzento a dizer "em Serviços" está agora o botão **"Substituir em Serviços"**, que abre o serviço certo com o diálogo **Substituir equipamento** já aberto **no equipamento daquela linha** — em vez de obrigar a sair da aba, abrir Serviços, procurar o cliente, abrir o serviço e encontrar a linha à mão. A troca continua a fazer-se onde sempre se fez, com as validações e o movimento de stock de lá: o botão abre a porta, não passa por cima dela. Se o equipamento já não estiver lá, ou a permissão não chegar, não abre nada e fica-se no serviço em foco — nunca se abre por atalho um diálogo que ninguém conseguiria abrir à mão
+- **descoberta:** **"Backbone sem resposta"** ganha o mesmo tratamento com **"Abrir no Backbone"**. O crachá que lá estava dizia "em Serviços", que é falso — um backbone não tem serviço. Um modelo diferente num equipamento de backbone também vai agora para o separador certo
+
+### Corrigido
+
+- **descoberta:** o nome que a varredura já resolvia **deixa de se perder**. O DNS inverso corria a cada endereço vivo, em cada varrimento, e o resultado era deitado fora a caminho do ecrã. Passa a preencher a coluna "Nome" — mas só onde não há nada: o nome que o equipamento tem configurado e o que ele anunciou ao pedir endereço continuam a ganhar-lhe, e este não se guarda na base, porque uma entrada de DNS que alguém criou e pode não ter apagado não merece ficar lá para sempre
+
+### Notas
+
+- **Porque é que a app da Starlink sabe o nome e o modelo de tudo e o ISPM não sabe de todos:** ela não descobre nada — pergunta ao router, que é ao mesmo tempo o servidor DHCP, o ponto de acesso e o gateway, e portanto já tem as tabelas todas. O ISPM faz o mesmo com o MikroTik de gestão, quando está configurado. Faltava o mDNS/Bonjour, e **mediu-se antes de construir**: com 43 equipamentos vivos, responderam 1 em 43 — e esse anunciou uma televisão. Na Starlink os clientes são telemóveis e portáteis, que se anunciam sozinhos; aqui são CPE e antenas, que não falam. O canal fica medido e **não foi implementado**. As sondas ficam no `scripts/probe-models.cjs`, para o dia em que o parque mude
+
 ## [1.16.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.16.0) — 2026-08-27
 
 ### Adicionado
