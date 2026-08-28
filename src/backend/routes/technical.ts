@@ -42,7 +42,9 @@ const deviceAssignmentSchema = z.object({
   technicianId: z.coerce.number().int().positive().optional().nullable(),
   notes: z.string().trim().optional().nullable(),
   /** 'cliente' = equipamento que o cliente trouxe; não gera renda. */
-  ownership: z.enum(['isp', 'cliente']).optional().nullable()
+  ownership: z.enum(['isp', 'cliente']).optional().nullable(),
+  /** Só usado na troca: em que estado voltou a unidade que saiu. */
+  returnCondition: z.enum(['bom', 'avariado', 'nao_devolvido']).optional().nullable()
 });
 
 const batchItemsSchema = z.object({
@@ -749,75 +751,45 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       if (!service) {
         throw new Error('service_missing');
       }
-      const freshCatalog = loadCatalogIdentity(db, parsed.data.catalogId);
-      if (!freshCatalog) {
-        throw new Error('catalog_missing');
-      }
-      if (freshCatalog.stockTotal < 1) {
-        throw new Error(`stock_insufficient:${freshCatalog.stockTotal}`);
-      }
-
-      db.prepare(`
-        UPDATE service_device_assignments
-        SET end_date = date('now'),
-            updated_at = datetime('now')
-        WHERE id = ? AND end_date IS NULL
-      `).run(assignmentId);
-
-      db.prepare(`
-        UPDATE backbone_assignment_links
-        SET ended_at = datetime('now'),
-            ended_by = ?,
-            change_reason = COALESCE(change_reason, 'assignment_closed'),
-            updated_at = datetime('now')
-        WHERE assignment_id = ? AND ended_at IS NULL
-      `).run(request.user?.id ?? parsed.data.technicianId ?? null, assignmentId);
-
-      const replacement = db.prepare(`
-        INSERT INTO service_device_assignments (
-          service_id, catalog_id, serial_number, asset_tag, ip_address, mac_address,
-          technician_id, notes, start_date, end_date, created_by, created_at, updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, date('now'), NULL, ?, datetime('now'), datetime('now'))
-      `).run(
-        current.serviceId,
-        parsed.data.catalogId,
-        serialNumber,
-        assetTag,
-        ipAddress,
-        macAddress,
-        parsed.data.technicianId || null,
+      // Uma troca é uma devolução mais uma instalação. Escrevê-la à mão era o que
+      // fazia a unidade retirada desaparecer — nem voltava ao armazém nem ficava
+      // marcada como avariada — e a nova nascer sem propriedade nem renda, com a
+      // mensalidade do equipamento a cair para zero. Os motores sabem as duas
+      // coisas; aqui só se diz que uma troca não é uma remoção.
+      returnAssignmentWithinTx(db, {
+        assignmentId,
+        serviceId: current.serviceId,
+        clientName: service.clientName,
+        condition: parsed.data.returnCondition ?? 'bom',
         notes,
-        parsed.data.technicianId || null
-      );
+        technicianId: parsed.data.technicianId || null,
+        userId: request.user?.id ?? null,
+        skipEvent: true,
+        replacing: true
+      });
+
+      const replacement = installDeviceWithinTx(db, {
+        serviceId: current.serviceId,
+        clientName: service.clientName,
+        device: {
+          catalogId: parsed.data.catalogId,
+          serialNumber,
+          assetTag,
+          ipAddress,
+          macAddress,
+          technicianId: parsed.data.technicianId || null,
+          notes,
+          ownership: parsed.data.ownership ?? null
+        },
+        userId: request.user?.id ?? null,
+        skipEvent: true
+      });
 
       // A unidade nova herda os serviços que a antiga servia: é troca física, os
       // clientes partilhados continuam servidos.
       db.prepare(`
         UPDATE service_device_shares SET assignment_id = ? WHERE assignment_id = ?
-      `).run(replacement.lastInsertRowid, assignmentId);
-
-      db.prepare(`
-        INSERT INTO stock_movements (
-          catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
-        )
-        VALUES (?, 'saida', 1, ?, ?, ?, ?, ?, ?)
-      `).run(
-        parsed.data.catalogId,
-        freshCatalog.landedCostCve,
-        `Troca servico ${current.serviceId}`,
-        notes,
-        current.serviceId,
-        service.clientName,
-        request.user?.id || null
-      );
-
-      db.prepare(`
-        UPDATE equipment_catalog
-        SET stock_total = stock_total - 1,
-            updated_at = datetime('now')
-        WHERE id = ?
-      `).run(parsed.data.catalogId);
+      `).run(replacement.assignmentId, assignmentId);
 
       const event = db.prepare(`
         INSERT INTO service_events (
@@ -831,18 +803,20 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         parsed.data.technicianId || null
       );
 
-      return { assignmentId: replacement.lastInsertRowid, eventId: event.lastInsertRowid };
+      return { assignmentId: replacement.assignmentId, eventId: event.lastInsertRowid };
     });
 
     let result: { assignmentId: string | number | bigint; eventId: string | number | bigint };
     try {
       result = run();
     } catch (error) {
-      if (error instanceof Error && error.message.startsWith('stock_insufficient:')) {
-        return reply.status(400).send({ error: `Stock insuficiente. Disponivel: ${error.message.split(':')[1]}` });
-      }
       if (error instanceof Error && error.message === 'service_missing') {
         return reply.status(404).send({ error: 'Servico nao encontrado' });
+      }
+      // A troca falha pelos dois lados: pela unidade que sai e pela que entra.
+      const failure = mapReturnError(error) ?? mapInstallError(error);
+      if (failure) {
+        return reply.status(failure.status).send({ error: failure.error });
       }
       throw error;
     }

@@ -8,6 +8,7 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ### Corrigido
 
+- **A substituição de equipamento deixa de apagar a renda e a unidade retirada.** O atalho "Substituir", lançado na 1.17, escrevia a atribuição nova à mão e esquecia a propriedade e o aluguer: a mensalidade do equipamento caía para zero na primeira troca. E fechava a antiga sem estado, pelo que a unidade não voltava ao armazém nem ficava registada como avariada. Uma troca é uma devolução mais uma instalação, e passa a usar os dois motores que já existiam. O formulário pergunta em que estado voltou a unidade retirada — só em bom estado regressa ao stock.
 - **Equipamento no backbone deixa de aparecer como disponível.** Uma antena registada no backbone está num poste, não no armazém, mas o Stock continuava a oferecê-la: o registo de backbone era o único caminho que tirava equipamento sem lhe dar baixa. Passa a dar: registar consome uma unidade, retirar devolve-a, e não se regista backbone de um modelo esgotado. A migração 0050 acerta as unidades já instaladas e deixa o acerto visível no histórico do artigo, em vez de mexer no número em silêncio. Na coluna Stock, os modelos com unidades no terreno dizem quantas.
 
 ## [1.17.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.17.0) — 2026-08-28

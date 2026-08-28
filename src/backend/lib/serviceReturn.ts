@@ -61,6 +61,12 @@ export function returnAssignmentWithinTx(
     technicianId?: number | null;
     userId: number | null;
     skipEvent?: boolean;
+    /**
+     * A unidade sai porque outra ocupa o lugar dela, não porque foi removida.
+     * Só o chamador sabe garantir a continuidade — e tem de a garantir na mesma
+     * transação, ou os partilhados ficam mesmo às escuras.
+     */
+    replacing?: boolean;
   }
 ): { assignmentId: number; condition: ReturnCondition; restoredStock: boolean; eventId: number | bigint } {
   const condition: ReturnCondition = params.condition ?? 'bom';
@@ -85,9 +91,11 @@ export function returnAssignmentWithinTx(
   // Devolver é remoção física: os serviços partilhados ficariam sem sinal. O
   // operador desassocia-os primeiro — promover um deles a titular em silêncio
   // seria esperto de mais para as 3 da manhã.
-  const sharers = sharerServices(db, params.assignmentId);
-  if (sharers.length > 0) {
-    throw new Error(`device_shared:${sharers.map((sharer) => sharer.clientName).join(', ')}`);
+  if (!params.replacing) {
+    const sharers = sharerServices(db, params.assignmentId);
+    if (sharers.length > 0) {
+      throw new Error(`device_shared:${sharers.map((sharer) => sharer.clientName).join(', ')}`);
+    }
   }
 
   const updated = db.prepare(`

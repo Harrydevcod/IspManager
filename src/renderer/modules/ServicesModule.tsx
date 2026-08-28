@@ -12,7 +12,7 @@ import type { AudiovisualConfig, Client, DeviceAssignment, ManualServiceEventTyp
 import { BulkIpDialog, type ActiveAssignment } from './services/BulkIpDialog';
 import { findReplaceTarget } from './services/findReplaceTarget';
 import { IpField } from './services/IpField';
-import { MANUAL_EVENT_TYPES, ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
+import { MANUAL_EVENT_TYPES, RETURN_CONDITION_LABELS, ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
 import { PurchaseDeviceDialog } from './services/PurchaseDeviceDialog';
 import { ServiceReturnDialog } from './services/ServiceReturnDialog';
 import { DeviceOwnerDialog, type PromoteOwnerResult } from './services/DeviceOwnerDialog';
@@ -135,6 +135,8 @@ export function ServicesModule({
   /** Serviço a mudar de titular: a casa mudou de inquilino ou o material vai para outro sítio. */
   const [transferTarget, setTransferTarget] = useState<ServiceRow | null>(null);
   const [replaceDraft, setReplaceDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
+  /** Em que estado voltou a unidade que sai: so em bom estado regressa ao armazem. */
+  const [replaceCondition, setReplaceCondition] = useState<ReturnCondition>('bom');
   const [editTarget, setEditTarget] = useState<DeviceAssignment | null>(null);
   const [editDraft, setEditDraft] = useState<ItemDraft>(emptyItemDraft('equipamento'));
   /** Fora do `ItemDraft` porque este é o aluguer desta atribuição, não do modelo. */
@@ -636,6 +638,7 @@ export function ServicesModule({
   function openReplaceDialog(assignment: DeviceAssignment) {
     setReplaceTarget(assignment);
     setReplaceDraft(emptyItemDraft('equipamento'));
+    setReplaceCondition('bom');
     void ensureCatalogLoaded();
   }
 
@@ -643,6 +646,7 @@ export function ServicesModule({
     if (submitting) return;
     setReplaceTarget(null);
     setReplaceDraft(emptyItemDraft('equipamento'));
+    setReplaceCondition('bom');
   }
 
   async function submitReplace(event: FormEvent<HTMLFormElement>) {
@@ -663,7 +667,8 @@ export function ServicesModule({
           assetTag: replaceDraft.assetTag || null,
           ipAddress: replaceDraft.ipAddress || null,
           macAddress: replaceDraft.macAddress || null,
-          notes: replaceDraft.notes || null
+          notes: replaceDraft.notes || null,
+          returnCondition: replaceCondition
         })
       });
       const data = await response.json() as { error?: string };
@@ -674,6 +679,7 @@ export function ServicesModule({
       toast('Equipamento substituido.', 'success');
       setReplaceTarget(null);
       setReplaceDraft(emptyItemDraft('equipamento'));
+    setReplaceCondition('bom');
       await loadTechnicalHistory(selectedService.id);
       void loadServices();
     } catch {
@@ -1258,7 +1264,10 @@ export function ServicesModule({
         <form id="replace-form" className="client-form" onSubmit={submitReplace}>
           {replaceTarget && (
             <Message>
-              O equipamento atual ({replaceTarget.serialNumber || replaceTarget.model}) será encerrado e o novo passa a ativo.
+              {replaceTarget.serialNumber || replaceTarget.model} sai e o novo passa a ativo.{' '}
+              {replaceCondition === 'bom'
+                ? 'Em bom estado, a unidade retirada volta ao stock.'
+                : 'Neste estado, a unidade retirada não volta ao stock.'}
             </Message>
           )}
           <Select
@@ -1284,6 +1293,16 @@ export function ServicesModule({
             required={requiresStaticIp(catalogList.find((item) => String(item.id) === replaceDraft.catalogId)?.type)}
             onChange={(ipAddress) => setReplaceDraft((current) => ({ ...current, ipAddress }))}
           />
+          <Select
+            wide
+            label="Estado do equipamento retirado"
+            value={replaceCondition}
+            onChange={(event) => setReplaceCondition(event.target.value as ReturnCondition)}
+          >
+            {(Object.keys(RETURN_CONDITION_LABELS) as ReturnCondition[]).map((condition) => (
+              <option key={condition} value={condition}>{RETURN_CONDITION_LABELS[condition]}</option>
+            ))}
+          </Select>
           <Field wide label="Notas" value={replaceDraft.notes} onChange={(event) => setReplaceDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Motivo da substituicao" />
         </form>
       </Dialog>

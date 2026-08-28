@@ -1292,7 +1292,10 @@ describe('antena partilhada', () => {
     expect(stockOf(antenna.lastInsertRowid)).toBe(stockBefore + 1);
   });
 
-  test('replace carries the shares over to the new unit and costs one stock unit', async () => {
+  // A troca de uma antena partilhada tem de passar apesar da guarda que recusa
+  // devolver uma unidade com vizinhos: eles nao ficam sem sinal, a unidade nova
+  // assume-os na mesma transacao.
+  test('replace carries the shares over to the new unit and leaves stock level', async () => {
     const { antenna, service, service2 } = seedTwoServices();
     const assignmentId = await installAntenna(service.lastInsertRowid, antenna.lastInsertRowid);
     await share(assignmentId, service2.lastInsertRowid);
@@ -1306,7 +1309,8 @@ describe('antena partilhada', () => {
 
     expect(response.statusCode).toBe(201);
     const replacementId = (response.json() as { assignmentId: number }).assignmentId;
-    expect(stockOf(antenna.lastInsertRowid)).toBe(stockBefore - 1);
+    // Sai uma, entra outra: a retirada volta ao armazem por omissao.
+    expect(stockOf(antenna.lastInsertRowid)).toBe(stockBefore);
     expect(db.prepare('SELECT assignment_id AS id FROM service_device_shares').all()).toEqual([{ id: replacementId }]);
 
     const history = await app.inject({ method: 'GET', url: `/api/services/${service2.lastInsertRowid}/technical-history` });
@@ -1336,5 +1340,112 @@ describe('antena partilhada', () => {
       url: `/api/service-device-assignments/${assignmentId}/shares/${service2.lastInsertRowid}`
     });
     expect(response.statusCode).toBe(404);
+  });
+});
+
+describe('troca de equipamento', () => {
+  /** Modelo com renda: e a renda que a troca perdia ao escrever a atribuicao a mao. */
+  function seedRentedDevice() {
+    const base = seedBaseService();
+    const catalog = db.prepare(`
+      INSERT INTO equipment_catalog (
+        category, type, brand, model, purchase_price_cve, is_serialized, stock_total, rental_fee_cve, active
+      )
+      VALUES ('equipamento','antena','TP-Link','CPE510', 3000, 1, 5, 250, 1)
+    `).run();
+    return { ...base, catalog };
+  }
+
+  async function install(serviceId: unknown, catalogId: unknown, fields: Record<string, unknown> = {}) {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/services/${serviceId}/items`,
+      payload: { items: [{ catalogId, ...fields }] }
+    });
+    return (response.json() as { assignmentIds: number[] }).assignmentIds[0];
+  }
+
+  function replace(assignmentId: number, payload: Record<string, unknown>) {
+    return app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${assignmentId}/replace`,
+      payload
+    });
+  }
+
+  const stockOf = (catalogId: unknown) =>
+    (db.prepare('SELECT stock_total AS n FROM equipment_catalog WHERE id = ?').get(catalogId) as { n: number }).n;
+
+  const assignment = (id: unknown) => db.prepare(`
+    SELECT ownership, rental_fee_cve AS rentalFeeCve, end_date AS endDate, return_condition AS returnCondition
+    FROM service_device_assignments WHERE id = ?
+  `).get(id) as { ownership: string; rentalFeeCve: number; endDate: string | null; returnCondition: string | null };
+
+  test('a unidade nova mantem a renda e a propriedade do modelo', async () => {
+    const { service, catalog } = seedRentedDevice();
+    const original = await install(service.lastInsertRowid, catalog.lastInsertRowid);
+
+    const response = await replace(original, { catalogId: catalog.lastInsertRowid, serialNumber: 'NOVA-1' });
+
+    expect(response.statusCode).toBe(201);
+    const replacementId = (response.json() as { assignmentId: number }).assignmentId;
+    // A regressao que isto trava: o INSERT a mao omitia ownership e renda, e a
+    // mensalidade do equipamento caia para zero na primeira substituicao.
+    expect(assignment(replacementId)).toMatchObject({ ownership: 'isp', rentalFeeCve: 250, endDate: null });
+  });
+
+  test('por omissao a unidade retirada volta ao armazem', async () => {
+    const { service, catalog } = seedRentedDevice();
+    const original = await install(service.lastInsertRowid, catalog.lastInsertRowid);
+    const antes = stockOf(catalog.lastInsertRowid);
+
+    await replace(original, { catalogId: catalog.lastInsertRowid, serialNumber: 'NOVA-2' });
+
+    expect(stockOf(catalog.lastInsertRowid)).toBe(antes);
+    expect(assignment(original)).toMatchObject({ returnCondition: 'bom' });
+    expect(assignment(original).endDate).not.toBeNull();
+    expect(db.prepare(`
+      SELECT type FROM stock_movements WHERE catalog_id = ? ORDER BY id
+    `).all(catalog.lastInsertRowid)).toEqual([
+      { type: 'saida' }, { type: 'devolucao' }, { type: 'saida' }
+    ]);
+  });
+
+  test('a unidade avariada nao volta ao armazem, mas fica registada', async () => {
+    const { service, catalog } = seedRentedDevice();
+    const original = await install(service.lastInsertRowid, catalog.lastInsertRowid);
+    const antes = stockOf(catalog.lastInsertRowid);
+
+    await replace(original, {
+      catalogId: catalog.lastInsertRowid, serialNumber: 'NOVA-3', returnCondition: 'avariado'
+    });
+
+    expect(stockOf(catalog.lastInsertRowid)).toBe(antes - 1);
+    expect(assignment(original)).toMatchObject({ returnCondition: 'avariado' });
+  });
+
+  test('sem stock a troca e recusada e nada muda', async () => {
+    const { service, catalog } = seedRentedDevice();
+    const original = await install(service.lastInsertRowid, catalog.lastInsertRowid);
+    // So o que esta na prateleira conta: a unidade a sair ainda esta no cliente.
+    db.prepare('UPDATE equipment_catalog SET stock_total = 0 WHERE id = ?').run(catalog.lastInsertRowid);
+
+    const response = await replace(original, { catalogId: catalog.lastInsertRowid, serialNumber: 'NOVA-4' });
+
+    expect(response.statusCode).toBe(400);
+    expect((response.json() as { error: string }).error).toContain('Stock insuficiente');
+    expect(assignment(original).endDate).toBeNull();
+    expect(stockOf(catalog.lastInsertRowid)).toBe(0);
+  });
+
+  test('a troca so grava um evento, o da troca', async () => {
+    const { service, catalog } = seedRentedDevice();
+    const original = await install(service.lastInsertRowid, catalog.lastInsertRowid);
+    db.prepare('DELETE FROM service_events').run();
+
+    await replace(original, { catalogId: catalog.lastInsertRowid, serialNumber: 'NOVA-5' });
+
+    expect(db.prepare('SELECT event_type AS tipo FROM service_events').all())
+      .toEqual([{ tipo: 'troca_equipamento' }]);
   });
 });
