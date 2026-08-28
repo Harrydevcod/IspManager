@@ -15,6 +15,8 @@
  * as datas em formato dia-mês-ano (DD-MM-AAAA; mês → MM-AAAA).
  */
 
+import { dayStartUtc, labelDay, todayStartUtc } from './date';
+
 export type PaymentDates = {
   dataReferencia?: string | null;
   dataEmissao?: string | null;
@@ -38,42 +40,17 @@ export type PaymentDatesValidation = {
 
 const DAY_MS = 86_400_000;
 
-/** `AAAA-MM-DD` → timestamp UTC à meia-noite, ou `null` se inválida/inexistente. */
-function dayStart(iso: string): number | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  if (!m) return null;
-  const [, y, mo, d] = m;
-  const year = Number(y);
-  const month = Number(mo);
-  const day = Number(d);
-  const t = Date.UTC(year, month - 1, day);
-  const dt = new Date(t);
-  // Rejeita datas impossíveis (ex.: 2026-02-31 → normalizaria para Março).
-  if (dt.getUTCFullYear() !== year || dt.getUTCMonth() !== month - 1 || dt.getUTCDate() !== day) {
-    return null;
-  }
-  return t;
-}
 
 /** Referência → timestamp. Dia exato se `AAAA-MM-DD`; senão 1.º dia do mês. */
 function referenceDayStart(ref: string): number | null {
-  const exact = dayStart(ref);
+  const exact = dayStartUtc(ref);
   if (exact != null) return exact;
   const m = /(\d{4})-(\d{2})/.exec(ref); // apanha `2026-07` e `AV-2026-07`
   if (!m) return null;
   return Date.UTC(Number(m[1]), Number(m[2]) - 1, 1);
 }
 
-function todayStartUtc(now: Date): number {
-  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-}
 
-/** `AAAA-MM-DD` → `DD-MM-AAAA`; devolve `-` se não houver data. */
-function labelDay(iso: string | null | undefined): string {
-  if (!iso) return '-';
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  return m ? `${m[3]}-${m[2]}-${m[1]}` : '-';
-}
 
 /** Rótulo da referência: `DD-MM-AAAA` para dia exato, `MM-AAAA` para mês. */
 function labelReference(ref: string | null | undefined): string {
@@ -98,9 +75,9 @@ export function validatePaymentDates(
   const warnings: string[] = [];
 
   const ref = dates.dataReferencia != null ? referenceDayStart(dates.dataReferencia) : null;
-  const emi = dates.dataEmissao != null ? dayStart(dates.dataEmissao) : null;
-  const ven = dates.dataVencimento != null ? dayStart(dates.dataVencimento) : null;
-  const pag = dates.dataPagamento != null ? dayStart(dates.dataPagamento) : null;
+  const emi = dates.dataEmissao != null ? dayStartUtc(dates.dataEmissao) : null;
+  const ven = dates.dataVencimento != null ? dayStartUtc(dates.dataVencimento) : null;
+  const pag = dates.dataPagamento != null ? dayStartUtc(dates.dataPagamento) : null;
 
   const todayStart = todayStartUtc(today);
   const emiLabel = () => labelDay(dates.dataEmissao);

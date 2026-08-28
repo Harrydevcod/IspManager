@@ -255,7 +255,9 @@ export const serviceMaterialLines = sqliteTable('service_material_lines', {
   unitCostCve: real('unit_cost_cve').notNull().default(0),
   notes: text('notes'),
   createdBy: integer('created_by'),
-  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
+  /** Data do facto: quando o material foi mesmo instalado, não quando foi lançado. */
+  installedOn: text('installed_on')
 });
 
 export const serviceInstallCosts = sqliteTable('service_install_costs', {

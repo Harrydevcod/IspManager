@@ -59,3 +59,36 @@ export function formatPtMonth(value: string | null | undefined): string {
     year: 'numeric'
   }).format(date).replace(/\//g, '-');
 }
+
+// --- Comparação cronológica ---------------------------------------------
+// Datas-só-dia comparam-se à meia-noite UTC: sem hora, o fuso só introduz
+// erros de um dia. Vieram de `payment-dates.ts`, onde eram privadas, quando a
+// validação das datas de atribuição passou a precisar exactamente das mesmas.
+
+/** `AAAA-MM-DD` → timestamp UTC à meia-noite, ou `null` se inválida/inexistente. */
+export function dayStartUtc(iso: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return null;
+  const [, y, mo, d] = m;
+  const year = Number(y);
+  const month = Number(mo);
+  const day = Number(d);
+  const t = Date.UTC(year, month - 1, day);
+  const dt = new Date(t);
+  // Rejeita datas impossíveis (ex.: 2026-02-31 → normalizaria para Março).
+  if (dt.getUTCFullYear() !== year || dt.getUTCMonth() !== month - 1 || dt.getUTCDate() !== day) {
+    return null;
+  }
+  return t;
+}
+
+export function todayStartUtc(now: Date): number {
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+}
+
+/** `AAAA-MM-DD` → `DD-MM-AAAA`; devolve `-` se não houver data. */
+export function labelDay(iso: string | null | undefined): string {
+  if (!iso) return '-';
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '-';
+}

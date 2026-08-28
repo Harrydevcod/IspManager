@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Combobox, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, Select, SkeletonList, Textarea, Toggle, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
+import { todayIso } from '../../shared/assignment-dates';
 import { labelForType, requiresStaticIp } from '../../shared/equipment';
 import { suggestIpPrefix } from '../lib/ip';
 import { statusLabel, statusTone } from '../lib/status';
@@ -424,12 +425,14 @@ export function ServicesModule({
               ipAddress: draft.ipAddress || null,
               macAddress: draft.macAddress || null,
               notes: draft.notes || null,
-              ownership: draft.ownership
+              ownership: draft.ownership,
+              installedOn: draft.installedOn || null
             }
           : {
               catalogId: Number(draft.catalogId),
               quantity: Number(draft.quantity || 1),
-              notes: draft.notes || null
+              notes: draft.notes || null,
+              installedOn: draft.installedOn || null
             };
       });
   }
@@ -668,7 +671,8 @@ export function ServicesModule({
           ipAddress: replaceDraft.ipAddress || null,
           macAddress: replaceDraft.macAddress || null,
           notes: replaceDraft.notes || null,
-          returnCondition: replaceCondition
+          returnCondition: replaceCondition,
+          installedOn: replaceDraft.installedOn || null
         })
       });
       const data = await response.json() as { error?: string };
@@ -697,7 +701,8 @@ export function ServicesModule({
       assetTag: assignment.assetTag || '',
       ipAddress: assignment.ipAddress || '',
       macAddress: assignment.macAddress || '',
-      notes: assignment.notes || ''
+      notes: assignment.notes || '',
+      installedOn: (assignment.startDate || '').slice(0, 10)
     });
     setEditRental(String(assignment.rentalFeeCve ?? 0));
   }
@@ -731,6 +736,20 @@ export function ServicesModule({
       if (!response.ok) {
         toast(data.error || 'Nao foi possivel atualizar o equipamento.', 'error');
         return;
+      }
+
+      const novaData = editDraft.installedOn;
+      if (novaData && novaData !== (editTarget.startDate || '').slice(0, 10)) {
+        const datas = await authFetch(`http://127.0.0.1:3001/api/service-device-assignments/${editTarget.id}/dates`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ startDate: novaData })
+        });
+        if (!datas.ok) {
+          const erro = await datas.json() as { error?: string };
+          toast(erro.error || 'Nao foi possivel corrigir a data.', 'error');
+          return;
+        }
       }
       toast('Identificacao atualizada.', 'success');
       setEditTarget(null);
@@ -1293,6 +1312,14 @@ export function ServicesModule({
             required={requiresStaticIp(catalogList.find((item) => String(item.id) === replaceDraft.catalogId)?.type)}
             onChange={(ipAddress) => setReplaceDraft((current) => ({ ...current, ipAddress }))}
           />
+          <Field
+            label="Data da troca"
+            type="date"
+            max={todayIso()}
+            value={replaceDraft.installedOn}
+            hint={replaceDraft.installedOn !== todayIso() ? 'Registo retroativo' : undefined}
+            onChange={(event) => setReplaceDraft((current) => ({ ...current, installedOn: event.target.value }))}
+          />
           <Select
             wide
             label="Estado do equipamento retirado"
@@ -1348,6 +1375,15 @@ export function ServicesModule({
               hint="Vale a partir da próxima fatura; as já emitidas não mudam"
             />
           )}
+          {/* Corrigir o dia em que isto foi mesmo instalado: dezenas de registos
+              ficaram com a data do carregamento inicial, não com a real. */}
+          <Field
+            label="Data de instalacao"
+            type="date"
+            max={todayIso()}
+            value={editDraft.installedOn}
+            onChange={(event) => setEditDraft((current) => ({ ...current, installedOn: event.target.value }))}
+          />
           <Field wide label="Notas" value={editDraft.notes} onChange={(event) => setEditDraft((current) => ({ ...current, notes: event.target.value }))} />
         </form>
       </Dialog>

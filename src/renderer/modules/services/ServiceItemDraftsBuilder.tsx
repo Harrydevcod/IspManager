@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { Button, Field, Message, Select } from '../../components';
 import { labelForType, requiresStaticIp } from '../../../shared/equipment';
 import { formatCve } from '../../lib/format';
+import { todayIso } from '../../../shared/assignment-dates';
 import type { StockCatalogRow } from '../../types';
 import { IpField } from './IpField';
 
@@ -16,12 +17,18 @@ export type ItemDraft = {
   notes: string;
   /** 'cliente' = trazido pelo cliente; não entra no aluguer da mensalidade. */
   ownership: 'isp' | 'cliente';
+  /** Dia em que isto foi mesmo instalado — nem sempre e o dia do registo. */
+  installedOn: string;
 };
 
 export function emptyItemDraft(category: 'equipamento' | 'material' = 'equipamento'): ItemDraft {
   // Por omissão o equipamento é do ISP e é alugado — é o caso comum, e o que
   // não se escolhe por engano é o que não gera receita por engano.
-  return { category, catalogId: '', quantity: '1', serialNumber: '', assetTag: '', ipAddress: '', macAddress: '', notes: '', ownership: 'isp' };
+  return {
+    category, catalogId: '', quantity: '1', serialNumber: '', assetTag: '',
+    ipAddress: '', macAddress: '', notes: '', ownership: 'isp',
+    installedOn: todayIso()
+  };
 }
 
 type ServiceItemDraftsBuilderProps = {
@@ -117,6 +124,14 @@ export function ServiceItemDraftsBuilder({ drafts, catalog, onChange, ipPrefix }
                   </Select>
                 </>
               )}
+              <Field
+                label="Data de instalacao"
+                type="date"
+                max={todayIso()}
+                value={draft.installedOn}
+                hint={draft.installedOn !== todayIso() ? 'Registo retroativo' : undefined}
+                onChange={(event) => update(index, { installedOn: event.target.value })}
+              />
               <Field wide label="Notas" value={draft.notes} onChange={(event) => update(index, { notes: event.target.value })} />
               <Button type="button" variant="secondary" size="sm" onClick={() => remove(index)}>
                 Remover linha
