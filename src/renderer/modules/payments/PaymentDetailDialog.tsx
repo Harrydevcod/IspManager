@@ -4,7 +4,8 @@ import { Button, Dialog, Field, Message, Select, Textarea } from '../../componen
 import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
 import { effectivePaymentStatus } from '../../lib/status';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
-import { paymentStatusLabel, type PaymentRow } from '../../types';
+import { paymentStatusLabel, type PaymentReceipt, type PaymentRow } from '../../types';
+import { ReceiptsSection } from './ReceiptsSection';
 
 export type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
 export type PaymentActionMode = 'pay' | 'cancel' | 'whatsapp';
@@ -38,7 +39,10 @@ type PaymentDetailDialogProps = {
   showActionForm: boolean;
   payMethod: PaymentMethod;
   payDate: string;
+  payAmount: string;
   cancelReason: string;
+  receipts: PaymentReceipt[];
+  clientCreditCve: number;
   previewDoc: { objectUrl: string | null; error: boolean };
   previewDocType: 'invoice' | 'receipt';
   whatsappMessage: string;
@@ -55,7 +59,11 @@ type PaymentDetailDialogProps = {
   onCloseActionForm: () => void;
   onPayMethodChange: (method: PaymentMethod) => void;
   onPayDateChange: (date: string) => void;
+  onPayAmountChange: (amount: string) => void;
   onCancelReasonChange: (reason: string) => void;
+  onPrintReceipt: (receipt: PaymentReceipt) => void;
+  onVoidReceipt: (receipt: PaymentReceipt) => void;
+  onApplyCredit: () => void;
   onSubmitPay: () => void;
   onSubmitCancel: () => void;
   onSubmitWhatsapp: () => void;
@@ -68,7 +76,10 @@ export function PaymentDetailDialog({
   showActionForm,
   payMethod,
   payDate,
+  payAmount,
   cancelReason,
+  receipts,
+  clientCreditCve,
   previewDoc,
   previewDocType,
   whatsappMessage,
@@ -85,7 +96,11 @@ export function PaymentDetailDialog({
   onCloseActionForm,
   onPayMethodChange,
   onPayDateChange,
+  onPayAmountChange,
   onCancelReasonChange,
+  onPrintReceipt,
+  onVoidReceipt,
+  onApplyCredit,
   onSubmitPay,
   onSubmitCancel,
   onSubmitWhatsapp
@@ -115,15 +130,18 @@ export function PaymentDetailDialog({
               Enviar PDF por WhatsApp
             </Button>
           )}
-          {payment.status === 'paid' ? (
+          {/* O recibo deixou de esperar pelo fecho da fatura: quem entregou
+              10.000 tem prova dos 10.000 hoje. */}
+          {payment.receivedCve > 0 && (
             <Button variant="secondary" size="sm" leadingIcon={<ReceiptText size={16} aria-hidden />} onClick={() => onOpenPdf(payment, 'receipt')}>
               Recibo PDF
             </Button>
-          ) : payment.status !== 'cancelled' ? (
+          )}
+          {payment.status !== 'paid' && payment.status !== 'cancelled' && (
             <Button variant="secondary" size="sm" leadingIcon={<CheckCircle2 size={16} aria-hidden />} onClick={() => onOpenPayForm(payment)}>
-              Registar pagamento
+              {payment.receivedCve > 0 ? 'Registar mais um recebimento' : 'Registar pagamento'}
             </Button>
-          ) : null}
+          )}
           {payment.status !== 'cancelled' && normalizeWhatsappPhone(payment.clientPhone) && (
             <Button
               variant="secondary"
@@ -179,17 +197,40 @@ export function PaymentDetailDialog({
           }}
         >
           <div>
-            <p className="eyebrow">Registar pagamento</p>
-            <strong>{formatCve(payment.amountCve)}</strong>
+            <p className="eyebrow">Registar recebimento</p>
+            <strong>{formatCve(payment.balanceCve)}</strong>
+            {payment.receivedCve > 0 && (
+              <small className="payment-action-form__hint">
+                já recebido {formatCve(payment.receivedCve)} de {formatCve(payment.amountCve)}
+              </small>
+            )}
           </div>
+          {/* Pré-preenchido com o saldo: o caso comum é receber tudo, e quem
+              recebe por conta escreve o valor. Aceita mais do que o saldo — o
+              excesso fica como crédito do cliente. */}
+          <Field
+            label="Valor recebido"
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={payAmount}
+            onChange={(event) => onPayAmountChange(event.target.value)}
+            disabled={submitting}
+            required
+          />
           <Select label="Metodo" value={payMethod} onChange={(event) => onPayMethodChange(event.target.value as PaymentMethod)} disabled={submitting}>
             <option value="numerario">Numerario</option>
             <option value="transferencia">Transferencia</option>
             <option value="outro">Outro</option>
           </Select>
           <Field label="Data" type="date" value={payDate} onChange={(event) => onPayDateChange(event.target.value)} max={todayIso()} disabled={submitting} required />
+          {Number(payAmount) > payment.balanceCve && (
+            <Message>
+              {formatCve(Number(payAmount) - payment.balanceCve)} acima do saldo ficam como crédito do cliente.
+            </Message>
+          )}
           <div className="inline-actions">
-            <Button type="submit" disabled={submitting || !payDate}>Confirmar</Button>
+            <Button type="submit" disabled={submitting || !payDate || !(Number(payAmount) > 0)}>Confirmar</Button>
             <Button variant="secondary" onClick={onCloseActionForm} disabled={submitting}>Cancelar</Button>
           </div>
         </form>
@@ -373,12 +414,25 @@ export function PaymentDetailDialog({
       <dl>
         <div><dt>Mes</dt><dd>{formatPtMonth(payment.referenceMonth)}</dd></div>
         <div><dt>Valor</dt><dd>{formatCve(payment.amountCve)}</dd></div>
+        <div><dt>Recebido</dt><dd>{formatCve(payment.receivedCve)}</dd></div>
+        <div><dt>Em aberto</dt><dd>{formatCve(payment.balanceCve)}</dd></div>
         <div><dt>Fatura</dt><dd>{payment.invoiceNumber || '-'}</dd></div>
         <div><dt>Recibo</dt><dd>{payment.receiptNumber || '-'}</dd></div>
         <div><dt>Metodo</dt><dd>{payment.paymentMethod || '-'}</dd></div>
         <div><dt>Data pagamento</dt><dd>{formatPtDate(payment.paymentDate)}</dd></div>
-        <div><dt>Estado</dt><dd>{paymentStatusLabel(payment.status)}</dd></div>
+        <div><dt>Estado</dt><dd>{paymentStatusLabel(effectivePaymentStatus(payment))}</dd></div>
       </dl>
+      {payment.status !== 'cancelled' && (
+        <ReceiptsSection
+          receipts={receipts}
+          clientCreditCve={clientCreditCve}
+          balanceCve={payment.balanceCve}
+          submitting={submitting}
+          onPrintReceipt={onPrintReceipt}
+          onVoidReceipt={onVoidReceipt}
+          onApplyCredit={onApplyCredit}
+        />
+      )}
       </div>
     </Dialog>
   );

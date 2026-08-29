@@ -27,6 +27,8 @@ beforeAll(async () => {
 beforeEach(() => {
   _clientSeq = 0;
   db.prepare('DELETE FROM client_duplicate_dismissals').run();
+  db.prepare('DELETE FROM client_credits').run();
+  db.prepare('DELETE FROM payment_receipts').run();
   db.prepare('DELETE FROM payments').run();
   db.prepare('DELETE FROM services').run();
   db.prepare('DELETE FROM internet_plans').run();

@@ -6,6 +6,7 @@ import { clients } from '../db/schema';
 import { recordAudit } from '../lib/audit';
 import { buildClientsImportTemplate } from '../lib/clients-import-template';
 import { loadCompanyOpexContext } from '../lib/opex';
+import { balanceSqlExpr, clientCreditBalance } from '../lib/payments';
 import { changeServiceStatus } from '../lib/services';
 import { requireAuth, requireRole } from './auth';
 
@@ -166,19 +167,31 @@ export async function registerClientRoutes(app: FastifyInstance) {
 
     const payments = db.prepare(`
       SELECT id, status, amount_cve AS amountCve, due_date AS dueDate,
-             payment_date AS paymentDate, reference_month AS referenceMonth
+             payment_date AS paymentDate, reference_month AS referenceMonth,
+             COALESCE((
+               SELECT SUM(r.amount_cve) FROM payment_receipts r
+               WHERE r.payment_id = payments.id AND r.voided_at IS NULL
+             ), 0) AS receivedCve,
+             ${balanceSqlExpr('payments')} AS balanceCve
       FROM payments
       WHERE client_id = ?
       ORDER BY due_date ASC, id ASC
     `).all(id) as Array<{
       id: number; status: string; amountCve: number; dueDate: string;
       paymentDate: string | null; referenceMonth: string;
+      receivedCve: number; balanceCve: number;
     }>;
 
-    const paidRevenueCve = payments.filter((p) => p.status === 'paid').reduce((s, p) => s + Number(p.amountCve), 0);
+    // Recebido e em divida saem da mesma fatura quando ela esta meio paga: o
+    // recebido e o que entrou, o pendente e o que falta — nunca o valor cheio
+    // dos dois lados.
+    const paidRevenueCve = payments
+      .filter((p) => p.status !== 'cancelled')
+      .reduce((s, p) => s + Number(p.receivedCve), 0);
     const pendingRevenueCve = payments
       .filter((p) => p.status === 'pending' || p.status === 'overdue')
-      .reduce((s, p) => s + Number(p.amountCve), 0);
+      .reduce((s, p) => s + Number(p.balanceCve), 0);
+    const creditCve = clientCreditBalance(db, id);
     const monthsActive = new Set(payments.map((p) => p.referenceMonth)).size;
     const paidMonths = new Set(payments.filter((p) => p.status === 'paid').map((p) => p.referenceMonth)).size;
     const monthlyAverageRevenueCve = paidMonths > 0 ? paidRevenueCve / paidMonths : 0;
@@ -223,6 +236,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
       equipmentUsed,
       paidRevenueCve,
       pendingRevenueCve,
+      creditCve,
       monthsActive,
       paidMonths,
       monthlyAverageRevenueCve,

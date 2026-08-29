@@ -3,6 +3,7 @@ import { buildMonthlyServiceLines, dueDateFromIssue, loadServiceRentals, sumLine
 import { isAudiovisualAnnualReference, loadAudiovisualConfig } from './audiovisual';
 import { allocateDocumentNumber } from './numbering';
 import { validatePaymentDates } from '../../shared/payment-dates';
+import { escudosToCentavos, isSettled, roundEscudos } from '../../shared/money';
 
 type PaymentStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';
 type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
@@ -57,8 +58,17 @@ export function previewReverseMonthly(db: Database, referenceMonth: string) {
 
   const openRows = rows.filter((r) => r.status === 'pending' || r.status === 'overdue');
 
-  const eligible = openRows.filter((r) => !r.invoiceNumber);
-  const invoicedLocked = openRows.filter((r) => Boolean(r.invoiceNumber));
+  const withReceipts = new Set(
+    (db.prepare(`
+      SELECT DISTINCT r.payment_id AS paymentId
+      FROM payment_receipts r
+      JOIN payments p ON p.id = r.payment_id
+      WHERE p.reference_month = ? AND r.voided_at IS NULL
+    `).all(referenceMonth) as Array<{ paymentId: number }>).map((r) => r.paymentId)
+  );
+
+  const eligible = openRows.filter((r) => !r.invoiceNumber && !withReceipts.has(r.id));
+  const invoicedLocked = openRows.filter((r) => Boolean(r.invoiceNumber) || withReceipts.has(r.id));
   const paidLocked = rows.filter((r) => r.status === 'paid');
   const cancelledKept = rows.filter((r) => r.status === 'cancelled');
 
@@ -85,23 +95,29 @@ export function previewReverseMonthly(db: Database, referenceMonth: string) {
 }
 
 export function executeReverseMonthly(db: Database, referenceMonth: string): { reversed: number; invoicedKept: number } {
+  // Nao apagavel = ja e documento (numerado) ou ja recebeu dinheiro. As duas
+  // condicoes andam juntas nos tres sitios; separa-las era convidar a que um
+  // deles se esquecesse de uma.
+  const notReversible = `(invoice_number IS NOT NULL OR EXISTS (
+    SELECT 1 FROM payment_receipts r WHERE r.payment_id = payments.id AND r.voided_at IS NULL))`;
+
   const invoicedKept = db.prepare(`
     SELECT COUNT(*) AS n
     FROM payments
-    WHERE reference_month = ? AND status IN ('pending', 'overdue') AND invoice_number IS NOT NULL
+    WHERE reference_month = ? AND status IN ('pending', 'overdue') AND ${notReversible}
   `).get(referenceMonth) as { n: number };
 
-  // `invoice_number IS NULL` nos dois passos: é ele que separa o rascunho de
-  // cobrança do documento emitido.
+  // A mesma condicao nos dois passos: e ela que separa o rascunho de cobranca
+  // do documento emitido (ou ja recebido).
   const deleteLinesStmt = db.prepare(`
     DELETE FROM payment_lines WHERE payment_id IN (
       SELECT id FROM payments
-      WHERE reference_month = ? AND status IN ('pending', 'overdue') AND invoice_number IS NULL
+      WHERE reference_month = ? AND status IN ('pending', 'overdue') AND NOT ${notReversible}
     )
   `);
   const deleteStmt = db.prepare(`
     DELETE FROM payments
-    WHERE reference_month = ? AND status IN ('pending', 'overdue') AND invoice_number IS NULL
+    WHERE reference_month = ? AND status IN ('pending', 'overdue') AND NOT ${notReversible}
   `);
 
   const result = db.transaction(() => {
@@ -140,6 +156,15 @@ export function revertPayment(db: Database, id: number): PaymentOpResult<{
   }
   if (payment.status === 'cancelled') {
     return { ok: false, status: 400, error: 'Pagamento ja esta anulado. Nada a reverter.' };
+  }
+  // Reverter apaga a linha, e uma linha apagada levava os recibos com ela.
+  // Onde entrou dinheiro nao ha rascunho nenhum para deitar fora: anula-se.
+  if (receivedTotal(db, id) > 0) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Pagamento com recebimentos registados nao pode ser revertido. Use anular.'
+    };
   }
   // Reverter apaga a linha. Um documento numerado nunca desaparece: anula-se e
   // fica, senão o número some e a sequência ganha um salto sem explicacao.
@@ -283,45 +308,363 @@ export function regeneratePayment(db: Database, id: number): PaymentOpResult<{
 // Registar pagamento / marcar em atraso / anular
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Recebimentos
+//
+// A fatura e imutavel: `amount_cve` nasce com o documento numerado e fica. O
+// que varia e quanto dela ja foi recebido, e isso vive em `payment_receipts` —
+// uma linha por entrada de dinheiro, cada uma com o seu numero de recibo.
+// `payments.status` continua a fechar so quando a soma cobre o valor, para que
+// o `overdueSqlPredicate` e os PDFs continuem a valer sem saber de parciais.
+// ---------------------------------------------------------------------------
+
+export type ReceiptSource = 'cash' | 'credit';
+
+export type ReceiptRecord = {
+  id: number;
+  paymentId: number;
+  amountCve: number;
+  paymentDate: string;
+  paymentMethod: PaymentMethod;
+  source: ReceiptSource;
+  receiptNumber: string;
+  receiptDate: string;
+  voidedAt: string | null;
+  voidReason: string | null;
+  notes: string | null;
+};
+
+const receiptSelect = `
+  SELECT id, payment_id AS paymentId, amount_cve AS amountCve, payment_date AS paymentDate,
+         payment_method AS paymentMethod, source, receipt_number AS receiptNumber,
+         receipt_date AS receiptDate, voided_at AS voidedAt, void_reason AS voidReason, notes
+  FROM payment_receipts
+`;
+
+/**
+ * Quanto falta receber de uma fatura, em SQL. Irma do `overdueSqlPredicate`:
+ * existe para nenhum painel inventar a sua propria conta de saldo.
+ *
+ * O alias e obrigatorio na pratica (o default e o nome da tabela) porque a
+ * subconsulta correlacionada precisa de distinguir o `id` da fatura do `id` do
+ * recibo — sem qualificacao, o SQLite resolveria para o de dentro.
+ */
+export function balanceSqlExpr(alias = 'payments'): string {
+  const col = `${alias}.`;
+  return `(${col}amount_cve - COALESCE((`
+    + ` SELECT SUM(r.amount_cve) FROM payment_receipts r`
+    + ` WHERE r.payment_id = ${col}id AND r.voided_at IS NULL), 0))`;
+}
+
+/** Total recebido (recibos nao anulados) numa fatura. */
+export function receivedTotal(db: Database, paymentId: number): number {
+  const row = db.prepare(`
+    SELECT COALESCE(SUM(amount_cve), 0) AS total
+    FROM payment_receipts
+    WHERE payment_id = ? AND voided_at IS NULL
+  `).get(paymentId) as { total: number };
+  return roundEscudos(row.total);
+}
+
+export function listPaymentReceipts(db: Database, paymentId: number): ReceiptRecord[] {
+  return db.prepare(`${receiptSelect} WHERE payment_id = ? ORDER BY payment_date, id`).all(paymentId) as ReceiptRecord[];
+}
+
+/** Saldo do cliente na conta corrente: positivo e credito a favor dele. */
+export function clientCreditBalance(db: Database, clientId: number): number {
+  const row = db.prepare(`
+    SELECT COALESCE(SUM(amount_cve), 0) AS total FROM client_credits WHERE client_id = ?
+  `).get(clientId) as { total: number };
+  return roundEscudos(row.total);
+}
+
+type PaymentHead = {
+  id: number;
+  clientId: number;
+  status: PaymentStatus;
+  amountCve: number;
+  invoiceDate: string | null;
+  invoiceNumber: string | null;
+  referenceMonth: string;
+};
+
+const paymentHeadSelect = `
+  SELECT id, client_id AS clientId, status, amount_cve AS amountCve,
+         invoice_date AS invoiceDate, invoice_number AS invoiceNumber,
+         reference_month AS referenceMonth
+  FROM payments WHERE id = ?
+`;
+
+function loadHead(db: Database, id: number): PaymentHead | undefined {
+  return db.prepare(paymentHeadSelect).get(id) as PaymentHead | undefined;
+}
+
+/**
+ * Escreve um recibo e fecha a fatura se ele a cobrir.
+ *
+ * Chamada de dentro de uma transacao: `allocateDocumentNumber` incrementa a
+ * serie, e um numero alocado que nao chegue a pousar numa linha e um salto na
+ * sequencia sem explicacao.
+ */
+function writeReceipt(
+  db: Database,
+  head: PaymentHead,
+  input: {
+    amountCve: number;
+    paymentDate: string;
+    paymentMethod: PaymentMethod;
+    source: ReceiptSource;
+    notes?: string | null;
+    userId?: number | null;
+  }
+): ReceiptRecord {
+  const receiptNumber = allocateDocumentNumber('receipt');
+  const info = db.prepare(`
+    INSERT INTO payment_receipts (
+      payment_id, amount_cve, payment_date, payment_method, source,
+      receipt_number, receipt_date, notes, created_by
+    ) VALUES (?, ?, ?, ?, ?, ?, date('now'), ?, ?)
+  `).run(
+    head.id,
+    input.amountCve,
+    input.paymentDate,
+    input.paymentMethod,
+    input.source,
+    receiptNumber,
+    input.notes ?? null,
+    input.userId ?? null
+  );
+
+  const receipt = db.prepare(`${receiptSelect} WHERE id = ?`).get(Number(info.lastInsertRowid)) as ReceiptRecord;
+
+  // A fatura fecha com os dados do recibo que a saldou — e esse o numero que o
+  // PDF por fatura vai buscar, e a data que os relatorios de caixa ja liam
+  // antes de existirem parciais.
+  if (isSettled(head.amountCve - receivedTotal(db, head.id))) {
+    db.prepare(`
+      UPDATE payments
+      SET status = 'paid', payment_method = ?, payment_date = ?,
+          receipt_number = ?, receipt_date = COALESCE(receipt_date, date('now')),
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(input.paymentMethod, input.paymentDate, receipt.receiptNumber, head.id);
+  }
+
+  return receipt;
+}
+
+export type PayResult = {
+  payment: PaymentRecord;
+  receipt: ReceiptRecord;
+  /** Excesso que foi parar a conta corrente do cliente (0 quando nao sobrou). */
+  creditAddedCve: number;
+  balanceCve: number;
+  settled: boolean;
+};
+
+/**
+ * Regista dinheiro recebido por conta de uma fatura.
+ *
+ * Sem `amountCve` recebe o saldo todo — e o comportamento de sempre, e e o que
+ * mantem os chamadores antigos (pagamento em massa incluido) a funcionar sem
+ * saberem que os parciais existem.
+ *
+ * O que exceder o saldo nao se perde nem fecha a fatura duas vezes: vira
+ * credito do cliente, abatido na fatura seguinte.
+ */
 export function payPayment(
   db: Database,
   id: number,
-  input: { paymentMethod: PaymentMethod; paymentDate?: string }
-): PaymentOpResult<PaymentRecord> {
-  const payment = db.prepare('SELECT id, status, invoice_date AS invoiceDate, receipt_number AS receiptNumber FROM payments WHERE id = ?').get(id) as { id: number; status: PaymentStatus; invoiceDate: string | null; receiptNumber: string | null } | undefined;
-  if (!payment) {
+  input: { paymentMethod: PaymentMethod; paymentDate?: string; amountCve?: number; notes?: string | null; userId?: number | null }
+): PaymentOpResult<PayResult> {
+  const head = loadHead(db, id);
+  if (!head) {
     return { ok: false, status: 404, error: 'Pagamento nao encontrado' };
   }
-  if (payment.status === 'cancelled') {
+  if (head.status === 'cancelled') {
     return { ok: false, status: 400, error: 'Pagamento anulado nao pode ser pago' };
   }
 
   const paymentDate = input.paymentDate || todayIso();
-  // A data de pagamento não pode ser anterior à emissão da fatura.
-  const { errors } = validatePaymentDates({ dataEmissao: payment.invoiceDate, dataPagamento: paymentDate });
+  // A data de pagamento nao pode ser anterior a emissao da fatura.
+  const { errors } = validatePaymentDates({ dataEmissao: head.invoiceDate, dataPagamento: paymentDate });
   if (errors.length) {
     return { ok: false, status: 400, error: errors.join(' ') };
   }
-  // Aloca o recibo só quando ainda não existe. Repagar uma linha já paga mantém
-  // o recibo original e nunca queima um número de série — allocateDocumentNumber
-  // incrementa o contador a cada chamada, logo chamá-lo à toa criaria gaps.
-  if (!payment.receiptNumber) {
-    const receiptNumber = allocateDocumentNumber('receipt');
-    db.prepare(`
-      UPDATE payments
-      SET status = 'paid', payment_method = ?, payment_date = ?,
-          receipt_number = ?, receipt_date = date('now'), updated_at = datetime('now')
-      WHERE id = ?
-    `).run(input.paymentMethod, paymentDate, receiptNumber, id);
-  } else {
-    db.prepare(`
-      UPDATE payments
-      SET status = 'paid', payment_method = ?, payment_date = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(input.paymentMethod, paymentDate, id);
+
+  const balance = roundEscudos(head.amountCve - receivedTotal(db, id));
+  if (isSettled(balance)) {
+    return { ok: false, status: 400, error: 'Fatura ja esta totalmente recebida' };
   }
 
-  return { ok: true, value: selectPayment(db, id)! };
+  const requested = input.amountCve === undefined ? balance : roundEscudos(input.amountCve);
+  if (!Number.isFinite(requested) || escudosToCentavos(requested) <= 0) {
+    return { ok: false, status: 400, error: 'Valor recebido tem de ser positivo' };
+  }
+
+  const applied = Math.min(requested, balance);
+  const excess = roundEscudos(requested - applied);
+
+  const value = db.transaction(() => {
+    const receipt = writeReceipt(db, head, {
+      amountCve: applied,
+      paymentDate,
+      paymentMethod: input.paymentMethod,
+      source: 'cash',
+      notes: input.notes,
+      userId: input.userId
+    });
+
+    if (escudosToCentavos(excess) > 0) {
+      db.prepare(`
+        INSERT INTO client_credits (client_id, amount_cve, receipt_id, reason)
+        VALUES (?, ?, ?, ?)
+      `).run(head.clientId, excess, receipt.id, `Excesso do recibo ${receipt.receiptNumber}`);
+    }
+
+    const remaining = roundEscudos(head.amountCve - receivedTotal(db, id));
+    return {
+      payment: selectPayment(db, id)!,
+      receipt,
+      creditAddedCve: excess,
+      balanceCve: remaining,
+      settled: isSettled(remaining)
+    };
+  })();
+
+  return { ok: true, value };
+}
+
+/**
+ * Abate o credito do cliente numa fatura em aberto.
+ *
+ * O recibo sai com `source = 'credit'`: a fatura fica liquidada, mas nao entrou
+ * dinheiro novo — entrou quando o credito nasceu. Conta-lo outra vez na caixa
+ * do mes duplicava a receita.
+ *
+ * Devolve o recibo, ou `null` quando nao havia credito ou saldo para mexer —
+ * e chamada da geracao mensal, onde a maioria dos clientes nao tem credito
+ * nenhum e nada disso e um erro.
+ */
+export function applyClientCreditToPayment(
+  db: Database,
+  paymentId: number,
+  userId?: number | null
+): ReceiptRecord | null {
+  const head = loadHead(db, paymentId);
+  if (!head || head.status === 'cancelled' || head.status === 'paid') return null;
+
+  const balance = roundEscudos(head.amountCve - receivedTotal(db, paymentId));
+  const credit = clientCreditBalance(db, head.clientId);
+  const applied = roundEscudos(Math.min(balance, credit));
+  if (escudosToCentavos(applied) <= 0) return null;
+
+  return db.transaction(() => {
+    const receipt = writeReceipt(db, head, {
+      amountCve: applied,
+      paymentDate: todayIso(),
+      paymentMethod: 'outro',
+      source: 'credit',
+      notes: 'Liquidado por conta corrente',
+      userId
+    });
+    db.prepare(`
+      INSERT INTO client_credits (client_id, amount_cve, receipt_id, reason)
+      VALUES (?, ?, ?, ?)
+    `).run(head.clientId, -applied, receipt.id, `Aplicado na fatura ${head.invoiceNumber || head.referenceMonth}`);
+    return receipt;
+  })();
+}
+
+/**
+ * Anula um recibo mal lancado (o classico 100.000 onde eram 10.000).
+ *
+ * O numero nao se recicla nem desaparece — documento numerado anula-se, fica, e
+ * deixa o motivo escrito. A fatura reabre se este recibo era o que a fechava, e
+ * o lancamento de conta corrente que dele nasceu e revertido pelo simetrico,
+ * para o razao continuar a somar certo.
+ */
+export function voidReceipt(db: Database, id: number, rawReason: string | null | undefined): PaymentOpResult<{
+  receipt: ReceiptRecord;
+  paymentId: number;
+  reopened: boolean;
+  balanceCve: number;
+}> {
+  const receipt = db.prepare(`${receiptSelect} WHERE id = ?`).get(id) as ReceiptRecord | undefined;
+  if (!receipt) {
+    return { ok: false, status: 404, error: 'Recibo nao encontrado' };
+  }
+  if (receipt.voidedAt) {
+    return { ok: false, status: 400, error: 'Recibo ja esta anulado' };
+  }
+
+  const reason = rawReason?.trim() || '';
+  if (reason.length < 10) {
+    return { ok: false, status: 400, error: `Anular o recibo ${receipt.receiptNumber} exige um motivo detalhado (minimo 10 caracteres).` };
+  }
+
+  const head = loadHead(db, receipt.paymentId);
+  if (!head) {
+    return { ok: false, status: 404, error: 'Pagamento nao encontrado' };
+  }
+  if (head.status === 'cancelled') {
+    return { ok: false, status: 400, error: 'Fatura anulada: o recibo ja nao pode ser mexido' };
+  }
+
+  const value = db.transaction(() => {
+    db.prepare(`
+      UPDATE payment_receipts SET voided_at = datetime('now'), void_reason = ? WHERE id = ?
+    `).run(reason, id);
+
+    // Simetrico do lancamento que este recibo gerou (excesso a favor ou uso do
+    // credito), qualquer que tenha sido o sentido.
+    const ledger = db.prepare(`
+      SELECT COALESCE(SUM(amount_cve), 0) AS total FROM client_credits WHERE receipt_id = ?
+    `).get(id) as { total: number };
+    if (escudosToCentavos(ledger.total) !== 0) {
+      db.prepare(`
+        INSERT INTO client_credits (client_id, amount_cve, receipt_id, reason)
+        VALUES (?, ?, ?, ?)
+      `).run(head.clientId, -ledger.total, id, `Estorno do recibo ${receipt.receiptNumber}`);
+    }
+
+    const remaining = roundEscudos(head.amountCve - receivedTotal(db, head.id));
+    const reopened = head.status === 'paid' && !isSettled(remaining);
+    if (reopened) {
+      // O recibo da fatura passa a ser o ultimo que ainda vale; se nao sobrou
+      // nenhum, a fatura volta a nao ter recibo — como antes de alguem pagar.
+      const survivor = db.prepare(`
+        SELECT receipt_number AS receiptNumber, receipt_date AS receiptDate,
+               payment_date AS paymentDate, payment_method AS paymentMethod
+        FROM payment_receipts
+        WHERE payment_id = ? AND voided_at IS NULL
+        ORDER BY payment_date DESC, id DESC LIMIT 1
+      `).get(head.id) as { receiptNumber: string; receiptDate: string; paymentDate: string; paymentMethod: string } | undefined;
+
+      db.prepare(`
+        UPDATE payments
+        SET status = 'pending',
+            payment_date = ?, payment_method = ?, receipt_number = ?, receipt_date = ?,
+            updated_at = datetime('now')
+        WHERE id = ?
+      `).run(
+        survivor?.paymentDate ?? null,
+        survivor?.paymentMethod ?? null,
+        survivor?.receiptNumber ?? null,
+        survivor?.receiptDate ?? null,
+        head.id
+      );
+    }
+
+    return {
+      receipt: db.prepare(`${receiptSelect} WHERE id = ?`).get(id) as ReceiptRecord,
+      paymentId: head.id,
+      reopened,
+      balanceCve: remaining
+    };
+  })();
+
+  return { ok: true, value };
 }
 
 /**
@@ -367,13 +710,17 @@ export function cancelPayment(db: Database, id: number, rawReason: string | null
   receiptNumber: string | null;
   amountCve: number;
   referenceMonth: string;
+  /** Recebido que passou a credito do cliente (0 quando nada tinha entrado). */
+  creditedCve: number;
 }> {
   const payment = db.prepare(`
-    SELECT id, status, notes, amount_cve AS amountCve, invoice_number AS invoiceNumber,
-           receipt_number AS receiptNumber, reference_month AS referenceMonth
+    SELECT id, client_id AS clientId, status, notes, amount_cve AS amountCve,
+           invoice_number AS invoiceNumber, receipt_number AS receiptNumber,
+           reference_month AS referenceMonth
     FROM payments WHERE id = ?
   `).get(id) as {
     id: number;
+    clientId: number;
     status: PaymentStatus;
     notes: string | null;
     amountCve: number;
@@ -390,7 +737,17 @@ export function cancelPayment(db: Database, id: number, rawReason: string | null
   }
 
   const reason = rawReason?.trim() || '';
+  const received = receivedTotal(db, id);
   const wasPaid = payment.status === 'paid';
+  // Uma fatura meio recebida nao e um rascunho: mexer nela exige a mesma
+  // justificacao que mexer numa ja paga.
+  if (!wasPaid && received > 0 && reason.length < 10) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Anular fatura com recebimentos registados exige um motivo detalhado (minimo 10 caracteres).'
+    };
+  }
   if (wasPaid && reason.length < 10) {
     return { ok: false, status: 400, error: 'Anular pagamento ja registado exige um motivo detalhado (minimo 10 caracteres).' };
   }
@@ -413,13 +770,29 @@ export function cancelPayment(db: Database, id: number, rawReason: string | null
     ? [payment.notes?.trim(), stampedReason].filter(Boolean).join('\n')
     : payment.notes;
 
-  db.prepare(`
-    UPDATE payments
-    SET status = 'cancelled',
-        notes = ?,
-        updated_at = datetime('now')
-    WHERE id = ?
-  `).run(notes || null, id);
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE payments
+      SET status = 'cancelled',
+          notes = ?,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(notes || null, id);
+
+    // O dinheiro nao se anula com o documento: fica a favor do cliente, para
+    // abater na fatura seguinte. Sem isto, anular uma fatura meio paga era o
+    // mesmo que ficar com o dinheiro dele sem deixar rasto.
+    if (escudosToCentavos(received) > 0) {
+      db.prepare(`
+        INSERT INTO client_credits (client_id, amount_cve, receipt_id, reason)
+        VALUES (?, ?, NULL, ?)
+      `).run(
+        payment.clientId,
+        received,
+        `Recebido na fatura ${payment.invoiceNumber || payment.referenceMonth}, anulada`
+      );
+    }
+  })();
 
   return {
     ok: true,
@@ -431,7 +804,8 @@ export function cancelPayment(db: Database, id: number, rawReason: string | null
       invoiceNumber: payment.invoiceNumber,
       receiptNumber: payment.receiptNumber,
       amountCve: payment.amountCve,
-      referenceMonth: payment.referenceMonth
+      referenceMonth: payment.referenceMonth,
+      creditedCve: received
     }
   };
 }

@@ -1,4 +1,4 @@
-import type { PaymentRow, PaymentStatus } from '../types';
+import type { EffectivePaymentStatus, PaymentRow } from '../types';
 
 type BadgeTone = 'success' | 'danger' | 'info' | 'neutral' | 'accent';
 
@@ -8,14 +8,20 @@ type BadgeTone = 'success' | 'danger' | 'info' | 'neutral' | 'accent';
  * mão — ninguém marca — por isso um pendente com a data passada é atraso,
  * diga o que disser a coluna. Mesma regra do overdueSqlPredicate no backend.
  *
+ * "Parcial" também é derivado, de haver dinheiro recebido com a fatura ainda
+ * aberta. A ordem importa: o atraso ganha ao parcial. Uma fatura meio paga que
+ * passou o prazo continua a ser dívida vencida, e trocar o vermelho por um
+ * âmbar simpático era esconder o caso que se quer ver primeiro.
+ *
  * O "hoje" é UTC como em todo o lado (o SQLite compara com date('now'), que
  * também é UTC): se divergissem, cliente e servidor discordavam à meia-noite.
  */
 export function effectivePaymentStatus(
-  payment: Pick<PaymentRow, 'status' | 'dueDate'>,
+  payment: Pick<PaymentRow, 'status' | 'dueDate'> & { receivedCve?: number },
   today = new Date().toISOString().slice(0, 10)
-): PaymentStatus {
+): EffectivePaymentStatus {
   if (payment.status === 'pending' && payment.dueDate < today) return 'overdue';
+  if (payment.status === 'pending' && (payment.receivedCve || 0) > 0) return 'partial';
   return payment.status;
 }
 

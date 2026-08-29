@@ -1,5 +1,9 @@
 import type { Database as DatabaseType } from 'better-sqlite3';
 import { allocateDocumentNumber } from './numbering';
+// Import mútuo com ./payments (que importa daqui os construtores de linhas).
+// Só se usa dentro de corpos de função, nunca no topo do módulo — é isso que o
+// torna inofensivo. Quem acrescentar aqui trabalho de inicialização parte-o.
+import { applyClientCreditToPayment } from './payments';
 import { loadAudiovisualConfig } from './audiovisual';
 
 export type BillingLine = {
@@ -291,6 +295,10 @@ export function generateMonthlyBilling(db: DatabaseType, referenceMonth: string)
       item.lines.forEach((line, index) => {
         insertLine.run(paymentId, line.kind, line.description, line.amountCve, index);
       });
+      // Crédito do cliente (troco de um pagamento a mais, ou o recebido de uma
+      // fatura anulada) abate já aqui. Guardado sem abater não servia de nada:
+      // ninguém se lembra de o ir buscar à mão no mês seguinte.
+      applyClientCreditToPayment(db, paymentId);
     }
   });
 

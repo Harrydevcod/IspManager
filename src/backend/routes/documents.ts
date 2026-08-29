@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { PaymentDocumentError, filenamePart, renderPaymentDocumentPdf } from '../lib/documents';
+import { PaymentDocumentError, filenamePart, renderPaymentDocumentPdf, renderReceiptPdf } from '../lib/documents';
 import { requireRole } from './auth';
 
 function dispositionFromQuery(query: unknown): 'inline' | 'attachment' {
@@ -32,6 +32,23 @@ export async function registerDocumentRoutes(app: FastifyInstance) {
     const id = Number((request.params as { id: string }).id);
     try {
       const { buffer, filename } = await renderPaymentDocumentPdf(id, 'receipt');
+      const disposition = dispositionFromQuery(request.query);
+      return reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Disposition', `${disposition}; filename="${filenamePart(filename, 'documento.pdf')}"; filename*=UTF-8''${encodeURIComponent(filename)}`)
+        .send(buffer);
+    } catch (err) {
+      if (err instanceof PaymentDocumentError) return reply.status(err.statusCode).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  // Um recibo concreto, por id. A rota por pagamento (acima) resolve para o
+  // ultimo; esta imprime o de Marco quando e o de Marco que o cliente pede.
+  app.get('/api/receipts/:id/receipt.pdf', canIssueDocuments, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    try {
+      const { buffer, filename } = await renderReceiptPdf(id);
       const disposition = dispositionFromQuery(request.query);
       return reply
         .header('Content-Type', 'application/pdf')

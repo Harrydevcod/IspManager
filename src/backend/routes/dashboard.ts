@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getSqliteDatabase } from '../db/database';
-import { overdueSqlPredicate } from '../lib/payments';
+import { balanceSqlExpr, overdueSqlPredicate } from '../lib/payments';
 import { requireAuth } from './auth';
 
 type DashboardMetricRow = {
@@ -82,19 +82,28 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
           -- Regime de caixa: o que ENTROU este mês, seja qual for a competência.
           -- Com faturação pós-paga a competência corrente nem existe até dia 30,
           -- por isso somar por reference_month mostrava 0 o mês inteiro.
-          SELECT SUM(amount_cve) FROM payments
-          WHERE status = 'paid' AND substr(payment_date, 1, 7) = @currentMonth
+          --
+          -- A soma é dos RECIBOS, não das faturas fechadas: com recebimentos
+          -- parciais, uma fatura de 50.000 com 10.000 entregues em Julho tem de
+          -- pesar 10.000 em Julho, e não zero até ao dia em que fechar. Só
+          -- source='cash', porque o que é liquidado por conta corrente não é
+          -- dinheiro novo — entrou quando o crédito nasceu.
+          SELECT SUM(amount_cve) FROM payment_receipts
+          WHERE source = 'cash' AND voided_at IS NULL
+            AND substr(payment_date, 1, 7) = @currentMonth
         ), 0) AS paidMonthCve,
         COALESCE((
-          SELECT SUM(amount_cve) FROM payments
-          WHERE status = 'paid' AND substr(payment_date, 1, 7) = @previousMonth
+          SELECT SUM(amount_cve) FROM payment_receipts
+          WHERE source = 'cash' AND voided_at IS NULL
+            AND substr(payment_date, 1, 7) = @previousMonth
         ), 0) AS paidPrevMonthCve,
         COALESCE((
           -- Base de vencimento: o que VENCE este mês por receber. Com faturação
           -- pós-paga os pendentes têm competência do mês fechado (reference_month
           -- anterior) e vencimento no mês corrente — somar por reference_month
           -- mostrava 0 o mês inteiro (mesmo bug da Receita do mês, v1.4.1).
-          SELECT SUM(amount_cve) FROM payments
+          -- Saldo, não valor da fatura: metade recebida é metade da dívida.
+          SELECT SUM(${balanceSqlExpr('payments')}) FROM payments
           WHERE status IN ('pending','overdue') AND substr(due_date, 1, 7) = @currentMonth
         ), 0) AS pendingMonthCve,
         (
@@ -102,19 +111,24 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
           WHERE status IN ('pending','overdue') AND substr(due_date, 1, 7) = @currentMonth
         ) AS pendingMonthCount,
         COALESCE((
-          SELECT SUM(amount_cve) FROM payments
+          SELECT SUM(${balanceSqlExpr('payments')}) FROM payments
           WHERE status IN ('pending','overdue') AND reference_month < @currentMonth
         ), 0) AS pendingPreviousCve,
         COALESCE((
-          SELECT SUM(amount_cve) FROM payments WHERE status = 'paid'
+          SELECT SUM(amount_cve) FROM payment_receipts
+          WHERE source = 'cash' AND voided_at IS NULL
         ), 0) AS paidTotalCve
     `).get({ currentMonth, previousMonth: previousMonthKey() }) as DashboardMetricRow;
 
     const months = currentYearMonths();
     const revenueRows = db.prepare(`
       SELECT reference_month AS referenceMonth,
-             COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_cve ELSE 0 END), 0) AS paidCve,
-             COALESCE(SUM(CASE WHEN status IN ('pending','overdue') THEN amount_cve ELSE 0 END), 0) AS pendingCve
+             -- Recebido e por receber da competência, agora que uma fatura pode
+             -- estar nos dois lados ao mesmo tempo.
+             COALESCE(SUM(CASE WHEN status <> 'cancelled'
+               THEN amount_cve - ${balanceSqlExpr('payments')} ELSE 0 END), 0) AS paidCve,
+             COALESCE(SUM(CASE WHEN status IN ('pending','overdue')
+               THEN ${balanceSqlExpr('payments')} ELSE 0 END), 0) AS pendingCve
       FROM payments
       WHERE reference_month >= @from AND reference_month <= @to
       GROUP BY reference_month
@@ -158,7 +172,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
              clients.full_name AS clientName,
              clients.client_code AS clientCode,
              payments.due_date AS dueDate,
-             payments.amount_cve AS amountCve
+             ${balanceSqlExpr('payments')} AS amountCve
       FROM payments
       JOIN clients ON clients.id = payments.client_id
       WHERE payments.status = 'pending'
@@ -174,7 +188,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
              clients.client_code AS clientCode,
              clients.phone AS clientPhone,
              payments.due_date AS dueDate,
-             payments.amount_cve AS amountCve,
+             ${balanceSqlExpr('payments')} AS amountCve,
              CAST(julianday('now') - julianday(payments.due_date) AS INTEGER) AS daysOverdue
       FROM payments
       JOIN clients ON clients.id = payments.client_id

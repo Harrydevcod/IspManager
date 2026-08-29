@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CalendarPlus, RotateCcw, Send } from 'lucide-react';
 import { BulkActionBar, Button, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
-import { formatPtMonth } from '../lib/format';
+import { formatCve, formatPtMonth } from '../lib/format';
 import { authFetch } from '../lib/auth';
 import { downloadAuthenticated, printAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
 import { compareNumber, compareText, paginateRows, sortRows, type SortState } from '../lib/listView';
@@ -19,7 +19,7 @@ import {
   renderWhatsappMessage,
   sendWhatsappViaUltraMsg
 } from '../lib/whatsapp';
-import type { PaymentRow, SmsEventType } from '../types';
+import type { PaymentReceipt, PaymentRow, SmsEventType } from '../types';
 import { IndividualRevertDialog } from './payments/IndividualRevertDialog';
 import { PaymentDetailDialog, type PaymentActionMode, type PaymentMethod } from './payments/PaymentDetailDialog';
 import { PaymentsList } from './payments/PaymentsList';
@@ -27,6 +27,7 @@ import { MonthlyBillingPreview, type BillingPreview } from './payments/MonthlyBi
 import { OverdueNotifyDialog, type OverdueNotifyPreview, type WhatsappNoticeType } from './payments/OverdueNotifyDialog';
 import { PaymentsTotals } from './payments/PaymentsTotals';
 import { PdfPreviewDialog } from './payments/PdfPreviewDialog';
+import { VoidReceiptDialog } from './payments/VoidReceiptDialog';
 import { ReverseMonthlyDialog, type ReverseMonthlyPreview } from './payments/ReverseMonthlyDialog';
 import { BulkPaymentDialog, type BulkPaymentMode } from './payments/BulkPaymentDialog';
 
@@ -96,7 +97,12 @@ export function PaymentsModule({
   const [actionPaymentId, setActionPaymentId] = useState<number | null>(null);
   const [payMethod, setPayMethod] = useState<PaymentMethod>('numerario');
   const [payDate, setPayDate] = useState<string>(todayIso());
+  const [payAmount, setPayAmount] = useState<string>('');
   const [cancelReason, setCancelReason] = useState<string>('');
+  const [receipts, setReceipts] = useState<PaymentReceipt[]>([]);
+  const [clientCreditCve, setClientCreditCve] = useState(0);
+  const [voidTarget, setVoidTarget] = useState<PaymentReceipt | null>(null);
+  const [voidReason, setVoidReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [monthlyPreview, setMonthlyPreview] = useState<BillingPreview | null>(null);
   const [monthlyLoading, setMonthlyLoading] = useState(false);
@@ -208,6 +214,8 @@ export function PaymentsModule({
     setActionPaymentId(payment.id);
     setPayMethod((payment.paymentMethod as PaymentMethod | null) || 'numerario');
     setPayDate(payment.paymentDate?.slice(0, 10) || todayIso());
+    // O caso comum e receber o que falta; quem recebe por conta reescreve.
+    setPayAmount(String(payment.balanceCve));
   }
 
   function openCancelForm(payment: PaymentRow) {
@@ -463,23 +471,92 @@ export function PaymentsModule({
     }
   }
 
-  async function submitPayment(paymentId: number, method: PaymentMethod, date: string) {
+  async function submitPayment(paymentId: number, method: PaymentMethod, date: string, amountCve?: number) {
     setSubmitting(true);
     try {
       const response = await authFetch(`http://127.0.0.1:3001/api/payments/${paymentId}/pay`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentMethod: method, paymentDate: date })
+        body: JSON.stringify({ paymentMethod: method, paymentDate: date, amountCve })
       });
       if (response.ok) {
-        setMessage('Pagamento registado e recibo emitido.');
+        const result = await response.json() as { settled: boolean; balanceCve: number; creditAddedCve: number; receipt: PaymentReceipt };
+        setMessage(result.settled
+          ? `Fatura liquidada. Recibo ${result.receipt.receiptNumber} emitido.`
+          : `Recebido ${formatCve(result.receipt.amountCve)}. Falta ${formatCve(result.balanceCve)}. Recibo ${result.receipt.receiptNumber}.`);
+        if (result.creditAddedCve > 0) {
+          toast(`${formatCve(result.creditAddedCve)} acima do saldo ficaram como crédito do cliente.`, 'success');
+        }
         const refreshedPayments = await loadPayments();
         setSelectedPayment((current) => refreshedPayments.find((item) => item.id === (current?.id || paymentId)) || current);
+        await loadReceipts(paymentId);
         closeActionForm();
         return;
       }
       const result = await response.json().catch(() => ({ error: 'Nao foi possivel registar o pagamento.' })) as { error?: string };
       setMessage(result.error || 'Nao foi possivel registar o pagamento.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  /** Historico de recebimentos + credito do cliente, para o dialogo aberto. */
+  const loadReceipts = useCallback(async (paymentId: number) => {
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/payments/${paymentId}/receipts`);
+      if (!response.ok) {
+        setReceipts([]);
+        setClientCreditCve(0);
+        return;
+      }
+      const body = await response.json() as { receipts: PaymentReceipt[]; clientCreditCve: number };
+      setReceipts(body.receipts);
+      setClientCreditCve(body.clientCreditCve);
+    } catch {
+      setReceipts([]);
+      setClientCreditCve(0);
+    }
+  }, []);
+
+  async function applyCredit(paymentId: number) {
+    setSubmitting(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/payments/${paymentId}/apply-credit`, { method: 'POST' });
+      const body = await response.json().catch(() => ({ error: 'Nao foi possivel abater o credito.' })) as { error?: string; amountCve?: number };
+      if (!response.ok) {
+        toast(body.error || 'Nao foi possivel abater o credito.', 'error');
+        return;
+      }
+      toast(`Abatido ${formatCve(body.amountCve || 0)} de conta corrente.`, 'success');
+      const refreshedPayments = await loadPayments();
+      setSelectedPayment((current) => refreshedPayments.find((item) => item.id === (current?.id || paymentId)) || current);
+      await loadReceipts(paymentId);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function confirmVoidReceipt() {
+    if (!voidTarget) return;
+    const paymentId = voidTarget.paymentId;
+    setSubmitting(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/receipts/${voidTarget.id}/void`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: voidReason })
+      });
+      const body = await response.json().catch(() => ({ error: 'Nao foi possivel anular o recibo.' })) as { error?: string; reopened?: boolean };
+      if (!response.ok) {
+        toast(body.error || 'Nao foi possivel anular o recibo.', 'error');
+        return;
+      }
+      toast(body.reopened ? 'Recibo anulado. A fatura voltou a ficar em aberto.' : 'Recibo anulado.', 'success');
+      setVoidTarget(null);
+      setVoidReason('');
+      const refreshedPayments = await loadPayments();
+      setSelectedPayment((current) => refreshedPayments.find((item) => item.id === (current?.id || paymentId)) || current);
+      await loadReceipts(paymentId);
     } finally {
       setSubmitting(false);
     }
@@ -759,6 +836,20 @@ export function PaymentsModule({
     }
   }
 
+  /**
+   * Imprime o recibo daquele recebimento, nao o ultimo da fatura: quem pede o
+   * comprovativo de Marco quer o de Marco.
+   */
+  async function openReceiptPdf(receipt: PaymentReceipt) {
+    try {
+      const result = await printAuthenticated(`http://127.0.0.1:3001/api/receipts/${receipt.id}/receipt.pdf?inline=1`);
+      if (result.canceled) return;
+      toast(`Recibo ${receipt.receiptNumber} enviado para impressao.`, 'success');
+    } catch {
+      toast('Nao foi possivel imprimir o recibo.', 'error');
+    }
+  }
+
   function previewPaymentDocument(payment: PaymentRow) {
     setSelectedPayment(payment);
     closeActionForm();
@@ -811,21 +902,35 @@ export function PaymentsModule({
     onToggleAll: () => selection.toggleVisible(pageIds)
   };
 
+  const openPaymentId = selectedPayment?.id ?? null;
+  useEffect(() => {
+    if (openPaymentId === null) {
+      setReceipts([]);
+      setClientCreditCve(0);
+      return;
+    }
+    void loadReceipts(openPaymentId);
+  }, [openPaymentId, loadReceipts]);
+
   const previewPayment = selectedPayment || pagedPayments.rows[0] || null;
   void whatsappTick; // re-render when reminder flag changes
 
+  // Pendente e atraso somam o SALDO; pago soma o que entrou. Com parciais a
+  // mesma fatura pesa nas duas colunas — o valor cheio dos dois lados inflava
+  // o total do periodo em tudo o que ja tinha sido recebido.
   const totals = useMemo(() => periodPayments.reduce(
     (acc, payment) => {
       const status = effectivePaymentStatus(payment);
-      if (status === 'pending') {
+      if (payment.status !== 'cancelled' && payment.receivedCve > 0) {
+        acc.paid.sum += payment.receivedCve;
+        if (status === 'paid') acc.paid.count += 1;
+      }
+      if (status === 'pending' || status === 'partial') {
         acc.pending.count += 1;
-        acc.pending.sum += payment.amountCve;
-      } else if (status === 'paid') {
-        acc.paid.count += 1;
-        acc.paid.sum += payment.amountCve;
+        acc.pending.sum += payment.balanceCve;
       } else if (status === 'overdue') {
         acc.overdue.count += 1;
-        acc.overdue.sum += payment.amountCve;
+        acc.overdue.sum += payment.balanceCve;
       }
       return acc;
     },
@@ -960,7 +1065,10 @@ export function PaymentsModule({
           showActionForm={showActionForm}
           payMethod={payMethod}
           payDate={payDate}
+          payAmount={payAmount}
           cancelReason={cancelReason}
+          receipts={receipts}
+          clientCreditCve={clientCreditCve}
           previewDoc={previewDoc}
           previewDocType={previewDocType}
           whatsappMessage={whatsappMessageFor(selectedPayment)}
@@ -977,12 +1085,25 @@ export function PaymentsModule({
           onCloseActionForm={closeActionForm}
           onPayMethodChange={setPayMethod}
           onPayDateChange={setPayDate}
+          onPayAmountChange={setPayAmount}
           onCancelReasonChange={setCancelReason}
-          onSubmitPay={() => void submitPayment(selectedPayment.id, payMethod, payDate)}
+          onPrintReceipt={(receipt) => openReceiptPdf(receipt)}
+          onVoidReceipt={(receipt) => { setVoidTarget(receipt); setVoidReason(''); }}
+          onApplyCredit={() => void applyCredit(selectedPayment.id)}
+          onSubmitPay={() => void submitPayment(selectedPayment.id, payMethod, payDate, Number(payAmount))}
           onSubmitCancel={() => void submitCancel(selectedPayment.id, cancelReason)}
           onSubmitWhatsapp={() => void submitWhatsapp(selectedPayment)}
         />
       )}
+
+      <VoidReceiptDialog
+        receipt={voidTarget}
+        reason={voidReason}
+        submitting={submitting}
+        onReasonChange={setVoidReason}
+        onClose={() => { setVoidTarget(null); setVoidReason(''); }}
+        onConfirm={() => void confirmVoidReceipt()}
+      />
 
       {loadError && payments.length === 0 && <ErrorRetry message={loadError} onRetry={() => { void loadPayments(); }} />}
 

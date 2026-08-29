@@ -8,7 +8,7 @@ import {
   fallbackWhatsappTemplate,
   renderWhatsappTemplate
 } from '../../shared/whatsapp';
-import { overdueSqlPredicate } from '../lib/payments';
+import { balanceSqlExpr, overdueSqlPredicate } from '../lib/payments';
 import { normalizeUltraMsgPhone, sendViaUltraMsg } from '../lib/ultramsg';
 import { enqueueWhatsapp, runWhatsappOutboxIfDue } from '../lib/whatsapp-outbox';
 
@@ -151,7 +151,10 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
         c.client_code AS clientCode,
         c.phone AS phone,
         c.whatsapp_opt_out AS whatsappOptOut,
-        py.amount_cve AS amountCve,
+        -- O aviso tem de dizer o que FALTA. Mandar o valor cheio a quem ja
+        -- entregou metade e a maneira mais rapida de perder a confianca do
+        -- cliente na cobranca.
+        ${balanceSqlExpr('py')} AS amountCve,
         py.due_date AS dueDate,
         py.reference_month AS referenceMonth,
         py.invoice_number AS invoiceNumber,

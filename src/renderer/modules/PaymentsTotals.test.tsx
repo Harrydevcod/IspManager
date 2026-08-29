@@ -17,7 +17,13 @@ function isoInDays(days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-function row(id: number, status: PaymentRow['status'], amountCve: number, dueDate: string): PaymentRow {
+function row(
+  id: number,
+  status: PaymentRow['status'],
+  amountCve: number,
+  dueDate: string,
+  receivedCve = status === 'paid' ? amountCve : 0
+): PaymentRow {
   return {
     id,
     clientName: `Cliente ${id}`,
@@ -32,7 +38,9 @@ function row(id: number, status: PaymentRow['status'], amountCve: number, dueDat
     status,
     invoiceNumber: null,
     receiptNumber: null,
-    canRegenerate: 0
+    canRegenerate: 0,
+    receivedCve,
+    balanceCve: amountCve - receivedCve
   };
 }
 
@@ -41,7 +49,11 @@ function row(id: number, status: PaymentRow['status'], amountCve: number, dueDat
 const payments: PaymentRow[] = [
   row(1, 'pending', 1000, isoInDays(15)),
   row(2, 'paid', 2000, isoInDays(-20)),
-  row(3, 'pending', 3000, isoInDays(-15))
+  row(3, 'pending', 3000, isoInDays(-15)),
+  // Meio recebida e ainda no prazo: os 2.000 que faltam pesam em Pendente e os
+  // 500 que entraram pesam em Pago. Somar 2.500 aos dois lados era inflar o
+  // periodo em tudo o que ja tinha sido cobrado.
+  row(4, 'pending', 2500, isoInDays(10), 500)
 ];
 
 const roots: Root[] = [];
@@ -118,7 +130,9 @@ describe('totais de pagamentos', () => {
   test('mostra as tres parcelas com o filtro no estado por omissao', async () => {
     const container = await mount();
     expect(statusSelect(container).value).toBe('pending');
-    expect(chipAmounts(container)).toEqual(['1.000$00', '3.000$00', '2.000$00']);
+    // Pendente = 1.000 + os 2.000 que faltam na meio-recebida.
+    // Pago = 2.000 + os 500 que ja entraram nessa mesma fatura.
+    expect(chipAmounts(container)).toEqual(['3.000$00', '3.000$00', '2.500$00']);
   });
 
   test('o pendente com a data passada conta como atraso, e o filtro devolve-o', async () => {

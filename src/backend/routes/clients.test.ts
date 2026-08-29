@@ -35,6 +35,8 @@ beforeEach(() => {
   db.prepare('DELETE FROM expenses').run();
   db.prepare('DELETE FROM investment_items').run();
   db.prepare('DELETE FROM investments').run();
+  db.prepare('DELETE FROM client_credits').run();
+  db.prepare('DELETE FROM payment_receipts').run();
   db.prepare('DELETE FROM payments').run();
   db.prepare('DELETE FROM stock_movements').run();
   db.prepare('DELETE FROM services').run();
@@ -231,14 +233,21 @@ describe('POST /api/clients/bulk', () => {
     db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 5000, 10, 'active')`).run(otherClientId);
     const serviceId = db.prepare('SELECT id FROM services WHERE client_id = ?').get(clientId) as { id: number };
     const otherServiceId = db.prepare('SELECT id FROM services WHERE client_id = ?').get(otherClientId) as { id: number };
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-                VALUES (?, ?, '2026-03', 5000, '2026-03-10', '2026-03-10', 'paid')`).run(clientId, serviceId.id);
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-                VALUES (?, ?, '2026-04', 5000, '2026-04-10', '2026-04-10', 'paid')`).run(clientId, serviceId.id);
+    // Cada paga leva o recibo que a saldou: o "recebido" do cliente le
+    // `payment_receipts`, que e onde um recebimento parcial existe.
+    const seedPaid = (cid: number, sid: number, month: string, amount: number) => {
+      const paymentId = db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
+                  VALUES (?, ?, ?, ?, ?, ?, 'paid')`)
+        .run(cid, sid, month, amount, `${month}-10`, `${month}-10`).lastInsertRowid as number;
+      db.prepare(`INSERT INTO payment_receipts (payment_id, amount_cve, payment_date, payment_method, source, receipt_number, receipt_date)
+                  VALUES (?, ?, ?, 'numerario', 'cash', ?, ?)`)
+        .run(paymentId, amount, `${month}-10`, `RC-TEST-${paymentId}`, `${month}-10`);
+    };
+    seedPaid(clientId, serviceId.id, '2026-03', 5000);
+    seedPaid(clientId, serviceId.id, '2026-04', 5000);
     db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
                 VALUES (?, ?, '2026-05', 5000, '2026-05-10', 'overdue')`).run(clientId, serviceId.id);
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-                VALUES (?, ?, '2026-03', 5000, '2026-03-10', '2026-03-10', 'paid')`).run(otherClientId, otherServiceId.id);
+    seedPaid(otherClientId, otherServiceId.id, '2026-03', 5000);
 
     const response = await app.inject({ method: 'GET', url: `/api/clients/${clientId}/profitability` });
     expect(response.statusCode).toBe(200);

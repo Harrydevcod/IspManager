@@ -1615,6 +1615,20 @@ h2 {
   font-weight: 500;
 }
 
+/* Mesma stack, mas para a coluna de valor: <b> em cima (o que se cobra) e o
+   <small> por baixo. Sem isto os dois colavam-se numa linha só. */
+.data-table-cell > span:has(> b) {
+  display: grid;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.data-table-cell > span:has(> b) > small {
+  color: var(--text-3);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
 .data-table-align-start {
   justify-self: stretch;
   text-align: left;
@@ -2498,13 +2512,35 @@ h2 {
 
 .payment-action-form {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) minmax(160px, 1fr) auto;
+  /* Resumo · valor · método · data · ações. O valor entrou com os parciais e
+     tem largura própria: é o campo que se reescreve, não um acessório. */
+  grid-template-columns: minmax(150px, 1fr) minmax(140px, 0.8fr) minmax(150px, 1fr) minmax(150px, 1fr) auto;
   gap: var(--space-3);
   align-items: end;
   border: 1px solid var(--accent);
   border-radius: var(--r2);
   background: color-mix(in oklch, var(--accent) 6%, var(--surface));
   padding: var(--space-4) var(--space-4);
+}
+
+/* O aviso do excesso ocupa a linha toda por baixo dos campos, senão roubava
+   uma coluna e desalinhava tudo o resto. */
+.payment-action-form > .module-message {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.payment-action-form__hint {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1100px) {
+  .payment-action-form {
+    grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr);
+  }
 }
 
 .payment-action-form--cancel {
@@ -4470,6 +4506,102 @@ label.field-toggle {
 
 /* Overdue notify dialog — list + summary + skipped collapse. */
 .overdue-notify { display: grid; gap: var(--space-4); }
+/* =========================================================================
+   Recebimentos — histórico do dinheiro de uma fatura, dentro do diálogo.
+   Um recibo anulado fica na lista, esbatido: o número foi queimado na série e
+   escondê-lo dava a ideia de que nunca existiu.
+   ========================================================================= */
+
+.receipts-section {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.receipts-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.receipts-section__header .eyebrow {
+  margin: 0;
+}
+
+.receipts-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.receipts-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface-2);
+}
+
+.receipts-row__main {
+  display: grid;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.receipts-row__main strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.receipts-row__main small {
+  color: var(--text-3);
+}
+
+.receipts-row__reason {
+  font-style: italic;
+}
+
+.receipts-row__tags,
+.receipts-row__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.receipts-row--voided {
+  opacity: 0.62;
+}
+
+.receipts-row--voided .receipts-row__main strong {
+  text-decoration: line-through;
+}
+
+@media (max-width: 720px) {
+  .receipts-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .receipts-row__actions {
+    justify-content: flex-end;
+  }
+}
+
+/* =========================================================================
+   Pendentes (Financeiro › Pendentes) — a vista de cobrança.
+   ========================================================================= */
+
+.receivables-module {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
 .overdue-notify-summary {
   margin: 0;
   font-size: var(--fs-sm);

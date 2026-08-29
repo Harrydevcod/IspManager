@@ -4,14 +4,15 @@ import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
 import type { SortState } from '../../lib/listView';
 import { effectivePaymentStatus } from '../../lib/status';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
-import { paymentStatusLabel, type PaymentRow, type SmsEventType } from '../../types';
+import { paymentStatusLabel, type EffectivePaymentStatus, type PaymentRow, type SmsEventType } from '../../types';
 
 type PaymentSortKey = 'dueDate' | 'clientName' | 'status' | 'amountCve';
 
-const paymentStatusTone = (status: PaymentRow['status']): 'success' | 'info' | 'danger' | 'neutral' => {
+const paymentStatusTone = (status: EffectivePaymentStatus): 'success' | 'info' | 'danger' | 'neutral' | 'warn' => {
   switch (status) {
     case 'paid': return 'success';
     case 'pending': return 'info';
+    case 'partial': return 'warn';
     case 'overdue': return 'danger';
     case 'cancelled': return 'neutral';
   }
@@ -102,7 +103,17 @@ export function PaymentsList({
           sortKey: 'amountCve',
           defaultDirection: 'desc',
           align: 'end',
-          cell: (p) => <b>{formatCve(p.amountCve)}</b>
+          // Meio pago mostra as duas metades: o que falta em destaque, porque e
+          // isso que se cobra, e o recebido por baixo para a conta fechar a
+          // olho. Sem parcial nada muda.
+          cell: (p) => (p.receivedCve > 0 && p.balanceCve > 0
+            ? (
+              <span>
+                <b>{formatCve(p.balanceCve)}</b>
+                <small>recebido {formatCve(p.receivedCve)} de {formatCve(p.amountCve)}</small>
+              </span>
+            )
+            : <b>{formatCve(p.amountCve)}</b>)
         }
       ]}
       actions={(p) => {

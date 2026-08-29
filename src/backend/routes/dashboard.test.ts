@@ -13,6 +13,9 @@ let closeDatabaseForTests: () => void;
 const TABLES_TO_CLEAR = [
   'service_events',
   'service_device_assignments',
+  'client_credits',
+  'payment_receipts',
+  'payment_lines',
   'payments',
   'expenses',
   'investment_items',
@@ -52,6 +55,36 @@ afterAll(async () => {
   delete process.env.ISPM_DATA_DIR;
   delete process.env.ISPM_AUTH;
 });
+
+/**
+ * Uma fatura paga como o motor a deixa: com o recibo que a saldou.
+ *
+ * O regime de caixa passou a ler `payment_receipts` (e o unico sitio onde um
+ * recebimento parcial aparece), por isso semear so `status = 'paid'` descrevia
+ * um estado que a aplicacao nunca produz — em producao a migracao 0052 fez o
+ * mesmo ao historico.
+ */
+function seedPaidPayment(
+  clientId: number,
+  serviceId: number,
+  referenceMonth: string,
+  amountCve: number,
+  dueDate: string,
+  paymentDate: string
+): number {
+  const paymentId = db.prepare(`
+    INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
+    VALUES (?, ?, ?, ?, ?, ?, 'paid')
+  `).run(clientId, serviceId, referenceMonth, amountCve, dueDate, paymentDate).lastInsertRowid as number;
+
+  db.prepare(`
+    INSERT INTO payment_receipts (
+      payment_id, amount_cve, payment_date, payment_method, source, receipt_number, receipt_date
+    ) VALUES (?, ?, ?, 'numerario', 'cash', ?, ?)
+  `).run(paymentId, amountCve, paymentDate, `RC-TEST-${paymentId}`, paymentDate);
+
+  return paymentId;
+}
 
 describe('GET /api/dashboard/summary', () => {
   test('returns sane zero state with empty database', async () => {
@@ -110,10 +143,7 @@ describe('GET /api/dashboard/summary', () => {
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const dueDate = `${currentMonth}-10`;
 
-    db.prepare(`
-      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-      VALUES (?, ?, ?, 3500, ?, ?, 'paid')
-    `).run(clientId.id, serviceId.id, currentMonth, dueDate, dueDate);
+    seedPaidPayment(clientId.id, serviceId.id, currentMonth, 3500, dueDate, dueDate);
 
     const response = await app.inject({ method: 'GET', url: '/api/dashboard/summary' });
     expect(response.statusCode).toBe(200);
@@ -234,14 +264,8 @@ describe('GET /api/dashboard/summary', () => {
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const previousMonth = `${now.getFullYear() - 1}-12`;
 
-    db.prepare(`
-      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-      VALUES (?, ?, ?, 2000, ?, ?, 'paid')
-    `).run(clientId.id, serviceId.id, currentMonth, `${currentMonth}-08`, `${currentMonth}-08`);
-    db.prepare(`
-      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-      VALUES (?, ?, ?, 2000, ?, ?, 'paid')
-    `).run(clientId.id, serviceId.id, previousMonth, `${previousMonth}-08`, `${previousMonth}-08`);
+    seedPaidPayment(clientId.id, serviceId.id, currentMonth, 2000, `${currentMonth}-08`, `${currentMonth}-08`);
+    seedPaidPayment(clientId.id, serviceId.id, previousMonth, 2000, `${previousMonth}-08`, `${previousMonth}-08`);
 
     const response = await app.inject({ method: 'GET', url: '/api/dashboard/summary' });
     expect(response.statusCode).toBe(200);
@@ -268,10 +292,7 @@ describe('GET /api/dashboard/summary', () => {
     const previousMonth = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
 
     // Pós-pago: fatura da competência do mês fechado, paga só este mês.
-    db.prepare(`
-      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-      VALUES (?, ?, ?, 2500, ?, ?, 'paid')
-    `).run(clientId.id, serviceId.id, previousMonth, `${previousMonth}-05`, `${currentMonth}-03`);
+    seedPaidPayment(clientId.id, serviceId.id, previousMonth, 2500, `${previousMonth}-05`, `${currentMonth}-03`);
 
     const body = (await app.inject({ method: 'GET', url: '/api/dashboard/summary' })).json();
     expect(body.paidMonthCve).toBe(2500);
