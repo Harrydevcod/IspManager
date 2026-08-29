@@ -2726,6 +2726,19 @@ h2 {
   font-weight: 600;
 }
 
+/* Um <select> sem largura estica-se pela opção mais longa, e os modelos do
+   catálogo têm nomes de setenta caracteres: o diálogo ganhava barra horizontal.
+   Quem manda na largura é a célula da grelha, não o conteúdo. */
+.client-form select {
+  width: 100%;
+}
+
+/* Um aviso do formulário fala do formulário inteiro, não de meia linha dele:
+   preso a uma coluna, ficava um bloco de texto estreito ao lado de um vazio. */
+.client-form .module-message {
+  grid-column: 1 / -1;
+}
+
 .client-form textarea {
   min-height: 92px;
   padding: var(--space-3);
