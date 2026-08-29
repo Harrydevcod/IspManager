@@ -198,9 +198,9 @@ export function ProfitModule() {
         />
         <MetricCard
           icon={Coins}
-          label="Lucro acumulado"
+          label="Caixa livre acumulada"
           value={formatCve(data.totals.companyAccumulatedProfitCve)}
-          trend="recebido − investido − despesas"
+          trend="recebido − capital aplicado − despesas"
           tone={data.totals.companyAccumulatedProfitCve < 0 ? 'danger' : 'success'}
         />
       </MetricGrid>

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getSqliteDatabase } from '../db/database';
-import { balanceSqlExpr, overdueSqlPredicate } from '../lib/payments';
+import { balanceSqlExpr, cashReceiptFilterSql, overdueSqlPredicate } from '../lib/payments';
 import { requireAuth } from './auth';
 
 type DashboardMetricRow = {
@@ -88,14 +88,14 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
           -- pesar 10.000 em Julho, e não zero até ao dia em que fechar. Só
           -- source='cash', porque o que é liquidado por conta corrente não é
           -- dinheiro novo — entrou quando o crédito nasceu.
-          SELECT SUM(amount_cve) FROM payment_receipts
-          WHERE source = 'cash' AND voided_at IS NULL
-            AND substr(payment_date, 1, 7) = @currentMonth
+          SELECT SUM(r.amount_cve) FROM payment_receipts r
+          WHERE ${cashReceiptFilterSql('r')}
+            AND substr(r.payment_date, 1, 7) = @currentMonth
         ), 0) AS paidMonthCve,
         COALESCE((
-          SELECT SUM(amount_cve) FROM payment_receipts
-          WHERE source = 'cash' AND voided_at IS NULL
-            AND substr(payment_date, 1, 7) = @previousMonth
+          SELECT SUM(r.amount_cve) FROM payment_receipts r
+          WHERE ${cashReceiptFilterSql('r')}
+            AND substr(r.payment_date, 1, 7) = @previousMonth
         ), 0) AS paidPrevMonthCve,
         COALESCE((
           -- Base de vencimento: o que VENCE este mês por receber. Com faturação
@@ -115,8 +115,8 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
           WHERE status IN ('pending','overdue') AND reference_month < @currentMonth
         ), 0) AS pendingPreviousCve,
         COALESCE((
-          SELECT SUM(amount_cve) FROM payment_receipts
-          WHERE source = 'cash' AND voided_at IS NULL
+          SELECT SUM(r.amount_cve) FROM payment_receipts r
+          WHERE ${cashReceiptFilterSql('r')}
         ), 0) AS paidTotalCve
     `).get({ currentMonth, previousMonth: previousMonthKey() }) as DashboardMetricRow;
 

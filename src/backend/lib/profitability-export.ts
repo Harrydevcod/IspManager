@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { getSqliteDatabase } from '../db/database';
-import { loadCompanyOpexContext } from './opex';
+import { loadCompanyOpexContext, loadRevenueAttribution, profitability, type InvestmentBaseRow } from './opex';
 import { formatPtDate, formatPtMonth } from '../../shared/date';
 
 const PDFDocument = require('pdfkit');
@@ -57,6 +57,7 @@ function loadCompany(): CompanyInfo {
 function loadReportData() {
   const db = getSqliteDatabase();
   const opexCtx = loadCompanyOpexContext();
+  const revenueAttr = loadRevenueAttribution(opexCtx);
 
   const rows = db.prepare(`
     SELECT
@@ -71,22 +72,17 @@ function loadReportData() {
       i.monthly_operational_cost_cve AS monthlyOperationalCostCve,
       i.accumulated_revenue_cve AS accumulatedRevenueCve,
       i.desired_payback_months AS desiredPaybackMonths,
+      i.desired_margin_pct AS desiredMarginPct,
       i.client_id AS clientId
     FROM investments i
     LEFT JOIN clients c ON c.id = i.client_id
     ORDER BY i.investment_date DESC, i.id DESC
-  `).all() as Array<ReportInvestmentRow & { monthlyOperationalCostCve: number; accumulatedRevenueCve: number; desiredPaybackMonths: number; clientId: number | null }>;
+  `).all() as Array<ReportInvestmentRow & InvestmentBaseRow>;
 
+  // A mesma `profitability` do ecra — receita real dos recibos, OPEX direto
+  // dividido pelos investimentos que o partilham, capital abatido no fim.
   const investments: ReportInvestmentRow[] = rows.map((row) => {
-    const imputed = opexCtx.opexPerClientPerMonth * (Number(row.installedClients) || 0);
-    const directInv = opexCtx.directByInvestment[row.id] || 0;
-    const directZone = row.zone ? (opexCtx.directByZone[row.zone] || 0) : 0;
-    const directClient = row.clientId != null ? (opexCtx.directByClient[row.clientId] || 0) : 0;
-    const direct = directInv + directZone + directClient;
-    const effective = (Number(row.monthlyOperationalCostCve) || 0) + imputed + direct;
-    const revenue = Number(row.expectedMonthlyRevenueCve) || 0;
-    const net = revenue - effective;
-    const accumulated = (Number(row.accumulatedRevenueCve) || 0) - (Number(row.totalCostCve) || 0);
+    const p = profitability(row, opexCtx, revenueAttr);
     return {
       id: row.id,
       name: row.name,
@@ -98,15 +94,15 @@ function loadReportData() {
       totalCostCve: Number(row.totalCostCve) || 0,
       installedClients: row.installedClients,
       targetClients: row.targetClients,
-      expectedMonthlyRevenueCve: revenue,
-      imputedMonthlyOpexCve: imputed,
-      directAllocatedOpexCve: direct,
-      effectiveMonthlyOpexCve: effective,
-      actualMonthlyRevenueCve: null,
-      monthlyNetProfitCve: net,
-      recoveryMonths: net > 0 ? row.totalCostCve / net : null,
-      roiPct: row.totalCostCve > 0 ? (accumulated / row.totalCostCve) * 100 : null,
-      isRecovered: accumulated >= 0 ? 1 : 0
+      expectedMonthlyRevenueCve: Number(row.expectedMonthlyRevenueCve) || 0,
+      imputedMonthlyOpexCve: p.imputedMonthlyOpexCve,
+      directAllocatedOpexCve: p.directAllocatedOpexCve,
+      effectiveMonthlyOpexCve: p.effectiveMonthlyOpexCve,
+      actualMonthlyRevenueCve: p.actualMonthlyRevenueCve,
+      monthlyNetProfitCve: p.monthlyNetProfitCve,
+      recoveryMonths: p.recoveryMonths,
+      roiPct: p.roiPct,
+      isRecovered: p.isRecovered ? 1 : 0
     };
   });
 
@@ -270,6 +266,7 @@ export async function buildProfitabilityXlsx(): Promise<Buffer> {
     { header: 'Instalados', key: 'installedClients', width: 10 },
     { header: 'Alvo', key: 'targetClients', width: 8 },
     { header: 'Receita esperada/mês', key: 'expectedMonthlyRevenueCve', width: 18, style: { numFmt: '#,##0' } },
+    { header: 'Receita real/mes', key: 'actualMonthlyRevenueCve', width: 18, style: { numFmt: '#,##0' } },
     { header: 'OPEX rateio/mês', key: 'imputedMonthlyOpexCve', width: 15, style: { numFmt: '#,##0' } },
     { header: 'OPEX directo/mês', key: 'directAllocatedOpexCve', width: 15, style: { numFmt: '#,##0' } },
     { header: 'OPEX efectivo/mês', key: 'effectiveMonthlyOpexCve', width: 17, style: { numFmt: '#,##0' } },

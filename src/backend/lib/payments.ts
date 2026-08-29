@@ -356,6 +356,19 @@ export function balanceSqlExpr(alias = 'payments'): string {
     + ` WHERE r.payment_id = ${col}id AND r.voided_at IS NULL), 0))`;
 }
 
+/**
+ * Caixa: cada escudo que ENTROU, contado uma vez so. Irma do `balanceSqlExpr`,
+ * do outro lado da fatura — e existe pela mesma razao: para nenhum painel
+ * inventar a sua propria definicao de dinheiro recebido.
+ *
+ * `source = 'credit'` fica de fora porque nao e dinheiro novo: o credito nasceu
+ * de um recibo `cash` que ja contou. `voided_at` fica de fora porque um recibo
+ * anulado nunca foi caixa.
+ */
+export function cashReceiptFilterSql(alias = 'r'): string {
+  return `${alias}.source = 'cash' AND ${alias}.voided_at IS NULL`;
+}
+
 /** Total recebido (recibos nao anulados) numa fatura. */
 export function receivedTotal(db: Database, paymentId: number): number {
   const row = db.prepare(`

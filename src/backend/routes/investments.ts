@@ -2,8 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
-import { ACTIVE_INVESTMENT_STATUSES, loadCompanyOpexContext, loadRevenueAttribution, type CompanyOpexContext, type RevenueAttribution } from '../lib/opex';
+import { ACTIVE_INVESTMENT_STATUSES, loadCompanyOpexContext, loadRevenueAttribution, profitability, type CompanyOpexContext, type InvestmentBaseRow, type RevenueAttribution } from '../lib/opex';
 import { buildProfitabilityPdf, buildProfitabilityXlsx } from '../lib/profitability-export';
+import { cashReceiptFilterSql } from '../lib/payments';
 import { requireAuth, requireRole } from './auth';
 
 const investmentType = z.enum(['cliente', 'zona', 'equipamento', 'infraestrutura', 'manutencao', 'expansao', 'outro']);
@@ -84,119 +85,6 @@ function normalizeItems(input: InvestmentInput) {
     quantityUsed: Math.min(item.quantity, item.quantityUsed),
     totalCostCve: item.quantity * item.unitCostCve
   }));
-}
-
-type InvestmentBaseRow = {
-  id: number;
-  totalCostCve: number;
-  expectedMonthlyRevenueCve: number;
-  monthlyOperationalCostCve: number;
-  accumulatedRevenueCve: number;
-  targetClients: number;
-  installedClients: number;
-  desiredPaybackMonths: number;
-  desiredMarginPct: number;
-  clientId: number | null;
-  zone: string | null;
-  investmentDate: string;
-};
-
-function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext, revenueAttr: RevenueAttribution) {
-  const activeClients = Math.max(1, row.installedClients || row.targetClients || 1);
-  const targetClients = Math.max(1, row.targetClients || 1);
-  const imputedMonthlyOpexCve = opexCtx.opexPerClientPerMonth * (Number(row.installedClients) || 0);
-  // OPEX direto de zona/cliente é dividido pelos investimentos que o partilham —
-  // sem o divisor, dois investimentos na mesma zona absorviam cada um 100% da
-  // mesma despesa e o agregado contava-a duas vezes. Os clientes reclamados
-  // vêm do conjunto completo (client_id legado ∪ investment_clients).
-  const claimedClients = opexCtx.claimsByInvestment[row.id] ?? [];
-  const zoneSharers = row.zone ? Math.max(1, opexCtx.sharersByZone[row.zone] || 1) : 1;
-  const clientShareOf = (map: Record<number, number>) =>
-    claimedClients.reduce(
-      (sum, clientId) => sum + (map[clientId] || 0) / Math.max(1, opexCtx.sharersByClient[clientId] || 1),
-      0
-    );
-  const directAllocatedOpexCve =
-    (opexCtx.directByInvestment[row.id] || 0)
-    + clientShareOf(opexCtx.directByClient)
-    + (row.zone ? (opexCtx.directByZone[row.zone] || 0) / zoneSharers : 0);
-  const effectiveMonthlyOpexCve =
-    (Number(row.monthlyOperationalCostCve) || 0) + imputedMonthlyOpexCve + directAllocatedOpexCve;
-
-  // Receita atribuída pelo waterfall (clientes reclamados > zona > pool) —
-  // cada escudo pago entra exatamente uma vez em toda a carteira.
-  const attributed = revenueAttr.byInvestment[row.id] ?? null;
-  const canUseGlobalShare =
-    attributed === null
-    && claimedClients.length === 0
-    && (!row.zone)
-    && opexCtx.totalInstalledUnlinkedActive > 0
-    && (Number(row.installedClients) || 0) > 0
-    && revenueAttr.unattributedMonthlyCve > 0;
-  const globalShareCve = canUseGlobalShare
-    ? revenueAttr.unattributedMonthlyCve * ((Number(row.installedClients) || 0) / opexCtx.totalInstalledUnlinkedActive)
-    : null;
-
-  const actualMonthlyRevenueCve = attributed?.monthlyCve ?? globalShareCve;
-  const revenueSource: 'client' | 'zone' | 'global-share' | null =
-    attributed?.source ?? (globalShareCve !== null ? 'global-share' : null);
-  const revenueVarianceCve = actualMonthlyRevenueCve != null
-    ? actualMonthlyRevenueCve - row.expectedMonthlyRevenueCve
-    : null;
-  const monthlyRevenueForRoi = actualMonthlyRevenueCve != null
-    ? actualMonthlyRevenueCve
-    : row.expectedMonthlyRevenueCve;
-
-  const monthlyNetProfitCve = monthlyRevenueForRoi - effectiveMonthlyOpexCve;
-  const costPerClientCve = row.totalCostCve / targetClients;
-  const operationalCostPerClientCve = effectiveMonthlyOpexCve / activeClients;
-  const baseRecoveryPrice = costPerClientCve / Math.max(1, row.desiredPaybackMonths || 1);
-  const recommendedPlanCve = (baseRecoveryPrice + operationalCostPerClientCve)
-    * (1 + Math.max(0, row.desiredMarginPct || 0) / 100);
-
-  // Recuperação — UMA definição, a mesma da timeline: receita real acumulada
-  // (pagamentos do cliente/zona) menos OPEX acumulado (direto + imputado das
-  // despesas REAIS desde o início do investimento) menos o capital. A "Receita
-  // acumulada" manual só entra como fallback sem cliente/zona com pagamentos.
-  const startMonth = row.investmentDate.slice(0, 7);
-  const actualAccumulatedRevenueCve = attributed !== null ? attributed.totalCve : null;
-  const accumulatedRevenueBaseCve = actualAccumulatedRevenueCve ?? (Number(row.accumulatedRevenueCve) || 0);
-  // Imputado exato: despesas não-alocadas dos meses >= início, rateadas — não
-  // uma média retroativa que cobrava OPEX de meses em que ele não existiu.
-  const accumulatedImputedCve = opexCtx.rateioDenominator > 0
-    ? (Object.entries(opexCtx.unallocatedByMonth)
-        .filter(([month]) => month >= startMonth)
-        .reduce((sum, [, cve]) => sum + cve, 0) / opexCtx.rateioDenominator)
-      * (Number(row.installedClients) || 0)
-    : 0;
-  const accumulatedOpexCve =
-    (opexCtx.directTotalsByInvestment[row.id] || 0)
-    + clientShareOf(opexCtx.directTotalsByClient)
-    + (row.zone ? (opexCtx.directTotalsByZone[row.zone] || 0) / zoneSharers : 0)
-    + accumulatedImputedCve;
-  const accumulatedProfitCve = accumulatedRevenueBaseCve - accumulatedOpexCve - row.totalCostCve;
-
-  return {
-    costPerClientCve,
-    operationalCostPerClientCve,
-    recommendedPlanCve,
-    imputedMonthlyOpexCve,
-    directAllocatedOpexCve,
-    effectiveMonthlyOpexCve,
-    actualMonthlyRevenueCve,
-    revenueSource,
-    revenueVarianceCve,
-    monthlyNetProfitCve,
-    accumulatedProfitCve,
-    accumulatedOpexCve,
-    accumulatedRevenueSource: actualAccumulatedRevenueCve !== null ? 'payments' as const : 'manual' as const,
-    recoveryMonths: monthlyNetProfitCve > 0 ? row.totalCostCve / monthlyNetProfitCve : null,
-    roiPct: row.totalCostCve > 0 ? (accumulatedProfitCve / row.totalCostCve) * 100 : null,
-    // ROI anual convencional: retorno líquido anualizado sobre o capital.
-    // (A antiga fórmula subtraía o capex ao fluxo — dava −100% com lucro zero.)
-    annualRoiPct: row.totalCostCve > 0 ? ((monthlyNetProfitCve * 12) / row.totalCostCve) * 100 : null,
-    isRecovered: accumulatedProfitCve >= 0
-  };
 }
 
 export async function registerInvestmentRoutes(app: FastifyInstance) {
@@ -354,10 +242,13 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     const allTimeCapexCve = Number(allTimeCapexRow.totalCve) || 0;
     const totalInvestedCve = stockAcquiredCve + allTimeCapexCve;
 
-    // Lucro acumulado da empresa = faturacao recebida (pagamentos liquidados, todo o historico)
-    // menos todo o capital aplicado (infraestrutura + stock) menos as despesas (OPEX).
+    // Caixa livre acumulada = dinheiro recebido (todos os recibos, todo o
+    // historico) menos todo o capital aplicado (infraestrutura + stock) menos as
+    // despesas (OPEX). Recibos e nao faturas fechadas: o que foi entregue por
+    // conta de uma fatura ainda aberta ja e caixa.
     const receivedRow = getSqliteDatabase()
-      .prepare(`SELECT COALESCE(SUM(amount_cve), 0) AS totalCve FROM payments WHERE status = 'paid'`)
+      .prepare(`SELECT COALESCE(SUM(r.amount_cve), 0) AS totalCve
+                FROM payment_receipts r WHERE ${cashReceiptFilterSql('r')}`)
       .get() as { totalCve: number };
     const totalReceivedCve = Number(receivedRow.totalCve) || 0;
     const companyAccumulatedProfitCve = totalReceivedCve - totalInvestedCve - totalExpensesCve;
@@ -594,9 +485,12 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     if (claimedClients.length > 0) {
       const placeholders = claimedClients.map(() => '?').join(',');
       const rows = db.prepare(`
-        SELECT client_id AS clientId, reference_month AS m, COALESCE(SUM(amount_cve), 0) AS cve
-        FROM payments WHERE status = 'paid' AND client_id IN (${placeholders})
-        GROUP BY client_id, reference_month
+        SELECT py.client_id AS clientId, substr(r.payment_date, 1, 7) AS m,
+               COALESCE(SUM(r.amount_cve), 0) AS cve
+        FROM payment_receipts r
+        JOIN payments py ON py.id = r.payment_id
+        WHERE ${cashReceiptFilterSql('r')} AND py.client_id IN (${placeholders})
+        GROUP BY py.client_id, m
       `).all(...claimedClients) as Array<{ clientId: number; m: string; cve: number }>;
       for (const r of rows) {
         const share = 1 / Math.max(1, opexCtx.sharersByClient[r.clientId] || 1);
@@ -604,29 +498,32 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       }
     } else if (inv.zone) {
       const rows = db.prepare(`
-        SELECT py.reference_month AS m, COALESCE(SUM(py.amount_cve), 0) AS cve
-        FROM payments py JOIN clients c ON c.id = py.client_id
-        WHERE c.zone = ? AND py.status = 'paid'
+        SELECT substr(r.payment_date, 1, 7) AS m, COALESCE(SUM(r.amount_cve), 0) AS cve
+        FROM payment_receipts r
+        JOIN payments py ON py.id = r.payment_id
+        JOIN clients c ON c.id = py.client_id
+        WHERE c.zone = ? AND ${cashReceiptFilterSql('r')}
           AND py.client_id NOT IN (
             SELECT client_id FROM investment_clients
             UNION SELECT client_id FROM investments WHERE client_id IS NOT NULL
           )
-        GROUP BY py.reference_month
+        GROUP BY m
       `).all(inv.zone) as Array<{ m: string; cve: number }>;
       const zoneSharers = Math.max(1, opexCtx.sharersByZone[inv.zone] || 1);
       for (const r of rows) revenueByMonth.set(r.m, (Number(r.cve) || 0) / zoneSharers);
     } else if (opexCtx.totalInstalledUnlinkedActive > 0 && installed > 0) {
       const share = installed / opexCtx.totalInstalledUnlinkedActive;
       const rows = db.prepare(`
-        SELECT reference_month AS m, COALESCE(SUM(amount_cve), 0) AS cve
-        FROM payments
-        WHERE status = 'paid' AND client_id NOT IN (
+        SELECT substr(r.payment_date, 1, 7) AS m, COALESCE(SUM(r.amount_cve), 0) AS cve
+        FROM payment_receipts r
+        JOIN payments py ON py.id = r.payment_id
+        WHERE ${cashReceiptFilterSql('r')} AND py.client_id NOT IN (
           SELECT id FROM clients
           WHERE id IN (SELECT client_id FROM investments WHERE client_id IS NOT NULL)
              OR id IN (SELECT client_id FROM investment_clients)
              OR zone IN (SELECT zone FROM investments WHERE zone IS NOT NULL)
         )
-        GROUP BY reference_month
+        GROUP BY m
       `).all() as Array<{ m: string; cve: number }>;
       for (const r of rows) revenueByMonth.set(r.m, (Number(r.cve) || 0) * share);
     }

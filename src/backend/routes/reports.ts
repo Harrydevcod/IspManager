@@ -4,7 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { requireRole } from './auth';
 import { computeIncompleteFlags, findDuplicateGroups, type DqClient } from '../lib/data-quality';
 import { recordAudit } from '../lib/audit';
-import { balanceSqlExpr, overdueSqlPredicate } from '../lib/payments';
+import { balanceSqlExpr, cashReceiptFilterSql, overdueSqlPredicate } from '../lib/payments';
 import { loadOperationsStatus } from '../lib/operations-status';
 import { buildOperationsStatusPdf } from '../lib/operations-export';
 
@@ -93,8 +93,8 @@ export async function registerReportRoutes(app: FastifyInstance) {
         -- Divida e saldo: quem ja entregou metade so deve a outra metade.
         (SELECT coalesce(sum(${balanceSqlExpr('payments')}), 0) FROM payments WHERE ${overdueSqlPredicate()}) AS overdueAmountCve,
         -- Recebido vem dos recibos, a unica granularidade que ve os parciais.
-        (SELECT coalesce(sum(amount_cve), 0) FROM payment_receipts
-          WHERE source = 'cash' AND voided_at IS NULL) AS paidAmountCve,
+        (SELECT coalesce(sum(r.amount_cve), 0) FROM payment_receipts r
+          WHERE ${cashReceiptFilterSql('r')}) AS paidAmountCve,
         (
           SELECT coalesce(sum(stock_total * (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve)), 0)
           FROM equipment_catalog
