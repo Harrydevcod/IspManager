@@ -2523,11 +2523,19 @@ h2 {
   padding: var(--space-4) var(--space-4);
 }
 
-/* O aviso do excesso ocupa a linha toda por baixo dos campos, senão roubava
-   uma coluna e desalinhava tudo o resto. */
-.payment-action-form > .module-message {
-  grid-column: 1 / -1;
+/* O aviso do excesso vive por baixo dos campos, mas SEM empurrar os botões:
+   sem colocação explícita eles caíam para uma linha só deles, espremidos na
+   primeira coluna e esticados ao alto. As ações ficam ancoradas no canto da
+   primeira linha, onde estão nas outras variantes do formulário. */
+.payment-action-form--pay > .module-message {
+  grid-column: 1 / 5;
+  grid-row: 2;
   margin: 0;
+}
+
+.payment-action-form--pay > .inline-actions {
+  grid-column: 5;
+  grid-row: 1;
 }
 
 .payment-action-form__hint {
@@ -2540,6 +2548,13 @@ h2 {
 @media (max-width: 1100px) {
   .payment-action-form {
     grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr);
+  }
+
+  /* Duas colunas: a colocação fixa acima deixa de fazer sentido. */
+  .payment-action-form--pay > .module-message,
+  .payment-action-form--pay > .inline-actions {
+    grid-column: 1 / -1;
+    grid-row: auto;
   }
 }
 

@@ -870,10 +870,18 @@ export function PaymentsModule({
         || (payment.clientCode || '').toLowerCase().includes(normalizedSearch);
       return monthMatches && searchMatches;
     }), [payments, normalizedSearch, referenceMonth, showAllMonths]);
+  // "Parcial" cai debaixo de Pendente: continua a ser dinheiro por receber, e
+  // quem filtra por Pendente esta a montar a lista de quem tem de pagar. Sem
+  // isto, uma fatura desaparecia do ecra assim que recebesse o primeiro tostao
+  // — a pior altura possivel para a perder de vista.
   const filteredPayments = useMemo(
     () => (statusFilter === 'all'
       ? periodPayments
-      : periodPayments.filter((payment) => effectivePaymentStatus(payment) === statusFilter)),
+      : periodPayments.filter((payment) => {
+        const effective = effectivePaymentStatus(payment);
+        if (statusFilter === 'pending') return effective === 'pending' || effective === 'partial';
+        return effective === statusFilter;
+      })),
     [periodPayments, statusFilter]
   );
   const visiblePayments = useMemo(() => sortRows(filteredPayments, sortState, {

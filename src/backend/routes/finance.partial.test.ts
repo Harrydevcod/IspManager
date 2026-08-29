@@ -229,6 +229,23 @@ describe('PDF do recibo', () => {
     expect(response.rawPayload.subarray(0, 4).toString()).toBe('%PDF');
   });
 
+  test('cada recibo imprime o seu, nao o ultimo da fatura', async () => {
+    const { paymentId } = seed();
+    const first = (await pay(paymentId, { paymentMethod: 'numerario', amountCve: 10000 })).json().receipt;
+    const second = (await pay(paymentId, { paymentMethod: 'numerario', amountCve: 15000 })).json().receipt;
+
+    const [a, b] = await Promise.all([
+      app.inject({ method: 'GET', url: `/api/receipts/${first.id}/receipt.pdf` }),
+      app.inject({ method: 'GET', url: `/api/receipts/${second.id}/receipt.pdf` })
+    ]);
+
+    // O nome do ficheiro carrega o numero: imprimir o recibo de Marco e receber
+    // o de Agosto e o defeito que isto tranca.
+    expect(a.headers['content-disposition']).toContain(first.receiptNumber);
+    expect(b.headers['content-disposition']).toContain(second.receiptNumber);
+    expect(a.rawPayload.equals(b.rawPayload)).toBe(false);
+  });
+
   test('a rota por pagamento resolve para o ultimo recibo', async () => {
     const { paymentId } = seed();
     await pay(paymentId, { paymentMethod: 'numerario', amountCve: 10000 });

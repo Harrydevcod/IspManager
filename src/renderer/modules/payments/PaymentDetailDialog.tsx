@@ -190,7 +190,7 @@ export function PaymentDetailDialog({
       <div className="client-detail payment-preview">
       {showActionForm && actionMode === 'pay' && (
         <form
-          className="payment-action-form"
+          className="payment-action-form payment-action-form--pay"
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault();
             onSubmitPay();
@@ -370,7 +370,7 @@ export function PaymentDetailDialog({
               <span>{docLabel}</span>
               <strong>{formatCve(payment.amountCve)}</strong>
               <small>
-                Mes {formatPtMonth(payment.referenceMonth)} - vencimento {formatPtDate(payment.dueDate)} - {paymentStatusLabel(payment.status)}
+                Mes {formatPtMonth(payment.referenceMonth)} - vencimento {formatPtDate(payment.dueDate)} - {paymentStatusLabel(effectivePaymentStatus(payment))}
               </small>
             </div>
             {payment.status === 'cancelled' ? (

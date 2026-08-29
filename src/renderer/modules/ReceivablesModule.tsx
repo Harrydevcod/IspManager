@@ -85,6 +85,10 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
   }
 
   const totals = report?.totals;
+  // Quantos dos devedores ja passaram do prazo — o cartao dos clientes ficava
+  // sem a linha de apoio que os outros tres tem, e este e o numero que decide
+  // a quem se liga primeiro.
+  const overdueClients = (report?.clients || []).filter((c) => c.overdueCve > 0).length;
 
   return (
     <div className="receivables-module">
@@ -107,6 +111,7 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
           icon={Users}
           label="Clientes com divida"
           value={String(totals?.clients || 0)}
+          trend={`${overdueClients} em atraso`}
           tone="neutral"
         />
         <MetricCard

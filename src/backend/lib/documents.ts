@@ -732,7 +732,9 @@ export async function renderReceiptPdf(receiptId: number): Promise<{ buffer: Buf
     ? invoiceLines
     : [{
         kind: 'internet',
-        description: `Recebimento por conta da fatura ${invoice.invoiceNumber || invoice.referenceMonth}`,
+        // Curto de proposito: a coluna trunca por volta dos 43 caracteres e o
+        // numero da fatura e justamente a parte que nao pode desaparecer.
+        description: `Por conta da fatura ${invoice.invoiceNumber || invoice.referenceMonth}`,
         amountCve: receipt.amountCve
       }];
 
