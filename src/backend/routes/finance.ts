@@ -6,14 +6,20 @@ import { loadAudiovisualConfig } from '../lib/audiovisual';
 import { runAudiovisualAnnualIfDue } from '../lib/audiovisual-billing';
 import { recordAudit } from '../lib/audit';
 import {
+  applyClientCreditToPayment,
+  balanceSqlExpr,
   cancelPayment,
+  clientCreditBalance,
   executeReverseMonthly,
+  listPaymentReceipts,
   markPaymentOverdue,
   payPayment,
   previewReverseMonthly,
   regeneratePayment,
-  revertPayment
+  revertPayment,
+  voidReceipt
 } from '../lib/payments';
+import { loadReceivables } from '../lib/receivables';
 import { createService, deleteService, serviceSchema, updateService } from '../lib/services';
 import { serviceTransferSchema, transferService } from '../lib/serviceTransfer';
 import { requireAuth, requireRole } from './auth';
@@ -24,7 +30,14 @@ const monthSchema = z.object({
 
 const paySchema = z.object({
   paymentMethod: z.enum(['numerario', 'transferencia', 'outro']).default('numerario'),
-  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  // Ausente = recebe o saldo todo, como sempre foi. Presente = parcial (ou, se
+  // exceder, parcial + credito).
+  amountCve: z.number().finite().positive().optional()
+});
+
+const voidReceiptSchema = z.object({
+  reason: z.string().trim().optional().nullable()
 });
 
 const cancelSchema = z.object({
@@ -249,6 +262,11 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         py.invoice_date AS invoiceDate,
         py.receipt_number AS receiptNumber,
         py.receipt_date AS receiptDate,
+        COALESCE((
+          SELECT SUM(r.amount_cve) FROM payment_receipts r
+          WHERE r.payment_id = py.id AND r.voided_at IS NULL
+        ), 0) AS receivedCve,
+        ${balanceSqlExpr('py')} AS balanceCve,
         CASE
           WHEN py.status = 'cancelled'
             -- Espelha regenerateMonthlyPayment: só o serviço cancelado bloqueia.
@@ -409,19 +427,101 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Pagamento invalido' });
     }
 
-    const result = payPayment(getSqliteDatabase(), id, parsed.data);
+    const userId = (request as { user?: { id?: number } }).user?.id ?? null;
+    const result = payPayment(getSqliteDatabase(), id, { ...parsed.data, userId });
+    if (!result.ok) {
+      return reply.status(result.status).send({ error: result.error });
+    }
+
+    const { receipt, settled, balanceCve, creditAddedCve } = result.value;
+    recordAudit(request, {
+      action: 'pay',
+      entityType: 'payment',
+      entityId: id,
+      summary: settled
+        ? `Recebeu ${receipt.amountCve} e liquidou o pagamento ${id} (recibo ${receipt.receiptNumber})`
+        : `Recebeu ${receipt.amountCve} por conta do pagamento ${id} (recibo ${receipt.receiptNumber}), saldo ${balanceCve}`,
+      metadata: {
+        paymentMethod: parsed.data.paymentMethod,
+        receiptId: receipt.id,
+        receiptNumber: receipt.receiptNumber,
+        amountCve: receipt.amountCve,
+        balanceCve,
+        creditAddedCve,
+        settled
+      }
+    });
+    return result.value;
+  });
+
+  app.get('/api/payments/:id/receipts', { preHandler: requireRole(['admin', 'operator']) }, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Pagamento invalido' });
+    }
+    const db = getSqliteDatabase();
+    const row = db.prepare('SELECT client_id AS clientId FROM payments WHERE id = ?').get(id) as { clientId: number } | undefined;
+    if (!row) {
+      return reply.status(404).send({ error: 'Pagamento nao encontrado' });
+    }
+    return {
+      receipts: listPaymentReceipts(db, id),
+      clientCreditCve: clientCreditBalance(db, row.clientId)
+    };
+  });
+
+  app.post('/api/payments/:id/apply-credit', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Pagamento invalido' });
+    }
+
+    const db = getSqliteDatabase();
+    const userId = (request as { user?: { id?: number } }).user?.id ?? null;
+    const receipt = applyClientCreditToPayment(db, id, userId);
+    if (!receipt) {
+      return reply.status(400).send({ error: 'Sem credito disponivel ou fatura sem saldo em aberto' });
+    }
+
+    recordAudit(request, {
+      action: 'apply_credit',
+      entityType: 'payment',
+      entityId: id,
+      summary: `Abateu ${receipt.amountCve} de conta corrente no pagamento ${id} (recibo ${receipt.receiptNumber})`,
+      metadata: { receiptId: receipt.id, receiptNumber: receipt.receiptNumber, amountCve: receipt.amountCve }
+    });
+    return receipt;
+  });
+
+  app.post('/api/receipts/:id/void', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const parsed = voidReceiptSchema.safeParse(request.body || {});
+    if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Recibo invalido' });
+    }
+
+    const result = voidReceipt(getSqliteDatabase(), id, parsed.data.reason);
     if (!result.ok) {
       return reply.status(result.status).send({ error: result.error });
     }
 
     recordAudit(request, {
-      action: 'pay',
-      entityType: 'payment',
+      action: 'void_receipt',
+      entityType: 'receipt',
       entityId: id,
-      summary: `Marcou pagamento ${id} como pago`,
-      metadata: { paymentMethod: parsed.data.paymentMethod }
+      summary: `Anulou o recibo ${result.value.receipt.receiptNumber} do pagamento ${result.value.paymentId}`,
+      metadata: {
+        paymentId: result.value.paymentId,
+        reason: parsed.data.reason,
+        reopened: result.value.reopened,
+        balanceCve: result.value.balanceCve
+      }
     });
     return result.value;
+  });
+
+  app.get('/api/receivables', { preHandler: requireRole(['admin', 'operator']) }, async () => {
+    return loadReceivables(getSqliteDatabase());
   });
 
   app.post('/api/payments/:id/overdue', billingWrite, async (request, reply) => {

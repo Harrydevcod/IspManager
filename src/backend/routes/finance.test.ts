@@ -40,6 +40,8 @@ beforeEach(() => {
     DELETE FROM service_material_lines;
     DELETE FROM service_device_shares;
     DELETE FROM service_device_assignments;
+    DELETE FROM client_credits;
+    DELETE FROM payment_receipts;
     DELETE FROM payment_lines;
     DELETE FROM payments;
     DELETE FROM stock_movements;
@@ -1030,10 +1032,17 @@ describe('finance routes', () => {
     expect(rows).toHaveLength(2);
     // Original kept as the anulação record; its invoice number is frozen.
     expect(rows[0]).toMatchObject({ status: 'cancelled', invoiceNumber: original.invoiceNumber });
-    // New corrected invoice is pending with a different, later sequential number.
-    expect(rows[1].status).toBe('pending');
+    // New corrected invoice carries a different, later sequential number.
     expect(rows[1].invoiceNumber).toMatch(/^FT-\d{4}-\d{5}$/);
     expect(rows[1].invoiceNumber).not.toBe(original.invoiceNumber);
+    // ...e ja nasce liquidada: o cliente entregou os 5.000 na fatura anulada, o
+    // dinheiro ficou-lhe a favor na conta corrente e abate aqui. Cobrar-lhe
+    // outra vez o mesmo mes por causa de um erro nosso seria o defeito.
+    expect(rows[1].status).toBe('paid');
+    const credit = db.prepare(
+      'SELECT COALESCE(SUM(amount_cve), 0) AS total FROM client_credits WHERE client_id = ?'
+    ).get(client.lastInsertRowid) as { total: number };
+    expect(credit.total).toBe(0);
   });
 
   test('regenerates an anulado monthly payment with the current service value', async () => {

@@ -23,6 +23,9 @@ const TABLES_TO_CLEAR = [
   'backbone_devices',
   'service_device_shares',
   'service_device_assignments',
+  'client_credits',
+  'payment_receipts',
+  'payment_lines',
   'payments',
   'services',
   'internet_plans',
@@ -134,6 +137,26 @@ function daysAgo(days: number): string {
 }
 
 // ---------------------------------------------------------------- testes
+
+/**
+ * Um recibo por cima de uma fatura ja paga, como o motor a deixa.
+ *
+ * O recebido (semana, hoje, ciclo) le `payment_receipts`, porque e o unico
+ * sitio onde um recebimento parcial existe. Semear so `status = 'paid'`
+ * descrevia um estado que a aplicacao nunca produz.
+ */
+function seedReceipt(paymentId: number, amountCve: number, paymentDate: string, createdAt?: string): number {
+  const id = db.prepare(`
+    INSERT INTO payment_receipts (
+      payment_id, amount_cve, payment_date, payment_method, source, receipt_number, receipt_date
+    ) VALUES (?, ?, ?, 'numerario', 'cash', ?, ?)
+  `).run(paymentId, amountCve, paymentDate, `RC-TEST-${paymentId}`, paymentDate).lastInsertRowid as number;
+
+  if (createdAt) {
+    db.prepare('UPDATE payment_receipts SET created_at = ? WHERE id = ?').run(createdAt, id);
+  }
+  return id;
+}
 
 describe('loadOperationsStatus', () => {
   test('base vazia devolve um estado coerente em vez de rebentar', () => {
@@ -312,10 +335,11 @@ describe('loadOperationsStatus', () => {
     const paid = insertService(client, plan, 3000);
     const pending = insertService(client, plan, 3000);
     const cancelled = insertService(client, plan, 3000);
-    db.prepare(`
+    const paidId = db.prepare(`
       INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
       VALUES (?, ?, '2026-03', 3000, '2026-03-30', '2026-03-30', 'paid')
-    `).run(client, paid);
+    `).run(client, paid).lastInsertRowid as number;
+    seedReceipt(paidId, 3000, '2026-03-30');
     db.prepare(`
       INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
       VALUES (?, ?, '2026-03', 3000, '2026-03-30', 'pending')
@@ -450,7 +474,7 @@ describe('loadOperationsStatus', () => {
     expect(status.actions.map((action) => action.code)).toContain('A-DIVIDA-MORTA');
   });
 
-  test('registado hoje vem da auditoria, nao da data-valor do pagamento', () => {
+  test('registado hoje vem do recibo lancado, nao da data-valor do pagamento', () => {
     const plan = insertPlan('Standard', 3000);
     const client = insertClient('C090', 'Recibo');
     const service = insertService(client, plan, 3000);
@@ -458,10 +482,9 @@ describe('loadOperationsStatus', () => {
       INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
       VALUES (?, ?, '2026-06', 3000, '2026-06-30', ?, 'paid')
     `).run(client, service, daysAgo(20));
-    db.prepare(`
-      INSERT INTO audit_logs (actor_username, action, entity_type, entity_id, summary)
-      VALUES ('admin', 'pay', 'payment', ?, 'Marcou pagamento como pago')
-    `).run(String(payment.lastInsertRowid));
+    // Recibo lancado hoje com data-valor de ha 20 dias: e esse o caso que
+    // separa o trabalho de hoje do dinheiro da semana.
+    seedReceipt(Number(payment.lastInsertRowid), 3000, daysAgo(20));
 
     const status = loadOperationsStatus(db);
 

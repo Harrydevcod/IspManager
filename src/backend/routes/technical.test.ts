@@ -34,6 +34,8 @@ beforeEach(() => {
     DELETE FROM service_install_costs;
     DELETE FROM service_material_lines;
     DELETE FROM service_device_assignments;
+    DELETE FROM client_credits;
+    DELETE FROM payment_receipts;
     DELETE FROM payments;
     DELETE FROM stock_movements;
     DELETE FROM services;

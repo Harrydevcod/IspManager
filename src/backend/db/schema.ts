@@ -127,6 +127,31 @@ export const paymentLines = sqliteTable('payment_lines', {
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
 });
 
+export const paymentReceipts = sqliteTable('payment_receipts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  paymentId: integer('payment_id').notNull(),
+  amountCve: real('amount_cve').notNull(),
+  paymentDate: text('payment_date').notNull(),
+  paymentMethod: text('payment_method', { enum: ['numerario', 'transferencia', 'outro'] }).notNull(),
+  source: text('source', { enum: ['cash', 'credit'] }).notNull().default('cash'),
+  receiptNumber: text('receipt_number').notNull(),
+  receiptDate: text('receipt_date').notNull(),
+  voidedAt: text('voided_at'),
+  voidReason: text('void_reason'),
+  notes: text('notes'),
+  createdBy: integer('created_by'),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
+export const clientCredits = sqliteTable('client_credits', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  clientId: integer('client_id').notNull(),
+  amountCve: real('amount_cve').notNull(),
+  receiptId: integer('receipt_id'),
+  reason: text('reason').notNull(),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
 export const equipmentCatalog = sqliteTable('equipment_catalog', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   category: text('category').notNull().default('equipamento'),
@@ -563,6 +588,10 @@ export type InternetPlan = typeof internetPlans.$inferSelect;
 export type NewInternetPlan = typeof internetPlans.$inferInsert;
 export type Service = typeof services.$inferSelect;
 export type NewService = typeof services.$inferInsert;
+export type PaymentReceipt = typeof paymentReceipts.$inferSelect;
+export type NewPaymentReceipt = typeof paymentReceipts.$inferInsert;
+export type ClientCredit = typeof clientCredits.$inferSelect;
+export type NewClientCredit = typeof clientCredits.$inferInsert;
 export type Payment = typeof payments.$inferSelect;
 export type NewPayment = typeof payments.$inferInsert;
 export type PaymentLine = typeof paymentLines.$inferSelect;

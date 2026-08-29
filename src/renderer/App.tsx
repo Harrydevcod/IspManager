@@ -456,6 +456,7 @@ function AppShell() {
               paymentsFocus={paymentsFocus}
               paymentsMonth={paymentsMonth}
               onPaymentsFocusHandled={() => { setPaymentsFocus(null); setPaymentsMonth(null); }}
+              onOpenClient={(id) => { setFocusClientId(id); setSection('clients'); }}
             />
           )}
           {section === 'work-orders' && <WorkOrdersModule />}

@@ -27,6 +27,8 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.unstubAllGlobals();
   db.prepare('DELETE FROM sms_outbox').run();
+  db.prepare('DELETE FROM client_credits').run();
+  db.prepare('DELETE FROM payment_receipts').run();
   db.prepare('DELETE FROM payments').run();
   db.prepare('DELETE FROM services').run();
   db.prepare('DELETE FROM clients').run();

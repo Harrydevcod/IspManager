@@ -117,3 +117,19 @@ export function formatCompactEscudos(escudos: Escudos): string {
   if (value >= 1000) return `${sign}${(value / 1000).toFixed(1)}k$`;
   return `${sign}${Math.round(value)}$`;
 }
+
+// ------------------------------------------------------------------ balances
+// The `*_cve REAL` columns still hold escudos, so any balance derived from a
+// SUM() carries IEEE-754 drift: 50000 - (10000 + 15000 + 25000) can land on
+// 7.3e-12 instead of 0. Rounding to the centavo before comparing is what keeps
+// a fully settled invoice from staying open by a fraction nobody can pay.
+
+/** Escudos rounded to the centavo — the precision money actually has. */
+export function roundEscudos(escudos: Escudos): Escudos {
+  return Math.round((escudos || 0) * 100) / 100;
+}
+
+/** True when the outstanding balance is settled (zero or below, to the centavo). */
+export function isSettled(balanceEscudos: Escudos): boolean {
+  return escudosToCentavos(balanceEscudos) <= 0;
+}

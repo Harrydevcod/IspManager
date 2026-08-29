@@ -1,16 +1,18 @@
-import { Banknote, Receipt, TrendingUp, Wallet } from 'lucide-react';
+import { AlertTriangle, Banknote, Receipt, TrendingUp, Wallet } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../components';
 import { ExpensesModule } from './ExpensesModule';
 import { InvestmentsModule } from './InvestmentsModule';
 import { PaymentsModule } from './PaymentsModule';
 import { ProfitModule } from './ProfitModule';
+import { ReceivablesModule } from './ReceivablesModule';
 import './FinanceModule.css';
 
-type FinanceTab = 'pagamentos' | 'lucro' | 'investimentos' | 'despesas';
+type FinanceTab = 'pagamentos' | 'pendentes' | 'lucro' | 'investimentos' | 'despesas';
 
 const TABS: { id: FinanceTab; label: string; icon: typeof TrendingUp }[] = [
   { id: 'pagamentos', label: 'Pagamentos', icon: Banknote },
+  { id: 'pendentes', label: 'Pendentes', icon: AlertTriangle },
   { id: 'lucro', label: 'Lucro', icon: TrendingUp },
   { id: 'investimentos', label: 'Investimentos', icon: Wallet },
   { id: 'despesas', label: 'Despesas', icon: Receipt }
@@ -26,11 +28,13 @@ const TABS: { id: FinanceTab; label: string; icon: typeof TrendingUp }[] = [
 export function FinanceModule({
   paymentsFocus,
   paymentsMonth,
-  onPaymentsFocusHandled
+  onPaymentsFocusHandled,
+  onOpenClient
 }: {
   paymentsFocus?: 'overdue' | 'pending' | null;
   paymentsMonth?: string | null;
   onPaymentsFocusHandled?: () => void;
+  onOpenClient?: (clientId: number) => void;
 } = {}) {
   const [tab, setTab] = useState<FinanceTab>('pagamentos');
 
@@ -58,6 +62,7 @@ export function FinanceModule({
       {tab === 'pagamentos' && (
         <PaymentsModule focusStatus={paymentsFocus} focusMonth={paymentsMonth} onFocusHandled={onPaymentsFocusHandled} />
       )}
+      {tab === 'pendentes' && <ReceivablesModule onOpenClient={onOpenClient} />}
       {tab === 'lucro' && <ProfitModule />}
       {tab === 'investimentos' && <InvestmentsModule />}
       {tab === 'despesas' && <ExpensesModule />}

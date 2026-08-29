@@ -4,7 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { requireRole } from './auth';
 import { computeIncompleteFlags, findDuplicateGroups, type DqClient } from '../lib/data-quality';
 import { recordAudit } from '../lib/audit';
-import { overdueSqlPredicate } from '../lib/payments';
+import { balanceSqlExpr, overdueSqlPredicate } from '../lib/payments';
 import { loadOperationsStatus } from '../lib/operations-status';
 import { buildOperationsStatusPdf } from '../lib/operations-export';
 
@@ -90,8 +90,11 @@ export async function registerReportRoutes(app: FastifyInstance) {
         (SELECT count(*) FROM clients) AS totalClients,
         (SELECT count(*) FROM services WHERE status = 'active') AS activeServices,
         (SELECT count(*) FROM payments WHERE ${overdueSqlPredicate()}) AS overduePayments,
-        (SELECT coalesce(sum(amount_cve), 0) FROM payments WHERE ${overdueSqlPredicate()}) AS overdueAmountCve,
-        (SELECT coalesce(sum(amount_cve), 0) FROM payments WHERE status = 'paid') AS paidAmountCve,
+        -- Divida e saldo: quem ja entregou metade so deve a outra metade.
+        (SELECT coalesce(sum(${balanceSqlExpr('payments')}), 0) FROM payments WHERE ${overdueSqlPredicate()}) AS overdueAmountCve,
+        -- Recebido vem dos recibos, a unica granularidade que ve os parciais.
+        (SELECT coalesce(sum(amount_cve), 0) FROM payment_receipts
+          WHERE source = 'cash' AND voided_at IS NULL) AS paidAmountCve,
         (
           SELECT coalesce(sum(stock_total * (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve)), 0)
           FROM equipment_catalog
@@ -102,8 +105,10 @@ export async function registerReportRoutes(app: FastifyInstance) {
     const revenueByMonth = db.prepare(`
       SELECT
         reference_month AS referenceMonth,
-        coalesce(sum(case when status = 'paid' then amount_cve else 0 end), 0) AS paidCve,
-        coalesce(sum(case when status = 'pending' then amount_cve else 0 end), 0) AS pendingCve,
+        coalesce(sum(case when status <> 'cancelled'
+          then amount_cve - ${balanceSqlExpr('payments')} else 0 end), 0) AS paidCve,
+        coalesce(sum(case when status in ('pending','overdue')
+          then ${balanceSqlExpr('payments')} else 0 end), 0) AS pendingCve,
         count(*) AS payments
       FROM payments
       ${paymentWhereSql}
@@ -129,7 +134,7 @@ export async function registerReportRoutes(app: FastifyInstance) {
         c.client_code AS clientCode,
         c.phone,
         count(py.id) AS payments,
-        coalesce(sum(py.amount_cve), 0) AS amountCve,
+        coalesce(sum(${balanceSqlExpr('py')}), 0) AS amountCve,
         min(py.due_date) AS oldestDueDate
       FROM payments py
       JOIN clients c ON c.id = py.client_id

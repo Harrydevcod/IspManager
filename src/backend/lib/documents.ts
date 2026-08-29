@@ -652,6 +652,96 @@ async function pdfBuffer(row: PaymentDocumentRow, kind: DocumentKind, lines: Doc
   });
 }
 
+/**
+ * PDF de UM recebimento.
+ *
+ * O documento e do recibo, nao da fatura: o total impresso e o que entrou
+ * naquele momento, e o rodape diz o que ainda falta. Imprimir o valor cheio da
+ * fatura num recibo de 10.000 seria dar ao cliente prova de ter pago 50.000.
+ *
+ * Reaproveita o desenho da fatura sobrepondo os valores do recibo na linha —
+ * o layout, o QR e os totais ja sabem trabalhar com um `PaymentDocumentRow`.
+ */
+export async function renderReceiptPdf(receiptId: number): Promise<{ buffer: Buffer; filename: string }> {
+  if (!Number.isInteger(receiptId) || receiptId <= 0) {
+    throw new PaymentDocumentError(400, 'Recibo invalido');
+  }
+  const db = getSqliteDatabase();
+  const receipt = db.prepare(`
+    SELECT id, payment_id AS paymentId, amount_cve AS amountCve, payment_date AS paymentDate,
+           payment_method AS paymentMethod, source, receipt_number AS receiptNumber,
+           receipt_date AS receiptDate, voided_at AS voidedAt
+    FROM payment_receipts WHERE id = ?
+  `).get(receiptId) as {
+    id: number; paymentId: number; amountCve: number; paymentDate: string;
+    paymentMethod: string; source: string; receiptNumber: string;
+    receiptDate: string; voidedAt: string | null;
+  } | undefined;
+
+  if (!receipt) {
+    throw new PaymentDocumentError(404, 'Recibo nao encontrado');
+  }
+  if (receipt.voidedAt) {
+    throw new PaymentDocumentError(400, 'Recibo anulado nao pode ser impresso');
+  }
+
+  const invoice = db.prepare(documentSelect).get(receipt.paymentId) as PaymentDocumentRow | undefined;
+  if (!invoice) {
+    throw new PaymentDocumentError(404, 'Pagamento nao encontrado');
+  }
+
+  const balance = db.prepare(`
+    SELECT amount_cve - COALESCE((
+      SELECT SUM(r.amount_cve) FROM payment_receipts r
+      WHERE r.payment_id = payments.id AND r.voided_at IS NULL
+    ), 0) AS balanceCve
+    FROM payments WHERE id = ?
+  `).get(receipt.paymentId) as { balanceCve: number };
+  const remaining = Math.round((Number(balance.balanceCve) || 0) * 100) / 100;
+
+  const row: PaymentDocumentRow = {
+    ...invoice,
+    amountCve: receipt.amountCve,
+    paymentDate: receipt.paymentDate,
+    paymentMethod: receipt.paymentMethod,
+    receiptNumber: receipt.receiptNumber,
+    receiptDate: receipt.receiptDate,
+    // O recibo prova um pagamento, mesmo que a fatura ainda tenha saldo.
+    status: 'paid',
+    notes: [
+      invoice.notes?.trim(),
+      receipt.source === 'credit' ? 'Liquidado por conta corrente.' : null,
+      remaining > 0.005
+        ? `Recebimento por conta da fatura ${invoice.invoiceNumber || invoice.referenceMonth}. Saldo em aberto: ${formatEscudos(remaining)}.`
+        : null
+    ].filter(Boolean).join('\n') || null
+  };
+
+  // Quando o recibo cobre a fatura toda, as linhas dela descrevem exactamente o
+  // que se esta a receber. Num parcial nao descrevem — somariam mais do que o
+  // recibo — por isso o documento leva uma linha unica pelo valor entregue.
+  const invoiceLines = db.prepare(`
+    SELECT kind, description, amount_cve AS amountCve
+    FROM payment_lines
+    WHERE payment_id = ?
+    ORDER BY sort_order, id
+  `).all(receipt.paymentId) as DocumentLine[];
+  const linesTotal = invoiceLines.reduce((sum, line) => sum + Number(line.amountCve || 0), 0);
+  const coversInvoice = Math.abs(linesTotal - receipt.amountCve) < 0.005;
+  const lines: DocumentLine[] = coversInvoice && invoiceLines.length > 0
+    ? invoiceLines
+    : [{
+        kind: 'internet',
+        // Curto de proposito: a coluna trunca por volta dos 43 caracteres e o
+        // numero da fatura e justamente a parte que nao pode desaparecer.
+        description: `Por conta da fatura ${invoice.invoiceNumber || invoice.referenceMonth}`,
+        amountCve: receipt.amountCve
+      }];
+
+  const buffer = await pdfBuffer(row, 'receipt', lines);
+  return { buffer, filename: documentFilename('receipt', row) };
+}
+
 export class PaymentDocumentError extends Error {
   constructor(public statusCode: number, message: string) {
     super(message);
@@ -678,8 +768,21 @@ export async function renderPaymentDocumentPdf(id: number, kind: DocumentKind): 
   if (row.status === 'cancelled') {
     throw new PaymentDocumentError(400, kind === 'invoice' ? 'Pagamento anulado nao pode gerar fatura' : 'Pagamento anulado nao pode gerar recibo');
   }
-  if (kind === 'receipt' && row.status !== 'paid') {
-    throw new PaymentDocumentError(400, 'So e possivel gerar recibo depois do pagamento');
+  if (kind === 'receipt') {
+    // Com recebimentos parciais, o recibo da fatura e o ultimo que foi emitido
+    // — nao ha razao para exigir que ela esteja fechada: quem entregou 10.000
+    // tem direito a prova dos 10.000 hoje, nao no dia em que acabar de pagar.
+    const latest = db.prepare(`
+      SELECT id FROM payment_receipts
+      WHERE payment_id = ? AND voided_at IS NULL
+      ORDER BY payment_date DESC, id DESC LIMIT 1
+    `).get(id) as { id: number } | undefined;
+    if (latest) {
+      return renderReceiptPdf(latest.id);
+    }
+    if (row.status !== 'paid') {
+      throw new PaymentDocumentError(400, 'So e possivel gerar recibo depois do pagamento');
+    }
   }
   if (kind === 'invoice' && !hasDocumentNumber(row.invoiceNumber)) {
     // Allocation + write share one transaction so the sequence counter never

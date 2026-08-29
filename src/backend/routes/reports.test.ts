@@ -55,6 +55,8 @@ beforeAll(async () => {
 
 beforeEach(() => {
   db.prepare('DELETE FROM stock_movements').run();
+  db.prepare('DELETE FROM client_credits').run();
+  db.prepare('DELETE FROM payment_receipts').run();
   db.prepare('DELETE FROM payments').run();
   db.prepare('DELETE FROM services').run();
   db.prepare('DELETE FROM internet_plans').run();
@@ -96,7 +98,14 @@ function seedBasicScenario() {
     INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
-  insertPayment.run(ana, anaService, '2026-04', 4500, '2026-04-10', '2026-04-10', 'paid');
+  // A paga leva o recibo que a saldou: o recebido le `payment_receipts`, que e
+  // onde um recebimento parcial existe.
+  const anaPaid = insertPayment.run(ana, anaService, '2026-04', 4500, '2026-04-10', '2026-04-10', 'paid').lastInsertRowid as number;
+  db.prepare(`
+    INSERT INTO payment_receipts (
+      payment_id, amount_cve, payment_date, payment_method, source, receipt_number, receipt_date
+    ) VALUES (?, 4500, '2026-04-10', 'numerario', 'cash', 'RC-TEST-1', '2026-04-10')
+  `).run(anaPaid);
   insertPayment.run(ana, anaService, '2026-05', 4500, '2026-05-10', null, 'pending');
   insertPayment.run(bruno, brunoService, '2026-03', 4500, '2026-03-10', null, 'overdue');
   insertPayment.run(bruno, brunoService, '2026-02', 4500, '2026-02-10', null, 'overdue');

@@ -576,6 +576,13 @@ export function ClientsModule({
                     <dt>Receita pendente</dt>
                     <dd>{formatCve(profitability.pendingRevenueCve)}</dd>
                   </div>
+                  {profitability.creditCve > 0 && (
+                    <div>
+                      <dt>Credito a favor</dt>
+                      <dd>{formatCve(profitability.creditCve)}</dd>
+                      <small>abate na proxima fatura</small>
+                    </div>
+                  )}
                   <div>
                     <dt>Lucro acumulado</dt>
                     <dd className={profitability.netProfitCve < 0 ? 'profit-negative' : 'profit-positive'}>

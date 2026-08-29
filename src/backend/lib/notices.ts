@@ -1,4 +1,5 @@
 import { getSqliteDatabase } from '../db/database';
+import { balanceSqlExpr } from './payments';
 import {
   fallbackWhatsappOverdueTemplate,
   fallbackWhatsappReminderTemplate,
@@ -148,7 +149,9 @@ export async function runOverdueNoticesIfDue(
       c.client_code AS clientCode,
       c.phone AS phone,
       c.whatsapp_opt_out AS whatsappOptOut,
-      py.amount_cve AS amountCve,
+      -- Saldo, nao valor da fatura: o aviso automatico tem de pedir o que
+      -- falta, senao vai cobrar duas vezes a quem ja pagou por conta.
+      ${balanceSqlExpr('py')} AS amountCve,
       py.due_date AS dueDate,
       py.reference_month AS referenceMonth,
       py.invoice_number AS invoiceNumber,

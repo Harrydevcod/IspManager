@@ -3,7 +3,7 @@ import { getSqliteDatabase } from '../db/database';
 import { listBackups } from './backup';
 import { jobHealth } from './jobRuns';
 import { loadNetworkStatus } from './network-probe';
-import { overdueSqlPredicate } from './payments';
+import { balanceSqlExpr, overdueSqlPredicate } from './payments';
 import { formatPtDateTime } from '../../shared/date';
 import { DEFAULT_POSTPAID_BILLING_DAY } from '../../shared/billing-period';
 import {
@@ -569,42 +569,51 @@ function loadBilling(
   from: string,
   previousFrom: string
 ): OperationsBilling {
+  // Recebido e por receber deixaram de ser a mesma coluna: com parciais, a
+  // mesma fatura tem dinheiro de um lado e divida do outro. O que se cobra e
+  // sempre o SALDO — dizer 50.000 a quem ja entregou 40.000 e mandar cobrar
+  // mal.
   const wallet = db.prepare(`
     SELECT
-      COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_cve END), 0) AS paidCve,
-      COALESCE(SUM(CASE WHEN ${overdueSqlPredicate()} THEN amount_cve END), 0) AS overdueCve,
+      COALESCE(SUM(CASE WHEN status <> 'cancelled'
+        THEN amount_cve - ${balanceSqlExpr('payments')} END), 0) AS paidCve,
+      COALESCE(SUM(CASE WHEN ${overdueSqlPredicate()} THEN ${balanceSqlExpr('payments')} END), 0) AS overdueCve,
       COUNT(CASE WHEN ${overdueSqlPredicate()} THEN 1 END) AS overdueCount,
-      COALESCE(SUM(CASE WHEN status = 'pending' AND date(due_date) >= date('now') THEN amount_cve END), 0) AS pendingNotDueCve,
+      COALESCE(SUM(CASE WHEN status = 'pending' AND date(due_date) >= date('now') THEN ${balanceSqlExpr('payments')} END), 0) AS pendingNotDueCve,
       COUNT(CASE WHEN status = 'pending' AND date(due_date) >= date('now') THEN 1 END) AS pendingNotDueCount,
       COALESCE(SUM(CASE WHEN status = 'cancelled' THEN amount_cve END), 0) AS cancelledCve
     FROM payments
   `).get() as Record<string, number>;
 
+  // Um recibo por entrada de dinheiro: e a granularidade certa para "recebido
+  // esta semana". Só dinheiro novo (source = cash) — abater conta corrente
+  // liquida a fatura mas nao faz entrar um tostao.
   const received = db.prepare(`
     SELECT
       COALESCE(SUM(CASE WHEN date(payment_date) >= @from THEN amount_cve END), 0) AS weekCve,
       COUNT(CASE WHEN date(payment_date) >= @from THEN 1 END) AS weekCount,
       COALESCE(SUM(CASE WHEN date(payment_date) >= @previousFrom AND date(payment_date) < @from THEN amount_cve END), 0) AS previousCve,
       COUNT(CASE WHEN date(payment_date) >= @previousFrom AND date(payment_date) < @from THEN 1 END) AS previousCount
-    FROM payments
-    WHERE status = 'paid' AND payment_date IS NOT NULL
+    FROM payment_receipts
+    WHERE source = 'cash' AND voided_at IS NULL
   `).get({ from, previousFrom }) as Record<string, number>;
 
   // "Registado hoje" mede o trabalho de hoje, não a data-valor do pagamento:
-  // marcar hoje dez recibos de julho é trabalho de hoje. Vem da auditoria
-  // porque é lá que fica o instante do gesto.
+  // lançar hoje dez recibos de julho é trabalho de hoje. Passou a contar os
+  // recibos em vez das entradas de auditoria — o recibo É o gesto, tem o valor
+  // certo (o parcial, não o total da fatura) e não se perde se a auditoria
+  // falhar, que ela engole erros de propósito para não derrubar a operação.
   const registeredToday = db.prepare(`
-    SELECT COUNT(*) AS count, COALESCE(SUM(p.amount_cve), 0) AS amountCve
-    FROM audit_logs a
-    JOIN payments p ON p.id = a.entity_id
-    WHERE a.action = 'pay' AND a.entity_type = 'payment' AND date(a.created_at) = date('now')
+    SELECT COUNT(*) AS count, COALESCE(SUM(amount_cve), 0) AS amountCve
+    FROM payment_receipts
+    WHERE voided_at IS NULL AND date(created_at) = date('now')
   `).get() as { count: number; amountCve: number };
 
   const debtors = db.prepare(`
     SELECT
       c.id AS clientId, c.full_name AS clientName, c.phone, c.zone,
       COUNT(p.id) AS payments,
-      COALESCE(SUM(p.amount_cve), 0) AS amountCve,
+      COALESCE(SUM(${balanceSqlExpr('p')}), 0) AS amountCve,
       CAST(MAX(julianday('now') - julianday(p.due_date)) AS INTEGER) AS maxDaysOverdue,
       CASE WHEN c.status = 'cancelled' THEN 1 ELSE 0 END AS clientCancelled
     FROM payments p
@@ -617,7 +626,8 @@ function loadBilling(
   const collection = db.prepare(`
     SELECT reference_month AS referenceMonth,
            COALESCE(SUM(CASE WHEN status <> 'cancelled' THEN amount_cve END), 0) AS issuedCve,
-           COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_cve END), 0) AS collectedCve
+           COALESCE(SUM(CASE WHEN status <> 'cancelled'
+             THEN amount_cve - ${balanceSqlExpr('payments')} END), 0) AS collectedCve
     FROM payments
     WHERE reference_month GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]'
     GROUP BY reference_month

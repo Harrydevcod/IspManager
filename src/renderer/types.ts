@@ -95,19 +95,85 @@ export type PaymentRow = {
   invoiceNumber: string | null;
   receiptNumber: string | null;
   canRegenerate: number;
+  /** Já recebido (recibos não anulados) e o que falta — o saldo é o que se cobra. */
+  receivedCve: number;
+  balanceCve: number;
 };
 
 export type PaymentStatus = PaymentRow['status'];
 
+/**
+ * "Parcial" não é um estado guardado: deriva de haver dinheiro recebido sem a
+ * fatura estar fechada. Guardá-lo obrigaria a reconstruir o CHECK da coluna e a
+ * manter dois sítios de acordo — e o `overdueSqlPredicate` deixaria de ver a
+ * dívida de quem pagou por conta e passou o prazo.
+ */
+export type EffectivePaymentStatus = PaymentStatus | 'partial';
+
 /** Rótulos pt-PT do estado de pagamento — fonte única para badges/detalhes. */
-export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+export const PAYMENT_STATUS_LABELS: Record<EffectivePaymentStatus, string> = {
   pending: 'Pendente',
   paid: 'Pago',
   overdue: 'Em atraso',
-  cancelled: 'Anulado'
+  cancelled: 'Anulado',
+  partial: 'Parcial'
 };
 
-export const paymentStatusLabel = (status: PaymentStatus): string => PAYMENT_STATUS_LABELS[status];
+export const paymentStatusLabel = (status: EffectivePaymentStatus): string => PAYMENT_STATUS_LABELS[status];
+
+export type PaymentReceipt = {
+  id: number;
+  paymentId: number;
+  amountCve: number;
+  paymentDate: string;
+  paymentMethod: string;
+  source: 'cash' | 'credit';
+  receiptNumber: string;
+  receiptDate: string;
+  voidedAt: string | null;
+  voidReason: string | null;
+  notes: string | null;
+};
+
+export type AgingBucket = 'current' | 'd30' | 'd60' | 'd90' | 'd90plus';
+
+export const AGING_LABELS: Record<AgingBucket, string> = {
+  current: 'Por vencer',
+  d30: '1-30 dias',
+  d60: '31-60 dias',
+  d90: '61-90 dias',
+  d90plus: 'Mais de 90 dias'
+};
+
+export type ReceivableClient = {
+  clientId: number;
+  clientName: string;
+  clientCode: string | null;
+  phone: string | null;
+  zone: string | null;
+  clientStatus: string;
+  invoices: number;
+  openCve: number;
+  overdueCve: number;
+  creditCve: number;
+  oldestDueDate: string;
+  maxDaysOverdue: number;
+  bucket: AgingBucket;
+};
+
+export type ReceivablesReport = {
+  generatedAt: string;
+  totals: {
+    openCve: number;
+    overdueCve: number;
+    notDueCve: number;
+    clients: number;
+    invoices: number;
+    creditCve: number;
+  };
+  aging: Record<AgingBucket, { invoices: number; amountCve: number }>;
+  clients: ReceivableClient[];
+};
 
 export type SmsEventType = 'invoice_issued' | 'receipt_confirmed' | 'payment_overdue' | 'suspension_notice';
 
@@ -479,6 +545,8 @@ export type ClientProfitability = {
   }>;
   paidRevenueCve: number;
   pendingRevenueCve: number;
+  /** Dinheiro do cliente ainda por abater em fatura (troco, fatura anulada). */
+  creditCve: number;
   monthsActive: number;
   paidMonths: number;
   monthlyAverageRevenueCve: number;
