@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
+import { factMoment } from '../../shared/assignment-dates';
 import { MAC_FORMAT_ERROR, isMacAddress, normalizeMacAddress } from '../../shared/mac';
 
 /**
@@ -22,6 +23,8 @@ export type DeviceInput = {
    * compra. Por omissão o equipamento é do ISP e é alugado.
    */
   ownership?: 'isp' | 'cliente' | null;
+  /** Dia em que isto aconteceu mesmo. Sem valor, e hoje. */
+  installedOn?: string | null;
 };
 
 export type ServiceItemInput = DeviceInput & { quantity?: number | null };
@@ -278,13 +281,18 @@ export function installDeviceWithinTx(
   // tem instalado. O equipamento do cliente nunca gera renda.
   const rentalFeeCve = ownership === 'cliente' ? 0 : freshCatalog.rentalFeeCve;
 
+  // A data do facto separa-se da do lancamento: `created_at` continua a marcar
+  // quando isto foi escrito, `start_date` marca quando o equipamento foi mesmo
+  // instalado. Sem os dois, um registo tardio apagava o dia verdadeiro.
+  const moment = factMoment(device.installedOn);
+
   const assignment = db.prepare(`
     INSERT INTO service_device_assignments (
       service_id, catalog_id, serial_number, asset_tag, ip_address, mac_address,
       technician_id, notes, start_date, end_date, ownership, owned_since, rental_fee_cve,
       created_by, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, date('now'), NULL, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, datetime('now'), datetime('now'))
   `).run(
     serviceId,
     device.catalogId,
@@ -294,9 +302,10 @@ export function installDeviceWithinTx(
     macAddress,
     technicianId,
     notes,
+    moment.day,
     ownership,
     // Equipamento que o cliente já trouxe é dele desde o primeiro dia.
-    ownership === 'cliente' ? new Date().toISOString().slice(0, 10) : null,
+    ownership === 'cliente' ? moment.day : null,
     rentalFeeCve,
     technicianId
   );
@@ -307,9 +316,9 @@ export function installDeviceWithinTx(
   if (ownership === 'isp') {
     db.prepare(`
       INSERT INTO stock_movements (
-        catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
+        catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by, created_at
       )
-      VALUES (?, 'saida', 1, ?, ?, ?, ?, ?, ?)
+      VALUES (?, 'saida', 1, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       device.catalogId,
       freshCatalog.landedCostCve,
@@ -317,7 +326,8 @@ export function installDeviceWithinTx(
       notes,
       serviceId,
       clientName,
-      userId
+      userId,
+      moment.at
     );
 
     db.prepare(`
@@ -334,8 +344,8 @@ export function installDeviceWithinTx(
       INSERT INTO service_events (
         service_id, event_type, notes, technician_id, created_by, created_at
       )
-      VALUES (?, 'instalacao', ?, ?, ?, datetime('now'))
-    `).run(serviceId, notes, technicianId, technicianId);
+      VALUES (?, 'instalacao', ?, ?, ?, ?)
+    `).run(serviceId, notes, technicianId, technicianId, moment.at);
     eventId = event.lastInsertRowid;
   }
 
@@ -348,10 +358,20 @@ export function installDeviceWithinTx(
  */
 export function consumeMaterialWithinTx(
   db: Database.Database,
-  params: { serviceId: number; clientName: string; catalogId: number; quantity: number; notes?: string | null; userId: number | null }
+  params: {
+    serviceId: number;
+    clientName: string;
+    catalogId: number;
+    quantity: number;
+    notes?: string | null;
+    userId: number | null;
+    /** Dia em que o material foi mesmo aplicado. Sem valor, e hoje. */
+    installedOn?: string | null;
+  }
 ): { lineId: number | bigint } {
   const { serviceId, clientName, catalogId, quantity, userId } = params;
   const notes = cleanValue(params.notes);
+  const moment = factMoment(params.installedOn);
 
   const fresh = loadCatalogKind(db, catalogId);
   if (!fresh) {
@@ -362,16 +382,18 @@ export function consumeMaterialWithinTx(
   }
 
   const line = db.prepare(`
-    INSERT INTO service_material_lines (service_id, catalog_id, quantity, unit_cost_cve, notes, created_by, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-  `).run(serviceId, catalogId, quantity, fresh.landedCostCve, notes, userId);
+    INSERT INTO service_material_lines (
+      service_id, catalog_id, quantity, unit_cost_cve, notes, created_by, created_at, installed_on
+    )
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)
+  `).run(serviceId, catalogId, quantity, fresh.landedCostCve, notes, userId, moment.day);
 
   db.prepare(`
     INSERT INTO stock_movements (
-      catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
+      catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by, created_at
     )
-    VALUES (?, 'saida', ?, ?, ?, ?, ?, ?, ?)
-  `).run(catalogId, quantity, fresh.landedCostCve, `Instalacao servico ${serviceId}`, notes, serviceId, clientName, userId);
+    VALUES (?, 'saida', ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(catalogId, quantity, fresh.landedCostCve, `Instalacao servico ${serviceId}`, notes, serviceId, clientName, userId, moment.at);
 
   db.prepare(`
     UPDATE equipment_catalog
@@ -411,7 +433,8 @@ export function installItemsWithinTx(
         catalogId: item.catalogId,
         quantity: Number(item.quantity ?? 1),
         notes: item.notes,
-        userId
+        userId,
+        installedOn: item.installedOn
       });
       materialLineIds.push(lineId);
     }
@@ -419,10 +442,13 @@ export function installItemsWithinTx(
 
   const summary = `Instalou ${assignmentIds.length} equipamento(s) e ${materialLineIds.length} material(is)`;
   const technicianId = items.find((item) => item.technicianId)?.technicianId ?? null;
+  // Um lote é uma visita: o evento leva a data que os itens trazem. Datas
+  // diferentes no mesmo lote seriam duas visitas, e aí a primeira é a do evento.
+  const moment = factMoment(items.find((item) => item.installedOn)?.installedOn);
   const event = db.prepare(`
     INSERT INTO service_events (service_id, event_type, notes, technician_id, created_by, created_at)
-    VALUES (?, 'instalacao', ?, ?, ?, datetime('now'))
-  `).run(serviceId, summary, technicianId, technicianId);
+    VALUES (?, 'instalacao', ?, ?, ?, ?)
+  `).run(serviceId, summary, technicianId, technicianId, moment.at);
 
   return { assignmentIds, materialLineIds, eventId: event.lastInsertRowid };
 }

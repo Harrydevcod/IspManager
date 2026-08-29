@@ -25,7 +25,8 @@ const catalog: StockCatalogRow = {
   stockTotal: 2,
   active: 1,
   landedCostCve: 10_000,
-  lastMovementAt: null
+  lastMovementAt: null,
+  backboneCount: 0
 };
 
 const summary: StockSummary = {
@@ -106,6 +107,21 @@ test('removes backbone quantity from Stock controls, table and catalog form', as
 
   expect([...document.querySelectorAll('label')]
     .some((label) => label.textContent?.trim() === 'Unidades backbone')).toBe(false);
+});
+
+test('diz para onde foram as unidades que ja nao estao no armazem', async () => {
+  const semBackbone = await mount();
+  expect(semBackbone.querySelector('.stock-item-level-backbone')).toBeNull();
+
+  await act(async () => root?.unmount());
+  root = null;
+  document.body.replaceChildren();
+
+  catalog.backboneCount = 2;
+  const comBackbone = await mount();
+  expect(comBackbone.querySelector('.stock-item-level-backbone')?.textContent?.trim())
+    .toBe('+2 no backbone');
+  catalog.backboneCount = 0;
 });
 
 test('keeps focusCatalogId navigation after the legacy Stock field is removed', async () => {

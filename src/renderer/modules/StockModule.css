@@ -163,6 +163,15 @@
   font-weight: 600;
 }
 
+/* Para onde foram as unidades em falta. Sussurro, nao segunda coluna: so aparece
+   nos poucos modelos que estao num poste, e nunca compete com o numero. */
+.stock-item-level-backbone {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .stock-item-value {
   display: grid;
   gap: var(--space-px);

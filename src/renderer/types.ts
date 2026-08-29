@@ -163,6 +163,8 @@ export type StockCatalogRow = {
   active: number;
   landedCostCve: number;
   lastMovementAt: string | null;
+  /** Unidades deste modelo em serviço no backbone — já fora de `stockTotal`. */
+  backboneCount: number;
 };
 
 export type StockSummary = {

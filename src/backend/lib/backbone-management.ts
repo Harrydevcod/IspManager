@@ -163,6 +163,56 @@ function ensureCatalog(db: Database.Database, catalogId: number): void {
   if (!row) throw new BackboneValidationError('Catálogo não encontrado');
 }
 
+const LANDED_COST_SQL = '(purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve)';
+
+/**
+ * O modelo cujo stock esta unidade ocupa — nenhum, quando está retirada.
+ *
+ * Uma unidade de backbone está no terreno, não no armazém: enquanto o estado não
+ * for retirado consome 1 do stock do seu modelo. O backbone era o único caminho
+ * que tirava equipamento do armazém sem lhe dar baixa, e por isso o inventário
+ * continuava a oferecer unidades que já estavam num poste.
+ */
+function stockHolder(status: BackboneStatus, catalogId: number): number | null {
+  return status === 'retired' ? null : catalogId;
+}
+
+/** Saída do armazém, espelho de serviceInstall. Recusa o que não há. */
+function debitStock(db: Database.Database, catalogId: number, name: string, actorId: number | null): void {
+  const catalog = db.prepare(`
+    SELECT stock_total AS stockTotal, ${LANDED_COST_SQL} AS landedCostCve
+    FROM equipment_catalog WHERE id = ?
+  `).get(catalogId) as { stockTotal: number; landedCostCve: number } | undefined;
+  if (!catalog) throw new BackboneValidationError('Catálogo não encontrado');
+  if (catalog.stockTotal < 1) {
+    throw new BackboneValidationError(`Stock insuficiente. Disponivel: ${catalog.stockTotal}`);
+  }
+  db.prepare(`
+    INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_cve, reference, created_by)
+    VALUES (?, 'saida', 1, ?, ?, ?)
+  `).run(catalogId, catalog.landedCostCve, `Backbone ${name}`, actorId);
+  db.prepare(`
+    UPDATE equipment_catalog
+    SET stock_total = stock_total - 1, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(catalogId);
+}
+
+/** Regresso ao armazém: a unidade sai de serviço, ou troca de modelo. */
+function creditStock(db: Database.Database, catalogId: number, name: string, actorId: number | null): void {
+  const catalog = db.prepare(`SELECT ${LANDED_COST_SQL} AS landedCostCve FROM equipment_catalog WHERE id = ?`)
+    .get(catalogId) as { landedCostCve: number } | undefined;
+  db.prepare(`
+    INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_cve, reference, created_by)
+    VALUES (?, 'devolucao', 1, ?, ?, ?)
+  `).run(catalogId, catalog?.landedCostCve ?? 0, `Backbone ${name}`, actorId);
+  db.prepare(`
+    UPDATE equipment_catalog
+    SET stock_total = stock_total + 1, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(catalogId);
+}
+
 /**
  * Cada alimentação tem de existir, estar em serviço e não fechar um ciclo.
  * Lista vazia é válida: a unidade recebe directamente da Internet.
@@ -383,6 +433,10 @@ export function createBackbone(
   // A unidade e as suas alimentações entram juntas: um backbone gravado sem as
   // ligações apareceria por instantes pendurado na Internet.
   const create = db.transaction(() => {
+    const holder = stockHolder(normalized.status, normalized.catalogId);
+    if (holder !== null) {
+      debitStock(db, holder, normalized.name, actorId);
+    }
     const result = db.prepare(`
       INSERT INTO backbone_devices (
         catalog_id, name, status, serial_number, asset_tag, ip_address, mac_address,
@@ -415,7 +469,10 @@ export function updateBackbone(
   const normalized = normalizeInput(input);
   ensureCatalog(db, normalized.catalogId);
   const update = db.transaction(() => {
-    const existing = db.prepare('SELECT updated_at AS updatedAt FROM backbone_devices WHERE id = ?').get(id) as { updatedAt: string } | undefined;
+    const existing = db.prepare(`
+      SELECT updated_at AS updatedAt, catalog_id AS catalogId, status, name
+      FROM backbone_devices WHERE id = ?
+    `).get(id) as { updatedAt: string; catalogId: number; status: BackboneStatus; name: string } | undefined;
     if (!existing) throw new BackboneNotFoundError('Backbone não encontrado');
     if (normalized.expectedUpdatedAt && normalized.expectedUpdatedAt !== existing.updatedAt) {
       throw new BackboneConflictError('O backbone foi alterado por outra pessoa');
@@ -453,6 +510,15 @@ export function updateBackbone(
       `).get(id);
       if (activeLink) throw new BackboneValidationError('Desvincule ou transfira os equipamentos antes de retirar o backbone');
       throw new BackboneConflictError('O backbone foi alterado por outra pessoa');
+    }
+    // O stock segue o par (modelo, em serviço). Um só cálculo cobre retirar,
+    // reactivar, trocar de modelo, e trocar dos dois ao mesmo tempo; uma edição
+    // de nome ou de IP não mexe em nada, que é o que impede o duplo desconto.
+    const before = stockHolder(existing.status, existing.catalogId);
+    const after = stockHolder(normalized.status, normalized.catalogId);
+    if (before !== after) {
+      if (before !== null) creditStock(db, before, existing.name, actorId);
+      if (after !== null) debitStock(db, after, normalized.name, actorId);
     }
     replaceUpstreams(db, id, normalized.upstreamDeviceIds, actorId);
   });

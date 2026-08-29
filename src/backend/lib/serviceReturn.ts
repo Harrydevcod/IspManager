@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { factMoment } from '../../shared/assignment-dates';
 import { sharerServices } from './deviceShares';
 import { cleanValue, loadCatalogIdentity } from './serviceInstall';
 
@@ -61,10 +62,20 @@ export function returnAssignmentWithinTx(
     technicianId?: number | null;
     userId: number | null;
     skipEvent?: boolean;
+    /** Dia em que a unidade saiu mesmo. Sem valor, e hoje. */
+    returnedOn?: string | null;
+    /**
+     * A unidade sai porque outra ocupa o lugar dela, não porque foi removida.
+     * Só o chamador sabe garantir a continuidade — e tem de a garantir na mesma
+     * transação, ou os partilhados ficam mesmo às escuras.
+     */
+    replacing?: boolean;
   }
 ): { assignmentId: number; condition: ReturnCondition; restoredStock: boolean; eventId: number | bigint } {
   const condition: ReturnCondition = params.condition ?? 'bom';
   const notes = cleanValue(params.notes);
+  // O dia da recolha e o do facto; `updated_at` continua a marcar o lancamento.
+  const moment = factMoment(params.returnedOn);
 
   const current = db.prepare(`
     SELECT id, service_id AS serviceId, catalog_id AS catalogId, end_date AS endDate, ownership
@@ -85,30 +96,32 @@ export function returnAssignmentWithinTx(
   // Devolver é remoção física: os serviços partilhados ficariam sem sinal. O
   // operador desassocia-os primeiro — promover um deles a titular em silêncio
   // seria esperto de mais para as 3 da manhã.
-  const sharers = sharerServices(db, params.assignmentId);
-  if (sharers.length > 0) {
-    throw new Error(`device_shared:${sharers.map((sharer) => sharer.clientName).join(', ')}`);
+  if (!params.replacing) {
+    const sharers = sharerServices(db, params.assignmentId);
+    if (sharers.length > 0) {
+      throw new Error(`device_shared:${sharers.map((sharer) => sharer.clientName).join(', ')}`);
+    }
   }
 
   const updated = db.prepare(`
     UPDATE service_device_assignments
-    SET end_date = date('now'),
+    SET end_date = ?,
         return_condition = ?,
         updated_at = datetime('now')
     WHERE id = ? AND end_date IS NULL
-  `).run(condition, params.assignmentId);
+  `).run(moment.day, condition, params.assignmentId);
   if (updated.changes === 0) {
     throw new Error('already_closed');
   }
 
   db.prepare(`
     UPDATE backbone_assignment_links
-    SET ended_at = datetime('now'),
+    SET ended_at = ?,
         ended_by = ?,
         change_reason = COALESCE(change_reason, 'assignment_closed'),
         updated_at = datetime('now')
     WHERE assignment_id = ? AND ended_at IS NULL
-  `).run(params.userId ?? params.technicianId ?? null, params.assignmentId);
+  `).run(moment.at, params.userId ?? params.technicianId ?? null, params.assignmentId);
 
   // Espelho da instalacao: o que e do cliente nunca saiu do armazem, por isso
   // tambem nao volta a ele — inflar o stock com equipamento alheio seria pior do
@@ -118,9 +131,9 @@ export function returnAssignmentWithinTx(
     const catalog = loadCatalogIdentity(db, current.catalogId);
     db.prepare(`
       INSERT INTO stock_movements (
-        catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
+        catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by, created_at
       )
-      VALUES (?, 'devolucao', 1, ?, ?, ?, ?, ?, ?)
+      VALUES (?, 'devolucao', 1, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       current.catalogId,
       catalog?.landedCostCve ?? 0,
@@ -128,7 +141,8 @@ export function returnAssignmentWithinTx(
       notes,
       current.serviceId,
       params.clientName,
-      params.userId
+      params.userId,
+      moment.at
     );
 
     db.prepare(`
@@ -145,12 +159,13 @@ export function returnAssignmentWithinTx(
       INSERT INTO service_events (
         service_id, event_type, notes, technician_id, created_by, created_at
       )
-      VALUES (?, 'alteracao_servico', ?, ?, ?, datetime('now'))
+      VALUES (?, 'alteracao_servico', ?, ?, ?, ?)
     `).run(
       current.serviceId,
       notes ?? `Devolucao de equipamento (${RETURN_CONDITION_LABELS[condition].toLowerCase()})`,
       params.technicianId ?? null,
-      params.userId ?? params.technicianId ?? null
+      params.userId ?? params.technicianId ?? null,
+      moment.at
     );
     eventId = event.lastInsertRowid;
   }
@@ -187,6 +202,8 @@ export function recoverMaterialWithinTx(
     quantity: number;
     notes?: string | null;
     userId: number | null;
+    /** Dia em que o material foi mesmo recuperado. Sem valor, e hoje. */
+    returnedOn?: string | null;
   }
 ): { quantity: number } {
   const quantity = Number(params.quantity);
@@ -206,9 +223,9 @@ export function recoverMaterialWithinTx(
 
   db.prepare(`
     INSERT INTO stock_movements (
-      catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
+      catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by, created_at
     )
-    VALUES (?, 'devolucao', ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, 'devolucao', ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     params.catalogId,
     quantity,
@@ -217,7 +234,8 @@ export function recoverMaterialWithinTx(
     cleanValue(params.notes),
     params.serviceId,
     params.clientName,
-    params.userId
+    params.userId,
+    factMoment(params.returnedOn).at
   );
 
   db.prepare(`
@@ -251,6 +269,8 @@ export function processServiceReturn(
     technicianId?: number | null;
     notes?: string | null;
     userId: number | null;
+    /** Dia da recolha, comum a todo o lote: e uma visita, nao varias. */
+    returnedOn?: string | null;
   }
 ): ServiceReturnResult {
   const devices: ServiceReturnResult['devices'] = [];
@@ -265,7 +285,8 @@ export function processServiceReturn(
       notes: device.notes,
       technicianId: params.technicianId,
       userId: params.userId,
-      skipEvent: true
+      skipEvent: true,
+      returnedOn: params.returnedOn
     });
     devices.push({
       assignmentId: result.assignmentId,
@@ -281,19 +302,21 @@ export function processServiceReturn(
       catalogId: material.catalogId,
       quantity: material.quantity,
       notes: material.notes,
-      userId: params.userId
+      userId: params.userId,
+      returnedOn: params.returnedOn
     });
     materials.push({ catalogId: material.catalogId, quantity: result.quantity });
   }
 
   const event = db.prepare(`
     INSERT INTO service_events (service_id, event_type, notes, technician_id, created_by, created_at)
-    VALUES (?, 'alteracao_servico', ?, ?, ?, datetime('now'))
+    VALUES (?, 'alteracao_servico', ?, ?, ?, ?)
   `).run(
     params.serviceId,
     summarizeReturn(devices, materials, params.notes),
     params.technicianId ?? null,
-    params.userId ?? params.technicianId ?? null
+    params.userId ?? params.technicianId ?? null,
+    factMoment(params.returnedOn).at
   );
 
   return { devices, materials, eventId: event.lastInsertRowid };

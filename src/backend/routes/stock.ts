@@ -108,7 +108,11 @@ export async function registerStockRoutes(app: FastifyInstance) {
         stock_total AS stockTotal,
         active,
         (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve) AS landedCostCve,
-        (SELECT MAX(created_at) FROM stock_movements sm WHERE sm.catalog_id = equipment_catalog.id) AS lastMovementAt
+        (SELECT MAX(created_at) FROM stock_movements sm WHERE sm.catalog_id = equipment_catalog.id) AS lastMovementAt,
+        -- Onde foram parar as unidades que ja nao estao no armazem: contagem real
+        -- das que estao no backbone, nao o campo manual que a migracao 34 apagou.
+        (SELECT COUNT(*) FROM backbone_devices b
+         WHERE b.catalog_id = equipment_catalog.id AND b.status <> 'retired') AS backboneCount
       FROM equipment_catalog
       WHERE active = 1
       ORDER BY brand, model

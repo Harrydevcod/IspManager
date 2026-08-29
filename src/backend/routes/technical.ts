@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { factMoment, validateAssignmentDates } from '../../shared/assignment-dates';
 import { MAC_FORMAT_ERROR, isMacAddress, normalizeMacAddress } from '../../shared/mac';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit, recordAuditStrict } from '../lib/audit';
@@ -33,6 +34,9 @@ import {
 import { insertEquipmentPurchase } from '../lib/billing';
 import { requireAuth, requireRole } from './auth';
 
+/** Dia do facto: o equipamento instala-se hoje e regista-se amanha. */
+const factDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data invalida').optional().nullable();
+
 const deviceAssignmentSchema = z.object({
   catalogId: z.coerce.number().int().positive(),
   serialNumber: z.string().trim().optional().nullable(),
@@ -42,7 +46,10 @@ const deviceAssignmentSchema = z.object({
   technicianId: z.coerce.number().int().positive().optional().nullable(),
   notes: z.string().trim().optional().nullable(),
   /** 'cliente' = equipamento que o cliente trouxe; não gera renda. */
-  ownership: z.enum(['isp', 'cliente']).optional().nullable()
+  ownership: z.enum(['isp', 'cliente']).optional().nullable(),
+  /** Só usado na troca: em que estado voltou a unidade que saiu. */
+  returnCondition: z.enum(['bom', 'avariado', 'nao_devolvido']).optional().nullable(),
+  installedOn: factDateSchema
 });
 
 const batchItemsSchema = z.object({
@@ -55,7 +62,8 @@ const batchItemsSchema = z.object({
     macAddress: z.string().trim().optional().nullable(),
     technicianId: z.coerce.number().int().positive().optional().nullable(),
     notes: z.string().trim().optional().nullable(),
-    ownership: z.enum(['isp', 'cliente']).optional().nullable()
+    ownership: z.enum(['isp', 'cliente']).optional().nullable(),
+    installedOn: factDateSchema
   })).optional().nullable(),
   installCosts: z.array(z.object({
     kind: z.enum(['mao_de_obra', 'transporte', 'outro']).default('mao_de_obra'),
@@ -115,7 +123,8 @@ const deviceReturnSchema = z.object({
   /** Como a unidade voltou. Só 'bom' repõe stock; o resto é perda registada. */
   condition: returnConditionSchema.optional().nullable(),
   technicianId: z.coerce.number().int().positive().optional().nullable(),
-  notes: z.string().trim().optional().nullable()
+  notes: z.string().trim().optional().nullable(),
+  returnedOn: factDateSchema
 });
 
 const serviceReturnSchema = z.object({
@@ -130,7 +139,14 @@ const serviceReturnSchema = z.object({
     notes: z.string().trim().optional().nullable()
   })).optional().nullable(),
   technicianId: z.coerce.number().int().positive().optional().nullable(),
-  notes: z.string().trim().optional().nullable()
+  notes: z.string().trim().optional().nullable(),
+  returnedOn: factDateSchema
+});
+
+/** Corrigir as datas de uma atribuicao ja gravada, sem mexer em stock. */
+const assignmentDatesSchema = z.object({
+  startDate: factDateSchema,
+  endDate: factDateSchema
 });
 
 const technicalEventSchema = z.object({
@@ -143,16 +159,30 @@ type ServiceIdentity = {
   id: number;
   clientId: number;
   clientName: string;
+  /** Limite inferior das datas do ciclo: nada se instala antes do servico. */
+  activationDate: string | null;
 };
 
 function loadService(id: number) {
   const db = getSqliteDatabase();
   return db.prepare(`
-    SELECT s.id, s.client_id AS clientId, c.full_name AS clientName
+    SELECT s.id, s.client_id AS clientId, c.full_name AS clientName, s.activation_date AS activationDate
     FROM services s
     JOIN clients c ON c.id = s.client_id
     WHERE s.id = ?
   `).get(id) as ServiceIdentity | undefined;
+}
+
+/**
+ * Uma data do formulario que nao faz sentido no tempo para aqui. As regras sao
+ * as mesmas no ecra e no servidor — o ecra avisa, o servidor recusa.
+ */
+function dateError(
+  dates: { startDate?: string | null; endDate?: string | null },
+  activationDate: string | null
+): string | null {
+  const { errors } = validateAssignmentDates({ ...dates, activationDate });
+  return errors[0] ?? null;
 }
 
 function loadUser(id: number) {
@@ -319,6 +349,10 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
 
     const items = (parsed.data.items ?? []) as ServiceItemInput[];
     const installCosts = (parsed.data.installCosts ?? []) as InstallCostInput[];
+    for (const item of items) {
+      const bad = dateError({ startDate: item.installedOn }, service.activationDate);
+      if (bad) return reply.status(400).send({ error: bad });
+    }
     if (items.length > 0) {
       const preflight = preflightItems(db, items);
       if (!preflight.ok) {
@@ -589,6 +623,74 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
   });
 
   /**
+   * Corrige as datas de uma atribuicao ja gravada.
+   *
+   * Existe por causa do que ja esta na base: dezenas de equipamentos com a data
+   * do dia em que o sistema foi carregado, e nao a do dia em que foram mesmo
+   * instalados. Sem isto, o campo novo so servia para o futuro e o passado ficava
+   * errado para sempre.
+   *
+   * Nao mexe em stock nem escreve movimento: corrigir uma data nao move unidades,
+   * so diz melhor quando o que ja aconteceu aconteceu. Fica em auditoria porque
+   * mexer no tempo de um registo e coisa que se quer poder explicar depois.
+   */
+  app.patch('/api/service-device-assignments/:id/dates', canWriteTechnical, async (request, reply) => {
+    const assignmentId = Number((request.params as { id: string }).id);
+    const parsed = assignmentDatesSchema.safeParse(request.body ?? {});
+    if (!Number.isInteger(assignmentId) || assignmentId <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Datas invalidas' });
+    }
+    if (parsed.data.startDate == null && parsed.data.endDate == null) {
+      return reply.status(400).send({ error: 'Indique pelo menos uma data' });
+    }
+
+    const db = getSqliteDatabase();
+    const current = db.prepare(`
+      SELECT service_id AS serviceId, start_date AS startDate, end_date AS endDate
+      FROM service_device_assignments WHERE id = ?
+    `).get(assignmentId) as { serviceId: number; startDate: string; endDate: string | null } | undefined;
+    if (!current) {
+      return reply.status(404).send({ error: 'Atribuicao nao encontrada' });
+    }
+    const service = loadService(current.serviceId);
+    if (!service) {
+      return reply.status(404).send({ error: 'Servico nao encontrado' });
+    }
+
+    // Datar a saida de uma unidade que ainda esta instalada seria fecha-la pela
+    // porta das traseiras: para isso ha a devolucao, que trata do stock.
+    const endDate = parsed.data.endDate ?? current.endDate;
+    if (parsed.data.endDate != null && current.endDate == null) {
+      return reply.status(400).send({ error: 'Este equipamento ainda esta instalado: use a devolucao' });
+    }
+
+    const startDate = parsed.data.startDate ?? current.startDate;
+    const bad = dateError({ startDate, endDate }, service.activationDate);
+    if (bad) {
+      return reply.status(400).send({ error: bad });
+    }
+
+    db.prepare(`
+      UPDATE service_device_assignments
+      SET start_date = ?, end_date = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(startDate, endDate, assignmentId);
+
+    recordAudit(request, {
+      action: 'update_assignment_dates',
+      entityType: 'service_device_assignment',
+      entityId: assignmentId,
+      summary: `Corrigiu as datas do equipamento ${assignmentId}`,
+      metadata: {
+        antes: { startDate: current.startDate, endDate: current.endDate },
+        depois: { startDate, endDate }
+      }
+    });
+
+    return reply.send({ id: assignmentId, startDate, endDate });
+  });
+
+  /**
    * Corrige a identificacao (IP, MAC, serial, asset tag, notas) de um equipamento ja
    * instalado. Um unico UPDATE: nao mexe em stock, nao fecha nem cria atribuicoes e
    * nao escreve evento tecnico — ao contrario de /replace, que existe para a troca
@@ -744,105 +846,92 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       return reply.status(conflict.status).send({ error: conflict.error });
     }
 
+    // A troca é uma data só: a unidade velha sai no dia em que a nova entra, e
+    // nenhuma das duas pode ser anterior à instalação que está a substituir.
+    const openedOn = db.prepare('SELECT start_date AS startDate FROM service_device_assignments WHERE id = ?')
+      .get(assignmentId) as { startDate: string } | undefined;
+    const badDate = dateError(
+      { startDate: openedOn?.startDate, endDate: parsed.data.installedOn },
+      loadService(current.serviceId)?.activationDate ?? null
+    );
+    if (badDate) {
+      return reply.status(400).send({ error: badDate });
+    }
+
     const run = db.transaction(() => {
       const service = loadService(current.serviceId);
       if (!service) {
         throw new Error('service_missing');
       }
-      const freshCatalog = loadCatalogIdentity(db, parsed.data.catalogId);
-      if (!freshCatalog) {
-        throw new Error('catalog_missing');
-      }
-      if (freshCatalog.stockTotal < 1) {
-        throw new Error(`stock_insufficient:${freshCatalog.stockTotal}`);
-      }
-
-      db.prepare(`
-        UPDATE service_device_assignments
-        SET end_date = date('now'),
-            updated_at = datetime('now')
-        WHERE id = ? AND end_date IS NULL
-      `).run(assignmentId);
-
-      db.prepare(`
-        UPDATE backbone_assignment_links
-        SET ended_at = datetime('now'),
-            ended_by = ?,
-            change_reason = COALESCE(change_reason, 'assignment_closed'),
-            updated_at = datetime('now')
-        WHERE assignment_id = ? AND ended_at IS NULL
-      `).run(request.user?.id ?? parsed.data.technicianId ?? null, assignmentId);
-
-      const replacement = db.prepare(`
-        INSERT INTO service_device_assignments (
-          service_id, catalog_id, serial_number, asset_tag, ip_address, mac_address,
-          technician_id, notes, start_date, end_date, created_by, created_at, updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, date('now'), NULL, ?, datetime('now'), datetime('now'))
-      `).run(
-        current.serviceId,
-        parsed.data.catalogId,
-        serialNumber,
-        assetTag,
-        ipAddress,
-        macAddress,
-        parsed.data.technicianId || null,
+      // Uma troca é uma devolução mais uma instalação. Escrevê-la à mão era o que
+      // fazia a unidade retirada desaparecer — nem voltava ao armazém nem ficava
+      // marcada como avariada — e a nova nascer sem propriedade nem renda, com a
+      // mensalidade do equipamento a cair para zero. Os motores sabem as duas
+      // coisas; aqui só se diz que uma troca não é uma remoção.
+      returnAssignmentWithinTx(db, {
+        assignmentId,
+        serviceId: current.serviceId,
+        clientName: service.clientName,
+        condition: parsed.data.returnCondition ?? 'bom',
         notes,
-        parsed.data.technicianId || null
-      );
+        technicianId: parsed.data.technicianId || null,
+        userId: request.user?.id ?? null,
+        skipEvent: true,
+        replacing: true,
+        returnedOn: parsed.data.installedOn
+      });
+
+      const replacement = installDeviceWithinTx(db, {
+        serviceId: current.serviceId,
+        clientName: service.clientName,
+        device: {
+          catalogId: parsed.data.catalogId,
+          serialNumber,
+          assetTag,
+          ipAddress,
+          macAddress,
+          technicianId: parsed.data.technicianId || null,
+          notes,
+          ownership: parsed.data.ownership ?? null,
+          installedOn: parsed.data.installedOn
+        },
+        userId: request.user?.id ?? null,
+        skipEvent: true
+      });
 
       // A unidade nova herda os serviços que a antiga servia: é troca física, os
       // clientes partilhados continuam servidos.
       db.prepare(`
         UPDATE service_device_shares SET assignment_id = ? WHERE assignment_id = ?
-      `).run(replacement.lastInsertRowid, assignmentId);
-
-      db.prepare(`
-        INSERT INTO stock_movements (
-          catalog_id, type, quantity, unit_cost_cve, reference, notes, service_id, client_name, created_by
-        )
-        VALUES (?, 'saida', 1, ?, ?, ?, ?, ?, ?)
-      `).run(
-        parsed.data.catalogId,
-        freshCatalog.landedCostCve,
-        `Troca servico ${current.serviceId}`,
-        notes,
-        current.serviceId,
-        service.clientName,
-        request.user?.id || null
-      );
-
-      db.prepare(`
-        UPDATE equipment_catalog
-        SET stock_total = stock_total - 1,
-            updated_at = datetime('now')
-        WHERE id = ?
-      `).run(parsed.data.catalogId);
+      `).run(replacement.assignmentId, assignmentId);
 
       const event = db.prepare(`
         INSERT INTO service_events (
           service_id, event_type, notes, technician_id, created_by, created_at
         )
-        VALUES (?, 'troca_equipamento', ?, ?, ?, datetime('now'))
+        VALUES (?, 'troca_equipamento', ?, ?, ?, ?)
       `).run(
         current.serviceId,
         notes,
         parsed.data.technicianId || null,
-        parsed.data.technicianId || null
+        parsed.data.technicianId || null,
+        factMoment(parsed.data.installedOn).at
       );
 
-      return { assignmentId: replacement.lastInsertRowid, eventId: event.lastInsertRowid };
+      return { assignmentId: replacement.assignmentId, eventId: event.lastInsertRowid };
     });
 
     let result: { assignmentId: string | number | bigint; eventId: string | number | bigint };
     try {
       result = run();
     } catch (error) {
-      if (error instanceof Error && error.message.startsWith('stock_insufficient:')) {
-        return reply.status(400).send({ error: `Stock insuficiente. Disponivel: ${error.message.split(':')[1]}` });
-      }
       if (error instanceof Error && error.message === 'service_missing') {
         return reply.status(404).send({ error: 'Servico nao encontrado' });
+      }
+      // A troca falha pelos dois lados: pela unidade que sai e pela que entra.
+      const failure = mapReturnError(error) ?? mapInstallError(error);
+      if (failure) {
+        return reply.status(failure.status).send({ error: failure.error });
       }
       throw error;
     }
@@ -943,6 +1032,15 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
     if (parsed.data.technicianId && !loadUser(parsed.data.technicianId)) {
       return reply.status(404).send({ error: 'Tecnico nao encontrado' });
     }
+    const openedOn = db.prepare('SELECT start_date AS startDate FROM service_device_assignments WHERE id = ?')
+      .get(assignmentId) as { startDate: string } | undefined;
+    const badReturnDate = dateError(
+      { startDate: openedOn?.startDate, endDate: parsed.data.returnedOn },
+      service.activationDate
+    );
+    if (badReturnDate) {
+      return reply.status(400).send({ error: badReturnDate });
+    }
 
     let result: { eventId: number | bigint; condition: ReturnCondition; restoredStock: boolean };
     try {
@@ -952,7 +1050,8 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         condition: parsed.data.condition,
         notes: parsed.data.notes,
         technicianId: parsed.data.technicianId,
-        userId: request.user?.id ?? null
+        userId: request.user?.id ?? null,
+        returnedOn: parsed.data.returnedOn
       }))();
     } catch (error) {
       const mapped = mapReturnError(error);
@@ -1008,6 +1107,15 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
     if (parsed.data.technicianId && !loadUser(parsed.data.technicianId)) {
       return reply.status(404).send({ error: 'Tecnico nao encontrado' });
     }
+    for (const device of devices) {
+      const opened = db.prepare('SELECT start_date AS startDate FROM service_device_assignments WHERE id = ?')
+        .get(device.assignmentId) as { startDate: string } | undefined;
+      const bad = dateError(
+        { startDate: opened?.startDate, endDate: parsed.data.returnedOn },
+        service.activationDate
+      );
+      if (bad) return reply.status(400).send({ error: bad });
+    }
 
     let result;
     try {
@@ -1016,6 +1124,7 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         clientName: service.clientName,
         devices,
         materials,
+        returnedOn: parsed.data.returnedOn,
         technicianId: parsed.data.technicianId,
         notes: parsed.data.notes,
         userId: request.user?.id ?? null

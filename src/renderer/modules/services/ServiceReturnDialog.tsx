@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Badge, Button, Dialog, Field, Message, Select, Textarea, Toggle } from '../../components';
+import { todayIso } from '../../../shared/assignment-dates';
 import { formatCve } from '../../lib/format';
 import type { DeviceAssignment, MaterialReturnLine, ReturnCondition } from '../../types';
 
@@ -16,6 +17,8 @@ type Props = {
     devices: Array<{ assignmentId: number; condition: ReturnCondition }>;
     materials: Array<{ catalogId: number; quantity: number }>;
     notes: string | null;
+    /** Dia da recolha: e uma visita, comum a tudo o que o tecnico trouxe. */
+    returnedOn: string | null;
   }) => void;
 };
 
@@ -62,6 +65,7 @@ export function ServiceReturnDialog({
   });
   const [recovered, setRecovered] = useState<Record<number, string>>({});
   const [notes, setNotes] = useState('');
+  const [returnedOn, setReturnedOn] = useState(todayIso());
 
   const devices = Object.entries(selected)
     .filter(([, condition]) => Boolean(condition))
@@ -102,7 +106,7 @@ export function ServiceReturnDialog({
         <>
           <Button variant="secondary" onClick={onClose} disabled={submitting}>Fechar</Button>
           <Button
-            onClick={() => onConfirm({ devices, materials, notes: notes.trim() || null })}
+            onClick={() => onConfirm({ devices, materials, notes: notes.trim() || null, returnedOn: returnedOn || null })}
             loading={submitting}
             disabled={nothingToDo || overRecovered}
           >
@@ -209,6 +213,14 @@ export function ServiceReturnDialog({
           })}
         </section>
 
+        <Field
+          label="Data da recolha"
+          type="date"
+          max={todayIso()}
+          value={returnedOn}
+          hint={returnedOn !== todayIso() ? 'Registo retroativo' : undefined}
+          onChange={(event) => setReturnedOn(event.target.value)}
+        />
         <Textarea
           label="Notas da devolução"
           rows={2}
