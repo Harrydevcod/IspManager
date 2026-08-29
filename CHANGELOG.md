@@ -14,7 +14,7 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ### Alterado
 
-- O indicador **"Lucro acumulado"** da aba Lucro passa a chamar-se **"Caixa livre acumulada"**, que é o que sempre foi: recebido menos todo o capital aplicado menos as despesas. Um investimento de 500.000$ afunda o mês em que é feito — isso é caixa, não prejuízo. O lucro mensal de cada investimento (receita menos OPEX) não mudou de nome nem de conta
+- O indicador **"Lucro acumulado"** da aba Lucro passa a chamar-se **"Caixa acumulada"**, que é o que sempre foi: recebido menos todo o capital aplicado menos as despesas. Um investimento de 500.000$ afunda o mês em que é feito — isso é caixa, não prejuízo. O lucro mensal de cada investimento (receita menos OPEX) não mudou de nome nem de conta
 
 ## [1.18.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.18.0) — 2026-08-29
 
