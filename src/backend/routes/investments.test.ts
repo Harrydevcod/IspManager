@@ -24,6 +24,28 @@ beforeAll(async () => {
   closeDatabaseForTests = database.closeDatabaseForTests;
 });
 
+/**
+ * Fatura paga = fatura + recibo. Desde a migracao 0052 e o recibo que e a
+ * caixa, e a rentabilidade le recibos: uma linha 'paid' sem recibo e um estado
+ * que a producao nao sabe produzir — a migracao fez o backfill de todo o
+ * historico e o `payPayment` escreve sempre um.
+ */
+function insertPayment(sql: string, ...params: unknown[]): number {
+  const id = db.prepare(sql).run(...params).lastInsertRowid as number;
+  const row = db.prepare(`
+    SELECT status, amount_cve AS amountCve, payment_date AS paymentDate, due_date AS dueDate
+    FROM payments WHERE id = ?
+  `).get(id) as { status: string; amountCve: number; paymentDate: string | null; dueDate: string };
+  if (row.status === 'paid') {
+    const when = row.paymentDate ?? row.dueDate;
+    db.prepare(`
+      INSERT INTO payment_receipts (payment_id, amount_cve, payment_date, payment_method, source, receipt_number, receipt_date)
+      VALUES (?, ?, ?, 'numerario', 'cash', ?, ?)
+    `).run(id, row.amountCve, when, `T-${id}`, when);
+  }
+  return id;
+}
+
 beforeEach(() => {
   db.prepare('DELETE FROM backbone_assignment_links').run();
   db.prepare('DELETE FROM backbone_devices').run();
@@ -253,8 +275,8 @@ describe('investments CRUD', () => {
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone) VALUES ('C001', 'Cliente Lucro', '5550001')`).run().lastInsertRowid as number;
     const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve) VALUES (?, 5000)`).run(clientId).lastInsertRowid as number;
     // Faturacao recebida: 5000 pago (+ um pendente que NAO conta).
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status) VALUES (?, ?, '2026-04', 5000, '2026-04-10', 'paid')`).run(clientId, serviceId);
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status) VALUES (?, ?, '2026-05', 5000, '2026-05-10', 'pending')`).run(clientId, serviceId);
+    insertPayment(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status) VALUES (?, ?, '2026-04', 5000, '2026-04-10', 'paid')`, clientId, serviceId);
+    insertPayment(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status) VALUES (?, ?, '2026-05', 5000, '2026-05-10', 'pending')`, clientId, serviceId);
     // Investido na infraestrutura: 3000 (sem stock neste teste).
     db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_cve, status) VALUES ('Torre', 'infraestrutura', '2026-05-01', '2026-05', 3000, 'ativo')`).run();
     // Despesas: 800.
@@ -390,10 +412,10 @@ describe('investments CRUD', () => {
                                  VALUES ('CLT-VIP', 'VIP', 'active')`).run().lastInsertRowid as number;
     db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 5000, 10, 'active')`).run(clientId);
     const serviceId = (db.prepare(`SELECT id FROM services WHERE client_id = ?`).get(clientId) as { id: number }).id;
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-                VALUES (?, ?, '2026-03', 5000, '2026-03-10', '2026-03-10', 'paid')`).run(clientId, serviceId);
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-                VALUES (?, ?, '2026-04', 5000, '2026-04-10', '2026-04-10', 'paid')`).run(clientId, serviceId);
+    insertPayment(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
+                VALUES (?, ?, '2026-03', 5000, '2026-03-10', '2026-03-10', 'paid')`, clientId, serviceId);
+    insertPayment(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
+                VALUES (?, ?, '2026-04', 5000, '2026-04-10', '2026-04-10', 'paid')`, clientId, serviceId);
 
     db.prepare(`INSERT INTO investments
                 (name, type, client_id, investment_date, reference_month, total_cost_cve,
@@ -417,12 +439,12 @@ describe('investments CRUD', () => {
     const clientB = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-B', 'Solto', 'active')`).run().lastInsertRowid as number;
     const svcA = db.prepare(`INSERT INTO services (client_id, monthly_value_cve) VALUES (?, 5000)`).run(clientA).lastInsertRowid as number;
     const svcB = db.prepare(`INSERT INTO services (client_id, monthly_value_cve) VALUES (?, 4000)`).run(clientB).lastInsertRowid as number;
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
-                VALUES (?, ?, '2026-03', 5000, '2026-03-10', 'paid')`).run(clientA, svcA);
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
-                VALUES (?, ?, '2026-03', 4000, '2026-03-10', 'paid')`).run(clientB, svcB);
-    db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
-                VALUES (?, ?, '2026-04', 4000, '2026-04-10', 'paid')`).run(clientB, svcB);
+    insertPayment(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+                VALUES (?, ?, '2026-03', 5000, '2026-03-10', 'paid')`, clientA, svcA);
+    insertPayment(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+                VALUES (?, ?, '2026-03', 4000, '2026-03-10', 'paid')`, clientB, svcB);
+    insertPayment(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+                VALUES (?, ?, '2026-04', 4000, '2026-04-10', 'paid')`, clientB, svcB);
 
     db.prepare(`INSERT INTO investments
                 (name, type, client_id, investment_date, reference_month, total_cost_cve,
@@ -474,8 +496,8 @@ describe('investments CRUD', () => {
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-R', 'Recuperado', 'active')`).run().lastInsertRowid as number;
     const svcId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve) VALUES (?, 5000)`).run(clientId).lastInsertRowid as number;
     for (const m of ['2026-02', '2026-03']) {
-      db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
-                  VALUES (?, ?, ?, 5000, ?, 'paid')`).run(clientId, svcId, m, `${m}-10`);
+      insertPayment(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+                  VALUES (?, ?, ?, 5000, ?, 'paid')`, clientId, svcId, m, `${m}-10`);
     }
     const invId = db.prepare(`INSERT INTO investments
                 (name, type, client_id, investment_date, reference_month, total_cost_cve,
@@ -523,8 +545,8 @@ describe('investments CRUD', () => {
     const clientB = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-GS', 'Solto Pagador', 'active')`).run().lastInsertRowid as number;
     const svcB = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, status) VALUES (?, 4000, 'active')`).run(clientB).lastInsertRowid as number;
     for (const m of ['2026-03', '2026-04']) {
-      db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
-                  VALUES (?, ?, ?, 4000, ?, 'paid')`).run(clientB, svcB, m, `${m}-10`);
+      insertPayment(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+                  VALUES (?, ?, ?, 4000, ?, 'paid')`, clientB, svcB, m, `${m}-10`);
     }
     // OPEX não-alocado só em abril: imputado aparece SÓ nesse mês da timeline
     // (antes a média de hoje era aplicada retroativamente a todos os meses).
@@ -558,8 +580,8 @@ describe('investments CRUD', () => {
     const serviceId = (db.prepare('SELECT id FROM services WHERE client_id = ?').get(clientId) as { id: number }).id;
     // Pago em 4 meses consecutivos.
     for (const m of ['2026-02', '2026-03', '2026-04', '2026-05']) {
-      db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
-                  VALUES (?, ?, ?, 5000, ?, ?, 'paid')`).run(clientId, serviceId, m, `${m}-10`, `${m}-10`);
+      insertPayment(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
+                  VALUES (?, ?, ?, 5000, ?, ?, 'paid')`, clientId, serviceId, m, `${m}-10`, `${m}-10`);
     }
     const id = db.prepare(`INSERT INTO investments
                 (name, type, client_id, investment_date, reference_month, total_cost_cve,
@@ -603,8 +625,8 @@ describe('investments CRUD', () => {
         .run(code, `Cliente ${code}`).lastInsertRowid as number;
       const svcId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, status) VALUES (?, 4000, 'active')`)
         .run(clientId).lastInsertRowid as number;
-      db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
-                  VALUES (?, ?, '2026-03', 4000, '2026-03-10', 'paid')`).run(clientId, svcId);
+      insertPayment(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+                  VALUES (?, ?, '2026-03', 4000, '2026-03-10', 'paid')`, clientId, svcId);
       ids.push(clientId);
     }
     const [a, b, c] = ids;
@@ -678,8 +700,8 @@ describe('investments CRUD', () => {
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-M', 'Mismatch', 'active')`).run().lastInsertRowid as number;
     const svcId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, status) VALUES (?, 5000, 'active')`).run(clientId).lastInsertRowid as number;
     for (const m of ['2026-02', '2026-03']) {
-      db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
-                  VALUES (?, ?, ?, 5000, ?, 'paid')`).run(clientId, svcId, m, `${m}-10`);
+      insertPayment(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+                  VALUES (?, ?, ?, 5000, ?, 'paid')`, clientId, svcId, m, `${m}-10`);
     }
     db.prepare(`INSERT INTO investments
                 (name, type, client_id, investment_date, reference_month, total_cost_cve,
@@ -745,5 +767,121 @@ describe('investments CRUD', () => {
     );
     expect(currentPoint).toBeDefined();
     expect(currentPoint.expenseCve).toBe(20000);
+  });
+});
+
+/**
+ * A rentabilidade le `payment_receipts`, nao faturas fechadas. Estes testes
+ * exercem o caminho real do dinheiro (POST /pay, /void, /apply-credit) porque
+ * e ai que as tres regras vivem: parcial conta, anulado nao conta, e credito
+ * nao conta duas vezes.
+ */
+describe('lucro em regime de caixa', () => {
+  function faturar(amountCve: number, referenceMonth: string, dueDate: string): number {
+    const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone) VALUES ('C900', 'Cliente Caixa', '5559000')`)
+      .run().lastInsertRowid as number;
+    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve) VALUES (?, ?)`)
+      .run(clientId, amountCve).lastInsertRowid as number;
+    return db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+      VALUES (?, ?, ?, ?, ?, 'pending')
+    `).run(clientId, serviceId, referenceMonth, amountCve, dueDate).lastInsertRowid as number;
+  }
+
+  async function caixaAcumulada(): Promise<number> {
+    const res = await app.inject({ method: 'GET', url: '/api/investments' });
+    expect(res.statusCode).toBe(200);
+    return res.json().totals.companyAccumulatedProfitCve;
+  }
+
+  test('um recebimento parcial pesa o que entrou, nao zero nem o total da fatura', async () => {
+    const paymentId = faturar(50000, '2026-04', '2026-04-10');
+
+    const pay = await app.inject({
+      method: 'POST', url: `/api/payments/${paymentId}/pay`,
+      payload: { paymentMethod: 'numerario', paymentDate: '2026-04-15', amountCve: 10000 }
+    });
+    expect(pay.statusCode).toBe(200);
+    // A fatura continua aberta — e a caixa ja tem os 10.000$.
+    expect(db.prepare(`SELECT status FROM payments WHERE id = ?`).get(paymentId)).toEqual({ status: 'pending' });
+    expect(await caixaAcumulada()).toBe(10000);
+
+    // O resto entra quando entrar, e ai sim a fatura fecha.
+    await app.inject({
+      method: 'POST', url: `/api/payments/${paymentId}/pay`,
+      payload: { paymentMethod: 'numerario', paymentDate: '2026-05-02' }
+    });
+    expect(await caixaAcumulada()).toBe(50000);
+  });
+
+  test('recibo anulado deixa de ser caixa', async () => {
+    const paymentId = faturar(5000, '2026-04', '2026-04-10');
+    const pay = await app.inject({
+      method: 'POST', url: `/api/payments/${paymentId}/pay`,
+      payload: { paymentMethod: 'numerario', paymentDate: '2026-04-15' }
+    });
+    const receiptId = pay.json().receipt.id as number;
+    expect(await caixaAcumulada()).toBe(5000);
+
+    const voided = await app.inject({
+      method: 'POST', url: `/api/receipts/${receiptId}/void`,
+      payload: { reason: 'Cheque devolvido pelo banco' }
+    });
+    expect(voided.statusCode).toBe(200);
+    expect(await caixaAcumulada()).toBe(0);
+  });
+
+  test('liquidar por conta corrente nao conta o mesmo dinheiro duas vezes', async () => {
+    // Paga 6.000$ numa fatura de 5.000$: 5.000$ de recibo, 1.000$ de credito.
+    const primeira = faturar(5000, '2026-04', '2026-04-10');
+    const pay = await app.inject({
+      method: 'POST', url: `/api/payments/${primeira}/pay`,
+      payload: { paymentMethod: 'numerario', paymentDate: '2026-04-15', amountCve: 6000 }
+    });
+    expect(pay.json().creditAddedCve).toBe(1000);
+    expect(await caixaAcumulada()).toBe(5000);
+
+    // O credito abate numa fatura seguinte: dinheiro nenhum entra hoje.
+    const clientId = db.prepare(`SELECT client_id AS id FROM payments WHERE id = ?`).get(primeira) as { id: number };
+    const serviceId = db.prepare(`SELECT service_id AS id FROM payments WHERE id = ?`).get(primeira) as { id: number };
+    const segunda = db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+      VALUES (?, ?, '2026-05', 1000, '2026-05-10', 'pending')
+    `).run(clientId.id, serviceId.id).lastInsertRowid as number;
+    const applied = await app.inject({ method: 'POST', url: `/api/payments/${segunda}/apply-credit`, payload: {} });
+    expect(applied.statusCode).toBe(200);
+    expect(db.prepare(`SELECT status FROM payments WHERE id = ?`).get(segunda)).toEqual({ status: 'paid' });
+    // Continua 5.000$: os 1.000$ ja tinham entrado em abril.
+    expect(await caixaAcumulada()).toBe(5000);
+  });
+
+  test('a receita cai no mes em que o dinheiro entrou, nao no da competencia', async () => {
+    const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, phone) VALUES ('C901', 'Cliente Atrasado', '5559001')`)
+      .run().lastInsertRowid as number;
+    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, status) VALUES (?, 5000, 'active')`)
+      .run(clientId).lastInsertRowid as number;
+    const paymentId = db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+      VALUES (?, ?, '2026-03', 5000, '2026-03-10', 'pending')
+    `).run(clientId, serviceId).lastInsertRowid as number;
+    const invId = db.prepare(`
+      INSERT INTO investments (name, type, client_id, investment_date, reference_month, total_cost_cve,
+                               target_clients, installed_clients, status)
+      VALUES ('Antena atrasada', 'infraestrutura', ?, '2026-03-01', '2026-03', 20000, 1, 1, 'ativo')
+    `).run(clientId).lastInsertRowid as number;
+
+    // Competencia de marco, dinheiro entregue em maio.
+    await app.inject({
+      method: 'POST', url: `/api/payments/${paymentId}/pay`,
+      payload: { paymentMethod: 'numerario', paymentDate: '2026-05-20' }
+    });
+
+    const res = await app.inject({ method: 'GET', url: `/api/investments/${invId}/timeline` });
+    expect(res.statusCode).toBe(200);
+    const points = res.json().points as Array<{ month: string; paidRevenueCve: number }>;
+    const marco = points.find((p) => p.month === '2026-03');
+    const maio = points.find((p) => p.month === '2026-05');
+    expect(marco?.paidRevenueCve ?? 0).toBe(0);
+    expect(maio?.paidRevenueCve).toBe(5000);
   });
 });

@@ -1,4 +1,5 @@
 import { getSqliteDatabase } from '../db/database';
+import { cashReceiptFilterSql } from './payments';
 
 /**
  * Pro-rata OPEX context, with direct allocation support.
@@ -243,14 +244,19 @@ export function loadRevenueAttribution(opexCtx: CompanyOpexContext): RevenueAttr
     }
   }
 
+  // Caixa, nao faturas fechadas: uma fatura de 50.000$ com 10.000$ entregues
+  // pesa 10.000$: antes dos recibos parciais pesava zero ate ao dia em que
+  // fechasse, e nesse dia pesava 50.000$ no mes da competencia. O mes vem do
+  // `payment_date` — o dinheiro conta quando entra, nao quando foi faturado.
   const clientRows = db.prepare(`
     SELECT py.client_id AS clientId, c.zone,
-           COALESCE(SUM(py.amount_cve), 0) AS totalCve,
-           MIN(py.reference_month) AS firstMonth,
-           MAX(py.reference_month) AS lastMonth
-    FROM payments py
+           COALESCE(SUM(r.amount_cve), 0) AS totalCve,
+           MIN(substr(r.payment_date, 1, 7)) AS firstMonth,
+           MAX(substr(r.payment_date, 1, 7)) AS lastMonth
+    FROM payment_receipts r
+    JOIN payments py ON py.id = r.payment_id
     JOIN clients c ON c.id = py.client_id
-    WHERE py.status = 'paid'
+    WHERE ${cashReceiptFilterSql('r')}
     GROUP BY py.client_id
   `).all() as Array<{ clientId: number; zone: string | null; totalCve: number; firstMonth: string; lastMonth: string }>;
 
@@ -306,3 +312,121 @@ export function loadRevenueAttribution(opexCtx: CompanyOpexContext): RevenueAttr
   };
 }
 
+export type InvestmentBaseRow = {
+  id: number;
+  totalCostCve: number;
+  expectedMonthlyRevenueCve: number;
+  monthlyOperationalCostCve: number;
+  accumulatedRevenueCve: number;
+  targetClients: number;
+  installedClients: number;
+  desiredPaybackMonths: number;
+  desiredMarginPct: number;
+  clientId: number | null;
+  zone: string | null;
+  investmentDate: string;
+};
+
+/**
+ * Metricas derivadas de um investimento — a UNICA definicao. Vive aqui e nao na
+ * rota porque o PDF/XLSX de rentabilidade calculava a sua propria versao a
+ * partir da receita ESPERADA: dois numeros com o mesmo nome, o do ecra e o do
+ * ficheiro, e nenhuma maneira de saber qual estava certo.
+ */
+export function profitability(row: InvestmentBaseRow, opexCtx: CompanyOpexContext, revenueAttr: RevenueAttribution) {
+  const activeClients = Math.max(1, row.installedClients || row.targetClients || 1);
+  const targetClients = Math.max(1, row.targetClients || 1);
+  const imputedMonthlyOpexCve = opexCtx.opexPerClientPerMonth * (Number(row.installedClients) || 0);
+  // OPEX direto de zona/cliente é dividido pelos investimentos que o partilham —
+  // sem o divisor, dois investimentos na mesma zona absorviam cada um 100% da
+  // mesma despesa e o agregado contava-a duas vezes. Os clientes reclamados
+  // vêm do conjunto completo (client_id legado ∪ investment_clients).
+  const claimedClients = opexCtx.claimsByInvestment[row.id] ?? [];
+  const zoneSharers = row.zone ? Math.max(1, opexCtx.sharersByZone[row.zone] || 1) : 1;
+  const clientShareOf = (map: Record<number, number>) =>
+    claimedClients.reduce(
+      (sum, clientId) => sum + (map[clientId] || 0) / Math.max(1, opexCtx.sharersByClient[clientId] || 1),
+      0
+    );
+  const directAllocatedOpexCve =
+    (opexCtx.directByInvestment[row.id] || 0)
+    + clientShareOf(opexCtx.directByClient)
+    + (row.zone ? (opexCtx.directByZone[row.zone] || 0) / zoneSharers : 0);
+  const effectiveMonthlyOpexCve =
+    (Number(row.monthlyOperationalCostCve) || 0) + imputedMonthlyOpexCve + directAllocatedOpexCve;
+
+  // Receita atribuída pelo waterfall (clientes reclamados > zona > pool) —
+  // cada escudo pago entra exatamente uma vez em toda a carteira.
+  const attributed = revenueAttr.byInvestment[row.id] ?? null;
+  const canUseGlobalShare =
+    attributed === null
+    && claimedClients.length === 0
+    && (!row.zone)
+    && opexCtx.totalInstalledUnlinkedActive > 0
+    && (Number(row.installedClients) || 0) > 0
+    && revenueAttr.unattributedMonthlyCve > 0;
+  const globalShareCve = canUseGlobalShare
+    ? revenueAttr.unattributedMonthlyCve * ((Number(row.installedClients) || 0) / opexCtx.totalInstalledUnlinkedActive)
+    : null;
+
+  const actualMonthlyRevenueCve = attributed?.monthlyCve ?? globalShareCve;
+  const revenueSource: 'client' | 'zone' | 'global-share' | null =
+    attributed?.source ?? (globalShareCve !== null ? 'global-share' : null);
+  const revenueVarianceCve = actualMonthlyRevenueCve != null
+    ? actualMonthlyRevenueCve - row.expectedMonthlyRevenueCve
+    : null;
+  const monthlyRevenueForRoi = actualMonthlyRevenueCve != null
+    ? actualMonthlyRevenueCve
+    : row.expectedMonthlyRevenueCve;
+
+  const monthlyNetProfitCve = monthlyRevenueForRoi - effectiveMonthlyOpexCve;
+  const costPerClientCve = row.totalCostCve / targetClients;
+  const operationalCostPerClientCve = effectiveMonthlyOpexCve / activeClients;
+  const baseRecoveryPrice = costPerClientCve / Math.max(1, row.desiredPaybackMonths || 1);
+  const recommendedPlanCve = (baseRecoveryPrice + operationalCostPerClientCve)
+    * (1 + Math.max(0, row.desiredMarginPct || 0) / 100);
+
+  // Recuperação — UMA definição, a mesma da timeline: receita real acumulada
+  // (pagamentos do cliente/zona) menos OPEX acumulado (direto + imputado das
+  // despesas REAIS desde o início do investimento) menos o capital. A "Receita
+  // acumulada" manual só entra como fallback sem cliente/zona com pagamentos.
+  const startMonth = row.investmentDate.slice(0, 7);
+  const actualAccumulatedRevenueCve = attributed !== null ? attributed.totalCve : null;
+  const accumulatedRevenueBaseCve = actualAccumulatedRevenueCve ?? (Number(row.accumulatedRevenueCve) || 0);
+  // Imputado exato: despesas não-alocadas dos meses >= início, rateadas — não
+  // uma média retroativa que cobrava OPEX de meses em que ele não existiu.
+  const accumulatedImputedCve = opexCtx.rateioDenominator > 0
+    ? (Object.entries(opexCtx.unallocatedByMonth)
+        .filter(([month]) => month >= startMonth)
+        .reduce((sum, [, cve]) => sum + cve, 0) / opexCtx.rateioDenominator)
+      * (Number(row.installedClients) || 0)
+    : 0;
+  const accumulatedOpexCve =
+    (opexCtx.directTotalsByInvestment[row.id] || 0)
+    + clientShareOf(opexCtx.directTotalsByClient)
+    + (row.zone ? (opexCtx.directTotalsByZone[row.zone] || 0) / zoneSharers : 0)
+    + accumulatedImputedCve;
+  const accumulatedProfitCve = accumulatedRevenueBaseCve - accumulatedOpexCve - row.totalCostCve;
+
+  return {
+    costPerClientCve,
+    operationalCostPerClientCve,
+    recommendedPlanCve,
+    imputedMonthlyOpexCve,
+    directAllocatedOpexCve,
+    effectiveMonthlyOpexCve,
+    actualMonthlyRevenueCve,
+    revenueSource,
+    revenueVarianceCve,
+    monthlyNetProfitCve,
+    accumulatedProfitCve,
+    accumulatedOpexCve,
+    accumulatedRevenueSource: actualAccumulatedRevenueCve !== null ? 'payments' as const : 'manual' as const,
+    recoveryMonths: monthlyNetProfitCve > 0 ? row.totalCostCve / monthlyNetProfitCve : null,
+    roiPct: row.totalCostCve > 0 ? (accumulatedProfitCve / row.totalCostCve) * 100 : null,
+    // ROI anual convencional: retorno líquido anualizado sobre o capital.
+    // (A antiga fórmula subtraía o capex ao fluxo — dava −100% com lucro zero.)
+    annualRoiPct: row.totalCostCve > 0 ? ((monthlyNetProfitCve * 12) / row.totalCostCve) * 100 : null,
+    isRecovered: accumulatedProfitCve >= 0
+  };
+}

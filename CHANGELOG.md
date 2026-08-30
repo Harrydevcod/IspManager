@@ -6,6 +6,16 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+### Corrigido
+
+- **O Lucro passou a ver o dinheiro que entra aos bocados.** A aba Financeiro › Lucro somava faturas fechadas: uma fatura de 50.000$ com 10.000$ já entregues contava **zero** — no lucro acumulado, no ROI de cada investimento e no rateio de receita por zona — até ao dia em que fechasse, e nesse dia contava 50.000$ de uma vez. Agora conta os recibos, como o painel de entrada já fazia desde a 1.18: o dinheiro pesa quando entra, e pesa o que entrou. Recibo anulado deixa de contar; fatura liquidada por conta corrente não conta segunda vez, porque esse dinheiro já contou quando entrou
+- **A receita cai no mês em que o dinheiro entrou**, não no mês que a fatura cobre. Com faturação pós-paga a mensalidade de abril é quase sempre cobrada em maio: a linha de recuperação de cada investimento mostrava-a em abril, um mês antes de o dinheiro existir. As linhas do tempo dos investimentos e a data de recuperação deslocam-se em conformidade — no parque atual, 246.500$ dos 260.500$ recebidos mudam de mês na leitura, quase tudo o desfasamento normal de um mês
+- **O PDF e o Excel de rentabilidade diziam outro número.** Calculavam o lucro a partir da receita **esperada** do investimento e de uma coluna de receita acumulada preenchida à mão, enquanto o ecrã usava os pagamentos reais: dois valores com o mesmo nome e nenhuma forma de saber qual valia. Passam a usar a mesma conta do ecrã, e o Excel ganha a coluna **Receita real/mês** ao lado da esperada
+
+### Alterado
+
+- O indicador **"Lucro acumulado"** da aba Lucro passa a chamar-se **"Caixa acumulada"**, que é o que sempre foi: recebido menos todo o capital aplicado menos as despesas. Um investimento de 500.000$ afunda o mês em que é feito — isso é caixa, não prejuízo. O lucro mensal de cada investimento (receita menos OPEX) não mudou de nome nem de conta
+
 ## [1.18.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.18.0) — 2026-08-29
 
 ### Adicionado
