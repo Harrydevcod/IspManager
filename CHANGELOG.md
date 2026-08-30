@@ -6,6 +6,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.19.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.19.0) — 2026-08-30
+
 ### Corrigido
 
 - **O Lucro passou a ver o dinheiro que entra aos bocados.** A aba Financeiro › Lucro somava faturas fechadas: uma fatura de 50.000$ com 10.000$ já entregues contava **zero** — no lucro acumulado, no ROI de cada investimento e no rateio de receita por zona — até ao dia em que fechasse, e nesse dia contava 50.000$ de uma vez. Agora conta os recibos, como o painel de entrada já fazia desde a 1.18: o dinheiro pesa quando entra, e pesa o que entrou. Recibo anulado deixa de contar; fatura liquidada por conta corrente não conta segunda vez, porque esse dinheiro já contou quando entrou
