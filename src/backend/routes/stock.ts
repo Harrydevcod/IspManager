@@ -21,6 +21,7 @@ const catalogSchema = z.object({
   sellingPriceCve: z.coerce.number().min(0).default(0),
   rentalFeeCve: z.coerce.number().min(0).default(0),
   stockTotal: z.coerce.number().int().min(0).default(0),
+  usefulLifeMonths: z.coerce.number().int().min(1).max(600).default(60),
   active: z.coerce.boolean().default(true)
 }).strict();
 
@@ -38,6 +39,7 @@ const CATALOG_FIELD_LABELS: Record<string, string> = {
   shippingCostCve: 'Transporte',
   customsDutyCve: 'Alfandega',
   otherCostsCve: 'Outros custos',
+  usefulLifeMonths: 'Vida util (meses)',
   sellingPriceCve: 'Preco de venda',
   rentalFeeCve: 'Aluguer mensal',
   stockTotal: 'Stock',
@@ -83,6 +85,49 @@ function movementDelta(type: 'entrada' | 'saida' | 'ajuste', quantity: number) {
   return quantity;
 }
 
+/** Custo aterrado de um modelo tal como o formulario o entrega. */
+function landedCostOf(data: {
+  purchasePriceCve: number; shippingCostCve: number;
+  customsDutyCve: number; otherCostsCve: number;
+}): number {
+  return data.purchasePriceCve + data.shippingCostCve + data.customsDutyCve + data.otherCostsCve;
+}
+
+/**
+ * Uma compra de equipamento, escrita onde o capital se le.
+ *
+ * O formulario do catalogo escrevia `stock_total` em silencio. O relatorio, sem
+ * movimento onde se agarrar, derivava o capital do saldo — e falhava-o assim que
+ * uma unidade regressava ao armazem. Agora cada aquisicao fica com quantidade,
+ * custo e data, e o capital e uma soma, nao uma inferencia.
+ */
+function recordPurchase(
+  db: ReturnType<typeof getSqliteDatabase>,
+  catalogId: number,
+  quantity: number,
+  unitCostCve: number,
+  supplier: string | null,
+  notes: string
+): void {
+  db.prepare(`
+    INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_cve, supplier, reference, notes)
+    VALUES (?, 'entrada', ?, ?, ?, 'Catalogo', ?)
+  `).run(catalogId, quantity, unitCostCve, supplier, notes);
+}
+
+/** Uma correcao de contagem: mexe no saldo, mas nunca no capital. */
+function recordStockAdjustment(
+  db: ReturnType<typeof getSqliteDatabase>,
+  catalogId: number,
+  delta: number,
+  notes: string
+): void {
+  db.prepare(`
+    INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_cve, reference, notes)
+    VALUES (?, 'ajuste', ?, 0, 'Catalogo', ?)
+  `).run(catalogId, delta, notes);
+}
+
 export async function registerStockRoutes(app: FastifyInstance) {
   const canWriteStock = { preHandler: requireRole(['admin', 'operator']) };
 
@@ -106,6 +151,7 @@ export async function registerStockRoutes(app: FastifyInstance) {
         selling_price_cve AS sellingPriceCve,
         rental_fee_cve AS rentalFeeCve,
         stock_total AS stockTotal,
+        useful_life_months AS usefulLifeMonths,
         active,
         (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve) AS landedCostCve,
         (SELECT MAX(created_at) FROM stock_movements sm WHERE sm.catalog_id = equipment_catalog.id) AS lastMovementAt,
@@ -146,9 +192,10 @@ export async function registerStockRoutes(app: FastifyInstance) {
       INSERT INTO equipment_catalog (
         category, type, brand, model, description, supplier, unit_of_measure, is_serialized,
         purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve,
-        selling_price_cve, rental_fee_cve, stock_total, active, created_at, updated_at
+        selling_price_cve, rental_fee_cve, stock_total, useful_life_months, active,
+        created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     `).run(
       parsed.data.category,
       parsed.data.type,
@@ -165,8 +212,17 @@ export async function registerStockRoutes(app: FastifyInstance) {
       parsed.data.sellingPriceCve,
       parsed.data.rentalFeeCve,
       parsed.data.stockTotal,
+      parsed.data.usefulLifeMonths,
       parsed.data.active ? 1 : 0
     );
+
+    // Stock inicial e uma compra, e uma compra deixa rasto. Sem o movimento, o
+    // capital deste equipamento nao existia em lado nenhum com data e custo —
+    // o relatorio tinha de o adivinhar a partir do saldo, e adivinhava mal.
+    if (parsed.data.stockTotal > 0) {
+      recordPurchase(db, Number(result.lastInsertRowid), parsed.data.stockTotal,
+        landedCostOf(parsed.data), parsed.data.supplier || null, 'Stock inicial do modelo');
+    }
 
     recordAudit(request, {
       action: 'create',
@@ -189,6 +245,11 @@ export async function registerStockRoutes(app: FastifyInstance) {
     }
 
     const db = getSqliteDatabase();
+    const before = db.prepare('SELECT stock_total AS stockTotal FROM equipment_catalog WHERE id = ?')
+      .get(id) as { stockTotal: number } | undefined;
+    if (!before) {
+      return reply.status(404).send({ error: 'Modelo nao encontrado' });
+    }
     const result = db.prepare(`
       UPDATE equipment_catalog
       SET category = ?,
@@ -206,6 +267,7 @@ export async function registerStockRoutes(app: FastifyInstance) {
           selling_price_cve = ?,
           rental_fee_cve = ?,
           stock_total = ?,
+          useful_life_months = ?,
           active = ?,
           updated_at = datetime('now')
       WHERE id = ?
@@ -225,12 +287,23 @@ export async function registerStockRoutes(app: FastifyInstance) {
       parsed.data.sellingPriceCve,
       parsed.data.rentalFeeCve,
       parsed.data.stockTotal,
+      parsed.data.usefulLifeMonths,
       parsed.data.active ? 1 : 0,
       id
     );
 
     if (result.changes === 0) {
       return reply.status(404).send({ error: 'Modelo nao encontrado' });
+    }
+
+    // Subir o stock pelo formulario e comprar; descer e corrigir uma contagem.
+    // Sao coisas diferentes e o capital so conhece a primeira.
+    const stockDelta = parsed.data.stockTotal - Number(before.stockTotal || 0);
+    if (stockDelta > 0) {
+      recordPurchase(db, id, stockDelta, landedCostOf(parsed.data),
+        parsed.data.supplier || null, 'Stock acrescentado no formulario do modelo');
+    } else if (stockDelta < 0) {
+      recordStockAdjustment(db, id, stockDelta, 'Stock corrigido no formulario do modelo');
     }
 
     recordAudit(request, {

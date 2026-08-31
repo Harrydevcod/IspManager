@@ -219,13 +219,19 @@ export type StockCatalogRow = {
   type: string;
   brand: string | null;
   model: string;
+  description: string | null;
   supplier: string | null;
   unitOfMeasure: string;
   isSerialized: number;
   purchasePriceCve: number;
+  shippingCostCve: number;
+  customsDutyCve: number;
+  otherCostsCve: number;
   sellingPriceCve: number;
   rentalFeeCve: number;
   stockTotal: number;
+  /** Meses de vida util — o ritmo a que o equipamento se deprecia no parque. */
+  usefulLifeMonths: number;
   active: number;
   landedCostCve: number;
   lastMovementAt: string | null;
@@ -380,6 +386,8 @@ export type InvestmentItem = {
   quantityRemaining: number;
   unitCostCve: number;
   totalCostCve: number;
+  /** Modelo do catálogo que este item representa — nulo quando é custo externo. */
+  catalogId: number | null;
 };
 
 export type Investment = {
@@ -482,6 +490,10 @@ export type InvestmentList = {
     ownInfrastructureCve: number;
     totalReceivedCve: number;
     companyAccumulatedProfitCve: number;
+    /** Parque instalado: quanto vale hoje o equipamento que esta nos telhados. */
+    parkNetValueCve: number;
+    parkMonthlyDepreciationCve: number;
+    parkUnits: number;
     investedByYear: Array<{ year: string; capexCve: number; opexCve: number; totalCve: number }>;
     monthlyNetProfitCve: number;
     accumulatedProfitCve: number;
@@ -507,11 +519,64 @@ export type InvestmentList = {
 
 export const EMPTY_INVESTMENT_LIST: InvestmentList = {
   rows: [],
-  totals: { count: 0, totalCostCve: 0, totalExpensesCve: 0, totalInvestedCve: 0, backboneStockCve: 0, ownInfrastructureCve: 0, totalReceivedCve: 0, companyAccumulatedProfitCve: 0, investedByYear: [], monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalDirectOpexCve: 0, totalEffectiveOpexCve: 0, totalActualRevenueCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
+  totals: { count: 0, totalCostCve: 0, totalExpensesCve: 0, totalInvestedCve: 0, backboneStockCve: 0, ownInfrastructureCve: 0, totalReceivedCve: 0, companyAccumulatedProfitCve: 0, parkNetValueCve: 0, parkMonthlyDepreciationCve: 0, parkUnits: 0, investedByYear: [], monthlyNetProfitCve: 0, accumulatedProfitCve: 0, totalImputedOpexCve: 0, totalDirectOpexCve: 0, totalEffectiveOpexCve: 0, totalActualRevenueCve: 0, averageRoiPct: null, lowRoiCount: 0, notRecoveredCount: 0 },
   companyOpexShare: { totalExpensesCve: 0, totalAllocatedCve: 0, totalUnallocatedCve: 0, monthsWithExpenses: 0, monthsWithUnallocated: 0, avgMonthlyOpex: 0, avgMonthlyUnallocated: 0, totalInstalledActive: 0, opexPerClientPerMonth: 0, directByInvestment: {}, directByZone: {}, directByClient: {} },
   zoneSummary: [],
   equipmentTop: [],
   alerts: []
+};
+
+/** Uma linha da carteira: um cliente, o capital que leva e o que ja devolveu. */
+export type PortfolioRow = {
+  clientId: number;
+  clientCode: string;
+  fullName: string;
+  zone: string | null;
+  island: string | null;
+  status: string;
+  installationCostCve: number;
+  installedEquipmentCostCve: number;
+  installedMaterialsCostCve: number;
+  installLabourCostCve: number;
+  investmentCostCve: number;
+  monthlyDepreciationCve: number;
+  paidRevenueCve: number;
+  monthlyAverageRevenueCve: number;
+  effectiveMonthlyOpexCve: number;
+  monthlyNetProfitCve: number;
+  monthlyMarginCve: number;
+  cumulativeOpexCve: number;
+  netProfitCve: number;
+  remainingCapitalCve: number;
+  monthsToBreakeven: number | null;
+  profitabilityPct: number | null;
+  isRecovered: boolean;
+  monthsActive: number;
+};
+
+export type PortfolioReport = {
+  rows: PortfolioRow[];
+  totals: {
+    clients: number;
+    installedCapitalCve: number;
+    recoveredCve: number;
+    remainingCapitalCve: number;
+    monthlyMarginCve: number;
+    recoveredCount: number;
+    withCapitalCount: number;
+    parkNetValueCve: number;
+    parkMonthlyDepreciationCve: number;
+    parkUnits: number;
+  };
+};
+
+export const EMPTY_PORTFOLIO: PortfolioReport = {
+  rows: [],
+  totals: {
+    clients: 0, installedCapitalCve: 0, recoveredCve: 0, remainingCapitalCve: 0,
+    monthlyMarginCve: 0, recoveredCount: 0, withCapitalCount: 0,
+    parkNetValueCve: 0, parkMonthlyDepreciationCve: 0, parkUnits: 0
+  }
 };
 
 export type ClientProfitability = {

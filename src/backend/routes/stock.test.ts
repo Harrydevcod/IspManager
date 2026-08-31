@@ -262,3 +262,51 @@ describe('erros de validacao do catalogo', () => {
     expect(savedCatalog).not.toHaveProperty('backbone_qty');
   });
 });
+
+describe('o catalogo deixa rasto da compra', () => {
+  const model = (over: Record<string, unknown> = {}) => ({
+    category: 'equipamento', type: 'cpe', model: 'CPE710', unitOfMeasure: 'un',
+    isSerialized: true, purchasePriceCve: 4000, shippingCostCve: 800,
+    customsDutyCve: 200, otherCostsCve: 0, sellingPriceCve: 0, rentalFeeCve: 250,
+    stockTotal: 3, usefulLifeMonths: 60, active: true, ...over
+  });
+
+  const capex = () => (db.prepare(`
+    SELECT COALESCE(SUM(quantity * unit_cost_cve), 0) AS cve
+    FROM stock_movements WHERE type = 'entrada'
+  `).get() as { cve: number }).cve;
+
+  test('criar com stock inicial regista a compra ao custo aterrado', async () => {
+    const response = await app.inject({ method: 'POST', url: '/api/equipment-catalog', payload: model() });
+    expect(response.statusCode).toBe(201);
+    // 4000+800+200 = 5000 por unidade, tres unidades.
+    expect(capex()).toBe(15_000);
+  });
+
+  test('criar sem stock nao inventa uma compra', async () => {
+    await app.inject({ method: 'POST', url: '/api/equipment-catalog', payload: model({ stockTotal: 0 }) });
+    expect(capex()).toBe(0);
+  });
+
+  test('subir o stock e comprar; descer e corrigir a contagem', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/equipment-catalog', payload: model() });
+    const id = (created.json() as { id: number }).id;
+
+    await app.inject({ method: 'PUT', url: `/api/equipment-catalog/${id}`, payload: model({ stockTotal: 5 }) });
+    expect(capex()).toBe(25_000);
+
+    // Descer e uma correcao de inventario: mexe no saldo, nunca no capital.
+    await app.inject({ method: 'PUT', url: `/api/equipment-catalog/${id}`, payload: model({ stockTotal: 1 }) });
+    expect(capex()).toBe(25_000);
+    const row = db.prepare('SELECT stock_total AS stockTotal FROM equipment_catalog WHERE id = ?')
+      .get(id) as { stockTotal: number };
+    expect(row.stockTotal).toBe(1);
+  });
+
+  test('guardar sem mexer no stock nao duplica a compra', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/equipment-catalog', payload: model() });
+    const id = (created.json() as { id: number }).id;
+    await app.inject({ method: 'PUT', url: `/api/equipment-catalog/${id}`, payload: model({ rentalFeeCve: 300 }) });
+    expect(capex()).toBe(15_000);
+  });
+});

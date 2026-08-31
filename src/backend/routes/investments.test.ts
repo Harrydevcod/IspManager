@@ -227,11 +227,13 @@ describe('investments CRUD', () => {
     expect(row.monthlyNetProfitCve).toBe(2250); // 5000 - 2750
   });
 
-  test('"Total investido" = stock comprado (em maos + consumido) + investimentos manuais', async () => {
-    // Custo landed = 1200+200+100 = 1500/unid; 10 unidades em armazem.
+  test('"Total investido" = equipamento comprado + custo externo dos investimentos', async () => {
+    // Custo landed = 1200+200+100 = 1500/unid. Compraram-se 14: 10 ficaram em
+    // armazem e 4 sairam para clientes.
     const catalogId = db.prepare(`INSERT INTO equipment_catalog
                 (type, model, purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve, stock_total)
                 VALUES ('router', 'hAP ax2', 1200, 200, 100, 0, 10)`).run().lastInsertRowid as number;
+    db.prepare(`INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_cve) VALUES (?, 'entrada', 14, 1500)`).run(catalogId);
     // 4 unidades ja sairam (instaladas), valorizadas ao custo landed.
     db.prepare(`INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_cve) VALUES (?, 'saida', 4, 1500)`).run(catalogId);
     // Investimento manual (tabela investments) que tambem entra no total.
@@ -241,7 +243,7 @@ describe('investments CRUD', () => {
     const response = await app.inject({ method: 'GET', url: '/api/investments?month=2026-05' });
     expect(response.statusCode).toBe(200);
     const payload = response.json() as { totals: { totalInvestedCve: number } };
-    // stock: em maos 10×1500=15000 + consumido 4×1500=6000 = 21000; + investimentos 5000 = 26000
+    // compras 14×1500=21000; + investimentos 5000 = 26000
     expect(payload.totals.totalInvestedCve).toBe(26000);
   });
 
@@ -261,13 +263,16 @@ describe('investments CRUD', () => {
              (?, 'TL aposentado', 'retired'),
              (?, 'CPE operacional', 'active')
     `).run(backboneCatalogId, backboneCatalogId, backboneCatalogId, clientCatalogId);
+    // As compras que puseram este stock em casa.
+    db.prepare(`INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_cve) VALUES (?, 'entrada', 5, 6000)`).run(backboneCatalogId);
+    db.prepare(`INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_cve) VALUES (?, 'entrada', 4, 1500)`).run(clientCatalogId);
 
     const response = await app.inject({ method: 'GET', url: '/api/investments' });
     expect(response.statusCode).toBe(200);
     const payload = response.json() as { totals: { backboneStockCve: number; totalInvestedCve: number } };
     // backbone: 2 × 6000 + 1 × 1500 = 13500; a unidade aposentada nao conta.
     expect(payload.totals.backboneStockCve).toBe(13500);
-    // total investido continua a contar o stock todo: 5×6000 + 4×1500 = 36000.
+    // total investido conta as compras todas: 5×6000 + 4×1500 = 36000.
     expect(payload.totals.totalInvestedCve).toBe(36000);
   });
 
@@ -883,5 +888,52 @@ describe('lucro em regime de caixa', () => {
     const maio = points.find((p) => p.month === '2026-05');
     expect(marco?.paidRevenueCve ?? 0).toBe(0);
     expect(maio?.paidRevenueCve).toBe(5000);
+  });
+});
+
+describe('coerencia entre o cartao e o grafico', () => {
+  test('o capital por ano soma exatamente o total investido', async () => {
+    const catalogId = db.prepare(`INSERT INTO equipment_catalog
+                (type, model, purchase_price_cve, stock_total) VALUES ('cpe', 'CPE710', 5000, 2)`)
+      .run().lastInsertRowid as number;
+    // Compras em dois anos civis diferentes.
+    db.prepare(`INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_cve, created_at)
+                VALUES (?, 'entrada', 1, 5000, '2025-04-02 09:00:00')`).run(catalogId);
+    db.prepare(`INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_cve, created_at)
+                VALUES (?, 'entrada', 1, 5000, '2026-02-11 09:00:00')`).run(catalogId);
+    db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_cve, status)
+                VALUES ('Poste', 'infraestrutura', '2026-03-01', '2026-03', 7000, 'ativo')`).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments' });
+    const payload = response.json() as {
+      totals: { totalInvestedCve: number; investedByYear: Array<{ capexCve: number }> };
+    };
+    // Enquanto o stock ficou fora do grafico, o cartao dizia 17.000$ e o
+    // grafico 7.000$: dois numeros com o mesmo nome.
+    expect(payload.totals.totalInvestedCve).toBe(17_000);
+    const fromChart = payload.totals.investedByYear.reduce((sum, y) => sum + y.capexCve, 0);
+    expect(fromChart).toBe(payload.totals.totalInvestedCve);
+  });
+
+  test('um item ligado ao catalogo nao soma ao capital da empresa', async () => {
+    const catalogId = db.prepare(`INSERT INTO equipment_catalog
+                (type, model, purchase_price_cve, stock_total) VALUES ('cpe', 'CPE710', 5000, 0)`)
+      .run().lastInsertRowid as number;
+    db.prepare(`INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_cve)
+                VALUES (?, 'entrada', 6, 5000)`).run(catalogId);
+    const investmentId = db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_cve, status)
+                VALUES ('Expansao Achada', 'zona', '2026-03-01', '2026-03', 42000, 'ativo')`)
+      .run().lastInsertRowid as number;
+    db.prepare(`INSERT INTO investment_items
+                (investment_id, item_type, item_name, quantity, unit_cost_cve, total_cost_cve, catalog_id)
+                VALUES (?, 'cpe', 'CPE710', 6, 5000, 30000, ?)`).run(investmentId, catalogId);
+    db.prepare(`INSERT INTO investment_items
+                (investment_id, item_type, item_name, quantity, unit_cost_cve, total_cost_cve, catalog_id)
+                VALUES (?, 'mao_obra', 'Mao de obra', 1, 12000, 12000, NULL)`).run(investmentId);
+
+    const response = await app.inject({ method: 'GET', url: '/api/investments' });
+    const payload = response.json() as { totals: { totalInvestedCve: number } };
+    // 30.000$ de compras + 12.000$ de mao de obra. Os seis CPE contam uma vez.
+    expect(payload.totals.totalInvestedCve).toBe(42_000);
   });
 });

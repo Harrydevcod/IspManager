@@ -169,6 +169,7 @@ export const equipmentCatalog = sqliteTable('equipment_catalog', {
   sellingPriceCve: real('selling_price_cve').notNull().default(0),
   rentalFeeCve: real('rental_fee_cve').notNull().default(0),
   stockTotal: integer('stock_total').notNull().default(0),
+  usefulLifeMonths: integer('useful_life_months').notNull().default(60),
   active: integer('active', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
@@ -345,7 +346,8 @@ export const investmentItems = sqliteTable('investment_items', {
   quantity: real('quantity').notNull(),
   unitCostCve: real('unit_cost_cve').notNull(),
   totalCostCve: real('total_cost_cve').notNull(),
-  quantityUsed: real('quantity_used').notNull().default(0)
+  quantityUsed: real('quantity_used').notNull().default(0),
+  catalogId: integer('catalog_id')
 });
 
 // Associação exata investimento ↔ vários clientes (antena de transmissão que

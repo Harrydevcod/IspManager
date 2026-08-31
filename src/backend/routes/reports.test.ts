@@ -214,3 +214,44 @@ describe('GET /api/reports/summary', () => {
     expect(body.stockRows).toEqual([]);
   });
 });
+
+describe('GET /api/reports/portfolio', () => {
+  test('a lista e a ficha do cliente dao o mesmo numero', async () => {
+    const clientId = db.prepare(`
+      INSERT INTO clients (client_code, full_name, phone, zone, status)
+      VALUES ('C900', 'Cliente Carteira', '5559001', 'Achada', 'active')
+    `).run().lastInsertRowid as number;
+    const planId = db.prepare(`
+      INSERT INTO internet_plans (name, monthly_price_cve, active) VALUES ('Base', 2500, 1)
+    `).run().lastInsertRowid as number;
+    const serviceId = db.prepare(`
+      INSERT INTO services (client_id, plan_id, status, activation_date, monthly_value_cve)
+      VALUES (?, ?, 'active', '2026-01-05', 2500)
+    `).run(clientId, planId).lastInsertRowid as number;
+    const catalogId = db.prepare(`
+      INSERT INTO equipment_catalog (type, model, purchase_price_cve, stock_total)
+      VALUES ('cpe', 'CPE710', 6000, 0)
+    `).run().lastInsertRowid as number;
+    db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id, start_date, ownership)
+      VALUES (?, ?, '2026-01-05', 'isp')
+    `).run(serviceId, catalogId);
+
+    const list = await app.inject({ method: 'GET', url: '/api/reports/portfolio' });
+    expect(list.statusCode).toBe(200);
+    const payload = list.json() as {
+      rows: Array<{ clientId: number; installationCostCve: number; netProfitCve: number }>;
+      totals: { installedCapitalCve: number; parkUnits: number };
+    };
+    const row = payload.rows.find((r) => r.clientId === clientId)!;
+    expect(row.installationCostCve).toBeCloseTo(6000, 6);
+    expect(payload.totals.installedCapitalCve).toBeCloseTo(6000, 6);
+    expect(payload.totals.parkUnits).toBe(1);
+
+    // A ficha do cliente le da mesma funcao: os dois nao se podem separar.
+    const detail = await app.inject({ method: 'GET', url: `/api/clients/${clientId}/profitability` });
+    const client = detail.json() as { installationCostCve: number; netProfitCve: number };
+    expect(client.installationCostCve).toBeCloseTo(row.installationCostCve, 6);
+    expect(client.netProfitCve).toBeCloseTo(row.netProfitCve, 6);
+  });
+});

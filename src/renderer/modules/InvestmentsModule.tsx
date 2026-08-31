@@ -5,7 +5,7 @@ import { Badge, Button, Card, Combobox, DataList, Dialog, EmptyState, ErrorRetry
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './InvestmentsModule.css';
-import { EMPTY_INVESTMENT_LIST, type Client, type Investment, type InvestmentItemType, type InvestmentList, type InvestmentStatus, type InvestmentTimeline, type InvestmentType } from '../types';
+import { EMPTY_INVESTMENT_LIST, type Client, type StockCatalogRow, type Investment, type InvestmentItemType, type InvestmentList, type InvestmentStatus, type InvestmentTimeline, type InvestmentType } from '../types';
 
 const TYPES: { value: InvestmentType; label: string }[] = [
   { value: 'cliente', label: 'Cliente' },
@@ -51,6 +51,13 @@ type ItemForm = {
   quantity: string;
   quantityUsed: string;
   unitCostCve: string;
+  /**
+   * Modelo do catalogo que este item representa, quando o nome escrito bate com
+   * um. Preenchido = o equipamento ja contou como compra no armazem e este item
+   * nao volta a somar capital; vazio = custo externo (mao de obra, poste,
+   * licenca) que soma como sempre somou.
+   */
+  catalogId: number | null;
 };
 
 type FormState = {
@@ -83,7 +90,7 @@ function currentMonth() {
 }
 
 function blankItem(): ItemForm {
-  return { itemType: 'cpe', itemName: '', quantity: '1', quantityUsed: '0', unitCostCve: '' };
+  return { itemType: 'cpe', itemName: '', quantity: '1', quantityUsed: '0', unitCostCve: '', catalogId: null };
 }
 
 function emptyForm(): FormState {
@@ -138,7 +145,8 @@ function fromInvestment(investment: Investment): FormState {
           itemName: item.itemName,
           quantity: String(item.quantity),
           quantityUsed: String(item.quantityUsed || 0),
-          unitCostCve: String(item.unitCostCve)
+          unitCostCve: String(item.unitCostCve),
+          catalogId: item.catalogId ?? null
         }))
       : [blankItem()]
   };
@@ -186,7 +194,25 @@ export function InvestmentsModule() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [catalog, setCatalog] = useState<StockCatalogRow[]>([]);
   const { toast } = useToast();
+
+  // Modelos do catalogo, para o item do investimento poder apontar para um deles.
+  useEffect(() => {
+    authFetch('http://127.0.0.1:3001/api/stock/summary')
+      .then((response) => response.ok ? response.json() as Promise<{ rows: StockCatalogRow[] }> : null)
+      .then((payload) => setCatalog(payload?.rows ?? []))
+      .catch(() => setCatalog([]));
+  }, []);
+
+  /** Nome apresentado de um modelo — o mesmo que vai para o datalist. */
+  const catalogByName = useMemo(() => {
+    const map = new Map<string, StockCatalogRow>();
+    for (const row of catalog) {
+      map.set([row.brand, row.model].filter(Boolean).join(' ').toLowerCase(), row);
+    }
+    return map;
+  }, [catalog]);
 
   // Zonas já usadas (investimentos + clientes) — datalist contra typos que
   // partem silenciosamente a atribuição de receita/OPEX por zona.
@@ -286,6 +312,24 @@ export function InvestmentsModule() {
     }));
   }
 
+  /**
+   * O nome do item decide se ele e equipamento do catalogo ou custo externo.
+   *
+   * Escrever um nome que bate com um modelo liga-o: esse equipamento ja contou
+   * como compra no armazem, e o investimento passa a agrupa-lo em vez de o
+   * pagar outra vez. Qualquer outro texto — "Mao de obra", "Poste" — fica
+   * externo e soma. O custo unitario acompanha, porque o do catalogo e o que
+   * foi mesmo pago.
+   */
+  function updateItemName(index: number, value: string) {
+    const match = catalogByName.get(value.trim().toLowerCase());
+    updateItem(index, {
+      itemName: value,
+      catalogId: match?.id ?? null,
+      ...(match ? { unitCostCve: String(match.landedCostCve) } : {})
+    });
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -335,7 +379,8 @@ export function InvestmentsModule() {
             itemName: item.itemName.trim(),
             quantity: parseMoney(item.quantity),
             quantityUsed: parseMoney(item.quantityUsed),
-            unitCostCve: parseMoney(item.unitCostCve)
+            unitCostCve: parseMoney(item.unitCostCve),
+            catalogId: item.catalogId
           }))
         })
       });
@@ -778,12 +823,25 @@ export function InvestmentsModule() {
               <span>Total</span>
               <span />
             </div>
+            <datalist id="investment-catalog-models">
+              {catalog.map((row) => (
+                <option key={row.id} value={[row.brand, row.model].filter(Boolean).join(' ')} />
+              ))}
+            </datalist>
             {form.items.map((item, index) => (
               <div className="investment-item-row" key={index}>
                 <Select value={item.itemType} onChange={(e) => updateItem(index, { itemType: e.target.value as InvestmentItemType })}>
                   {ITEM_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </Select>
-                <Field label="Equipamento / material" value={item.itemName} onChange={(e) => updateItem(index, { itemName: e.target.value })} placeholder="Equipamento/material" required />
+                <Field
+                  label="Equipamento / material"
+                  value={item.itemName}
+                  onChange={(e) => updateItemName(index, e.target.value)}
+                  placeholder="Equipamento/material"
+                  list="investment-catalog-models"
+                  hint={item.catalogId ? 'Do catálogo — já contado no stock' : undefined}
+                  required
+                />
                 <Field label="Qtd." type="number" min={0.01} step={0.01} value={item.quantity} onChange={(e) => updateItem(index, { quantity: e.target.value })} required />
                 <Field label="Usado" type="number" min={0} step={0.01} value={item.quantityUsed} onChange={(e) => updateItem(index, { quantityUsed: e.target.value })} required />
                 <Field label="Custo un." type="number" min={0} step={0.01} value={item.unitCostCve} onChange={(e) => updateItem(index, { unitCostCve: e.target.value })} required />

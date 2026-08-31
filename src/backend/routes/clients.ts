@@ -5,6 +5,7 @@ import { getDatabase, getSqliteDatabase } from '../db/database';
 import { clients } from '../db/schema';
 import { recordAudit } from '../lib/audit';
 import { buildClientsImportTemplate } from '../lib/clients-import-template';
+import { portfolioRows } from '../lib/capex';
 import { loadCompanyOpexContext } from '../lib/opex';
 import { balanceSqlExpr, clientCreditBalance } from '../lib/payments';
 import { changeServiceStatus } from '../lib/services';
@@ -73,8 +74,6 @@ export async function registerClientRoutes(app: FastifyInstance) {
       id: number; name: string; type: string; investmentDate: string; referenceMonth: string;
       status: string; zone: string | null; totalCostCve: number;
     }>;
-
-    const investmentCostCve = investmentRows.reduce((sum, r) => sum + Number(r.totalCostCve || 0), 0);
 
     const investmentEquipmentUsed = investmentRows.length === 0 ? [] : db.prepare(`
       SELECT item_type AS itemType,
@@ -151,19 +150,11 @@ export async function registerClientRoutes(app: FastifyInstance) {
       }, [] as Array<{ itemType: string; itemName: string; quantity: number; quantityUsed: number; totalCostCve: number }>)
       .sort((a, b) => b.totalCostCve - a.totalCostCve || a.itemName.localeCompare(b.itemName));
 
-    const installCostsRow = db.prepare(`
-      SELECT COALESCE(SUM(ic.amount_cve), 0) AS total
-      FROM service_install_costs ic
-      JOIN services s ON s.id = ic.service_id
-      WHERE s.client_id = ?
-    `).get(id) as { total: number };
-
-    const installedEquipmentCostCve = installedEquipmentUsed
-      .reduce((sum, row) => sum + Number(row.totalCostCve || 0), 0);
-    const installedMaterialsCostCve = installedMaterialsUsed
-      .reduce((sum, row) => sum + Number(row.totalCostCve || 0), 0);
-    const installLabourCostCve = Number(installCostsRow.total || 0);
-    const installationCostCve = investmentCostCve + installedEquipmentCostCve + installedMaterialsCostCve + installLabourCostCve;
+    // Os numeros vem da carteira — a mesma funcao que alimenta a lista em
+    // Financeiro. Enquanto viveram nos dois sitios, bastava mexer num para a
+    // ficha e a lista discordarem sobre o mesmo cliente.
+    const portfolio = portfolioRows([id])[0];
+    const installationCostCve = portfolio.installationCostCve;
 
     const payments = db.prepare(`
       SELECT id, status, amount_cve AS amountCve, due_date AS dueDate,
@@ -197,28 +188,24 @@ export async function registerClientRoutes(app: FastifyInstance) {
     const monthlyAverageRevenueCve = paidMonths > 0 ? paidRevenueCve / paidMonths : 0;
 
     const opexCtx = loadCompanyOpexContext();
+    // A reparticao do OPEX continua a mostrar-se parcela a parcela na ficha; o
+    // efetivo, o acumulado e tudo o que deriva deles vem da carteira.
     const imputedMonthlyOpexCve = opexCtx.opexPerClientPerMonth;
     const directClientOpexCve = opexCtx.directByClient[client.id] || 0;
     const directZoneOpexCve = client.zone ? (opexCtx.directByZone[client.zone] || 0) : 0;
-    // Zone-pinned expenses split across all active clients in the zone.
     const zoneActiveCount = client.zone
       ? (db.prepare(`SELECT COUNT(*) AS n FROM clients WHERE zone = ? AND status = 'active'`).get(client.zone) as { n: number }).n
       : 0;
     const directZonePerClientCve = zoneActiveCount > 0 ? directZoneOpexCve / zoneActiveCount : 0;
     const directInvestmentOpexCve = investmentRows
       .reduce((sum, inv) => sum + (opexCtx.directByInvestment[inv.id] || 0), 0);
-    const effectiveMonthlyOpexCve =
-      imputedMonthlyOpexCve + directClientOpexCve + directZonePerClientCve + directInvestmentOpexCve;
-    const cumulativeOpexCve = effectiveMonthlyOpexCve * monthsActive;
-    const monthlyNetProfitCve = monthlyAverageRevenueCve - effectiveMonthlyOpexCve;
-    const netProfitCve = paidRevenueCve - installationCostCve - cumulativeOpexCve;
-    const monthsToBreakeven = monthlyNetProfitCve > 0 && installationCostCve > 0
-      ? installationCostCve / monthlyNetProfitCve
-      : null;
-    const profitabilityPct = installationCostCve > 0
-      ? (netProfitCve / installationCostCve) * 100
-      : null;
-    const isRecovered = installationCostCve > 0 && netProfitCve >= 0;
+    const effectiveMonthlyOpexCve = portfolio.effectiveMonthlyOpexCve;
+    const cumulativeOpexCve = portfolio.cumulativeOpexCve;
+    const monthlyNetProfitCve = portfolio.monthlyNetProfitCve;
+    const netProfitCve = portfolio.netProfitCve;
+    const monthsToBreakeven = portfolio.monthsToBreakeven;
+    const profitabilityPct = portfolio.profitabilityPct;
+    const isRecovered = portfolio.isRecovered;
 
     const oldestPaidDate = payments
       .filter((p) => p.status === 'paid' && p.paymentDate)

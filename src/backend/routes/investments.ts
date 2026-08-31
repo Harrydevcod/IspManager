@@ -5,6 +5,7 @@ import { recordAudit } from '../lib/audit';
 import { ACTIVE_INVESTMENT_STATUSES, loadCompanyOpexContext, loadRevenueAttribution, profitability, type CompanyOpexContext, type InvestmentBaseRow, type RevenueAttribution } from '../lib/opex';
 import { buildProfitabilityPdf, buildProfitabilityXlsx } from '../lib/profitability-export';
 import { cashReceiptFilterSql } from '../lib/payments';
+import { externalInvestmentCapexCve, externalInvestmentCapexSql, parkValue, stockCapexByYear, stockCapexCve } from '../lib/capex';
 import { requireAuth, requireRole } from './auth';
 
 const investmentType = z.enum(['cliente', 'zona', 'equipamento', 'infraestrutura', 'manutencao', 'expansao', 'outro']);
@@ -34,7 +35,10 @@ const investmentItemSchema = z.object({
   itemName: z.string().trim().min(1).max(160),
   quantity: z.coerce.number().positive(),
   quantityUsed: z.coerce.number().min(0).default(0),
-  unitCostCve: z.coerce.number().min(0)
+  unitCostCve: z.coerce.number().min(0),
+  // Ligado ao catalogo, o item deixa de somar capital e passa a reclama-lo: o
+  // equipamento ja contou quando deu entrada no armazem. Nulo = custo externo.
+  catalogId: z.coerce.number().int().positive().optional().nullable()
 });
 
 const investmentSchema = z.object({
@@ -162,7 +166,8 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
         quantity_used AS quantityUsed,
         quantity - quantity_used AS quantityRemaining,
         unit_cost_cve AS unitCostCve,
-        total_cost_cve AS totalCostCve
+        total_cost_cve AS totalCostCve,
+        catalog_id AS catalogId
       FROM investment_items
       WHERE investment_id = ?
       ORDER BY id ASC
@@ -200,23 +205,14 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
 
     const totalCostCve = rowsWithItems.reduce((sum, row) => sum + Number(row.totalCostCve || 0), 0);
     const totalExpensesCve = opexCtx.totalExpensesCve;
-    // "Total investido" = stock comprado + investimentos manuais (tabela investments).
+    // "Total investido" = equipamento comprado + custo externo dos investimentos.
     //
-    // Stock comprado = valor do stock em maos (stock_total x custo landed) + stock que ja
-    // saiu/foi instalado (movimentos 'saida'). Cobre stock registado pelo formulario do
-    // catalogo (que nao gera movimento 'entrada') e o equipamento ja colocado em clientes.
-    // Sem dupla contagem: stock_total e o saldo atual; as saidas sao remocoes historicas.
-    const stockAcquiredRow = getSqliteDatabase()
-      .prepare(`
-        SELECT
-          (SELECT COALESCE(SUM(stock_total * (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve)), 0)
-             FROM equipment_catalog)
-          + (SELECT COALESCE(SUM(quantity * unit_cost_cve), 0)
-             FROM stock_movements WHERE type = 'saida')
-          AS totalCve
-      `)
-      .get() as { totalCve: number };
-    const stockAcquiredCve = Number(stockAcquiredRow.totalCve) || 0;
+    // Ambos os numeros vivem em `lib/capex.ts`, que e a unica definicao de
+    // capital do sistema. O equipamento conta pelas ENTRADAS de armazem, nao
+    // pelo saldo: a conta antiga somava `stock_total` mais as saidas e, sempre
+    // que uma unidade regressava — devolucao, transferencia, troca —, contava-a
+    // outra vez sem que ninguem a tivesse comprado.
+    const stockAcquiredCve = stockCapexCve();
 
     // Capital de backbone (transmissão): unidades físicas não retiradas × custo
     // landed. Métrica de visibilidade — não soma a totalInvestedCve.
@@ -236,11 +232,11 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       `)
       .get() as { totalCve: number };
     const backboneStockCve = Number(backboneStockRow.totalCve) || 0;
-    const allTimeCapexRow = getSqliteDatabase()
-      .prepare(`SELECT COALESCE(SUM(total_cost_cve), 0) AS totalCve FROM investments`)
-      .get() as { totalCve: number };
-    const allTimeCapexCve = Number(allTimeCapexRow.totalCve) || 0;
+    // So o custo EXTERNO dos investimentos: uma linha ligada ao catalogo ja
+    // contou como compra de equipamento, e somar as duas pagava-a duas vezes.
+    const allTimeCapexCve = externalInvestmentCapexCve();
     const totalInvestedCve = stockAcquiredCve + allTimeCapexCve;
+    const park = parkValue();
 
     // Caixa livre acumulada = dinheiro recebido (todos os recibos, todo o
     // historico) menos todo o capital aplicado (infraestrutura + stock) menos as
@@ -252,13 +248,15 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       .get() as { totalCve: number };
     const totalReceivedCve = Number(receivedRow.totalCve) || 0;
     const companyAccumulatedProfitCve = totalReceivedCve - totalInvestedCve - totalExpensesCve;
+    // O stock entra aqui com a data da compra. Sem ele, o grafico mostrava uma
+    // fatia do capital e o cartao mostrava-o todo: dois numeros com o mesmo nome.
     const byYearRows = getSqliteDatabase().prepare(`
       SELECT year, SUM(capexCve) AS capexCve, SUM(opexCve) AS opexCve
       FROM (
-        SELECT substr(reference_month, 1, 4) AS year,
-               COALESCE(SUM(total_cost_cve), 0) AS capexCve,
+        SELECT substr(i.reference_month, 1, 4) AS year,
+               COALESCE(SUM(${externalInvestmentCapexSql('i')}), 0) AS capexCve,
                0 AS opexCve
-        FROM investments
+        FROM investments i
         GROUP BY year
         UNION ALL
         SELECT substr(reference_month, 1, 4) AS year,
@@ -270,12 +268,27 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       GROUP BY year
       ORDER BY year DESC
     `).all() as Array<{ year: string; capexCve: number; opexCve: number }>;
-    const investedByYear = byYearRows.map((row) => ({
-      year: row.year,
-      capexCve: Number(row.capexCve) || 0,
-      opexCve: Number(row.opexCve) || 0,
-      totalCve: (Number(row.capexCve) || 0) + (Number(row.opexCve) || 0)
-    }));
+    const stockByYear = new Map(stockCapexByYear().map((r) => [r.year, r.capexCve]));
+    const yearBuckets = new Map<string, { capexCve: number; opexCve: number }>();
+    for (const row of byYearRows) {
+      yearBuckets.set(row.year, {
+        capexCve: Number(row.capexCve) || 0,
+        opexCve: Number(row.opexCve) || 0
+      });
+    }
+    for (const [year, capexCve] of stockByYear) {
+      const bucket = yearBuckets.get(year) ?? { capexCve: 0, opexCve: 0 };
+      bucket.capexCve += capexCve;
+      yearBuckets.set(year, bucket);
+    }
+    const investedByYear = [...yearBuckets.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([year, bucket]) => ({
+        year,
+        capexCve: bucket.capexCve,
+        opexCve: bucket.opexCve,
+        totalCve: bucket.capexCve + bucket.opexCve
+      }));
     const monthlyNetProfitCve = rowsWithItems.reduce((sum, row) => sum + row.monthlyNetProfitCve, 0);
     const accumulatedProfitCve = rowsWithItems.reduce((sum, row) => sum + row.accumulatedProfitCve, 0);
     const totalImputedOpexCve = rowsWithItems.reduce((sum, row) => sum + row.imputedMonthlyOpexCve, 0);
@@ -401,6 +414,12 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
         ownInfrastructureCve: allTimeCapexCve, // investido na infraestrutura propria (tabela investments), sem stock
         totalReceivedCve,
         companyAccumulatedProfitCve,
+        // Parque instalado: responde a "quanto vale o que ja montei", ao lado
+        // da caixa, que responde a "quanto dinheiro tenho". Nomes separados de
+        // proposito — a caixa continua a abater o capital todo de uma vez.
+        parkNetValueCve: park.netValueCve,
+        parkMonthlyDepreciationCve: park.monthlyDepreciationCve,
+        parkUnits: park.units,
         investedByYear,
         monthlyNetProfitCve,
         accumulatedProfitCve,
@@ -631,11 +650,11 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
       );
       const id = Number(result.lastInsertRowid);
       const insertItem = db.prepare(`
-        INSERT INTO investment_items (investment_id, item_type, item_name, quantity, quantity_used, unit_cost_cve, total_cost_cve)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO investment_items (investment_id, item_type, item_name, quantity, quantity_used, unit_cost_cve, total_cost_cve, catalog_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const item of items) {
-        insertItem.run(id, item.itemType, item.itemName, item.quantity, item.quantityUsed, item.unitCostCve, item.totalCostCve);
+        insertItem.run(id, item.itemType, item.itemName, item.quantity, item.quantityUsed, item.unitCostCve, item.totalCostCve, item.catalogId ?? null);
       }
       const insertClient = db.prepare(`INSERT OR IGNORE INTO investment_clients (investment_id, client_id) VALUES (?, ?)`);
       for (const clientId of parsed.data.clientIds) insertClient.run(id, clientId);
@@ -721,11 +740,11 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
 
       db.prepare('DELETE FROM investment_items WHERE investment_id = ?').run(id);
       const insertItem = db.prepare(`
-        INSERT INTO investment_items (investment_id, item_type, item_name, quantity, quantity_used, unit_cost_cve, total_cost_cve)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO investment_items (investment_id, item_type, item_name, quantity, quantity_used, unit_cost_cve, total_cost_cve, catalog_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const item of items) {
-        insertItem.run(id, item.itemType, item.itemName, item.quantity, item.quantityUsed, item.unitCostCve, item.totalCostCve);
+        insertItem.run(id, item.itemType, item.itemName, item.quantity, item.quantityUsed, item.unitCostCve, item.totalCostCve, item.catalogId ?? null);
       }
       db.prepare('DELETE FROM investment_clients WHERE investment_id = ?').run(id);
       const insertClient = db.prepare(`INSERT OR IGNORE INTO investment_clients (investment_id, client_id) VALUES (?, ?)`);

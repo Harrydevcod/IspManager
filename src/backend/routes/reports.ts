@@ -7,6 +7,7 @@ import { recordAudit } from '../lib/audit';
 import { balanceSqlExpr, cashReceiptFilterSql, overdueSqlPredicate } from '../lib/payments';
 import { loadOperationsStatus } from '../lib/operations-status';
 import { buildOperationsStatusPdf } from '../lib/operations-export';
+import { parkValue, portfolioRows } from '../lib/capex';
 
 type ReportMetricRow = {
   totalClients: number;
@@ -46,6 +47,34 @@ export async function registerReportRoutes(app: FastifyInstance) {
    */
   app.get('/api/reports/operations', { preHandler: requireRole(['admin', 'operator']) }, async () => {
     return loadOperationsStatus();
+  });
+
+  /**
+   * A carteira: por cliente, o capital que leva e o que ja devolveu.
+   *
+   * O custo de instalacao por cliente ja existia, escondido dentro do dialogo
+   * da ficha — um cliente de cada vez. A decisao de gestao ("quem ainda nao
+   * pagou o equipamento, que zona nao compensa") precisa da lista, e a lista e
+   * a mesma conta aplicada a toda a gente.
+   */
+  app.get('/api/reports/portfolio', { preHandler: requireRole(['admin', 'operator']) }, async () => {
+    const rows = portfolioRows();
+    const park = parkValue();
+    return {
+      rows,
+      totals: {
+        clients: rows.length,
+        installedCapitalCve: rows.reduce((s, r) => s + r.installationCostCve, 0),
+        recoveredCve: rows.reduce((s, r) => s + r.paidRevenueCve, 0),
+        remainingCapitalCve: rows.reduce((s, r) => s + r.remainingCapitalCve, 0),
+        monthlyMarginCve: rows.reduce((s, r) => s + r.monthlyMarginCve, 0),
+        recoveredCount: rows.filter((r) => r.isRecovered).length,
+        withCapitalCount: rows.filter((r) => r.installationCostCve > 0).length,
+        parkNetValueCve: park.netValueCve,
+        parkMonthlyDepreciationCve: park.monthlyDepreciationCve,
+        parkUnits: park.units
+      }
+    };
   });
 
   // Fotografia do mesmo read model para arquivo mensal. Sem `attachment` a app
