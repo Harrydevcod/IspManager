@@ -5,17 +5,17 @@ import { formatCve } from '../../lib/format';
 import type { PortfolioReport, PortfolioRow } from '../../types';
 
 type PortfolioSortKey =
-  | 'fullName' | 'zone' | 'installationCostCve' | 'remainingCapitalCve'
+  | 'fullName' | 'zone' | 'installationCostCve' | 'unrecoveredCve'
   | 'monthlyMarginCve' | 'monthsToBreakeven';
 
 /**
- * Ordem de entrada: quem ainda deve mais capital.
+ * Ordem de entrada: quem tem mais por devolver.
  *
  * A lista existe para uma decisao — quem cortar, quem nao voltar a instalar,
  * que zona nao compensa. Essa decisao le-se de cima para baixo, e no topo tem
  * de estar o cliente com mais dinheiro por devolver.
  */
-const DEFAULT_SORT: SortState<PortfolioSortKey> = { key: 'remainingCapitalCve', direction: 'desc' };
+const DEFAULT_SORT: SortState<PortfolioSortKey> = { key: 'unrecoveredCve', direction: 'desc' };
 
 const COMPARATORS = {
   fullName: (a: PortfolioRow, b: PortfolioRow) => compareText(a.fullName, b.fullName),
@@ -23,8 +23,8 @@ const COMPARATORS = {
     compareText(a.zone, b.zone) || compareText(a.fullName, b.fullName),
   installationCostCve: (a: PortfolioRow, b: PortfolioRow) =>
     compareNumber(a.installationCostCve, b.installationCostCve),
-  remainingCapitalCve: (a: PortfolioRow, b: PortfolioRow) =>
-    compareNumber(a.remainingCapitalCve, b.remainingCapitalCve),
+  unrecoveredCve: (a: PortfolioRow, b: PortfolioRow) =>
+    compareNumber(a.unrecoveredCve, b.unrecoveredCve),
   monthlyMarginCve: (a: PortfolioRow, b: PortfolioRow) =>
     compareNumber(a.monthlyMarginCve, b.monthlyMarginCve),
   // Sem prazo previsto vai para o fim: nao e "zero meses", e "nunca, ao ritmo atual".
@@ -121,12 +121,14 @@ export function PortfolioTable({ data, onOpenClient }: {
             cell: (row) => formatCve(row.installationCostCve)
           },
           {
+            // Capital + OPEX acumulado por cobrir: e o que falta o cliente
+            // entregar para deixar de dar prejuizo, nao so o preco da antena.
             header: 'Por recuperar',
-            sortKey: 'remainingCapitalCve',
+            sortKey: 'unrecoveredCve',
             defaultDirection: 'desc',
             align: 'end',
-            cell: (row) => (row.remainingCapitalCve > 0
-              ? <strong>{formatCve(row.remainingCapitalCve)}</strong>
+            cell: (row) => (row.unrecoveredCve > 0
+              ? <strong>{formatCve(row.unrecoveredCve)}</strong>
               : <Badge tone="success">Recuperado</Badge>)
           },
           {

@@ -66,7 +66,7 @@ export async function registerReportRoutes(app: FastifyInstance) {
         clients: rows.length,
         installedCapitalCve: rows.reduce((s, r) => s + r.installationCostCve, 0),
         recoveredCve: rows.reduce((s, r) => s + r.paidRevenueCve, 0),
-        remainingCapitalCve: rows.reduce((s, r) => s + r.remainingCapitalCve, 0),
+        unrecoveredCve: rows.reduce((s, r) => s + r.unrecoveredCve, 0),
         monthlyMarginCve: rows.reduce((s, r) => s + r.monthlyMarginCve, 0),
         recoveredCount: rows.filter((r) => r.isRecovered).length,
         withCapitalCount: rows.filter((r) => r.installationCostCve > 0).length,

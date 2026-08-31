@@ -29,9 +29,11 @@ import type { Migration } from './types';
  * razao a migracao e idempotente: a segunda passagem encontra a diferenca a
  * zero e nao insere nada.
  *
- * O custo usado e o aterrado de hoje, o unico que existe para stock que nunca
- * teve movimento. As unidades que ja tinham `entrada` mantem o custo com que
- * foram registadas.
+ * O custo de cada unidade de abertura e o que ela custou, nao o que custaria
+ * hoje: as saidas do modelo gravaram o aterrado do dia da instalacao, e a media
+ * dessas e a melhor estimativa que existe do que foi mesmo pago. So um modelo
+ * que nunca teve saida valorizada cai no aterrado atual, por nao haver melhor.
+ * As unidades que ja tinham `entrada` mantem o custo com que foram registadas.
  */
 const migration: Migration = {
   version: 53,
@@ -42,7 +44,12 @@ const migration: Migration = {
         ec.id,
         'entrada',
         ec.stock_total + saldo.saidas - saldo.devolucoes - saldo.ajustes - saldo.entradas,
-        (ec.purchase_price_cve + ec.shipping_cost_cve + ec.customs_duty_cve + ec.other_costs_cve),
+        COALESCE(
+          (SELECT SUM(m.quantity * m.unit_cost_cve) / SUM(m.quantity)
+             FROM stock_movements m
+            WHERE m.catalog_id = ec.id AND m.type = 'saida' AND m.unit_cost_cve > 0),
+          (ec.purchase_price_cve + ec.shipping_cost_cve + ec.customs_duty_cve + ec.other_costs_cve)
+        ),
         'Abertura de inventario',
         'Unidades adquiridas antes de a compra gerar movimento de entrada'
       FROM equipment_catalog ec

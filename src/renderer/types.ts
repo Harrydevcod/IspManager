@@ -547,7 +547,8 @@ export type PortfolioRow = {
   monthlyMarginCve: number;
   cumulativeOpexCve: number;
   netProfitCve: number;
-  remainingCapitalCve: number;
+  /** Capital + OPEX acumulado por cobrir. Zero quando o cliente ja se pagou. */
+  unrecoveredCve: number;
   monthsToBreakeven: number | null;
   profitabilityPct: number | null;
   isRecovered: boolean;
@@ -560,7 +561,7 @@ export type PortfolioReport = {
     clients: number;
     installedCapitalCve: number;
     recoveredCve: number;
-    remainingCapitalCve: number;
+    unrecoveredCve: number;
     monthlyMarginCve: number;
     recoveredCount: number;
     withCapitalCount: number;
@@ -573,7 +574,7 @@ export type PortfolioReport = {
 export const EMPTY_PORTFOLIO: PortfolioReport = {
   rows: [],
   totals: {
-    clients: 0, installedCapitalCve: 0, recoveredCve: 0, remainingCapitalCve: 0,
+    clients: 0, installedCapitalCve: 0, recoveredCve: 0, unrecoveredCve: 0,
     monthlyMarginCve: 0, recoveredCount: 0, withCapitalCount: 0,
     parkNetValueCve: 0, parkMonthlyDepreciationCve: 0, parkUnits: 0
   }

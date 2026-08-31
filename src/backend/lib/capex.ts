@@ -148,7 +148,13 @@ export type PortfolioRow = {
   monthlyMarginCve: number;
   cumulativeOpexCve: number;
   netProfitCve: number;
-  remainingCapitalCve: number;
+  /**
+   * Quanto falta este cliente entregar para ficar inteiro: o capital que levou
+   * MAIS o OPEX que consumiu desde que existe, menos tudo o que ja pagou. Nao e
+   * so o equipamento — servir um cliente custa dinheiro todos os meses, e um
+   * numero que ignorasse isso dizia "recuperado" a quem ainda da prejuizo.
+   */
+  unrecoveredCve: number;
   monthsToBreakeven: number | null;
   profitabilityPct: number | null;
   isRecovered: boolean;
@@ -334,7 +340,7 @@ export function portfolioRows(clientIds?: number[], ctx?: CompanyOpexContext): P
       monthlyMarginCve: monthlyNetProfitCve - monthlyDepreciationCve,
       cumulativeOpexCve,
       netProfitCve,
-      remainingCapitalCve: Math.max(0, -netProfitCve),
+      unrecoveredCve: Math.max(0, -netProfitCve),
       monthsToBreakeven,
       profitabilityPct: installationCostCve > 0 ? (netProfitCve / installationCostCve) * 100 : null,
       isRecovered: installationCostCve > 0 && netProfitCve >= 0,

@@ -250,14 +250,14 @@ describe('carteira', () => {
 
     const row = portfolioRows([ana])[0];
     expect(row.installationCostCve).toBeCloseTo(6000, 6);
-    expect(row.remainingCapitalCve).toBeGreaterThan(0);
+    expect(row.unrecoveredCve).toBeGreaterThan(0);
     expect(row.isRecovered).toBe(false);
 
     // Recebido acima do capital: nada por recuperar, e o sinal nao vira negativo.
     for (const month of ['2026-07', '2026-08', '2026-09']) invoice(ana, service, month, 2500, 2500);
     const after = portfolioRows([ana])[0];
     expect(after.isRecovered).toBe(true);
-    expect(after.remainingCapitalCve).toBe(0);
+    expect(after.unrecoveredCve).toBe(0);
   });
 
   test('a margem mensal desconta o desgaste do equipamento', () => {

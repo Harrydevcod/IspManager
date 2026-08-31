@@ -234,10 +234,10 @@ export function ProfitModule() {
         />
         <MetricCard
           icon={Wallet}
-          label="Capital por recuperar"
-          value={formatCve(portfolio.totals.remainingCapitalCve)}
-          trend={`${portfolio.totals.withCapitalCount - portfolio.totals.recoveredCount} clientes por recuperar`}
-          tone={portfolio.totals.remainingCapitalCve > 0 ? 'warning' : 'success'}
+          label="Por recuperar"
+          value={formatCve(portfolio.totals.unrecoveredCve)}
+          trend={`${portfolio.totals.withCapitalCount - portfolio.totals.recoveredCount} clientes · capital + OPEX`}
+          tone={portfolio.totals.unrecoveredCve > 0 ? 'warning' : 'success'}
         />
       </MetricGrid>
 
