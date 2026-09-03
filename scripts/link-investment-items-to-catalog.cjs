@@ -18,11 +18,24 @@
  *   Antenas Clientes CPE CN       8 x  5.000$       8 TL-S5-5KM           40.000$
  *   Mercusys AC12                 2 x  5.000$       2 Mercusys AC12       10.000$
  *
- * Os restantes nove itens NÃO são tocados, de propósito:
- *   - Archer C20, TL-WR850N, MW325R e CPE710 têm a quantidade certa mas o preço
- *     do investimento não bate com o do catálogo. Ligar sem decidir qual dos dois
- *     está certo troca o custo em silêncio — decida primeiro, corrija o catálogo,
- *     e só depois ligue à mão.
+ * E mais quatro em que o preço do investimento não bate com o do armazém —
+ * Archer C20, TL-WR850N, MW325R e CPE710. Aqui a ligação continua a ser certa, e
+ * o preço é uma questão à parte: o Archer C20 tem 12 instalações e o investimento
+ * só cobre 8, ou seja o modelo já mistura as duas contabilidades. Ligar torna-o
+ * coerente — tudo ao preço do armazém, que é o que já governa as outras quatro
+ * unidades — em vez de deixar oito a preço de investimento E contadas outra vez
+ * no armazém. Por isso a quantidade não tem de bater: só se exige que o armazém
+ * conheça pelo menos as unidades que o investimento reclama, senão o item está a
+ * falar de outra coisa.
+ *
+ * O CPE710 é o único que obriga a mexer no preço antes de ligar. As suas duas
+ * saídas foram criadas pela regularização de backbone da migração 0050, que não
+ * gravou custo: ficaram a 0$, e a abertura de inventário da 0053, sem saída
+ * valorizada onde se apoiar, cai no preço do catálogo. O catálogo dizia 15.000$ e
+ * o que se pagou foram 13.000$ — corrigem-se os dois, o catálogo e a abertura,
+ * porque é a abertura que carrega o capital.
+ *
+ * Os restantes cinco itens NÃO são tocados, de propósito:
  *   - Cabo e RJ45 estão em unidades diferentes nos dois lados (610 contra 175).
  *   - "Serrilhas e afixadores" não existe no catálogo: é custo externo genuíno e
  *     deve continuar a somar.
@@ -36,7 +49,7 @@
  *   - cada par é verificado antes de escrever — nome do item, quantidade, custo
  *     unitário e as unidades que o armazém conhece. Se um só não bater, não se
  *     escreve NADA: ou o lote todo confere, ou aborta;
- *   - idempotente: um item já ligado é saltado;
+ *   - idempotente: um item já ligado é saltado, e um preço já corrigido também;
  *   - corre dentro de uma transação e deixa registo na auditoria.
  *
  * Uso:
@@ -67,6 +80,18 @@ const PARES = [
   { investimento: 'Antenas de Clientes CPE 510', item: 'Antenas CPE', marca: 'TP-Link', modelo: 'CPE 510 Ponto de Acesso para Exterior WiFi 300 Mbps', qtd: 19, unitCve: 6500 },
   { investimento: 'Antenas Clientes CPE CN', item: 'Antenas Chinesas', marca: 'Tp-Link CN', modelo: 'TL-S5-5KM', qtd: 8, unitCve: 5000 },
   { investimento: 'Mercusys AC12 Router WIFI Dual Band AC1200', item: 'Mercusys AC12 Router WIFI Dual Band AC1200', marca: 'Mercusys', modelo: 'AC12 Router WIFI Dual Band AC1200', qtd: 2, unitCve: 5000 }
+];
+
+/**
+ * Segunda leva: a ligação é certa, o preço do investimento é que difere do
+ * armazém. `minimoArmazem` em vez de `qtd` — ver o cabeçalho. `corrigeCatalogo`
+ * só onde o preço do catálogo está comprovadamente errado.
+ */
+const PARES_PRECO_DIVERGENTE = [
+  { investimento: 'Router TP-Link Archer C20 V4  WiFi AC750 Dual Band', item: 'Router TP-Link Archer C20 V4  WiFi AC750 Dual Band', marca: 'TP-Link', modelo: 'Archer C20 Wireless Router Dual-Band', minimoArmazem: 8 },
+  { investimento: 'TP-Link TL-WR850N Router WIFI Branco', item: 'TP-Link TL-WR850N Router WIFI Branco', marca: 'TP-Link', modelo: 'TL-WR850N Router WIFI Branco', minimoArmazem: 8 },
+  { investimento: 'Mercusys MW325R Router Wi-Fi N 300Mbps', item: 'Mercusys MW325R Router Wi-Fi N 300Mbps', marca: 'Mercusys', modelo: 'MW325R Router Wi-Fi N 300Mbps', minimoArmazem: 1 },
+  { investimento: 'Antenas 710 Transmissao', item: 'Equipamento', marca: 'TP-Link', modelo: 'CPE710 Antena WiFi Exterior 5GHz AC 867Mbps PoE 23dBi', minimoArmazem: 2, corrigeCatalogo: { deCve: 15000, paraCve: 13000 } }
 ];
 
 const cve = (v) => new Intl.NumberFormat('pt-PT').format(Math.round(v)) + '$00';
@@ -146,6 +171,55 @@ for (const par of PARES) {
   plano.push({ itemId: it.id, invId: it.invId, inv: it.inv, item: it.nome, modeloId: mod.id, modelo: etiqueta, total: Number(it.total) });
 }
 
+const correcoes = [];
+
+for (const par of PARES_PRECO_DIVERGENTE) {
+  const item = db.prepare(`
+    SELECT it.id, it.item_name AS nome, it.quantity AS qtd, it.total_cost_cve AS total,
+           it.catalog_id AS catalogId, i.id AS invId, i.name AS inv
+    FROM investment_items it
+    JOIN investments i ON i.id = it.investment_id
+    WHERE i.name = ? AND it.item_name = ?
+  `).all(par.investimento, par.item);
+
+  if (item.length === 0) { problemas.push(`"${par.investimento}" / "${par.item}": item nao encontrado`); continue; }
+  if (item.length > 1) { problemas.push(`"${par.investimento}" / "${par.item}": ${item.length} itens com o mesmo nome`); continue; }
+  const it = item[0];
+  if (it.catalogId != null) { jaLigados++; continue; }
+
+  const modelo = db.prepare(`
+    SELECT id, brand, model, purchase_price_cve AS compra, ${LANDED} AS landed
+    FROM equipment_catalog WHERE brand = ? AND model = ?
+  `).all(par.marca, par.modelo);
+  if (modelo.length !== 1) {
+    problemas.push(`"${par.marca} ${par.modelo}": ${modelo.length} modelos com este nome no catalogo`);
+    continue;
+  }
+  const mod = modelo[0];
+  const etiqueta = [mod.brand, mod.model].filter(Boolean).join(' ');
+
+  // A quantidade nao tem de bater — o investimento etiqueta parte das compras.
+  // Mas se o armazem conhece MENOS unidades do que o investimento reclama, entao
+  // o item esta a falar de outro equipamento e nao se toca nele.
+  const adq = adquiridas(mod.id);
+  if (adq < par.minimoArmazem) {
+    problemas.push(`"${etiqueta}": armazem conhece ${adq} unidades, o investimento reclama ${par.minimoArmazem}`);
+    continue;
+  }
+
+  if (par.corrigeCatalogo) {
+    const { deCve, paraCve } = par.corrigeCatalogo;
+    if (Number(mod.compra) === deCve) {
+      correcoes.push({ modeloId: mod.id, modelo: etiqueta, deCve, paraCve });
+    } else if (Number(mod.compra) !== paraCve) {
+      problemas.push(`"${etiqueta}": preco de compra ${cve(mod.compra)}, esperava ${cve(deCve)} para corrigir (ou ${cve(paraCve)} ja corrigido)`);
+      continue;
+    }
+  }
+
+  plano.push({ itemId: it.id, invId: it.invId, inv: it.inv, item: it.nome, modeloId: mod.id, modelo: etiqueta, total: Number(it.total) });
+}
+
 // --------------------------------------------------------------- relatório
 
 if (jaLigados > 0) console.log(`${jaLigados} item(s) já estavam ligados — saltados.\n`);
@@ -159,10 +233,19 @@ if (problemas.length > 0) {
   process.exit(1);
 }
 
-if (plano.length === 0) {
+if (plano.length === 0 && correcoes.length === 0) {
   console.log('Nada a fazer.');
   db.close();
   process.exit(0);
+}
+
+if (correcoes.length > 0) {
+  console.log('Precos do catalogo a corrigir antes de ligar:\n');
+  for (const c of correcoes) {
+    console.log(`  catalogo #${c.modeloId} ${c.modelo}:  ${cve(c.deCve)} -> ${cve(c.paraCve)}`);
+    console.log('         (e a abertura de inventario deste modelo, se ja existir)');
+  }
+  console.log('');
 }
 
 console.log('Itens a ligar ao catálogo (deixam de somar capital — já contam pelo armazém):\n');
@@ -194,6 +277,31 @@ if (!apply) {
 
 const escrever = db.transaction(() => {
   const liga = db.prepare(`UPDATE investment_items SET catalog_id = ? WHERE id = ? AND catalog_id IS NULL`);
+  const corrigePreco = db.prepare(`
+    UPDATE equipment_catalog SET purchase_price_cve = ?, updated_at = datetime('now')
+    WHERE id = ? AND purchase_price_cve = ?
+  `);
+  // A abertura carrega o capital: corrigir so o catalogo deixava-a com o preco
+  // velho e o numero continuava errado.
+  const corrigeAbertura = db.prepare(`
+    UPDATE stock_movements SET unit_cost_cve = ?
+    WHERE catalog_id = ? AND type = 'entrada' AND reference = 'Abertura de inventario'
+      AND unit_cost_cve = ?
+  `);
+  const auditaModelo = db.prepare(`
+    INSERT INTO audit_logs (actor_username, actor_role, action, entity_type, entity_id, summary, metadata_json, created_at)
+    VALUES ('script', 'admin', 'update', 'equipment_catalog', ?, ?, ?, datetime('now'))
+  `);
+  for (const c of correcoes) {
+    const r = corrigePreco.run(c.paraCve, c.modeloId, c.deCve);
+    if (r.changes !== 1) throw new Error(`preco do modelo #${c.modeloId} nao foi corrigido — mudou debaixo dos pes?`);
+    const ab = corrigeAbertura.run(c.paraCve, c.modeloId, c.deCve);
+    auditaModelo.run(
+      String(c.modeloId),
+      `Custo de compra corrigido de ${cve(c.deCve)} para ${cve(c.paraCve)}`,
+      JSON.stringify({ deCve: c.deCve, paraCve: c.paraCve, aberturasCorrigidas: ab.changes, script: 'link-investment-items-to-catalog' })
+    );
+  }
   const audita = db.prepare(`
     INSERT INTO audit_logs (actor_username, actor_role, action, entity_type, entity_id, summary, metadata_json, created_at)
     VALUES ('script', 'admin', 'update', 'investment_item', ?, ?, ?, datetime('now'))
@@ -210,5 +318,6 @@ const escrever = db.transaction(() => {
 });
 
 escrever();
-console.log(`\n${plano.length} item(s) ligados. Capital externo agora: ${cve(capitalAntes - totalCve)}`);
+if (correcoes.length > 0) console.log(`\n${correcoes.length} preco(s) de catalogo corrigido(s).`);
+console.log(`${plano.length} item(s) ligados. Capital externo agora: ${cve(capitalAntes - totalCve)}`);
 db.close();
