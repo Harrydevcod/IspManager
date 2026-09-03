@@ -181,7 +181,7 @@ export function ProfitModule() {
           icon={Wallet}
           label="Total investido"
           value={formatCve(data.totals.totalInvestedCve)}
-          trend="stock + investimentos"
+          trend={`${formatCompactCve(data.totals.totalInvestedCve - data.totals.ownInfrastructureCve)} armazém + ${formatCompactCve(data.totals.ownInfrastructureCve)} externo`}
           tone="info"
         />
         <MetricCard

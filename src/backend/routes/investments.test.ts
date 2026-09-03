@@ -1015,3 +1015,100 @@ describe('zonas mais rentaveis', () => {
     expect(zones.find((z) => z.zone === 'Cruz')?.monthlyRevenueCve).toBe(600);
   });
 });
+
+describe('capital nao paga o mesmo equipamento duas vezes', () => {
+  /** Um modelo no catalogo, com custo aterrado = 5.000$/un. */
+  function modelo(brand: string | null, model: string, unitCve = 5000): number {
+    return db.prepare(`INSERT INTO equipment_catalog (type, brand, model, purchase_price_cve, stock_total)
+                       VALUES ('router', ?, ?, ?, 0)`).run(brand, model, unitCve).lastInsertRowid as number;
+  }
+
+  function comprou(catalogId: number, quantity: number, unitCve = 5000) {
+    db.prepare(`INSERT INTO stock_movements (catalog_id, type, quantity, unit_cost_cve)
+                VALUES (?, 'entrada', ?, ?)`).run(catalogId, quantity, unitCve);
+  }
+
+  async function totais() {
+    const res = await app.inject({ method: 'GET', url: '/api/investments' });
+    expect(res.statusCode).toBe(200);
+    return res.json() as {
+      totals: { totalInvestedCve: number };
+      rows: Array<{ items: Array<{ itemName: string; catalogId: number | null }> }>;
+      alerts: Array<{ severity: string; message: string }>;
+    };
+  }
+
+  test('item ligado ao catalogo agrupa o equipamento em vez de o pagar outra vez', async () => {
+    const catalogId = modelo('TP-Link', 'CPE 510');
+    comprou(catalogId, 2); // 10.000$ de capital, uma so vez
+
+    const create = await app.inject({
+      method: 'POST', url: '/api/investments',
+      payload: {
+        name: 'Expansao Espia', type: 'zona', investmentDate: '2026-06-01',
+        items: [
+          { itemType: 'cpe', itemName: 'TP-Link CPE 510', quantity: 2, unitCostCve: 5000, catalogId },
+          { itemType: 'mao_obra', itemName: 'Mao de obra', quantity: 1, unitCostCve: 3000 }
+        ]
+      }
+    });
+    expect(create.statusCode).toBe(201);
+
+    // 10.000$ do armazem + 3.000$ de mao de obra. Sem a ligacao seriam 20.000$.
+    expect((await totais()).totals.totalInvestedCve).toBe(13000);
+  });
+
+  test('o nome que bate com um modelo liga-se sozinho, mesmo sem catalogId', async () => {
+    const catalogId = modelo('TP-Link', 'CPE 510');
+    comprou(catalogId, 2);
+
+    // Uma importacao ou um script nunca passa `catalogId` — e era por aqui que
+    // o capital duplicava em silencio.
+    const create = await app.inject({
+      method: 'POST', url: '/api/investments',
+      payload: {
+        name: 'Expansao Cruz', type: 'zona', investmentDate: '2026-06-01',
+        items: [{ itemType: 'cpe', itemName: '  tp-link cpe 510  ', quantity: 2, unitCostCve: 5000 }]
+      }
+    });
+    expect(create.statusCode).toBe(201);
+
+    const data = await totais();
+    expect(data.rows[0].items[0].catalogId).toBe(catalogId);
+    expect(data.totals.totalInvestedCve).toBe(10000);
+  });
+
+  test('um catalogId explicito manda sobre o nome', async () => {
+    const cpe = modelo('TP-Link', 'CPE 510');
+    const outro = modelo('Mercusys', 'AC12');
+    comprou(cpe, 1);
+
+    await app.inject({
+      method: 'POST', url: '/api/investments',
+      payload: {
+        name: 'Etiqueta trocada', type: 'equipamento', investmentDate: '2026-06-01',
+        items: [{ itemType: 'cpe', itemName: 'TP-Link CPE 510', quantity: 1, unitCostCve: 5000, catalogId: outro }]
+      }
+    });
+    expect((await totais()).rows[0].items[0].catalogId).toBe(outro);
+  });
+
+  test('equipamento sem ligacao avisa; mao de obra nao', async () => {
+    await app.inject({
+      method: 'POST', url: '/api/investments',
+      payload: {
+        name: 'Torre Monte Sossego', type: 'infraestrutura', investmentDate: '2026-06-01',
+        items: [
+          { itemType: 'antena', itemName: 'Antena comprada na loja', quantity: 1, unitCostCve: 9000 },
+          { itemType: 'mao_obra', itemName: 'Mao de obra', quantity: 1, unitCostCve: 3000 },
+          { itemType: 'instalacao', itemName: 'Aluguer de grua', quantity: 1, unitCostCve: 4000 }
+        ]
+      }
+    });
+
+    const soltos = (await totais()).alerts.filter((a) => a.message.includes('sem ligação ao catálogo'));
+    expect(soltos).toHaveLength(1);
+    expect(soltos[0].message).toContain('Antena comprada na loja');
+    expect(soltos[0].severity).toBe('warning');
+  });
+});

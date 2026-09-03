@@ -422,6 +422,14 @@
   transition: border-color 150ms ease, background 150ms ease;
 }
 
+/* Nome do item: o modelo escolhe-se sempre; o texto so aparece no custo
+   externo. Ficam na mesma celula da grelha para as colunas nao dancarem. */
+.investment-item-name {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
 .investment-item-row:hover {
   border-color: var(--border);
   background: color-mix(in oklch, var(--surface-2) 80%, transparent);
