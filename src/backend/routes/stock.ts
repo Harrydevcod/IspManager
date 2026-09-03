@@ -68,6 +68,18 @@ function catalogValidationError(error: z.ZodError): string {
   return `${field}: ${issue.message}`;
 }
 
+/**
+ * Uma entrada sem custo e capital perdido em silencio.
+ *
+ * O custo era decorativo enquanto o capital se deduzia do saldo do armazem: a
+ * omissao zero nao fazia mal a ninguem. Desde que o capital passou a ser a soma
+ * das entradas, registar uma compra sem preencher o custo enterra-a — o stock
+ * sobe, o dinheiro que saiu da conta nunca aparece, e nada o diz. Aconteceu: ha
+ * 115 metros de cabo na base real que entraram a zero.
+ *
+ * Saidas e ajustes ficam como estavam. So a compra e capital, e so ela precisa
+ * de saber quanto custou.
+ */
 const movementSchema = z.object({
   catalogId: z.coerce.number().int().positive(),
   type: z.enum(['entrada', 'saida', 'ajuste']),
@@ -76,7 +88,10 @@ const movementSchema = z.object({
   supplier: z.string().trim().optional().nullable(),
   reference: z.string().trim().optional().nullable(),
   notes: z.string().trim().optional().nullable()
-});
+}).refine(
+  (data) => data.type !== 'entrada' || data.unitCostCve > 0,
+  { path: ['unitCostCve'], message: 'uma entrada tem de dizer quanto custou, senao o capital perde-a' }
+);
 
 function movementDelta(type: 'entrada' | 'saida' | 'ajuste', quantity: number) {
   if (type === 'saida') {
@@ -187,6 +202,13 @@ export async function registerStockRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: catalogValidationError(parsed.error) });
     }
 
+    // Stock inicial e uma compra, e uma compra sem custo desaparece do capital.
+    if (parsed.data.stockTotal > 0 && landedCostOf(parsed.data) <= 0) {
+      return reply.status(400).send({
+        error: 'Custo de compra: um modelo que nasce com stock tem de dizer quanto custou, senao o capital perde-o'
+      });
+    }
+
     const db = getSqliteDatabase();
     const result = db.prepare(`
       INSERT INTO equipment_catalog (
@@ -249,6 +271,12 @@ export async function registerStockRoutes(app: FastifyInstance) {
       .get(id) as { stockTotal: number } | undefined;
     if (!before) {
       return reply.status(404).send({ error: 'Modelo nao encontrado' });
+    }
+    // Subir o stock e comprar. Descer e corrigir uma contagem, e essa nao custa nada.
+    if (parsed.data.stockTotal > Number(before.stockTotal || 0) && landedCostOf(parsed.data) <= 0) {
+      return reply.status(400).send({
+        error: 'Custo de compra: acrescentar stock e uma compra e tem de dizer quanto custou, senao o capital perde-o'
+      });
     }
     const result = db.prepare(`
       UPDATE equipment_catalog

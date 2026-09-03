@@ -134,7 +134,9 @@ describe('POST /api/equipment-catalog with materials', () => {
         type: '  Ponto de Acesso  ',
         brand: 'TP-Link',
         model: 'EAP225',
-        stockTotal: 1
+        stockTotal: 1,
+        // Nascer com stock e uma compra, e uma compra diz quanto custou.
+        purchasePriceCve: 7000
       }
     });
 
@@ -308,5 +310,76 @@ describe('o catalogo deixa rasto da compra', () => {
     const id = (created.json() as { id: number }).id;
     await app.inject({ method: 'PUT', url: `/api/equipment-catalog/${id}`, payload: model({ rentalFeeCve: 300 }) });
     expect(capex()).toBe(15_000);
+  });
+});
+
+describe('uma compra tem de dizer quanto custou', () => {
+  const model = (over: Record<string, unknown> = {}) => ({
+    category: 'equipamento', type: 'cpe', model: 'CPE-custo', unitOfMeasure: 'un',
+    isSerialized: true, purchasePriceCve: 4000, shippingCostCve: 0,
+    customsDutyCve: 0, otherCostsCve: 0, sellingPriceCve: 0, rentalFeeCve: 0,
+    stockTotal: 0, usefulLifeMonths: 60, active: true, ...over
+  });
+
+  async function seedModel(over: Record<string, unknown> = {}) {
+    const r = await app.inject({ method: 'POST', url: '/api/equipment-catalog', payload: model(over) });
+    return (r.json() as { id: number }).id;
+  }
+
+  test('recusa uma entrada de stock sem custo', async () => {
+    const id = await seedModel();
+    const r = await app.inject({
+      method: 'POST', url: '/api/stock',
+      payload: { catalogId: id, type: 'entrada', quantity: 5, unitCostCve: 0 }
+    });
+    expect(r.statusCode).toBe(400);
+    // Nada entrou: nem movimento, nem stock.
+    const mov = db.prepare(`SELECT COUNT(*) n FROM stock_movements WHERE catalog_id = ?`).get(id) as { n: number };
+    expect(mov.n).toBe(0);
+  });
+
+  test('aceita saidas e ajustes sem custo — so a compra e capital', async () => {
+    const id = await seedModel({ stockTotal: 10, purchasePriceCve: 4000 });
+    for (const type of ['saida', 'ajuste']) {
+      const r = await app.inject({
+        method: 'POST', url: '/api/stock',
+        payload: { catalogId: id, type, quantity: 1, unitCostCve: 0 }
+      });
+      expect(r.statusCode, `${type} devia passar`).toBe(201);
+    }
+  });
+
+  test('recusa um modelo que nasce com stock e sem preco', async () => {
+    const r = await app.inject({
+      method: 'POST', url: '/api/equipment-catalog',
+      payload: model({ stockTotal: 3, purchasePriceCve: 0 })
+    });
+    expect(r.statusCode).toBe(400);
+  });
+
+  test('um modelo sem stock pode nascer sem preco', async () => {
+    const r = await app.inject({
+      method: 'POST', url: '/api/equipment-catalog',
+      payload: model({ model: 'Sem preco ainda', stockTotal: 0, purchasePriceCve: 0 })
+    });
+    expect(r.statusCode).toBe(201);
+  });
+
+  test('recusa acrescentar stock a um modelo sem preco, mas deixa corrigir para baixo', async () => {
+    const id = await seedModel({ model: 'Corrige contagem', stockTotal: 0, purchasePriceCve: 0 });
+    db.prepare('UPDATE equipment_catalog SET stock_total = 4 WHERE id = ?').run(id);
+
+    const sobe = await app.inject({
+      method: 'PUT', url: `/api/equipment-catalog/${id}`,
+      payload: model({ model: 'Corrige contagem', stockTotal: 9, purchasePriceCve: 0 })
+    });
+    expect(sobe.statusCode).toBe(400);
+
+    // Descer e uma correcao de contagem, e essa nao custa nada.
+    const desce = await app.inject({
+      method: 'PUT', url: `/api/equipment-catalog/${id}`,
+      payload: model({ model: 'Corrige contagem', stockTotal: 1, purchasePriceCve: 0 })
+    });
+    expect(desce.statusCode).toBe(200);
   });
 });

@@ -824,7 +824,15 @@ export function StockModule({
             <option value="ajuste">Ajuste</option>
           </Select>
           <Field label="Quantidade" required type="number" value={movementForm.quantity} onChange={(event) => updateMovementForm('quantity', event.target.value)} />
-          <Field label="Custo unitario CVE" type="number" min={0} value={movementForm.unitCostCve} onChange={(event) => updateMovementForm('unitCostCve', event.target.value)} />
+          <Field
+            label="Custo unitario CVE"
+            type="number"
+            min={movementForm.type === 'entrada' ? 1 : 0}
+            required={movementForm.type === 'entrada'}
+            hint={movementForm.type === 'entrada' ? 'Uma compra sem custo desaparece do capital' : undefined}
+            value={movementForm.unitCostCve}
+            onChange={(event) => updateMovementForm('unitCostCve', event.target.value)}
+          />
           <Field label="Fornecedor" value={movementForm.supplier} onChange={(event) => updateMovementForm('supplier', event.target.value)} />
           <Field label="Referencia" value={movementForm.reference} onChange={(event) => updateMovementForm('reference', event.target.value)} />
           <Field wide label="Notas" value={movementForm.notes} onChange={(event) => updateMovementForm('notes', event.target.value)} />
