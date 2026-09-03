@@ -6,6 +6,20 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.21.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.21.0) — 2026-09-03
+
+### Corrigido
+
+- **"Zonas mais rentáveis" agrupa pela zona do cliente, não pela etiqueta do investimento.** O painel somava o lucro dos investimentos pela zona escrita na ficha do investimento, e essa etiqueta não diz onde vivem os clientes que ele serve: uma antena etiquetada "Cruz" servia clientes de catorze zonas. Os investimentos sem zona caíam todos num balde "Sem zona" que levava dois terços do lucro mensal da empresa — não eram zonas a competir, era o total repartido por uma etiqueta. Agora a zona é a do cliente: receita de caixa da zona menos o OPEX rateado por serviço ativo, sobre um mesmo intervalo de meses para todas (por intervalo próprio, a zona com um só mês de recibos parecia render o dobro da que cobra há um ano).
+
+### Alterado
+
+- O cartão das zonas passa a mostrar o número de clientes e a decomposição da conta (receita menos OPEX), para se ler sem abrir o código.
+
+### Adicionado
+
+- `scripts/normalize-zones.cjs` — acerta as zonas dos clientes a uma lista fechada. Os campos Zona e Morada tinham sido usados um pelo outro e metade das "zonas" eram pontos de referência dentro de outra. Simulação por omissão; `--apply` escreve.
+
 ## [1.20.2](https://github.com/Harrydevcod/IspManager/releases/tag/v1.20.2) — 2026-09-03
 
 ### Corrigido
