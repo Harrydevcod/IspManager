@@ -1,6 +1,21 @@
 /**
- * Liga ao catálogo os itens de investimento que são o MESMO equipamento que já
- * deu entrada no armazém.
+ * Acerta o histórico de capital ao que a 1.20 passou a contar.
+ *
+ * Faz três coisas, todas pela mesma razão — o capital deixou de se deduzir do
+ * saldo do armazém e passou a ser a soma das compras, e o que estava escrito não
+ * foi escrito a pensar nisso:
+ *
+ *   1. LIGA ao catálogo os itens de investimento que são o mesmo equipamento que
+ *      já deu entrada no armazém, para o mesmo dinheiro deixar de contar duas
+ *      vezes;
+ *   2. PÕE PREÇO nas compras que entraram com o custo em branco, que a omissão
+ *      zero enterrou;
+ *   3. RECLASSIFICA como ajuste as entradas de quantidade negativa, que nunca
+ *      foram compras.
+ *
+ * Simulação por omissão, e ou o lote todo confere ou não se escreve nada.
+ *
+ * ------------------------------------------------------------------ 1. ligar
  *
  * Até à 1.20 havia dois livros de custo que não se falavam: o armazém, escrito
  * por cada instalação, e os investimentos, escritos à mão. Quem comprou seis CPE
@@ -44,8 +59,7 @@
  *     `cliente`, renda 0) e não são capital do ISP. Ligá-los seria colar coisas
  *     diferentes com o mesmo modelo e perder 8.000$ de capital real.
  *
- * Faz ainda duas coisas ao armazem, pela mesma razao — o capital passou a ser a
- * soma das entradas e o historico nao foi escrito a pensar nisso:
+ * ------------------------------------------- 2. e 3. acertar o armazem
  *
  *   - COMPRAS SEM CUSTO. Ha entradas lancadas com o custo em branco, que a
  *     omissao zero enterrou: o stock subiu, o dinheiro nunca apareceu. Sao nove
@@ -70,8 +84,8 @@
  *   - corre dentro de uma transação e deixa registo na auditoria.
  *
  * Uso:
- *   node scripts/link-investment-items-to-catalog.cjs            # simulação
- *   node scripts/link-investment-items-to-catalog.cjs --apply    # escreve
+ *   node scripts/reconcile-capital-history.cjs            # simulação
+ *   node scripts/reconcile-capital-history.cjs --apply    # escreve
  *
  * FAÇA O BACKUP ANTES DE CORRER COM --apply.
  */
@@ -359,7 +373,7 @@ const escrever = db.transaction(() => {
     auditaModelo.run(
       String(c.modeloId),
       `Custo de compra corrigido de ${cve(c.deCve)} para ${cve(c.paraCve)}`,
-      JSON.stringify({ deCve: c.deCve, paraCve: c.paraCve, aberturasCorrigidas: ab.changes, script: 'link-investment-items-to-catalog' })
+      JSON.stringify({ deCve: c.deCve, paraCve: c.paraCve, aberturasCorrigidas: ab.changes, script: 'reconcile-capital-history' })
     );
   }
   const audita = db.prepare(`
@@ -384,7 +398,7 @@ const escrever = db.transaction(() => {
     auditaMovimento.run(
       String(c.id),
       `Compra sem custo: ${c.qtd} un de ${c.modelo} a ${cve(c.landed)}/un`,
-      JSON.stringify({ catalogId: c.catalogId, quantidade: c.qtd, unitCostCve: c.landed, script: 'link-investment-items-to-catalog' })
+      JSON.stringify({ catalogId: c.catalogId, quantidade: c.qtd, unitCostCve: c.landed, script: 'reconcile-capital-history' })
     );
   }
   for (const a of ajustesDisfarcados) {
@@ -393,7 +407,7 @@ const escrever = db.transaction(() => {
     auditaMovimento.run(
       String(a.id),
       `Entrada negativa de ${a.qtd} un de ${a.modelo} reclassificada como ajuste`,
-      JSON.stringify({ quantidade: a.qtd, de: 'entrada', para: 'ajuste', script: 'link-investment-items-to-catalog' })
+      JSON.stringify({ quantidade: a.qtd, de: 'entrada', para: 'ajuste', script: 'reconcile-capital-history' })
     );
   }
   for (const p of plano) {
@@ -402,7 +416,7 @@ const escrever = db.transaction(() => {
     audita.run(
       String(p.itemId),
       `Item "${p.item}" ligado ao catálogo #${p.modeloId} ${p.modelo}`,
-      JSON.stringify({ investmentId: p.invId, catalogId: p.modeloId, totalCve: p.total, script: 'link-investment-items-to-catalog' })
+      JSON.stringify({ investmentId: p.invId, catalogId: p.modeloId, totalCve: p.total, script: 'reconcile-capital-history' })
     );
   }
 });

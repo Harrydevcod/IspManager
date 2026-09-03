@@ -6,6 +6,16 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+### Corrigido
+
+- **Uma entrada de stock deixa de poder ser negativa.** É a irmã da regra do custo que foi na 1.20.1, e diz a mesma coisa por outro lado: só a compra é capital, e uma compra tem sinal e preço. Uma entrada de quantidade negativa não é compra nenhuma — é uma correção de contagem com o tipo trocado, e desde que o capital passou a somar as entradas, subtrairia dinheiro que nunca se gastou. Aconteceu duas vezes na base, salvas por acaso de terem o custo a zero. O formulário passa a recusá-la e a dizer que o caminho é **Ajuste**
+
+### Notas
+
+- **A ferramenta de reconciliação mudou de nome e faz mais.** Passou a `scripts/reconcile-capital-history.cjs`, porque já não é só ligar itens ao catálogo: além disso, põe preço nas compras que entraram com o custo em branco (**39.325$** na base atual — 115 metros de cabo, 3 CPE 510, um Archer C20, um MW325R, um repetidor e 20 RJ45, nenhum com fornecedor nem referência), e reclassifica como ajuste as duas entradas negativas que as próprias notas diziam ser acertos. Continua em simulação por omissão, e ou o lote todo confere ou não toca em nada
+- **Sobre os 435 metros de cabo que pareciam faltar ao armazém:** foram usados, e não há nada a corrigir. Só 8 dos 30 serviços têm cabo lançado, e todos de junho de 2026 em diante — os outros 22 são anteriores ao sistema e foram importados sem detalhe de material. À média de 21,25 m dos registados, esses 22 dão 467 m, que explica a diferença. É o mesmo caso da caixa importada: o histórico é mais fino do que a realidade, e lançar as linhas agora seria inventar metragens que ninguém mediu
+
+
 ## [1.20.1](https://github.com/Harrydevcod/IspManager/releases/tag/v1.20.1) — 2026-09-03
 
 ### Corrigido
@@ -14,7 +24,7 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ### Notas
 
-- **Ferramenta nova, para quem tem histórico por reconciliar.** `scripts/link-investment-items-to-catalog.cjs` liga ao catálogo os itens de investimento que são o mesmo equipamento que já deu entrada no armazém — o que a 1.20 tornou possível mas deixou por fazer no histórico. Corre em simulação por omissão e só escreve com `--apply`; ou o lote todo confere, ou não toca em nada. Na base atual tira **305.700$** de dupla contagem, de oito dos treze itens. Os cinco que ficam de fora estão explicados no cabeçalho do próprio script: cabo e RJ45 porque o armazém só conhece uma parte do que se comprou e ligá-los apagaria capital real; as serrilhas porque são custo externo genuíno; e o router de gestão porque é o aparelho da operadora, que não é o mesmo que os MikroTik dos clientes
+- **Ferramenta nova, para quem tem histórico por reconciliar.** `scripts/reconcile-capital-history.cjs` liga ao catálogo os itens de investimento que são o mesmo equipamento que já deu entrada no armazém — o que a 1.20 tornou possível mas deixou por fazer no histórico. Corre em simulação por omissão e só escreve com `--apply`; ou o lote todo confere, ou não toca em nada. Na base atual tira **305.700$** de dupla contagem, de oito dos treze itens. Os cinco que ficam de fora estão explicados no cabeçalho do próprio script: cabo e RJ45 porque o armazém só conhece uma parte do que se comprou e ligá-los apagaria capital real; as serrilhas porque são custo externo genuíno; e o router de gestão porque é o aparelho da operadora, que não é o mesmo que os MikroTik dos clientes
 
 
 ## [1.20.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.20.0) — 2026-09-03
