@@ -6,6 +6,17 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.20.1](https://github.com/Harrydevcod/IspManager/releases/tag/v1.20.1) — 2026-09-03
+
+### Corrigido
+
+- **Registar uma compra sem preencher o custo deixa de a enterrar.** Foi um efeito da própria 1.20: enquanto o capital se deduzia do saldo do armazém, o custo do movimento era decorativo e ficar a zero não fazia mal a ninguém. Desde que o capital passou a ser a soma das entradas, uma compra sem custo desaparece — o stock sobe, o dinheiro que saiu da conta nunca aparece em lado nenhum, e nada o diz. Não é hipotético: há **115 metros de cabo** na base que entraram assim, e é por isso que o cabo aparece com 3.300$ de capital quando se pagaram 33.551$ por 610 metros. A partir daqui a entrada exige o custo, nos dois caminhos que criam uma compra — o movimento de stock e o formulário do modelo, seja ele a nascer com stock ou a ver o stock subir. **Saídas e ajustes não mudam:** só a compra é capital, e descer o stock é uma correção de contagem, que não custa nada
+
+### Notas
+
+- **Ferramenta nova, para quem tem histórico por reconciliar.** `scripts/link-investment-items-to-catalog.cjs` liga ao catálogo os itens de investimento que são o mesmo equipamento que já deu entrada no armazém — o que a 1.20 tornou possível mas deixou por fazer no histórico. Corre em simulação por omissão e só escreve com `--apply`; ou o lote todo confere, ou não toca em nada. Na base atual tira **305.700$** de dupla contagem, de oito dos treze itens. Os cinco que ficam de fora estão explicados no cabeçalho do próprio script: cabo e RJ45 porque o armazém só conhece uma parte do que se comprou e ligá-los apagaria capital real; as serrilhas porque são custo externo genuíno; e o router de gestão porque é o aparelho da operadora, que não é o mesmo que os MikroTik dos clientes
+
+
 ## [1.20.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.20.0) — 2026-09-03
 
 ### Corrigido
