@@ -6,6 +6,21 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.23.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.23.0) — 2026-09-03
+
+### Adicionado
+
+- **Na substituição, o equipamento que entra pode ser do cliente.** A escolha já existia ao criar o serviço — `Alugado ao cliente` ou `Do cliente` — mas na troca não: só se podia instalar equipamento do ISP, que consome stock e soma aluguer à mensalidade. Agora o router que o cliente comprou (ou herdou da operadora anterior) regista-se na troca como o que é: não sai do armazém, não conta como capital e não entra na mensalidade.
+
+### Corrigido
+
+- **A troca deixa de ser recusada por falta de stock quando o equipamento nem é nosso.** O motor já sabia que só o material do ISP consome inventário; a rota da substituição não, e recusava na mesma. Com todo o catálogo a zero — que é o estado real do armazém — nenhuma troca era possível.
+- Quando a unidade **retirada** já era do cliente, o diálogo prometia devolvê-la ao stock. Não devolvia, e agora também não o diz: fica com ele, e o campo de estado desaparece por não ter o que decidir.
+
+### Notas
+
+Sem migrações.
+
 ## [1.22.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.22.0) — 2026-09-03
 
 ### Corrigido
