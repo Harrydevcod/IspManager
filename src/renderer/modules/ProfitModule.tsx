@@ -1,11 +1,12 @@
-import { Banknote, Coins, Download, FileText, Percent, RadioTower, Wallet } from 'lucide-react';
+import { Banknote, Coins, Download, FileText, Gauge, Percent, RadioTower, TrendingDown, Wallet } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Card, ErrorRetry, Field, Message, MetricCard, MetricGrid, ModuleHeaderActions, RevenueBars, formatCompactCve } from '../components';
 import { authFetch } from '../lib/auth';
 import { downloadAuthenticated } from '../lib/download';
 import { formatCve } from '../lib/format';
 import './InvestmentsModule.css';
-import { EMPTY_INVESTMENT_LIST, type InvestmentList, type RevenuePoint } from '../types';
+import { EMPTY_INVESTMENT_LIST, EMPTY_PORTFOLIO, type InvestmentList, type PortfolioReport, type RevenuePoint } from '../types';
+import { PortfolioTable } from './finance/PortfolioTable';
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7);
@@ -27,6 +28,7 @@ export function ProfitModule() {
   const [showAllMonths, setShowAllMonths] = useState(true);
   const [revenuePoints, setRevenuePoints] = useState<RevenuePoint[]>([]);
   const [activeClients, setActiveClients] = useState(0);
+  const [portfolio, setPortfolio] = useState<PortfolioReport>(EMPTY_PORTFOLIO);
 
   const load = useCallback(() => {
     const params = new URLSearchParams();
@@ -52,6 +54,13 @@ export function ProfitModule() {
         setRevenuePoints([]);
         setActiveClients(0);
       });
+  }, []);
+
+  useEffect(() => {
+    authFetch('http://127.0.0.1:3001/api/reports/portfolio')
+      .then((response) => response.ok ? response.json() as Promise<PortfolioReport> : null)
+      .then((payload) => setPortfolio(payload ?? EMPTY_PORTFOLIO))
+      .catch(() => setPortfolio(EMPTY_PORTFOLIO));
   }, []);
 
   const downloadReport = useCallback(async (format: 'pdf' | 'xlsx') => {
@@ -204,6 +213,35 @@ export function ProfitModule() {
           tone={data.totals.companyAccumulatedProfitCve < 0 ? 'danger' : 'success'}
         />
       </MetricGrid>
+
+      {/* Bloco proprio: a caixa responde a "quanto dinheiro tenho", o parque a
+          "quanto vale o que ja montei". Somar os dois seria misturar as duas
+          perguntas — por isso vivem em grelhas separadas, com nomes separados. */}
+      <MetricGrid label="Parque instalado">
+        <MetricCard
+          icon={Gauge}
+          label="Valor do parque"
+          value={formatCve(data.totals.parkNetValueCve)}
+          trend={`${data.totals.parkUnits} equipamentos no terreno`}
+          tone="info"
+        />
+        <MetricCard
+          icon={TrendingDown}
+          label="Desgaste mensal"
+          value={formatCve(data.totals.parkMonthlyDepreciationCve)}
+          trend="depreciação do equipamento"
+          tone="neutral"
+        />
+        <MetricCard
+          icon={Wallet}
+          label="Por recuperar"
+          value={formatCve(portfolio.totals.unrecoveredCve)}
+          trend={`${portfolio.totals.withCapitalCount - portfolio.totals.recoveredCount} clientes · capital + OPEX`}
+          tone={portfolio.totals.unrecoveredCve > 0 ? 'warning' : 'success'}
+        />
+      </MetricGrid>
+
+      <PortfolioTable data={portfolio} />
 
       {revenuePoints.length > 0 && (
         <Card

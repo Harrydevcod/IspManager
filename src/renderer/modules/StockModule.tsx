@@ -23,7 +23,15 @@ type StockFormState = {
   sellingPriceCve: string;
   rentalFeeCve: string;
   stockTotal: string;
+  usefulLifeMonths: string;
   active: '1' | '0';
+  // Custos que o formulario nao mostra mas que entram no custo aterrado. Viajam
+  // no estado para a edicao os devolver como estavam: o servidor recebe o
+  // modelo inteiro, e o que nao viesse era reposto a zero em silencio.
+  description: string;
+  shippingCostCve: string;
+  customsDutyCve: string;
+  otherCostsCve: string;
 };
 
 type StockMovementFormState = {
@@ -53,7 +61,12 @@ function emptyCatalogForm(): StockFormState {
     sellingPriceCve: '',
     rentalFeeCve: '',
     stockTotal: '0',
-    active: '1'
+    usefulLifeMonths: '60',
+    active: '1',
+    description: '',
+    shippingCostCve: '',
+    customsDutyCve: '',
+    otherCostsCve: ''
   };
 }
 
@@ -203,7 +216,12 @@ export function StockModule({
       sellingPriceCve: String(catalog.sellingPriceCve),
       rentalFeeCve: String(catalog.rentalFeeCve),
       stockTotal: String(catalog.stockTotal),
-      active: catalog.active ? '1' : '0'
+      usefulLifeMonths: String(catalog.usefulLifeMonths ?? 60),
+      active: catalog.active ? '1' : '0',
+      description: catalog.description || '',
+      shippingCostCve: String(catalog.shippingCostCve ?? 0),
+      customsDutyCve: String(catalog.customsDutyCve ?? 0),
+      otherCostsCve: String(catalog.otherCostsCve ?? 0)
     });
     setShowCatalogForm(true);
   }
@@ -243,6 +261,10 @@ export function StockModule({
         sellingPriceCve: Number(catalogForm.sellingPriceCve || 0),
         rentalFeeCve: Number(catalogForm.rentalFeeCve || 0),
         stockTotal: Number(catalogForm.stockTotal || 0),
+        usefulLifeMonths: Number(catalogForm.usefulLifeMonths || 60),
+        shippingCostCve: Number(catalogForm.shippingCostCve || 0),
+        customsDutyCve: Number(catalogForm.customsDutyCve || 0),
+        otherCostsCve: Number(catalogForm.otherCostsCve || 0),
         isSerialized: catalogForm.isSerialized === '1',
         active: catalogForm.active === '1'
       })
@@ -772,6 +794,7 @@ export function StockModule({
               <Field label="Preco venda CVE" type="number" min={0} value={catalogForm.sellingPriceCve} onChange={(event) => updateCatalogForm('sellingPriceCve', event.target.value)} />
               <Field label="Aluguer mensal CVE" type="number" min={0} value={catalogForm.rentalFeeCve} onChange={(event) => updateCatalogForm('rentalFeeCve', event.target.value)} />
               <Field label={editingCatalog ? 'Stock atual' : 'Stock inicial'} type="number" min={0} step={1} value={catalogForm.stockTotal} onChange={(event) => updateCatalogForm('stockTotal', event.target.value)} />
+              <Field label="Vida util (meses)" type="number" min={1} step={1} value={catalogForm.usefulLifeMonths} onChange={(event) => updateCatalogForm('usefulLifeMonths', event.target.value)} />
               <Select label="Estado" value={catalogForm.active} onChange={(event) => updateCatalogForm('active', event.target.value)}>
                 <option value="1">Ativo</option>
                 <option value="0">Inativo</option>
