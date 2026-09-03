@@ -506,12 +506,13 @@ export type InvestmentList = {
     notRecoveredCount: number;
   };
   companyOpexShare: CompanyOpexShare;
+  /** Zona do CLIENTE (nao a etiqueta do investimento): receita de caixa menos OPEX rateado. */
   zoneSummary: Array<{
     zone: string;
-    investments: number;
-    totalCostCve: number;
+    clients: number;
+    monthlyRevenueCve: number;
+    monthlyOpexCve: number;
     monthlyNetProfitCve: number;
-    roiPct: number | null;
   }>;
   equipmentTop: EquipmentUsage[];
   alerts: ProfitabilityAlert[];

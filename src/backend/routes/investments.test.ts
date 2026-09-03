@@ -937,3 +937,81 @@ describe('coerencia entre o cartao e o grafico', () => {
     expect(payload.totals.totalInvestedCve).toBe(42_000);
   });
 });
+
+describe('zonas mais rentaveis', () => {
+  function cliente(code: string, nome: string, zona: string | null, telefone: string): number {
+    return db.prepare(`INSERT INTO clients (client_code, full_name, phone, zone) VALUES (?, ?, ?, ?)`)
+      .run(code, nome, telefone, zona).lastInsertRowid as number;
+  }
+
+  function recebeu(clientId: number, amountCve: number, month: string) {
+    const serviceId = db.prepare(`INSERT INTO services (client_id, monthly_value_cve, status) VALUES (?, ?, 'active')`)
+      .run(clientId, amountCve).lastInsertRowid as number;
+    insertPayment(
+      `INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, payment_date, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'paid')`,
+      clientId, serviceId, month, amountCve, `${month}-10`, `${month}-10`
+    );
+  }
+
+  test('agrupa pela zona do CLIENTE, nao pela etiqueta do investimento', async () => {
+    const espia = cliente('C-E1', 'Cliente Espia', 'Espia', '5550001');
+    const cruz = cliente('C-C1', 'Cliente Cruz', 'Cruz', '5550002');
+    const semZona = cliente('C-S1', 'Cliente Sem Zona', null, '5550003');
+    recebeu(espia, 3000, '2026-06');
+    recebeu(cruz, 1000, '2026-06');
+    recebeu(semZona, 500, '2026-06');
+
+    // Um investimento etiquetado "Cruz" que reclama o cliente da Espia: a
+    // etiqueta nao pode mudar em que zona a receita dele aparece.
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/investments',
+      payload: {
+        name: 'Antena etiquetada Cruz', type: 'zona', zone: 'Cruz',
+        investmentDate: '2026-06-01', clientIds: [espia],
+        targetClients: 1, installedClients: 1,
+        items: [{ itemType: 'antena', itemName: 'CPE', quantity: 1, unitCostCve: 10000 }]
+      }
+    });
+    expect(create.statusCode).toBe(201);
+
+    const zones = (await app.inject({ method: 'GET', url: '/api/investments' })).json().zoneSummary as
+      Array<{ zone: string; clients: number; monthlyRevenueCve: number; monthlyNetProfitCve: number }>;
+    expect(zones.map((z) => [z.zone, z.monthlyRevenueCve])).toEqual([
+      ['Espia', 3000], ['Cruz', 1000], ['Sem zona', 500]
+    ]);
+    // Sem despesas nao ha OPEX: o lucro e a receita, e cada zona tem 1 servico.
+    expect(zones.every((z) => z.clients === 1 && z.monthlyNetProfitCve === z.monthlyRevenueCve)).toBe(true);
+  });
+
+  test('desconta o OPEX rateado por servico ativo e a despesa fixada a zona', async () => {
+    const a = cliente('C-E2', 'Espia A', 'Espia', '5550004');
+    const b = cliente('C-E3', 'Espia B', 'Espia', '5550005');
+    recebeu(a, 3000, '2026-06');
+    recebeu(b, 3000, '2026-06');
+    // 2.000$ por ratear entre 2 servicos = 1.000$/cliente; 500$ so da Espia.
+    db.prepare(`INSERT INTO expenses (expense_date, reference_month, category, description, amount_cve) VALUES ('2026-06-05', '2026-06', 'infraestrutura', 'Internet', 2000)`).run();
+    db.prepare(`INSERT INTO expenses (expense_date, reference_month, category, description, amount_cve, zone) VALUES ('2026-06-05', '2026-06', 'infraestrutura', 'Poste Espia', 500, 'Espia')`).run();
+
+    const zones = (await app.inject({ method: 'GET', url: '/api/investments' })).json().zoneSummary as
+      Array<{ zone: string; monthlyRevenueCve: number; monthlyOpexCve: number; monthlyNetProfitCve: number }>;
+    expect(zones).toHaveLength(1);
+    expect(zones[0]).toMatchObject({ monthlyRevenueCve: 6000, monthlyOpexCve: 2500, monthlyNetProfitCve: 3500 });
+  });
+
+  test('meses medem-se pelo mesmo span para todas as zonas', async () => {
+    const antiga = cliente('C-E4', 'Espia Antiga', 'Espia', '5550006');
+    const nova = cliente('C-C2', 'Cruz Nova', 'Cruz', '5550007');
+    recebeu(antiga, 1000, '2026-06');
+    recebeu(antiga, 1000, '2026-07');
+    recebeu(nova, 1200, '2026-07');
+
+    const zones = (await app.inject({ method: 'GET', url: '/api/investments' })).json().zoneSummary as
+      Array<{ zone: string; monthlyRevenueCve: number }>;
+    // Span global = 2 meses. A Cruz, com um so mes de recibos, vale 600$/mes —
+    // nao 1.200$, que era o que um span proprio por zona lhe dava.
+    expect(zones.find((z) => z.zone === 'Espia')?.monthlyRevenueCve).toBe(1000);
+    expect(zones.find((z) => z.zone === 'Cruz')?.monthlyRevenueCve).toBe(600);
+  });
+});
