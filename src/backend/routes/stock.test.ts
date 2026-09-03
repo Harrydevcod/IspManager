@@ -383,3 +383,31 @@ describe('uma compra tem de dizer quanto custou', () => {
     expect(desce.statusCode).toBe(200);
   });
 });
+
+describe('uma compra nao pode ser negativa', () => {
+  test('recusa uma entrada de quantidade negativa', async () => {
+    const created = await app.inject({
+      method: 'POST', url: '/api/equipment-catalog',
+      payload: {
+        category: 'equipamento', type: 'cpe', model: 'CPE-negativo', unitOfMeasure: 'un',
+        isSerialized: true, purchasePriceCve: 5000, stockTotal: 10, active: true
+      }
+    });
+    const id = (created.json() as { id: number }).id;
+
+    const r = await app.inject({
+      method: 'POST', url: '/api/stock',
+      payload: { catalogId: id, type: 'entrada', quantity: -5, unitCostCve: 5000 }
+    });
+    expect(r.statusCode).toBe(400);
+
+    // O caminho certo para o mesmo efeito continua aberto.
+    const ajuste = await app.inject({
+      method: 'POST', url: '/api/stock',
+      payload: { catalogId: id, type: 'ajuste', quantity: -5, unitCostCve: 0 }
+    });
+    expect(ajuste.statusCode).toBe(201);
+    const row = db.prepare('SELECT stock_total AS s FROM equipment_catalog WHERE id = ?').get(id) as { s: number };
+    expect(row.s).toBe(5);
+  });
+});

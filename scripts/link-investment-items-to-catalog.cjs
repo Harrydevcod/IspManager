@@ -44,6 +44,23 @@
  *     `cliente`, renda 0) e não são capital do ISP. Ligá-los seria colar coisas
  *     diferentes com o mesmo modelo e perder 8.000$ de capital real.
  *
+ * Faz ainda duas coisas ao armazem, pela mesma razao — o capital passou a ser a
+ * soma das entradas e o historico nao foi escrito a pensar nisso:
+ *
+ *   - COMPRAS SEM CUSTO. Ha entradas lancadas com o custo em branco, que a
+ *     omissao zero enterrou: o stock subiu, o dinheiro nunca apareceu. Sao nove
+ *     movimentos, 39.325$ na base real — 115 metros de cabo, 3 CPE 510, um
+ *     Archer C20, um MW325R, um repetidor e 20 RJ45, nenhum com fornecedor nem
+ *     referencia. Levam o custo aterrado do catalogo, que e a melhor estimativa
+ *     que existe. A 1.20.1 fechou a porta a novas.
+ *
+ *   - AJUSTES DISFARCADOS DE COMPRA. Dois movimentos de tipo `entrada` com
+ *     quantidade NEGATIVA, e as notas a dize-lo — "Acerto", "Acerto stock mal
+ *     registado". Sao correccoes de contagem, nao compras. A custo zero nao
+ *     fazem mal, mas bastava alguem por-lhes preco para subtrairem 31.500$ que
+ *     nunca se gastaram. Passam a `ajuste`, que e o que sempre foram; o saldo
+ *     nao se mexe, porque os dois tipos somam a quantidade com o mesmo sinal.
+ *
  * Cuidados:
  *   - exige a 1.20 instalada (a coluna `catalog_id` nasce na migração 0054);
  *   - cada par é verificado antes de escrever — nome do item, quantidade, custo
@@ -220,6 +237,32 @@ for (const par of PARES_PRECO_DIVERGENTE) {
   plano.push({ itemId: it.id, invId: it.invId, inv: it.inv, item: it.nome, modeloId: mod.id, modelo: etiqueta, total: Number(it.total) });
 }
 
+// ------------------------------------------------ armazem: compras e ajustes
+
+// Uma entrada de quantidade positiva sem custo e uma compra a que faltou o
+// preco. Depois da 1.20.1 nao se conseguem criar mais, logo isto so apanha o
+// historico.
+const comprasSemCusto = db.prepare(`
+  SELECT m.id, m.catalog_id AS catalogId, date(m.created_at) AS data, m.quantity AS qtd,
+         TRIM(COALESCE(ec.brand || ' ', '') || ec.model) AS modelo,
+         ${LANDED.replace(/(\w+_cve)/g, 'ec.$1')} AS landed
+  FROM stock_movements m
+  JOIN equipment_catalog ec ON ec.id = m.catalog_id
+  WHERE m.type = 'entrada' AND m.unit_cost_cve = 0 AND m.quantity > 0
+  ORDER BY m.catalog_id, m.created_at
+`).all().filter((r) => Number(r.landed) > 0);
+
+// Uma entrada de quantidade negativa nao e compra nenhuma: e uma correccao de
+// contagem com o tipo trocado.
+const ajustesDisfarcados = db.prepare(`
+  SELECT m.id, date(m.created_at) AS data, m.quantity AS qtd, m.notes AS notas,
+         TRIM(COALESCE(ec.brand || ' ', '') || ec.model) AS modelo
+  FROM stock_movements m
+  JOIN equipment_catalog ec ON ec.id = m.catalog_id
+  WHERE m.type = 'entrada' AND m.quantity < 0
+  ORDER BY m.created_at
+`).all();
+
 // --------------------------------------------------------------- relatório
 
 if (jaLigados > 0) console.log(`${jaLigados} item(s) já estavam ligados — saltados.\n`);
@@ -233,7 +276,8 @@ if (problemas.length > 0) {
   process.exit(1);
 }
 
-if (plano.length === 0 && correcoes.length === 0) {
+if (plano.length === 0 && correcoes.length === 0
+    && comprasSemCusto.length === 0 && ajustesDisfarcados.length === 0) {
   console.log('Nada a fazer.');
   db.close();
   process.exit(0);
@@ -266,6 +310,22 @@ const capitalAntes = db.prepare(`
 
 console.log(`\nCapital externo dos investimentos: ${cve(capitalAntes)} → ${cve(capitalAntes - totalCve)}`);
 console.log(`Dupla contagem removida: ${cve(totalCve)}`);
+
+if (comprasSemCusto.length > 0) {
+  console.log('\nCompras lançadas sem custo (o capital perdeu-as):\n');
+  for (const c of comprasSemCusto) {
+    console.log(`  mov#${c.id}  ${c.data}  ${c.qtd} un de ${c.modelo.slice(0, 40)}  → ${cve(c.landed)}/un = ${cve(c.qtd * c.landed)}`);
+  }
+  console.log(`  capital recuperado: ${cve(comprasSemCusto.reduce((t, c) => t + c.qtd * c.landed, 0))}`);
+}
+
+if (ajustesDisfarcados.length > 0) {
+  console.log('\nEntradas negativas — são ajustes, não compras. Passam a `ajuste`:\n');
+  for (const a of ajustesDisfarcados) {
+    console.log(`  mov#${a.id}  ${a.data}  ${a.qtd} un de ${a.modelo.slice(0, 40)}  "${a.notas || '—'}"`);
+  }
+  console.log('  (o saldo não se mexe — os dois tipos somam a quantidade com o mesmo sinal)');
+}
 
 if (!apply) {
   console.log('\nSimulação. Faça o backup e corra com --apply para escrever.');
@@ -306,6 +366,36 @@ const escrever = db.transaction(() => {
     INSERT INTO audit_logs (actor_username, actor_role, action, entity_type, entity_id, summary, metadata_json, created_at)
     VALUES ('script', 'admin', 'update', 'investment_item', ?, ?, ?, datetime('now'))
   `);
+  const poePreco = db.prepare(`
+    UPDATE stock_movements SET unit_cost_cve = ?
+    WHERE id = ? AND type = 'entrada' AND unit_cost_cve = 0 AND quantity > 0
+  `);
+  const viraAjuste = db.prepare(`
+    UPDATE stock_movements SET type = 'ajuste'
+    WHERE id = ? AND type = 'entrada' AND quantity < 0
+  `);
+  const auditaMovimento = db.prepare(`
+    INSERT INTO audit_logs (actor_username, actor_role, action, entity_type, entity_id, summary, metadata_json, created_at)
+    VALUES ('script', 'admin', 'update', 'stock_movement', ?, ?, ?, datetime('now'))
+  `);
+  for (const c of comprasSemCusto) {
+    const r = poePreco.run(c.landed, c.id);
+    if (r.changes !== 1) throw new Error(`movimento #${c.id} não levou preço — mudou debaixo dos pés?`);
+    auditaMovimento.run(
+      String(c.id),
+      `Compra sem custo: ${c.qtd} un de ${c.modelo} a ${cve(c.landed)}/un`,
+      JSON.stringify({ catalogId: c.catalogId, quantidade: c.qtd, unitCostCve: c.landed, script: 'link-investment-items-to-catalog' })
+    );
+  }
+  for (const a of ajustesDisfarcados) {
+    const r = viraAjuste.run(a.id);
+    if (r.changes !== 1) throw new Error(`movimento #${a.id} não mudou de tipo — mudou debaixo dos pés?`);
+    auditaMovimento.run(
+      String(a.id),
+      `Entrada negativa de ${a.qtd} un de ${a.modelo} reclassificada como ajuste`,
+      JSON.stringify({ quantidade: a.qtd, de: 'entrada', para: 'ajuste', script: 'link-investment-items-to-catalog' })
+    );
+  }
   for (const p of plano) {
     const r = liga.run(p.modeloId, p.itemId);
     if (r.changes !== 1) throw new Error(`item #${p.itemId} não foi ligado — mudou debaixo dos pés?`);
@@ -318,6 +408,9 @@ const escrever = db.transaction(() => {
 });
 
 escrever();
-if (correcoes.length > 0) console.log(`\n${correcoes.length} preco(s) de catalogo corrigido(s).`);
+console.log('');
+if (comprasSemCusto.length > 0) console.log(`${comprasSemCusto.length} compra(s) sem custo corrigida(s).`);
+if (ajustesDisfarcados.length > 0) console.log(`${ajustesDisfarcados.length} entrada(s) negativa(s) reclassificada(s) como ajuste.`);
+if (correcoes.length > 0) console.log(`${correcoes.length} preco(s) de catalogo corrigido(s).`);
 console.log(`${plano.length} item(s) ligados. Capital externo agora: ${cve(capitalAntes - totalCve)}`);
 db.close();

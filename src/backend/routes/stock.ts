@@ -91,6 +91,13 @@ const movementSchema = z.object({
 }).refine(
   (data) => data.type !== 'entrada' || data.unitCostCve > 0,
   { path: ['unitCostCve'], message: 'uma entrada tem de dizer quanto custou, senao o capital perde-a' }
+).refine(
+  // Uma compra de quantidade negativa nao existe — e uma correccao de contagem
+  // com o tipo trocado, e como o capital soma as entradas, subtrairia dinheiro
+  // que nunca se gastou. Aconteceu duas vezes na base real, salvas por o custo
+  // estar a zero. O tipo certo e `ajuste`.
+  (data) => data.type !== 'entrada' || data.quantity > 0,
+  { path: ['quantity'], message: 'uma entrada nao pode ser negativa: para corrigir uma contagem use Ajuste' }
 );
 
 function movementDelta(type: 'entrada' | 'saida' | 'ajuste', quantity: number) {
