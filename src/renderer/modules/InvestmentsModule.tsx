@@ -25,6 +25,20 @@ const STATUSES: { value: InvestmentStatus; label: string; tone: 'info' | 'succes
   { value: 'cancelado', label: 'Cancelado', tone: 'danger' }
 ];
 
+/**
+ * Etiqueta de um modelo — marca e modelo, exatamente como o backend a monta em
+ * `catalogLabel`. Sao a mesma chave vista dos dois lados: e ela que grava em
+ * `item_name`, e e por ela que um item se reconhece como equipamento comprado.
+ */
+function catalogLabel(row: { brand: string | null; model: string }): string {
+  return [row.brand, row.model].filter(Boolean).join(' ');
+}
+
+const CATALOG_CATEGORIES = [
+  { value: 'equipamento', label: 'Equipamento' },
+  { value: 'material', label: 'Material' }
+] as const;
+
 const ITEM_TYPES: { value: InvestmentItemType; label: string }[] = [
   { value: 'antena', label: 'Antena' },
   { value: 'router', label: 'Router' },
@@ -208,9 +222,7 @@ export function InvestmentsModule() {
   /** Nome apresentado de um modelo — o mesmo que vai para o datalist. */
   const catalogByName = useMemo(() => {
     const map = new Map<string, StockCatalogRow>();
-    for (const row of catalog) {
-      map.set([row.brand, row.model].filter(Boolean).join(' ').toLowerCase(), row);
-    }
+    for (const row of catalog) map.set(catalogLabel(row).toLowerCase(), row);
     return map;
   }, [catalog]);
 
@@ -313,13 +325,34 @@ export function InvestmentsModule() {
   }
 
   /**
-   * O nome do item decide se ele e equipamento do catalogo ou custo externo.
+   * Escolher o modelo no catalogo e a unica forma de ligar um item — e ligado
+   * ele deixa de somar capital, porque ja contou como compra no armazem.
    *
-   * Escrever um nome que bate com um modelo liga-o: esse equipamento ja contou
-   * como compra no armazem, e o investimento passa a agrupa-lo em vez de o
-   * pagar outra vez. Qualquer outro texto — "Mao de obra", "Poste" — fica
-   * externo e soma. O custo unitario acompanha, porque o do catalogo e o que
-   * foi mesmo pago.
+   * Era texto livre com sugestoes, e um nome que nao batesse ao caracter
+   * ("Antenas CPE" em vez de "TP-Link CPE 510 Ponto de Acesso...") nao ligava
+   * nada e o capital pagava o mesmo equipamento duas vezes, sem o dizer. Vindo
+   * da lista, o nome gravado E o do catalogo: os dois lados nao se podem
+   * separar. O custo unitario vem com ele, porque o aterrado do catalogo e o
+   * que foi mesmo pago.
+   */
+  function chooseCatalogModel(index: number, value: string) {
+    const model = value ? catalog.find((row) => String(row.id) === value) : undefined;
+    if (!model) {
+      // "Outro — custo externo": o nome volta a ser escrito, e soma.
+      updateItem(index, { catalogId: null, itemName: '' });
+      return;
+    }
+    updateItem(index, {
+      catalogId: model.id,
+      itemName: catalogLabel(model),
+      unitCostCve: String(model.landedCostCve)
+    });
+  }
+
+  /**
+   * Custo externo escrito a mao — mao de obra, poste, licenca. Se por acaso
+   * bater com um modelo do catalogo liga-se na mesma, que e o que o backend
+   * tambem faz: escrever o nome certo nunca pode custar mais do que escolhe-lo.
    */
   function updateItemName(index: number, value: string) {
     const match = catalogByName.get(value.trim().toLowerCase());
@@ -828,25 +861,40 @@ export function InvestmentsModule() {
               <span>Total</span>
               <span />
             </div>
-            <datalist id="investment-catalog-models">
-              {catalog.map((row) => (
-                <option key={row.id} value={[row.brand, row.model].filter(Boolean).join(' ')} />
-              ))}
-            </datalist>
             {form.items.map((item, index) => (
               <div className="investment-item-row" key={index}>
                 <Select value={item.itemType} onChange={(e) => updateItem(index, { itemType: e.target.value as InvestmentItemType })}>
                   {ITEM_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </Select>
-                <Field
-                  label="Equipamento / material"
-                  value={item.itemName}
-                  onChange={(e) => updateItemName(index, e.target.value)}
-                  placeholder="Equipamento/material"
-                  list="investment-catalog-models"
-                  hint={item.catalogId ? 'Do catálogo — já contado no stock' : undefined}
-                  required
-                />
+                <div className="investment-item-name">
+                  <Select
+                    aria-label="Equipamento do catálogo"
+                    value={item.catalogId === null ? '' : String(item.catalogId)}
+                    onChange={(e) => chooseCatalogModel(index, e.target.value)}
+                  >
+                    {CATALOG_CATEGORIES.map((cat) => {
+                      const models = catalog.filter((row) => row.category === cat.value);
+                      if (models.length === 0) return null;
+                      return (
+                        <optgroup key={cat.value} label={cat.label}>
+                          {models.map((row) => (
+                            <option key={row.id} value={String(row.id)}>{catalogLabel(row)}</option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
+                    <option value="">Outro — custo externo</option>
+                  </Select>
+                  {item.catalogId === null && (
+                    <Field
+                      label="Descrição do custo externo"
+                      value={item.itemName}
+                      onChange={(e) => updateItemName(index, e.target.value)}
+                      placeholder="Mão de obra, poste, licença…"
+                      required
+                    />
+                  )}
+                </div>
                 <Field label="Qtd." type="number" min={0.01} step={0.01} value={item.quantity} onChange={(e) => updateItem(index, { quantity: e.target.value })} required />
                 <Field label="Usado" type="number" min={0} step={0.01} value={item.quantityUsed} onChange={(e) => updateItem(index, { quantityUsed: e.target.value })} required />
                 <Field label="Custo un." type="number" min={0} step={0.01} value={item.unitCostCve} onChange={(e) => updateItem(index, { unitCostCve: e.target.value })} required />

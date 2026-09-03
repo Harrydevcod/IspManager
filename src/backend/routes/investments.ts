@@ -83,13 +83,51 @@ function totalCost(input: InvestmentInput): number {
   return input.items.reduce((sum, item) => sum + item.quantity * item.unitCostCve, 0);
 }
 
+/**
+ * Etiqueta de um modelo do catalogo — marca e modelo, como se le no ecra. E a
+ * chave por onde um item de investimento se reconhece como equipamento ja
+ * comprado, por isso vive aqui e no formulario com a mesma forma.
+ */
+function catalogLabel(brand: string | null, model: string): string {
+  return [brand, model].filter(Boolean).join(' ').trim().toLowerCase();
+}
+
+/**
+ * Um item cujo nome bate com um modelo do catalogo liga-se sozinho.
+ *
+ * A ligacao e o que impede o mesmo equipamento de contar duas vezes: uma no
+ * armazem, quando foi comprado, e outra no investimento que o agrupa. Ate aqui
+ * so a caixa do formulario a fazia, pelo texto escrito a mao — e um nome que
+ * nao batesse ao caracter ("Antenas CPE" em vez de "TP-Link CPE 510 Ponto de
+ * Acesso...") passava calado e duplicava o capital. Quem entrasse pela API,
+ * uma importacao ou um script, nunca a fazia de todo.
+ *
+ * Um `catalogId` explicito manda sempre; isto so preenche o vazio.
+ */
 function normalizeItems(input: InvestmentInput) {
+  const models = getSqliteDatabase()
+    .prepare(`SELECT id, brand, model FROM equipment_catalog`)
+    .all() as Array<{ id: number; brand: string | null; model: string }>;
+  const byLabel = new Map(models.map((m) => [catalogLabel(m.brand, m.model), m.id]));
+
   return input.items.map((item) => ({
     ...item,
+    catalogId: item.catalogId ?? byLabel.get(item.itemName.trim().toLowerCase()) ?? null,
     quantityUsed: Math.min(item.quantity, item.quantityUsed),
     totalCostCve: item.quantity * item.unitCostCve
   }));
 }
+
+/**
+ * Tipos de item que passam pelo armazem — se um destes nao esta ligado ao
+ * catalogo, ha uma boa hipotese de o capital o estar a pagar duas vezes.
+ * Mao de obra, instalacao e manutencao ficam de fora: essas SAO custo externo,
+ * e avisar sobre elas era ensinar a ignorar o aviso.
+ */
+const STOCKABLE_ITEM_TYPES = new Set([
+  'antena', 'router', 'cpe', 'switch', 'cabo', 'conector',
+  'fibra', 'caixa', 'poste', 'ups', 'bateria'
+]);
 
 export async function registerInvestmentRoutes(app: FastifyInstance) {
   const canWrite = { preHandler: requireRole(['admin', 'operator']) };
@@ -415,6 +453,21 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
         });
       }
     }
+    // Equipamento de investimento que ninguem ligou ao catalogo. Ou nunca deu
+    // entrada no armazem — e entao o custo e mesmo dele —, ou deu, e o capital
+    // esta a paga-lo duas vezes. O sistema nao sabe qual das duas; quem
+    // comprou sabe. Por isso avisa em vez de decidir.
+    for (const row of rowsWithItems) {
+      for (const item of row.items as Array<{ itemType: string; itemName: string; catalogId: number | null }>) {
+        if (item.catalogId !== null || !STOCKABLE_ITEM_TYPES.has(item.itemType)) continue;
+        alerts.push({
+          severity: 'warning',
+          message: `"${item.itemName}" sem ligação ao catálogo — se este equipamento deu entrada no armazém, o capital conta-o duas vezes`,
+          target: { kind: 'investment', id: row.id, name: row.name }
+        });
+      }
+    }
+
     for (const zone of zoneSummary) {
       if (zone.monthlyNetProfitCve < 0) {
         alerts.push({
