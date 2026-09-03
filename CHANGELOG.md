@@ -6,6 +6,29 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.20.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.20.0) — 2026-09-03
+
+### Corrigido
+
+- **O capital deixa de crescer sozinho de cada vez que um equipamento volta ao armazém.** O "Total investido" era calculado a partir do stock em mãos mais tudo o que já tinha saído — uma conta que só está certa se uma unidade que sai nunca lá voltar. Volta: devolução, transferência de titular, troca de equipamento avariado, retirada de backbone. Cada regresso repunha o stock sem apagar a saída que lhe deu origem, e a mesma antena passava a contar duas vezes, **para sempre**. Na base atual estavam **42.500$ contados a dobrar**, de 8 devoluções, a inflar o capital e a afundar a Caixa acumulada na mesma medida. A partir daqui o capital é a soma das **compras**: uma devolução não é uma compra, logo não conta, e o erro não pode voltar
+- **O gráfico e o cartão deixam de contar histórias diferentes sobre o mesmo dinheiro.** O gráfico de capital por ano mostrava só os investimentos lançados à mão — o equipamento comprado não aparecia em ano nenhum, porque o capital era deduzido do saldo do armazém e um saldo não tem data. Agora cada compra fica com o dia em que saiu da conta, e a soma do gráfico bate exatamente com o cartão
+- **Guardar um modelo no catálogo deixa de apagar o transporte, a alfândega e os outros custos.** O formulário não mostrava esses três campos nem os enviava, e o servidor, ao não os receber, punha-os a zero: bastava corrigir o preço de venda de um modelo para o custo real de o pôr em armazém encolher em silêncio — e com ele o capital de tudo o que fosse instalado a seguir. Passam a ser preservados. A descrição sofria do mesmo e também fica
+
+### Adicionado
+
+- **A carteira, em Financeiro › Lucro.** Por cliente: o capital que levou em equipamento, material e mão de obra, quanto já devolveu em pagamentos, a margem que dá por mês e quanto falta para deixar de dar prejuízo. Entra ordenada por quem tem mais por recuperar, porque é essa a lista de que se tomam decisões — quem cortar, a quem não voltar a instalar, que zona não compensa. A conta já existia, mas só dentro da ficha de um cliente de cada vez, o que não deixa comparar ninguém. A ficha passa a ler o número desta mesma conta, para as duas não poderem discordar
+- **Parque instalado**, ao lado da caixa e com nome próprio. A Caixa acumulada responde a "quanto dinheiro tenho" e abate o capital todo no mês em que sai da conta — continua exatamente assim. O parque responde à outra pergunta: **quanto vale hoje o que já está nos telhados**, e quanto se desgasta por mês. Cada modelo tem uma vida útil no catálogo (cinco anos por omissão, editável — uma bateria não dura o que dura um switch), e é ela que dilui o custo do equipamento ao longo do tempo em vez de o fazer pesar todo no mês da instalação. É esse desgaste que a margem mensal da carteira desconta, e é por isso que a margem de um cliente instalado o mês passado se pode comparar com a de um instalado há três anos
+- **O item de um investimento pode apontar para um modelo do catálogo.** Escrevendo o nome do modelo na linha do item, o sistema reconhece-o e o custo desse equipamento deixa de somar outra vez: ele já contou quando deu entrada no armazém, e o investimento passa a **agrupá-lo** em vez de o pagar duas vezes. Quem comprasse seis CPE e depois registasse o investimento "Expansão Achada" pagava-os a dobrar no relatório, e nada no sistema o dizia. Linhas que não são equipamento — mão de obra, poste, licença, aluguer de grua — continuam a somar como sempre
+
+### Alterado
+
+- **Entrar stock pelo formulário do modelo passa a deixar rasto.** Escrever um número no campo Stock era a única forma de mexer no armazém sem registo: não ficava nem quantidade, nem custo, nem data. Agora subir o stock regista uma **compra** e descer regista uma **correção de contagem** — coisas diferentes, e só a primeira é capital. O histórico do artigo mostra as duas
+
+### Notas
+
+- **A migração 0053 mexe no histórico, e foi medida antes.** Como o formulário do catálogo nunca deixou rasto das compras, o capital de tudo o que entrou por lá não existe em lado nenhum com custo e data. A migração lança essa abertura de inventário — **106 unidades em 10 modelos**, na base atual — valorizadas ao custo médio das saídas de cada modelo, que é o que se pagou no dia da instalação, e não ao preço de hoje. Correu-se sobre uma cópia da base real antes de sair. Faça na mesma o backup antes de instalar
+- **Os investimentos antigos continuam a contar como estão.** Os 13 itens de investimento já lançados não apontam para o catálogo, porque essa ligação não existia quando foram escritos: até serem revistos um a um, equipamento que esteja registado nos dois sítios ainda soma duas vezes. Quem os lançou é quem sabe quais são — abrir o investimento e reescrever o nome do item para o do modelo é o que os liga
+
 ## [1.19.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.19.0) — 2026-08-30
 
 ### Corrigido
