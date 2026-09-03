@@ -411,3 +411,37 @@ describe('uma compra nao pode ser negativa', () => {
     expect(row.s).toBe(5);
   });
 });
+
+describe('a recusa explica-se', () => {
+  test('a mensagem da guarda chega ao operador, nao um "invalido" generico', async () => {
+    const created = await app.inject({
+      method: 'POST', url: '/api/equipment-catalog',
+      payload: {
+        category: 'equipamento', type: 'cpe', model: 'CPE-mensagem', unitOfMeasure: 'un',
+        isSerialized: true, purchasePriceCve: 5000, stockTotal: 5, active: true
+      }
+    });
+    const id = (created.json() as { id: number }).id;
+
+    const semCusto = await app.inject({
+      method: 'POST', url: '/api/stock',
+      payload: { catalogId: id, type: 'entrada', quantity: 2, unitCostCve: 0 }
+    });
+    expect(semCusto.statusCode).toBe(400);
+    // O smoke do pacote apanhou isto: a rota devolvia "Movimento de stock
+    // invalido" e mandava o operador adivinhar qual dos seis campos falhava.
+    expect((semCusto.json() as { error: string }).error).toMatch(/custou/i);
+
+    const negativa = await app.inject({
+      method: 'POST', url: '/api/stock',
+      payload: { catalogId: id, type: 'entrada', quantity: -2, unitCostCve: 5000 }
+    });
+    expect((negativa.json() as { error: string }).error).toMatch(/Ajuste/i);
+
+    const zero = await app.inject({
+      method: 'POST', url: '/api/stock',
+      payload: { catalogId: id, type: 'ajuste', quantity: 0, unitCostCve: 0 }
+    });
+    expect((zero.json() as { error: string }).error).toMatch(/zero unidades/i);
+  });
+});

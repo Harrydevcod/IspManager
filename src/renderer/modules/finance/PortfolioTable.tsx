@@ -104,11 +104,12 @@ export function PortfolioTable({ data, onOpenClient }: {
           {
             header: 'Cliente',
             sortKey: 'fullName',
+            // Sem a zona por baixo do nome: ela tem coluna propria, e repeti-la
+            // e ruido que rouba largura ao que a linha tem de dizer.
             cell: (row) => (
               <span>
                 <small className="entity-code">{row.clientCode || '—'}</small>
                 <strong>{row.fullName}</strong>
-                <small>{row.zone || 'sem zona'}</small>
               </span>
             )
           },

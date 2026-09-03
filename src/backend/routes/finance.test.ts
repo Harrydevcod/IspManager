@@ -70,7 +70,9 @@ describe('stock routes', () => {
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json()).toEqual({ error: 'Movimento de stock invalido' });
+    // A recusa passou a nomear o campo em vez de dizer so "invalido" — o que
+    // interessa e que recusa e que diz porque, nao a frase exata.
+    expect((response.json() as { error: string }).error).toMatch(/Modelo|Tipo|Quantidade/);
   });
 
   test('blocks stock exit when quantity exceeds available stock', async () => {

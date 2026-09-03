@@ -150,6 +150,27 @@ function recordStockAdjustment(
   `).run(catalogId, delta, notes);
 }
 
+/** Nomes dos campos do movimento como o operador os ve no formulario. */
+const MOVEMENT_FIELD_LABELS: Record<string, string> = {
+  catalogId: 'Modelo',
+  type: 'Tipo',
+  quantity: 'Quantidade',
+  unitCostCve: 'Custo unitario',
+  supplier: 'Fornecedor',
+  reference: 'Referencia',
+  notes: 'Notas'
+};
+
+function movementValidationError(error: z.ZodError): string {
+  const issue = error.issues[0];
+  const field = MOVEMENT_FIELD_LABELS[String(issue.path[0])] || String(issue.path[0]);
+  // As guardas da compra escrevem a sua propria mensagem no `refine`; e essa
+  // que diz porque, e nao ha nada a acrescentar-lhe.
+  if (issue.code === 'custom') return `${field}: ${issue.message}`;
+  if (issue.code === 'invalid_type') return `${field}: valor em falta ou de tipo errado`;
+  return `${field}: ${issue.message}`;
+}
+
 export async function registerStockRoutes(app: FastifyInstance) {
   const canWriteStock = { preHandler: requireRole(['admin', 'operator']) };
 
@@ -437,8 +458,14 @@ export async function registerStockRoutes(app: FastifyInstance) {
 
   app.post('/api/stock', canWriteStock, async (request, reply) => {
     const parsed = movementSchema.safeParse(request.body);
-    if (!parsed.success || parsed.data.quantity === 0) {
-      return reply.status(400).send({ error: 'Movimento de stock invalido' });
+    // A mensagem do schema chega ao operador. "Movimento invalido" mandava-o
+    // adivinhar qual dos seis campos estava errado — e as guardas da compra
+    // explicam-se, nao se limitam a recusar.
+    if (!parsed.success) {
+      return reply.status(400).send({ error: movementValidationError(parsed.error) });
+    }
+    if (parsed.data.quantity === 0) {
+      return reply.status(400).send({ error: 'Quantidade: um movimento de zero unidades nao muda nada' });
     }
 
     const db = getSqliteDatabase();

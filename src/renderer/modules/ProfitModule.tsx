@@ -216,7 +216,15 @@ export function ProfitModule() {
 
       {/* Bloco proprio: a caixa responde a "quanto dinheiro tenho", o parque a
           "quanto vale o que ja montei". Somar os dois seria misturar as duas
-          perguntas — por isso vivem em grelhas separadas, com nomes separados. */}
+          perguntas — por isso vivem em grelhas separadas, com nomes separados.
+          O rotulo tem de ser VISIVEL: o `label` do MetricGrid so chega a quem
+          usa leitor de ecra, e sem ele quem ve o painel le oito cartoes
+          seguidos em vez de dois blocos que respondem a coisas diferentes. */}
+      <div className="dashboard-section-label">
+        <p className="eyebrow">Parque instalado</p>
+        <span>O que vale hoje o equipamento no terreno</span>
+      </div>
+
       <MetricGrid label="Parque instalado">
         <MetricCard
           icon={Gauge}
