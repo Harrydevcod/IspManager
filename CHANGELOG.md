@@ -6,6 +6,26 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.22.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.22.0) — 2026-09-03
+
+### Corrigido
+
+- **O capital deixa de pagar o mesmo equipamento duas vezes.** "Total investido" dizia 709.171$58 e quase metade era o mesmo equipamento contado a dobrar — uma vez no armazém, quando foi comprado, e outra no investimento que o agrupa. A regra que impede isso já existia (um item de investimento ligado ao catálogo não soma capital), mas a ligação fazia-se pelo **nome escrito à mão** e só valia com correspondência exata: "Antenas CPE" não é "TP-Link CPE 510 Ponto de Acesso para Exterior WiFi 300 Mbps", e nenhum dos itens da base estava ligado.
+
+### Alterado
+
+- **O equipamento de um investimento escolhe-se de uma lista**, e o nome gravado passa a ser o do catálogo por construção — o investimento e o armazém deixam de se poder separar. Custo externo (mão de obra, poste, licença) escreve-se de propósito, num campo que só aparece para isso.
+- A API liga sozinha quando o nome bate com um modelo, para as importações e os scripts não passarem ao lado.
+- O cartão "Total investido" mostra a decomposição real — armazém e custo externo — em vez do rótulo fixo "stock + investimentos".
+
+### Adicionado
+
+- Aviso no painel de rentabilidade para equipamento de investimento sem ligação ao catálogo. O sistema não sabe se aquilo passou pelo armazém; quem comprou sabe. Mão de obra, instalação e manutenção ficam de fora, porque essas *são* custo externo.
+
+### Notas
+
+Sem migrações. Quem tiver histórico por acertar: `scripts/reconcile-capital-history.cjs` (simulação por omissão) liga os pares antigos, e `scripts/normalize-zones.cjs` acerta as zonas. Ambos se correm à mão, depois de backup.
+
 ## [1.21.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.21.0) — 2026-09-03
 
 ### Corrigido
