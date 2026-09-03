@@ -674,12 +674,17 @@ export function InvestmentsModule() {
               )}
               {data.zoneSummary.length > 0 && (
                 <div className="investment-zone-summary">
-                  <strong>Zonas mais rentaveis</strong>
+                  <strong>Zonas mais rentáveis</strong>
                   {data.zoneSummary.map((zone) => (
                     <span key={zone.zone}>
-                      {zone.zone}: {formatCve(zone.monthlyNetProfitCve)} / mes
+                      {zone.zone} ({zone.clients} {zone.clients === 1 ? 'cliente' : 'clientes'}):{' '}
+                      {formatCve(zone.monthlyNetProfitCve)} / mês
+                      <em> ({formatCve(zone.monthlyRevenueCve)} − {formatCve(zone.monthlyOpexCve)} OPEX)</em>
                     </span>
                   ))}
+                  <span className="investment-zone-note">
+                    Zona do cliente, não a do investimento — receita de caixa menos o OPEX rateado.
+                  </span>
                 </div>
               )}
             </>

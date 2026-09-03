@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
-import { ACTIVE_INVESTMENT_STATUSES, loadCompanyOpexContext, loadRevenueAttribution, profitability, type CompanyOpexContext, type InvestmentBaseRow, type RevenueAttribution } from '../lib/opex';
+import { ACTIVE_INVESTMENT_STATUSES, loadCompanyOpexContext, loadRevenueAttribution, monthsSpanInclusive, profitability, type CompanyOpexContext, type InvestmentBaseRow, type RevenueAttribution } from '../lib/opex';
 import { buildProfitabilityPdf, buildProfitabilityXlsx } from '../lib/profitability-export';
 import { cashReceiptFilterSql } from '../lib/payments';
 import { externalInvestmentCapexCve, externalInvestmentCapexSql, parkValue, stockCapexByYear, stockCapexCve } from '../lib/capex';
@@ -302,18 +302,62 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     const roiCapital = roiRows.reduce((sum, row) => sum + row.totalCostCve, 0);
     const lowRoiCount = rowsWithItems.filter((row) => (row.roiPct ?? 0) < 0 || row.monthlyNetProfitCve <= 0).length;
     const notRecoveredCount = rowsWithItems.filter((row) => !row.isRecovered).length;
-    const zoneSummary = [...rowsWithItems.reduce((map, row) => {
-      const zone = row.zone || 'Sem zona';
-      const current = map.get(zone) || { zone, investments: 0, totalCostCve: 0, monthlyNetProfitCve: 0, roiPct: null as number | null };
-      current.investments += 1;
-      current.totalCostCve += row.totalCostCve;
-      current.monthlyNetProfitCve += row.monthlyNetProfitCve;
-      current.roiPct = current.totalCostCve > 0
-        ? ((current.monthlyNetProfitCve * 12) / current.totalCostCve) * 100
-        : null;
-      map.set(zone, current);
-      return map;
-    }, new Map<string, { zone: string; investments: number; totalCostCve: number; monthlyNetProfitCve: number; roiPct: number | null }>()).values()]
+    // Zonas mais rentaveis: agrupa CLIENTES, nao investimentos.
+    //
+    // A conta antiga somava o lucro dos investimentos pela zona escrita na
+    // ficha do investimento. Essa etiqueta nao diz onde vivem os clientes que
+    // ele serve — uma antena etiquetada "Cruz" servia clientes de catorze
+    // zonas — e os investimentos sem zona caiam todos num balde "Sem zona" que
+    // levava nove em doze. Nao eram zonas a competir: era o total da empresa
+    // repartido por uma etiqueta.
+    //
+    // Aqui a zona e a do cliente: receita = recibos de caixa dos clientes da
+    // zona; OPEX = rateio por servico ativo + despesas fixadas a zona. Nao
+    // segue os filtros da lista (mes/tipo/estado) porque nao le investimentos.
+    const zoneLabelSql = `COALESCE(NULLIF(TRIM(c.zone), ''), 'Sem zona')`;
+    const receiptSpan = getSqliteDatabase()
+      .prepare(`SELECT MIN(substr(r.payment_date, 1, 7)) AS firstMonth,
+                       MAX(substr(r.payment_date, 1, 7)) AS lastMonth
+                FROM payment_receipts r WHERE ${cashReceiptFilterSql('r')}`)
+      .get() as { firstMonth: string | null; lastMonth: string | null };
+    // Um unico denominador para todas as zonas: por span proprio, a zona com um
+    // so mes de recibos parecia render o dobro da que cobra ha um ano.
+    const receiptMonths = monthsSpanInclusive(receiptSpan.firstMonth, receiptSpan.lastMonth);
+    const zoneBuckets = new Map<string, { zone: string; clients: number; monthlyRevenueCve: number; monthlyOpexCve: number; monthlyNetProfitCve: number }>();
+    const zoneBucket = (zone: string) => {
+      const cur = zoneBuckets.get(zone)
+        ?? { zone, clients: 0, monthlyRevenueCve: 0, monthlyOpexCve: 0, monthlyNetProfitCve: 0 };
+      zoneBuckets.set(zone, cur);
+      return cur;
+    };
+    for (const r of getSqliteDatabase().prepare(`
+      SELECT ${zoneLabelSql} AS zone, COALESCE(SUM(r.amount_cve), 0) AS totalCve
+      FROM payment_receipts r
+      JOIN payments py ON py.id = r.payment_id
+      JOIN clients c ON c.id = py.client_id
+      WHERE ${cashReceiptFilterSql('r')}
+      GROUP BY zone
+    `).all() as Array<{ zone: string; totalCve: number }>) {
+      zoneBucket(r.zone).monthlyRevenueCve = (Number(r.totalCve) || 0) / receiptMonths;
+    }
+    for (const r of getSqliteDatabase().prepare(`
+      SELECT ${zoneLabelSql} AS zone, COUNT(*) AS n
+      FROM services s
+      JOIN clients c ON c.id = s.client_id
+      WHERE s.status = 'active'
+      GROUP BY zone
+    `).all() as Array<{ zone: string; n: number }>) {
+      const bucket = zoneBucket(r.zone);
+      bucket.clients = Number(r.n) || 0;
+      bucket.monthlyOpexCve += opexCtx.opexPerClientPerMonth * bucket.clients;
+    }
+    // Despesas fixadas a uma zona entram inteiras nessa zona (ja estao fora do
+    // rateio). A grafia tem de bater com a do cliente — sao a mesma chave.
+    for (const [zone, monthly] of Object.entries(opexCtx.directByZone)) {
+      zoneBucket(zone).monthlyOpexCve += monthly;
+    }
+    const zoneSummary = [...zoneBuckets.values()]
+      .map((z) => ({ ...z, monthlyNetProfitCve: z.monthlyRevenueCve - z.monthlyOpexCve }))
       .sort((a, b) => b.monthlyNetProfitCve - a.monthlyNetProfitCve)
       .slice(0, 6);
 

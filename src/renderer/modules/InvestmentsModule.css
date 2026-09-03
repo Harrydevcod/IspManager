@@ -214,6 +214,16 @@
   font-size: var(--fs-sm);
 }
 
+.investment-zone-summary em {
+  color: var(--text-3);
+  font-style: normal;
+}
+
+.investment-zone-summary .investment-zone-note {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
 .investment-opex-share {
   display: grid;
   gap: var(--space-2);
