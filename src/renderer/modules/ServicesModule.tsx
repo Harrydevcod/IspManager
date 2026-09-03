@@ -671,6 +671,7 @@ export function ServicesModule({
           ipAddress: replaceDraft.ipAddress || null,
           macAddress: replaceDraft.macAddress || null,
           notes: replaceDraft.notes || null,
+          ownership: replaceDraft.ownership,
           returnCondition: replaceCondition,
           installedOn: replaceDraft.installedOn || null
         })
@@ -1284,9 +1285,11 @@ export function ServicesModule({
           {replaceTarget && (
             <Message>
               {replaceTarget.serialNumber || replaceTarget.model} sai e o novo passa a ativo.{' '}
-              {replaceCondition === 'bom'
-                ? 'Em bom estado, a unidade retirada volta ao stock.'
-                : 'Neste estado, a unidade retirada não volta ao stock.'}
+              {replaceTarget.ownership === 'cliente'
+                ? 'A unidade retirada é do cliente: fica com ele, não volta ao stock.'
+                : replaceCondition === 'bom'
+                  ? 'Em bom estado, a unidade retirada volta ao stock.'
+                  : 'Neste estado, a unidade retirada não volta ao stock.'}
             </Message>
           )}
           <Select
@@ -1294,11 +1297,13 @@ export function ServicesModule({
             label="Novo equipamento"
             required
             value={replaceDraft.catalogId}
+            hint={replaceDraft.ownership === 'cliente' ? 'É do cliente: o stock do artigo não se aplica.' : undefined}
             onChange={(event) => setReplaceDraft((current) => ({ ...current, catalogId: event.target.value }))}
           >
             <option value="">Selecionar equipamento</option>
             {catalogList.filter((item) => item.category === 'equipamento').map((item) => (
-              <option key={item.id} value={item.id} disabled={item.stockTotal < 1}>
+              // Sem stock só trava o que sai do armazém; o do cliente nunca foi nosso.
+              <option key={item.id} value={item.id} disabled={replaceDraft.ownership === 'isp' && item.stockTotal < 1}>
                 {item.brand ? `${item.brand} ${item.model}` : item.model} - {labelForType(item.type)} - {item.stockTotal} {item.unitOfMeasure}
               </option>
             ))}
@@ -1312,6 +1317,21 @@ export function ServicesModule({
             required={requiresStaticIp(catalogList.find((item) => String(item.id) === replaceDraft.catalogId)?.type)}
             onChange={(ipAddress) => setReplaceDraft((current) => ({ ...current, ipAddress }))}
           />
+          <Select
+            label="Propriedade"
+            value={replaceDraft.ownership}
+            onChange={(event) => setReplaceDraft((current) => ({ ...current, ownership: event.target.value as 'isp' | 'cliente' }))}
+            hint={(() => {
+              if (replaceDraft.ownership === 'cliente') return 'Não entra na mensalidade';
+              const item = catalogList.find((row) => String(row.id) === replaceDraft.catalogId);
+              return item && item.rentalFeeCve > 0
+                ? `Soma ${formatCve(item.rentalFeeCve)}/mês à mensalidade`
+                : 'Sem aluguer definido no catálogo';
+            })()}
+          >
+            <option value="isp">Alugado ao cliente</option>
+            <option value="cliente">Do cliente</option>
+          </Select>
           <Field
             label="Data da troca"
             type="date"
@@ -1320,16 +1340,19 @@ export function ServicesModule({
             hint={replaceDraft.installedOn !== todayIso() ? 'Registo retroativo' : undefined}
             onChange={(event) => setReplaceDraft((current) => ({ ...current, installedOn: event.target.value }))}
           />
-          <Select
-            wide
-            label="Estado do equipamento retirado"
-            value={replaceCondition}
-            onChange={(event) => setReplaceCondition(event.target.value as ReturnCondition)}
-          >
-            {(Object.keys(RETURN_CONDITION_LABELS) as ReturnCondition[]).map((condition) => (
-              <option key={condition} value={condition}>{RETURN_CONDITION_LABELS[condition]}</option>
-            ))}
-          </Select>
+          {/* O estado só decide se a unidade volta ao armazém — a do cliente nunca volta. */}
+          {replaceTarget?.ownership !== 'cliente' && (
+            <Select
+              wide
+              label="Estado do equipamento retirado"
+              value={replaceCondition}
+              onChange={(event) => setReplaceCondition(event.target.value as ReturnCondition)}
+            >
+              {(Object.keys(RETURN_CONDITION_LABELS) as ReturnCondition[]).map((condition) => (
+                <option key={condition} value={condition}>{RETURN_CONDITION_LABELS[condition]}</option>
+              ))}
+            </Select>
+          )}
           <Field wide label="Notas" value={replaceDraft.notes} onChange={(event) => setReplaceDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Motivo da substituicao" />
         </form>
       </Dialog>

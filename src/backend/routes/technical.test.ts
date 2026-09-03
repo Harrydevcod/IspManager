@@ -1379,9 +1379,13 @@ describe('troca de equipamento', () => {
     (db.prepare('SELECT stock_total AS n FROM equipment_catalog WHERE id = ?').get(catalogId) as { n: number }).n;
 
   const assignment = (id: unknown) => db.prepare(`
-    SELECT ownership, rental_fee_cve AS rentalFeeCve, end_date AS endDate, return_condition AS returnCondition
+    SELECT ownership, rental_fee_cve AS rentalFeeCve, end_date AS endDate,
+           return_condition AS returnCondition, owned_since AS ownedSince
     FROM service_device_assignments WHERE id = ?
-  `).get(id) as { ownership: string; rentalFeeCve: number; endDate: string | null; returnCondition: string | null };
+  `).get(id) as {
+    ownership: string; rentalFeeCve: number; endDate: string | null;
+    returnCondition: string | null; ownedSince: string | null;
+  };
 
   test('a unidade nova mantem a renda e a propriedade do modelo', async () => {
     const { service, catalog } = seedRentedDevice();
@@ -1449,6 +1453,35 @@ describe('troca de equipamento', () => {
 
     expect(db.prepare('SELECT event_type AS tipo FROM service_events').all())
       .toEqual([{ tipo: 'troca_equipamento' }]);
+  });
+
+  test('a unidade que entra pode ser do cliente: sem stock, sem renda', async () => {
+    const { service, catalog } = seedRentedDevice();
+    const original = await install(service.lastInsertRowid, catalog.lastInsertRowid);
+    // O router que o cliente comprou nunca esteve no armazem: o artigo fica a zero.
+    const doCliente = db.prepare(`
+      INSERT INTO equipment_catalog (
+        category, type, brand, model, purchase_price_cve, is_serialized, stock_total, rental_fee_cve, active
+      )
+      VALUES ('equipamento','router','MikroTik','hAP ax2', 8000, 1, 0, 250, 1)
+    `).run();
+
+    const response = await replace(original, {
+      catalogId: doCliente.lastInsertRowid, serialNumber: 'DELE-1', ownership: 'cliente'
+    });
+
+    expect(response.statusCode).toBe(201);
+    const replacementId = (response.json() as { assignmentId: number }).assignmentId;
+    const nova = assignment(replacementId);
+    expect(nova).toMatchObject({ ownership: 'cliente', rentalFeeCve: 0, endDate: null });
+    expect(nova.ownedSince).not.toBeNull();
+
+    // Nem saida do armazem nem custo: o modelo dele continua a zero e sem movimentos.
+    expect(stockOf(doCliente.lastInsertRowid)).toBe(0);
+    expect(db.prepare('SELECT id FROM stock_movements WHERE catalog_id = ?').all(doCliente.lastInsertRowid))
+      .toEqual([]);
+    // So o lado que entra mudou: a unidade do ISP que saiu voltou a prateleira.
+    expect(stockOf(catalog.lastInsertRowid)).toBe(5);
   });
 });
 
