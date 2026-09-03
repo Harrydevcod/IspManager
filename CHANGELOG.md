@@ -6,6 +6,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.20.2](https://github.com/Harrydevcod/IspManager/releases/tag/v1.20.2) — 2026-09-03
+
 ### Corrigido
 
 - **Uma entrada de stock deixa de poder ser negativa.** É a irmã da regra do custo que foi na 1.20.1, e diz a mesma coisa por outro lado: só a compra é capital, e uma compra tem sinal e preço. Uma entrada de quantidade negativa não é compra nenhuma — é uma correção de contagem com o tipo trocado, e desde que o capital passou a somar as entradas, subtrairia dinheiro que nunca se gastou. Aconteceu duas vezes na base, salvas por acaso de terem o custo a zero. O formulário passa a recusá-la e a dizer que o caminho é **Ajuste**
