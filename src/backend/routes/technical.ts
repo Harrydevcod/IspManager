@@ -14,6 +14,7 @@ import {
   IP_FORMAT_ERROR,
   checkDeviceIdentity,
   cleanValue,
+  deviceOwnership,
   insertInstallCostsWithinTx,
   isIpv4,
   installDeviceWithinTx,
@@ -828,7 +829,9 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
     if (!catalog) {
       return reply.status(404).send({ error: 'Modelo nao encontrado' });
     }
-    if (catalog.stockTotal < 1) {
+    // Só o material do ISP sai do armazém: a unidade que o cliente traz para a
+    // troca regista-se com o artigo a zero, tal como na instalação.
+    if (deviceOwnership(parsed.data) === 'isp' && catalog.stockTotal < 1) {
       return reply.status(400).send({ error: `Stock insuficiente. Disponivel: ${catalog.stockTotal}` });
     }
     if (parsed.data.technicianId && !loadUser(parsed.data.technicianId)) {
