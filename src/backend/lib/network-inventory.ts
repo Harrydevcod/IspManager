@@ -23,6 +23,8 @@ export type RegisteredRef = {
   active: boolean;
   /** Marca e modelo do catálogo, quando o registo os tem. */
   model: string | null;
+  /** Como o registo diz que obtém endereço. Nulo = por classificar. */
+  wanMode: string | null;
 };
 
 /**
@@ -120,7 +122,10 @@ export function crossReference(input: CrossRefInput): DiscoveryReport {
     // uma chave vazia criava uma linha fantasma para todos eles de uma vez.
     if (!entry.ip) continue;
     const list = registeredByIp.get(entry.ip) ?? [];
-    list.push({ kind: entry.kind, id: entry.id, name: entry.name, active: entry.active, model: entry.model });
+    list.push({
+      kind: entry.kind, id: entry.id, name: entry.name, active: entry.active,
+      model: entry.model, wanMode: entry.wanMode
+    });
     registeredByIp.set(entry.ip, list);
   }
 

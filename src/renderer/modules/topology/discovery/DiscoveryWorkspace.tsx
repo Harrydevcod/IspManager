@@ -32,6 +32,7 @@ import { downloadCsv } from '../../../lib/csv';
 import { formatPtDateTime } from '../../../lib/format';
 import { compareNumber, sortRows, type SortState } from '../../../lib/listView';
 import { ipToInt } from '../../../../shared/ip-range';
+import { labelForWanMode } from '../../../../shared/wan';
 import { createDiscoveryApi, type DiscoveryCategory, type DiscoveryRow } from './discovery-api';
 import { useDiscovery } from './useDiscovery';
 import { AssignIpDialog } from './AssignIpDialog';
@@ -428,7 +429,7 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone, onOpenService, 
       <DataTable<DiscoveryRow, DiscoverySortKey>
         rows={rows}
         rowKey={(row) => row.ip}
-        gridTemplateColumns="minmax(130px, 0.8fr) 130px minmax(160px, 1.4fr) minmax(150px, 1fr) minmax(150px, 1.1fr) 90px minmax(140px, 1fr)"
+        gridTemplateColumns="minmax(130px, 0.8fr) 130px minmax(160px, 1.4fr) minmax(150px, 1fr) minmax(150px, 1.1fr) minmax(110px, 0.7fr) 90px minmax(140px, 1fr)"
         stickyHeader
         sort={sort}
         onSortChange={setSort}
@@ -447,6 +448,17 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone, onOpenService, 
               : <span className="discovery-muted">—</span>
           },
           { header: 'Equipamento', cell: (row) => <DeviceCell row={row} /> },
+          {
+            // O modo REGISTADO, não inferido da rede: é o que foi aplicado que
+            // interessa confrontar com o que a varredura encontrou.
+            header: 'Ligação',
+            cell: (row) => {
+              const wanMode = row.registeredAs.map((ref) => ref.wanMode).find(Boolean);
+              return wanMode
+                ? <span className="discovery-wan">{labelForWanMode(wanMode)}</span>
+                : <span className="discovery-muted">—</span>;
+            }
+          },
           {
             header: 'Latência',
             align: 'end',

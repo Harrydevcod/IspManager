@@ -1,7 +1,7 @@
 import { Network, Pencil, Plus, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Combobox, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, Select, SkeletonList, Textarea, Toggle, useConfirm, useToast } from '../components';
+import { Badge, Button, Combobox, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, Select, SkeletonList, Textarea, Toggle, WanModeSelect, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import { todayIso } from '../../shared/assignment-dates';
@@ -424,6 +424,7 @@ export function ServicesModule({
               assetTag: draft.assetTag || null,
               ipAddress: draft.ipAddress || null,
               macAddress: draft.macAddress || null,
+              wanMode: draft.wanMode || null,
               notes: draft.notes || null,
               ownership: draft.ownership,
               installedOn: draft.installedOn || null
@@ -670,6 +671,7 @@ export function ServicesModule({
           assetTag: replaceDraft.assetTag || null,
           ipAddress: replaceDraft.ipAddress || null,
           macAddress: replaceDraft.macAddress || null,
+          wanMode: replaceDraft.wanMode || null,
           notes: replaceDraft.notes || null,
           ownership: replaceDraft.ownership,
           returnCondition: replaceCondition,
@@ -702,6 +704,7 @@ export function ServicesModule({
       assetTag: assignment.assetTag || '',
       ipAddress: assignment.ipAddress || '',
       macAddress: assignment.macAddress || '',
+      wanMode: assignment.wanMode || '',
       notes: assignment.notes || '',
       installedOn: (assignment.startDate || '').slice(0, 10)
     });
@@ -728,6 +731,7 @@ export function ServicesModule({
           assetTag: editDraft.assetTag || null,
           ipAddress: editDraft.ipAddress || null,
           macAddress: editDraft.macAddress || null,
+          wanMode: editDraft.wanMode || null,
           notes: editDraft.notes || null,
           // Só do ISP tem aluguer; do cliente o servidor recusa e faz bem.
           ...(editTarget.ownership === 'isp' ? { rentalFeeCve: Number(editRental) || 0 } : {})
@@ -1311,10 +1315,18 @@ export function ServicesModule({
           <Field label="Serial" value={replaceDraft.serialNumber} onChange={(event) => setReplaceDraft((current) => ({ ...current, serialNumber: event.target.value }))} />
           <Field label="Asset tag" value={replaceDraft.assetTag} onChange={(event) => setReplaceDraft((current) => ({ ...current, assetTag: event.target.value }))} />
           <Field label="MAC" value={replaceDraft.macAddress} onChange={(event) => setReplaceDraft((current) => ({ ...current, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
+          <WanModeSelect
+            value={replaceDraft.wanMode}
+            onChange={(wanMode) => setReplaceDraft((current) => ({ ...current, wanMode }))}
+          />
           <IpField
             value={replaceDraft.ipAddress}
             prefix={ipPrefix}
-            required={requiresStaticIp(catalogList.find((item) => String(item.id) === replaceDraft.catalogId)?.type)}
+            wanMode={replaceDraft.wanMode}
+            required={requiresStaticIp(
+              catalogList.find((item) => String(item.id) === replaceDraft.catalogId)?.type,
+              replaceDraft.wanMode
+            )}
             onChange={(ipAddress) => setReplaceDraft((current) => ({ ...current, ipAddress }))}
           />
           <Select
@@ -1377,10 +1389,15 @@ export function ServicesModule({
           <Message>
             Corrige a identificação do equipamento instalado. O stock não é alterado e a atribuição mantém-se ativa.
           </Message>
+          <WanModeSelect
+            value={editDraft.wanMode}
+            onChange={(wanMode) => setEditDraft((current) => ({ ...current, wanMode }))}
+          />
           <IpField
             value={editDraft.ipAddress}
             prefix={ipPrefix}
-            required={requiresStaticIp(editTarget?.catalogType)}
+            wanMode={editDraft.wanMode}
+            required={requiresStaticIp(editTarget?.catalogType, editDraft.wanMode)}
             onChange={(ipAddress) => setEditDraft((current) => ({ ...current, ipAddress }))}
           />
           <Field label="MAC" value={editDraft.macAddress} onChange={(event) => setEditDraft((current) => ({ ...current, macAddress: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />

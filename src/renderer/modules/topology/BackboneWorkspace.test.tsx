@@ -478,6 +478,7 @@ describe('Backbone workspace', () => {
       assetTag: null,
       ipAddress: null,
       macAddress: null,
+      wanMode: null,
       island: 'São Vicente',
       zone: null,
       notes: null,

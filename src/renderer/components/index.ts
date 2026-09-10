@@ -7,6 +7,7 @@ export * from './Button';
 export * from './ModuleHeaderActions';
 export * from './Field';
 export * from './Select';
+export * from './WanModeSelect';
 export * from './Textarea';
 export * from './Toggle';
 export * from './EmptyState';

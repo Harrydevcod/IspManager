@@ -619,6 +619,53 @@ describe('device identity (IP fixo)', () => {
     expect(counts(catalog.lastInsertRowid)).toEqual(before);
   });
 
+  /**
+   * O modo de ligacao tem de sobreviver a instalacao e a correcao — e um campo
+   * que se preenche no terreno e se le no mapa, portanto os dois caminhos de
+   * escrita da atribuicao contam.
+   */
+  test('o modo de ligacao vai e volta na instalacao e na correcao', async () => {
+    const { catalog, service } = seedBaseService();
+    const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, {
+      ipAddress: '192.168.1.10', wanMode: 'static'
+    });
+
+    const read = async () => {
+      const history = await app.inject({
+        method: 'GET', url: `/api/services/${service.lastInsertRowid}/technical-history`
+      });
+      return (history.json() as { assignments: Array<{ id: number; wanMode: string | null }> })
+        .assignments.find((row) => row.id === assignmentId);
+    };
+
+    expect(await read()).toMatchObject({ wanMode: 'static' });
+
+    // Migrar este cliente para PPPoE e uma correcao, nao uma instalacao nova.
+    const patched = await app.inject({
+      method: 'PATCH',
+      url: `/api/service-device-assignments/${assignmentId}`,
+      payload: { wanMode: 'pppoe' }
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(await read()).toMatchObject({ wanMode: 'pppoe' });
+
+    // Um modo escrito a mao passa tal e qual: e uma etiqueta, nao uma enumeracao.
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/service-device-assignments/${assignmentId}`,
+      payload: { wanMode: 'IPv6 nativo' }
+    });
+    expect(await read()).toMatchObject({ wanMode: 'IPv6 nativo' });
+
+    // Vazio limpa: volta a por classificar.
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/service-device-assignments/${assignmentId}`,
+      payload: { wanMode: '' }
+    });
+    expect(await read()).toMatchObject({ wanMode: null });
+  });
+
   test('patch corrige o aluguer do equipamento instalado', async () => {
     const { catalog, service } = seedBaseService();
     const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid);

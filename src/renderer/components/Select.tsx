@@ -5,10 +5,12 @@ type SelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
   error?: string;
   hint?: string;
   wide?: boolean;
+  /** Em tabelas, o cabeçalho já diz o nome: o label fica só para leitores de ecrã. */
+  hideLabel?: boolean;
 };
 
 /** Labelled select control. Reuses the `.field` shell from `Field` when `label` is provided. */
-export function Select({ label, error, hint, wide, id, className, children, ...rest }: SelectProps) {
+export function Select({ label, error, hint, wide, hideLabel, id, className, children, ...rest }: SelectProps) {
   const reactId = useId();
   const selectId = id ?? `select-${reactId}`;
   const errorId = `${selectId}-error`;
@@ -34,7 +36,7 @@ export function Select({ label, error, hint, wide, id, className, children, ...r
 
   return (
     <label className={classes.join(' ')} htmlFor={selectId}>
-      <span className="field-label">{label}</span>
+      <span className={hideLabel ? 'sr-only' : 'field-label'}>{label}</span>
       {select}
       {hint && !error ? <span id={hintId} className="field-hint">{hint}</span> : null}
       {error ? <span id={errorId} className="field-error">{error}</span> : null}

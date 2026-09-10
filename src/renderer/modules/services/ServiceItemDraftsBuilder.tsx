@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
-import { Button, Field, Message, Select } from '../../components';
+import { Button, Field, Message, Select, WanModeSelect } from '../../components';
 import { labelForType, requiresStaticIp } from '../../../shared/equipment';
 import { formatCve } from '../../lib/format';
 import { todayIso } from '../../../shared/assignment-dates';
@@ -14,6 +14,8 @@ export type ItemDraft = {
   assetTag: string;
   ipAddress: string;
   macAddress: string;
+  /** Como obtém endereço. Vazio = por classificar. */
+  wanMode: string;
   notes: string;
   /** 'cliente' = trazido pelo cliente; não entra no aluguer da mensalidade. */
   ownership: 'isp' | 'cliente';
@@ -26,7 +28,7 @@ export function emptyItemDraft(category: 'equipamento' | 'material' = 'equipamen
   // não se escolhe por engano é o que não gera receita por engano.
   return {
     category, catalogId: '', quantity: '1', serialNumber: '', assetTag: '',
-    ipAddress: '', macAddress: '', notes: '', ownership: 'isp',
+    ipAddress: '', macAddress: '', wanMode: '', notes: '', ownership: 'isp',
     installedOn: todayIso()
   };
 }
@@ -100,11 +102,17 @@ export function ServiceItemDraftsBuilder({ drafts, catalog, onChange, ipPrefix }
                   <Field label="Serial" value={draft.serialNumber} onChange={(event) => update(index, { serialNumber: event.target.value })} />
                   <Field label="Asset tag" value={draft.assetTag} onChange={(event) => update(index, { assetTag: event.target.value })} />
                   <Field label="MAC" value={draft.macAddress} onChange={(event) => update(index, { macAddress: event.target.value })} placeholder="AA:BB:CC:DD:EE:FF" />
-                  {/* Qualquer equipamento pode levar endereço; só o CPE e a antena têm de levar. */}
+                  {/* O modo vem antes do endereço: é ele que diz se o campo abaixo é obrigatório. */}
+                  <WanModeSelect
+                    value={draft.wanMode}
+                    onChange={(wanMode) => update(index, { wanMode })}
+                  />
+                  {/* Com modo registado é o modo que obriga; sem ele, o tipo de catálogo. */}
                   <IpField
                     value={draft.ipAddress}
                     prefix={ipPrefix}
-                    required={requiresStaticIp(selectedItem?.type)}
+                    wanMode={draft.wanMode}
+                    required={requiresStaticIp(selectedItem?.type, draft.wanMode)}
                     onChange={(ipAddress) => update(index, { ipAddress })}
                   />
                   <Select

@@ -24,6 +24,8 @@ import type {
 } from '../../../shared/topology';
 import { Button, Field, Select } from '../../components';
 import { CV_ISLANDS } from '../../lib/islands';
+import { WAN_MODES, WAN_MODE_LABELS } from '../../../shared/wan';
+import { UNCLASSIFIED_WAN_MODE } from './topology-filters';
 import type { TopologyGraphFilters } from './topology-filters';
 import type { TopologyDirection } from './topology-layout';
 
@@ -157,6 +159,23 @@ function AttentionFilter({ filters, onChange }: Omit<FiltersProps, 'onClear'>) {
   );
 }
 
+function WanModeFilter({ filters, onChange }: Omit<FiltersProps, 'onClear'>) {
+  return (
+    <Select
+      label="Ligação"
+      value={filters.wanMode ?? ''}
+      onChange={(event) => onChange({ ...filters, wanMode: event.target.value || undefined })}
+    >
+      <option value="">Todas</option>
+      {WAN_MODES.map((mode) => (
+        <option key={mode} value={mode}>{WAN_MODE_LABELS[mode]}</option>
+      ))}
+      {/* A lista de trabalho de quem está a classificar o parque. */}
+      <option value={UNCLASSIFIED_WAN_MODE}>Por classificar</option>
+    </Select>
+  );
+}
+
 function LocationFilters({ filters, onChange }: Omit<FiltersProps, 'onClear'>) {
   return (
     <>
@@ -219,6 +238,7 @@ function Filters({ filters, onChange, onClear }: FiltersProps) {
       <div className="topology-filter-fields">
         <StateFilter filters={filters} onChange={onChange} />
         <AttentionFilter filters={filters} onChange={onChange} />
+        <WanModeFilter filters={filters} onChange={onChange} />
         <LocationFilters filters={filters} onChange={onChange} />
         <Button
           variant="secondary"

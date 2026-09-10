@@ -42,6 +42,8 @@ export const backboneTwo: TopologyBackboneNode = {
   assetTag: null,
   ipAddress: null,
   macAddress: null,
+  // Sem endereco e sem MAC: e o parque por classificar que a 0056 deixou nulo.
+  wanMode: null,
   island: null,
   zone: null,
   provisional: true,

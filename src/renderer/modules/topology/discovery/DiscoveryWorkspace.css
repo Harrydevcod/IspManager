@@ -129,6 +129,13 @@
   color: var(--text-3);
 }
 
+/* O modo de ligacao REGISTADO. Nao e um estado da rede, e o que foi aplicado —
+   por isso nao usa as cores dos estados, so o texto secundario. */
+.discovery-wan {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
 /* Modelo em cima, de onde veio em baixo: a linha inteira cabe na altura de
    uma célula normal, portanto a tabela não cresce por causa desta coluna. */
 .discovery-device {
