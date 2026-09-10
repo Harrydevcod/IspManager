@@ -149,6 +149,7 @@ function loadBackboneRows(db: Database.Database): BackboneRow[] {
     JOIN equipment_catalog ec ON ec.id = bd.catalog_id
     LEFT JOIN network_probe_state probe
       ON probe.target_kind = 'backbone' AND probe.target_id = bd.id
+      AND probe.ip_address = bd.ip_address
     WHERE bd.status <> 'retired'
     ORDER BY bd.name COLLATE NOCASE, bd.id
   `).all() as BackboneRow[];
@@ -197,6 +198,7 @@ function loadBackboneRow(
     JOIN equipment_catalog ec ON ec.id = bd.catalog_id
     LEFT JOIN network_probe_state probe
       ON probe.target_kind = 'backbone' AND probe.target_id = bd.id
+      AND probe.ip_address = bd.ip_address
     WHERE bd.id = ? AND bd.status <> 'retired'
   `).get(backboneDeviceId) as BackboneRow | undefined;
 }
@@ -220,6 +222,7 @@ function loadAssignmentRows(
     JOIN placement ON placement.assignmentId = a.id
     LEFT JOIN network_probe_state probe
       ON probe.target_kind = 'assignment' AND probe.target_id = a.id
+      AND probe.ip_address = a.ip_address
     WHERE a.end_date IS NULL
       AND (? IS NULL OR placement.backboneDeviceId = ?)
     ORDER BY a.id

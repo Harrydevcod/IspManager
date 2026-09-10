@@ -1001,3 +1001,36 @@ describe('GET /api/topology/search', () => {
     expect(response.statusCode).toBe(400);
   });
 });
+
+/**
+ * O estado vivo pertence a um endereço, não a um equipamento. Um alvo que
+ * mudou de IP — ou que ficou sem nenhum, como um Starlink que saiu da rede —
+ * deixa para trás a última leitura, e juntá-la só pelo id pintava-o de
+ * vermelho para sempre, sem ninguém voltar a testar nada.
+ */
+describe('estado vivo e o endereço a que pertence', () => {
+  test('a leitura ficada noutro IP não pinta o backbone', async () => {
+    const fixture = seedTopology();
+    db.prepare(`
+      INSERT INTO network_probe_state (target_kind, target_id, ip_address, state)
+      VALUES ('backbone', ?, '10.10.0.99', 'down')
+    `).run(fixture.backboneDeviceId);
+
+    const stale = (await app.inject({ method: 'GET', url: '/api/topology' })).json();
+    expect(stale.backbones).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: `backbone:${fixture.backboneDeviceId}`, liveState: null })
+    ]));
+
+    db.prepare(`
+      UPDATE network_probe_state SET ip_address = '10.10.0.1'
+      WHERE target_kind = 'backbone' AND target_id = ?
+    `).run(fixture.backboneDeviceId);
+
+    const fresh = (await app.inject({ method: 'GET', url: '/api/topology' })).json();
+    expect(fresh.backbones).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: `backbone:${fixture.backboneDeviceId}`, liveState: 'down' })
+    ]));
+
+    db.prepare('DELETE FROM network_probe_state').run();
+  });
+});
