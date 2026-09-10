@@ -48,6 +48,7 @@ const backboneWriteSchema = z.object({
   assetTag: optionalText(180),
   ipAddress: optionalText(80),
   macAddress: optionalText(80),
+  wanMode: optionalText(40),
   island: optionalText(120),
   zone: optionalText(120),
   notes: optionalText(2_000),

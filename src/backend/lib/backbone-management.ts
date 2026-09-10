@@ -27,6 +27,7 @@ const BACKBONE_COLUMNS = `
   bd.id, bd.catalog_id AS catalogId, ec.brand AS catalogBrand, ec.model AS catalogModel,
   ec.type AS catalogType, bd.name, bd.status, bd.serial_number AS serialNumber,
   bd.asset_tag AS assetTag, bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
+  bd.wan_mode AS wanMode,
   bd.island, bd.zone, bd.provisional,
   bd.created_at AS createdAt, bd.updated_at AS updatedAt,
   (SELECT COUNT(*) FROM backbone_links down
@@ -38,7 +39,8 @@ const BACKBONE_COLUMNS = `
 const ASSIGNMENT_COLUMNS = `
   a.id, a.catalog_id AS catalogId, ec.brand AS catalogBrand, ec.model AS catalogModel,
   ec.type AS catalogType, a.serial_number AS serialNumber, a.asset_tag AS assetTag,
-  a.ip_address AS ipAddress, a.mac_address AS macAddress, a.start_date AS startDate,
+  a.ip_address AS ipAddress, a.mac_address AS macAddress, a.wan_mode AS wanMode,
+  a.start_date AS startDate,
   c.id AS clientId, c.client_code AS clientCode, c.full_name AS clientName,
   s.id AS serviceId, s.status AS serviceStatus, link.backbone_device_id AS backboneDeviceId,
   bd.name AS backboneName, link.started_at AS linkedAt`;
@@ -323,6 +325,7 @@ function normalizeInput(input: BackboneWriteInput): Omit<BackboneWriteInput, 'ex
     assetTag: normalizeOptional(input.assetTag),
     ipAddress: normalizeOptional(input.ipAddress),
     macAddress: normalizeMac(input.macAddress),
+    wanMode: normalizeOptional(input.wanMode ?? null),
     island: normalizeOptional(input.island),
     zone: normalizeOptional(input.zone),
     notes: normalizeOptional(input.notes),
@@ -474,12 +477,12 @@ export function createBackbone(
     const result = db.prepare(`
       INSERT INTO backbone_devices (
         catalog_id, name, status, serial_number, asset_tag, ip_address, mac_address,
-        island, zone, notes, created_by, provisional
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        wan_mode, island, zone, notes, created_by, provisional
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `).run(
       normalized.catalogId, normalized.name, normalized.status, normalized.serialNumber,
-      normalized.assetTag, normalized.ipAddress, normalized.macAddress, normalized.island,
-      normalized.zone, normalized.notes, actorId
+      normalized.assetTag, normalized.ipAddress, normalized.macAddress, normalized.wanMode,
+      normalized.island, normalized.zone, normalized.notes, actorId
     );
     const createdId = Number(result.lastInsertRowid);
     replaceUpstreams(db, createdId, normalized.upstreamDeviceIds, actorId);
@@ -524,7 +527,7 @@ export function updateBackbone(
     const result = db.prepare(`
       UPDATE backbone_devices SET
         catalog_id = ?, name = ?, status = ?, serial_number = ?, asset_tag = ?,
-        ip_address = ?, mac_address = ?, island = ?, zone = ?, notes = ?,
+        ip_address = ?, mac_address = ?, wan_mode = ?, island = ?, zone = ?, notes = ?,
         updated_at = ?
       WHERE id = ? AND (? IS NULL OR updated_at = ?)
         AND (? <> 'retired' OR NOT EXISTS (
@@ -533,8 +536,8 @@ export function updateBackbone(
         ))
     `).run(
       normalized.catalogId, normalized.name, normalized.status, normalized.serialNumber,
-      normalized.assetTag, normalized.ipAddress, normalized.macAddress, normalized.island,
-      normalized.zone, normalized.notes,
+      normalized.assetTag, normalized.ipAddress, normalized.macAddress, normalized.wanMode,
+      normalized.island, normalized.zone, normalized.notes,
       nextUpdatedAt(existing.updatedAt), id,
       normalized.expectedUpdatedAt ?? null, normalized.expectedUpdatedAt ?? null, normalized.status
     );

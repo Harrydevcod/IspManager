@@ -16,6 +16,12 @@ export type DeviceInput = {
   assetTag?: string | null;
   ipAddress?: string | null;
   macAddress?: string | null;
+  /**
+   * Como esta unidade obtem endereco: predefinidos em `shared/wan.ts`, texto livre
+   * aceite. Nulo = por classificar, e nesse caso a obrigatoriedade do IP continua a
+   * sair do tipo de catalogo.
+   */
+  wanMode?: string | null;
   technicianId?: number | null;
   notes?: string | null;
   /**
@@ -289,10 +295,10 @@ export function installDeviceWithinTx(
   const assignment = db.prepare(`
     INSERT INTO service_device_assignments (
       service_id, catalog_id, serial_number, asset_tag, ip_address, mac_address,
-      technician_id, notes, start_date, end_date, ownership, owned_since, rental_fee_cve,
-      created_by, created_at, updated_at
+      wan_mode, technician_id, notes, start_date, end_date, ownership, owned_since,
+      rental_fee_cve, created_by, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, datetime('now'), datetime('now'))
   `).run(
     serviceId,
     device.catalogId,
@@ -300,6 +306,7 @@ export function installDeviceWithinTx(
     assetTag,
     ipAddress,
     macAddress,
+    cleanValue(device.wanMode),
     technicianId,
     notes,
     moment.day,

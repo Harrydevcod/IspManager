@@ -18,6 +18,8 @@ export type BackboneDeviceSummary = {
   assetTag: string | null;
   ipAddress: string | null;
   macAddress: string | null;
+  /** Como obtem endereco. Predefinidos em shared/wan.ts; livre aceite. NULL = por classificar. */
+  wanMode: string | null;
   island: string | null;
   zone: string | null;
   provisional: boolean;
@@ -43,6 +45,8 @@ export type BackboneAssignmentSummary = {
   assetTag: string | null;
   ipAddress: string | null;
   macAddress: string | null;
+  /** Como obtem endereco. Predefinidos em shared/wan.ts; livre aceite. NULL = por classificar. */
+  wanMode: string | null;
   startDate: string;
   clientId: number;
   clientCode: string;
@@ -76,6 +80,8 @@ export type BackboneWriteInput = {
   assetTag: string | null;
   ipAddress: string | null;
   macAddress: string | null;
+  /** Como obtem endereco. Predefinidos em shared/wan.ts; livre aceite. NULL = por classificar. */
+  wanMode?: string | null;
   island: string | null;
   zone: string | null;
   notes: string | null;

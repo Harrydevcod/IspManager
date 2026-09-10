@@ -198,6 +198,8 @@ export const serviceDeviceAssignments = sqliteTable('service_device_assignments'
   assetTag: text('asset_tag'),
   ipAddress: text('ip_address'),
   macAddress: text('mac_address'),
+  /** Como obtem endereco: predefinidos em shared/wan.ts, texto livre aceite. NULL = por classificar (migracao 0056). */
+  wanMode: text('wan_mode'),
   technicianId: integer('technician_id'),
   notes: text('notes'),
   startDate: text('start_date').notNull().default("date('now')"),
@@ -231,6 +233,8 @@ export const backboneDevices = sqliteTable('backbone_devices', {
   assetTag: text('asset_tag'),
   ipAddress: text('ip_address'),
   macAddress: text('mac_address'),
+  /** Como obtem endereco: predefinidos em shared/wan.ts, texto livre aceite. NULL = por classificar (migracao 0056). */
+  wanMode: text('wan_mode'),
   island: text('island'),
   zone: text('zone'),
   status: text('status', { enum: ['active', 'maintenance', 'retired'] }).notNull().default('active'),
