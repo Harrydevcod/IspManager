@@ -538,3 +538,69 @@ describe('backbone stock accounting', () => {
     expect(movements(db)).toHaveLength(1);
   });
 });
+
+/**
+ * As antenas de transmissão TL-S5-5KM têm uma saída de rede a mais — na torre e
+ * na casa de receção — e há clientes ligados a ela por cabo, sem antena própria.
+ * Esse equipamento pende mesmo do backbone: é aí que está.
+ */
+describe('cliente ligado por cabo à antena de transmissão', () => {
+  function routerOnlyService(database: Database.Database) {
+    const catalogId = Number(database.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, is_serialized, purchase_price_cve, stock_total, active)
+      VALUES ('equipamento', 'router', 'TP-Link', 'TL-WR850N', 0, 2000, 10, 1)
+    `).run().lastInsertRowid);
+    const serviceId = Number(database.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
+      SELECT client_id, 3500, 10, 'active' FROM services ORDER BY id LIMIT 1
+    `).run().lastInsertRowid);
+    return Number(database.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id) VALUES (?, ?)
+    `).run(serviceId, catalogId).lastInsertRowid);
+  }
+
+  test('liga-se ao backbone quando o serviço não tem antena nenhuma', () => {
+    db = freshDb();
+    const database = db;
+    const fixture = seed(database);
+    const backbone = createBackbone(database, input(fixture.catalogId), null);
+    const routerAssignmentId = routerOnlyService(database);
+
+    // Está à espera de ligação, senão nunca apareceria na lista para se escolher.
+    expect(listAssignments(database, { mapping: 'unlinked', page: 1, pageSize: 25 })
+      .items.map((item) => item.id)).toContain(routerAssignmentId);
+
+    setAssignmentBackbone(
+      database,
+      routerAssignmentId,
+      { backboneDeviceId: backbone.id, reason: 'Cabo da antena de transmissão' },
+      fixture.actorId
+    );
+
+    expect(database.prepare(
+      'SELECT COUNT(*) AS count FROM backbone_assignment_links WHERE assignment_id = ? AND ended_at IS NULL'
+    ).get(routerAssignmentId)).toEqual({ count: 1 });
+  });
+
+  test('havendo antena no serviço, continua a pender dela e não do backbone', () => {
+    db = freshDb();
+    const database = db;
+    const fixture = seed(database);
+    const backbone = createBackbone(database, input(fixture.catalogId), null);
+    const routerCatalogId = Number(database.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, is_serialized, purchase_price_cve, stock_total, active)
+      VALUES ('equipamento', 'router', 'TP-Link', 'Archer C20', 0, 2000, 10, 1)
+    `).run().lastInsertRowid);
+    const routerAssignmentId = Number(database.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id)
+      SELECT service_id, ? FROM service_device_assignments WHERE id = ?
+    `).run(routerCatalogId, fixture.activeAssignmentId).lastInsertRowid);
+
+    expect(() => setAssignmentBackbone(
+      database,
+      routerAssignmentId,
+      { backboneDeviceId: backbone.id, reason: null },
+      fixture.actorId
+    )).toThrow(/Só antenas e CPE ligam ao backbone/);
+  });
+});

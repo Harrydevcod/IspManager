@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import { normalizeMacAddress } from '../../shared/mac';
-import { BACKBONE_UPLINK_TYPES, BACKBONE_UPLINK_TYPES_SQL } from '../../shared/topology';
+import { BACKBONE_UPLINK_TYPES_SQL } from '../../shared/topology';
 import { PLACEMENT_CTE } from './topology-read-model';
 import type {
   AssignmentBackboneInput,
@@ -161,6 +161,40 @@ function activeAssignmentRow(
 function ensureCatalog(db: Database.Database, catalogId: number): void {
   const row = db.prepare('SELECT id FROM equipment_catalog WHERE id = ?').get(catalogId);
   if (!row) throw new BackboneValidationError('Catálogo não encontrado');
+}
+
+/**
+ * Quem pode pendurar-se no backbone. A antena/CPE do cliente, sempre — e o
+ * resto do equipamento só quando o serviço não tem antena nenhuma: as antenas
+ * de transmissão TL-S5-5KM têm uma saída de rede a mais, tanto na torre como
+ * na casa de receção, e o que entra nela por cabo está mesmo pendurado no
+ * backbone. Havendo antena do cliente, é dela que o resto pende — senão o
+ * cliente aparecia duas vezes no mapa.
+ *
+ * O fragmento conta com `a` (a atribuição) e `ec` (o catálogo dela) na
+ * consulta que o usa.
+ */
+const CAN_LINK_TO_BACKBONE_SQL = `(
+  ec.type IN (${BACKBONE_UPLINK_TYPES_SQL})
+  OR NOT EXISTS (
+    SELECT 1
+    FROM assignment_services own
+    JOIN assignment_services sibling ON sibling.service_id = own.service_id
+    JOIN service_device_assignments peer
+      ON peer.id = sibling.assignment_id AND peer.end_date IS NULL
+    JOIN equipment_catalog peer_ec ON peer_ec.id = peer.catalog_id
+    WHERE own.assignment_id = a.id AND peer_ec.type IN (${BACKBONE_UPLINK_TYPES_SQL})
+  )
+)`;
+
+function canLinkToBackbone(db: Database.Database, assignmentId: number): boolean {
+  const row = db.prepare(`
+    SELECT ${CAN_LINK_TO_BACKBONE_SQL} AS allowed
+    FROM service_device_assignments a
+    JOIN equipment_catalog ec ON ec.id = a.catalog_id
+    WHERE a.id = ?
+  `).get(assignmentId) as { allowed: number } | undefined;
+  return row?.allowed === 1;
 }
 
 const LANDED_COST_SQL = '(purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve)';
@@ -371,7 +405,7 @@ export function listAssignments(
    */
   if (query.mapping === 'unlinked') {
     cte = PLACEMENT_CTE;
-    where += ` AND link.id IS NULL AND ec.type IN (${BACKBONE_UPLINK_TYPES_SQL})
+    where += ` AND link.id IS NULL AND ${CAN_LINK_TO_BACKBONE_SQL}
       AND a.id NOT IN (
         SELECT assignmentId FROM placement WHERE parentAssignmentId IS NOT NULL
       )`;
@@ -543,13 +577,8 @@ export function setAssignmentBackbone(
   }
   const reason = normalizeOptional(input.reason);
   const transfer = db.transaction(() => {
-    const assignmentRow = activeAssignmentRow(db, assignmentId);
-    /*
-     * Só a antena/CPE do cliente fala com o backbone. O router de casa liga-se
-     * a essa antena, e o mapa coloca-o lá sozinho — pendurá-lo na antena do
-     * backbone desenhava-o ao lado do CPE e o cliente aparecia duas vezes.
-     */
-    if (!(BACKBONE_UPLINK_TYPES as readonly string[]).includes(assignmentRow.catalogType)) {
+    activeAssignmentRow(db, assignmentId);
+    if (!canLinkToBackbone(db, assignmentId)) {
       throw new BackboneValidationError(
         'Só antenas e CPE ligam ao backbone; o resto do equipamento pende da antena do cliente'
       );
