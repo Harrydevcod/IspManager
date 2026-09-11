@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest';
 import { branchOne, branchTwo, snapshot } from './topologyTestFixtures';
-import { UNCLASSIFIED_WAN_MODE, filterTopologyGraph } from './topology-filters';
+import {
+  UNCLASSIFIED_OPERATION_MODE,
+  UNCLASSIFIED_WAN_MODE,
+  filterTopologyGraph
+} from './topology-filters';
 import { composeTopologyGraph } from './topology-graph';
 
 const graph = composeTopologyGraph(
@@ -63,6 +67,36 @@ describe('topology factual filters', () => {
       'backbone:20',
       'root:isp'
     ]);
+  });
+
+  /** O outro eixo filtra igual, e os dois combinam-se sem se anularem. */
+  test('filters by the registered operation mode', () => {
+    const ap = filterTopologyGraph(graph, { operationMode: 'ap' });
+    expect(ap.nodes.map((node) => node.id).sort()).toEqual([
+      'assignment:100',
+      'assignment:101',
+      'assignment:200',
+      'backbone:10',
+      'backbone:20',
+      'root:isp'
+    ]);
+
+    // `backboneTwo` nao tem papel registado; `backboneOne` e router.
+    const semPapel = filterTopologyGraph(graph, {
+      operationMode: UNCLASSIFIED_OPERATION_MODE
+    });
+    expect(semPapel.nodes.map((node) => node.id).sort()).toEqual([
+      'backbone:20',
+      'root:isp'
+    ]);
+
+    // Os dois eixos ao mesmo tempo: PPPoE e ponto de acesso.
+    const ambos = filterTopologyGraph(graph, { wanMode: 'pppoe', operationMode: 'ap' });
+    expect(ambos.nodes.map((node) => node.id)).toContain('assignment:100');
+
+    // E uma combinacao que nao existe nao devolve equipamento nenhum.
+    const nenhum = filterTopologyGraph(graph, { wanMode: 'pppoe', operationMode: 'router' });
+    expect(nenhum.nodes.filter((node) => node.data.topology.kind === 'client-device')).toEqual([]);
   });
 
   test('filters by factual administrative state and attention', () => {

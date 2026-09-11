@@ -12,6 +12,9 @@
  *
  * Nada a ver com `internet_plans.connection_type`, que é o meio físico do plano
  * (rádio, fibra, cabo). Isto é como *aquela unidade* obtém o endereço.
+ *
+ * Nem com `operation.ts`, que responde a outra pergunta — *que papel é que este
+ * aparelho desempenha*. Os dois eixos são independentes.
  */
 export const WAN_MODES = [
   'dhcp',
@@ -30,7 +33,9 @@ export const WAN_MODE_LABELS: Record<WanMode, string> = {
   static: 'IP estático',
   pppoe: 'PPPoE',
   pppoe_static: 'PPPoE com IP fixo',
-  bridge: 'Bridge / transparente',
+  // O eixo vai no rótulo: ha uma 'Ponte' no modo de operacao (operation.ts) que
+  // quer dizer outra coisa (converter Wi-Fi em cabo), e sem isto trocavam-se.
+  bridge: 'Bridge — sem endereço próprio',
   tunnel: 'Túnel (L2TP/PPTP/WireGuard)'
 };
 

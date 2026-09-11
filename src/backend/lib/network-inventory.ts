@@ -25,6 +25,8 @@ export type RegisteredRef = {
   model: string | null;
   /** Como o registo diz que obtém endereço. Nulo = por classificar. */
   wanMode: string | null;
+  /** Que papel o registo diz que desempenha. Nulo = por classificar. */
+  operationMode: string | null;
 };
 
 /**
@@ -124,7 +126,7 @@ export function crossReference(input: CrossRefInput): DiscoveryReport {
     const list = registeredByIp.get(entry.ip) ?? [];
     list.push({
       kind: entry.kind, id: entry.id, name: entry.name, active: entry.active,
-      model: entry.model, wanMode: entry.wanMode
+      model: entry.model, wanMode: entry.wanMode, operationMode: entry.operationMode
     });
     registeredByIp.set(entry.ip, list);
   }

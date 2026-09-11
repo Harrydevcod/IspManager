@@ -13,7 +13,7 @@ import type { BackboneMutationState } from './useBackboneWorkspace';
 import type { BackboneCatalogOption } from './backbone-api';
 import type { BackbonePrefill } from './BackboneWorkspace';
 import { CV_ISLANDS, isKnownIsland } from '../../lib/islands';
-import { Badge, Button, Combobox, Dialog, Field, Select, Textarea, Toggle, WanModeSelect } from '../../components';
+import { Badge, Button, Combobox, Dialog, Field, Select, Textarea, Toggle, WanModeSelect, OperationModeSelect } from '../../components';
 
 type EditorProps = {
   open: boolean;
@@ -44,6 +44,7 @@ type EditorState = {
   ipAddress: string;
   macAddress: string;
   wanMode: string;
+  operationMode: string;
   island: string;
   zone: string;
   notes: string;
@@ -79,6 +80,7 @@ function editorState(
     ipAddress: backbone?.ipAddress ?? seed?.ipAddress ?? '',
     macAddress: backbone?.macAddress ?? seed?.macAddress ?? '',
     wanMode: backbone?.wanMode ?? '',
+    operationMode: backbone?.operationMode ?? '',
     island: backbone?.island ?? '',
     zone: backbone?.zone ?? '',
     notes: backbone?.notes ?? ''
@@ -153,6 +155,7 @@ export function BackboneEditorDialog({
       assetTag: nullable(form.assetTag),
       ipAddress: nullable(form.ipAddress),
       wanMode: nullable(form.wanMode),
+      operationMode: nullable(form.operationMode),
       macAddress: nullable(form.macAddress),
       island: nullable(form.island),
       zone: nullable(form.zone),
@@ -310,6 +313,10 @@ export function BackboneEditorDialog({
           <WanModeSelect
             value={form.wanMode}
             onChange={(wanMode) => update('wanMode', wanMode)}
+          />
+          <OperationModeSelect
+            value={form.operationMode}
+            onChange={(operationMode) => update('operationMode', operationMode)}
           />
           <small className="backbone-form-note">
             Campos sem valor serão apresentados como “Não informado”.

@@ -15,7 +15,7 @@ import { useBackboneWorkspace } from './useBackboneWorkspace';
 const backbone: BackboneDeviceSummary = {
   id: 10, catalogId: 3, catalogBrand: 'Ubiquiti', catalogModel: 'Rocket', catalogType: 'radio',
   name: 'Monte Verde', status: 'active', serialNumber: 'BB-10', assetTag: null,
-  ipAddress: '10.0.0.10', macAddress: null, wanMode: 'static', island: 'São Vicente', zone: null,
+  ipAddress: '10.0.0.10', macAddress: null, wanMode: 'static', operationMode: 'router', island: 'São Vicente', zone: null,
   provisional: false, upstreams: [],
   downstreamCount: 0, linkedAssignmentCount: 1,
   createdAt: '2026-07-29T10:00:00.000Z', updatedAt: '2026-07-29T10:00:00.000Z'
@@ -23,7 +23,7 @@ const backbone: BackboneDeviceSummary = {
 
 const assignment: BackboneAssignmentSummary = {
   id: 21, catalogId: 4, catalogBrand: 'MikroTik', catalogModel: 'hAP', catalogType: 'router',
-  serialNumber: 'CPE-21', assetTag: null, ipAddress: null, macAddress: null, wanMode: null,
+  serialNumber: 'CPE-21', assetTag: null, ipAddress: null, macAddress: null, wanMode: null, operationMode: null,
   startDate: '2026-07-01', clientId: 1, clientCode: 'CLT-001', clientName: 'Cliente Um',
   serviceId: 2, serviceStatus: 'active', backboneDeviceId: null, backboneName: null, linkedAt: null
 };

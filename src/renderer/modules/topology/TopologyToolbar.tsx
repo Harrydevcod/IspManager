@@ -25,7 +25,8 @@ import type {
 import { Button, Field, Select } from '../../components';
 import { CV_ISLANDS } from '../../lib/islands';
 import { WAN_MODES, WAN_MODE_LABELS } from '../../../shared/wan';
-import { UNCLASSIFIED_WAN_MODE } from './topology-filters';
+import { OPERATION_MODES, OPERATION_MODE_LABELS } from '../../../shared/operation';
+import { UNCLASSIFIED_OPERATION_MODE, UNCLASSIFIED_WAN_MODE } from './topology-filters';
 import type { TopologyGraphFilters } from './topology-filters';
 import type { TopologyDirection } from './topology-layout';
 
@@ -176,6 +177,22 @@ function WanModeFilter({ filters, onChange }: Omit<FiltersProps, 'onClear'>) {
   );
 }
 
+function OperationModeFilter({ filters, onChange }: Omit<FiltersProps, 'onClear'>) {
+  return (
+    <Select
+      label="Operação"
+      value={filters.operationMode ?? ''}
+      onChange={(event) => onChange({ ...filters, operationMode: event.target.value || undefined })}
+    >
+      <option value="">Todas</option>
+      {OPERATION_MODES.map((mode) => (
+        <option key={mode} value={mode}>{OPERATION_MODE_LABELS[mode]}</option>
+      ))}
+      <option value={UNCLASSIFIED_OPERATION_MODE}>Por classificar</option>
+    </Select>
+  );
+}
+
 function LocationFilters({ filters, onChange }: Omit<FiltersProps, 'onClear'>) {
   return (
     <>
@@ -239,6 +256,7 @@ function Filters({ filters, onChange, onClear }: FiltersProps) {
         <StateFilter filters={filters} onChange={onChange} />
         <AttentionFilter filters={filters} onChange={onChange} />
         <WanModeFilter filters={filters} onChange={onChange} />
+        <OperationModeFilter filters={filters} onChange={onChange} />
         <LocationFilters filters={filters} onChange={onChange} />
         <Button
           variant="secondary"

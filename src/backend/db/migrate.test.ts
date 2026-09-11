@@ -577,4 +577,56 @@ describe('runMigrations', () => {
 
     db.close();
   });
+
+  /**
+   * A 0057 nao preenche nada, e isso e a decisao — nao um esquecimento.
+   *
+   * Ao contrario da 0056, onde um endereco escrito a mao provava que alguem o
+   * tinha fixado, aqui nao ha de onde derivar o papel: o tipo nao o diz e
+   * adivinha-lo pelo nome do modelo era inventar dados sobre instalacoes que
+   * ninguem verificou. Este teste existe para que ninguem "corrija" isto mais
+   * tarde com um UPDATE bem-intencionado.
+   */
+  test('a 0057 deixa o papel por classificar em todo o parque', () => {
+    const db = freshDb();
+    runMigrations(db, migrations.filter((migration) => migration.version < 57));
+
+    const catalogId = db.prepare(`
+      INSERT INTO equipment_catalog (type, brand, model, stock_total, active)
+      VALUES ('router', 'TP-Link', 'TL-WR850N', 9, 1)
+    `).run().lastInsertRowid;
+    const clientId = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status) VALUES ('C-9', 'Sra. Costa', 'active')
+    `).run().lastInsertRowid;
+    const serviceId = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
+      VALUES (?, 2500, 10, 'active')
+    `).run(clientId).lastInsertRowid;
+
+    // Um com endereco e modo de ligacao, outro sem nada: nem o endereco nem o
+    // tipo podem fazer nascer um papel.
+    db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id, ip_address, wan_mode)
+      VALUES (?, ?, '192.168.1.10', 'static')
+    `).run(serviceId, catalogId);
+    db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id) VALUES (?, ?)
+    `).run(serviceId, catalogId);
+    db.prepare(`
+      INSERT INTO backbone_devices (catalog_id, name, status, ip_address)
+      VALUES (?, 'Core Norte', 'active', '10.0.0.1')
+    `).run(catalogId);
+
+    runMigrations(db, migrations);
+
+    for (const table of ['service_device_assignments', 'backbone_devices']) {
+      const linhas = db.prepare(
+        `SELECT COUNT(*) AS total, COUNT(operation_mode) AS comModo FROM ${table}`
+      ).get() as { total: number; comModo: number };
+      expect(linhas.total).toBeGreaterThan(0);
+      expect(linhas.comModo).toBe(0);
+    }
+
+    db.close();
+  });
 });

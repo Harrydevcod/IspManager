@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { labelForType, requiresStaticIp } from '../../../shared/equipment';
 import { labelForWanMode } from '../../../shared/wan';
+import { labelForOperationMode } from '../../../shared/operation';
 import type {
   TopologyBackboneBranch,
   TopologyClientDeviceNode,
@@ -183,6 +184,7 @@ function BackboneDetails({
         <Detail label="MAC" value={node.macAddress ?? 'Não indicado'} />
         {/* "Ligação" mais abaixo é de quem pende; isto é como obtém endereço. */}
         <Detail label="Modo de ligação" value={labelForWanMode(node.wanMode) || 'Por classificar'} />
+        <Detail label="Operação" value={labelForOperationMode(node.operationMode) || 'Por classificar'} />
         <Detail
           label="Localização"
           value={[node.island, node.zone].filter(Boolean).join(' · ') || 'Não indicada'}
@@ -238,6 +240,7 @@ function DeviceDetails({
         <Detail label="MAC" value={node.macAddress ?? 'Não indicado'} />
         {/* "Ligação" mais abaixo é de quem pende; isto é como obtém endereço. */}
         <Detail label="Modo de ligação" value={labelForWanMode(node.wanMode) || 'Por classificar'} />
+        <Detail label="Operação" value={labelForOperationMode(node.operationMode) || 'Por classificar'} />
         <Detail label="Desde" value={node.startDate} />
         <Detail label="Ligação" value={clientDeviceUplink(node)} />
       </dl>

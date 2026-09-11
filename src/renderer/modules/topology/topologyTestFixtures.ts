@@ -20,6 +20,7 @@ export const backboneOne: TopologyBackboneNode = {
   ipAddress: '10.20.0.1',
   macAddress: 'AA:BB:CC:DD:EE:10',
   wanMode: 'static',
+  operationMode: 'router',
   island: 'São Vicente',
   zone: 'Monte Verde',
   provisional: false,
@@ -44,6 +45,7 @@ export const backboneTwo: TopologyBackboneNode = {
   macAddress: null,
   // Sem endereco e sem MAC: e o parque por classificar que a 0056 deixou nulo.
   wanMode: null,
+  operationMode: null,
   island: null,
   zone: null,
   provisional: true,
@@ -111,6 +113,7 @@ function clientDevice(
     ipAddress: `10.0.0.${assignmentId}`,
     macAddress: `AA:BB:CC:DD:EE:${assignmentId}`,
     wanMode: 'pppoe',
+    operationMode: 'ap',
     startDate: '2026-07-01',
     administrativeState: assignmentId === 200 ? 'inactive' : 'active',
     issueCodes: assignmentId === 200 ? ['inactive'] : [],

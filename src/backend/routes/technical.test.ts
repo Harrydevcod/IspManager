@@ -666,6 +666,59 @@ describe('device identity (IP fixo)', () => {
     expect(await read()).toMatchObject({ wanMode: null });
   });
 
+  /**
+   * Os dois eixos sao independentes: mudar o papel nao pode mexer na ligacao, e
+   * vice-versa. Sao dois campos na mesma ficha e a dois cliques um do outro.
+   */
+  test('o papel e a ligacao nao se pisam um ao outro', async () => {
+    const { catalog, service } = seedBaseService();
+    const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, {
+      ipAddress: '192.168.1.60', wanMode: 'pppoe', operationMode: 'router'
+    });
+
+    const read = async () => {
+      const history = await app.inject({
+        method: 'GET', url: `/api/services/${service.lastInsertRowid}/technical-history`
+      });
+      return (history.json() as {
+        assignments: Array<{ id: number; wanMode: string | null; operationMode: string | null }>;
+      }).assignments.find((row) => row.id === assignmentId);
+    };
+
+    expect(await read()).toMatchObject({ wanMode: 'pppoe', operationMode: 'router' });
+
+    // Passar este aparelho a ponto de acesso nao lhe muda a forma de obter endereco.
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/service-device-assignments/${assignmentId}`,
+      payload: { operationMode: 'ap' }
+    });
+    expect(await read()).toMatchObject({ wanMode: 'pppoe', operationMode: 'ap' });
+
+    // E mudar a ligacao nao lhe muda o papel.
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/service-device-assignments/${assignmentId}`,
+      payload: { wanMode: 'dhcp' }
+    });
+    expect(await read()).toMatchObject({ wanMode: 'dhcp', operationMode: 'ap' });
+
+    // Papel escrito a mao passa tal e qual; vazio limpa so o que se limpou.
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/service-device-assignments/${assignmentId}`,
+      payload: { operationMode: 'WISP' }
+    });
+    expect(await read()).toMatchObject({ wanMode: 'dhcp', operationMode: 'WISP' });
+
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/service-device-assignments/${assignmentId}`,
+      payload: { operationMode: '' }
+    });
+    expect(await read()).toMatchObject({ wanMode: 'dhcp', operationMode: null });
+  });
+
   test('patch corrige o aluguer do equipamento instalado', async () => {
     const { catalog, service } = seedBaseService();
     const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid);

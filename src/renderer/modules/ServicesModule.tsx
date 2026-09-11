@@ -1,7 +1,7 @@
 import { Network, Pencil, Plus, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Combobox, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, Select, SkeletonList, Textarea, Toggle, WanModeSelect, useConfirm, useToast } from '../components';
+import { Badge, Button, Combobox, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, Select, SkeletonList, Textarea, Toggle, WanModeSelect, OperationModeSelect, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import { todayIso } from '../../shared/assignment-dates';
@@ -425,6 +425,7 @@ export function ServicesModule({
               ipAddress: draft.ipAddress || null,
               macAddress: draft.macAddress || null,
               wanMode: draft.wanMode || null,
+              operationMode: draft.operationMode || null,
               notes: draft.notes || null,
               ownership: draft.ownership,
               installedOn: draft.installedOn || null
@@ -672,6 +673,7 @@ export function ServicesModule({
           ipAddress: replaceDraft.ipAddress || null,
           macAddress: replaceDraft.macAddress || null,
           wanMode: replaceDraft.wanMode || null,
+          operationMode: replaceDraft.operationMode || null,
           notes: replaceDraft.notes || null,
           ownership: replaceDraft.ownership,
           returnCondition: replaceCondition,
@@ -705,6 +707,7 @@ export function ServicesModule({
       ipAddress: assignment.ipAddress || '',
       macAddress: assignment.macAddress || '',
       wanMode: assignment.wanMode || '',
+      operationMode: assignment.operationMode || '',
       notes: assignment.notes || '',
       installedOn: (assignment.startDate || '').slice(0, 10)
     });
@@ -732,6 +735,7 @@ export function ServicesModule({
           ipAddress: editDraft.ipAddress || null,
           macAddress: editDraft.macAddress || null,
           wanMode: editDraft.wanMode || null,
+          operationMode: editDraft.operationMode || null,
           notes: editDraft.notes || null,
           // Só do ISP tem aluguer; do cliente o servidor recusa e faz bem.
           ...(editTarget.ownership === 'isp' ? { rentalFeeCve: Number(editRental) || 0 } : {})
@@ -1319,6 +1323,10 @@ export function ServicesModule({
             value={replaceDraft.wanMode}
             onChange={(wanMode) => setReplaceDraft((current) => ({ ...current, wanMode }))}
           />
+          <OperationModeSelect
+            value={replaceDraft.operationMode}
+            onChange={(operationMode) => setReplaceDraft((current) => ({ ...current, operationMode }))}
+          />
           <IpField
             value={replaceDraft.ipAddress}
             prefix={ipPrefix}
@@ -1392,6 +1400,10 @@ export function ServicesModule({
           <WanModeSelect
             value={editDraft.wanMode}
             onChange={(wanMode) => setEditDraft((current) => ({ ...current, wanMode }))}
+          />
+          <OperationModeSelect
+            value={editDraft.operationMode}
+            onChange={(operationMode) => setEditDraft((current) => ({ ...current, operationMode }))}
           />
           <IpField
             value={editDraft.ipAddress}

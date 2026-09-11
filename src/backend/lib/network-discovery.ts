@@ -172,6 +172,8 @@ export type RegisteredDevice = {
    * com o outro sem inventar inferências.
    */
   wanMode: string | null;
+  /** Que papel o registo diz que desempenha. Etiqueta, nao inferida da rede. */
+  operationMode: string | null;
   /** Para propor o item certo ao registar, e para saber quem é obrigado a ter IP fixo. */
   catalogId: number | null;
   catalogType: string | null;
@@ -217,12 +219,13 @@ export function loadRegisteredDevices(db: Database.Database): RegisteredDevice[]
     ip: string | null; mac: string | null; id: number; name: string; status: string;
     brand: string | null; model: string | null; catalogId: number | null; catalogType: string | null;
     wanMode: string | null;
+    operationMode: string | null;
     serviceId?: number | null; clientId?: number | null;
   };
 
   const backbones = db.prepare(`
     SELECT b.ip_address AS ip, b.mac_address AS mac, b.id, b.name, b.status,
-           b.wan_mode AS wanMode,
+           b.wan_mode AS wanMode, b.operation_mode AS operationMode,
            cat.brand, cat.model, cat.id AS catalogId, cat.type AS catalogType
     FROM backbone_devices b
     LEFT JOIN equipment_catalog cat ON cat.id = b.catalog_id
@@ -231,7 +234,7 @@ export function loadRegisteredDevices(db: Database.Database): RegisteredDevice[]
 
   const assignments = db.prepare(`
     SELECT a.ip_address AS ip, a.mac_address AS mac, a.id, c.full_name AS name, s.status,
-           a.wan_mode AS wanMode,
+           a.wan_mode AS wanMode, a.operation_mode AS operationMode,
            cat.brand, cat.model, cat.id AS catalogId, cat.type AS catalogType,
            s.id AS serviceId, s.client_id AS clientId
     FROM service_device_assignments a
@@ -252,6 +255,7 @@ export function loadRegisteredDevices(db: Database.Database): RegisteredDevice[]
       active: row.status === 'active' || row.status === 'maintenance',
       model: catalogLabel(row.brand, row.model),
       wanMode: row.wanMode?.trim() || null,
+      operationMode: row.operationMode?.trim() || null,
       catalogId: row.catalogId,
       catalogType: row.catalogType,
       serviceId: null,
@@ -266,6 +270,7 @@ export function loadRegisteredDevices(db: Database.Database): RegisteredDevice[]
       active: row.status === 'active',
       model: catalogLabel(row.brand, row.model),
       wanMode: row.wanMode?.trim() || null,
+      operationMode: row.operationMode?.trim() || null,
       catalogId: row.catalogId,
       catalogType: row.catalogType,
       serviceId: row.serviceId ?? null,

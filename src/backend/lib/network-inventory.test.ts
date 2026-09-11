@@ -18,6 +18,7 @@ const registered = (ip: string, over: Partial<RegisteredDevice> = {}): Registere
   ip,
   mac: null,
   wanMode: null,
+  operationMode: null,
   kind: 'assignment',
   id: 1,
   name: 'Sr. Silva',
@@ -49,7 +50,10 @@ describe('crossReference — as categorias', () => {
     });
     expect(rows[0].category).toBe('registado');
     expect(rows[0].registeredAs).toEqual([
-      { kind: 'assignment', id: 1, name: 'Sr. Silva', active: true, model: null, wanMode: null }
+      {
+        kind: 'assignment', id: 1, name: 'Sr. Silva', active: true,
+        model: null, wanMode: null, operationMode: null
+      }
     ]);
     expect(counts.registado).toBe(1);
   });

@@ -87,6 +87,44 @@ describe('TopologyNodeContent', () => {
     expect(container.querySelector('.topology-node-wan')).toBeNull();
   });
 
+  /**
+   * Os dois eixos no mesmo cartao. Cada chip cala-se sozinho quando o seu campo
+   * esta por classificar — sem isso, o dia em que a 0057 correr enchia o mapa de
+   * chips vazios, porque o papel nasce todo nulo.
+   */
+  test('shows both mode chips, each silent on its own', async () => {
+    const render = async (node: typeof backboneOne) => {
+      await act(async () => {
+        root?.render(
+          <TopologyNodeContent node={node} selected={false} onSelect={vi.fn()} onToggle={vi.fn()} />
+        );
+      });
+    };
+
+    const { container } = await mount();
+    // A fixture tem os dois: static + router.
+    expect(container.querySelector('.topology-node-wan')?.textContent).toBe('Estático');
+    expect(container.querySelector('.topology-node-op')?.textContent).toBe('Router');
+
+    // So o papel: o chip de ligacao desaparece, o outro fica.
+    await render({ ...backboneOne, wanMode: null, operationMode: 'ap' });
+    expect(container.querySelector('.topology-node-wan')).toBeNull();
+    expect(container.querySelector('.topology-node-op')?.textContent).toBe('AP');
+
+    // So a ligacao.
+    await render({ ...backboneOne, operationMode: null });
+    expect(container.querySelector('.topology-node-wan')?.textContent).toBe('Estático');
+    expect(container.querySelector('.topology-node-op')).toBeNull();
+
+    // Papel escrito a mao: a letra, e sem cor propria (nao ha data-wan aqui).
+    await render({ ...backboneOne, operationMode: 'WISP' });
+    expect(container.querySelector('.topology-node-op')?.textContent).toBe('WISP');
+
+    // Nenhum dos dois: nem sequer a caixa que os junta.
+    await render({ ...backboneOne, wanMode: null, operationMode: null });
+    expect(container.querySelector('.topology-node-modes')).toBeNull();
+  });
+
   test('selects a focused node with Enter', async () => {
     const { container, onSelect } = await mount();
     const select = container.querySelector<HTMLButtonElement>('[data-topology-select]');

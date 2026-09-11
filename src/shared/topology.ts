@@ -66,6 +66,8 @@ export type TopologyBackboneNode = {
   ipAddress: string | null;
   /** Como obtem endereco: predefinidos em shared/wan.ts, livre aceite. NULL = por classificar. */
   wanMode: string | null;
+  /** Que papel desempenha: predefinidos em shared/operation.ts, livre aceite. NULL = por classificar. */
+  operationMode: string | null;
   macAddress: string | null;
   island: string | null;
   zone: string | null;
@@ -97,6 +99,8 @@ export type TopologyClientDeviceNode = {
   ipAddress: string | null;
   /** Como obtem endereco: predefinidos em shared/wan.ts, livre aceite. NULL = por classificar. */
   wanMode: string | null;
+  /** Que papel desempenha: predefinidos em shared/operation.ts, livre aceite. NULL = por classificar. */
+  operationMode: string | null;
   macAddress: string | null;
   startDate: string;
   administrativeState: TopologyAdministrativeState;

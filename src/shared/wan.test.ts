@@ -47,6 +47,9 @@ test('labels every predefined mode, long and short', () => {
     expect(shortLabelForWanMode(mode)).not.toBe('');
   }
   expect(labelForWanMode('PPPoE')).toBe('PPPoE');
+  // O rotulo diz o eixo: ha uma 'Ponte' no modo de operacao que e outra coisa.
+  expect(labelForWanMode('bridge')).toBe('Bridge — sem endereço próprio');
+  expect(shortLabelForWanMode('bridge')).toBe('Bridge');
   expect(shortLabelForWanMode('pppoe_static')).toBe('PPPoE+IP');
 });
 

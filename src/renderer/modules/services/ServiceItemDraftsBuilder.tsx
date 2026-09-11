@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
-import { Button, Field, Message, Select, WanModeSelect } from '../../components';
+import { Button, Field, Message, OperationModeSelect, Select, WanModeSelect } from '../../components';
 import { labelForType, requiresStaticIp } from '../../../shared/equipment';
 import { formatCve } from '../../lib/format';
 import { todayIso } from '../../../shared/assignment-dates';
@@ -16,6 +16,8 @@ export type ItemDraft = {
   macAddress: string;
   /** Como obtém endereço. Vazio = por classificar. */
   wanMode: string;
+  /** Que papel desempenha. Vazio = por classificar. */
+  operationMode: string;
   notes: string;
   /** 'cliente' = trazido pelo cliente; não entra no aluguer da mensalidade. */
   ownership: 'isp' | 'cliente';
@@ -28,7 +30,7 @@ export function emptyItemDraft(category: 'equipamento' | 'material' = 'equipamen
   // não se escolhe por engano é o que não gera receita por engano.
   return {
     category, catalogId: '', quantity: '1', serialNumber: '', assetTag: '',
-    ipAddress: '', macAddress: '', wanMode: '', notes: '', ownership: 'isp',
+    ipAddress: '', macAddress: '', wanMode: '', operationMode: '', notes: '', ownership: 'isp',
     installedOn: todayIso()
   };
 }
@@ -106,6 +108,11 @@ export function ServiceItemDraftsBuilder({ drafts, catalog, onChange, ipPrefix }
                   <WanModeSelect
                     value={draft.wanMode}
                     onChange={(wanMode) => update(index, { wanMode })}
+                  />
+                  {/* O outro eixo: nao como obtem endereco, mas o que faz. */}
+                  <OperationModeSelect
+                    value={draft.operationMode}
+                    onChange={(operationMode) => update(index, { operationMode })}
                   />
                   {/* Com modo registado é o modo que obriga; sem ele, o tipo de catálogo. */}
                   <IpField

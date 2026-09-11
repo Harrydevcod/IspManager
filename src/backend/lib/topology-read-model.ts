@@ -32,6 +32,7 @@ type BackboneRow = EquipmentRow & {
   ipAddress: string | null;
   macAddress: string | null;
   wanMode: string | null;
+  operationMode: string | null;
   island: string | null;
   zone: string | null;
   status: 'active' | 'maintenance';
@@ -50,6 +51,7 @@ type AssignmentRow = EquipmentRow & {
   ipAddress: string | null;
   macAddress: string | null;
   wanMode: string | null;
+  operationMode: string | null;
   startDate: string;
   isSerialized: number;
   liveState: 'up' | 'down' | null;
@@ -145,6 +147,7 @@ function loadBackboneRows(db: Database.Database): BackboneRow[] {
       bd.id AS backboneDeviceId, bd.catalog_id AS catalogId, bd.name,
       bd.serial_number AS serialNumber, bd.asset_tag AS assetTag,
       bd.ip_address AS ipAddress, bd.mac_address AS macAddress, bd.wan_mode AS wanMode,
+      bd.operation_mode AS operationMode,
       bd.island, bd.zone, bd.status, bd.provisional,
       ec.brand, ec.model, ec.type AS catalogType,
       probe.state AS liveState
@@ -194,6 +197,7 @@ function loadBackboneRow(
       bd.id AS backboneDeviceId, bd.catalog_id AS catalogId, bd.name,
       bd.serial_number AS serialNumber, bd.asset_tag AS assetTag,
       bd.ip_address AS ipAddress, bd.mac_address AS macAddress, bd.wan_mode AS wanMode,
+      bd.operation_mode AS operationMode,
       bd.island, bd.zone, bd.status, bd.provisional,
       ec.brand, ec.model, ec.type AS catalogType,
       probe.state AS liveState
@@ -217,7 +221,8 @@ function loadAssignmentRows(
       ec.type AS catalogType, ec.active,
       ec.is_serialized AS isSerialized, a.serial_number AS serialNumber,
       a.asset_tag AS assetTag, a.ip_address AS ipAddress,
-      a.mac_address AS macAddress, a.wan_mode AS wanMode, a.start_date AS startDate,
+      a.mac_address AS macAddress, a.wan_mode AS wanMode,
+      a.operation_mode AS operationMode, a.start_date AS startDate,
       placement.parentAssignmentId, placement.backboneDeviceId,
       probe.state AS liveState
     FROM service_device_assignments a
@@ -327,6 +332,7 @@ function backboneNode(row: BackboneRow, uplinks: number[] = []): TopologyBackbon
     assetTag: row.assetTag,
     ipAddress: row.ipAddress,
     wanMode: row.wanMode,
+    operationMode: row.operationMode,
     macAddress: row.macAddress,
     island: row.island,
     zone: row.zone,
@@ -388,6 +394,7 @@ function clientDeviceNode(
     assetTag: row.assetTag,
     ipAddress: row.ipAddress,
     wanMode: row.wanMode,
+    operationMode: row.operationMode,
     macAddress: row.macAddress,
     startDate: row.startDate,
     administrativeState: row.active === 1 ? 'active' : 'inactive',

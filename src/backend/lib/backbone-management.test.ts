@@ -123,6 +123,28 @@ describe('backbone management repository', () => {
     expect(limpo.wanMode).toBeNull();
   });
 
+  test('guarda e corrige o papel do equipamento de backbone', () => {
+    db = freshDb();
+    const fixture = seed(db);
+
+    const created = createBackbone(db, input(fixture.catalogId, {
+      wanMode: 'static', operationMode: '  AP  '
+    }), null);
+    expect(created).toMatchObject({ wanMode: 'static', operationMode: 'AP' });
+
+    // Mexer no papel nao mexe na ligacao.
+    const mudado = updateBackbone(db, created.id, input(fixture.catalogId, {
+      wanMode: 'static', operationMode: 'mesh', expectedUpdatedAt: created.updatedAt
+    }), null);
+    expect(mudado).toMatchObject({ wanMode: 'static', operationMode: 'mesh' });
+
+    const limpo = updateBackbone(db, created.id, input(fixture.catalogId, {
+      wanMode: 'static', operationMode: '', expectedUpdatedAt: mudado.updatedAt
+    }), null);
+    expect(limpo.operationMode).toBeNull();
+    expect(limpo.wanMode).toBe('static');
+  });
+
   test('paginates and filters normalized backbone search results', () => {
     db = freshDb();
     const fixture = seed(db);

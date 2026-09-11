@@ -200,6 +200,8 @@ export const serviceDeviceAssignments = sqliteTable('service_device_assignments'
   macAddress: text('mac_address'),
   /** Como obtem endereco: predefinidos em shared/wan.ts, texto livre aceite. NULL = por classificar (migracao 0056). */
   wanMode: text('wan_mode'),
+  /** Que papel desempenha: predefinidos em shared/operation.ts, texto livre. NULL = por classificar (migracao 0057). */
+  operationMode: text('operation_mode'),
   technicianId: integer('technician_id'),
   notes: text('notes'),
   startDate: text('start_date').notNull().default("date('now')"),
@@ -235,6 +237,8 @@ export const backboneDevices = sqliteTable('backbone_devices', {
   macAddress: text('mac_address'),
   /** Como obtem endereco: predefinidos em shared/wan.ts, texto livre aceite. NULL = por classificar (migracao 0056). */
   wanMode: text('wan_mode'),
+  /** Que papel desempenha: predefinidos em shared/operation.ts, texto livre. NULL = por classificar (migracao 0057). */
+  operationMode: text('operation_mode'),
   island: text('island'),
   zone: text('zone'),
   status: text('status', { enum: ['active', 'maintenance', 'retired'] }).notNull().default('active'),

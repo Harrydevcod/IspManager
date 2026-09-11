@@ -6,6 +6,7 @@ const device = (over: Partial<RegisteredDevice> = {}): RegisteredDevice => ({
   ip: '192.168.1.10',
   mac: null,
   wanMode: null,
+  operationMode: null,
   kind: 'assignment',
   id: 1,
   name: 'Sr. Silva',

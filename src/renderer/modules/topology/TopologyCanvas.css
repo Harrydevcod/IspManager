@@ -173,6 +173,16 @@
    As cores saem dos aliases de `.topology-shell`: neutro por omissao, acento para
    quem tem endereco proprio, PPPoE com o acento profundo por ser onde a operacao
    esta a migrar, e ambar para os arranjos que exigem leitura. */
+/* Os dois eixos lado a lado. Em linha e nao empilhados: o cartao do no tem
+   altura contada, e uma terceira linha empurrava o estado para fora. */
+.topology-node-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.22rem;
+  align-items: center;
+  min-width: 0;
+}
+
 .topology-node-wan {
   width: fit-content;
   padding: 0.04rem 0.3rem;
@@ -209,6 +219,22 @@
 .topology-node-wan[data-wan='livre'] {
   font-style: italic;
   font-weight: 600;
+}
+
+/* O papel do equipamento. De proposito sem cor nenhuma: e a ligacao que se quer
+   ver de relance, e dois chips coloridos no mesmo cartao tornavam o mapa numa
+   manta. Este le-se por quem ja esta a olhar para aquele no. */
+.topology-node-op {
+  width: fit-content;
+  padding: 0.04rem 0.3rem;
+  border: 1px dashed color-mix(in oklch, var(--topology-line) 90%, transparent);
+  border-radius: var(--r1);
+  color: var(--topology-faint);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.5;
+  white-space: nowrap;
 }
 
 .topology-node-state {
