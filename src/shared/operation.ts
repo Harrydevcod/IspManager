@@ -30,7 +30,7 @@ export type OperationMode = typeof OPERATION_MODES[number];
 
 /** O registo obriga a rotular um modo novo: sem rótulo, não compila. */
 export const OPERATION_MODE_LABELS: Record<OperationMode, string> = {
-  router: 'Router (Roteador)',
+  router: 'Router',
   ap: 'Ponto de Acesso (AP)',
   // O outro lado do AP: a CPE/antena que se liga a um AP e serve o cliente.
   // A TP-Link (Pharos) chama-lhe `Client`; a Ubiquiti, `Station`.
@@ -56,6 +56,59 @@ export const OPERATION_MODE_SHORT: Record<OperationMode, string> = {
   ponte: 'Ponte',
   mesh: 'Mesh'
 };
+
+/**
+ * O que se oferece a uma CPE/antena: os sete, começados pelos que são dela.
+ *
+ * Uma CPE capta o sinal da torre e entrega-o por cabo — `cliente` é o modo do
+ * dia-a-dia, e o `wisp` é esse mesmo com router por dentro. O firmware atual
+ * dá-lhe também `router` e `mesh`, por isso não se lhe tira nada: muda a ordem,
+ * para o primeiro da lista ser o que ela é quase sempre.
+ */
+export const CPE_OPERATION_MODES: readonly OperationMode[] = [
+  'cliente',
+  'ap',
+  'repetidor',
+  'ponte',
+  'wisp',
+  'router',
+  'mesh'
+];
+
+/**
+ * O que se oferece a todo o resto.
+ *
+ * `cliente` e `wisp` são modos de quem *recebe* sinal de rádio: num router de
+ * casa, num switch ou num suporte não existem, e a única coisa que fazem na
+ * lista é atrapalhar quem escolhe. Tirar é a diferença entre as duas listas.
+ */
+export const DEFAULT_OPERATION_MODES: readonly OperationMode[] = [
+  'router',
+  'ap',
+  'repetidor',
+  'ponte',
+  'mesh'
+];
+
+/**
+ * Que modos oferecer a um equipamento deste tipo.
+ *
+ * Chaveia nos mesmos dois tipos que `STATIC_IP_REQUIRED_TYPES` em
+ * `equipment.ts` — é a mesma família de aparelhos, pela mesma razão. O tipo é
+ * texto livre desde a 0047: o que não se reconhece cai no conjunto do resto, e
+ * o formulário sem artigo escolhido também.
+ *
+ * Isto é ajuda de formulário, não regra de negócio: as rotas continuam a
+ * aceitar qualquer etiqueta em qualquer equipamento.
+ */
+export function operationModesForType(
+  catalogType: string | null | undefined
+): readonly OperationMode[] {
+  const normalized = (catalogType || '').trim().toLowerCase();
+  return normalized === 'cpe' || normalized === 'antena'
+    ? CPE_OPERATION_MODES
+    : DEFAULT_OPERATION_MODES;
+}
 
 export function isKnownOperationMode(mode: string | null | undefined): mode is OperationMode {
   return (OPERATION_MODES as readonly string[]).includes((mode || '').trim().toLowerCase());

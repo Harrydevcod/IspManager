@@ -1324,6 +1324,7 @@ export function ServicesModule({
             onChange={(wanMode) => setReplaceDraft((current) => ({ ...current, wanMode }))}
           />
           <OperationModeSelect
+            catalogType={catalogList.find((item) => String(item.id) === replaceDraft.catalogId)?.type}
             value={replaceDraft.operationMode}
             onChange={(operationMode) => setReplaceDraft((current) => ({ ...current, operationMode }))}
           />
@@ -1402,6 +1403,7 @@ export function ServicesModule({
             onChange={(wanMode) => setEditDraft((current) => ({ ...current, wanMode }))}
           />
           <OperationModeSelect
+            catalogType={editTarget?.catalogType}
             value={editDraft.operationMode}
             onChange={(operationMode) => setEditDraft((current) => ({ ...current, operationMode }))}
           />

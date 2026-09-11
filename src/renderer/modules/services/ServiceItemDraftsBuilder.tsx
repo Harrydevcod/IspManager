@@ -111,6 +111,7 @@ export function ServiceItemDraftsBuilder({ drafts, catalog, onChange, ipPrefix }
                   />
                   {/* O outro eixo: nao como obtem endereco, mas o que faz. */}
                   <OperationModeSelect
+                    catalogType={selectedItem?.type}
                     value={draft.operationMode}
                     onChange={(operationMode) => update(index, { operationMode })}
                   />

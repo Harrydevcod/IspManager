@@ -315,6 +315,7 @@ export function BackboneEditorDialog({
             onChange={(wanMode) => update('wanMode', wanMode)}
           />
           <OperationModeSelect
+            catalogType={catalogs.find((item) => item.id === form.catalogId)?.type ?? backbone?.catalogType}
             value={form.operationMode}
             onChange={(operationMode) => update('operationMode', operationMode)}
           />
