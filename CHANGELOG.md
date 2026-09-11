@@ -6,6 +6,28 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.24.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.24.0) — 2026-09-11
+
+> **Antes de instalar, faça uma cópia de segurança.** Esta versão traz duas migrações, e uma delas (0056) escreve no histórico: o equipamento que já tem endereço registado passa a constar como estando em IP estático.
+
+### Adicionado
+
+- **O equipamento passa a dizer como liga.** Até aqui o registo dizia *onde* um equipamento estava — IP, MAC, modelo — e nunca *em que modo* fora configurado. A única pista era uma convenção por escrever: campo de endereço vazio queria dizer DHCP. Agora cada unidade tem um campo próprio — IP dinâmico (DHCP), IP estático, PPPoE, PPPoE com IP fixo, Bridge, Túnel — e quem instalar algo que não esteja na lista escreve-o à mão, como já acontece com o tipo de equipamento.
+
+- **E passa a dizer o que faz.** A outra metade da pergunta que se faz ao chegar a casa de um cliente: que papel é que este aparelho está a desempenhar? Router, Ponto de Acesso, Repetidor, Ponte (Media Bridge) ou Mesh. O mesmo TP-Link pode encaminhar numa casa e espalhar Wi-Fi a partir de um cabo noutra — e até aqui isso só se sabia perguntando a quem lá foi.
+
+- **Os dois modos aparecem onde se decide.** Dois emblemas no cartão de cada equipamento no mapa, uma linha na ficha do serviço e no inspetor da topologia, dois filtros — cada um com **Por classificar**, que é a lista de trabalho de quem está a preencher o parque — e duas colunas na Descoberta, ao lado dos aparelhos encontrados na rede.
+
+### Alterado
+
+- **Quem é obrigado a ter endereço deixa de se adivinhar pelo tipo.** A regra saía do tipo de catálogo: CPE e antena tinham de ter endereço, o resto não. Passa a sair do modo de ligação — um CPE em DHCP não tem endereço para registar, e um router em IP estático tem. O equipamento que ainda não estiver classificado continua a seguir a regra antiga, para que nada do que já avisava deixe de avisar.
+
+- **A dica do campo de endereço deixa de ser um palpite.** Dizia sempre *"Vazio = DHCP"*. Agora diz de quem vem o endereço: atribuído por DHCP, atribuído pelo concentrador, sem endereço próprio — conforme o modo escolhido.
+
+### Notas
+
+- **O parque começa por classificar, e é de propósito.** O modo de ligação preenche-se sozinho apenas onde havia endereço registado (passa a IP estático, porque um endereço escrito à mão só existe se alguém o fixou); o resto fica em branco. O modo de operação não se preenche de todo — não havia de onde o deduzir, e adivinhá-lo seria inventar sobre instalações que ninguém verificou. O filtro **Por classificar** existe precisamente para isso se ir fazendo ao ritmo do terreno.
+
 ## [1.23.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.23.0) — 2026-09-03
 
 ### Adicionado
