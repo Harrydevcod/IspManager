@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { STATIC_IP_REQUIRED_TYPES_SQL, requiresStaticIp } from '../../shared/equipment';
+import { WAN_MODES_REQUIRING_IP_SQL } from '../../shared/wan';
 import { BACKBONE_UPLINK_TYPES_SQL } from '../../shared/topology';
 import type {
   TopologyBackboneBranch,
@@ -30,6 +31,8 @@ type BackboneRow = EquipmentRow & {
   assetTag: string | null;
   ipAddress: string | null;
   macAddress: string | null;
+  wanMode: string | null;
+  operationMode: string | null;
   island: string | null;
   zone: string | null;
   status: 'active' | 'maintenance';
@@ -47,6 +50,8 @@ type AssignmentRow = EquipmentRow & {
   assetTag: string | null;
   ipAddress: string | null;
   macAddress: string | null;
+  wanMode: string | null;
+  operationMode: string | null;
   startDate: string;
   isSerialized: number;
   liveState: 'up' | 'down' | null;
@@ -141,7 +146,8 @@ function loadBackboneRows(db: Database.Database): BackboneRow[] {
     SELECT
       bd.id AS backboneDeviceId, bd.catalog_id AS catalogId, bd.name,
       bd.serial_number AS serialNumber, bd.asset_tag AS assetTag,
-      bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
+      bd.ip_address AS ipAddress, bd.mac_address AS macAddress, bd.wan_mode AS wanMode,
+      bd.operation_mode AS operationMode,
       bd.island, bd.zone, bd.status, bd.provisional,
       ec.brand, ec.model, ec.type AS catalogType,
       probe.state AS liveState
@@ -190,7 +196,8 @@ function loadBackboneRow(
     SELECT
       bd.id AS backboneDeviceId, bd.catalog_id AS catalogId, bd.name,
       bd.serial_number AS serialNumber, bd.asset_tag AS assetTag,
-      bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
+      bd.ip_address AS ipAddress, bd.mac_address AS macAddress, bd.wan_mode AS wanMode,
+      bd.operation_mode AS operationMode,
       bd.island, bd.zone, bd.status, bd.provisional,
       ec.brand, ec.model, ec.type AS catalogType,
       probe.state AS liveState
@@ -214,7 +221,8 @@ function loadAssignmentRows(
       ec.type AS catalogType, ec.active,
       ec.is_serialized AS isSerialized, a.serial_number AS serialNumber,
       a.asset_tag AS assetTag, a.ip_address AS ipAddress,
-      a.mac_address AS macAddress, a.start_date AS startDate,
+      a.mac_address AS macAddress, a.wan_mode AS wanMode,
+      a.operation_mode AS operationMode, a.start_date AS startDate,
       placement.parentAssignmentId, placement.backboneDeviceId,
       probe.state AS liveState
     FROM service_device_assignments a
@@ -323,6 +331,8 @@ function backboneNode(row: BackboneRow, uplinks: number[] = []): TopologyBackbon
     serialNumber: row.serialNumber,
     assetTag: row.assetTag,
     ipAddress: row.ipAddress,
+    wanMode: row.wanMode,
+    operationMode: row.operationMode,
     macAddress: row.macAddress,
     island: row.island,
     zone: row.zone,
@@ -345,7 +355,7 @@ function clientDeviceIssues(
   if (row.active !== 1) issues.push('inactive');
   // Sem IP só é falta em quem tem de ter um. O resto anda em DHCP por decisão de
   // quem instalou, e acusar isso enchia o mapa de avisos sobre nada.
-  if (requiresStaticIp(row.catalogType) && !row.ipAddress?.trim()) issues.push('missing_ip');
+  if (requiresStaticIp(row.catalogType, row.wanMode) && !row.ipAddress?.trim()) issues.push('missing_ip');
   const services = clients.flatMap((client) => client.services);
   if (services.some((service) => service.status === 'suspended')) {
     issues.push('suspended_service');
@@ -383,6 +393,8 @@ function clientDeviceNode(
     serialNumber: row.serialNumber,
     assetTag: row.assetTag,
     ipAddress: row.ipAddress,
+    wanMode: row.wanMode,
+    operationMode: row.operationMode,
     macAddress: row.macAddress,
     startDate: row.startDate,
     administrativeState: row.active === 1 ? 'active' : 'inactive',
@@ -521,7 +533,11 @@ function loadAggregateRow(db: Database.Database): AggregateRow {
        WHERE a.end_date IS NULL AND (
          ec.active <> 1
          OR (
-           ec.type IN (${STATIC_IP_REQUIRED_TYPES_SQL})
+           CASE
+             WHEN NULLIF(TRIM(a.wan_mode), '') IS NOT NULL
+               THEN LOWER(TRIM(a.wan_mode)) IN (${WAN_MODES_REQUIRING_IP_SQL})
+             ELSE ec.type IN (${STATIC_IP_REQUIRED_TYPES_SQL})
+           END
            AND NULLIF(TRIM(a.ip_address), '') IS NULL
          )
          OR (

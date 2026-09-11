@@ -17,6 +17,29 @@ test('only backbone-facing equipment is required to have a static IP', () => {
   expect(requiresStaticIp(null)).toBe(false);
 });
 
+/**
+ * O tipo sempre foi um substituto de uma pergunta que ninguém fazia: em que modo
+ * está esta unidade? Desde a migração 0056 quem responde é o modo — e sem modo
+ * registado a regra antiga tem de continuar a valer, senão o parque por
+ * classificar deixava de avisar de um dia para o outro.
+ */
+test('the WAN mode decides, and the type only takes over when there is none', () => {
+  // O modo manda: um CPE em DHCP não tem endereço para registar.
+  expect(requiresStaticIp('cpe', 'dhcp')).toBe(false);
+  expect(requiresStaticIp('antena', 'pppoe')).toBe(false);
+  // E obriga onde o tipo não obrigava.
+  expect(requiresStaticIp('router', 'static')).toBe(true);
+  expect(requiresStaticIp('switch', 'pppoe_static')).toBe(true);
+
+  // Sem modo, a regra antiga intacta.
+  expect(requiresStaticIp('cpe', null)).toBe(true);
+  expect(requiresStaticIp('cpe', '   ')).toBe(true);
+  expect(requiresStaticIp('router', undefined)).toBe(false);
+
+  // Modo escrito à mão é etiqueta, não regra — e não faz o tipo voltar a mandar.
+  expect(requiresStaticIp('cpe', 'IPv6 nativo')).toBe(false);
+});
+
 test('labels the predefined types and echoes hand-written ones', () => {
   expect(labelForType('ap')).toBe('Ponto de Acesso');
   expect(labelForType('repetidor')).toBe('Repetidor WiFi');

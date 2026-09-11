@@ -12,6 +12,8 @@ import { Handle, Position } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { KeyboardEvent } from 'react';
 import type { TopologyNode } from '../../../shared/topology';
+import { isKnownWanMode, shortLabelForWanMode } from '../../../shared/wan';
+import { shortLabelForOperationMode } from '../../../shared/operation';
 import { Button } from '../../components';
 import type { TopologyFlowNodeData } from './topology-graph';
 import type { TopologyDirection } from './topology-layout';
@@ -64,6 +66,34 @@ function nodeMeta(node: TopologyNode, branchCount?: number): string {
   return `${node.ipAddress ?? 'IP em falta'} · ${clientCount} cliente${clientCount === 1 ? '' : 's'}`;
 }
 
+/**
+ * O modo de ligação do equipamento, em chip.
+ *
+ * Só o equipamento tem modo — cliente e raiz não. Sem modo registado não há
+ * chip: um nó por classificar não ganha ruído, ganha silêncio, e é o filtro que
+ * os junta quando alguém os quiser tratar.
+ */
+function nodeWanMode(node: TopologyNode): { label: string; tone: string } | null {
+  if (node.kind !== 'backbone' && node.kind !== 'client-device') return null;
+  const label = shortLabelForWanMode(node.wanMode);
+  if (!label) return null;
+  // Um modo escrito à mão não tem cor própria — fica em "livre".
+  const tone = isKnownWanMode(node.wanMode) ? node.wanMode!.trim().toLowerCase() : 'livre';
+  return { label, tone };
+}
+
+/**
+ * O papel do equipamento, em chip.
+ *
+ * Sem cor por modo, ao contrário do de ligação: dois chips coloridos lado a lado
+ * no mesmo cartão tornavam o mapa numa manta, e é a ligação que se quer ver de
+ * relance. Este fica em contorno, para quem estiver a ler aquele nó.
+ */
+function nodeOperationMode(node: TopologyNode): string | null {
+  if (node.kind !== 'backbone' && node.kind !== 'client-device') return null;
+  return shortLabelForOperationMode(node.operationMode) || null;
+}
+
 function nodeStatusLabel(node: TopologyNode): string {
   if (node.issueCodes.length > 0) return `${node.issueCodes.length} atenção`;
   return node.administrativeState === 'active' ? 'Ativo' : 'Inativo';
@@ -114,6 +144,8 @@ function NodeSelectControl({
   branchCount,
   onSelect
 }: Pick<TopologyNodeContentProps, 'node' | 'branchCount' | 'onSelect'>) {
+  const wanMode = nodeWanMode(node);
+  const operationMode = nodeOperationMode(node);
   return (
     <Button
       variant="ghost"
@@ -127,6 +159,14 @@ function NodeSelectControl({
       <span className="topology-node-copy">
         <strong>{node.label}</strong>
         <small>{nodeMeta(node, branchCount)}</small>
+        {(wanMode || operationMode) && (
+          <span className="topology-node-modes">
+            {wanMode && (
+              <span className="topology-node-wan" data-wan={wanMode.tone}>{wanMode.label}</span>
+            )}
+            {operationMode && <span className="topology-node-op">{operationMode}</span>}
+          </span>
+        )}
       </span>
       <span className="topology-node-state">
         {node.issueCodes.length > 0 && <AlertTriangle size={11} aria-hidden />}

@@ -3,7 +3,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { backboneOne } from './topologyTestFixtures';
+import { backboneOne, backboneTwo } from './topologyTestFixtures';
 import { TopologyNodeContent } from './TopologyNodes';
 
 let root: Root | null = null;
@@ -58,6 +58,72 @@ describe('TopologyNodeContent', () => {
     expect(container.querySelector('.topology-node')?.getAttribute('data-flow')).toBe('TB');
   });
 
+
+  /**
+   * O chip diz em que modo a unidade esta ligada. Sem modo registado nao ha chip:
+   * um no por classificar nao ganha ruido — e o filtro que os junta para tratar.
+   * Um modo escrito a mao aparece a letra e sem cor propria.
+   */
+  test('shows the WAN mode as a chip, and stays quiet without one', async () => {
+    const { container } = await mount();
+    const chip = container.querySelector('.topology-node-wan');
+    expect(chip?.textContent).toBe('Estático');
+    expect(chip?.getAttribute('data-wan')).toBe('static');
+
+    const render = async (node: typeof backboneOne) => {
+      await act(async () => {
+        root?.render(
+          <TopologyNodeContent node={node} selected={false} onSelect={vi.fn()} onToggle={vi.fn()} />
+        );
+      });
+    };
+
+    await render({ ...backboneOne, wanMode: 'IPv6 nativo' });
+    expect(container.querySelector('.topology-node-wan')?.textContent).toBe('IPv6 nativo');
+    expect(container.querySelector('.topology-node-wan')?.getAttribute('data-wan')).toBe('livre');
+
+    // `backboneTwo` e o parque que a migracao 0056 deixou por classificar.
+    await render(backboneTwo);
+    expect(container.querySelector('.topology-node-wan')).toBeNull();
+  });
+
+  /**
+   * Os dois eixos no mesmo cartao. Cada chip cala-se sozinho quando o seu campo
+   * esta por classificar — sem isso, o dia em que a 0057 correr enchia o mapa de
+   * chips vazios, porque o papel nasce todo nulo.
+   */
+  test('shows both mode chips, each silent on its own', async () => {
+    const render = async (node: typeof backboneOne) => {
+      await act(async () => {
+        root?.render(
+          <TopologyNodeContent node={node} selected={false} onSelect={vi.fn()} onToggle={vi.fn()} />
+        );
+      });
+    };
+
+    const { container } = await mount();
+    // A fixture tem os dois: static + router.
+    expect(container.querySelector('.topology-node-wan')?.textContent).toBe('Estático');
+    expect(container.querySelector('.topology-node-op')?.textContent).toBe('Router');
+
+    // So o papel: o chip de ligacao desaparece, o outro fica.
+    await render({ ...backboneOne, wanMode: null, operationMode: 'ap' });
+    expect(container.querySelector('.topology-node-wan')).toBeNull();
+    expect(container.querySelector('.topology-node-op')?.textContent).toBe('AP');
+
+    // So a ligacao.
+    await render({ ...backboneOne, operationMode: null });
+    expect(container.querySelector('.topology-node-wan')?.textContent).toBe('Estático');
+    expect(container.querySelector('.topology-node-op')).toBeNull();
+
+    // Papel escrito a mao: a letra, e sem cor propria (nao ha data-wan aqui).
+    await render({ ...backboneOne, operationMode: 'WISP' });
+    expect(container.querySelector('.topology-node-op')?.textContent).toBe('WISP');
+
+    // Nenhum dos dois: nem sequer a caixa que os junta.
+    await render({ ...backboneOne, wanMode: null, operationMode: null });
+    expect(container.querySelector('.topology-node-modes')).toBeNull();
+  });
 
   test('selects a focused node with Enter', async () => {
     const { container, onSelect } = await mount();

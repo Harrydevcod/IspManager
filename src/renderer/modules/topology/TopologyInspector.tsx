@@ -7,6 +7,8 @@ import {
   X
 } from 'lucide-react';
 import { labelForType, requiresStaticIp } from '../../../shared/equipment';
+import { labelForWanMode } from '../../../shared/wan';
+import { labelForOperationMode } from '../../../shared/operation';
 import type {
   TopologyBackboneBranch,
   TopologyClientDeviceNode,
@@ -50,6 +52,19 @@ function KindIcon({ node }: { node: TopologyNode }) {
   if (node.kind === 'logical-root') return <Network size={18} aria-hidden />;
   if (node.kind === 'backbone') return <RadioTower size={18} aria-hidden />;
   return <Box size={18} aria-hidden />;
+}
+
+/**
+ * O endereço, e quando não há, porque não há.
+ *
+ * Antes da migração 0056 a ausência era lida como DHCP por convenção; com modo
+ * registado a resposta é a verdadeira, e "Em falta" só se diz quando o modo (ou,
+ * sem ele, o tipo) exigia um endereço que não está lá.
+ */
+function ipDetail(node: { ipAddress: string | null; catalogType: string; wanMode: string | null }): string {
+  if (node.ipAddress) return node.ipAddress;
+  if (requiresStaticIp(node.catalogType, node.wanMode)) return 'Em falta';
+  return labelForWanMode(node.wanMode) || 'Atribuído automaticamente';
 }
 
 function Detail({ label, value }: { label: string; value: string | number }) {
@@ -165,8 +180,11 @@ function BackboneDetails({
         <Detail label="Modelo" value={node.model} />
         <Detail label="Serial" value={node.serialNumber ?? 'Não indicado'} />
         <Detail label="Asset tag" value={node.assetTag ?? 'Não indicado'} />
-        <Detail label="IP configurado" value={node.ipAddress ?? (requiresStaticIp(node.catalogType) ? 'Em falta' : 'DHCP')} />
+        <Detail label="IP configurado" value={ipDetail(node)} />
         <Detail label="MAC" value={node.macAddress ?? 'Não indicado'} />
+        {/* "Ligação" mais abaixo é de quem pende; isto é como obtém endereço. */}
+        <Detail label="Modo de ligação" value={labelForWanMode(node.wanMode) || 'Por classificar'} />
+        <Detail label="Operação" value={labelForOperationMode(node.operationMode) || 'Por classificar'} />
         <Detail
           label="Localização"
           value={[node.island, node.zone].filter(Boolean).join(' · ') || 'Não indicada'}
@@ -218,8 +236,11 @@ function DeviceDetails({
         <Detail label="Modelo" value={`${node.brand ? `${node.brand} ` : ''}${node.model}`} />
         <Detail label="Serial" value={node.serialNumber ?? 'Não indicado'} />
         <Detail label="Asset tag" value={node.assetTag ?? 'Não indicado'} />
-        <Detail label="IP configurado" value={node.ipAddress ?? (requiresStaticIp(node.catalogType) ? 'Em falta' : 'DHCP')} />
+        <Detail label="IP configurado" value={ipDetail(node)} />
         <Detail label="MAC" value={node.macAddress ?? 'Não indicado'} />
+        {/* "Ligação" mais abaixo é de quem pende; isto é como obtém endereço. */}
+        <Detail label="Modo de ligação" value={labelForWanMode(node.wanMode) || 'Por classificar'} />
+        <Detail label="Operação" value={labelForOperationMode(node.operationMode) || 'Por classificar'} />
         <Detail label="Desde" value={node.startDate} />
         <Detail label="Ligação" value={clientDeviceUplink(node)} />
       </dl>

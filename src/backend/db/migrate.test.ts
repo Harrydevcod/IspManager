@@ -526,4 +526,107 @@ describe('runMigrations', () => {
 
     db.close();
   });
+
+  /**
+   * O preenchimento da 0056 e de proposito incompleto: quem tem endereco passa a
+   * `static`, quem nao tem fica NULO e nao `dhcp`. Dar-lhe `dhcp` apagava em
+   * silencio o aviso `missing_ip` que um CPE sem endereco produz hoje — e o nulo
+   * e a lista de trabalho de quem esta a classificar o parque.
+   */
+  test('a 0056 marca como estatico quem tem endereco e deixa o resto por classificar', () => {
+    const db = freshDb();
+    runMigrations(db, migrations.filter((migration) => migration.version < 56));
+
+    const catalogId = db.prepare(`
+      INSERT INTO equipment_catalog (type, brand, model, stock_total, active)
+      VALUES ('cpe', 'TP-Link', 'CPE510', 9, 1)
+    `).run().lastInsertRowid;
+    const clientId = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status) VALUES ('C-1', 'Sr. Silva', 'active')
+    `).run().lastInsertRowid;
+    const serviceId = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
+      VALUES (?, 2500, 10, 'active')
+    `).run(clientId).lastInsertRowid;
+
+    const assignment = db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id, ip_address) VALUES (?, ?, ?)
+    `);
+    const comIp = assignment.run(serviceId, catalogId, '192.168.1.10').lastInsertRowid;
+    const semIp = assignment.run(serviceId, catalogId, null).lastInsertRowid;
+    // Espaco em branco nao e um endereco.
+    const soEspacos = assignment.run(serviceId, catalogId, '   ').lastInsertRowid;
+
+    const backbone = db.prepare(`
+      INSERT INTO backbone_devices (catalog_id, name, status, ip_address) VALUES (?, ?, 'active', ?)
+    `);
+    const coreComIp = backbone.run(catalogId, 'Core Norte', '10.0.0.1').lastInsertRowid;
+    const coreSemIp = backbone.run(catalogId, 'Core Sul', null).lastInsertRowid;
+
+    runMigrations(db, migrations);
+
+    const modo = (table: string, id: unknown) => (db.prepare(
+      `SELECT wan_mode AS wanMode FROM ${table} WHERE id = ?`
+    ).get(id) as { wanMode: string | null }).wanMode;
+
+    expect(modo('service_device_assignments', comIp)).toBe('static');
+    expect(modo('service_device_assignments', semIp)).toBeNull();
+    expect(modo('service_device_assignments', soEspacos)).toBeNull();
+    expect(modo('backbone_devices', coreComIp)).toBe('static');
+    expect(modo('backbone_devices', coreSemIp)).toBeNull();
+
+    db.close();
+  });
+
+  /**
+   * A 0057 nao preenche nada, e isso e a decisao — nao um esquecimento.
+   *
+   * Ao contrario da 0056, onde um endereco escrito a mao provava que alguem o
+   * tinha fixado, aqui nao ha de onde derivar o papel: o tipo nao o diz e
+   * adivinha-lo pelo nome do modelo era inventar dados sobre instalacoes que
+   * ninguem verificou. Este teste existe para que ninguem "corrija" isto mais
+   * tarde com um UPDATE bem-intencionado.
+   */
+  test('a 0057 deixa o papel por classificar em todo o parque', () => {
+    const db = freshDb();
+    runMigrations(db, migrations.filter((migration) => migration.version < 57));
+
+    const catalogId = db.prepare(`
+      INSERT INTO equipment_catalog (type, brand, model, stock_total, active)
+      VALUES ('router', 'TP-Link', 'TL-WR850N', 9, 1)
+    `).run().lastInsertRowid;
+    const clientId = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status) VALUES ('C-9', 'Sra. Costa', 'active')
+    `).run().lastInsertRowid;
+    const serviceId = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status)
+      VALUES (?, 2500, 10, 'active')
+    `).run(clientId).lastInsertRowid;
+
+    // Um com endereco e modo de ligacao, outro sem nada: nem o endereco nem o
+    // tipo podem fazer nascer um papel.
+    db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id, ip_address, wan_mode)
+      VALUES (?, ?, '192.168.1.10', 'static')
+    `).run(serviceId, catalogId);
+    db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id) VALUES (?, ?)
+    `).run(serviceId, catalogId);
+    db.prepare(`
+      INSERT INTO backbone_devices (catalog_id, name, status, ip_address)
+      VALUES (?, 'Core Norte', 'active', '10.0.0.1')
+    `).run(catalogId);
+
+    runMigrations(db, migrations);
+
+    for (const table of ['service_device_assignments', 'backbone_devices']) {
+      const linhas = db.prepare(
+        `SELECT COUNT(*) AS total, COUNT(operation_mode) AS comModo FROM ${table}`
+      ).get() as { total: number; comModo: number };
+      expect(linhas.total).toBeGreaterThan(0);
+      expect(linhas.comModo).toBe(0);
+    }
+
+    db.close();
+  });
 });

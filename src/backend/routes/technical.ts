@@ -44,6 +44,10 @@ const deviceAssignmentSchema = z.object({
   assetTag: z.string().trim().optional().nullable(),
   ipAddress: z.string().trim().optional().nullable(),
   macAddress: z.string().trim().optional().nullable(),
+  /** Como obtem endereco. Predefinidos em shared/wan.ts; texto livre aceite. */
+  wanMode: z.string().trim().max(40).optional().nullable(),
+  /** Que papel desempenha. Predefinidos em shared/operation.ts; texto livre aceite. */
+  operationMode: z.string().trim().max(40).optional().nullable(),
   technicianId: z.coerce.number().int().positive().optional().nullable(),
   notes: z.string().trim().optional().nullable(),
   /** 'cliente' = equipamento que o cliente trouxe; não gera renda. */
@@ -61,6 +65,8 @@ const batchItemsSchema = z.object({
     assetTag: z.string().trim().optional().nullable(),
     ipAddress: z.string().trim().optional().nullable(),
     macAddress: z.string().trim().optional().nullable(),
+    wanMode: z.string().trim().max(40).optional().nullable(),
+    operationMode: z.string().trim().max(40).optional().nullable(),
     technicianId: z.coerce.number().int().positive().optional().nullable(),
     notes: z.string().trim().optional().nullable(),
     ownership: z.enum(['isp', 'cliente']).optional().nullable(),
@@ -85,6 +91,10 @@ const deviceIdentitySchema = z.object({
   assetTag: z.string().trim().optional().nullable(),
   ipAddress: z.string().trim().optional().nullable(),
   macAddress: z.string().trim().optional().nullable(),
+  /** Como obtem endereco. Predefinidos em shared/wan.ts; texto livre aceite. */
+  wanMode: z.string().trim().max(40).optional().nullable(),
+  /** Que papel desempenha. Predefinidos em shared/operation.ts; texto livre aceite. */
+  operationMode: z.string().trim().max(40).optional().nullable(),
   notes: z.string().trim().optional().nullable(),
   /**
    * A renda vale a partir da proxima fatura e nao reescreve as passadas — cada
@@ -114,7 +124,9 @@ const bulkIdentitySchema = z.object({
   items: z.array(z.object({
     id: z.coerce.number().int().positive(),
     ipAddress: z.string().trim().optional().nullable(),
-    macAddress: z.string().trim().optional().nullable()
+    macAddress: z.string().trim().optional().nullable(),
+    wanMode: z.string().trim().max(40).optional().nullable(),
+    operationMode: z.string().trim().max(40).optional().nullable()
   })).min(1).max(1000)
 });
 
@@ -220,6 +232,8 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         a.asset_tag AS assetTag,
         a.ip_address AS ipAddress,
         a.mac_address AS macAddress,
+        a.wan_mode AS wanMode,
+        a.operation_mode AS operationMode,
         a.technician_id AS technicianId,
         tu.full_name AS technicianName,
         a.notes,
@@ -416,6 +430,8 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         a.serial_number AS serialNumber,
         a.ip_address AS ipAddress,
         a.mac_address AS macAddress,
+        a.wan_mode AS wanMode,
+        a.operation_mode AS operationMode,
         ${SHARED_WITH_NAMES_SQL} AS sharedWithNames
       FROM service_device_assignments a
       JOIN services s ON s.id = a.service_id
@@ -437,15 +453,21 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Dados de atribuicao invalidos' });
     }
 
-    type Identity = { ipAddress: string | null; macAddress: string | null };
+    type Identity = {
+      ipAddress: string | null; macAddress: string | null;
+      wanMode: string | null; operationMode: string | null;
+    };
     const db = getSqliteDatabase();
     const active = new Map((db.prepare(`
-      SELECT id, ip_address AS ipAddress, mac_address AS macAddress
+      SELECT id, ip_address AS ipAddress, mac_address AS macAddress, wan_mode AS wanMode,
+             operation_mode AS operationMode
       FROM service_device_assignments
       WHERE end_date IS NULL
     `).all() as Array<{ id: number } & Identity>).map((row) => [row.id, {
       ipAddress: row.ipAddress,
-      macAddress: row.macAddress
+      macAddress: row.macAddress,
+      wanMode: row.wanMode,
+      operationMode: row.operationMode
     }]));
 
     const changes: Array<{ id: number } & Identity> = [];
@@ -465,10 +487,19 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       if (macAddress && !isMacAddress(macAddress)) {
         return reply.status(400).send({ error: MAC_FORMAT_ERROR });
       }
-      if (ipAddress !== current.ipAddress || macAddress !== current.macAddress) {
-        changes.push({ id: item.id, ipAddress, macAddress });
+      const wanMode = item.wanMode === undefined ? current.wanMode : cleanValue(item.wanMode);
+      const operationMode = item.operationMode === undefined
+        ? current.operationMode
+        : cleanValue(item.operationMode);
+      if (
+        ipAddress !== current.ipAddress
+        || macAddress !== current.macAddress
+        || wanMode !== current.wanMode
+        || operationMode !== current.operationMode
+      ) {
+        changes.push({ id: item.id, ipAddress, macAddress, wanMode, operationMode });
       }
-      active.set(item.id, { ipAddress, macAddress });
+      active.set(item.id, { ipAddress, macAddress, wanMode, operationMode });
     }
 
     // Estado final, nao linha a linha: trocar dois IPs entre equipamentos passa,
@@ -491,11 +522,14 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
     db.transaction(() => {
       const update = db.prepare(`
         UPDATE service_device_assignments
-        SET ip_address = ?, mac_address = ?, updated_at = datetime('now')
+        SET ip_address = ?, mac_address = ?, wan_mode = ?, operation_mode = ?,
+            updated_at = datetime('now')
         WHERE id = ? AND end_date IS NULL
       `);
       for (const change of changes) {
-        update.run(change.ipAddress, change.macAddress, change.id);
+        update.run(
+          change.ipAddress, change.macAddress, change.wanMode, change.operationMode, change.id
+        );
       }
     })();
 
@@ -715,6 +749,8 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         asset_tag AS assetTag,
         ip_address AS ipAddress,
         mac_address AS macAddress,
+        wan_mode AS wanMode,
+        operation_mode AS operationMode,
         notes,
         ownership,
         rental_fee_cve AS rentalFeeCve
@@ -723,7 +759,8 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
     `).get(assignmentId) as {
       id: number; serviceId: number; endDate: string | null;
       serialNumber: string | null; assetTag: string | null;
-      ipAddress: string | null; macAddress: string | null; notes: string | null;
+      ipAddress: string | null; macAddress: string | null;
+      wanMode: string | null; operationMode: string | null; notes: string | null;
       ownership: string; rentalFeeCve: number;
     } | undefined;
 
@@ -742,6 +779,8 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       assetTag: merge(parsed.data.assetTag, current.assetTag),
       ipAddress: merge(parsed.data.ipAddress, current.ipAddress),
       macAddress: normalizeMacAddress(merge(parsed.data.macAddress, current.macAddress)),
+      wanMode: merge(parsed.data.wanMode, current.wanMode),
+      operationMode: merge(parsed.data.operationMode, current.operationMode),
       notes: merge(parsed.data.notes, current.notes),
       rentalFeeCve: parsed.data.rentalFeeCve == null ? current.rentalFeeCve : Math.round(parsed.data.rentalFeeCve)
     };
@@ -772,13 +811,15 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
           asset_tag = ?,
           ip_address = ?,
           mac_address = ?,
+          wan_mode = ?,
+          operation_mode = ?,
           notes = ?,
           rental_fee_cve = ?,
           updated_at = datetime('now')
       WHERE id = ?
     `).run(
-      next.serialNumber, next.assetTag, next.ipAddress, next.macAddress, next.notes,
-      next.rentalFeeCve, assignmentId
+      next.serialNumber, next.assetTag, next.ipAddress, next.macAddress, next.wanMode,
+      next.operationMode, next.notes, next.rentalFeeCve, assignmentId
     );
 
     recordAudit(request, {
@@ -794,6 +835,11 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         // qual era antes é a diferença entre explicar uma troca e adivinhá-la.
         macAddress: next.macAddress,
         previousMacAddress: current.macAddress,
+        // O modo de ligação diz ao técnico o que esperar antes de ir ao terreno.
+        wanMode: next.wanMode,
+        previousWanMode: current.wanMode,
+        operationMode: next.operationMode,
+        previousOperationMode: current.operationMode,
         // O aluguer entra no que o cliente paga: quem o mudou fica escrito.
         rentalFeeCve: next.rentalFeeCve,
         previousRentalFeeCve: current.rentalFeeCve
@@ -893,6 +939,8 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
           assetTag,
           ipAddress,
           macAddress,
+          wanMode: parsed.data.wanMode,
+          operationMode: parsed.data.operationMode,
           technicianId: parsed.data.technicianId || null,
           notes,
           ownership: parsed.data.ownership ?? null,

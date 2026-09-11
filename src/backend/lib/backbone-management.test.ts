@@ -97,6 +97,54 @@ describe('backbone management repository', () => {
     expect(getBackbone(db, created.id)).toEqual(created);
   });
 
+  /**
+   * O modo de ligacao do backbone tem de sobreviver a criacao e a edicao: e o que
+   * o mapa desenha no chip e o que o filtro junta. Um modo escrito a mao passa tal
+   * e qual — e uma etiqueta, nao uma enumeracao.
+   */
+  test('guarda e corrige o modo de ligacao, incluindo um escrito a mao', () => {
+    db = freshDb();
+    const fixture = seed(db);
+
+    const created = createBackbone(db, input(fixture.catalogId, { wanMode: '  static  ' }), null);
+    expect(created.wanMode).toBe('static');
+
+    const migrado = updateBackbone(db, created.id, input(fixture.catalogId, {
+      wanMode: 'IPv6 nativo',
+      expectedUpdatedAt: created.updatedAt
+    }), null);
+    expect(migrado.wanMode).toBe('IPv6 nativo');
+
+    // Vazio limpa: volta a por classificar.
+    const limpo = updateBackbone(db, created.id, input(fixture.catalogId, {
+      wanMode: '',
+      expectedUpdatedAt: migrado.updatedAt
+    }), null);
+    expect(limpo.wanMode).toBeNull();
+  });
+
+  test('guarda e corrige o papel do equipamento de backbone', () => {
+    db = freshDb();
+    const fixture = seed(db);
+
+    const created = createBackbone(db, input(fixture.catalogId, {
+      wanMode: 'static', operationMode: '  AP  '
+    }), null);
+    expect(created).toMatchObject({ wanMode: 'static', operationMode: 'AP' });
+
+    // Mexer no papel nao mexe na ligacao.
+    const mudado = updateBackbone(db, created.id, input(fixture.catalogId, {
+      wanMode: 'static', operationMode: 'mesh', expectedUpdatedAt: created.updatedAt
+    }), null);
+    expect(mudado).toMatchObject({ wanMode: 'static', operationMode: 'mesh' });
+
+    const limpo = updateBackbone(db, created.id, input(fixture.catalogId, {
+      wanMode: 'static', operationMode: '', expectedUpdatedAt: mudado.updatedAt
+    }), null);
+    expect(limpo.operationMode).toBeNull();
+    expect(limpo.wanMode).toBe('static');
+  });
+
   test('paginates and filters normalized backbone search results', () => {
     db = freshDb();
     const fixture = seed(db);

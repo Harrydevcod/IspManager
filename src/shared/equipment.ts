@@ -1,3 +1,5 @@
+import { wanModeRequiresIp } from './wan';
+
 /**
  * Os tipos de catálogo que vêm de fábrica — sugestões, não o universo.
  *
@@ -69,7 +71,23 @@ export const EQUIPMENT_TYPES_BY_CATEGORY: Record<
  */
 export const STATIC_IP_REQUIRED_TYPES: readonly EquipmentType[] = ['cpe', 'antena'];
 
-export function requiresStaticIp(catalogType: string | null | undefined): boolean {
+/**
+ * Quem é obrigado a ter endereço registado.
+ *
+ * O tipo de equipamento sempre foi um substituto de uma pergunta que ninguém
+ * fazia: *em que modo é que esta unidade está configurada?*. Desde que há
+ * `wan_mode`, quem responde é o modo — um CPE em DHCP não tem endereço para
+ * registar, e um router em IP estático tem.
+ *
+ * Sem modo registado (o parque anterior à migração 0056), recua-se para a regra
+ * do tipo. Assim nada do que já avisava deixa de avisar enquanto o operador
+ * classifica o parque ao seu ritmo.
+ */
+export function requiresStaticIp(
+  catalogType: string | null | undefined,
+  wanMode?: string | null
+): boolean {
+  if ((wanMode || '').trim()) return wanModeRequiresIp(wanMode);
   const normalized = (catalogType || '').trim().toLowerCase();
   return (STATIC_IP_REQUIRED_TYPES as readonly string[]).includes(normalized);
 }

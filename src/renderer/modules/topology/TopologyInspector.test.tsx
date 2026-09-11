@@ -190,3 +190,50 @@ test('marks a searched CPE that has no defined backbone link', async () => {
 
   expect(container.textContent).toContain('Sem ligação definida');
 });
+
+/**
+ * Os dois eixos na ficha do inspector, com nomes que nao se confundem: ja havia
+ * um "Ligacao" que diz de quem o equipamento pende, por isso o eixo do endereco
+ * chama-se "Modo de ligacao" e o do papel "Operacao". Um nome trocado aqui era
+ * duas linhas a dizer coisas diferentes com o mesmo rotulo.
+ */
+test('mostra os dois eixos do equipamento sem confundir os nomes', async () => {
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+
+  const render = async (node: typeof deviceOne) => {
+    await act(async () => {
+      root?.render(
+        <TopologyInspector
+          node={node}
+          snapshot={snapshot}
+          branch={branchOne}
+          onClose={() => undefined}
+          onOpenClient={() => undefined}
+          onOpenService={() => undefined}
+          focusedBackboneId={null}
+          onFocusBackbone={() => undefined}
+          onOpenStock={() => undefined}
+        />
+      );
+    });
+  };
+
+  // A fixture tem PPPoE no eixo do endereco e ponto de acesso no do papel.
+  await render({ ...deviceOne, wanMode: 'pppoe', operationMode: 'ap' });
+  expect(container.textContent).toContain('Modo de ligação');
+  expect(container.textContent).toContain('PPPoE');
+  expect(container.textContent).toContain('Operação');
+  expect(container.textContent).toContain('Ponto de Acesso (AP)');
+
+  // Cada eixo diz "Por classificar" por si, sem arrastar o outro.
+  await render({ ...deviceOne, wanMode: 'static', operationMode: null });
+  expect(container.textContent).toContain('IP estático');
+  expect(container.textContent).toContain('Por classificar');
+
+  // A Ponte diz a que eixo pertence — ha um `bridge` no outro campo.
+  await render({ ...deviceOne, wanMode: 'bridge', operationMode: 'ponte' });
+  expect(container.textContent).toContain('Bridge — sem endereço próprio');
+  expect(container.textContent).toContain('Media Bridge');
+});

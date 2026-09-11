@@ -770,6 +770,10 @@ export type DeviceAssignment = {
   assetTag: string | null;
   ipAddress: string | null;
   macAddress: string | null;
+  /** Como obtem endereco: predefinidos em shared/wan.ts, livre aceite. Vazio = por classificar. */
+  wanMode: string | null;
+  /** Que papel desempenha: predefinidos em shared/operation.ts, livre aceite. */
+  operationMode: string | null;
   technicianName: string | null;
   notes: string | null;
   startDate: string;

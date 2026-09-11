@@ -168,6 +168,75 @@
   -webkit-line-clamp: 2;
 }
 
+/* Como esta unidade obtem endereco. Sem modo registado nao ha chip — um no por
+   classificar nao ganha ruido, e e o filtro que os junta para tratar.
+   As cores saem dos aliases de `.topology-shell`: neutro por omissao, acento para
+   quem tem endereco proprio, PPPoE com o acento profundo por ser onde a operacao
+   esta a migrar, e ambar para os arranjos que exigem leitura. */
+/* Os dois eixos lado a lado. Em linha e nao empilhados: o cartao do no tem
+   altura contada, e uma terceira linha empurrava o estado para fora. */
+.topology-node-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.22rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.topology-node-wan {
+  width: fit-content;
+  padding: 0.04rem 0.3rem;
+  border: 1px solid color-mix(in oklch, var(--topology-line) 80%, transparent);
+  border-radius: var(--r1);
+  color: var(--topology-muted);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.topology-node-wan[data-wan='static'],
+.topology-node-wan[data-wan='pppoe_static'] {
+  border-color: color-mix(in oklch, var(--topology-accent) 45%, transparent);
+  background: color-mix(in oklch, var(--topology-accent) 12%, transparent);
+  color: var(--topology-accent);
+}
+
+.topology-node-wan[data-wan='pppoe'],
+.topology-node-wan[data-wan='pppoe_static'] {
+  border-color: color-mix(in oklch, var(--topology-accent-deep) 50%, transparent);
+  color: var(--topology-accent-deep);
+}
+
+.topology-node-wan[data-wan='bridge'],
+.topology-node-wan[data-wan='tunnel'] {
+  border-color: color-mix(in oklch, var(--topology-amber) 45%, transparent);
+  color: var(--topology-amber);
+}
+
+/* Modo escrito a mao: e uma etiqueta, nao um estado — nao ganha cor. */
+.topology-node-wan[data-wan='livre'] {
+  font-style: italic;
+  font-weight: 600;
+}
+
+/* O papel do equipamento. De proposito sem cor nenhuma: e a ligacao que se quer
+   ver de relance, e dois chips coloridos no mesmo cartao tornavam o mapa numa
+   manta. Este le-se por quem ja esta a olhar para aquele no. */
+.topology-node-op {
+  width: fit-content;
+  padding: 0.04rem 0.3rem;
+  border: 1px dashed color-mix(in oklch, var(--topology-line) 90%, transparent);
+  border-radius: var(--r1);
+  color: var(--topology-faint);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
 .topology-node-state {
   display: inline-flex;
   align-items: center;

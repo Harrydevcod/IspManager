@@ -20,6 +20,8 @@ const detail: BackboneDeviceDetail = {
   assetTag: 'AT-7',
   ipAddress: '10.0.0.7',
   macAddress: 'AA:BB:CC:00:00:07',
+  wanMode: 'static',
+  operationMode: 'router',
   island: 'Santiago',
   zone: 'Praia',
   provisional: false,

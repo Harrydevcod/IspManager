@@ -13,6 +13,10 @@ export type RegisteredRef = {
   name: string;
   active: boolean;
   model: string | null;
+  /** Como o registo diz que obtém endereço. Nulo = por classificar. */
+  wanMode: string | null;
+  /** Que papel o registo diz que desempenha. Nulo = por classificar. */
+  operationMode: string | null;
 };
 
 /** `registo` = o que o ISPM já sabia; os outros vieram de perguntar à rede. */

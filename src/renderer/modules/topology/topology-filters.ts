@@ -15,7 +15,24 @@ export type TopologyGraphFilters = {
   attention?: boolean;
   island?: string;
   zone?: string;
+  /**
+   * Modo de ligação do equipamento. `UNCLASSIFIED_WAN_MODE` junta o parque que
+   * ainda não foi classificado — é a lista de trabalho de quem está a migrar.
+   */
+  wanMode?: string;
+  /**
+   * Papel do equipamento. `UNCLASSIFIED_OPERATION_MODE` junta o parque que ainda
+   * não foi classificado — e, ao contrário da ligação, isso é toda a gente no
+   * dia em que a migração 0057 correr.
+   */
+  operationMode?: string;
 };
+
+/** Valor especial: equipamento sem modo registado (nulo na base de dados). */
+export const UNCLASSIFIED_WAN_MODE = '__sem_modo__';
+
+/** Valor especial: equipamento sem papel registado (nulo na base de dados). */
+export const UNCLASSIFIED_OPERATION_MODE = '__sem_operacao__';
 
 function normalize(value: string | null | undefined): string {
   return (value ?? '')
@@ -30,7 +47,32 @@ function hasFilters(filters: TopologyGraphFilters): boolean {
   return filters.administrativeState !== undefined
     || filters.attention !== undefined
     || Boolean(normalize(filters.island))
-    || Boolean(normalize(filters.zone));
+    || Boolean(normalize(filters.zone))
+    || Boolean(filters.wanMode)
+    || Boolean(filters.operationMode);
+}
+
+/**
+ * Só o equipamento tem modo de ligação — cliente e raiz não têm.
+ *
+ * Com este filtro ligado, um card de cliente nunca corresponde: `collectAncestors`
+ * só sobe, portanto um cliente a corresponder arrastaria de volta o equipamento
+ * que o filtro acabou de excluir. O mapa filtrado mostra o equipamento, que é
+ * exactamente o que responde a "quem já está em PPPoE e quem falta".
+ */
+function matchesWanMode(node: TopologyNode, wanMode: string): boolean {
+  if (node.kind !== 'backbone' && node.kind !== 'client-device') return false;
+  const current = normalize(node.wanMode);
+  if (wanMode === UNCLASSIFIED_WAN_MODE) return !current;
+  return current === normalize(wanMode);
+}
+
+/** Mesma regra do modo de ligação, no outro eixo: só o equipamento tem papel. */
+function matchesOperationMode(node: TopologyNode, operationMode: string): boolean {
+  if (node.kind !== 'backbone' && node.kind !== 'client-device') return false;
+  const current = normalize(node.operationMode);
+  if (operationMode === UNCLASSIFIED_OPERATION_MODE) return !current;
+  return current === normalize(operationMode);
 }
 
 function matchesPlace(
@@ -66,6 +108,11 @@ function matchesNode(node: TopologyNode, filters: TopologyGraphFilters): boolean
   if (
     filters.attention !== undefined
     && (node.issueCodes.length > 0) !== filters.attention
+  ) return false;
+  if (filters.wanMode && !matchesWanMode(node, filters.wanMode)) return false;
+  if (
+    filters.operationMode
+    && !matchesOperationMode(node, filters.operationMode)
   ) return false;
   if (!filters.island && !filters.zone) return true;
   /*

@@ -1,5 +1,7 @@
 import { ArrowRightLeft, Cable, Coins, History, PackageCheck, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
 import { labelForType } from '../../../shared/equipment';
+import { labelForWanMode } from '../../../shared/wan';
+import { labelForOperationMode } from '../../../shared/operation';
 import { Badge, Button, Dialog, EmptyState, Message } from '../../components';
 import { formatCve, formatPtDate, formatPtDateTime } from '../../lib/format';
 import { statusLabel, statusTone } from '../../lib/status';
@@ -266,6 +268,14 @@ export function ServiceDetailDialog({
                     {assignment.serialNumber && <div><dt>Serial</dt><dd>{assignment.serialNumber}</dd></div>}
                     {assignment.macAddress && <div><dt>MAC</dt><dd>{assignment.macAddress}</dd></div>}
                     {assignment.ipAddress && <div><dt>IP</dt><dd>{assignment.ipAddress}</dd></div>}
+                    {/* Ao lado do IP porque e a explicacao dele: quem o atribui. */}
+                    {assignment.wanMode && (
+                      <div><dt>Ligação</dt><dd>{labelForWanMode(assignment.wanMode)}</dd></div>
+                    )}
+                    {/* O outro eixo: o que o aparelho faz, nao como obtem endereco. */}
+                    {assignment.operationMode && (
+                      <div><dt>Operação</dt><dd>{labelForOperationMode(assignment.operationMode)}</dd></div>
+                    )}
                     {assignment.assetTag && <div><dt>Tag</dt><dd>{assignment.assetTag}</dd></div>}
                     <div><dt>Inicio</dt><dd>{formatPtDate(assignment.startDate)}</dd></div>
                     {assignment.endDate && <div><dt>Fim</dt><dd>{formatPtDate(assignment.endDate)}</dd></div>}

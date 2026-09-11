@@ -13,7 +13,7 @@ import type { BackboneMutationState } from './useBackboneWorkspace';
 import type { BackboneCatalogOption } from './backbone-api';
 import type { BackbonePrefill } from './BackboneWorkspace';
 import { CV_ISLANDS, isKnownIsland } from '../../lib/islands';
-import { Badge, Button, Combobox, Dialog, Field, Select, Textarea, Toggle } from '../../components';
+import { Badge, Button, Combobox, Dialog, Field, Select, Textarea, Toggle, WanModeSelect, OperationModeSelect } from '../../components';
 
 type EditorProps = {
   open: boolean;
@@ -43,6 +43,8 @@ type EditorState = {
   assetTag: string;
   ipAddress: string;
   macAddress: string;
+  wanMode: string;
+  operationMode: string;
   island: string;
   zone: string;
   notes: string;
@@ -77,6 +79,8 @@ function editorState(
     assetTag: backbone?.assetTag ?? '',
     ipAddress: backbone?.ipAddress ?? seed?.ipAddress ?? '',
     macAddress: backbone?.macAddress ?? seed?.macAddress ?? '',
+    wanMode: backbone?.wanMode ?? '',
+    operationMode: backbone?.operationMode ?? '',
     island: backbone?.island ?? '',
     zone: backbone?.zone ?? '',
     notes: backbone?.notes ?? ''
@@ -150,6 +154,8 @@ export function BackboneEditorDialog({
       serialNumber: nullable(form.serialNumber),
       assetTag: nullable(form.assetTag),
       ipAddress: nullable(form.ipAddress),
+      wanMode: nullable(form.wanMode),
+      operationMode: nullable(form.operationMode),
       macAddress: nullable(form.macAddress),
       island: nullable(form.island),
       zone: nullable(form.zone),
@@ -303,6 +309,14 @@ export function BackboneEditorDialog({
             label="Endereço MAC"
             value={form.macAddress}
             onChange={(event) => update('macAddress', event.target.value)}
+          />
+          <WanModeSelect
+            value={form.wanMode}
+            onChange={(wanMode) => update('wanMode', wanMode)}
+          />
+          <OperationModeSelect
+            value={form.operationMode}
+            onChange={(operationMode) => update('operationMode', operationMode)}
           />
           <small className="backbone-form-note">
             Campos sem valor serão apresentados como “Não informado”.
