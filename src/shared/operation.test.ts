@@ -20,6 +20,12 @@ test('labels every predefined mode, long and short', () => {
   expect(shortLabelForOperationMode('ap')).toBe('AP');
 });
 
+/** O outro lado do AP: a CPE/antena em modo Cliente (Client/Station). */
+test('o Cliente é o par do AP', () => {
+  expect(labelForOperationMode('cliente')).toBe('Cliente (Client / Station)');
+  expect(shortLabelForOperationMode('cliente')).toBe('Cliente');
+});
+
 /**
  * O rótulo longo da Ponte diz o eixo de propósito: há um `bridge` no modo de
  * ligação que quer dizer outra coisa (não ter endereço próprio). Estes dois
@@ -31,11 +37,20 @@ test('a Ponte diz a que eixo pertence', () => {
   expect(shortLabelForOperationMode('ponte')).toBe('Ponte');
 });
 
+/**
+ * O WISP é o Cliente com router por dentro: o rótulo longo tem de os separar,
+ * senão quem classifica no terreno escolhe um pelo outro.
+ */
+test('o WISP diz o que o separa do Cliente', () => {
+  expect(labelForOperationMode('wisp')).toContain('Router/NAT');
+  expect(shortLabelForOperationMode('wisp')).toBe('WISP');
+});
+
 /** Um modo escrito à mão é só uma etiqueta: mostra-se à letra e não decide nada. */
 test('a hand-written mode is echoed verbatim', () => {
-  expect(isKnownOperationMode('WISP')).toBe(false);
-  expect(labelForOperationMode('WISP')).toBe('WISP');
-  expect(shortLabelForOperationMode('WISP')).toBe('WISP');
+  expect(isKnownOperationMode('AP Router')).toBe(false);
+  expect(labelForOperationMode('AP Router')).toBe('AP Router');
+  expect(shortLabelForOperationMode('AP Router')).toBe('AP Router');
 });
 
 /** Por classificar não é um modo — é a ausência de um, e diz-se com vazio. */

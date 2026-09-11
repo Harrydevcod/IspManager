@@ -19,6 +19,8 @@
 export const OPERATION_MODES = [
   'router',
   'ap',
+  'cliente',
+  'wisp',
   'repetidor',
   'ponte',
   'mesh'
@@ -30,6 +32,13 @@ export type OperationMode = typeof OPERATION_MODES[number];
 export const OPERATION_MODE_LABELS: Record<OperationMode, string> = {
   router: 'Router (Roteador)',
   ap: 'Ponto de Acesso (AP)',
+  // O outro lado do AP: a CPE/antena que se liga a um AP e serve o cliente.
+  // A TP-Link (Pharos) chama-lhe `Client`; a Ubiquiti, `Station`.
+  cliente: 'Cliente (Client / Station)',
+  // Variação do Cliente: em vez de entregar o sinal ao router do cliente, a
+  // própria CPE cria a rede local (NAT). O rótulo tem de dizer isto, senão
+  // não se distingue do `cliente` no momento de escolher.
+  wisp: 'WISP (Cliente + Router/NAT)',
   repetidor: 'Repetidor (Range Extender)',
   // O eixo vai no rótulo de propósito: há um `bridge` no modo de ligação que
   // quer dizer outra coisa (não ter endereço próprio), e sem isto trocavam-se.
@@ -41,6 +50,8 @@ export const OPERATION_MODE_LABELS: Record<OperationMode, string> = {
 export const OPERATION_MODE_SHORT: Record<OperationMode, string> = {
   router: 'Router',
   ap: 'AP',
+  cliente: 'Cliente',
+  wisp: 'WISP',
   repetidor: 'Repetidor',
   ponte: 'Ponte',
   mesh: 'Mesh'

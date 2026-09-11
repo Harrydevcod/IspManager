@@ -6,7 +6,7 @@ const Inner = createModeSelect({
   labels: OPERATION_MODE_LABELS,
   label: 'Operação',
   otherLabel: '+ Outro modo…',
-  freePlaceholder: 'ex.: WISP'
+  freePlaceholder: 'ex.: AP Router'
 });
 
 /** Que papel este aparelho desempenha. Ver `shared/operation.ts`. */

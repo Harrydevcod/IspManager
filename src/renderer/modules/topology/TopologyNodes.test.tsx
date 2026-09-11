@@ -117,8 +117,8 @@ describe('TopologyNodeContent', () => {
     expect(container.querySelector('.topology-node-op')).toBeNull();
 
     // Papel escrito a mao: a letra, e sem cor propria (nao ha data-wan aqui).
-    await render({ ...backboneOne, operationMode: 'WISP' });
-    expect(container.querySelector('.topology-node-op')?.textContent).toBe('WISP');
+    await render({ ...backboneOne, operationMode: 'AP Router' });
+    expect(container.querySelector('.topology-node-op')?.textContent).toBe('AP Router');
 
     // Nenhum dos dois: nem sequer a caixa que os junta.
     await render({ ...backboneOne, wanMode: null, operationMode: null });

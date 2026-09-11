@@ -707,9 +707,9 @@ describe('device identity (IP fixo)', () => {
     await app.inject({
       method: 'PATCH',
       url: `/api/service-device-assignments/${assignmentId}`,
-      payload: { operationMode: 'WISP' }
+      payload: { operationMode: 'AP Router' }
     });
-    expect(await read()).toMatchObject({ wanMode: 'dhcp', operationMode: 'WISP' });
+    expect(await read()).toMatchObject({ wanMode: 'dhcp', operationMode: 'AP Router' });
 
     await app.inject({
       method: 'PATCH',
