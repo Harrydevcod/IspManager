@@ -88,8 +88,10 @@ function FindingList({ findings }: { findings: OperationsStatus['network']['find
   if (relevant.length === 0) return null;
   return (
     <ul className="ops-findings">
-      {relevant.map((finding) => (
-        <li key={finding.code} className={`ops-finding is-${finding.severity}`}>
+      {/* O código não é único: `network.concentration` e `network.flapping`
+          saem uma vez por equipamento. Chavear só por ele colidia. */}
+      {relevant.map((finding, index) => (
+        <li key={`${finding.code}-${index}`} className={`ops-finding is-${finding.severity}`}>
           <AlertTriangle size={14} aria-hidden />
           <div>
             <strong>{finding.title}</strong>
