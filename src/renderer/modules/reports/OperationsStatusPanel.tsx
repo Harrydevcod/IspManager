@@ -88,8 +88,10 @@ function FindingList({ findings }: { findings: OperationsStatus['network']['find
   if (relevant.length === 0) return null;
   return (
     <ul className="ops-findings">
-      {relevant.map((finding) => (
-        <li key={finding.code} className={`ops-finding is-${finding.severity}`}>
+      {/* O código não é único: `network.concentration` e `network.flapping`
+          saem uma vez por equipamento. Chavear só por ele colidia. */}
+      {relevant.map((finding, index) => (
+        <li key={`${finding.code}-${index}`} className={`ops-finding is-${finding.severity}`}>
           <AlertTriangle size={14} aria-hidden />
           <div>
             <strong>{finding.title}</strong>
@@ -402,6 +404,8 @@ export function OperationsStatusPanel({ active }: { active: boolean }) {
         Identificação: {network.identification.backboneWithIp}/{network.identification.backboneTotal} backbone com IP,
         {' '}{network.identification.assignmentIdentified}/{network.identification.assignmentTotal} equipamentos em campo identificados (MAC ou série).
         {network.probe.neverProbed > 0 && ` ${network.probe.neverProbed} com IP por sondar.`}
+        {network.identification.modeTotal > 0 && ` Modos por classificar: ${network.identification.withoutWanMode} sem ligação, ${network.identification.withoutOperationMode} sem operação, de ${network.identification.modeTotal}.`}
+        {network.discoveryProposals > 0 && ` ${network.discoveryProposals} proposta(s) da descoberta por aplicar.`}
       </p>
 
       <SectionTitle>Parque e stock</SectionTitle>
@@ -417,7 +421,10 @@ export function OperationsStatusPanel({ active }: { active: boolean }) {
                   <li key={model.catalogId} className={`is-${model.severity}`}>
                     <strong>{model.label}</strong>
                     <small>{model.type}</small>
-                    <span>{model.deployed} em campo</span>
+                    <span>
+                      {model.deployed} em campo
+                      {model.deployedBackbone > 0 && ` (${model.deployedBackbone} no backbone)`}
+                    </span>
                     <span className="ops-fleet-stock">{model.stock} {model.unitOfMeasure} em stock</span>
                   </li>
                 ))}
@@ -434,6 +441,14 @@ export function OperationsStatusPanel({ active }: { active: boolean }) {
           />
         </Panel>
       </div>
+      {fleet.outstanding.units > 0 && (
+        <p className="ops-note">
+          Por recolher: {fleet.outstanding.units} equipamento(s) do ISP em clientes que saíram ou que o deram por não
+          devolvido, {formatCve(fleet.outstanding.valueCve)} em capital.
+          {fleet.outstanding.monthlyRentalCve > 0
+            && ` Renda ainda emitida: ${formatCve(fleet.outstanding.monthlyRentalCve)}/mês.`}
+        </p>
+      )}
       <FindingList findings={fleet.findings} />
 
       <SectionTitle>Canais, acesso e sistema</SectionTitle>
@@ -449,10 +464,30 @@ export function OperationsStatusPanel({ active }: { active: boolean }) {
           <MessageSquareWarning className="ops-card-glyph" size={18} aria-hidden />
         </Panel>
         <Panel title="Acesso">
-          <p className="ops-note">
-            {accessLayer.sharedUplinkServices} serviço(s) no mesmo uplink. PPPoE, QoS e histórico de sessões não são
-            recolhidos — não há como medir débito por cliente nem cortar automaticamente por dívida.
-          </p>
+          {accessLayer.routerEnabled ? (
+            <>
+              <p className="ops-note">
+                <Badge tone={accessLayer.routerDryRun ? 'warn' : 'success'}>
+                  {accessLayer.routerDryRun ? 'router em ensaio' : 'router a controlar'}
+                </Badge>
+                {' '}{accessLayer.provisionedServices} de {accessLayer.sharedUplinkServices} serviço(s) aprovisionados ·
+                {' '}{accessLayer.rateLimitedServices} com limite de débito · {accessLayer.onlineServices} online.
+              </p>
+              <p className="ops-note">
+                {accessLayer.automaticSuspensions} corte(s) automático(s) em 7 dias ·
+                {' '}{accessLayer.divergentServices} divergência(s).
+                {' '}{accessLayer.lastCheckedAt
+                  ? `Última leitura ${formatPtDateTime(accessLayer.lastCheckedAt)}.`
+                  : 'Ainda sem leitura do router.'}
+              </p>
+            </>
+          ) : (
+            <p className="ops-note">
+              <Badge tone="neutral">router desligado</Badge>
+              {' '}{accessLayer.sharedUplinkServices} serviço(s) no mesmo uplink. Com a integração desligada não há
+              limite de débito por cliente nem corte automático por dívida — a suspensão é feita à mão.
+            </p>
+          )}
           <Network className="ops-card-glyph" size={18} aria-hidden />
         </Panel>
         <Panel title="Sistema">

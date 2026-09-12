@@ -7,7 +7,7 @@ import { recordAudit } from '../lib/audit';
 import { balanceSqlExpr, cashReceiptFilterSql, overdueSqlPredicate } from '../lib/payments';
 import { loadOperationsStatus } from '../lib/operations-status';
 import { buildOperationsStatusPdf } from '../lib/operations-export';
-import { parkValue, portfolioRows } from '../lib/capex';
+import { LANDED_COST_SQL, parkValue, portfolioRows } from '../lib/capex';
 
 type ReportMetricRow = {
   totalClients: number;
@@ -125,12 +125,26 @@ export async function registerReportRoutes(app: FastifyInstance) {
         (SELECT coalesce(sum(r.amount_cve), 0) FROM payment_receipts r
           WHERE ${cashReceiptFilterSql('r')}) AS paidAmountCve,
         (
-          SELECT coalesce(sum(stock_total * (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve)), 0)
+          SELECT coalesce(sum(stock_total * ${LANDED_COST_SQL}), 0)
           FROM equipment_catalog
           WHERE active = 1
         ) AS stockValueCve
     `).get() as ReportMetricRow;
 
+    /*
+     * Duas leituras do mesmo mês, cada uma com o seu nome.
+     *
+     * `paidCve`/`pendingCve` são competência: agrupam pelo mês a que a fatura
+     * diz respeito, e é isso que a cobrança precisa de ver — quanto falta
+     * fechar do ciclo de julho.
+     *
+     * `cashCve` é caixa: o dinheiro que entrou *durante* aquele mês, venha de
+     * que fatura vier. Sem esta coluna o mês corrente aparece a zero até se
+     * cobrar, que foi exatamente o defeito corrigido no dashboard. Vem dos
+     * recibos porque só eles veem os parciais, e `cashReceiptFilterSql` já
+     * exclui o crédito de conta corrente (liquida, mas não faz entrar dinheiro)
+     * e os recibos anulados.
+     */
     const revenueByMonth = db.prepare(`
       SELECT
         reference_month AS referenceMonth,
@@ -138,7 +152,13 @@ export async function registerReportRoutes(app: FastifyInstance) {
           then amount_cve - ${balanceSqlExpr('payments')} else 0 end), 0) AS paidCve,
         coalesce(sum(case when status in ('pending','overdue')
           then ${balanceSqlExpr('payments')} else 0 end), 0) AS pendingCve,
-        count(*) AS payments
+        count(*) AS payments,
+        (
+          SELECT coalesce(sum(r.amount_cve), 0)
+          FROM payment_receipts r
+          WHERE ${cashReceiptFilterSql('r')}
+            AND substr(r.payment_date, 1, 7) = payments.reference_month
+        ) AS cashCve
       FROM payments
       ${paymentWhereSql}
       GROUP BY reference_month
@@ -191,7 +211,7 @@ export async function registerReportRoutes(app: FastifyInstance) {
         coalesce(brand, '') AS brand,
         model,
         stock_total AS stockTotal,
-        (stock_total * (purchase_price_cve + shipping_cost_cve + customs_duty_cve + other_costs_cve)) AS valueCve
+        (stock_total * ${LANDED_COST_SQL}) AS valueCve
       FROM equipment_catalog
       WHERE active = 1
       ORDER BY stock_total ASC, brand, model
