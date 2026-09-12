@@ -5,6 +5,7 @@ import { authFetch } from '../lib/auth';
 import { downloadCsv } from '../lib/csv';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
+import { referenceMonthLabel } from '../../shared/billing-period';
 import { OperationsStatusPanel } from './reports/OperationsStatusPanel';
 import type { DataQualityIncompleteFlag, DataQualitySummary, ReportsSummary, ReportView } from '../types';
 
@@ -122,7 +123,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
     if (view === 'revenue') {
       rows = [
         ['Mes', 'Pago CVE', 'Pendente CVE', 'Caixa CVE', 'Cobrancas'],
-        ...summary!.revenueByMonth.map((row) => [formatPtMonth(row.referenceMonth), row.paidCve, row.pendingCve, row.cashCve, row.payments])
+        ...summary!.revenueByMonth.map((row) => [referenceMonthLabel(row.referenceMonth, formatPtMonth), row.paidCve, row.pendingCve, row.cashCve, row.payments])
       ];
     } else if (view === 'overdue') {
       rows = [
@@ -280,9 +281,9 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
       <div className="module-table">
         {!error && ((view === 'incomplete' || view === 'duplicates') ? !dq : !summary) && <SkeletonList rows={5} />}
         {view === 'revenue' && summary?.revenueByMonth.map((row) => (
-          <div className="module-row report-row" key={row.referenceMonth}>
+          <div className="module-row report-row is-revenue" key={row.referenceMonth}>
             <span>
-              <strong>{formatPtMonth(row.referenceMonth)}</strong>
+              <strong>{referenceMonthLabel(row.referenceMonth, formatPtMonth)}</strong>
               <small>{row.payments} cobrancas</small>
             </span>
             <small>Pago: {formatCve(row.paidCve)}</small>

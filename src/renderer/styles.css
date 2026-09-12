@@ -2905,6 +2905,12 @@ h2 {
   grid-template-columns: minmax(0, 1fr) 140px 140px 118px;
 }
 
+/* Receita tem três números — pago e pendente em competência, mais a caixa.
+   Sem a quarta coluna a caixa caía para uma linha só dela, centrada. */
+.report-row.is-revenue {
+  grid-template-columns: minmax(0, 1fr) 140px 140px 140px;
+}
+
 /* Numeric/money columns right-align with tabular figures so digits line up
    across rows — same treatment as client/service/stock/plan rows. */
 .report-row > small {

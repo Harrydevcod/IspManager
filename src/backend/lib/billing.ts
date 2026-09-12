@@ -5,6 +5,7 @@ import { allocateDocumentNumber } from './numbering';
 // torna inofensivo. Quem acrescentar aqui trabalho de inicialização parte-o.
 import { applyClientCreditToPayment } from './payments';
 import { loadAudiovisualConfig } from './audiovisual';
+import { INSTALLATION_FEE_REFERENCE } from '../../shared/billing-period';
 
 export type BillingLine = {
   kind: 'internet' | 'audiovisual' | 'instalacao' | 'aluguer' | 'equipamento';
@@ -117,8 +118,11 @@ export function sumLines(lines: BillingLine[]): number {
  * Chave de competência da fatura de instalação: fixa (não é `YYYY-MM` nem
  * `AV-...`), porque a instalação acontece uma única vez por serviço. Torna a
  * geração idempotente via o mesmo padrão de `UNIQUE(service_id, reference_month)`.
+ *
+ * Definida em `shared/billing-period.ts` — o ecrã dos relatórios também precisa
+ * dela para dar nome à linha. Reexportada aqui para os chamadores existentes.
  */
-export const INSTALLATION_FEE_REFERENCE = 'INSTALACAO';
+export { INSTALLATION_FEE_REFERENCE };
 const INSTALLATION_LINE_DESCRIPTION = 'Instalacao';
 
 /**
