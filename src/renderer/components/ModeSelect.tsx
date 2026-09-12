@@ -15,6 +15,13 @@ export type ModeSelectProps = {
   /** Nome acessível quando o label sozinho não distingue — listas com um campo por linha. */
   ariaLabel?: string;
   hint?: string;
+  /**
+   * Que modos oferecer aqui, por esta ordem. Por omissão, os da configuração.
+   *
+   * Estreitar o que se oferece não estreita o que se conhece: um modo gravado
+   * fora desta lista continua a ser um modo (rotulado, não texto livre).
+   */
+  modes?: readonly string[];
 };
 
 type ModeSelectConfig = {
@@ -39,12 +46,14 @@ type ModeSelectConfig = {
  * cada campo nasceu assim e classifica-se ao ritmo do terreno.
  */
 export function createModeSelect(config: ModeSelectConfig) {
-  const isKnown = (value: string) => config.modes.includes(value.trim().toLowerCase());
+  /** Está no registo do eixo — ou seja, não é uma etiqueta escrita à mão. */
+  const isRegistered = (value: string) => config.modes.includes(value.trim().toLowerCase());
 
   return function ModeSelect({
-    value, onChange, label = config.label, hideLabel, ariaLabel, hint
+    value, onChange, label = config.label, hideLabel, ariaLabel, hint, modes = config.modes
   }: ModeSelectProps) {
-    const [writing, setWriting] = useState(Boolean(value) && !isKnown(value));
+    const [writing, setWriting] = useState(Boolean(value) && !isRegistered(value));
+    const isOffered = (candidate: string) => modes.includes(candidate.trim().toLowerCase());
 
     if (writing) {
       return (
@@ -87,12 +96,16 @@ export function createModeSelect(config: ModeSelectConfig) {
         }}
       >
         <option value="">Por classificar</option>
-        {config.modes.map((mode) => (
+        {modes.map((mode) => (
           <option key={mode} value={mode}>{config.labels[mode]}</option>
         ))}
         {/* Um valor gravado fora da lista continua a aparecer: nada desaparece
-            de um formulário só porque a lista mudou. */}
-        {value && !isKnown(value) && <option value={value}>{value}</option>}
+            de um formulário só porque a lista mudou — nem porque este
+            equipamento não é do tipo que costuma levar esse modo. Se é do
+            registo, mostra-se com o rótulo; à mão, mostra-se à letra. */}
+        {value && !isOffered(value) && (
+          <option value={value}>{config.labels[value] ?? value}</option>
+        )}
         <option value={OTHER_OPTION}>{config.otherLabel}</option>
       </Select>
     );
