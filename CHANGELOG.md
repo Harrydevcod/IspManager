@@ -6,6 +6,32 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.25.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.25.0) — 2026-09-12
+
+> Sem migrações. A base de dados não muda com esta versão.
+
+### Alterado
+
+- **Os Relatórios voltam a descrever a operação de hoje.** O painel *Estado da operação* estava parado desde a 1.20 e chegara ao ponto de afirmar coisas falsas: dizia que não havia como cortar o acesso automaticamente por dívida e propunha construir de raiz o PPPoE — que foi entregue na 1.11. Passa a ler o que a rede regista de verdade, e a sugestão passa a ser *ligar* a integração a quem ainda a tem desligada. De caminho ganhou o que faltava ver: divergências entre o que a base manda e o que o router faz, reconciliações que nunca correram, e o aviso de quando o modo de simulação está a segurar tudo.
+
+- **O parque instalado passa a contar o backbone.** As antenas da torre consomem stock desde a 1.20, mas os relatórios continuavam a contar apenas os equipamentos em casa dos clientes — e davam um parque menor do que o real. Agora há uma única definição de "unidade instalada", partilhada pelo valor do parque e pela lista da frota: na operação real são mais seis unidades e mais 112.000$ de equipamento a aparecer onde sempre esteve. O capital investido não muda — soma as entradas de stock, onde o backbone já entrava.
+
+- **A Receita mostra a caixa ao lado da competência.** Uma coluna diz o que foi faturado no mês; a outra, o que efetivamente entrou. Os dois números divergem por desenho — a faturação é do mês fechado e o pagamento chega depois — e agora vê-se a diferença em vez de se desconfiar dela.
+
+### Adicionado
+
+- **Equipamento do ISP por recolher, stock avaliado e inventário por confirmar.** Três coisas que só se sabiam procurando: o equipamento alugado que ficou em casa de quem cancelou, quanto vale o que está em armazém, e as propostas da Descoberta ainda por aplicar ao registo.
+
+- **A CPE escolhe Cliente e WISP da lista.** Uma antena de cliente opera em quatro modos — Cliente/Estação, Ponto de Acesso, Repetidor e WISP — e a lista tinha três deles. O WISP era pior do que estar em falta: era o *exemplo* do campo de escrita livre, o que ensinava a escrevê-lo à mão e partia o filtro da topologia em `WISP`, `wisp` e `Wisp`. Agora ambos estão na lista, e o WISP diz no rótulo o que o distingue do Cliente: tem router por dentro.
+
+- **A lista de modos depende do equipamento que se está a classificar.** Uma CPE recebe os sete, começados pelos que são dela — Cliente primeiro, porque é o que ela é quase sempre. Um router de casa ou um switch deixa de oferecer Cliente e WISP, que são modos de quem *recebe* sinal de rádio. Um modo já gravado continua sempre a aparecer, mesmo que não pertença à lista do seu tipo: estreitar o que se oferece não pode apagar o que já lá estava.
+
+### Corrigido
+
+- **A linha da receita cabe nas suas colunas.** Com a caixa ao lado da competência, o valor novo caía para uma linha só dele.
+
+- **O período da taxa de instalação deixa de aparecer como um traço.** Uma cobrança de instalação não pertence a um mês de mensalidade, e o ecrã não sabia dizê-lo; agora escreve-se *Instalação*. Vinha desde a 1.20 e só se tornou visível depois do acerto da linha.
+
 ## [1.24.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.24.0) — 2026-09-11
 
 > **Antes de instalar, faça uma cópia de segurança.** Esta versão traz duas migrações, e uma delas (0056) escreve no histórico: o equipamento que já tem endereço registado passa a constar como estando em IP estático.
