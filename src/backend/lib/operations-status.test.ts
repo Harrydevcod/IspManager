@@ -17,6 +17,9 @@ const TABLES_TO_CLEAR = [
   'sms_outbox',
   'audit_logs',
   'service_events',
+  'service_network_state',
+  'network_discovery_dismissals',
+  'network_discovery_hosts',
   'work_orders',
   'backbone_assignment_links',
   'backbone_links',
@@ -532,5 +535,221 @@ describe('GET /api/reports/operations', () => {
     expect(response.headers['content-type']).toContain('application/pdf');
     expect(String(response.headers['content-disposition'])).toContain('Estado da operacao');
     expect(response.rawPayload.subarray(0, 4).toString()).toBe('%PDF');
+  });
+});
+
+// ------------------------------------------------- camada de acesso (router)
+
+/** Liga (ou desliga) a integração de router, como as Definições a gravam. */
+function setRouterSettings(enabled: boolean, dryRun = true): void {
+  for (const [key, value] of [['routerosEnabled', String(enabled)], ['routerosDryRun', String(dryRun)]]) {
+    db.prepare(`INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)`).run(key, value);
+  }
+}
+
+/** Um aviso de suspensão enviado. Pendura-se num título, como na aplicação. */
+function seedSuspensionNotice(clientId: number, serviceId: number): void {
+  const payment = db.prepare(`
+    INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+    VALUES (?, ?, '2026-01', 3000, ?, 'overdue')
+  `).run(clientId, serviceId, daysAgo(40)).lastInsertRowid as number;
+  db.prepare(`
+    INSERT INTO whatsapp_notices (client_id, payment_id, phone, body, notice_type, sent_at)
+    VALUES (?, ?, '9990000', 'aviso de suspensao', 'suspension', datetime('now'))
+  `).run(clientId, payment);
+}
+
+/** O que a última passagem da reconciliação encontrou no router. */
+function seedNetworkState(
+  serviceId: number,
+  opts: { secretId?: string | null; rateLimit?: string | null; online?: number; divergence?: string | null } = {}
+): void {
+  db.prepare(`
+    INSERT INTO service_network_state (service_id, secret_id, router_enabled, desired_enabled, rate_limit, online, divergence)
+    VALUES (?, ?, 1, 1, ?, ?, ?)
+  `).run(
+    serviceId,
+    opts.secretId === undefined ? '*1' : opts.secretId,
+    opts.rateLimit === undefined ? '5M/20M' : opts.rateLimit,
+    opts.online ?? 1,
+    opts.divergence ?? null
+  );
+}
+
+describe('camada de acesso', () => {
+  /**
+   * A correção só vale se falhar nos dois sentidos. Um painel que dissesse
+   * sempre "há corte automático" seria tão mentiroso como o que dizia sempre
+   * "não há" — só que ao contrário.
+   */
+  test('com o router desligado, o painel volta a dizer que nada corta', () => {
+    setRouterSettings(false);
+    const plan = insertPlan('Standard', 3000);
+    const client = insertClient('C001', 'Ana');
+    seedSuspensionNotice(client, insertService(client, plan, 3000));
+
+    const status = loadOperationsStatus(db);
+
+    expect(status.accessLayer.routerEnabled).toBe(false);
+    expect(status.accessLayer.pppoeTracked).toBe(false);
+    expect(status.accessLayer.findings.map((f) => f.code)).toContain('access.notice-without-teeth');
+    // A ação passa a ser ligar o que existe, nunca construir PPPoE de raiz.
+    const pppoe = status.actions.find((action) => action.code === 'A-PPPOE');
+    expect(pppoe?.title).toBe('Ligar a integração de router');
+  });
+
+  test('com o router a controlar, deixa de recomendar construir PPPoE', () => {
+    setRouterSettings(true, false);
+    const plan = insertPlan('Standard', 3000);
+    const client = insertClient('C001', 'Ana');
+    const service = insertService(client, plan, 3000);
+    seedNetworkState(service);
+    seedSuspensionNotice(client, service);
+    db.prepare(`
+      INSERT INTO service_events (service_id, event_type, notes) VALUES (?, 'corte_rede', 'por dívida')
+    `).run(service);
+
+    const status = loadOperationsStatus(db);
+
+    expect(status.accessLayer.routerEnabled).toBe(true);
+    expect(status.accessLayer.pppoeTracked).toBe(true);
+    expect(status.accessLayer.qosTracked).toBe(true);
+    expect(status.accessLayer.provisionedServices).toBe(1);
+    expect(status.accessLayer.rateLimitedServices).toBe(1);
+    expect(status.accessLayer.automaticSuspensions).toBe(1);
+    // Nenhuma destas linhas pode sobreviver quando o corte já acontece.
+    const codes = status.accessLayer.findings.map((f) => f.code);
+    expect(codes).not.toContain('access.notice-without-teeth');
+    expect(codes).not.toContain('access.no-qos');
+    expect(status.actions.find((action) => action.code === 'A-PPPOE')).toBeUndefined();
+  });
+
+  test('ensaio e divergência aparecem como achado e ação', () => {
+    setRouterSettings(true, true);
+    const plan = insertPlan('Standard', 3000);
+    const client = insertClient('C001', 'Ana');
+    const service = insertService(client, plan, 3000);
+    seedNetworkState(service, { divergence: 'state' });
+
+    const status = loadOperationsStatus(db);
+
+    expect(status.accessLayer.routerDryRun).toBe(true);
+    expect(status.accessLayer.divergentServices).toBe(1);
+    const codes = status.accessLayer.findings.map((f) => f.code);
+    expect(codes).toContain('access.dry-run');
+    expect(codes).toContain('access.divergence');
+    expect(status.actions.map((a) => a.code)).toContain('A-DIVERGENCIA');
+    expect(status.risks.map((r) => r.code)).toContain('R-DIVERGENCIA');
+    expect(status.actions.find((a) => a.code === 'A-PPPOE')?.title).toBe('Sair do modo de ensaio');
+  });
+
+  test('aprovisionado sem limite de débito conta como serviço sem QoS', () => {
+    setRouterSettings(true, false);
+    const plan = insertPlan('Standard', 3000);
+    const client = insertClient('C001', 'Ana');
+    const service = insertService(client, plan, 3000);
+    seedNetworkState(service, { rateLimit: null });
+
+    const status = loadOperationsStatus(db);
+
+    expect(status.accessLayer.qosTracked).toBe(false);
+    expect(status.accessLayer.findings.map((f) => f.code)).toContain('access.no-qos');
+    expect(status.actions.find((a) => a.code === 'A-QOS')?.title)
+      .toBe('Dar velocidade aos planos que não a têm');
+  });
+});
+
+// ------------------------------------------------------ parque com backbone
+
+describe('parque instalado', () => {
+  /**
+   * Desde a migração 0050 o backbone consome stock. Contar só as atribuições
+   * fazia o stock descer sem o "em campo" subir — a unidade desaparecia.
+   */
+  test('as unidades do backbone contam como instaladas', () => {
+    const catalog = insertCatalog('CPE510', 1);
+    const plan = insertPlan('Standard', 3000);
+    const client = insertClient('C001', 'Ana');
+    const service = insertService(client, plan, 3000);
+    rentDevice(service, catalog, 250);
+    insertBackbone('Torre Norte', catalog);
+    insertBackbone('Torre Sul', catalog);
+
+    const status = loadOperationsStatus(db);
+    const model = status.fleet.models.find((m) => m.catalogId === catalog)!;
+
+    expect(model.deployedClient).toBe(1);
+    expect(model.deployedBackbone).toBe(2);
+    expect(model.deployed).toBe(3);
+    expect(status.fleet.deployedTotal).toBe(3);
+  });
+
+  test('um modelo só no backbone sem reserva é achado, e diz onde está', () => {
+    const catalog = insertCatalog('TL-S5-5KM', 0);
+    insertBackbone('Torre Norte', catalog);
+
+    const status = loadOperationsStatus(db);
+    const finding = status.fleet.findings.find((f) => f.code === 'fleet.no-spare');
+
+    expect(finding).toBeDefined();
+    expect(finding!.detail).toContain('1 no backbone');
+  });
+
+  test('equipamento do ISP por devolver soma valor e renda', () => {
+    const catalog = insertCatalog('CPE710', 5);
+    db.prepare(`UPDATE equipment_catalog SET purchase_price_cve = 8000 WHERE id = ?`).run(catalog);
+    const plan = insertPlan('Standard', 3000);
+    // Um deu por não devolvido; outro ficou aberto num cliente que cancelou.
+    const a = insertClient('C001', 'Ana');
+    const serviceA = insertService(a, plan, 3000, 'cancelled');
+    db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id, start_date, end_date, ownership, rental_fee_cve, return_condition)
+      VALUES (?, ?, date('now'), date('now'), 'isp', 250, 'nao_devolvido')
+    `).run(serviceA, catalog);
+    const b = insertClient('C002', 'Bruno', { status: 'cancelled' });
+    const serviceB = insertService(b, plan, 3000, 'cancelled');
+    rentDevice(serviceB, catalog, 250);
+
+    const status = loadOperationsStatus(db);
+
+    expect(status.fleet.outstanding.units).toBe(2);
+    expect(status.fleet.outstanding.valueCve).toBe(16000);
+    expect(status.fleet.outstanding.monthlyRentalCve).toBe(500);
+    expect(status.fleet.findings.map((f) => f.code)).toContain('fleet.not-returned');
+    expect(status.actions.find((a) => a.code === 'A-RECOLHER')?.upsideCve).toBe(16000);
+  });
+});
+
+// ----------------------------------------------------- modos por classificar
+
+describe('modos do equipamento', () => {
+  test('conta os dois eixos por classificar em campo e no backbone', () => {
+    const catalog = insertCatalog('CPE510', 3);
+    const plan = insertPlan('Standard', 3000);
+    const client = insertClient('C001', 'Ana');
+    const service = insertService(client, plan, 3000);
+    rentDevice(service, catalog, 250);
+    insertBackbone('Torre Norte', catalog);
+    db.prepare(`UPDATE backbone_devices SET wan_mode = 'dhcp', operation_mode = 'bridge' WHERE name = 'Torre Norte'`).run();
+
+    const status = loadOperationsStatus(db);
+
+    expect(status.network.identification.modeTotal).toBe(2);
+    expect(status.network.identification.withoutWanMode).toBe(1);
+    expect(status.network.identification.withoutOperationMode).toBe(1);
+  });
+
+  test('acima de metade por classificar vira achado e ação', () => {
+    const catalog = insertCatalog('CPE510', 3);
+    const plan = insertPlan('Standard', 3000);
+    for (const code of ['C001', 'C002', 'C003']) {
+      const client = insertClient(code, `Cliente ${code}`);
+      rentDevice(insertService(client, plan, 3000), catalog, 250);
+    }
+
+    const status = loadOperationsStatus(db);
+
+    expect(status.network.findings.map((f) => f.code)).toContain('network.unclassified-modes');
+    expect(status.actions.map((a) => a.code)).toContain('A-MODOS');
   });
 });

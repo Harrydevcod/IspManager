@@ -1,10 +1,13 @@
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { listBackups } from './backup';
+import { INSTALLED_UNITS_SQL, landedCostSql } from './capex';
+import { buildProposals, dismissalKey, type ProposalKind } from './discovery-reconcile';
+import { loadRegisteredDevices, loadSeenHosts } from './network-discovery';
 import { jobHealth } from './jobRuns';
 import { loadNetworkStatus } from './network-probe';
 import { balanceSqlExpr, overdueSqlPredicate } from './payments';
-import { formatPtDateTime } from '../../shared/date';
+import { formatPtDateTime, parseDate } from '../../shared/date';
 import { DEFAULT_POSTPAID_BILLING_DAY } from '../../shared/billing-period';
 import {
   worstSeverity,
@@ -77,6 +80,43 @@ function cve(value: number): string {
 }
 
 // ------------------------------------------------------------------ rede
+
+/**
+ * O universo dos dois eixos do equipamento: tudo o que está de pé, em campo ou
+ * no backbone. `wan_mode` (0056) e `operation_mode` (0057) vivem nas duas
+ * tabelas, e nenhuma das migrações fez backfill — de propósito, porque adivinhar
+ * o modo a partir do nome do modelo é como se perdia a informação da primeira
+ * vez. Por isso o nulo conta-se como lacuna real.
+ */
+const MODE_UNIVERSE_SQL = `
+  SELECT a.wan_mode AS wanMode, a.operation_mode AS operationMode
+    FROM service_device_assignments a
+   WHERE a.end_date IS NULL
+  UNION ALL
+  SELECT bd.wan_mode, bd.operation_mode
+    FROM backbone_devices bd
+   WHERE bd.status <> 'retired'`;
+
+/**
+ * Quantas propostas da descoberta estão prontas a aplicar.
+ *
+ * Conta-se, não se lista: o painel diz que há trabalho por fazer e a aba
+ * Descoberta é que o mostra. Usa exatamente o mesmo preparo da rota
+ * `/api/network/discovery/proposals` — se divergisse, o painel mandaria o
+ * operador a um ecrã com outro número.
+ */
+function countDiscoveryProposals(db: Database.Database): number {
+  const devices = loadRegisteredDevices(db);
+  const hosts = loadSeenHosts(db);
+  const dismissed = new Set(
+    (db.prepare(`
+      SELECT kind, target_kind AS targetKind, target_id AS targetId
+      FROM network_discovery_dismissals
+    `).all() as Array<{ kind: ProposalKind; targetKind: string; targetId: number }>)
+      .map((row) => dismissalKey(row.kind, row.targetKind, row.targetId))
+  );
+  return buildProposals({ devices, hosts, dismissed }).length;
+}
 
 type BackboneAggregateRow = {
   backboneDeviceId: number;
@@ -215,7 +255,14 @@ function loadNetwork(db: Database.Database): OperationsNetwork {
        WHERE end_date IS NULL AND (
          NULLIF(TRIM(mac_address), '') IS NOT NULL
          OR NULLIF(TRIM(serial_number), '') IS NOT NULL
-       )) AS assignmentIdentified
+       )) AS assignmentIdentified,
+      -- Os dois eixos (0056/0057) contam-se sobre o mesmo universo: o que está
+      -- de pé, em campo ou no backbone. Nulo é "por classificar", não um erro.
+      (SELECT COUNT(*) FROM (${MODE_UNIVERSE_SQL}) m) AS modeTotal,
+      (SELECT COUNT(*) FROM (${MODE_UNIVERSE_SQL}) m
+        WHERE NULLIF(TRIM(COALESCE(m.wanMode, '')), '') IS NULL) AS withoutWanMode,
+      (SELECT COUNT(*) FROM (${MODE_UNIVERSE_SQL}) m
+        WHERE NULLIF(TRIM(COALESCE(m.operationMode, '')), '') IS NULL) AS withoutOperationMode
   `).get() as OperationsNetwork['identification'];
 
   const findings: OperationsFinding[] = [];
@@ -259,6 +306,19 @@ function loadNetwork(db: Database.Database): OperationsNetwork {
     });
   }
 
+  // Abaixo de metade é registo em curso, não lacuna: quem está a classificar o
+  // parque aos poucos não precisa de um aviso vermelho a cada passagem.
+  const unclassified = Math.max(identification.withoutWanMode, identification.withoutOperationMode);
+  if (identification.modeTotal > 0 && unclassified > identification.modeTotal / 2) {
+    findings.push({
+      code: 'network.unclassified-modes',
+      severity: 'amber',
+      title: `${unclassified} de ${identification.modeTotal} equipamentos por classificar`,
+      detail: `${identification.withoutWanMode} sem modo de ligação e ${identification.withoutOperationMode} sem modo de operação.`
+        + ' Sem os dois eixos não se sabe, a partir do registo, quem fala PPPoE nem quem faz de ponte — e cada visita ao terreno volta a descobri-lo.'
+    });
+  }
+
   if (identification.assignmentTotal > 0 && identification.assignmentWithMac === 0) {
     findings.push({
       code: 'network.no-mac',
@@ -298,6 +358,7 @@ function loadNetwork(db: Database.Database): OperationsNetwork {
     rootDevices,
     servicesWithoutBackbone,
     identification,
+    discoveryProposals: countDiscoveryProposals(db),
     concentrationThreshold: CONCENTRATION_THRESHOLD,
     probe: {
       enabled: probeStatus.enabled,
@@ -447,24 +508,32 @@ function loadCustomers(db: Database.Database, from: string, previousFrom: string
 // ---------------------------------------------------------------- parque
 
 function loadFleet(db: Database.Database): OperationsFleet {
+  // `INSTALLED_UNITS_SQL` é a definição única de "em campo" — inclui o backbone,
+  // que desde a migração 0050 também consome stock. Contar só as atribuições
+  // fazia o stock descer sem o "em campo" subir, e o achado da reserva mentia.
   const rows = db.prepare(`
     SELECT
       ec.id AS catalogId,
       ec.brand, ec.model, ec.type, ec.category, ec.unit_of_measure AS unitOfMeasure,
       ec.stock_total AS stock,
-      (SELECT COUNT(*) FROM service_device_assignments a
-        WHERE a.catalog_id = ec.id AND a.end_date IS NULL) AS deployed
+      (SELECT COUNT(*) FROM (${INSTALLED_UNITS_SQL}) u
+        WHERE u.catalogId = ec.id AND u.origin = 'cliente') AS deployedClient,
+      (SELECT COUNT(*) FROM (${INSTALLED_UNITS_SQL}) u
+        WHERE u.catalogId = ec.id AND u.origin = 'backbone') AS deployedBackbone
     FROM equipment_catalog ec
     WHERE ec.active = 1
-    ORDER BY deployed DESC, ec.model COLLATE NOCASE
+    ORDER BY deployedClient + deployedBackbone DESC, ec.model COLLATE NOCASE
   `).all() as Array<{
     catalogId: number; brand: string | null; model: string; type: string;
-    category: 'equipamento' | 'material'; unitOfMeasure: string; stock: number; deployed: number;
+    category: 'equipamento' | 'material'; unitOfMeasure: string; stock: number;
+    deployedClient: number; deployedBackbone: number;
   }>;
 
   const models: OperationsFleetModel[] = rows.map((row) => {
     const stock = num(row.stock);
-    const deployed = num(row.deployed);
+    const deployedClient = num(row.deployedClient);
+    const deployedBackbone = num(row.deployedBackbone);
+    const deployed = deployedClient + deployedBackbone;
     // Só é grave não ter reserva daquilo que já está no terreno: é esse o
     // modelo que vai avariar. Um catálogo sem instalações a zero é inócuo.
     const severity: OperationsSeverity =
@@ -479,6 +548,8 @@ function loadFleet(db: Database.Database): OperationsFleet {
       category: row.category,
       unitOfMeasure: row.unitOfMeasure,
       deployed,
+      deployedClient,
+      deployedBackbone,
       stock,
       severity
     };
@@ -496,58 +567,191 @@ function loadFleet(db: Database.Database): OperationsFleet {
   }
   const noSpare = models.filter((model) => model.stock === 0 && model.deployed > 0);
   if (noSpare.length > 0) {
+    // Dizer onde estão as unidades muda a urgência: um modelo só no backbone que
+    // avaria leva a zona inteira, não um cliente.
+    const where = (model: OperationsFleetModel) => model.deployedBackbone > 0
+      ? `${model.label} (${model.deployed} em campo, ${model.deployedBackbone} no backbone)`
+      : `${model.label} (${model.deployed} em campo)`;
     findings.push({
       code: 'fleet.no-spare',
       severity: 'red',
       title: `${noSpare.length} modelo(s) em campo sem reserva`,
-      detail: `${noSpare.map((model) => `${model.label} (${model.deployed} em campo)`).join(', ')}. Uma avaria deixa o cliente em baixo até haver reposição.`
+      detail: `${noSpare.map(where).join(', ')}. Uma avaria deixa o serviço em baixo até haver reposição.`
+    });
+  }
+
+  // Equipamento do ISP que está na rua sem quem o pague: fechado como "não
+  // devolvido", ou ainda aberto num cliente que já se foi embora. Desde o
+  // aluguer (0043) cada uma destas unidades também tem uma renda a correr.
+  const outstanding = db.prepare(`
+    SELECT
+      COUNT(*) AS units,
+      COALESCE(SUM(${landedCostSql('ec')}), 0) AS valueCve,
+      COALESCE(SUM(a.rental_fee_cve), 0) AS monthlyRentalCve
+    FROM service_device_assignments a
+    JOIN equipment_catalog ec ON ec.id = a.catalog_id
+    JOIN services s ON s.id = a.service_id
+    JOIN clients c ON c.id = s.client_id
+    WHERE a.ownership = 'isp'
+      AND (
+        a.return_condition = 'nao_devolvido'
+        OR (a.end_date IS NULL AND c.status = 'cancelled')
+      )
+  `).get() as { units: number; valueCve: number; monthlyRentalCve: number };
+
+  if (num(outstanding.units) > 0) {
+    findings.push({
+      code: 'fleet.not-returned',
+      severity: 'amber',
+      title: `${num(outstanding.units)} equipamento(s) do ISP por recolher`,
+      detail: `${cve(num(outstanding.valueCve))} em equipamento na rua, em clientes que saíram ou que o deram por não devolvido.`
+        + (num(outstanding.monthlyRentalCve) > 0
+          ? ` A renda de ${cve(num(outstanding.monthlyRentalCve))}/mês continua a ser emitida sobre eles.`
+          : '')
     });
   }
 
   return {
     models,
     deployedTotal: models.reduce((sum, model) => sum + model.deployed, 0),
+    outstanding: {
+      units: num(outstanding.units),
+      valueCve: num(outstanding.valueCve),
+      monthlyRentalCve: num(outstanding.monthlyRentalCve)
+    },
     findings
   };
 }
 
 // ------------------------------------------------------------ acesso/QoS
 
-function loadAccessLayer(db: Database.Database, network: OperationsNetwork, from: string): OperationsAccessLayer {
+/** Passada esta idade, uma reconciliação deixou de descrever o router de agora. */
+const RECONCILE_STALE_HOURS = 24;
+
+function loadAccessLayer(
+  db: Database.Database,
+  network: OperationsNetwork,
+  settings: Settings,
+  now: Date,
+  from: string
+): OperationsAccessLayer {
   const sharedUplinkServices = network.devices.reduce((sum, device) => sum + device.serviceCount, 0);
+
+  // O router é a realidade; `service_network_state` é o que a última passagem
+  // lá encontrou. Contar daqui é a diferença entre medir e declarar.
+  const state = db.prepare(`
+    SELECT
+      COUNT(CASE WHEN NULLIF(TRIM(COALESCE(secret_id, '')), '') IS NOT NULL THEN 1 END) AS provisioned,
+      COUNT(CASE WHEN NULLIF(TRIM(COALESCE(rate_limit, '')), '') IS NOT NULL THEN 1 END) AS rateLimited,
+      COUNT(CASE WHEN online = 1 THEN 1 END) AS online,
+      COUNT(CASE WHEN NULLIF(TRIM(COALESCE(divergence, '')), '') IS NOT NULL THEN 1 END) AS divergent,
+      MAX(checked_at) AS lastCheckedAt
+    FROM service_network_state
+  `).get() as {
+    provisioned: number; rateLimited: number; online: number;
+    divergent: number; lastCheckedAt: string | null;
+  };
+
   const counts = db.prepare(`
     SELECT
       (SELECT COUNT(*) FROM whatsapp_notices
         WHERE notice_type = 'suspension' AND date(sent_at) >= @from) AS suspensionNoticesSent,
-      (SELECT COUNT(*) FROM services WHERE status = 'suspended') AS suspendedServices
-  `).get({ from }) as { suspensionNoticesSent: number; suspendedServices: number };
+      -- O corte automático deixa rasto no serviço (migração 0040). É a prova de
+      -- que o aviso passou a ter consequência, e conta-se, não se declara.
+      (SELECT COUNT(*) FROM service_events
+        WHERE event_type = 'corte_rede' AND date(created_at) >= @from) AS automaticSuspensions
+  `).get({ from }) as { suspensionNoticesSent: number; automaticSuspensions: number };
+
+  const routerEnabled = settings.routerosEnabled === 'true';
+  // O ensaio é o estado por omissão: quem nunca gravou definições não corta nada.
+  const routerDryRun = settings.routerosDryRun !== 'false';
+  const provisionedServices = num(state.provisioned);
+  const rateLimitedServices = num(state.rateLimited);
+  const divergentServices = num(state.divergent);
+  const lastCheckedAt = state.lastCheckedAt ?? null;
+  const reconcileAgeHours = lastCheckedAt !== null
+    ? (now.getTime() - (parseDate(lastCheckedAt)?.getTime() ?? now.getTime())) / 3_600_000
+    : null;
 
   const findings: OperationsFinding[] = [];
-  if (network.rootDevices.length > 0 && sharedUplinkServices > 1) {
-    findings.push({
-      code: 'access.no-qos',
-      severity: sharedUplinkServices >= 10 ? 'red' : 'amber',
-      title: 'Sem QoS num uplink partilhado',
-      detail: `${sharedUplinkServices} serviços partilham o mesmo tubo sem qualquer limite de débito registado. Um cliente pode degradar os restantes sem que isso apareça em lado nenhum.`
-    });
-  }
-  if (num(counts.suspensionNoticesSent) > 0) {
-    findings.push({
-      code: 'access.notice-without-teeth',
-      severity: 'amber',
-      title: `${num(counts.suspensionNoticesSent)} aviso(s) de suspensão sem corte automático`,
-      detail: 'O sistema avisa que pode suspender, mas nada corta. Sem PPPoE/RADIUS a suspensão continua a ser manual.'
-    });
+
+  if (!routerEnabled) {
+    if (network.rootDevices.length > 0 && sharedUplinkServices > 1) {
+      findings.push({
+        code: 'access.no-qos',
+        severity: sharedUplinkServices >= 10 ? 'red' : 'amber',
+        title: 'Sem QoS num uplink partilhado',
+        detail: `${sharedUplinkServices} serviços partilham o mesmo tubo e a integração de router está desligada. Um cliente pode degradar os restantes sem que isso apareça em lado nenhum.`
+      });
+    }
+    if (num(counts.suspensionNoticesSent) > 0) {
+      findings.push({
+        code: 'access.notice-without-teeth',
+        severity: 'amber',
+        title: `${num(counts.suspensionNoticesSent)} aviso(s) de suspensão sem corte automático`,
+        detail: 'O sistema avisa que pode suspender, mas com a integração de router desligada nada corta: a suspensão continua a ser feita à mão.'
+      });
+    }
+  } else {
+    // Com o router ligado, o que falta deixa de ser a integração e passa a ser o
+    // que ela ainda não alcança: serviços sem limite, ou sem secret nenhum.
+    const unlimited = provisionedServices - rateLimitedServices;
+    if (unlimited > 0) {
+      findings.push({
+        code: 'access.no-qos',
+        severity: unlimited >= 10 ? 'red' : 'amber',
+        title: `${unlimited} serviço(s) sem limite de débito`,
+        detail: `${rateLimitedServices} de ${provisionedServices} serviços aprovisionados têm limite aplicado. Um plano sem velocidade definida fica sem limite no router — e um cliente sem limite degrada os do mesmo tubo.`
+      });
+    }
+    if (routerDryRun) {
+      findings.push({
+        code: 'access.dry-run',
+        severity: 'amber',
+        title: 'Integração de router em modo de ensaio',
+        detail: 'A reconciliação planeia as ações e não as escreve. Enquanto o ensaio durar, nenhum corte ou reposição chega ao router.'
+      });
+    }
+    if (divergentServices > 0) {
+      findings.push({
+        code: 'access.divergence',
+        severity: 'amber',
+        title: `${divergentServices} serviço(s) em divergência com o router`,
+        detail: 'O que está no router não bate com a intenção guardada na base — alguém mexeu por fora, ou uma escrita falhou. É a única classe de erro que o corte automático produz em silêncio.'
+      });
+    }
+    if (reconcileAgeHours === null) {
+      findings.push({
+        code: 'access.never-reconciled',
+        severity: 'amber',
+        title: 'Router ligado, reconciliação por correr',
+        detail: 'A integração está ligada mas nenhuma passagem terminou. Até lá, o estado da rede é uma intenção por confirmar.'
+      });
+    } else if (reconcileAgeHours > RECONCILE_STALE_HOURS) {
+      findings.push({
+        code: 'access.never-reconciled',
+        severity: 'amber',
+        title: `Última reconciliação há ${Math.round(reconcileAgeHours)} h`,
+        detail: 'A leitura do router já não descreve o presente. Verificar a ligação e as credenciais.'
+      });
+    }
   }
 
   return {
-    pppoeTracked: false,
-    qosTracked: false,
+    routerEnabled,
+    routerDryRun,
+    pppoeTracked: provisionedServices > 0,
+    qosTracked: rateLimitedServices > 0,
+    // O único campo que continua constante, porque continua verdade: ninguém
+    // guarda sessões. Quando passar a guardar, deixa de ser literal como estes.
     sessionHistoryTracked: false,
+    provisionedServices,
+    rateLimitedServices,
+    onlineServices: num(state.online),
+    divergentServices,
+    lastCheckedAt,
     sharedUplinkServices,
-    // Sem integração de rede não existe corte automático — declarar 0 é honesto
-    // e deixa o número pronto para quando A12/A13 existirem.
-    automaticSuspensions: 0,
+    automaticSuspensions: num(counts.automaticSuspensions),
     suspensionNoticesSent: num(counts.suspensionNoticesSent),
     findings
   };
@@ -1006,12 +1210,31 @@ function deriveRisks(status: Omit<OperationsStatus, 'risks' | 'actions' | 'sever
     });
   }
 
+  // A exposição do QoS é o nº de serviços que ficam mesmo sem limite, não o
+  // tamanho do tubo: com o router a limitar, partilhar deixou de ser risco.
+  const unlimitedServices = accessLayer.routerEnabled
+    ? accessLayer.provisionedServices - accessLayer.rateLimitedServices
+    : accessLayer.sharedUplinkServices;
   if (accessLayer.findings.some((finding) => finding.code === 'access.no-qos')) {
     risks.push({
       code: 'R-QOS',
-      title: 'Sem QoS num uplink partilhado',
-      detail: `${accessLayer.sharedUplinkServices} serviços no mesmo tubo, sem limite por cliente.`,
-      severity: accessLayer.sharedUplinkServices >= 10 ? 'red' : 'amber',
+      title: accessLayer.routerEnabled
+        ? `${unlimitedServices} serviço(s) sem limite de débito`
+        : 'Sem QoS num uplink partilhado',
+      detail: accessLayer.routerEnabled
+        ? `Aprovisionados no router, mas sem limite aplicado. Cada um pode degradar os do mesmo tubo.`
+        : `${accessLayer.sharedUplinkServices} serviços no mesmo tubo, sem limite por cliente.`,
+      severity: unlimitedServices >= 10 ? 'red' : 'amber',
+      exposureCve: null
+    });
+  }
+
+  if (accessLayer.divergentServices > 0) {
+    risks.push({
+      code: 'R-DIVERGENCIA',
+      title: `${accessLayer.divergentServices} serviço(s) divergentes do router`,
+      detail: 'A base diz uma coisa e o router faz outra. Um serviço cortado que continua a passar, ou um pago que continua em baixo — ambos passam despercebidos.',
+      severity: 'amber',
       exposureCve: null
     });
   }
@@ -1169,6 +1392,20 @@ function deriveActions(status: Omit<OperationsStatus, 'risks' | 'actions' | 'sev
     });
   }
 
+  if (fleet.outstanding.units > 0) {
+    actions.push({
+      code: 'A-RECOLHER',
+      title: `Recolher ${fleet.outstanding.units} equipamento(s) do ISP`,
+      detail: `${cve(fleet.outstanding.valueCve)} em equipamento na rua, em clientes que saíram ou que o deram por não devolvido.`
+        + ' Recolhido em bom estado volta ao stock e deixa de precisar de compra nova.',
+      horizon: 'week',
+      severity: 'amber',
+      // O que se recupera é o valor do equipamento — a renda que continua a
+      // correr é dívida a cobrar, não ganho, e já conta noutro sítio.
+      upsideCve: fleet.outstanding.valueCve
+    });
+  }
+
   if (network.servicesWithoutBackbone.length > 0) {
     actions.push({
       code: 'A-TOPOLOGIA',
@@ -1202,30 +1439,81 @@ function deriveActions(status: Omit<OperationsStatus, 'risks' | 'actions' | 'sev
     });
   }
 
-  if (accessLayer.findings.some((finding) => finding.code === 'access.no-qos')) {
+  // O corte automático por PPPoE existe desde a v1.11 (ADR 0007). Estas ações
+  // deixaram de ser "construir" e passaram a ser "ligar" e "acabar de afinar" —
+  // o painel não pode mandar erguer o que já está de pé.
+  if (!accessLayer.routerEnabled) {
     actions.push({
-      code: 'A-QOS',
-      title: 'Implementar QoS por cliente',
-      detail: `${accessLayer.sharedUplinkServices} serviços partilham o mesmo uplink. Com um só tubo, o shaping deixa de ser melhoria e passa a ser proteção do serviço.`,
-      horizon: 'quarter',
+      code: 'A-PPPOE',
+      title: 'Ligar a integração de router',
+      detail: 'A reconciliação PPPoE já existe e está desligada em Definições. Ligada, é ela que corta por dívida e repõe ao pagamento — sem ela, cada suspensão é feita à mão.',
+      horizon: 'week',
       severity: 'amber',
       upsideCve: null
     });
+  } else if (accessLayer.routerDryRun) {
     actions.push({
       code: 'A-PPPOE',
-      title: 'PPPoE + RADIUS com corte automático',
-      detail: 'Secret por cliente e perfil por plano, ligados ao estado do pagamento. É o que falta para o aviso de suspensão ter consequência.',
-      horizon: 'quarter',
+      title: 'Sair do modo de ensaio',
+      detail: 'A integração está ligada mas em ensaio: planeia e não escreve. Confirmadas as ações planeadas, desligar o ensaio para o corte ter consequência.',
+      horizon: 'week',
+      severity: 'amber',
+      upsideCve: null
+    });
+  }
+
+  if (accessLayer.findings.some((finding) => finding.code === 'access.no-qos')) {
+    actions.push({
+      code: 'A-QOS',
+      title: accessLayer.routerEnabled
+        ? 'Dar velocidade aos planos que não a têm'
+        : 'Implementar QoS por cliente',
+      detail: accessLayer.routerEnabled
+        ? `${accessLayer.provisionedServices - accessLayer.rateLimitedServices} serviço(s) aprovisionados sem limite. O limite escreve-se a partir do download e upload do plano: um plano sem esses números fica sem limite no router.`
+        : `${accessLayer.sharedUplinkServices} serviços partilham o mesmo uplink. Com um só tubo, o shaping deixa de ser melhoria e passa a ser proteção do serviço.`,
+      horizon: accessLayer.routerEnabled ? 'week' : 'quarter',
+      severity: 'amber',
+      upsideCve: null
+    });
+  }
+
+  if (accessLayer.divergentServices > 0) {
+    actions.push({
+      code: 'A-DIVERGENCIA',
+      title: `Resolver ${accessLayer.divergentServices} divergência(s) com o router`,
+      detail: 'O router não bate com a base. Verificar se alguém mexeu por fora e deixar a reconciliação repor — enquanto durar, o estado do serviço no ecrã não é o do terreno.',
+      horizon: 'now',
       severity: 'amber',
       upsideCve: null
     });
   }
 
   if (network.identification.assignmentIdentified < network.identification.assignmentTotal) {
+    // Com propostas por aplicar isto deixa de ser um projeto e passa a ser um
+    // ecrã: a descoberta já casou o que viu na rede com o que está no registo.
+    const pending = network.discoveryProposals;
     actions.push({
       code: 'A-INVENTARIO',
-      title: 'Identificar o parque instalado',
-      detail: `${network.identification.assignmentIdentified} de ${network.identification.assignmentTotal} atribuições ativas têm MAC ou número de série. Sem isso, cada avaria começa do zero e uma unidade que volte não se sabe qual é.`,
+      title: pending > 0
+        ? `Aplicar ${pending} proposta(s) da descoberta`
+        : 'Identificar o parque instalado',
+      detail: pending > 0
+        ? `A descoberta já casou o que viu na rede com o registo: ${pending} proposta(s) de MAC, IP ou modelo prontas a aplicar na aba Descoberta.`
+          + ` Fecha ${network.identification.assignmentTotal - network.identification.assignmentIdentified} lacuna(s) sem sair da secretária.`
+        : `${network.identification.assignmentIdentified} de ${network.identification.assignmentTotal} atribuições ativas têm MAC ou número de série. Sem isso, cada avaria começa do zero e uma unidade que volte não se sabe qual é.`,
+      horizon: pending > 0 ? 'week' : 'quarter',
+      severity: 'amber',
+      upsideCve: null
+    });
+  }
+
+  if (network.identification.modeTotal > 0
+    && network.identification.withoutOperationMode > network.identification.modeTotal / 2) {
+    actions.push({
+      code: 'A-MODOS',
+      title: `Classificar ${network.identification.withoutOperationMode} equipamento(s)`,
+      detail: 'O modo de ligação e o modo de operação preenchem-se na ficha do equipamento e nos backbones.'
+        + ' É o que permite saber, sem ir ao terreno, quem fala PPPoE e quem faz de ponte.',
       horizon: 'quarter',
       severity: 'amber',
       upsideCve: null
@@ -1277,7 +1565,7 @@ export function loadOperationsStatus(
   const network = loadNetwork(db);
   const customers = loadCustomers(db, from, previousFrom);
   const fleet = loadFleet(db);
-  const accessLayer = loadAccessLayer(db, network, from);
+  const accessLayer = loadAccessLayer(db, network, settings, now, from);
   const billing = loadBilling(db, settings, now, from, previousFrom);
   const messaging = loadMessaging(db, settings, from);
   const system = loadSystem(db, now);

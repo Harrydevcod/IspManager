@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, Banknote, Cable, CheckCircle2, CopyX, Download, MessageCircle, UserCog, UsersRound } from 'lucide-react';
+import { Activity, AlertTriangle, Banknote, Cable, CheckCircle2, CopyX, Download, MessageCircle, Package, UserCog, UsersRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, ModuleHeaderActions, SkeletonList } from '../components';
 import { authFetch } from '../lib/auth';
@@ -121,8 +121,8 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
     let rows: Array<Array<string | number>>;
     if (view === 'revenue') {
       rows = [
-        ['Mes', 'Pago CVE', 'Pendente CVE', 'Cobrancas'],
-        ...summary!.revenueByMonth.map((row) => [formatPtMonth(row.referenceMonth), row.paidCve, row.pendingCve, row.payments])
+        ['Mes', 'Pago CVE', 'Pendente CVE', 'Caixa CVE', 'Cobrancas'],
+        ...summary!.revenueByMonth.map((row) => [formatPtMonth(row.referenceMonth), row.paidCve, row.pendingCve, row.cashCve, row.payments])
       ];
     } else if (view === 'overdue') {
       rows = [
@@ -260,8 +260,19 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
         <section className="metric-grid compact" aria-label="Resumo de relatorios">
           <MetricCard icon={UsersRound} label="Clientes" value={metrics ? String(metrics.totalClients) : '...'} trend="cadastros na base" />
           <MetricCard icon={Cable} label="Servicos ativos" value={metrics ? String(metrics.activeServices) : '...'} trend="contratos em operacao" />
-          <MetricCard icon={Banknote} label="Receita paga" value={metrics ? formatCve(metrics.paidAmountCve) : '...'} trend="recebidos" />
-          <MetricCard icon={Activity} label="Em atraso" value={metrics ? formatCve(metrics.overdueAmountCve) : '...'} trend={metrics ? `${metrics.overduePayments} cobrancas` : 'a carregar'} />
+          {/* Na aba Stock o quarto cartão dá lugar ao valor do armazém — era
+              calculado desde sempre e nunca chegava ao ecrã. */}
+          {view === 'stock' ? (
+            <>
+              <MetricCard icon={Package} label="Valor em stock" value={metrics ? formatCve(metrics.stockValueCve) : '...'} trend="custo aterrado do armazem" />
+              <MetricCard icon={Banknote} label="Receita paga" value={metrics ? formatCve(metrics.paidAmountCve) : '...'} trend="recebidos" />
+            </>
+          ) : (
+            <>
+              <MetricCard icon={Banknote} label="Receita paga" value={metrics ? formatCve(metrics.paidAmountCve) : '...'} trend="recebidos" />
+              <MetricCard icon={Activity} label="Em atraso" value={metrics ? formatCve(metrics.overdueAmountCve) : '...'} trend={metrics ? `${metrics.overduePayments} cobrancas` : 'a carregar'} />
+            </>
+          )}
         </section>
       ))}
 
@@ -276,6 +287,9 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
             </span>
             <small>Pago: {formatCve(row.paidCve)}</small>
             <small>Pendente: {formatCve(row.pendingCve)}</small>
+            {/* Caixa ao lado da competência: o mês corrente aparece a zero na
+                coluna Pago até se cobrar, e só esta diz o que entrou. */}
+            <small>Caixa: {formatCve(row.cashCve)}</small>
           </div>
         ))}
         {view === 'overdue' && summary?.overdueClients.map((row) => (

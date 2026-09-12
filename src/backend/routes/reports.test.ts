@@ -19,7 +19,9 @@ type ReportSummary = {
     paidAmountCve: number;
     stockValueCve: number;
   };
-  revenueByMonth: Array<{ referenceMonth: string; paidCve: number; pendingCve: number; payments: number }>;
+  revenueByMonth: Array<{
+    referenceMonth: string; paidCve: number; pendingCve: number; payments: number; cashCve: number;
+  }>;
   overdueClients: Array<{
     clientName: string;
     clientCode: string;
@@ -58,6 +60,12 @@ beforeEach(() => {
   db.prepare('DELETE FROM client_credits').run();
   db.prepare('DELETE FROM payment_receipts').run();
   db.prepare('DELETE FROM payments').run();
+  // Child-first: as atribuições e os backbones penduram-se no serviço e no
+  // catálogo, e as chaves estrangeiras estão ligadas em tempo de execução.
+  db.prepare('DELETE FROM backbone_assignment_links').run();
+  db.prepare('DELETE FROM backbone_links').run();
+  db.prepare('DELETE FROM backbone_devices').run();
+  db.prepare('DELETE FROM service_device_assignments').run();
   db.prepare('DELETE FROM services').run();
   db.prepare('DELETE FROM internet_plans').run();
   db.prepare('DELETE FROM equipment_catalog').run();
@@ -253,5 +261,141 @@ describe('GET /api/reports/portfolio', () => {
     const client = detail.json() as { installationCostCve: number; netProfitCve: number };
     expect(client.installationCostCve).toBeCloseTo(row.installationCostCve, 6);
     expect(client.netProfitCve).toBeCloseTo(row.netProfitCve, 6);
+  });
+});
+
+describe('competência e caixa lado a lado', () => {
+  /**
+   * As duas colunas respondem a perguntas diferentes e não podem colapsar numa.
+   * Uma fatura de janeiro cobrada em março conta para janeiro na competência e
+   * para março na caixa — é esse o ponto.
+   */
+  test('a caixa segue a data do recibo, não o mês da fatura', async () => {
+    const clientId = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status) VALUES ('C100', 'Caixa', 'active')
+    `).run().lastInsertRowid as number;
+    const planId = db.prepare(`
+      INSERT INTO internet_plans (name, monthly_price_cve, active) VALUES ('Base', 2500, 1)
+    `).run().lastInsertRowid as number;
+    const serviceId = db.prepare(`
+      INSERT INTO services (client_id, plan_id, status, monthly_value_cve)
+      VALUES (?, ?, 'active', 2500)
+    `).run(clientId, planId).lastInsertRowid as number;
+    const paymentId = db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+      VALUES (?, ?, '2026-01', 2500, '2026-01-30', 'paid')
+    `).run(clientId, serviceId).lastInsertRowid as number;
+    // Cobrada em março, dois meses depois da competência.
+    db.prepare(`
+      INSERT INTO payment_receipts (payment_id, amount_cve, payment_date, payment_method, source, receipt_number, receipt_date)
+      VALUES (?, 2500, '2026-03-14', 'numerario', 'cash', 'RC-CX-1', '2026-03-14')
+    `).run(paymentId);
+
+    const response = await app.inject({ method: 'GET', url: '/api/reports/summary?view=revenue' });
+    const body = response.json() as ReportSummary;
+    const january = body.revenueByMonth.find((row) => row.referenceMonth === '2026-01')!;
+
+    expect(january.paidCve).toBe(2500);
+    // A caixa de janeiro é zero: o dinheiro entrou em março, e não há fatura
+    // com competência de março para lhe dar linha.
+    expect(january.cashCve).toBe(0);
+  });
+
+  test('o crédito de conta corrente liquida a fatura mas não entra na caixa', async () => {
+    const clientId = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status) VALUES ('C101', 'Credito', 'active')
+    `).run().lastInsertRowid as number;
+    const planId = db.prepare(`
+      INSERT INTO internet_plans (name, monthly_price_cve, active) VALUES ('Base', 2500, 1)
+    `).run().lastInsertRowid as number;
+    const serviceId = db.prepare(`
+      INSERT INTO services (client_id, plan_id, status, monthly_value_cve)
+      VALUES (?, ?, 'active', 2500)
+    `).run(clientId, planId).lastInsertRowid as number;
+    const paymentId = db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+      VALUES (?, ?, '2026-02', 2500, '2026-02-28', 'paid')
+    `).run(clientId, serviceId).lastInsertRowid as number;
+    db.prepare(`
+      INSERT INTO payment_receipts (payment_id, amount_cve, payment_date, payment_method, source, receipt_number, receipt_date)
+      VALUES (?, 1500, '2026-02-10', 'numerario', 'cash', 'RC-CX-2', '2026-02-10')
+    `).run(paymentId);
+    db.prepare(`
+      INSERT INTO payment_receipts (payment_id, amount_cve, payment_date, payment_method, source, receipt_number, receipt_date)
+      VALUES (?, 1000, '2026-02-10', 'outro', 'credit', 'RC-CX-3', '2026-02-10')
+    `).run(paymentId);
+
+    const response = await app.inject({ method: 'GET', url: '/api/reports/summary?view=revenue' });
+    const february = (response.json() as ReportSummary)
+      .revenueByMonth.find((row) => row.referenceMonth === '2026-02')!;
+
+    // A fatura ficou liquidada por inteiro; só 1500 é dinheiro que entrou.
+    expect(february.paidCve).toBe(2500);
+    expect(february.cashCve).toBe(1500);
+  });
+});
+
+describe('valorização do stock', () => {
+  test('o valor do armazém inclui frete e alfândega, não só o preço', async () => {
+    db.prepare(`
+      INSERT INTO equipment_catalog
+        (type, model, purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve, stock_total, active)
+      VALUES ('cpe', 'CPE510', 5000, 800, 200, 100, 3, 1)
+    `).run();
+
+    const response = await app.inject({ method: 'GET', url: '/api/reports/summary?view=stock' });
+    const body = response.json() as ReportSummary;
+
+    // 3 × (5000 + 800 + 200 + 100). Esquecer o frete dava 15 000.
+    expect(body.metrics.stockValueCve).toBe(18300);
+    expect(body.stockRows[0].valueCve).toBe(18300);
+  });
+});
+
+describe('o parque instalado conta o backbone', () => {
+  /**
+   * Ancora o número antes e depois da correção. Até à migração 0050 o backbone
+   * não consumia stock e só as atribuições contavam; passou a consumir, e uma
+   * antena que desaparecia da conta levava o seu valor com ela.
+   */
+  test('parkUnits e o valor do parque incluem as antenas de backbone', async () => {
+    const clientId = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status) VALUES ('C200', 'Parque', 'active')
+    `).run().lastInsertRowid as number;
+    const planId = db.prepare(`
+      INSERT INTO internet_plans (name, monthly_price_cve, active) VALUES ('Base', 2500, 1)
+    `).run().lastInsertRowid as number;
+    const serviceId = db.prepare(`
+      INSERT INTO services (client_id, plan_id, status, activation_date, monthly_value_cve)
+      VALUES (?, ?, 'active', '2026-01-05', 2500)
+    `).run(clientId, planId).lastInsertRowid as number;
+    const catalogId = db.prepare(`
+      INSERT INTO equipment_catalog (type, model, purchase_price_cve, stock_total, useful_life_months)
+      VALUES ('cpe', 'CPE710', 6000, 0, 60)
+    `).run().lastInsertRowid as number;
+    db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id, start_date, ownership)
+      VALUES (?, ?, date('now'), 'isp')
+    `).run(serviceId, catalogId);
+
+    const before = (await app.inject({ method: 'GET', url: '/api/reports/portfolio' }))
+      .json() as { totals: { parkUnits: number; parkNetValueCve: number } };
+    expect(before.totals.parkUnits).toBe(1);
+
+    db.prepare(`
+      INSERT INTO backbone_devices (catalog_id, name, status, provisional)
+      VALUES (?, 'Torre Norte', 'active', 0)
+    `).run(catalogId);
+    // Uma retirada não conta: o parque é o que está de pé.
+    db.prepare(`
+      INSERT INTO backbone_devices (catalog_id, name, status, provisional)
+      VALUES (?, 'Torre Velha', 'retired', 0)
+    `).run(catalogId);
+
+    const after = (await app.inject({ method: 'GET', url: '/api/reports/portfolio' }))
+      .json() as { totals: { parkUnits: number; parkNetValueCve: number } };
+
+    expect(after.totals.parkUnits).toBe(2);
+    expect(after.totals.parkNetValueCve).toBeGreaterThan(before.totals.parkNetValueCve);
   });
 });

@@ -74,7 +74,20 @@ export type OperationsNetwork = {
     assignmentWithSerial: number;
     /** Com MAC ou série — a mesma regra de identidade do aviso na topologia. */
     assignmentIdentified: number;
+    /**
+     * Os dois eixos do equipamento (migrações 0056/0057): como liga e o que faz.
+     * Nasceram sem backfill, de propósito — a lacuna é real e conta-se, não se
+     * inventa. Totais = atribuições ativas + backbones não retirados.
+     */
+    modeTotal: number;
+    withoutWanMode: number;
+    withoutOperationMode: number;
   };
+  /**
+   * Propostas da descoberta prontas a aplicar na aba Descoberta. Converte
+   * "identificar o parque" de conselho em trabalho com número.
+   */
+  discoveryProposals: number;
   /** Fração acima da qual um único equipamento é considerado concentração. */
   concentrationThreshold: number;
   /** Estado da sonda ICMP: desligada, sem leituras, ou a medir. */
@@ -123,34 +136,75 @@ export type OperationsFleetModel = {
   type: string;
   category: 'equipamento' | 'material';
   unitOfMeasure: string;
+  /** Em campo, total: cliente + backbone. */
   deployed: number;
+  /** Unidades em casa de clientes. */
+  deployedClient: number;
+  /** Unidades no backbone — desde a migração 0050 também saem do stock. */
+  deployedBackbone: number;
   stock: number;
   /** Sem reserva para um parque instalado é o sinal que interessa. */
   severity: OperationsSeverity;
 };
 
+/** Equipamento do ISP que ficou na rua: capital emprestado a quem já saiu. */
+export type OperationsOutstandingEquipment = {
+  units: number;
+  /** Custo aterrado do que está por recolher. */
+  valueCve: number;
+  /** Renda mensal ainda emitida sobre essas unidades. */
+  monthlyRentalCve: number;
+};
+
 export type OperationsFleet = {
   models: OperationsFleetModel[];
   deployedTotal: number;
+  outstanding: OperationsOutstandingEquipment;
   findings: OperationsFinding[];
 };
 
 // ------------------------------------------------------- acesso/QoS
 
 /**
- * Camada de acesso. O schema não guarda sessões PPPoE nem filas de QoS, por
- * isso o que se reporta é capacidade: o que existe, o que não existe, e a
- * consequência de não existir. Melhor dizer "não é medido" do que inventar.
+ * Camada de acesso: o que o router faz por nós, medido.
+ *
+ * Durante muito tempo estes campos eram literais `false` — o produto não tinha
+ * integração de rede e dizer "não é medido" era honesto. Deixou de ser: a
+ * reconciliação PPPoE (ADR 0007) guarda por serviço o secret, o rate-limit e o
+ * estado em `service_network_state`, e corta e repõe sozinha. Um painel que
+ * continuasse a declarar `false` aqui estaria a recomendar ao operador que
+ * construísse aquilo que já está a correr.
+ *
+ * O que se reporta agora é leitura, não capacidade. Com o router desligado os
+ * contadores ficam a zero e os achados voltam a dizer o que falta — mas por
+ * medição, não por constante.
  */
 export type OperationsAccessLayer = {
-  pppoeTracked: false;
-  qosTracked: false;
+  /** Integração de router configurada e ligada nas Definições. */
+  routerEnabled: boolean;
+  /** Modo de ensaio: planeia as ações e não as escreve no router. */
+  routerDryRun: boolean;
+  /** Há utilizadores PPPoE conhecidos — deixou de ser uma constante. */
+  pppoeTracked: boolean;
+  /** Há limites de débito aplicados por serviço. */
+  qosTracked: boolean;
+  /** Histórico de sessões: continua por guardar, e é a única coisa que falta. */
   sessionHistoryTracked: false;
+  /** Serviços com secret PPPoE encontrado no router. */
+  provisionedServices: number;
+  /** Serviços com limite de débito aplicado — QoS por cliente, contado. */
+  rateLimitedServices: number;
+  /** Serviços online na última passagem da reconciliação. */
+  onlineServices: number;
+  /** Serviços onde o router não bate com a intenção guardada na base. */
+  divergentServices: number;
+  /** Última passagem da reconciliação; `null` enquanto nunca correu. */
+  lastCheckedAt: string | null;
   /** Nº de serviços ativos por raiz de uplink — mede a partilha do mesmo tubo. */
   sharedUplinkServices: number;
-  /** Suspensões automáticas por dívida executadas na janela. Sempre 0 sem corte. */
+  /** Cortes de rede automáticos na janela, lidos dos eventos do serviço. */
   automaticSuspensions: number;
-  /** Avisos de suspensão enviados sem execução — a prova de que o aviso não morde. */
+  /** Avisos de suspensão enviados na janela. */
   suspensionNoticesSent: number;
   findings: OperationsFinding[];
 };

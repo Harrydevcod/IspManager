@@ -689,9 +689,12 @@ export type ReportsSummary = {
   };
   revenueByMonth: Array<{
     referenceMonth: string;
+    /** Competência: quanto do que foi faturado para este mês já está liquidado. */
     paidCve: number;
     pendingCve: number;
     payments: number;
+    /** Caixa: dinheiro que entrou durante este mês, venha da fatura que vier. */
+    cashCve: number;
   }>;
   overdueClients: Array<{
     clientName: string;

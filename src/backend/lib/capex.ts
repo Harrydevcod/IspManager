@@ -97,8 +97,30 @@ export function externalInvestmentCapexCve(): number {
  * no catalogo e muda-se so a expressao aqui.
  */
 const DEPRECIATION_FACTOR_SQL = `
-  max(0.0, 1.0 - ((julianday('now') - julianday(a.start_date)) / 30.44)
+  max(0.0, 1.0 - ((julianday('now') - julianday(u.installedOn)) / 30.44)
                  / max(1.0, ec.useful_life_months))`;
+
+/**
+ * Unidades instaladas: o que saiu do armazem e esta de pe, venha do cliente ou
+ * do backbone.
+ *
+ * Ate a migracao 0050 o backbone nao consumia stock, e contar so as atribuicoes
+ * dava a mesma resposta. Passou a consumir: registar uma antena faz `stock_total`
+ * descer. Quem continuasse a contar so as atribuicoes via o stock descer sem o
+ * "em campo" subir — a unidade desaparecia da conta, e com ela o seu valor.
+ *
+ * `backbone_devices` nao tem `start_date`; `created_at` e a unica ancora
+ * temporal que tem, e serve para a depreciacao. O filtro e `status <> 'retired'`,
+ * o mesmo que a topologia usa para dizer o que esta de pe.
+ */
+export const INSTALLED_UNITS_SQL = `
+  SELECT a.catalog_id AS catalogId, a.start_date AS installedOn, 'cliente' AS origin
+    FROM service_device_assignments a
+   WHERE a.end_date IS NULL
+  UNION ALL
+  SELECT bd.catalog_id, date(bd.created_at), 'backbone'
+    FROM backbone_devices bd
+   WHERE bd.status <> 'retired'`;
 
 /** Partilhas de uma atribuicao: uma antena de predio serve N servicos. */
 const SHARES_JOIN_SQL = `
@@ -106,17 +128,16 @@ const SHARES_JOIN_SQL = `
     ON sh.assignment_id = a.id`;
 
 export function parkValue(): { netValueCve: number; monthlyDepreciationCve: number; units: number } {
-  // Sem rateio: aqui parte-se da atribuicao, que ja e a unidade fisica. O
-  // rateio pelas partilhas so pertence a carteira, onde se conta por cliente.
+  // Sem rateio: aqui parte-se da unidade fisica instalada. O rateio pelas
+  // partilhas so pertence a carteira, onde se conta por cliente.
   const row = getSqliteDatabase().prepare(`
     SELECT
       COALESCE(SUM(${landedCostSql('ec')} * ${DEPRECIATION_FACTOR_SQL}), 0) AS netValueCve,
       COALESCE(SUM(${landedCostSql('ec')} / max(1.0, ec.useful_life_months)), 0)
         AS monthlyDepreciationCve,
       COUNT(*) AS units
-    FROM service_device_assignments a
-    JOIN equipment_catalog ec ON ec.id = a.catalog_id
-    WHERE a.end_date IS NULL
+    FROM (${INSTALLED_UNITS_SQL}) u
+    JOIN equipment_catalog ec ON ec.id = u.catalogId
   `).get() as { netValueCve: number; monthlyDepreciationCve: number; units: number };
   return {
     netValueCve: Number(row.netValueCve) || 0,
