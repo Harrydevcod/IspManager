@@ -94,7 +94,9 @@ function nodeOperationMode(node: TopologyNode): string | null {
 }
 
 function nodeStatusLabel(node: TopologyNode): string {
-  if (node.issueCodes.length > 0) return `${node.issueCodes.length} atenção`;
+  const issues = node.issueCodes.length;
+  // "3 atenção" era o que saía daqui.
+  if (issues > 0) return `${issues} ${issues === 1 ? 'atenção' : 'atenções'}`;
   return node.administrativeState === 'active' ? 'Ativo' : 'Inativo';
 }
 

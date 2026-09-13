@@ -184,7 +184,7 @@ function BackboneDetails({
         <Detail label="Marca" value={node.brand ?? 'Não indicada'} />
         <Detail label="Modelo" value={node.model} />
         <Detail label="Serial" value={node.serialNumber ?? 'Não indicado'} />
-        <Detail label="Asset tag" value={node.assetTag ?? 'Não indicado'} />
+        <Detail label="Etiqueta de inventário" value={node.assetTag ?? 'Não indicado'} />
         <Detail label="IP configurado" value={ipDetail(node)} />
         <Detail label="MAC" value={node.macAddress ?? 'Não indicado'} />
         {/* "Ligação" mais abaixo é de quem pende; isto é como obtém endereço. */}
@@ -240,7 +240,7 @@ function DeviceDetails({
         <Detail label="Atribuição física" value={`#${node.assignmentId}`} />
         <Detail label="Modelo" value={`${node.brand ? `${node.brand} ` : ''}${node.model}`} />
         <Detail label="Serial" value={node.serialNumber ?? 'Não indicado'} />
-        <Detail label="Asset tag" value={node.assetTag ?? 'Não indicado'} />
+        <Detail label="Etiqueta de inventário" value={node.assetTag ?? 'Não indicado'} />
         <Detail label="IP configurado" value={ipDetail(node)} />
         <Detail label="MAC" value={node.macAddress ?? 'Não indicado'} />
         {/* "Ligação" mais abaixo é de quem pende; isto é como obtém endereço. */}
@@ -411,7 +411,7 @@ export function TopologyInspector(props: TopologyInspectorProps) {
           )}
           <p className="topology-lineage-note">
             Este mapa representa ligações definidas e configuração administrativa;
-            não representa reachability nem telemetria em tempo real.
+            não representa alcance na rede nem telemetria em tempo real.
           </p>
         </>
       )}

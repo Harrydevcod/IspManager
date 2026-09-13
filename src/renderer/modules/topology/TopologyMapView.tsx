@@ -407,9 +407,9 @@ function TopologyStatsBar({
           <span className="sr-only">Voltar à rede completa</span>
         </button>
       )}
-      <dl className="topology-stats" aria-label="Resumo factual">
+      <dl className="topology-stats" aria-label="Resumo da rede">
         <div><dt>Backbones</dt><dd>{snapshot.stats.backboneCount}</dd></div>
-        <div><dt>Equipamentos ligados</dt><dd>{snapshot.stats.mappedAssignmentCount}</dd></div>
+        <div><dt>Com ligação</dt><dd>{snapshot.stats.mappedAssignmentCount}</dd></div>
         <div data-tone={snapshot.stats.unmappedAssignmentCount > 0 ? 'attention' : undefined}>
           <dt>Sem ligação</dt><dd>{snapshot.stats.unmappedAssignmentCount}</dd>
         </div>
@@ -420,7 +420,7 @@ function TopologyStatsBar({
         </div>
         <div><dt>Clientes</dt><dd>{snapshot.stats.clientCount}</dd></div>
         <div data-tone={snapshot.stats.attentionCount > 0 ? 'attention' : undefined}>
-          <dt>Atenções</dt><dd>{snapshot.stats.attentionCount}</dd>
+          <dt>Com atenção</dt><dd>{snapshot.stats.attentionCount}</dd>
         </div>
       </dl>
     </header>

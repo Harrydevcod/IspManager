@@ -866,7 +866,7 @@ test('surfaces the number of CPE assignments without a defined backbone link', a
   });
   const container = await mountMap(topologyApi);
 
-  expect(container.textContent).toContain('Equipamentos ligados2');
+  expect(container.textContent).toContain('Com ligação2');
   expect(container.textContent).toContain('Sem ligação2');
 });
 
