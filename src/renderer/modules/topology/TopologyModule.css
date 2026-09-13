@@ -274,8 +274,23 @@
   cursor: pointer;
 }
 
+/* Visto no ecrã: sem isto, as duas células que são comando ficam iguaizinhas às
+   quatro que não são, e a acção só se descobre passando o rato por cima por
+   acaso. O tracejado é a pista mais silenciosa que uma régua densa aceita —
+   fica sólido quando o ponteiro lá chega. */
+.topology-stat-action b {
+  text-decoration: underline dotted
+    color-mix(in oklch, var(--topology-muted) 55%, transparent);
+  text-underline-offset: 3px;
+}
+
 .topology-stat-action:hover {
   background: color-mix(in oklch, var(--accent) 10%, transparent);
+}
+
+.topology-stat-action:hover b {
+  text-decoration-style: solid;
+  text-decoration-color: var(--topology-accent);
 }
 
 .topology-stat-action:hover b { color: var(--topology-ink); }
