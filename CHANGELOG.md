@@ -6,6 +6,30 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.26.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.26.0) — 2026-09-13
+
+> Sem migrações. A base de dados não muda com esta versão.
+
+### Alterado
+
+- **A Topologia cabe num portátil pequeno.** Num ecrã baixo — um portátil de 13", ou um ecrã Full HD com a escala do Windows a 150% — a lista do Backbone mostrava pouco mais de um equipamento e a página rolava por baixo da caixa, com o fundo fora de vista. Quando falta altura, o cabeçalho da página encolhe para uma linha e as caixas das abas Backbone e Topologia vão até ao fundo do ecrã, cada uma a rolar por dentro. A lista passa a mostrar três backbones em vez de um, e a legenda do mapa fica numa linha em vez de tapar um terço do desenho. Num monitor normal nada muda.
+
+- **Os números por cima do mapa levam a algum lado.** *Com atenção* filtra o mapa para os pontos que pedem cuidado, e a célula fica acesa enquanto o recorte estiver ativo. *Sem ligação* abre a aba Backbone, que é onde as ligações se definem. *Sem equipamento* explica o que conta, porque resolve-se em Serviços e não aqui.
+
+- **A Topologia diz as coisas da mesma maneira em todo o lado.** A mesma estatística tinha dois nomes conforme o sítio onde aparecia, e havia termos em inglês e jargão técnico no meio do texto. O mapa, o inspetor e os filtros passam a usar as mesmas palavras.
+
+### Corrigido
+
+- **O botão dos Filtros deixa de rodar sem parar** enquanto o menu está aberto.
+
+- **Um nome comprido deixa de pôr a lista do Backbone a rolar para o lado.** O nome passa a ser cortado com reticências.
+
+- **A Topologia usa-se bem pelo teclado.** A pesquisa passa a percorrer-se com as setas e a escolher-se com Enter, a barra do mapa é uma só paragem de tabulação, e o foco do teclado deixa de se confundir com o rato por cima. Os leitores de ecrã passam a anunciar o mapa, a legenda e os carregamentos.
+
+- **Quando o mapa não carrega, o ecrã diz porquê** — sem ligação ao servidor não se lê igual a um erro do servidor — e o *Tentar novamente* mostra que está a tentar.
+
+- **A licença em avaliação deixa de empurrar a Topologia para fora do ecrã.** O aviso por cima do módulo passa a entrar na conta da altura.
+
 ## [1.25.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.25.0) — 2026-09-12
 
 > Sem migrações. A base de dados não muda com esta versão.
