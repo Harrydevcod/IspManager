@@ -377,3 +377,18 @@
   color: var(--topology-muted);
   font-size: var(--fs-xs);
 }
+
+/* Ecrã baixo: a legenda em três linhas tapava um terço do fundo do mapa (medido
+   a 617px: 120px de 326px). Fica a chave das cores numa linha; a frase de apoio
+   sai. Quem não precisa de chave nenhuma oculta-a na barra do mapa. */
+@media (max-height: 820px) {
+  .topology-legend {
+    bottom: var(--space-2);
+    left: var(--space-2);
+    max-width: calc(100% - 13.5rem);
+  }
+
+  .topology-legend small {
+    display: none;
+  }
+}

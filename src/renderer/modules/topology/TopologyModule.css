@@ -130,12 +130,23 @@
   min-width: 0;
 }
 
+/* As alturas abaixo descontam o cromo da página à mão. O banner da licença
+   (avaliação, expiração) é o único bloco condicional por cima do módulo: sem
+   este desconto empurrava o fundo da caixa 58px para fora do ecrã. */
+.topology-shell {
+  --topology-page-banner: 0rem;
+}
+
+.content:has(> .license-banner) .topology-shell {
+  --topology-page-banner: 4.1rem;
+}
+
 /* Piso baixo: com o antigo (37rem) uma janela curta punha a página inteira a
    scrollar e o fundo do mapa saía do ecrã. A folga é para o canvas, não para a
    barra de scroll. */
 .topology-tab-panel > .backbone-workspace,
 .topology-tab-panel > .topology-module {
-  height: min(45rem, calc(100vh - 11.5rem));
+  height: min(45rem, calc(100vh - 11.5rem - var(--topology-page-banner)));
   min-height: 22rem;
   border-radius: 0 0 var(--r3) var(--r3);
 }
@@ -145,7 +156,7 @@
   place-content: center;
   justify-items: center;
   gap: var(--space-3);
-  height: min(45rem, calc(100vh - 11.5rem));
+  height: min(45rem, calc(100vh - 11.5rem - var(--topology-page-banner)));
   min-height: 22rem;
   border: 1px solid var(--border);
   border-radius: 0 0 var(--r3) var(--r3);
@@ -189,7 +200,7 @@
   .topology-tab-panel > .backbone-workspace,
   .topology-tab-panel > .topology-module,
   .topology-tab-loading {
-    height: min(47rem, calc(100vh - 9.5rem));
+    height: min(47rem, calc(100vh - 9.5rem - var(--topology-page-banner)));
     min-height: 22rem;
   }
 }
@@ -652,4 +663,17 @@
   min-height: 0;
   overflow: hidden;
   background: var(--topology-bg);
+}
+
+/* Ecrã baixo: o cabeçalho da página encolhe (styles.css, mesma media query) e
+   a caixa fica com essa altura. O desconto é o cabeçalho compacto + a tira das
+   abas + o padding do .content; se mudar um deles, muda este número. As
+   caixas de dentro (lista, detalhe, inspetor) já rolam sozinhas. */
+@media (max-height: 820px) {
+  .topology-tab-panel > .backbone-workspace,
+  .topology-tab-panel > .topology-module,
+  .topology-tab-loading {
+    height: calc(100vh - 8.5rem - var(--topology-page-banner));
+    min-height: 20rem;
+  }
 }

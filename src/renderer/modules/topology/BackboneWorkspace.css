@@ -241,6 +241,9 @@
 }
 
 .backbone-row-primary {
+  /* Sem isto um nome comprido fixava a largura mínima da linha e a lista
+     ganhava barra de rolamento horizontal em vez de reticências. */
+  min-width: 0;
   justify-content: space-between;
   gap: var(--space-3);
 }
@@ -1174,5 +1177,49 @@
   .backbone-list,
   .backbone-detail {
     transition-duration: 1ms;
+  }
+}
+
+/* Ecrã baixo. Medido a 581px de altura: a lista mostrava 1,3 backbones — cada
+   linha tinha 124px (o modelo numa linha, a meta partida em duas) e o
+   cabeçalho 86px. O cabeçalho fica numa linha só (a aba já diz "Backbone") e a
+   linha larga o modelo, que o detalhe mostra por inteiro. */
+@media (max-height: 820px) {
+  .backbone-workspace-header {
+    align-items: center;
+    padding: var(--space-2) var(--space-4);
+  }
+
+  .backbone-workspace-header h2 {
+    font-size: var(--fs-lg);
+  }
+
+  .backbone-kicker,
+  .backbone-workspace-header > div > p:last-child {
+    display: none;
+  }
+
+  .backbone-workspace-header .btn {
+    min-height: 2.25rem;
+    padding-inline: var(--space-3);
+  }
+
+  .backbone-list-tools {
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .backbone-row {
+    min-height: 0;
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .backbone-row-model {
+    display: none;
+  }
+
+  .backbone-pagination {
+    min-height: 2.5rem;
+    padding-block: var(--space-1);
   }
 }
