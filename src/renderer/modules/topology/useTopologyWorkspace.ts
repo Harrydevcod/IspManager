@@ -47,7 +47,16 @@ function useTopologySnapshot(api: TopologyApi) {
     setGlobalError(null);
     const request = api.fetchSnapshot()
       .then(setSnapshot)
-      .catch(() => setGlobalError('Não foi possível carregar a topologia.'))
+      /*
+       * A causa real, não uma frase fixa: quem lê o ecrã precisa de distinguir
+       * a API local em baixo de um erro do servidor, e antes as duas davam a
+       * mesma linha. O ecrã já diz o que fazer; isto diz o que aconteceu.
+       */
+      .catch((cause: unknown) => setGlobalError(
+        cause instanceof Error && cause.message.trim()
+          ? cause.message
+          : 'Causa desconhecida.'
+      ))
       .finally(() => { requestRef.current = null; });
     requestRef.current = request;
     return request;

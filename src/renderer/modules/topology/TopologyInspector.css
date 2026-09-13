@@ -55,10 +55,18 @@
   cursor: pointer;
 }
 
-.topology-inspector-close:hover,
-.topology-inspector-close:focus-visible {
-  outline: 0;
+.topology-inspector-close:hover {
   border-color: var(--topology-line);
+  color: var(--topology-ink);
+}
+
+.topology-inspector-close:active {
+  background: var(--surface-2);
+}
+
+.topology-inspector-close:focus-visible {
+  outline: 2px solid var(--topology-accent);
+  outline-offset: 1px;
   color: var(--topology-ink);
 }
 
@@ -114,7 +122,15 @@
   gap: var(--space-1-5);
 }
 
+/* 18px desenhados, 24px clicáveis.
+   O alvo real vinha aos 18px e falhava o WCAG 2.2 SC 2.5.8 (24×24 CSS px, AA).
+   Aumentar o desenho engordava a linha de alimentações numa app de secretária
+   que vive de densidade, por isso cresce só a área: o ::after estica o alvo
+   para lá do ícone sem lhe mexer no tamanho nem no alinhamento.
+   Os 44px da orientação táctil são SC 2.5.5, nível AAA, e não é este o caso
+   de uso — rato em monitor de 24". */
 .topology-inspector-uplinks button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -129,9 +145,23 @@
   transition: color var(--motion-fast) ease, background var(--motion-fast) ease;
 }
 
+.topology-inspector-uplinks button::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--space-6);
+  height: var(--space-6);
+  transform: translate(-50%, -50%);
+  content: '';
+}
+
 .topology-inspector-uplinks button:hover {
   background: var(--surface-2);
   color: var(--topology-ink);
+}
+
+.topology-inspector-uplinks button:active {
+  background: var(--surface-3);
 }
 
 .topology-inspector-uplinks button:focus-visible {
@@ -155,13 +185,21 @@
   cursor: pointer;
 }
 
-.topology-inspector-action:hover,
+.topology-inspector-action:hover {
+  border-color: var(--topology-accent-deep);
+  background: color-mix(in oklch, var(--accent) 10%, var(--topology-raised));
+}
+
+.topology-inspector-action:active {
+  background: color-mix(in oklch, var(--accent) 18%, var(--topology-raised));
+}
+
 .topology-inspector-action:focus-visible {
   outline: 2px solid var(--topology-accent);
   outline-offset: -2px;
 }
 
-.topology-associations { margin-top: 1.25rem; }
+.topology-associations { margin-top: var(--space-5); }
 
 .topology-associations h4 {
   margin: 0 0 var(--space-2-5);
@@ -201,7 +239,7 @@
   font-size: var(--fs-xs);
 }
 
-.topology-client-association p { margin: 0.35rem 0 0.6rem; }
+.topology-client-association p { margin: var(--space-1-5) 0 var(--space-2-5); }
 
 .topology-client-association ul {
   display: grid;
@@ -425,4 +463,13 @@
   }
 
   .topology-search-results { width: calc(100vw - 2rem); }
+}
+
+/* A causa técnica, um degrau abaixo do conselho: quem sabe o que é lê-a, quem
+   não sabe lê a linha de cima e clica em "Tentar novamente". */
+.topology-global-error-reason {
+  margin-top: var(--space-1);
+  color: var(--topology-muted);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
 }

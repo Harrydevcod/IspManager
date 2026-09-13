@@ -104,8 +104,11 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
   }, ref) {
     useCanvasControls(ref, nodes);
 
+    // <section> e não <div>: um `aria-label` num elemento sem role é descartado
+    // pela maioria das tecnologias de apoio, e o mapa ficava sem nome nenhum.
+    // A secção com nome é uma região, que se anuncia e se navega.
     return (
-      <div className="topology-canvas" aria-label="Mapa físico da rede">
+      <section className="topology-canvas" aria-label="Mapa físico da rede">
         {/* Sem `panOnScroll`: com ele o React Flow desloca a vista com a roda e
             manda o zoom para trás de Ctrl. Aqui a roda aproxima e o arrasto
             desloca, como em qualquer mapa. */}
@@ -157,7 +160,7 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
           )}
         </ReactFlow>
         {legendVisible && (
-          <div className="topology-legend" aria-label="Legenda da topologia">
+          <div className="topology-legend" role="group" aria-label="Legenda da topologia">
             <span><i data-tone="active" /> Configurado</span>
             <span><i data-tone="attention" /> Requer atenção</span>
             <span><i data-tone="live-up" /> De pé</span>
@@ -166,7 +169,7 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
             <small>As linhas são administrativas. O ponto no canto é a última leitura da sonda; sem ponto, ninguém mediu.</small>
           </div>
         )}
-      </div>
+      </section>
     );
   }
 );

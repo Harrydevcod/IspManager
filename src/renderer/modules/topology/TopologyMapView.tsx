@@ -135,27 +135,42 @@ function branchForNode(
   ));
 }
 
+/* `role="status"` para isto ser anunciado: um `aria-label` num <section> nomeia
+   a região, mas não avisa ninguém de que o mapa está a carregar. */
 function TopologyLoading() {
   return (
-    <section className="topology-loading" aria-label="A carregar topologia">
-      <span className="topology-loading-line" />
-      <span className="topology-loading-line" />
-      <p>A preparar o mapa físico…</p>
+    <section className="topology-loading" role="status" aria-label="A carregar topologia">
+      <span className="topology-loading-line" aria-hidden />
+      <span className="topology-loading-line" aria-hidden />
+      <p>A montar o grafo a partir dos ramos já conhecidos…</p>
     </section>
   );
 }
 
-function TopologyGlobalError({ onRetry }: { onRetry: () => void }) {
+function TopologyGlobalError({
+  reason,
+  retrying,
+  onRetry
+}: {
+  reason: string | null;
+  retrying: boolean;
+  onRetry: () => void;
+}) {
   return (
     <section className="topology-global-error" role="alert">
       <AlertTriangle size={20} aria-hidden />
       <div>
         <h3>Não foi possível abrir a topologia</h3>
         <p>Confirma a ligação à API local e tenta novamente.</p>
+        {/* O motivo real vinha do hook e era deitado fora: `globalError` só era
+            lido como booleano. Uma recusa de ligação e um erro do servidor
+            pediam a mesma coisa a quem está a ler o ecrã. */}
+        {reason && <p className="topology-global-error-reason">{reason}</p>}
       </div>
       <Button
         variant="secondary"
         leadingIcon={<RotateCw size={14} aria-hidden />}
+        loading={retrying}
         onClick={onRetry}
       >
         Tentar novamente
@@ -539,7 +554,16 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
   );
   if (!workspace.snapshot && !workspace.globalError) return <TopologyLoading />;
   if (!workspace.snapshot) {
-    return <TopologyGlobalError onRetry={() => { void workspace.loadSnapshot(true); }} />;
+    // `refresh()` e não `loadSnapshot(true)`: é a que marca `refreshing`, e
+    // portanto a única que dá sinal de vida ao clique. Sem ramos carregados, o
+    // `reloadBranches` que ela faz a mais não custa nada.
+    return (
+      <TopologyGlobalError
+        reason={workspace.globalError}
+        retrying={workspace.refreshing}
+        onRetry={() => { void workspace.refresh(); }}
+      />
+    );
   }
   const tools: CanvasToolsProps = {
     labelsVisible,

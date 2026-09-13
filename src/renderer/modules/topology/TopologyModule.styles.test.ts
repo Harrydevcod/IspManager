@@ -94,7 +94,9 @@ describe('folhas de estilo da topologia', () => {
 });
 
 describe('o módulo fica dentro do sistema de design', () => {
-  const SPACING = /^\s*((?:padding|margin)(?:-(?:inline|block|top|right|bottom|left)(?:-(?:start|end))?)?|(?:row-|column-)?gap)\s*:/;
+  /* `^|[;{]` e não só `^`: uma regra escrita numa linha só
+     (`.x { margin: 0.35rem; }`) escapava à varredura ancorada no início. */
+  const SPACING = /(?:^|[;{])\s*((?:padding|margin)(?:-(?:inline|block|top|right|bottom|left)(?:-(?:start|end))?)?|(?:row-|column-)?gap)\s*:/;
 
   test.each(names)('%s mede o espaçamento pela escala, não a olho', (name) => {
     const offScale = statements(sheets[name])

@@ -30,8 +30,8 @@ const tabs: ReadonlyArray<{ id: TopologyTab; label: string }> = [
 
 function MapLoadingFallback() {
   return (
-    <section className="topology-tab-loading" aria-label="A preparar topologia">
-      <span />
+    <section className="topology-tab-loading" role="status" aria-label="A preparar topologia">
+      <span aria-hidden />
       <p>A preparar o mapa físico…</p>
     </section>
   );
