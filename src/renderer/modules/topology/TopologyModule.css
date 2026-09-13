@@ -232,7 +232,10 @@
   margin: 0;
 }
 
-.topology-stats div {
+/* Cada célula é uma paragem na régua: rótulo em maiúsculas, número em tabular.
+   Estáticas e comandos partilham a caixa de propósito — a tira tem de ler-se
+   como uma linha só, não como texto com botões pelo meio. */
+.topology-stats > * {
   display: flex;
   align-items: baseline;
   gap: var(--space-1-5);
@@ -241,11 +244,11 @@
 }
 
 /* Separador entre pares, não moldura à volta de cada um. */
-.topology-stats div + div {
+.topology-stats > * + * {
   border-left: 1px solid var(--topology-line);
 }
 
-.topology-stats dt {
+.topology-stats b {
   color: var(--topology-muted);
   font-size: var(--fs-xs);
   font-weight: 700;
@@ -253,15 +256,46 @@
   text-transform: uppercase;
 }
 
-.topology-stats dd {
-  margin: 0;
+.topology-stats em {
   color: var(--topology-ink);
   font-size: var(--fs-sm);
+  font-style: normal;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
 
-.topology-stats [data-tone='attention'] dd { color: var(--topology-amber); }
+.topology-stats [data-tone='attention'] em { color: var(--topology-amber); }
+
+.topology-stat-action {
+  border: 0;
+  border-left: 1px solid var(--topology-line);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.topology-stat-action:hover {
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+}
+
+.topology-stat-action:hover b { color: var(--topology-ink); }
+
+.topology-stat-action:active {
+  background: color-mix(in oklch, var(--accent) 18%, transparent);
+}
+
+.topology-stat-action:focus-visible {
+  outline: 2px solid var(--topology-accent);
+  outline-offset: -2px;
+}
+
+/* Filtro ligado: a célula fica acesa enquanto o mapa estiver recortado por ela,
+   porque é a única pista de que o que se vê não é a rede toda. */
+.topology-stat-action[aria-pressed='true'] {
+  background: color-mix(in oklch, var(--accent) 16%, transparent);
+}
+
+.topology-stat-action[aria-pressed='true'] b { color: var(--topology-accent); }
 
 /* O chip vive antes dos números e cede-lhes o espaço: o nome do backbone corta
    com reticências em vez de empurrar a tira para fora do ecrã. */

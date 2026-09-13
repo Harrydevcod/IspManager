@@ -39,6 +39,8 @@ export type TopologyMapViewProps = TopologyModuleProps & {
   onMutation: () => void;
   /** Onde os controlos do mapa são desenhados: a tira das abas, fora do canvas. */
   toolsSlot: HTMLElement | null;
+  /** Leva à aba onde as ligações de backbone se definem. */
+  onOpenBackbone: () => void;
 };
 
 type MapAuthoring = ReturnType<typeof useMapAuthoring>;
@@ -212,6 +214,39 @@ function EmptyCanvas({
   );
 }
 
+/*
+ * Uma célula da régua que também é comando.
+ *
+ * Bare <button> pela mesma razão que o chip de vista aqui ao lado: isto não é
+ * um `.btn`. Forçar a primitiva obrigava a despir-lhe padding, altura mínima,
+ * raio e o wrapper `.btn-content` para a linha de base do número voltar a
+ * alinhar com as células estáticas — ou seja, adoptar a primitiva no TSX para a
+ * rejeitar no CSS, que é exactamente o padrão que este módulo acabou de perder.
+ */
+function StatAction({ label, value, hint, pressed, onClick }: {
+  label: string;
+  value: number;
+  hint: string;
+  pressed?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    // eslint-disable-next-line no-restricted-syntax
+    <button
+      type="button"
+      className="topology-stat-action"
+      data-tone={value > 0 ? 'attention' : undefined}
+      aria-pressed={pressed}
+      title={hint}
+      onClick={onClick}
+    >
+      <b>{label}</b>
+      <em>{value}</em>
+      <span className="sr-only">{hint}</span>
+    </button>
+  );
+}
+
 function hasActiveFilters(filters: ReturnType<typeof useTopologyWorkspace>['filters']): boolean {
   return Object.values(filters).some((value) => value !== undefined && value !== '');
 }
@@ -379,11 +414,17 @@ function useRequestedBackboneFocus(
 function TopologyStatsBar({
   snapshot,
   focused,
-  onClearFocus
+  attentionFiltered,
+  onClearFocus,
+  onToggleAttention,
+  onOpenBackbone
 }: {
   snapshot: TopologySnapshot;
   focused: TopologySnapshot['backbones'][number] | null;
+  attentionFiltered: boolean;
   onClearFocus: () => void;
+  onToggleAttention: () => void;
+  onOpenBackbone: () => void;
 }) {
   return (
     <header className="topology-header">
@@ -407,22 +448,49 @@ function TopologyStatsBar({
           <span className="sr-only">Voltar à rede completa</span>
         </button>
       )}
-      <dl className="topology-stats" aria-label="Resumo da rede">
-        <div><dt>Backbones</dt><dd>{snapshot.stats.backboneCount}</dd></div>
-        <div><dt>Com ligação</dt><dd>{snapshot.stats.mappedAssignmentCount}</dd></div>
-        <div data-tone={snapshot.stats.unmappedAssignmentCount > 0 ? 'attention' : undefined}>
-          <dt>Sem ligação</dt><dd>{snapshot.stats.unmappedAssignmentCount}</dd>
-        </div>
-        {/* Os dois motivos para um cliente não estar no mapa: falta a CPE, ou
-            falta dizer de que backbone ela pende. */}
-        <div data-tone={snapshot.stats.servicesWithoutDeviceCount > 0 ? 'attention' : undefined}>
-          <dt>Sem equipamento</dt><dd>{snapshot.stats.servicesWithoutDeviceCount}</dd>
-        </div>
-        <div><dt>Clientes</dt><dd>{snapshot.stats.clientCount}</dd></div>
-        <div data-tone={snapshot.stats.attentionCount > 0 ? 'attention' : undefined}>
-          <dt>Com atenção</dt><dd>{snapshot.stats.attentionCount}</dd>
-        </div>
-      </dl>
+      {/*
+        Três destes números eram becos sem saída: mostravam trabalho por fazer e
+        não levavam a lado nenhum. Agora cada um faz o que pode fazer honestamente:
+
+        - "Com atenção" conta nós que ESTÃO no grafo, por isso filtra o mapa
+          (`filters.attention`, que já existia em topology-filters.ts).
+        - "Sem ligação" conta atribuições que NÃO estão no grafo: filtrar nunca
+          as mostraria. Leva à aba Backbone, que é onde as ligações se definem.
+        - "Sem equipamento" são serviços vivos sem CPE instalada. Resolvem-se em
+          Serviços, fora deste módulo, e daqui não há rota sem plumbing novo —
+          por isso este explica-se em vez de fingir que leva a algum lado.
+
+        Deixou de ser `<dl>`: metade das células passou a ser comando, e uma
+        lista de definições com botões lá dentro não se consegue escrever sem
+        partir ou a semântica ou o alvo de clique. O grupo nomeado lê-se na
+        mesma ("Com atenção 12").
+      */}
+      <div className="topology-stats" role="group" aria-label="Resumo da rede">
+        <span><b>Backbones</b><em>{snapshot.stats.backboneCount}</em></span>
+        <span><b>Com ligação</b><em>{snapshot.stats.mappedAssignmentCount}</em></span>
+        <StatAction
+          label="Sem ligação"
+          value={snapshot.stats.unmappedAssignmentCount}
+          hint="Equipamento instalado sem dizer de que backbone pende. Abre a aba Backbone para definir a ligação."
+          onClick={onOpenBackbone}
+        />
+        <span
+          data-tone={snapshot.stats.servicesWithoutDeviceCount > 0 ? 'attention' : undefined}
+          title="Serviços ativos sem CPE instalada. Resolvem-se no módulo Serviços."
+        >
+          <b>Sem equipamento</b><em>{snapshot.stats.servicesWithoutDeviceCount}</em>
+        </span>
+        <span><b>Clientes</b><em>{snapshot.stats.clientCount}</em></span>
+        <StatAction
+          label="Com atenção"
+          value={snapshot.stats.attentionCount}
+          pressed={attentionFiltered}
+          hint={attentionFiltered
+            ? 'A mostrar só os nós com atenção. Clica para voltar a ver tudo.'
+            : 'Filtra o mapa pelos nós que precisam de atenção.'}
+          onClick={onToggleAttention}
+        />
+      </div>
     </header>
   );
 }
@@ -592,7 +660,13 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
         focused={workspace.snapshot.backbones.find(
           (backbone) => backbone.backboneDeviceId === workspace.focusedBackboneId
         ) ?? null}
+        attentionFiltered={workspace.filters.attention === true}
         onClearFocus={() => workspace.focusBackbone(null)}
+        onToggleAttention={() => workspace.setFilters({
+          ...workspace.filters,
+          attention: workspace.filters.attention === true ? undefined : true
+        })}
+        onOpenBackbone={props.onOpenBackbone}
       />
       <TopologyToolbar
         query={workspace.query}

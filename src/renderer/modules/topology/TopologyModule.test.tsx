@@ -171,6 +171,7 @@ function MapHarness({ topologyApi }: { topologyApi: ReturnType<typeof api> }) {
         onFocusHandled={() => undefined}
         onMutation={() => undefined}
         toolsSlot={slot}
+        onOpenBackbone={() => undefined}
       />
     </>
   );
@@ -711,6 +712,30 @@ describe('TopologyModule branch interaction', () => {
     });
     expect(button(container, 'Desenhar da esquerda para a direita')).toBeTruthy();
   });
+});
+
+/*
+ * "Com atencao" contava nos que estao no grafo e nao levava a lado nenhum.
+ * Agora recorta o mapa e volta atras no segundo clique.
+ */
+test('a estatistica de atencao liga e desliga o filtro do mapa', async () => {
+  const container = await mountMap();
+  const stat = [...container.querySelectorAll<HTMLButtonElement>('.topology-stat-action')]
+    .find((candidate) => candidate.textContent?.includes('Com atenção'));
+  if (!stat) throw new Error('Stat action not found');
+
+  expect(stat.getAttribute('aria-pressed')).toBe('false');
+  await act(async () => {
+    stat.click();
+    await Promise.resolve();
+  });
+  expect(stat.getAttribute('aria-pressed')).toBe('true');
+
+  await act(async () => {
+    stat.click();
+    await Promise.resolve();
+  });
+  expect(stat.getAttribute('aria-pressed')).toBe('false');
 });
 
 test('a pesquisa navega-se por setas e escolhe-se com Enter', async () => {

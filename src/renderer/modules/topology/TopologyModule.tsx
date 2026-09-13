@@ -168,6 +168,10 @@ export default function TopologyModule(props: TopologyModuleProps) {
               onFocusHandled={handleFocusHandled}
               onMutation={handleMapMutation}
               toolsSlot={toolsSlot}
+              /* "Sem ligação" no mapa conta equipamento que ainda não diz de
+                 que backbone pende. Define-se na aba ao lado, a mesma porta
+                 que a Descoberta já usa. */
+              onOpenBackbone={() => selectTab('backbone')}
             />
           </Suspense>
         )}
