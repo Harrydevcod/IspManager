@@ -442,7 +442,17 @@
 
 .topology-filter-menu summary::-webkit-details-marker { display: none; }
 
-.topology-filter-menu[open] summary,
+/* Aberto lê-se como carregado: o menu de filtros é um botão da barra como os
+   outros, por isso usa o mesmo estado que `[aria-pressed='true']` mais abaixo.
+   Um comentário no meio de uma lista de seletores não a separa — era assim que
+   esta regra fundia o `summary` com `.topology-refreshing` e punha os Filtros a
+   rodar para sempre enquanto o menu estivesse aberto. */
+.topology-filter-menu[open] summary {
+  border-color: var(--topology-accent-deep);
+  background: color-mix(in oklch, var(--accent) 16%, var(--surface));
+  color: var(--topology-accent);
+}
+
 /* O ícone roda enquanto a leitura corre: o botão fica inerte e diz porquê. */
 .topology-refreshing {
   animation: topology-refresh-spin 900ms linear infinite;
