@@ -4,8 +4,13 @@
      Vivem na casca e não em `.topology-module` porque os controlos do mapa são
      desenhados na tira das abas, que está fora do módulo. */
   --topology-ink: var(--text);
+  /* Um só tier apagado. Havia `--topology-faint` ao lado deste, com o mesmo
+     `var(--text-2)` por trás: 15 regras diziam "faint" e 8 diziam "muted" para
+     pintarem exatamente a mesma cor. O tier nasceu mais escuro, falhou o
+     contraste AA e foi corrigido apontando-o ao mesmo sítio — ficou o nome sem
+     a diferença. Se voltar a ser preciso um degrau mais apagado, o token da app
+     é `--text-3`, e aí o nome volta a valer alguma coisa. */
   --topology-muted: var(--text-2);
-  --topology-faint: var(--text-2);
   --topology-bg: var(--bg);
   --topology-surface: var(--surface);
   --topology-raised: var(--surface-2);
@@ -15,6 +20,16 @@
   --topology-amber: var(--warn);
   --topology-down: var(--danger);
   --topology-up: var(--success);
+  /* Só as camadas que disputam com o cromo da app são tokens. Estas três saem
+     do mapa e sobrepõem-se à shell, por isso ancoram-se a `--z-sticky` — que é
+     literalmente o que o token significa, "sidebar e popovers in-shell" — e
+     continuam por baixo de diálogo (100), paleta (105) e toast (110).
+     Os valores pequenos que restam no módulo (1, 2, 4, 8, 9, 20) são
+     empilhamento local dentro do canvas, não competem com nada de fora e ficam
+     literais de propósito: torná-los tokens era indirecção sem leitor. */
+  --topology-z-popover: var(--z-sticky);
+  --topology-z-popover-panel: calc(var(--z-sticky) + 5);
+  --topology-z-inspector: calc(var(--z-sticky) + 10);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
@@ -29,9 +44,9 @@
   z-index: 2;
   display: flex;
   align-items: end;
-  gap: 0.25rem;
+  gap: var(--space-1);
   min-height: 3.15rem;
-  padding: 0.55rem 0.6rem 0;
+  padding: var(--space-2) var(--space-2-5) 0;
   border: 1px solid var(--border);
   border-bottom: 0;
   border-radius: var(--r3) var(--r3) 0 0;
@@ -44,7 +59,7 @@
 .topology-tabs-list {
   display: flex;
   align-items: end;
-  gap: 0.25rem;
+  gap: var(--space-1);
   min-width: 0;
 }
 
@@ -66,7 +81,7 @@
   justify-content: center;
   min-width: 7.5rem;
   min-height: 2.55rem;
-  padding: 0 1.1rem;
+  padding: 0 var(--space-4);
   border: 1px solid transparent;
   border-bottom: 0;
   border-radius: var(--r2) var(--r2) 0 0;
@@ -74,7 +89,7 @@
   color: var(--text-3);
   font: inherit;
   font-size: var(--fs-sm);
-  font-weight: 720;
+  font-weight: 600;
   letter-spacing: -0.01em;
   cursor: pointer;
 }
@@ -129,7 +144,7 @@
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 0.8rem;
+  gap: var(--space-3);
   height: min(45rem, calc(100vh - 11.5rem));
   min-height: 22rem;
   border: 1px solid var(--border);
@@ -161,7 +176,7 @@
 
 @media (max-width: 760px) {
   .topology-tabs {
-    padding-inline: 0.35rem;
+    padding-inline: var(--space-1-5);
   }
 
   .topology-tabs-list { flex: 1; }
@@ -202,7 +217,7 @@
   display: flex;
   align-items: center;
   min-width: 0;
-  padding: 0 0.75rem;
+  padding: 0 var(--space-3);
   overflow-x: auto;
   border-bottom: 1px solid var(--topology-line);
   background: var(--topology-surface);
@@ -220,8 +235,8 @@
 .topology-stats div {
   display: flex;
   align-items: baseline;
-  gap: 0.4rem;
-  padding: 0.4rem 0.85rem;
+  gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-3);
   white-space: nowrap;
 }
 
@@ -231,9 +246,9 @@
 }
 
 .topology-stats dt {
-  color: var(--topology-faint);
+  color: var(--topology-muted);
   font-size: var(--fs-xs);
-  font-weight: 750;
+  font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -253,11 +268,11 @@
 .topology-scope-chip {
   display: inline-flex;
   flex-shrink: 0;
-  gap: 0.4rem;
+  gap: var(--space-1-5);
   align-items: center;
   max-width: 16rem;
-  margin-right: 0.5rem;
-  padding: 0.2rem 0.5rem;
+  margin-right: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border: 1px solid color-mix(in oklch, var(--topology-accent) 45%, var(--topology-line));
   border-radius: var(--r1);
   background: color-mix(in oklch, var(--topology-accent) 12%, transparent);
@@ -294,9 +309,9 @@
   z-index: 20;
   display: grid;
   grid-template-columns: minmax(14rem, 1fr) auto auto auto;
-  gap: 0.75rem;
+  gap: var(--space-3);
   align-items: center;
-  padding: 0.5rem 0.75rem;
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--topology-line);
   background: color-mix(in oklch, var(--surface) 70%, var(--bg));
 }
@@ -306,24 +321,16 @@
   max-width: 34rem;
 }
 
-.topology-search > label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
-
 .topology-search-field {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: var(--space-2);
   min-height: 2.45rem;
-  padding: 0 0.75rem;
+  padding: 0 var(--space-3);
   border: 1px solid var(--topology-line);
   border-radius: var(--r1);
   background: var(--topology-bg);
-  color: var(--topology-faint);
+  color: var(--topology-muted);
 }
 
 .topology-search-field:focus-within {
@@ -347,10 +354,9 @@
   min-width: 0;
 }
 
-.topology-search-field .field-label { display: none; }
 
 .topology-search-field input::placeholder {
-  color: var(--topology-faint);
+  color: var(--topology-muted);
   opacity: 1;
 }
 
@@ -358,7 +364,7 @@
   position: absolute;
   top: calc(100% + 0.4rem);
   left: 0;
-  z-index: 40;
+  z-index: var(--topology-z-popover);
   width: min(32rem, calc(100vw - 2rem));
   max-height: 19rem;
   overflow-y: auto;
@@ -369,7 +375,7 @@
 
 .topology-search-results > p {
   margin: 0;
-  padding: 0.9rem 1rem;
+  padding: var(--space-4);
   color: var(--topology-muted);
   font-size: var(--fs-sm);
 }
@@ -378,10 +384,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--space-4);
   width: 100%;
   min-height: 3.25rem;
-  padding: 0.65rem 0.8rem;
+  padding: var(--space-2-5) var(--space-3);
   border: 0;
   border-bottom: 1px solid var(--topology-line);
   background: transparent;
@@ -398,20 +404,20 @@
 
 .topology-search-results button span {
   display: grid;
-  gap: 0.15rem;
+  gap: var(--space-0-5);
 }
 
 .topology-search-results button > .btn-content {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--space-4);
   width: 100%;
 }
 
 .topology-search-results button small,
 .topology-search-results button em {
-  color: var(--topology-faint);
+  color: var(--topology-muted);
   font-size: var(--fs-xs);
   font-style: normal;
 }
@@ -433,11 +439,11 @@
 }
 
 .topology-filter-menu summary {
-  gap: 0.45rem;
-  padding: 0 0.75rem;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
   list-style: none;
   font-size: var(--fs-sm);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .topology-filter-menu summary::-webkit-details-marker { display: none; }
@@ -476,12 +482,12 @@
   position: absolute;
   top: calc(100% + 0.4rem);
   right: 0;
-  z-index: 45;
+  z-index: var(--topology-z-popover-panel);
   display: grid;
   grid-template-columns: repeat(2, minmax(8.5rem, 1fr));
-  gap: 0.7rem;
+  gap: var(--space-3);
   width: min(25rem, calc(100vw - 2rem));
-  padding: 0.9rem;
+  padding: var(--space-4);
   border: 1px solid var(--topology-line);
   background: var(--topology-surface);
   box-shadow: var(--shadow-2);
@@ -489,8 +495,8 @@
 
 .topology-filter-fields label {
   display: grid;
-  gap: 0.3rem;
-  color: var(--topology-faint);
+  gap: var(--space-1);
+  color: var(--topology-muted);
   font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -501,7 +507,7 @@
 .topology-filter-fields input {
   width: 100%;
   min-height: 2.25rem;
-  padding: 0 0.55rem;
+  padding: 0 var(--space-2);
   border: 1px solid var(--topology-line);
   border-radius: var(--r1);
   outline: 0;
@@ -528,12 +534,12 @@
 }
 
 .topology-filter-fields .field {
-  gap: 0.3rem;
+  gap: var(--space-1);
 }
 
 .topology-filter-fields > small {
   align-self: center;
-  color: var(--topology-faint);
+  color: var(--topology-muted);
   font-size: var(--fs-xs);
   line-height: 1.4;
 }

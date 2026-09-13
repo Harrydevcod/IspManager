@@ -13,8 +13,23 @@ const sheets = {
   'TopologyInspector.css': readFileSync(
     new URL('./TopologyInspector.css', import.meta.url),
     'utf8'
+  ),
+  'BackboneWorkspace.css': readFileSync(
+    new URL('./BackboneWorkspace.css', import.meta.url),
+    'utf8'
   )
 };
+
+const names = Object.keys(sheets) as Array<keyof typeof sheets>;
+
+/** Linhas com conteúdo, já sem comentários — para as varreduras de deriva. */
+function statements(css: string): Array<{ line: number; text: string }> {
+  return css
+    .replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '))
+    .split(/\r?\n/)
+    .map((text, index) => ({ line: index + 1, text }))
+    .filter((entry) => entry.text.trim().length > 0);
+}
 
 function declarations(css: string, selector: string) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -71,5 +86,54 @@ describe('folhas de estilo da topologia', () => {
   test('a rotação fica só no estado de leitura em curso', () => {
     expect(declarations(sheets['TopologyModule.css'], '.topology-refreshing'))
       .toMatch(/animation:\s*topology-refresh-spin/);
+  });
+});
+
+describe('o módulo fica dentro do sistema de design', () => {
+  const SPACING = /^\s*((?:padding|margin)(?:-(?:inline|block|top|right|bottom|left)(?:-(?:start|end))?)?|(?:row-|column-)?gap)\s*:/;
+
+  test.each(names)('%s mede o espaçamento pela escala, não a olho', (name) => {
+    const offScale = statements(sheets[name])
+      .filter((entry) => SPACING.test(entry.text) && /[\d.]rem/.test(entry.text))
+      .map((entry) => `${name}:${entry.line} ${entry.text.trim()}`);
+    expect(offScale).toEqual([]);
+  });
+
+  test.each(names)('%s não inventa tamanhos de letra', (name) => {
+    const raw = statements(sheets[name])
+      .filter((entry) => /font-size:\s*[\d.]+(rem|px|em)/.test(entry.text))
+      .map((entry) => `${name}:${entry.line} ${entry.text.trim()}`);
+    expect(raw).toEqual([]);
+  });
+
+  /*
+   * Medido no codebase todo, não copiado da DESIGN.md: a app assenta em 500
+   * (33 usos), 600 (94) e 700 (69). O "380 body" que a DESIGN.md anuncia
+   * aparece duas vezes em toda a aplicação.
+   */
+  test.each(names)('%s usa os três degraus de peso que a app usa', (name) => {
+    const weights = [...sheets[name].matchAll(/font-weight:\s*(\d+)/g)]
+      .map((match) => Number(match[1]));
+    expect(weights.filter((weight) => ![500, 600, 700].includes(weight)))
+      .toEqual([]);
+  });
+
+  test.each(names)('%s não traz uma quarta curva de aceleração', (name) => {
+    expect(sheets[name]).not.toMatch(/cubic-bezier/);
+  });
+
+  /*
+   * Os valores pequenos (1, 2, 4, 8, 9, 20) são empilhamento local dentro do
+   * canvas e ficam literais de propósito. O que não pode voltar é um número
+   * solto na zona onde a shell empilha — `--z-sticky` é 40.
+   */
+  test.each(names)('%s não empilha à mão na zona do cromo da app', (name) => {
+    const competing = statements(sheets[name])
+      .filter((entry) => {
+        const match = entry.text.match(/z-index:\s*(\d+)/);
+        return match !== null && Number(match[1]) >= 40;
+      })
+      .map((entry) => `${name}:${entry.line} ${entry.text.trim()}`);
+    expect(competing).toEqual([]);
   });
 });
