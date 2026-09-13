@@ -50,7 +50,7 @@ test('shows factual CPE associations and routes destination actions', async () =
   expect(container.textContent).toContain('SN-100');
   expect(container.textContent).toContain('Cliente 1');
   expect(container.textContent).toContain('Pro');
-  expect(container.textContent).toContain('não representa reachability');
+  expect(container.textContent).toContain('não representa alcance na rede');
 
   const click = async (label: string) => {
     const button = [...container.querySelectorAll('button')]

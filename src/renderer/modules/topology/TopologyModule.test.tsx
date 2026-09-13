@@ -171,6 +171,7 @@ function MapHarness({ topologyApi }: { topologyApi: ReturnType<typeof api> }) {
         onFocusHandled={() => undefined}
         onMutation={() => undefined}
         toolsSlot={slot}
+        onOpenBackbone={() => undefined}
       />
     </>
   );
@@ -184,6 +185,17 @@ function button(container: HTMLElement, name: string): HTMLButtonElement {
   const result = [...container.querySelectorAll('button')]
     .find((candidate) => candidate.getAttribute('aria-label') === name);
   if (!result) throw new Error(`Button not found: ${name}`);
+  return result;
+}
+
+/*
+ * Um resultado da pesquisa é uma opção de listbox, não um botão: o nome vem do
+ * conteúdo, como manda o padrão combobox, e já não de um `aria-label` colado.
+ */
+function searchOption(container: HTMLElement, label: string): HTMLElement {
+  const result = [...container.querySelectorAll<HTMLElement>('[role="option"]')]
+    .find((candidate) => candidate.textContent?.includes(label));
+  if (!result) throw new Error(`Search option not found: ${label}`);
   return result;
 }
 
@@ -702,6 +714,76 @@ describe('TopologyModule branch interaction', () => {
   });
 });
 
+/*
+ * "Com atencao" contava nos que estao no grafo e nao levava a lado nenhum.
+ * Agora recorta o mapa e volta atras no segundo clique.
+ */
+test('a estatistica de atencao liga e desliga o filtro do mapa', async () => {
+  const container = await mountMap();
+  const stat = [...container.querySelectorAll<HTMLButtonElement>('.topology-stat-action')]
+    .find((candidate) => candidate.textContent?.includes('Com atenção'));
+  if (!stat) throw new Error('Stat action not found');
+
+  expect(stat.getAttribute('aria-pressed')).toBe('false');
+  await act(async () => {
+    stat.click();
+    await Promise.resolve();
+  });
+  expect(stat.getAttribute('aria-pressed')).toBe('true');
+
+  await act(async () => {
+    stat.click();
+    await Promise.resolve();
+  });
+  expect(stat.getAttribute('aria-pressed')).toBe('false');
+});
+
+test('a pesquisa navega-se por setas e escolhe-se com Enter', async () => {
+  vi.useFakeTimers();
+  const topologyApi = api();
+  const container = await mountMap(topologyApi);
+  const search = container.querySelector<HTMLInputElement>(
+    '[aria-label="Pesquisar na topologia"]'
+  );
+  if (!search) throw new Error('Search input not found');
+  const press = (key: string) => search.dispatchEvent(
+    new KeyboardEvent('keydown', { key, bubbles: true })
+  );
+
+  expect(search.getAttribute('role')).toBe('combobox');
+  expect(search.getAttribute('aria-expanded')).toBe('false');
+
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value'
+    )?.set;
+    setter?.call(search, 'cliente');
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => {
+    vi.advanceTimersByTime(400);
+    await Promise.resolve();
+  });
+
+  expect(search.getAttribute('aria-expanded')).toBe('true');
+  // Sem setas ainda não há nada apontado: o campo não aponta descendente algum.
+  expect(search.getAttribute('aria-activedescendant')).toBeNull();
+
+  await act(async () => { press('ArrowDown'); });
+  const option = searchOption(container, 'CPE 100');
+  expect(option.getAttribute('aria-selected')).toBe('true');
+  expect(search.getAttribute('aria-activedescendant')).toBe(option.id);
+
+  await act(async () => {
+    press('Enter');
+    await Promise.resolve();
+  });
+  expect(topologyApi.fetchBranch).toHaveBeenCalledWith(10);
+  expect(search.value).toBe('');
+  vi.useRealTimers();
+});
+
 test('debounces server search, expands ancestors and opens the result inspector', async () => {
   vi.useFakeTimers();
   const topologyApi = api();
@@ -734,7 +816,7 @@ test('debounces server search, expands ancestors and opens the result inspector'
     vi.advanceTimersByTime(400);
     await Promise.resolve();
   });
-  const result = button(container, 'Selecionar resultado CPE 100');
+  const result = searchOption(container, 'CPE 100');
   await act(async () => {
     result.click();
     await Promise.resolve();
@@ -785,7 +867,7 @@ test('expands and loads a backbone selected from server search', async () => {
     await Promise.resolve();
   });
   await act(async () => {
-    button(container, 'Selecionar resultado Ubiquiti Rocket Prism').click();
+    searchOption(container, 'Ubiquiti Rocket Prism').click();
     await Promise.resolve();
   });
 
@@ -809,7 +891,7 @@ test('surfaces the number of CPE assignments without a defined backbone link', a
   });
   const container = await mountMap(topologyApi);
 
-  expect(container.textContent).toContain('Equipamentos ligados2');
+  expect(container.textContent).toContain('Com ligação2');
   expect(container.textContent).toContain('Sem ligação2');
 });
 

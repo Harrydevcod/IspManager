@@ -6510,3 +6510,27 @@ button.danger:disabled {
   flex-direction: column;
   gap: var(--space-1);
 }
+
+/* Ecrã baixo — portátil pequeno, ou 1080p com escala a 150%. A altura é o
+   recurso escasso e o cabeçalho da página é decoração: a sobrancelha sai, o
+   título cabe numa linha e a folga das margens volta para o conteúdo. Os
+   módulos com caixa de altura fixa (Topologia) descontam este cabeçalho mais
+   baixo nas suas próprias contas. */
+@media (max-height: 820px) {
+  .content {
+    padding-block: var(--space-3) var(--space-4);
+  }
+
+  .topbar {
+    align-items: center;
+    margin-bottom: var(--space-3);
+  }
+
+  .topbar .eyebrow {
+    display: none;
+  }
+
+  .topbar h1 {
+    font-size: var(--fs-xl);
+  }
+}

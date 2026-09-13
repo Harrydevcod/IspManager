@@ -17,7 +17,7 @@ import type {
   TopologyNode,
   TopologySnapshot
 } from '../../../shared/topology';
-import { Button } from '../../components';
+import { Badge, Button, EmptyState } from '../../components';
 import { statusLabel } from '../../lib/status';
 
 export type TopologyInspectorProps = {
@@ -76,14 +76,19 @@ function Detail({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+/*
+ * Os tons saem de `statusTone`, que é onde a app decide o que "ativo" pinta:
+ * `success`, não o acento. O módulo dizia acento e ficava a ser o único sítio
+ * da aplicação onde um estado ativo tinha outra cor.
+ */
 function StateBadges({ node }: { node: TopologyNode }) {
   return (
     <div className="topology-inspector-badges">
-      <span data-tone={node.administrativeState === 'active' ? 'active' : 'inactive'}>
+      <Badge tone={node.administrativeState === 'active' ? 'success' : 'neutral'}>
         {node.administrativeState === 'active' ? 'Ativo' : 'Inativo'}
-      </span>
+      </Badge>
       {node.issueCodes.map((issue) => (
-        <span data-tone="attention" key={issue}>{ISSUE_LABELS[issue]}</span>
+        <Badge tone="warn" key={issue}>{ISSUE_LABELS[issue]}</Badge>
       ))}
     </div>
   );
@@ -179,7 +184,7 @@ function BackboneDetails({
         <Detail label="Marca" value={node.brand ?? 'Não indicada'} />
         <Detail label="Modelo" value={node.model} />
         <Detail label="Serial" value={node.serialNumber ?? 'Não indicado'} />
-        <Detail label="Asset tag" value={node.assetTag ?? 'Não indicado'} />
+        <Detail label="Etiqueta de inventário" value={node.assetTag ?? 'Não indicado'} />
         <Detail label="IP configurado" value={ipDetail(node)} />
         <Detail label="MAC" value={node.macAddress ?? 'Não indicado'} />
         {/* "Ligação" mais abaixo é de quem pende; isto é como obtém endereço. */}
@@ -235,7 +240,7 @@ function DeviceDetails({
         <Detail label="Atribuição física" value={`#${node.assignmentId}`} />
         <Detail label="Modelo" value={`${node.brand ? `${node.brand} ` : ''}${node.model}`} />
         <Detail label="Serial" value={node.serialNumber ?? 'Não indicado'} />
-        <Detail label="Asset tag" value={node.assetTag ?? 'Não indicado'} />
+        <Detail label="Etiqueta de inventário" value={node.assetTag ?? 'Não indicado'} />
         <Detail label="IP configurado" value={ipDetail(node)} />
         <Detail label="MAC" value={node.macAddress ?? 'Não indicado'} />
         {/* "Ligação" mais abaixo é de quem pende; isto é como obtém endereço. */}
@@ -342,12 +347,12 @@ function ClientDetails({
 function EmptyInspector() {
   return (
     <div className="topology-inspector-empty">
-      <span className="topology-inspector-crosshair" aria-hidden />
-      <p className="eyebrow">Inspetor persistente</p>
-      <h3>Seleciona um nó</h3>
-      <p>
-        Consulta configuração, estado administrativo e associações sem sair do mapa.
-      </p>
+      <EmptyState
+        icon={Focus}
+        size="sm"
+        title="Seleciona um nó"
+        description="Consulta configuração, estado administrativo e associações sem sair do mapa."
+      />
     </div>
   );
 }
@@ -406,7 +411,7 @@ export function TopologyInspector(props: TopologyInspectorProps) {
           )}
           <p className="topology-lineage-note">
             Este mapa representa ligações definidas e configuração administrativa;
-            não representa reachability nem telemetria em tempo real.
+            não representa alcance na rede nem telemetria em tempo real.
           </p>
         </>
       )}

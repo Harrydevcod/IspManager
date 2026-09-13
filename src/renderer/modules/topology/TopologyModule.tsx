@@ -30,8 +30,8 @@ const tabs: ReadonlyArray<{ id: TopologyTab; label: string }> = [
 
 function MapLoadingFallback() {
   return (
-    <section className="topology-tab-loading" aria-label="A preparar topologia">
-      <span />
+    <section className="topology-tab-loading" role="status" aria-label="A preparar topologia">
+      <span aria-hidden />
       <p>A preparar o mapa físico…</p>
     </section>
   );
@@ -168,6 +168,10 @@ export default function TopologyModule(props: TopologyModuleProps) {
               onFocusHandled={handleFocusHandled}
               onMutation={handleMapMutation}
               toolsSlot={toolsSlot}
+              /* "Sem ligação" no mapa conta equipamento que ainda não diz de
+                 que backbone pende. Define-se na aba ao lado, a mesma porta
+                 que a Descoberta já usa. */
+              onOpenBackbone={() => selectTab('backbone')}
             />
           </Suspense>
         )}

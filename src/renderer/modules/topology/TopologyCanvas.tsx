@@ -38,8 +38,21 @@ type TopologyCanvasProps = {
   onConnectNodes?: (sourceNodeId: string, targetNodeId: string) => void;
 };
 
+/**
+ * Espelho de `--motion-slow` (280ms) em JS.
+ *
+ * O React Flow anima a vista por número, não por CSS, por isso o token não lhe
+ * chega. Era 260 — um valor órfão que não correspondia a degrau nenhum da
+ * escala. Ler o token com `getComputedStyle` a cada zoom custava um reflow por
+ * clique para poupar uma constante; fica o espelho, anotado, como os outros do
+ * projeto.
+ */
+const MOTION_SLOW_MS = 280;
+
 function motionDuration(): number {
-  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 260;
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ? 0
+    : MOTION_SLOW_MS;
 }
 
 function miniMapColor(node: TopologyCanvasNode): string {
@@ -104,8 +117,11 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
   }, ref) {
     useCanvasControls(ref, nodes);
 
+    // <section> e não <div>: um `aria-label` num elemento sem role é descartado
+    // pela maioria das tecnologias de apoio, e o mapa ficava sem nome nenhum.
+    // A secção com nome é uma região, que se anuncia e se navega.
     return (
-      <div className="topology-canvas" aria-label="Mapa físico da rede">
+      <section className="topology-canvas" aria-label="Mapa físico da rede">
         {/* Sem `panOnScroll`: com ele o React Flow desloca a vista com a roda e
             manda o zoom para trás de Ctrl. Aqui a roda aproxima e o arrasto
             desloca, como em qualquer mapa. */}
@@ -157,16 +173,16 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
           )}
         </ReactFlow>
         {legendVisible && (
-          <div className="topology-legend" aria-label="Legenda da topologia">
+          <div className="topology-legend" role="group" aria-label="Legenda da topologia">
             <span><i data-tone="active" /> Configurado</span>
             <span><i data-tone="attention" /> Requer atenção</span>
-            <span><i data-tone="live-up" /> De pé</span>
+            <span><i data-tone="live-up" /> Responde</span>
             <span><i data-tone="live-down" /> Não responde</span>
             <span><b /> Ligação definida</span>
             <small>As linhas são administrativas. O ponto no canto é a última leitura da sonda; sem ponto, ninguém mediu.</small>
           </div>
         )}
-      </div>
+      </section>
     );
   }
 );

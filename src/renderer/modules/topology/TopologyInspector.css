@@ -1,7 +1,7 @@
 .topology-inspector {
   min-width: 0;
   overflow-y: auto;
-  padding: 1.15rem;
+  padding: var(--space-5);
   border-left: 1px solid var(--topology-line);
   background:
     linear-gradient(var(--topology-line), var(--topology-line)) 1rem 4.55rem / calc(100% - 2rem) 1px no-repeat,
@@ -11,9 +11,9 @@
 .topology-inspector-head {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 0.7rem;
+  gap: var(--space-3);
   align-items: start;
-  padding-bottom: 1rem;
+  padding-bottom: var(--space-4);
 }
 
 .topology-inspector-kind {
@@ -27,18 +27,18 @@
 
 .topology-inspector .eyebrow {
   margin: 0;
-  color: var(--topology-faint);
+  color: var(--topology-muted);
   font-size: var(--fs-xs);
-  font-weight: 760;
+  font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
 .topology-inspector h3 {
-  margin: 0.25rem 0 0;
+  margin: var(--space-1) 0 0;
   color: var(--topology-ink);
   font-family: var(--font-display);
-  font-size: 1.15rem;
+  font-size: var(--fs-lg);
   font-weight: 500;
   letter-spacing: -0.02em;
   line-height: 1.15;
@@ -51,60 +51,48 @@
   place-items: center;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--topology-faint);
+  color: var(--topology-muted);
   cursor: pointer;
 }
 
-.topology-inspector-close:hover,
-.topology-inspector-close:focus-visible {
-  outline: 0;
+.topology-inspector-close:hover {
   border-color: var(--topology-line);
+  color: var(--topology-ink);
+}
+
+.topology-inspector-close:active {
+  background: var(--surface-2);
+}
+
+.topology-inspector-close:focus-visible {
+  outline: 2px solid var(--topology-accent);
+  outline-offset: 1px;
   color: var(--topology-ink);
 }
 
 .topology-inspector-badges {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
-  padding: 0.85rem 0;
-}
-
-.topology-inspector-badges span {
-  padding: 0.22rem 0.4rem;
-  border: 1px solid var(--topology-line);
-  color: var(--topology-muted);
-  font-size: var(--fs-xs);
-  font-weight: 760;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.topology-inspector-badges [data-tone='active'] {
-  border-color: var(--topology-accent-deep);
-  color: var(--topology-accent);
-}
-
-.topology-inspector-badges [data-tone='attention'] {
-  border-color: color-mix(in oklch, var(--warn) 55%, var(--border));
-  color: var(--topology-amber);
+  gap: var(--space-1-5);
+  padding: var(--space-3) 0;
 }
 
 .topology-inspector-details {
   display: grid;
-  margin: 0.45rem 0 0;
+  margin: var(--space-2) 0 0;
   border-top: 1px solid var(--topology-line);
 }
 
 .topology-inspector-detail {
   display: grid;
   grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
-  gap: 0.75rem;
-  padding: 0.65rem 0;
+  gap: var(--space-3);
+  padding: var(--space-2-5) 0;
   border-bottom: 1px solid var(--topology-line);
 }
 
 .topology-inspector-detail dt {
-  color: var(--topology-faint);
+  color: var(--topology-muted);
   font-size: var(--fs-xs);
 }
 
@@ -122,7 +110,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.25rem;
+  gap: var(--space-1);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -131,10 +119,18 @@
 .topology-inspector-uplinks li {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: var(--space-1-5);
 }
 
+/* 18px desenhados, 24px clicáveis.
+   O alvo real vinha aos 18px e falhava o WCAG 2.2 SC 2.5.8 (24×24 CSS px, AA).
+   Aumentar o desenho engordava a linha de alimentações numa app de secretária
+   que vive de densidade, por isso cresce só a área: o ::after estica o alvo
+   para lá do ícone sem lhe mexer no tamanho nem no alinhamento.
+   Os 44px da orientação táctil são SC 2.5.5, nível AAA, e não é este o caso
+   de uso — rato em monitor de 24". */
 .topology-inspector-uplinks button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -144,14 +140,28 @@
   border: 0;
   border-radius: var(--rpill);
   background: transparent;
-  color: var(--topology-faint);
+  color: var(--topology-muted);
   cursor: pointer;
   transition: color var(--motion-fast) ease, background var(--motion-fast) ease;
+}
+
+.topology-inspector-uplinks button::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--space-6);
+  height: var(--space-6);
+  transform: translate(-50%, -50%);
+  content: '';
 }
 
 .topology-inspector-uplinks button:hover {
   background: var(--surface-2);
   color: var(--topology-ink);
+}
+
+.topology-inspector-uplinks button:active {
+  background: var(--surface-3);
 }
 
 .topology-inspector-uplinks button:focus-visible {
@@ -165,8 +175,8 @@
   justify-content: space-between;
   width: 100%;
   min-height: 2.5rem;
-  margin-top: 0.85rem;
-  padding: 0 0.7rem;
+  margin-top: var(--space-3);
+  padding: 0 var(--space-3);
   border: 1px solid var(--topology-line);
   background: var(--topology-raised);
   color: var(--topology-ink);
@@ -175,16 +185,24 @@
   cursor: pointer;
 }
 
-.topology-inspector-action:hover,
+.topology-inspector-action:hover {
+  border-color: var(--topology-accent-deep);
+  background: color-mix(in oklch, var(--accent) 10%, var(--topology-raised));
+}
+
+.topology-inspector-action:active {
+  background: color-mix(in oklch, var(--accent) 18%, var(--topology-raised));
+}
+
 .topology-inspector-action:focus-visible {
   outline: 2px solid var(--topology-accent);
   outline-offset: -2px;
 }
 
-.topology-associations { margin-top: 1.25rem; }
+.topology-associations { margin-top: var(--space-5); }
 
 .topology-associations h4 {
-  margin: 0 0 0.65rem;
+  margin: 0 0 var(--space-2-5);
   color: var(--topology-muted);
   font-size: var(--fs-xs);
   letter-spacing: 0.08em;
@@ -192,7 +210,7 @@
 }
 
 .topology-client-association {
-  padding: 0.75rem 0;
+  padding: var(--space-3) 0;
   border-top: 1px solid var(--topology-line);
 }
 
@@ -201,7 +219,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
 
 .topology-client-association header span,
@@ -217,22 +235,22 @@
 
 .topology-client-association small,
 .topology-client-association p {
-  color: var(--topology-faint);
+  color: var(--topology-muted);
   font-size: var(--fs-xs);
 }
 
-.topology-client-association p { margin: 0.35rem 0 0.6rem; }
+.topology-client-association p { margin: var(--space-1-5) 0 var(--space-2-5); }
 
 .topology-client-association ul {
   display: grid;
-  gap: 0.35rem;
+  gap: var(--space-1-5);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .topology-client-association li {
-  padding: 0.45rem 0.5rem;
+  padding: var(--space-2);
   background: var(--topology-bg);
 }
 
@@ -244,7 +262,7 @@
   color: var(--topology-accent);
   font: inherit;
   font-size: var(--fs-xs);
-  font-weight: 680;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -254,10 +272,10 @@
 }
 
 .topology-lineage-note {
-  margin: 1.2rem 0 0;
-  padding-top: 0.85rem;
+  margin: var(--space-5) 0 0;
+  padding-top: var(--space-3);
   border-top: 1px solid var(--topology-line);
-  color: var(--topology-faint);
+  color: var(--topology-muted);
   font-size: var(--fs-xs);
   line-height: 1.55;
 }
@@ -266,21 +284,22 @@
   display: grid;
   align-content: center;
   min-height: 100%;
-  padding: 1rem 0.5rem;
+  padding: var(--space-4) var(--space-2);
 }
 
-.topology-inspector-empty h3,
-.topology-canvas-empty h3,
+/* Os dois vazios passaram a `<EmptyState>`, que traz o seu próprio título,
+   descrição e ícone. Aqui já só sobra o painel de erro, que continua a ser um
+   painel de recuperação com cabeçalho e ação — não cabia num `<Message>`, que
+   é um parágrafo de uma linha. O retículo desenhado à mão em ::before/::after
+   foi-se com eles: o ícone `Focus` do lucide diz o mesmo em uma linha. */
 .topology-global-error h3 {
-  margin: 0.35rem 0;
+  margin: var(--space-1-5) 0;
   color: var(--topology-ink);
   font-family: var(--font-display);
-  font-size: 1.15rem;
+  font-size: var(--fs-lg);
   font-weight: 500;
 }
 
-.topology-inspector-empty > p:last-child,
-.topology-canvas-empty > p:last-child,
 .topology-global-error p {
   max-width: 30ch;
   margin: 0;
@@ -289,46 +308,14 @@
   line-height: 1.55;
 }
 
-.topology-inspector-crosshair {
-  position: relative;
-  width: 3.5rem;
-  height: 3.5rem;
-  margin-bottom: 1.25rem;
-  border: 1px solid var(--topology-line);
-  border-radius: 50%;
-}
-
-.topology-inspector-crosshair::before,
-.topology-inspector-crosshair::after {
-  position: absolute;
-  background: var(--topology-line);
-  content: '';
-}
-
-.topology-inspector-crosshair::before {
-  top: 50%;
-  left: -0.75rem;
-  width: 5rem;
-  height: 1px;
-}
-
-.topology-inspector-crosshair::after {
-  top: -0.75rem;
-  left: 50%;
-  width: 1px;
-  height: 5rem;
-}
-
 .topology-canvas-empty {
   position: absolute;
   top: 50%;
   left: 50%;
   z-index: 9;
   width: min(22rem, calc(100% - 2rem));
-  padding: 1.25rem;
   border: 1px dashed var(--topology-line);
   background: var(--topology-surface);
-  color: var(--topology-accent);
   transform: translate(-50%, -50%);
 }
 
@@ -337,7 +324,7 @@
   display: grid;
   min-height: 24rem;
   place-content: center;
-  gap: 0.75rem;
+  gap: var(--space-3);
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
@@ -349,7 +336,7 @@
   width: 16rem;
   height: 1px;
   background: var(--border);
-  animation: topology-scan 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  animation: topology-scan 1.4s var(--ease-in-out) infinite;
 }
 
 .topology-loading p {
@@ -368,17 +355,13 @@
 .topology-global-error button {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-1-5);
   min-height: 2.5rem;
-  padding: 0 0.8rem;
+  padding: 0 var(--space-3);
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
   cursor: pointer;
-}
-
-@keyframes topology-spin {
-  to { transform: rotate(360deg); }
 }
 
 @keyframes topology-scan {
@@ -391,7 +374,7 @@
   .topology-workspace { grid-template-columns: minmax(0, 1fr) 18rem; }
   .topology-stats div {
     min-width: 4.5rem;
-    padding-inline: 0.55rem;
+    padding-inline: var(--space-2);
   }
 }
 
@@ -407,7 +390,7 @@
 
   .topology-header {
     align-items: start;
-    padding: 0.9rem 1rem;
+    padding: var(--space-4);
   }
 
   .topology-stats {
@@ -424,7 +407,7 @@
 
   .topology-toolbar {
     grid-template-columns: minmax(0, 1fr) auto;
-    padding: 0.55rem;
+    padding: var(--space-2);
   }
 
   .topology-search {
@@ -442,9 +425,9 @@
     right: 0;
     bottom: 0;
     left: 0;
-    z-index: 50;
+    z-index: var(--topology-z-inspector);
     max-height: min(72%, 32rem);
-    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
     border-top: 1px solid var(--topology-line);
     border-left: 0;
     box-shadow: var(--shadow-2);
@@ -482,10 +465,11 @@
   .topology-search-results { width: calc(100vw - 2rem); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .topology-node,
-  .topology-node-expand svg { transition: none; }
-
-  .topology-spin,
-  .topology-loading-line { animation-duration: 2.4s; }
+/* A causa técnica, um degrau abaixo do conselho: quem sabe o que é lê-a, quem
+   não sabe lê a linha de cima e clica em "Tentar novamente". */
+.topology-global-error-reason {
+  margin-top: var(--space-1);
+  color: var(--topology-muted);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
 }

@@ -181,4 +181,25 @@ describe('TopologyNodeContent', () => {
     expect(container.textContent).toContain('3 equipamentos');
     expect(container.textContent).not.toContain('inventário');
   });
+
+  /* Saía "3 atenção". O plural partido era o unico sitio da app a fazê-lo. */
+  test.each([
+    [['inactive'], '1 atenção'],
+    [['inactive', 'missing_ip', 'provisional_identity'], '3 atenções']
+  ])('concorda o plural das atenções (%s)', async (issueCodes, expected) => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(
+        <TopologyNodeContent
+          node={{ ...backboneOne, issueCodes: issueCodes as typeof backboneOne.issueCodes }}
+          selected={false}
+          onSelect={vi.fn()}
+          onToggle={vi.fn()}
+        />
+      );
+    });
+    expect(container.textContent).toContain(expected);
+  });
 });

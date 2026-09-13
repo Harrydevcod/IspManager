@@ -4,8 +4,13 @@
      Vivem na casca e não em `.topology-module` porque os controlos do mapa são
      desenhados na tira das abas, que está fora do módulo. */
   --topology-ink: var(--text);
+  /* Um só tier apagado. Havia `--topology-faint` ao lado deste, com o mesmo
+     `var(--text-2)` por trás: 15 regras diziam "faint" e 8 diziam "muted" para
+     pintarem exatamente a mesma cor. O tier nasceu mais escuro, falhou o
+     contraste AA e foi corrigido apontando-o ao mesmo sítio — ficou o nome sem
+     a diferença. Se voltar a ser preciso um degrau mais apagado, o token da app
+     é `--text-3`, e aí o nome volta a valer alguma coisa. */
   --topology-muted: var(--text-2);
-  --topology-faint: var(--text-2);
   --topology-bg: var(--bg);
   --topology-surface: var(--surface);
   --topology-raised: var(--surface-2);
@@ -15,6 +20,16 @@
   --topology-amber: var(--warn);
   --topology-down: var(--danger);
   --topology-up: var(--success);
+  /* Só as camadas que disputam com o cromo da app são tokens. Estas três saem
+     do mapa e sobrepõem-se à shell, por isso ancoram-se a `--z-sticky` — que é
+     literalmente o que o token significa, "sidebar e popovers in-shell" — e
+     continuam por baixo de diálogo (100), paleta (105) e toast (110).
+     Os valores pequenos que restam no módulo (1, 2, 4, 8, 9, 20) são
+     empilhamento local dentro do canvas, não competem com nada de fora e ficam
+     literais de propósito: torná-los tokens era indirecção sem leitor. */
+  --topology-z-popover: var(--z-sticky);
+  --topology-z-popover-panel: calc(var(--z-sticky) + 5);
+  --topology-z-inspector: calc(var(--z-sticky) + 10);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
@@ -29,9 +44,9 @@
   z-index: 2;
   display: flex;
   align-items: end;
-  gap: 0.25rem;
+  gap: var(--space-1);
   min-height: 3.15rem;
-  padding: 0.55rem 0.6rem 0;
+  padding: var(--space-2) var(--space-2-5) 0;
   border: 1px solid var(--border);
   border-bottom: 0;
   border-radius: var(--r3) var(--r3) 0 0;
@@ -44,7 +59,7 @@
 .topology-tabs-list {
   display: flex;
   align-items: end;
-  gap: 0.25rem;
+  gap: var(--space-1);
   min-width: 0;
 }
 
@@ -66,7 +81,7 @@
   justify-content: center;
   min-width: 7.5rem;
   min-height: 2.55rem;
-  padding: 0 1.1rem;
+  padding: 0 var(--space-4);
   border: 1px solid transparent;
   border-bottom: 0;
   border-radius: var(--r2) var(--r2) 0 0;
@@ -74,7 +89,7 @@
   color: var(--text-3);
   font: inherit;
   font-size: var(--fs-sm);
-  font-weight: 720;
+  font-weight: 600;
   letter-spacing: -0.01em;
   cursor: pointer;
 }
@@ -115,12 +130,23 @@
   min-width: 0;
 }
 
+/* As alturas abaixo descontam o cromo da página à mão. O banner da licença
+   (avaliação, expiração) é o único bloco condicional por cima do módulo: sem
+   este desconto empurrava o fundo da caixa 58px para fora do ecrã. */
+.topology-shell {
+  --topology-page-banner: 0rem;
+}
+
+.content:has(> .license-banner) .topology-shell {
+  --topology-page-banner: 4.1rem;
+}
+
 /* Piso baixo: com o antigo (37rem) uma janela curta punha a página inteira a
    scrollar e o fundo do mapa saía do ecrã. A folga é para o canvas, não para a
    barra de scroll. */
 .topology-tab-panel > .backbone-workspace,
 .topology-tab-panel > .topology-module {
-  height: min(45rem, calc(100vh - 11.5rem));
+  height: min(45rem, calc(100vh - 11.5rem - var(--topology-page-banner)));
   min-height: 22rem;
   border-radius: 0 0 var(--r3) var(--r3);
 }
@@ -129,8 +155,8 @@
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 0.8rem;
-  height: min(45rem, calc(100vh - 11.5rem));
+  gap: var(--space-3);
+  height: min(45rem, calc(100vh - 11.5rem - var(--topology-page-banner)));
   min-height: 22rem;
   border: 1px solid var(--border);
   border-radius: 0 0 var(--r3) var(--r3);
@@ -161,7 +187,7 @@
 
 @media (max-width: 760px) {
   .topology-tabs {
-    padding-inline: 0.35rem;
+    padding-inline: var(--space-1-5);
   }
 
   .topology-tabs-list { flex: 1; }
@@ -174,7 +200,7 @@
   .topology-tab-panel > .backbone-workspace,
   .topology-tab-panel > .topology-module,
   .topology-tab-loading {
-    height: min(47rem, calc(100vh - 9.5rem));
+    height: min(47rem, calc(100vh - 9.5rem - var(--topology-page-banner)));
     min-height: 22rem;
   }
 }
@@ -202,7 +228,7 @@
   display: flex;
   align-items: center;
   min-width: 0;
-  padding: 0 0.75rem;
+  padding: 0 var(--space-3);
   overflow-x: auto;
   border-bottom: 1px solid var(--topology-line);
   background: var(--topology-surface);
@@ -217,47 +243,96 @@
   margin: 0;
 }
 
-.topology-stats div {
+/* Cada célula é uma paragem na régua: rótulo em maiúsculas, número em tabular.
+   Estáticas e comandos partilham a caixa de propósito — a tira tem de ler-se
+   como uma linha só, não como texto com botões pelo meio. */
+.topology-stats > * {
   display: flex;
   align-items: baseline;
-  gap: 0.4rem;
-  padding: 0.4rem 0.85rem;
+  gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-3);
   white-space: nowrap;
 }
 
 /* Separador entre pares, não moldura à volta de cada um. */
-.topology-stats div + div {
+.topology-stats > * + * {
   border-left: 1px solid var(--topology-line);
 }
 
-.topology-stats dt {
-  color: var(--topology-faint);
+.topology-stats b {
+  color: var(--topology-muted);
   font-size: var(--fs-xs);
-  font-weight: 750;
+  font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
-.topology-stats dd {
-  margin: 0;
+.topology-stats em {
   color: var(--topology-ink);
   font-size: var(--fs-sm);
+  font-style: normal;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
 
-.topology-stats [data-tone='attention'] dd { color: var(--topology-amber); }
+.topology-stats [data-tone='attention'] em { color: var(--topology-amber); }
+
+.topology-stat-action {
+  border: 0;
+  border-left: 1px solid var(--topology-line);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Visto no ecrã: sem isto, as duas células que são comando ficam iguaizinhas às
+   quatro que não são, e a acção só se descobre passando o rato por cima por
+   acaso. O tracejado é a pista mais silenciosa que uma régua densa aceita —
+   fica sólido quando o ponteiro lá chega. */
+.topology-stat-action b {
+  text-decoration: underline dotted
+    color-mix(in oklch, var(--topology-muted) 55%, transparent);
+  text-underline-offset: 3px;
+}
+
+.topology-stat-action:hover {
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+}
+
+.topology-stat-action:hover b {
+  text-decoration-style: solid;
+  text-decoration-color: var(--topology-accent);
+}
+
+.topology-stat-action:hover b { color: var(--topology-ink); }
+
+.topology-stat-action:active {
+  background: color-mix(in oklch, var(--accent) 18%, transparent);
+}
+
+.topology-stat-action:focus-visible {
+  outline: 2px solid var(--topology-accent);
+  outline-offset: -2px;
+}
+
+/* Filtro ligado: a célula fica acesa enquanto o mapa estiver recortado por ela,
+   porque é a única pista de que o que se vê não é a rede toda. */
+.topology-stat-action[aria-pressed='true'] {
+  background: color-mix(in oklch, var(--accent) 16%, transparent);
+}
+
+.topology-stat-action[aria-pressed='true'] b { color: var(--topology-accent); }
 
 /* O chip vive antes dos números e cede-lhes o espaço: o nome do backbone corta
    com reticências em vez de empurrar a tira para fora do ecrã. */
 .topology-scope-chip {
   display: inline-flex;
   flex-shrink: 0;
-  gap: 0.4rem;
+  gap: var(--space-1-5);
   align-items: center;
   max-width: 16rem;
-  margin-right: 0.5rem;
-  padding: 0.2rem 0.5rem;
+  margin-right: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border: 1px solid color-mix(in oklch, var(--topology-accent) 45%, var(--topology-line));
   border-radius: var(--r1);
   background: color-mix(in oklch, var(--topology-accent) 12%, transparent);
@@ -294,9 +369,9 @@
   z-index: 20;
   display: grid;
   grid-template-columns: minmax(14rem, 1fr) auto auto auto;
-  gap: 0.75rem;
+  gap: var(--space-3);
   align-items: center;
-  padding: 0.5rem 0.75rem;
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--topology-line);
   background: color-mix(in oklch, var(--surface) 70%, var(--bg));
 }
@@ -306,24 +381,16 @@
   max-width: 34rem;
 }
 
-.topology-search > label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
-
 .topology-search-field {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: var(--space-2);
   min-height: 2.45rem;
-  padding: 0 0.75rem;
+  padding: 0 var(--space-3);
   border: 1px solid var(--topology-line);
   border-radius: var(--r1);
   background: var(--topology-bg);
-  color: var(--topology-faint);
+  color: var(--topology-muted);
 }
 
 .topology-search-field:focus-within {
@@ -347,10 +414,9 @@
   min-width: 0;
 }
 
-.topology-search-field .field-label { display: none; }
 
 .topology-search-field input::placeholder {
-  color: var(--topology-faint);
+  color: var(--topology-muted);
   opacity: 1;
 }
 
@@ -358,7 +424,7 @@
   position: absolute;
   top: calc(100% + 0.4rem);
   left: 0;
-  z-index: 40;
+  z-index: var(--topology-z-popover);
   width: min(32rem, calc(100vw - 2rem));
   max-height: 19rem;
   overflow-y: auto;
@@ -369,49 +435,53 @@
 
 .topology-search-results > p {
   margin: 0;
-  padding: 0.9rem 1rem;
+  padding: var(--space-4);
   color: var(--topology-muted);
   font-size: var(--fs-sm);
 }
 
-.topology-search-results button {
+.topology-search-result {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--space-4);
   width: 100%;
   min-height: 3.25rem;
-  padding: 0.65rem 0.8rem;
-  border: 0;
+  padding: var(--space-2-5) var(--space-3);
   border-bottom: 1px solid var(--topology-line);
-  background: transparent;
   color: var(--topology-ink);
   text-align: left;
   cursor: pointer;
 }
 
-.topology-search-results button:hover,
-.topology-search-results button:focus-visible {
-  outline: 0;
+.topology-search-result:last-child { border-bottom: 0; }
+
+/* O rato tinge a superficie; as setas apontam com um anel.
+   Nao ha `:focus-visible` aqui de proposito: no padrao combobox o foco nunca
+   sai do campo, e a opcao apontada e a que leva `data-active` (o mesmo estado
+   que o `aria-activedescendant` anuncia). */
+.topology-search-result:hover {
   background: color-mix(in oklch, var(--accent) 12%, var(--surface-2));
 }
 
-.topology-search-results button span {
+.topology-search-result[data-active] {
+  outline: 2px solid var(--topology-accent);
+  outline-offset: -2px;
+  background: color-mix(in oklch, var(--accent) 12%, var(--surface-2));
+}
+
+.topology-search-result:active {
+  background: color-mix(in oklch, var(--accent) 20%, var(--surface-2));
+}
+
+.topology-search-result > span {
   display: grid;
-  gap: 0.15rem;
+  gap: var(--space-0-5);
 }
 
-.topology-search-results button > .btn-content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  width: 100%;
-}
-
-.topology-search-results button small,
-.topology-search-results button em {
-  color: var(--topology-faint);
+.topology-search-result small,
+.topology-search-result em {
+  color: var(--topology-muted);
   font-size: var(--fs-xs);
   font-style: normal;
 }
@@ -433,27 +503,25 @@
 }
 
 .topology-filter-menu summary {
-  gap: 0.45rem;
-  padding: 0 0.75rem;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
   list-style: none;
   font-size: var(--fs-sm);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .topology-filter-menu summary::-webkit-details-marker { display: none; }
 
-.topology-filter-menu[open] summary,
-/* O ícone roda enquanto a leitura corre: o botão fica inerte e diz porquê. */
-.topology-refreshing {
-  animation: topology-refresh-spin 900ms linear infinite;
-}
-
-@keyframes topology-refresh-spin {
-  to { transform: rotate(360deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .topology-refreshing { animation: none; opacity: 0.5; }
+/* Aberto lê-se como carregado: o menu de filtros é um botão da barra como os
+   outros, por isso usa o mesmo estado que `[aria-pressed='true']` mais abaixo.
+   Um comentário no meio de uma lista de seletores não a separa — era assim que
+   esta regra se fundia com a do ícone de recarregar e punha os Filtros a rodar
+   para sempre enquanto o menu estivesse aberto. Essa animação à mão já não
+   existe: o recarregar usa a prop `loading` do `Button`. */
+.topology-filter-menu[open] summary {
+  border-color: var(--topology-accent-deep);
+  background: color-mix(in oklch, var(--accent) 16%, var(--surface));
+  color: var(--topology-accent);
 }
 
 .topology-canvas-tools button[aria-pressed='true'] {
@@ -466,12 +534,12 @@
   position: absolute;
   top: calc(100% + 0.4rem);
   right: 0;
-  z-index: 45;
+  z-index: var(--topology-z-popover-panel);
   display: grid;
   grid-template-columns: repeat(2, minmax(8.5rem, 1fr));
-  gap: 0.7rem;
+  gap: var(--space-3);
   width: min(25rem, calc(100vw - 2rem));
-  padding: 0.9rem;
+  padding: var(--space-4);
   border: 1px solid var(--topology-line);
   background: var(--topology-surface);
   box-shadow: var(--shadow-2);
@@ -479,8 +547,8 @@
 
 .topology-filter-fields label {
   display: grid;
-  gap: 0.3rem;
-  color: var(--topology-faint);
+  gap: var(--space-1);
+  color: var(--topology-muted);
   font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -491,7 +559,7 @@
 .topology-filter-fields input {
   width: 100%;
   min-height: 2.25rem;
-  padding: 0 0.55rem;
+  padding: 0 var(--space-2);
   border: 1px solid var(--topology-line);
   border-radius: var(--r1);
   outline: 0;
@@ -518,12 +586,12 @@
 }
 
 .topology-filter-fields .field {
-  gap: 0.3rem;
+  gap: var(--space-1);
 }
 
 .topology-filter-fields > small {
   align-self: center;
-  color: var(--topology-faint);
+  color: var(--topology-muted);
   font-size: var(--fs-xs);
   line-height: 1.4;
 }
@@ -546,7 +614,26 @@
 
 .topology-canvas-tools > span { width: var(--space-2); }
 
-.topology-canvas-tools button:hover,
+/* O hover levava um anel de foco, o que punha um botão apontado pelo rato a
+   parecer-se com o botão que tem o foco do teclado. Passa a tingir a
+   superfície; o anel fica para quem chega por Tab. */
+.topology-canvas-tools button:hover:not(:disabled),
+.topology-filter-menu summary:hover {
+  border-color: var(--topology-accent-deep);
+  background: color-mix(in oklch, var(--accent) 10%, var(--surface));
+  color: var(--topology-ink);
+}
+
+.topology-canvas-tools button:active:not(:disabled),
+.topology-filter-menu summary:active {
+  background: color-mix(in oklch, var(--accent) 18%, var(--surface));
+}
+
+.topology-canvas-tools button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
 .topology-canvas-tools button:focus-visible,
 .topology-filter-menu summary:focus-visible {
   position: relative;
@@ -576,4 +663,17 @@
   min-height: 0;
   overflow: hidden;
   background: var(--topology-bg);
+}
+
+/* Ecrã baixo: o cabeçalho da página encolhe (styles.css, mesma media query) e
+   a caixa fica com essa altura. O desconto é o cabeçalho compacto + a tira das
+   abas + o padding do .content; se mudar um deles, muda este número. As
+   caixas de dentro (lista, detalhe, inspetor) já rolam sozinhas. */
+@media (max-height: 820px) {
+  .topology-tab-panel > .backbone-workspace,
+  .topology-tab-panel > .topology-module,
+  .topology-tab-loading {
+    height: calc(100vh - 8.5rem - var(--topology-page-banner));
+    min-height: 20rem;
+  }
 }

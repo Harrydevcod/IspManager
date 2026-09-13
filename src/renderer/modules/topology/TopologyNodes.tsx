@@ -2,7 +2,6 @@ import {
   AlertTriangle,
   Box,
   ChevronRight,
-  Loader2,
   Network,
   RadioTower,
   RotateCw,
@@ -95,7 +94,9 @@ function nodeOperationMode(node: TopologyNode): string | null {
 }
 
 function nodeStatusLabel(node: TopologyNode): string {
-  if (node.issueCodes.length > 0) return `${node.issueCodes.length} atenção`;
+  const issues = node.issueCodes.length;
+  // "3 atenção" era o que saía daqui.
+  if (issues > 0) return `${issues} ${issues === 1 ? 'atenção' : 'atenções'}`;
   return node.administrativeState === 'active' ? 'Ativo' : 'Inativo';
 }
 
@@ -129,12 +130,10 @@ function BranchControl({
       className="topology-node-expand nodrag nopan"
       aria-label={`${verb} ramo ${node.label}`}
       aria-expanded={expanded}
-      disabled={loading}
+      loading={loading}
       onClick={onToggle}
     >
-      {loading
-        ? <Loader2 size={14} className="topology-spin" aria-hidden />
-        : <ChevronRight size={15} aria-hidden />}
+      <ChevronRight size={15} aria-hidden />
     </Button>
   );
 }
