@@ -83,9 +83,13 @@ describe('folhas de estilo da topologia', () => {
     expect(open).toMatch(/border-color:/);
   });
 
-  test('a rotação fica só no estado de leitura em curso', () => {
-    expect(declarations(sheets['TopologyModule.css'], '.topology-refreshing'))
-      .toMatch(/animation:\s*topology-refresh-spin/);
+  /*
+   * A animação que provocou o bug deixou de existir: recarregar o mapa e abrir
+   * um ramo usam a prop `loading` do `Button`, que já traz spinner e
+   * `aria-busy`. Se alguém voltar a desenhá-la à mão, volta o problema.
+   */
+  test.each(names)('%s não redesenha o spinner que o Button já tem', (name) => {
+    expect(sheets[name]).not.toMatch(/topology-(refresh-)?spin|topology-refreshing/);
   });
 });
 

@@ -2,7 +2,6 @@ import {
   AlertTriangle,
   Box,
   ChevronRight,
-  Loader2,
   Network,
   RadioTower,
   RotateCw,
@@ -129,12 +128,10 @@ function BranchControl({
       className="topology-node-expand nodrag nopan"
       aria-label={`${verb} ramo ${node.label}`}
       aria-expanded={expanded}
-      disabled={loading}
+      loading={loading}
       onClick={onToggle}
     >
-      {loading
-        ? <Loader2 size={14} className="topology-spin" aria-hidden />
-        : <ChevronRight size={15} aria-hidden />}
+      <ChevronRight size={15} aria-hidden />
     </Button>
   );
 }

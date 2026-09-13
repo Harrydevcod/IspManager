@@ -69,26 +69,6 @@
   padding: var(--space-3) 0;
 }
 
-.topology-inspector-badges span {
-  padding: var(--space-1) var(--space-1-5);
-  border: 1px solid var(--topology-line);
-  color: var(--topology-muted);
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.topology-inspector-badges [data-tone='active'] {
-  border-color: var(--topology-accent-deep);
-  color: var(--topology-accent);
-}
-
-.topology-inspector-badges [data-tone='attention'] {
-  border-color: color-mix(in oklch, var(--warn) 55%, var(--border));
-  color: var(--topology-amber);
-}
-
 .topology-inspector-details {
   display: grid;
   margin: var(--space-2) 0 0;
@@ -269,8 +249,11 @@
   padding: var(--space-4) var(--space-2);
 }
 
-.topology-inspector-empty h3,
-.topology-canvas-empty h3,
+/* Os dois vazios passaram a `<EmptyState>`, que traz o seu próprio título,
+   descrição e ícone. Aqui já só sobra o painel de erro, que continua a ser um
+   painel de recuperação com cabeçalho e ação — não cabia num `<Message>`, que
+   é um parágrafo de uma linha. O retículo desenhado à mão em ::before/::after
+   foi-se com eles: o ícone `Focus` do lucide diz o mesmo em uma linha. */
 .topology-global-error h3 {
   margin: var(--space-1-5) 0;
   color: var(--topology-ink);
@@ -279,8 +262,6 @@
   font-weight: 500;
 }
 
-.topology-inspector-empty > p:last-child,
-.topology-canvas-empty > p:last-child,
 .topology-global-error p {
   max-width: 30ch;
   margin: 0;
@@ -289,46 +270,14 @@
   line-height: 1.55;
 }
 
-.topology-inspector-crosshair {
-  position: relative;
-  width: 3.5rem;
-  height: 3.5rem;
-  margin-bottom: var(--space-5);
-  border: 1px solid var(--topology-line);
-  border-radius: 50%;
-}
-
-.topology-inspector-crosshair::before,
-.topology-inspector-crosshair::after {
-  position: absolute;
-  background: var(--topology-line);
-  content: '';
-}
-
-.topology-inspector-crosshair::before {
-  top: 50%;
-  left: -0.75rem;
-  width: 5rem;
-  height: 1px;
-}
-
-.topology-inspector-crosshair::after {
-  top: -0.75rem;
-  left: 50%;
-  width: 1px;
-  height: 5rem;
-}
-
 .topology-canvas-empty {
   position: absolute;
   top: 50%;
   left: 50%;
   z-index: 9;
   width: min(22rem, calc(100% - 2rem));
-  padding: var(--space-5);
   border: 1px dashed var(--topology-line);
   background: var(--topology-surface);
-  color: var(--topology-accent);
   transform: translate(-50%, -50%);
 }
 
@@ -375,10 +324,6 @@
   background: var(--surface-2);
   color: var(--text);
   cursor: pointer;
-}
-
-@keyframes topology-spin {
-  to { transform: rotate(360deg); }
 }
 
 @keyframes topology-scan {
@@ -480,12 +425,4 @@
   }
 
   .topology-search-results { width: calc(100vw - 2rem); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .topology-node,
-  .topology-node-expand svg { transition: none; }
-
-  .topology-spin,
-  .topology-loading-line { animation-duration: 2.4s; }
 }

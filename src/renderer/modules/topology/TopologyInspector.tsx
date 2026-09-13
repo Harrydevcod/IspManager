@@ -17,7 +17,7 @@ import type {
   TopologyNode,
   TopologySnapshot
 } from '../../../shared/topology';
-import { Button } from '../../components';
+import { Badge, Button, EmptyState } from '../../components';
 import { statusLabel } from '../../lib/status';
 
 export type TopologyInspectorProps = {
@@ -76,14 +76,19 @@ function Detail({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+/*
+ * Os tons saem de `statusTone`, que é onde a app decide o que "ativo" pinta:
+ * `success`, não o acento. O módulo dizia acento e ficava a ser o único sítio
+ * da aplicação onde um estado ativo tinha outra cor.
+ */
 function StateBadges({ node }: { node: TopologyNode }) {
   return (
     <div className="topology-inspector-badges">
-      <span data-tone={node.administrativeState === 'active' ? 'active' : 'inactive'}>
+      <Badge tone={node.administrativeState === 'active' ? 'success' : 'neutral'}>
         {node.administrativeState === 'active' ? 'Ativo' : 'Inativo'}
-      </span>
+      </Badge>
       {node.issueCodes.map((issue) => (
-        <span data-tone="attention" key={issue}>{ISSUE_LABELS[issue]}</span>
+        <Badge tone="warn" key={issue}>{ISSUE_LABELS[issue]}</Badge>
       ))}
     </div>
   );
@@ -342,12 +347,12 @@ function ClientDetails({
 function EmptyInspector() {
   return (
     <div className="topology-inspector-empty">
-      <span className="topology-inspector-crosshair" aria-hidden />
-      <p className="eyebrow">Inspetor persistente</p>
-      <h3>Seleciona um nó</h3>
-      <p>
-        Consulta configuração, estado administrativo e associações sem sair do mapa.
-      </p>
+      <EmptyState
+        icon={Focus}
+        size="sm"
+        title="Seleciona um nó"
+        description="Consulta configuração, estado administrativo e associações sem sair do mapa."
+      />
     </div>
   );
 }

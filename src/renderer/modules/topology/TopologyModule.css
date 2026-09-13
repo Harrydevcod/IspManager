@@ -451,25 +451,13 @@
 /* Aberto lê-se como carregado: o menu de filtros é um botão da barra como os
    outros, por isso usa o mesmo estado que `[aria-pressed='true']` mais abaixo.
    Um comentário no meio de uma lista de seletores não a separa — era assim que
-   esta regra fundia o `summary` com `.topology-refreshing` e punha os Filtros a
-   rodar para sempre enquanto o menu estivesse aberto. */
+   esta regra se fundia com a do ícone de recarregar e punha os Filtros a rodar
+   para sempre enquanto o menu estivesse aberto. Essa animação à mão já não
+   existe: o recarregar usa a prop `loading` do `Button`. */
 .topology-filter-menu[open] summary {
   border-color: var(--topology-accent-deep);
   background: color-mix(in oklch, var(--accent) 16%, var(--surface));
   color: var(--topology-accent);
-}
-
-/* O ícone roda enquanto a leitura corre: o botão fica inerte e diz porquê. */
-.topology-refreshing {
-  animation: topology-refresh-spin 900ms linear infinite;
-}
-
-@keyframes topology-refresh-spin {
-  to { transform: rotate(360deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .topology-refreshing { animation: none; opacity: 0.5; }
 }
 
 .topology-canvas-tools button[aria-pressed='true'] {

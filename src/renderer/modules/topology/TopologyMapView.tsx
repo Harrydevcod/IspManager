@@ -11,7 +11,7 @@ import type {
   TopologyNode,
   TopologySnapshot
 } from '../../../shared/topology';
-import { Button } from '../../components';
+import { Button, EmptyState } from '../../components';
 import { BackboneEditorDialog } from './BackboneDialogs';
 import { TopologyCanvas, type TopologyCanvasHandle } from './TopologyCanvas';
 import { TopologyInspector } from './TopologyInspector';
@@ -164,17 +164,35 @@ function TopologyGlobalError({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-function EmptyCanvas({ filtered }: { filtered: boolean }) {
+/*
+ * O vazio filtrado mandava "limpa um filtro" sem dar o botão que o faz — e o
+ * botão existia, a dois componentes de distância. Agora vem com ele.
+ */
+function EmptyCanvas({
+  filtered,
+  onClearFilters
+}: {
+  filtered: boolean;
+  onClearFilters: () => void;
+}) {
   return (
     <div className="topology-canvas-empty">
-      <Network size={22} aria-hidden />
-      <p className="eyebrow">{filtered ? 'Sem correspondências' : 'Primeiro mapa'}</p>
-      <h3>{filtered ? 'Revê os filtros ativos' : 'Ainda não há equipamentos backbone'}</h3>
-      <p>
-        {filtered
+      <EmptyState
+        icon={Network}
+        title={filtered
+          ? 'Nenhum nó corresponde aos filtros'
+          : 'Ainda não há equipamentos backbone'}
+        description={filtered
           ? 'Limpa um filtro ou expande outros ramos para comparar dados já carregados.'
           : 'Quando forem registadas, as unidades físicas backbone serão apresentadas aqui.'}
-      </p>
+        action={filtered
+          ? (
+            <Button variant="secondary" onClick={onClearFilters}>
+              Limpar filtros
+            </Button>
+          )
+          : undefined}
+      />
     </div>
   );
 }
@@ -450,7 +468,10 @@ function TopologyStage({
               O estado deles continua neste componente — o portal move o DOM. */}
           {toolsSlot && createPortal(<CanvasTools {...tools} />, toolsSlot)}
           {(snapshot.backbones.length === 0 || filteredEmpty) && (
-            <EmptyCanvas filtered={hasActiveFilters(workspace.filters)} />
+            <EmptyCanvas
+              filtered={hasActiveFilters(workspace.filters)}
+              onClearFilters={() => workspace.setFilters({})}
+            />
           )}
         </div>
         {inspectorVisible && (

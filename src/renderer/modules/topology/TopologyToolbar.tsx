@@ -276,10 +276,12 @@ function Filters({ filters, onChange, onClear }: FiltersProps) {
  * O rótulo entra uma vez e sai nos dois sítios: `aria-label` para quem ouve,
  * `title` para quem passa o rato. Duas strings à mão acabariam por divergir.
  */
-function ToolButton({ label, pressed, disabled, onClick, children }: {
+function ToolButton({ label, pressed, disabled, loading, onClick, children }: {
   label: string;
   pressed?: boolean;
   disabled?: boolean;
+  /** Usa a prop do `Button`: traz `aria-busy` e o spinner, que faltavam aqui. */
+  loading?: boolean;
   onClick: () => void;
   children: ReactNode;
 }) {
@@ -290,6 +292,7 @@ function ToolButton({ label, pressed, disabled, onClick, children }: {
       title={label}
       aria-pressed={pressed}
       disabled={disabled}
+      loading={loading}
       onClick={onClick}
     >
       {children}
@@ -313,10 +316,10 @@ export function CanvasTools(props: CanvasToolsProps) {
       <span aria-hidden />
       <ToolButton
         label="Atualizar o mapa"
-        disabled={props.refreshing}
+        loading={props.refreshing}
         onClick={props.onRefresh}
       >
-        <RotateCw size={15} className={props.refreshing ? 'topology-refreshing' : undefined} />
+        <RotateCw size={15} />
       </ToolButton>
       {/* O rótulo diz o que o clique vai fazer; o estado fica no aria-pressed. */}
       <ToolButton
