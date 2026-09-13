@@ -12,7 +12,9 @@ Scene that forces dark default: *the owner reconciles monthly payments at 22:30 
 
 ## Color
 
-**OKLCH only.** One hex literal allowed in the entire codebase (the FOUC bootstrap). 1518+ `var(--*)` references.
+**Tokens only at the point of use.** 1518+ `var(--*)` references; modules must not write raw colors.
+
+> **Corrigido em 2026-09-13, medido.** Este ficheiro dizia "OKLCH only" e "um só hex literal em todo o codebase (o bootstrap FOUC)". Não é verdade: `styles.css` tem **39 literais hex, 23 distintos**, incluindo `#fff` — toda a paleta dark e os semânticos (`--success: #22d38a`, `--danger: #ff3d5a`, `--info: #38d6ff`, `--warn: #ffb020`) são hex, e os valores OKLCH listados abaixo já não correspondem ao que está no ficheiro. A regra continua boa para os **módulos** (o de topologia tem zero literais de cor); o que está desactualizado é a descrição da folha central. Pôr `styles.css` de acordo com o que aqui se afirma é trabalho próprio, não foi feito nesta passagem.
 
 **Strategy:** Restrained. Warm-tinted neutrals (hue 72) + one heritage-gold accent at ≤10% coverage. Semantic colors are paired surface tints for dark legibility.
 
@@ -61,16 +63,23 @@ Light theme: `--bg: oklch(96.5% 0.005 72)`, `--accent: oklch(48% 0.135 65)` (dar
 
 Feature-set: `cv11, ss01, ss03, calt, kern` global; `+ tnum` on every numeric column (metrics, payment rows, money amounts, data lists, table cells).
 
-Body weight 380. Headings 600. Caps labels 700 with `letter-spacing: 0.06em; text-transform: uppercase` (the `.field-label` / `.filter-bar label` pattern).
+Body weight 500. Headings 600. Caps labels 700 with `letter-spacing: 0.06em; text-transform: uppercase` (the `.field-label` / `.filter-bar label` pattern).
+
+> **Corrigido em 2026-09-13, medido no codebase.** Dizia "body 380". A aplicação assenta em **500 (33 usos), 600 (94) e 700 (69)**; `380` aparece **duas vezes** em todo o projeto. A cauda de valores soltos (200, 300, 450, 520, 540, 550, 560, 620, 650, 750, 850) é deriva, não escala.
 
 ## Spacing scale
 
 ```
---s1: 4px    --s2: 8px    --s3: 12px    --s4: 16px
---s5: 24px   --s6: 32px   --s7: 48px
+--space-px: 1px    --space-0-5: 2px   --space-1: 4px     --space-1-5: 6px
+--space-2: 8px     --space-2-5: 10px  --space-3: 12px    --space-4: 16px
+--space-5: 20px    --space-6: 24px    --space-7: 28px    --space-8: 32px
+--space-10: 40px   --space-11: 44px   --space-12: 48px   --space-16: 64px
+--space-20: 80px
 ```
 
-Rhythm rule: not the same spacing everywhere. Module headers use s5/s6, filter rows s3, table cells s2/s3, primitive internal gaps s1/s2.
+> **Corrigido em 2026-09-13.** Este ficheiro anunciava `--s1..--s7`, que **não existem** em `styles.css` (nunca existiram). Os nomes reais são os de cima, e a escala tem 17 degraus, não 7 — incluindo `--space-11: 44px`, útil por ser o alvo de toque mínimo. O nome errado aqui já mandou trabalho para o sítio errado.
+
+Rhythm rule: not the same spacing everywhere. Module headers use space-6/space-8, filter rows space-3, table cells space-2/space-3, primitive internal gaps space-1/space-2.
 
 ## Radius / elevation
 
@@ -159,5 +168,7 @@ Shared metric-tile rules (`.investment-metrics, .expenses-metrics, ...`) are int
 ## Polished slice (the reference oracle)
 
 **Dashboard** and **PaymentsModule** are the polished slice — bespoke layouts, tabular numbers everywhere, sparklines, refined empty states, editorial spacing. When polishing a non-slice module, the oracle is "what would the slice version look like?"
+
+**Topologia** levou passagem completa em 2026-09-13 (tokens de espaçamento, primitivas partilhadas, estados de interacção, acessibilidade, copy). As catracas vivem em `src/renderer/modules/topology/TopologyModule.styles.test.ts` e valem como modelo para os módulos seguintes: varrem espaçamento fora da escala, tamanhos e pesos de letra inventados, curvas de aceleração novas, `z-index` na zona da shell, e comentários a partir listas de seletores.
 
 Non-slice modules pending visual pass: Audit, Backups, Plans, Reports, Services, Stock, Users, WorkOrders (Expenses + Investments are bespoke, Settings has its own tabs aesthetic).
