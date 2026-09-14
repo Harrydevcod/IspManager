@@ -6,6 +6,18 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.29.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.29.0) — 2026-09-14
+
+> Sem migrações. A base de dados não muda com esta versão.
+
+### Adicionado
+
+- **Ordenar qualquer lista por qualquer coluna.** Um clique no cabeçalho ordena de forma ascendente (A→Z, do mais antigo ao mais recente, do menor ao maior) e um segundo clique inverte. Funciona em Clientes, Serviços, Planos, Stock, na Descoberta da Topologia e em todas as abas do Financeiro — Pagamentos, Pendentes, a Carteira do Lucro, Investimentos e Despesas. Serviços, Planos, Despesas e Investimentos não ordenavam de todo; nas outras listas passam a ordenar também as colunas que faltavam, como o código, o telefone, a referência, a fatura e o recebido.
+- **Valores, datas e contagens começam pelo maior.** O primeiro clique na mensalidade, no valor em aberto ou no custo põe no topo o que pesa mais; nos nomes e códigos começa pelo A.
+- **As células vazias ficam sempre no fim**, seja qual for o sentido: um "—" nunca abre a lista.
+- **Nas listas com páginas, a ordem vale para a lista toda.** Ordenar os Clientes por nome ordena todos, e a página 2 continua onde a 1 acabou.
+- Os códigos ordenam pelo número (C2 antes de C10), os nomes ignoram acentos e maiúsculas, e o estado da Descoberta ordena por urgência — desconhecidos e duplicados primeiro, registados no fim.
+
 ## [1.28.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.28.0) — 2026-09-14
 
 > Sem migrações. A base de dados não muda com esta versão.
