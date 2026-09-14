@@ -1,12 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Badge, Button, Card, DataTable, EmptyState, FilterBar } from '../../components';
-import { compareNumber, compareText, sortRows, type SortState } from '../../lib/listView';
+import type { SortState } from '../../lib/listView';
 import { formatCve } from '../../lib/format';
 import type { PortfolioReport, PortfolioRow } from '../../types';
-
-type PortfolioSortKey =
-  | 'fullName' | 'zone' | 'installationCostCve' | 'unrecoveredCve'
-  | 'monthlyMarginCve' | 'monthsToBreakeven';
 
 /**
  * Ordem de entrada: quem tem mais por devolver.
@@ -15,24 +11,7 @@ type PortfolioSortKey =
  * que zona nao compensa. Essa decisao le-se de cima para baixo, e no topo tem
  * de estar o cliente com mais dinheiro por devolver.
  */
-const DEFAULT_SORT: SortState<PortfolioSortKey> = { key: 'unrecoveredCve', direction: 'desc' };
-
-const COMPARATORS = {
-  fullName: (a: PortfolioRow, b: PortfolioRow) => compareText(a.fullName, b.fullName),
-  zone: (a: PortfolioRow, b: PortfolioRow) =>
-    compareText(a.zone, b.zone) || compareText(a.fullName, b.fullName),
-  installationCostCve: (a: PortfolioRow, b: PortfolioRow) =>
-    compareNumber(a.installationCostCve, b.installationCostCve),
-  unrecoveredCve: (a: PortfolioRow, b: PortfolioRow) =>
-    compareNumber(a.unrecoveredCve, b.unrecoveredCve),
-  monthlyMarginCve: (a: PortfolioRow, b: PortfolioRow) =>
-    compareNumber(a.monthlyMarginCve, b.monthlyMarginCve),
-  // Sem prazo previsto vai para o fim: nao e "zero meses", e "nunca, ao ritmo atual".
-  monthsToBreakeven: (a: PortfolioRow, b: PortfolioRow) => compareNumber(
-    a.monthsToBreakeven ?? Number.MAX_SAFE_INTEGER,
-    b.monthsToBreakeven ?? Number.MAX_SAFE_INTEGER
-  )
-};
+const DEFAULT_SORT: SortState<string> = { key: 'Por recuperar', direction: 'desc' };
 
 type PortfolioFilter = 'porRecuperar' | 'semMargem' | 'todos';
 
@@ -53,17 +32,13 @@ export function PortfolioTable({ data, onOpenClient }: {
   data: PortfolioReport;
   onOpenClient?: (clientId: number) => void;
 }) {
-  const [sort, setSort] = useState(DEFAULT_SORT);
   const [filter, setFilter] = useState<PortfolioFilter>('porRecuperar');
 
-  const rows = useMemo(() => {
-    const filtered = data.rows.filter((row) => {
-      if (filter === 'porRecuperar') return row.installationCostCve > 0 && !row.isRecovered;
-      if (filter === 'semMargem') return row.monthlyMarginCve <= 0;
-      return true;
-    });
-    return sortRows(filtered, sort, COMPARATORS);
-  }, [data.rows, filter, sort]);
+  const rows = useMemo(() => data.rows.filter((row) => {
+    if (filter === 'porRecuperar') return row.installationCostCve > 0 && !row.isRecovered;
+    if (filter === 'semMargem') return row.monthlyMarginCve <= 0;
+    return true;
+  }), [data.rows, filter]);
 
   return (
     <Card
@@ -87,8 +62,7 @@ export function PortfolioTable({ data, onOpenClient }: {
       <DataTable
         rows={rows}
         rowKey={(row) => row.clientId}
-        sort={sort}
-        onSortChange={setSort}
+        defaultSort={DEFAULT_SORT}
         stickyHeader
         onRowClick={onOpenClient ? (row) => onOpenClient(row.clientId) : undefined}
         gridTemplateColumns="88px minmax(180px, 1.4fr) 116px 124px 132px 124px 116px"
@@ -101,12 +75,12 @@ export function PortfolioTable({ data, onOpenClient }: {
           />
         )}
         columns={[
-          { header: 'Código', cell: (row) => <span className="entity-code">{row.clientCode || '—'}</span> },
-          { header: 'Cliente', sortKey: 'fullName', cell: (row) => <strong>{row.fullName}</strong> },
-          { header: 'Zona', sortKey: 'zone', cell: (row) => row.zone || '—' },
+          { header: 'Código', sortValue: (row) => row.clientCode, cell: (row) => <span className="entity-code">{row.clientCode || '—'}</span> },
+          { header: 'Cliente', sortValue: (row) => row.fullName, cell: (row) => <strong>{row.fullName}</strong> },
+          { header: 'Zona', sortValue: (row) => row.zone, cell: (row) => row.zone || '—' },
           {
             header: 'Capital',
-            sortKey: 'installationCostCve',
+            sortValue: (row) => row.installationCostCve,
             defaultDirection: 'desc',
             align: 'end',
             cell: (row) => formatCve(row.installationCostCve)
@@ -115,7 +89,7 @@ export function PortfolioTable({ data, onOpenClient }: {
             // Capital + OPEX acumulado por cobrir: e o que falta o cliente
             // entregar para deixar de dar prejuizo, nao so o preco da antena.
             header: 'Por recuperar',
-            sortKey: 'unrecoveredCve',
+            sortValue: (row) => row.unrecoveredCve,
             defaultDirection: 'desc',
             align: 'end',
             cell: (row) => (row.unrecoveredCve > 0
@@ -124,7 +98,7 @@ export function PortfolioTable({ data, onOpenClient }: {
           },
           {
             header: 'Margem/mês',
-            sortKey: 'monthlyMarginCve',
+            sortValue: (row) => row.monthlyMarginCve,
             align: 'end',
             // Ja com o desgaste do equipamento descontado: e esta que se compara
             // entre clientes, porque nao depende do mes em que a antena subiu.
@@ -134,7 +108,8 @@ export function PortfolioTable({ data, onOpenClient }: {
           },
           {
             header: 'Recupera em',
-            sortKey: 'monthsToBreakeven',
+            // Sem prazo (null) vai para o fim: nao e "zero meses", e "nunca, ao ritmo atual".
+            sortValue: (row) => row.monthsToBreakeven,
             align: 'end',
             cell: (row) => recoveryLabel(row)
           }

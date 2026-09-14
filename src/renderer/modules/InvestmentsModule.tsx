@@ -529,12 +529,14 @@ export function InvestmentsModule() {
           onRowClick={(investment) => setSelectedId(investment.id)}
           gridTemplateColumns="96px minmax(120px, 1.3fr) minmax(80px, 0.8fr) minmax(96px, 1fr) 104px 112px"
           actionsWidth="80px"
+          defaultSort={{ key: 'Data', direction: 'desc' }}
           columns={[
-            { header: 'Data', cell: (investment) => <span>{formatPtDate(investment.investmentDate)}</span> },
-            { header: 'Nome', cell: (investment) => <strong>{investment.name}</strong> },
-            { header: 'Zona', cell: (investment) => <span>{investment.zone || '—'}</span> },
+            { header: 'Data', sortValue: (investment) => investment.investmentDate, defaultDirection: 'desc', cell: (investment) => <span>{formatPtDate(investment.investmentDate)}</span> },
+            { header: 'Nome', sortValue: (investment) => investment.name, cell: (investment) => <strong>{investment.name}</strong> },
+            { header: 'Zona', sortValue: (investment) => investment.zone, cell: (investment) => <span>{investment.zone || '—'}</span> },
             {
               header: 'Clientes',
+              sortValue: (investment) => investment.clients[0]?.name || investment.clientName,
               cell: (investment) => (
                 <span>
                   {investment.clients.length > 0
@@ -546,13 +548,14 @@ export function InvestmentsModule() {
             {
               header: 'Estado',
               align: 'center',
+              sortValue: (investment) => statusMeta[investment.status]?.label || investment.status,
               cell: (investment) => (
                 <Badge tone={statusMeta[investment.status]?.tone || 'neutral'}>
                   {statusMeta[investment.status]?.label || investment.status}
                 </Badge>
               )
             },
-            { header: 'Custo', align: 'end', cell: (investment) => <b>{formatCve(investment.totalCostCve)}</b> }
+            { header: 'Custo', align: 'end', sortValue: (investment) => investment.totalCostCve, defaultDirection: 'desc', cell: (investment) => <b>{formatCve(investment.totalCostCve)}</b> }
           ]}
           actions={(investment) => (
             <>

@@ -7,7 +7,8 @@ import { TransferServiceDialog } from './services/TransferServiceDialog';
 import { authFetch, useAuth } from '../lib/auth';
 import { CV_ISLANDS, DEFAULT_ISLAND, isKnownIsland } from '../lib/islands';
 import { formatCve, formatPtDate } from '../lib/format';
-import { compareText, paginateRows, sortRows, type SortState } from '../lib/listView';
+import { paginateRows, sortByColumns, type SortState } from '../lib/listView';
+import type { DataTableColumn } from '../components/DataTable';
 import { runBulk, summarizeBulk } from '../lib/bulkRun';
 import { useRowSelection } from '../lib/useRowSelection';
 import { statusLabel, statusTone } from '../lib/status';
@@ -25,9 +26,24 @@ type ClientFormState = {
 };
 
 type MessagingSettings = { companyName: string; whatsappTemplate: string };
-type ClientSortKey = 'fullName' | 'clientCode' | 'status' | 'island' | 'zone';
 
-const DEFAULT_CLIENT_SORT: SortState<ClientSortKey> = { key: 'fullName', direction: 'asc' };
+const DEFAULT_CLIENT_SORT: SortState<string> = { key: 'Nome', direction: 'asc' };
+
+// Fora do componente: a lista é paginada, por isso ordena-se aqui (antes de
+// cortar a página) com as mesmas colunas que a tabela desenha.
+const CLIENT_COLUMNS: DataTableColumn<Client>[] = [
+  { header: 'Código', sortValue: (client) => client.clientCode, cell: (client) => <span className="entity-code">{client.clientCode}</span> },
+  { header: 'Nome', sortValue: (client) => client.fullName, cell: (client) => <strong>{client.fullName}</strong> },
+  { header: 'Telefone', sortValue: (client) => client.phone, cell: (client) => <span>{client.phone || '—'}</span> },
+  { header: 'Ilha', sortValue: (client) => client.island, cell: (client) => <span>{client.island || '-'}</span> },
+  { header: 'Zona', sortValue: (client) => client.zone, cell: (client) => <span>{client.zone || '-'}</span> },
+  {
+    header: 'Estado',
+    align: 'center',
+    sortValue: (client) => statusLabel(client.status),
+    cell: (client) => <Badge tone={statusTone(client.status)}>{statusLabel(client.status)}</Badge>
+  }
+];
 const DEFAULT_CLIENT_PAGE_SIZE = 25;
 const DEFAULT_CLIENT_STATUS_FILTER: 'all' | Client['status'] = 'active';
 
@@ -107,7 +123,7 @@ export function ClientsModule({
   const [profitability, setProfitability] = useState<ClientProfitability | null>(null);
   const [profitabilityLoading, setProfitabilityLoading] = useState(false);
   const [notices, setNotices] = useState<ClientNotice[]>([]);
-  const [sortState, setSortState] = useState<SortState<ClientSortKey>>(DEFAULT_CLIENT_SORT);
+  const [sortState, setSortState] = useState(DEFAULT_CLIENT_SORT);
   const [clientPage, setClientPage] = useState(1);
   const [clientPageSize, setClientPageSize] = useState(DEFAULT_CLIENT_PAGE_SIZE);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
@@ -317,13 +333,10 @@ export function ClientsModule({
     const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
     return matchesSearch && matchesStatus;
   }), [clients, search, statusFilter]);
-  const visibleClients = useMemo(() => sortRows(filteredClients, sortState, {
-    fullName: (a, b) => compareText(a.fullName, b.fullName) || compareText(a.clientCode, b.clientCode),
-    clientCode: (a, b) => compareText(a.clientCode, b.clientCode),
-    status: (a, b) => compareText(a.status, b.status) || compareText(a.fullName, b.fullName),
-    island: (a, b) => compareText(a.island, b.island) || compareText(a.fullName, b.fullName),
-    zone: (a, b) => compareText(a.zone, b.zone) || compareText(a.fullName, b.fullName)
-  }), [filteredClients, sortState]);
+  const visibleClients = useMemo(
+    () => sortByColumns(filteredClients, sortState, CLIENT_COLUMNS, DEFAULT_CLIENT_SORT.key),
+    [filteredClients, sortState]
+  );
   const pagedClients = useMemo(
     () => paginateRows(visibleClients, { page: clientPage, pageSize: clientPageSize }),
     [clientPage, clientPageSize, visibleClients]
@@ -683,38 +696,7 @@ export function ClientsModule({
             onRowClick={setSelectedClient}
             gridTemplateColumns="88px minmax(180px, 1.6fr) minmax(110px, 0.8fr) minmax(120px, 0.8fr) minmax(110px, 0.8fr) 120px"
             actionsWidth="92px"
-            columns={[
-              {
-                header: 'Código',
-                sortKey: 'clientCode',
-                cell: (client) => <span className="entity-code">{client.clientCode}</span>
-              },
-              {
-                header: 'Nome',
-                sortKey: 'fullName',
-                cell: (client) => <strong>{client.fullName}</strong>
-              },
-              {
-                header: 'Telefone',
-                cell: (client) => <span>{client.phone || '—'}</span>
-              },
-              {
-                header: 'Ilha',
-                sortKey: 'island',
-                cell: (client) => <span>{client.island || '-'}</span>
-              },
-              {
-                header: 'Zona',
-                sortKey: 'zone',
-                cell: (client) => <span>{client.zone || '-'}</span>
-              },
-              {
-                header: 'Estado',
-                sortKey: 'status',
-                align: 'center',
-                cell: (client) => <Badge tone={statusTone(client.status)}>{statusLabel(client.status)}</Badge>
-              }
-            ]}
+            columns={CLIENT_COLUMNS}
             actions={(client) => {
               const canWhatsapp = !!normalizeWhatsappPhone(client.phone);
               return (

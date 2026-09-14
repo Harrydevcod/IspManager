@@ -256,10 +256,12 @@ export function PlansModule() {
           onRowClick={canManagePlans ? editPlan : undefined}
           gridTemplateColumns="minmax(160px, 1.5fr) 120px 150px 140px 110px"
           actionsWidth="96px"
+          defaultSort={{ key: 'Nome', direction: 'asc' }}
           columns={[
-            { header: 'Nome', cell: (plan) => <strong>{plan.name}</strong> },
+            { header: 'Nome', sortValue: (plan) => plan.name, cell: (plan) => <strong>{plan.name}</strong> },
             {
               header: 'Tipo',
+              sortValue: (plan) => typeLabel(plan.connectionType),
               cell: (plan) => {
                 const Icon = iconForType(plan.connectionType);
                 return (
@@ -273,15 +275,19 @@ export function PlansModule() {
             {
               header: 'Velocidade ↓/↑',
               align: 'end',
+              // Mbps numéricos desde a 0041; o texto legado ("20 Mb/s") ordena pelo número à frente.
+              sortValue: (plan) => plan.downloadMbps ?? plan.downloadSpeed,
+              defaultDirection: 'desc',
               cell: (plan) => {
                 const speed = speedDisplay(plan);
                 return <b>{speed.value}{speed.unit ? ` ${speed.unit}` : ''}</b>;
               }
             },
-            { header: 'Preço/mês', align: 'end', cell: (plan) => <b>{formatCve(plan.monthlyPriceCve)}</b> },
+            { header: 'Preço/mês', align: 'end', sortValue: (plan) => plan.monthlyPriceCve, defaultDirection: 'desc', cell: (plan) => <b>{formatCve(plan.monthlyPriceCve)}</b> },
             {
               header: 'Estado',
               align: 'center',
+              sortValue: (plan) => (plan.active ? 'Ativo' : 'Inativo'),
               cell: (plan) => <Badge tone={plan.active ? 'success' : 'neutral'}>{plan.active ? 'Ativo' : 'Inativo'}</Badge>
             }
           ]}

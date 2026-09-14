@@ -33,14 +33,14 @@ const ROWS: DiscoveryRow[] = [
 
 describe('orderDiscoveryRows', () => {
   test('por endereço ordena numericamente, não como texto', () => {
-    const ips = orderDiscoveryRows(ROWS, 'todos', { key: 'ip', direction: 'asc' }).map((r) => r.ip);
+    const ips = orderDiscoveryRows(ROWS, 'todos', { key: 'Endereço', direction: 'asc' }).map((r) => r.ip);
     expect(ips).toEqual([
       '192.168.1.2', '192.168.1.10', '192.168.1.30', '192.168.1.40', '192.168.1.50', '192.168.1.60'
     ]);
   });
 
   test('por estado agrupa por urgência, e o endereço desempata', () => {
-    const ordered = orderDiscoveryRows(ROWS, 'todos', { key: 'estado', direction: 'asc' });
+    const ordered = orderDiscoveryRows(ROWS, 'todos', { key: 'Estado', direction: 'asc' });
     expect(ordered.map((r) => r.category)).toEqual([
       'desconhecido', 'desconhecido', 'duplicado', 'ausente', 'reservado', 'registado'
     ]);
@@ -49,12 +49,12 @@ describe('orderDiscoveryRows', () => {
   });
 
   test('descendente inverte a urgência — quem está em ordem primeiro', () => {
-    const ordered = orderDiscoveryRows(ROWS, 'todos', { key: 'estado', direction: 'desc' });
+    const ordered = orderDiscoveryRows(ROWS, 'todos', { key: 'Estado', direction: 'desc' });
     expect(ordered[0].category).toBe('registado');
   });
 
   test('o chip de estado filtra antes de ordenar', () => {
-    const ordered = orderDiscoveryRows(ROWS, 'desconhecido', { key: 'estado', direction: 'asc' });
+    const ordered = orderDiscoveryRows(ROWS, 'desconhecido', { key: 'Estado', direction: 'asc' });
     expect(ordered.map((r) => r.ip)).toEqual(['192.168.1.10', '192.168.1.60']);
   });
 });

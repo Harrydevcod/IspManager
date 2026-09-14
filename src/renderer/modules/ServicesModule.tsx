@@ -997,23 +997,26 @@ export function ServicesModule({
             </Button>
           ) : undefined}
           actionsWidth="64px"
+          defaultSort={{ key: 'Cliente', direction: 'asc' }}
           columns={[
-            { header: 'Código', cell: (service) => <span className="entity-code">{service.clientCode}</span> },
-            { header: 'Cliente', cell: (service) => <strong>{service.clientName}</strong> },
-            { header: 'Plano', cell: (service) => <span>{service.planName || '—'}</span> },
-            { header: 'Dia venc.', align: 'center', cell: (service) => <b>{service.dueDay}</b> },
+            { header: 'Código', sortValue: (service) => service.clientCode, cell: (service) => <span className="entity-code">{service.clientCode}</span> },
+            { header: 'Cliente', sortValue: (service) => service.clientName, cell: (service) => <strong>{service.clientName}</strong> },
+            { header: 'Plano', sortValue: (service) => service.planName, cell: (service) => <span>{service.planName || '—'}</span> },
+            { header: 'Dia venc.', align: 'center', sortValue: (service) => service.dueDay, cell: (service) => <b>{service.dueDay}</b> },
             {
               header: 'IP',
+              sortValue: (service) => service.deviceIps,
               cell: (service) => (
                 <code className="service-ip" title={service.deviceIps ? `IP dos equipamentos ativos: ${service.deviceIps}` : 'Sem IP registado'}>
                   {service.deviceIps || '—'}
                 </code>
               )
             },
-            { header: 'Mensalidade', align: 'end', cell: (service) => <b>{formatCve(monthlyTotalCve(service))}</b> },
+            { header: 'Mensalidade', align: 'end', sortValue: monthlyTotalCve, defaultDirection: 'desc', cell: (service) => <b>{formatCve(monthlyTotalCve(service))}</b> },
             {
               header: 'TV',
               align: 'center',
+              sortValue: (service) => (service.audiovisualMode === 'monthly' ? 'NET + TVM' : null),
               cell: (service) => (service.audiovisualMode === 'monthly'
                 ? <span title="Mensalidade NET + TVM (canais e conteúdos audiovisuais)">NET + TVM</span>
                 : <span>—</span>)
@@ -1021,6 +1024,7 @@ export function ServicesModule({
             {
               header: 'Estado',
               align: 'center',
+              sortValue: (service) => statusLabel(service.status),
               cell: (service) => <Badge tone={statusTone(service.status)}>{statusLabel(service.status)}</Badge>
             }
           ]}

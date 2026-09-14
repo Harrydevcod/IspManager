@@ -46,6 +46,59 @@ export function sortRows<T, K extends string>(
     .map((entry) => entry.row);
 }
 
+/** O dado bruto por que uma coluna ordena: ISO, escudos, rank — nunca o texto formatado. */
+export type SortValue = string | number | null | undefined;
+
+export type SortableColumn<T> = {
+  header: string;
+  sortValue?: (row: T) => SortValue;
+};
+
+function isEmptySortValue(value: SortValue) {
+  return value == null || value === '' || (typeof value === 'number' && Number.isNaN(value));
+}
+
+function compareSortValues(a: SortValue, b: SortValue) {
+  if (typeof a === 'number' && typeof b === 'number') return compareNumber(a, b);
+  return compareText(String(a), String(b));
+}
+
+/**
+ * Ordena pela coluna ativa (a chave é o `header`). Vazios ficam sempre no fim,
+ * seja qual for a direção — um "—" nunca abre a lista. Empates resolvem-se pela
+ * coluna de recurso (a ordenação por omissão da tabela) e depois pela ordem de
+ * chegada.
+ */
+export function sortByColumns<T>(
+  rows: readonly T[],
+  sort: SortState<string> | null | undefined,
+  columns: readonly SortableColumn<T>[],
+  fallbackKey?: string
+): T[] {
+  const active = sort && columns.find((column) => column.header === sort.key)?.sortValue;
+  if (!sort || !active) return [...rows];
+  const fallback = fallbackKey && fallbackKey !== sort.key
+    ? columns.find((column) => column.header === fallbackKey)?.sortValue
+    : undefined;
+  const direction = sort.direction === 'asc' ? 1 : -1;
+
+  return rows
+    .map((row, index) => ({ row, index, value: active(row), tie: fallback?.(row) }))
+    .sort((a, b) => {
+      const aEmpty = isEmptySortValue(a.value);
+      const bEmpty = isEmptySortValue(b.value);
+      if (aEmpty !== bEmpty) return aEmpty ? 1 : -1;
+      const primary = aEmpty ? 0 : compareSortValues(a.value, b.value) * direction;
+      if (primary) return primary;
+      const aTieEmpty = isEmptySortValue(a.tie);
+      const bTieEmpty = isEmptySortValue(b.tie);
+      if (fallback && aTieEmpty !== bTieEmpty) return aTieEmpty ? 1 : -1;
+      const tie = fallback && !aTieEmpty ? compareSortValues(a.tie, b.tie) : 0;
+      return tie || a.index - b.index;
+    })
+    .map((entry) => entry.row);
+}
+
 export function nextSortState<K extends string>(
   current: SortState<K>,
   key: K,
