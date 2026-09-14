@@ -130,24 +130,32 @@
   min-width: 0;
 }
 
-/* As alturas abaixo descontam o cromo da página à mão. O banner da licença
-   (avaliação, expiração) é o único bloco condicional por cima do módulo: sem
-   este desconto empurrava o fundo da caixa 58px para fora do ecrã. */
-.topology-shell {
-  --topology-page-banner: 0rem;
+/* A altura vem do flex do `.content`, não de contas à mão: a casca leva o que
+   sobra do ecrã por baixo do cabeçalho (e do banner da licença, quando existe)
+   e o fundo da caixa alinha com o da barra lateral em qualquer altura de
+   janela. Base 0 + piso explícito: a caixa fica presa ao ecrã e as listas de
+   dentro rolam, em vez de a caixa crescer com elas. */
+.content > .topology-shell {
+  flex: 1 1 0;
+  min-height: 22rem;
 }
 
-.content:has(> .license-banner) .topology-shell {
-  --topology-page-banner: 4.1rem;
+/* A Descoberta não tem scroll próprio — a tabela cresce e a página rola. */
+.content > .topology-shell:has(> #topology-panel-discovery:not([hidden])) {
+  flex: 1 0 auto;
 }
 
-/* Piso baixo: com o antigo (37rem) uma janela curta punha a página inteira a
-   scrollar e o fundo do mapa saía do ecrã. A folga é para o canvas, não para a
-   barra de scroll. */
+/* `:not([hidden])`: qualquer `display` de autor venceria o `hidden` do UA. */
+.topology-tab-panel:not([hidden]) {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+}
+
 .topology-tab-panel > .backbone-workspace,
 .topology-tab-panel > .topology-module {
-  height: min(45rem, calc(100vh - 11.5rem - var(--topology-page-banner)));
-  min-height: 22rem;
+  height: auto;
+  min-height: 0;
   border-radius: 0 0 var(--r3) var(--r3);
 }
 
@@ -156,8 +164,7 @@
   place-content: center;
   justify-items: center;
   gap: var(--space-3);
-  height: min(45rem, calc(100vh - 11.5rem - var(--topology-page-banner)));
-  min-height: 22rem;
+  min-height: 0;
   border: 1px solid var(--border);
   border-radius: 0 0 var(--r3) var(--r3);
   background: var(--surface);
@@ -196,13 +203,6 @@
     flex: 1;
     min-width: 0;
   }
-
-  .topology-tab-panel > .backbone-workspace,
-  .topology-tab-panel > .topology-module,
-  .topology-tab-loading {
-    height: min(47rem, calc(100vh - 9.5rem - var(--topology-page-banner)));
-    min-height: 22rem;
-  }
 }
 
 .topology-module {
@@ -212,8 +212,6 @@
      caixa numa janela baixa — e cortava a legenda a meio. */
   grid-template-rows: auto auto minmax(0, 1fr);
   min-width: 0;
-  height: min(48rem, calc(100vh - 8.5rem));
-  min-height: 22rem;
   overflow: hidden;
   border: 1px solid var(--topology-line);
   border-radius: var(--r3);
@@ -663,17 +661,4 @@
   min-height: 0;
   overflow: hidden;
   background: var(--topology-bg);
-}
-
-/* Ecrã baixo: o cabeçalho da página encolhe (styles.css, mesma media query) e
-   a caixa fica com essa altura. O desconto é o cabeçalho compacto + a tira das
-   abas + o padding do .content; se mudar um deles, muda este número. As
-   caixas de dentro (lista, detalhe, inspetor) já rolam sozinhas. */
-@media (max-height: 820px) {
-  .topology-tab-panel > .backbone-workspace,
-  .topology-tab-panel > .topology-module,
-  .topology-tab-loading {
-    height: calc(100vh - 8.5rem - var(--topology-page-banner));
-    min-height: 20rem;
-  }
 }

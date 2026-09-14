@@ -370,7 +370,6 @@
 }
 
 @container (max-width: 58rem) {
-  .topology-module { height: min(52rem, calc(100vh - 7rem)); }
   .topology-workspace { grid-template-columns: minmax(0, 1fr) 18rem; }
   .topology-stats div {
     min-width: 4.5rem;
@@ -384,8 +383,6 @@
     grid-template-rows: auto auto minmax(0, 1fr);
     width: 100%;
     max-width: 100%;
-    height: calc(100dvh - 6.5rem);
-    min-height: 36rem;
   }
 
   .topology-header {
