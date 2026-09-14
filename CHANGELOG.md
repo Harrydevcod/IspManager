@@ -6,6 +6,18 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.27.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.27.0) — 2026-09-14
+
+> Sem migrações. A base de dados não muda com esta versão.
+
+### Alterado
+
+- **Os painéis vão até ao fundo do ecrã.** Num monitor grande a caixa da Topologia parava a meio caminho, com uma faixa vazia por baixo enquanto a barra lateral ia até ao fim; os módulos com pouco conteúdo — Planos, Utilizadores — deixavam o mesmo vazio. Agora o painel de cada módulo ocupa o ecrã todo por baixo do cabeçalho, alinhado com o fundo da barra lateral, em qualquer tamanho de janela e com ou sem o aviso da licença. Nas abas Backbone e Topologia as listas e o mapa rolam por dentro da caixa; nos módulos com muito conteúdo a página continua a rolar como antes.
+
+### Corrigido
+
+- **Sem faixa preta à volta dos filtros.** Em Planos, Stock, Utilizadores e Auditoria, a barra de filtros tinha uma faixa escura por cima e por baixo, da cor do fundo da página e não do painel. Passa a ter a cor do painel, tanto no topo como quando fica colada ao rolar a lista.
+
 ## [1.26.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.26.0) — 2026-09-13
 
 > Sem migrações. A base de dados não muda com esta versão.
