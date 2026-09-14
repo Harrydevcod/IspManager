@@ -6,6 +6,9 @@
 .finance-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  /* A tira das abas fica com a sua altura; o painel abaixo leva o resto. */
+  grid-template-rows: auto 1fr;
+  align-content: stretch;
   gap: var(--space-4);
   min-width: 0;
 }

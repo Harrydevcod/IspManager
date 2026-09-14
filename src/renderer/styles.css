@@ -658,8 +658,21 @@ a:hover {
 }
 
 .content {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 100vh;
   padding: var(--space-5) var(--space-6) var(--space-7);
+}
+
+/* O módulo ocupa o que sobra do ecrã: a caixa acaba no fundo, alinhada com a
+   barra lateral, em vez de parar onde o conteúdo acaba. Conteúdo longo continua
+   a crescer e a página rola como antes. O Dashboard (vários blocos soltos) fica
+   de fora de propósito. */
+.content > .module-panel,
+.content > .finance-shell,
+.content > .receivables-module {
+  flex: 1 0 auto;
 }
 
 .topbar {
@@ -1010,7 +1023,11 @@ h2 {
 .primary-panel,
 .side-panel,
 .module-panel {
-  background: color-mix(in oklch, var(--surface) 92%, var(--bg));
+  /* Exposto como token: o que se cola por cima do painel (barras de filtros
+     sticky) tem de pintar esta cor, e não a da página — senão lê-se como uma
+     faixa preta à volta dos filtros. */
+  --module-panel-bg: color-mix(in oklch, var(--surface) 92%, var(--bg));
+  background: var(--module-panel-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
 }
