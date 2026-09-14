@@ -1606,6 +1606,15 @@ h2 {
   cursor: pointer;
 }
 
+/* Uma célula, um dado, uma linha: o que não cabe corta com reticências em vez
+   de empurrar a linha para duas alturas e desalinhar as vizinhas. */
+.data-table-cell > :is(strong, span:not(.badge), b, code):not(:has(*)):only-child {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .data-table-cell b {
   font-variant-numeric: tabular-nums;
   font-feature-settings: var(--font-feature-ui), "tnum";
@@ -1788,6 +1797,22 @@ h2 {
 
 .row-actions-menu-item svg {
   flex: 0 0 auto;
+}
+
+/* Uma coluna por dado deixa as tabelas largas. Em janela estreita quem rola é a
+   tabela, nunca a página; `min-content` numa grelha de `minmax(Npx, fr)` dá a
+   soma dos mínimos, e os cartões das linhas acompanham a largura das colunas.
+   ponytail: o cabeçalho deixa de ficar fixo nesta faixa (a tabela passa a ser
+   o contentor de scroll); acima de 1440px continua fixo. */
+@media (min-width: 761px) and (max-width: 1439px) {
+  .data-table {
+    overflow-x: auto;
+  }
+
+  .data-table-head,
+  .data-table-row {
+    min-width: min-content;
+  }
 }
 
 @media (max-width: 760px) {
@@ -2761,16 +2786,6 @@ h2 {
 /* =========================================================================
    Other modules (non-slice) — coherent via tokens, refined next pass
    ========================================================================= */
-
-.client-row span {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.client-row span small {
-  color: var(--text-3);
-  font-weight: 500;
-}
 
 .client-form {
   display: grid;
@@ -4717,23 +4732,6 @@ label.field-toggle {
   background: var(--surface-2);
 }
 
-/* Tabular column alignment per CRUD module. Each module has its own row
-   class so widths can be tuned to the content (status text vs CVE values
-   vs unit counts). Name span keeps the 2-line stacked layout. */
-.client-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 120px auto;
-  gap: var(--space-3);
-  align-items: center;
-}
-
-.service-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 150px 180px 96px auto;
-  gap: var(--space-3);
-  align-items: center;
-}
-
 /* Instalar novo vs ligar equipamento existente: duas rotas exclusivas para o
    mesmo objetivo, lado a lado no topo do diálogo. */
 .device-mode-switch {
@@ -4867,7 +4865,7 @@ label.field-toggle {
 /* IP dos equipamentos ativos: informação técnica, tom secundário e dígitos
    tabulares para alinhar octeto com octeto entre linhas. Sem família mono —
    o design system é Inter single-family. */
-.service-row-ip {
+.service-ip {
   color: var(--text-3);
   font-size: 0.8125rem;
   font-weight: 500;
@@ -4876,64 +4874,11 @@ label.field-toggle {
   white-space: nowrap;
 }
 
-.service-row-ip,
+.service-ip,
 .detail-ip {
   font-family: inherit;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
-}
-
-/* Coluna do valor mensal: mantém "1.500 CVE · NET + TVM" numa única linha. */
-.service-row > small {
-  white-space: nowrap;
-}
-
-/* Name+meta span style applied uniformly to all module rows. */
-.client-row span,
-.service-row span,
-.stock-row span,
-.plan-row span {
-  display: grid;
-  gap: var(--space-1);
-  min-width: 0;
-}
-.client-row span strong,
-.service-row span strong,
-.stock-row span strong,
-.plan-row span strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.client-row span small,
-.service-row span small,
-.stock-row span small,
-.plan-row span small {
-  color: var(--text-3);
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Numeric/status columns: right-aligned with tabular figures so digits
-   align decimal-to-decimal across rows. Color comes from the existing
-   .module-row small rule (accent gold). */
-.client-row > small,
-.service-row > small,
-.stock-row > small,
-.plan-row > small {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Badges sitting directly in a row grid cell justify to the end so the
-   coloured pill aligns with the right edge of its column. */
-.client-row > .badge,
-.service-row > .badge,
-.stock-row > .badge,
-.plan-row > .badge {
-  justify-self: end;
 }
 
 /* =========================================================================

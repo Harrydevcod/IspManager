@@ -55,6 +55,7 @@ const services: ServiceRow[] = [
   {
     id: 10,
     clientId: 1,
+    clientCode: 'C0001',
     clientName: 'Cliente 1',
     planId: 1,
     planName: 'Plano inicial',
@@ -76,6 +77,7 @@ const services: ServiceRow[] = [
   {
     id: 11,
     clientId: 1,
+    clientCode: 'C0001',
     clientName: 'Cliente 1',
     planId: 2,
     planName: 'Plano alvo',

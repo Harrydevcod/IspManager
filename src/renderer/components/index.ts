@@ -18,7 +18,6 @@ export * from './ErrorRetry';
 export * from './PageHeader';
 export * from './Badge';
 export * from './FilterBar';
-export * from './DataList';
 export * from './DataTable';
 export * from './PaginationControls';
 export * from './BulkActionBar';

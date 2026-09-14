@@ -240,19 +240,6 @@
 }
 
 /* Expenses table polish — stable columns + subtle rateio pill. */
-.expenses-row-main {
-  display: grid;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
-.expenses-row-main strong,
-.expenses-row-main small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .expenses-table .badge,
 .expenses-table .expenses-alloc-tag {
   max-width: min(100%, 18rem);

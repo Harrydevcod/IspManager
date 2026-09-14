@@ -443,7 +443,7 @@ export function ExpensesModule() {
         rows={data.rows}
         rowKey={(expense) => expense.id}
         className="expenses-table"
-        gridTemplateColumns="minmax(260px, 1fr) 190px 158px 132px"
+        gridTemplateColumns="100px minmax(180px, 1.4fr) minmax(110px, 1fr) 112px 170px 150px 124px"
         actionsHeader="Ações"
         actionsWidth="92px"
         empty={
@@ -452,22 +452,12 @@ export function ExpensesModule() {
             : <div className="module-message">Sem despesas registadas para os filtros atuais.</div>
         }
         columns={[
+          { header: 'Data', cell: (expense) => <span>{formatPtDate(expense.expenseDate)}</span> },
+          { header: 'Descrição', cell: (expense) => <strong>{expense.description}</strong> },
+          { header: 'Fornecedor', cell: (expense) => <span>{expense.supplier || '—'}</span> },
+          { header: 'Fatura', cell: (expense) => <span>{expense.invoiceReference || '—'}</span> },
           {
-            header: 'Despesa',
-            className: 'expenses-description-cell',
-            cell: (expense) => (
-              <span className="expenses-row-main">
-                <strong>{expense.description}</strong>
-                <small>
-                  {formatPtDate(expense.expenseDate)}
-                  {expense.supplier ? ` · ${expense.supplier}` : ''}
-                  {expense.invoiceReference ? ` · ${expense.invoiceReference}` : ''}
-                </small>
-              </span>
-            )
-          },
-          {
-            header: 'Alocacao',
+            header: 'Alocação',
             align: 'center',
             cell: (expense) => {
               const allocLabel = expense.investmentName

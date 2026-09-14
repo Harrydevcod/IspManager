@@ -681,19 +681,22 @@ export function ClientsModule({
             sort={sortState}
             onSortChange={setSortState}
             onRowClick={setSelectedClient}
-            gridTemplateColumns="minmax(240px, 1.5fr) 136px 136px 126px"
+            gridTemplateColumns="88px minmax(180px, 1.6fr) minmax(110px, 0.8fr) minmax(120px, 0.8fr) minmax(110px, 0.8fr) 120px"
             actionsWidth="92px"
             columns={[
               {
-                header: 'Cliente',
+                header: 'Código',
+                sortKey: 'clientCode',
+                cell: (client) => <span className="entity-code">{client.clientCode}</span>
+              },
+              {
+                header: 'Nome',
                 sortKey: 'fullName',
-                cell: (client) => (
-                  <span>
-                    <small className="entity-code">{client.clientCode}</small>
-                    <strong>{client.fullName}</strong>
-                    <small>{client.phone || 'sem telefone'}</small>
-                  </span>
-                )
+                cell: (client) => <strong>{client.fullName}</strong>
+              },
+              {
+                header: 'Telefone',
+                cell: (client) => <span>{client.phone || '—'}</span>
               },
               {
                 header: 'Ilha',

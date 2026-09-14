@@ -2,7 +2,7 @@ import { Activity, Cable, Pencil, Plus, Tags, Wifi } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Dialog, EmptyState, ErrorRetry, Field, FilterBar, ModuleHeaderActions, Select, SkeletonList, useToast } from '../components';
+import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, ModuleHeaderActions, Select, SkeletonList, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import type { PlanRow } from '../types';
@@ -50,7 +50,7 @@ function typeLabel(type: PlanRow['connectionType']): string {
   switch (type) {
     case 'fibra': return 'Fibra';
     case 'cabo':  return 'Cabo';
-    case 'radio': return 'Radio';
+    case 'radio': return 'Rádio';
     default:      return 'Outro';
   }
 }
@@ -217,7 +217,7 @@ export function PlansModule() {
           >
             <option value="all">Todos</option>
             <option value="fibra">Fibra</option>
-            <option value="radio">Radio</option>
+            <option value="radio">Rádio</option>
             <option value="cabo">Cabo</option>
             <option value="outro">Outro</option>
           </Select>
@@ -248,89 +248,69 @@ export function PlansModule() {
       )}
 
       {visiblePlans.length > 0 && (
-        <div className="plans-list" role="list">
-          {visiblePlans.map((plan) => {
-            const Icon = iconForType(plan.connectionType);
-            const speed = speedDisplay(plan);
-            const interactive = canManagePlans;
-            const classes = ['plan-item'];
-            if (interactive) classes.push('is-interactive');
-            if (!plan.active) classes.push('is-inactive');
-            return (
-              <div
-                role="listitem"
-                key={plan.id}
-                className={classes.join(' ')}
-                tabIndex={interactive ? 0 : undefined}
-                onClick={interactive ? () => editPlan(plan) : undefined}
-                onKeyDown={(event) => {
-                  if (!interactive) return;
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    editPlan(plan);
-                  }
-                }}
+        <DataTable
+          className="plans-table"
+          rows={visiblePlans}
+          rowKey={(plan) => plan.id}
+          stickyHeader
+          onRowClick={canManagePlans ? editPlan : undefined}
+          gridTemplateColumns="minmax(160px, 1.5fr) 120px 150px 140px 110px"
+          actionsWidth="96px"
+          columns={[
+            { header: 'Nome', cell: (plan) => <strong>{plan.name}</strong> },
+            {
+              header: 'Tipo',
+              cell: (plan) => {
+                const Icon = iconForType(plan.connectionType);
+                return (
+                  <span className="plans-type">
+                    <Icon size={14} strokeWidth={1.6} aria-hidden />
+                    {typeLabel(plan.connectionType)}
+                  </span>
+                );
+              }
+            },
+            {
+              header: 'Velocidade ↓/↑',
+              align: 'end',
+              cell: (plan) => {
+                const speed = speedDisplay(plan);
+                return <b>{speed.value}{speed.unit ? ` ${speed.unit}` : ''}</b>;
+              }
+            },
+            { header: 'Preço/mês', align: 'end', cell: (plan) => <b>{formatCve(plan.monthlyPriceCve)}</b> },
+            {
+              header: 'Estado',
+              align: 'center',
+              cell: (plan) => <Badge tone={plan.active ? 'success' : 'neutral'}>{plan.active ? 'Ativo' : 'Inativo'}</Badge>
+            }
+          ]}
+          actions={canManagePlans ? (plan) => (
+            <>
+              {canReprice && (
+                <Button
+                  variant="icon"
+                  size="sm"
+                  title="Aplicar este preço aos serviços ativos"
+                  aria-label={`Aplicar preço do plano ${plan.name} aos serviços ativos`}
+                  onClick={() => setRepricePlan(plan)}
+                >
+                  <Tags size={14} aria-hidden />
+                </Button>
+              )}
+              <Button
+                variant="icon"
+                size="sm"
+                title="Editar plano"
+                aria-label={`Editar plano ${plan.name}`}
+                onClick={() => editPlan(plan)}
               >
-                <span className="plan-item-icon" aria-hidden>
-                  <Icon size={16} strokeWidth={1.6} />
-                </span>
-                <div className="plan-item-main">
-                  <span className="plan-item-name">
-                    <span className="plan-item-state-dot" data-state={plan.active ? 'active' : 'inactive'} aria-hidden />
-                    {plan.name}
-                  </span>
-                  <span className="plan-item-meta">
-                    <span>{typeLabel(plan.connectionType)}</span>
-                    {!plan.active && (
-                      <>
-                        <span className="plan-item-meta-sep">·</span>
-                        <span className="plan-item-meta-state">Inativo</span>
-                      </>
-                    )}
-                  </span>
-                </div>
-                <div className="plan-item-speed">
-                  <span className="plan-item-speed-value">{speed.value}</span>
-                  {speed.unit && <span className="plan-item-speed-unit">{speed.unit} ↓/↑</span>}
-                </div>
-                <div className="plan-item-price">
-                  <span className="plan-item-price-value">{formatCve(plan.monthlyPriceCve)}</span>
-                  <span className="plan-item-price-currency">/ mês</span>
-                </div>
-                {interactive && (
-                  <div className="plan-item-actions" onClick={(event) => event.stopPropagation()}>
-                    {canReprice && (
-                      <Button
-                        variant="icon"
-                        size="sm"
-                        title="Aplicar este preço aos serviços ativos"
-                        aria-label={`Aplicar preço do plano ${plan.name} aos serviços ativos`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setRepricePlan(plan);
-                        }}
-                      >
-                        <Tags size={14} aria-hidden />
-                      </Button>
-                    )}
-                    <Button
-                      variant="icon"
-                      size="sm"
-                      title="Editar plano"
-                      aria-label={`Editar plano ${plan.name}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        editPlan(plan);
-                      }}
-                    >
-                      <Pencil size={14} aria-hidden />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                <Pencil size={14} aria-hidden />
+              </Button>
+            </>
+          ) : undefined}
+          empty={null}
+        />
       )}
 
       <Dialog
@@ -352,7 +332,7 @@ export function PlansModule() {
           <Field label="Nome" required value={form.name} onChange={(event) => updateForm('name', event.target.value)} />
           <Select label="Tipo" value={form.connectionType} onChange={(event) => updateForm('connectionType', event.target.value)}>
             <option value="fibra">Fibra</option>
-            <option value="radio">Radio</option>
+            <option value="radio">Rádio</option>
             <option value="cabo">Cabo</option>
             <option value="outro">Outro</option>
           </Select>

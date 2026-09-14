@@ -51,6 +51,7 @@ export type Client = {
 export type ServiceRow = {
   id: number;
   clientId: number;
+  clientCode: string;
   clientName: string;
   planId: number | null;
   planName: string | null;
