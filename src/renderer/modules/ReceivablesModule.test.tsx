@@ -124,9 +124,20 @@ describe('Pendentes', () => {
     expect(container.textContent).toContain('Mais de 90 dias');
   });
 
-  test('o credito do cliente aparece na linha dele', async () => {
+  test('uma coluna por dado, cada uma com o seu cabecalho', async () => {
     const container = await mount();
-    expect(container.textContent).toContain('crédito 1.500$00');
+    const headers = [...container.querySelectorAll('[role="columnheader"]')].map((n) => n.textContent?.trim());
+    expect(headers).toEqual(['Código', 'Cliente', 'Zona', 'Telefone', 'Faturas', 'Mais antiga', 'Antiguidade', 'Em aberto', 'Crédito']);
+    for (const row of container.querySelectorAll('.data-table-row')) {
+      expect(row.querySelectorAll('[role="cell"]')).toHaveLength(headers.length);
+    }
+  });
+
+  test('o credito do cliente aparece na coluna Credito da linha dele', async () => {
+    const container = await mount();
+    const row = [...container.querySelectorAll('.data-table-row')]
+      .find((r) => r.textContent?.includes('Antonio Silva'));
+    expect(row?.querySelector('[data-label="Crédito"]')?.textContent).toBe('1.500$00');
   });
 
   test('filtrar por antiguidade reduz a lista', async () => {

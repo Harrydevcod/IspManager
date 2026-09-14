@@ -1,14 +1,13 @@
 import { Network, Pencil, Plus, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Combobox, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, Select, SkeletonList, Textarea, Toggle, WanModeSelect, OperationModeSelect, useConfirm, useToast } from '../components';
+import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, Select, SkeletonList, Textarea, Toggle, WanModeSelect, OperationModeSelect, useConfirm, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import { todayIso } from '../../shared/assignment-dates';
 import { labelForType, requiresStaticIp } from '../../shared/equipment';
 import { suggestIpPrefix } from '../lib/ip';
 import { statusLabel, statusTone } from '../lib/status';
-import { hasTextSelection } from '../lib/textSelection';
 import type { AudiovisualConfig, Client, DeviceAssignment, ManualServiceEventType, PlanRow, ReturnCondition, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
 import { BulkIpDialog, type ActiveAssignment } from './services/BulkIpDialog';
 import { findReplaceTarget } from './services/findReplaceTarget';
@@ -877,6 +876,7 @@ export function ServicesModule({
     const normalizedSearch = search.trim().toLowerCase();
     const matchesSearch = !normalizedSearch
       || service.clientName.toLowerCase().includes(normalizedSearch)
+      || (service.clientCode || '').toLowerCase().includes(normalizedSearch)
       || (service.planName || '').toLowerCase().includes(normalizedSearch)
       // Manutenção remota ao contrário: do IP da antena para o cliente.
       || (service.deviceIps || '').toLowerCase().includes(normalizedSearch);
@@ -977,61 +977,62 @@ export function ServicesModule({
         />
       )}
 
-      <div className="module-table">
-        {loading && services.length === 0 && <SkeletonList rows={6} />}
-        {visibleServices.map((service) => (
-          <div
-            className="module-row service-row interactive"
-            key={service.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => { if (!hasTextSelection()) setSelectedService(service); }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                setSelectedService(service);
-              }
-            }}
-          >
-            <span>
-              <strong>{service.clientName}</strong>
-              <small>{service.planName || 'Sem plano'} - dia {service.dueDay}</small>
-            </span>
-            <code className="service-row-ip" title={service.deviceIps ? `IP dos equipamentos ativos: ${service.deviceIps}` : 'Sem IP registado'}>
-              {service.deviceIps || '—'}
-            </code>
-            <small title={service.audiovisualMode === 'monthly' ? 'Mensalidade NET + TVM (canais e conteúdos audiovisuais)' : undefined}>
-              {formatCve(monthlyTotalCve(service))}
-              {service.audiovisualMode === 'monthly' && ' · NET + TVM'}
-            </small>
-            <Badge tone={statusTone(service.status)}>{statusLabel(service.status)}</Badge>
-            {canManageServices && (
-              <div className="row-actions" onClick={(event) => event.stopPropagation()}>
-                <Button
-                  variant="icon"
-                  size="sm"
-                  className="row-action"
-                  title="Editar servico"
-                  aria-label="Editar servico"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    editService(service);
-                  }}
-                >
-                  <Pencil size={14} aria-hidden />
-                </Button>
-              </div>
-            )}
-          </div>
-        ))}
-        {!loading && visibleServices.length === 0 && (
-          <EmptyState
-            icon={Wrench}
-            title="Nenhum serviço encontrado"
-            description="Ajusta os filtros ou ativa um novo serviço para um cliente."
-          />
-        )}
-      </div>
+      {loading && services.length === 0 ? <SkeletonList rows={6} /> : (
+        <DataTable
+          rows={visibleServices}
+          rowKey={(service) => service.id}
+          stickyHeader
+          onRowClick={setSelectedService}
+          gridTemplateColumns="88px minmax(160px, 1.5fr) minmax(110px, 1fr) 88px minmax(120px, 1fr) 116px 96px 110px"
+          actions={canManageServices ? (service) => (
+            <Button
+              variant="icon"
+              size="sm"
+              className="row-action"
+              title="Editar serviço"
+              aria-label="Editar serviço"
+              onClick={() => editService(service)}
+            >
+              <Pencil size={14} aria-hidden />
+            </Button>
+          ) : undefined}
+          actionsWidth="64px"
+          columns={[
+            { header: 'Código', cell: (service) => <span className="entity-code">{service.clientCode}</span> },
+            { header: 'Cliente', cell: (service) => <strong>{service.clientName}</strong> },
+            { header: 'Plano', cell: (service) => <span>{service.planName || '—'}</span> },
+            { header: 'Dia venc.', align: 'center', cell: (service) => <b>{service.dueDay}</b> },
+            {
+              header: 'IP',
+              cell: (service) => (
+                <code className="service-ip" title={service.deviceIps ? `IP dos equipamentos ativos: ${service.deviceIps}` : 'Sem IP registado'}>
+                  {service.deviceIps || '—'}
+                </code>
+              )
+            },
+            { header: 'Mensalidade', align: 'end', cell: (service) => <b>{formatCve(monthlyTotalCve(service))}</b> },
+            {
+              header: 'TV',
+              align: 'center',
+              cell: (service) => (service.audiovisualMode === 'monthly'
+                ? <span title="Mensalidade NET + TVM (canais e conteúdos audiovisuais)">NET + TVM</span>
+                : <span>—</span>)
+            },
+            {
+              header: 'Estado',
+              align: 'center',
+              cell: (service) => <Badge tone={statusTone(service.status)}>{statusLabel(service.status)}</Badge>
+            }
+          ]}
+          empty={
+            <EmptyState
+              icon={Wrench}
+              title="Nenhum serviço encontrado"
+              description="Ajusta os filtros ou ativa um novo serviço para um cliente."
+            />
+          }
+        />
+      )}
 
       <Dialog
         open={showForm}

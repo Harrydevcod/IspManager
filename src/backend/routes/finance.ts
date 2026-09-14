@@ -53,6 +53,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       SELECT
         s.id,
         s.client_id AS clientId,
+        c.client_code AS clientCode,
         c.full_name AS clientName,
         s.plan_id AS planId,
         p.name AS planName,
@@ -247,6 +248,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       SELECT
         py.id,
         py.client_id AS clientId,
+        c.client_code AS clientCode,
         c.full_name AS clientName,
         c.client_code AS clientCode,
         c.nif AS clientNif,

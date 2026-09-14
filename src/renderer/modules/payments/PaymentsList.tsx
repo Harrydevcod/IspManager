@@ -68,20 +68,13 @@ export function PaymentsList({
       sort={sort}
       onSortChange={onSortChange}
       onRowClick={(p) => onPreview(p)}
-      gridTemplateColumns="minmax(200px, 1fr) 116px 100px 128px"
+      gridTemplateColumns="80px minmax(160px, 1.5fr) 104px minmax(96px, 0.8fr) 108px 110px 116px 120px"
       actionsWidth="104px"
       columns={[
-        {
-          header: 'Cliente',
-          sortKey: 'clientName',
-          cell: (p) => (
-            <span>
-              <small className="entity-code">{p.clientCode || '—'}</small>
-              <strong>{p.clientName}</strong>
-              <small>{formatPtMonth(p.referenceMonth)} · {p.invoiceNumber || 'sem fatura'}</small>
-            </span>
-          )
-        },
+        { header: 'Código', cell: (p) => <span className="entity-code">{p.clientCode || '—'}</span> },
+        { header: 'Cliente', sortKey: 'clientName', cell: (p) => <strong>{p.clientName}</strong> },
+        { header: 'Referência', cell: (p) => <span>{formatPtMonth(p.referenceMonth)}</span> },
+        { header: 'Fatura', cell: (p) => <span>{p.invoiceNumber || '—'}</span> },
         {
           header: 'Vencimento',
           sortKey: 'dueDate',
@@ -99,20 +92,21 @@ export function PaymentsList({
           }
         },
         {
+          header: 'Recebido',
+          align: 'end',
+          // Só o meio pago tem recebido a mostrar: pago por inteiro lê-se no
+          // Estado, e repetir o valor aqui seria ruído.
+          cell: (p) => <span>{p.receivedCve > 0 && p.balanceCve > 0 ? formatCve(p.receivedCve) : '—'}</span>
+        },
+        {
           header: 'Valor',
           sortKey: 'amountCve',
           defaultDirection: 'desc',
           align: 'end',
-          // Meio pago mostra as duas metades: o que falta em destaque, porque e
-          // isso que se cobra, e o recebido por baixo para a conta fechar a
-          // olho. Sem parcial nada muda.
+          // Meio pago mostra o que falta, porque é isso que se cobra; o total
+          // fica no title para a conta fechar a olho.
           cell: (p) => (p.receivedCve > 0 && p.balanceCve > 0
-            ? (
-              <span>
-                <b>{formatCve(p.balanceCve)}</b>
-                <small>recebido {formatCve(p.receivedCve)} de {formatCve(p.amountCve)}</small>
-              </span>
-            )
+            ? <b title={`Em falta de ${formatCve(p.amountCve)}`}>{formatCve(p.balanceCve)}</b>
             : <b>{formatCve(p.amountCve)}</b>)
         }
       ]}

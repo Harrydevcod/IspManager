@@ -154,7 +154,7 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
         sort={sort}
         onSortChange={setSort}
         onRowClick={onOpenClient ? (c) => onOpenClient(c.clientId) : undefined}
-        gridTemplateColumns="minmax(200px, 1fr) 96px 128px 140px 128px"
+        gridTemplateColumns="80px minmax(160px, 1.5fr) minmax(96px, 0.8fr) 104px 80px 108px 132px 116px 104px"
         empty={
           <EmptyState
             title="Nada por cobrar"
@@ -166,17 +166,10 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
           />
         }
         columns={[
-          {
-            header: 'Cliente',
-            sortKey: 'clientName',
-            cell: (c) => (
-              <span>
-                <small className="entity-code">{c.clientCode || '—'}</small>
-                <strong>{c.clientName}</strong>
-                <small>{[c.zone, c.phone].filter(Boolean).join(' · ') || 'sem contacto'}</small>
-              </span>
-            )
-          },
+          { header: 'Código', cell: (c) => <span className="entity-code">{c.clientCode || '—'}</span> },
+          { header: 'Cliente', sortKey: 'clientName', cell: (c) => <strong>{c.clientName}</strong> },
+          { header: 'Zona', cell: (c) => <span>{c.zone || '—'}</span> },
+          { header: 'Telefone', cell: (c) => <span>{c.phone || '—'}</span> },
           {
             header: 'Faturas',
             align: 'center',
@@ -198,14 +191,14 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
             sortKey: 'openCve',
             defaultDirection: 'desc',
             align: 'end',
-            // O credito aparece por baixo do saldo porque muda a conversa: nao
-            // se liga a cobrar a quem ja tem dinheiro nosso a favor.
-            cell: (c) => (
-              <span>
-                <b>{formatCve(c.openCve)}</b>
-                {c.creditCve > 0 && <small>crédito {formatCve(c.creditCve)}</small>}
-              </span>
-            )
+            cell: (c) => <b>{formatCve(c.openCve)}</b>
+          },
+          {
+            // O crédito fica ao lado do saldo porque muda a conversa: não se
+            // liga a cobrar a quem já tem dinheiro nosso a favor.
+            header: 'Crédito',
+            align: 'end',
+            cell: (c) => <span>{c.creditCve > 0 ? formatCve(c.creditCve) : '—'}</span>
           }
         ]}
       />

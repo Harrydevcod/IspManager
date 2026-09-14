@@ -91,7 +91,7 @@ export function PortfolioTable({ data, onOpenClient }: {
         onSortChange={setSort}
         stickyHeader
         onRowClick={onOpenClient ? (row) => onOpenClient(row.clientId) : undefined}
-        gridTemplateColumns="minmax(200px, 1.4fr) 116px 124px 132px 124px 116px"
+        gridTemplateColumns="88px minmax(180px, 1.4fr) 116px 124px 132px 124px 116px"
         empty={(
           <EmptyState
             title={filter === 'porRecuperar' ? 'Capital todo recuperado' : 'Nada nesta vista'}
@@ -101,18 +101,8 @@ export function PortfolioTable({ data, onOpenClient }: {
           />
         )}
         columns={[
-          {
-            header: 'Cliente',
-            sortKey: 'fullName',
-            // Sem a zona por baixo do nome: ela tem coluna propria, e repeti-la
-            // e ruido que rouba largura ao que a linha tem de dizer.
-            cell: (row) => (
-              <span>
-                <small className="entity-code">{row.clientCode || '—'}</small>
-                <strong>{row.fullName}</strong>
-              </span>
-            )
-          },
+          { header: 'Código', cell: (row) => <span className="entity-code">{row.clientCode || '—'}</span> },
+          { header: 'Cliente', sortKey: 'fullName', cell: (row) => <strong>{row.fullName}</strong> },
           { header: 'Zona', sortKey: 'zone', cell: (row) => row.zone || '—' },
           {
             header: 'Capital',

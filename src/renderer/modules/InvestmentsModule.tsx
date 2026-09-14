@@ -1,7 +1,7 @@
 import { Pencil, Plus, Trash2, Wallet, X } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Card, Combobox, DataList, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, MetricGrid, ModuleHeaderActions, Select, SkeletonList, Textarea, useConfirm, useToast } from '../components';
+import { Badge, Button, Card, Combobox, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, MetricGrid, ModuleHeaderActions, Select, SkeletonList, Textarea, useConfirm, useToast } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './InvestmentsModule.css';
@@ -522,36 +522,37 @@ export function InvestmentsModule() {
         {loading && data.rows.length === 0 ? (
           <SkeletonList rows={5} />
         ) : (
-        <DataList
+        <DataTable
           rows={data.rows}
           rowKey={(investment) => investment.id}
           activeKey={selected?.id}
           onRowClick={(investment) => setSelectedId(investment.id)}
+          gridTemplateColumns="96px minmax(120px, 1.3fr) minmax(80px, 0.8fr) minmax(96px, 1fr) 104px 112px"
+          actionsWidth="80px"
           columns={[
+            { header: 'Data', cell: (investment) => <span>{formatPtDate(investment.investmentDate)}</span> },
+            { header: 'Nome', cell: (investment) => <strong>{investment.name}</strong> },
+            { header: 'Zona', cell: (investment) => <span>{investment.zone || '—'}</span> },
             {
+              header: 'Clientes',
               cell: (investment) => (
                 <span>
-                  <strong>{investment.name}</strong>
-                  <small>
-                    {formatPtDate(investment.investmentDate)}
-                    {investment.zone ? ` - ${investment.zone}` : ''}
-                    {investment.clients.length > 0
-                      ? ` - ${investment.clients[0].name}${investment.clients.length > 1 ? ` +${investment.clients.length - 1}` : ''}`
-                      : investment.clientName ? ` - ${investment.clientName}` : ''}
-                  </small>
+                  {investment.clients.length > 0
+                    ? `${investment.clients[0].name}${investment.clients.length > 1 ? ` +${investment.clients.length - 1}` : ''}`
+                    : investment.clientName || '—'}
                 </span>
               )
             },
             {
+              header: 'Estado',
+              align: 'center',
               cell: (investment) => (
                 <Badge tone={statusMeta[investment.status]?.tone || 'neutral'}>
                   {statusMeta[investment.status]?.label || investment.status}
                 </Badge>
               )
             },
-            {
-              cell: (investment) => <b>{formatCve(investment.totalCostCve)}</b>
-            }
+            { header: 'Custo', align: 'end', cell: (investment) => <b>{formatCve(investment.totalCostCve)}</b> }
           ]}
           actions={(investment) => (
             <>
