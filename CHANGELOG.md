@@ -6,6 +6,17 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.28.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.28.0) — 2026-09-14
+
+> Sem migrações. A base de dados não muda com esta versão.
+
+### Alterado
+
+- **Uma coluna por dado, cada uma com o seu nome.** Nas listas, o código, o nome e o telefone do cliente apareciam empilhados na mesma célula, debaixo de um só cabeçalho. Agora cada dado tem a sua coluna, alinhada e com o nome no cabeçalho: em Clientes lê-se *Código · Nome · Telefone · Ilha · Zona · Estado*. O mesmo vale para Serviços (plano, dia de vencimento, IP, mensalidade e TV em colunas próprias), Planos (tipo, velocidade, preço e estado), Pagamentos (referência, fatura e o recebido de um pagamento parcial), Pendentes (zona, telefone e crédito), a Carteira do Lucro, as Despesas (data, fornecedor e fatura) e os Investimentos (data, zona e clientes).
+- **Serviços, Planos e Investimentos passam a ter cabeçalho**, e no telemóvel cada campo aparece com o seu rótulo.
+- **A pesquisa de Serviços encontra pelo código do cliente.**
+- **Numa janela estreita a tabela rola para os lados por dentro do painel**, sem arrastar a página toda; um nome que não cabe fica cortado com reticências em vez de desalinhar a linha.
+
 ## [1.27.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.27.0) — 2026-09-14
 
 > Sem migrações. A base de dados não muda com esta versão.
