@@ -1023,7 +1023,11 @@ h2 {
 .primary-panel,
 .side-panel,
 .module-panel {
-  background: color-mix(in oklch, var(--surface) 92%, var(--bg));
+  /* Exposto como token: o que se cola por cima do painel (barras de filtros
+     sticky) tem de pintar esta cor, e não a da página — senão lê-se como uma
+     faixa preta à volta dos filtros. */
+  --module-panel-bg: color-mix(in oklch, var(--surface) 92%, var(--bg));
+  background: var(--module-panel-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
 }
