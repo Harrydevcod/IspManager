@@ -451,14 +451,17 @@ export function ExpensesModule() {
             ? <SkeletonList rows={4} />
             : <div className="module-message">Sem despesas registadas para os filtros atuais.</div>
         }
+        defaultSort={{ key: 'Data', direction: 'desc' }}
         columns={[
-          { header: 'Data', cell: (expense) => <span>{formatPtDate(expense.expenseDate)}</span> },
-          { header: 'Descrição', cell: (expense) => <strong>{expense.description}</strong> },
-          { header: 'Fornecedor', cell: (expense) => <span>{expense.supplier || '—'}</span> },
-          { header: 'Fatura', cell: (expense) => <span>{expense.invoiceReference || '—'}</span> },
+          { header: 'Data', sortValue: (expense) => expense.expenseDate, defaultDirection: 'desc', cell: (expense) => <span>{formatPtDate(expense.expenseDate)}</span> },
+          { header: 'Descrição', sortValue: (expense) => expense.description, cell: (expense) => <strong>{expense.description}</strong> },
+          { header: 'Fornecedor', sortValue: (expense) => expense.supplier, cell: (expense) => <span>{expense.supplier || '—'}</span> },
+          { header: 'Fatura', sortValue: (expense) => expense.invoiceReference, cell: (expense) => <span>{expense.invoiceReference || '—'}</span> },
           {
             header: 'Alocação',
             align: 'center',
+            // Rateio (sem alvo) conta como vazio: fica no fim.
+            sortValue: (expense) => expense.investmentName || expense.clientName || expense.zone,
             cell: (expense) => {
               const allocLabel = expense.investmentName
                 ? `→ ${expense.investmentName}`
@@ -477,6 +480,7 @@ export function ExpensesModule() {
           {
             header: 'Categoria',
             align: 'center',
+            sortValue: (expense) => categoryMeta[expense.category]?.label || expense.category,
             cell: (expense) => (
               <Badge tone={categoryMeta[expense.category]?.tone || 'neutral'}>
                 {categoryMeta[expense.category]?.label || expense.category}
@@ -486,6 +490,8 @@ export function ExpensesModule() {
           {
             header: 'Valor',
             align: 'end',
+            sortValue: (expense) => expense.amountCve,
+            defaultDirection: 'desc',
             cell: (expense) => <span className="expenses-amount">{formatCve(expense.amountCve)}</span>
           }
         ]}

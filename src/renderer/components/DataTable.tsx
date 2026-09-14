@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
 import { hasTextSelection } from '../lib/textSelection';
-import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
-import type { SortDirection, SortState } from '../lib/listView';
+import { useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
+import { sortByColumns, type SortDirection, type SortState, type SortValue } from '../lib/listView';
 import type { SelectAllState } from '../lib/useRowSelection';
 
 type DataTableAlign = 'start' | 'center' | 'end';
@@ -32,19 +32,22 @@ function SelectCheckbox({ checked, indeterminate, onChange, label }: {
   );
 }
 
-type DataTableColumn<T, K extends string = string> = {
+export type DataTableColumn<T> = {
+  /** Único na tabela: é a key do React e a chave da ordenação. */
   header: string;
   cell: (row: T) => ReactNode;
   align?: DataTableAlign;
   className?: string;
-  sortKey?: K;
+  /** Presente ⇒ o cabeçalho ordena. Devolve o dado bruto (ISO, escudos, rank). */
+  sortValue?: (row: T) => SortValue;
+  /** Direção do primeiro clique; dinheiro, datas e contagens abrem em 'desc'. */
   defaultDirection?: SortDirection;
 };
 
-type DataTableProps<T, K extends string = string> = {
+type DataTableProps<T> = {
   rows: T[];
   rowKey: (row: T) => string | number;
-  columns: DataTableColumn<T, K>[];
+  columns: DataTableColumn<T>[];
   gridTemplateColumns: string;
   actions?: (row: T) => ReactNode;
   actionsHeader?: string;
@@ -52,8 +55,14 @@ type DataTableProps<T, K extends string = string> = {
   empty: ReactNode;
   className?: string;
   stickyHeader?: boolean;
-  sort?: SortState<K>;
-  onSortChange?: (sort: SortState<K>) => void;
+  /**
+   * Sem `onSortChange` a tabela ordena sozinha, a partir de `defaultSort`.
+   * Com `sort` + `onSortChange` quem ordena é o pai (listas paginadas, que têm
+   * de ordenar antes de cortar a página — usar `sortByColumns`).
+   */
+  defaultSort?: SortState<string>;
+  sort?: SortState<string>;
+  onSortChange?: (sort: SortState<string>) => void;
   onRowClick?: (row: T) => void;
   activeKey?: string | number | null;
   selection?: DataTableSelection;
@@ -69,8 +78,8 @@ function sortIcon(direction: SortDirection | undefined) {
   return <ChevronsUpDown size={13} aria-hidden />;
 }
 
-export function DataTable<T, K extends string = string>({
-  rows,
+export function DataTable<T>({
+  rows: inputRows,
   rowKey,
   columns,
   gridTemplateColumns,
@@ -80,12 +89,21 @@ export function DataTable<T, K extends string = string>({
   empty,
   className,
   stickyHeader = false,
-  sort,
+  defaultSort,
+  sort: controlledSort,
   onSortChange,
   onRowClick,
   activeKey,
   selection
-}: DataTableProps<T, K>) {
+}: DataTableProps<T>) {
+  const isControlled = Boolean(onSortChange);
+  const [ownSort, setOwnSort] = useState<SortState<string> | undefined>(defaultSort);
+  const sort = isControlled ? controlledSort : ownSort;
+  const setSort = isControlled ? onSortChange! : setOwnSort;
+  // ponytail: ordena a cada render (as colunas são literais recriados); as listas
+  // não controladas têm centenas de linhas. Memoizar se alguma passar aos milhares.
+  const rows = isControlled ? inputRows : sortByColumns(inputRows, ownSort, columns, defaultSort?.key);
+
   if (!rows.length) return <>{empty}</>;
 
   const selectColumn = selection ? '44px ' : '';
@@ -127,23 +145,24 @@ export function DataTable<T, K extends string = string>({
           </span>
         )}
         {columns.map((column) => {
-          const isSorted = Boolean(column.sortKey && sort && sort.key === column.sortKey);
+          const isSorted = Boolean(column.sortValue && sort && sort.key === column.header);
           return (
             <span
               key={column.header}
               className={`data-table-heading ${alignClass(column.align)}`}
               role="columnheader"
-              aria-sort={isSorted && sort ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}
+              aria-sort={column.sortValue ? (isSorted && sort ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
             >
-              {column.sortKey && onSortChange ? (
+              {column.sortValue ? (
                 <button
                   type="button"
                   className={`data-table-sort${isSorted ? ' is-active' : ''}`}
+                  title={`Ordenar por ${column.header.toLowerCase()}`}
                   onClick={() => {
                     const direction = isSorted && sort
                       ? (sort.direction === 'asc' ? 'desc' : 'asc')
                       : column.defaultDirection || 'asc';
-                    onSortChange({ key: column.sortKey as K, direction });
+                    setSort({ key: column.header, direction });
                   }}
                 >
                   <span>{column.header}</span>

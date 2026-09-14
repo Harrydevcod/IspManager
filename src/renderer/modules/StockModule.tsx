@@ -6,7 +6,8 @@ import { EQUIPMENT_TYPES_BY_CATEGORY, labelForType } from '../../shared/equipmen
 import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
-import { compareNumber, compareText, paginateRows, sortRows, type SortState } from '../lib/listView';
+import { paginateRows, sortByColumns, type SortState } from '../lib/listView';
+import type { DataTableColumn } from '../components/DataTable';
 import { stockLevelTone } from '../lib/status';
 import type { CatalogAssignments, StockCatalogRow, StockMovement, StockSummary } from '../types';
 import './StockModule.css';
@@ -43,9 +44,70 @@ type StockMovementFormState = {
   notes: string;
 };
 
-type StockSortKey = 'model' | 'type' | 'stockTotal' | 'sellingPriceCve';
+type StockTab = 'equipamento' | 'material';
 
-const DEFAULT_STOCK_SORT: SortState<StockSortKey> = { key: 'model', direction: 'asc' };
+const itemHeader = (tab: StockTab) => (tab === 'material' ? 'Material' : 'Modelo');
+
+const DEFAULT_STOCK_SORT: SortState<string> = { key: itemHeader('equipamento'), direction: 'asc' };
+
+/** Fora do componente: a lista é paginada e ordena-se antes de cortar a página. */
+function buildStockColumns(tab: StockTab): DataTableColumn<StockCatalogRow>[] {
+  return [
+    {
+      header: itemHeader(tab),
+      sortValue: (item) => (item.brand ? `${item.brand} ${item.model}` : item.model),
+      cell: (item) => {
+        const Icon = iconForType(item.type);
+        return (
+          <span className="stock-table-model">
+            <span className="stock-item-icon" aria-hidden>
+              <Icon size={16} strokeWidth={1.6} />
+            </span>
+            <span className="stock-item-main">
+              <span className="stock-item-name">
+                {item.brand ? `${item.brand} ${item.model}` : item.model}
+              </span>
+              <span className="stock-item-meta-supplier">{item.supplier || 'sem fornecedor'}</span>
+            </span>
+          </span>
+        );
+      }
+    },
+    {
+      header: 'Tipo',
+      sortValue: (item) => labelForType(item.type),
+      cell: (item) => <span>{labelForType(item.type)}</span>
+    },
+    {
+      header: 'Stock',
+      sortValue: (item) => item.stockTotal,
+      defaultDirection: 'desc',
+      align: 'end',
+      cell: (item) => {
+        const tone = stockLevelTone(item.stockTotal);
+        return (
+          <span className="stock-item-level">
+            <span className="stock-item-level-dot" data-tone={tone} aria-hidden />
+            <span className="stock-item-level-value">{item.stockTotal}</span>
+            <span className="stock-item-level-unit">{item.unitOfMeasure || 'un.'}</span>
+            {item.backboneCount > 0 ? (
+              <span className="stock-item-level-backbone">
+                +{item.backboneCount} no backbone
+              </span>
+            ) : null}
+          </span>
+        );
+      }
+    },
+    {
+      header: 'Venda',
+      sortValue: (item) => item.sellingPriceCve,
+      defaultDirection: 'desc',
+      align: 'end',
+      cell: (item) => <span className="stock-item-value-amount">{formatCve(item.sellingPriceCve)}</span>
+    }
+  ];
+}
 const DEFAULT_STOCK_PAGE_SIZE = 25;
 
 function emptyCatalogForm(): StockFormState {
@@ -119,13 +181,13 @@ export function StockModule({
   const [showMovementForm, setShowMovementForm] = useState(false);
   const [editingCatalog, setEditingCatalog] = useState<StockCatalogRow | null>(null);
   const [search, setSearch] = useState('');
-  const [stockTab, setStockTab] = useState<'equipamento' | 'material'>('equipamento');
+  const [stockTab, setStockTab] = useState<StockTab>('equipamento');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out'>('all');
   const [catalogForm, setCatalogForm] = useState<StockFormState>(emptyCatalogForm());
   const [writingNewType, setWritingNewType] = useState(false);
   const [movementForm, setMovementForm] = useState<StockMovementFormState>(emptyMovementForm());
-  const [sortState, setSortState] = useState<SortState<StockSortKey>>(DEFAULT_STOCK_SORT);
+  const [sortState, setSortState] = useState(DEFAULT_STOCK_SORT);
   const [stockPage, setStockPage] = useState(1);
   const [stockPageSize, setStockPageSize] = useState(DEFAULT_STOCK_PAGE_SIZE);
 
@@ -368,12 +430,18 @@ export function StockModule({
       || (stockFilter === 'out' && item.stockTotal <= 0);
     return matchesSearch && matchesTab && matchesType && matchesStock;
   }), [summary, search, stockTab, typeFilter, stockFilter]);
-  const visibleStockRows = useMemo(() => sortRows(filteredStockRows, sortState, {
-    model: (a, b) => compareText(`${a.brand || ''} ${a.model}`, `${b.brand || ''} ${b.model}`),
-    type: (a, b) => compareText(a.type, b.type) || compareText(a.model, b.model),
-    stockTotal: (a, b) => compareNumber(a.stockTotal, b.stockTotal) || compareText(a.model, b.model),
-    sellingPriceCve: (a, b) => compareNumber(a.sellingPriceCve, b.sellingPriceCve) || compareText(a.model, b.model)
-  }), [filteredStockRows, sortState]);
+  const stockColumns = useMemo(() => buildStockColumns(stockTab), [stockTab]);
+  const visibleStockRows = useMemo(
+    () => sortByColumns(filteredStockRows, sortState, stockColumns, itemHeader(stockTab)),
+    [filteredStockRows, sortState, stockColumns, stockTab]
+  );
+
+  function switchStockTab(tab: StockTab) {
+    setStockTab(tab);
+    setTypeFilter('all');
+    // A 1.ª coluna muda de nome com a aba; quem ordenava por ela continua a ordenar.
+    setSortState((current) => (current.key === itemHeader(stockTab) ? { ...current, key: itemHeader(tab) } : current));
+  }
   const pagedStockRows = useMemo(
     () => paginateRows(visibleStockRows, { page: stockPage, pageSize: stockPageSize }),
     [stockPage, stockPageSize, visibleStockRows]
@@ -464,7 +532,7 @@ export function StockModule({
           role="tab"
           aria-selected={stockTab === 'equipamento'}
           className={`segmented-tab${stockTab === 'equipamento' ? ' is-active' : ''}`}
-          onClick={() => { setStockTab('equipamento'); setTypeFilter('all'); }}
+          onClick={() => switchStockTab('equipamento')}
         >
           <Boxes size={14} aria-hidden />
           <span>Equipamentos</span>
@@ -475,7 +543,7 @@ export function StockModule({
           role="tab"
           aria-selected={stockTab === 'material'}
           className={`segmented-tab${stockTab === 'material' ? ' is-active' : ''}`}
-          onClick={() => { setStockTab('material'); setTypeFilter('all'); }}
+          onClick={() => switchStockTab('material')}
         >
           <Cable size={14} aria-hidden />
           <span>Materiais</span>
@@ -499,7 +567,7 @@ export function StockModule({
             <option value="low">Baixo</option>
             <option value="out">Esgotado</option>
           </Select>
-          <Button variant="secondary" onClick={() => { setSearch(''); setTypeFilter('all'); setStockFilter('all'); setSortState(DEFAULT_STOCK_SORT); setStockPage(1); }}>
+          <Button variant="secondary" onClick={() => { setSearch(''); setTypeFilter('all'); setStockFilter('all'); setSortState({ ...DEFAULT_STOCK_SORT, key: itemHeader(stockTab) }); setStockPage(1); }}>
             Limpar filtros
           </Button>
           <small>{visibleStockRows.length} {visibleStockRows.length === 1 ? 'modelo' : 'modelos'}</small>
@@ -647,61 +715,7 @@ export function StockModule({
             onRowClick={selectCatalog}
             gridTemplateColumns="minmax(260px, 1.4fr) 112px 112px 132px"
             actionsWidth="92px"
-            columns={[
-              {
-                header: stockTab === 'material' ? 'Material' : 'Modelo',
-                sortKey: 'model',
-                cell: (item) => {
-                  const Icon = iconForType(item.type);
-                  return (
-                    <span className="stock-table-model">
-                      <span className="stock-item-icon" aria-hidden>
-                        <Icon size={16} strokeWidth={1.6} />
-                      </span>
-                      <span className="stock-item-main">
-                        <span className="stock-item-name">
-                          {item.brand ? `${item.brand} ${item.model}` : item.model}
-                        </span>
-                        <span className="stock-item-meta-supplier">{item.supplier || 'sem fornecedor'}</span>
-                      </span>
-                    </span>
-                  );
-                }
-              },
-              {
-                header: 'Tipo',
-                sortKey: 'type',
-                cell: (item) => <span>{labelForType(item.type)}</span>
-              },
-              {
-                header: 'Stock',
-                sortKey: 'stockTotal',
-                defaultDirection: 'desc',
-                align: 'end',
-                cell: (item) => {
-                  const tone = stockLevelTone(item.stockTotal);
-                  return (
-                    <span className="stock-item-level">
-                      <span className="stock-item-level-dot" data-tone={tone} aria-hidden />
-                      <span className="stock-item-level-value">{item.stockTotal}</span>
-                      <span className="stock-item-level-unit">{item.unitOfMeasure || 'un.'}</span>
-                      {item.backboneCount > 0 ? (
-                        <span className="stock-item-level-backbone">
-                          +{item.backboneCount} no backbone
-                        </span>
-                      ) : null}
-                    </span>
-                  );
-                }
-              },
-              {
-                header: 'Venda',
-                sortKey: 'sellingPriceCve',
-                defaultDirection: 'desc',
-                align: 'end',
-                cell: (item) => <span className="stock-item-value-amount">{formatCve(item.sellingPriceCve)}</span>
-              },
-            ]}
+            columns={stockColumns}
             actions={canManageStock ? (item) => (
               <>
                 <Button

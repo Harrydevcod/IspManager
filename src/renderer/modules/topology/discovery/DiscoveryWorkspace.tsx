@@ -30,7 +30,8 @@ import {
 } from '../../../components';
 import { downloadCsv } from '../../../lib/csv';
 import { formatPtDateTime } from '../../../lib/format';
-import { compareNumber, sortRows, type SortState } from '../../../lib/listView';
+import { sortByColumns, type SortState } from '../../../lib/listView';
+import type { DataTableColumn } from '../../../components/DataTable';
 import { ipToInt } from '../../../../shared/ip-range';
 import { labelForWanMode } from '../../../../shared/wan';
 import { labelForOperationMode } from '../../../../shared/operation';
@@ -99,28 +100,23 @@ const SEVERITY: Record<DiscoveryCategory, number> = {
   registado: 4
 };
 
-export type DiscoverySortKey = 'ip' | 'estado';
-
 /** O varrimento chega ordenado por endereço; é essa a vista de partida. */
-const DEFAULT_SORT: SortState<DiscoverySortKey> = { key: 'ip', direction: 'asc' };
+const DEFAULT_SORT: SortState<string> = { key: 'Endereço', direction: 'asc' };
 
 /**
- * Filtra pelo estado escolhido nos chips e ordena.
+ * Filtra pelo estado escolhido nos chips e ordena pelas colunas da tabela.
  *
- * Empate resolve-se pela ordem de chegada, que é a do endereço (o `sortRows` é
- * estável) — por isso ordenar por estado agrupa os estados sem baralhar os IPs
- * lá dentro.
+ * Fica fora da `DataTable` porque o CSV exporta a mesma ordem que se vê. O
+ * empate resolve-se pelo endereço — ordenar por estado agrupa os estados sem
+ * baralhar os IPs lá dentro.
  */
 export function orderDiscoveryRows(
   rows: readonly DiscoveryRow[],
   filter: Filter,
-  sort: SortState<DiscoverySortKey>
+  sort: SortState<string>
 ): DiscoveryRow[] {
   const visible = filter === 'todos' ? rows : rows.filter((row) => row.category === filter);
-  return sortRows(visible, sort, {
-    ip: (a, b) => compareNumber(ipToInt(a.ip), ipToInt(b.ip)),
-    estado: (a, b) => compareNumber(SEVERITY[a.category], SEVERITY[b.category])
-  });
+  return sortByColumns(visible, sort, DISCOVERY_COLUMNS, DEFAULT_SORT.key);
 }
 
 const api = createDiscoveryApi();
@@ -195,11 +191,79 @@ function displayName(row: DiscoveryRow): string {
   return row.hostname ?? '—';
 }
 
+const registeredWanMode = (row: DiscoveryRow) => row.registeredAs.map((ref) => ref.wanMode).find(Boolean);
+const registeredOperationMode = (row: DiscoveryRow) => row.registeredAs.map((ref) => ref.operationMode).find(Boolean);
+
+const DISCOVERY_COLUMNS: DataTableColumn<DiscoveryRow>[] = [
+  { header: 'Endereço', sortValue: (row) => ipToInt(row.ip), cell: (row) => <code className="discovery-ip">{row.ip}</code> },
+  {
+    header: 'Estado',
+    sortValue: (row) => SEVERITY[row.category],
+    cell: (row) => <Badge tone={TONE[row.category]}>{LABEL[row.category]}</Badge>
+  },
+  {
+    header: 'Nome',
+    sortValue: (row) => (row.registeredAs.length > 0 ? displayName(row) : row.hostname),
+    cell: (row) => displayName(row)
+  },
+  {
+    header: 'MAC',
+    sortValue: (row) => row.mac,
+    cell: (row) => row.mac
+      ? <code className="discovery-mac" title={sourceLabel(row.source)}>{row.mac}</code>
+      : <span className="discovery-muted">—</span>
+  },
+  { header: 'Equipamento', sortValue: (row) => row.model ?? row.vendor, cell: (row) => <DeviceCell row={row} /> },
+  {
+    // O modo REGISTADO, não inferido da rede: é o que foi aplicado que
+    // interessa confrontar com o que a varredura encontrou.
+    header: 'Ligação',
+    sortValue: (row) => {
+      const wanMode = registeredWanMode(row);
+      return wanMode ? labelForWanMode(wanMode) : null;
+    },
+    cell: (row) => {
+      const wanMode = registeredWanMode(row);
+      return wanMode
+        ? <span className="discovery-wan">{labelForWanMode(wanMode)}</span>
+        : <span className="discovery-muted">—</span>;
+    }
+  },
+  {
+    header: 'Operação',
+    sortValue: (row) => {
+      const mode = registeredOperationMode(row);
+      return mode ? labelForOperationMode(mode) : null;
+    },
+    cell: (row) => {
+      const mode = registeredOperationMode(row);
+      return mode
+        ? <span className="discovery-wan">{labelForOperationMode(mode)}</span>
+        : <span className="discovery-muted">—</span>;
+    }
+  },
+  {
+    header: 'Latência',
+    align: 'end',
+    sortValue: (row) => row.rttMs,
+    cell: (row) => row.rttMs === null
+      ? <span className="discovery-muted">—</span>
+      : <span className="discovery-num">{row.rttMs} ms</span>
+  },
+  {
+    header: 'Visto desde',
+    sortValue: (row) => row.firstSeenAt,
+    cell: (row) => row.firstSeenAt
+      ? formatPtDateTime(row.firstSeenAt)
+      : <span className="discovery-muted">—</span>
+  }
+];
+
 export function DiscoveryWorkspace({ active, onRegisterBackbone, onOpenService, onOpenBackbone }: DiscoveryWorkspaceProps) {
   const discovery = useDiscovery(active, api);
   const { report, progress, scanning } = discovery;
   const [filter, setFilter] = useState<Filter>('todos');
-  const [sort, setSort] = useState<SortState<DiscoverySortKey>>(DEFAULT_SORT);
+  const [sort, setSort] = useState<SortState<string>>(DEFAULT_SORT);
   const [assigning, setAssigning] = useState<DiscoveryRow | null>(null);
   const [batchOpen, setBatchOpen] = useState(false);
   const { toast } = useToast();
@@ -427,62 +491,14 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone, onOpenService, 
         </div>
       ) : null}
 
-      <DataTable<DiscoveryRow, DiscoverySortKey>
+      <DataTable<DiscoveryRow>
         rows={rows}
         rowKey={(row) => row.ip}
         gridTemplateColumns="minmax(130px, 0.8fr) 130px minmax(160px, 1.4fr) minmax(150px, 1fr) minmax(150px, 1.1fr) minmax(110px, 0.7fr) minmax(100px, 0.7fr) 90px minmax(140px, 1fr)"
         stickyHeader
         sort={sort}
         onSortChange={setSort}
-        columns={[
-          { header: 'Endereço', sortKey: 'ip', cell: (row) => <code className="discovery-ip">{row.ip}</code> },
-          {
-            header: 'Estado',
-            sortKey: 'estado',
-            cell: (row) => <Badge tone={TONE[row.category]}>{LABEL[row.category]}</Badge>
-          },
-          { header: 'Nome', cell: (row) => displayName(row) },
-          {
-            header: 'MAC',
-            cell: (row) => row.mac
-              ? <code className="discovery-mac" title={sourceLabel(row.source)}>{row.mac}</code>
-              : <span className="discovery-muted">—</span>
-          },
-          { header: 'Equipamento', cell: (row) => <DeviceCell row={row} /> },
-          {
-            // O modo REGISTADO, não inferido da rede: é o que foi aplicado que
-            // interessa confrontar com o que a varredura encontrou.
-            header: 'Ligação',
-            cell: (row) => {
-              const wanMode = row.registeredAs.map((ref) => ref.wanMode).find(Boolean);
-              return wanMode
-                ? <span className="discovery-wan">{labelForWanMode(wanMode)}</span>
-                : <span className="discovery-muted">—</span>;
-            }
-          },
-          {
-            header: 'Operação',
-            cell: (row) => {
-              const mode = row.registeredAs.map((ref) => ref.operationMode).find(Boolean);
-              return mode
-                ? <span className="discovery-wan">{labelForOperationMode(mode)}</span>
-                : <span className="discovery-muted">—</span>;
-            }
-          },
-          {
-            header: 'Latência',
-            align: 'end',
-            cell: (row) => row.rttMs === null
-              ? <span className="discovery-muted">—</span>
-              : <span className="discovery-num">{row.rttMs} ms</span>
-          },
-          {
-            header: 'Visto desde',
-            cell: (row) => row.firstSeenAt
-              ? formatPtDateTime(row.firstSeenAt)
-              : <span className="discovery-muted">—</span>
-          }
-        ]}
+        columns={DISCOVERY_COLUMNS}
         actions={(row) => (
           <RowActionsMenu
             groups={[

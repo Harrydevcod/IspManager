@@ -46,6 +46,69 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('DataTable: ordenar pelo cabeçalho', () => {
+  type Money = { id: number; name: string; amount: number | null };
+  const MONEY: Money[] = [
+    { id: 1, name: 'Beta', amount: 200 },
+    { id: 2, name: 'alfa', amount: null },
+    { id: 3, name: 'Gama', amount: 900 }
+  ];
+
+  function mountSortable() {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root!.render(
+        <DataTable
+          rows={MONEY}
+          rowKey={(row) => row.id}
+          gridTemplateColumns="1fr 1fr 1fr"
+          defaultSort={{ key: 'Nome', direction: 'asc' }}
+          columns={[
+            { header: 'Nome', sortValue: (row: Money) => row.name, cell: (row: Money) => row.name },
+            { header: 'Valor', sortValue: (row: Money) => row.amount, defaultDirection: 'desc', cell: (row: Money) => String(row.amount ?? '—') },
+            { header: 'Nota', cell: () => 'x' }
+          ]}
+          empty={<p>sem linhas</p>}
+        />
+      );
+    });
+    return container;
+  }
+
+  const names = (el: HTMLElement) =>
+    [...el.querySelectorAll('.data-table-row')].map((row) => row.firstElementChild!.textContent);
+  const heading = (el: HTMLElement, label: string) =>
+    [...el.querySelectorAll<HTMLElement>('[role="columnheader"]')].find((h) => h.textContent === label)!;
+
+  test('parte da ordenação por omissão e alterna asc/desc no clique', () => {
+    const el = mountSortable();
+    expect(names(el)).toEqual(['alfa', 'Beta', 'Gama']);
+    expect(heading(el, 'Nome').getAttribute('aria-sort')).toBe('ascending');
+
+    act(() => heading(el, 'Nome').querySelector('button')!.click());
+    expect(names(el)).toEqual(['Gama', 'Beta', 'alfa']);
+    expect(heading(el, 'Nome').getAttribute('aria-sort')).toBe('descending');
+  });
+
+  test('o primeiro clique respeita defaultDirection e os vazios ficam no fim', () => {
+    const el = mountSortable();
+    act(() => heading(el, 'Valor').querySelector('button')!.click());
+    expect(names(el)).toEqual(['Gama', 'Beta', 'alfa']);
+    expect(heading(el, 'Nome').getAttribute('aria-sort')).toBe('none');
+
+    act(() => heading(el, 'Valor').querySelector('button')!.click());
+    expect(names(el)).toEqual(['Beta', 'Gama', 'alfa']);
+  });
+
+  test('coluna sem sortValue não tem botão', () => {
+    const el = mountSortable();
+    expect(heading(el, 'Nota').querySelector('button')).toBeNull();
+    expect(heading(el, 'Nota').hasAttribute('aria-sort')).toBe(false);
+  });
+});
+
 describe('DataTable: copiar texto de uma linha clicável', () => {
   test('clique sem seleção abre a linha', () => {
     const onRowClick = vi.fn();

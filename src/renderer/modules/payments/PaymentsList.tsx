@@ -1,12 +1,11 @@
 import { AlertTriangle, CheckCircle2, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Smartphone, Undo2, X } from 'lucide-react';
 import { Badge, DataTable, EmptyState, RowActionsMenu, type DataTableSelection, type RowActionGroup } from '../../components';
+import type { DataTableColumn } from '../../components/DataTable';
 import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
 import type { SortState } from '../../lib/listView';
 import { effectivePaymentStatus } from '../../lib/status';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
 import { paymentStatusLabel, type EffectivePaymentStatus, type PaymentRow, type SmsEventType } from '../../types';
-
-type PaymentSortKey = 'dueDate' | 'clientName' | 'status' | 'amountCve';
 
 const paymentStatusTone = (status: EffectivePaymentStatus): 'success' | 'info' | 'danger' | 'neutral' | 'warn' => {
   switch (status) {
@@ -17,14 +16,62 @@ const paymentStatusTone = (status: EffectivePaymentStatus): 'success' | 'info' |
     case 'cancelled': return 'neutral';
   }
 };
+const isPartial = (p: PaymentRow) => p.receivedCve > 0 && p.balanceCve > 0;
 
+/**
+ * Exportadas porque a lista é paginada: o `PaymentsModule` ordena com estas
+ * colunas antes de cortar a página.
+ */
+export const PAYMENT_COLUMNS: DataTableColumn<PaymentRow>[] = [
+  { header: 'Código', sortValue: (p) => p.clientCode, cell: (p) => <span className="entity-code">{p.clientCode || '—'}</span> },
+  { header: 'Cliente', sortValue: (p) => p.clientName, cell: (p) => <strong>{p.clientName}</strong> },
+  // 'INSTALACAO' não é um mês e mostra "-": ordena como vazio, no fim.
+  { header: 'Referência', sortValue: (p) => (/^\d{4}-\d{2}$/.test(p.referenceMonth) ? p.referenceMonth : null), defaultDirection: 'desc', cell: (p) => <span>{formatPtMonth(p.referenceMonth)}</span> },
+  { header: 'Fatura', sortValue: (p) => p.invoiceNumber, cell: (p) => <span>{p.invoiceNumber || '—'}</span> },
+  {
+    header: 'Vencimento',
+    sortValue: (p) => p.dueDate,
+    cell: (p) => <span>{formatPtDate(p.dueDate)}</span>
+  },
+  {
+    header: 'Estado',
+    align: 'center',
+    // A etiqueta segue o estado efetivo: um pendente com a data passada
+    // lê-se "Em atraso", senão o filtro devolvia linhas a dizer Pendente.
+    sortValue: (p) => paymentStatusLabel(effectivePaymentStatus(p)),
+    cell: (p) => {
+      const status = effectivePaymentStatus(p);
+      return <Badge tone={paymentStatusTone(status)}>{paymentStatusLabel(status)}</Badge>;
+    }
+  },
+  {
+    header: 'Recebido',
+    align: 'end',
+    // Só o meio pago tem recebido a mostrar: pago por inteiro lê-se no
+    // Estado, e repetir o valor aqui seria ruído.
+    sortValue: (p) => (isPartial(p) ? p.receivedCve : null),
+    defaultDirection: 'desc',
+    cell: (p) => <span>{isPartial(p) ? formatCve(p.receivedCve) : '—'}</span>
+  },
+  {
+    header: 'Valor',
+    defaultDirection: 'desc',
+    align: 'end',
+    // Meio pago mostra o que falta, porque é isso que se cobra; o total
+    // fica no title para a conta fechar a olho. Ordena pelo que se vê.
+    sortValue: (p) => (isPartial(p) ? p.balanceCve : p.amountCve),
+    cell: (p) => (isPartial(p)
+      ? <b title={`Em falta de ${formatCve(p.amountCve)}`}>{formatCve(p.balanceCve)}</b>
+      : <b>{formatCve(p.amountCve)}</b>)
+  }
+];
 
 type PaymentsListProps = {
   payments: PaymentRow[];
   activeId: number | null;
   selection?: DataTableSelection;
-  sort: SortState<PaymentSortKey>;
-  onSortChange: (sort: SortState<PaymentSortKey>) => void;
+  sort: SortState<string>;
+  onSortChange: (sort: SortState<string>) => void;
   submitting: boolean;
   isReminderSentToday: (paymentId: number) => boolean;
   onPreview: (payment: PaymentRow) => void;
@@ -70,46 +117,7 @@ export function PaymentsList({
       onRowClick={(p) => onPreview(p)}
       gridTemplateColumns="80px minmax(160px, 1.5fr) 104px minmax(96px, 0.8fr) 108px 110px 116px 120px"
       actionsWidth="104px"
-      columns={[
-        { header: 'Código', cell: (p) => <span className="entity-code">{p.clientCode || '—'}</span> },
-        { header: 'Cliente', sortKey: 'clientName', cell: (p) => <strong>{p.clientName}</strong> },
-        { header: 'Referência', cell: (p) => <span>{formatPtMonth(p.referenceMonth)}</span> },
-        { header: 'Fatura', cell: (p) => <span>{p.invoiceNumber || '—'}</span> },
-        {
-          header: 'Vencimento',
-          sortKey: 'dueDate',
-          cell: (p) => <span>{formatPtDate(p.dueDate)}</span>
-        },
-        {
-          header: 'Estado',
-          sortKey: 'status',
-          align: 'center',
-          // A etiqueta segue o estado efetivo: um pendente com a data passada
-          // lê-se "Em atraso", senão o filtro devolvia linhas a dizer Pendente.
-          cell: (p) => {
-            const status = effectivePaymentStatus(p);
-            return <Badge tone={paymentStatusTone(status)}>{paymentStatusLabel(status)}</Badge>;
-          }
-        },
-        {
-          header: 'Recebido',
-          align: 'end',
-          // Só o meio pago tem recebido a mostrar: pago por inteiro lê-se no
-          // Estado, e repetir o valor aqui seria ruído.
-          cell: (p) => <span>{p.receivedCve > 0 && p.balanceCve > 0 ? formatCve(p.receivedCve) : '—'}</span>
-        },
-        {
-          header: 'Valor',
-          sortKey: 'amountCve',
-          defaultDirection: 'desc',
-          align: 'end',
-          // Meio pago mostra o que falta, porque é isso que se cobra; o total
-          // fica no title para a conta fechar a olho.
-          cell: (p) => (p.receivedCve > 0 && p.balanceCve > 0
-            ? <b title={`Em falta de ${formatCve(p.amountCve)}`}>{formatCve(p.balanceCve)}</b>
-            : <b>{formatCve(p.amountCve)}</b>)
-        }
-      ]}
+      columns={PAYMENT_COLUMNS}
       actions={(p) => {
         if (p.status === 'cancelled') return null;
         const hasPhone = Boolean(normalizeWhatsappPhone(p.clientPhone));

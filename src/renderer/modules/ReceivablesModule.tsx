@@ -13,7 +13,6 @@ import {
 } from '../components';
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
-import { compareNumber, compareText, sortRows, type SortState } from '../lib/listView';
 import { AGING_LABELS, type AgingBucket, type ReceivableClient, type ReceivablesReport } from '../types';
 
 /**
@@ -26,8 +25,6 @@ import { AGING_LABELS, type AgingBucket, type ReceivableClient, type Receivables
  * Sem cache: e uma lista para ter aberta enquanto se liga aos clientes, e um
  * valor de ha cinco minutos numa conversa de cobranca e pior do que nenhum.
  */
-
-type ReceivablesSortKey = 'clientName' | 'openCve' | 'oldestDueDate' | 'maxDaysOverdue';
 
 const BUCKET_TONE: Record<AgingBucket, 'success' | 'info' | 'warn' | 'danger' | 'neutral'> = {
   current: 'info',
@@ -44,7 +41,6 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [bucketFilter, setBucketFilter] = useState<AgingBucket | 'all'>('all');
-  const [sort, setSort] = useState<SortState<ReceivablesSortKey>>({ key: 'openCve', direction: 'desc' });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,14 +63,8 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
 
   const rows = useMemo(() => {
     const all = report?.clients || [];
-    const filtered = bucketFilter === 'all' ? all : all.filter((c) => c.bucket === bucketFilter);
-    return sortRows(filtered, sort, {
-      clientName: (a, b) => compareText(a.clientName, b.clientName),
-      openCve: (a, b) => compareNumber(a.openCve, b.openCve),
-      oldestDueDate: (a, b) => compareText(a.oldestDueDate, b.oldestDueDate),
-      maxDaysOverdue: (a, b) => compareNumber(a.maxDaysOverdue, b.maxDaysOverdue)
-    });
-  }, [report, bucketFilter, sort]);
+    return bucketFilter === 'all' ? all : all.filter((c) => c.bucket === bucketFilter);
+  }, [report, bucketFilter]);
 
   if (loadError && !report) {
     return <ErrorRetry message={loadError} onRetry={() => { void load(); }} />;
@@ -148,11 +138,10 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
         })}
       </FilterBar>
 
-      <DataTable<ReceivableClient, ReceivablesSortKey>
+      <DataTable<ReceivableClient>
         rows={rows}
         rowKey={(c) => c.clientId}
-        sort={sort}
-        onSortChange={setSort}
+        defaultSort={{ key: 'Em aberto', direction: 'desc' }}
         onRowClick={onOpenClient ? (c) => onOpenClient(c.clientId) : undefined}
         gridTemplateColumns="80px minmax(160px, 1.5fr) minmax(96px, 0.8fr) 104px 80px 108px 132px 116px 104px"
         empty={
@@ -166,29 +155,32 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
           />
         }
         columns={[
-          { header: 'Código', cell: (c) => <span className="entity-code">{c.clientCode || '—'}</span> },
-          { header: 'Cliente', sortKey: 'clientName', cell: (c) => <strong>{c.clientName}</strong> },
-          { header: 'Zona', cell: (c) => <span>{c.zone || '—'}</span> },
-          { header: 'Telefone', cell: (c) => <span>{c.phone || '—'}</span> },
+          { header: 'Código', sortValue: (c) => c.clientCode, cell: (c) => <span className="entity-code">{c.clientCode || '—'}</span> },
+          { header: 'Cliente', sortValue: (c) => c.clientName, cell: (c) => <strong>{c.clientName}</strong> },
+          { header: 'Zona', sortValue: (c) => c.zone, cell: (c) => <span>{c.zone || '—'}</span> },
+          { header: 'Telefone', sortValue: (c) => c.phone, cell: (c) => <span>{c.phone || '—'}</span> },
           {
             header: 'Faturas',
             align: 'center',
+            sortValue: (c) => c.invoices,
+            defaultDirection: 'desc',
             cell: (c) => <span>{c.invoices}</span>
           },
           {
             header: 'Mais antiga',
-            sortKey: 'oldestDueDate',
+            sortValue: (c) => c.oldestDueDate,
             cell: (c) => <span>{formatPtDate(c.oldestDueDate)}</span>
           },
           {
             header: 'Antiguidade',
-            sortKey: 'maxDaysOverdue',
+            sortValue: (c) => c.maxDaysOverdue,
+            defaultDirection: 'desc',
             align: 'center',
             cell: (c) => <Badge tone={BUCKET_TONE[c.bucket]}>{AGING_LABELS[c.bucket]}</Badge>
           },
           {
             header: 'Em aberto',
-            sortKey: 'openCve',
+            sortValue: (c) => c.openCve,
             defaultDirection: 'desc',
             align: 'end',
             cell: (c) => <b>{formatCve(c.openCve)}</b>
@@ -198,6 +190,8 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
             // liga a cobrar a quem já tem dinheiro nosso a favor.
             header: 'Crédito',
             align: 'end',
+            sortValue: (c) => (c.creditCve > 0 ? c.creditCve : null),
+            defaultDirection: 'desc',
             cell: (c) => <span>{c.creditCve > 0 ? formatCve(c.creditCve) : '—'}</span>
           }
         ]}

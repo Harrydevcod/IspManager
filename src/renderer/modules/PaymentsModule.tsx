@@ -4,7 +4,7 @@ import { BulkActionBar, Button, ErrorRetry, Field, FilterBar, Message, ModuleHea
 import { formatCve, formatPtMonth } from '../lib/format';
 import { authFetch } from '../lib/auth';
 import { downloadAuthenticated, printAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
-import { compareNumber, compareText, paginateRows, sortRows, type SortState } from '../lib/listView';
+import { paginateRows, sortByColumns, type SortState } from '../lib/listView';
 import { runBulk, summarizeBulk } from '../lib/bulkRun';
 import { useRowSelection } from '../lib/useRowSelection';
 import { effectivePaymentStatus } from '../lib/status';
@@ -22,7 +22,7 @@ import {
 import type { PaymentReceipt, PaymentRow, SmsEventType } from '../types';
 import { IndividualRevertDialog } from './payments/IndividualRevertDialog';
 import { PaymentDetailDialog, type PaymentActionMode, type PaymentMethod } from './payments/PaymentDetailDialog';
-import { PaymentsList } from './payments/PaymentsList';
+import { PAYMENT_COLUMNS, PaymentsList } from './payments/PaymentsList';
 import { MonthlyBillingPreview, type BillingPreview } from './payments/MonthlyBillingPreview';
 import { OverdueNotifyDialog, type OverdueNotifyPreview, type WhatsappNoticeType } from './payments/OverdueNotifyDialog';
 import { PaymentsTotals } from './payments/PaymentsTotals';
@@ -35,8 +35,7 @@ import { BulkPaymentDialog, type BulkPaymentMode } from './payments/BulkPaymentD
 // Payment-private types (local to this module)
 // ---------------------------------------------------------------------------
 
-type PaymentSortKey = 'dueDate' | 'clientName' | 'status' | 'amountCve';
-const DEFAULT_PAYMENT_SORT: SortState<PaymentSortKey> = { key: 'dueDate', direction: 'asc' };
+const DEFAULT_PAYMENT_SORT: SortState<string> = { key: 'Vencimento', direction: 'asc' };
 const DEFAULT_PAYMENT_PAGE_SIZE = 25;
 const DEFAULT_PAYMENT_STATUS_FILTER: 'all' | PaymentRow['status'] = 'pending';
 
@@ -113,7 +112,7 @@ export function PaymentsModule({
   const [individualRevertSubmitting, setIndividualRevertSubmitting] = useState(false);
   const [search, setSearch] = useState('');
   const [showAllMonths, setShowAllMonths] = useState(false);
-  const [sortState, setSortState] = useState<SortState<PaymentSortKey>>(DEFAULT_PAYMENT_SORT);
+  const [sortState, setSortState] = useState(DEFAULT_PAYMENT_SORT);
   const [paymentPage, setPaymentPage] = useState(1);
   const [paymentPageSize, setPaymentPageSize] = useState(DEFAULT_PAYMENT_PAGE_SIZE);
   const [pdfPreview, setPdfPreview] = useState<{ payment: PaymentRow; type: 'invoice' | 'receipt' } | null>(null);
@@ -884,12 +883,10 @@ export function PaymentsModule({
       })),
     [periodPayments, statusFilter]
   );
-  const visiblePayments = useMemo(() => sortRows(filteredPayments, sortState, {
-    dueDate: (a, b) => a.dueDate.localeCompare(b.dueDate) || compareText(a.clientName, b.clientName),
-    clientName: (a, b) => compareText(a.clientName, b.clientName) || a.dueDate.localeCompare(b.dueDate),
-    status: (a, b) => compareText(a.status, b.status) || a.dueDate.localeCompare(b.dueDate),
-    amountCve: (a, b) => compareNumber(a.amountCve, b.amountCve) || a.dueDate.localeCompare(b.dueDate)
-  }), [filteredPayments, sortState]);
+  const visiblePayments = useMemo(
+    () => sortByColumns(filteredPayments, sortState, PAYMENT_COLUMNS, DEFAULT_PAYMENT_SORT.key),
+    [filteredPayments, sortState]
+  );
   const pagedPayments = useMemo(
     () => paginateRows(visiblePayments, { page: paymentPage, pageSize: paymentPageSize }),
     [paymentPage, paymentPageSize, visiblePayments]

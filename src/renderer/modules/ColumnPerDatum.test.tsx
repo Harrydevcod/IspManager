@@ -73,6 +73,10 @@ describe.each(cases)('$name', ({ render, headers }) => {
     // A coluna da caixa de seleção não tem texto; não é um dado.
     expect(found.filter(Boolean)).toEqual(headers);
 
+    // Todas as colunas de dados ordenam pelo cabeçalho; só "Ações" não.
+    const sortable = [...container.querySelectorAll('.data-table-sort')].map((n) => n.textContent?.trim());
+    expect(sortable).toEqual(headers.filter((header) => header !== 'Ações'));
+
     const rows = container.querySelectorAll('.data-table-row');
     expect(rows.length).toBe(1);
     expect(rows[0].querySelectorAll('[role="cell"]')).toHaveLength(found.length);
