@@ -1,17 +1,13 @@
-import { Plus, Trash2 } from 'lucide-react';
-import { Button, Field, Select } from '../../components';
+import { Field, Select } from '../../components';
 import { CV_ISLANDS, isKnownIsland } from '../../lib/islands';
-import type { BankAccountForm, SettingsFormState, UpdateField } from './settingsForm';
+import type { SettingsFormState, UpdateField } from './settingsForm';
 
 type CompanyTabProps = {
   form: SettingsFormState;
   onUpdate: UpdateField;
-  onAddBankAccount: () => void;
-  onUpdateBankAccount: (index: number, field: keyof BankAccountForm, value: string) => void;
-  onRemoveBankAccount: (index: number) => void;
 };
 
-export function CompanyTab({ form, onUpdate, onAddBankAccount, onUpdateBankAccount, onRemoveBankAccount }: CompanyTabProps) {
+export function CompanyTab({ form, onUpdate }: CompanyTabProps) {
   return (
     <>
       <Field
@@ -60,68 +56,12 @@ export function CompanyTab({ form, onUpdate, onAddBankAccount, onUpdateBankAccou
         value={form.address}
         onChange={(event) => onUpdate('address', event.target.value)}
       />
-      <section className="settings-bank-accounts wide-field" aria-label="Contas bancarias da empresa">
-        <div className="settings-bank-accounts-head">
-          <div>
-            <span className="field-label">Contas bancarias</span>
-            <small>Dados usados como referencia de pagamento da empresa.</small>
-          </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            leadingIcon={<Plus size={14} aria-hidden />}
-            onClick={onAddBankAccount}
-            disabled={form.bankAccounts.length >= 8}
-          >
-            Adicionar conta
-          </Button>
-        </div>
-
-        {form.bankAccounts.length === 0 ? (
-          <p className="settings-bank-empty">Nenhuma conta bancaria registada.</p>
-        ) : (
-          <div className="settings-bank-list">
-            {form.bankAccounts.map((account, index) => (
-              <article className="settings-bank-item" key={index}>
-                <Field
-                  label="Banco"
-                  value={account.bankName}
-                  onChange={(event) => onUpdateBankAccount(index, 'bankName', event.target.value)}
-                  placeholder="BCA, Caixa, BCN..."
-                />
-                <Field
-                  label="Titular"
-                  value={account.accountName}
-                  onChange={(event) => onUpdateBankAccount(index, 'accountName', event.target.value)}
-                  placeholder={form.companyName || 'Nome da empresa'}
-                />
-                <Field
-                  label="Numero / NIB / IBAN"
-                  value={account.accountNumber}
-                  onChange={(event) => onUpdateBankAccount(index, 'accountNumber', event.target.value)}
-                  spellCheck={false}
-                />
-                <Field
-                  label="Referencia"
-                  value={account.reference}
-                  onChange={(event) => onUpdateBankAccount(index, 'reference', event.target.value)}
-                  placeholder="Pagamentos, instalacoes..."
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="settings-bank-remove"
-                  leadingIcon={<Trash2 size={14} aria-hidden />}
-                  onClick={() => onRemoveBankAccount(index)}
-                  aria-label={`Remover conta bancaria ${index + 1}`}
-                >
-                  Remover
-                </Button>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
+      {/* Desde a Tesouraria (0058) as contas bancarias vivem la, com saldo e
+          extrato; as marcadas "Mostrar nas faturas" saem no PDF. */}
+      <p className="settings-bank-moved wide-field">
+        As contas bancárias passaram para o módulo <strong>Tesouraria</strong>, onde têm saldo e movimentos.
+        Lá decide-se também quais aparecem nas faturas.
+      </p>
     </>
   );
 }

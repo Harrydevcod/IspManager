@@ -28,6 +28,7 @@ export type SectionId =
   | 'services'
   | 'topology'
   | 'finance'
+  | 'treasury'
   | 'work-orders'
   | 'stock'
   | 'reports'
@@ -134,6 +135,9 @@ export type PaymentReceipt = {
   voidedAt: string | null;
   voidReason: string | null;
   notes: string | null;
+  /** Caixa ou banco onde o dinheiro entrou (Tesouraria); nulo em recibos antigos e de crédito. */
+  accountId: number | null;
+  accountName: string | null;
 };
 
 export type AgingBucket = 'current' | 'd30' | 'd60' | 'd90' | 'd90plus';
@@ -325,6 +329,9 @@ export type Expense = {
   zone: string | null;
   clientId: number | null;
   clientName: string | null;
+  /** Caixa ou banco de onde saiu o dinheiro (Tesouraria); nulo = sem saída registada. */
+  accountId: number | null;
+  accountName: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -429,6 +436,9 @@ export type Investment = {
   annualRoiPct: number | null;
   isRecovered: boolean;
   notes: string | null;
+  /** Caixa ou banco de onde saiu o dinheiro (Tesouraria). */
+  accountId: number | null;
+  accountName: string | null;
   items: InvestmentItem[];
   createdAt: string;
   updatedAt: string;

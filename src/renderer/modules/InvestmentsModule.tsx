@@ -5,6 +5,7 @@ import { Badge, Button, Card, Combobox, DataTable, Dialog, EmptyState, ErrorRetr
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './InvestmentsModule.css';
+import { AccountSelect } from './treasury/AccountSelect';
 import { EMPTY_INVESTMENT_LIST, type Client, type StockCatalogRow, type Investment, type InvestmentItemType, type InvestmentList, type InvestmentStatus, type InvestmentTimeline, type InvestmentType } from '../types';
 
 const TYPES: { value: InvestmentType; label: string }[] = [
@@ -92,6 +93,8 @@ type FormState = {
   monthlyOperationalCostCve: string;
   accumulatedRevenueCve: string;
   notes: string;
+  /** Caixa ou banco de onde saiu o dinheiro; '' = sem registo na tesouraria. */
+  accountId: string;
   items: ItemForm[];
 };
 
@@ -126,6 +129,7 @@ function emptyForm(): FormState {
     monthlyOperationalCostCve: '',
     accumulatedRevenueCve: '',
     notes: '',
+    accountId: '',
     items: [blankItem()]
   };
 }
@@ -153,6 +157,7 @@ function fromInvestment(investment: Investment): FormState {
     monthlyOperationalCostCve: String(investment.monthlyOperationalCostCve || ''),
     accumulatedRevenueCve: String(investment.accumulatedRevenueCve || ''),
     notes: investment.notes || '',
+    accountId: investment.accountId != null ? String(investment.accountId) : '',
     items: investment.items.length
       ? investment.items.map((item) => ({
           itemType: item.itemType,
@@ -407,6 +412,7 @@ export function InvestmentsModule() {
           monthlyOperationalCostCve: formMonthlyOps,
           accumulatedRevenueCve: formAccumulatedRevenue,
           notes: form.notes.trim() || null,
+          accountId: form.accountId ? Number(form.accountId) : null,
           items: form.items.map((item) => ({
             itemType: item.itemType,
             itemName: item.itemName.trim(),
@@ -844,8 +850,10 @@ export function InvestmentsModule() {
 
             <div className="investment-form-section">
               <h3>Informacoes</h3>
-              <Field className="col-4" label="Fornecedor" value={form.supplier} onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))} maxLength={180} />
-              <Textarea className="col-8" label="Descricao" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={3} />
+              <Field className="col-6" label="Fornecedor" value={form.supplier} onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))} maxLength={180} />
+              {/* Só o custo externo sai da conta: equipamento do catálogo já foi pago ao entrar em stock. */}
+              <AccountSelect className="col-6" purpose="saida" value={form.accountId} onChange={(accountId) => setForm((f) => ({ ...f, accountId }))} />
+              <Textarea className="col-12" label="Descricao" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={3} />
             </div>
           </div>
 

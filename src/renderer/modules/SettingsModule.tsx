@@ -28,7 +28,7 @@ import { BillingTab } from './settings/BillingTab';
 import { CompanyTab } from './settings/CompanyTab';
 import { SmsTab } from './settings/SmsTab';
 import { WhatsappTab } from './settings/WhatsappTab';
-import { emptyBankAccount, type BankAccountForm, type SettingsFormState } from './settings/settingsForm';
+import type { SettingsFormState } from './settings/settingsForm';
 import { NetworkTab, type RouterEnforcementState } from './settings/NetworkTab';
 import { JobHealthPanel } from './JobHealthPanel';
 import { LicensePanel } from './LicensePanel';
@@ -374,31 +374,6 @@ export function SettingsModule() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  function addBankAccount() {
-    setForm((current) => ({
-      ...current,
-      bankAccounts: current.bankAccounts.length >= 8
-        ? current.bankAccounts
-        : [...current.bankAccounts, { ...emptyBankAccount }]
-    }));
-  }
-
-  function updateBankAccount(index: number, field: keyof BankAccountForm, value: string) {
-    setForm((current) => ({
-      ...current,
-      bankAccounts: current.bankAccounts.map((account, accountIndex) => (
-        accountIndex === index ? { ...account, [field]: value } : account
-      ))
-    }));
-  }
-
-  function removeBankAccount(index: number) {
-    setForm((current) => ({
-      ...current,
-      bankAccounts: current.bankAccounts.filter((_, accountIndex) => accountIndex !== index)
-    }));
-  }
-
   useEffect(() => {
     if (message?.placement !== 'save' || message.tone === 'error') return;
     const timeout = window.setTimeout(() => {
@@ -627,9 +602,6 @@ export function SettingsModule() {
           <CompanyTab
             form={form}
             onUpdate={updateForm}
-            onAddBankAccount={addBankAccount}
-            onUpdateBankAccount={updateBankAccount}
-            onRemoveBankAccount={removeBankAccount}
           />
         )}
 

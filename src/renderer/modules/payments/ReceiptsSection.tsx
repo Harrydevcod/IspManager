@@ -66,7 +66,7 @@ export function ReceiptsSection({
                 <span className="receipts-row__main">
                   <strong>{formatCve(receipt.amountCve)}</strong>
                   <small>
-                    {formatPtDate(receipt.paymentDate)} · {METHOD_LABELS[receipt.paymentMethod] || receipt.paymentMethod} · {receipt.receiptNumber}
+                    {formatPtDate(receipt.paymentDate)} · {METHOD_LABELS[receipt.paymentMethod] || receipt.paymentMethod}{receipt.accountName ? ` → ${receipt.accountName}` : ''} · {receipt.receiptNumber}
                   </small>
                   {voided && receipt.voidReason && <small className="receipts-row__reason">{receipt.voidReason}</small>}
                 </span>

@@ -6122,63 +6122,11 @@ button.danger:disabled {
   }
 }
 
-.settings-bank-accounts {
-  display: grid;
-  gap: var(--space-3);
-  padding-top: var(--space-2);
-}
-
-.settings-bank-accounts-head {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-
-.settings-bank-accounts-head > div {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.settings-bank-accounts-head small,
-.settings-bank-empty {
+/* As contas bancarias mudaram-se para a Tesouraria: fica so o aviso. */
+.settings-bank-moved {
+  margin: 0;
   color: var(--text-3);
   font-size: var(--fs-sm);
-  font-weight: 500;
-}
-
-.settings-bank-empty {
-  margin: 0;
-  border: 1px dashed var(--border);
-  border-radius: var(--r1);
-  padding: var(--space-4);
-  background: color-mix(in oklch, var(--surface-2) 62%, transparent);
-}
-
-.settings-bank-list {
-  display: grid;
-  gap: var(--space-3);
-}
-
-.settings-bank-item {
-  display: grid;
-  grid-template-columns: minmax(150px, 0.75fr) minmax(180px, 1fr) minmax(280px, 1.25fr);
-  gap: var(--space-3);
-  align-items: end;
-  border: 1px solid var(--border);
-  border-radius: var(--r1);
-  background: color-mix(in oklch, var(--surface-2) 70%, transparent);
-  padding: var(--space-3);
-}
-
-.settings-bank-item > .field:nth-of-type(4) {
-  grid-column: 1 / span 2;
-}
-
-.settings-bank-remove {
-  grid-column: 3;
-  align-self: end;
-  width: 100%;
 }
 
 @keyframes settings-fade {
@@ -6187,20 +6135,6 @@ button.danger:disabled {
 }
 @media (prefers-reduced-motion: reduce) {
   .settings-form { animation: none; }
-}
-
-@media (max-width: 760px) {
-  .settings-bank-accounts-head {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .settings-bank-item {
-    grid-template-columns: 1fr;
-  }
-  .settings-bank-item > .field:nth-of-type(4),
-  .settings-bank-remove {
-    grid-column: auto;
-  }
 }
 
 .button-link:hover {
