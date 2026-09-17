@@ -2554,8 +2554,7 @@ h2 {
 
 .payment-action-form {
   display: grid;
-  /* Resumo · valor · método · data · ações. O valor entrou com os parciais e
-     tem largura própria: é o campo que se reescreve, não um acessório. */
+  /* Base das variantes; o registo de pagamento tem a sua grelha abaixo. */
   grid-template-columns: minmax(150px, 1fr) minmax(140px, 0.8fr) minmax(150px, 1fr) minmax(150px, 1fr) auto;
   gap: var(--space-3);
   align-items: end;
@@ -2569,14 +2568,21 @@ h2 {
    sem colocação explícita eles caíam para uma linha só deles, espremidos na
    primeira coluna e esticados ao alto. As ações ficam ancoradas no canto da
    primeira linha, onde estão nas outras variantes do formulário. */
+/* Resumo · valor · método · conta · data · ações. O valor entrou com os
+   parciais; a conta (caixa ou banco) com a Tesouraria e é a mais larga, porque
+   o nome da conta leva o NIB ou "(predefinida)". */
+.payment-action-form--pay {
+  grid-template-columns: minmax(130px, 1fr) minmax(100px, 0.7fr) minmax(120px, 0.8fr) minmax(180px, 1.3fr) minmax(130px, 0.9fr) auto;
+}
+
 .payment-action-form--pay > .module-message {
-  grid-column: 1 / 5;
+  grid-column: 1 / 6;
   grid-row: 2;
   margin: 0;
 }
 
 .payment-action-form--pay > .inline-actions {
-  grid-column: 5;
+  grid-column: 6;
   grid-row: 1;
 }
 

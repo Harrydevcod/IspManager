@@ -269,10 +269,16 @@ export function TransferDialog({ open, accounts, initialFromId, isAdmin, onClose
     >
       <form id="treasury-transfer-form" className="client-form" onSubmit={submit}>
         {error && <Message tone="error">{error}</Message>}
-        <Select label="De" required value={fromId} onChange={(event) => setFromId(event.target.value)}>
+        <Select
+          label="De"
+          required
+          value={fromId}
+          onChange={(event) => setFromId(event.target.value)}
+          hint={from ? `Saldo disponível: ${formatCve(from.balanceCve)}` : undefined}
+        >
           <option value="">Escolher…</option>
           {active.map((a) => (
-            <option key={a.id} value={String(a.id)}>{accountLabel(a)} — {formatCve(a.balanceCve)}</option>
+            <option key={a.id} value={String(a.id)}>{accountLabel(a)}</option>
           ))}
         </Select>
         <Select label="Para" required value={toId} onChange={(event) => setToId(event.target.value)}>
@@ -379,7 +385,7 @@ export function CashCountDialog({ open, accounts, initialAccountId, onClose, onS
         </>
       }
     >
-      <form id="treasury-count-form" className="overdue-notify" onSubmit={submit}>
+      <form id="treasury-count-form" className="client-form treasury-stack" onSubmit={submit}>
         {error && <Message tone="error">{error}</Message>}
         <Select label="Caixa" required value={accountId} onChange={(event) => setAccountId(event.target.value)}>
           {boxes.map((a) => <option key={a.id} value={String(a.id)}>{accountLabel(a)}</option>)}
@@ -463,7 +469,7 @@ export function ReverseMovementDialog({ movement, onClose, onSaved }: {
         </>
       }
     >
-      <form id="treasury-reverse-form" className="overdue-notify" onSubmit={submit}>
+      <form id="treasury-reverse-form" className="client-form treasury-stack" onSubmit={submit}>
         {error && <Message tone="error">{error}</Message>}
         <Message tone="neutral">
           {formatPtDate(movement.movementDate)} · {movement.accountName} · {movement.description}.

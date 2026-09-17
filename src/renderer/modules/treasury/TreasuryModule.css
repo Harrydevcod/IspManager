@@ -52,3 +52,9 @@
   text-decoration: line-through;
   text-decoration-color: color-mix(in oklch, var(--text-3) 60%, transparent);
 }
+
+/* Diálogos de uma coluna (contar caixa, estornar): mesmos campos do client-form,
+   empilhados; os avisos ocupam a largura toda. */
+.client-form.treasury-stack {
+  grid-template-columns: minmax(0, 1fr);
+}

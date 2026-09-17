@@ -80,7 +80,7 @@ const ACCOUNT_COLUMNS: DataTableColumn<TreasuryAccount>[] = [
         : a.showOnDocuments ? <Badge tone="info">Na fatura</Badge> : <Badge tone="success">Ativa</Badge>)
   },
   {
-    header: 'Últ. movimento',
+    header: 'Últ. mov.',
     sortValue: (a) => a.lastMovementDate,
     defaultDirection: 'desc',
     cell: (a) => <span>{a.lastMovementDate ? formatPtDate(a.lastMovementDate) : '—'}</span>
@@ -342,7 +342,7 @@ export function TreasuryModule() {
             stickyHeader
             onRowClick={openStatement}
             defaultSort={{ key: 'Tipo', direction: 'asc' }}
-            gridTemplateColumns="minmax(140px, 1.3fr) 96px minmax(80px, 0.7fr) minmax(120px, 1fr) 112px 118px 128px"
+            gridTemplateColumns="minmax(110px, 1.3fr) 84px minmax(64px, 0.7fr) minmax(100px, 1fr) 100px 96px 104px"
             actionsWidth="64px"
             columns={ACCOUNT_COLUMNS}
             actions={isAdmin ? (account) => (
@@ -391,7 +391,7 @@ export function TreasuryModule() {
               rowKey={(m) => m.id}
               stickyHeader
               defaultSort={{ key: 'Data', direction: 'desc' }}
-              gridTemplateColumns={`92px ${withBalance ? '' : 'minmax(100px, 0.8fr) '}118px minmax(180px, 2fr) minmax(80px, 0.6fr) 112px 112px${withBalance ? ' 120px' : ''}`}
+              gridTemplateColumns={`82px ${withBalance ? '' : 'minmax(84px, 0.8fr) '}100px minmax(130px, 2fr) minmax(64px, 0.6fr) 96px 96px${withBalance ? ' 104px' : ''}`}
               actionsWidth="56px"
               columns={columns}
               actions={isAdmin ? (m) => (REVERSIBLE.includes(m.kind) && !m.reversedById ? (
