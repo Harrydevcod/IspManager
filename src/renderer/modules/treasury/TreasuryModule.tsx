@@ -79,9 +79,8 @@ const ACCOUNT_COLUMNS: DataTableColumn<TreasuryAccount>[] = [
         ? <Badge tone="accent">Predefinida</Badge>
         : a.showOnDocuments ? <Badge tone="info">Na fatura</Badge> : <Badge tone="success">Ativa</Badge>)
   },
-  { header: 'Abertura', sortValue: (a) => a.openingDate, cell: (a) => <span>{formatPtDate(a.openingDate)}</span> },
   {
-    header: 'Último movimento',
+    header: 'Últ. movimento',
     sortValue: (a) => a.lastMovementDate,
     defaultDirection: 'desc',
     cell: (a) => <span>{a.lastMovementDate ? formatPtDate(a.lastMovementDate) : '—'}</span>
@@ -95,10 +94,18 @@ const ACCOUNT_COLUMNS: DataTableColumn<TreasuryAccount>[] = [
   }
 ];
 
-function movementColumns(withBalance: boolean): DataTableColumn<TreasuryMovement>[] {
+/**
+ * Com uma conta filtrada (extrato) a coluna Conta repetia o mesmo nome em todas
+ * as linhas: dá o lugar ao saldo corrido.
+ */
+function movementColumns(statement: boolean): DataTableColumn<TreasuryMovement>[] {
   const columns: DataTableColumn<TreasuryMovement>[] = [
-    { header: 'Data', sortValue: (m) => `${m.movementDate} ${String(m.id).padStart(9, '0')}`, defaultDirection: 'desc', cell: (m) => <span>{formatPtDate(m.movementDate)}</span> },
-    { header: 'Conta', sortValue: (m) => m.accountName, cell: (m) => <span>{m.accountName}</span> },
+    { header: 'Data', sortValue: (m) => `${m.movementDate} ${String(m.id).padStart(9, '0')}`, defaultDirection: 'desc', cell: (m) => <span>{formatPtDate(m.movementDate)}</span> }
+  ];
+  if (!statement) {
+    columns.push({ header: 'Conta', sortValue: (m) => m.accountName, cell: (m) => <span>{m.accountName}</span> });
+  }
+  columns.push(
     {
       header: 'Tipo',
       align: 'center',
@@ -109,13 +116,15 @@ function movementColumns(withBalance: boolean): DataTableColumn<TreasuryMovement
       header: 'Descrição',
       sortValue: (m) => m.description,
       cell: (m) => (
-        <span className={m.reversedById ? 'treasury-reversed' : undefined} title={m.reversedById ? 'Estornado' : m.description}>
+        <span
+          className={m.reversedById ? 'treasury-reversed' : undefined}
+          title={`${m.reversedById ? '[Estornado] ' : ''}${m.description}${m.createdByName ? ` — por ${m.createdByName}` : ''}`}
+        >
           {m.description}
         </span>
       )
     },
     { header: 'Referência', sortValue: (m) => m.reference, cell: (m) => <span>{m.reference || '—'}</span> },
-    { header: 'Por', sortValue: (m) => m.createdByName, cell: (m) => <span>{m.createdByName || '—'}</span> },
     {
       header: 'Entrada',
       align: 'end',
@@ -130,8 +139,8 @@ function movementColumns(withBalance: boolean): DataTableColumn<TreasuryMovement
       defaultDirection: 'desc',
       cell: (m) => (m.direction === 'out' ? <b className="treasury-out">{formatCve(m.amountCve)}</b> : <span>—</span>)
     }
-  ];
-  if (withBalance) {
+  );
+  if (statement) {
     columns.push({
       header: 'Saldo',
       align: 'end',
@@ -333,7 +342,7 @@ export function TreasuryModule() {
             stickyHeader
             onRowClick={openStatement}
             defaultSort={{ key: 'Tipo', direction: 'asc' }}
-            gridTemplateColumns="minmax(160px, 1.3fr) 110px minmax(100px, 0.8fr) minmax(130px, 1fr) 120px 104px 130px 136px"
+            gridTemplateColumns="minmax(140px, 1.3fr) 96px minmax(80px, 0.7fr) minmax(120px, 1fr) 112px 118px 128px"
             actionsWidth="64px"
             columns={ACCOUNT_COLUMNS}
             actions={isAdmin ? (account) => (
@@ -382,7 +391,7 @@ export function TreasuryModule() {
               rowKey={(m) => m.id}
               stickyHeader
               defaultSort={{ key: 'Data', direction: 'desc' }}
-              gridTemplateColumns={`96px minmax(110px, 0.8fr) 118px minmax(200px, 2fr) minmax(90px, 0.7fr) minmax(90px, 0.7fr) 120px 120px${withBalance ? ' 128px' : ''}`}
+              gridTemplateColumns={`92px ${withBalance ? '' : 'minmax(100px, 0.8fr) '}118px minmax(180px, 2fr) minmax(80px, 0.6fr) 112px 112px${withBalance ? ' 120px' : ''}`}
               actionsWidth="56px"
               columns={columns}
               actions={isAdmin ? (m) => (REVERSIBLE.includes(m.kind) && !m.reversedById ? (
