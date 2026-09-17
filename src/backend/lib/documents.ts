@@ -3,6 +3,7 @@ import { getSqliteDatabase } from '../db/database';
 import { allocateDocumentNumber } from './numbering';
 import { formatEscudos } from '../../shared/money';
 import { isAudiovisualAnnualReference } from './audiovisual';
+import { documentBankAccounts } from './treasury';
 
 const PDFDocument = require('pdfkit');
 
@@ -128,7 +129,6 @@ const COMPANY_KEYS = [
   'email',
   'address',
   'island',
-  'bankAccounts',
   'currencyCode',
   'ivaRate',
   'fiscalRegime',
@@ -166,30 +166,14 @@ function loadCompany(): CompanyInfo {
       company.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
     } else if (row.key === 'showIva' || row.key === 'printQrCode') {
       company[row.key] = row.value === 'true' || row.value === '1';
-    } else if (row.key === 'bankAccounts') {
-      company.bankAccounts = parseBankAccounts(row.value);
     } else if ((COMPANY_KEYS as readonly string[]).includes(row.key)) {
       (company as Record<string, string | number | boolean | BankAccountInfo[]>)[row.key] = row.value || '';
     }
   }
+  // Desde a 0058 as contas bancárias vivem na Tesouraria; saem na fatura as
+  // marcadas com show_on_documents.
+  company.bankAccounts = documentBankAccounts(db);
   return company;
-}
-
-function parseBankAccounts(value: string): BankAccountInfo[] {
-  try {
-    const parsed = JSON.parse(value) as BankAccountInfo[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((account) => ({
-        bankName: String(account?.bankName || '').trim(),
-        accountName: String(account?.accountName || '').trim(),
-        accountNumber: String(account?.accountNumber || '').trim(),
-        reference: String(account?.reference || '').trim()
-      }))
-      .filter((account) => account.bankName || account.accountNumber);
-  } catch {
-    return [];
-  }
 }
 
 export function formatBankAccountsForDocument(accounts: BankAccountInfo[]): string | null {

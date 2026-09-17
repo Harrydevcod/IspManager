@@ -41,6 +41,7 @@ beforeEach(() => {
     DELETE FROM service_device_shares;
     DELETE FROM service_device_assignments;
     DELETE FROM client_credits;
+    DELETE FROM treasury_movements;
     DELETE FROM payment_receipts;
     DELETE FROM payment_lines;
     DELETE FROM payments;
@@ -1204,10 +1205,14 @@ describe('finance routes', () => {
     // A emissão é carimbada hoje (date('now')); a data de pagamento não pode
     // ser anterior à emissão, por isso paga-se com uma data >= hoje.
     const payDate = new Date().toISOString().slice(0, 10);
+    // Uma transferencia tem de dizer em que banco caiu (0058).
+    const bank = db.prepare(`
+      INSERT INTO treasury_accounts (kind, name, opening_date) VALUES ('banco', 'Banco rota', '2000-01-01')
+    `).run().lastInsertRowid as number;
     const response = await app.inject({
       method: 'POST',
       url: `/api/payments/${payment.id}/pay`,
-      payload: { paymentMethod: 'transferencia', paymentDate: payDate }
+      payload: { paymentMethod: 'transferencia', paymentDate: payDate, accountId: bank }
     });
 
     expect(response.statusCode).toBe(200);

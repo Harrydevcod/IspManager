@@ -4,6 +4,7 @@ import { isAudiovisualAnnualReference, loadAudiovisualConfig } from './audiovisu
 import { allocateDocumentNumber } from './numbering';
 import { validatePaymentDates } from '../../shared/payment-dates';
 import { escudosToCentavos, isSettled, roundEscudos } from '../../shared/money';
+import { recordReceiptMovement, resolveReceiptAccount, reverseReceiptMovements } from './treasury';
 
 type PaymentStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';
 type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
@@ -332,12 +333,17 @@ export type ReceiptRecord = {
   voidedAt: string | null;
   voidReason: string | null;
   notes: string | null;
+  /** Caixa ou banco onde o dinheiro entrou (0058); nulo antes da tesouraria e em recibos de credito. */
+  accountId: number | null;
+  accountName: string | null;
 };
 
 const receiptSelect = `
   SELECT id, payment_id AS paymentId, amount_cve AS amountCve, payment_date AS paymentDate,
          payment_method AS paymentMethod, source, receipt_number AS receiptNumber,
-         receipt_date AS receiptDate, voided_at AS voidedAt, void_reason AS voidReason, notes
+         receipt_date AS receiptDate, voided_at AS voidedAt, void_reason AS voidReason, notes,
+         account_id AS accountId,
+         (SELECT t.name FROM treasury_accounts t WHERE t.id = payment_receipts.account_id) AS accountName
   FROM payment_receipts
 `;
 
@@ -488,7 +494,15 @@ export type PayResult = {
 export function payPayment(
   db: Database,
   id: number,
-  input: { paymentMethod: PaymentMethod; paymentDate?: string; amountCve?: number; notes?: string | null; userId?: number | null }
+  input: {
+    paymentMethod: PaymentMethod;
+    paymentDate?: string;
+    amountCve?: number;
+    /** Caixa ou banco de destino; numerario sem conta vai para a caixa predefinida. */
+    accountId?: number | null;
+    notes?: string | null;
+    userId?: number | null;
+  }
 ): PaymentOpResult<PayResult> {
   const head = loadHead(db, id);
   if (!head) {
@@ -518,6 +532,11 @@ export function payPayment(
   const applied = Math.min(requested, balance);
   const excess = roundEscudos(requested - applied);
 
+  // Sem destino valido nao ha recibo: o dinheiro nao pode entrar em lado nenhum.
+  const destination = resolveReceiptAccount(db, input.paymentMethod, input.accountId);
+  if (!destination.ok) return destination;
+  const client = db.prepare('SELECT full_name AS name FROM clients WHERE id = ?').get(head.clientId) as { name: string } | undefined;
+
   const value = db.transaction(() => {
     const receipt = writeReceipt(db, head, {
       amountCve: applied,
@@ -535,10 +554,21 @@ export function payPayment(
       `).run(head.clientId, excess, receipt.id, `Excesso do recibo ${receipt.receiptNumber}`);
     }
 
+    // Entra na conta tudo o que o cliente entregou, excesso incluido: o
+    // dinheiro esta na gaveta mesmo que parte dele seja credito do cliente.
+    recordReceiptMovement(db, {
+      receiptId: receipt.id,
+      accountId: destination.value.id,
+      amountCve: requested,
+      movementDate: paymentDate,
+      description: `Recibo ${receipt.receiptNumber} · ${client?.name ?? 'Cliente'} (${head.invoiceNumber || head.referenceMonth})`,
+      userId: input.userId
+    });
+
     const remaining = roundEscudos(head.amountCve - receivedTotal(db, id));
     return {
       payment: selectPayment(db, id)!,
-      receipt,
+      receipt: db.prepare(`${receiptSelect} WHERE id = ?`).get(receipt.id) as ReceiptRecord,
       creditAddedCve: excess,
       balanceCve: remaining,
       settled: isSettled(remaining)
@@ -597,7 +627,7 @@ export function applyClientCreditToPayment(
  * o lancamento de conta corrente que dele nasceu e revertido pelo simetrico,
  * para o razao continuar a somar certo.
  */
-export function voidReceipt(db: Database, id: number, rawReason: string | null | undefined): PaymentOpResult<{
+export function voidReceipt(db: Database, id: number, rawReason: string | null | undefined, userId?: number | null): PaymentOpResult<{
   receipt: ReceiptRecord;
   paymentId: number;
   reopened: boolean;
@@ -628,6 +658,9 @@ export function voidReceipt(db: Database, id: number, rawReason: string | null |
     db.prepare(`
       UPDATE payment_receipts SET voided_at = datetime('now'), void_reason = ? WHERE id = ?
     `).run(reason, id);
+
+    // O dinheiro sai da conta onde tinha entrado (recibos de credito nao tem movimento).
+    reverseReceiptMovements(db, id, `recibo ${receipt.receiptNumber} anulado: ${reason}`, userId);
 
     // Simetrico do lancamento que este recibo gerou (excesso a favor ou uso do
     // credito), qualquer que tenha sido o sentido.

@@ -36,6 +36,7 @@ beforeAll(async () => {
 beforeEach(() => {
   db.exec(`
     DELETE FROM client_credits;
+    DELETE FROM treasury_movements;
     DELETE FROM payment_receipts;
     DELETE FROM payment_lines;
     DELETE FROM payments;
@@ -87,10 +88,24 @@ describe('POST /api/payments/:id/pay com valor', () => {
   test('sem valor mantem o comportamento antigo: liquida tudo', async () => {
     const { paymentId } = seed();
 
-    const body = (await pay(paymentId, { paymentMethod: 'transferencia' })).json();
+    const bank = db.prepare(`
+      INSERT INTO treasury_accounts (kind, name, opening_date) VALUES ('banco', 'BCA teste', '2000-01-01')
+    `).run().lastInsertRowid as number;
+
+    const body = (await pay(paymentId, { paymentMethod: 'transferencia', accountId: bank })).json();
 
     expect(body.settled).toBe(true);
     expect(body.receipt.amountCve).toBe(50000);
+    expect(body.receipt.accountName).toBe('BCA teste');
+  });
+
+  test('transferencia sem banco indicado e recusada', async () => {
+    const { paymentId } = seed();
+
+    const response = await pay(paymentId, { paymentMethod: 'transferencia' });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toMatch(/banco/);
   });
 
   test('recusa valor negativo no schema', async () => {
