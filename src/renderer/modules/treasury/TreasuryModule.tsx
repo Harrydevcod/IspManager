@@ -13,14 +13,12 @@ import {
   ModuleHeaderActions,
   Select,
   SkeletonList,
-  Toggle,
   useToast,
   type DataTableColumn
 } from '../../components';
 import { authFetch, useAuth } from '../../lib/auth';
 import { downloadCsv } from '../../lib/csv';
 import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
-import { readPrintRentalLines, writePrintRentalLines } from '../../lib/invoiceRentalSetting';
 import {
   ACCOUNT_KIND_LABEL,
   MOVEMENT_KIND_LABEL,
@@ -183,9 +181,6 @@ export function TreasuryModule() {
   const [transferOpen, setTransferOpen] = useState(false);
   const [countOpen, setCountOpen] = useState(false);
   const [reverseTarget, setReverseTarget] = useState<TreasuryMovement | null>(null);
-  // O que sai nos documentos decide-se aqui (é onde vive o `show_on_documents`
-  // de cada conta). `null` enquanto não se sabe — a definição é só de admin.
-  const [printRentalLines, setPrintRentalLines] = useState<boolean | null>(null);
 
   const accounts = useMemo(() => summary?.accounts ?? [], [summary]);
 
@@ -218,21 +213,6 @@ export function TreasuryModule() {
   }, [accountFilter, kindFilter, from, to]);
 
   useEffect(() => { void loadSummary(); }, [loadSummary]);
-  useEffect(() => {
-    if (!isAdmin) return;
-    readPrintRentalLines().then(setPrintRentalLines).catch(() => setPrintRentalLines(null));
-  }, [isAdmin]);
-
-  async function togglePrintRentalLines(next: boolean) {
-    setPrintRentalLines(next);
-    try {
-      await writePrintRentalLines(next);
-      toast(next ? 'O aluguer passa a aparecer na fatura.' : 'O aluguer volta a ir somado à mensalidade.', 'success');
-    } catch (err) {
-      setPrintRentalLines(!next);
-      toast(err instanceof Error ? err.message : 'Nao foi possivel gravar a definicao.', 'error');
-    }
-  }
   useEffect(() => { if (tab === 'movimentos') void loadMovements(); }, [tab, loadMovements]);
 
   async function afterSave(message: string) {
@@ -350,15 +330,6 @@ export function TreasuryModule() {
           <span>Movimentos</span>
         </Button>
       </nav>
-
-      {tab === 'contas' && printRentalLines !== null && (
-        <Toggle
-          title="Detalhar aluguer de equipamento na fatura"
-          description="O valor cobrado é o mesmo. Ligado, cada equipamento aparece em letra miúda por baixo da mensalidade, com a sua renda."
-          checked={printRentalLines}
-          onChange={(event) => void togglePrintRentalLines(event.target.checked)}
-        />
-      )}
 
       {tab === 'contas' && (
         loading && !summary ? <SkeletonList rows={4} /> : (
