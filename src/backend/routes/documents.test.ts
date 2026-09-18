@@ -219,11 +219,12 @@ describe('GET /api/payments/:id/invoice.pdf', () => {
     expect(response.rawPayload.slice(0, 4).toString('ascii')).toBe('%PDF');
   });
 
-  test('renders the rental subline when printRentalLines is on', async () => {
+  test('renders one subline per rented device when printRentalLines is on', async () => {
     const id = seedPayment('pending');
     db.prepare(`INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order) VALUES (?, 'internet', 'Servico de Internet', 2500, 0)`).run(id);
-    db.prepare(`INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order) VALUES (?, 'aluguer', 'Aluguer — CPE510', 250, 1)`).run(id);
-    db.prepare('UPDATE payments SET amount_cve = 2750 WHERE id = ?').run(id);
+    db.prepare(`INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order) VALUES (?, 'aluguer', 'Aluguer — TP-Link CPE510', 250, 1)`).run(id);
+    db.prepare(`INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order) VALUES (?, 'aluguer', 'Aluguer — MikroTik RB760', 150, 2)`).run(id);
+    db.prepare('UPDATE payments SET amount_cve = 2900 WHERE id = ?').run(id);
     db.prepare(`INSERT INTO app_settings (key, value, updated_at) VALUES ('printRentalLines', 'true', datetime('now'))
       ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run();
 

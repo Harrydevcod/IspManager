@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { documentStatusLabel, foldRentalLines, rentalSublineLabel, serviceAcronym, RENTAL_ONLY_DESCRIPTION } from './documents';
+import { documentStatusLabel, foldRentalLines, rentalDeviceName, serviceAcronym, RENTAL_DETAIL_HEADING, RENTAL_ONLY_DESCRIPTION } from './documents';
 
 describe('estado no documento', () => {
   test('le-se em portugues, nunca o codigo da base', () => {
@@ -49,7 +49,9 @@ describe('aluguer na fatura', () => {
     expect(total(items)).toBe(total(lines));
   });
 
-  test('o modelo do equipamento nunca chega ao papel', () => {
+  test('o modelo do equipamento nunca entra na rubrica', () => {
+    // Com a definicao ligada o modelo sai numa sub-linha; a rubrica principal
+    // continua a ser so a mensalidade.
     const { items } = foldRentalLines([internet, rental(250, 'TP-Link CPE510')]);
     expect(items.some((l) => l.description.includes('CPE510'))).toBe(false);
     expect(items.some((l) => l.description.includes('Aluguer'))).toBe(false);
@@ -68,24 +70,28 @@ describe('detalhe do aluguer (printRentalLines)', () => {
   const rental = (amountCve: number, model: string) =>
     ({ kind: 'aluguer' as const, description: `Aluguer — ${model}`, amountCve });
 
-  test('a sub-linha sabe quanto e quantos, sem mudar o total da rubrica', () => {
-    const { items, rentalTotalCve, rentalCount } = foldRentalLines([internet, rental(250, 'CPE510'), rental(150, 'RB760')]);
-    expect(rentalTotalCve).toBe(400);
-    expect(rentalCount).toBe(2);
+  test('cada equipamento sobrevive com nome e valor proprios', () => {
+    const { items, rentals } = foldRentalLines([internet, rental(250, 'CPE510'), rental(150, 'RB760')]);
+    expect(rentals.map((r) => [rentalDeviceName(r.description), r.amountCve])).toEqual([
+      ['CPE510', 250],
+      ['RB760', 150]
+    ]);
     // O valor impresso no plano e o mesmo com ou sem detalhe.
     expect(items[0].amountCve).toBe(2900);
   });
 
   test('sem aluguer nao ha nada para detalhar', () => {
-    const { rentalTotalCve, rentalCount } = foldRentalLines([internet]);
-    expect(rentalTotalCve).toBe(0);
-    expect(rentalCount).toBe(0);
+    expect(foldRentalLines([internet]).rentals).toEqual([]);
   });
 
-  test('o rotulo concorda em numero e continua anonimo', () => {
-    expect(rentalSublineLabel(1)).toBe('Aluguer de equipamento');
-    expect(rentalSublineLabel(3)).toBe('Aluguer de 3 equipamentos');
-    expect(rentalSublineLabel(2)).not.toMatch(/CPE|RB|TP-Link/);
+  test('o nome imprime-se sem o prefixo, que ja esta no cabecalho', () => {
+    expect(RENTAL_DETAIL_HEADING).toBe('Aluguer de equipamento');
+    expect(rentalDeviceName('Aluguer — TP-Link CPE510')).toBe('TP-Link CPE510');
+  });
+
+  test('descricao fora do padrao passa inteira em vez de ficar vazia', () => {
+    expect(rentalDeviceName('Renda do router')).toBe('Renda do router');
+    expect(rentalDeviceName('Aluguer — ')).toBe('Aluguer — ');
   });
 });
 

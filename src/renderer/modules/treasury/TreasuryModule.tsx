@@ -354,7 +354,7 @@ export function TreasuryModule() {
       {tab === 'contas' && printRentalLines !== null && (
         <Toggle
           title="Detalhar aluguer de equipamento na fatura"
-          description="O valor cobrado é o mesmo. Ligado, o aluguer aparece em letra miúda por baixo da mensalidade."
+          description="O valor cobrado é o mesmo. Ligado, cada equipamento aparece em letra miúda por baixo da mensalidade, com a sua renda."
           checked={printRentalLines}
           onChange={(event) => void togglePrintRentalLines(event.target.checked)}
         />

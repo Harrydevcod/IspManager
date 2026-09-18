@@ -71,7 +71,7 @@ export function buildMonthlyServiceLines(
   return lines;
 }
 
-const RENTAL_LINE_PREFIX = 'Aluguer —';
+export const RENTAL_LINE_PREFIX = 'Aluguer —';
 
 /**
  * Equipamento que gera renda, por serviço.
