@@ -140,7 +140,17 @@ export function AccountDialog({ open, kind, account, onClose, onSaved }: {
           <>
             <Field label="Banco" maxLength={80} value={form.bankName} onChange={(event) => setForm((f) => ({ ...f, bankName: event.target.value }))} />
             <Field label="Nº de conta" maxLength={40} value={form.accountNumber} onChange={(event) => setForm((f) => ({ ...f, accountNumber: event.target.value }))} />
-            <Field label="NIB" maxLength={40} value={form.nib} placeholder="0003 0000 1234 5678 9012 3" hint="O que sai na fatura, para o cliente transferir." onChange={(event) => setForm((f) => ({ ...f, nib: event.target.value }))} />
+            <Field
+              label="NIB"
+              // 40 e não 21: o maxLength corta o texto colado ANTES de se
+              // tirarem os espaços, e um NIB copiado do extrato tem 26 caracteres.
+              maxLength={40}
+              inputMode="numeric"
+              value={form.nib}
+              placeholder="000300001234567890123"
+              hint="21 dígitos, sem espaços — é o que sai na fatura."
+              onChange={(event) => setForm((f) => ({ ...f, nib: event.target.value.replace(/\D/g, '') }))}
+            />
             <Field label="Titular" maxLength={120} value={form.holderName} onChange={(event) => setForm((f) => ({ ...f, holderName: event.target.value }))} />
             <Field label="Referência" maxLength={120} value={form.reference} onChange={(event) => setForm((f) => ({ ...f, reference: event.target.value }))} />
           </>

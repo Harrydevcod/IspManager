@@ -282,7 +282,8 @@ describe('saldos', () => {
 
     const updated = treasury.updateAccount(db, bankId, { nib: '0003 0000 1234 5678 9012 3' });
     expect(updated.ok).toBe(true);
-    expect(treasury.documentBankAccounts(db).map((a) => a.accountNumber)).toEqual(['0003 0000 1234 5678 9012 3']);
+    // Guardado so com digitos: e assim que se copia para o homebanking.
+    expect(treasury.documentBankAccounts(db).map((a) => a.accountNumber)).toEqual(['000300001234567890123']);
   });
 
   test('o numero de conta e o NIB sao campos independentes', () => {
@@ -292,13 +293,13 @@ describe('saldos', () => {
     expect(created.ok).toBe(true);
     const account = treasury.listAccounts(db).find((a) => a.name === 'BCN')!;
     expect(account.accountNumber).toBe('12345');
-    expect(account.nib).toBe('0005 0000 9999 8888 7777 6');
+    expect(account.nib).toBe('000500009999888877776');
 
     // Apagar um nao apaga o outro.
     treasury.updateAccount(db, account.id, { accountNumber: '' });
     const after = treasury.listAccounts(db).find((a) => a.name === 'BCN')!;
     expect(after.accountNumber).toBeNull();
-    expect(after.nib).toBe('0005 0000 9999 8888 7777 6');
+    expect(after.nib).toBe('000500009999888877776');
   });
 });
 
@@ -344,7 +345,7 @@ describe('migracao 0059', () => {
       expect(fresh.prepare(`
         SELECT name, account_number AS accountNumber, nib FROM treasury_accounts WHERE kind = 'banco' ORDER BY id
       `).all()).toEqual([
-        { name: 'Com NIB', accountNumber: null, nib: '0003 0000 1234 5678 9012 3' },
+        { name: 'Com NIB', accountNumber: null, nib: '000300001234567890123' },
         { name: 'Numero curto', accountNumber: '0003.0000.1', nib: null },
         { name: 'Vinte e um mas nao so digitos', accountNumber: 'CV6400030000123456789', nib: null }
       ]);

@@ -68,9 +68,7 @@ const ACCOUNT_COLUMNS: DataTableColumn<TreasuryAccount>[] = [
     )
   },
   { header: 'Nº de conta', sortValue: (a) => a.accountNumber, cell: (a) => <code className="treasury-number">{a.accountNumber || '—'}</code> },
-  // Sem os espaços com que foi escrito: 21 dígitos cabem na coluna, o valor
-  // como o utilizador o escreveu fica no formulário da conta.
-  { header: 'NIB', sortValue: (a) => a.nib, cell: (a) => <code className="treasury-number">{a.nib?.replace(/\s+/g, '') || '—'}</code> },
+  { header: 'NIB', sortValue: (a) => a.nib, cell: (a) => <code className="treasury-number">{a.nib || '—'}</code> },
   {
     header: 'Estado',
     align: 'center',

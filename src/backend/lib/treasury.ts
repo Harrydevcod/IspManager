@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Database } from 'better-sqlite3';
 import { escudosToCentavos, roundEscudos } from '../../shared/money';
+import { canonicalNib } from '../../shared/nib';
 import { todayIso } from './billing';
 
 /**
@@ -165,7 +166,7 @@ export function createAccount(db: Database, input: AccountInput, userId?: number
       input.name.trim(),
       input.kind === 'banco' ? clean(input.bankName) : null,
       input.kind === 'banco' ? clean(input.accountNumber) : null,
-      input.kind === 'banco' ? clean(input.nib) : null,
+      input.kind === 'banco' ? canonicalNib(input.nib) : null,
       input.kind === 'banco' ? clean(input.holderName) : null,
       input.kind === 'banco' ? clean(input.reference) : null,
       roundEscudos(input.openingBalanceCve ?? 0),
@@ -223,7 +224,7 @@ export function updateAccount(
       merged.name.trim(),
       clean(merged.bankName),
       clean(merged.accountNumber),
-      clean(merged.nib),
+      canonicalNib(merged.nib),
       clean(merged.holderName),
       clean(merged.reference),
       roundEscudos(merged.openingBalanceCve ?? 0),

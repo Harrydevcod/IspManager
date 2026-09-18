@@ -12,8 +12,10 @@ import type { Migration } from './types';
  * IBAN não entra: não se usa neste sistema.
  *
  * O que já lá está arruma-se por regra, não por adivinhação: sem separadores,
- * 21 dígitos é um NIB e muda de coluna; tudo o resto fica onde está, à vista no
- * ecrã da Tesouraria para quem quiser corrigir à mão.
+ * 21 dígitos é um NIB e muda de coluna — e muda já sem separadores, que é a
+ * forma em que o NIB se guarda (`shared/nib.ts`), para se colar no homebanking
+ * sem erros. Tudo o resto fica onde está, à vista no ecrã da Tesouraria para
+ * quem quiser corrigir à mão.
  */
 const STRIPPED = `replace(replace(replace(account_number,' ',''),'.',''),'-','')`;
 
@@ -24,7 +26,7 @@ const migration: Migration = {
     ALTER TABLE treasury_accounts ADD COLUMN nib TEXT;
 
     UPDATE treasury_accounts
-       SET nib = account_number, account_number = NULL
+       SET nib = ${STRIPPED}, account_number = NULL
      WHERE kind = 'banco' AND account_number IS NOT NULL
        AND length(${STRIPPED}) = 21
        AND ${STRIPPED} NOT GLOB '*[^0-9]*';
