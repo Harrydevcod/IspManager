@@ -4,6 +4,7 @@ import { allocateDocumentNumber } from './numbering';
 import { formatEscudos } from '../../shared/money';
 import { isAudiovisualAnnualReference } from './audiovisual';
 import { documentBankAccounts } from './treasury';
+import type { BillingLine } from './billing';
 
 const PDFDocument = require('pdfkit');
 
@@ -25,10 +26,47 @@ const DOCUMENT_MONTH_NAMES = [
 export type DocumentKind = 'invoice' | 'receipt';
 
 type DocumentLine = {
-  kind: 'internet' | 'audiovisual';
+  kind: BillingLine['kind'];
   description: string;
   amountCve: number;
 };
+
+/** Nota discreta na linha do serviço quando o aluguer foi lá dentro. */
+export const RENTAL_INCLUDED_NOTE = 'Inclui equipamento cedido';
+/** Descrição da linha própria quando não há mensalidade onde esconder a renda. */
+export const RENTAL_ONLY_DESCRIPTION = 'Equipamento cedido';
+
+/**
+ * O aluguer não é rubrica própria na fatura: soma-se à mensalidade e deixa só
+ * uma nota em letra miúda. Opção comercial — o equipamento "vem incluído" no
+ * serviço, como nas operadoras, em vez de ser uma renda destacada todos os
+ * meses. A BD (`payment_lines`) mantém as linhas separadas com o modelo do
+ * equipamento; isto é apresentação, e o total nunca muda.
+ *
+ * Serviço suspenso paga só a renda (ver `buildMonthlyServiceLines` em
+ * ./billing) — sem linha de internet onde somar, as rendas colapsam numa única
+ * linha apagada em vez de a fatura descrever internet que está cortada.
+ */
+export function foldRentalLines(lines: DocumentLine[]): { items: DocumentLine[]; hasRental: boolean } {
+  const rentals = lines.filter((line) => line.kind === 'aluguer');
+  if (rentals.length === 0) return { items: lines, hasRental: false };
+  const rentalTotal = rentals.reduce((sum, line) => sum + Number(line.amountCve || 0), 0);
+
+  const others = lines.filter((line) => line.kind !== 'aluguer');
+  const host = others.find((line) => line.kind === 'internet');
+  if (host) {
+    return {
+      items: others.map((line) =>
+        line === host ? { ...line, amountCve: line.amountCve + rentalTotal } : line
+      ),
+      hasRental: true
+    };
+  }
+  return {
+    items: [...others, { kind: 'aluguer', description: RENTAL_ONLY_DESCRIPTION, amountCve: rentalTotal }],
+    hasRental: false
+  };
+}
 
 /**
  * Rótulo da competência: mês por extenso (`Julho/2026`) para faturas mensais;
@@ -465,20 +503,34 @@ function buildDocument(
   // Uma linha por item do documento. O valor de cada linha é o seu montante
   // (IVA incluído); a soma é o total (amount_cve). O detalhe Subtotal/IVA continua
   // a ser calculado sobre o total na secção 5.
-  const renderItem = (description: string, amount: number, subline: string | null) => {
-    doc.fillColor(PALETTE.ink).fontSize(12).font('Helvetica-Bold')
+  // `quiet` desenha a rubrica em tom menor — usado na linha de equipamento
+  // cedido, que não tem de competir com a mensalidade.
+  const renderItem = (
+    description: string,
+    amount: number,
+    sublines: Array<string | null>,
+    quiet = false
+  ) => {
+    const titleSize = quiet ? 10 : 12;
+    const titleFont = quiet ? 'Helvetica' : 'Helvetica-Bold';
+    const titleColor = quiet ? PALETTE.muted : PALETTE.ink;
+    doc.fillColor(titleColor).fontSize(titleSize).font(titleFont)
       .text(fitText(doc, description, descColW), M, y, { width: descColW, lineBreak: false });
     if (!totals.isExempt) {
-      doc.fillColor(PALETTE.ink).fontSize(10).font('Helvetica')
+      doc.fillColor(titleColor).fontSize(10).font('Helvetica')
         .text(`${totals.ivaRate}%`, M + descColW + 4, y + 2, { width: ivaColW, align: 'right', lineBreak: false });
     }
-    doc.fillColor(PALETTE.ink).fontSize(12).font('Helvetica-Bold')
+    doc.fillColor(titleColor).fontSize(titleSize).font(titleFont)
       .text(formatCve(amount), W - M - valueColW, y, { width: valueColW, align: 'right', lineBreak: false });
-    y += 16;
-    if (subline) {
-      doc.fillColor(PALETTE.muted).fontSize(8.5).font('Helvetica')
+    y += quiet ? 14 : 16;
+    for (const subline of sublines) {
+      if (!subline) continue;
+      // A nota do equipamento é a mais apagada da paleta de propósito: está lá
+      // para quem a procurar, não para dar nas vistas.
+      const note = subline === RENTAL_INCLUDED_NOTE;
+      doc.fillColor(note ? PALETTE.light : PALETTE.muted).fontSize(note ? 7.5 : 8.5).font('Helvetica')
         .text(fitText(doc, subline, descColW), M, y, { width: descColW, lineBreak: false });
-      y += 12;
+      y += note ? 10 : 12;
     }
   };
 
@@ -486,11 +538,19 @@ function buildDocument(
   // faturado. Documentos antigos não têm linhas → fallback à linha única de
   // internet histórica (nunca se reescreve um documento já emitido).
   if (lines.length > 0) {
-    for (const line of lines) {
-      renderItem(line.description, line.amountCve, line.kind === 'internet' ? planLine : audiovisualSubline);
+    const { items, hasRental } = foldRentalLines(lines);
+    for (const line of items) {
+      const sublines: Array<string | null> = [];
+      if (line.kind === 'internet') {
+        sublines.push(planLine);
+        if (hasRental) sublines.push(RENTAL_INCLUDED_NOTE);
+      } else if (line.kind === 'audiovisual') {
+        sublines.push(audiovisualSubline);
+      }
+      renderItem(line.description, line.amountCve, sublines, line.kind === 'aluguer');
     }
   } else {
-    renderItem('Servico de Internet', totals.total, planLine);
+    renderItem('Servico de Internet', totals.total, [planLine]);
   }
   doc.fillColor(PALETTE.light).fontSize(8.5).font('Helvetica')
     .text(`Periodo de referencia ${formatReferenceForDocument(row.referenceMonth)}`, M, y, { width: descColW, lineBreak: false });
