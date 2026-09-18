@@ -5,7 +5,7 @@ import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
 import { effectivePaymentStatus } from '../../lib/status';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
 import { paymentStatusLabel, type PaymentReceipt, type PaymentRow } from '../../types';
-import { ReceiptsSection } from './ReceiptsSection';
+import { METHOD_LABELS, ReceiptsSection } from './ReceiptsSection';
 import { AccountSelect } from '../treasury/AccountSelect';
 
 export type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
@@ -425,7 +425,7 @@ export function PaymentDetailDialog({
         <div><dt>Em aberto</dt><dd>{formatCve(payment.balanceCve)}</dd></div>
         <div><dt>Fatura</dt><dd>{payment.invoiceNumber || '-'}</dd></div>
         <div><dt>Recibo</dt><dd>{payment.receiptNumber || '-'}</dd></div>
-        <div><dt>Metodo</dt><dd>{payment.paymentMethod || '-'}</dd></div>
+        <div><dt>Metodo</dt><dd>{payment.paymentMethod ? (METHOD_LABELS[payment.paymentMethod] || payment.paymentMethod) : '-'}</dd></div>
         <div><dt>Data pagamento</dt><dd>{formatPtDate(payment.paymentDate)}</dd></div>
         <div><dt>Estado</dt><dd>{paymentStatusLabel(effectivePaymentStatus(payment))}</dd></div>
       </dl>

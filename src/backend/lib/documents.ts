@@ -190,6 +190,20 @@ function formatCve(value: number) {
   return formatEscudos(value);
 }
 
+// O estado vive na base em ingles; o documento vai para o cliente e le-se em
+// portugues. O QR (campo E) fica com o codigo cru — e' dado tecnico.
+export function documentStatusLabel(status: string | null | undefined) {
+  return STATUS_LABELS[status ?? ''] ?? '-';
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  pending: 'PENDENTE',
+  partial: 'PARCIAL',
+  overdue: 'EM ATRASO',
+  paid: 'PAGO',
+  cancelled: 'ANULADA'
+};
+
 export function formatDate(value: string | null) {
   if (!value) {
     return '-';
@@ -517,7 +531,7 @@ function buildDocument(
   doc.fillColor(PALETTE.light).fontSize(7.5).font('Helvetica')
     .text(`Moeda ${currency}`, M + 2, y + 30, { width: 120, lineBreak: false });
 
-  const statusLabel = isReceipt ? 'PAGO' : (row.status || '-').toUpperCase();
+  const statusLabel = isReceipt ? 'PAGO' : documentStatusLabel(row.status);
   const statusColor = isReceipt
     ? PALETTE.success
     : row.status === 'overdue'

@@ -205,6 +205,11 @@ describe('contagem de caixa', () => {
 
     expect(result.ok && result.value.differenceCve).toBe(-500);
     expect(balance(cashId)).toBe(49500);
+
+    // O movimento fica a olhar para o utilizador: escudos, nao 50000.00.
+    const descricao = db.prepare('SELECT description FROM treasury_movements WHERE kind = ? ORDER BY id DESC LIMIT 1')
+      .get('ajuste') as { description: string };
+    expect(descricao.description).toContain('sistema 50.000$00, contado 49.500$00');
   });
 });
 

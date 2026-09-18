@@ -20,7 +20,7 @@ type ReceiptsSectionProps = {
   onApplyCredit: () => void;
 };
 
-const METHOD_LABELS: Record<string, string> = {
+export const METHOD_LABELS: Record<string, string> = {
   numerario: 'Numerário',
   transferencia: 'Transferência',
   outro: 'Outro'

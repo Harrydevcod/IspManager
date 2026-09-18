@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Database } from 'better-sqlite3';
-import { escudosToCentavos, roundEscudos } from '../../shared/money';
+import { escudosToCentavos, formatEscudos, roundEscudos } from '../../shared/money';
 import { canonicalNib } from '../../shared/nib';
 import { todayIso } from './billing';
 
@@ -595,7 +595,7 @@ export function recordCashCount(db: Database, input: {
     amountCve: Math.abs(difference),
     movementDate: date,
     kind: 'ajuste',
-    description: `${differenceCents > 0 ? 'Sobra' : 'Falta'} na contagem (sistema ${system.toFixed(2)}, contado ${counted.toFixed(2)}) — ${reason}`,
+    description: `${differenceCents > 0 ? 'Sobra' : 'Falta'} na contagem (sistema ${formatEscudos(system)}, contado ${formatEscudos(counted)}) — ${reason}`,
     userId: input.userId
   }))();
 
