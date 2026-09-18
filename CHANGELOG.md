@@ -6,6 +6,18 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.31.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.31.0) — 2026-09-18
+
+> **Sem migrações.** As duas mudanças são de impressão: o que se cobra, o que fica na base e o total da fatura não mudam nada.
+
+### Adicionado
+
+- **O aluguer de equipamento pode voltar à fatura — se quiser.** Desde a 1.30 a renda ia somada à mensalidade, com a nota discreta "Inclui equipamento cedido". Agora há um interruptor: ligado, o aluguer aparece em letra miúda por baixo da mensalidade, com o valor à direita — `Aluguer de equipamento  250$00`. **Vem desligado**, portanto quem não fizer nada continua a ver a fatura exatamente como hoje. O valor cobrado é o mesmo nos dois modos; muda só o que o cliente lê. O interruptor está em dois sítios, o mesmo em ambos: **Configurações → Faturação** e **Tesouraria → Contas**, que já é onde se decide o que sai nos documentos. O modelo do equipamento continua a não chegar ao papel.
+
+### Alterado
+
+- **O audiovisual passa a imprimir-se pela sigla.** "Distribuição de Conteúdos Audiovisuais" ocupava a coluna da descrição toda e dava ao serviço o mesmo peso da mensalidade da internet. Agora a rubrica sai como **DCA**, com o nome legal completo logo por baixo em letra menor, e em corpo mais pequeno quando acompanha outra rubrica — é um suplemento opcional, não o serviço principal. Na fatura da anuidade, onde o audiovisual é a única rubrica, mantém o tamanho normal. A sigla é derivada do nome configurado: se mudar a denominação nas Definições, a sigla acompanha, e as faturas já emitidas mantêm a sua.
+
 ## [1.30.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.30.0) — 2026-09-18
 
 > **Antes de instalar, faça uma cópia de segurança.** Esta versão traz duas migrações: a `0058` cria as caixas, os bancos e o razão de movimentos, e a `0059` separa o nº de conta do NIB, a regravar os NIB já guardados só com dígitos.
