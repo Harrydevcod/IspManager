@@ -6,6 +6,30 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.30.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.30.0) — 2026-09-18
+
+> **Antes de instalar, faça uma cópia de segurança.** Esta versão traz duas migrações: a `0058` cria as caixas, os bancos e o razão de movimentos, e a `0059` separa o nº de conta do NIB, a regravar os NIB já guardados só com dígitos.
+
+### Adicionado
+
+- **Tesouraria — para onde vai o dinheiro.** Até aqui sabia-se quanto entrou, não onde ficou. Uma aba nova no Financeiro com as **caixas e os bancos como contas de primeira classe** e um razão de movimentos por trás. O razão só acrescenta: nenhuma linha se reescreve nem se apaga.
+- **Cada recebimento cai na conta certa.** Numerário entra na caixa; transferência entra na conta bancária escolhida — o destino é obrigatório e a lista só oferece bancos.
+- **Contagem de caixa com acerto.** Conta-se o dinheiro que lá está e a diferença para o esperado vira um movimento explícito, com o valor formatado (1.500$00, não 1500).
+- **Transferências entre contas** saem de uma e entram na outra sem inflacionar saldo nenhum.
+- **Nº de conta e NIB em campos separados.** Partilhavam um só. Na fatura manda o NIB, e o NIB **guarda-se só com dígitos** — colado no homebanking com espaços, a transferência era rejeitada. Os bancos saíram das Configurações para a Tesouraria.
+
+### Alterado
+
+- **A renda do equipamento deixa de ser rubrica destacada na fatura.** Todos os meses o documento dizia `Aluguer — TP-Link CPE510 · 250$00` em negrito, uma linha que convida o cliente a comprar equipamento próprio e a deixar de pagar a renda. Passa a ir dentro da linha do serviço, como nota em letra miúda: «Inclui equipamento cedido». O total da fatura é exactamente o mesmo.
+- **Serviço suspenso** paga só a renda: sem mensalidade onde somar, as rendas colapsam numa linha única «Equipamento cedido», em vez de a fatura descrever internet que está cortada.
+
+### Corrigido
+
+- Uma linha de instalação imprimia «Subscrição mensal» por baixo do nome: a sublinha era escolhida por negação e o tipo do documento só conhecia dois dos cinco géneros de linha que a consulta traz.
+- O estado dos documentos e as formas de pagamento apareciam em inglês cru (`pending`, `bank_transfer`) em vez de português.
+
+> A mudança da fatura é **só de apresentação**: as linhas continuam guardadas em separado com o modelo do equipamento, por isso a rentabilidade, o reprice de planos e os relatórios não mexem.
+
 ## [1.29.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.29.0) — 2026-09-14
 
 > Sem migrações. A base de dados não muda com esta versão.
