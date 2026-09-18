@@ -6,6 +6,25 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+## [1.32.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.32.0) — 2026-09-18
+
+> **Sem migrações.** Só muda o que se lê na fatura e onde se liga a definição. O que se cobra e o total não mudam.
+
+### Alterado
+
+- **O detalhe do aluguer passa a nomear cada equipamento.** Na 1.31 o interruptor imprimia uma linha só, agregada e anónima — `Aluguer de 2 equipamentos  400$00`. Agora imprime **um equipamento por linha, com a renda de cada um**, por baixo de um cabeçalho `Aluguer de equipamento`:
+
+  ```
+  Servico de Internet                                     3.000$00
+    Plano: Standart - 20 Mb/s / 20Mb/s
+    Aluguer de equipamento
+      TP-Link CPE 510 Ponto de Acesso para Exterior WiFi     250$00
+      TP-Link TL-WR850N Router WIFI Branco                   250$00
+  ```
+
+  O total da rubrica é o mesmo com o interruptor ligado ou desligado; muda só o que o cliente lê. Desligado, continua a ir tudo somado ao plano com a nota "Inclui equipamento cedido". Um serviço suspenso, que só paga rendas, detalha-as por baixo de "Equipamento cedido".
+- **A definição deixa de estar em dois sítios.** Vivia em Configurações → Faturação e também em Tesouraria → Contas. Decidir o que sai na fatura não é assunto da Tesouraria, e duas portas para a mesma definição são duas oportunidades de as ver discordar. Fica só em **Configurações → Faturação**.
+
 ## [1.31.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.31.0) — 2026-09-18
 
 > **Sem migrações.** As duas mudanças são de impressão: o que se cobra, o que fica na base e o total da fatura não mudam nada.
