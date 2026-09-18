@@ -13,6 +13,7 @@ export type TreasuryAccount = {
   name: string;
   bankName: string | null;
   accountNumber: string | null;
+  nib: string | null;
   holderName: string | null;
   reference: string | null;
   openingBalanceCve: number;
@@ -84,7 +85,8 @@ export function accountsFor(purpose: AccountPurpose, accounts: TreasuryAccount[]
 
 export function accountLabel(account: TreasuryAccount): string {
   if (account.kind === 'caixa') return account.isDefaultCash ? `${account.name} (predefinida)` : account.name;
-  const number = account.accountNumber ? ` · ${account.accountNumber}` : '';
+  const identifier = account.accountNumber || account.nib;
+  const number = identifier ? ` · ${identifier}` : '';
   return `${account.name}${number}`;
 }
 

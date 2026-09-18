@@ -30,6 +30,7 @@ export type TreasuryAccount = {
   name: string;
   bankName: string | null;
   accountNumber: string | null;
+  nib: string | null;
   holderName: string | null;
   reference: string | null;
   openingBalanceCve: number;
@@ -78,7 +79,7 @@ function balanceSql(alias: string): string {
 }
 
 const accountSelect = `
-  SELECT a.id, a.kind, a.name, a.bank_name AS bankName, a.account_number AS accountNumber,
+  SELECT a.id, a.kind, a.name, a.bank_name AS bankName, a.account_number AS accountNumber, a.nib,
          a.holder_name AS holderName, a.reference, a.opening_balance_cve AS openingBalanceCve,
          a.opening_date AS openingDate, a.is_default_cash AS isDefaultCash,
          a.show_on_documents AS showOnDocuments, a.active, a.sort_order AS sortOrder,
@@ -125,6 +126,7 @@ export type AccountInput = {
   name: string;
   bankName?: string | null;
   accountNumber?: string | null;
+  nib?: string | null;
   holderName?: string | null;
   reference?: string | null;
   openingBalanceCve?: number;
@@ -154,15 +156,16 @@ export function createAccount(db: Database, input: AccountInput, userId?: number
     if (input.isDefaultCash) db.prepare('UPDATE treasury_accounts SET is_default_cash = 0 WHERE is_default_cash = 1').run();
     const info = db.prepare(`
       INSERT INTO treasury_accounts (
-        kind, name, bank_name, account_number, holder_name, reference,
+        kind, name, bank_name, account_number, nib, holder_name, reference,
         opening_balance_cve, opening_date, is_default_cash, show_on_documents, active, sort_order, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
         (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM treasury_accounts), ?)
     `).run(
       input.kind,
       input.name.trim(),
       input.kind === 'banco' ? clean(input.bankName) : null,
       input.kind === 'banco' ? clean(input.accountNumber) : null,
+      input.kind === 'banco' ? clean(input.nib) : null,
       input.kind === 'banco' ? clean(input.holderName) : null,
       input.kind === 'banco' ? clean(input.reference) : null,
       roundEscudos(input.openingBalanceCve ?? 0),
@@ -191,6 +194,7 @@ export function updateAccount(
     name: patch.name ?? current.name,
     bankName: patch.bankName !== undefined ? patch.bankName : current.bankName,
     accountNumber: patch.accountNumber !== undefined ? patch.accountNumber : current.accountNumber,
+    nib: patch.nib !== undefined ? patch.nib : current.nib,
     holderName: patch.holderName !== undefined ? patch.holderName : current.holderName,
     reference: patch.reference !== undefined ? patch.reference : current.reference,
     openingBalanceCve: patch.openingBalanceCve ?? current.openingBalanceCve,
@@ -211,7 +215,7 @@ export function updateAccount(
     }
     db.prepare(`
       UPDATE treasury_accounts
-      SET name = ?, bank_name = ?, account_number = ?, holder_name = ?, reference = ?,
+      SET name = ?, bank_name = ?, account_number = ?, nib = ?, holder_name = ?, reference = ?,
           opening_balance_cve = ?, opening_date = ?, is_default_cash = ?, show_on_documents = ?,
           active = ?, updated_at = datetime('now')
       WHERE id = ?
@@ -219,6 +223,7 @@ export function updateAccount(
       merged.name.trim(),
       clean(merged.bankName),
       clean(merged.accountNumber),
+      clean(merged.nib),
       clean(merged.holderName),
       clean(merged.reference),
       roundEscudos(merged.openingBalanceCve ?? 0),
@@ -233,11 +238,16 @@ export function updateAccount(
   return { ok: true, value: getAccount(db, id)! };
 }
 
-/** Contas bancárias que saem nas faturas, pela ordem da tesouraria. */
+/**
+ * Contas bancárias que saem nas faturas, pela ordem da tesouraria.
+ *
+ * Na fatura imprime-se o NIB: é com ele que o cliente transfere. O número de
+ * conta é a reserva, para as contas que ainda só tenham esse.
+ */
 export function documentBankAccounts(db: Database) {
   return db.prepare(`
     SELECT COALESCE(bank_name, name) AS bankName, COALESCE(holder_name, '') AS accountName,
-           COALESCE(account_number, '') AS accountNumber, COALESCE(reference, '') AS reference
+           COALESCE(NULLIF(nib, ''), account_number, '') AS accountNumber, COALESCE(reference, '') AS reference
     FROM treasury_accounts
     WHERE kind = 'banco' AND active = 1 AND show_on_documents = 1
     ORDER BY sort_order, id

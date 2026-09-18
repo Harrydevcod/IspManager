@@ -40,6 +40,7 @@ type AccountForm = {
   name: string;
   bankName: string;
   accountNumber: string;
+  nib: string;
   holderName: string;
   reference: string;
   openingBalanceCve: string;
@@ -54,6 +55,7 @@ function accountForm(account: TreasuryAccount | null, kind: TreasuryAccountKind)
     name: account?.name ?? '',
     bankName: account?.bankName ?? '',
     accountNumber: account?.accountNumber ?? '',
+    nib: account?.nib ?? '',
     holderName: account?.holderName ?? '',
     reference: account?.reference ?? '',
     openingBalanceCve: account ? String(account.openingBalanceCve) : '0',
@@ -95,6 +97,7 @@ export function AccountDialog({ open, kind, account, onClose, onSaved }: {
         ? {
             bankName: form.bankName.trim() || null,
             accountNumber: form.accountNumber.trim() || null,
+            nib: form.nib.trim() || null,
             holderName: form.holderName.trim() || null,
             reference: form.reference.trim() || null,
             showOnDocuments: form.showOnDocuments
@@ -136,7 +139,8 @@ export function AccountDialog({ open, kind, account, onClose, onSaved }: {
         {isBank && (
           <>
             <Field label="Banco" maxLength={80} value={form.bankName} onChange={(event) => setForm((f) => ({ ...f, bankName: event.target.value }))} />
-            <Field label="Número / NIB / IBAN" maxLength={60} value={form.accountNumber} onChange={(event) => setForm((f) => ({ ...f, accountNumber: event.target.value }))} />
+            <Field label="Nº de conta" maxLength={40} value={form.accountNumber} onChange={(event) => setForm((f) => ({ ...f, accountNumber: event.target.value }))} />
+            <Field label="NIB" maxLength={40} value={form.nib} placeholder="0003 0000 1234 5678 9012 3" hint="O que sai na fatura, para o cliente transferir." onChange={(event) => setForm((f) => ({ ...f, nib: event.target.value }))} />
             <Field label="Titular" maxLength={120} value={form.holderName} onChange={(event) => setForm((f) => ({ ...f, holderName: event.target.value }))} />
             <Field label="Referência" maxLength={120} value={form.reference} onChange={(event) => setForm((f) => ({ ...f, reference: event.target.value }))} />
           </>
@@ -161,7 +165,7 @@ export function AccountDialog({ open, kind, account, onClose, onSaved }: {
         {isBank ? (
           <Toggle
             title="Mostrar nas faturas"
-            description="O banco e o número saem no rodapé das faturas."
+            description="O banco e o NIB saem no rodapé das faturas."
             checked={form.showOnDocuments}
             onChange={(event) => setForm((f) => ({ ...f, showOnDocuments: event.target.checked }))}
           />

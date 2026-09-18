@@ -21,6 +21,7 @@ const accountFields = {
   name: z.string().trim().min(1).max(80),
   bankName: optionalText(80),
   accountNumber: optionalText(60),
+  nib: optionalText(40),
   holderName: optionalText(120),
   reference: optionalText(120),
   openingBalanceCve: z.number().finite().optional(),

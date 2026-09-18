@@ -396,6 +396,7 @@ export const treasuryAccounts = sqliteTable('treasury_accounts', {
   name: text('name').notNull(),
   bankName: text('bank_name'),
   accountNumber: text('account_number'),
+  nib: text('nib'),
   holderName: text('holder_name'),
   reference: text('reference'),
   openingBalanceCve: real('opening_balance_cve').notNull().default(0),

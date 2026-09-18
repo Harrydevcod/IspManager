@@ -67,8 +67,10 @@ const ACCOUNT_COLUMNS: DataTableColumn<TreasuryAccount>[] = [
       </span>
     )
   },
-  { header: 'Banco', sortValue: (a) => a.bankName, cell: (a) => <span>{a.bankName || '—'}</span> },
-  { header: 'Nº / NIB', sortValue: (a) => a.accountNumber, cell: (a) => <code className="treasury-number">{a.accountNumber || '—'}</code> },
+  { header: 'Nº de conta', sortValue: (a) => a.accountNumber, cell: (a) => <code className="treasury-number">{a.accountNumber || '—'}</code> },
+  // Sem os espaços com que foi escrito: 21 dígitos cabem na coluna, o valor
+  // como o utilizador o escreveu fica no formulário da conta.
+  { header: 'NIB', sortValue: (a) => a.nib, cell: (a) => <code className="treasury-number">{a.nib?.replace(/\s+/g, '') || '—'}</code> },
   {
     header: 'Estado',
     align: 'center',
@@ -79,12 +81,9 @@ const ACCOUNT_COLUMNS: DataTableColumn<TreasuryAccount>[] = [
         ? <Badge tone="accent">Predefinida</Badge>
         : a.showOnDocuments ? <Badge tone="info">Na fatura</Badge> : <Badge tone="success">Ativa</Badge>)
   },
-  {
-    header: 'Últ. mov.',
-    sortValue: (a) => a.lastMovementDate,
-    defaultDirection: 'desc',
-    cell: (a) => <span>{a.lastMovementDate ? formatPtDate(a.lastMovementDate) : '—'}</span>
-  },
+  // Sem "Banco" nem "Últ. mov.": o nº de conta e o NIB precisam da largura toda
+  // para não saírem truncados, e ambos continuam à mão — o banco no formulário
+  // da conta, a data do último movimento na aba Movimentos.
   {
     header: 'Saldo',
     align: 'end',
@@ -342,8 +341,8 @@ export function TreasuryModule() {
             stickyHeader
             onRowClick={openStatement}
             defaultSort={{ key: 'Tipo', direction: 'asc' }}
-            gridTemplateColumns="minmax(110px, 1.3fr) 84px minmax(64px, 0.7fr) minmax(100px, 1fr) 100px 96px 104px"
-            actionsWidth="64px"
+            gridTemplateColumns="minmax(88px, 1fr) 66px minmax(122px, 1fr) minmax(190px, 2fr) 100px minmax(76px, 0.8fr)"
+            actionsWidth="48px"
             columns={ACCOUNT_COLUMNS}
             actions={isAdmin ? (account) => (
               <Button variant="icon" size="sm" className="row-action" title="Editar conta" aria-label={`Editar ${account.name}`} onClick={() => setAccountDialog({ kind: account.kind, account })}>

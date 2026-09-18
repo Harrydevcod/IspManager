@@ -276,6 +276,30 @@ describe('saldos', () => {
     treasury.createAccount(db, { kind: 'banco', name: 'BAI interno', bankName: 'BAI', accountNumber: '999' });
     expect(treasury.documentBankAccounts(db).map((a) => a.accountNumber)).toEqual(['0003 0000 1234']);
   });
+
+  test('na fatura manda o NIB; o numero de conta e a reserva de quem nao o tem', () => {
+    expect(treasury.documentBankAccounts(db).map((a) => a.accountNumber)).toEqual(['0003 0000 1234']);
+
+    const updated = treasury.updateAccount(db, bankId, { nib: '0003 0000 1234 5678 9012 3' });
+    expect(updated.ok).toBe(true);
+    expect(treasury.documentBankAccounts(db).map((a) => a.accountNumber)).toEqual(['0003 0000 1234 5678 9012 3']);
+  });
+
+  test('o numero de conta e o NIB sao campos independentes', () => {
+    const created = treasury.createAccount(db, {
+      kind: 'banco', name: 'BCN', bankName: 'BCN', accountNumber: '12345', nib: '0005 0000 9999 8888 7777 6'
+    });
+    expect(created.ok).toBe(true);
+    const account = treasury.listAccounts(db).find((a) => a.name === 'BCN')!;
+    expect(account.accountNumber).toBe('12345');
+    expect(account.nib).toBe('0005 0000 9999 8888 7777 6');
+
+    // Apagar um nao apaga o outro.
+    treasury.updateAccount(db, account.id, { accountNumber: '' });
+    const after = treasury.listAccounts(db).find((a) => a.name === 'BCN')!;
+    expect(after.accountNumber).toBeNull();
+    expect(after.nib).toBe('0005 0000 9999 8888 7777 6');
+  });
 });
 
 describe('migracao 0058', () => {
@@ -297,6 +321,32 @@ describe('migracao 0058', () => {
         { kind: 'caixa', name: 'Caixa principal', accountNumber: null, holderName: null, isDefaultCash: 1, showOnDocuments: 0 },
         { kind: 'banco', name: 'BCA', accountNumber: '0003.0000.1', holderName: 'ISP Lda', isDefaultCash: 0, showOnDocuments: 1 },
         { kind: 'banco', name: 'Conta bancaria 2', accountNumber: '777', holderName: null, isDefaultCash: 0, showOnDocuments: 1 }
+      ]);
+    } finally {
+      fresh.close();
+    }
+  });
+});
+
+describe('migracao 0059', () => {
+  test('o que sao 21 digitos passa a NIB; o resto fica no numero de conta', () => {
+    const fresh = new BetterSqlite(':memory:');
+    try {
+      runMigrations(fresh, migrations.filter((m) => m.version < 59));
+      fresh.prepare(`
+        INSERT INTO treasury_accounts (kind, name, account_number, opening_date) VALUES
+          ('banco', 'Com NIB', '0003 0000 1234 5678 9012 3', '2026-01-01'),
+          ('banco', 'Numero curto', '0003.0000.1', '2026-01-01'),
+          ('banco', 'Vinte e um mas nao so digitos', 'CV6400030000123456789', '2026-01-01')
+      `).run();
+      runMigrations(fresh);
+
+      expect(fresh.prepare(`
+        SELECT name, account_number AS accountNumber, nib FROM treasury_accounts WHERE kind = 'banco' ORDER BY id
+      `).all()).toEqual([
+        { name: 'Com NIB', accountNumber: null, nib: '0003 0000 1234 5678 9012 3' },
+        { name: 'Numero curto', accountNumber: '0003.0000.1', nib: null },
+        { name: 'Vinte e um mas nao so digitos', accountNumber: 'CV6400030000123456789', nib: null }
       ]);
     } finally {
       fresh.close();
