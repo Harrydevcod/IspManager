@@ -31,6 +31,17 @@ type DocumentLine = {
   amountCve: number;
 };
 
+/** Linha de apoio por baixo de uma rubrica. Com valor, desenha-se indentada. */
+type Subline = string | { text: string; amountCve: number } | null;
+
+type FoldedLines = {
+  items: DocumentLine[];
+  /** Houve aluguer e coube dentro da mensalidade (há linha de internet). */
+  hasRental: boolean;
+  rentalTotalCve: number;
+  rentalCount: number;
+};
+
 /** Nota discreta na linha do serviço quando o aluguer foi lá dentro. */
 export const RENTAL_INCLUDED_NOTE = 'Inclui equipamento cedido';
 /** Descrição da linha própria quando não há mensalidade onde esconder a renda. */
@@ -47,9 +58,9 @@ export const RENTAL_ONLY_DESCRIPTION = 'Equipamento cedido';
  * ./billing) — sem linha de internet onde somar, as rendas colapsam numa única
  * linha apagada em vez de a fatura descrever internet que está cortada.
  */
-export function foldRentalLines(lines: DocumentLine[]): { items: DocumentLine[]; hasRental: boolean } {
+export function foldRentalLines(lines: DocumentLine[]): FoldedLines {
   const rentals = lines.filter((line) => line.kind === 'aluguer');
-  if (rentals.length === 0) return { items: lines, hasRental: false };
+  if (rentals.length === 0) return { items: lines, hasRental: false, rentalTotalCve: 0, rentalCount: 0 };
   const rentalTotal = rentals.reduce((sum, line) => sum + Number(line.amountCve || 0), 0);
 
   const others = lines.filter((line) => line.kind !== 'aluguer');
@@ -59,13 +70,45 @@ export function foldRentalLines(lines: DocumentLine[]): { items: DocumentLine[];
       items: others.map((line) =>
         line === host ? { ...line, amountCve: line.amountCve + rentalTotal } : line
       ),
-      hasRental: true
+      hasRental: true,
+      rentalTotalCve: rentalTotal,
+      rentalCount: rentals.length
     };
   }
   return {
     items: [...others, { kind: 'aluguer', description: RENTAL_ONLY_DESCRIPTION, amountCve: rentalTotal }],
-    hasRental: false
+    hasRental: false,
+    rentalTotalCve: rentalTotal,
+    rentalCount: rentals.length
   };
+}
+
+/**
+ * Rótulo da sub-linha do aluguer quando a definição `printRentalLines` está
+ * ligada. Anónimo de propósito: o modelo do equipamento vive em `payment_lines`
+ * e nunca chega ao papel do cliente.
+ */
+export function rentalSublineLabel(count: number): string {
+  return count > 1 ? `Aluguer de ${count} equipamentos` : 'Aluguer de equipamento';
+}
+
+/** Ligações que não contam para a sigla. */
+const ACRONYM_STOPWORDS = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'para']);
+
+/**
+ * Sigla de uma rubrica comprida: `Distribuição de Conteúdos Audiovisuais` → `DCA`.
+ * Deriva-se do nome guardado na linha (não de uma constante) para que mudar a
+ * denominação nas Definições mude a sigla, e para que um documento antigo
+ * mantenha a sua própria. Nome curto de mais fica inteiro — uma sigla de uma
+ * letra não diz nada a ninguém.
+ */
+export function serviceAcronym(description: string): string {
+  const words = description
+    .split(/[\s—–-]+/)
+    .filter((word) => word.length > 0)
+    .filter((word) => !ACRONYM_STOPWORDS.has(word.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()));
+  if (words.length < 2) return description;
+  return words.map((word) => word[0].toUpperCase()).join('');
 }
 
 /**
@@ -150,6 +193,7 @@ type CompanyInfo = {
   fiscalRegime: 'normal' | 'rempe';
   showIva: boolean;
   printQrCode: boolean;
+  printRentalLines: boolean;
   legalNotes: string;
 };
 
@@ -172,6 +216,7 @@ const COMPANY_KEYS = [
   'fiscalRegime',
   'showIva',
   'printQrCode',
+  'printRentalLines',
   'legalNotes'
 ] as const;
 
@@ -194,6 +239,7 @@ function loadCompany(): CompanyInfo {
     fiscalRegime: 'normal',
     showIva: false,
     printQrCode: false,
+    printRentalLines: false,
     legalNotes: ''
   };
   for (const row of rows) {
@@ -202,7 +248,7 @@ function loadCompany(): CompanyInfo {
       company.ivaRate = Number.isFinite(n) ? n : 15;
     } else if (row.key === 'fiscalRegime') {
       company.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
-    } else if (row.key === 'showIva' || row.key === 'printQrCode') {
+    } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines') {
       company[row.key] = row.value === 'true' || row.value === '1';
     } else if ((COMPANY_KEYS as readonly string[]).includes(row.key)) {
       (company as Record<string, string | number | boolean | BankAccountInfo[]>)[row.key] = row.value || '';
@@ -508,7 +554,7 @@ function buildDocument(
   const renderItem = (
     description: string,
     amount: number,
-    sublines: Array<string | null>,
+    sublines: Array<Subline>,
     quiet = false
   ) => {
     const titleSize = quiet ? 10 : 12;
@@ -526,10 +572,20 @@ function buildDocument(
     for (const subline of sublines) {
       if (!subline) continue;
       // A nota do equipamento é a mais apagada da paleta de propósito: está lá
-      // para quem a procurar, não para dar nas vistas.
-      const note = subline === RENTAL_INCLUDED_NOTE;
+      // para quem a procurar, não para dar nas vistas. A sub-linha com valor
+      // (definição `printRentalLines`) usa o mesmo tom, indentada para se ler
+      // como detalhe da rubrica de cima e não como rubrica nova.
+      const detail = typeof subline === 'object';
+      const text = detail ? subline.text : subline;
+      const note = detail || text === RENTAL_INCLUDED_NOTE;
+      const x = detail ? M + 10 : M;
+      const width = descColW - (x - M);
       doc.fillColor(note ? PALETTE.light : PALETTE.muted).fontSize(note ? 7.5 : 8.5).font('Helvetica')
-        .text(fitText(doc, subline, descColW), M, y, { width: descColW, lineBreak: false });
+        .text(fitText(doc, text, width), x, y, { width, lineBreak: false });
+      if (detail) {
+        doc.fillColor(PALETTE.light).fontSize(7.5).font('Helvetica')
+          .text(formatCve(subline.amountCve), W - M - valueColW, y, { width: valueColW, align: 'right', lineBreak: false });
+      }
       y += note ? 10 : 12;
     }
   };
@@ -538,16 +594,31 @@ function buildDocument(
   // faturado. Documentos antigos não têm linhas → fallback à linha única de
   // internet histórica (nunca se reescreve um documento já emitido).
   if (lines.length > 0) {
-    const { items, hasRental } = foldRentalLines(lines);
+    const { items, hasRental, rentalTotalCve, rentalCount } = foldRentalLines(lines);
+    // "Suplementar" é relativo: o audiovisual só encolhe quando acompanha outra
+    // rubrica. Na fatura da anuidade é ele a única, e fica em tamanho normal.
+    const supplementary = items.length > 1;
     for (const line of items) {
-      const sublines: Array<string | null> = [];
+      const sublines: Array<Subline> = [];
       if (line.kind === 'internet') {
         sublines.push(planLine);
-        if (hasRental) sublines.push(RENTAL_INCLUDED_NOTE);
-      } else if (line.kind === 'audiovisual') {
+        // O total da rubrica é o mesmo nos dois modos; só muda se o cliente vê
+        // quanto do valor é aluguer.
+        if (hasRental) {
+          sublines.push(company.printRentalLines
+            ? { text: rentalSublineLabel(rentalCount), amountCve: rentalTotalCve }
+            : RENTAL_INCLUDED_NOTE);
+        }
+      }
+      // O audiovisual imprime-se pela sigla, com o nome por extenso em baixo: o
+      // nome legal é comprido e comeria a coluna toda.
+      let title = line.description;
+      if (line.kind === 'audiovisual') {
+        title = serviceAcronym(line.description);
+        if (title !== line.description) sublines.push(line.description);
         sublines.push(audiovisualSubline);
       }
-      renderItem(line.description, line.amountCve, sublines, line.kind === 'aluguer');
+      renderItem(title, line.amountCve, sublines, line.kind === 'aluguer' || (line.kind === 'audiovisual' && supplementary));
     }
   } else {
     renderItem('Servico de Internet', totals.total, [planLine]);

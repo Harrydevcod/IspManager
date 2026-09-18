@@ -158,6 +158,21 @@ describe('settings SMS validation', () => {
     expect(settings.audiovisualAnnualCve).toBe(5000);
   });
 
+  test('o detalhe do aluguer na fatura vem desligado e sobrevive ao round-trip', async () => {
+    const before = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(before.json().printRentalLines).toBe(false);
+
+    const saved = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, printRentalLines: true }
+    });
+    expect(saved.statusCode).toBe(200);
+
+    const after = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(after.json().printRentalLines).toBe(true);
+  });
+
   test('defaults installation fee to 0 and persists a new value', async () => {
     const before = await app.inject({ method: 'GET', url: '/api/settings' });
     expect(before.json().installationFeeCve).toBe(0);

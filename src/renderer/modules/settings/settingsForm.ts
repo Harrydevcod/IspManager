@@ -27,6 +27,7 @@ export type SettingsFormState = {
   fiscalRegime: 'normal' | 'rempe';
   showIva: boolean;
   printQrCode: boolean;
+  printRentalLines: boolean;
   legalNotes: string;
   whatsappTemplate: string;
   whatsappTestTemplate: string;

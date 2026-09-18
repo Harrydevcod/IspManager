@@ -219,6 +219,33 @@ describe('GET /api/payments/:id/invoice.pdf', () => {
     expect(response.rawPayload.slice(0, 4).toString('ascii')).toBe('%PDF');
   });
 
+  test('renders the rental subline when printRentalLines is on', async () => {
+    const id = seedPayment('pending');
+    db.prepare(`INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order) VALUES (?, 'internet', 'Servico de Internet', 2500, 0)`).run(id);
+    db.prepare(`INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order) VALUES (?, 'aluguer', 'Aluguer — CPE510', 250, 1)`).run(id);
+    db.prepare('UPDATE payments SET amount_cve = 2750 WHERE id = ?').run(id);
+    db.prepare(`INSERT INTO app_settings (key, value, updated_at) VALUES ('printRentalLines', 'true', datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run();
+
+    const response = await app.inject({ method: 'GET', url: `/api/payments/${id}/invoice.pdf` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.rawPayload.slice(0, 4).toString('ascii')).toBe('%PDF');
+    db.prepare(`UPDATE app_settings SET value = 'false' WHERE key = 'printRentalLines'`).run();
+  });
+
+  test('renders the audiovisual annual invoice (single line) without error', async () => {
+    const id = seedPayment('pending');
+    // A anuidade tem uma linha so: o audiovisual e a rubrica principal.
+    db.prepare(`INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order) VALUES (?, 'audiovisual', 'Distribuição de Conteúdos Audiovisuais', 5000, 0)`).run(id);
+    db.prepare(`UPDATE payments SET amount_cve = 5000, reference_month = 'AV-2026' WHERE id = ?`).run(id);
+
+    const response = await app.inject({ method: 'GET', url: `/api/payments/${id}/invoice.pdf` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.rawPayload.slice(0, 4).toString('ascii')).toBe('%PDF');
+  });
+
   test('legacy payment without lines still renders the internet line', async () => {
     const id = seedPayment('pending'); // sem payment_lines → fallback histórico
     const response = await app.inject({ method: 'GET', url: `/api/payments/${id}/invoice.pdf` });

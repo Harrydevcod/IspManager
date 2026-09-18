@@ -94,6 +94,12 @@ export function BillingTab({ form, onUpdate, onToggle }: BillingTabProps) {
         onChange={(event) => onToggle('printQrCode', event.target.checked)}
       />
       <Toggle
+        title="Detalhar aluguer de equipamento na fatura"
+        description="O valor cobrado é o mesmo. Ligado, o aluguer aparece em letra miúda por baixo da mensalidade; desligado, vai somado ao plano com a nota &quot;Inclui equipamento cedido&quot;."
+        checked={form.printRentalLines}
+        onChange={(event) => onToggle('printRentalLines', event.target.checked)}
+      />
+      <Toggle
         title="Conteúdos audiovisuais"
         description="Permite oferecer o serviço aos clientes. Mensal entra na fatura da internet; anual é faturado à parte."
         checked={form.audiovisualEnabled}
