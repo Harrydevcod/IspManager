@@ -4,7 +4,7 @@ import { allocateDocumentNumber } from './numbering';
 import { formatEscudos } from '../../shared/money';
 import { isAudiovisualAnnualReference } from './audiovisual';
 import { documentBankAccounts } from './treasury';
-import type { BillingLine } from './billing';
+import { RENTAL_LINE_PREFIX, type BillingLine } from './billing';
 
 const PDFDocument = require('pdfkit');
 
@@ -31,15 +31,19 @@ type DocumentLine = {
   amountCve: number;
 };
 
-/** Linha de apoio por baixo de uma rubrica. Com valor, desenha-se indentada. */
-type Subline = string | { text: string; amountCve: number } | null;
+/**
+ * Linha de apoio por baixo de uma rubrica. Em texto simples alinha com a
+ * rubrica; em objeto desenha-se indentada (`indent` níveis de 10pt) e, se
+ * trouxer `amountCve`, com o valor na coluna da direita.
+ */
+type Subline = string | { text: string; amountCve?: number; indent?: number } | null;
 
 type FoldedLines = {
   items: DocumentLine[];
   /** Houve aluguer e coube dentro da mensalidade (há linha de internet). */
   hasRental: boolean;
-  rentalTotalCve: number;
-  rentalCount: number;
+  /** As linhas de aluguer originais, para quem quiser detalhá-las. */
+  rentals: DocumentLine[];
 };
 
 /** Nota discreta na linha do serviço quando o aluguer foi lá dentro. */
@@ -60,7 +64,7 @@ export const RENTAL_ONLY_DESCRIPTION = 'Equipamento cedido';
  */
 export function foldRentalLines(lines: DocumentLine[]): FoldedLines {
   const rentals = lines.filter((line) => line.kind === 'aluguer');
-  if (rentals.length === 0) return { items: lines, hasRental: false, rentalTotalCve: 0, rentalCount: 0 };
+  if (rentals.length === 0) return { items: lines, hasRental: false, rentals };
   const rentalTotal = rentals.reduce((sum, line) => sum + Number(line.amountCve || 0), 0);
 
   const others = lines.filter((line) => line.kind !== 'aluguer');
@@ -71,25 +75,31 @@ export function foldRentalLines(lines: DocumentLine[]): FoldedLines {
         line === host ? { ...line, amountCve: line.amountCve + rentalTotal } : line
       ),
       hasRental: true,
-      rentalTotalCve: rentalTotal,
-      rentalCount: rentals.length
+      rentals
     };
   }
   return {
     items: [...others, { kind: 'aluguer', description: RENTAL_ONLY_DESCRIPTION, amountCve: rentalTotal }],
     hasRental: false,
-    rentalTotalCve: rentalTotal,
-    rentalCount: rentals.length
+    rentals
   };
 }
 
+/** Cabeçalho do bloco de equipamento quando `printRentalLines` está ligada. */
+export const RENTAL_DETAIL_HEADING = 'Aluguer de equipamento';
+
 /**
- * Rótulo da sub-linha do aluguer quando a definição `printRentalLines` está
- * ligada. Anónimo de propósito: o modelo do equipamento vive em `payment_lines`
- * e nunca chega ao papel do cliente.
+ * Nome do equipamento a imprimir a partir da descrição gravada em
+ * `payment_lines` (`Aluguer — TP-Link CPE510`): o prefixo já está dito no
+ * cabeçalho do bloco, repeti-lo em cada linha só rouba coluna. Descrição fora
+ * do padrão (documento antigo, linha escrita à mão) passa inteira — vale mais
+ * texto a mais do que uma linha vazia na fatura.
  */
-export function rentalSublineLabel(count: number): string {
-  return count > 1 ? `Aluguer de ${count} equipamentos` : 'Aluguer de equipamento';
+export function rentalDeviceName(description: string): string {
+  const name = description.startsWith(RENTAL_LINE_PREFIX)
+    ? description.slice(RENTAL_LINE_PREFIX.length).trim()
+    : description.trim();
+  return name || description;
 }
 
 /** Ligações que não contam para a sigla. */
@@ -572,17 +582,17 @@ function buildDocument(
     for (const subline of sublines) {
       if (!subline) continue;
       // A nota do equipamento é a mais apagada da paleta de propósito: está lá
-      // para quem a procurar, não para dar nas vistas. A sub-linha com valor
-      // (definição `printRentalLines`) usa o mesmo tom, indentada para se ler
+      // para quem a procurar, não para dar nas vistas. O detalhe do aluguer
+      // (definição `printRentalLines`) usa o mesmo tom, indentado para se ler
       // como detalhe da rubrica de cima e não como rubrica nova.
       const detail = typeof subline === 'object';
       const text = detail ? subline.text : subline;
       const note = detail || text === RENTAL_INCLUDED_NOTE;
-      const x = detail ? M + 10 : M;
+      const x = detail ? M + 10 * (subline.indent ?? 1) : M;
       const width = descColW - (x - M);
       doc.fillColor(note ? PALETTE.light : PALETTE.muted).fontSize(note ? 7.5 : 8.5).font('Helvetica')
         .text(fitText(doc, text, width), x, y, { width, lineBreak: false });
-      if (detail) {
+      if (detail && subline.amountCve !== undefined) {
         doc.fillColor(PALETTE.light).fontSize(7.5).font('Helvetica')
           .text(formatCve(subline.amountCve), W - M - valueColW, y, { width: valueColW, align: 'right', lineBreak: false });
       }
@@ -594,7 +604,15 @@ function buildDocument(
   // faturado. Documentos antigos não têm linhas → fallback à linha única de
   // internet histórica (nunca se reescreve um documento já emitido).
   if (lines.length > 0) {
-    const { items, hasRental, rentalTotalCve, rentalCount } = foldRentalLines(lines);
+    const { items, hasRental, rentals } = foldRentalLines(lines);
+    // Um equipamento por linha, com a sua renda. O prefixo "Aluguer —" fica no
+    // cabeçalho do bloco em vez de se repetir em cada nome.
+    const rentalDetail = (indent: number): Subline[] =>
+      rentals.map((rental) => ({
+        text: rentalDeviceName(rental.description),
+        amountCve: rental.amountCve,
+        indent
+      }));
     // "Suplementar" é relativo: o audiovisual só encolhe quando acompanha outra
     // rubrica. Na fatura da anuidade é ele a única, e fica em tamanho normal.
     const supplementary = items.length > 1;
@@ -603,12 +621,19 @@ function buildDocument(
       if (line.kind === 'internet') {
         sublines.push(planLine);
         // O total da rubrica é o mesmo nos dois modos; só muda se o cliente vê
-        // quanto do valor é aluguer.
+        // que equipamento paga e quanto.
         if (hasRental) {
-          sublines.push(company.printRentalLines
-            ? { text: rentalSublineLabel(rentalCount), amountCve: rentalTotalCve }
-            : RENTAL_INCLUDED_NOTE);
+          if (company.printRentalLines) {
+            sublines.push({ text: RENTAL_DETAIL_HEADING }, ...rentalDetail(2));
+          } else {
+            sublines.push(RENTAL_INCLUDED_NOTE);
+          }
         }
+      }
+      // Serviço suspenso: a rubrica "Equipamento cedido" já diz o que é, só lhe
+      // falta dizer qual — sem cabeçalho a repetir o título de cima.
+      if (line.kind === 'aluguer' && company.printRentalLines) {
+        sublines.push(...rentalDetail(1));
       }
       // O audiovisual imprime-se pela sigla, com o nome por extenso em baixo: o
       // nome legal é comprido e comeria a coluna toda.

@@ -95,7 +95,7 @@ export function BillingTab({ form, onUpdate, onToggle }: BillingTabProps) {
       />
       <Toggle
         title="Detalhar aluguer de equipamento na fatura"
-        description="O valor cobrado é o mesmo. Ligado, o aluguer aparece em letra miúda por baixo da mensalidade; desligado, vai somado ao plano com a nota &quot;Inclui equipamento cedido&quot;."
+        description="O valor cobrado é o mesmo. Ligado, cada equipamento aparece em letra miúda por baixo da mensalidade, com a sua renda; desligado, vai tudo somado ao plano com a nota &quot;Inclui equipamento cedido&quot;."
         checked={form.printRentalLines}
         onChange={(event) => onToggle('printRentalLines', event.target.checked)}
       />
