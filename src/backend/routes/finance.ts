@@ -33,7 +33,10 @@ const paySchema = z.object({
   paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   // Ausente = recebe o saldo todo, como sempre foi. Presente = parcial (ou, se
   // exceder, parcial + credito).
-  amountCve: z.number().finite().positive().optional()
+  amountCve: z.number().finite().positive().optional(),
+  // Caixa ou banco onde o dinheiro entrou. Obrigatorio para transferencia e
+  // outro; numerario sem conta cai na caixa predefinida (lib/treasury.ts).
+  accountId: z.number().int().positive().optional().nullable()
 });
 
 const voidReceiptSchema = z.object({
@@ -445,6 +448,8 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         : `Recebeu ${receipt.amountCve} por conta do pagamento ${id} (recibo ${receipt.receiptNumber}), saldo ${balanceCve}`,
       metadata: {
         paymentMethod: parsed.data.paymentMethod,
+        accountId: receipt.accountId,
+        accountName: receipt.accountName,
         receiptId: receipt.id,
         receiptNumber: receipt.receiptNumber,
         amountCve: receipt.amountCve,
@@ -502,7 +507,8 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Recibo invalido' });
     }
 
-    const result = voidReceipt(getSqliteDatabase(), id, parsed.data.reason);
+    const userId = (request as { user?: { id?: number } }).user?.id ?? null;
+    const result = voidReceipt(getSqliteDatabase(), id, parsed.data.reason, userId);
     if (!result.ok) {
       return reply.status(result.status).send({ error: result.error });
     }

@@ -97,6 +97,7 @@ export function PaymentsModule({
   const [payMethod, setPayMethod] = useState<PaymentMethod>('numerario');
   const [payDate, setPayDate] = useState<string>(todayIso());
   const [payAmount, setPayAmount] = useState<string>('');
+  const [payAccountId, setPayAccountId] = useState<string>('');
   const [cancelReason, setCancelReason] = useState<string>('');
   const [receipts, setReceipts] = useState<PaymentReceipt[]>([]);
   const [clientCreditCve, setClientCreditCve] = useState(0);
@@ -212,6 +213,8 @@ export function PaymentsModule({
     setActionMode('pay');
     setActionPaymentId(payment.id);
     setPayMethod((payment.paymentMethod as PaymentMethod | null) || 'numerario');
+    // Vazio: o seletor escolhe a caixa predefinida ou a única conta possível.
+    setPayAccountId('');
     setPayDate(payment.paymentDate?.slice(0, 10) || todayIso());
     // O caso comum e receber o que falta; quem recebe por conta reescreve.
     setPayAmount(String(payment.balanceCve));
@@ -470,13 +473,13 @@ export function PaymentsModule({
     }
   }
 
-  async function submitPayment(paymentId: number, method: PaymentMethod, date: string, amountCve?: number) {
+  async function submitPayment(paymentId: number, method: PaymentMethod, date: string, amountCve?: number, accountId?: number) {
     setSubmitting(true);
     try {
       const response = await authFetch(`http://127.0.0.1:3001/api/payments/${paymentId}/pay`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentMethod: method, paymentDate: date, amountCve })
+        body: JSON.stringify({ paymentMethod: method, paymentDate: date, amountCve, accountId: accountId || undefined })
       });
       if (response.ok) {
         const result = await response.json() as { settled: boolean; balanceCve: number; creditAddedCve: number; receipt: PaymentReceipt };
@@ -734,7 +737,7 @@ export function PaymentsModule({
     }
   }
 
-  async function confirmBulkPay(method: PaymentMethod, date: string) {
+  async function confirmBulkPay(method: PaymentMethod, date: string, accountId: number) {
     const targets = selectedPaymentRows().filter((payment) => payment.status === 'pending' || payment.status === 'overdue');
     if (targets.length === 0) {
       toast('Nenhuma cobrança selecionada por liquidar.', 'error');
@@ -747,7 +750,7 @@ export function PaymentsModule({
         const response = await authFetch(`http://127.0.0.1:3001/api/payments/${payment.id}/pay`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paymentMethod: method, paymentDate: date })
+          body: JSON.stringify({ paymentMethod: method, paymentDate: date, accountId })
         });
         if (!response.ok) throw new Error('pay failed');
       });
@@ -1071,6 +1074,7 @@ export function PaymentsModule({
           payMethod={payMethod}
           payDate={payDate}
           payAmount={payAmount}
+          payAccountId={payAccountId}
           cancelReason={cancelReason}
           receipts={receipts}
           clientCreditCve={clientCreditCve}
@@ -1091,11 +1095,12 @@ export function PaymentsModule({
           onPayMethodChange={setPayMethod}
           onPayDateChange={setPayDate}
           onPayAmountChange={setPayAmount}
+          onPayAccountChange={setPayAccountId}
           onCancelReasonChange={setCancelReason}
           onPrintReceipt={(receipt) => openReceiptPdf(receipt)}
           onVoidReceipt={(receipt) => { setVoidTarget(receipt); setVoidReason(''); }}
           onApplyCredit={() => void applyCredit(selectedPayment.id)}
-          onSubmitPay={() => void submitPayment(selectedPayment.id, payMethod, payDate, Number(payAmount))}
+          onSubmitPay={() => void submitPayment(selectedPayment.id, payMethod, payDate, Number(payAmount), Number(payAccountId))}
           onSubmitCancel={() => void submitCancel(selectedPayment.id, cancelReason)}
           onSubmitWhatsapp={() => void submitWhatsapp(selectedPayment)}
         />
@@ -1196,7 +1201,7 @@ export function PaymentsModule({
         count={selection.count}
         submitting={bulkSubmitting}
         onClose={() => { if (!bulkSubmitting) setBulkMode(null); }}
-        onConfirmPay={(method, date) => void confirmBulkPay(method, date)}
+        onConfirmPay={(method, date, accountId) => void confirmBulkPay(method, date, accountId)}
         onConfirmCancel={(reason) => void confirmBulkCancel(reason)}
       />
     </section>

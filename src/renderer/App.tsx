@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, LogOut, Network, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
+import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, Landmark, LogOut, Network, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, PageHeader, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider } from './components';
 import type { CommandPaletteItem } from './components';
@@ -10,6 +10,7 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './lib/sidebar';
 import { watchSystemTheme } from './lib/theme';
 import { Dashboard } from './modules/Dashboard';
 import { FinanceModule } from './modules/FinanceModule';
+import { TreasuryModule } from './modules/treasury/TreasuryModule';
 import { PlansModule } from './modules/PlansModule';
 import { ServicesModule } from './modules/ServicesModule';
 import { StockModule } from './modules/StockModule';
@@ -37,6 +38,7 @@ const sections: SidebarItem[] = [
   { id: 'services', label: 'Servicos', icon: Cable },
   { id: 'topology', label: 'Topologia', icon: Network },
   { id: 'finance', label: 'Financeiro', icon: TrendingUp, roles: ['admin', 'operator'] },
+  { id: 'treasury', label: 'Tesouraria', icon: Landmark, roles: ['admin', 'operator'] },
   { id: 'work-orders', label: 'OS tecnicas', icon: ClipboardList },
   { id: 'stock', label: 'Stock', icon: Boxes },
   { id: 'reports', label: 'Relatorios', icon: FileText, roles: ['admin', 'operator'] },
@@ -459,6 +461,7 @@ function AppShell() {
               onOpenClient={(id) => { setFocusClientId(id); setSection('clients'); }}
             />
           )}
+          {section === 'treasury' && <TreasuryModule />}
           {section === 'work-orders' && <WorkOrdersModule />}
           {section === 'stock' && (
             <StockModule

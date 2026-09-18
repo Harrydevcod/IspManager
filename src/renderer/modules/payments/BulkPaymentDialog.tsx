@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Button, Dialog, Field, Message, Select } from '../../components';
 import type { PaymentMethod } from './PaymentDetailDialog';
+import { AccountSelect } from '../treasury/AccountSelect';
 
 export type BulkPaymentMode = 'pay' | 'cancel';
 
@@ -13,7 +14,7 @@ type BulkPaymentDialogProps = {
   count: number;
   submitting: boolean;
   onClose: () => void;
-  onConfirmPay: (method: PaymentMethod, date: string) => void;
+  onConfirmPay: (method: PaymentMethod, date: string, accountId: number) => void;
   onConfirmCancel: (reason: string) => void;
 };
 
@@ -21,6 +22,7 @@ type BulkPaymentDialogProps = {
 export function BulkPaymentDialog({ mode, count, submitting, onClose, onConfirmPay, onConfirmCancel }: BulkPaymentDialogProps) {
   const [method, setMethod] = useState<PaymentMethod>('numerario');
   const [date, setDate] = useState(todayIso());
+  const [accountId, setAccountId] = useState('');
   const [reason, setReason] = useState('');
 
   if (!mode) return null;
@@ -30,7 +32,7 @@ export function BulkPaymentDialog({ mode, count, submitting, onClose, onConfirmP
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isPay) onConfirmPay(method, date);
+    if (isPay && accountId) onConfirmPay(method, date, Number(accountId));
     else if (!reasonTooShort) onConfirmCancel(reason.trim());
   }
 
@@ -48,7 +50,7 @@ export function BulkPaymentDialog({ mode, count, submitting, onClose, onConfirmP
             type="submit"
             form="bulk-payment-form"
             variant={isPay ? 'primary' : 'danger'}
-            disabled={submitting || (!isPay && reasonTooShort)}
+            disabled={submitting || (!isPay && reasonTooShort) || (isPay && !accountId)}
           >
             {isPay ? 'Confirmar pagamentos' : 'Anular cobranças'}
           </Button>
@@ -59,13 +61,14 @@ export function BulkPaymentDialog({ mode, count, submitting, onClose, onConfirmP
         {isPay ? (
           <>
             <Message tone="neutral">
-              O mesmo método e data são aplicados às {count} cobranças selecionadas. Já pagas/anuladas são ignoradas.
+              O mesmo método, conta e data são aplicados às {count} cobranças selecionadas. Já pagas/anuladas são ignoradas.
             </Message>
             <Select label="Método" value={method} onChange={(event) => setMethod(event.target.value as PaymentMethod)} disabled={submitting}>
               <option value="numerario">Numerário</option>
               <option value="transferencia">Transferência</option>
               <option value="outro">Outro</option>
             </Select>
+            <AccountSelect purpose={method} value={accountId} onChange={setAccountId} disabled={submitting} />
             <Field label="Data" type="date" value={date} max={todayIso()} onChange={(event) => setDate(event.target.value)} disabled={submitting} required />
           </>
         ) : (

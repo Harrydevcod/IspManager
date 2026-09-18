@@ -5,6 +5,7 @@ import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, ErrorRetry, Fie
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './ExpensesModule.css';
+import { AccountSelect } from './treasury/AccountSelect';
 import type { Client, Expense, ExpenseCategory, ExpenseList, ExpenseTemplate, ExpenseTemplateList, Investment, InvestmentList } from '../types';
 
 type AllocationTarget = 'none' | 'investment' | 'zone' | 'client';
@@ -38,6 +39,8 @@ type FormState = {
   investmentId: string;
   zone: string;
   clientId: string;
+  /** Caixa ou banco de onde saiu o dinheiro; '' = sem registo na tesouraria. */
+  accountId: string;
 };
 
 function todayIso() {
@@ -60,7 +63,8 @@ function emptyForm(): FormState {
     allocationTarget: 'none',
     investmentId: '',
     zone: '',
-    clientId: ''
+    clientId: '',
+    accountId: ''
   };
 }
 
@@ -81,7 +85,8 @@ function fromExpense(expense: Expense): FormState {
     allocationTarget,
     investmentId: expense.investmentId != null ? String(expense.investmentId) : '',
     zone: expense.zone || '',
-    clientId: expense.clientId != null ? String(expense.clientId) : ''
+    clientId: expense.clientId != null ? String(expense.clientId) : '',
+    accountId: expense.accountId != null ? String(expense.accountId) : ''
   };
 }
 
@@ -292,7 +297,8 @@ export function ExpensesModule() {
         notes: form.notes.trim() || null,
         investmentId: form.allocationTarget === 'investment' && form.investmentId ? Number(form.investmentId) : null,
         zone: form.allocationTarget === 'zone' && form.zone ? form.zone : null,
-        clientId: form.allocationTarget === 'client' && form.clientId ? Number(form.clientId) : null
+        clientId: form.allocationTarget === 'client' && form.clientId ? Number(form.clientId) : null,
+        accountId: form.accountId ? Number(form.accountId) : null
       };
       const url = editing
         ? `http://127.0.0.1:3001/api/expenses/${editing.id}`
@@ -443,7 +449,7 @@ export function ExpensesModule() {
         rows={data.rows}
         rowKey={(expense) => expense.id}
         className="expenses-table"
-        gridTemplateColumns="100px minmax(180px, 1.4fr) minmax(110px, 1fr) 112px 170px 150px 124px"
+        gridTemplateColumns="100px minmax(180px, 1.4fr) minmax(110px, 1fr) 112px 170px 150px minmax(110px, 0.8fr) 124px"
         actionsHeader="Ações"
         actionsWidth="92px"
         empty={
@@ -487,6 +493,7 @@ export function ExpensesModule() {
               </Badge>
             )
           },
+          { header: 'Pago por', sortValue: (expense) => expense.accountName, cell: (expense) => <span>{expense.accountName || '—'}</span> },
           {
             header: 'Valor',
             align: 'end',
@@ -597,6 +604,11 @@ export function ExpensesModule() {
                 onChange={(e) => setForm((f) => ({ ...f, invoiceReference: e.target.value }))}
                 maxLength={80}
                 placeholder="FT-2026/142"
+              />
+              <AccountSelect
+                purpose="saida"
+                value={form.accountId}
+                onChange={(accountId) => setForm((f) => ({ ...f, accountId }))}
               />
             </div>
           </div>

@@ -36,6 +36,7 @@ beforeAll(async () => {
 beforeEach(() => {
   // Filhos primeiro: creditos → recibos → linhas → payments → services/clients.
   db.prepare('DELETE FROM client_credits').run();
+  db.prepare('DELETE FROM treasury_movements').run();
   db.prepare('DELETE FROM payment_receipts').run();
   db.prepare('DELETE FROM payment_lines').run();
   db.prepare('DELETE FROM payments').run();

@@ -140,7 +140,8 @@ export const paymentReceipts = sqliteTable('payment_receipts', {
   voidReason: text('void_reason'),
   notes: text('notes'),
   createdBy: integer('created_by'),
-  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
+  accountId: integer('account_id')
 });
 
 export const clientCredits = sqliteTable('client_credits', {
@@ -343,7 +344,8 @@ export const investments = sqliteTable('investments', {
   desiredPaybackMonths: integer('desired_payback_months').notNull().default(6),
   desiredMarginPct: real('desired_margin_pct').notNull().default(30),
   monthlyOperationalCostCve: real('monthly_operational_cost_cve').notNull().default(0),
-  accumulatedRevenueCve: real('accumulated_revenue_cve').notNull().default(0)
+  accumulatedRevenueCve: real('accumulated_revenue_cve').notNull().default(0),
+  accountId: integer('account_id')
 });
 
 export const investmentItems = sqliteTable('investment_items', {
@@ -382,7 +384,50 @@ export const expenses = sqliteTable('expenses', {
   clientId: integer('client_id'),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP'),
-  createdBy: integer('created_by')
+  createdBy: integer('created_by'),
+  accountId: integer('account_id')
+});
+
+// Tesouraria (0058): caixas físicas e contas bancárias, e o livro-razão só de
+// acrescento dos movimentos entre elas.
+export const treasuryAccounts = sqliteTable('treasury_accounts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  kind: text('kind', { enum: ['caixa', 'banco'] }).notNull(),
+  name: text('name').notNull(),
+  bankName: text('bank_name'),
+  accountNumber: text('account_number'),
+  nib: text('nib'),
+  holderName: text('holder_name'),
+  reference: text('reference'),
+  openingBalanceCve: real('opening_balance_cve').notNull().default(0),
+  openingDate: text('opening_date').notNull(),
+  isDefaultCash: integer('is_default_cash', { mode: 'boolean' }).notNull().default(false),
+  showOnDocuments: integer('show_on_documents', { mode: 'boolean' }).notNull().default(false),
+  active: integer('active', { mode: 'boolean' }).notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdBy: integer('created_by'),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
+  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
+export const treasuryMovements = sqliteTable('treasury_movements', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  accountId: integer('account_id').notNull(),
+  direction: text('direction', { enum: ['in', 'out'] }).notNull(),
+  amountCve: real('amount_cve').notNull(),
+  movementDate: text('movement_date').notNull(),
+  kind: text('kind', {
+    enum: ['recebimento', 'deposito', 'transferencia', 'despesa', 'investimento', 'ajuste', 'estorno']
+  }).notNull(),
+  receiptId: integer('receipt_id'),
+  expenseId: integer('expense_id'),
+  investmentId: integer('investment_id'),
+  transferGroup: text('transfer_group'),
+  reversalOfId: integer('reversal_of_id'),
+  reference: text('reference'),
+  description: text('description').notNull(),
+  createdBy: integer('created_by'),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
 });
 
 export const expenseTemplates = sqliteTable('expense_templates', {

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
+import { syncSourceMovement, validatePayingAccount } from '../lib/treasury';
 import { requireAuth, requireRole } from './auth';
 
 const expenseCategory = z.enum([
@@ -32,7 +33,9 @@ const expenseSchema = z.object({
   notes: z.string().trim().max(500).optional().nullable(),
   investmentId: z.coerce.number().int().positive().optional().nullable(),
   zone: z.string().trim().max(120).optional().nullable(),
-  clientId: z.coerce.number().int().positive().optional().nullable()
+  clientId: z.coerce.number().int().positive().optional().nullable(),
+  // Caixa ou banco de onde saiu o dinheiro (0058). Nulo = sem saída registada.
+  accountId: z.coerce.number().int().positive().optional().nullable()
 });
 
 const listQuerySchema = z.object({
@@ -52,6 +55,10 @@ function deriveReferenceMonth(input: ExpenseInput): string {
   return input.referenceMonth || input.expenseDate.slice(0, 7);
 }
 
+function expenseMovementDescription(input: ExpenseInput): string {
+  return `Despesa: ${input.description}${input.supplier ? ` · ${input.supplier}` : ''}`;
+}
+
 type ExpenseRow = {
   id: number;
   category: string;
@@ -67,6 +74,8 @@ type ExpenseRow = {
   zone: string | null;
   clientId: number | null;
   clientName: string | null;
+  accountId: number | null;
+  accountName: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -137,11 +146,14 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
         e.zone,
         e.client_id AS clientId,
         c.full_name AS clientName,
+        e.account_id AS accountId,
+        ta.name AS accountName,
         e.created_at AS createdAt,
         e.updated_at AS updatedAt
       FROM expenses e
       LEFT JOIN investments i ON i.id = e.investment_id
       LEFT JOIN clients c ON c.id = e.client_id
+      LEFT JOIN treasury_accounts ta ON ta.id = e.account_id
       ${whereSql}
       ORDER BY e.expense_date DESC, e.id DESC
     `).all(params) as ExpenseRow[];
@@ -220,29 +232,49 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
     const referenceMonth = deriveReferenceMonth(input);
 
     const db = getSqliteDatabase();
-    const info = db.prepare(`
-      INSERT INTO expenses (
-        category, description, amount_cve, expense_date, reference_month,
-        supplier, invoice_reference, notes, investment_id, zone, client_id, created_by
-      )
-      VALUES (@category, @description, @amountCve, @expenseDate, @referenceMonth,
-              @supplier, @invoiceReference, @notes, @investmentId, @zone, @clientId, @createdBy)
-    `).run({
-      category: input.category,
-      description: input.description,
-      amountCve: input.amountCve,
-      expenseDate: input.expenseDate,
-      referenceMonth,
-      supplier: input.supplier ?? null,
-      invoiceReference: input.invoiceReference ?? null,
-      notes: input.notes ?? null,
-      investmentId: input.investmentId ?? null,
-      zone: input.zone ?? null,
-      clientId: input.clientId ?? null,
-      createdBy: request.user?.id ?? null
-    });
+    const paying = validatePayingAccount(db, input.accountId);
+    if (!paying.ok) {
+      return reply.status(paying.status).send({ error: paying.error });
+    }
+    const userId = request.user?.id ?? null;
 
-    const newId = Number(info.lastInsertRowid);
+    const newId = db.transaction(() => {
+      const info = db.prepare(`
+        INSERT INTO expenses (
+          category, description, amount_cve, expense_date, reference_month,
+          supplier, invoice_reference, notes, investment_id, zone, client_id, account_id, created_by
+        )
+        VALUES (@category, @description, @amountCve, @expenseDate, @referenceMonth,
+                @supplier, @invoiceReference, @notes, @investmentId, @zone, @clientId, @accountId, @createdBy)
+      `).run({
+        category: input.category,
+        description: input.description,
+        amountCve: input.amountCve,
+        expenseDate: input.expenseDate,
+        referenceMonth,
+        supplier: input.supplier ?? null,
+        invoiceReference: input.invoiceReference ?? null,
+        notes: input.notes ?? null,
+        investmentId: input.investmentId ?? null,
+        zone: input.zone ?? null,
+        clientId: input.clientId ?? null,
+        accountId: paying.value,
+        createdBy: userId
+      });
+      const id = Number(info.lastInsertRowid);
+      syncSourceMovement(db, {
+        kind: 'despesa',
+        sourceId: id,
+        accountId: paying.value,
+        amountCve: input.amountCve,
+        movementDate: input.expenseDate,
+        description: expenseMovementDescription(input),
+        reason: 'despesa registada',
+        userId
+      });
+      return id;
+    })();
+
     recordAudit(request, {
       action: 'create',
       entityType: 'expense',
@@ -267,37 +299,59 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
     const referenceMonth = deriveReferenceMonth(input);
 
     const db = getSqliteDatabase();
-    const info = db.prepare(`
-      UPDATE expenses SET
-        category = @category,
-        description = @description,
-        amount_cve = @amountCve,
-        expense_date = @expenseDate,
-        reference_month = @referenceMonth,
-        supplier = @supplier,
-        invoice_reference = @invoiceReference,
-        notes = @notes,
-        investment_id = @investmentId,
-        zone = @zone,
-        client_id = @clientId,
-        updated_at = datetime('now')
-      WHERE id = @id
-    `).run({
-      id,
-      category: input.category,
-      description: input.description,
-      amountCve: input.amountCve,
-      expenseDate: input.expenseDate,
-      referenceMonth,
-      supplier: input.supplier ?? null,
-      invoiceReference: input.invoiceReference ?? null,
-      notes: input.notes ?? null,
-      investmentId: input.investmentId ?? null,
-      zone: input.zone ?? null,
-      clientId: input.clientId ?? null
-    });
+    const paying = validatePayingAccount(db, input.accountId);
+    if (!paying.ok) {
+      return reply.status(paying.status).send({ error: paying.error });
+    }
 
-    if (info.changes === 0) {
+    const changes = db.transaction(() => {
+      const info = db.prepare(`
+        UPDATE expenses SET
+          category = @category,
+          description = @description,
+          amount_cve = @amountCve,
+          expense_date = @expenseDate,
+          reference_month = @referenceMonth,
+          supplier = @supplier,
+          invoice_reference = @invoiceReference,
+          notes = @notes,
+          investment_id = @investmentId,
+          zone = @zone,
+          client_id = @clientId,
+          account_id = @accountId,
+          updated_at = datetime('now')
+        WHERE id = @id
+      `).run({
+        id,
+        category: input.category,
+        description: input.description,
+        amountCve: input.amountCve,
+        expenseDate: input.expenseDate,
+        referenceMonth,
+        supplier: input.supplier ?? null,
+        invoiceReference: input.invoiceReference ?? null,
+        notes: input.notes ?? null,
+        investmentId: input.investmentId ?? null,
+        zone: input.zone ?? null,
+        clientId: input.clientId ?? null,
+        accountId: paying.value
+      });
+      if (info.changes === 0) return 0;
+      // Mudou a conta, o valor ou a data: estorna a saída antiga e lança a nova.
+      syncSourceMovement(db, {
+        kind: 'despesa',
+        sourceId: id,
+        accountId: paying.value,
+        amountCve: input.amountCve,
+        movementDate: input.expenseDate,
+        description: expenseMovementDescription(input),
+        reason: 'despesa corrigida',
+        userId: request.user?.id ?? null
+      });
+      return info.changes;
+    })();
+
+    if (changes === 0) {
       return reply.status(404).send({ error: 'Despesa nao encontrada' });
     }
 
@@ -329,7 +383,20 @@ export async function registerExpenseRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: 'Despesa nao encontrada' });
     }
 
-    db.prepare('DELETE FROM expenses WHERE id = ?').run(id);
+    db.transaction(() => {
+      // A saída devolve-se à conta antes de a despesa desaparecer.
+      syncSourceMovement(db, {
+        kind: 'despesa',
+        sourceId: id,
+        accountId: null,
+        amountCve: 0,
+        movementDate: existing.referenceMonth,
+        description: existing.description,
+        reason: 'despesa apagada',
+        userId: request.user?.id ?? null
+      });
+      db.prepare('DELETE FROM expenses WHERE id = ?').run(id);
+    })();
 
     recordAudit(request, {
       action: 'delete',

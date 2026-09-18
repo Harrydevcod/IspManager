@@ -37,7 +37,8 @@ describe('colunas ordenáveis', () => {
       'StockModule.tsx',
       'finance/PortfolioTable.tsx',
       'payments/PaymentsList.tsx',
-      'topology/discovery/DiscoveryWorkspace.tsx'
+      'topology/discovery/DiscoveryWorkspace.tsx',
+      'treasury/TreasuryModule.tsx'
     ]);
   });
 

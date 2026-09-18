@@ -5,7 +5,8 @@ import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
 import { effectivePaymentStatus } from '../../lib/status';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
 import { paymentStatusLabel, type PaymentReceipt, type PaymentRow } from '../../types';
-import { ReceiptsSection } from './ReceiptsSection';
+import { METHOD_LABELS, ReceiptsSection } from './ReceiptsSection';
+import { AccountSelect } from '../treasury/AccountSelect';
 
 export type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
 export type PaymentActionMode = 'pay' | 'cancel' | 'whatsapp';
@@ -40,6 +41,8 @@ type PaymentDetailDialogProps = {
   payMethod: PaymentMethod;
   payDate: string;
   payAmount: string;
+  /** Caixa ou banco de destino, como texto; '' enquanto ninguém escolheu. */
+  payAccountId: string;
   cancelReason: string;
   receipts: PaymentReceipt[];
   clientCreditCve: number;
@@ -60,6 +63,7 @@ type PaymentDetailDialogProps = {
   onPayMethodChange: (method: PaymentMethod) => void;
   onPayDateChange: (date: string) => void;
   onPayAmountChange: (amount: string) => void;
+  onPayAccountChange: (accountId: string) => void;
   onCancelReasonChange: (reason: string) => void;
   onPrintReceipt: (receipt: PaymentReceipt) => void;
   onVoidReceipt: (receipt: PaymentReceipt) => void;
@@ -77,6 +81,7 @@ export function PaymentDetailDialog({
   payMethod,
   payDate,
   payAmount,
+  payAccountId,
   cancelReason,
   receipts,
   clientCreditCve,
@@ -97,6 +102,7 @@ export function PaymentDetailDialog({
   onPayMethodChange,
   onPayDateChange,
   onPayAmountChange,
+  onPayAccountChange,
   onCancelReasonChange,
   onPrintReceipt,
   onVoidReceipt,
@@ -223,6 +229,7 @@ export function PaymentDetailDialog({
             <option value="transferencia">Transferencia</option>
             <option value="outro">Outro</option>
           </Select>
+          <AccountSelect purpose={payMethod} value={payAccountId} onChange={onPayAccountChange} disabled={submitting} />
           <Field label="Data" type="date" value={payDate} onChange={(event) => onPayDateChange(event.target.value)} max={todayIso()} disabled={submitting} required />
           {Number(payAmount) > payment.balanceCve && (
             <Message>
@@ -230,7 +237,7 @@ export function PaymentDetailDialog({
             </Message>
           )}
           <div className="inline-actions">
-            <Button type="submit" disabled={submitting || !payDate || !(Number(payAmount) > 0)}>Confirmar</Button>
+            <Button type="submit" disabled={submitting || !payDate || !(Number(payAmount) > 0) || !payAccountId}>Confirmar</Button>
             <Button variant="secondary" onClick={onCloseActionForm} disabled={submitting}>Cancelar</Button>
           </div>
         </form>
@@ -418,7 +425,7 @@ export function PaymentDetailDialog({
         <div><dt>Em aberto</dt><dd>{formatCve(payment.balanceCve)}</dd></div>
         <div><dt>Fatura</dt><dd>{payment.invoiceNumber || '-'}</dd></div>
         <div><dt>Recibo</dt><dd>{payment.receiptNumber || '-'}</dd></div>
-        <div><dt>Metodo</dt><dd>{payment.paymentMethod || '-'}</dd></div>
+        <div><dt>Metodo</dt><dd>{payment.paymentMethod ? (METHOD_LABELS[payment.paymentMethod] || payment.paymentMethod) : '-'}</dd></div>
         <div><dt>Data pagamento</dt><dd>{formatPtDate(payment.paymentDate)}</dd></div>
         <div><dt>Estado</dt><dd>{paymentStatusLabel(effectivePaymentStatus(payment))}</dd></div>
       </dl>

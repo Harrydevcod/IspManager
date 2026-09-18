@@ -62,13 +62,6 @@ export type SettingsFormState = {
   routerosMaxDisablesPerRun: string;
 };
 
-export const emptyBankAccount: BankAccountForm = {
-  bankName: '',
-  accountName: '',
-  accountNumber: '',
-  reference: ''
-};
-
 export type UpdateField = (field: keyof SettingsFormState, value: string) => void;
 export type ToggleField = (field: keyof SettingsFormState, value: boolean) => void;
 

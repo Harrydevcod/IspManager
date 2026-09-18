@@ -10,6 +10,7 @@ import { registerDashboardRoutes } from './routes/dashboard';
 import { registerDocumentRoutes } from './routes/documents';
 import { registerInvestmentRoutes } from './routes/investments';
 import { registerExpenseRoutes } from './routes/expenses';
+import { registerTreasuryRoutes } from './routes/treasury';
 import { registerExpenseTemplateRoutes } from './routes/expense-templates';
 import { runRecurringExpensesIfDue } from './lib/recurring-expenses';
 import { registerFinanceRoutes } from './routes/finance';
@@ -130,6 +131,7 @@ export async function createBackendApp() {
   await registerPlanRoutes(app);
   await registerInvestmentRoutes(app);
   await registerExpenseRoutes(app);
+  await registerTreasuryRoutes(app);
   await registerExpenseTemplateRoutes(app);
   await registerFinanceRoutes(app);
   await registerDocumentRoutes(app);

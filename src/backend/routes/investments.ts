@@ -6,6 +6,7 @@ import { ACTIVE_INVESTMENT_STATUSES, loadCompanyOpexContext, loadRevenueAttribut
 import { buildProfitabilityPdf, buildProfitabilityXlsx } from '../lib/profitability-export';
 import { cashReceiptFilterSql } from '../lib/payments';
 import { externalInvestmentCapexCve, externalInvestmentCapexSql, parkValue, stockCapexByYear, stockCapexCve } from '../lib/capex';
+import { syncSourceMovement, validatePayingAccount } from '../lib/treasury';
 import { requireAuth, requireRole } from './auth';
 
 const investmentType = z.enum(['cliente', 'zona', 'equipamento', 'infraestrutura', 'manutencao', 'expansao', 'outro']);
@@ -62,7 +63,9 @@ const investmentSchema = z.object({
   monthlyOperationalCostCve: z.coerce.number().min(0).default(0),
   accumulatedRevenueCve: z.coerce.number().min(0).default(0),
   notes: z.string().trim().max(500).optional().nullable(),
-  items: z.array(investmentItemSchema).min(1).max(60)
+  items: z.array(investmentItemSchema).min(1).max(60),
+  // Caixa ou banco de onde saiu o dinheiro (0058). Nulo = sem saída registada.
+  accountId: z.coerce.number().int().positive().optional().nullable()
 });
 
 const listQuerySchema = z.object({
@@ -81,6 +84,15 @@ function deriveReferenceMonth(input: InvestmentInput): string {
 
 function totalCost(input: InvestmentInput): number {
   return input.items.reduce((sum, item) => sum + item.quantity * item.unitCostCve, 0);
+}
+
+/**
+ * O que sai da conta por este investimento. Itens ligados ao catálogo não saem:
+ * foram pagos quando entraram no armazém (mesma regra do
+ * `externalInvestmentCapexSql`), e lançá-los outra vez tirava o dinheiro duas vezes.
+ */
+function paidCost(items: Array<{ totalCostCve: number; catalogId?: number | null }>): number {
+  return items.reduce((sum, item) => sum + (item.catalogId ? 0 : item.totalCostCve), 0);
 }
 
 /**
@@ -186,10 +198,13 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
         investments.accumulated_revenue_cve AS accumulatedRevenueCve,
         investments.total_cost_cve AS totalCostCve,
         investments.notes,
+        investments.account_id AS accountId,
+        treasury_accounts.name AS accountName,
         investments.created_at AS createdAt,
         investments.updated_at AS updatedAt
       FROM investments
       LEFT JOIN clients ON clients.id = investments.client_id
+      LEFT JOIN treasury_accounts ON treasury_accounts.id = investments.account_id
       ${whereSql}
       ORDER BY investments.investment_date DESC, investments.id DESC
     `).all(params) as Array<InvestmentBaseRow & { name: string; zone: string | null; status: string }>;
@@ -713,6 +728,10 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     const referenceMonth = deriveReferenceMonth(parsed.data);
     const cost = totalCost(parsed.data);
     const items = normalizeItems(parsed.data);
+    const paying = validatePayingAccount(db, parsed.data.accountId);
+    if (!paying.ok) {
+      return reply.status(paying.status).send({ error: paying.error });
+    }
 
     const create = db.transaction(() => {
       const result = db.prepare(`
@@ -720,10 +739,10 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
           name, type, client_id, zone, description, supplier, investment_date, reference_month,
           status, target_clients, installed_clients, desired_payback_months, desired_margin_pct,
           expected_monthly_revenue_cve, monthly_operational_cost_cve, accumulated_revenue_cve,
-          total_cost_cve, notes,
+          total_cost_cve, notes, account_id,
           created_by, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
       `).run(
         parsed.data.name,
         parsed.data.type,
@@ -743,9 +762,20 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
         parsed.data.accumulatedRevenueCve,
         cost,
         parsed.data.notes || null,
+        paying.value,
         request.user?.id ?? null
       );
       const id = Number(result.lastInsertRowid);
+      syncSourceMovement(db, {
+        kind: 'investimento',
+        sourceId: id,
+        accountId: paying.value,
+        amountCve: paidCost(items),
+        movementDate: parsed.data.investmentDate,
+        description: `Investimento: ${parsed.data.name}${parsed.data.supplier ? ` · ${parsed.data.supplier}` : ''}`,
+        reason: 'investimento registado',
+        userId: request.user?.id ?? null
+      });
       const insertItem = db.prepare(`
         INSERT INTO investment_items (investment_id, item_type, item_name, quantity, quantity_used, unit_cost_cve, total_cost_cve, catalog_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -788,6 +818,10 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     const referenceMonth = deriveReferenceMonth(parsed.data);
     const cost = totalCost(parsed.data);
     const items = normalizeItems(parsed.data);
+    const paying = validatePayingAccount(db, parsed.data.accountId);
+    if (!paying.ok) {
+      return reply.status(paying.status).send({ error: paying.error });
+    }
 
     const update = db.transaction(() => {
       const result = db.prepare(`
@@ -810,6 +844,7 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
             accumulated_revenue_cve = ?,
             total_cost_cve = ?,
             notes = ?,
+            account_id = ?,
             updated_at = datetime('now')
         WHERE id = ?
       `).run(
@@ -831,9 +866,20 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
         parsed.data.accumulatedRevenueCve,
         cost,
         parsed.data.notes || null,
+        paying.value,
         id
       );
       if (result.changes === 0) return false;
+      syncSourceMovement(db, {
+        kind: 'investimento',
+        sourceId: id,
+        accountId: paying.value,
+        amountCve: paidCost(items),
+        movementDate: parsed.data.investmentDate,
+        description: `Investimento: ${parsed.data.name}${parsed.data.supplier ? ` · ${parsed.data.supplier}` : ''}`,
+        reason: 'investimento corrigido',
+        userId: request.user?.id ?? null
+      });
 
       db.prepare('DELETE FROM investment_items WHERE investment_id = ?').run(id);
       const insertItem = db.prepare(`
@@ -886,6 +932,17 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     }
 
     db.transaction(() => {
+      // A saída devolve-se à conta antes de o investimento desaparecer.
+      syncSourceMovement(db, {
+        kind: 'investimento',
+        sourceId: id,
+        accountId: null,
+        amountCve: 0,
+        movementDate: existing.referenceMonth,
+        description: existing.name,
+        reason: 'investimento apagado',
+        userId: request.user?.id ?? null
+      });
       db.prepare('DELETE FROM investment_items WHERE investment_id = ?').run(id);
       db.prepare('DELETE FROM investments WHERE id = ?').run(id);
     })();

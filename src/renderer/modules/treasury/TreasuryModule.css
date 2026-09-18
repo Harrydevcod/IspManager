@@ -1,0 +1,60 @@
+/* =========================================================================
+   Tesouraria — só o que não existe nos primitivos: sinal do dinheiro,
+   estornados riscados e a barra de filtros colada ao rolar.
+   ========================================================================= */
+
+.treasury-subtitle {
+  margin: var(--space-1) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.treasury-filter-sticky {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background: var(--module-panel-bg, var(--bg));
+  padding-block: var(--space-2);
+  margin-block: calc(-1 * var(--space-2));
+}
+
+.treasury-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.treasury-kind svg {
+  color: var(--text-3);
+  flex: 0 0 auto;
+}
+
+.treasury-number {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2, var(--text));
+}
+
+.treasury-in {
+  color: var(--success);
+}
+
+.treasury-out {
+  color: var(--danger);
+}
+
+.treasury-negative {
+  color: var(--danger);
+}
+
+/* Estornado não desaparece: fica legível e riscado, com o estorno logo acima. */
+.treasury-reversed {
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in oklch, var(--text-3) 60%, transparent);
+}
+
+/* Diálogos de uma coluna (contar caixa, estornar): mesmos campos do client-form,
+   empilhados; os avisos ocupam a largura toda. */
+.client-form.treasury-stack {
+  grid-template-columns: minmax(0, 1fr);
+}
