@@ -76,6 +76,7 @@ export function SettingsModule() {
     fiscalRegime: 'normal',
     showIva: false,
     printQrCode: false,
+    printRentalLines: false,
     legalNotes: '',
     whatsappTemplate: fallbackWhatsappTemplate,
     whatsappTestTemplate: fallbackWhatsappTestTemplate,

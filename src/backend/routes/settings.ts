@@ -88,6 +88,7 @@ const settingsSchema = z.object({
   fiscalRegime: z.enum(['normal', 'rempe']),
   showIva: z.coerce.boolean(),
   printQrCode: z.coerce.boolean(),
+  printRentalLines: strictOptionalBoolean,
   legalNotes: z.string().trim().max(500).optional().nullable(),
   whatsappTemplate: z.string().trim().max(500).optional().nullable(),
   whatsappTestTemplate: z.string().trim().max(500).optional().nullable(),
@@ -163,6 +164,7 @@ const defaultSettings = {
   fiscalRegime: 'normal' as 'normal' | 'rempe',
   showIva: false,
   printQrCode: false,
+  printRentalLines: false,
   legalNotes: '',
   whatsappTemplate: fallbackWhatsappTemplate,
   whatsappTestTemplate: fallbackWhatsappTestTemplate,
@@ -254,7 +256,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         settings.routerosPassword = row.value ? SECRET_MASK : '';
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
-      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled') {
+      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled') {
         settings[row.key] = row.value === 'true' || row.value === '1';
       } else if (row.key === 'bankAccounts') {
         try {
