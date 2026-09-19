@@ -4,15 +4,15 @@ import { getSqliteDatabase } from '../db/database';
 import { loadNetworkStatus, loadProbeEvents, mapWithLimit, readProbeConfig, runNetworkProbe } from '../lib/network-probe';
 import {
   createTransport,
-  fetchRouterCertificate,
+  DEFAULT_ROUTER_PORT,
+  describeRouterFailure,
+  diagnoseRouter,
   isRouterConfigured,
   listArp,
   listDhcpLeases,
   listNeighbors,
   neighborModel,
   readRouterConfig,
-  RouterError,
-  testConnection,
   type RouterNeighbor
 } from '../lib/routeros';
 import { identifyModel } from '../lib/device-model';
@@ -34,6 +34,7 @@ import { runJob } from '../lib/jobRuns';
 import { recordAudit } from '../lib/audit';
 import { isIpv4, SWEEP_BATCH_SIZE } from '../../shared/ip-range';
 import { requireAuth, requireRole } from './auth';
+import { SECRET_MASK } from './settings';
 
 const statusQuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(90).default(30)
@@ -83,6 +84,18 @@ const contextBodySchema = z.object({
     hostname: z.string().max(253).nullish()
   })).max(1024).default([]),
   includeRouter: z.boolean().default(true)
+}).strict();
+
+/**
+ * Os campos do router tal como estao no formulario. Todos opcionais: sem corpo,
+ * o teste corre contra o que esta gravado, como antes.
+ */
+const routerTestBodySchema = z.object({
+  host: z.string().trim().max(255).optional(),
+  port: z.coerce.number().int().min(1).max(65535).default(DEFAULT_ROUTER_PORT).optional(),
+  user: z.string().trim().max(64).optional(),
+  password: z.string().max(128).optional(),
+  tlsCert: z.string().trim().max(8000).optional()
 }).strict();
 
 export async function registerNetworkRoutes(app: FastifyInstance) {
@@ -146,9 +159,10 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
         maxDisables: config.maxDisablesPerRun
       }));
     } catch (err) {
-      return reply.status(502).send({
-        error: err instanceof RouterError ? err.message : 'Falha ao contactar o router'
-      });
+      // Mesma tradução do teste: `connect ECONNREFUSED` não diz a ninguém que
+      // o que falta é ligar o www-ssl.
+      const failure = describeRouterFailure(err);
+      return reply.status(502).send({ error: `${failure.title}. ${failure.detail}` });
     }
   });
 
@@ -402,28 +416,38 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
 
   // Teste de ligação ao MikroTik. Só lê `/system/resource`: serve para provar
   // credenciais e certificado antes de alguém ligar a reconciliação.
-  app.post('/api/network/router/test', adminOnly, async (_request, reply) => {
-    const config = readRouterConfig(getSqliteDatabase());
-    if (!isRouterConfigured(config)) {
-      return reply.status(400).send({ error: 'Configure primeiro o endereco e o utilizador do router' });
+  /**
+   * Diagnostico da ligacao ao router de gestao.
+   *
+   * Aceita os valores do formulario no corpo, em vez de ler so o que esta
+   * gravado: quem acaba de escrever o endereco quer testar **esse**, nao o
+   * antigo. Nada do que vem no corpo e gravado — testar nao e configurar.
+   *
+   * A senha volta mascarada ao formulario, por isso a mascara significa "a que
+   * ja esta guardada"; so uma senha escrita de novo substitui essa.
+   *
+   * Responde sempre 200: o relatorio e que diz o que passou e o que falhou.
+   */
+  app.post('/api/network/router/test', adminOnly, async (request, reply) => {
+    const parsed = routerTestBodySchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Parametros invalidos' });
     }
-    try {
-      const info = await testConnection(createTransport(config));
-      return { ok: true, ...info };
-    } catch (err) {
-      const routerError = err instanceof RouterError ? err : null;
-      // Certificado proprio: le-o num aperto de mao sem credenciais para a UI
-      // poder mostrar a impressao digital e propor fixa-la — em vez de sugerir
-      // a alguem desligar a verificacao de TLS.
-      let certificate: { pem: string; fingerprint: string } | null = null;
-      if (routerError?.certIssue === 'untrusted') {
-        certificate = await fetchRouterCertificate(config).catch(() => null);
-      }
-      return reply.status(502).send({
-        error: routerError?.message ?? (err instanceof Error ? err.message : 'Falha ao contactar o router'),
-        fingerprint: certificate?.fingerprint ?? null,
-        certificate: certificate?.pem ?? null
-      });
-    }
+
+    const saved = readRouterConfig(getSqliteDatabase());
+    const override = parsed.data;
+    const config = {
+      ...saved,
+      host: override.host ?? saved.host,
+      port: override.port ?? saved.port,
+      user: override.user ?? saved.user,
+      password:
+        override.password === undefined || override.password === SECRET_MASK
+          ? saved.password
+          : override.password,
+      tlsCert: override.tlsCert ?? saved.tlsCert
+    };
+
+    return diagnoseRouter(config);
   });
 }
