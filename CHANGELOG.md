@@ -4,6 +4,15 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## Por lançar
+
+> **Sem migrações.** Só muda texto e a forma como um bloco se imprime no ecrã.
+
+### Corrigido
+
+- **O menu lateral voltou a ter acentos.** "Servicos", "OS tecnicas", "Relatorios" e "Configuracoes" estavam escritos assim na origem — não era problema de codificação, tanto que as abas ao lado ("Faturação", "Licença") sempre estiveram certas. É a primeira coisa que se lê na aplicação. Também "Saltar para conteúdo" e "Operação ISP", e o `<rede de gestão>` do comando sugerido pelo teste do router.
+- **Os comandos do RouterOS no teste da ligação passam a ler-se.** A etapa dos serviços abertos sugere cinco comandos e imprimia-os seguidos numa linha só, partida a meio das palavras — `/ip serv` numa linha, `ice disable api-ssl` na outra. Não se liam nem se copiavam. O servidor já os separava; era a caixa no ecrã que colava tudo. Agora vai **um comando por linha**.
+
 ## [2.0](https://github.com/Harrydevcod/IspManager/releases/tag/v2.0.0) — 2026-09-20
 
 > **Sem migrações.** Nada muda na estrutura da base. O arranque **sela as credenciais** e é o único passo que reescreve valores — é idempotente e não precisa de ser desfeito.

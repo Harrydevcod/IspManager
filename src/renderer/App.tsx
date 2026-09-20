@@ -35,16 +35,16 @@ const sections: SidebarItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: Gauge },
   { id: 'clients', label: 'Clientes', icon: UsersRound },
   { id: 'plans', label: 'Planos', icon: Wifi },
-  { id: 'services', label: 'Servicos', icon: Cable },
+  { id: 'services', label: 'Serviços', icon: Cable },
   { id: 'topology', label: 'Topologia', icon: Network },
   { id: 'finance', label: 'Financeiro', icon: TrendingUp, roles: ['admin', 'operator'] },
   { id: 'treasury', label: 'Tesouraria', icon: Landmark, roles: ['admin', 'operator'] },
-  { id: 'work-orders', label: 'OS tecnicas', icon: ClipboardList },
+  { id: 'work-orders', label: 'OS técnicas', icon: ClipboardList },
   { id: 'stock', label: 'Stock', icon: Boxes },
-  { id: 'reports', label: 'Relatorios', icon: FileText, roles: ['admin', 'operator'] },
+  { id: 'reports', label: 'Relatórios', icon: FileText, roles: ['admin', 'operator'] },
   { id: 'users', label: 'Utilizadores', icon: UserCog2, roles: ['admin'] },
   { id: 'audit', label: 'Auditoria', icon: ShieldCheck, roles: ['admin'] },
-  { id: 'settings', label: 'Configuracoes', icon: Settings, roles: ['admin'] }
+  { id: 'settings', label: 'Configurações', icon: Settings, roles: ['admin'] }
 ];
 
 function sectionVisible(item: SidebarItem, role: UserRole | null, bypassed: boolean): boolean {
@@ -301,14 +301,14 @@ function AppShell() {
 
   return (
     <>
-      <a className="skip-link" href="#app-content">Saltar para conteudo</a>
+      <a className="skip-link" href="#app-content">Saltar para conteúdo</a>
       <main className="app-shell" data-nav={navCollapsed ? 'rail' : undefined}>
       <aside className="sidebar">
         <div className="brand">
           <img className="brand-mark" src="./favicon.png" alt="" />
           <div>
             <strong>ISPM</strong>
-            <span>Operacao ISP</span>
+            <span>Operação ISP</span>
           </div>
           <button
             type="button"

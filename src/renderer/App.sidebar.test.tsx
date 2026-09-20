@@ -127,3 +127,20 @@ describe('sidebar collapse', () => {
     expect(shell(await mountApp()).dataset.nav).toBe('rail');
   });
 });
+
+describe('pt-PT na navegação', () => {
+  /**
+   * A navegação é a primeira coisa que se lê na app e andou meses sem acentos
+   * ("Servicos", "Configuracoes"). Apanhado no smoke da 2.0; esta é a catraca.
+   */
+  test('os rótulos do menu estão escritos em português', async () => {
+    const container = await mountApp();
+    const labels = [...container.querySelectorAll('.nav-list button')]
+      .map((button) => (button.textContent ?? '').trim());
+
+    for (const esperado of ['Serviços', 'OS técnicas', 'Relatórios', 'Configurações']) {
+      expect(labels.some((label) => label.startsWith(esperado))).toBe(true);
+    }
+    expect(container.querySelector('.skip-link')?.textContent).toBe('Saltar para conteúdo');
+  });
+});
