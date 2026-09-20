@@ -1,5 +1,6 @@
 // src/backend/lib/whatsapp-outbox.ts
 import { getSqliteDatabase } from '../db/database';
+import { readSecret } from './secrets';
 import { renderPaymentDocumentPdf } from './documents';
 import { fetchUltraMsgSentMessages, mapAckToStatus, sendDocumentViaUltraMsg, sendViaUltraMsg, type UltraMsgMessage, type UltraMsgSendResult } from './ultramsg';
 
@@ -82,7 +83,7 @@ export async function runWhatsappOutboxIfDue(
   opts: { batchSize?: number; onlyId?: number } = {}
 ): Promise<OutboxRunResult> {
   const instanceId = getSetting('ultraMsgInstanceId');
-  const token = getSetting('ultraMsgToken');
+  const token = readSecret(getSqliteDatabase(), 'ultraMsgToken');
   if (!instanceId || !token) {
     return { skipped: 'UltraMsg nao configurado', sent: 0, failed: 0, retried: 0 };
   }
@@ -173,7 +174,7 @@ export async function pollWhatsappDeliveryIfDue(
   deps: PollDeps = defaultPollDeps
 ): Promise<{ skipped?: string; updated: number }> {
   const instanceId = getSetting('ultraMsgInstanceId');
-  const token = getSetting('ultraMsgToken');
+  const token = readSecret(getSqliteDatabase(), 'ultraMsgToken');
   if (!instanceId || !token) {
     return { skipped: 'UltraMsg nao configurado', updated: 0 };
   }

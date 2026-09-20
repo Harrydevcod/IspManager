@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
+import { readSecret, writeSecret } from '../lib/secrets';
 import { requireRole } from './auth';
 import { discoverCompanionHosts, enqueueSmsNotification, findPairedCompanion, verifyCompanionPairing } from '../lib/sms-outbox';
 import { SMS_REPORT_TIMEZONE, smsReportMonthUtcRange } from '../../shared/sms-report';
@@ -67,7 +68,7 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     const enabled = getSetting('smsCompanionEnabled') === 'true';
     const baseUrl = getSetting('smsCompanionBaseUrl');
     const deviceName = getSetting('smsCompanionDeviceName');
-    const pairingKey = getSetting('smsCompanionPairingKey');
+    const pairingKey = readSecret(getSqliteDatabase(), 'smsCompanionPairingKey');
     const configured = Boolean(baseUrl && pairingKey);
     const verification = configured
       ? await verifyCompanionPairing(1200)
@@ -127,7 +128,7 @@ export async function registerSmsRoutes(app: FastifyInstance) {
   // returns whichever host(s) answer on the companion port.
   app.post('/api/sms/discover', adminOnly, async () => {
     const hosts = await discoverCompanionHosts();
-    let baseUrl: string | null = getSetting('smsCompanionPairingKey')
+    let baseUrl: string | null = readSecret(getSqliteDatabase(), 'smsCompanionPairingKey')
       ? await findPairedCompanion(hosts)
       : null;
     if (!baseUrl && hosts.length === 1) baseUrl = hosts[0];
@@ -141,7 +142,7 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     setSetting('smsCompanionEnabled', 'true');
     setSetting('smsCompanionBaseUrl', parsed.data.baseUrl);
     setSetting('smsCompanionDeviceName', parsed.data.deviceName);
-    setSetting('smsCompanionPairingKey', secret);
+    writeSecret(getSqliteDatabase(), 'smsCompanionPairingKey', secret);
     setSetting('smsCompanionPairingKeyHash', createHash('sha256').update(secret).digest('hex'));
     const qrPayload = `ispm-sms://pair?secret=${encodeURIComponent(secret)}&device=${encodeURIComponent(parsed.data.deviceName)}`;
     return { ok: true, secret, qrPayload };
@@ -149,7 +150,7 @@ export async function registerSmsRoutes(app: FastifyInstance) {
 
   app.delete('/api/sms/pairing', adminOnly, async () => {
     setSetting('smsCompanionEnabled', 'false');
-    setSetting('smsCompanionPairingKey', '');
+    writeSecret(getSqliteDatabase(), 'smsCompanionPairingKey', '');
     setSetting('smsCompanionPairingKeyHash', '');
     return { ok: true };
   });

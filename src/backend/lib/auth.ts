@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { getSqliteDatabase } from '../db/database';
+import { readSecret, writeSecret } from './secrets';
 
 export type UserRole = 'admin' | 'operator' | 'technician';
 
@@ -21,21 +22,17 @@ function loadSecret(): Buffer {
   if (cachedSecret) return cachedSecret;
 
   const db = getSqliteDatabase();
-  const existing = db.prepare(`SELECT value FROM app_settings WHERE key = 'auth_secret'`).get() as
-    | { value: string }
-    | undefined;
+  const existing = readSecret(db, 'auth_secret');
 
-  if (existing?.value) {
-    cachedSecret = Buffer.from(existing.value, 'hex');
+  if (existing) {
+    cachedSecret = Buffer.from(existing, 'hex');
     return cachedSecret;
   }
 
+  // Vazio também é o que se lê depois de um restauro noutra máquina: a chave
+  // antiga já não abre, e gerar outra só custa a toda a gente entrar de novo.
   const next = randomBytes(48);
-  db.prepare(`
-    INSERT INTO app_settings (key, value, updated_at)
-    VALUES ('auth_secret', ?, datetime('now'))
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
-  `).run(next.toString('hex'));
+  writeSecret(db, 'auth_secret', next.toString('hex'));
   cachedSecret = next;
   return cachedSecret;
 }

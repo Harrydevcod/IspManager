@@ -50,9 +50,16 @@ const cancelSchema = z.object({
 export async function registerFinanceRoutes(app: FastifyInstance) {
   const billingWrite = { preHandler: requireRole(['admin', 'operator']) };
 
-  app.get('/api/services', { preHandler: requireAuth() }, async () => {
+  app.get('/api/services', { preHandler: requireAuth() }, async (request) => {
     const db = getSqliteDatabase();
-    return db.prepare(`
+    // A senha PPPoE só interessa a quem edita serviços. Sem este corte, a lista
+    // entregava a credencial de acesso à rede de **todos** os clientes a
+    // qualquer sessão aberta — incluindo o papel técnico, que nem pode escrever
+    // serviços. Sem `request.user` a autenticação está desligada (ISPM_AUTH=off),
+    // e aí não há papel nenhum a fazer valer.
+    const user = request.user;
+    const canSeeCredentials = !user || user.role === 'admin' || user.role === 'operator';
+    const rows = db.prepare(`
       SELECT
         s.id,
         s.client_id AS clientId,
@@ -90,7 +97,10 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       LEFT JOIN internet_plans p ON p.id = s.plan_id
       LEFT JOIN service_network_state n ON n.service_id = s.id
       ORDER BY c.full_name
-    `).all();
+    `).all() as Array<Record<string, unknown>>;
+
+    if (canSeeCredentials) return rows;
+    return rows.map(({ pppoePassword: _omitida, ...rest }) => rest);
   });
 
   // Config do produto audiovisual para o formulário de serviços (qualquer

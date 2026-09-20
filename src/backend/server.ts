@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import { getDatabase } from './db/database';
+import { getDatabase, getSqliteDatabase } from './db/database';
+import { sealPendingSecrets } from './lib/secrets';
 import { registerAuthRoutes } from './routes/auth';
 import { registerAuditRoutes } from './routes/audit';
 import { registerHealthRoutes } from './routes/health';
@@ -69,6 +70,19 @@ export async function createBackendApp() {
   app.addHook('onRequest', licenseGateHook());
 
   getDatabase();
+
+  // Sela as credenciais na conta do sistema operativo, e deteta as que vieram
+  // seladas por outra. Corre **antes** do backup de arranque de propósito: um
+  // backup é uma cópia integral do ficheiro, e não vale a pena passar a selar
+  // segredos para os continuar a mandar em claro para dentro de uma pen.
+  try {
+    const lost = sealPendingSecrets(getSqliteDatabase());
+    if (lost.length > 0) app.log.warn({ lost }, 'credenciais seladas noutra maquina');
+  } catch (err) {
+    // Nunca impedir o arranque por causa disto: sem selar, a aplicação
+    // funciona como funcionava ontem.
+    app.log.error({ err }, 'nao foi possivel selar as credenciais');
+  }
 
   // One consistent backup per boot. Availability > backup: never block the
   // app if the backup directory is unwritable.

@@ -1,4 +1,5 @@
 import { getSqliteDatabase } from '../db/database';
+import { readSecret } from './secrets';
 import { balanceSqlExpr } from './payments';
 import {
   fallbackWhatsappOverdueTemplate,
@@ -123,7 +124,7 @@ export async function runOverdueNoticesIfDue(
   }
 
   const instanceId = getSetting('ultraMsgInstanceId');
-  const token = getSetting('ultraMsgToken');
+  const token = readSecret(getSqliteDatabase(), 'ultraMsgToken');
   if (!instanceId || !token) {
     return { skipped: true, reason: 'UltraMsg nao configurado' };
   }

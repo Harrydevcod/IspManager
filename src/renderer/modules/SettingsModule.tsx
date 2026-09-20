@@ -124,6 +124,8 @@ export function SettingsModule() {
   });
   const [probeBusy, setProbeBusy] = useState(false);
   const [probeMessage, setProbeMessage] = useState('');
+  /** Credenciais que o arranque não conseguiu abrir: base vinda de outra conta. */
+  const [secretsLost, setSecretsLost] = useState<string[]>([]);
   const [routerBusy, setRouterBusy] = useState(false);
   const [routerReport, setRouterReport] = useState<RouterTestReport | null>(null);
   const [routerCert, setRouterCert] = useState<{ pem: string; fingerprint: string } | null>(null);
@@ -330,7 +332,7 @@ export function SettingsModule() {
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
         }
-        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold' | 'routerosPort' | 'routerosIntervalSeconds' | 'routerosMaxDisablesPerRun'> & { defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number; routerosPort: number; routerosIntervalSeconds: number; routerosMaxDisablesPerRun: number }>;
+        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold' | 'routerosPort' | 'routerosIntervalSeconds' | 'routerosMaxDisablesPerRun'> & { defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number; routerosPort: number; routerosIntervalSeconds: number; routerosMaxDisablesPerRun: number; secretsLost?: string[] }>;
       })
       .then((settings) => {
         const loadedForm = {
@@ -354,6 +356,7 @@ export function SettingsModule() {
         };
         setForm(loadedForm);
         setLastSavedForm(loadedForm);
+        setSecretsLost(Array.isArray(settings.secretsLost) ? settings.secretsLost : []);
         setMessage(null);
       })
       .catch((err: unknown) => {
@@ -459,6 +462,7 @@ export function SettingsModule() {
 
       setForm(savedForm);
       setLastSavedForm(savedForm);
+      setSecretsLost([]);
       setMessage({ tone: 'success', text: 'Configuracoes gravadas com sucesso.', placement: 'save' });
     } catch {
       setMessage({ tone: 'error', text: 'Falha de rede ao gravar configuracoes.', placement: 'save' });
@@ -630,6 +634,14 @@ export function SettingsModule() {
         })}
       </nav>
 
+      {secretsLost.length > 0 && (
+        <Message tone="error">
+          Esta base de dados foi criada noutra máquina ou noutra conta Windows. As credenciais
+          ficam seladas na conta de quem as escreveu — por desenho, para um ficheiro copiado não
+          valer nada — e por isso estas não vieram: {secretsLost.join('; ')}. Reintroduza-as aqui
+          e grave. Clientes, faturas e histórico foram restaurados na íntegra.
+        </Message>
+      )}
       {message && message.placement === 'top' && <Message tone={message.tone}>{message.text}</Message>}
 
       {activeTab !== 'backups' && activeTab !== 'jobs' && activeTab !== 'license' && (

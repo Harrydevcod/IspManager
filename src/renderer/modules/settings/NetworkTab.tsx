@@ -177,7 +177,7 @@ export function NetworkTab({
             type="password"
             value={form.routerosPassword}
             onChange={(event) => onUpdate('routerosPassword', event.target.value)}
-            hint="Fica guardada nesta máquina e nunca volta a sair em claro."
+            hint="Fica selada nesta máquina e nunca volta a sair em claro. Deixe a máscara como está para manter o que já está guardado."
           />
           <div className="settings-router-cert wide-field">
             <span className="field-label">Certificado do router</span>
