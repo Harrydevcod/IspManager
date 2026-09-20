@@ -4,6 +4,16 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## Por lançar
+
+> **Uma migração.** A `0060` limpa da Descoberta os endereços que nunca foram rede local. Na base real são **87 de 661** — as 574 da rede ficam intactas. Não é histórico nem documento: a tabela volta a encher-se sozinha no varrimento seguinte.
+
+### Corrigido
+
+- **A Descoberta deixa de inventar equipamento que não existe.** Com o intervalo `192.168.1.1-254` escrito no campo, a lista trazia na mesma dezenas de endereços em `100.64.x`–`100.126.x`, todos "desconhecido" e sem MAC. Não era a varredura — essa só toca no que se lhe pede. Vinham do enriquecimento pelo **router de gestão**: o ISPM pergunta-lhe o ARP, os aluguer de DHCP e os vizinhos, e o MikroTik responde com **todas as redes que encaminha**, incluindo as duas ligações Starlink, que vivem no bloco que os operadores usam entre si (`100.64.0.0/10`). Um deles, o `26.0.0.1`, nem sequer vinha do router — vinha da tabela ARP da própria máquina.
+
+  Agora só entra no retrato o que é **rede local** (`10.x`, `172.16-31.x`, `192.168.x`). O enriquecimento pelo router continua a valer para qualquer segmento local — se houver clientes numa rede que o router conheça e o PC não veja, aparecem na mesma, sem ser preciso alargar o intervalo. O que não entra é a WAN.
+
 ## [2.1](https://github.com/Harrydevcod/IspManager/releases/tag/v2.1.0) — 2026-09-20
 
 > **Sem migrações.** Só muda texto e a forma como um bloco se imprime no ecrã.

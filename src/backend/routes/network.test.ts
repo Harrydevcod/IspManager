@@ -267,6 +267,28 @@ describe('POST /api/network/discovery', () => {
     expect(body.routerEnriched).toBe(false);
   });
 
+  test('a migração 0060 tira da descoberta o que nunca foi rede local', async () => {
+    // O router de gestão encaminha as WAN Starlink e reportava-as no ARP. O
+    // caminho de entrada ficou fechado no `attach`; isto guarda o SQL que limpa
+    // o que entrou antes — a tabela acumula e só esquece aos 90 dias.
+    const insert = db.prepare(
+      `INSERT INTO network_discovery_hosts (ip_address, source, first_seen_at, last_seen_at, times_seen)
+       VALUES (?, 'router', datetime('now'), datetime('now'), 1)`
+    );
+    const fica = ['192.168.1.20', '10.0.0.5', '172.16.4.1', '172.31.255.254'];
+    const sai = ['100.64.0.1', '100.71.9.49', '26.0.0.1', '172.32.0.1', '172.15.0.1'];
+    for (const ip of [...fica, ...sai]) insert.run(ip);
+
+    const migration = (await import('../db/migrations/0060_discovery_private_only')).default;
+    db.exec(migration.sql);
+
+    const left = db
+      .prepare(`SELECT ip_address AS ip FROM network_discovery_hosts ORDER BY ip_address`)
+      .all()
+      .map((row) => (row as { ip: string }).ip);
+    expect(left.sort()).toEqual([...fica].sort());
+  });
+
   test('guarda o histórico: a segunda passagem incrementa sem perder o first_seen_at', async () => {
     await discoveryContext({ alive: [{ ip: '203.0.113.3', rttMs: 5 }] });
     const first = db.prepare(
