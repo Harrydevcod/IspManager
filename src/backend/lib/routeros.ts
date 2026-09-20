@@ -802,7 +802,7 @@ export function auditRouterServices(services: RouterService[]): RouterServiceFin
       services: unrestricted,
       severity: 'aviso',
       detail: `${unrestricted.join(', ')} — aceita${unrestricted.length > 1 ? 'm' : ''} ligação de qualquer endereço. Limite à rede de gestão.`,
-      command: unrestricted.map((name) => `/ip service set ${name} address=<rede de gestao>`).join('\n')
+      command: unrestricted.map((name) => `/ip service set ${name} address=<rede de gestão>`).join('\n')
     });
   }
 

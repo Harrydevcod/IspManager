@@ -5972,7 +5972,8 @@ button.danger:disabled {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12px;
   font-weight: 500;
-  word-break: break-all;
+  white-space: pre-line;
+  overflow-wrap: break-word;
 }
 
 .settings-router-step-ms {
