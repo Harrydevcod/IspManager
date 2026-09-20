@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import {
+  auditRouterServices,
   createSecret,
   describeRouterFailure,
   diagnoseRouter,
@@ -13,6 +14,7 @@ import {
   RouterError,
   testConnection,
   type RouterRequest,
+  type RouterService,
   listNeighbors,
   neighborModel,
   type RouterTransport
@@ -267,7 +269,7 @@ describe('diagnoseRouter', () => {
   test('sem campos preenchidos diz o que falta e não abre socket nenhum', async () => {
     const report = await diagnoseRouter({ ...baseConfig });
     expect(report.ok).toBe(false);
-    expect(report.steps.map((step) => step.status)).toEqual(['fail', 'skipped', 'skipped', 'skipped']);
+    expect(report.steps.map((step) => step.status)).toEqual(['fail', 'skipped', 'skipped', 'skipped', 'skipped']);
     expect(report.steps[0].detail).toContain('endereço');
     expect(report.steps[0].detail).toContain('senha');
   });
@@ -287,6 +289,92 @@ describe('diagnoseRouter', () => {
     expect(byId.reach.status).toBe('fail');
     expect(byId.cert.status).toBe('skipped');
     expect(byId.rest.status).toBe('skipped');
+    expect(byId.hardening.status).toBe('skipped');
     expect(report.certificate).toBeNull();
+  });
+});
+
+describe('auditRouterServices', () => {
+  function service(over: Partial<RouterService>): RouterService {
+    return { name: 'x', port: 1, disabled: false, address: null, certificate: null, ...over };
+  }
+
+  /** Como o router ficou depois de se aplicar o runbook. */
+  const fechado: RouterService[] = [
+    service({ name: 'ftp', port: 21, disabled: true }),
+    service({ name: 'telnet', port: 23, disabled: true }),
+    service({ name: 'www', port: 80, disabled: true }),
+    service({ name: 'api', port: 8728, disabled: true }),
+    service({ name: 'api-ssl', port: 8729, disabled: true }),
+    service({ name: 'www-ssl', port: 443, certificate: 'ispm-cert' }),
+    service({ name: 'winbox', port: 8291, address: '192.168.2.0/24' }),
+    service({ name: 'ssh', port: 22, address: '192.168.2.0/24' }),
+    service({ name: 'btest', port: 2000, disabled: true }),
+    service({ name: 'discover', port: 5678 })
+  ];
+
+  test('um router fechado não dá achado nenhum', () => {
+    expect(auditRouterServices(fechado)).toEqual([]);
+  });
+
+  test('apanha os que levam credenciais em texto simples', () => {
+    const findings = auditRouterServices([
+      ...fechado.filter((s) => !['ftp', 'telnet', 'www', 'api'].includes(s.name)),
+      service({ name: 'ftp', port: 21 }),
+      service({ name: 'telnet', port: 23 }),
+      service({ name: 'www', port: 80 }),
+      service({ name: 'api', port: 8728 })
+    ]);
+    const claro = findings.find((f) => f.severity === 'grave');
+    expect(claro?.services.sort()).toEqual(['api', 'ftp', 'telnet', 'www']);
+    expect(claro?.command).toBe('/ip service disable ftp,telnet,www,api');
+  });
+
+  test('o www conta como texto simples — a REST também responde nele', () => {
+    const findings = auditRouterServices([service({ name: 'www', port: 80 })]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].services).toEqual(['www']);
+  });
+
+  test('um serviço ssl sem certificado está ligado a fingir', () => {
+    const semCert = auditRouterServices([service({ name: 'api-ssl', port: 8729 })]);
+    expect(semCert.map((f) => f.services)).toEqual([['api-ssl']]);
+
+    const comCert = auditRouterServices([service({ name: 'api-ssl', port: 8729, certificate: 'algum' })]);
+    expect(comCert).toEqual([]);
+  });
+
+  test('o www-ssl com certificado nunca é sinalizado — é onde a REST vive', () => {
+    expect(auditRouterServices([service({ name: 'www-ssl', port: 443, certificate: 'ispm-cert' })])).toEqual([]);
+  });
+
+  test('winbox e ssh sem restrição são aviso, com restrição não são nada', () => {
+    const aberto = auditRouterServices([
+      service({ name: 'winbox', port: 8291 }),
+      service({ name: 'ssh', port: 22 })
+    ]);
+    expect(aberto).toHaveLength(1);
+    expect(aberto[0].severity).toBe('aviso');
+    expect(aberto[0].services.sort()).toEqual(['ssh', 'winbox']);
+
+    expect(auditRouterServices([service({ name: 'winbox', port: 8291, address: '10.0.0.0/8' })])).toEqual([]);
+  });
+
+  test('o discover nunca é sinalizado: é dele que vem o modelo dos equipamentos', () => {
+    // Desligá-lo cega a descoberta (listNeighbors). Este teste existe para o
+    // dia em que alguém achar que o 5678 aberto é supérfluo.
+    const findings = auditRouterServices([service({ name: 'discover', port: 5678 })]);
+    expect(findings).toEqual([]);
+  });
+
+  test('o btest e aviso: nao vaza senha, mas deixa saturar o router', () => {
+    const findings = auditRouterServices([service({ name: 'btest', port: 2000 })]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].severity).toBe('aviso');
+    expect(findings[0].command).toBe('/ip service disable btest');
+  });
+
+  test('um serviço desligado não conta, mesmo sendo dos perigosos', () => {
+    expect(auditRouterServices([service({ name: 'telnet', port: 23, disabled: true })])).toEqual([]);
   });
 });

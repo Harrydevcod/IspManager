@@ -79,17 +79,61 @@ Se o `allow-remote-requests=yes` ficar ligado, protege o DNS de fora:
 
 ## 3. Proteger o acesso ao router
 
+> **Isto não é opcional e não se faz sozinho.** Num router medido em produção em setembro de 2026,
+> **nada** disto tinha sido aplicado: telnet, ftp, a API binária em texto simples e o `www` na porta 80
+> estavam todos ligados. E o `www` importa mais do que parece — **a REST responde nele tal como no
+> `www-ssl`**, portanto a mesma API que se protege com certificado fixado fica disponível ao lado, sem
+> proteção nenhuma. Confirma-se com um pedido à porta 80: devolve `401`, não `404`.
+
+Faz isto **pelo Winbox**, não por uma sessão SSH ou telnet que possas estar a cortar a ti próprio.
+
 ```routeros
-# Serviços que não usas — desligados
-/ip service disable telnet,ftp,www,api-ssl
+# Tudo o que leva credenciais em claro, mais a API binária que o ISPM não usa
+/ip service disable ftp,telnet,www,api,api-ssl,btest
 
 # Winbox e SSH só da rede de gestão
 /ip service set winbox address=<rede-gestao>
 /ip service set ssh address=<rede-gestao>
+
+# O admin também não tem de entrar de qualquer sítio
+/user set admin address=<rede-gestao>
 ```
 
-> `api-ssl` (porta 8729) é a API binária antiga. O ISPM **não** a usa — fala pela REST, que vive no
-> `www-ssl`. Deixa-a desligada.
+Confere o resultado:
+
+```routeros
+/ip service print
+```
+
+**Dois que não se desligam:**
+
+- **`www-ssl` (443)** — é onde a REST vive. Desligá-lo corta o ISPM.
+- **`discover` (5678, MNDP)** — é dele que sai o `/ip/neighbor`, e o ISPM lê essa tabela para descobrir
+  o **modelo** dos equipamentos sem ter de bater à porta de cada CPE. Desligá-lo cega a Descoberta.
+
+Depois disto, o **Testar ligação** do ISPM (Definições → Rede) confirma-o sozinho: a última etapa lê
+`/ip/service` e fica amarela enquanto houver serviços abertos que não precisas, com o comando exato por
+baixo. O ISPM nunca desliga nada por si — podia cortar o teu próprio Winbox e deixar-te sem caminho de
+volta ao router.
+
+---
+
+## 3.1. Porquê REST sobre HTTPS, e não outra coisa
+
+O ISPM fala com o router pela REST, sobre HTTPS, com o certificado fixado. As alternativas foram
+pesadas e nenhuma paga:
+
+| Via | Porque não |
+| --- | --- |
+| REST sobre HTTP (`www`, 80) | Funciona, e manda a senha em claro pela rede. É precisamente o que se desliga acima. |
+| API binária sobre TLS (`api-ssl`, 8729) | Tem o mesmo certificado por resolver, mais um protocolo novo por escrever. Zero ganho. |
+| API binária (`api`, 8728) | Credenciais em claro, e o protocolo à mesma. |
+| SSH com chave | O único com uma vantagem real — não haveria senha guardada. Mas troca JSON estruturado por texto de CLI interpretado à mão, que parte quando a MikroTik muda uma coluna. |
+| RADIUS | A arquitetura certa para um ISP a sério: o router pergunta ao ISPM a cada login, e o corte é um Disconnect-Message. Fica para quando o parque estiver em PPPoE — hoje ainda não está. |
+
+A superfície do ISPM no router são nove operações, todas atrás de uma interface de uma função
+(`RouterTransport`, em `src/backend/lib/routeros.ts`). Trocar de via um dia é escrever outro transporte,
+não reescrever o ISPM.
 
 ---
 

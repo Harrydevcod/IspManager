@@ -1,4 +1,4 @@
-import { Check, Minus, Radar, RefreshCw, Router, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, Check, Minus, Radar, RefreshCw, Router, ShieldCheck, X } from 'lucide-react';
 import { Button, Field, Message, Toggle } from '../../components';
 import type { SettingsFormState, ToggleField, UpdateField } from './settingsForm';
 
@@ -20,9 +20,10 @@ export type RouterEnforcementState = {
 
 /** Uma etapa do diagnóstico, tal como o servidor a descreve. */
 export type RouterCheck = {
-  id: 'config' | 'reach' | 'cert' | 'rest';
+  id: 'config' | 'reach' | 'cert' | 'rest' | 'hardening';
   label: string;
-  status: 'ok' | 'fail' | 'skipped';
+  /** `warn` não falha o teste: a ligação funciona, mas há o que reparar. */
+  status: 'ok' | 'warn' | 'fail' | 'skipped';
   detail: string;
   command?: string;
   ms?: number;
@@ -42,6 +43,7 @@ export type RouterTestReport = {
 
 const CHECK_ICON = {
   ok: Check,
+  warn: AlertTriangle,
   fail: X,
   skipped: Minus
 } as const;

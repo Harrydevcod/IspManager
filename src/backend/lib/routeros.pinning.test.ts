@@ -1,7 +1,8 @@
 import { createServer, type Server } from 'node:tls';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import {
   createTransport,
+  diagnoseRouter,
   fetchRouterCertificate,
   fingerprintOf,
   testConnection,
@@ -36,20 +37,35 @@ function configFor(tlsCert: string): RouterConfig {
   };
 }
 
+/**
+ * O que o router de mentira devolve em `/ip/service`. Os testes trocam isto
+ * para exercitar o router fechado, o aberto, e o que recusa a leitura.
+ */
+let servicesReply: { status: number; rows: unknown } = { status: 200, rows: [] };
+
 beforeAll(async () => {
   server = createServer(
     { cert: TEST_ROUTER_LEAF_PEM + TEST_ROUTER_CA_PEM, key: TEST_ROUTER_KEY_PEM },
     (socket) => {
-      socket.on('data', () => {
-        const body = JSON.stringify([{ version: '7.24.2 (stable)', 'board-name': 'hEX S' }]);
+      socket.on('data', (chunk: Buffer) => {
+        const requestLine = chunk.toString('utf8').split('\r\n')[0] ?? '';
+        const isServices = requestLine.includes('/ip/service');
+        const status = isServices ? servicesReply.status : 200;
+        const body = JSON.stringify(
+          isServices ? servicesReply.rows : [{ version: '7.24.2 (stable)', 'board-name': 'hEX S' }]
+        );
         socket.end(
-          `HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: ${Buffer.byteLength(body)}\r\nconnection: close\r\n\r\n${body}`
+          `HTTP/1.1 ${status} ${status === 200 ? 'OK' : 'Forbidden'}\r\ncontent-type: application/json\r\ncontent-length: ${Buffer.byteLength(body)}\r\nconnection: close\r\n\r\n${body}`
         );
       });
     }
   );
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   port = (server.address() as { port: number }).port;
+});
+
+beforeEach(() => {
+  servicesReply = { status: 200, rows: [] };
 });
 
 afterAll(async () => {
@@ -83,5 +99,49 @@ describe('fixar o certificado do router', () => {
     // é a da folha, e essa não bate.
     await expect(testConnection(createTransport(configFor(TEST_ROUTER_CA_PEM))))
       .rejects.toMatchObject({ code: 'CERT_MISMATCH' });
+  });
+});
+
+describe('a etapa dos serviços abertos', () => {
+  async function hardeningStep(rows: unknown, status = 200) {
+    const chain = await fetchRouterCertificate(configFor(''));
+    servicesReply = { status, rows };
+    const report = await diagnoseRouter(configFor(chain.pem));
+    const step = report.steps.find((s) => s.id === 'hardening');
+    return { report, step: step! };
+  }
+
+  test('router fechado: a etapa passa e o diagnóstico fica verde', async () => {
+    const { report, step } = await hardeningStep([
+      { name: 'telnet', port: 23, disabled: 'true' },
+      { name: 'www-ssl', port: 443, certificate: 'ispm-cert' },
+      { name: 'winbox', port: 8291, address: '192.168.2.0/24' }
+    ]);
+    expect(report.ok).toBe(true);
+    expect(step.status).toBe('ok');
+  });
+
+  test('router aberto: avisa e dá o comando, sem falhar a ligação', async () => {
+    const { report, step } = await hardeningStep([
+      { name: 'telnet', port: 23 },
+      { name: 'www', port: 80 },
+      { name: 'api-ssl', port: 8729, certificate: 'none' },
+      { name: 'winbox', port: 8291 }
+    ]);
+    // A ligação funciona: e isso que o `ok` quer dizer. O aviso nao o derruba.
+    expect(report.ok).toBe(true);
+    expect(report.version).toBe('7.24.2 (stable)');
+    expect(step.status).toBe('warn');
+    expect(step.detail).toContain('telnet');
+    expect(step.detail).toContain('www');
+    expect(step.command).toContain('/ip service disable telnet,www');
+    expect(step.command).toContain('api-ssl');
+  });
+
+  test('sem permissão para ler os serviços fica por testar, não em falha', async () => {
+    const { report, step } = await hardeningStep({ message: 'no permissions' }, 403);
+    expect(report.ok).toBe(true);
+    expect(step.status).toBe('skipped');
+    expect(step.detail).toContain('read');
   });
 });
