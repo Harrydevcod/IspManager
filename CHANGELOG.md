@@ -6,6 +6,26 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+> **Sem migrações.** Nada muda na estrutura da base. O arranque **sela as credenciais** e é o único passo que reescreve valores — é idempotente e não precisa de ser desfeito.
+
+> **Ao instalar, um passo de uma vez.** Quem já tinha o router de gestão configurado vai a **Definições → Rede → Testar ligação**: a etapa do certificado explica que falta a autoridade que o assinou. Carregue em **Confiar neste certificado**, teste outra vez — deve responder com o modelo e a versão do RouterOS — e grave. Depois disso não volta a ser preciso.
+
+### Corrigido
+
+- **A ligação ao router de gestão passa a funcionar.** Fixar o certificado nunca chegava a dar: o MikroTik apresenta uma folha assinada por uma autoridade local (`SKYNET-GW` assinado por `SKYNET-CA`) e o ISPM guardava só a folha. Um certificado que não é autoridade não serve de âncora de confiança, portanto a ligação era recusada **para sempre**, por mais vezes que se carregasse em "Confiar neste certificado". Agora guarda-se a cadeia inteira. A identidade continua a ser a do router e a impressão digital que se confere é a mesma.
+
+### Alterado
+
+- **O "Testar ligação" passou a dizer o que está errado.** Devolvia uma frase só — quase sempre o erro cru do Node, em inglês — escrita em cinzento no mesmo sítio e com o mesmo estilo da dica, o que se lia como se o botão não tivesse feito nada. Agora corre **quatro etapas** e mostra cada uma com ✓, ✗ ou –: definições preenchidas, porta alcançável, certificado, REST API e credenciais. Cada falha diz a causa provável e **o comando do RouterOS que a resolve** — porta recusada é o `www-ssl` desligado, HTTP 401 é a senha, HTTP 403 é o grupo sem `rest-api`, HTTP 404 é RouterOS anterior à 7.
+- **O teste corre contra o que está no ecrã, sem gravar.** Quem escrevia o endereço novo e testava sem gravar estava a testar o antigo, em silêncio.
+
+### Segurança
+
+- **As credenciais deixam de estar legíveis fora desta conta.** A senha do router, o token da UltraMsg, a chave de pareamento do telemóvel e a chave das sessões estavam em texto simples dentro do `ispm.sqlite` — e o backup de arranque é uma cópia integral desse ficheiro, para onde quer que aponte a pasta de backups. Passam a ser **seladas na conta do Windows**: um ficheiro copiado para outra máquina, um backup numa pen ou um disco roubado deixam de dar credencial nenhuma. Não protege de programas a correr com o seu próprio utilizador. As passwords dos utilizadores já estavam bem e não mudaram.
+- **A senha PPPoE deixa de ir para quem não edita serviços.** A lista de serviços entregava a credencial de acesso à rede de **todos** os clientes a qualquer sessão aberta, incluindo o papel técnico — que nem sequer pode escrever serviços. Passa a ir só para administradores e operadores, que são quem a vê no formulário.
+- **O token da UltraMsg deixa de sair em claro.** Voltava legível para a interface cada vez que se abriam as Definições, apesar de ser o servidor a falar com a UltraMsg. Passa a aparecer mascarado, como já acontecia com a senha do router: deixe a máscara como está e o que está guardado fica.
+- **Restaurar um backup noutra máquina avisa em vez de falhar em silêncio.** As credenciais não acompanham a máquina, por desenho. As Definições dizem quais é que faltam e clientes, faturas e histórico vêm na íntegra.
+
 ## [1.32.0](https://github.com/Harrydevcod/IspManager/releases/tag/v1.32.0) — 2026-09-18
 
 > **Sem migrações.** Só muda o que se lê na fatura e onde se liga a definição. O que se cobra e o total não mudam.
