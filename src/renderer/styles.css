@@ -5938,6 +5938,7 @@ button.danger:disabled {
 }
 
 .settings-router-steps > li[data-status='ok'] { --step-tone: var(--success); }
+.settings-router-steps > li[data-status='warn'] { --step-tone: var(--warn); }
 .settings-router-steps > li[data-status='fail'] { --step-tone: var(--danger); }
 
 .settings-router-step-icon {

@@ -91,6 +91,33 @@ describe('NetworkTab — diagnóstico do router', () => {
     expect(html).toContain('7.14.2');
   });
 
+  test('um aviso amarelo não derruba o veredicto verde', () => {
+    // O router responde: o topo tem de continuar a dizer que a ligação funciona.
+    // Pintar isto de vermelho seria mentir sobre o que o teste foi lá fazer.
+    const html = render({
+      ok: true,
+      steps: [
+        ...failedReport.steps.slice(0, 3),
+        { id: 'rest', label: 'REST API e credenciais', status: 'ok', detail: 'hEX S.' },
+        {
+          id: 'hardening',
+          label: 'Serviços abertos no router',
+          status: 'warn',
+          detail: 'telnet, www — aceitam credenciais em texto simples.',
+          command: '/ip service disable telnet,www'
+        }
+      ],
+      version: '7.24.2',
+      boardName: 'hEX S',
+      fingerprint: null,
+      certificate: null
+    });
+    expect(html).toContain('module-message success');
+    expect(html).toContain('data-status="warn"');
+    expect(html).toContain('/ip service disable telnet,www');
+    expect(html).not.toContain('data-status="fail"');
+  });
+
   test('um aviso local usa o mesmo painel sem inventar etapas', () => {
     const html = render({ ok: false, steps: [], summary: 'Certificado esquecido.', tone: 'neutral' });
     expect(html).toContain('Certificado esquecido.');

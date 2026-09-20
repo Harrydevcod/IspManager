@@ -404,7 +404,7 @@ describe('POST /api/network/router/test', () => {
     expect(response.statusCode).toBe(200);
     const report = response.json() as { ok: boolean; steps: Array<{ id: string; status: string }> };
     expect(report.ok).toBe(false);
-    expect(report.steps.map((step) => step.id)).toEqual(['config', 'reach', 'cert', 'rest']);
+    expect(report.steps.map((step) => step.id)).toEqual(['config', 'reach', 'cert', 'rest', 'hardening']);
     expect(report.steps[0].status).toBe('fail');
   });
 

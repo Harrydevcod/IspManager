@@ -430,12 +430,13 @@ export async function testConnection(transport: RouterTransport): Promise<{ vers
 
 // ------------------------------------------------------------- diagnóstico
 
-export type RouterCheckId = 'config' | 'reach' | 'cert' | 'rest';
+export type RouterCheckId = 'config' | 'reach' | 'cert' | 'rest' | 'hardening';
 
 export type RouterCheck = {
   id: RouterCheckId;
   label: string;
-  status: 'ok' | 'fail' | 'skipped';
+  /** `warn` não falha o diagnóstico: a ligação funciona, mas há o que reparar. */
+  status: 'ok' | 'warn' | 'fail' | 'skipped';
   detail: string;
   /** Comando do RouterOS que resolve ou confirma esta etapa. */
   command?: string;
@@ -465,6 +466,47 @@ export type RouterDiagnosis = {
  * que é um aperto de mão **sem credenciais**, e é ela que traz o certificado
  * que a etapa `cert` compara — não há uma segunda ligação para isso.
  */
+const HARDENING_LABEL = 'Serviços abertos no router';
+
+/**
+ * Última etapa: o router responde, mas está fechado?
+ *
+ * Custa um GET e responde à pergunta que ninguém se lembra de fazer. **Nunca
+ * falha o diagnóstico** — a ligação funciona, e é isso que o `ok` do relatório
+ * quer dizer; isto é um aviso. E se a leitura não for possível (o grupo do
+ * utilizador podia não ter `read`), fica por testar em vez de inventar um
+ * problema.
+ *
+ * O ISPM **não desliga nada**: dá o comando. Escrever em `/ip/service` podia
+ * cortar o winbox ou o ssh do próprio operador e deixá-lo sem caminho de volta
+ * ao router. Continua a escrever só em `/ppp/secret` e `/ppp/active` (ADR 0007).
+ */
+async function fillHardeningStep(step: RouterCheck, transport: RouterTransport): Promise<void> {
+  const startedAt = Date.now();
+  let services: RouterService[];
+  try {
+    services = await listServices(transport);
+  } catch {
+    step.detail = 'Não foi possível ler a lista de serviços do router. O utilizador da API precisa da política `read`.';
+    return;
+  }
+
+  step.ms = Date.now() - startedAt;
+  const findings = auditRouterServices(services);
+  if (findings.length === 0) {
+    step.status = 'ok';
+    step.detail = 'Só está ligado o que é preciso, e limitado à rede de gestão.';
+    return;
+  }
+
+  // Grave e aviso dão o mesmo amarelo: a diferença está no texto, e pintar de
+  // vermelho um router que responde sem problema nenhum de ligação seria mentir
+  // sobre o que o teste foi lá fazer.
+  step.status = 'warn';
+  step.detail = findings.map((finding) => finding.detail).join(' ');
+  step.command = findings.map((finding) => finding.command).join('\n');
+}
+
 export async function diagnoseRouter(config: RouterConfig): Promise<RouterDiagnosis> {
   const steps: RouterCheck[] = [];
   const skipped = (id: RouterCheckId, label: string, detail = 'Não testado: a etapa anterior falhou.'): RouterCheck => ({
@@ -490,6 +532,7 @@ export async function diagnoseRouter(config: RouterConfig): Promise<RouterDiagno
     steps.push(skipped('reach', reachLabel));
     steps.push(skipped('cert', 'Certificado do router'));
     steps.push(skipped('rest', 'REST API e credenciais'));
+    steps.push(skipped('hardening', HARDENING_LABEL));
     return { ok: false, steps, fingerprint: null, certificate: null };
   }
   steps.push({
@@ -516,6 +559,7 @@ export async function diagnoseRouter(config: RouterConfig): Promise<RouterDiagno
     });
     steps.push(skipped('cert', 'Certificado do router'));
     steps.push(skipped('rest', 'REST API e credenciais'));
+    steps.push(skipped('hardening', HARDENING_LABEL));
     return { ok: false, steps, fingerprint: null, certificate: null };
   }
   steps.push({
@@ -547,7 +591,8 @@ export async function diagnoseRouter(config: RouterConfig): Promise<RouterDiagno
       : 'Nenhum fixado. Confira a impressão digital abaixo contra o router e fixe-a para prender a ligação a este equipamento.'
   };
   const restStep: RouterCheck = skipped('rest', 'REST API e credenciais');
-  steps.push(certStep, restStep);
+  const hardeningStep: RouterCheck = skipped('hardening', HARDENING_LABEL);
+  steps.push(certStep, restStep, hardeningStep);
 
   if (pinnedPem && !pinnedFingerprint) {
     certStep.status = 'fail';
@@ -568,14 +613,16 @@ export async function diagnoseRouter(config: RouterConfig): Promise<RouterDiagno
 
   // 4. Credenciais e REST API.
   const restStartedAt = Date.now();
+  const transport = createTransport(config);
   try {
-    const info = await testConnection(createTransport(config));
+    const info = await testConnection(transport);
     if (!pinnedPem) {
       certStep.detail = 'Validado pela cadeia de confiança do sistema. Fixe-o para prender a ligação a este router.';
     }
     restStep.status = 'ok';
     restStep.detail = `${info.boardName}, RouterOS ${info.version}.`;
     restStep.ms = Date.now() - restStartedAt;
+    await fillHardeningStep(hardeningStep, transport);
     return {
       ok: true,
       steps,
@@ -635,6 +682,131 @@ export async function listActive(transport: RouterTransport): Promise<RouterActi
       uptime: str(row.uptime)
     }))
     .filter((session) => session.name);
+}
+
+export type RouterService = {
+  name: string;
+  port: number;
+  disabled: boolean;
+  /** Restrição de origem, quando existe. Vazio = aceita de toda a rede. */
+  address: string | null;
+  /** Certificado atribuído ao serviço. Sem ele, um serviço "ssl" não faz TLS. */
+  certificate: string | null;
+};
+
+/** Os serviços do router. Leitura pura, como o ARP e os vizinhos. */
+export async function listServices(transport: RouterTransport): Promise<RouterService[]> {
+  const raw = await transport({
+    method: 'GET',
+    path: '/ip/service?.proplist=name,port,disabled,address,certificate'
+  });
+  return asArray(raw)
+    .map((row) => ({
+      name: str(row.name) ?? '',
+      port: Number(row.port) || 0,
+      disabled: toBool(row.disabled),
+      address: str(row.address),
+      // O RouterOS escreve literalmente "none" quando não há certificado.
+      certificate: str(row.certificate) === 'none' ? null : str(row.certificate)
+    }))
+    .filter((service) => service.name);
+}
+
+export type RouterServiceFinding = {
+  /** Serviços envolvidos, pelos nomes do RouterOS. */
+  services: string[];
+  severity: 'grave' | 'aviso';
+  detail: string;
+  /** Comando do RouterOS que resolve. */
+  command: string;
+};
+
+/**
+ * Serviços que transportam credenciais em texto simples. O `www` está aqui
+ * porque a REST do RouterOS responde nele tal como no `www-ssl`: a mesma API
+ * que o ISPM protege com certificado fixado fica disponível ao lado, sem
+ * proteção nenhuma, se este ficar ligado.
+ */
+const CLEARTEXT_SERVICES = ['ftp', 'telnet', 'www', 'api'];
+
+/** Serviços de administração que fazem sentido existir, mas não para toda a rede. */
+const SHOULD_BE_RESTRICTED = ['winbox', 'ssh'];
+
+/**
+ * Não vazam credenciais, mas também não servem para nada aqui — e o `btest`
+ * deixa qualquer um saturar o router à largura de banda toda. Num router que é
+ * a cabeça da rede de um ISP, isso é o negócio parado.
+ */
+const POINTLESS_SERVICES = ['btest'];
+
+/**
+ * O que está aberto no router e não devia estar.
+ *
+ * Função pura de propósito: a classificação é a parte que interessa acertar, e
+ * assim testa-se sem router nenhum.
+ *
+ * **`discover` (MNDP, 5678) nunca é sinalizado.** É dele que sai o
+ * `/ip/neighbor`, e o `listNeighbors()` deste mesmo ficheiro é a única fonte de
+ * *modelo* de equipamento que não obriga a bater à porta de cada CPE. Desligá-lo
+ * cega a descoberta — é exatamente o tipo de linha que alguém "arruma" um dia
+ * por parecer supérflua.
+ *
+ * `www-ssl` também não: é onde a REST vive.
+ */
+export function auditRouterServices(services: RouterService[]): RouterServiceFinding[] {
+  const findings: RouterServiceFinding[] = [];
+  const active = services.filter((service) => !service.disabled);
+
+  const cleartext = active
+    .filter((service) => CLEARTEXT_SERVICES.includes(service.name))
+    .map((service) => service.name);
+  if (cleartext.length > 0) {
+    findings.push({
+      services: cleartext,
+      severity: 'grave',
+      detail: `${cleartext.join(', ')} — aceita${cleartext.length > 1 ? 'm' : ''} credenciais em texto simples. Quem estiver na rede lê a senha ao passar.`,
+      command: `/ip service disable ${cleartext.join(',')}`
+    });
+  }
+
+  // Um serviço "ssl" sem certificado não faz TLS nenhum: está ligado a fingir.
+  const fakeTls = active
+    .filter((service) => service.name.endsWith('-ssl') && !service.certificate)
+    .map((service) => service.name);
+  if (fakeTls.length > 0) {
+    findings.push({
+      services: fakeTls,
+      severity: 'grave',
+      detail: `${fakeTls.join(', ')} — ligado${fakeTls.length > 1 ? 's' : ''} sem certificado atribuído, portanto sem TLS nenhum. O ISPM não usa nenhum destes.`,
+      command: `/ip service disable ${fakeTls.join(',')}`
+    });
+  }
+
+  const pointless = active
+    .filter((service) => POINTLESS_SERVICES.includes(service.name))
+    .map((service) => service.name);
+  if (pointless.length > 0) {
+    findings.push({
+      services: pointless,
+      severity: 'aviso',
+      detail: `${pointless.join(', ')} — não serve o ISPM nem a operação, e deixa saturar o router de fora.`,
+      command: `/ip service disable ${pointless.join(',')}`
+    });
+  }
+
+  const unrestricted = active
+    .filter((service) => SHOULD_BE_RESTRICTED.includes(service.name) && !service.address)
+    .map((service) => service.name);
+  if (unrestricted.length > 0) {
+    findings.push({
+      services: unrestricted,
+      severity: 'aviso',
+      detail: `${unrestricted.join(', ')} — aceita${unrestricted.length > 1 ? 'm' : ''} ligação de qualquer endereço. Limite à rede de gestão.`,
+      command: unrestricted.map((name) => `/ip service set ${name} address=<rede de gestao>`).join('\n')
+    });
+  }
+
+  return findings;
 }
 
 export type RouterArpEntry = {
