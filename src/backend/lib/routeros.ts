@@ -3,6 +3,7 @@ import { request as httpsRequest } from 'node:https';
 import { connect as tlsConnect } from 'node:tls';
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
+import { readSecret } from './secrets';
 
 /**
  * Cliente REST do RouterOS (v7). Fino de propósito: o ISPM só precisa de listar
@@ -49,7 +50,9 @@ export function readRouterConfig(db: Database.Database): RouterConfig {
     host: getSetting(db, 'routerosHost'),
     port: numberSetting(db, 'routerosPort', DEFAULT_ROUTER_PORT, 1, 65535),
     user: getSetting(db, 'routerosUser'),
-    password: getSetting(db, 'routerosPassword'),
+    // Selada na conta do sistema operativo: vem vazia se a base vier de outra
+    // máquina, e uma senha vazia falha o teste em vez de ir ao router à sorte.
+    password: readSecret(db, 'routerosPassword'),
     // Ausente = ligado. Um dry-run que se desliga sozinho por a chave faltar
     // seria a forma mais estúpida de cortar clientes a sério sem querer.
     dryRun: getSetting(db, 'routerosDryRun') !== 'false',

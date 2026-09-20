@@ -4,6 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { validateBackupDir } from '../lib/backup';
 import { recordAudit } from '../lib/audit';
 import { requireRole } from './auth';
+import { clearSecretsLost, readSecretsLost, SECRET_KEYS, writeSecret, type SecretKey } from '../lib/secrets';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
   fallbackWhatsappOverdueTemplate,
@@ -252,8 +253,11 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       } else if (row.key === 'routerosDryRun') {
         // Só um "false" explícito desliga o ensaio.
         settings.routerosDryRun = row.value !== 'false' && row.value !== '0';
-      } else if (row.key === 'routerosPassword') {
-        settings.routerosPassword = row.value ? SECRET_MASK : '';
+      } else if (row.key === 'routerosPassword' || row.key === 'ultraMsgToken') {
+        // Credenciais que o renderer nunca usa: quem fala com o router e com a
+        // UltraMsg e o backend. Voltam mascaradas para poderem ser editadas sem
+        // alguma vez saírem daqui em claro.
+        settings[row.key] = row.value ? SECRET_MASK : '';
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
       } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled') {
@@ -270,7 +274,9 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       }
     }
 
-    return settings;
+    // So de leitura: nao entra no schema do PUT porque nao se edita. Fica
+    // gravado pela passagem de arranque, que corre antes de alguem abrir isto.
+    return { ...settings, secretsLost: readSecretsLost(db) };
   });
 
   app.put('/api/settings', adminOnly, async (request, reply) => {
@@ -321,13 +327,21 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         updated_at = datetime('now')
     `);
 
+    const sealedKeys = new Set<string>(SECRET_KEYS);
     const run = db.transaction(() => {
       for (const [key, value] of Object.entries(parsed.data)) {
-        // Gravar a máscara apagaria a senha do router à primeira gravação de
+        // Gravar a máscara apagaria a credencial à primeira gravação de
         // qualquer outra definição: quem a devolve intacta não a quer mudar.
-        if (key === 'routerosPassword' && value === SECRET_MASK) continue;
+        if (sealedKeys.has(key) && value === SECRET_MASK) continue;
+        if (sealedKeys.has(key)) {
+          writeSecret(db, key as SecretKey, String(value ?? ''));
+          continue;
+        }
         save.run(key, key === 'bankAccounts' ? JSON.stringify(value ?? []) : String(value ?? ''));
       }
+      // Gravou as definições: já viu o aviso e já teve a chance de reescrever
+      // o que faltava.
+      clearSecretsLost(db);
     });
 
     run();
@@ -341,6 +355,10 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         backupDirChanged: wantedBackupDir.length > 0
       }
     });
-    return { ...parsed.data, routerosPassword: parsed.data.routerosPassword ? SECRET_MASK : '' };
+    return {
+      ...parsed.data,
+      routerosPassword: parsed.data.routerosPassword ? SECRET_MASK : '',
+      ultraMsgToken: parsed.data.ultraMsgToken ? SECRET_MASK : ''
+    };
   });
 }

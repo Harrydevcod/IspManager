@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import { getSqliteDatabase } from '../db/database';
+import { readSecret } from './secrets';
 import { createSmsSignature } from './sms-signing';
 import type { SmsEventType } from '../../shared/sms';
 
@@ -79,7 +80,7 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
 
 async function signedFetch(path: string, method: 'GET' | 'POST', bodyObject?: unknown, timeoutMs?: number, baseUrlOverride?: string): Promise<Response> {
   const baseUrl = baseUrlOverride || getSetting('smsCompanionBaseUrl');
-  const secret = getSetting('smsCompanionPairingKey');
+  const secret = readSecret(getSqliteDatabase(), 'smsCompanionPairingKey');
   if (!baseUrl || !secret) throw new Error('Companion SMS nao pareado');
   const body = bodyObject ? JSON.stringify(bodyObject) : '';
   const timestamp = new Date().toISOString();
@@ -188,7 +189,7 @@ export async function discoverCompanionHosts(opts?: { timeoutMs?: number; concur
  * second sweep. Returns null if none matches (phone off-network / not paired).
  */
 export async function findPairedCompanion(hosts?: string[], timeoutMs = 700): Promise<string | null> {
-  const secret = getSetting('smsCompanionPairingKey');
+  const secret = readSecret(getSqliteDatabase(), 'smsCompanionPairingKey');
   if (!secret) return null;
   const candidates = hosts ?? (await discoverCompanionHosts({ timeoutMs }));
   for (const baseUrl of candidates) {
@@ -204,7 +205,7 @@ export async function findPairedCompanion(hosts?: string[], timeoutMs = 700): Pr
 // when the companion is actually down, so a healthy setup pays a single /ping.
 async function selfHealCompanionAddress(): Promise<void> {
   const current = getSetting('smsCompanionBaseUrl');
-  if (!current || !getSetting('smsCompanionPairingKey')) return;
+  if (!current || !readSecret(getSqliteDatabase(), 'smsCompanionPairingKey')) return;
   const { reachable, paired } = await verifyCompanionPairing(1500);
   if (reachable && paired) return;
   const found = await findPairedCompanion();

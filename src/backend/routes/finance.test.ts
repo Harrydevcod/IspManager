@@ -192,8 +192,13 @@ describe('settings routes', () => {
       whatsappSuspensionTemplate: 'Suspensao em {dias_suspensao} dias',
       whatsappSuspensionNoticeDays: 10,
       ultraMsgInstanceId: 'instance1150',
-      ultraMsgToken: 'token-teste'
+      // Mascarado desde que o token passou a ser selado: o renderer nunca o
+      // usa, e o que ele mostra no campo e so uma mascara editavel.
+      ultraMsgToken: '••••••••'
     });
+    // O que conta e que ficou guardado inteiro, para o backend o usar.
+    const stored = db.prepare("SELECT value FROM app_settings WHERE key='ultraMsgToken'").get() as { value: string };
+    expect(stored.value).toBe('token-teste');
   });
 });
 

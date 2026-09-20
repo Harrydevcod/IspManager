@@ -294,3 +294,58 @@ describe('definicoes do MikroTik', () => {
     expect(report.steps.slice(1).every((step) => step.status === 'skipped')).toBe(true);
   });
 });
+
+describe('credenciais nas definicoes', () => {
+  const MASK = '••••••••';
+
+  function stored(key: string): string {
+    const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as
+      | { value: string }
+      | undefined;
+    return row?.value ?? '';
+  }
+
+  test('o token da UltraMsg tem o mesmo tratamento da senha do router', async () => {
+    const saved = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, ultraMsgInstanceId: 'instance1', ultraMsgToken: 'token-secreto' }
+    });
+    expect(saved.statusCode).toBe(200);
+    // O renderer nunca chama a UltraMsg: quem o faz e o backend, por isso o
+    // token nao tem razao nenhuma para sair daqui em claro.
+    expect(saved.json().ultraMsgToken).toBe(MASK);
+
+    const read = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(read.json().ultraMsgToken).toBe(MASK);
+    // O instance id nao e segredo e continua legivel.
+    expect(read.json().ultraMsgInstanceId).toBe('instance1');
+    expect(stored('ultraMsgToken')).toBe('token-secreto');
+  });
+
+  test('devolver a mascara intacta nao apaga o token guardado', async () => {
+    await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, ultraMsgInstanceId: 'instance1', ultraMsgToken: 'token-secreto' }
+    });
+    await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, companyName: 'Outra coisa qualquer', ultraMsgToken: MASK }
+    });
+    expect(stored('ultraMsgToken')).toBe('token-secreto');
+  });
+
+  test('o aviso dos segredos perdidos chega ao cliente e some ao gravar', async () => {
+    db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)')
+      .run('secretsLost', JSON.stringify(['Senha do router de gestão']));
+
+    const read = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(read.json().secretsLost).toEqual(['Senha do router de gestão']);
+
+    await app.inject({ method: 'PUT', url: '/api/settings', payload: { ...validSettings } });
+    const depois = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(depois.json().secretsLost).toEqual([]);
+  });
+});
