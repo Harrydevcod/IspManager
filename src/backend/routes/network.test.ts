@@ -393,3 +393,59 @@ describe('GET /api/network/discovery/proposals', () => {
     expect(response.statusCode).toBe(400);
   });
 });
+
+describe('POST /api/network/router/test', () => {
+  function setSetting(key: string, value: string) {
+    db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run(key, value);
+  }
+
+  test('responde 200 mesmo quando falha: o relatório é que diz o que correu mal', async () => {
+    const response = await app.inject({ method: 'POST', url: '/api/network/router/test' });
+    expect(response.statusCode).toBe(200);
+    const report = response.json() as { ok: boolean; steps: Array<{ id: string; status: string }> };
+    expect(report.ok).toBe(false);
+    expect(report.steps.map((step) => step.id)).toEqual(['config', 'reach', 'cert', 'rest']);
+    expect(report.steps[0].status).toBe('fail');
+  });
+
+  test('testa o que vem do formulário, sem gravar nada', async () => {
+    setSetting('routerosHost', '10.99.99.99');
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/network/router/test',
+      // Porta 1 em loopback: recusa de imediato, sem esperar por timeout.
+      payload: { host: '127.0.0.1', port: 1, user: 'ispm', password: 'segredo' }
+    });
+    expect(response.statusCode).toBe(200);
+    const report = response.json() as { steps: Array<{ id: string; label: string; status: string }> };
+    const reach = report.steps.find((step) => step.id === 'reach');
+    expect(reach?.label).toContain('127.0.0.1:1');
+    expect(reach?.status).toBe('fail');
+    // Testar não é configurar.
+    expect(db.prepare('SELECT value FROM app_settings WHERE key = ?').get('routerosHost'))
+      .toEqual({ value: '10.99.99.99' });
+    expect(db.prepare('SELECT value FROM app_settings WHERE key = ?').get('routerosUser')).toBeUndefined();
+  });
+
+  test('a máscara da senha significa "a que já está guardada"', async () => {
+    setSetting('routerosPassword', '');
+    const masked = await app.inject({
+      method: 'POST',
+      url: '/api/network/router/test',
+      payload: { host: '127.0.0.1', port: 1, user: 'ispm', password: '••••••••' }
+    });
+    // Sem senha guardada, a máscara resolve para vazio e a etapa 1 reclama.
+    const missing = masked.json() as { steps: Array<{ id: string; status: string; detail: string }> };
+    expect(missing.steps[0].status).toBe('fail');
+    expect(missing.steps[0].detail).toContain('senha');
+
+    setSetting('routerosPassword', 'guardada');
+    const resolved = await app.inject({
+      method: 'POST',
+      url: '/api/network/router/test',
+      payload: { host: '127.0.0.1', port: 1, user: 'ispm', password: '••••••••' }
+    });
+    const report = resolved.json() as { steps: Array<{ id: string; status: string }> };
+    expect(report.steps[0].status).toBe('ok');
+  });
+});

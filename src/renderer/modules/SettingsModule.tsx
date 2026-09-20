@@ -29,7 +29,7 @@ import { CompanyTab } from './settings/CompanyTab';
 import { SmsTab } from './settings/SmsTab';
 import { WhatsappTab } from './settings/WhatsappTab';
 import type { SettingsFormState } from './settings/settingsForm';
-import { NetworkTab, type RouterEnforcementState } from './settings/NetworkTab';
+import { NetworkTab, type RouterEnforcementState, type RouterTestReport } from './settings/NetworkTab';
 import { JobHealthPanel } from './JobHealthPanel';
 import { LicensePanel } from './LicensePanel';
 
@@ -45,6 +45,17 @@ const TABS: { id: SettingsTab; label: string; icon: typeof Building2 }[] = [
   { id: 'jobs', label: 'Automatismos', icon: Activity },
   { id: 'license', label: 'Licença', icon: KeyRound }
 ];
+
+/**
+ * Folga sobre o servidor, que gasta no máximo 10 s a chegar à porta e outros
+ * 10 s na REST. Só dispara quando nem o backend responde.
+ */
+const ROUTER_TEST_TIMEOUT_MS = 30_000;
+
+/** Aviso local no mesmo painel do diagnóstico, sem etapas nenhumas. */
+function routerNote(summary: string, tone: 'neutral' | 'error'): RouterTestReport {
+  return { ok: false, steps: [], summary, tone };
+}
 
 export function SettingsModule() {
   const [message, setMessage] = useState<{ tone: 'neutral' | 'success' | 'error'; text: string; placement: 'top' | 'save' } | null>(null);
@@ -114,7 +125,7 @@ export function SettingsModule() {
   const [probeBusy, setProbeBusy] = useState(false);
   const [probeMessage, setProbeMessage] = useState('');
   const [routerBusy, setRouterBusy] = useState(false);
-  const [routerMessage, setRouterMessage] = useState('');
+  const [routerReport, setRouterReport] = useState<RouterTestReport | null>(null);
   const [routerCert, setRouterCert] = useState<{ pem: string; fingerprint: string } | null>(null);
   const [routerState, setRouterState] = useState<RouterEnforcementState | null>(null);
   const [enforceBusy, setEnforceBusy] = useState(false);
@@ -516,26 +527,50 @@ export function SettingsModule() {
 
   async function testRouterNow() {
     setRouterBusy(true);
-    setRouterMessage('');
+    setRouterReport(null);
     setRouterCert(null);
+    // O servidor gasta no máximo 10 s a chegar à porta e outros 10 s na REST.
+    // Este travão é para o caso de nem isso responder: um botão a rodar para
+    // sempre é exatamente o silêncio que este ecrã tinha antes.
+    const abort = new AbortController();
+    const timeout = window.setTimeout(() => abort.abort(), ROUTER_TEST_TIMEOUT_MS);
     try {
-      const response = await authFetch('http://127.0.0.1:3001/api/network/router/test', { method: 'POST' });
-      const result = await response.json() as {
-        ok?: boolean; version?: string; boardName?: string; error?: string;
-        fingerprint?: string | null; certificate?: string | null;
-      };
-      if (response.ok && result.ok) {
-        setRouterMessage(`Ligado: ${result.boardName} com RouterOS ${result.version}.`);
-      } else {
-        setRouterMessage(result.error || 'Nao foi possivel contactar o router.');
-        // Certificado próprio: em vez de mandar desligar o TLS, propõe fixá-lo.
-        if (result.certificate && result.fingerprint) {
-          setRouterCert({ pem: result.certificate, fingerprint: result.fingerprint });
-        }
+      const response = await authFetch('http://127.0.0.1:3001/api/network/router/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: abort.signal,
+        // Testa o que está no ecrã, não o que está gravado. A senha vem
+        // mascarada do servidor: devolvê-la intacta quer dizer "usa a guardada".
+        body: JSON.stringify({
+          host: form.routerosHost,
+          port: Number(form.routerosPort) || 443,
+          user: form.routerosUser,
+          password: form.routerosPassword,
+          tlsCert: form.routerosTlsCert
+        })
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({})) as { error?: string };
+        setRouterReport(routerNote(result.error || 'O servidor recusou o teste.', 'error'));
+        return;
       }
-    } catch {
-      setRouterMessage('Falha de rede ao contactar o router.');
+      const report = await response.json() as RouterTestReport;
+      setRouterReport(report);
+      if (report.certificate && report.fingerprint) {
+        // Certificado próprio: em vez de mandar desligar o TLS, propõe fixá-lo.
+        setRouterCert({ pem: report.certificate, fingerprint: report.fingerprint });
+      }
+    } catch (err) {
+      setRouterReport(
+        routerNote(
+          err instanceof DOMException && err.name === 'AbortError'
+            ? 'O teste passou dos 30 segundos sem resposta. Confirme que a aplicação está a correr e que o endereço do router existe nesta rede.'
+            : 'Falha de rede ao contactar o servidor do ISPM.',
+          'error'
+        )
+      );
     } finally {
+      window.clearTimeout(timeout);
       setRouterBusy(false);
     }
   }
@@ -654,14 +689,17 @@ export function SettingsModule() {
             probeMessage={probeMessage}
             onProbeNow={() => void probeNetworkNow()}
             routerBusy={routerBusy}
-            routerMessage={routerMessage}
+            routerReport={routerReport}
             routerFingerprint={routerCert?.fingerprint ?? ''}
             onRouterTest={() => void testRouterNow()}
             onTrustCertificate={() => {
               if (!routerCert) return;
               updateForm('routerosTlsCert', routerCert.pem);
               setRouterCert(null);
-              setRouterMessage('Certificado fixado no formulário. Grave as definições e teste outra vez.');
+              setRouterReport(routerNote(
+                'Certificado fixado no formulário. Teste outra vez para confirmar, e grave para o guardar.',
+                'neutral'
+              ));
             }}
             routerState={routerState}
             enforceBusy={enforceBusy}
@@ -669,7 +707,11 @@ export function SettingsModule() {
             onEnforceNow={() => void enforceNow()}
             onForgetCertificate={() => {
               updateForm('routerosTlsCert', '');
-              setRouterMessage('Certificado esquecido. Grave as definições para aplicar.');
+              setRouterCert(null);
+              setRouterReport(routerNote(
+                'Certificado esquecido no formulário. Teste outra vez para ler o que o router apresenta agora.',
+                'neutral'
+              ));
             }}
           />
         )}

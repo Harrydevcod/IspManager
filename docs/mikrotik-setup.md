@@ -160,9 +160,23 @@ Definições → Rede → **Router MikroTik**:
 | Senha | a do passo 5 |
 | Ensaio | **ligado** (deixa ficar) |
 
-Depois **Testar ligação**. Falha à primeira, de propósito: o certificado é próprio e ainda não é de
-confiança. O ISPM mostra a impressão digital SHA-256 — compara-a com a do passo 4, carrega em **Confiar
-neste certificado**, grava, e testa outra vez. À segunda responde com a versão do RouterOS e o modelo.
+Depois **Testar ligação** — não é preciso gravar primeiro, o teste corre contra o que está no ecrã.
+
+O resultado vem por etapas, e é a etapa em falha que diz o que fazer:
+
+| Etapa | Falha quer dizer |
+| --- | --- |
+| Definições do router | falta preencher endereço, utilizador ou senha |
+| Porta `ip:porta` | recusada ⇒ `www-ssl` desligado · sem resposta ⇒ IP errado, sem rota, ou a lista de endereços do serviço não inclui esta máquina |
+| Certificado do router | próprio e por confiar (o normal à primeira) · ou diferente do fixado |
+| REST API e credenciais | HTTP 401 ⇒ senha ou endereço do utilizador · 403 ⇒ grupo sem `rest-api` · 404 ⇒ RouterOS < 7 ou REST desligada |
+
+Cada falha traz o comando do RouterOS que a confirma ou resolve.
+
+À primeira falha na etapa do certificado, de propósito: ele é próprio e ainda não é de confiança. O
+ISPM mostra a impressão digital SHA-256 — compara-a com a do passo 4, carrega em **Confiar neste
+certificado**, e testa outra vez. À segunda responde com a versão do RouterOS e o modelo; grava então
+as definições.
 
 ---
 

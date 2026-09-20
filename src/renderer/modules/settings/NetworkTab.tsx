@@ -1,5 +1,5 @@
-import { Radar, RefreshCw, Router, ShieldCheck } from 'lucide-react';
-import { Button, Field, Toggle } from '../../components';
+import { Check, Minus, Radar, RefreshCw, Router, ShieldCheck, X } from 'lucide-react';
+import { Button, Field, Message, Toggle } from '../../components';
 import type { SettingsFormState, ToggleField, UpdateField } from './settingsForm';
 
 export type RouterEnforcementState = {
@@ -18,6 +18,34 @@ export type RouterEnforcementState = {
   configured: boolean;
 };
 
+/** Uma etapa do diagnóstico, tal como o servidor a descreve. */
+export type RouterCheck = {
+  id: 'config' | 'reach' | 'cert' | 'rest';
+  label: string;
+  status: 'ok' | 'fail' | 'skipped';
+  detail: string;
+  command?: string;
+  ms?: number;
+};
+
+export type RouterTestReport = {
+  ok: boolean;
+  steps: RouterCheck[];
+  version?: string;
+  boardName?: string;
+  fingerprint?: string | null;
+  certificate?: string | null;
+  /** Veredicto já escrito. O servidor não o manda: é para os avisos locais. */
+  summary?: string;
+  tone?: 'neutral' | 'success' | 'error';
+};
+
+const CHECK_ICON = {
+  ok: Check,
+  fail: X,
+  skipped: Minus
+} as const;
+
 const DIVERGENCE_LABEL: Record<string, string> = {
   missing_secret: 'Sem utilizador no router',
   state: 'Estado diferente do ISPM',
@@ -33,7 +61,8 @@ type NetworkTabProps = {
   probeMessage: string;
   onProbeNow: () => void;
   routerBusy: boolean;
-  routerMessage: string;
+  /** Relatório da última tentativa, etapa a etapa. Nulo antes do primeiro teste. */
+  routerReport: RouterTestReport | null;
   /** Impressão digital lida na última tentativa recusada, para confirmação humana. */
   routerFingerprint: string;
   onRouterTest: () => void;
@@ -53,7 +82,7 @@ export function NetworkTab({
   probeMessage,
   onProbeNow,
   routerBusy,
-  routerMessage,
+  routerReport,
   routerFingerprint,
   onRouterTest,
   onTrustCertificate,
@@ -188,7 +217,40 @@ export function NetworkTab({
         </>
       )}
       <div className="settings-test-whatsapp" aria-label="Teste de ligação ao router">
-        <span>{routerMessage || 'Lê a versão do RouterOS para confirmar endereço, credenciais e certificado.'}</span>
+        <span>
+          Corre o teste por etapas contra os valores acima — não é preciso gravar primeiro.
+        </span>
+        {routerReport && (
+          <>
+            <Message tone={routerReport.tone ?? (routerReport.ok ? 'success' : 'error')}>
+              {routerReport.summary
+                ?? (routerReport.ok
+                  ? `Ligado ao ${routerReport.boardName}, RouterOS ${routerReport.version}.`
+                  : routerReport.steps.find((step) => step.status === 'fail')?.detail
+                    ?? 'Não foi possível contactar o router.')}
+            </Message>
+            {routerReport.steps.length > 0 && (
+            <ol className="settings-router-steps">
+              {routerReport.steps.map((step) => {
+                const Icon = CHECK_ICON[step.status];
+                return (
+                  <li key={step.id} data-status={step.status}>
+                    <Icon size={14} aria-hidden className="settings-router-step-icon" />
+                    <div>
+                      <strong>{step.label}</strong>
+                      <p>{step.detail}</p>
+                      {step.command && <code>{step.command}</code>}
+                    </div>
+                    <span className="settings-router-step-ms">
+                      {step.ms === undefined ? '' : `${step.ms} ms`}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+            )}
+          </>
+        )}
         {routerFingerprint && (
           <code className="settings-router-fingerprint">
             SHA-256 {routerFingerprint}

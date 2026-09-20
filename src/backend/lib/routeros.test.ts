@@ -3,11 +3,14 @@ import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import {
   createSecret,
+  describeRouterFailure,
+  diagnoseRouter,
   listActive,
   listSecrets,
   patchSecret,
   readRouterConfig,
   removeActive,
+  RouterError,
   testConnection,
   type RouterRequest,
   listNeighbors,
@@ -199,5 +202,91 @@ describe('neighborModel', () => {
 
   test('o fabricante sozinho não passa por modelo', () => {
     expect(neighborModel(neighbor({ platform: 'MikroTik' }))).toBeNull();
+  });
+});
+
+describe('describeRouterFailure', () => {
+  function nodeError(code: string): NodeJS.ErrnoException {
+    const err = new Error(`connect ${code} 10.0.0.1:443`) as NodeJS.ErrnoException;
+    err.code = code;
+    return err;
+  }
+
+  test('cada causa conhecida dá um título próprio e não vaza o erro do Node', () => {
+    const codes = [
+      'ECONNREFUSED',
+      'ETIMEDOUT',
+      'ENOTFOUND',
+      'ECONNRESET',
+      'SELF_SIGNED_CERT_IN_CHAIN',
+      'CERT_MISMATCH'
+    ];
+    const titles = codes.map((code) => describeRouterFailure(nodeError(code)).title);
+    expect(new Set(titles).size).toBe(codes.length);
+    for (const title of titles) {
+      expect(title).not.toMatch(/connect E|SELF_SIGNED/);
+    }
+  });
+
+  test('a porta recusada manda ligar o www-ssl', () => {
+    const failure = describeRouterFailure(nodeError('ECONNREFUSED'));
+    expect(failure.code).toBe('ECONNREFUSED');
+    expect(failure.command).toContain('www-ssl');
+  });
+
+  test('401, 403 e 404 dizem coisas diferentes', () => {
+    const unauthorized = describeRouterFailure(new RouterError('recusado', 401));
+    const forbidden = describeRouterFailure(new RouterError('sem grupo', 403));
+    const missing = describeRouterFailure(new RouterError('sem rota', 404));
+    expect(unauthorized.title).toMatch(/senha/i);
+    expect(forbidden.detail).toContain('rest-api');
+    expect(missing.detail).toMatch(/RouterOS 7/);
+    expect(new Set([unauthorized.title, forbidden.title, missing.title]).size).toBe(3);
+  });
+
+  test('o que não se conhece devolve a mensagem original em vez de inventar', () => {
+    const failure = describeRouterFailure(new Error('coisa nunca vista'));
+    expect(failure.code).toBe('unknown');
+    expect(failure.detail).toBe('coisa nunca vista');
+  });
+});
+
+describe('diagnoseRouter', () => {
+  const baseConfig = {
+    enabled: true,
+    host: '',
+    port: 443,
+    user: '',
+    password: '',
+    dryRun: true,
+    intervalSeconds: 120,
+    tlsCert: '',
+    maxDisablesPerRun: 5
+  };
+
+  test('sem campos preenchidos diz o que falta e não abre socket nenhum', async () => {
+    const report = await diagnoseRouter({ ...baseConfig });
+    expect(report.ok).toBe(false);
+    expect(report.steps.map((step) => step.status)).toEqual(['fail', 'skipped', 'skipped', 'skipped']);
+    expect(report.steps[0].detail).toContain('endereço');
+    expect(report.steps[0].detail).toContain('senha');
+  });
+
+  test('porta fechada falha no alcance e não chega a testar credenciais', async () => {
+    // Porta 1 em loopback: ninguém atende, e recusa de imediato.
+    const report = await diagnoseRouter({
+      ...baseConfig,
+      host: '127.0.0.1',
+      port: 1,
+      user: 'ispm',
+      password: 'segredo'
+    });
+    expect(report.ok).toBe(false);
+    const byId = Object.fromEntries(report.steps.map((step) => [step.id, step]));
+    expect(byId.config.status).toBe('ok');
+    expect(byId.reach.status).toBe('fail');
+    expect(byId.cert.status).toBe('skipped');
+    expect(byId.rest.status).toBe('skipped');
+    expect(report.certificate).toBeNull();
   });
 });

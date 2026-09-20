@@ -5914,6 +5914,74 @@ button.danger:disabled {
   width: fit-content;
 }
 
+/* Diagnóstico por etapas. A cor não é o único sinal: o ícone (✓ ✗ –) diz o
+   mesmo, para quem não distingue verde de vermelho. */
+.settings-router-steps {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3);
+  list-style: none;
+  width: 100%;
+  max-width: 72ch;
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  background: var(--surface-2);
+}
+
+.settings-router-steps > li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-2);
+  align-items: start;
+  --step-tone: var(--text-3);
+}
+
+.settings-router-steps > li[data-status='ok'] { --step-tone: var(--success); }
+.settings-router-steps > li[data-status='fail'] { --step-tone: var(--danger); }
+
+.settings-router-step-icon {
+  color: var(--step-tone);
+  margin-top: 2px;
+}
+
+.settings-router-steps strong {
+  display: block;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.settings-router-steps p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+/* O comando é para ser copiado para o terminal do router tal e qual. */
+.settings-router-steps code {
+  display: inline-block;
+  margin-top: var(--space-1);
+  padding: 2px var(--space-1-5);
+  border-radius: var(--r1);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.settings-router-step-ms {
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* Confiança no router: a impressão digital é para ser lida em voz alta contra o
    Winbox, por isso vive em monoespaçado e quebra em vez de esticar o painel. */
 .settings-router-fingerprint {

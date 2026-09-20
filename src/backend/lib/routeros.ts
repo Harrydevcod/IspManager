@@ -74,12 +74,136 @@ export class RouterError extends Error {
   readonly status: number;
   /** 'untrusted' quando a ligação caiu por o certificado não ser de confiança. */
   readonly certIssue?: string;
+  /**
+   * Causa legível por código: o `err.code` do Node (`ECONNREFUSED`) ou
+   * `http_401`. É por aqui que `describeRouterFailure` decide o que dizer ao
+   * operador — adivinhar pela mensagem partia-se à primeira tradução do Node.
+   */
+  readonly code: string;
 
-  constructor(message: string, status = 0, certIssue?: string) {
+  constructor(message: string, status = 0, certIssue?: string, code = '') {
     super(message);
     this.name = 'RouterError';
     this.status = status;
     this.certIssue = certIssue;
+    this.code = code || (status ? `http_${status}` : 'unknown');
+  }
+}
+
+export type RouterFailure = {
+  /** Código estável da causa, para testes e telemetria. */
+  code: string;
+  /** Uma linha: o que falhou. */
+  title: string;
+  /** Duas ou três: porquê, e o que conferir. */
+  detail: string;
+  /** Comando do RouterOS que resolve ou confirma, quando há um. */
+  command?: string;
+};
+
+/**
+ * Traduz a falha para linguagem de quem administra o router.
+ *
+ * Vive aqui, e não na rota do teste, porque a reconciliação e o job periódico
+ * guardam o mesmo erro em `last_error`: `connect ECONNREFUSED 10.0.0.1:443`
+ * não diz a ninguém que o que falta é ligar o `www-ssl`. Os comandos são os de
+ * `docs/mikrotik-setup.md`.
+ */
+export function describeRouterFailure(err: unknown): RouterFailure {
+  const routerError = err instanceof RouterError ? err : null;
+  const nodeCode = (err as NodeJS.ErrnoException | null)?.code;
+  const code = routerError?.code || nodeCode || 'unknown';
+  const fallback = err instanceof Error ? err.message : 'Falha ao contactar o router';
+
+  switch (code) {
+    case 'ECONNREFUSED':
+      return {
+        code,
+        title: 'O router recusou a ligação nessa porta',
+        detail:
+          'Alguém atendeu e disse que não. Quase sempre é o serviço www-ssl desligado no RouterOS, ou a porta configurada aqui não ser a dele.',
+        command: '/ip service enable www-ssl'
+      };
+    case 'ETIMEDOUT':
+    case 'EHOSTUNREACH':
+    case 'ENETUNREACH':
+    case 'EHOSTDOWN':
+      return {
+        code,
+        title: 'O router não respondeu',
+        detail:
+          'Nada atendeu no endereço indicado. Confirme o IP do router de gestão, que esta máquina chega a essa rede, e que a lista de endereços do www-ssl inclui esta máquina.',
+        command: '/ip service print detail where name=www-ssl'
+      };
+    case 'ENOTFOUND':
+    case 'EAI_AGAIN':
+      return {
+        code,
+        title: 'O endereço não existe',
+        detail: 'O nome escrito não resolve para nenhum endereço. Use o IP do router na rede de gestão.'
+      };
+    case 'ECONNRESET':
+    case 'EPROTO':
+    case 'ERR_SSL_WRONG_VERSION_NUMBER':
+      return {
+        code,
+        title: 'A porta responde, mas não fala HTTPS',
+        detail:
+          'Alguma coisa atende nesse endereço e cortou o aperto de mão TLS. A REST API do RouterOS vive no www-ssl (443), não no www (80).',
+        command: '/ip service print detail where name=www-ssl'
+      };
+    case 'SELF_SIGNED_CERT_IN_CHAIN':
+    case 'DEPTH_ZERO_SELF_SIGNED_CERT':
+    case 'UNABLE_TO_VERIFY_LEAF_SIGNATURE':
+      return {
+        code,
+        title: 'O router usa um certificado próprio',
+        detail:
+          'É o normal num MikroTik: ninguém assina o certificado dele. Confira a impressão digital abaixo contra a do router e fixe-a — a partir daí a ligação só é aceite com esse certificado.',
+        command: '/certificate print detail'
+      };
+    case 'CERT_MISMATCH':
+      return {
+        code,
+        title: 'O certificado não é o que está fixado',
+        detail:
+          'O router apresentou um certificado diferente do fixado nas definições. Se o certificado foi mesmo refeito no router, esqueça o antigo e fixe o novo. Se não foi, pare aqui: há alguém pelo meio.',
+        command: '/certificate print detail'
+      };
+    case 'http_401':
+      return {
+        code,
+        title: 'Utilizador ou senha recusados',
+        detail:
+          'A ligação chegou ao router e ele recusou as credenciais. Confirme a senha e se o utilizador da API está limitado a entrar só de outro endereço.',
+        command: '/user print detail'
+      };
+    case 'http_403':
+      return {
+        code,
+        title: 'O utilizador não tem permissão para a REST API',
+        detail:
+          'O grupo desse utilizador precisa de rest-api além de read, write e api. Sem rest-api o RouterOS autentica e recusa a seguir.',
+        command: '/user group print detail'
+      };
+    case 'http_404':
+      return {
+        code,
+        title: 'A REST API não existe nesse router',
+        detail:
+          'O endereço respondeu mas não conhece /rest. A REST API só existe em RouterOS 7 ou superior, e vive no serviço www-ssl.',
+        command: '/system resource print'
+      };
+    default:
+      if (code.startsWith('http_5')) {
+        return {
+          code,
+          title: 'O router respondeu com erro interno',
+          detail: `O RouterOS devolveu ${code.replace('http_', 'HTTP ')}. Confira os registos do router.`,
+          command: '/log print where topics~"error"'
+        };
+      }
+      return { code, title: 'Não foi possível contactar o router', detail: fallback };
   }
 }
 
@@ -97,28 +221,55 @@ export function fingerprintOf(pem: string): string {
   return new X509Certificate(pem).fingerprint256.toUpperCase();
 }
 
+function toPem(raw: Buffer): string {
+  return `-----BEGIN CERTIFICATE-----\n${raw.toString('base64').replace(/(.{64})/g, '$1\n')}\n-----END CERTIFICATE-----\n`;
+}
+
 /**
  * Lê o certificado que o router apresenta, **sem enviar credenciais**: só o
  * aperto de mão TLS. É o que permite mostrar a impressão digital ao operador
  * para ele confirmar antes de a fixar.
+ *
+ * Devolve a **cadeia inteira**, do certificado do router para cima, e não só o
+ * dele. O MikroTik assina o certificado do serviço com uma autoridade local
+ * (`SKYNET-GW` assinado por `SKYNET-CA`), e o OpenSSL não aceita como âncora de
+ * confiança um certificado que não é autoridade: fixar só a folha dava uma
+ * ligação que falhava para sempre por "certificado próprio", por mais vezes que
+ * se carregasse em confiar. Com a cadeia, a autoridade entra em `ca` e a folha
+ * continua a ser o primeiro certificado do PEM — que é o que `fingerprintOf` lê
+ * e o que o operador compara contra o router.
  */
 export function fetchRouterCertificate(config: RouterConfig): Promise<{ pem: string; fingerprint: string }> {
   return new Promise((resolve, reject) => {
     const socket = tlsConnect(
       { host: config.host, port: config.port, rejectUnauthorized: false, timeout: REQUEST_TIMEOUT_MS },
       () => {
-        const cert = socket.getPeerCertificate();
+        const leaf = socket.getPeerCertificate(true);
         socket.destroy();
-        if (!cert?.raw) {
-          reject(new RouterError('O router nao apresentou certificado'));
+        if (!leaf?.raw) {
+          reject(new RouterError('O router nao apresentou certificado', 0, undefined, 'no_cert'));
           return;
         }
-        const pem = `-----BEGIN CERTIFICATE-----\n${cert.raw.toString('base64').replace(/(.{64})/g, '$1\n')}\n-----END CERTIFICATE-----\n`;
-        resolve({ pem, fingerprint: cert.fingerprint256?.toUpperCase() ?? fingerprintOf(pem) });
+        const chain: string[] = [];
+        const seen = new Set<string>();
+        let node: typeof leaf | undefined = leaf;
+        // Uma cadeia auto-assinada aponta o último para si própria: o `seen`
+        // é o que impede o ciclo.
+        while (node?.raw && !seen.has(node.fingerprint256)) {
+          seen.add(node.fingerprint256);
+          chain.push(toPem(node.raw));
+          node = node.issuerCertificate;
+        }
+        const pem = chain.join('');
+        resolve({ pem, fingerprint: leaf.fingerprint256?.toUpperCase() ?? fingerprintOf(pem) });
       }
     );
-    socket.on('timeout', () => socket.destroy(new RouterError('O router nao respondeu a tempo')));
-    socket.on('error', (err) => reject(err instanceof RouterError ? err : new RouterError(err.message)));
+    socket.on('timeout', () =>
+      socket.destroy(new RouterError('O router nao respondeu a tempo', 0, undefined, 'ETIMEDOUT'))
+    );
+    socket.on('error', (err: NodeJS.ErrnoException) =>
+      reject(err instanceof RouterError ? err : new RouterError(err.message, 0, undefined, err.code))
+    );
   });
 }
 
@@ -159,7 +310,12 @@ export function createTransport(config: RouterConfig): RouterTransport {
                 checkServerIdentity: (_host: string, cert: { fingerprint256?: string }) =>
                   cert.fingerprint256?.toUpperCase() === pinnedFingerprint
                     ? undefined
-                    : new RouterError('O certificado do router nao e o que esta fixado nas definicoes')
+                    : new RouterError(
+                        'O certificado do router nao e o que esta fixado nas definicoes',
+                        0,
+                        undefined,
+                        'CERT_MISMATCH'
+                      )
               }
             : {}),
           timeout: REQUEST_TIMEOUT_MS,
@@ -179,7 +335,7 @@ export function createTransport(config: RouterConfig): RouterTransport {
               try {
                 parsed = JSON.parse(raw);
               } catch {
-                reject(new RouterError(`Resposta ilegível do router (HTTP ${status})`, status));
+                reject(new RouterError(`Resposta ilegível do router (HTTP ${status})`, status, undefined, 'bad_response'));
                 return;
               }
             }
@@ -196,13 +352,18 @@ export function createTransport(config: RouterConfig): RouterTransport {
         }
       );
 
-      call.on('timeout', () => call.destroy(new RouterError('O router não respondeu a tempo')));
+      call.on('timeout', () =>
+        call.destroy(new RouterError('O router não respondeu a tempo', 0, undefined, 'ETIMEDOUT'))
+      );
       call.on('error', (err: NodeJS.ErrnoException) => {
         if (err instanceof RouterError) {
           reject(err);
           return;
         }
-        const selfSigned = err.code === 'SELF_SIGNED_CERT_IN_CHAIN' || err.code === 'DEPTH_ZERO_SELF_SIGNED_CERT';
+        const selfSigned =
+          err.code === 'SELF_SIGNED_CERT_IN_CHAIN' ||
+          err.code === 'DEPTH_ZERO_SELF_SIGNED_CERT' ||
+          err.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE';
         reject(
           new RouterError(
             selfSigned
@@ -211,7 +372,8 @@ export function createTransport(config: RouterConfig): RouterTransport {
             0,
             // Marca para a rota poder ir buscar o certificado (sem credenciais)
             // e propor fixá-lo, em vez de sugerir desligar o TLS.
-            selfSigned ? 'untrusted' : undefined
+            selfSigned ? 'untrusted' : undefined,
+            err.code
           )
         );
       });
@@ -261,6 +423,186 @@ export async function testConnection(transport: RouterTransport): Promise<{ vers
     version: str(row?.version) ?? 'desconhecida',
     boardName: str(row?.['board-name']) ?? 'desconhecido'
   };
+}
+
+// ------------------------------------------------------------- diagnóstico
+
+export type RouterCheckId = 'config' | 'reach' | 'cert' | 'rest';
+
+export type RouterCheck = {
+  id: RouterCheckId;
+  label: string;
+  status: 'ok' | 'fail' | 'skipped';
+  detail: string;
+  /** Comando do RouterOS que resolve ou confirma esta etapa. */
+  command?: string;
+  ms?: number;
+};
+
+export type RouterDiagnosis = {
+  ok: boolean;
+  steps: RouterCheck[];
+  version?: string;
+  boardName?: string;
+  /** Impressão digital lida, quando há uma para o operador fixar. */
+  fingerprint: string | null;
+  certificate: string | null;
+};
+
+/**
+ * Corre a ligação ao router por etapas, em vez de devolver uma frase só.
+ *
+ * Uma frase não responde à pergunta que se faz à frente do router: *em que
+ * ponto é que isto parte?* Aqui separam-se as quatro coisas que podem estar
+ * mal — o que está preenchido, a porta chegar, o certificado ser o certo, e as
+ * credenciais serem aceites — e cada uma diz o que conferir.
+ *
+ * A ordem não é decorativa: as credenciais só saem da máquina depois de o
+ * certificado estar conferido. A etapa `reach` usa `fetchRouterCertificate`,
+ * que é um aperto de mão **sem credenciais**, e é ela que traz o certificado
+ * que a etapa `cert` compara — não há uma segunda ligação para isso.
+ */
+export async function diagnoseRouter(config: RouterConfig): Promise<RouterDiagnosis> {
+  const steps: RouterCheck[] = [];
+  const skipped = (id: RouterCheckId, label: string, detail = 'Não testado: a etapa anterior falhou.'): RouterCheck => ({
+    id,
+    label,
+    status: 'skipped',
+    detail
+  });
+  const reachLabel = `Porta ${config.host || '?'}:${config.port}`;
+
+  // 1. O que está preenchido. Não vale a pena abrir sockets sem isto.
+  const missing: string[] = [];
+  if (!config.host) missing.push('endereço');
+  if (!config.user) missing.push('utilizador');
+  if (!config.password) missing.push('senha');
+  if (missing.length > 0) {
+    steps.push({
+      id: 'config',
+      label: 'Definições do router',
+      status: 'fail',
+      detail: `Falta preencher: ${missing.join(', ')}.`
+    });
+    steps.push(skipped('reach', reachLabel));
+    steps.push(skipped('cert', 'Certificado do router'));
+    steps.push(skipped('rest', 'REST API e credenciais'));
+    return { ok: false, steps, fingerprint: null, certificate: null };
+  }
+  steps.push({
+    id: 'config',
+    label: 'Definições do router',
+    status: 'ok',
+    detail: `${config.user}@${config.host}:${config.port}${config.tlsCert.trim() ? ' · certificado fixado' : ''}`
+  });
+
+  // 2. A porta chega e fala TLS — sem enviar credenciais.
+  const startedAt = Date.now();
+  let presented: { pem: string; fingerprint: string };
+  try {
+    presented = await fetchRouterCertificate(config);
+  } catch (err) {
+    const failure = describeRouterFailure(err);
+    steps.push({
+      id: 'reach',
+      label: reachLabel,
+      status: 'fail',
+      detail: `${failure.title}. ${failure.detail}`,
+      command: failure.command,
+      ms: Date.now() - startedAt
+    });
+    steps.push(skipped('cert', 'Certificado do router'));
+    steps.push(skipped('rest', 'REST API e credenciais'));
+    return { ok: false, steps, fingerprint: null, certificate: null };
+  }
+  steps.push({
+    id: 'reach',
+    label: reachLabel,
+    status: 'ok',
+    detail: 'Aberta, e do outro lado responde TLS.',
+    ms: Date.now() - startedAt
+  });
+
+  // 3. O certificado. Fixado, compara-se; não fixado, decide-se pelo resultado
+  //    da etapa seguinte (a cadeia normal ainda pode validar).
+  const pinnedPem = config.tlsCert.trim();
+  let pinnedFingerprint = '';
+  if (pinnedPem) {
+    try {
+      pinnedFingerprint = fingerprintOf(pinnedPem);
+    } catch {
+      // PEM ilegível: trata-se abaixo, com instruções.
+    }
+  }
+
+  const certStep: RouterCheck = {
+    id: 'cert',
+    label: 'Certificado do router',
+    status: 'ok',
+    detail: pinnedPem
+      ? 'Fixado e conferido: o router apresentou exatamente este certificado.'
+      : 'Nenhum fixado. Confira a impressão digital abaixo contra o router e fixe-a para prender a ligação a este equipamento.'
+  };
+  const restStep: RouterCheck = skipped('rest', 'REST API e credenciais');
+  steps.push(certStep, restStep);
+
+  if (pinnedPem && !pinnedFingerprint) {
+    certStep.status = 'fail';
+    certStep.detail = 'O certificado fixado nas definições está ilegível. Esqueça-o e fixe outra vez a partir deste teste.';
+    return { ok: false, steps, fingerprint: presented.fingerprint, certificate: null };
+  }
+
+  if (pinnedPem && pinnedFingerprint !== presented.fingerprint) {
+    const failure = describeRouterFailure(new RouterError('', 0, undefined, 'CERT_MISMATCH'));
+    certStep.status = 'fail';
+    certStep.detail = `${failure.title}. ${failure.detail}`;
+    certStep.command = failure.command;
+    // Sem `certificate`: fixar o novo com um clique é exatamente o que não se
+    // deve poder fazer no dia em que o certificado muda sozinho. Quem quiser
+    // trocar passa primeiro por "Esquecer certificado".
+    return { ok: false, steps, fingerprint: presented.fingerprint, certificate: null };
+  }
+
+  // 4. Credenciais e REST API.
+  const restStartedAt = Date.now();
+  try {
+    const info = await testConnection(createTransport(config));
+    if (!pinnedPem) {
+      certStep.detail = 'Validado pela cadeia de confiança do sistema. Fixe-o para prender a ligação a este router.';
+    }
+    restStep.status = 'ok';
+    restStep.detail = `${info.boardName}, RouterOS ${info.version}.`;
+    restStep.ms = Date.now() - restStartedAt;
+    return {
+      ok: true,
+      steps,
+      version: info.version,
+      boardName: info.boardName,
+      fingerprint: presented.fingerprint,
+      certificate: pinnedPem ? null : presented.pem
+    };
+  } catch (err) {
+    const failure = describeRouterFailure(err);
+    // Certificado próprio por confiar: a culpa é da etapa 3, não das
+    // credenciais — que, de propósito, nunca chegaram a sair daqui.
+    if (err instanceof RouterError && err.certIssue === 'untrusted') {
+      certStep.status = 'fail';
+      certStep.command = failure.command;
+      certStep.detail = pinnedPem
+        // Impressão digital certa e mesmo assim sem confiança: o que está
+        // fixado é só o certificado do router, sem a autoridade que o assinou.
+        // Fixar outra vez a partir deste teste guarda a cadeia completa.
+        ? 'O certificado fixado é o do router, mas falta a autoridade que o assinou — e sem ela a ligação nunca é aceite. Carregue em "Confiar neste certificado" para fixar a cadeia completa.'
+        : `${failure.title}. ${failure.detail}`;
+      restStep.detail = 'Não testado: as credenciais não saem desta máquina enquanto o certificado não for de confiança.';
+      return { ok: false, steps, fingerprint: presented.fingerprint, certificate: presented.pem };
+    }
+    restStep.status = 'fail';
+    restStep.detail = `${failure.title}. ${failure.detail}`;
+    restStep.command = failure.command;
+    restStep.ms = Date.now() - restStartedAt;
+    return { ok: false, steps, fingerprint: presented.fingerprint, certificate: pinnedPem ? null : presented.pem };
+  }
 }
 
 export async function listSecrets(transport: RouterTransport): Promise<RouterSecret[]> {

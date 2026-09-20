@@ -283,8 +283,14 @@ describe('definicoes do MikroTik', () => {
     expect((await app.inject({ method: 'GET', url: '/api/settings' })).json().routerosDryRun).toBe(false);
   });
 
-  test('testar ligacao sem router configurado responde 400 em vez de tentar ligar', async () => {
+  test('testar ligacao sem router configurado diz o que falta em vez de tentar ligar', async () => {
     const response = await app.inject({ method: 'POST', url: '/api/network/router/test' });
-    expect(response.statusCode).toBe(400);
+    // 200 com relatorio: o diagnostico responde sempre, e e ele que diz que
+    // faltam campos — nunca se abre socket nenhum neste caso.
+    expect(response.statusCode).toBe(200);
+    const report = response.json() as { ok: boolean; steps: Array<{ id: string; status: string; detail: string }> };
+    expect(report.ok).toBe(false);
+    expect(report.steps[0]).toMatchObject({ id: 'config', status: 'fail' });
+    expect(report.steps.slice(1).every((step) => step.status === 'skipped')).toBe(true);
   });
 });
