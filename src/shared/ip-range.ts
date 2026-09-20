@@ -41,6 +41,25 @@ export function intToIp(value: number): string {
   return [24, 16, 8, 0].map((shift) => (value >>> shift) & 255).join('.');
 }
 
+/** Os três blocos privados da RFC 1918, em início/fim inteiros. */
+const PRIVATE_BLOCKS: ReadonlyArray<readonly [number, number]> = [
+  [0x0a000000, 0x0affffff], // 10.0.0.0/8
+  [0xac100000, 0xac1fffff], // 172.16.0.0/12
+  [0xc0a80000, 0xc0a8ffff] // 192.168.0.0/16
+];
+
+/**
+ * Se o endereço pertence a uma rede local.
+ *
+ * O que fica de fora não é só "internet": o bloco CGNAT `100.64.0.0/10` é onde
+ * vive a WAN da Starlink, e é dele que vinha o lixo na Descoberta.
+ */
+export function isPrivateIpv4(value: string): boolean {
+  const total = ipToInt(value);
+  if (total === null) return false;
+  return PRIVATE_BLOCKS.some(([start, end]) => total >= start && total <= end);
+}
+
 /**
  * Aceita três formas, que é o que as pessoas escrevem:
  *   192.168.1.0/24            — rede e broadcast excluídos (num /31 ou /32 não há o que excluir)

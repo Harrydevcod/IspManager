@@ -32,7 +32,7 @@ import { crossReference, type ObservedHost } from '../lib/network-inventory';
 import { buildProposals, dismissalKey, findOrphans, type ProposalKind } from '../lib/discovery-reconcile';
 import { runJob } from '../lib/jobRuns';
 import { recordAudit } from '../lib/audit';
-import { isIpv4, SWEEP_BATCH_SIZE } from '../../shared/ip-range';
+import { isIpv4, isPrivateIpv4, SWEEP_BATCH_SIZE } from '../../shared/ip-range';
 import { requireAuth, requireRole } from './auth';
 import { SECRET_MASK } from './settings';
 
@@ -226,7 +226,11 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     }
 
     const attach = (ip: string, mac: string | null, hostname: string | null, source: ObservedHost['source']) => {
-      if (!isIpv4(ip)) return;
+      // Só rede local entra. O router de gestão encaminha as duas WAN Starlink e
+      // reporta-as no ARP como reporta tudo o resto — endereços CGNAT
+      // (100.64.0.0/10) que nunca foram varridos e não são equipamento nenhum.
+      // A Descoberta é um inventário da rede local, não da internet.
+      if (!isIpv4(ip) || !isPrivateIpv4(ip)) return;
       const existing = byIp.get(ip);
       if (existing) {
         existing.mac = existing.mac ?? mac;

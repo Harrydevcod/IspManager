@@ -1,5 +1,14 @@
 import { describe, expect, test } from 'vitest';
-import { chunk, describeRange, expandRange, intToIp, ipToInt, isIpv4, MAX_SWEEP_HOSTS } from './ip-range';
+import {
+  chunk,
+  describeRange,
+  expandRange,
+  intToIp,
+  ipToInt,
+  isIpv4,
+  isPrivateIpv4,
+  MAX_SWEEP_HOSTS
+} from './ip-range';
 
 describe('ipToInt / intToIp', () => {
   test('vai e volta', () => {
@@ -128,5 +137,33 @@ describe('describeRange', () => {
   test('o intervalo inválido devolve a mensagem do expandRange', () => {
     expect(describeRange('192.168.1.0/8').error).toContain('demasiado grande');
     expect(describeRange('nao-e-um-ip').error).toContain('Endereço inválido');
+  });
+});
+
+describe('isPrivateIpv4', () => {
+  test('aceita os três blocos da RFC 1918', () => {
+    expect(isPrivateIpv4('192.168.1.10')).toBe(true);
+    expect(isPrivateIpv4('10.1.2.3')).toBe(true);
+    expect(isPrivateIpv4('172.16.0.1')).toBe(true);
+    expect(isPrivateIpv4('172.31.255.254')).toBe(true);
+  });
+
+  test('recusa o CGNAT da Starlink, que é de onde vinha o lixo', () => {
+    expect(isPrivateIpv4('100.64.0.1')).toBe(false);
+    expect(isPrivateIpv4('100.71.9.49')).toBe(false);
+    expect(isPrivateIpv4('26.0.0.1')).toBe(false);
+  });
+
+  test('as fronteiras do /12 e o vizinho do 10.0.0.0/8', () => {
+    // 172.15 e 172.32 ficam fora — é aqui que se parte quem reescreva isto de
+    // cabeça. E 100.x não pode passar por parecer-se com 10.x no início.
+    expect(isPrivateIpv4('172.15.255.255')).toBe(false);
+    expect(isPrivateIpv4('172.32.0.1')).toBe(false);
+    expect(isPrivateIpv4('100.64.0.1')).toBe(false);
+  });
+
+  test('o que não é endereço não é rede local', () => {
+    expect(isPrivateIpv4('nao-e-um-ip')).toBe(false);
+    expect(isPrivateIpv4('192.168.1.999')).toBe(false);
   });
 });
