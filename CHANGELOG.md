@@ -4,6 +4,16 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.3](https://github.com/Harrydevcod/IspManager/releases/tag/v2.3.0) — 2026-09-21
+
+> **Uma migração.** A `0061` apaga da Descoberta os endereços que o router reportou sem MAC, sem nome e sem modelo. Na base real são **398 de 586**. Como na 2.2, não é histórico nem documento: a tabela volta a encher-se sozinha no varrimento seguinte.
+
+### Corrigido
+
+- **A Descoberta deixa de contar endereços vazios como equipamento.** Mesmo depois da 2.2, a lista dizia haver cerca de **556 desconhecidos** — a `/24` inteira de `192.168.1.x` e de `192.168.100.x`, todos sem MAC. Não havia ninguém lá. O varrimento pinga cada endereço através do router de gestão, e o MikroTik guarda na tabela ARP uma linha por cada endereço que tentou encontrar, **mesmo quando ninguém responde**. Essas linhas não têm MAC, e o ISPM lia-as como equipamento presente.
+
+  Agora uma entrada ARP do router sem MAC não entra no retrato. Com o router real ligado, os desconhecidos passam de ~556 para **64, todos com MAC e fabricante** — os que estão na rede de verdade e ainda não foram registados.
+
 ## [2.2](https://github.com/Harrydevcod/IspManager/releases/tag/v2.2.0) — 2026-09-20
 
 > **Uma migração.** A `0060` limpa da Descoberta os endereços que nunca foram rede local. Na base real são **87 de 661** — as 574 da rede ficam intactas. Não é histórico nem documento: a tabela volta a encher-se sozinha no varrimento seguinte.
