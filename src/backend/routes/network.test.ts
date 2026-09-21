@@ -289,6 +289,27 @@ describe('POST /api/network/discovery', () => {
     expect(left.sort()).toEqual([...fica].sort());
   });
 
+  test('a migração 0061 tira as entradas ARP falhadas do router e deixa o que foi visto', async () => {
+    const insert = db.prepare(
+      `INSERT INTO network_discovery_hosts (ip_address, mac_address, hostname, model, source, first_seen_at, last_seen_at, times_seen)
+       VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'), 1)`
+    );
+    insert.run('192.168.1.10', null, null, null, 'router'); // sai: ARP falhado
+    insert.run('192.168.1.22', '3C:78:95:BF:8D:E0', null, null, 'router');
+    insert.run('192.168.1.30', null, 'cpe-norte', null, 'router');
+    insert.run('192.168.1.40', null, null, 'CPE510', 'router');
+    insert.run('192.168.1.50', null, null, null, 'ping');
+
+    const migration = (await import('../db/migrations/0061_discovery_arp_sem_mac')).default;
+    db.exec(migration.sql);
+
+    const left = db
+      .prepare(`SELECT ip_address AS ip FROM network_discovery_hosts ORDER BY ip_address`)
+      .all()
+      .map((row) => (row as { ip: string }).ip);
+    expect(left).toEqual(['192.168.1.22', '192.168.1.30', '192.168.1.40', '192.168.1.50']);
+  });
+
   test('guarda o histórico: a segunda passagem incrementa sem perder o first_seen_at', async () => {
     await discoveryContext({ alive: [{ ip: '203.0.113.3', rttMs: 5 }] });
     const first = db.prepare(

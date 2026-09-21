@@ -15,6 +15,7 @@ import {
   testConnection,
   type RouterRequest,
   type RouterService,
+  listArp,
   listNeighbors,
   neighborModel,
   type RouterTransport
@@ -150,6 +151,19 @@ describe('operações RouterOS', () => {
       throw new Error('ECONNREFUSED');
     }) as RouterTransport;
     await expect(listSecrets(transport)).rejects.toThrow('ECONNREFUSED');
+  });
+});
+
+describe('listArp', () => {
+  test('entrada sem MAC não entra — é o router a ter perguntado sem resposta', async () => {
+    // Varrer uma /24 através do router deixa-lhe uma linha destas por cada
+    // endereço morto. Na base real eram 398 "desconhecidos" que não existiam.
+    const transport = fakeTransport([[
+      { address: '192.168.1.22', 'mac-address': '3C:78:95:BF:8D:E0', interface: 'bridge', dynamic: 'true' },
+      { address: '192.168.1.10', interface: 'bridge', dynamic: 'true' }
+    ]]);
+    const entries = await listArp(transport);
+    expect(entries.map((entry) => entry.address)).toEqual(['192.168.1.22']);
   });
 });
 

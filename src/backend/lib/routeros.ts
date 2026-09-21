@@ -847,7 +847,10 @@ export async function listArp(transport: RouterTransport): Promise<RouterArpEntr
       iface: str(row.interface),
       dynamic: toBool(row.dynamic)
     }))
-    .filter((entry) => entry.address);
+    // Sem MAC é uma entrada falhada: o router perguntou quem tinha o endereço
+    // e ninguém respondeu. Basta varrer uma /24 através dele para a tabela
+    // ganhar uma destas por cada endereço morto — não prova ninguém na rede.
+    .filter((entry) => entry.address && entry.macAddress);
 }
 
 /**
