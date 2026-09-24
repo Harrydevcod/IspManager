@@ -39,6 +39,7 @@ import { registerNetworkRoutes } from './routes/network';
 import { networkProbeIntervalMs, runNetworkProbeIfDue } from './lib/network-probe';
 import { runNetworkEnforcementIfDue } from './lib/network-enforcement';
 import { routerosIntervalMs } from './lib/routeros';
+import { autoSuspensionIntervalMs, runAutomaticSuspension } from './lib/auto-suspension';
 import { runJob, runJobSync } from './lib/jobRuns';
 
 let serverStarted = false;
@@ -237,6 +238,25 @@ export async function createBackendApp() {
     };
     probeTick();
     scheduleProbe();
+  }
+
+  // Suspensão automática por dívida: decide apenas a intenção na base de dados.
+  // A reconciliação abaixo é a única camada que escreve no MikroTik. Corre no
+  // arranque (catch-up depois de o PC estar desligado) e em intervalo configurável.
+  if (process.env.ISPM_AUTO_SUSPENSION !== 'off' && !process.env.VITEST) {
+    const suspensionTick = () => {
+      if (!licenseAllowsWrites()) return;
+      void runJob('auto_suspension', () => runAutomaticSuspension())
+        .catch((err) => app.log.error({ err }, 'automatic suspension failed'));
+    };
+    const scheduleSuspension = () => {
+      setTimeout(() => {
+        suspensionTick();
+        scheduleSuspension();
+      }, autoSuspensionIntervalMs()).unref();
+    };
+    suspensionTick();
+    scheduleSuspension();
   }
 
   // Reconciliação do acesso na rede (ADR 0007): compara a intenção da BD com o
