@@ -436,9 +436,9 @@ export async function runServiceNetworkEnforcement(
     throw new Error('Servico sem utilizador PPPoE');
   }
 
-  const [secrets, active] = await Promise.all([listSecrets(deps.transport), listActive(deps.transport)]);
+  let [secrets, active] = await Promise.all([listSecrets(deps.transport), listActive(deps.transport)]);
   const plan = planActions([service], secrets, false);
-  const activeByName = new Map<string, RouterActive>(active.map((session) => [session.name, session]));
+  let activeByName = new Map<string, RouterActive>(active.map((session) => [session.name, session]));
   const errors = new Map<number, string>();
   let applied = 0;
 
@@ -452,10 +452,20 @@ export async function runServiceNetworkEnforcement(
         errors.set(action.serviceId, err instanceof Error ? err.message : String(err));
       }
     }
+
+    // O painel individual deve refletir o que ficou no router depois do clique,
+    // não a fotografia anterior à escrita. A passagem global acabaria por
+    // atualizar isto no tick seguinte, mas aqui o operador acabou de pedir uma
+    // confirmação explícita e espera vê-la já.
+    if (applied > 0) {
+      [secrets, active] = await Promise.all([listSecrets(deps.transport), listActive(deps.transport)]);
+      activeByName = new Map<string, RouterActive>(active.map((session) => [session.name, session]));
+    }
   }
 
-  const divergence = plan.divergences.find((row) => row.serviceId === serviceId)?.kind ?? null;
-  const secret = plan.matched.get(serviceId);
+  const observedPlan = planActions([service], secrets, false);
+  const divergence = observedPlan.divergences.find((row) => row.serviceId === serviceId)?.kind ?? null;
+  const secret = observedPlan.matched.get(serviceId);
   const session = activeByName.get(service.username);
   db.prepare(upsertState).run(
     service.serviceId,
