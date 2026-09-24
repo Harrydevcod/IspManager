@@ -61,6 +61,11 @@ export type SettingsFormState = {
   routerosDryRun: boolean;
   routerosIntervalSeconds: string;
   routerosMaxDisablesPerRun: string;
+  autoSuspensionEnabled: boolean;
+  autoSuspensionGraceDays: string;
+  autoSuspensionIntervalMinutes: string;
+  autoSuspensionMaxPerRun: string;
+  autoSuspensionMaxPercent: string;
 };
 
 export type UpdateField = (field: keyof SettingsFormState, value: string) => void;
