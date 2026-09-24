@@ -16,6 +16,7 @@ function service(overrides: Partial<DesiredService> = {}): DesiredService {
     clientName: 'Joao Silva',
     username: 'joao-1',
     password: 'segredo',
+    passwordPending: false,
     enabled: true,
     rateLimit: '2M/10M',
     ...overrides
@@ -86,6 +87,24 @@ describe('planActions', () => {
     const plan = planActions([service()], [secret({ name: 'renomeado-no-winbox' })]);
     expect(plan.actions).toEqual([]);
     expect(plan.matched.get(1)?.id).toBe('*1');
+  });
+
+  test('password marcada como pendente gera uma ação sem expor a password no plano', () => {
+    const plan = planActions([service({ passwordPending: true })], [secret()]);
+    expect(plan.actions).toEqual([
+      { kind: 'password', serviceId: 1, username: 'joao-1', secretId: '*1', clientName: 'Joao Silva' }
+    ]);
+    expect(plan.divergences[0]).toMatchObject({ kind: 'password', serviceId: 1 });
+    expect(JSON.stringify(plan.actions)).not.toContain('segredo');
+  });
+
+  test('sincronização isolada não chama órfãos aos outros clientes do router', () => {
+    const plan = planActions(
+      [service()],
+      [secret(), secret({ id: '*2', name: 'ana-2', comment: 'ispm:2' })],
+      { reportOrphans: false }
+    );
+    expect(plan.divergences).toEqual([]);
   });
 
   test('secret nosso sem serviço correspondente é reportado, nunca apagado', () => {
@@ -207,6 +226,40 @@ describe('runNetworkEnforcement', () => {
     await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
 
     expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*77', body: { disabled: 'yes' } });
+  });
+
+  test('password pendente é aplicada no router e a marca só limpa depois do PATCH', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    db.prepare(`
+      UPDATE services
+      SET pppoe_password = 'nova-senha-segura', pppoe_password_sync_pending = 1
+      WHERE id = 1
+    `).run();
+    const { transport, calls } = recordingTransport([secret()]);
+
+    const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+
+    expect(summary.applied).toBe(1);
+    expect(calls).toContainEqual({
+      method: 'PATCH',
+      path: '/ppp/secret/*1',
+      body: { password: 'nova-senha-segura' }
+    });
+    expect(db.prepare('SELECT pppoe_password_sync_pending AS pending FROM services WHERE id = 1').get())
+      .toEqual({ pending: 0 });
+  });
+
+  test('dry-run mostra a password pendente mas não a limpa nem escreve no router', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    db.prepare(`UPDATE services SET pppoe_password_sync_pending = 1 WHERE id = 1`).run();
+    const { transport, calls } = recordingTransport([secret()]);
+
+    const summary = await runNetworkEnforcement(db, { transport, dryRun: true, maxDisables: 5 });
+
+    expect(summary.actions.some((action) => action.kind === 'password')).toBe(true);
+    expect(calls.every((call) => call.method === 'GET')).toBe(true);
+    expect(db.prepare('SELECT pppoe_password_sync_pending AS pending FROM services WHERE id = 1').get())
+      .toEqual({ pending: 1 });
   });
 
   test('a trava de segurança impede um corte em massa e não corta nenhum', async () => {
