@@ -61,16 +61,23 @@ describe('changeServiceStatus', () => {
     const result = services.changeServiceStatus(db, id, 'suspended', { reason: 'Dívida de dois meses' });
 
     expect(result.ok && result.value).toEqual({ changed: true, previous: 'active', next: 'suspended' });
-    expect(db.prepare('SELECT status FROM services WHERE id = ?').get(id)).toEqual({ status: 'suspended' });
+    expect(db.prepare('SELECT status, suspension_source AS source, suspended_at AS suspendedAt FROM services WHERE id = ?').get(id)).toMatchObject({
+      status: 'suspended',
+      source: 'manual',
+      suspendedAt: expect.any(String)
+    });
     expect(eventsOf(id)).toEqual([{ eventType: 'suspensao', notes: 'Dívida de dois meses' }]);
   });
 
-  test('reativar e cancelar têm cada um o seu tipo de evento', () => {
-    const id = seedService('suspended');
+  test('reativar e cancelar limpam a origem da suspensão', () => {
+    const id = seedService();
+    services.changeServiceStatus(db, id, 'suspended', { reason: 'Dívida', source: 'nonpayment' });
     services.changeServiceStatus(db, id, 'active', { reason: 'Pagou' });
     services.changeServiceStatus(db, id, 'cancelled', { reason: 'Mudou-se' });
 
-    expect(eventsOf(id).map((event) => event.eventType)).toEqual(['reativacao', 'cancelamento']);
+    expect(eventsOf(id).map((event) => event.eventType)).toEqual(['suspensao', 'reativacao', 'cancelamento']);
+    expect(db.prepare('SELECT suspension_source AS source, suspended_at AS suspendedAt FROM services WHERE id = ?').get(id))
+      .toEqual({ source: null, suspendedAt: null });
   });
 
   test('mudar para o estado que já tem não inventa história', () => {

@@ -120,7 +120,12 @@ export function SettingsModule() {
     routerosTlsCert: '',
     routerosDryRun: true,
     routerosIntervalSeconds: '120',
-    routerosMaxDisablesPerRun: '5'
+    routerosMaxDisablesPerRun: '5',
+    autoSuspensionEnabled: false,
+    autoSuspensionGraceDays: '15',
+    autoSuspensionIntervalMinutes: '60',
+    autoSuspensionMaxPerRun: '5',
+    autoSuspensionMaxPercent: '20'
   });
   const [probeBusy, setProbeBusy] = useState(false);
   const [probeMessage, setProbeMessage] = useState('');
@@ -132,6 +137,8 @@ export function SettingsModule() {
   const [routerState, setRouterState] = useState<RouterEnforcementState | null>(null);
   const [enforceBusy, setEnforceBusy] = useState(false);
   const [enforceMessage, setEnforceMessage] = useState('');
+  const [autoSuspendBusy, setAutoSuspendBusy] = useState(false);
+  const [autoSuspendMessage, setAutoSuspendMessage] = useState('');
   const [smsStatus, setSmsStatus] = useState<SmsStatus | null>(null);
   const [smsReportMonth, setSmsReportMonth] = useState(currentSmsReportMonth);
   const [smsReport, setSmsReport] = useState<SmsMonthlyReport | null>(null);
@@ -332,7 +339,7 @@ export function SettingsModule() {
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
         }
-        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold' | 'routerosPort' | 'routerosIntervalSeconds' | 'routerosMaxDisablesPerRun'> & { defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number; routerosPort: number; routerosIntervalSeconds: number; routerosMaxDisablesPerRun: number; secretsLost?: string[] }>;
+        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold' | 'routerosPort' | 'routerosIntervalSeconds' | 'routerosMaxDisablesPerRun' | 'autoSuspensionGraceDays' | 'autoSuspensionIntervalMinutes' | 'autoSuspensionMaxPerRun' | 'autoSuspensionMaxPercent'> & { defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number; routerosPort: number; routerosIntervalSeconds: number; routerosMaxDisablesPerRun: number; autoSuspensionGraceDays: number; autoSuspensionIntervalMinutes: number; autoSuspensionMaxPerRun: number; autoSuspensionMaxPercent: number; secretsLost?: string[] }>;
       })
       .then((settings) => {
         const loadedForm = {
@@ -352,7 +359,11 @@ export function SettingsModule() {
           networkProbeFailThreshold: String(settings.networkProbeFailThreshold),
           routerosPort: String(settings.routerosPort),
           routerosIntervalSeconds: String(settings.routerosIntervalSeconds),
-          routerosMaxDisablesPerRun: String(settings.routerosMaxDisablesPerRun)
+          routerosMaxDisablesPerRun: String(settings.routerosMaxDisablesPerRun),
+          autoSuspensionGraceDays: String(settings.autoSuspensionGraceDays),
+          autoSuspensionIntervalMinutes: String(settings.autoSuspensionIntervalMinutes),
+          autoSuspensionMaxPerRun: String(settings.autoSuspensionMaxPerRun),
+          autoSuspensionMaxPercent: String(settings.autoSuspensionMaxPercent)
         };
         setForm(loadedForm);
         setLastSavedForm(loadedForm);
@@ -450,7 +461,11 @@ export function SettingsModule() {
           networkProbeFailThreshold: Number(savedForm.networkProbeFailThreshold),
           routerosPort: Number(savedForm.routerosPort),
           routerosIntervalSeconds: Number(savedForm.routerosIntervalSeconds),
-          routerosMaxDisablesPerRun: Number(savedForm.routerosMaxDisablesPerRun)
+          routerosMaxDisablesPerRun: Number(savedForm.routerosMaxDisablesPerRun),
+          autoSuspensionGraceDays: Number(savedForm.autoSuspensionGraceDays),
+          autoSuspensionIntervalMinutes: Number(savedForm.autoSuspensionIntervalMinutes),
+          autoSuspensionMaxPerRun: Number(savedForm.autoSuspensionMaxPerRun),
+          autoSuspensionMaxPercent: Number(savedForm.autoSuspensionMaxPercent)
         })
       });
 
@@ -526,6 +541,45 @@ export function SettingsModule() {
       setEnforceMessage('Falha de rede ao reconciliar.');
     } finally {
       setEnforceBusy(false);
+    }
+  }
+
+  async function runAutoSuspensionNow() {
+    setAutoSuspendBusy(true);
+    setAutoSuspendMessage('');
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/network/auto-suspension', { method: 'POST' });
+      const result = await response.json() as {
+        skipped?: boolean;
+        aborted?: boolean;
+        dryRun?: boolean;
+        reason?: string;
+        candidateCount?: number;
+        blockedByCreditCount?: number;
+        simulated?: number;
+        applied?: number;
+        revalidatedOut?: number;
+      };
+      if (!response.ok) {
+        setAutoSuspendMessage('Nao foi possivel avaliar a suspensao automatica.');
+      } else if (result.aborted) {
+        setAutoSuspendMessage(`Travado por seguranca: ${result.reason}. Nenhum servico foi suspenso.`);
+      } else if (result.skipped) {
+        setAutoSuspendMessage(result.reason || 'Suspensao automatica nao executada.');
+      } else if (result.dryRun) {
+        setAutoSuspendMessage(
+          `Ensaio: ${result.simulated ?? result.candidateCount ?? 0} servico(s) seriam suspensos. ${result.blockedByCreditCount ?? 0} protegido(s) por credito. Nada foi alterado.`
+        );
+      } else {
+        setAutoSuspendMessage(
+          `${result.applied ?? 0} servico(s) suspensos; ${result.revalidatedOut ?? 0} retirado(s) na validacao final.`
+        );
+      }
+      await loadRouterState();
+    } catch {
+      setAutoSuspendMessage('Falha de rede ao avaliar a suspensao automatica.');
+    } finally {
+      setAutoSuspendBusy(false);
     }
   }
 
@@ -717,6 +771,9 @@ export function SettingsModule() {
             enforceBusy={enforceBusy}
             enforceMessage={enforceMessage}
             onEnforceNow={() => void enforceNow()}
+            autoSuspendBusy={autoSuspendBusy}
+            autoSuspendMessage={autoSuspendMessage}
+            onAutoSuspendNow={() => void runAutoSuspensionNow()}
             onForgetCertificate={() => {
               updateForm('routerosTlsCert', '');
               setRouterCert(null);

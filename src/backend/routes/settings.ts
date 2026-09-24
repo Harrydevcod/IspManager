@@ -134,6 +134,11 @@ const settingsSchema = z.object({
   }, z.boolean().optional().default(true)),
   routerosIntervalSeconds: z.coerce.number().int().min(30).max(3600).optional().default(120),
   routerosMaxDisablesPerRun: z.coerce.number().int().min(1).max(500).optional().default(5),
+  autoSuspensionEnabled: strictOptionalBoolean,
+  autoSuspensionGraceDays: z.coerce.number().int().min(1).max(120).optional().default(15),
+  autoSuspensionIntervalMinutes: z.coerce.number().int().min(5).max(1440).optional().default(60),
+  autoSuspensionMaxPerRun: z.coerce.number().int().min(1).max(500).optional().default(5),
+  autoSuspensionMaxPercent: z.coerce.number().int().min(1).max(100).optional().default(20),
   backupDir: z.string().trim().max(500).optional().nullable()
 });
 
@@ -199,6 +204,11 @@ const defaultSettings = {
   routerosDryRun: true,
   routerosIntervalSeconds: 120,
   routerosMaxDisablesPerRun: 5,
+  autoSuspensionEnabled: false,
+  autoSuspensionGraceDays: 15,
+  autoSuspensionIntervalMinutes: 60,
+  autoSuspensionMaxPerRun: 5,
+  autoSuspensionMaxPercent: 20,
   backupDir: ''
 };
 
@@ -247,7 +257,15 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       } else if (row.key === 'networkProbeFailThreshold') {
         const n = Number(row.value);
         settings.networkProbeFailThreshold = Number.isFinite(n) ? n : defaultSettings.networkProbeFailThreshold;
-      } else if (row.key === 'routerosPort' || row.key === 'routerosIntervalSeconds' || row.key === 'routerosMaxDisablesPerRun') {
+      } else if (
+        row.key === 'routerosPort'
+        || row.key === 'routerosIntervalSeconds'
+        || row.key === 'routerosMaxDisablesPerRun'
+        || row.key === 'autoSuspensionGraceDays'
+        || row.key === 'autoSuspensionIntervalMinutes'
+        || row.key === 'autoSuspensionMaxPerRun'
+        || row.key === 'autoSuspensionMaxPercent'
+      ) {
         const n = Number(row.value);
         settings[row.key] = Number.isFinite(n) ? n : defaultSettings[row.key];
       } else if (row.key === 'routerosDryRun') {
@@ -260,7 +278,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         settings[row.key] = row.value ? SECRET_MASK : '';
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
-      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled') {
+      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled' || row.key === 'autoSuspensionEnabled') {
         settings[row.key] = row.value === 'true' || row.value === '1';
       } else if (row.key === 'bankAccounts') {
         try {
@@ -352,7 +370,9 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       metadata: {
         companyName: parsed.data.companyName,
         defaultDueDay: parsed.data.defaultDueDay,
-        backupDirChanged: wantedBackupDir.length > 0
+        backupDirChanged: wantedBackupDir.length > 0,
+        autoSuspensionEnabled: parsed.data.autoSuspensionEnabled,
+        autoSuspensionGraceDays: parsed.data.autoSuspensionGraceDays
       }
     });
     return {

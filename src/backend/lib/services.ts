@@ -241,7 +241,7 @@ export function changeServiceStatus(
   db: Database,
   id: number,
   next: ServiceStatus,
-  options: { reason?: string | null; actorId?: number | null } = {}
+  options: { reason?: string | null; actorId?: number | null; source?: 'manual' | 'nonpayment' | null } = {}
 ): ServiceOpResult<ServiceStatusChange> {
   const row = db.prepare('SELECT status FROM services WHERE id = ?').get(id) as { status: ServiceStatus } | undefined;
   if (!row) {
@@ -251,7 +251,19 @@ export function changeServiceStatus(
     return { ok: true, value: { changed: false, previous: row.status, next } };
   }
 
-  db.prepare(`UPDATE services SET status = ?, updated_at = datetime('now') WHERE id = ?`).run(next, id);
+  if (next === 'suspended') {
+    db.prepare(`
+      UPDATE services
+      SET status = ?, suspension_source = ?, suspended_at = datetime('now'), updated_at = datetime('now')
+      WHERE id = ?
+    `).run(next, options.source ?? 'manual', id);
+  } else {
+    db.prepare(`
+      UPDATE services
+      SET status = ?, suspension_source = NULL, suspended_at = NULL, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(next, id);
+  }
   db.prepare(`
     INSERT INTO service_events (service_id, event_type, notes, created_by)
     VALUES (?, ?, ?, ?)

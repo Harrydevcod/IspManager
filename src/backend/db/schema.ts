@@ -95,7 +95,9 @@ export const services = sqliteTable('services', {
   audiovisualMonthlyCve: real('audiovisual_monthly_cve').notNull().default(0),
   audiovisualAnnualCve: real('audiovisual_annual_cve').notNull().default(0),
   pppoeUsername: text('pppoe_username'),
-  pppoePassword: text('pppoe_password')
+  pppoePassword: text('pppoe_password'),
+  suspensionSource: text('suspension_source'),
+  suspendedAt: text('suspended_at')
 });
 
 export const payments = sqliteTable('payments', {

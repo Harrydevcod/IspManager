@@ -16,7 +16,12 @@ const form = {
   routerosTlsCert: '',
   routerosDryRun: true,
   routerosIntervalSeconds: '120',
-  routerosMaxDisablesPerRun: '5'
+  routerosMaxDisablesPerRun: '5',
+  autoSuspensionEnabled: false,
+  autoSuspensionGraceDays: '15',
+  autoSuspensionIntervalMinutes: '60',
+  autoSuspensionMaxPerRun: '5',
+  autoSuspensionMaxPercent: '20'
 } as SettingsFormState;
 
 function render(routerReport: RouterTestReport | null) {
@@ -38,6 +43,9 @@ function render(routerReport: RouterTestReport | null) {
       enforceBusy={false}
       enforceMessage=""
       onEnforceNow={vi.fn()}
+      autoSuspendBusy={false}
+      autoSuspendMessage=""
+      onAutoSuspendNow={vi.fn()}
     />
   );
 }
