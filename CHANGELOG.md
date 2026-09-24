@@ -4,6 +4,22 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.4](https://github.com/Harrydevcod/IspManager/releases/tag/v2.4.0) — 2026-09-24
+
+> **Sem migrações.** Nada muda na estrutura da base. O arranque deixa de reescrever credenciais — passa só a lê-las.
+
+### Corrigido
+
+- **Restaurar um backup noutra máquina deixa de apagar as credenciais.** Desde a 2.0 que as credenciais de infraestrutura — a senha do router de gestão e o token da UltraMsg — são seladas na conta do Windows. Isso é o que se quer: um `ispm.sqlite` copiado para outro computador não dá credencial nenhuma a quem o copiou.
+
+  O que estava mal era o que o arranque fazia a seguir. Ao encontrar uma credencial selada que não conseguia abrir, **apagava-a**. A intenção era honesta — não mostrar nas Definições uma máscara a fingir que há senha guardada — mas o preço era alto de mais: quem restaurasse um backup no computador errado, ou reinstalasse o Windows, perdia as credenciais **do ficheiro**, e já não as recuperava levando-o de volta à máquina original. Uma viagem de ida sem volta, e sem aviso antes.
+
+  Agora não se apaga nada. A credencial fica gravada exatamente como estava, o aviso em Definições continua a dizer quais é que esta máquina não abre, e o campo mostra-se vazio — porque vazio é a verdade aqui: não há senha nenhuma para usar neste computador. Levando o ficheiro para a máquina onde foi selada, está lá tudo.
+
+- **Gravar as Definições com o campo da senha vazio deixa de apagar a senha.** O formulário nunca mostra a credencial guardada, por isso um campo vazio quer dizer "não lhe toquei" — e era lido como "apaga". Bastava mudar o nome da empresa logo a seguir a um restauro para perder a senha do router. Vazio passa a não mexer; para trocar a credencial, escreve-se a nova.
+
+- **O aviso das credenciais perdidas passa a dizer a verdade.** Desaparecia à primeira gravação de qualquer definição, mesmo que a credencial continuasse por reescrever. Agora é recalculado do que está gravado: cala-se quando a credencial é reposta, e mantém-se enquanto não for.
+
 ## [2.3](https://github.com/Harrydevcod/IspManager/releases/tag/v2.3.0) — 2026-09-21
 
 > **Uma migração.** A `0061` apaga da Descoberta os endereços que o router reportou sem MAC, sem nome e sem modelo. Na base real são **398 de 586**. Como na 2.2, não é histórico nem documento: a tabela volta a encher-se sozinha no varrimento seguinte.

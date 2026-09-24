@@ -375,6 +375,24 @@ describe('credenciais nas definicoes', () => {
     expect(stored('ultraMsgToken')).toBe('token-secreto');
   });
 
+  test('gravar outra definição com a password vazia não apaga a credencial', async () => {
+    await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, routerosHost: '192.168.88.1', routerosUser: 'ispm', routerosPassword: 'segredo' }
+    });
+
+    // Vazio quer dizer "não mexi nisto", não "apaga". Quem quiser tirar a
+    // credencial desliga a integração; a remoção explícita chega na fatia 2.
+    await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, companyName: 'Outra coisa qualquer', routerosPassword: '' }
+    });
+
+    expect(stored('routerosPassword')).toBe('segredo');
+  });
+
   test('o aviso dos segredos perdidos chega ao cliente e some ao gravar', async () => {
     db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)')
       .run('secretsLost', JSON.stringify(['Senha do router de gestão']));

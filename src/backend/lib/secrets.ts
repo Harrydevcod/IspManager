@@ -179,46 +179,59 @@ export function writeSecret(db: Database.Database, key: SecretKey, value: string
 }
 
 /**
+ * Recalcula — a partir do que está gravado — que credenciais é que esta máquina
+ * não consegue abrir, e deixa a lista escrita para as Definições a mostrarem.
+ *
+ * Só se pode concluir alguma coisa quando **há** cifra disponível: aí um bloco
+ * que não abre é prova de que veio de outra conta. Sem cifra, um bloco selado é
+ * só um bloco que esta máquina não sabe abrir hoje, e não há aviso a dar.
+ *
+ * É recalculado, e não acumulado, de propósito: quem reescrever a credencial
+ * cala o aviso sem ninguém ter de se lembrar de o limpar.
+ */
+export function refreshSecretsLost(db: Database.Database): string[] {
+  const available = isSealingAvailable();
+  const lost = available
+    ? SECRET_KEYS.filter((key) => {
+        const stored = rawSetting(db, key).trim();
+        return stored !== '' && isSealed(stored) && unsealValue(stored) === null;
+      }).map((key) => SECRET_LABELS[key])
+    : [];
+
+  saveSetting(db, SECRETS_LOST_KEY, JSON.stringify(lost));
+  return lost;
+}
+
+/**
  * Passagem de arranque, a seguir às migrações.
  *
  * Faz duas coisas: sela o que ainda está em claro (é o que migra as instalações
  * existentes, sem migração SQL — ver ADR 0003 e a lição de migrações aplicadas
- * a meio de uma corrida de dev), e deteta o que foi selado por outra conta.
+ * a meio de uma corrida de dev), e assinala o que foi selado por outra conta.
  *
- * O segundo caso só se limpa quando **há** cifra disponível: aí um bloco que
- * não abre é prova de que veio de outra máquina. Sem cifra, um bloco selado é
- * só um bloco que esta máquina não sabe abrir hoje — apagá-lo seria destruir a
- * credencial de quem arrancou a aplicação no sítio errado.
+ * **Nunca apaga.** Um bloco que não abre aqui abre na máquina onde foi selado,
+ * e quem restaurou um backup no sítio errado tem de poder levar o ficheiro de
+ * volta. Apagá-lo tornava a viagem de ida sem volta — e não havia nada a ganhar
+ * com isso: quem lê a credencial já recebe vazio (`readSecret`), que é o que
+ * mantém as Definições honestas sem destruir nada.
  *
- * Devolve as etiquetas do que se perdeu, e deixa-as gravadas para as Definições
+ * Devolve as etiquetas do que não abre, e deixa-as gravadas para as Definições
  * as poderem mostrar depois do reinício que o restauro obriga.
  */
 export function sealPendingSecrets(db: Database.Database): string[] {
   const available = isSealingAvailable();
-  const lost: string[] = [];
 
   const run = db.transaction(() => {
-    for (const key of SECRET_KEYS) {
-      const stored = rawSetting(db, key).trim();
-      if (!stored) continue;
-
-      if (!isSealed(stored)) {
-        if (available) saveSetting(db, key, sealValue(stored));
-        continue;
+    if (available) {
+      for (const key of SECRET_KEYS) {
+        const stored = rawSetting(db, key).trim();
+        if (stored && !isSealed(stored)) saveSetting(db, key, sealValue(stored));
       }
-
-      if (!available) continue;
-      if (unsealValue(stored) !== null) continue;
-
-      // Selado, com cifra a funcionar, e mesmo assim não abre: outra conta.
-      saveSetting(db, key, '');
-      lost.push(SECRET_LABELS[key]);
     }
-    saveSetting(db, SECRETS_LOST_KEY, JSON.stringify(lost));
+    return refreshSecretsLost(db);
   });
-  run();
 
-  return lost;
+  return run();
 }
 
 /** O que o arranque não conseguiu abrir, para as Definições avisarem. */
@@ -231,6 +244,3 @@ export function readSecretsLost(db: Database.Database): string[] {
   }
 }
 
-export function clearSecretsLost(db: Database.Database): void {
-  saveSetting(db, SECRETS_LOST_KEY, '[]');
-}
