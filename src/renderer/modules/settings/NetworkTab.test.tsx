@@ -181,7 +181,7 @@ describe('NetworkTab — diagnóstico do router', () => {
     expect(html).toContain('Clientes que seriam suspensos');
     expect(html).toContain('Joao Silva');
     expect(html).toContain('joao-7');
-    expect(html).toContain('3.000');
+    expect(html).toContain('3000 CVE');
     expect(html).toContain('Protegidos por crédito');
     expect(html).toContain('Maria Lopes');
   });
