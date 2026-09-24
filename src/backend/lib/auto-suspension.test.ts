@@ -172,6 +172,45 @@ describe('suspensão automática por falta de pagamento', () => {
       .toEqual({ status: 'suspended' });
   });
 
+  test('dívida do titular anterior não suspende o novo titular após transferência', () => {
+    configure(db, true);
+    const original = seed(db, 'ANTIGO');
+
+    const newClientId = Number(db.prepare(`
+      INSERT INTO clients (client_code, full_name, status)
+      VALUES ('NOVO', 'Cliente Novo', 'active')
+    `).run().lastInsertRowid);
+
+    // A transferência preserva as faturas emitidas no cliente antigo.
+    db.prepare('UPDATE services SET client_id = ? WHERE id = ?')
+      .run(newClientId, original.serviceId);
+
+    const preview = loadAutoSuspensionPreview(db);
+    expect(preview.candidateCount).toBe(0);
+  });
+
+  test.each(['suspended', 'cancelled'] as const)(
+    'pagamento não reativa serviço quando o cliente está %s',
+    (clientStatus) => {
+      configure(db, false);
+      const one = seed(db, 'CLIENTE-INATIVO');
+
+      db.prepare(`
+        UPDATE services
+        SET status='suspended', suspension_source='nonpayment', suspended_at=datetime('now')
+        WHERE id=?
+      `).run(one.serviceId);
+      db.prepare('UPDATE clients SET status = ? WHERE id = ?')
+        .run(clientStatus, one.clientId);
+      db.prepare('UPDATE payments SET status = ? WHERE id = ?')
+        .run('paid', one.paymentId);
+
+      expect(reactivateServiceIfEligibleAfterPayment(db, one.serviceId)).toBe(false);
+      expect(db.prepare('SELECT status FROM services WHERE id = ?').get(one.serviceId))
+        .toEqual({ status: 'suspended' });
+    }
+  );
+
   test('uma dívida antiga restante impede reativação prematura', () => {
     configure(db, false);
     const one = seed(db, 'DUAS');
