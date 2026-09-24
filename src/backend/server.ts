@@ -246,7 +246,7 @@ export async function createBackendApp() {
   if (process.env.ISPM_AUTO_SUSPENSION !== 'off' && !process.env.VITEST) {
     const suspensionTick = () => {
       if (!licenseAllowsWrites()) return;
-      void runJob('auto_suspension', () => runAutomaticSuspension())
+      void runJob('auto_suspension', async () => runAutomaticSuspension())
         .catch((err) => app.log.error({ err }, 'automatic suspension failed'));
     };
     const scheduleSuspension = () => {
