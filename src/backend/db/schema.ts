@@ -97,7 +97,8 @@ export const services = sqliteTable('services', {
   pppoeUsername: text('pppoe_username'),
   pppoePassword: text('pppoe_password'),
   suspensionSource: text('suspension_source'),
-  suspendedAt: text('suspended_at')
+  suspendedAt: text('suspended_at'),
+  pppoePasswordSyncPending: integer('pppoe_password_sync_pending', { mode: 'boolean' }).notNull().default(false)
 });
 
 export const payments = sqliteTable('payments', {

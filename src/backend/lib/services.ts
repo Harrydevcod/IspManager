@@ -176,7 +176,11 @@ export function createService(db: Database, data: ServiceInput, userId: number |
     // router, não se inventam credenciais que ninguém vai usar.
     const wantsPppoe = data.pppoeUsername?.trim() || routerIntegrationOn(db);
     if (wantsPppoe) {
-      db.prepare('UPDATE services SET pppoe_username = ?, pppoe_password = ? WHERE id = ?').run(
+      db.prepare(`
+        UPDATE services
+        SET pppoe_username = ?, pppoe_password = ?, pppoe_password_sync_pending = 1
+        WHERE id = ?
+      `).run(
         data.pppoeUsername?.trim() || pppoeUsernameFor(client.fullName, serviceId),
         data.pppoePassword?.trim() || generatePppoePassword(),
         serviceId
@@ -278,7 +282,11 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
     return { ok: false, status: 400, error: validationError };
   }
 
-  const service = db.prepare('SELECT id FROM services WHERE id = ?').get(id);
+  const service = db.prepare(`
+    SELECT id, pppoe_password AS pppoePassword
+    FROM services
+    WHERE id = ?
+  `).get(id) as { id: number; pppoePassword: string | null } | undefined;
   if (!service) {
     return { ok: false, status: 404, error: 'Servico nao encontrado' };
   }
@@ -295,6 +303,9 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
     }
   }
 
+  const nextPppoePassword = data.pppoePassword?.trim() || null;
+  const passwordChanged = nextPppoePassword !== service.pppoePassword && nextPppoePassword !== null;
+
   // O estado sai deste UPDATE: passa por `changeServiceStatus`, que o regista.
   db.prepare(`
     UPDATE services
@@ -309,6 +320,10 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
         audiovisual_annual_cve = ?,
         pppoe_username = ?,
         pppoe_password = ?,
+        pppoe_password_sync_pending = CASE
+          WHEN ? = 1 THEN 1
+          ELSE pppoe_password_sync_pending
+        END,
         updated_at = datetime('now')
     WHERE id = ?
   `).run(
@@ -322,7 +337,8 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
     data.audiovisualMonthlyCve,
     data.audiovisualAnnualCve,
     data.pppoeUsername?.trim() || null,
-    data.pppoePassword?.trim() || null,
+    nextPppoePassword,
+    passwordChanged ? 1 : 0,
     id
   );
 
@@ -332,6 +348,46 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
   }
 
   return { ok: true, value: undefined };
+}
+
+/**
+ * Altera apenas a password PPPoE sem tocar em preço, plano ou estado comercial.
+ * A escrita no router fica para a reconciliação; até lá a flag pending impede
+ * que a UI diga que está sincronizada.
+ */
+export function changePppoePassword(
+  db: Database,
+  id: number,
+  password: string
+): ServiceOpResult<{ changed: boolean }> {
+  const cleanPassword = password.trim();
+  if (cleanPassword.length < 8 || cleanPassword.length > 64) {
+    return { ok: false, status: 400, error: 'A senha PPPoE deve ter entre 8 e 64 caracteres' };
+  }
+
+  const row = db.prepare(`
+    SELECT pppoe_username AS username, pppoe_password AS password
+    FROM services
+    WHERE id = ?
+  `).get(id) as { username: string | null; password: string | null } | undefined;
+
+  if (!row) return { ok: false, status: 404, error: 'Servico nao encontrado' };
+  if (!row.username?.trim()) {
+    return { ok: false, status: 409, error: 'Este servico ainda nao tem utilizador PPPoE' };
+  }
+  if (row.password === cleanPassword) {
+    return { ok: true, value: { changed: false } };
+  }
+
+  db.prepare(`
+    UPDATE services
+    SET pppoe_password = ?,
+        pppoe_password_sync_pending = 1,
+        updated_at = datetime('now')
+    WHERE id = ?
+  `).run(cleanPassword, id);
+
+  return { ok: true, value: { changed: true } };
 }
 
 /**

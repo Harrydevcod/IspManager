@@ -20,7 +20,14 @@ import {
   voidReceipt
 } from '../lib/payments';
 import { loadReceivables } from '../lib/receivables';
-import { createService, deleteService, serviceSchema, updateService } from '../lib/services';
+import {
+  changePppoePassword,
+  changeServiceStatus,
+  createService,
+  deleteService,
+  serviceSchema,
+  updateService
+} from '../lib/services';
 import { serviceTransferSchema, transferService } from '../lib/serviceTransfer';
 import { requireAuth, requireRole } from './auth';
 
@@ -47,6 +54,15 @@ const cancelSchema = z.object({
   reason: z.string().trim().optional().nullable()
 });
 
+const serviceStatusActionSchema = z.object({
+  status: z.enum(['active', 'suspended']),
+  reason: z.string().trim().max(300).optional().nullable()
+}).strict();
+
+const pppoePasswordActionSchema = z.object({
+  password: z.string().trim().min(8).max(64)
+}).strict();
+
 export async function registerFinanceRoutes(app: FastifyInstance) {
   const billingWrite = { preHandler: requireRole(['admin', 'operator']) };
 
@@ -67,6 +83,8 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         c.full_name AS clientName,
         s.plan_id AS planId,
         p.name AS planName,
+        p.download_mbps AS planDownloadMbps,
+        p.upload_mbps AS planUploadMbps,
         s.monthly_value_cve AS monthlyValueCve,
         s.due_day AS dueDay,
         s.status,
@@ -77,11 +95,17 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         s.audiovisual_annual_cve AS audiovisualAnnualCve,
         s.pppoe_username AS pppoeUsername,
         s.pppoe_password AS pppoePassword,
+        s.pppoe_password_sync_pending AS pppoePasswordPending,
         -- Realidade lida do router (ADR 0007): a lista mostra quem está mesmo
         -- online, sem ir buscá-lo serviço a serviço.
         n.online AS routerOnline,
         n.router_enabled AS routerEnabled,
         n.divergence AS routerDivergence,
+        n.address AS routerAddress,
+        n.uptime AS routerUptime,
+        n.checked_at AS routerLastSyncAt,
+        n.last_error AS routerLastError,
+        n.rate_limit AS routerRateLimit,
         -- IPs dos equipamentos ativos: chave de identificacao das antenas para
         -- manutencao remota, por isso vem ja na lista e nao so no detalhe.
         -- Pela vista assignment_services, para uma antena partilhada aparecer em
@@ -192,6 +216,68 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       metadata: { clientId: parsed.data.clientId, planId: parsed.data.planId ?? null, status: parsed.data.status }
     });
     return { ok: true };
+  });
+
+  /**
+   * Ações rápidas da ficha do serviço. Não passam pelo formulário completo para
+   * não correr o risco de alterar preço/plano por dados desatualizados.
+   */
+  app.post('/api/services/:id/status', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const parsed = serviceStatusActionSchema.safeParse(request.body ?? {});
+    if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Acao de estado invalida' });
+    }
+
+    const db = getSqliteDatabase();
+    const current = db.prepare('SELECT status FROM services WHERE id = ?').get(id) as
+      | { status: 'active' | 'suspended' | 'cancelled' }
+      | undefined;
+    if (!current) return reply.status(404).send({ error: 'Servico nao encontrado' });
+    if (current.status === 'cancelled') {
+      return reply.status(409).send({ error: 'Um servico cancelado nao pode ser reativado por esta acao' });
+    }
+
+    const result = changeServiceStatus(db, id, parsed.data.status, {
+      actorId: request.user?.id ?? null,
+      source: parsed.data.status === 'suspended' ? 'manual' : null,
+      reason: parsed.data.reason
+        || (parsed.data.status === 'suspended' ? 'Suspensão manual pela ficha do serviço' : 'Reativação manual pela ficha do serviço')
+    });
+    if (!result.ok) return reply.status(result.status).send({ error: result.error });
+
+    recordAudit(request, {
+      action: parsed.data.status === 'suspended' ? 'manual_suspend' : 'manual_reactivate',
+      entityType: 'service',
+      entityId: id,
+      summary: parsed.data.status === 'suspended'
+        ? `Suspendeu manualmente o servico ${id}`
+        : `Reativou manualmente o servico ${id}`,
+      metadata: { previous: result.value.previous, next: result.value.next }
+    });
+
+    return result.value;
+  });
+
+  app.patch('/api/services/:id/pppoe-password', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const parsed = pppoePasswordActionSchema.safeParse(request.body ?? {});
+    if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Senha PPPoE invalida' });
+    }
+
+    const result = changePppoePassword(getSqliteDatabase(), id, parsed.data.password);
+    if (!result.ok) return reply.status(result.status).send({ error: result.error });
+
+    recordAudit(request, {
+      action: 'change_pppoe_password',
+      entityType: 'service',
+      entityId: id,
+      summary: `Alterou a password PPPoE do servico ${id}`,
+      metadata: { changed: result.value.changed }
+    });
+
+    return result.value;
   });
 
   // Transferir o titular: a casa muda de inquilino, ou o equipamento é recolhido
