@@ -11,6 +11,8 @@ import {
   listArp,
   listDhcpLeases,
   listNeighbors,
+  listActive,
+  removeActive,
   neighborModel,
   readRouterConfig,
   type RouterNeighbor
@@ -36,6 +38,10 @@ import { recordAudit } from '../lib/audit';
 import { isIpv4, isPrivateIpv4, SWEEP_BATCH_SIZE } from '../../shared/ip-range';
 import { requireAuth, requireRole } from './auth';
 import { SECRET_MASK } from './settings';
+
+const serviceParamsSchema = z.object({
+  id: z.coerce.number().int().positive()
+}).strict();
 
 const statusQuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(90).default(30)
@@ -102,6 +108,7 @@ const routerTestBodySchema = z.object({
 export async function registerNetworkRoutes(app: FastifyInstance) {
   const readOnly = { preHandler: requireAuth() };
   const adminOnly = { preHandler: requireRole(['admin']) };
+  const networkWrite = { preHandler: requireRole(['admin', 'operator']) };
 
   app.get('/api/network/status', readOnly, async (request, reply) => {
     const parsed = statusQuerySchema.safeParse(request.query);
@@ -172,6 +179,114 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       // o que falta é ligar o www-ssl.
       const failure = describeRouterFailure(err);
       return reply.status(502).send({ error: `${failure.title}. ${failure.detail}` });
+    }
+  });
+
+  /**
+   * Reconcilia apenas um serviço PPPoE. É a ação "Sincronizar" da ficha do
+   * cliente; os secrets dos restantes serviços não são tratados como órfãos.
+   */
+  app.post('/api/network/services/:id/sync', networkWrite, async (request, reply) => {
+    const params = serviceParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ error: 'Servico invalido' });
+
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return reply.status(400).send({ error: 'Integração MikroTik desligada ou por configurar' });
+    }
+
+    const exists = db.prepare('SELECT id FROM services WHERE id = ?').get(params.data.id);
+    if (!exists) return reply.status(404).send({ error: 'Servico nao encontrado' });
+
+    try {
+      const result = await runJob('network_enforcement_service_manual', () => runNetworkEnforcement(db, {
+        transport: createTransport(config),
+        dryRun: config.dryRun,
+        maxDisables: config.maxDisablesPerRun,
+        serviceIds: [params.data.id],
+        reportOrphans: false
+      }));
+
+      recordAudit(request, {
+        action: config.dryRun ? 'network_sync_dry_run' : 'network_sync_manual',
+        entityType: 'service',
+        entityId: params.data.id,
+        summary: config.dryRun
+          ? `Simulou sincronização de rede do serviço ${params.data.id}`
+          : `Sincronizou a rede do serviço ${params.data.id}`,
+        metadata: {
+          dryRun: config.dryRun,
+          planned: result.planned,
+          applied: result.applied,
+          failed: result.failed
+        }
+      });
+      return result;
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return reply.status(502).send({ error: `${failure.title}. ${failure.detail}`, code: failure.code });
+    }
+  });
+
+  /**
+   * Derruba somente a sessão PPPoE atual. Não suspende o serviço e não altera o
+   * secret; o cliente pode voltar a autenticar-se logo a seguir.
+   */
+  app.post('/api/network/services/:id/disconnect', networkWrite, async (request, reply) => {
+    const params = serviceParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ error: 'Servico invalido' });
+
+    const db = getSqliteDatabase();
+    const service = db.prepare(`
+      SELECT pppoe_username AS username
+      FROM services
+      WHERE id = ?
+    `).get(params.data.id) as { username: string | null } | undefined;
+
+    if (!service) return reply.status(404).send({ error: 'Servico nao encontrado' });
+    if (!service.username?.trim()) {
+      return reply.status(409).send({ error: 'Este servico ainda nao tem utilizador PPPoE' });
+    }
+
+    const config = readRouterConfig(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return reply.status(400).send({ error: 'Integração MikroTik desligada ou por configurar' });
+    }
+
+    try {
+      const transport = createTransport(config);
+      const active = await listActive(transport);
+      const session = active.find((item) => item.name === service.username);
+
+      if (config.dryRun) {
+        recordAudit(request, {
+          action: 'network_disconnect_dry_run',
+          entityType: 'service',
+          entityId: params.data.id,
+          summary: session
+            ? `Simulou desconexão PPPoE de ${service.username}`
+            : `Simulou desconexão de ${service.username}, sem sessão ativa`,
+          metadata: { online: Boolean(session) }
+        });
+        return { dryRun: true, online: Boolean(session), disconnected: false };
+      }
+
+      if (!session) {
+        return { dryRun: false, online: false, disconnected: false };
+      }
+
+      await removeActive(transport, session.id);
+      recordAudit(request, {
+        action: 'network_disconnect_manual',
+        entityType: 'service',
+        entityId: params.data.id,
+        summary: `Desconectou a sessão PPPoE de ${service.username}`
+      });
+      return { dryRun: false, online: true, disconnected: true };
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return reply.status(502).send({ error: `${failure.title}. ${failure.detail}`, code: failure.code });
     }
   });
 
