@@ -17,6 +17,7 @@ import {
 } from '../lib/routeros';
 import { identifyModel } from '../lib/device-model';
 import { loadNetworkEnforcementState, runNetworkEnforcement } from '../lib/network-enforcement';
+import { loadAutoSuspensionPreview, runAutomaticSuspension } from '../lib/auto-suspension';
 import {
   loadRegisteredDevices,
   loadSeenHosts,
@@ -140,8 +141,16 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       ...loadNetworkEnforcementState(db),
       enabled: config.enabled,
       dryRun: config.dryRun,
-      configured: isRouterConfigured(config)
+      configured: isRouterConfigured(config),
+      autoSuspension: loadAutoSuspensionPreview(db)
     };
+  });
+
+  // Avalia a cobrança sem contornar o ensaio. Em LIVE muda a intenção do
+  // serviço; a reconciliação continua responsável pela escrita no MikroTik.
+  app.post('/api/network/auto-suspension', adminOnly, async () => {
+    const db = getSqliteDatabase();
+    return runJob('auto_suspension_manual', () => runAutomaticSuspension(db));
   });
 
   // "Reconciliar agora": corre uma passagem sem esperar pelo intervalo. Respeita
