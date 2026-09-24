@@ -85,11 +85,15 @@ const balanceExpr = `(
   ), 0)
 )`;
 
+function graceDays(db: Database.Database): number {
+  return intSetting(db, 'autoSuspensionGraceDays', DEFAULT_GRACE_DAYS, 1, 120);
+}
+
 export function readAutoSuspensionConfig(db: Database.Database): AutoSuspensionConfig {
   const router = readRouterConfig(db);
   return {
     enabled: setting(db, 'autoSuspensionEnabled') === 'true',
-    graceDays: intSetting(db, 'autoSuspensionGraceDays', DEFAULT_GRACE_DAYS, 1, 120),
+    graceDays: graceDays(db),
     intervalMinutes: intSetting(db, 'autoSuspensionIntervalMinutes', DEFAULT_INTERVAL_MINUTES, 5, 1440),
     maxPerRun: intSetting(db, 'autoSuspensionMaxPerRun', DEFAULT_MAX_PER_RUN, 1, 500),
     maxPercent: intSetting(db, 'autoSuspensionMaxPercent', DEFAULT_MAX_PERCENT, 1, 100),
@@ -358,8 +362,7 @@ export function reactivateServiceIfEligibleAfterPayment(
     return false;
   }
 
-  const config = readAutoSuspensionConfig(db);
-  if (hasSuspendableDebt(db, serviceId, config.graceDays)) return false;
+  if (hasSuspendableDebt(db, serviceId, graceDays(db))) return false;
 
   const result = changeServiceStatus(db, serviceId, 'active', {
     reason: 'Reativação automática após regularização da dívida',
