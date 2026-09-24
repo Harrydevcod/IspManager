@@ -333,7 +333,7 @@ export function ServicesModule({
         ? 'O serviço fica suspenso no ISPM e a reconciliação desativa o PPPoE no MikroTik.'
         : 'O serviço volta a ativo e a reconciliação repõe o PPPoE no MikroTik.',
       confirmLabel: suspending ? 'Suspender' : 'Reativar',
-      tone: suspending ? 'danger' : 'neutral'
+      tone: suspending ? 'danger' : 'default'
     }))) return;
 
     setNetworkAction(next);
