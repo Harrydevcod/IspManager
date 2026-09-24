@@ -102,6 +102,7 @@ const routerTestBodySchema = z.object({
 export async function registerNetworkRoutes(app: FastifyInstance) {
   const readOnly = { preHandler: requireAuth() };
   const adminOnly = { preHandler: requireRole(['admin']) };
+  const networkWrite = { preHandler: requireRole(['admin', 'operator']) };
 
   app.get('/api/network/status', readOnly, async (request, reply) => {
     const parsed = statusQuerySchema.safeParse(request.query);
@@ -182,7 +183,7 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     };
   });
 
-  app.post('/api/network/services/:id/sync', adminOnly, async (request, reply) => {
+  app.post('/api/network/services/:id/sync', networkWrite, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     if (!Number.isInteger(id) || id <= 0) {
       return reply.status(400).send({ error: 'Servico invalido' });
@@ -206,7 +207,7 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     }
   });
 
-  app.post('/api/network/services/:id/disconnect', adminOnly, async (request, reply) => {
+  app.post('/api/network/services/:id/disconnect', networkWrite, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     if (!Number.isInteger(id) || id <= 0) {
       return reply.status(400).send({ error: 'Servico invalido' });
