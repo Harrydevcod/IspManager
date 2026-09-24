@@ -274,7 +274,7 @@ export function ServiceDetailDialog({
             </dl>
 
             {service.routerDivergence && (
-              <Message tone="warn">
+              <Message tone="neutral">
                 {NETWORK_DIVERGENCE_LABELS[service.routerDivergence] || service.routerDivergence}
               </Message>
             )}
