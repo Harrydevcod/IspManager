@@ -6017,6 +6017,43 @@ button.danger:disabled {
   font-weight: 600;
 }
 
+
+.settings-router-candidates {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.settings-router-candidates-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.settings-router-candidates table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.settings-router-candidates th,
+.settings-router-candidates td {
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.settings-router-candidates th {
+  color: var(--text-muted);
+  font-weight: 600;
+  background: var(--surface-subtle);
+}
+
+.settings-router-candidates tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 .settings-router-divergences {
   display: grid;
   gap: var(--space-1-5);
