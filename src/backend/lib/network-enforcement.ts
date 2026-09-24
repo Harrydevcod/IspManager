@@ -36,6 +36,8 @@ export type DesiredService = {
   clientName: string;
   username: string;
   password: string | null;
+  /** Password local alterada e ainda não confirmada no router. */
+  passwordPending: boolean;
   /** Verdadeiro só para serviços ativos: suspenso e cancelado ficam desativados. */
   enabled: boolean;
   /** `<upload>M/<download>M`, ou null quando o plano não tem velocidade definida. */
@@ -45,12 +47,13 @@ export type DesiredService = {
 export type PlannedAction =
   | { kind: 'create'; serviceId: number; username: string; rateLimit: string | null; clientName: string }
   | { kind: 'enable' | 'disable'; serviceId: number; username: string; secretId: string; clientName: string }
-  | { kind: 'rate_limit'; serviceId: number; username: string; secretId: string; rateLimit: string; clientName: string };
+  | { kind: 'rate_limit'; serviceId: number; username: string; secretId: string; rateLimit: string; clientName: string }
+  | { kind: 'password'; serviceId: number; username: string; secretId: string; clientName: string };
 
 export type Divergence = {
   serviceId: number | null;
   username: string;
-  kind: 'missing_secret' | 'state' | 'rate_limit' | 'orphan_secret';
+  kind: 'missing_secret' | 'state' | 'rate_limit' | 'password' | 'orphan_secret';
   detail: string;
 };
 
@@ -69,6 +72,7 @@ type ServiceRow = {
   status: string;
   username: string;
   password: string | null;
+  passwordPending: number;
   downloadMbps: number | null;
   uploadMbps: number | null;
 };
@@ -88,6 +92,7 @@ export function loadDesiredServices(db: Database.Database): DesiredService[] {
       s.status AS status,
       s.pppoe_username AS username,
       s.pppoe_password AS password,
+      s.pppoe_password_sync_pending AS passwordPending,
       p.download_mbps AS downloadMbps,
       p.upload_mbps AS uploadMbps
     FROM services s
@@ -102,6 +107,7 @@ export function loadDesiredServices(db: Database.Database): DesiredService[] {
     clientName: row.clientName,
     username: row.username,
     password: row.password,
+    passwordPending: row.passwordPending === 1,
     enabled: row.status === 'active',
     rateLimit: rateLimitFor(row.uploadMbps, row.downloadMbps)
   }));
@@ -121,7 +127,11 @@ function matchSecret(service: DesiredService, secrets: RouterSecret[]): RouterSe
  * Função pura: dado o desejado e o que está no router, o que há a fazer.
  * É aqui que vive a decisão toda — o resto do módulo é entrada/saída.
  */
-export function planActions(desired: DesiredService[], secrets: RouterSecret[]): EnforcementPlan {
+export function planActions(
+  desired: DesiredService[],
+  secrets: RouterSecret[],
+  options: { reportOrphans?: boolean } = {}
+): EnforcementPlan {
   const actions: PlannedAction[] = [];
   const divergences: Divergence[] = [];
   const matched = new Map<number, RouterSecret>();
@@ -185,12 +195,31 @@ export function planActions(desired: DesiredService[], secrets: RouterSecret[]):
         clientName: service.clientName
       });
     }
+
+    // A password não é comparada com o router: o utilizador REST pode não ter
+    // política sensitive. Uma alteração local deixa uma marca explícita que só
+    // é limpa depois de um PATCH bem sucedido.
+    if (service.passwordPending && service.password) {
+      divergences.push({
+        serviceId: service.serviceId,
+        username: service.username,
+        kind: 'password',
+        detail: 'Password PPPoE pendente de sincronização'
+      });
+      actions.push({
+        kind: 'password',
+        serviceId: service.serviceId,
+        username: service.username,
+        secretId: secret.id,
+        clientName: service.clientName
+      });
+    }
   }
 
   // Secrets marcados como nossos que já não correspondem a nenhum serviço.
   // Reportados e nunca apagados: apagar o que não criámos nesta passagem é como
   // se perde configuração de propósito.
-  for (const secret of secrets) {
+  if (options.reportOrphans !== false) for (const secret of secrets) {
     if (usedSecretIds.has(secret.id)) continue;
     if (!secret.comment?.startsWith(COMMENT_PREFIX)) continue;
     divergences.push({
@@ -210,6 +239,10 @@ export type EnforcementDeps = {
   transport: RouterTransport;
   dryRun: boolean;
   maxDisables: number;
+  /** Quando definido, reconcilia só estes serviços. */
+  serviceIds?: number[];
+  /** Em reconciliação de um serviço isolado, os restantes secrets não são órfãos. */
+  reportOrphans?: boolean;
 };
 
 export type EnforcementSummary = {
@@ -271,13 +304,15 @@ function recordNetworkEvent(db: Database.Database, serviceId: number, type: 'cor
  * fica registado no serviço e a passagem seguinte volta a tentar.
  */
 export async function runNetworkEnforcement(db: Database.Database, deps: EnforcementDeps): Promise<EnforcementSummary> {
-  const desired = loadDesiredServices(db);
+  const allDesired = loadDesiredServices(db);
+  const wanted = deps.serviceIds ? new Set(deps.serviceIds) : null;
+  const desired = wanted ? allDesired.filter((service) => wanted.has(service.serviceId)) : allDesired;
   if (desired.length === 0) {
     return { dryRun: deps.dryRun, services: 0, online: 0, planned: 0, applied: 0, failed: 0, divergences: 0, actions: [], skipped: true, reason: 'Nenhum servico com utilizador PPPoE' };
   }
 
   const [secrets, active] = await Promise.all([listSecrets(deps.transport), listActive(deps.transport)]);
-  const plan = planActions(desired, secrets);
+  const plan = planActions(desired, secrets, { reportOrphans: deps.reportOrphans });
   const activeByName = new Map<string, RouterActive>(active.map((session) => [session.name, session]));
 
   const disables = plan.actions.filter((action) => action.kind === 'disable').length;
@@ -334,7 +369,7 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
   return {
     dryRun: deps.dryRun,
     services: desired.length,
-    online: activeByName.size,
+    online: desired.filter((service) => activeByName.has(service.username)).length,
     planned: plan.actions.length,
     applied,
     failed: errors.size,
@@ -347,8 +382,9 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
 function rank(action: PlannedAction): number {
   if (action.kind === 'create') return 0;
   if (action.kind === 'enable') return 1;
-  if (action.kind === 'rate_limit') return 2;
-  return 3; // disable
+  if (action.kind === 'password') return 2;
+  if (action.kind === 'rate_limit') return 3;
+  return 4; // disable
 }
 
 async function applyAction(
@@ -373,7 +409,17 @@ async function applyAction(
     if (!service.enabled && id) {
       await patchSecret(transport, id, { disabled: true });
     }
+    db.prepare('UPDATE services SET pppoe_password_sync_pending = 0 WHERE id = ?').run(action.serviceId);
     recordSystemAudit(db, 'network_provision', action.serviceId, `Criou utilizador PPPoE ${action.username} no router`);
+    return;
+  }
+
+  if (action.kind === 'password') {
+    const service = desired.find((item) => item.serviceId === action.serviceId);
+    if (!service?.password) throw new Error('Servico sem senha PPPoE gravada');
+    await patchSecret(transport, action.secretId, { password: service.password });
+    db.prepare('UPDATE services SET pppoe_password_sync_pending = 0 WHERE id = ?').run(action.serviceId);
+    recordSystemAudit(db, 'network_password', action.serviceId, `Atualizou a password PPPoE de ${action.username}`);
     return;
   }
 
