@@ -5,6 +5,7 @@ import {
   isSealed,
   readSecret,
   readSecretsLost,
+  refreshSecretsLost,
   resetSealingCache,
   sealPendingSecrets,
   SECRETS_LOST_KEY,
@@ -114,23 +115,49 @@ describe('com cifra disponível', () => {
     db.close();
   });
 
-  test('base vinda de outra conta: limpa, avisa, e não toca no resto', () => {
+  test('base vinda de outra conta: avisa, preserva os bytes, e não toca no resto', () => {
     const db = memoryDb();
     withSealing('OUTRA', () => {
       writeSecret(db, 'routerosPassword', 'senha-da-outra-maquina');
     });
+    const seladoLa = raw(db, 'routerosPassword');
     db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)').run('companyName', 'SKYNET');
 
     withSealing('A', () => {
       const lost = sealPendingSecrets(db);
       expect(lost).toEqual(['Senha do router de gestão']);
-      // Limpo de propósito: deixá-lo lá punha as Definições a mostrar uma
-      // máscara, a fingir que há senha guardada.
-      expect(raw(db, 'routerosPassword')).toBe('');
+      // Não se apaga. Quem restaurou um backup no sítio errado leva o ficheiro
+      // de volta à máquina original e encontra lá a credencial; apagá-la aqui
+      // tornava a viagem de ida sem volta. Quem lê a credencial continua a ver
+      // vazio — `readSecret` já devolve '' para o que não abre — e é isso que
+      // mantém as Definições honestas sem destruir nada.
+      expect(raw(db, 'routerosPassword')).toBe(seladoLa);
+      expect(readSecret(db, 'routerosPassword')).toBe('');
       expect(readSecretsLost(db)).toEqual(['Senha do router de gestão']);
+
+      // Segunda passagem: mesmo aviso, mesmos bytes. Nada se acumula.
+      expect(sealPendingSecrets(db)).toEqual(['Senha do router de gestão']);
+      expect(raw(db, 'routerosPassword')).toBe(seladoLa);
     });
 
     expect(raw(db, 'companyName')).toBe('SKYNET');
+    db.close();
+  });
+
+  test('reescrever a credencial na máquina nova cala o aviso', () => {
+    const db = memoryDb();
+    withSealing('OUTRA', () => {
+      writeSecret(db, 'routerosPassword', 'senha-da-outra-maquina');
+    });
+
+    withSealing('A', () => {
+      expect(sealPendingSecrets(db)).toEqual(['Senha do router de gestão']);
+
+      writeSecret(db, 'routerosPassword', 'senha-desta-maquina');
+      expect(refreshSecretsLost(db)).toEqual([]);
+      expect(readSecretsLost(db)).toEqual([]);
+      expect(readSecret(db, 'routerosPassword')).toBe('senha-desta-maquina');
+    });
     db.close();
   });
 

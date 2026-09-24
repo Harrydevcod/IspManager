@@ -4,7 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { validateBackupDir } from '../lib/backup';
 import { recordAudit } from '../lib/audit';
 import { requireRole } from './auth';
-import { clearSecretsLost, readSecretsLost, SECRET_KEYS, writeSecret, type SecretKey } from '../lib/secrets';
+import { readSecret, readSecretsLost, refreshSecretsLost, SECRET_KEYS, writeSecret, type SecretKey } from '../lib/secrets';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
   fallbackWhatsappOverdueTemplate,
@@ -275,7 +275,12 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         // Credenciais que o renderer nunca usa: quem fala com o router e com a
         // UltraMsg e o backend. Voltam mascaradas para poderem ser editadas sem
         // alguma vez saírem daqui em claro.
-        settings[row.key] = row.value ? SECRET_MASK : '';
+        //
+        // A máscara sai do valor *aberto*, não da presença de bytes: uma
+        // credencial selada noutra máquina continua gravada (não se apaga o que
+        // ainda abre lá), mas aqui não há senha nenhuma para usar — mascará-la
+        // seria fingir que está configurada. O `secretsLost` abaixo explica.
+        settings[row.key] = readSecret(db, row.key) ? SECRET_MASK : '';
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
       } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled' || row.key === 'autoSuspensionEnabled') {
@@ -349,17 +354,20 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     const run = db.transaction(() => {
       for (const [key, value] of Object.entries(parsed.data)) {
         // Gravar a máscara apagaria a credencial à primeira gravação de
-        // qualquer outra definição: quem a devolve intacta não a quer mudar.
-        if (sealedKeys.has(key) && value === SECRET_MASK) continue;
+        // qualquer outra definição: quem a devolve intacta não a quer mudar. O
+        // mesmo vale para vazio — é o que chega de um formulário que nunca
+        // mostrou a senha, e de uma credencial que esta máquina não abre.
+        // ponytail: vazio = "não mexi"; a remoção explícita chega com o cofre.
+        if (sealedKeys.has(key) && (value === SECRET_MASK || value === '')) continue;
         if (sealedKeys.has(key)) {
           writeSecret(db, key as SecretKey, String(value ?? ''));
           continue;
         }
         save.run(key, key === 'bankAccounts' ? JSON.stringify(value ?? []) : String(value ?? ''));
       }
-      // Gravou as definições: já viu o aviso e já teve a chance de reescrever
-      // o que faltava.
-      clearSecretsLost(db);
+      // O aviso recalcula-se do que ficou gravado: cala-se sozinho para as
+      // credenciais reescritas e mantém-se para as que continuam por abrir.
+      refreshSecretsLost(db);
     });
 
     run();
@@ -377,8 +385,10 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     });
     return {
       ...parsed.data,
-      routerosPassword: parsed.data.routerosPassword ? SECRET_MASK : '',
-      ultraMsgToken: parsed.data.ultraMsgToken ? SECRET_MASK : ''
+      // Do que ficou gravado, não do que veio no pedido: vazio quer dizer "não
+      // mexi", e devolver vazio punha o formulário a dizer que não há senha.
+      routerosPassword: readSecret(db, 'routerosPassword') ? SECRET_MASK : '',
+      ultraMsgToken: readSecret(db, 'ultraMsgToken') ? SECRET_MASK : ''
     };
   });
 }
