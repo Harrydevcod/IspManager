@@ -1,11 +1,11 @@
-import { ArrowRightLeft, Cable, Coins, History, PackageCheck, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
+import { ArrowRightLeft, Cable, Coins, History, PackageCheck, Pencil, Plus, RefreshCw, ShieldCheck, ShieldOff, Trash2, Unplug, Wifi, WifiOff, Wrench } from 'lucide-react';
 import { labelForType } from '../../../shared/equipment';
 import { labelForWanMode } from '../../../shared/wan';
 import { labelForOperationMode } from '../../../shared/operation';
 import { Badge, Button, Dialog, EmptyState, Message } from '../../components';
 import { formatCve, formatPtDate, formatPtDateTime } from '../../lib/format';
 import { statusLabel, statusTone } from '../../lib/status';
-import type { DeviceAssignment, ManualServiceEventType, ServiceEvent, ServiceEventType, ServiceRow, TechnicalHistory } from '../../types';
+import type { DeviceAssignment, ManualServiceEventType, ServiceEvent, ServiceEventType, ServiceNetworkStatus, ServiceRow, TechnicalHistory } from '../../types';
 
 /** Os tipos que o operador escolhe no formulário de evento. */
 export const MANUAL_EVENT_TYPES: ManualServiceEventType[] = [
@@ -67,6 +67,12 @@ type ServiceDetailDialogProps = {
   canManage: boolean;
   canRecordTechnical: boolean;
   submitting: boolean;
+  network: ServiceNetworkStatus | null;
+  networkLoading: boolean;
+  networkBusyAction: 'sync' | 'disconnect' | 'status' | null;
+  onSyncNetwork: () => void;
+  onDisconnectNetwork: () => void;
+  onToggleAccess: () => void;
   onClose: () => void;
   onEdit: (service: ServiceRow) => void;
   onDelete: (service: ServiceRow) => void;
@@ -95,6 +101,12 @@ export function ServiceDetailDialog({
   canManage,
   canRecordTechnical,
   submitting,
+  network,
+  networkLoading,
+  networkBusyAction,
+  onSyncNetwork,
+  onDisconnectNetwork,
+  onToggleAccess,
   onClose,
   onEdit,
   onDelete,
@@ -199,6 +211,110 @@ export function ServiceDetailDialog({
           </dd>
         </div>
       </dl>
+
+      {service.pppoeUsername && (
+        <section className="technical-section" aria-label="Serviço de Internet">
+          <header className="technical-section-head">
+            <div>
+              <p className="eyebrow">
+                {network?.state?.online ? <Wifi size={12} /> : <WifiOff size={12} />}
+                {' '}Servico de Internet
+              </p>
+              <h3>
+                {networkLoading
+                  ? 'A carregar estado da rede...'
+                  : network?.state?.online
+                    ? 'ONLINE'
+                    : 'OFFLINE'}
+              </h3>
+            </div>
+            <div className="technical-section-actions">
+              {network?.dryRun && <Badge tone="warn">ENSAIO</Badge>}
+              {network?.state?.divergence && <Badge tone="warn">Fora de sincronia</Badge>}
+              {!network?.state?.divergence && network?.state && <Badge tone="success">Sincronizado</Badge>}
+            </div>
+          </header>
+
+          <dl className="technical-item-meta">
+            <div><dt>PPPoE</dt><dd>{network?.username || service.pppoeUsername}</dd></div>
+            <div>
+              <dt>Plano</dt>
+              <dd>
+                {network?.planName || service.planName || '-'}
+                {(network?.downloadMbps || network?.uploadMbps)
+                  ? ` · ${network?.downloadMbps ?? '-'} / ${network?.uploadMbps ?? '-'} Mbps`
+                  : ''}
+              </dd>
+            </div>
+            <div><dt>IP atual</dt><dd>{network?.state?.address || '—'}</dd></div>
+            <div><dt>Sessao</dt><dd>{network?.state?.uptime || '—'}</dd></div>
+            <div>
+              <dt>Secret no router</dt>
+              <dd>
+                {network?.state?.routerEnabled == null
+                  ? 'Ainda não lido'
+                  : network.state.routerEnabled === 1
+                    ? 'Ativo'
+                    : 'Desativado'}
+              </dd>
+            </div>
+            <div><dt>Ultima leitura</dt><dd>{network?.state?.checkedAt ? formatPtDateTime(network.state.checkedAt) : '—'}</dd></div>
+          </dl>
+
+          {!network?.enabled && (
+            <Message tone="neutral">A integração MikroTik está desligada nas Definições → Rede.</Message>
+          )}
+          {network?.enabled && !network?.configured && (
+            <Message tone="neutral">O MikroTik ainda não está totalmente configurado nas Definições → Rede.</Message>
+          )}
+          {network?.dryRun && (
+            <Message tone="neutral">
+              Modo de ensaio ativo: sincronizar e desligar sessão mostram o que aconteceria, sem alterar o router.
+            </Message>
+          )}
+          {network?.state?.lastError && <Message tone="error">{network.state.lastError}</Message>}
+          {network?.state?.divergence && (
+            <Message tone="neutral">Divergência detetada: {network.state.divergence}.</Message>
+          )}
+
+          {canManage && service.status !== 'cancelled' && (
+            <div className="technical-item-actions">
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={networkBusyAction === 'sync'}
+                disabled={networkBusyAction !== null || !network?.enabled || !network?.configured}
+                leadingIcon={<RefreshCw size={14} aria-hidden />}
+                onClick={onSyncNetwork}
+              >
+                Sincronizar
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={networkBusyAction === 'disconnect'}
+                disabled={networkBusyAction !== null || !network?.enabled || !network?.configured || !network?.state?.online}
+                leadingIcon={<Unplug size={14} aria-hidden />}
+                onClick={onDisconnectNetwork}
+              >
+                Desconectar PPPoE
+              </Button>
+              <Button
+                variant={service.status === 'suspended' ? 'secondary' : 'danger'}
+                size="sm"
+                loading={networkBusyAction === 'status'}
+                disabled={networkBusyAction !== null}
+                leadingIcon={service.status === 'suspended'
+                  ? <ShieldCheck size={14} aria-hidden />
+                  : <ShieldOff size={14} aria-hidden />}
+                onClick={onToggleAccess}
+              >
+                {service.status === 'suspended' ? 'Reativar Internet' : 'Suspender Internet'}
+              </Button>
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="technical-section">
         <header className="technical-section-head">
