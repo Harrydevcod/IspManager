@@ -16,6 +16,16 @@ export type RouterEnforcementState = {
   enabled: boolean;
   dryRun: boolean;
   configured: boolean;
+  autoSuspension?: {
+    enabled: boolean;
+    dryRun: boolean;
+    graceDays: number;
+    candidateCount: number;
+    blockedByCreditCount: number;
+    candidatePercent: number;
+    guardTriggered: boolean;
+    guardReason: string | null;
+  };
 };
 
 /** Uma etapa do diagnóstico, tal como o servidor a descreve. */
@@ -74,6 +84,9 @@ type NetworkTabProps = {
   enforceBusy: boolean;
   enforceMessage: string;
   onEnforceNow: () => void;
+  autoSuspendBusy: boolean;
+  autoSuspendMessage: string;
+  onAutoSuspendNow: () => void;
 };
 
 export function NetworkTab({
@@ -92,7 +105,10 @@ export function NetworkTab({
   routerState,
   enforceBusy,
   enforceMessage,
-  onEnforceNow
+  onEnforceNow,
+  autoSuspendBusy,
+  autoSuspendMessage,
+  onAutoSuspendNow
 }: NetworkTabProps) {
   const divergent = (routerState?.services ?? []).filter((row) => row.divergence || row.lastError);
   return (
@@ -214,8 +230,58 @@ export function NetworkTab({
             max={500}
             value={form.routerosMaxDisablesPerRun}
             onChange={(event) => onUpdate('routerosMaxDisablesPerRun', event.target.value)}
-            hint="Trava de segurança: se uma passagem quiser cortar mais, não corta nenhum e avisa."
+            hint="Trava da reconciliação: se uma passagem quiser cortar mais, não corta nenhum."
           />
+          <Toggle
+            title="Suspensão automática por falta de pagamento"
+            description="Depois da tolerância, suspende apenas o serviço em dívida. O ensaio protege também esta automação: enquanto estiver ligado, só mostra quem seria suspenso."
+            checked={form.autoSuspensionEnabled}
+            onChange={(event) => onToggle('autoSuspensionEnabled', event.target.checked)}
+          />
+          {form.autoSuspensionEnabled && (
+            <>
+              <Field
+                label="Dias de tolerância após vencimento"
+                type="number"
+                min={1}
+                max={120}
+                value={form.autoSuspensionGraceDays}
+                onChange={(event) => onUpdate('autoSuspensionGraceDays', event.target.value)}
+                hint="Ex.: vencimento dia 10 + 5 dias de tolerância → elegível para suspensão no dia 16."
+              />
+              <Field
+                label="Verificar cobranças a cada (minutos)"
+                type="number"
+                min={5}
+                max={1440}
+                value={form.autoSuspensionIntervalMinutes}
+                onChange={(event) => onUpdate('autoSuspensionIntervalMinutes', event.target.value)}
+                hint="Também verifica no arranque, para recuperar o período em que o PC esteve desligado."
+              />
+              <Field
+                label="Máximo de suspensões automáticas por passagem"
+                type="number"
+                min={1}
+                max={500}
+                value={form.autoSuspensionMaxPerRun}
+                onChange={(event) => onUpdate('autoSuspensionMaxPerRun', event.target.value)}
+              />
+              <Field
+                label="Máximo da base ativa por passagem (%)"
+                type="number"
+                min={1}
+                max={100}
+                value={form.autoSuspensionMaxPercent}
+                onChange={(event) => onUpdate('autoSuspensionMaxPercent', event.target.value)}
+                hint="Se qualquer uma das duas travas disparar, nenhum serviço é suspenso."
+              />
+              <Message tone="neutral">
+                {form.routerosDryRun
+                  ? 'Ensaio ativo: a cobrança será avaliada, mas o estado do serviço e o MikroTik não serão alterados.'
+                  : 'Modo LIVE: pagamentos, créditos e estado são revalidados imediatamente antes de cada suspensão.'}
+              </Message>
+            </>
+          )}
         </>
       )}
       <div className="settings-test-whatsapp" aria-label="Teste de ligação ao router">
@@ -287,6 +353,18 @@ export function NetworkTab({
             {routerState.divergences} divergência(s)
             {routerState.dryRun ? ' · em ensaio' : ''}
           </p>
+          {routerState.autoSuspension?.enabled && (
+            <Message tone={routerState.autoSuspension.guardTriggered ? 'error' : 'neutral'}>
+              {routerState.autoSuspension.dryRun ? 'Simulação de cobrança: ' : 'Cobrança automática: '}
+              {routerState.autoSuspension.candidateCount} serviço(s) elegível(eis) após {routerState.autoSuspension.graceDays} dia(s) de tolerância
+              {routerState.autoSuspension.blockedByCreditCount > 0
+                ? ` · ${routerState.autoSuspension.blockedByCreditCount} protegido(s) por crédito`
+                : ''}
+              {routerState.autoSuspension.guardTriggered
+                ? ` · TRAVADO: ${routerState.autoSuspension.guardReason}`
+                : ''}
+            </Message>
+          )}
           {divergent.length > 0 && (
             <ul className="settings-router-divergences">
               {divergent.slice(0, 12).map((row) => (
@@ -297,6 +375,21 @@ export function NetworkTab({
                 </li>
               ))}
             </ul>
+          )}
+          {form.autoSuspensionEnabled && (
+            <div className="settings-test-whatsapp">
+              <span>{autoSuspendMessage || 'Avalia agora faturas vencidas, créditos e travas de segurança — respeitando o ensaio.'}</span>
+              <div className="form-actions">
+                <Button
+                  variant="secondary"
+                  onClick={onAutoSuspendNow}
+                  loading={autoSuspendBusy}
+                  leadingIcon={<AlertTriangle size={14} aria-hidden />}
+                >
+                  Avaliar cobrança agora
+                </Button>
+              </div>
+            </div>
           )}
           <div className="settings-test-whatsapp">
             <span>{enforceMessage || 'Compara o ISPM com o router e aplica a diferença — respeitando o ensaio.'}</span>
