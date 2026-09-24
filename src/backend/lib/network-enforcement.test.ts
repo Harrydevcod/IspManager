@@ -4,8 +4,10 @@ import { runMigrations } from '../db/migrate';
 import {
   loadDesiredServices,
   planActions,
+  disconnectServiceSession,
   rateLimitFor,
   runNetworkEnforcement,
+  runServiceNetworkEnforcement,
   type DesiredService
 } from './network-enforcement';
 import type { RouterRequest, RouterSecret, RouterTransport } from './routeros';
@@ -239,6 +241,67 @@ describe('runNetworkEnforcement', () => {
     expect(failed.last_error).toContain('router inacessivel');
     const ok = db.prepare('SELECT last_error FROM service_network_state WHERE service_id = 2').get() as { last_error: string | null };
     expect(ok.last_error).toBeNull();
+  });
+
+  test('sincronização individual nunca aplica alterações de outro cliente', async () => {
+    addService(db, 1, 'suspended', 'joao-1');
+    addService(db, 2, 'suspended', 'ana-2');
+    const secrets = [
+      secret(),
+      secret({ id: '*2', name: 'ana-2', comment: 'ispm:2' })
+    ];
+    const { transport, calls } = recordingTransport(secrets);
+
+    const result = await runServiceNetworkEnforcement(db, 1, {
+      transport,
+      dryRun: false,
+      maxDisables: 5
+    });
+
+    expect(result.summary?.applied).toBe(1);
+    expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { disabled: 'yes' } });
+    expect(calls.some((call) => call.method === 'PATCH' && call.path.includes('*2'))).toBe(false);
+    expect(result.summary?.divergences).toBe(1);
+  });
+
+  test('sincronização individual em ensaio só lê o router', async () => {
+    addService(db, 1, 'suspended', 'joao-1');
+    const { transport, calls } = recordingTransport([secret()]);
+
+    const result = await runServiceNetworkEnforcement(db, 1, {
+      transport,
+      dryRun: true,
+      maxDisables: 5
+    });
+
+    expect(result.summary?.planned).toBe(1);
+    expect(result.summary?.applied).toBe(0);
+    expect(calls.every((call) => call.method === 'GET')).toBe(true);
+  });
+
+  test('desconectar termina apenas a sessão do serviço escolhido', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    const { transport, calls } = recordingTransport(
+      [secret()],
+      [{ id: '*A', name: 'joao-1' }, { id: '*B', name: 'outro-2' }]
+    );
+
+    const result = await disconnectServiceSession(db, 1, { transport, dryRun: false });
+
+    expect(result.disconnected).toBe(true);
+    expect(calls).toContainEqual({ method: 'DELETE', path: '/ppp/active/*A' });
+    expect(calls.some((call) => call.path === '/ppp/active/*B')).toBe(false);
+  });
+
+  test('desconectar em ensaio não termina a sessão', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    const { transport, calls } = recordingTransport([secret()], [{ id: '*A', name: 'joao-1' }]);
+
+    const result = await disconnectServiceSession(db, 1, { transport, dryRun: true });
+
+    expect(result.simulated).toBe(true);
+    expect(result.online).toBe(true);
+    expect(calls.every((call) => call.method === 'GET')).toBe(true);
   });
 
   test('sem serviços com PPPoE não fala com o router de todo', async () => {
