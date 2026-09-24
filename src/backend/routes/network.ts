@@ -150,7 +150,7 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
   // serviço; a reconciliação continua responsável pela escrita no MikroTik.
   app.post('/api/network/auto-suspension', adminOnly, async () => {
     const db = getSqliteDatabase();
-    return runJob('auto_suspension_manual', () => runAutomaticSuspension(db));
+    return runJob('auto_suspension_manual', async () => runAutomaticSuspension(db));
   });
 
   // "Reconciliar agora": corre uma passagem sem esperar pelo intervalo. Respeita
