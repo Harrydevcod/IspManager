@@ -56,6 +56,8 @@ export type ServiceRow = {
   clientName: string;
   planId: number | null;
   planName: string | null;
+  downloadMbps?: number | null;
+  uploadMbps?: number | null;
   monthlyValueCve: number;
   dueDay: number;
   status: 'active' | 'suspended' | 'cancelled';
@@ -73,7 +75,41 @@ export type ServiceRow = {
   /** Realidade lida do router (ADR 0007); null enquanto nunca foi lido. */
   routerOnline: number | null;
   routerEnabled: number | null;
+  routerAddress?: string | null;
+  routerUptime?: string | null;
+  routerLastOnlineAt?: string | null;
+  routerCheckedAt?: string | null;
+  routerLastError?: string | null;
   routerDivergence: string | null;
+  suspensionSource?: 'manual' | 'nonpayment' | null;
+};
+
+export type ServiceNetworkStatus = {
+  serviceId: number;
+  username: string | null;
+  status: ServiceRow['status'];
+  suspensionSource: 'manual' | 'nonpayment' | null;
+  planName: string | null;
+  downloadMbps: number | null;
+  uploadMbps: number | null;
+  enabled: boolean;
+  dryRun: boolean;
+  configured: boolean;
+  state: {
+    serviceId: number;
+    clientName: string;
+    username: string;
+    status: string;
+    routerEnabled: number | null;
+    desiredEnabled: number;
+    online: number;
+    address: string | null;
+    uptime: string | null;
+    lastOnlineAt: string | null;
+    divergence: string | null;
+    lastError: string | null;
+    checkedAt: string;
+  } | null;
 };
 
 export type AudiovisualConfig = {
