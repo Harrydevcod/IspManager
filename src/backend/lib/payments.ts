@@ -5,6 +5,7 @@ import { allocateDocumentNumber } from './numbering';
 import { validatePaymentDates } from '../../shared/payment-dates';
 import { escudosToCentavos, isSettled, roundEscudos } from '../../shared/money';
 import { recordReceiptMovement, resolveReceiptAccount, reverseReceiptMovements } from './treasury';
+import { reactivateServiceIfEligibleAfterPayment } from './auto-suspension';
 
 type PaymentStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';
 type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
@@ -400,6 +401,7 @@ export function clientCreditBalance(db: Database, clientId: number): number {
 type PaymentHead = {
   id: number;
   clientId: number;
+  serviceId: number;
   status: PaymentStatus;
   amountCve: number;
   invoiceDate: string | null;
@@ -408,7 +410,7 @@ type PaymentHead = {
 };
 
 const paymentHeadSelect = `
-  SELECT id, client_id AS clientId, status, amount_cve AS amountCve,
+  SELECT id, client_id AS clientId, service_id AS serviceId, status, amount_cve AS amountCve,
          invoice_date AS invoiceDate, invoice_number AS invoiceNumber,
          reference_month AS referenceMonth
   FROM payments WHERE id = ?
@@ -566,12 +568,16 @@ export function payPayment(
     });
 
     const remaining = roundEscudos(head.amountCve - receivedTotal(db, id));
+    const settled = isSettled(remaining);
+    if (settled) {
+      reactivateServiceIfEligibleAfterPayment(db, head.serviceId, input.userId ?? null);
+    }
     return {
       payment: selectPayment(db, id)!,
       receipt: db.prepare(`${receiptSelect} WHERE id = ?`).get(receipt.id) as ReceiptRecord,
       creditAddedCve: excess,
       balanceCve: remaining,
-      settled: isSettled(remaining)
+      settled
     };
   })();
 
@@ -615,6 +621,7 @@ export function applyClientCreditToPayment(
       INSERT INTO client_credits (client_id, amount_cve, receipt_id, reason)
       VALUES (?, ?, ?, ?)
     `).run(head.clientId, -applied, receipt.id, `Aplicado na fatura ${head.invoiceNumber || head.referenceMonth}`);
+    reactivateServiceIfEligibleAfterPayment(db, head.serviceId, userId ?? null);
     return receipt;
   })();
 }
