@@ -173,6 +173,44 @@ describe('settings SMS validation', () => {
     expect(after.json().printRentalLines).toBe(true);
   });
 
+  test('suspensão automática começa desligada e com travas conservadoras', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      autoSuspensionEnabled: false,
+      autoSuspensionGraceDays: 15,
+      autoSuspensionIntervalMinutes: 60,
+      autoSuspensionMaxPerRun: 5,
+      autoSuspensionMaxPercent: 20,
+      routerosDryRun: true
+    });
+  });
+
+  test('persiste as definições da suspensão automática', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: {
+        ...validSettings,
+        autoSuspensionEnabled: true,
+        autoSuspensionGraceDays: 5,
+        autoSuspensionIntervalMinutes: 30,
+        autoSuspensionMaxPerRun: 8,
+        autoSuspensionMaxPercent: 15
+      }
+    });
+    expect(response.statusCode).toBe(200);
+
+    const saved = (await app.inject({ method: 'GET', url: '/api/settings' })).json();
+    expect(saved).toMatchObject({
+      autoSuspensionEnabled: true,
+      autoSuspensionGraceDays: 5,
+      autoSuspensionIntervalMinutes: 30,
+      autoSuspensionMaxPerRun: 8,
+      autoSuspensionMaxPercent: 15
+    });
+  });
+
   test('defaults installation fee to 0 and persists a new value', async () => {
     const before = await app.inject({ method: 'GET', url: '/api/settings' });
     expect(before.json().installationFeeCve).toBe(0);
