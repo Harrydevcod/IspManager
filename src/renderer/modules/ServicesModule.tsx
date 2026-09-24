@@ -146,6 +146,9 @@ export function ServicesModule({
   const [deviceMode, setDeviceMode] = useState<'install' | 'share'>('install');
   const [shareableDevices, setShareableDevices] = useState<ActiveAssignment[]>([]);
   const [shareChoice, setShareChoice] = useState('');
+  const [networkAction, setNetworkAction] = useState<string | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<ServiceRow | null>(null);
+  const [newPppoePassword, setNewPppoePassword] = useState('');
   // Sugestão de faixa vinda da própria rede instalada, não fixa no código.
   const ipPrefix = useMemo(() => suggestIpPrefix(services.map((service) => service.deviceIps)), [services]);
 
@@ -153,7 +156,14 @@ export function ServicesModule({
     setLoading(true);
     return authFetch('http://127.0.0.1:3001/api/services')
       .then((response) => response.json() as Promise<ServiceRow[]>)
-      .then((data) => { setServices(data); setLoadError(null); })
+      .then((data) => {
+        setServices(data);
+        setSelectedService((current) => current
+          ? data.find((service) => service.id === current.id) ?? current
+          : current);
+        setLoadError(null);
+        return data;
+      })
       .catch(() => { setServices([]); setLoadError('Não foi possível carregar os serviços.'); })
       .finally(() => setLoading(false));
   }
@@ -234,6 +244,166 @@ export function ServicesModule({
     setAttachItems(false);
     setItemDrafts([]);
     setLaborCve('');
+  }
+
+  async function syncServiceNetwork(service: ServiceRow) {
+    setNetworkAction('sync');
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/network/services/${service.id}/sync`, {
+        method: 'POST'
+      });
+      const result = await response.json().catch(() => ({})) as {
+        error?: string;
+        dryRun?: boolean;
+        skipped?: boolean;
+        reason?: string;
+        planned?: number;
+        applied?: number;
+        failed?: number;
+      };
+      if (!response.ok) {
+        toast(result.error || 'Não foi possível sincronizar o serviço com o MikroTik.', 'error');
+        return;
+      }
+      if (result.skipped) {
+        toast(result.reason || 'Nada a sincronizar.', 'info');
+      } else if (result.dryRun) {
+        toast(`Ensaio: ${result.planned ?? 0} alteração(ões) seriam aplicadas. Nada foi alterado no router.`, 'info');
+      } else if ((result.failed ?? 0) > 0) {
+        toast(`Sincronização terminou com ${result.failed} falha(s).`, 'error');
+      } else {
+        toast(`Sincronizado: ${result.applied ?? 0} alteração(ões) aplicada(s).`, 'success');
+      }
+      await loadServices();
+    } catch {
+      toast('Falha de rede ao sincronizar com o MikroTik.', 'error');
+    } finally {
+      setNetworkAction(null);
+    }
+  }
+
+  async function disconnectServiceNetwork(service: ServiceRow) {
+    if (!(await confirm({
+      title: 'Desconectar sessão PPPoE',
+      message: 'Termina apenas a sessão atual. O serviço continua ativo e o cliente pode autenticar-se novamente.',
+      confirmLabel: 'Desconectar',
+      tone: 'danger'
+    }))) return;
+
+    setNetworkAction('disconnect');
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/network/services/${service.id}/disconnect`, {
+        method: 'POST'
+      });
+      const result = await response.json().catch(() => ({})) as {
+        error?: string;
+        dryRun?: boolean;
+        online?: boolean;
+        disconnected?: boolean;
+      };
+      if (!response.ok) {
+        toast(result.error || 'Não foi possível desconectar a sessão PPPoE.', 'error');
+        return;
+      }
+      if (result.dryRun) {
+        toast(
+          result.online
+            ? 'Ensaio: a sessão seria desconectada. Nada foi alterado no router.'
+            : 'Ensaio: não existe sessão PPPoE ativa para desconectar.',
+          'info'
+        );
+      } else if (result.disconnected) {
+        toast('Sessão PPPoE desconectada.', 'success');
+      } else {
+        toast('O cliente já estava offline.', 'info');
+      }
+      await loadServices();
+    } catch {
+      toast('Falha de rede ao desconectar a sessão PPPoE.', 'error');
+    } finally {
+      setNetworkAction(null);
+    }
+  }
+
+  async function changeServiceStateFromNetwork(service: ServiceRow, next: 'active' | 'suspended') {
+    const suspending = next === 'suspended';
+    if (!(await confirm({
+      title: suspending ? 'Suspender serviço' : 'Reativar serviço',
+      message: suspending
+        ? 'O serviço fica suspenso no ISPM e a reconciliação desativa o PPPoE no MikroTik.'
+        : 'O serviço volta a ativo e a reconciliação repõe o PPPoE no MikroTik.',
+      confirmLabel: suspending ? 'Suspender' : 'Reativar',
+      tone: suspending ? 'danger' : 'neutral'
+    }))) return;
+
+    setNetworkAction(next);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/services/${service.id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: next })
+      });
+      const result = await response.json().catch(() => ({})) as { error?: string; changed?: boolean };
+      if (!response.ok) {
+        toast(result.error || 'Não foi possível alterar o estado do serviço.', 'error');
+        return;
+      }
+      toast(
+        suspending ? 'Serviço suspenso. A rede será reconciliada.' : 'Serviço reativado. A rede será reconciliada.',
+        'success'
+      );
+      await loadServices();
+      await loadTechnicalHistory(service.id);
+    } catch {
+      toast('Falha de rede ao alterar o estado do serviço.', 'error');
+    } finally {
+      setNetworkAction(null);
+    }
+  }
+
+  function openPasswordChange(service: ServiceRow) {
+    setPasswordTarget(service);
+    setNewPppoePassword('');
+  }
+
+  function closePasswordChange() {
+    if (networkAction === 'password') return;
+    setPasswordTarget(null);
+    setNewPppoePassword('');
+  }
+
+  async function submitPasswordChange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!passwordTarget) return;
+    setNetworkAction('password');
+    try {
+      const response = await authFetch(
+        `http://127.0.0.1:3001/api/services/${passwordTarget.id}/pppoe-password`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: newPppoePassword })
+        }
+      );
+      const result = await response.json().catch(() => ({})) as { error?: string; changed?: boolean };
+      if (!response.ok) {
+        toast(result.error || 'Não foi possível alterar a password PPPoE.', 'error');
+        return;
+      }
+      toast(
+        result.changed
+          ? 'Password guardada. Ficou pendente para sincronização com o MikroTik.'
+          : 'A password indicada já era a atual.',
+        result.changed ? 'success' : 'info'
+      );
+      setPasswordTarget(null);
+      setNewPppoePassword('');
+      await loadServices();
+    } catch {
+      toast('Falha de rede ao guardar a password PPPoE.', 'error');
+    } finally {
+      setNetworkAction(null);
+    }
   }
 
   async function loadTechnicalHistory(serviceId: number): Promise<TechnicalHistory> {
@@ -961,6 +1131,7 @@ export function ServicesModule({
           canManage={canManageServices}
           canRecordTechnical={canRecordTechnical}
           submitting={submitting}
+          networkActionBusy={networkAction !== null}
           onClose={() => setSelectedService(null)}
           onEdit={editService}
           onDelete={(service) => void deleteService(service)}
@@ -974,6 +1145,12 @@ export function ServicesModule({
           onPurchaseDevice={(assignment) => { setPurchaseError(null); setPurchaseTarget(assignment); }}
           onAddEvent={openEventDialog}
           onTransfer={() => setTransferTarget(selectedService)}
+          onNetworkSync={() => void syncServiceNetwork(selectedService)}
+          onDisconnect={() => void disconnectServiceNetwork(selectedService)}
+          onSuspend={() => void changeServiceStateFromNetwork(selectedService, 'suspended')}
+          onReactivate={() => void changeServiceStateFromNetwork(selectedService, 'active')}
+          onChangePlan={() => editService(selectedService)}
+          onChangePassword={() => openPasswordChange(selectedService)}
         />
       )}
 
@@ -1168,6 +1345,43 @@ export function ServicesModule({
               )}
             </div>
           )}
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={passwordTarget !== null}
+        onClose={closePasswordChange}
+        eyebrow="PPPoE"
+        title={passwordTarget ? `Alterar password de ${passwordTarget.clientName}` : 'Alterar password PPPoE'}
+        size="sm"
+        closeOnBackdrop={networkAction !== 'password'}
+        actions={
+          <>
+            <Button variant="secondary" onClick={closePasswordChange} disabled={networkAction === 'password'}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="pppoe-password-form" loading={networkAction === 'password'}>
+              {networkAction === 'password' ? 'A guardar...' : 'Guardar password'}
+            </Button>
+          </>
+        }
+      >
+        <form id="pppoe-password-form" className="client-form" onSubmit={submitPasswordChange}>
+          <Message tone="neutral">
+            A nova password fica pendente no ISPM até uma reconciliação LIVE a aplicar no MikroTik.
+            Em modo de ensaio, o router não é alterado.
+          </Message>
+          <Field
+            wide
+            required
+            type="password"
+            minLength={8}
+            maxLength={64}
+            label="Nova password PPPoE"
+            value={newPppoePassword}
+            onChange={(event) => setNewPppoePassword(event.target.value)}
+            hint="Entre 8 e 64 caracteres."
+          />
         </form>
       </Dialog>
 
