@@ -26,6 +26,7 @@ engano quem pagou, ou transformar um erro de dados num corte em massa.
 - Qualquer crédito positivo na conta do cliente bloqueia o corte automático e
   manda o caso para revisão.
 - Antes de cada corte LIVE, dívida, crédito e estado são revalidados.
+- Antes de mudar qualquer serviço para `suspended` em LIVE, o backend faz uma leitura REST real ao MikroTik. Se o router estiver inacessível (LAN/VPN em baixo, timeout, rota ausente, credenciais recusadas), não muda o estado do serviço, regista `auto_suspension_router_unreachable` e deixa o candidato para a passagem seguinte.
 - Há duas travas: máximo absoluto por passagem e percentagem máxima da base PPPoE
   ativa. Se qualquer uma dispara, o lote inteiro é abortado.
 - `services.suspension_source = 'nonpayment'` distingue o corte automático de
@@ -51,5 +52,4 @@ pagamento regulariza dívida
   -> PPP secret enabled
 ```
 
-Falha do router não é confundida com sucesso: `service_network_state` continua
-a representar a realidade observada e a divergência é reprocessada depois.
+Falha do router não é confundida com sucesso: em modo LIVE a suspensão comercial é adiada antes de qualquer mudança de estado se a leitura REST falhar. O cliente mantém acesso, a falha fica auditada e o job periódico tenta novamente. `service_network_state` continua a representar a realidade observada.

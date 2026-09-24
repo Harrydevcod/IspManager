@@ -2,7 +2,13 @@ import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { escudosToCentavos, roundEscudos } from '../../shared/money';
 import { changeServiceStatus } from './services';
-import { isRouterConfigured, readRouterConfig } from './routeros';
+import {
+  createTransport,
+  describeRouterFailure,
+  isRouterConfigured,
+  readRouterConfig,
+  testConnection
+} from './routeros';
 
 const DEFAULT_GRACE_DAYS = 15;
 const DEFAULT_INTERVAL_MINUTES = 60;
@@ -49,7 +55,20 @@ export type AutoSuspensionRun = AutoSuspensionPreview & {
   simulated: number;
   applied: number;
   revalidatedOut: number;
+  /** Só é definido no modo LIVE, quando houve uma verificação real. */
+  routerReachable?: boolean;
+  /** True quando nada foi alterado e o job periódico deve tentar de novo. */
+  retryPending?: boolean;
+  routerFailureCode?: string;
   reason?: string;
+};
+
+export type AutoSuspensionDeps = {
+  /**
+   * Injetável para testes. Em produção faz um GET real a /system/resource
+   * através do mesmo transporte TLS/credenciais usado pela reconciliação.
+   */
+  probeRouter?: () => Promise<void>;
 };
 
 function setting(db: Database.Database, key: string): string {
@@ -255,9 +274,10 @@ function systemAudit(db: Database.Database, action: string, entityId: number | n
   }
 }
 
-export function runAutomaticSuspension(
-  db: Database.Database = getSqliteDatabase()
-): AutoSuspensionRun {
+export async function runAutomaticSuspension(
+  db: Database.Database = getSqliteDatabase(),
+  deps: AutoSuspensionDeps = {}
+): Promise<AutoSuspensionRun> {
   const preview = loadAutoSuspensionPreview(db);
 
   if (!preview.enabled) {
@@ -309,6 +329,50 @@ export function runAutomaticSuspension(
     };
   }
 
+  // Sem candidatos não vale a pena abrir uma ligação ao router.
+  if (preview.candidateCount === 0) {
+    return {
+      ...preview,
+      simulated: 0,
+      applied: 0,
+      revalidatedOut: 0,
+      reason: 'Nenhum serviço elegível para suspensão'
+    };
+  }
+
+  /**
+   * Segurança operacional: só mudamos a intenção comercial para "suspended"
+   * quando o MikroTik está realmente alcançável agora. Sem isto, um portátil
+   * fora da LAN (ou uma VPN caída) podia acumular suspensões locais e aplicá-las
+   * todas de uma vez quando a rede regressasse.
+   *
+   * A leitura não escreve nada no router. O corte continua a ser feito apenas
+   * pelo motor de reconciliação (ADR 0007).
+   */
+  const routerConfig = readRouterConfig(db);
+  const probeRouter = deps.probeRouter ?? (async () => {
+    await testConnection(createTransport(routerConfig));
+  });
+
+  try {
+    await probeRouter();
+  } catch (error) {
+    const failure = describeRouterFailure(error);
+    const reason = `Router inacessível: ${failure.title}. Suspensão adiada; o serviço mantém-se ativo e será reavaliado na próxima passagem.`;
+    systemAudit(db, 'auto_suspension_router_unreachable', null, reason);
+    return {
+      ...preview,
+      skipped: true,
+      simulated: 0,
+      applied: 0,
+      revalidatedOut: 0,
+      routerReachable: false,
+      retryPending: true,
+      routerFailureCode: failure.code,
+      reason
+    };
+  }
+
   let applied = 0;
   let revalidatedOut = 0;
 
@@ -342,7 +406,8 @@ export function runAutomaticSuspension(
     ...preview,
     simulated: 0,
     applied,
-    revalidatedOut
+    revalidatedOut,
+    routerReachable: true
   };
 }
 

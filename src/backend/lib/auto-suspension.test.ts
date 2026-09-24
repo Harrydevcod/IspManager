@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
+import { RouterError } from './routeros';
 import {
   loadAutoSuspensionPreview,
   reactivateServiceIfEligibleAfterPayment,
@@ -74,11 +75,11 @@ describe('suspensão automática por falta de pagamento', () => {
     expect(loadAutoSuspensionPreview(db).candidateCount).toBe(0);
   });
 
-  test('dry-run encontra o devedor mas não muda o serviço', () => {
+  test('dry-run encontra o devedor mas não muda o serviço', async () => {
     configure(db, true);
     const { serviceId } = seed(db, 'DRY');
 
-    const result = runAutomaticSuspension(db);
+    const result = await runAutomaticSuspension(db);
 
     expect(result.dryRun).toBe(true);
     expect(result.simulated).toBe(1);
@@ -87,11 +88,11 @@ describe('suspensão automática por falta de pagamento', () => {
       .toEqual({ status: 'active' });
   });
 
-  test('LIVE marca a origem nonpayment', () => {
+  test('LIVE marca a origem nonpayment', async () => {
     configure(db, false);
     const { serviceId } = seed(db, 'LIVE');
 
-    const result = runAutomaticSuspension(db);
+    const result = await runAutomaticSuspension(db, { probeRouter: async () => undefined });
 
     expect(result.applied).toBe(1);
     expect(db.prepare(`
@@ -104,7 +105,7 @@ describe('suspensão automática por falta de pagamento', () => {
     });
   });
 
-  test('crédito a favor protege o cliente até revisão', () => {
+  test('crédito a favor protege o cliente até revisão', async () => {
     configure(db, false);
     const { clientId, serviceId } = seed(db, 'CREDITO');
     db.prepare(`
@@ -116,36 +117,102 @@ describe('suspensão automática por falta de pagamento', () => {
     expect(preview.candidateCount).toBe(0);
     expect(preview.blockedByCreditCount).toBe(1);
 
-    runAutomaticSuspension(db);
+    await runAutomaticSuspension(db, { probeRouter: async () => undefined });
     expect(db.prepare('SELECT status FROM services WHERE id = ?').get(serviceId))
       .toEqual({ status: 'active' });
   });
 
-  test('trava por quantidade cancela o lote inteiro', () => {
+  test('trava por quantidade cancela o lote inteiro', async () => {
     configure(db, false);
     set(db, 'autoSuspensionMaxPerRun', '1');
     const a = seed(db, 'A');
     const b = seed(db, 'B');
 
-    const result = runAutomaticSuspension(db);
+    const result = await runAutomaticSuspension(db, { probeRouter: async () => undefined });
 
     expect(result.aborted).toBe(true);
     expect(db.prepare('SELECT status FROM services WHERE id IN (?, ?) ORDER BY id').all(a.serviceId, b.serviceId))
       .toEqual([{ status: 'active' }, { status: 'active' }]);
   });
 
-  test('trava por percentagem cancela o lote inteiro', () => {
+  test('trava por percentagem cancela o lote inteiro', async () => {
     configure(db, false);
     set(db, 'autoSuspensionMaxPercent', '20');
     const overdue = seed(db, 'OVER');
     seed(db, 'OK', '-1 days');
 
-    const result = runAutomaticSuspension(db);
+    const result = await runAutomaticSuspension(db, { probeRouter: async () => undefined });
 
     expect(result.aborted).toBe(true);
     expect(result.guardReason).toContain('%');
     expect(db.prepare('SELECT status FROM services WHERE id = ?').get(overdue.serviceId))
       .toEqual({ status: 'active' });
+  });
+
+  test('LIVE mantém o cliente ativo quando o MikroTik está inacessível', async () => {
+    configure(db, false);
+    const { serviceId } = seed(db, 'SEM-REDE');
+
+    const result = await runAutomaticSuspension(db, {
+      probeRouter: async () => {
+        throw new RouterError('Sem rota para o router', 0, undefined, 'ENETUNREACH');
+      }
+    });
+
+    expect(result).toMatchObject({
+      skipped: true,
+      retryPending: true,
+      routerReachable: false,
+      routerFailureCode: 'ENETUNREACH',
+      applied: 0
+    });
+    expect(result.reason).toContain('Suspensão adiada');
+    expect(db.prepare('SELECT status, suspension_source AS source FROM services WHERE id = ?').get(serviceId))
+      .toEqual({ status: 'active', source: null });
+    expect(db.prepare(`
+      SELECT action FROM audit_logs
+      WHERE action = 'auto_suspension_router_unreachable'
+      ORDER BY id DESC LIMIT 1
+    `).get()).toEqual({ action: 'auto_suspension_router_unreachable' });
+  });
+
+  test('depois de uma falha de rede, a passagem seguinte volta a tentar e pode suspender', async () => {
+    configure(db, false);
+    const { serviceId } = seed(db, 'RETRY');
+
+    await runAutomaticSuspension(db, {
+      probeRouter: async () => {
+        throw new RouterError('VPN em baixo', 0, undefined, 'EHOSTUNREACH');
+      }
+    });
+
+    expect(db.prepare('SELECT status FROM services WHERE id = ?').get(serviceId))
+      .toEqual({ status: 'active' });
+
+    const retry = await runAutomaticSuspension(db, {
+      probeRouter: async () => undefined
+    });
+
+    expect(retry).toMatchObject({ applied: 1, routerReachable: true });
+    expect(db.prepare('SELECT status, suspension_source AS source FROM services WHERE id = ?').get(serviceId))
+      .toEqual({ status: 'suspended', source: 'nonpayment' });
+  });
+
+  test('dry-run não exige ligação ao MikroTik e nunca chama a sonda LIVE', async () => {
+    configure(db, true);
+    seed(db, 'DRY-SEM-REDE');
+    let probes = 0;
+
+    const result = await runAutomaticSuspension(db, {
+      probeRouter: async () => {
+        probes += 1;
+        throw new Error('não devia ser chamada');
+      }
+    });
+
+    expect(result.dryRun).toBe(true);
+    expect(result.simulated).toBe(1);
+    expect(probes).toBe(0);
   });
 
   test('pagamento só reativa suspensão cuja origem é nonpayment', () => {
