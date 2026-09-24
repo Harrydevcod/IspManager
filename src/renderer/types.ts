@@ -56,6 +56,8 @@ export type ServiceRow = {
   clientName: string;
   planId: number | null;
   planName: string | null;
+  planDownloadMbps?: number | null;
+  planUploadMbps?: number | null;
   monthlyValueCve: number;
   dueDay: number;
   status: 'active' | 'suspended' | 'cancelled';
@@ -70,10 +72,17 @@ export type ServiceRow = {
   pppoeUsername: string | null;
   /** Ausente para quem não pode editar serviços: a API não a envia. */
   pppoePassword?: string | null;
+  /** Password alterada localmente e ainda não confirmada no MikroTik. */
+  pppoePasswordPending?: number | null;
   /** Realidade lida do router (ADR 0007); null enquanto nunca foi lido. */
   routerOnline: number | null;
   routerEnabled: number | null;
   routerDivergence: string | null;
+  routerAddress?: string | null;
+  routerUptime?: string | null;
+  routerLastSyncAt?: string | null;
+  routerLastError?: string | null;
+  routerRateLimit?: string | null;
 };
 
 export type AudiovisualConfig = {
