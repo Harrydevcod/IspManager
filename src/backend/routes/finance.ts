@@ -214,7 +214,22 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Estado de servico invalido' });
     }
 
-    const result = changeServiceStatus(getSqliteDatabase(), id, parsed.data.status, {
+    const db = getSqliteDatabase();
+    if (parsed.data.status === 'active') {
+      const owner = db.prepare(`
+        SELECT c.status AS clientStatus
+        FROM services s
+        JOIN clients c ON c.id = s.client_id
+        WHERE s.id = ?
+      `).get(id) as { clientStatus: string } | undefined;
+      if (owner && owner.clientStatus !== 'active') {
+        return reply.status(409).send({
+          error: 'O cliente está suspenso ou cancelado. Reative primeiro o cliente antes de repor este serviço.'
+        });
+      }
+    }
+
+    const result = changeServiceStatus(db, id, parsed.data.status, {
       reason: parsed.data.reason || (parsed.data.status === 'suspended' ? 'Suspensão manual pela ficha do serviço' : 'Reativação manual pela ficha do serviço'),
       actorId: request.user?.id ?? null,
       source: parsed.data.status === 'suspended' ? 'manual' : null
