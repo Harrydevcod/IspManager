@@ -324,7 +324,7 @@ export function ServicesModule({
       message: networkStatus?.dryRun
         ? 'O modo de ensaio está ativo. A sessão não será terminada; o sistema apenas confirmará o que faria.'
         : 'A sessão atual será terminada. O secret continua ativo e o equipamento pode voltar a autenticar automaticamente.',
-      tone: networkStatus?.dryRun ? 'neutral' : 'danger',
+      tone: networkStatus?.dryRun ? 'default' : 'danger',
       confirmLabel: networkStatus?.dryRun ? 'Simular' : 'Desconectar'
     });
     if (!accepted) return;
@@ -377,7 +377,7 @@ export function ServicesModule({
       message: suspending
         ? 'O serviço será marcado como suspenso e a sincronização tentará desativar o PPPoE deste cliente.'
         : 'O serviço será reativado e a sincronização tentará repor o acesso PPPoE.',
-      tone: suspending ? 'danger' : 'neutral',
+      tone: suspending ? 'danger' : 'default',
       confirmLabel: suspending ? 'Suspender' : 'Reativar'
     });
     if (!accepted) return;
