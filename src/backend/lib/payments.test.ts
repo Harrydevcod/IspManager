@@ -34,7 +34,9 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  // Filhos primeiro: creditos → recibos → linhas → payments → services/clients.
+  // Filhos primeiro: livro-razão/eventos/creditos → recibos → cobranças → serviços.
+  db.prepare('DELETE FROM treasury_movements').run();
+  db.prepare('DELETE FROM service_events').run();
   db.prepare('DELETE FROM client_credits').run();
   db.prepare('DELETE FROM payment_receipts').run();
   db.prepare('DELETE FROM payment_lines').run();
@@ -178,5 +180,56 @@ describe('cancelPayment — a saída para um documento numerado', () => {
 
     expect(result.ok).toBe(true);
     expect(statusOf(id)).toBe('cancelled');
+  });
+});
+
+
+describe('pagamento e reativação de acesso', () => {
+  test('liquidar a dívida reativa suspensão automática por falta de pagamento', () => {
+    const paymentId = seedPayment('REACT', { invoiceNumber: 'FT-2026-00900', amountCve: 3000 });
+    const row = db.prepare('SELECT service_id AS serviceId FROM payments WHERE id = ?')
+      .get(paymentId) as { serviceId: number };
+
+    db.prepare(`UPDATE payments SET due_date = date('now', '-30 days') WHERE id = ?`).run(paymentId);
+    db.prepare(`
+      UPDATE services
+      SET status = 'suspended', suspension_source = 'nonpayment', suspended_at = datetime('now')
+      WHERE id = ?
+    `).run(row.serviceId);
+    db.prepare(`
+      INSERT INTO app_settings (key, value) VALUES ('autoSuspensionGraceDays', '5')
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value
+    `).run();
+
+    const result = payments.payPayment(db, paymentId, {
+      paymentMethod: 'numerario',
+      amountCve: 3000
+    });
+
+    expect(result.ok).toBe(true);
+    expect(db.prepare('SELECT status, suspension_source AS source FROM services WHERE id = ?').get(row.serviceId))
+      .toEqual({ status: 'active', source: null });
+  });
+
+  test('pagamento nunca desfaz suspensão manual', () => {
+    const paymentId = seedPayment('MANUAL', { invoiceNumber: 'FT-2026-00901', amountCve: 3000 });
+    const row = db.prepare('SELECT service_id AS serviceId FROM payments WHERE id = ?')
+      .get(paymentId) as { serviceId: number };
+
+    db.prepare(`UPDATE payments SET due_date = date('now', '-30 days') WHERE id = ?`).run(paymentId);
+    db.prepare(`
+      UPDATE services
+      SET status = 'suspended', suspension_source = 'manual', suspended_at = datetime('now')
+      WHERE id = ?
+    `).run(row.serviceId);
+
+    const result = payments.payPayment(db, paymentId, {
+      paymentMethod: 'numerario',
+      amountCve: 3000
+    });
+
+    expect(result.ok).toBe(true);
+    expect(db.prepare('SELECT status, suspension_source AS source FROM services WHERE id = ?').get(row.serviceId))
+      .toEqual({ status: 'suspended', source: 'manual' });
   });
 });
