@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test, vi } from 'vitest';
-import { NetworkTab, type RouterTestReport } from './NetworkTab';
+import { NetworkTab, type RouterEnforcementState, type RouterTestReport } from './NetworkTab';
 import type { SettingsFormState } from './settingsForm';
 
 const form = {
@@ -24,7 +24,7 @@ const form = {
   autoSuspensionMaxPercent: '20'
 } as SettingsFormState;
 
-function render(routerReport: RouterTestReport | null) {
+function render(routerReport: RouterTestReport | null, routerState: RouterEnforcementState | null = null) {
   return renderToStaticMarkup(
     <NetworkTab
       form={form}
@@ -39,7 +39,7 @@ function render(routerReport: RouterTestReport | null) {
       onRouterTest={vi.fn()}
       onTrustCertificate={vi.fn()}
       onForgetCertificate={vi.fn()}
-      routerState={null}
+      routerState={routerState}
       enforceBusy={false}
       enforceMessage=""
       onEnforceNow={vi.fn()}
@@ -132,4 +132,58 @@ describe('NetworkTab — diagnóstico do router', () => {
     expect(html).not.toContain('settings-router-steps');
     expect(html).not.toContain('module-message error');
   });
+
+  test('mostra a tabela dos clientes que seriam suspensos em ensaio', () => {
+    const state: RouterEnforcementState = {
+      services: [],
+      online: 0,
+      divergences: 0,
+      enabled: true,
+      dryRun: true,
+      configured: true,
+      autoSuspension: {
+        enabled: true,
+        dryRun: true,
+        graceDays: 5,
+        candidateCount: 1,
+        blockedByCreditCount: 1,
+        candidatePercent: 10,
+        guardTriggered: false,
+        guardReason: null,
+        candidates: [{
+          serviceId: 7,
+          clientId: 3,
+          clientName: 'Joao Silva',
+          username: 'joao-7',
+          paymentId: 99,
+          invoiceNumber: 'FT-99',
+          dueDate: '2026-09-10',
+          daysOverdue: 9,
+          balanceCve: 3000,
+          creditCve: 0
+        }],
+        blockedByCredit: [{
+          serviceId: 8,
+          clientId: 4,
+          clientName: 'Maria Lopes',
+          username: 'maria-8',
+          paymentId: 100,
+          invoiceNumber: 'FT-100',
+          dueDate: '2026-09-09',
+          daysOverdue: 10,
+          balanceCve: 4000,
+          creditCve: 500
+        }]
+      }
+    };
+
+    const html = render(null, state);
+    expect(html).toContain('Clientes que seriam suspensos');
+    expect(html).toContain('Joao Silva');
+    expect(html).toContain('joao-7');
+    expect(html).toContain('3000 CVE');
+    expect(html).toContain('Protegidos por crédito');
+    expect(html).toContain('Maria Lopes');
+  });
+
 });

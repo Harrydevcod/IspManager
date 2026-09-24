@@ -25,6 +25,30 @@ export type RouterEnforcementState = {
     candidatePercent: number;
     guardTriggered: boolean;
     guardReason: string | null;
+    candidates: Array<{
+      serviceId: number;
+      clientId: number;
+      clientName: string;
+      username: string;
+      paymentId: number;
+      invoiceNumber: string | null;
+      dueDate: string;
+      daysOverdue: number;
+      balanceCve: number;
+      creditCve: number;
+    }>;
+    blockedByCredit: Array<{
+      serviceId: number;
+      clientId: number;
+      clientName: string;
+      username: string;
+      paymentId: number;
+      invoiceNumber: string | null;
+      dueDate: string;
+      daysOverdue: number;
+      balanceCve: number;
+      creditCve: number;
+    }>;
   };
 };
 
@@ -363,6 +387,43 @@ export function NetworkTab({
               {routerState.autoSuspension.guardTriggered
                 ? ` · TRAVADO: ${routerState.autoSuspension.guardReason}`
                 : ''}
+            </Message>
+          )}
+          {(routerState.autoSuspension?.candidates?.length ?? 0) > 0 && (
+            <div className="settings-router-candidates">
+              <strong>
+                {routerState.autoSuspension?.dryRun ? 'Clientes que seriam suspensos' : 'Clientes elegíveis para suspensão'}
+              </strong>
+              <div className="settings-router-candidates-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>PPPoE</th>
+                      <th>Vencimento</th>
+                      <th>Atraso</th>
+                      <th>Saldo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {routerState.autoSuspension?.candidates.map((candidate) => (
+                      <tr key={candidate.serviceId}>
+                        <td>{candidate.clientName}</td>
+                        <td><code>{candidate.username}</code></td>
+                        <td>{candidate.dueDate}</td>
+                        <td>{candidate.daysOverdue} dia(s)</td>
+                        <td>{candidate.balanceCve.toLocaleString('pt-PT')} CVE</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {(routerState.autoSuspension?.blockedByCredit?.length ?? 0) > 0 && (
+            <Message tone="neutral">
+              Protegidos por crédito: {routerState.autoSuspension?.blockedByCredit.map((candidate) => candidate.clientName).join(', ')}.
+              Estes casos não entram em suspensão automática até o crédito ser revisto/aplicado.
             </Message>
           )}
           {divergent.length > 0 && (

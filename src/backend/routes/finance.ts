@@ -20,7 +20,7 @@ import {
   voidReceipt
 } from '../lib/payments';
 import { loadReceivables } from '../lib/receivables';
-import { createService, deleteService, serviceSchema, updateService } from '../lib/services';
+import { changeServiceStatus, createService, deleteService, serviceSchema, updateService } from '../lib/services';
 import { serviceTransferSchema, transferService } from '../lib/serviceTransfer';
 import { requireAuth, requireRole } from './auth';
 
@@ -47,6 +47,11 @@ const cancelSchema = z.object({
   reason: z.string().trim().optional().nullable()
 });
 
+const serviceStatusSchema = z.object({
+  status: z.enum(['active', 'suspended']),
+  reason: z.string().trim().max(500).optional().nullable()
+});
+
 export async function registerFinanceRoutes(app: FastifyInstance) {
   const billingWrite = { preHandler: requireRole(['admin', 'operator']) };
 
@@ -67,6 +72,8 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         c.full_name AS clientName,
         s.plan_id AS planId,
         p.name AS planName,
+        p.download_mbps AS downloadMbps,
+        p.upload_mbps AS uploadMbps,
         s.monthly_value_cve AS monthlyValueCve,
         s.due_day AS dueDay,
         s.status,
@@ -81,7 +88,13 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         -- online, sem ir buscá-lo serviço a serviço.
         n.online AS routerOnline,
         n.router_enabled AS routerEnabled,
+        n.address AS routerAddress,
+        n.uptime AS routerUptime,
+        n.last_online_at AS routerLastOnlineAt,
+        n.checked_at AS routerCheckedAt,
+        n.last_error AS routerLastError,
         n.divergence AS routerDivergence,
+        s.suspension_source AS suspensionSource,
         -- IPs dos equipamentos ativos: chave de identificacao das antenas para
         -- manutencao remota, por isso vem ja na lista e nao so no detalhe.
         -- Pela vista assignment_services, para uma antena partilhada aparecer em
@@ -192,6 +205,48 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       metadata: { clientId: parsed.data.clientId, planId: parsed.data.planId ?? null, status: parsed.data.status }
     });
     return { ok: true };
+  });
+
+  app.post('/api/services/:id/status', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const parsed = serviceStatusSchema.safeParse(request.body);
+    if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Estado de servico invalido' });
+    }
+
+    const db = getSqliteDatabase();
+    if (parsed.data.status === 'active') {
+      const owner = db.prepare(`
+        SELECT c.status AS clientStatus
+        FROM services s
+        JOIN clients c ON c.id = s.client_id
+        WHERE s.id = ?
+      `).get(id) as { clientStatus: string } | undefined;
+      if (owner && owner.clientStatus !== 'active') {
+        return reply.status(409).send({
+          error: 'O cliente está suspenso ou cancelado. Reative primeiro o cliente antes de repor este serviço.'
+        });
+      }
+    }
+
+    const result = changeServiceStatus(db, id, parsed.data.status, {
+      reason: parsed.data.reason || (parsed.data.status === 'suspended' ? 'Suspensão manual pela ficha do serviço' : 'Reativação manual pela ficha do serviço'),
+      actorId: request.user?.id ?? null,
+      source: parsed.data.status === 'suspended' ? 'manual' : null
+    });
+    if (!result.ok) {
+      return reply.status(result.status).send({ error: result.error });
+    }
+
+    recordAudit(request, {
+      action: parsed.data.status === 'suspended' ? 'manual_service_suspension' : 'manual_service_reactivation',
+      entityType: 'service',
+      entityId: id,
+      summary: parsed.data.status === 'suspended' ? `Suspendeu manualmente o servico ${id}` : `Reativou manualmente o servico ${id}`,
+      metadata: { reason: parsed.data.reason ?? null, previous: result.value.previous, next: result.value.next }
+    });
+
+    return result.value;
   });
 
   // Transferir o titular: a casa muda de inquilino, ou o equipamento é recolhido

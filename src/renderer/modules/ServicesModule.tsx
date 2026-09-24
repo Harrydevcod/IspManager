@@ -8,7 +8,7 @@ import { todayIso } from '../../shared/assignment-dates';
 import { labelForType, requiresStaticIp } from '../../shared/equipment';
 import { suggestIpPrefix } from '../lib/ip';
 import { statusLabel, statusTone } from '../lib/status';
-import type { AudiovisualConfig, Client, DeviceAssignment, ManualServiceEventType, PlanRow, ReturnCondition, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
+import type { AudiovisualConfig, Client, DeviceAssignment, ManualServiceEventType, PlanRow, ReturnCondition, ServiceNetworkStatus, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
 import { BulkIpDialog, type ActiveAssignment } from './services/BulkIpDialog';
 import { findReplaceTarget } from './services/findReplaceTarget';
 import { IpField } from './services/IpField';
@@ -109,6 +109,9 @@ export function ServicesModule({
   const [form, setForm] = useState<ServiceFormState>(emptyServiceForm());
   const [technicalHistory, setTechnicalHistory] = useState<TechnicalHistory | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [networkStatus, setNetworkStatus] = useState<ServiceNetworkStatus | null>(null);
+  const [networkLoading, setNetworkLoading] = useState(false);
+  const [networkBusyAction, setNetworkBusyAction] = useState<'sync' | 'disconnect' | 'status' | null>(null);
   const [catalogList, setCatalogList] = useState<StockCatalogRow[]>([]);
   const [showDeviceDialog, setShowDeviceDialog] = useState(false);
   const [addItemDrafts, setAddItemDrafts] = useState<ItemDraft[]>([]);
@@ -153,7 +156,11 @@ export function ServicesModule({
     setLoading(true);
     return authFetch('http://127.0.0.1:3001/api/services')
       .then((response) => response.json() as Promise<ServiceRow[]>)
-      .then((data) => { setServices(data); setLoadError(null); })
+      .then((data) => {
+        setServices(data);
+        setSelectedService((current) => current ? (data.find((row) => row.id === current.id) ?? current) : null);
+        setLoadError(null);
+      })
       .catch(() => { setServices([]); setLoadError('Não foi possível carregar os serviços.'); })
       .finally(() => setLoading(false));
   }
@@ -258,6 +265,177 @@ export function ServicesModule({
     }
   }
 
+  async function loadServiceNetwork(serviceId: number): Promise<ServiceNetworkStatus | null> {
+    setNetworkLoading(true);
+    try {
+      const response = await authFetch(`http://127.0.0.1:3001/api/network/services/${serviceId}`);
+      if (!response.ok) {
+        setNetworkStatus(null);
+        return null;
+      }
+      const data = await response.json() as ServiceNetworkStatus;
+      setNetworkStatus(data);
+      return data;
+    } catch {
+      setNetworkStatus(null);
+      return null;
+    } finally {
+      setNetworkLoading(false);
+    }
+  }
+
+  async function syncSelectedNetwork() {
+    if (!selectedService) return;
+    setNetworkBusyAction('sync');
+    try {
+      const response = await authFetch(
+        `http://127.0.0.1:3001/api/network/services/${selectedService.id}/sync`,
+        { method: 'POST' }
+      );
+      const data = await response.json() as {
+        error?: string;
+        dryRun?: boolean;
+        summary?: { planned?: number; applied?: number; failed?: number };
+      };
+      if (!response.ok) {
+        toast(data.error || 'Nao foi possivel sincronizar o servico com o MikroTik.', 'error');
+        return;
+      }
+      if (data.dryRun) {
+        toast(`Ensaio: ${data.summary?.planned ?? 0} alteracao(oes) seriam aplicadas. Nada foi alterado no router.`, 'success');
+      } else if ((data.summary?.failed ?? 0) > 0) {
+        toast('A sincronizacao terminou com erro. O sistema vai tentar novamente na proxima reconciliacao.', 'error');
+      } else {
+        toast(`Servico sincronizado com o MikroTik (${data.summary?.applied ?? 0} alteracao(oes)).`, 'success');
+      }
+      await loadServiceNetwork(selectedService.id);
+      await loadServices();
+    } catch {
+      toast('Falha de rede ao sincronizar o servico.', 'error');
+    } finally {
+      setNetworkBusyAction(null);
+    }
+  }
+
+  async function disconnectSelectedNetwork() {
+    if (!selectedService) return;
+    const accepted = await confirm({
+      title: networkStatus?.dryRun ? 'Simular desconexao PPPoE' : 'Desconectar sessao PPPoE',
+      message: networkStatus?.dryRun
+        ? 'O modo de ensaio está ativo. A sessão não será terminada; o sistema apenas confirmará o que faria.'
+        : 'A sessão atual será terminada. O secret continua ativo e o equipamento pode voltar a autenticar automaticamente.',
+      tone: networkStatus?.dryRun ? 'default' : 'danger',
+      confirmLabel: networkStatus?.dryRun ? 'Simular' : 'Desconectar'
+    });
+    if (!accepted) return;
+
+    setNetworkBusyAction('disconnect');
+    try {
+      const response = await authFetch(
+        `http://127.0.0.1:3001/api/network/services/${selectedService.id}/disconnect`,
+        { method: 'POST' }
+      );
+      const data = await response.json() as {
+        error?: string; dryRun?: boolean; simulated?: boolean; disconnected?: boolean; online?: boolean;
+      };
+      if (!response.ok) {
+        toast(data.error || 'Nao foi possivel desligar a sessao PPPoE.', 'error');
+        return;
+      }
+      if (data.simulated) {
+        toast('Ensaio: a sessão PPPoE seria desligada. Nada foi alterado.', 'success');
+      } else if (data.disconnected) {
+        toast('Sessao PPPoE desligada.', 'success');
+      } else {
+        toast('O cliente ja estava offline.', 'success');
+      }
+      await loadServiceNetwork(selectedService.id);
+      await loadServices();
+    } catch {
+      toast('Falha de rede ao desligar a sessao PPPoE.', 'error');
+    } finally {
+      setNetworkBusyAction(null);
+    }
+  }
+
+  async function toggleSelectedAccess() {
+    if (!selectedService) return;
+    const suspending = selectedService.status !== 'suspended';
+
+    if (networkStatus?.dryRun) {
+      toast(
+        suspending
+          ? 'Ensaio: este servico seria suspenso e a sessao seria terminada. Nenhuma alteracao foi aplicada.'
+          : 'Ensaio: este servico seria reativado. Nenhuma alteracao foi aplicada.',
+        'success'
+      );
+      return;
+    }
+
+    const accepted = await confirm({
+      title: suspending ? 'Suspender Internet' : 'Reativar Internet',
+      message: suspending
+        ? 'O serviço será marcado como suspenso e a sincronização tentará desativar o PPPoE deste cliente.'
+        : 'O serviço será reativado e a sincronização tentará repor o acesso PPPoE.',
+      tone: suspending ? 'danger' : 'default',
+      confirmLabel: suspending ? 'Suspender' : 'Reativar'
+    });
+    if (!accepted) return;
+
+    setNetworkBusyAction('status');
+    try {
+      const response = await authFetch(
+        `http://127.0.0.1:3001/api/services/${selectedService.id}/status`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: suspending ? 'suspended' : 'active',
+            reason: suspending ? 'Suspensão manual pela ficha do serviço' : 'Reativação manual pela ficha do serviço'
+          })
+        }
+      );
+      const result = await response.json() as { error?: string };
+      if (!response.ok) {
+        toast(result.error || 'Nao foi possivel alterar o estado do servico.', 'error');
+        return;
+      }
+
+      // A intenção fica guardada mesmo se o router estiver momentaneamente em
+      // baixo. A tentativa imediata é conveniência; o job periódico recupera.
+      if (networkStatus?.enabled && networkStatus.configured) {
+        const sync = await authFetch(
+          `http://127.0.0.1:3001/api/network/services/${selectedService.id}/sync`,
+          { method: 'POST' }
+        );
+        if (!sync.ok) {
+          toast(
+            suspending
+              ? 'Serviço suspenso no ISPM; aplicação no MikroTik ficou pendente.'
+              : 'Serviço reativado no ISPM; reposição no MikroTik ficou pendente.',
+            'error'
+          );
+        } else {
+          toast(suspending ? 'Internet suspensa.' : 'Internet reativada.', 'success');
+        }
+      } else {
+        toast(
+          suspending
+            ? 'Serviço suspenso. A integração MikroTik está desligada ou por configurar.'
+            : 'Serviço reativado. A integração MikroTik está desligada ou por configurar.',
+          'success'
+        );
+      }
+
+      await loadServices();
+      await loadServiceNetwork(selectedService.id);
+    } catch {
+      toast('Falha de rede ao alterar o acesso do servico.', 'error');
+    } finally {
+      setNetworkBusyAction(null);
+    }
+  }
+
   async function ensureCatalogLoaded() {
     if (catalogList.length > 0) return;
     try {
@@ -273,9 +451,11 @@ export function ServicesModule({
   useEffect(() => {
     if (!selectedService) {
       setTechnicalHistory(null);
+      setNetworkStatus(null);
       return;
     }
     void loadTechnicalHistory(selectedService.id);
+    void loadServiceNetwork(selectedService.id);
   }, [selectedService]);
 
   useEffect(() => {
@@ -961,6 +1141,12 @@ export function ServicesModule({
           canManage={canManageServices}
           canRecordTechnical={canRecordTechnical}
           submitting={submitting}
+          network={networkStatus}
+          networkLoading={networkLoading}
+          networkBusyAction={networkBusyAction}
+          onSyncNetwork={() => void syncSelectedNetwork()}
+          onDisconnectNetwork={() => void disconnectSelectedNetwork()}
+          onToggleAccess={() => void toggleSelectedAccess()}
           onClose={() => setSelectedService(null)}
           onEdit={editService}
           onDelete={(service) => void deleteService(service)}

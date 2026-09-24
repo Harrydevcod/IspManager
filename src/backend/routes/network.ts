@@ -16,7 +16,7 @@ import {
   type RouterNeighbor
 } from '../lib/routeros';
 import { identifyModel } from '../lib/device-model';
-import { loadNetworkEnforcementState, runNetworkEnforcement } from '../lib/network-enforcement';
+import { disconnectServiceSession, loadNetworkEnforcementState, runNetworkEnforcement, runServiceNetworkEnforcement } from '../lib/network-enforcement';
 import { loadAutoSuspensionPreview, runAutomaticSuspension } from '../lib/auto-suspension';
 import {
   loadRegisteredDevices,
@@ -102,6 +102,7 @@ const routerTestBodySchema = z.object({
 export async function registerNetworkRoutes(app: FastifyInstance) {
   const readOnly = { preHandler: requireAuth() };
   const adminOnly = { preHandler: requireRole(['admin']) };
+  const networkWrite = { preHandler: requireRole(['admin', 'operator']) };
 
   app.get('/api/network/status', readOnly, async (request, reply) => {
     const parsed = statusQuerySchema.safeParse(request.query);
@@ -144,6 +145,89 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       configured: isRouterConfigured(config),
       autoSuspension: loadAutoSuspensionPreview(db)
     };
+  });
+
+  app.get('/api/network/services/:id', readOnly, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Servico invalido' });
+    }
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    const state = loadNetworkEnforcementState(db).services.find((row) => row.serviceId === id) ?? null;
+    const service = db.prepare(`
+      SELECT s.id, s.pppoe_username AS username, s.status,
+             p.name AS planName, p.download_mbps AS downloadMbps, p.upload_mbps AS uploadMbps,
+             s.suspension_source AS suspensionSource
+      FROM services s
+      LEFT JOIN internet_plans p ON p.id = s.plan_id
+      WHERE s.id = ?
+    `).get(id) as {
+      id: number; username: string | null; status: string; planName: string | null;
+      downloadMbps: number | null; uploadMbps: number | null; suspensionSource: string | null;
+    } | undefined;
+    if (!service) return reply.status(404).send({ error: 'Servico nao encontrado' });
+
+    return {
+      serviceId: id,
+      username: service.username,
+      status: service.status,
+      suspensionSource: service.suspensionSource,
+      planName: service.planName,
+      downloadMbps: service.downloadMbps,
+      uploadMbps: service.uploadMbps,
+      enabled: config.enabled,
+      dryRun: config.dryRun,
+      configured: isRouterConfigured(config),
+      state
+    };
+  });
+
+  app.post('/api/network/services/:id/sync', networkWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Servico invalido' });
+    }
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return reply.status(409).send({ error: 'Integração MikroTik desligada ou por configurar' });
+    }
+    try {
+      return await runJob('network_enforcement_service_manual', () => runServiceNetworkEnforcement(db, id, {
+        transport: createTransport(config),
+        dryRun: config.dryRun,
+        maxDisables: config.maxDisablesPerRun
+      }));
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return reply.status(502).send({ error: err instanceof Error && err.message === 'Servico sem utilizador PPPoE'
+        ? err.message
+        : `${failure.title}. ${failure.detail}` });
+    }
+  });
+
+  app.post('/api/network/services/:id/disconnect', networkWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Servico invalido' });
+    }
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return reply.status(409).send({ error: 'Integração MikroTik desligada ou por configurar' });
+    }
+    try {
+      return await runJob('network_disconnect_service', () => disconnectServiceSession(db, id, {
+        transport: createTransport(config),
+        dryRun: config.dryRun
+      }));
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return reply.status(502).send({ error: err instanceof Error && err.message === 'Servico sem utilizador PPPoE'
+        ? err.message
+        : `${failure.title}. ${failure.detail}` });
+    }
   });
 
   // Avalia a cobrança sem contornar o ensaio. Em LIVE muda a intenção do
