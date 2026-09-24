@@ -6025,8 +6025,8 @@ button.danger:disabled {
 
 .settings-router-candidates-scroll {
   overflow-x: auto;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
 }
 
 .settings-router-candidates table {
@@ -6040,14 +6040,14 @@ button.danger:disabled {
 .settings-router-candidates td {
   padding: 0.65rem 0.75rem;
   text-align: left;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .settings-router-candidates th {
-  color: var(--text-muted);
+  color: var(--text-3);
   font-weight: 600;
-  background: var(--surface-subtle);
+  background: var(--surface-2);
 }
 
 .settings-router-candidates tbody tr:last-child td {
