@@ -121,7 +121,7 @@ function matchSecret(service: DesiredService, secrets: RouterSecret[]): RouterSe
  * Função pura: dado o desejado e o que está no router, o que há a fazer.
  * É aqui que vive a decisão toda — o resto do módulo é entrada/saída.
  */
-export function planActions(desired: DesiredService[], secrets: RouterSecret[]): EnforcementPlan {
+export function planActions(desired: DesiredService[], secrets: RouterSecret[], reportOrphans = true): EnforcementPlan {
   const actions: PlannedAction[] = [];
   const divergences: Divergence[] = [];
   const matched = new Map<number, RouterSecret>();
@@ -188,17 +188,19 @@ export function planActions(desired: DesiredService[], secrets: RouterSecret[]):
   }
 
   // Secrets marcados como nossos que já não correspondem a nenhum serviço.
-  // Reportados e nunca apagados: apagar o que não criámos nesta passagem é como
-  // se perde configuração de propósito.
-  for (const secret of secrets) {
-    if (usedSecretIds.has(secret.id)) continue;
-    if (!secret.comment?.startsWith(COMMENT_PREFIX)) continue;
-    divergences.push({
-      serviceId: Number(secret.comment.slice(COMMENT_PREFIX.length)) || null,
-      username: secret.name,
-      kind: 'orphan_secret',
-      detail: 'Utilizador no router sem serviço correspondente no ISPM'
-    });
+  // Reportados só numa passagem global. Numa sincronização individual, todos os
+  // outros clientes seriam falsos "órfãos" por definição.
+  if (reportOrphans) {
+    for (const secret of secrets) {
+      if (usedSecretIds.has(secret.id)) continue;
+      if (!secret.comment?.startsWith(COMMENT_PREFIX)) continue;
+      divergences.push({
+        serviceId: Number(secret.comment.slice(COMMENT_PREFIX.length)) || null,
+        username: secret.name,
+        kind: 'orphan_secret',
+        detail: 'Utilizador no router sem serviço correspondente no ISPM'
+      });
+    }
   }
 
   return { actions, divergences, matched };
@@ -408,6 +410,129 @@ async function applyAction(
     disabling ? 'corte_rede' : 'reposicao_rede',
     disabling ? 'Acesso cortado no router' : 'Acesso reposto no router'
   );
+}
+
+export type ServiceNetworkOperation = {
+  dryRun: boolean;
+  serviceId: number;
+  username: string;
+  online: boolean;
+  disconnected?: boolean;
+  simulated?: boolean;
+  summary?: EnforcementSummary;
+};
+
+/**
+ * Reconciliação de um único serviço. Lê o mesmo router e usa o mesmo planeador
+ * da passagem global, mas nunca aplica divergências de outros clientes.
+ */
+export async function runServiceNetworkEnforcement(
+  db: Database.Database,
+  serviceId: number,
+  deps: EnforcementDeps
+): Promise<ServiceNetworkOperation> {
+  const service = loadDesiredServices(db).find((item) => item.serviceId === serviceId);
+  if (!service) {
+    throw new Error('Servico sem utilizador PPPoE');
+  }
+
+  const [secrets, active] = await Promise.all([listSecrets(deps.transport), listActive(deps.transport)]);
+  const plan = planActions([service], secrets, false);
+  const activeByName = new Map<string, RouterActive>(active.map((session) => [session.name, session]));
+  const errors = new Map<number, string>();
+  let applied = 0;
+
+  if (!deps.dryRun) {
+    const ordered = [...plan.actions].sort((a, b) => rank(a) - rank(b));
+    for (const action of ordered) {
+      try {
+        await applyAction(db, deps.transport, action, activeByName, [service]);
+        applied += 1;
+      } catch (err) {
+        errors.set(action.serviceId, err instanceof Error ? err.message : String(err));
+      }
+    }
+  }
+
+  const divergence = plan.divergences.find((row) => row.serviceId === serviceId)?.kind ?? null;
+  const secret = plan.matched.get(serviceId);
+  const session = activeByName.get(service.username);
+  db.prepare(upsertState).run(
+    service.serviceId,
+    secret?.id ?? null,
+    secret ? (secret.disabled ? 0 : 1) : null,
+    service.enabled ? 1 : 0,
+    secret?.rateLimit ?? null,
+    session ? 1 : 0,
+    session?.address ?? null,
+    session?.uptime ?? null,
+    session ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null,
+    divergence,
+    errors.get(serviceId) ?? null
+  );
+
+  return {
+    dryRun: deps.dryRun,
+    serviceId,
+    username: service.username,
+    online: Boolean(session),
+    summary: {
+      dryRun: deps.dryRun,
+      services: 1,
+      online: session ? 1 : 0,
+      planned: plan.actions.length,
+      applied,
+      failed: errors.size,
+      divergences: plan.divergences.length,
+      actions: plan.actions
+    }
+  };
+}
+
+/**
+ * Termina apenas a sessão PPPoE viva. Não altera o estado comercial nem
+ * desativa o secret; o CPE pode voltar a autenticar depois.
+ */
+export async function disconnectServiceSession(
+  db: Database.Database,
+  serviceId: number,
+  deps: Pick<EnforcementDeps, 'transport' | 'dryRun'>
+): Promise<ServiceNetworkOperation> {
+  const service = loadDesiredServices(db).find((item) => item.serviceId === serviceId);
+  if (!service) throw new Error('Servico sem utilizador PPPoE');
+
+  const active = await listActive(deps.transport);
+  const session = active.find((item) => item.name === service.username);
+  if (!session) {
+    return { dryRun: deps.dryRun, serviceId, username: service.username, online: false, disconnected: false };
+  }
+
+  if (deps.dryRun) {
+    return {
+      dryRun: true,
+      serviceId,
+      username: service.username,
+      online: true,
+      disconnected: false,
+      simulated: true
+    };
+  }
+
+  await removeActive(deps.transport, session.id);
+  db.prepare(`
+    UPDATE service_network_state
+    SET online = 0, address = NULL, uptime = NULL, checked_at = datetime('now')
+    WHERE service_id = ?
+  `).run(serviceId);
+  recordSystemAudit(db, 'network_disconnect', serviceId, `Desligou a sessão PPPoE de ${service.clientName} (${service.username})`);
+
+  return {
+    dryRun: false,
+    serviceId,
+    username: service.username,
+    online: false,
+    disconnected: true
+  };
 }
 
 /** Chamada pelo agendador: só corre com o router ligado e configurado. */
