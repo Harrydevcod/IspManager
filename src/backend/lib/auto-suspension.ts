@@ -137,6 +137,7 @@ function rawCandidates(db: Database.Database, graceDays: number): SuspensionCand
     JOIN clients c ON c.id = s.client_id
     JOIN payments p ON p.service_id = s.id
     WHERE s.status = 'active'
+      AND p.client_id = s.client_id
       AND c.status <> 'cancelled'
       AND s.pppoe_username IS NOT NULL
       AND TRIM(s.pppoe_username) <> ''
@@ -217,7 +218,9 @@ function hasSuspendableDebt(db: Database.Database, serviceId: number, graceDays:
   const row = db.prepare(`
     SELECT 1 AS found
     FROM payments p
+    JOIN services s ON s.id = p.service_id
     WHERE p.service_id = ?
+      AND p.client_id = s.client_id
       AND p.status IN ('pending', 'overdue')
       AND date(p.due_date, '+' || ? || ' days') < date('now')
       AND ${balanceExpr} > 0.005
@@ -353,12 +356,24 @@ export function reactivateServiceIfEligibleAfterPayment(
   actorId: number | null = null
 ): boolean {
   const service = db.prepare(`
-    SELECT status, suspension_source AS suspensionSource
-    FROM services
-    WHERE id = ?
-  `).get(serviceId) as { status: string; suspensionSource: string | null } | undefined;
+    SELECT s.status,
+           s.suspension_source AS suspensionSource,
+           c.status AS clientStatus
+    FROM services s
+    JOIN clients c ON c.id = s.client_id
+    WHERE s.id = ?
+  `).get(serviceId) as {
+    status: string;
+    suspensionSource: string | null;
+    clientStatus: string;
+  } | undefined;
 
-  if (!service || service.status !== 'suspended' || service.suspensionSource !== 'nonpayment') {
+  if (
+    !service
+    || service.status !== 'suspended'
+    || service.suspensionSource !== 'nonpayment'
+    || service.clientStatus !== 'active'
+  ) {
     return false;
   }
 
