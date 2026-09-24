@@ -1,4 +1,4 @@
-import { ArrowRightLeft, Cable, Coins, History, PackageCheck, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
+import { ArrowRightLeft, Cable, Coins, Gauge, History, KeyRound, LogOut, PackageCheck, Pencil, Plus, RefreshCw, Router, ShieldCheck, ShieldOff, Trash2, Wrench } from 'lucide-react';
 import { labelForType } from '../../../shared/equipment';
 import { labelForWanMode } from '../../../shared/wan';
 import { labelForOperationMode } from '../../../shared/operation';
@@ -58,6 +58,14 @@ const INSTALL_COST_LABELS: Record<'mao_de_obra' | 'transporte' | 'outro', string
   outro: 'Outro'
 };
 
+const NETWORK_DIVERGENCE_LABELS: Record<string, string> = {
+  missing_secret: 'Utilizador PPPoE em falta no router',
+  state: 'Estado diferente entre ISPM e MikroTik',
+  rate_limit: 'Velocidade diferente do plano',
+  password: 'Password PPPoE pendente de sincronização',
+  orphan_secret: 'Utilizador no router sem serviço correspondente'
+};
+
 type ServiceDetailDialogProps = {
   service: ServiceRow;
   technicalHistory: TechnicalHistory | null;
@@ -67,6 +75,7 @@ type ServiceDetailDialogProps = {
   canManage: boolean;
   canRecordTechnical: boolean;
   submitting: boolean;
+  networkActionBusy: boolean;
   onClose: () => void;
   onEdit: (service: ServiceRow) => void;
   onDelete: (service: ServiceRow) => void;
@@ -84,6 +93,12 @@ type ServiceDetailDialogProps = {
   onAddEvent: () => void;
   /** Mudar o titular: a casa mudou de inquilino, ou o material vai para outro cliente. */
   onTransfer: () => void;
+  onNetworkSync: () => void;
+  onDisconnect: () => void;
+  onSuspend: () => void;
+  onReactivate: () => void;
+  onChangePlan: () => void;
+  onChangePassword: () => void;
 };
 
 export function ServiceDetailDialog({
@@ -95,6 +110,7 @@ export function ServiceDetailDialog({
   canManage,
   canRecordTechnical,
   submitting,
+  networkActionBusy,
   onClose,
   onEdit,
   onDelete,
@@ -107,7 +123,13 @@ export function ServiceDetailDialog({
   onOpenReturns,
   onPurchaseDevice,
   onAddEvent,
-  onTransfer
+  onTransfer,
+  onNetworkSync,
+  onDisconnect,
+  onSuspend,
+  onReactivate,
+  onChangePlan,
+  onChangePassword
 }: ServiceDetailDialogProps) {
   // Fonte fresca após uma edição; enquanto o histórico carrega usa o valor da lista.
   const activeIps = technicalHistory
@@ -128,6 +150,19 @@ export function ServiceDetailDialog({
   const pendingMaterials = (technicalHistory?.materialReturns ?? [])
     .filter((m) => m.consumed - m.recovered > 0).length;
   const hasPendingReturns = pendingDevices + pendingMaterials > 0;
+  const speedLabel = service.planDownloadMbps && service.planUploadMbps
+    ? `${service.planDownloadMbps}↓ / ${service.planUploadMbps}↑ Mbps`
+    : service.routerRateLimit || '-';
+  const networkStateLabel = service.routerOnline === 1
+    ? 'ONLINE'
+    : service.routerOnline === 0
+      ? 'OFFLINE'
+      : 'Sem leitura';
+  const networkStateTone = service.routerOnline === 1
+    ? 'success'
+    : service.routerOnline === 0
+      ? 'neutral'
+      : 'warn';
 
   return (
     <Dialog
@@ -199,6 +234,118 @@ export function ServiceDetailDialog({
           </dd>
         </div>
       </dl>
+
+      <section className="technical-section">
+        <header className="technical-section-head">
+          <div>
+            <p className="eyebrow"><Router size={12} /> Internet / MikroTik</p>
+            <h3>
+              <Badge tone={networkStateTone}>{networkStateLabel}</Badge>
+              {service.pppoePasswordPending === 1 && <> <Badge tone="warn">Password pendente</Badge></>}
+            </h3>
+          </div>
+        </header>
+
+        {!service.pppoeUsername ? (
+          <Message tone="neutral">
+            Este serviço ainda não tem utilizador PPPoE. Ativa/configura a integração MikroTik e edita o serviço para o colocar sob controlo de rede.
+          </Message>
+        ) : (
+          <>
+            <dl className="technical-item-meta">
+              <div><dt>Utilizador PPPoE</dt><dd><code>{service.pppoeUsername}</code></dd></div>
+              <div><dt>Plano</dt><dd>{service.planName || '-'} · {speedLabel}</dd></div>
+              <div>
+                <dt>Secret no router</dt>
+                <dd>
+                  {service.routerEnabled === 1
+                    ? 'Ativo'
+                    : service.routerEnabled === 0
+                      ? 'Desativado'
+                      : 'Ainda não lido'}
+                </dd>
+              </div>
+              <div><dt>IP da sessão</dt><dd>{service.routerAddress || '-'}</dd></div>
+              <div><dt>Uptime</dt><dd>{service.routerUptime || '-'}</dd></div>
+              <div>
+                <dt>Última sincronização</dt>
+                <dd>{service.routerLastSyncAt ? formatPtDateTime(service.routerLastSyncAt) : '-'}</dd>
+              </div>
+            </dl>
+
+            {service.routerDivergence && (
+              <Message tone="warn">
+                {NETWORK_DIVERGENCE_LABELS[service.routerDivergence] || service.routerDivergence}
+              </Message>
+            )}
+            {service.routerLastError && <Message tone="error">{service.routerLastError}</Message>}
+
+            {canManage && (
+              <div className="technical-item-actions">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={networkActionBusy}
+                  leadingIcon={<RefreshCw size={14} aria-hidden />}
+                  onClick={onNetworkSync}
+                >
+                  Sincronizar
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={networkActionBusy || service.routerOnline !== 1}
+                  leadingIcon={<LogOut size={14} aria-hidden />}
+                  onClick={onDisconnect}
+                  title={service.routerOnline === 1 ? 'Terminar a sessão PPPoE atual' : 'Sem sessão PPPoE online'}
+                >
+                  Desconectar
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={networkActionBusy}
+                  leadingIcon={<Gauge size={14} aria-hidden />}
+                  onClick={onChangePlan}
+                >
+                  Mudar plano
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={networkActionBusy}
+                  leadingIcon={<KeyRound size={14} aria-hidden />}
+                  onClick={onChangePassword}
+                >
+                  Alterar password
+                </Button>
+                {service.status === 'active' && (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    disabled={networkActionBusy}
+                    leadingIcon={<ShieldOff size={14} aria-hidden />}
+                    onClick={onSuspend}
+                  >
+                    Suspender
+                  </Button>
+                )}
+                {service.status === 'suspended' && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={networkActionBusy}
+                    leadingIcon={<ShieldCheck size={14} aria-hidden />}
+                    onClick={onReactivate}
+                  >
+                    Reativar
+                  </Button>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </section>
 
       <section className="technical-section">
         <header className="technical-section-head">
