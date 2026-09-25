@@ -962,13 +962,14 @@ export async function createSecret(transport: RouterTransport, input: NewSecret)
   return str(row?.['.id']) ?? '';
 }
 
-export type SecretPatch = { disabled?: boolean; rateLimit?: string | null; password?: string };
+export type SecretPatch = { disabled?: boolean; rateLimit?: string | null; password?: string; name?: string };
 
 export async function patchSecret(transport: RouterTransport, id: string, patch: SecretPatch): Promise<void> {
   assertPlainPassword(patch.password);
   const body: Record<string, string> = {};
   if (patch.disabled !== undefined) body.disabled = patch.disabled ? 'yes' : 'no';
   if (patch.rateLimit !== undefined) body['rate-limit'] = patch.rateLimit ?? '';
+  if (patch.name !== undefined) body.name = patch.name;
   if (patch.password !== undefined) body.password = patch.password;
   if (Object.keys(body).length === 0) return;
   await transport({ method: 'PATCH', path: `/ppp/secret/${id}`, body });

@@ -30,6 +30,10 @@ com hardware à frente:
 
 - **A âncora do mapeamento é o `comment` do secret**, `ispm:<serviceId>`, e não o nome. Um utilizador
   renomeado no Winbox continua a ser reconhecido; o nome é só o fallback.
+  Um nome diferente no router só se reporta (divergência `username`) — exceto quando o ISPM tem
+  credenciais por empurrar (`pppoe_password_sync_pending`, ex.: transferência em modo reinstalar):
+  aí a mesma ação renomeia o secret, muda a password e derruba a sessão antiga. O que o ISPM muda
+  empurra-se; o que se muda no Winbox reporta-se.
 
 - **Velocidade em colunas numéricas, não adivinhada do texto.** `download_mbps`/`upload_mbps` (migração
   0039) alimentam o `rate-limit`. A migração pré-preenche só o que é inequívoco ("10 Mbps"); o resto fica

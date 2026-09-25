@@ -50,7 +50,8 @@ export type PlannedAction =
   | { kind: 'create'; serviceId: number; username: string; rateLimit: string | null; clientName: string }
   | { kind: 'enable' | 'disable'; serviceId: number; username: string; secretId: string; clientName: string }
   | { kind: 'rate_limit'; serviceId: number; username: string; secretId: string; rateLimit: string; clientName: string }
-  | { kind: 'password'; serviceId: number; username: string; secretId: string; clientName: string };
+  /** `rename`: o secret no router tem outro nome e as credenciais do ISPM mandam (reinstalação). */
+  | { kind: 'password'; serviceId: number; username: string; secretId: string; clientName: string; rename?: true };
 
 export type Divergence = {
   serviceId: number | null;
@@ -200,7 +201,9 @@ export function planActions(
 
     // A password não é comparada com o router: o utilizador REST pode não ter
     // política sensitive. Uma alteração local deixa uma marca explícita que só
-    // é limpa depois de um PATCH bem sucedido.
+    // é limpa depois de um PATCH bem sucedido. Com a marca, as credenciais do
+    // ISPM mandam: um nome diferente no router é renomeado na mesma ação.
+    const renamed = secret.name !== service.username;
     if (service.passwordPending && service.hasPassword) {
       divergences.push({
         serviceId: service.serviceId,
@@ -213,13 +216,14 @@ export function planActions(
         serviceId: service.serviceId,
         username: service.username,
         secretId: secret.id,
-        clientName: service.clientName
+        clientName: service.clientName,
+        ...(renamed ? { rename: true as const } : {})
       });
     }
 
-    // Nome diferente no router (renomeado no Winbox ou no ISPM): só se reporta.
-    // Renomear sozinho partia o login do equipamento do cliente.
-    if (secret.name !== service.username) {
+    // Nome diferente no router sem credenciais pendentes (renomeado no Winbox):
+    // só se reporta. Renomear sozinho partia o login do equipamento do cliente.
+    if (renamed) {
       divergences.push({
         serviceId: service.serviceId,
         username: service.username,
@@ -461,9 +465,27 @@ async function applyAction(
   if (action.kind === 'password') {
     const password = openPassword(db, action.serviceId);
     if (!password.plain) throw new Error('Servico sem senha PPPoE disponivel');
-    await patchSecret(transport, action.secretId, { password: password.plain });
+    await patchSecret(transport, action.secretId, {
+      ...(action.rename ? { name: action.username } : {}),
+      password: password.plain
+    });
     clearPasswordPending(db, action.serviceId, password.sealed);
-    recordSystemAudit(db, 'network_password', action.serviceId, `Atualizou a password PPPoE de ${action.username}`);
+    if (action.rename) {
+      // A sessão viva é do titular anterior, com as credenciais antigas.
+      const session = activeByName.get(login);
+      if (session) {
+        await removeActive(transport, session.id);
+        activeByName.delete(login);
+      }
+    }
+    recordSystemAudit(
+      db,
+      'network_password',
+      action.serviceId,
+      action.rename
+        ? `Renomeou ${login} para ${action.username} e atualizou a password PPPoE`
+        : `Atualizou a password PPPoE de ${action.username}`
+    );
     return;
   }
 

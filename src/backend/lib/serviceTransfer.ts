@@ -150,7 +150,9 @@ export function transferService(
           )
       `).run(actorId, serviceId);
       if (pppoeRegenerated) {
-        db.prepare('UPDATE services SET pppoe_username = ?, pppoe_password = ? WHERE id = ?')
+        // A marca manda a reconciliação empurrar nome e password para o secret
+        // (casado pelo comment) e derrubar a sessão do inquilino anterior.
+        db.prepare('UPDATE services SET pppoe_username = ?, pppoe_password = ?, pppoe_password_sync_pending = 1 WHERE id = ?')
           .run(pppoeUsernameFor(toClient.fullName, serviceId), sealPppoeSecret(generatePppoePassword()), serviceId);
       }
     }
