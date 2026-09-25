@@ -216,8 +216,9 @@ Definições → Rede → **Router MikroTik**:
 | Perfil dos suspensos | `SUSPENSO` (já criado no passo 1); vazio para desativar o secret ao suspender |
 
 O perfil `SUSPENSO` tem de existir no router antes de suspender serviços em modo efetivo. Se faltar,
-o `PATCH` do perfil falha, o erro fica registado no serviço e um secret que estava desativado **não**
-é ativado. Na primeira passagem, os serviços suspensos que hoje têm o secret desativado passam
+o ISPM desativa o secret do suspenso, derruba a sessão e regista o erro no serviço. Se o perfil
+desaparecer entre a verificação e o `PATCH`, aplica o mesmo corte de segurança. Um secret já
+desativado não é ativado. Na primeira passagem, os serviços suspensos que hoje têm o secret desativado passam
 primeiro para `SUSPENSO` e só depois são ativados; esta reposição não conta como corte na trava.
 
 Depois **Testar ligação** — não é preciso gravar primeiro, o teste corre contra o que está no ecrã.

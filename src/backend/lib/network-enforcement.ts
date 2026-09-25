@@ -6,6 +6,7 @@ import {
   createTransport,
   isRouterConfigured,
   listActive,
+  listProfiles,
   listSecrets,
   patchSecret,
   readRouterConfig,
@@ -329,12 +330,29 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
   const baseProfile = readBaseProfileName(db);
   const allDesired = loadDesiredServices(db, { suspendedProfile });
   const wanted = deps.serviceIds ? new Set(deps.serviceIds) : null;
-  const desired = wanted ? allDesired.filter((service) => wanted.has(service.serviceId)) : allDesired;
-  if (desired.length === 0) {
+  const selected = wanted ? allDesired.filter((service) => wanted.has(service.serviceId)) : allDesired;
+  if (selected.length === 0) {
     return { dryRun: deps.dryRun, services: 0, online: 0, planned: 0, applied: 0, failed: 0, divergences: 0, actions: [], skipped: true, reason: 'Nenhum servico com utilizador PPPoE' };
   }
 
   const [secrets, active] = await Promise.all([listSecrets(deps.transport), listActive(deps.transport)]);
+  let suspendedProfileError: string | null = null;
+  if (suspendedProfile && selected.some((service) => service.suspended)) {
+    try {
+      const profiles = await listProfiles(deps.transport);
+      if (!profiles.some((profile) => profile.name === suspendedProfile)) {
+        suspendedProfileError = `Perfil PPP de suspensão ${suspendedProfile} não existe no router; corte de segurança necessário`;
+      }
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      suspendedProfileError = `Não foi possível confirmar o perfil PPP de suspensão ${suspendedProfile}: ${detail}; corte de segurança necessário`;
+    }
+  }
+  // Sem perfil de suspensão confirmado, um suspenso volta ao corte por disable.
+  // A decisão acontece antes do planeamento para respeitar a mesma trava.
+  const desired = suspendedProfileError
+    ? selected.map((service) => service.suspended ? { ...service, enabled: false, profile: null, suspended: false } : service)
+    : selected;
   const plan = planActions(desired, secrets, { reportOrphans: deps.reportOrphans, suspendedProfile, baseProfile });
   const activeByName = new Map<string, RouterActive>(active.map((session) => [session.name, session]));
   // A sessão PPPoE tem o nome com que o equipamento se autentica: o do secret
@@ -364,8 +382,34 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
         await applyAction(db, deps.transport, action, activeByName, desired, loginOf(action), suspendedProfile);
         applied += 1;
       } catch (err) {
-        errors.set(action.serviceId, err instanceof Error ? err.message : String(err));
+        let message = err instanceof Error ? err.message : String(err);
+        // O perfil podia existir na leitura e desaparecer antes do PATCH. Um
+        // suspenso ainda ativo não pode conservar a velocidade do plano.
+        const secret = plan.matched.get(action.serviceId);
+        if (action.kind === 'profile' && action.profile === suspendedProfile
+          && desired.some((service) => service.serviceId === action.serviceId && service.suspended)
+          && secret && !secret.disabled) {
+          try {
+            await applyAction(db, deps.transport, {
+              kind: 'disable',
+              serviceId: action.serviceId,
+              username: action.username,
+              secretId: action.secretId,
+              clientName: action.clientName,
+              cut: true
+            }, activeByName, desired, loginOf(action), suspendedProfile);
+            applied += 1;
+          } catch (fallbackError) {
+            message += `; falhou também o corte de segurança: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`;
+          }
+        }
+        errors.set(action.serviceId, message);
       }
+    }
+  }
+  if (suspendedProfileError) {
+    for (const service of selected) {
+      if (service.suspended && !errors.has(service.serviceId)) errors.set(service.serviceId, suspendedProfileError);
     }
   }
 

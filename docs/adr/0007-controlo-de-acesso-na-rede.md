@@ -80,6 +80,10 @@ Two failure modes shape the decision:
   secret and moving an enabled secret to the suspension profile. When it trips, every action for
   each affected service is skipped. Reactivating onto a plan without a PPP profile restores the
   configured base profile if the secret is still on the suspension profile.
+  If the configured suspension profile is absent or cannot be confirmed, suspended services
+  fall back to disabled secrets. If the profile PATCH fails after verification, an enabled
+  secret is disabled and its session disconnected. These cuts remain subject to the same
+  mass-cut limit, and the profile error remains visible on the service.
 
 ## Consequences
 

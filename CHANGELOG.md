@@ -28,6 +28,11 @@ Tudo o que está abaixo foi encontrado a testar a integração contra o router d
 
 ### Corrigido
 
+- **Um perfil de suspensão em falta já não deixa o cliente com a velocidade do plano.** O ISPM
+  verifica o perfil no router antes de reconciliar; se não existir ou o `PATCH` falhar,
+  desativa o secret suspenso e derruba a sessão, dentro da trava de cortes. O erro fica
+  visível na ficha do serviço.
+
 - **Os erros do router passam a dizer o motivo.** Uma recusa aparecia só como "Bad Request". Agora vem com a explicação que o RouterOS deu, por exemplo "input does not match any value of profile".
 - **O diagnóstico deixa de mandar desligar o `www-ssl`.** O RouterOS 7.24 descreve o serviço sem certificado, e o diagnóstico propunha `/ip service disable www-ssl`, no mesmo relatório em que a ligação por TLS a esse serviço tinha passado. É por aí que o ISPM fala com o router: seguir o conselho deixava o ISPM sem acesso.
 - **Sem senha disponível, o ISPM deixa de tentar entrar no router.** Quando a senha selada não abre nesta conta, a reconciliação tentava entrar de 2 em 2 minutos com a senha vazia e deixava um login recusado no registo do router de cada vez.

@@ -172,10 +172,17 @@ function setting(db: Database.Database, key: string, value: string) {
     .run(key, value);
 }
 
-function recordingTransport(secrets: RouterSecret[], active: Array<{ id: string; name: string }> = []) {
+function recordingTransport(
+  secrets: RouterSecret[],
+  active: Array<{ id: string; name: string }> = [],
+  profiles: string[] = ['default', 'plano-10M', 'SUSPENSO']
+) {
   const calls: RouterRequest[] = [];
   const transport = (async (req: RouterRequest) => {
     calls.push(req);
+    if (req.path.startsWith('/ppp/profile?')) {
+      return profiles.map((name, index) => ({ '.id': `*P${index}`, name }));
+    }
     if (req.path.startsWith('/ppp/secret?')) {
       return secrets.map((s) => ({
         '.id': s.id,
@@ -298,6 +305,49 @@ describe('runNetworkEnforcement', () => {
     const { transport, calls } = recordingTransport([secret()]);
     await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
     expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { disabled: 'yes' } });
+  });
+
+  test('perfil de suspensão inexistente no router: o suspenso é desativado, não fica com o plano', async () => {
+    addService(db, 1, 'suspended', 'joao-1');
+    const { transport, calls } = recordingTransport([secret()], [{ id: '*A', name: 'joao-1' }], ['default', 'plano-10M']);
+    const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+    expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { disabled: 'yes' } });
+    expect(calls).not.toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'SUSPENSO' } });
+    expect(calls).toContainEqual({ method: 'DELETE', path: '/ppp/active/*A' });
+    expect(summary.failed).toBe(1);
+    expect(db.prepare('SELECT last_error FROM service_network_state WHERE service_id = 1').get())
+      .toMatchObject({ last_error: expect.stringContaining('não existe no router') });
+  });
+
+  test('perfil de suspensão em falta continua sujeito à trava de cortes', async () => {
+    for (let id = 1; id <= 6; id += 1) addService(db, id, 'suspended', `cliente-${id}`);
+    const secrets = Array.from({ length: 6 }, (_, index) => {
+      const id = index + 1;
+      return secret({ id: `*${id}`, name: `cliente-${id}`, comment: `ispm:${id}` });
+    });
+    const { transport, calls } = recordingTransport(secrets, [], ['default', 'plano-10M']);
+    const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+    expect(summary.aborted).toBe(true);
+    expect(summary.applied).toBe(0);
+    expect(calls.every((call) => call.method === 'GET')).toBe(true);
+  });
+
+  test('falha no PATCH do perfil de suspensão desativa o secret que ainda está ativo', async () => {
+    addService(db, 1, 'suspended', 'joao-1');
+    const base = recordingTransport([secret()], [{ id: '*A', name: 'joao-1' }]);
+    const transport = (async (req: RouterRequest) => {
+      if (req.method === 'PATCH' && typeof req.body === 'object' && req.body !== null && 'profile' in req.body)
+        throw new Error('perfil inexistente');
+      return base.transport(req);
+    }) as RouterTransport;
+
+    const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+
+    expect(summary.failed).toBe(1);
+    expect(base.calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { disabled: 'yes' } });
+    expect(base.calls).toContainEqual({ method: 'DELETE', path: '/ppp/active/*A' });
+    expect(db.prepare('SELECT last_error FROM service_network_state WHERE service_id = 1').get())
+      .toEqual({ last_error: 'perfil inexistente' });
   });
 
   test('cancelado continua a desativar o secret', async () => {
