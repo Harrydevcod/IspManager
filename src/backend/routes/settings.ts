@@ -136,6 +136,7 @@ const settingsSchema = z.object({
   routerosMaxDisablesPerRun: z.coerce.number().int().min(1).max(500).optional().default(5),
   // Perfil PPP de onde os perfis criados para os planos copiam endereços e DNS.
   routerosBaseProfile: z.string().trim().max(64).regex(/^[\w .-]*$/).optional().default('default'),
+  routerosSuspendedProfile: z.string().trim().max(64).regex(/^[\w .-]*$/).optional().default('SUSPENSO'),
   autoSuspensionEnabled: strictOptionalBoolean,
   autoSuspensionGraceDays: z.coerce.number().int().min(1).max(120).optional().default(15),
   autoSuspensionIntervalMinutes: z.coerce.number().int().min(5).max(1440).optional().default(60),
@@ -207,6 +208,7 @@ const defaultSettings = {
   routerosIntervalSeconds: 120,
   routerosMaxDisablesPerRun: 5,
   routerosBaseProfile: 'default',
+  routerosSuspendedProfile: 'SUSPENSO',
   autoSuspensionEnabled: false,
   autoSuspensionGraceDays: 15,
   autoSuspensionIntervalMinutes: 60,

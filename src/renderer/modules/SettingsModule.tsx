@@ -123,6 +123,7 @@ export function SettingsModule() {
     routerosIntervalSeconds: '120',
     routerosMaxDisablesPerRun: '5',
     routerosBaseProfile: 'default',
+    routerosSuspendedProfile: 'SUSPENSO',
     autoSuspensionEnabled: false,
     autoSuspensionGraceDays: '15',
     autoSuspensionIntervalMinutes: '60',

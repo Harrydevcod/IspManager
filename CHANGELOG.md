@@ -12,6 +12,12 @@ Tudo o que está abaixo foi encontrado a testar a integração contra o router d
 
 ### Mudado
 
+- **Suspender um serviço coloca o secret ativo no perfil PPP `SUSPENSO`**, por omissão, e desliga
+  a sessão para aplicar logo a velocidade mínima. Reativar repõe o perfil do plano (ou o perfil-base
+  se o plano não tiver perfil) e volta a ligar; cancelar continua a desativar o secret. Em
+  Definições → Rede, **Perfil dos suspensos** pode ficar vazio para conservar o corte por
+  desativação. A trava de cortes conta também as entradas no perfil de suspensão.
+
 - **A velocidade de cada plano passa a vir de um perfil PPP.** Até aqui o ISPM tentava escrever a velocidade em cada utilizador PPPoE. O RouterOS **não aceita** velocidade no utilizador ("unknown parameter rate-limit"): ela pertence ao perfil. Com a integração em modo efetivo, **nenhum cliente novo chegava a ser criado no router** enquanto o plano tivesse Mbps preenchidos.
 
   Agora cada plano diz o seu perfil, no campo novo **Perfil PPP no router**, e o ISPM põe cada cliente do plano nesse perfil. O perfil pode ser um que já existe no router ou um que o ISPM cria (ver abaixo). Um plano sem perfil deixa o router como está. A mudança chega à sessão de cada cliente quando ele volta a ligar. Para forçar, usa-se **Desligar sessão** na ficha.
@@ -21,6 +27,11 @@ Tudo o que está abaixo foi encontrado a testar a integração contra o router d
 - **Passar o router de ensaio a efetivo pede a password do administrador**, num diálogo que explica o que vai passar a acontecer e mostra os números do último ensaio. Voltar a ensaio continua livre.
 
 ### Corrigido
+
+- **Um perfil de suspensão em falta já não deixa o cliente com a velocidade do plano.** O ISPM
+  verifica o perfil no router antes de reconciliar; se não existir ou o `PATCH` falhar,
+  desativa o secret suspenso e derruba a sessão, dentro da trava de cortes. O erro fica
+  visível na ficha do serviço.
 
 - **Os erros do router passam a dizer o motivo.** Uma recusa aparecia só como "Bad Request". Agora vem com a explicação que o RouterOS deu, por exemplo "input does not match any value of profile".
 - **O diagnóstico deixa de mandar desligar o `www-ssl`.** O RouterOS 7.24 descreve o serviço sem certificado, e o diagnóstico propunha `/ip service disable www-ssl`, no mesmo relatório em que a ligação por TLS a esse serviço tinha passado. É por aí que o ISPM fala com o router: seguir o conselho deixava o ISPM sem acesso.
