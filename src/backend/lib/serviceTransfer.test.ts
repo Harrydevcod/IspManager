@@ -177,6 +177,8 @@ describe('transferService', () => {
     expect(service.ipAddress).toBe('10.0.0.10');
     expect(service.pppoeUsername).toBe('ana-silva-1');
     expect(service.pppoePassword).toBe('segredo');
+    expect(db.prepare('SELECT pppoe_password_sync_pending AS pending FROM services WHERE id = ?').get(fixture.serviceId))
+      .toEqual({ pending: 0 });
     expect(db.prepare('SELECT ip_address AS ip, end_date AS endDate FROM service_device_assignments WHERE id = ?')
       .get(fixture.assignmentId)).toEqual({ ip: '10.0.0.10', endDate: null });
     expect(db.prepare('SELECT ended_at AS endedAt FROM backbone_assignment_links WHERE id = ?').get(fixture.linkId))
@@ -199,6 +201,10 @@ describe('transferService', () => {
     expect(service.ipAddress).toBeNull();
     expect(service.pppoeUsername).toBe(`bruno-tavares-${fixture.serviceId}`);
     expect(service.pppoePassword).not.toBe('segredo');
+    // As credenciais novas ficam por empurrar para o router: sem a marca, a
+    // reconciliação nunca as enviava e o inquilino anterior continuava a entrar.
+    expect(db.prepare('SELECT pppoe_password_sync_pending AS pending FROM services WHERE id = ?').get(fixture.serviceId))
+      .toEqual({ pending: 1 });
     // O equipamento segue com o serviço: a atribuição não fecha, só perde o IP.
     expect(db.prepare('SELECT ip_address AS ip, end_date AS endDate FROM service_device_assignments WHERE id = ?')
       .get(fixture.assignmentId)).toEqual({ ip: null, endDate: null });

@@ -63,6 +63,7 @@ const NETWORK_DIVERGENCE_LABELS: Record<string, string> = {
   state: 'Estado diferente entre ISPM e MikroTik',
   rate_limit: 'Velocidade diferente do plano',
   password: 'Password PPPoE pendente de sincronização',
+  username: 'Nome PPPoE diferente no router',
   orphan_secret: 'Utilizador no router sem serviço correspondente'
 };
 

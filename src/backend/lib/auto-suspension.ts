@@ -104,6 +104,25 @@ const balanceExpr = `(
   ), 0)
 )`;
 
+/**
+ * Fatura cortável: saldo positivo, vencida há mais que a tolerância e sem uma
+ * reativação do serviço desde que ficou cortável. Reativar à mão (ou por
+ * pagamento) é uma decisão sobre a dívida que já existia — a passagem seguinte
+ * não a desfaz; só uma fatura que passe a tolerância depois volta a cortar.
+ * Os dois `?` são a tolerância em dias.
+ */
+const suspendableInvoiceSql = `
+  p.status IN ('pending', 'overdue')
+  AND date(p.due_date, '+' || ? || ' days') < date('now')
+  AND ${balanceExpr} > 0.005
+  AND NOT EXISTS (
+    SELECT 1 FROM service_events e
+    WHERE e.service_id = p.service_id
+      AND e.event_type = 'reativacao'
+      AND e.created_at >= date(p.due_date, '+' || ? || ' days')
+  )
+`;
+
 function graceDays(db: Database.Database): number {
   return intSetting(db, 'autoSuspensionGraceDays', DEFAULT_GRACE_DAYS, 1, 120);
 }
@@ -160,11 +179,9 @@ function rawCandidates(db: Database.Database, graceDays: number): SuspensionCand
       AND c.status <> 'cancelled'
       AND s.pppoe_username IS NOT NULL
       AND TRIM(s.pppoe_username) <> ''
-      AND p.status IN ('pending', 'overdue')
-      AND date(p.due_date, '+' || ? || ' days') < date('now')
-      AND ${balanceExpr} > 0.005
+      AND ${suspendableInvoiceSql}
     ORDER BY s.id, date(p.due_date), p.id
-  `).all(graceDays) as Array<Omit<SuspensionCandidate, 'creditCve'>>;
+  `).all(graceDays, graceDays) as Array<Omit<SuspensionCandidate, 'creditCve'>>;
 
   const oldestByService = new Map<number, SuspensionCandidate>();
   for (const row of rows) {
@@ -240,11 +257,9 @@ function hasSuspendableDebt(db: Database.Database, serviceId: number, graceDays:
     JOIN services s ON s.id = p.service_id
     WHERE p.service_id = ?
       AND p.client_id = s.client_id
-      AND p.status IN ('pending', 'overdue')
-      AND date(p.due_date, '+' || ? || ' days') < date('now')
-      AND ${balanceExpr} > 0.005
+      AND ${suspendableInvoiceSql}
     LIMIT 1
-  `).get(serviceId, graceDays) as { found: number } | undefined;
+  `).get(serviceId, graceDays, graceDays) as { found: number } | undefined;
   return Boolean(row);
 }
 

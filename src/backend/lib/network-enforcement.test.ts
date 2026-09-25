@@ -87,6 +87,10 @@ describe('planActions', () => {
     const plan = planActions([service()], [secret({ name: 'renomeado-no-winbox' })]);
     expect(plan.actions).toEqual([]);
     expect(plan.matched.get(1)?.id).toBe('*1');
+    // Reportado, nunca renomeado: o equipamento do cliente autentica-se com o nome do router.
+    expect(plan.divergences).toEqual([
+      expect.objectContaining({ kind: 'username', serviceId: 1, username: 'joao-1' })
+    ]);
   });
 
   test('password marcada como pendente gera uma ação sem expor a password no plano', () => {
@@ -96,6 +100,13 @@ describe('planActions', () => {
     ]);
     expect(plan.divergences[0]).toMatchObject({ kind: 'password', serviceId: 1 });
     expect(JSON.stringify(plan.actions)).not.toContain('segredo');
+  });
+
+  test('credenciais pendentes com outro nome no router: a mesma ação renomeia o secret', () => {
+    const plan = planActions([service({ passwordPending: true })], [secret({ name: 'ana-antiga-1' })]);
+    expect(plan.actions).toEqual([
+      { kind: 'password', serviceId: 1, username: 'joao-1', secretId: '*1', clientName: 'Joao Silva', rename: true }
+    ]);
   });
 
   test('sincronização isolada não chama órfãos aos outros clientes do router', () => {
@@ -272,6 +283,88 @@ describe('runNetworkEnforcement', () => {
     expect(summary.aborted).toBe(true);
     expect(summary.applied).toBe(0);
     expect(calls.some((call) => call.method === 'PATCH')).toBe(false);
+  });
+
+  test('com a trava ativa, quem pagou é reposto na mesma e ninguém é cortado', async () => {
+    for (let id = 1; id <= 3; id += 1) addService(db, id, 'suspended', `cliente-${id}`);
+    addService(db, 4, 'active', 'cliente-4');
+    const secrets = [1, 2, 3].map((id) => secret({ id: `*${id}`, name: `cliente-${id}`, comment: `ispm:${id}` }));
+    secrets.push(secret({ id: '*4', name: 'cliente-4', comment: 'ispm:4', disabled: true }));
+    const { transport, calls } = recordingTransport(secrets);
+
+    const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 2 });
+
+    expect(summary.aborted).toBe(true);
+    expect(summary.applied).toBe(1);
+    expect(calls.filter((call) => call.method === 'PATCH')).toEqual([
+      { method: 'PATCH', path: '/ppp/secret/*4', body: { disabled: 'no' } }
+    ]);
+  });
+
+  test('utilizador renomeado: o corte derruba a sessão pelo nome que está no router', async () => {
+    addService(db, 1, 'suspended', 'joao-1');
+    const { transport, calls } = recordingTransport(
+      [secret({ name: 'joao-antigo' })],
+      [{ id: '*A', name: 'joao-antigo' }]
+    );
+
+    const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+
+    expect(summary.applied).toBe(1);
+    expect(calls).toContainEqual({ method: 'DELETE', path: '/ppp/active/*A' });
+    expect(db.prepare('SELECT divergence FROM service_network_state WHERE service_id = 1').get())
+      .toEqual({ divergence: 'state' });
+  });
+
+  test('reinstalação: renomeia o secret, muda a password e derruba a sessão do inquilino anterior', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    db.prepare(`UPDATE services SET pppoe_password = 'senha-nova-123', pppoe_password_sync_pending = 1 WHERE id = 1`).run();
+    const { transport, calls } = recordingTransport(
+      [secret({ name: 'ana-antiga-1' })],
+      [{ id: '*A', name: 'ana-antiga-1' }]
+    );
+
+    const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+
+    expect(summary.failed).toBe(0);
+    expect(calls).toContainEqual({
+      method: 'PATCH',
+      path: '/ppp/secret/*1',
+      body: { name: 'joao-1', password: 'senha-nova-123' }
+    });
+    expect(calls).toContainEqual({ method: 'DELETE', path: '/ppp/active/*A' });
+    expect(db.prepare('SELECT pppoe_password_sync_pending AS pending FROM services WHERE id = 1').get())
+      .toEqual({ pending: 0 });
+  });
+
+  test('só a password mudou: não renomeia nem derruba a sessão', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    db.prepare(`UPDATE services SET pppoe_password = 'senha-nova-123', pppoe_password_sync_pending = 1 WHERE id = 1`).run();
+    const { transport, calls } = recordingTransport([secret()], [{ id: '*A', name: 'joao-1' }]);
+
+    await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+
+    expect(calls.filter((call) => call.method !== 'GET')).toEqual([
+      { method: 'PATCH', path: '/ppp/secret/*1', body: { password: 'senha-nova-123' } }
+    ]);
+  });
+
+  test('password alterada durante o PATCH continua pendente', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    db.prepare(`UPDATE services SET pppoe_password = 'primeira-senha', pppoe_password_sync_pending = 1 WHERE id = 1`).run();
+    const base = recordingTransport([secret()]);
+    const transport = (async (req: RouterRequest) => {
+      if (req.method === 'PATCH') {
+        // O operador grava outra password enquanto a primeira vai a caminho.
+        db.prepare(`UPDATE services SET pppoe_password = 'segunda-senha', pppoe_password_sync_pending = 1 WHERE id = 1`).run();
+      }
+      return base.transport(req);
+    }) as RouterTransport;
+
+    await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+
+    expect(db.prepare('SELECT pppoe_password_sync_pending AS pending FROM services WHERE id = 1').get())
+      .toEqual({ pending: 1 });
   });
 
   test('uma ação que falha fica registada no serviço e não afeta as outras', async () => {

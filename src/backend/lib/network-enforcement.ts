@@ -48,12 +48,13 @@ export type PlannedAction =
   | { kind: 'create'; serviceId: number; username: string; rateLimit: string | null; clientName: string }
   | { kind: 'enable' | 'disable'; serviceId: number; username: string; secretId: string; clientName: string }
   | { kind: 'rate_limit'; serviceId: number; username: string; secretId: string; rateLimit: string; clientName: string }
-  | { kind: 'password'; serviceId: number; username: string; secretId: string; clientName: string };
+  /** `rename`: o secret no router tem outro nome e as credenciais do ISPM mandam (reinstalação). */
+  | { kind: 'password'; serviceId: number; username: string; secretId: string; clientName: string; rename?: true };
 
 export type Divergence = {
   serviceId: number | null;
   username: string;
-  kind: 'missing_secret' | 'state' | 'rate_limit' | 'password' | 'orphan_secret';
+  kind: 'missing_secret' | 'state' | 'rate_limit' | 'password' | 'username' | 'orphan_secret';
   detail: string;
 };
 
@@ -115,7 +116,7 @@ export function loadDesiredServices(db: Database.Database): DesiredService[] {
 
 // --------------------------------------------------------------- planeamento
 
-function matchSecret(service: DesiredService, secrets: RouterSecret[]): RouterSecret | undefined {
+export function matchSecret(service: Pick<DesiredService, 'serviceId' | 'username'>, secrets: RouterSecret[]): RouterSecret | undefined {
   const tag = `${COMMENT_PREFIX}${service.serviceId}`;
   return (
     secrets.find((secret) => secret.comment === tag) ??
@@ -198,7 +199,9 @@ export function planActions(
 
     // A password não é comparada com o router: o utilizador REST pode não ter
     // política sensitive. Uma alteração local deixa uma marca explícita que só
-    // é limpa depois de um PATCH bem sucedido.
+    // é limpa depois de um PATCH bem sucedido. Com a marca, as credenciais do
+    // ISPM mandam: um nome diferente no router é renomeado na mesma ação.
+    const renamed = secret.name !== service.username;
     if (service.passwordPending && service.password) {
       divergences.push({
         serviceId: service.serviceId,
@@ -211,7 +214,19 @@ export function planActions(
         serviceId: service.serviceId,
         username: service.username,
         secretId: secret.id,
-        clientName: service.clientName
+        clientName: service.clientName,
+        ...(renamed ? { rename: true as const } : {})
+      });
+    }
+
+    // Nome diferente no router sem credenciais pendentes (renomeado no Winbox):
+    // só se reporta. Renomear sozinho partia o login do equipamento do cliente.
+    if (renamed) {
+      divergences.push({
+        serviceId: service.serviceId,
+        username: service.username,
+        kind: 'username',
+        detail: `No router chama-se ${secret.name}`
       });
     }
   }
@@ -314,22 +329,29 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
   const [secrets, active] = await Promise.all([listSecrets(deps.transport), listActive(deps.transport)]);
   const plan = planActions(desired, secrets, { reportOrphans: deps.reportOrphans });
   const activeByName = new Map<string, RouterActive>(active.map((session) => [session.name, session]));
+  // A sessão PPPoE tem o nome com que o equipamento se autentica: o do secret
+  // no router, que pode já não ser o da BD.
+  const loginOf = (service: { serviceId: number; username: string }) =>
+    plan.matched.get(service.serviceId)?.name ?? service.username;
 
   const disables = plan.actions.filter((action) => action.kind === 'disable').length;
   // Trava de segurança: uma passagem que quer cortar meia cidade é um erro de
-  // dados ou de mapeamento, não um dia de cobranças. Não corta nenhum.
+  // dados ou de mapeamento, não um dia de cobranças. Não corta nenhum — mas
+  // repor, criar e atualizar continuam: quem pagou não fica refém da trava.
   const aborted = !deps.dryRun && disables > deps.maxDisables;
 
   const errors = new Map<number, string>();
   let applied = 0;
 
-  if (!deps.dryRun && !aborted) {
+  if (!deps.dryRun) {
     // Repor antes de cortar: se a passagem falhar a meio, ninguém fica sem
     // serviço à espera do tick seguinte.
-    const ordered = [...plan.actions].sort((a, b) => rank(a) - rank(b));
+    const ordered = plan.actions
+      .filter((action) => !(aborted && action.kind === 'disable'))
+      .sort((a, b) => rank(a) - rank(b));
     for (const action of ordered) {
       try {
-        await applyAction(db, deps.transport, action, activeByName, desired);
+        await applyAction(db, deps.transport, action, activeByName, desired, loginOf(action));
         applied += 1;
       } catch (err) {
         errors.set(action.serviceId, err instanceof Error ? err.message : String(err));
@@ -348,7 +370,7 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
     const statement = db.prepare(upsertState);
     for (const service of desired) {
       const secret = plan.matched.get(service.serviceId);
-      const session = activeByName.get(service.username);
+      const session = activeByName.get(loginOf(service));
       statement.run(
         service.serviceId,
         secret?.id ?? null,
@@ -369,7 +391,7 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
   return {
     dryRun: deps.dryRun,
     services: desired.length,
-    online: desired.filter((service) => activeByName.has(service.username)).length,
+    online: desired.filter((service) => activeByName.has(loginOf(service))).length,
     planned: plan.actions.length,
     applied,
     failed: errors.size,
@@ -377,6 +399,11 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
     actions: plan.actions,
     ...(aborted ? { aborted: true as const, reason: `${disables} cortes numa passagem excedem o limite de ${deps.maxDisables}` } : {})
   };
+}
+
+/** Só limpa a marca se a password na BD ainda é a que foi enviada ao router. */
+function clearPasswordPending(db: Database.Database, serviceId: number, sent: string): void {
+  db.prepare('UPDATE services SET pppoe_password_sync_pending = 0 WHERE id = ? AND pppoe_password = ?').run(serviceId, sent);
 }
 
 function rank(action: PlannedAction): number {
@@ -392,7 +419,8 @@ async function applyAction(
   transport: RouterTransport,
   action: PlannedAction,
   activeByName: Map<string, RouterActive>,
-  desired: DesiredService[]
+  desired: DesiredService[],
+  login: string
 ): Promise<void> {
   if (action.kind === 'create') {
     const service = desired.find((item) => item.serviceId === action.serviceId);
@@ -409,7 +437,7 @@ async function applyAction(
     if (!service.enabled && id) {
       await patchSecret(transport, id, { disabled: true });
     }
-    db.prepare('UPDATE services SET pppoe_password_sync_pending = 0 WHERE id = ?').run(action.serviceId);
+    clearPasswordPending(db, action.serviceId, service.password);
     recordSystemAudit(db, 'network_provision', action.serviceId, `Criou utilizador PPPoE ${action.username} no router`);
     return;
   }
@@ -417,9 +445,27 @@ async function applyAction(
   if (action.kind === 'password') {
     const service = desired.find((item) => item.serviceId === action.serviceId);
     if (!service?.password) throw new Error('Servico sem senha PPPoE gravada');
-    await patchSecret(transport, action.secretId, { password: service.password });
-    db.prepare('UPDATE services SET pppoe_password_sync_pending = 0 WHERE id = ?').run(action.serviceId);
-    recordSystemAudit(db, 'network_password', action.serviceId, `Atualizou a password PPPoE de ${action.username}`);
+    await patchSecret(transport, action.secretId, {
+      ...(action.rename ? { name: action.username } : {}),
+      password: service.password
+    });
+    clearPasswordPending(db, action.serviceId, service.password);
+    if (action.rename) {
+      // A sessão viva é do titular anterior, com as credenciais antigas.
+      const session = activeByName.get(login);
+      if (session) {
+        await removeActive(transport, session.id);
+        activeByName.delete(login);
+      }
+    }
+    recordSystemAudit(
+      db,
+      'network_password',
+      action.serviceId,
+      action.rename
+        ? `Renomeou ${login} para ${action.username} e atualizou a password PPPoE`
+        : `Atualizou a password PPPoE de ${action.username}`
+    );
     return;
   }
 
@@ -435,10 +481,10 @@ async function applyAction(
   if (disabling) {
     // Sem derrubar a sessão, o cortado fica online até reconectar sozinho —
     // podem ser dias.
-    const session = activeByName.get(action.username);
+    const session = activeByName.get(login);
     if (session) {
       await removeActive(transport, session.id);
-      activeByName.delete(action.username);
+      activeByName.delete(login);
     }
   }
 
