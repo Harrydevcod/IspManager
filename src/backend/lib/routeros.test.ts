@@ -134,6 +134,16 @@ describe('operações RouterOS', () => {
     });
   });
 
+  test('uma password ainda cifrada nunca chega ao router', async () => {
+    const transport = fakeTransport();
+    const sealed = 'enc:v2:bm9uY2U:dGFn:Y3Q';
+    await expect(createSecret(transport, { name: 'joao-12', password: sealed, comment: 'ispm:12' }))
+      .rejects.toThrow('Password PPPoE por decifrar');
+    await expect(patchSecret(transport, '*1', { password: sealed }))
+      .rejects.toThrow('Password PPPoE por decifrar');
+    expect(transport.calls).toHaveLength(0);
+  });
+
   test('patchSecret sem nada para mudar não chega a falar com o router', async () => {
     const transport = fakeTransport();
     await patchSecret(transport, '*1', {});

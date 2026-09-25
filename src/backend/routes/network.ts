@@ -12,13 +12,14 @@ import {
   listDhcpLeases,
   listNeighbors,
   listActive,
+  listSecrets,
   removeActive,
   neighborModel,
   readRouterConfig,
   type RouterNeighbor
 } from '../lib/routeros';
 import { identifyModel } from '../lib/device-model';
-import { loadNetworkEnforcementState, runNetworkEnforcement } from '../lib/network-enforcement';
+import { loadNetworkEnforcementState, matchSecret, runNetworkEnforcement } from '../lib/network-enforcement';
 import { loadAutoSuspensionPreview, runAutomaticSuspension } from '../lib/auto-suspension';
 import {
   loadRegisteredDevices,
@@ -255,8 +256,11 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
 
     try {
       const transport = createTransport(config);
-      const active = await listActive(transport);
-      const session = active.find((item) => item.name === service.username);
+      const [secrets, active] = await Promise.all([listSecrets(transport), listActive(transport)]);
+      // A sessão tem o nome do secret no router, que pode ter sido renomeado.
+      const login = matchSecret({ serviceId: params.data.id, username: service.username }, secrets)?.name
+        ?? service.username;
+      const session = active.find((item) => item.name === login);
 
       if (config.dryRun) {
         recordAudit(request, {

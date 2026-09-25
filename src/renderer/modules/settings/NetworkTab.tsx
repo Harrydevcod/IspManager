@@ -63,6 +63,7 @@ const DIVERGENCE_LABEL: Record<string, string> = {
   state: 'Estado diferente do ISPM',
   rate_limit: 'Velocidade diferente do plano',
   password: 'Password PPPoE pendente',
+  username: 'Nome PPPoE diferente no router',
   orphan_secret: 'Utilizador sem serviço'
 };
 

@@ -295,4 +295,60 @@ describe('suspensão automática por falta de pagamento', () => {
 
     expect(reactivateServiceIfEligibleAfterPayment(db, one.serviceId)).toBe(false);
   });
+
+  // Reativar à mão é uma decisão humana sobre a dívida que já existia: a
+  // passagem seguinte não pode desfazê-la.
+  function reactivateByHand(serviceId: number, when = "datetime('now')") {
+    db.prepare(`
+      INSERT INTO service_events (service_id, event_type, notes, created_at)
+      VALUES (?, 'reativacao', 'Reativação manual', ${when})
+    `).run(serviceId);
+  }
+
+  test('reativação manual isenta a dívida que já estava em condição de corte', async () => {
+    configure(db, false);
+    const { serviceId } = seed(db, 'PROMESSA');
+    reactivateByHand(serviceId);
+
+    expect(loadAutoSuspensionPreview(db).candidateCount).toBe(0);
+    const result = await runAutomaticSuspension(db, { probeRouter: async () => undefined });
+    expect(result.applied).toBe(0);
+    expect(db.prepare('SELECT status FROM services WHERE id = ?').get(serviceId))
+      .toEqual({ status: 'active' });
+  });
+
+  test('uma fatura que só passa a tolerância depois da reativação volta a cortar', () => {
+    configure(db, false);
+    const { clientId, serviceId } = seed(db, 'NOVA-DIVIDA', '-40 days');
+    // Reativado há 25 dias: a fatura de -40 dias já era cortável (isenta)...
+    reactivateByHand(serviceId, "datetime('now', '-25 days')");
+    // ...mas esta só passou a tolerância de 5 dias há 5 dias.
+    db.prepare(`
+      INSERT INTO payments (
+        client_id, service_id, reference_month, amount_cve, due_date, status, invoice_number
+      ) VALUES (?, ?, '2026-10', 3000, date('now','-10 days'), 'pending', 'FT-NOVA')
+    `).run(clientId, serviceId);
+
+    const preview = loadAutoSuspensionPreview(db);
+    expect(preview.candidateCount).toBe(1);
+    expect(preview.candidates[0].invoiceNumber).toBe('FT-NOVA');
+  });
+
+  test('uma fatura isenta por pagar não impede a reativação após pagamento', () => {
+    configure(db, false);
+    const { clientId, serviceId } = seed(db, 'ISENTA', '-40 days');
+    reactivateByHand(serviceId, "datetime('now', '-25 days')");
+    const newer = Number(db.prepare(`
+      INSERT INTO payments (
+        client_id, service_id, reference_month, amount_cve, due_date, status, invoice_number
+      ) VALUES (?, ?, '2026-10', 3000, date('now','-10 days'), 'pending', 'FT-NOVA')
+    `).run(clientId, serviceId).lastInsertRowid);
+    db.prepare(`
+      UPDATE services SET status='suspended', suspension_source='nonpayment', suspended_at=datetime('now')
+      WHERE id=?
+    `).run(serviceId);
+    db.prepare(`UPDATE payments SET status='paid' WHERE id=?`).run(newer);
+
+    expect(reactivateServiceIfEligibleAfterPayment(db, serviceId)).toBe(true);
+  });
 });

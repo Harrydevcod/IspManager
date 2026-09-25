@@ -141,6 +141,7 @@ Respostas passam a `pppoePasswordConfigured`, `routerosPasswordConfigured`, `ult
 - A criação automática de credenciais (router ligado) é **saltada** com o cofre trancado — o serviço nasce e fatura na mesma (D4); credenciais pedidas explicitamente respondem 409.
 - Renderer tocado só no mínimo para a 2.5 funcionar: sem pré-preenchimento, placeholder "Configurada — escreva para substituir" a partir das flags, e as credenciais saem do formulário depois de gravar. O `SecretField` continua na Tarefa 5.
 - O ramo volta a ser lançável: todos os consumidores de PPPoE passam pela fachada.
+- Merge do `fix/mikrotik-review` (PR #165): a marca `pppoe_password_sync_pending` limpa-se comparando o **ciphertext** lido antes do PATCH, não o texto (a coluna está cifrada; comparar o texto nunca casava e a password era reenviada a cada passagem). `createSecret`/`patchSecret` recusam qualquer password em `enc:` — a última barreira antes do router.
 
 ---
 

@@ -936,7 +936,16 @@ export type NewSecret = {
   profile?: string | null;
 };
 
+/**
+ * Última barreira antes do router: uma password em `enc:` é um valor do cofre
+ * que ninguém abriu. Enviá-la trocava a senha do cliente por ciphertext.
+ */
+function assertPlainPassword(password: string | undefined): void {
+  if (password?.startsWith('enc:')) throw new Error('Password PPPoE por decifrar');
+}
+
 export async function createSecret(transport: RouterTransport, input: NewSecret): Promise<string> {
+  assertPlainPassword(input.password);
   const raw = await transport({
     method: 'PUT',
     path: '/ppp/secret',
@@ -956,6 +965,7 @@ export async function createSecret(transport: RouterTransport, input: NewSecret)
 export type SecretPatch = { disabled?: boolean; rateLimit?: string | null; password?: string };
 
 export async function patchSecret(transport: RouterTransport, id: string, patch: SecretPatch): Promise<void> {
+  assertPlainPassword(patch.password);
   const body: Record<string, string> = {};
   if (patch.disabled !== undefined) body.disabled = patch.disabled ? 'yes' : 'no';
   if (patch.rateLimit !== undefined) body['rate-limit'] = patch.rateLimit ?? '';
