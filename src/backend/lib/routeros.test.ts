@@ -3,8 +3,11 @@ import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import {
   auditRouterServices,
+  createProfile,
   createSecret,
   describeRouterFailure,
+  listProfiles,
+  patchProfile,
   diagnoseRouter,
   isRouterConfigured,
   listActive,
@@ -145,6 +148,54 @@ describe('operações RouterOS', () => {
       path: '/ppp/secret/*1',
       body: { disabled: 'no', profile: 'plano-10M' }
     });
+  });
+
+  test('listProfiles normaliza os perfis e descarta linhas sem id', async () => {
+    const transport = fakeTransport([
+      [
+        { '.id': '*0', name: 'default', 'local-address': '10.10.0.1', 'remote-address': 'pool-clientes', 'dns-server': '1.1.1.1', 'only-one': 'yes' },
+        { '.id': '*A', name: 'plano-20M', 'rate-limit': '20M/20M', comment: 'ispm:plano:1' },
+        { name: 'sem-id' }
+      ]
+    ]);
+    await expect(listProfiles(transport)).resolves.toEqual([
+      { id: '*0', name: 'default', rateLimit: null, localAddress: '10.10.0.1', remoteAddress: 'pool-clientes', dnsServer: '1.1.1.1', onlyOne: 'yes', comment: null },
+      { id: '*A', name: 'plano-20M', rateLimit: '20M/20M', localAddress: null, remoteAddress: null, dnsServer: null, onlyOne: null, comment: 'ispm:plano:1' }
+    ]);
+    expect(transport.calls[0]).toEqual({
+      method: 'GET',
+      path: '/ppp/profile?.proplist=.id,name,rate-limit,local-address,remote-address,dns-server,only-one,comment'
+    });
+  });
+
+  test('createProfile copia os endereços do perfil-base e junta o limite e a marca', async () => {
+    const transport = fakeTransport([{ '.id': '*B' }]);
+    const id = await createProfile(transport, {
+      name: 'plano-20M',
+      rateLimit: '20M/20M',
+      comment: 'ispm:plano:1',
+      base: { id: '*0', name: 'default', rateLimit: null, localAddress: '10.10.0.1', remoteAddress: 'pool-clientes', dnsServer: null, onlyOne: 'yes', comment: null }
+    });
+    expect(id).toBe('*B');
+    // O que o base não tem não se envia: o RouterOS fica com a omissão dele.
+    expect(transport.calls[0]).toEqual({
+      method: 'PUT',
+      path: '/ppp/profile',
+      body: {
+        name: 'plano-20M',
+        'rate-limit': '20M/20M',
+        comment: 'ispm:plano:1',
+        'local-address': '10.10.0.1',
+        'remote-address': 'pool-clientes',
+        'only-one': 'yes'
+      }
+    });
+  });
+
+  test('patchProfile só mexe no limite', async () => {
+    const transport = fakeTransport([null]);
+    await patchProfile(transport, '*B', { rateLimit: '30M/30M' });
+    expect(transport.calls[0]).toEqual({ method: 'PATCH', path: '/ppp/profile/*B', body: { 'rate-limit': '30M/30M' } });
   });
 
   test('patchSecret sem nada para mudar não chega a falar com o router', async () => {

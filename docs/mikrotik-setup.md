@@ -254,11 +254,14 @@ No ISPM: **Reconciliar agora**. Em ensaio, deve reportar o `teste-ispm` como *ut
 
 - cria `/ppp secret` para serviços que ainda não existem no router, com `comment=ispm:<id do serviço>`
 - liga e desliga (`disabled`) esses secrets conforme o estado do serviço no ISPM
-- põe cada secret no perfil PPP do plano (`profile=`) — **só** se o plano tiver o perfil preenchido. O
-  perfil, com o `rate-limit`, é feito aqui à mão: o ISPM nunca escreve em `/ppp profile`
+- põe cada secret no perfil PPP do plano (`profile=`) — **só** se o plano tiver o perfil preenchido
+- cria o perfil de um plano quando um administrador carrega em "Criar no router" (e só em modo efetivo),
+  copiando endereços e DNS do perfil-base e marcando-o `comment=ispm:plano:<id>`; volta a mexer só no
+  `rate-limit` desses perfis marcados (ADR 0011)
 - remove a sessão em `/ppp active` quando corta, para o corte ter efeito imediato
 
-**Nunca toca**: firewall, NAT, rotas, interfaces, DNS, perfis PPP, utilizadores do router, nem secrets que
+**Nunca toca**: firewall, NAT, rotas, interfaces, DNS, perfis PPP sem a marca `ispm:plano:` (nem apaga
+nenhum), utilizadores do router, nem secrets que
 não tenham a marca `ispm:` no comentário. Um secret com essa marca e sem serviço correspondente é
 **reportado**, nunca apagado.
 

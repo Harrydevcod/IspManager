@@ -122,6 +122,7 @@ export function SettingsModule() {
     routerosDryRun: true,
     routerosIntervalSeconds: '120',
     routerosMaxDisablesPerRun: '5',
+    routerosBaseProfile: 'default',
     autoSuspensionEnabled: false,
     autoSuspensionGraceDays: '15',
     autoSuspensionIntervalMinutes: '60',

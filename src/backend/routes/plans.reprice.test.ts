@@ -305,3 +305,17 @@ describe('perfil PPP do plano', () => {
     expect(put.statusCode).toBe(400);
   });
 });
+
+describe('perfis do router sem router configurado', () => {
+  test('a lista responde 200 e diz porque não há perfis', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/network/router/profiles' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ available: false, baseProfile: 'default', profiles: [] });
+  });
+
+  test('criar o perfil de um plano recusa sem integração', async () => {
+    const id = seedPlan(2500);
+    const response = await app.inject({ method: 'POST', url: `/api/plans/${id}/router-profile` });
+    expect(response.statusCode).toBe(400);
+  });
+});

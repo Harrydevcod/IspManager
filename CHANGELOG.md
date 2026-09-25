@@ -14,7 +14,9 @@ Tudo o que está abaixo foi encontrado a testar a integração contra o router d
 
 - **A velocidade de cada plano passa a vir de um perfil PPP.** Até aqui o ISPM tentava escrever a velocidade em cada utilizador PPPoE. O RouterOS **não aceita** velocidade no utilizador ("unknown parameter rate-limit"): ela pertence ao perfil. Com a integração em modo efetivo, **nenhum cliente novo chegava a ser criado no router** enquanto o plano tivesse Mbps preenchidos.
 
-  Agora faz-se o perfil no Winbox (PPP → Profiles, com o `rate-limit` do plano) e escreve-se o nome dele no plano, no campo novo **Perfil PPP no router**. O ISPM põe cada cliente do plano nesse perfil e nunca escreve nos perfis. Um plano sem perfil deixa o router como está. A mudança chega à sessão de cada cliente quando ele volta a ligar. Para forçar, usa-se **Desligar sessão** na ficha.
+  Agora cada plano diz o seu perfil, no campo novo **Perfil PPP no router**, e o ISPM põe cada cliente do plano nesse perfil. O perfil pode ser um que já existe no router ou um que o ISPM cria (ver abaixo). Um plano sem perfil deixa o router como está. A mudança chega à sessão de cada cliente quando ele volta a ligar. Para forçar, usa-se **Desligar sessão** na ficha.
+
+- **Os perfis PPP do router aparecem no ISPM, e o ISPM cria o perfil de cada plano.** O campo **Perfil PPP no router**, no plano, mostra a lista dos perfis que já existem no MikroTik e diz, por baixo, se o escolhido tem limite e de quem é. Escrevendo um nome novo, **Criar no router** faz o perfil sem abrir o Winbox: copia os endereços e o DNS do **Perfil-base dos planos** (Definições → Rede, por omissão `default`) e junta a velocidade tirada dos Mbps do plano. Mudando os Mbps, **Atualizar no router** corrige o limite. O ISPM só mexe nos perfis que ele próprio criou, nunca apaga nenhum, e em ensaio só diz o que faria.
 
 - **Passar o router de ensaio a efetivo pede a password do administrador**, num diálogo que explica o que vai passar a acontecer e mostra os números do último ensaio. Voltar a ensaio continua livre.
 

@@ -7,6 +7,7 @@ import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import type { PlanRow } from '../types';
 import { RepriceDialog } from './plans/RepriceDialog';
+import { RouterProfileField } from './plans/RouterProfileField';
 import './PlansModule.css';
 
 type PlanFormState = {
@@ -366,13 +367,11 @@ export function PlansModule() {
             onChange={(event) => updateForm('uploadMbps', event.target.value)}
             hint="Idem."
           />
-          <Field
-            label="Perfil PPP no router"
+          <RouterProfileField
             value={form.routerProfile}
-            maxLength={64}
-            placeholder="ex.: plano-20M"
-            onChange={(event) => updateForm('routerProfile', event.target.value)}
-            hint="Nome exato do perfil em PPP → Profiles no Winbox, com o rate-limit do plano. Os serviços do plano passam para este perfil. Em branco, o router fica como está."
+            onChange={(value) => updateForm('routerProfile', value)}
+            savedPlan={editingPlan ? { id: editingPlan.id, routerProfile: editingPlan.routerProfile ?? null } : null}
+            canWriteRouter={canReprice}
           />
           <Field label="Mensalidade CVE" required type="number" min={0} value={form.monthlyPriceCve} onChange={(event) => updateForm('monthlyPriceCve', event.target.value)} />
           <Field label="Instalacao CVE" type="number" min={0} value={form.installationFeeCve} onChange={(event) => updateForm('installationFeeCve', event.target.value)} />
