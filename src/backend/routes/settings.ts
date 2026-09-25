@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { validateBackupDir } from '../lib/backup';
 import { recordAudit } from '../lib/audit';
-import { requireRole } from './auth';
+import { confirmSessionPassword, requireRole } from './auth';
 import { readSecret, readSecretsLost, refreshSecretsLost, SECRET_KEYS, writeSecret, type SecretKey } from '../lib/secrets';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
@@ -342,6 +342,19 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: backupDirError });
     }
 
+    // Desligar o ensaio arma cortes a sério no router e a suspensão automática.
+    // Uma sessão aberta num PC destrancado não chega: admin (já garantido pela
+    // rota) e a password dele outra vez. Voltar a ensaio é a direção segura e
+    // continua livre. Mesma regra de leitura do `routeros.ts`: só um "false"
+    // explícito é modo efetivo.
+    const storedDryRun = db.prepare(`SELECT value FROM app_settings WHERE key = 'routerosDryRun'`).get() as { value: string } | undefined;
+    const wasLive = storedDryRun?.value === 'false' || storedDryRun?.value === '0';
+    const goesLive = !wasLive && parsed.data.routerosDryRun === false;
+    if (goesLive) {
+      const confirmPassword = (request.body as { confirmPassword?: unknown } | null)?.confirmPassword;
+      if (!(await confirmSessionPassword(request, reply, confirmPassword))) return reply;
+    }
+
     const save = db.prepare(`
       INSERT INTO app_settings (key, value, updated_at)
       VALUES (?, ?, datetime('now'))
@@ -383,6 +396,14 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         autoSuspensionGraceDays: parsed.data.autoSuspensionGraceDays
       }
     });
+    if (goesLive || (wasLive && parsed.data.routerosDryRun)) {
+      recordAudit(request, {
+        action: 'update',
+        entityType: 'settings',
+        summary: goesLive ? 'Passou o router de ensaio para modo efetivo' : 'Voltou o router a ensaio',
+        metadata: { routerosDryRun: parsed.data.routerosDryRun }
+      });
+    }
     return {
       ...parsed.data,
       // Do que ficou gravado, não do que veio no pedido: vazio quer dizer "não
