@@ -69,7 +69,7 @@ Independente de todo o resto e lançável sozinho.
 - [x] Correr `npx.cmd vitest run src/backend/lib/secrets.test.ts src/backend/routes/settings.test.ts`; commit.
 - [x] Lançar 2.4: bump do `package.json`, entrada no `CHANGELOG.md`, build do instalador Windows, **criar a release antes da tag** e anexar os assets na criação.
 
-## Tarefa 2 — Primitivas e estado do cofre
+## Tarefa 2 — Primitivas e estado do cofre · **feito**
 
 **Criar:** `src/backend/lib/vault-crypto.ts` (+teste), `local-protection.ts` (+teste), `vault.ts` (+teste), migração `0064_credential_vault.ts`.
 **Modificar:** `src/backend/db/migrations/index.ts`, `src/backend/db/schema.ts`.
@@ -96,13 +96,13 @@ export interface Vault {
 export function openVault(db: Database.Database, protection: LocalProtection): Vault;
 ```
 
-- [ ] Testes RED: round-trip; dois `encryptValue` do mesmo valor diferem (nonce); contexto errado lança; tag corrompida lança; envelope > 16 KiB rejeitado; encoding não canónico rejeitado.
-- [ ] Testes RED do cofre com duas `LocalProtection` incompatíveis (máquinas A e B): criar em A, guardar segredo, copiar DB, abrir em B → `locked`; chave errada não altera wrappers; chave certa devolve o valor exato; `dispose()` impede uso posterior; **`openVault` sem proteção disponível devolve `absent` e não escreve nada** (D3).
-- [ ] Formato `enc:v2:<nonce-b64url>:<tag-b64url>:<ct-b64url>`; chave 32 B, nonce 12 B, tag 16 B; AAD UTF-8 = `v2|<contexto>`. Validar tamanhos, encoding e versão **antes** de decifrar.
-- [ ] `LocalProtection`: `available()` exige Electron pronto, `isEncryptionAvailable()` e backend ≠ `basic_text`. `seal`/`open` lançam erro tipado que nunca inclui o conteúdo.
-- [ ] Migração 0064: tabela singleton `credential_vault` (`vault_id`, `format_version`, `local_wrapped_key`, `recovery_wrapped_key`, `pending_recovery_local`, `recovery_confirmed_at`). Só a tabela; não converte dados.
-- [ ] Criação da chave de dados e dos dois wrappers **numa transação**, persistindo só depois de verificar que ambos reabrem. Nunca recriar em silêncio quando já existe ciphertext sem metadados.
-- [ ] Verde; commit.
+- [x] Testes RED: round-trip; dois `encryptValue` do mesmo valor diferem (nonce); contexto errado lança; tag corrompida lança; envelope > 16 KiB rejeitado; encoding não canónico rejeitado.
+- [x] Testes RED do cofre com duas `LocalProtection` incompatíveis (máquinas A e B): criar em A, guardar segredo, copiar DB, abrir em B → `locked`; chave errada não altera wrappers; chave certa devolve o valor exato; `dispose()` impede uso posterior; **`openVault` sem proteção disponível devolve `absent` e não escreve nada** (D3).
+- [x] Formato `enc:v2:<nonce-b64url>:<tag-b64url>:<ct-b64url>`; chave 32 B, nonce 12 B, tag 16 B; AAD UTF-8 = `v2|<contexto>`. Validar tamanhos, encoding e versão **antes** de decifrar.
+- [x] `LocalProtection`: `available()` exige Electron pronto, `isEncryptionAvailable()` e backend ≠ `basic_text`. `seal`/`open` lançam erro tipado que nunca inclui o conteúdo.
+- [x] Migração 0064: tabela singleton `credential_vault` (`vault_id`, `format_version`, `local_wrapped_key`, `recovery_wrapped_key`, `pending_recovery_local`, `recovery_confirmed_at`). Só a tabela; não converte dados.
+- [x] Criação da chave de dados e dos dois wrappers **numa transação**, persistindo só depois de verificar que ambos reabrem. Nunca recriar em silêncio quando já existe ciphertext sem metadados.
+- [x] Verde; commit.
 
 ## Tarefa 3 — Migração dos valores legados e sessão independente
 
