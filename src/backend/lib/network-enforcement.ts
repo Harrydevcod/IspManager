@@ -40,21 +40,25 @@ export type DesiredService = {
   passwordPending: boolean;
   /** Verdadeiro só para serviços ativos: suspenso e cancelado ficam desativados. */
   enabled: boolean;
-  /** `<upload>M/<download>M`, ou null quando o plano não tem velocidade definida. */
-  rateLimit: string | null;
+  /**
+   * Perfil PPP do plano (`internet_plans.router_profile`). É no perfil que o
+   * RouterOS guarda a velocidade; o perfil é do operador, o ISPM só aponta o
+   * secret para ele. Null = o plano não diz, e o que estiver no secret fica.
+   */
+  profile: string | null;
 };
 
 export type PlannedAction =
-  | { kind: 'create'; serviceId: number; username: string; rateLimit: string | null; clientName: string }
+  | { kind: 'create'; serviceId: number; username: string; profile: string | null; clientName: string }
   | { kind: 'enable' | 'disable'; serviceId: number; username: string; secretId: string; clientName: string }
-  | { kind: 'rate_limit'; serviceId: number; username: string; secretId: string; rateLimit: string; clientName: string }
+  | { kind: 'profile'; serviceId: number; username: string; secretId: string; profile: string; clientName: string }
   /** `rename`: o secret no router tem outro nome e as credenciais do ISPM mandam (reinstalação). */
   | { kind: 'password'; serviceId: number; username: string; secretId: string; clientName: string; rename?: true };
 
 export type Divergence = {
   serviceId: number | null;
   username: string;
-  kind: 'missing_secret' | 'state' | 'rate_limit' | 'password' | 'username' | 'orphan_secret';
+  kind: 'missing_secret' | 'state' | 'profile' | 'password' | 'username' | 'orphan_secret';
   detail: string;
 };
 
@@ -74,16 +78,8 @@ type ServiceRow = {
   username: string;
   password: string | null;
   passwordPending: number;
-  downloadMbps: number | null;
-  uploadMbps: number | null;
+  profile: string | null;
 };
-
-export function rateLimitFor(uploadMbps: number | null, downloadMbps: number | null): string | null {
-  // Sem os dois números não se escreve velocidade nenhuma: um rate-limit
-  // adivinhado a partir de texto livre estrangula quem paga.
-  if (!uploadMbps || !downloadMbps || uploadMbps <= 0 || downloadMbps <= 0) return null;
-  return `${uploadMbps}M/${downloadMbps}M`;
-}
 
 export function loadDesiredServices(db: Database.Database): DesiredService[] {
   const rows = db.prepare(`
@@ -94,8 +90,7 @@ export function loadDesiredServices(db: Database.Database): DesiredService[] {
       s.pppoe_username AS username,
       s.pppoe_password AS password,
       s.pppoe_password_sync_pending AS passwordPending,
-      p.download_mbps AS downloadMbps,
-      p.upload_mbps AS uploadMbps
+      NULLIF(TRIM(p.router_profile), '') AS profile
     FROM services s
     JOIN clients c ON c.id = s.client_id
     LEFT JOIN internet_plans p ON p.id = s.plan_id
@@ -110,7 +105,7 @@ export function loadDesiredServices(db: Database.Database): DesiredService[] {
     password: row.password,
     passwordPending: row.passwordPending === 1,
     enabled: row.status === 'active',
-    rateLimit: rateLimitFor(row.uploadMbps, row.downloadMbps)
+    profile: row.profile
   }));
 }
 
@@ -152,7 +147,7 @@ export function planActions(
         kind: 'create',
         serviceId: service.serviceId,
         username: service.username,
-        rateLimit: service.rateLimit,
+        profile: service.profile,
         clientName: service.clientName
       });
       continue;
@@ -178,21 +173,21 @@ export function planActions(
       });
     }
 
-    // Velocidade: só se age quando o plano tem números. Um plano sem Mbps
-    // definidos deixa em paz o que estiver configurado à mão no router.
-    if (service.rateLimit && secret.rateLimit !== service.rateLimit) {
+    // Velocidade = perfil. Só se age quando o plano diz qual; um plano sem
+    // perfil deixa em paz o que estiver configurado à mão no router.
+    if (service.profile && secret.profile !== service.profile) {
       divergences.push({
         serviceId: service.serviceId,
         username: service.username,
-        kind: 'rate_limit',
-        detail: `Router em ${secret.rateLimit ?? 'sem limite'}, plano pede ${service.rateLimit}`
+        kind: 'profile',
+        detail: `Router no perfil ${secret.profile ?? 'por omissão'}, plano pede ${service.profile}`
       });
       actions.push({
-        kind: 'rate_limit',
+        kind: 'profile',
         serviceId: service.serviceId,
         username: service.username,
         secretId: secret.id,
-        rateLimit: service.rateLimit,
+        profile: service.profile,
         clientName: service.clientName
       });
     }
@@ -276,7 +271,7 @@ export type EnforcementSummary = {
 
 const upsertState = `
   INSERT INTO service_network_state (
-    service_id, secret_id, router_enabled, desired_enabled, rate_limit,
+    service_id, secret_id, router_enabled, desired_enabled, profile,
     online, address, uptime, last_online_at, divergence, last_error, checked_at
   )
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
@@ -284,7 +279,7 @@ const upsertState = `
     secret_id = excluded.secret_id,
     router_enabled = excluded.router_enabled,
     desired_enabled = excluded.desired_enabled,
-    rate_limit = excluded.rate_limit,
+    profile = excluded.profile,
     online = excluded.online,
     address = excluded.address,
     uptime = excluded.uptime,
@@ -376,7 +371,7 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
         secret?.id ?? null,
         secret ? (secret.disabled ? 0 : 1) : null,
         service.enabled ? 1 : 0,
-        secret?.rateLimit ?? null,
+        secret?.profile ?? null,
         session ? 1 : 0,
         session?.address ?? null,
         session?.uptime ?? null,
@@ -410,7 +405,7 @@ function rank(action: PlannedAction): number {
   if (action.kind === 'create') return 0;
   if (action.kind === 'enable') return 1;
   if (action.kind === 'password') return 2;
-  if (action.kind === 'rate_limit') return 3;
+  if (action.kind === 'profile') return 3;
   return 4; // disable
 }
 
@@ -431,7 +426,7 @@ async function applyAction(
       name: action.username,
       password: service.password,
       comment: `${COMMENT_PREFIX}${action.serviceId}`,
-      rateLimit: action.rateLimit
+      profile: action.profile
     });
     // Um secret nasce ativo; se o serviço não está ativo, corta-se já.
     if (!service.enabled && id) {
@@ -469,9 +464,12 @@ async function applyAction(
     return;
   }
 
-  if (action.kind === 'rate_limit') {
-    await patchSecret(transport, action.secretId, { rateLimit: action.rateLimit });
-    recordSystemAudit(db, 'network_rate_limit', action.serviceId, `Velocidade de ${action.username} passou a ${action.rateLimit}`);
+  if (action.kind === 'profile') {
+    // O RouterOS aplica o perfil no login: a sessão viva fica com o anterior
+    // até reconectar. Não se derruba aqui — mudar o perfil de um plano cortava
+    // todos os clientes dele de uma vez. "Desligar sessão" na ficha força-o.
+    await patchSecret(transport, action.secretId, { profile: action.profile });
+    recordSystemAudit(db, 'network_profile', action.serviceId, `Perfil de ${action.username} passou a ${action.profile}`);
     return;
   }
 

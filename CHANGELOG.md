@@ -4,6 +4,26 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## Por lançar
+
+> **Uma migração.** A `0065` acrescenta aos planos o **perfil PPP no router** e passa o estado lido de cada serviço a guardar o perfil em vez da velocidade, que nunca chegou a ser lida. Não apaga nada.
+
+Tudo o que está abaixo foi encontrado a testar a integração contra o router de gestão verdadeiro (hEX S, RouterOS 7.24.2), numa cópia da base e só com utilizadores PPPoE de teste.
+
+### Mudado
+
+- **A velocidade de cada plano passa a vir de um perfil PPP.** Até aqui o ISPM tentava escrever a velocidade em cada utilizador PPPoE. O RouterOS **não aceita** velocidade no utilizador ("unknown parameter rate-limit"): ela pertence ao perfil. Com a integração em modo efetivo, **nenhum cliente novo chegava a ser criado no router** enquanto o plano tivesse Mbps preenchidos.
+
+  Agora faz-se o perfil no Winbox (PPP → Profiles, com o `rate-limit` do plano) e escreve-se o nome dele no plano, no campo novo **Perfil PPP no router**. O ISPM põe cada cliente do plano nesse perfil e nunca escreve nos perfis. Um plano sem perfil deixa o router como está. A mudança chega à sessão de cada cliente quando ele volta a ligar. Para forçar, usa-se **Desligar sessão** na ficha.
+
+- **Passar o router de ensaio a efetivo pede a password do administrador**, num diálogo que explica o que vai passar a acontecer e mostra os números do último ensaio. Voltar a ensaio continua livre.
+
+### Corrigido
+
+- **Os erros do router passam a dizer o motivo.** Uma recusa aparecia só como "Bad Request". Agora vem com a explicação que o RouterOS deu, por exemplo "input does not match any value of profile".
+- **O diagnóstico deixa de mandar desligar o `www-ssl`.** O RouterOS 7.24 descreve o serviço sem certificado, e o diagnóstico propunha `/ip service disable www-ssl`, no mesmo relatório em que a ligação por TLS a esse serviço tinha passado. É por aí que o ISPM fala com o router: seguir o conselho deixava o ISPM sem acesso.
+- **Sem senha disponível, o ISPM deixa de tentar entrar no router.** Quando a senha selada não abre nesta conta, a reconciliação tentava entrar de 2 em 2 minutos com a senha vazia e deixava um login recusado no registo do router de cada vez.
+
 ## [2.4](https://github.com/Harrydevcod/IspManager/releases/tag/v2.4.0) — 2026-09-24
 
 > **Sem migrações.** Nada muda na estrutura da base. O arranque deixa de reescrever credenciais — passa só a lê-las.

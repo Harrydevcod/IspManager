@@ -67,8 +67,12 @@ export function routerosIntervalMs(): number {
   return readRouterConfig(getSqliteDatabase()).intervalSeconds * 1000;
 }
 
+/**
+ * A senha conta: vazia quer dizer também "selada e por abrir nesta conta", e
+ * tentar assim só deixa um login recusado no registo do router a cada passagem.
+ */
 export function isRouterConfigured(config: RouterConfig): boolean {
-  return Boolean(config.host && config.user);
+  return Boolean(config.host && config.user && config.password);
 }
 
 // ------------------------------------------------------------------ erros
@@ -343,10 +347,12 @@ export function createTransport(config: RouterConfig): RouterTransport {
               }
             }
             if (status < 200 || status >= 300) {
+              // O RouterOS põe a causa em `detail`; o `message` é só a frase
+              // do HTTP ("Bad Request"), que sozinha não diz nada ao operador.
+              const body = (parsed && typeof parsed === 'object' ? parsed : {}) as { message?: unknown; detail?: unknown };
               const detail =
-                parsed && typeof parsed === 'object' && 'message' in parsed
-                  ? String((parsed as { message: unknown }).message)
-                  : `HTTP ${status}`;
+                [body.message, body.detail].filter((part) => part != null && part !== '').map(String).join(': ')
+                || `HTTP ${status}`;
               reject(new RouterError(status === 401 ? 'Utilizador ou senha recusados pelo router' : detail, status));
               return;
             }
@@ -393,7 +399,6 @@ export type RouterSecret = {
   name: string;
   disabled: boolean;
   profile: string | null;
-  rateLimit: string | null;
   comment: string | null;
 };
 
@@ -658,7 +663,7 @@ export async function diagnoseRouter(config: RouterConfig): Promise<RouterDiagno
 export async function listSecrets(transport: RouterTransport): Promise<RouterSecret[]> {
   const raw = await transport({
     method: 'GET',
-    path: '/ppp/secret?.proplist=.id,name,disabled,profile,rate-limit,comment'
+    path: '/ppp/secret?.proplist=.id,name,disabled,profile,comment'
   });
   return asArray(raw)
     .map((row) => ({
@@ -666,7 +671,6 @@ export async function listSecrets(transport: RouterTransport): Promise<RouterSec
       name: str(row.name) ?? '',
       disabled: toBool(row.disabled),
       profile: str(row.profile),
-      rateLimit: str(row['rate-limit']),
       comment: str(row.comment)
     }))
     .filter((secret) => secret.id && secret.name);
@@ -770,8 +774,11 @@ export function auditRouterServices(services: RouterService[]): RouterServiceFin
   }
 
   // Um serviço "ssl" sem certificado não faz TLS nenhum: está ligado a fingir.
+  // O www-ssl fica de fora: é onde a REST do ISPM vive, e esta auditoria só
+  // corre depois de o aperto TLS com o certificado fixado ter passado nele.
+  // No RouterOS 7.24 a leitura veio sem certificado mesmo assim.
   const fakeTls = active
-    .filter((service) => service.name.endsWith('-ssl') && !service.certificate)
+    .filter((service) => service.name.endsWith('-ssl') && service.name !== 'www-ssl' && !service.certificate)
     .map((service) => service.name);
   if (fakeTls.length > 0) {
     findings.push({
@@ -932,7 +939,6 @@ export type NewSecret = {
   name: string;
   password: string;
   comment: string;
-  rateLimit?: string | null;
   profile?: string | null;
 };
 
@@ -945,7 +951,6 @@ export async function createSecret(transport: RouterTransport, input: NewSecret)
       password: input.password,
       service: 'pppoe',
       comment: input.comment,
-      ...(input.rateLimit ? { 'rate-limit': input.rateLimit } : {}),
       ...(input.profile ? { profile: input.profile } : {})
     }
   });
@@ -953,12 +958,12 @@ export async function createSecret(transport: RouterTransport, input: NewSecret)
   return str(row?.['.id']) ?? '';
 }
 
-export type SecretPatch = { disabled?: boolean; rateLimit?: string | null; password?: string; name?: string };
+export type SecretPatch = { disabled?: boolean; profile?: string; password?: string; name?: string };
 
 export async function patchSecret(transport: RouterTransport, id: string, patch: SecretPatch): Promise<void> {
   const body: Record<string, string> = {};
   if (patch.disabled !== undefined) body.disabled = patch.disabled ? 'yes' : 'no';
-  if (patch.rateLimit !== undefined) body['rate-limit'] = patch.rateLimit ?? '';
+  if (patch.profile !== undefined) body.profile = patch.profile;
   if (patch.name !== undefined) body.name = patch.name;
   if (patch.password !== undefined) body.password = patch.password;
   if (Object.keys(body).length === 0) return;

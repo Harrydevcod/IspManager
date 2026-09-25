@@ -559,18 +559,25 @@ function seedSuspensionNotice(clientId: number, serviceId: number): void {
   `).run(clientId, payment);
 }
 
-/** O que a última passagem da reconciliação encontrou no router. */
+/**
+ * O que a última passagem da reconciliação encontrou no router. O plano do
+ * serviço fica com o perfil `plano-20M`; `profile` é o que o secret tem.
+ */
 function seedNetworkState(
   serviceId: number,
-  opts: { secretId?: string | null; rateLimit?: string | null; online?: number; divergence?: string | null } = {}
+  opts: { secretId?: string | null; profile?: string | null; online?: number; divergence?: string | null } = {}
 ): void {
   db.prepare(`
-    INSERT INTO service_network_state (service_id, secret_id, router_enabled, desired_enabled, rate_limit, online, divergence)
+    UPDATE internet_plans SET router_profile = 'plano-20M'
+    WHERE id = (SELECT plan_id FROM services WHERE id = ?)
+  `).run(serviceId);
+  db.prepare(`
+    INSERT INTO service_network_state (service_id, secret_id, router_enabled, desired_enabled, profile, online, divergence)
     VALUES (?, ?, 1, 1, ?, ?, ?)
   `).run(
     serviceId,
     opts.secretId === undefined ? '*1' : opts.secretId,
-    opts.rateLimit === undefined ? '5M/20M' : opts.rateLimit,
+    opts.profile === undefined ? 'plano-20M' : opts.profile,
     opts.online ?? 1,
     opts.divergence ?? null
   );
@@ -643,19 +650,20 @@ describe('camada de acesso', () => {
     expect(status.actions.find((a) => a.code === 'A-PPPOE')?.title).toBe('Sair do modo de ensaio');
   });
 
-  test('aprovisionado sem limite de débito conta como serviço sem QoS', () => {
+  // O secret no perfil por omissão não tem limite nenhum: só o perfil do plano conta.
+  test('aprovisionado fora do perfil do plano conta como serviço sem QoS', () => {
     setRouterSettings(true, false);
     const plan = insertPlan('Standard', 3000);
     const client = insertClient('C001', 'Ana');
     const service = insertService(client, plan, 3000);
-    seedNetworkState(service, { rateLimit: null });
+    seedNetworkState(service, { profile: 'default' });
 
     const status = loadOperationsStatus(db);
 
     expect(status.accessLayer.qosTracked).toBe(false);
     expect(status.accessLayer.findings.map((f) => f.code)).toContain('access.no-qos');
     expect(status.actions.find((a) => a.code === 'A-QOS')?.title)
-      .toBe('Dar velocidade aos planos que não a têm');
+      .toBe('Dar um perfil PPP aos planos que não o têm');
   });
 });
 

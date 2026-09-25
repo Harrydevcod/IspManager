@@ -76,7 +76,8 @@ export const internetPlans = sqliteTable('internet_plans', {
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP'),
   downloadMbps: integer('download_mbps'),
-  uploadMbps: integer('upload_mbps')
+  uploadMbps: integer('upload_mbps'),
+  routerProfile: text('router_profile')
 });
 
 export const services = sqliteTable('services', {
@@ -590,7 +591,7 @@ export const serviceNetworkState = sqliteTable('service_network_state', {
   secretId: text('secret_id'),
   routerEnabled: integer('router_enabled'),
   desiredEnabled: integer('desired_enabled').notNull().default(1),
-  rateLimit: text('rate_limit'),
+  profile: text('profile'),
   online: integer('online').notNull().default(0),
   address: text('address'),
   uptime: text('uptime'),

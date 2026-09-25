@@ -4,7 +4,7 @@ import { runMigrations } from '../db/migrate';
 import {
   loadDesiredServices,
   planActions,
-  rateLimitFor,
+
   runNetworkEnforcement,
   type DesiredService
 } from './network-enforcement';
@@ -18,7 +18,7 @@ function service(overrides: Partial<DesiredService> = {}): DesiredService {
     password: 'segredo',
     passwordPending: false,
     enabled: true,
-    rateLimit: '2M/10M',
+    profile: 'plano-10M',
     ...overrides
   };
 }
@@ -28,21 +28,11 @@ function secret(overrides: Partial<RouterSecret> = {}): RouterSecret {
     id: '*1',
     name: 'joao-1',
     disabled: false,
-    profile: null,
-    rateLimit: '2M/10M',
+    profile: 'plano-10M',
     comment: 'ispm:1',
     ...overrides
   };
 }
-
-describe('rateLimitFor', () => {
-  test('só devolve limite com os dois números; caso contrário não adivinha', () => {
-    expect(rateLimitFor(2, 10)).toBe('2M/10M');
-    expect(rateLimitFor(null, 10)).toBeNull();
-    expect(rateLimitFor(2, null)).toBeNull();
-    expect(rateLimitFor(0, 10)).toBeNull();
-  });
-});
 
 describe('planActions', () => {
   test('serviço ativo e coerente com o router não gera ação nenhuma', () => {
@@ -54,7 +44,7 @@ describe('planActions', () => {
   test('serviço sem secret no router pede aprovisionamento', () => {
     const plan = planActions([service()], []);
     expect(plan.actions).toEqual([
-      { kind: 'create', serviceId: 1, username: 'joao-1', rateLimit: '2M/10M', clientName: 'Joao Silva' }
+      { kind: 'create', serviceId: 1, username: 'joao-1', profile: 'plano-10M', clientName: 'Joao Silva' }
     ]);
     expect(plan.divergences[0].kind).toBe('missing_secret');
   });
@@ -71,15 +61,18 @@ describe('planActions', () => {
     expect(plan.actions[0].kind).toBe('enable');
   });
 
-  test('velocidade desatualizada é corrigida', () => {
-    const plan = planActions([service()], [secret({ rateLimit: '1M/5M' })]);
+  // A velocidade vive no perfil PPP, que é do operador: o secret só aponta
+  // para ele. O RouterOS recusa `rate-limit` num secret ("unknown parameter").
+  test('perfil desatualizado é corrigido', () => {
+    const plan = planActions([service()], [secret({ profile: 'default' })]);
     expect(plan.actions).toEqual([
-      { kind: 'rate_limit', serviceId: 1, username: 'joao-1', secretId: '*1', rateLimit: '2M/10M', clientName: 'Joao Silva' }
+      { kind: 'profile', serviceId: 1, username: 'joao-1', secretId: '*1', profile: 'plano-10M', clientName: 'Joao Silva' }
     ]);
+    expect(plan.divergences[0]).toMatchObject({ kind: 'profile', detail: 'Router no perfil default, plano pede plano-10M' });
   });
 
-  test('plano sem velocidade definida não toca no que está configurado à mão', () => {
-    const plan = planActions([service({ rateLimit: null })], [secret({ rateLimit: '7M/7M' })]);
+  test('plano sem perfil definido não toca no que está configurado à mão', () => {
+    const plan = planActions([service({ profile: null })], [secret({ profile: 'feito-no-winbox' })]);
     expect(plan.actions).toEqual([]);
   });
 
@@ -137,8 +130,8 @@ function memoryDb() {
   runMigrations(db);
   db.prepare(`INSERT INTO clients (id, client_code, full_name, phone) VALUES (1, 'CL-0001', 'Joao Silva', '9110001')`).run();
   db.prepare(`
-    INSERT INTO internet_plans (id, name, download_speed, upload_speed, download_mbps, upload_mbps)
-    VALUES (1, 'Base 10', '10 Mbps', '2 Mbps', 10, 2)
+    INSERT INTO internet_plans (id, name, download_speed, upload_speed, download_mbps, upload_mbps, router_profile)
+    VALUES (1, 'Base 10', '10 Mbps', '2 Mbps', 10, 2, 'plano-10M')
   `).run();
   return db;
 }
@@ -159,7 +152,7 @@ function recordingTransport(secrets: RouterSecret[], active: Array<{ id: string;
         '.id': s.id,
         name: s.name,
         disabled: String(s.disabled),
-        'rate-limit': s.rateLimit ?? undefined,
+        profile: s.profile ?? undefined,
         comment: s.comment ?? undefined
       }));
     }
@@ -226,7 +219,7 @@ describe('runNetworkEnforcement', () => {
     expect(calls).toContainEqual({
       method: 'PUT',
       path: '/ppp/secret',
-      body: { name: 'joao-1', password: 'senha', service: 'pppoe', comment: 'ispm:1', 'rate-limit': '2M/10M' }
+      body: { name: 'joao-1', password: 'senha', service: 'pppoe', comment: 'ispm:1', profile: 'plano-10M' }
     });
   });
 

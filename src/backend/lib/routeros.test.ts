@@ -6,6 +6,7 @@ import {
   createSecret,
   describeRouterFailure,
   diagnoseRouter,
+  isRouterConfigured,
   listActive,
   listSecrets,
   patchSecret,
@@ -68,6 +69,18 @@ describe('readRouterConfig', () => {
   });
 });
 
+describe('isRouterConfigured', () => {
+  const base = { enabled: true, host: '192.168.2.1', port: 443, user: 'ispm-api', password: 'x', dryRun: true, intervalSeconds: 120, tlsCert: '', maxDisablesPerRun: 5 };
+
+  // Medido no router real: com a senha selada por abrir (cópia da base noutra
+  // conta), o job batia no router a cada 2 min com a senha vazia — um 401 no
+  // registo do router por passagem — enquanto o diagnóstico dizia "falta a senha".
+  test('sem senha o router não está configurado', () => {
+    expect(isRouterConfigured(base)).toBe(true);
+    expect(isRouterConfigured({ ...base, password: '' })).toBe(false);
+  });
+});
+
 describe('operações RouterOS', () => {
   test('testConnection lê versão e board', async () => {
     const transport = fakeTransport([[{ version: '7.15.3', 'board-name': 'hEX S' }]]);
@@ -81,15 +94,15 @@ describe('operações RouterOS', () => {
   test('listSecrets normaliza booleanos em texto e descarta linhas sem id', async () => {
     const transport = fakeTransport([
       [
-        { '.id': '*1', name: 'joao-12', disabled: 'true', 'rate-limit': '2M/10M', comment: 'ispm:12' },
+        { '.id': '*1', name: 'joao-12', disabled: 'true', profile: 'plano-10M', comment: 'ispm:12' },
         { '.id': '*2', name: 'ana-13', disabled: 'false' },
         { name: 'sem-id' }
       ]
     ]);
     const secrets = await listSecrets(transport);
     expect(secrets).toEqual([
-      { id: '*1', name: 'joao-12', disabled: true, profile: null, rateLimit: '2M/10M', comment: 'ispm:12' },
-      { id: '*2', name: 'ana-13', disabled: false, profile: null, rateLimit: null, comment: null }
+      { id: '*1', name: 'joao-12', disabled: true, profile: 'plano-10M', comment: 'ispm:12' },
+      { id: '*2', name: 'ana-13', disabled: false, profile: null, comment: null }
     ]);
   });
 
@@ -106,7 +119,7 @@ describe('operações RouterOS', () => {
       name: 'joao-12',
       password: 'abc123',
       comment: 'ispm:12',
-      rateLimit: '2M/10M'
+      profile: 'plano-10M'
     });
     expect(id).toBe('*7');
     expect(transport.calls[0]).toEqual({
@@ -117,7 +130,7 @@ describe('operações RouterOS', () => {
         password: 'abc123',
         service: 'pppoe',
         comment: 'ispm:12',
-        'rate-limit': '2M/10M'
+        profile: 'plano-10M'
       }
     });
   });
@@ -125,12 +138,12 @@ describe('operações RouterOS', () => {
   test('patchSecret escreve "yes"/"no", que é o que o RouterOS entende', async () => {
     const transport = fakeTransport([null, null]);
     await patchSecret(transport, '*1', { disabled: true });
-    await patchSecret(transport, '*1', { disabled: false, rateLimit: '2M/10M' });
+    await patchSecret(transport, '*1', { disabled: false, profile: 'plano-10M' });
     expect(transport.calls[0]).toEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { disabled: 'yes' } });
     expect(transport.calls[1]).toEqual({
       method: 'PATCH',
       path: '/ppp/secret/*1',
-      body: { disabled: 'no', 'rate-limit': '2M/10M' }
+      body: { disabled: 'no', profile: 'plano-10M' }
     });
   });
 
@@ -329,6 +342,17 @@ describe('auditRouterServices', () => {
 
   test('um router fechado não dá achado nenhum', () => {
     expect(auditRouterServices(fechado)).toEqual([]);
+  });
+
+  // Medido no router real (RouterOS 7.24.2): a leitura de /ip/service veio sem
+  // certificado no www-ssl, e o diagnóstico mandou desligá-lo — no mesmo
+  // relatório em que o aperto TLS com o certificado fixado tinha passado. O
+  // www-ssl é onde a REST do ISPM vive; desligá-lo corta o ISPM do router.
+  test('nunca manda desligar o www-ssl, mesmo lido sem certificado', () => {
+    const lido = fechado.map((s) => (s.name === 'www-ssl' ? { ...s, certificate: null } : s));
+    const achados = auditRouterServices(lido);
+    expect(achados.flatMap((a) => a.services)).not.toContain('www-ssl');
+    expect(achados.map((a) => a.command).join('\n')).not.toContain('www-ssl');
   });
 
   test('apanha os que levam credenciais em texto simples', () => {

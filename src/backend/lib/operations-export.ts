@@ -186,7 +186,7 @@ export async function buildOperationsStatusPdf(now: Date = new Date()): Promise<
     paragraph(
       access.routerEnabled
         ? `Acesso: router ${access.routerDryRun ? 'em ensaio (planeia e não escreve)' : 'a controlar'}, `
-          + `${access.provisionedServices} serviço(s) aprovisionados, ${access.rateLimitedServices} com limite de débito, `
+          + `${access.provisionedServices} serviço(s) aprovisionados, ${access.rateLimitedServices} no perfil do plano, `
           + `${access.onlineServices} online, ${access.divergentServices} em divergência. `
           + `${access.automaticSuspensions} corte(s) automático(s) no período.`
         : `Acesso: integração de router desligada. ${access.sharedUplinkServices} serviço(s) no mesmo uplink, `

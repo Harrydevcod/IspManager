@@ -50,9 +50,14 @@ beforeAll(async () => {
       socket.on('data', (chunk: Buffer) => {
         const requestLine = chunk.toString('utf8').split('\r\n')[0] ?? '';
         const isServices = requestLine.includes('/ip/service');
-        const status = isServices ? servicesReply.status : 200;
+        // Forma exata do erro do RouterOS 7: a causa vem em `detail`, o
+        // `message` é só a frase do HTTP.
+        const isRejectedWrite = requestLine.startsWith('PUT /rest/ppp/secret');
+        const status = isRejectedWrite ? 400 : isServices ? servicesReply.status : 200;
         const body = JSON.stringify(
-          isServices ? servicesReply.rows : [{ version: '7.24.2 (stable)', 'board-name': 'hEX S' }]
+          isRejectedWrite
+            ? { error: 400, message: 'Bad Request', detail: 'unknown parameter rate-limit' }
+            : isServices ? servicesReply.rows : [{ version: '7.24.2 (stable)', 'board-name': 'hEX S' }]
         );
         socket.end(
           `HTTP/1.1 ${status} ${status === 200 ? 'OK' : 'Forbidden'}\r\ncontent-type: application/json\r\ncontent-length: ${Buffer.byteLength(body)}\r\nconnection: close\r\n\r\n${body}`
@@ -99,6 +104,17 @@ describe('fixar o certificado do router', () => {
     // é a da folha, e essa não bate.
     await expect(testConnection(createTransport(configFor(TEST_ROUTER_CA_PEM))))
       .rejects.toMatchObject({ code: 'CERT_MISMATCH' });
+  });
+});
+
+describe('erros do router', () => {
+  // Contra o router real, os 6 secrets de teste falharam todos com "Bad
+  // Request" e nada mais: o motivo que o RouterOS manda em `detail` perdia-se.
+  test('a recusa leva o motivo que o RouterOS deu', async () => {
+    const chain = await fetchRouterCertificate(configFor(''));
+    const transport = createTransport(configFor(chain.pem));
+    await expect(transport({ method: 'PUT', path: '/ppp/secret', body: { name: 'x' } }))
+      .rejects.toMatchObject({ status: 400, message: 'Bad Request: unknown parameter rate-limit' });
   });
 });
 

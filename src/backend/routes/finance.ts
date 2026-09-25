@@ -105,7 +105,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         n.uptime AS routerUptime,
         n.checked_at AS routerLastSyncAt,
         n.last_error AS routerLastError,
-        n.rate_limit AS routerRateLimit,
+        n.profile AS routerProfile,
         -- IPs dos equipamentos ativos: chave de identificacao das antenas para
         -- manutencao remota, por isso vem ja na lista e nao so no detalhe.
         -- Pela vista assignment_services, para uma antena partilhada aparecer em

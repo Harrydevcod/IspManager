@@ -61,7 +61,7 @@ const INSTALL_COST_LABELS: Record<'mao_de_obra' | 'transporte' | 'outro', string
 const NETWORK_DIVERGENCE_LABELS: Record<string, string> = {
   missing_secret: 'Utilizador PPPoE em falta no router',
   state: 'Estado diferente entre ISPM e MikroTik',
-  rate_limit: 'Velocidade diferente do plano',
+  profile: 'Perfil PPP diferente do plano',
   password: 'Password PPPoE pendente de sincronização',
   username: 'Nome PPPoE diferente no router',
   orphan_secret: 'Utilizador no router sem serviço correspondente'
@@ -153,7 +153,7 @@ export function ServiceDetailDialog({
   const hasPendingReturns = pendingDevices + pendingMaterials > 0;
   const speedLabel = service.planDownloadMbps && service.planUploadMbps
     ? `${service.planDownloadMbps}↓ / ${service.planUploadMbps}↑ Mbps`
-    : service.routerRateLimit || '-';
+    : service.routerProfile ? `perfil ${service.routerProfile}` : '-';
   const networkStateLabel = service.routerOnline === 1
     ? 'ONLINE'
     : service.routerOnline === 0
