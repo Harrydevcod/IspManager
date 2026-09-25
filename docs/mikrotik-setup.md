@@ -40,10 +40,15 @@ colida com a tua rede de gestão nem com as redes das CPEs.
 # Bolsa de endereços que o router entrega a cada cliente que autentica
 /ip pool add name=pool-clientes ranges=10.10.1.1-10.10.254.254
 
-# Perfil dos clientes. Sem rate-limit aqui de propósito: a velocidade é
-# escrita pelo ISPM em cada utilizador, a partir do plano.
+# Perfil por omissão dos clientes (sem limite de velocidade). A velocidade
+# vive num perfil por plano, mais abaixo: o RouterOS não aceita rate-limit
+# num secret.
 /ppp profile add name=clientes local-address=10.10.0.1 remote-address=pool-clientes \
     dns-server=8.8.8.8,1.1.1.1 only-one=yes
+
+# Um perfil por plano, com a velocidade (upload/download, visto do router).
+# O nome é o que se escreve em "Perfil PPP no router" no plano do ISPM.
+/ppp profile add name=plano-20M copy-from=clientes rate-limit=20M/20M
 
 # Servidor PPPoE na interface dos clientes
 /interface pppoe-server server add service-name=ispm interface=<lan> \
@@ -249,7 +254,8 @@ No ISPM: **Reconciliar agora**. Em ensaio, deve reportar o `teste-ispm` como *ut
 
 - cria `/ppp secret` para serviços que ainda não existem no router, com `comment=ispm:<id do serviço>`
 - liga e desliga (`disabled`) esses secrets conforme o estado do serviço no ISPM
-- escreve `rate-limit` a partir dos Mbps do plano — **só** se o plano tiver os dois números preenchidos
+- põe cada secret no perfil PPP do plano (`profile=`) — **só** se o plano tiver o perfil preenchido. O
+  perfil, com o `rate-limit`, é feito aqui à mão: o ISPM nunca escreve em `/ppp profile`
 - remove a sessão em `/ppp active` quando corta, para o corte ter efeito imediato
 
 **Nunca toca**: firewall, NAT, rotas, interfaces, DNS, perfis PPP, utilizadores do router, nem secrets que

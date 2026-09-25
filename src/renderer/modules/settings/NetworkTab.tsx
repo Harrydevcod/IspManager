@@ -61,7 +61,7 @@ const CHECK_ICON = {
 const DIVERGENCE_LABEL: Record<string, string> = {
   missing_secret: 'Sem utilizador no router',
   state: 'Estado diferente do ISPM',
-  rate_limit: 'Velocidade diferente do plano',
+  profile: 'Perfil PPP diferente do plano',
   password: 'Password PPPoE pendente',
   username: 'Nome PPPoE diferente no router',
   orphan_secret: 'Utilizador sem serviço'
@@ -212,7 +212,7 @@ export function NetworkTab({
           </div>
           <Toggle
             title="Ensaio (não altera nada no router)"
-            description="Calcula tudo o que faria — cortes, reposições, secrets em falta, velocidades — e mostra o relatório sem tocar no router. Desligue só depois de conferir o relatório contra o parque real."
+            description="Calcula tudo o que faria — cortes, reposições, secrets em falta, perfis — e mostra o relatório sem tocar no router. Desligue só depois de conferir o relatório contra o parque real."
             checked={form.routerosDryRun}
             onChange={(event) => onToggle('routerosDryRun', event.target.checked)}
           />

@@ -35,10 +35,17 @@ com hardware à frente:
   aí a mesma ação renomeia o secret, muda a password e derruba a sessão antiga. O que o ISPM muda
   empurra-se; o que se muda no Winbox reporta-se.
 
-- **Velocidade em colunas numéricas, não adivinhada do texto.** `download_mbps`/`upload_mbps` (migração
-  0039) alimentam o `rate-limit`. A migração pré-preenche só o que é inequívoco ("10 Mbps"); o resto fica
-  nulo, e nulo significa *não escrever velocidade nenhuma*. Um plano sem números deixa em paz o que estiver
-  configurado à mão no router — o contrário seria estrangular um cliente que paga por causa de um parse.
+- **A velocidade vive no perfil PPP, que é do operador** (revisto em 2026-09-25, migração 0065). A
+  primeira versão escrevia `rate-limit` em cada secret a partir de `download_mbps`/`upload_mbps`. Contra o
+  router real (hEX S, RouterOS 7.24.2) todo o `PUT /ppp/secret` com esse campo respondeu 400 "unknown
+  parameter rate-limit": no RouterOS o limite é propriedade do `/ppp/profile`. Nenhum secret nascia
+  enquanto o plano tivesse Mbps, e o secret real ficava com uma divergência que nunca fechava.
+  Agora o plano guarda `router_profile` — o nome de um perfil que o operador faz no Winbox, com endereços,
+  DNS e `rate-limit` — e a reconciliação só aponta o secret para ele (`profile=`, divergência `profile`).
+  Vazio significa *não mexer no perfil*. O ISPM continua sem escrever em `/ppp/profile`: um perfil mal
+  feito deixa clientes sem endereço, e isso é configuração do router, não do ISPM. Os Mbps do plano ficam
+  para relatórios. O RouterOS aplica o perfil no login, por isso a sessão viva só o apanha ao reconectar;
+  a passagem não derruba sessões por isto, que mudar o perfil de um plano cortava todos os clientes dele.
 
 - **A verificação de TLS nunca se desliga.** O certificado que o operador confirma passa a ser a própria
   âncora de confiança (`ca`), e a identidade é validada em `checkServerIdentity` — que o Node chama antes

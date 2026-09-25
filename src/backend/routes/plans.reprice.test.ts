@@ -285,3 +285,23 @@ describe('POST /api/plans/:id/reprice', () => {
     expect(row.lines.map((l) => l.kind)).toEqual(['internet', 'aluguer', 'aluguer']);
   });
 });
+
+describe('perfil PPP do plano', () => {
+  const base = { name: 'PLANO', downloadSpeed: '20 Mb/s', uploadSpeed: '20 Mb/s', monthlyPriceCve: 2500 };
+
+  // Apanhado no lab contra o router real: a regex perdeu a barra do `\w` e só
+  // aceitava a letra "w" — nenhum perfil verdadeiro passava.
+  test('grava e devolve o nome do perfil tal como está no Winbox', async () => {
+    const id = seedPlan(2500);
+    const put = await app.inject({ method: 'PUT', url: `/api/plans/${id}`, payload: { ...base, routerProfile: 'plano-20M' } });
+    expect(put.statusCode).toBe(200);
+    const plan = (await app.inject({ method: 'GET', url: `/api/plans/${id}` })).json();
+    expect(plan.routerProfile).toBe('plano-20M');
+  });
+
+  test('recusa um nome que não é de perfil', async () => {
+    const id = seedPlan(2500);
+    const put = await app.inject({ method: 'PUT', url: `/api/plans/${id}`, payload: { ...base, routerProfile: 'x"; /system reset' } });
+    expect(put.statusCode).toBe(400);
+  });
+});

@@ -192,7 +192,7 @@ export type OperationsAccessLayer = {
   sessionHistoryTracked: false;
   /** Serviços com secret PPPoE encontrado no router. */
   provisionedServices: number;
-  /** Serviços com limite de débito aplicado — QoS por cliente, contado. */
+  /** Serviços no perfil PPP do plano (é lá que vive o limite) — QoS por cliente, contado. */
   rateLimitedServices: number;
   /** Serviços online na última passagem da reconciliação. */
   onlineServices: number;

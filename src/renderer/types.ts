@@ -82,7 +82,7 @@ export type ServiceRow = {
   routerUptime?: string | null;
   routerLastSyncAt?: string | null;
   routerLastError?: string | null;
-  routerRateLimit?: string | null;
+  routerProfile?: string | null;
 };
 
 export type AudiovisualConfig = {
@@ -226,6 +226,7 @@ export type PlanRow = {
   /** Débito em Mbps. Null = sem limite definido; o router fica como está. */
   downloadMbps: number | null;
   uploadMbps: number | null;
+  routerProfile?: string | null;
 };
 
 export type StockCatalogRow = {

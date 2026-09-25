@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import { RouterError } from './routeros';
+import { writeSecret } from './secrets';
 import {
   loadAutoSuspensionPreview,
   reactivateServiceIfEligibleAfterPayment,
@@ -29,6 +30,8 @@ function configure(db: Database.Database, dryRun: boolean) {
   set(db, 'routerosEnabled', 'true');
   set(db, 'routerosHost', '192.168.2.1');
   set(db, 'routerosUser', 'ispm');
+  // Sem senha o router conta como por configurar (e nunca se tenta entrar).
+  writeSecret(db, 'routerosPassword', 'segredo');
   set(db, 'routerosDryRun', String(dryRun));
 }
 

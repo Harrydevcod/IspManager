@@ -15,6 +15,7 @@ type PlanFormState = {
   uploadSpeed: string;
   downloadMbps: string;
   uploadMbps: string;
+  routerProfile: string;
   connectionType: 'radio' | 'fibra' | 'cabo' | 'outro';
   monthlyPriceCve: string;
   installationFeeCve: string;
@@ -29,6 +30,7 @@ function emptyPlanForm(): PlanFormState {
     uploadSpeed: '',
     downloadMbps: '',
     uploadMbps: '',
+    routerProfile: '',
     connectionType: 'fibra',
     monthlyPriceCve: '',
     installationFeeCve: '',
@@ -115,6 +117,7 @@ export function PlansModule() {
       uploadSpeed: plan.uploadSpeed,
       downloadMbps: plan.downloadMbps == null ? '' : String(plan.downloadMbps),
       uploadMbps: plan.uploadMbps == null ? '' : String(plan.uploadMbps),
+      routerProfile: plan.routerProfile ?? '',
       connectionType: plan.connectionType,
       monthlyPriceCve: String(plan.monthlyPriceCve),
       installationFeeCve: String(plan.installationFeeCve),
@@ -144,6 +147,7 @@ export function PlansModule() {
         // receber um zero que cortaria a velocidade toda.
         downloadMbps: form.downloadMbps ? Number(form.downloadMbps) : null,
         uploadMbps: form.uploadMbps ? Number(form.uploadMbps) : null,
+        routerProfile: form.routerProfile.trim() || null,
         active: form.active === '1'
       })
     });
@@ -351,7 +355,7 @@ export function PlansModule() {
             max={10000}
             value={form.downloadMbps}
             onChange={(event) => updateForm('downloadMbps', event.target.value)}
-            hint="Número usado para limitar a velocidade no router. Em branco, o router fica como está."
+            hint="Número para relatórios. A velocidade no router vem do perfil PPP."
           />
           <Field
             label="Upload (Mbps)"
@@ -360,7 +364,15 @@ export function PlansModule() {
             max={10000}
             value={form.uploadMbps}
             onChange={(event) => updateForm('uploadMbps', event.target.value)}
-            hint="Idem. Os dois campos são precisos para o limite ser aplicado."
+            hint="Idem."
+          />
+          <Field
+            label="Perfil PPP no router"
+            value={form.routerProfile}
+            maxLength={64}
+            placeholder="ex.: plano-20M"
+            onChange={(event) => updateForm('routerProfile', event.target.value)}
+            hint="Nome exato do perfil em PPP → Profiles no Winbox, com o rate-limit do plano. Os serviços do plano passam para este perfil. Em branco, o router fica como está."
           />
           <Field label="Mensalidade CVE" required type="number" min={0} value={form.monthlyPriceCve} onChange={(event) => updateForm('monthlyPriceCve', event.target.value)} />
           <Field label="Instalacao CVE" type="number" min={0} value={form.installationFeeCve} onChange={(event) => updateForm('installationFeeCve', event.target.value)} />

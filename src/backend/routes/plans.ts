@@ -13,10 +13,14 @@ const planSchema = z.object({
   monthlyPriceCve: z.coerce.number().min(0),
   installationFeeCve: z.coerce.number().min(0).default(0),
   description: z.string().trim().optional().nullable(),
-  // Velocidade legivel por maquina: e daqui que sai o rate-limit no MikroTik.
-  // Nulo = sem limite definido; a reconciliacao nao adivinha a partir do texto.
+  // Velocidade legivel por maquina, para relatorios. O router nao a le: no
+  // RouterOS a velocidade vive no perfil PPP (ver routerProfile).
   downloadMbps: z.coerce.number().int().min(1).max(10000).optional().nullable(),
   uploadMbps: z.coerce.number().int().min(1).max(10000).optional().nullable(),
+  // Nome do perfil PPP no MikroTik (feito pelo operador no Winbox). A
+  // reconciliacao aponta o secret de cada servico do plano para ele. Vazio =
+  // nao mexer no perfil.
+  routerProfile: z.string().trim().max(64).regex(/^[\w .-]*$/).optional().nullable(),
   active: z.coerce.boolean().default(true)
 });
 
@@ -36,6 +40,7 @@ export async function registerPlanRoutes(app: FastifyInstance) {
         installation_fee_cve AS installationFeeCve,
         download_mbps AS downloadMbps,
         upload_mbps AS uploadMbps,
+        router_profile AS routerProfile,
         description,
         active,
         created_at AS createdAt,
@@ -59,6 +64,7 @@ export async function registerPlanRoutes(app: FastifyInstance) {
         installation_fee_cve AS installationFeeCve,
         download_mbps AS downloadMbps,
         upload_mbps AS uploadMbps,
+        router_profile AS routerProfile,
         description,
         active
       FROM internet_plans
@@ -82,9 +88,9 @@ export async function registerPlanRoutes(app: FastifyInstance) {
     const result = db.prepare(`
       INSERT INTO internet_plans (
         name, download_speed, upload_speed, connection_type, monthly_price_cve,
-        installation_fee_cve, description, active, download_mbps, upload_mbps, created_at, updated_at
+        installation_fee_cve, description, active, download_mbps, upload_mbps, router_profile, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     `).run(
       parsed.data.name,
       parsed.data.downloadSpeed,
@@ -95,7 +101,8 @@ export async function registerPlanRoutes(app: FastifyInstance) {
       parsed.data.description || null,
       parsed.data.active ? 1 : 0,
       parsed.data.downloadMbps ?? null,
-      parsed.data.uploadMbps ?? null
+      parsed.data.uploadMbps ?? null,
+      parsed.data.routerProfile || null
     );
 
     return reply.status(201).send({ id: result.lastInsertRowid });
@@ -121,6 +128,7 @@ export async function registerPlanRoutes(app: FastifyInstance) {
           active = ?,
           download_mbps = ?,
           upload_mbps = ?,
+          router_profile = ?,
           updated_at = datetime('now')
       WHERE id = ?
     `).run(
@@ -134,6 +142,7 @@ export async function registerPlanRoutes(app: FastifyInstance) {
       parsed.data.active ? 1 : 0,
       parsed.data.downloadMbps ?? null,
       parsed.data.uploadMbps ?? null,
+      parsed.data.routerProfile || null,
       id
     );
 
