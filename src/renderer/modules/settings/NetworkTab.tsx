@@ -241,6 +241,13 @@ export function NetworkTab({
             onChange={(event) => onUpdate('routerosBaseProfile', event.target.value)}
             hint="Perfil PPP que já dá rede aos clientes. Os perfis que o ISPM cria para os planos copiam dele os endereços e o DNS."
           />
+          <Field
+            label="Perfil dos suspensos"
+            value={form.routerosSuspendedProfile}
+            maxLength={64}
+            onChange={(event) => onUpdate('routerosSuspendedProfile', event.target.value)}
+            hint="Perfil PPP para onde vai o cliente suspenso (velocidade mínima). Vazio: o secret é desativado."
+          />
           <Toggle
             title="Suspensão automática por falta de pagamento"
             description="Depois da tolerância, suspende apenas o serviço em dívida. O ensaio protege também esta automação: enquanto estiver ligado, só mostra quem seria suspenso."

@@ -4,7 +4,6 @@ import { runMigrations } from '../db/migrate';
 import {
   loadDesiredServices,
   planActions,
-
   runNetworkEnforcement,
   type DesiredService
 } from './network-enforcement';
@@ -49,10 +48,35 @@ describe('planActions', () => {
     expect(plan.divergences[0].kind).toBe('missing_secret');
   });
 
-  test('serviço suspenso ainda ativo no router pede corte', () => {
+  test('serviço cancelado ainda ativo no router pede corte', () => {
     const plan = planActions([service({ enabled: false })], [secret()]);
     expect(plan.actions).toEqual([
-      { kind: 'disable', serviceId: 1, username: 'joao-1', secretId: '*1', clientName: 'Joao Silva' }
+      { kind: 'disable', serviceId: 1, username: 'joao-1', secretId: '*1', clientName: 'Joao Silva', cut: true }
+    ]);
+  });
+
+  test('suspenso ativo muda para SUSPENSO com corte e sem desativar', () => {
+    const plan = planActions([service({ suspended: true, profile: 'SUSPENSO' })], [secret()],
+      { suspendedProfile: 'SUSPENSO', baseProfile: 'default' });
+    expect(plan.actions).toEqual([
+      { kind: 'profile', serviceId: 1, username: 'joao-1', secretId: '*1', profile: 'SUSPENSO', from: 'plano-10M', clientName: 'Joao Silva', cut: true }
+    ]);
+  });
+
+  test('suspenso desativado muda primeiro de perfil e depois é ativado, sem corte', () => {
+    const plan = planActions([service({ suspended: true, profile: 'SUSPENSO' })], [secret({ disabled: true })],
+      { suspendedProfile: 'SUSPENSO', baseProfile: 'default' });
+    expect(plan.actions).toEqual([
+      { kind: 'enable', serviceId: 1, username: 'joao-1', secretId: '*1', clientName: 'Joao Silva' },
+      { kind: 'profile', serviceId: 1, username: 'joao-1', secretId: '*1', profile: 'SUSPENSO', from: 'plano-10M', clientName: 'Joao Silva' }
+    ]);
+  });
+
+  test('reativação sem perfil no plano repõe o perfil-base', () => {
+    const plan = planActions([service({ profile: null })], [secret({ profile: 'SUSPENSO' })],
+      { suspendedProfile: 'SUSPENSO', baseProfile: 'base-operador' });
+    expect(plan.actions).toEqual([
+      { kind: 'profile', serviceId: 1, username: 'joao-1', secretId: '*1', profile: 'base-operador', from: 'SUSPENSO', clientName: 'Joao Silva' }
     ]);
   });
 
@@ -66,7 +90,7 @@ describe('planActions', () => {
   test('perfil desatualizado é corrigido', () => {
     const plan = planActions([service()], [secret({ profile: 'default' })]);
     expect(plan.actions).toEqual([
-      { kind: 'profile', serviceId: 1, username: 'joao-1', secretId: '*1', profile: 'plano-10M', clientName: 'Joao Silva' }
+      { kind: 'profile', serviceId: 1, username: 'joao-1', secretId: '*1', profile: 'plano-10M', from: 'default', clientName: 'Joao Silva' }
     ]);
     expect(plan.divergences[0]).toMatchObject({ kind: 'profile', detail: 'Router no perfil default, plano pede plano-10M' });
   });
@@ -143,6 +167,11 @@ function addService(db: Database.Database, id: number, status: string, username:
   `).run(id, status, username);
 }
 
+function setting(db: Database.Database, key: string, value: string) {
+  db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .run(key, value);
+}
+
 function recordingTransport(secrets: RouterSecret[], active: Array<{ id: string; name: string }> = []) {
   const calls: RouterRequest[] = [];
   const transport = (async (req: RouterRequest) => {
@@ -191,23 +220,24 @@ describe('runNetworkEnforcement', () => {
       online: number; divergence: string; router_enabled: number;
     };
     expect(state.online).toBe(1);
-    expect(state.divergence).toBe('state');
+    expect(state.divergence).toBe('profile');
     expect(state.router_enabled).toBe(1);
   });
 
-  test('cortar desativa o secret, derruba a sessão e deixa rasto', async () => {
+  test('suspender aplica o perfil, derruba a sessão e deixa rasto', async () => {
     addService(db, 1, 'suspended', 'joao-1');
     const { transport, calls } = recordingTransport([secret()], [{ id: '*A', name: 'joao-1' }]);
 
     const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
 
     expect(summary.applied).toBe(1);
-    expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { disabled: 'yes' } });
+    expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'SUSPENSO' } });
+    expect(calls).not.toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { disabled: 'yes' } });
     expect(calls).toContainEqual({ method: 'DELETE', path: '/ppp/active/*A' });
     const event = db.prepare(`SELECT event_type FROM service_events WHERE service_id = 1`).get() as { event_type: string };
     expect(event.event_type).toBe('corte_rede');
     const audit = db.prepare(`SELECT action, actor_username FROM audit_logs`).get() as { action: string; actor_username: string };
-    expect(audit).toMatchObject({ action: 'network_disable', actor_username: 'sistema' });
+    expect(audit).toMatchObject({ action: 'network_profile', actor_username: 'sistema' });
   });
 
   test('aprovisiona o secret em falta com a velocidade do plano', async () => {
@@ -223,13 +253,103 @@ describe('runNetworkEnforcement', () => {
     });
   });
 
-  test('secret criado para um serviço já suspenso nasce cortado', async () => {
+  test('secret criado para um serviço já suspenso nasce ativo em SUSPENSO', async () => {
     addService(db, 1, 'suspended', 'joao-1');
     const { transport, calls } = recordingTransport([]);
 
     await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
 
-    expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*77', body: { disabled: 'yes' } });
+    expect(calls).toContainEqual({ method: 'PUT', path: '/ppp/secret',
+      body: { name: 'joao-1', password: 'senha', service: 'pppoe', comment: 'ispm:1', profile: 'SUSPENSO' } });
+    expect(calls.some((call) => call.method === 'PATCH' && call.path === '/ppp/secret/*77')).toBe(false);
+  });
+
+  test('secret desativado de suspenso recebe o perfil antes de ser ativado', async () => {
+    addService(db, 1, 'suspended', 'joao-1');
+    const { transport, calls } = recordingTransport([secret({ disabled: true })]);
+    const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 0 });
+    expect(summary.aborted).toBeUndefined();
+    expect(calls.filter((call) => call.method !== 'GET')).toEqual([
+      { method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'SUSPENSO' } },
+      { method: 'PATCH', path: '/ppp/secret/*1', body: { disabled: 'no' } }
+    ]);
+    expect(db.prepare('SELECT desired_enabled FROM service_network_state WHERE service_id = 1').get())
+      .toEqual({ desired_enabled: 1 });
+  });
+
+  test('falha no perfil impede a ativação do mesmo serviço', async () => {
+    addService(db, 1, 'suspended', 'joao-1');
+    const base = recordingTransport([secret({ disabled: true })]);
+    const transport = (async (req: RouterRequest) => {
+      if (req.method === 'PATCH' && typeof req.body === 'object' && req.body !== null && 'profile' in req.body)
+        throw new Error('perfil inexistente');
+      return base.transport(req);
+    }) as RouterTransport;
+    const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+    expect(summary.failed).toBe(1);
+    expect(base.calls.some((call) => call.method === 'PATCH')).toBe(false);
+    expect(db.prepare('SELECT last_error FROM service_network_state WHERE service_id = 1').get())
+      .toEqual({ last_error: 'perfil inexistente' });
+  });
+
+  test('definição vazia desativa um suspenso como antes', async () => {
+    setting(db, 'routerosSuspendedProfile', '');
+    addService(db, 1, 'suspended', 'joao-1');
+    const { transport, calls } = recordingTransport([secret()]);
+    await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+    expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { disabled: 'yes' } });
+  });
+
+  test('cancelado continua a desativar o secret', async () => {
+    addService(db, 1, 'cancelled', 'joao-1');
+    const { transport, calls } = recordingTransport([secret()]);
+    await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+    expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { disabled: 'yes' } });
+  });
+
+  test('seis cortes por perfil excedem a trava e saltam todas as ações desses serviços', async () => {
+    for (let id = 1; id <= 6; id += 1) {
+      addService(db, id, 'suspended', `cliente-${id}`);
+      db.prepare('UPDATE services SET pppoe_password_sync_pending = 1 WHERE id = ?').run(id);
+    }
+    const secrets = Array.from({ length: 6 }, (_, index) => {
+      const id = index + 1;
+      return secret({ id: `*${id}`, name: `cliente-${id}`, comment: `ispm:${id}` });
+    });
+    const { transport, calls } = recordingTransport(secrets);
+    const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+    expect(summary.aborted).toBe(true);
+    expect(summary.applied).toBe(0);
+    expect(calls.every((call) => call.method === 'GET')).toBe(true);
+  });
+
+  test('sair de SUSPENSO repõe o plano, derruba a sessão e regista reposição', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    const { transport, calls } = recordingTransport([secret({ profile: 'SUSPENSO' })], [{ id: '*A', name: 'joao-1' }]);
+    await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+    expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'plano-10M' } });
+    expect(calls).toContainEqual({ method: 'DELETE', path: '/ppp/active/*A' });
+    expect(db.prepare('SELECT event_type FROM service_events WHERE service_id = 1').get())
+      .toEqual({ event_type: 'reposicao_rede' });
+  });
+
+  test('troca entre perfis de planos normais não derruba a sessão', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    const { transport, calls } = recordingTransport([secret({ profile: 'plano-5M' })], [{ id: '*A', name: 'joao-1' }]);
+    await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+    expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'plano-10M' } });
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
+    expect(db.prepare('SELECT count(*) AS total FROM service_events WHERE service_id = 1').get())
+      .toEqual({ total: 0 });
+  });
+
+  test('reativação sem perfil no plano sai de SUSPENSO para o perfil-base', async () => {
+    setting(db, 'routerosBaseProfile', 'base-operador');
+    db.prepare('UPDATE internet_plans SET router_profile = NULL WHERE id = 1').run();
+    addService(db, 1, 'active', 'joao-1');
+    const { transport, calls } = recordingTransport([secret({ profile: 'SUSPENSO' })]);
+    await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+    expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'base-operador' } });
   });
 
   test('password pendente é aplicada no router e a marca só limpa depois do PATCH', async () => {
@@ -306,7 +426,7 @@ describe('runNetworkEnforcement', () => {
     expect(summary.applied).toBe(1);
     expect(calls).toContainEqual({ method: 'DELETE', path: '/ppp/active/*A' });
     expect(db.prepare('SELECT divergence FROM service_network_state WHERE service_id = 1').get())
-      .toEqual({ divergence: 'state' });
+      .toEqual({ divergence: 'profile' });
   });
 
   test('reinstalação: renomeia o secret, muda a password e derruba a sessão do inquilino anterior', async () => {

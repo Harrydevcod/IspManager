@@ -19,6 +19,7 @@ import {
 
 const COMMENT_PREFIX = 'ispm:plano:';
 const DEFAULT_BASE_PROFILE = 'default';
+const DEFAULT_SUSPENDED_PROFILE = 'SUSPENSO';
 
 export type PlanForProfile = {
   id: number;
@@ -46,6 +47,13 @@ export function readBaseProfileName(db: Database.Database): string {
     | { value: string }
     | undefined;
   return row?.value?.trim() || DEFAULT_BASE_PROFILE;
+}
+
+export function readSuspendedProfileName(db: Database.Database): string {
+  const row = db.prepare(`SELECT value FROM app_settings WHERE key = 'routerosSuspendedProfile'`).get() as
+    | { value: string }
+    | undefined;
+  return row ? row.value.trim() : DEFAULT_SUSPENDED_PROFILE;
 }
 
 /** Função pura: dado o plano e os perfis do router, o que há a fazer. */

@@ -12,6 +12,12 @@ Tudo o que está abaixo foi encontrado a testar a integração contra o router d
 
 ### Mudado
 
+- **Suspender um serviço coloca o secret ativo no perfil PPP `SUSPENSO`**, por omissão, e desliga
+  a sessão para aplicar logo a velocidade mínima. Reativar repõe o perfil do plano (ou o perfil-base
+  se o plano não tiver perfil) e volta a ligar; cancelar continua a desativar o secret. Em
+  Definições → Rede, **Perfil dos suspensos** pode ficar vazio para conservar o corte por
+  desativação. A trava de cortes conta também as entradas no perfil de suspensão.
+
 - **A velocidade de cada plano passa a vir de um perfil PPP.** Até aqui o ISPM tentava escrever a velocidade em cada utilizador PPPoE. O RouterOS **não aceita** velocidade no utilizador ("unknown parameter rate-limit"): ela pertence ao perfil. Com a integração em modo efetivo, **nenhum cliente novo chegava a ser criado no router** enquanto o plano tivesse Mbps preenchidos.
 
   Agora cada plano diz o seu perfil, no campo novo **Perfil PPP no router**, e o ISPM põe cada cliente do plano nesse perfil. O perfil pode ser um que já existe no router ou um que o ISPM cria (ver abaixo). Um plano sem perfil deixa o router como está. A mudança chega à sessão de cada cliente quando ele volta a ligar. Para forçar, usa-se **Desligar sessão** na ficha.

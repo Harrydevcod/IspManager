@@ -50,6 +50,10 @@ colida com a tua rede de gestão nem com as redes das CPEs.
 # O nome é o que se escreve em "Perfil PPP no router" no plano do ISPM.
 /ppp profile add name=plano-20M copy-from=clientes rate-limit=20M/20M
 
+# Perfil de suspensão: mantém o secret ativo, com velocidade mínima.
+# Cria-o antes de ativar a reconciliação efetiva no ISPM.
+/ppp profile add name=SUSPENSO copy-from=clientes rate-limit=128k/128k
+
 # Servidor PPPoE na interface dos clientes
 /interface pppoe-server server add service-name=ispm interface=<lan> \
     default-profile=clientes disabled=no one-session-per-host=yes \
@@ -208,6 +212,13 @@ Definições → Rede → **Router MikroTik**:
 | Utilizador da API | `ispm-api` |
 | Senha | a do passo 5 |
 | Ensaio | **ligado** (deixa ficar) |
+| Perfil-base dos planos | `clientes`, se usares o perfil-base deste guia |
+| Perfil dos suspensos | `SUSPENSO` (já criado no passo 1); vazio para desativar o secret ao suspender |
+
+O perfil `SUSPENSO` tem de existir no router antes de suspender serviços em modo efetivo. Se faltar,
+o `PATCH` do perfil falha, o erro fica registado no serviço e um secret que estava desativado **não**
+é ativado. Na primeira passagem, os serviços suspensos que hoje têm o secret desativado passam
+primeiro para `SUSPENSO` e só depois são ativados; esta reposição não conta como corte na trava.
 
 Depois **Testar ligação** — não é preciso gravar primeiro, o teste corre contra o que está no ecrã.
 
@@ -253,12 +264,16 @@ No ISPM: **Reconciliar agora**. Em ensaio, deve reportar o `teste-ispm` como *ut
 **Escreve** (só em `/ppp`):
 
 - cria `/ppp secret` para serviços que ainda não existem no router, com `comment=ispm:<id do serviço>`
-- liga e desliga (`disabled`) esses secrets conforme o estado do serviço no ISPM
+- mantém ativos os secrets dos serviços ativos e suspensos; desativa os cancelados (e os suspensos
+  se **Perfil dos suspensos** estiver vazio)
+- põe o secret suspenso no perfil `SUSPENSO` (ou no nome configurado), com velocidade mínima
 - põe cada secret no perfil PPP do plano (`profile=`) — **só** se o plano tiver o perfil preenchido
 - cria o perfil de um plano quando um administrador carrega em "Criar no router" (e só em modo efetivo),
   copiando endereços e DNS do perfil-base e marcando-o `comment=ispm:plano:<id>`; volta a mexer só no
   `rate-limit` desses perfis marcados (ADR 0011)
-- remove a sessão em `/ppp active` quando corta, para o corte ter efeito imediato
+- remove a sessão em `/ppp active` ao entrar ou sair do perfil de suspensão, ou ao desativar
+  o secret, para a alteração ter efeito imediato; mudanças entre perfis de planos esperam
+  pela próxima ligação
 
 **Nunca toca**: firewall, NAT, rotas, interfaces, DNS, perfis PPP sem a marca `ispm:plano:` (nem apaga
 nenhum), utilizadores do router, nem secrets que

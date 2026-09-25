@@ -260,7 +260,9 @@ export function ServiceDetailDialog({
                 <dt>Secret no router</dt>
                 <dd>
                   {service.routerEnabled === 1
-                    ? 'Ativo'
+                    ? service.status === 'suspended' && service.routerProfile
+                      ? `Ativo · perfil ${service.routerProfile}`
+                      : 'Ativo'
                     : service.routerEnabled === 0
                       ? 'Desativado'
                       : 'Ainda não lido'}

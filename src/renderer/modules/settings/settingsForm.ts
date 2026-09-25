@@ -62,6 +62,7 @@ export type SettingsFormState = {
   routerosIntervalSeconds: string;
   routerosMaxDisablesPerRun: string;
   routerosBaseProfile: string;
+  routerosSuspendedProfile: string;
   autoSuspensionEnabled: boolean;
   autoSuspensionGraceDays: string;
   autoSuspensionIntervalMinutes: string;
