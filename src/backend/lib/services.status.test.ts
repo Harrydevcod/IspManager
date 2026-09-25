@@ -238,13 +238,23 @@ describe('associar um plano a um serviço existente', () => {
   test('credenciais existentes ficam como estão', () => {
     setRouter(true);
     seed('joao-velho');
-    services.updateService(db, 5, { ...form, pppoeUsername: 'joao-velho', pppoePassword: 'antiga' });
+    services.updateService(db, 5, form);
     expect(credentials()).toMatchObject({ username: 'joao-velho', password: 'antiga', pending: 0 });
   });
 
   test('com o router desligado não se inventam credenciais', () => {
     setRouter(false);
     seed(null);
+    services.updateService(db, 5, form);
+    expect(credentials()).toMatchObject({ username: null, password: null });
+  });
+
+  test('remover o login de um serviço já associado não volta a gerar credenciais', () => {
+    setRouter(true);
+    seed(null);
+    services.updateService(db, 5, form);
+    services.updateService(db, 5, { ...form, pppoeUsername: '', pppoePassword: '' });
+    expect(credentials()).toMatchObject({ username: null, password: null });
     services.updateService(db, 5, form);
     expect(credentials()).toMatchObject({ username: null, password: null });
   });

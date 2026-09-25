@@ -382,7 +382,11 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
   // falhou, ou o plano não tem Mbps): quem deve ter acesso fica pendente — nem
   // criado nem ativado — até o perfil existir. Quem deve ficar sem acesso
   // continua a ser cortado.
-  if (routerProfiles) {
+  if (!routerProfiles) {
+    for (const service of desired) {
+      if (service.enabled) errors.set(service.serviceId, `Não foi possível confirmar os perfis PPP: ${profilesReadError}`);
+    }
+  } else {
     for (const service of desired) {
       if (service.enabled && service.profile && !routerProfiles.has(service.profile)) {
         errors.set(service.serviceId, `Perfil PPP ${service.profile} ainda não existe no router`);

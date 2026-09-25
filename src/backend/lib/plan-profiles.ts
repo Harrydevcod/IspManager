@@ -157,9 +157,16 @@ export async function syncPlanProfiles(
   `).all() as PlanForProfile[];
   if (plans.length === 0) return { plans: 0, applied: 0, failed: 0 };
 
-  const profiles = await listProfiles(deps.transport);
-  const baseName = readBaseProfileName(db);
   const record = db.prepare(upsertSync);
+  let profiles: RouterProfile[];
+  try {
+    profiles = await listProfiles(deps.transport);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    for (const plan of plans) record.run(plan.id, 'error', 'Ler perfis PPP do router', message);
+    return { plans: plans.length, applied: 0, failed: plans.length };
+  }
+  const baseName = readBaseProfileName(db);
   let applied = 0;
   let failed = 0;
 

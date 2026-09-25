@@ -260,8 +260,8 @@ export function PlansModule() {
           rowKey={(plan) => plan.id}
           stickyHeader
           onRowClick={canManagePlans ? editPlan : undefined}
-          gridTemplateColumns="minmax(160px, 1.5fr) 120px 150px 140px 130px 110px"
-          actionsWidth="96px"
+          gridTemplateColumns="minmax(140px, 1.5fr) 90px 125px 100px 100px 90px"
+          actionsWidth="88px"
           defaultSort={{ key: 'Nome', direction: 'asc' }}
           columns={[
             { header: 'Nome', sortValue: (plan) => plan.name, cell: (plan) => <strong>{plan.name}</strong> },

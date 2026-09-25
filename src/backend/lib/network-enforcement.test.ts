@@ -371,6 +371,22 @@ describe('runNetworkEnforcement', () => {
       .toEqual({ lastError: expect.stringContaining('plano-10M') });
   });
 
+  test('falha ao ler perfis impede ativar um secret dependente deles', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    const base = recordingTransport([secret({ disabled: true })]);
+    const transport = (async (req: RouterRequest) => {
+      if (req.path.startsWith('/ppp/profile?')) throw new Error('perfis indisponíveis');
+      return base.transport(req);
+    }) as RouterTransport;
+
+    const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+
+    expect(base.calls.some((call) => call.method === 'PATCH' && call.path === '/ppp/secret/*1')).toBe(false);
+    expect(summary.failed).toBe(1);
+    expect(db.prepare('SELECT last_error AS lastError FROM service_network_state WHERE service_id = 1').get())
+      .toEqual({ lastError: expect.stringContaining('perfis indisponíveis') });
+  });
+
   test('cancelado continua a desativar o secret', async () => {
     addService(db, 1, 'cancelled', 'joao-1');
     const { transport, calls } = recordingTransport([secret()]);

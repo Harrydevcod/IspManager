@@ -204,6 +204,18 @@ describe('syncPlanProfiles', () => {
     expect(stateOf(db, 1)).toMatchObject({ status: 'synced', lastError: null });
   });
 
+  test('falha ao ler perfis regista o erro em cada plano e permite nova tentativa', async () => {
+    const db = dbWithPlans();
+    const offline = (async () => { throw new Error('router indisponível'); }) as RouterTransport;
+    const failed = await syncPlanProfiles(db, { transport: offline, dryRun: false });
+    expect(failed.failed).toBe(3);
+    expect(stateOf(db, 1)).toMatchObject({ status: 'error', lastError: 'router indisponível' });
+    expect(stateOf(db, 2)).toMatchObject({ status: 'error', lastError: 'router indisponível' });
+    const healthy = stateful([profile(), operatorProfile]);
+    await syncPlanProfiles(db, { transport: healthy.transport, dryRun: false });
+    expect(stateOf(db, 1)).toMatchObject({ status: 'synced', lastError: null });
+  });
+
   test('em ensaio regista a ação prevista sem escrever no router', async () => {
     const db = dbWithPlans();
     const { transport, calls } = stateful([profile(), operatorProfile]);
@@ -212,5 +224,17 @@ describe('syncPlanProfiles', () => {
 
     expect(calls.every((call) => call.method === 'GET')).toBe(true);
     expect(stateOf(db, 1)).toMatchObject({ status: 'dry_run', detail: expect.stringContaining('ispm-plano-1') });
+  });
+
+  test('um plano gravado em ensaio é criado na primeira passagem efetiva', async () => {
+    const db = dbWithPlans();
+    const router = stateful([profile(), operatorProfile]);
+    await syncPlanProfiles(db, { transport: router.transport, dryRun: true });
+    expect(router.calls.filter((call) => call.method === 'PUT')).toHaveLength(0);
+
+    await syncPlanProfiles(db, { transport: router.transport, dryRun: false });
+
+    expect(router.calls.filter((call) => call.method === 'PUT')).toHaveLength(1);
+    expect(stateOf(db, 1)).toMatchObject({ status: 'synced', lastError: null });
   });
 });
