@@ -12,6 +12,7 @@ import {
   listDhcpLeases,
   listNeighbors,
   listActive,
+  listProfiles,
   listSecrets,
   removeActive,
   neighborModel,
@@ -35,6 +36,7 @@ import {
 import { crossReference, type ObservedHost } from '../lib/network-inventory';
 import { buildProposals, dismissalKey, findOrphans, type ProposalKind } from '../lib/discovery-reconcile';
 import { runJob } from '../lib/jobRuns';
+import { applyPlanProfile, readBaseProfileName } from '../lib/plan-profiles';
 import { recordAudit } from '../lib/audit';
 import { isIpv4, isPrivateIpv4, SWEEP_BATCH_SIZE } from '../../shared/ip-range';
 import { requireAuth, requireRole } from './auth';
@@ -288,6 +290,63 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
         summary: `Desconectou a sessão PPPoE de ${service.username}`
       });
       return { dryRun: false, online: true, disconnected: true };
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return reply.status(502).send({ error: `${failure.title}. ${failure.detail}`, code: failure.code });
+    }
+  });
+
+  // ------------------------------------------------ perfis PPP dos planos (ADR 0011)
+
+  /** Perfis do router, para o campo do plano. Router em baixo não é erro do formulário. */
+  app.get('/api/network/router/profiles', networkWrite, async () => {
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    const baseProfile = readBaseProfileName(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return { available: false, reason: 'Integração MikroTik desligada ou por configurar', baseProfile, profiles: [] };
+    }
+    try {
+      const profiles = await listProfiles(createTransport(config));
+      return {
+        available: true,
+        baseProfile,
+        profiles: profiles.map(({ name, rateLimit, comment }) => ({
+          name,
+          rateLimit,
+          ownerPlanId: comment?.startsWith('ispm:plano:') ? Number(comment.slice('ispm:plano:'.length)) || null : null
+        }))
+      };
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return { available: false, reason: `${failure.title}. ${failure.detail}`, baseProfile, profiles: [] };
+    }
+  });
+
+  /** Cria ou atualiza o perfil do plano. Em ensaio só diz o que faria. */
+  app.post('/api/plans/:id/router-profile', adminOnly, async (request, reply) => {
+    const params = serviceParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ error: 'Plano invalido' });
+
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return reply.status(400).send({ error: 'Integração MikroTik desligada ou por configurar' });
+    }
+
+    try {
+      const result = await applyPlanProfile(db, { transport: createTransport(config), dryRun: config.dryRun }, params.data.id);
+      if (!result) return reply.status(404).send({ error: 'Plano nao encontrado' });
+      const { action } = result;
+      if (action.kind !== 'none') {
+        recordAudit(request, {
+          action: result.applied ? `router_profile_${action.kind}` : `router_profile_${action.kind}_dry_run`,
+          entityType: 'plan',
+          entityId: params.data.id,
+          summary: `${result.applied ? '' : 'Simulou: '}${action.kind === 'create' ? 'criou' : 'atualizou'} o perfil ${action.name} (${action.rateLimit}) no router`
+        });
+      }
+      return result;
     } catch (err) {
       const failure = describeRouterFailure(err);
       return reply.status(502).send({ error: `${failure.title}. ${failure.detail}`, code: failure.code });

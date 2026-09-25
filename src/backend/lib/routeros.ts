@@ -971,6 +971,70 @@ export async function patchSecret(transport: RouterTransport, id: string, patch:
 }
 
 /**
+ * Perfil PPP. É no perfil que o RouterOS guarda a velocidade (`rate-limit`) e
+ * os endereços que o cliente recebe; o secret só aponta para ele.
+ */
+export type RouterProfile = {
+  id: string;
+  name: string;
+  rateLimit: string | null;
+  localAddress: string | null;
+  remoteAddress: string | null;
+  dnsServer: string | null;
+  onlyOne: string | null;
+  comment: string | null;
+};
+
+export async function listProfiles(transport: RouterTransport): Promise<RouterProfile[]> {
+  const raw = await transport({
+    method: 'GET',
+    path: '/ppp/profile?.proplist=.id,name,rate-limit,local-address,remote-address,dns-server,only-one,comment'
+  });
+  return asArray(raw)
+    .map((row) => ({
+      id: str(row['.id']) ?? '',
+      name: str(row.name) ?? '',
+      rateLimit: str(row['rate-limit']),
+      localAddress: str(row['local-address']),
+      remoteAddress: str(row['remote-address']),
+      dnsServer: str(row['dns-server']),
+      onlyOne: str(row['only-one']),
+      comment: str(row.comment)
+    }))
+    .filter((profile) => profile.id && profile.name);
+}
+
+/**
+ * Cria um perfil copiando do base o que faz o cliente ter rede (endereços,
+ * DNS, sessão única). Campo a campo e não `copy-from`, que a REST não prova.
+ */
+export async function createProfile(
+  transport: RouterTransport,
+  input: { name: string; rateLimit: string; comment: string; base: RouterProfile }
+): Promise<string> {
+  const { base } = input;
+  const raw = await transport({
+    method: 'PUT',
+    path: '/ppp/profile',
+    body: {
+      name: input.name,
+      'rate-limit': input.rateLimit,
+      comment: input.comment,
+      ...(base.localAddress ? { 'local-address': base.localAddress } : {}),
+      ...(base.remoteAddress ? { 'remote-address': base.remoteAddress } : {}),
+      ...(base.dnsServer ? { 'dns-server': base.dnsServer } : {}),
+      ...(base.onlyOne ? { 'only-one': base.onlyOne } : {})
+    }
+  });
+  const row = (Array.isArray(raw) ? raw[0] : raw) as Record<string, unknown> | undefined;
+  return str(row?.['.id']) ?? '';
+}
+
+export async function patchProfile(transport: RouterTransport, id: string, patch: { rateLimit: string }): Promise<void> {
+  await transport({ method: 'PATCH', path: `/ppp/profile/${id}`, body: { 'rate-limit': patch.rateLimit } });
+}
+
+/**
  * Derruba a sessão viva. Sem isto, desativar o secret só produz efeito quando o
  * cliente reconectar — pode ficar online durante dias depois de "cortado".
  */

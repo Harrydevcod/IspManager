@@ -234,6 +234,13 @@ export function NetworkTab({
             onChange={(event) => onUpdate('routerosMaxDisablesPerRun', event.target.value)}
             hint="Trava da reconciliação: se uma passagem quiser cortar mais, não corta nenhum."
           />
+          <Field
+            label="Perfil-base dos planos"
+            value={form.routerosBaseProfile}
+            maxLength={64}
+            onChange={(event) => onUpdate('routerosBaseProfile', event.target.value)}
+            hint="Perfil PPP que já dá rede aos clientes. Os perfis que o ISPM cria para os planos copiam dele os endereços e o DNS."
+          />
           <Toggle
             title="Suspensão automática por falta de pagamento"
             description="Depois da tolerância, suspende apenas o serviço em dívida. O ensaio protege também esta automação: enquanto estiver ligado, só mostra quem seria suspenso."

@@ -128,3 +128,16 @@
 
 .reprice-table td.is-up { color: var(--danger); }
 .reprice-table td.is-down { color: var(--success); }
+
+/* Perfil PPP do plano: o botão de escrita no router fica por baixo do campo. */
+.router-profile-field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.router-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
