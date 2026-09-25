@@ -2,7 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
-import { recordAuditStrict } from '../lib/audit';
+import { recordAudit, recordAuditStrict } from '../lib/audit';
+import { requestNetworkSync } from '../lib/network-sync';
+import { defaultProfileName } from '../lib/plan-profiles';
 import { requireAuth, requireRole } from './auth';
 
 const planSchema = z.object({
@@ -17,9 +19,9 @@ const planSchema = z.object({
   // RouterOS a velocidade vive no perfil PPP (ver routerProfile).
   downloadMbps: z.coerce.number().int().min(1).max(10000).optional().nullable(),
   uploadMbps: z.coerce.number().int().min(1).max(10000).optional().nullable(),
-  // Nome do perfil PPP no MikroTik (feito pelo operador no Winbox). A
-  // reconciliacao aponta o secret de cada servico do plano para ele. Vazio =
-  // nao mexer no perfil.
+  // Nome do perfil PPP no MikroTik. A reconciliacao cria-o (se nao existir) e
+  // aponta para ele o secret de cada servico do plano. Vazio = o nome estavel
+  // ispm-plano-<id>; um nome do operador fica como esta (ADR 0011).
   routerProfile: z.string().trim().max(64).regex(/^[\w .-]*$/).optional().nullable(),
   active: z.coerce.boolean().default(true)
 });
@@ -41,11 +43,16 @@ export async function registerPlanRoutes(app: FastifyInstance) {
         download_mbps AS downloadMbps,
         upload_mbps AS uploadMbps,
         router_profile AS routerProfile,
+        rs.status AS routerSyncStatus,
+        rs.detail AS routerSyncDetail,
+        rs.last_error AS routerSyncError,
+        rs.checked_at AS routerSyncCheckedAt,
         description,
         active,
         created_at AS createdAt,
         updated_at AS updatedAt
       FROM internet_plans
+      LEFT JOIN plan_router_sync rs ON rs.plan_id = internet_plans.id
       ORDER BY active DESC, monthly_price_cve, name
     `).all();
   });
@@ -85,27 +92,37 @@ export async function registerPlanRoutes(app: FastifyInstance) {
     }
 
     const db = getSqliteDatabase();
-    const result = db.prepare(`
-      INSERT INTO internet_plans (
-        name, download_speed, upload_speed, connection_type, monthly_price_cve,
-        installation_fee_cve, description, active, download_mbps, upload_mbps, router_profile, created_at, updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-    `).run(
-      parsed.data.name,
-      parsed.data.downloadSpeed,
-      parsed.data.uploadSpeed,
-      parsed.data.connectionType,
-      parsed.data.monthlyPriceCve,
-      parsed.data.installationFeeCve,
-      parsed.data.description || null,
-      parsed.data.active ? 1 : 0,
-      parsed.data.downloadMbps ?? null,
-      parsed.data.uploadMbps ?? null,
-      parsed.data.routerProfile || null
-    );
+    const id = db.transaction(() => {
+      const result = db.prepare(`
+        INSERT INTO internet_plans (
+          name, download_speed, upload_speed, connection_type, monthly_price_cve,
+          installation_fee_cve, description, active, download_mbps, upload_mbps, router_profile, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      `).run(
+        parsed.data.name,
+        parsed.data.downloadSpeed,
+        parsed.data.uploadSpeed,
+        parsed.data.connectionType,
+        parsed.data.monthlyPriceCve,
+        parsed.data.installationFeeCve,
+        parsed.data.description || null,
+        parsed.data.active ? 1 : 0,
+        parsed.data.downloadMbps ?? null,
+        parsed.data.uploadMbps ?? null,
+        parsed.data.routerProfile || null
+      );
+      const planId = Number(result.lastInsertRowid);
+      // O nome estável depende do id, que só existe depois do INSERT.
+      if (!parsed.data.routerProfile) {
+        db.prepare('UPDATE internet_plans SET router_profile = ? WHERE id = ?').run(defaultProfileName(planId), planId);
+      }
+      return planId;
+    })();
 
-    return reply.status(201).send({ id: result.lastInsertRowid });
+    recordAudit(request, { action: 'create', entityType: 'plan', entityId: id, summary: `Criou o plano ${parsed.data.name}` });
+    requestNetworkSync();
+    return reply.status(201).send({ id });
   });
 
   app.put('/api/plans/:id', canWritePlans, async (request, reply) => {
@@ -142,7 +159,7 @@ export async function registerPlanRoutes(app: FastifyInstance) {
       parsed.data.active ? 1 : 0,
       parsed.data.downloadMbps ?? null,
       parsed.data.uploadMbps ?? null,
-      parsed.data.routerProfile || null,
+      parsed.data.routerProfile || defaultProfileName(id),
       id
     );
 
@@ -150,6 +167,8 @@ export async function registerPlanRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: 'Plano nao encontrado' });
     }
 
+    recordAudit(request, { action: 'update', entityType: 'plan', entityId: id, summary: `Atualizou o plano ${parsed.data.name}` });
+    requestNetworkSync();
     return { ok: true };
   });
 

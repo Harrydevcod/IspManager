@@ -33,3 +33,30 @@ plano, sem abrir o Winbox.
   sessão viva de cada cliente só apanha o limite novo quando reconectar (ADR 0008).
 - Um perfil-base errado dá perfis que não entregam endereço. A decisão fica visível nas Definições, com o
   texto a dizer de onde se copia.
+
+## Revisão (2026-09-25): sincronização automática
+
+Pedir a um administrador que carregue em "Criar no router" depois de gravar cada plano deixava planos
+novos sem perfil e os clientes deles sem secret. A criação e a atualização passam a ser automáticas.
+Isto substitui as decisões "Só em modo efetivo… não corre na reconciliação periódica" e "Mudar os Mbps
+não altera o router sozinho".
+
+- **Nome estável.** Um plano gravado sem nome de perfil recebe `ispm-plano-<id>`. O nome escolhido pelo
+  operador fica como está.
+- **Perfis antes dos secrets.** Cada passagem da reconciliação começa por `syncPlanProfiles`: cria os
+  perfis em falta a partir do perfil-base e corrige o `rate-limit` dos que têm a marca do próprio plano.
+  Só depois vêm os secrets. Um serviço ativo cujo perfil ainda não existe no router fica pendente, sem ser
+  criado nem ativado. Quem deve ficar sem acesso continua a ser cortado.
+- **Gravar desencadeia uma passagem.** Gravar um plano ou um serviço pede uma passagem fora da transação
+  SQL (`requestNetworkSync`). O relógio periódico usa a mesma porta, e os pedidos feitos a meio de uma
+  passagem juntam-se numa única passagem seguinte, nunca em paralelo. O router em baixo não impede a
+  gravação: a passagem seguinte volta a tentar.
+- **Estado visível.** `plan_router_sync` (migração 0066) guarda por plano o resultado da última passagem:
+  pronto, pendente (sem Mbps ou sem perfil-base), do operador, erro ou em ensaio. Os Planos mostram-no numa
+  coluna "Router".
+- **Credenciais ao associar.** Um serviço que nunca teve utilizador PPPoE e ganha um plano, com a
+  integração ligada, recebe utilizador e senha uma única vez. Apagar o utilizador no formulário continua a
+  tirar o serviço do controlo de acesso: não se inventa outro login.
+- **Mantém-se:** posse pela marca `ispm:plano:<id>`, nunca apagar perfis, ensaio sem escritas. A passagem
+  corre como `sistema`, com auditoria própria, e a gravação do operador fica auditada à parte. A velocidade
+  nova só chega a uma sessão já ligada quando ela reconectar.

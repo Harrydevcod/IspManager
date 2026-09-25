@@ -283,10 +283,10 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
   }
 
   const service = db.prepare(`
-    SELECT id, pppoe_password AS pppoePassword
+    SELECT id, plan_id AS planId, pppoe_username AS pppoeUsername, pppoe_password AS pppoePassword
     FROM services
     WHERE id = ?
-  `).get(id) as { id: number; pppoePassword: string | null } | undefined;
+  `).get(id) as { id: number; planId: number | null; pppoeUsername: string | null; pppoePassword: string | null } | undefined;
   if (!service) {
     return { ok: false, status: 404, error: 'Servico nao encontrado' };
   }
@@ -303,7 +303,8 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
     }
   }
 
-  const nextPppoePassword = data.pppoePassword?.trim() || null;
+  const nextPppoeUsername = data.pppoeUsername === undefined ? service.pppoeUsername : data.pppoeUsername?.trim() || null;
+  const nextPppoePassword = data.pppoePassword === undefined ? service.pppoePassword : data.pppoePassword?.trim() || null;
   const passwordChanged = nextPppoePassword !== service.pppoePassword && nextPppoePassword !== null;
 
   // O estado sai deste UPDATE: passa por `changeServiceStatus`, que o regista.
@@ -336,11 +337,24 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
     data.audiovisualMode,
     data.audiovisualMonthlyCve,
     data.audiovisualAnnualCve,
-    data.pppoeUsername?.trim() || null,
+    nextPppoeUsername,
     nextPppoePassword,
     passwordChanged ? 1 : 0,
     id
   );
+
+  // Serviço antigo que ganha um plano com o router ligado: nasce a identidade
+  // na rede, uma única vez, como num serviço novo. Só quando nunca a teve —
+  // apagar o utilizador no formulário é tirar o serviço do controlo de acesso,
+  // e inventar outro login partia o equipamento do cliente.
+  if (data.planId && !service.planId && !service.pppoeUsername && !nextPppoeUsername && routerIntegrationOn(db)) {
+    const owner = db.prepare('SELECT full_name AS fullName FROM clients WHERE id = ?').get(data.clientId) as { fullName: string };
+    db.prepare(`
+      UPDATE services
+      SET pppoe_username = ?, pppoe_password = ?, pppoe_password_sync_pending = 1
+      WHERE id = ?
+    `).run(pppoeUsernameFor(owner.fullName, id), data.pppoePassword?.trim() || generatePppoePassword(), id);
+  }
 
   const statusResult = changeServiceStatus(db, id, data.status, { reason: 'Alteração no formulário do serviço' });
   if (!statusResult.ok) {

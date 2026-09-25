@@ -46,8 +46,8 @@ export function RouterProfileField({ value, onChange, savedPlan, canWriteRouter 
   let status: string;
   if (!router) status = 'A ler os perfis do router…';
   else if (!router.available) status = router.reason ?? 'Router indisponível.';
-  else if (!name) status = 'Escolha um perfil do router ou escreva o nome de um novo. Em branco, o router fica como está.';
-  else if (!match) status = `Não existe no router. Pode criá-lo a partir do perfil-base ${router.baseProfile}.`;
+  else if (!name) status = 'Em branco, o ISPM dá ao plano o perfil ispm-plano-<nº> e cria-o no router ao gravar.';
+  else if (!match) status = `Ainda não existe no router. O ISPM cria-o a partir do perfil-base ${router.baseProfile} ao gravar.`;
   else if (ours) status = `Existe no router · ${match.rateLimit ?? 'sem limite'} · criado pelo ISPM`;
   else status = `Existe no router · ${match.rateLimit ?? 'sem limite'} · feito no router, o ISPM não lhe mexe`;
 

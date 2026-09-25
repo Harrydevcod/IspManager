@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
-import { readBaseProfileName, readSuspendedProfileName } from './plan-profiles';
+import { readBaseProfileName, readSuspendedProfileName, syncPlanProfiles, type PlanSyncSummary } from './plan-profiles';
 import {
   createSecret,
   createTransport,
@@ -279,6 +279,8 @@ export type EnforcementSummary = {
   divergences: number;
   aborted?: true;
   actions: PlannedAction[];
+  /** Passagem dos perfis dos planos, feita antes da dos secrets. */
+  planProfiles?: PlanSyncSummary | { error: string };
 };
 
 const upsertState = `
@@ -336,16 +338,22 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
   }
 
   const [secrets, active] = await Promise.all([listSecrets(deps.transport), listActive(deps.transport)]);
+  // Os perfis que existem no router. Sem esta leitura não se sabe se um secret
+  // vai apontar para um perfil que falta; `null` = não foi possível ler.
+  let routerProfiles: Set<string> | null = null;
+  let profilesReadError: string | null = null;
+  try {
+    routerProfiles = new Set((await listProfiles(deps.transport)).map((profile) => profile.name));
+  } catch (err) {
+    profilesReadError = err instanceof Error ? err.message : String(err);
+  }
+
   let suspendedProfileError: string | null = null;
   if (suspendedProfile && selected.some((service) => service.suspended)) {
-    try {
-      const profiles = await listProfiles(deps.transport);
-      if (!profiles.some((profile) => profile.name === suspendedProfile)) {
-        suspendedProfileError = `Perfil PPP de suspensão ${suspendedProfile} não existe no router; corte de segurança necessário`;
-      }
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      suspendedProfileError = `Não foi possível confirmar o perfil PPP de suspensão ${suspendedProfile}: ${detail}; corte de segurança necessário`;
+    if (!routerProfiles) {
+      suspendedProfileError = `Não foi possível confirmar o perfil PPP de suspensão ${suspendedProfile}: ${profilesReadError}; corte de segurança necessário`;
+    } else if (!routerProfiles.has(suspendedProfile)) {
+      suspendedProfileError = `Perfil PPP de suspensão ${suspendedProfile} não existe no router; corte de segurança necessário`;
     }
   }
   // Sem perfil de suspensão confirmado, um suspenso volta ao corte por disable.
@@ -369,6 +377,22 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
 
   const errors = new Map<number, string>();
   let applied = 0;
+
+  // Perfil do plano que ainda não existe no router (a passagem dos perfis
+  // falhou, ou o plano não tem Mbps): quem deve ter acesso fica pendente — nem
+  // criado nem ativado — até o perfil existir. Quem deve ficar sem acesso
+  // continua a ser cortado.
+  if (!routerProfiles) {
+    for (const service of desired) {
+      if (service.enabled) errors.set(service.serviceId, `Não foi possível confirmar os perfis PPP: ${profilesReadError}`);
+    }
+  } else {
+    for (const service of desired) {
+      if (service.enabled && service.profile && !routerProfiles.has(service.profile)) {
+        errors.set(service.serviceId, `Perfil PPP ${service.profile} ainda não existe no router`);
+      }
+    }
+  }
 
   if (!deps.dryRun) {
     // Repor antes de cortar: se a passagem falhar a meio, ninguém fica sem
@@ -580,11 +604,22 @@ export async function runNetworkEnforcementIfDue(): Promise<EnforcementSummary> 
   if (!config.enabled || !isRouterConfigured(config)) {
     return { skipped: true, reason: 'Router desligado ou por configurar', dryRun: config.dryRun, services: 0, online: 0, planned: 0, applied: 0, failed: 0, divergences: 0, actions: [] };
   }
-  return runNetworkEnforcement(db, {
-    transport: createTransport(config),
+  const transport = createTransport(config);
+  // Perfis antes dos secrets: um secret nunca aponta para um perfil que ainda
+  // não existe. Uma falha aqui não trava cortes nem reposições — os serviços do
+  // plano em falta ficam pendentes na passagem dos secrets.
+  let planProfiles: PlanSyncSummary | { error: string };
+  try {
+    planProfiles = await syncPlanProfiles(db, { transport, dryRun: config.dryRun });
+  } catch (err) {
+    planProfiles = { error: err instanceof Error ? err.message : String(err) };
+  }
+  const summary = await runNetworkEnforcement(db, {
+    transport,
     dryRun: config.dryRun,
     maxDisables: config.maxDisablesPerRun
   });
+  return { ...summary, planProfiles };
 }
 
 // ------------------------------------------------------------------ leitura

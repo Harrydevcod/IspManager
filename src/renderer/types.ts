@@ -227,6 +227,10 @@ export type PlanRow = {
   downloadMbps: number | null;
   uploadMbps: number | null;
   routerProfile?: string | null;
+  /** Última sincronização do perfil PPP com o router; null = nunca lida. */
+  routerSyncStatus?: 'synced' | 'pending' | 'external' | 'error' | 'dry_run' | null;
+  routerSyncDetail?: string | null;
+  routerSyncError?: string | null;
 };
 
 export type StockCatalogRow = {

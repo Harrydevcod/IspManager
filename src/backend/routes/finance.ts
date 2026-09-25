@@ -5,6 +5,7 @@ import { computeMonthlyBilling, generateMonthlyBilling } from '../lib/billing';
 import { loadAudiovisualConfig } from '../lib/audiovisual';
 import { runAudiovisualAnnualIfDue } from '../lib/audiovisual-billing';
 import { recordAudit } from '../lib/audit';
+import { requestNetworkSync } from '../lib/network-sync';
 import {
   applyClientCreditToPayment,
   balanceSqlExpr,
@@ -179,6 +180,8 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         /* o catch-up do arranque reemite */
       }
     }
+    // O secret nasce na reconciliação, fora da transação que criou o serviço.
+    requestNetworkSync();
     return reply.status(201).send({
       id: created.serviceId,
       ...(created.install ?? {}),
@@ -215,6 +218,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       summary: `Atualizou servico ${id}`,
       metadata: { clientId: parsed.data.clientId, planId: parsed.data.planId ?? null, status: parsed.data.status }
     });
+    requestNetworkSync();
     return { ok: true };
   });
 

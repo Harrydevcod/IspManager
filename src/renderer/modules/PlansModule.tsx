@@ -8,6 +8,7 @@ import { formatCve } from '../lib/format';
 import type { PlanRow } from '../types';
 import { RepriceDialog } from './plans/RepriceDialog';
 import { RouterProfileField } from './plans/RouterProfileField';
+import { routerSyncBadge } from './plans/routerSync';
 import './PlansModule.css';
 
 type PlanFormState = {
@@ -259,8 +260,8 @@ export function PlansModule() {
           rowKey={(plan) => plan.id}
           stickyHeader
           onRowClick={canManagePlans ? editPlan : undefined}
-          gridTemplateColumns="minmax(160px, 1.5fr) 120px 150px 140px 110px"
-          actionsWidth="96px"
+          gridTemplateColumns="minmax(140px, 1.5fr) 90px 125px 100px 100px 90px"
+          actionsWidth="88px"
           defaultSort={{ key: 'Nome', direction: 'asc' }}
           columns={[
             { header: 'Nome', sortValue: (plan) => plan.name, cell: (plan) => <strong>{plan.name}</strong> },
@@ -289,6 +290,15 @@ export function PlansModule() {
               }
             },
             { header: 'Preço/mês', align: 'end', sortValue: (plan) => plan.monthlyPriceCve, defaultDirection: 'desc', cell: (plan) => <b>{formatCve(plan.monthlyPriceCve)}</b> },
+            {
+              header: 'Router',
+              align: 'center',
+              sortValue: (plan) => routerSyncBadge(plan).label,
+              cell: (plan) => {
+                const sync = routerSyncBadge(plan);
+                return <span title={sync.title}><Badge tone={sync.tone}>{sync.label}</Badge></span>;
+              }
+            },
             {
               header: 'Estado',
               align: 'center',

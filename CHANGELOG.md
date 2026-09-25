@@ -6,11 +6,13 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
-> **Uma migração.** A `0065` acrescenta aos planos o **perfil PPP no router** e passa o estado lido de cada serviço a guardar o perfil em vez da velocidade, que nunca chegou a ser lida. Não apaga nada.
+> **Duas migrações.** A `0065` acrescenta aos planos o **perfil PPP no router** e passa o estado lido de cada serviço a guardar o perfil em vez da velocidade, que nunca chegou a ser lida. A `0066` cria a tabela com o estado da sincronização de cada plano com o router. Nenhuma apaga nada.
 
 Tudo o que está abaixo foi encontrado a testar a integração contra o router de gestão verdadeiro (hEX S, RouterOS 7.24.2), numa cópia da base e só com utilizadores PPPoE de teste.
 
 ### Mudado
+
+- **Os planos sincronizam-se sozinhos com o router.** Gravar um plano cria ou atualiza logo o perfil PPP dele no MikroTik, sem carregar em **Criar no router**. Um plano gravado sem nome de perfil recebe `ispm-plano-<nº>`. Os perfis são tratados antes dos clientes, e um cliente cujo perfil ainda não existe no router fica pendente, sem ser criado nem ativado. Associar um plano a um serviço antigo sem utilizador PPPoE gera as credenciais, e o cliente é criado no router na mesma passagem. Os **Planos** ganham a coluna **Router**: pronto, pendente, do operador, erro ou em ensaio, com o motivo ao passar o rato. Com o router em baixo, o plano grava na mesma e a passagem seguinte volta a tentar.
 
 - **Suspender um serviço coloca o secret ativo no perfil PPP `SUSPENSO`**, por omissão, e desliga
   a sessão para aplicar logo a velocidade mínima. Reativar repõe o perfil do plano (ou o perfil-base
@@ -22,7 +24,7 @@ Tudo o que está abaixo foi encontrado a testar a integração contra o router d
 
   Agora cada plano diz o seu perfil, no campo novo **Perfil PPP no router**, e o ISPM põe cada cliente do plano nesse perfil. O perfil pode ser um que já existe no router ou um que o ISPM cria (ver abaixo). Um plano sem perfil deixa o router como está. A mudança chega à sessão de cada cliente quando ele volta a ligar. Para forçar, usa-se **Desligar sessão** na ficha.
 
-- **Os perfis PPP do router aparecem no ISPM, e o ISPM cria o perfil de cada plano.** O campo **Perfil PPP no router**, no plano, mostra a lista dos perfis que já existem no MikroTik e diz, por baixo, se o escolhido tem limite e de quem é. Escrevendo um nome novo, **Criar no router** faz o perfil sem abrir o Winbox: copia os endereços e o DNS do **Perfil-base dos planos** (Definições → Rede, por omissão `default`) e junta a velocidade tirada dos Mbps do plano. Mudando os Mbps, **Atualizar no router** corrige o limite. O ISPM só mexe nos perfis que ele próprio criou, nunca apaga nenhum, e em ensaio só diz o que faria.
+- **Os perfis PPP do router aparecem no ISPM, e o ISPM cria o perfil de cada plano.** O campo **Perfil PPP no router**, no plano, mostra a lista dos perfis que já existem no MikroTik e diz, por baixo, se o escolhido tem limite e de quem é. Ao gravar um nome novo, a reconciliação cria o perfil sem abrir o Winbox: copia os endereços e o DNS do **Perfil-base dos planos** (Definições → Rede, por omissão `default`) e junta a velocidade tirada dos Mbps do plano. Mudar os Mbps atualiza o limite na próxima passagem. O ISPM só mexe nos perfis que ele próprio criou, nunca apaga nenhum, e em ensaio só diz o que faria.
 
 - **Passar o router de ensaio a efetivo pede a password do administrador**, num diálogo que explica o que vai passar a acontecer e mostra os números do último ensaio. Voltar a ensaio continua livre.
 

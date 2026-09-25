@@ -37,7 +37,7 @@ import { pollWhatsappDeliveryIfDue, runWhatsappOutboxIfDue } from './lib/whatsap
 import { pollSmsStatusIfDue, runSmsOutboxIfDue, smsDispatchIntervalMs } from './lib/sms-outbox';
 import { registerNetworkRoutes } from './routes/network';
 import { networkProbeIntervalMs, runNetworkProbeIfDue } from './lib/network-probe';
-import { runNetworkEnforcementIfDue } from './lib/network-enforcement';
+import { requestNetworkSync } from './lib/network-sync';
 import { routerosIntervalMs } from './lib/routeros';
 import { autoSuspensionIntervalMs, runAutomaticSuspension } from './lib/auto-suspension';
 import { runJob, runJobSync } from './lib/jobRuns';
@@ -264,11 +264,9 @@ export async function createBackendApp() {
   // alguém a ligar, e em ensaio até alguém desligar o ensaio. Guarda de licença
   // como os outros jobs que escrevem. Opt-out com ISPM_ROUTEROS=off.
   if (process.env.ISPM_ROUTEROS !== 'off' && !process.env.VITEST) {
-    const enforcementTick = () => {
-      if (!licenseAllowsWrites()) return;
-      void runJob('network_enforcement', runNetworkEnforcementIfDue)
-        .catch((err) => app.log.error({ err }, 'network enforcement failed'));
-    };
+    // A mesma porta das gravações de planos e serviços: nunca duas passagens
+    // em paralelo. A falha fica em job_runs.
+    const enforcementTick = () => requestNetworkSync();
     const scheduleEnforcement = () => {
       setTimeout(() => { enforcementTick(); scheduleEnforcement(); }, routerosIntervalMs()).unref();
     };
