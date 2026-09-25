@@ -601,6 +601,15 @@ export const serviceNetworkState = sqliteTable('service_network_state', {
   checkedAt: text('checked_at').notNull().default('CURRENT_TIMESTAMP')
 });
 
+/** Última sincronização do perfil PPP de cada plano com o router (migration 0066). */
+export const planRouterSync = sqliteTable('plan_router_sync', {
+  planId: integer('plan_id').primaryKey(),
+  status: text('status').notNull(),
+  detail: text('detail'),
+  lastError: text('last_error'),
+  checkedAt: text('checked_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
 // Descoberta de rede: o que já foi visto na rede e desde quando (migration 0042).
 export const networkDiscoveryHosts = sqliteTable('network_discovery_hosts', {
   id: integer('id').primaryKey({ autoIncrement: true }),

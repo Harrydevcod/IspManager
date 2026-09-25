@@ -47,7 +47,9 @@ colida com a tua rede de gestão nem com as redes das CPEs.
     dns-server=8.8.8.8,1.1.1.1 only-one=yes
 
 # Um perfil por plano, com a velocidade (upload/download, visto do router).
-# O nome é o que se escreve em "Perfil PPP no router" no plano do ISPM.
+# Opcional: o ISPM cria-o sozinho a partir do perfil-base ao gravar o plano.
+# Fazê-lo à mão só serve para um perfil com burst ou outras opções; nesse
+# caso escreve-se o nome em "Perfil PPP no router" e o ISPM não lhe mexe.
 /ppp profile add name=plano-20M copy-from=clientes rate-limit=20M/20M
 
 # Perfil de suspensão: mantém o secret ativo, com velocidade mínima.
@@ -268,10 +270,13 @@ No ISPM: **Reconciliar agora**. Em ensaio, deve reportar o `teste-ispm` como *ut
 - mantém ativos os secrets dos serviços ativos e suspensos; desativa os cancelados (e os suspensos
   se **Perfil dos suspensos** estiver vazio)
 - põe o secret suspenso no perfil `SUSPENSO` (ou no nome configurado), com velocidade mínima
-- põe cada secret no perfil PPP do plano (`profile=`) — **só** se o plano tiver o perfil preenchido
-- cria o perfil de um plano quando um administrador carrega em "Criar no router" (e só em modo efetivo),
-  copiando endereços e DNS do perfil-base e marcando-o `comment=ispm:plano:<id>`; volta a mexer só no
-  `rate-limit` desses perfis marcados (ADR 0011)
+- em cada passagem, **antes dos secrets**, cria o perfil de cada plano que ainda não existe (plano
+  gravado sem nome recebe `ispm-plano-<id>`), copiando endereços e DNS do perfil-base e marcando-o
+  `comment=ispm:plano:<id>`; volta a mexer só no `rate-limit` desses perfis marcados. Gravar um plano
+  ou um serviço desencadeia logo uma passagem. O estado de cada plano aparece na coluna **Router** dos
+  Planos (ADR 0011)
+- põe cada secret no perfil PPP do plano (`profile=`); um serviço ativo cujo perfil ainda não existe
+  no router fica pendente, sem ser criado nem ativado, com o motivo no serviço
 - remove a sessão em `/ppp active` ao entrar ou sair do perfil de suspensão, ou ao desativar
   o secret, para a alteração ter efeito imediato; mudanças entre perfis de planos esperam
   pela próxima ligação

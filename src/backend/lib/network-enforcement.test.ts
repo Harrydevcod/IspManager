@@ -350,6 +350,27 @@ describe('runNetworkEnforcement', () => {
       .toEqual({ last_error: 'perfil inexistente' });
   });
 
+  test('perfil do plano ainda inexistente no router: o serviço ativo não é criado nem ativado', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    addService(db, 2, 'active', 'joao-2');
+    addService(db, 3, 'cancelled', 'joao-3');
+    const { transport, calls } = recordingTransport(
+      [secret({ id: '*2', name: 'joao-2', comment: 'ispm:2', disabled: true }), secret({ id: '*3', name: 'joao-3', comment: 'ispm:3' })],
+      [],
+      ['default', 'SUSPENSO']
+    );
+
+    const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+
+    expect(calls.some((call) => call.method === 'PUT')).toBe(false);
+    expect(calls).not.toContainEqual({ method: 'PATCH', path: '/ppp/secret/*2', body: { disabled: 'no' } });
+    // Quem deve ficar sem acesso continua a ser cortado.
+    expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*3', body: { disabled: 'yes' } });
+    expect(summary.failed).toBe(2);
+    expect(db.prepare('SELECT last_error AS lastError FROM service_network_state WHERE service_id = 1').get())
+      .toEqual({ lastError: expect.stringContaining('plano-10M') });
+  });
+
   test('cancelado continua a desativar o secret', async () => {
     addService(db, 1, 'cancelled', 'joao-1');
     const { transport, calls } = recordingTransport([secret()]);

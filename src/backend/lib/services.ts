@@ -283,10 +283,10 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
   }
 
   const service = db.prepare(`
-    SELECT id, pppoe_password AS pppoePassword
+    SELECT id, pppoe_username AS pppoeUsername, pppoe_password AS pppoePassword
     FROM services
     WHERE id = ?
-  `).get(id) as { id: number; pppoePassword: string | null } | undefined;
+  `).get(id) as { id: number; pppoeUsername: string | null; pppoePassword: string | null } | undefined;
   if (!service) {
     return { ok: false, status: 404, error: 'Servico nao encontrado' };
   }
@@ -341,6 +341,19 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
     passwordChanged ? 1 : 0,
     id
   );
+
+  // Serviço antigo que ganha um plano com o router ligado: nasce a identidade
+  // na rede, uma única vez, como num serviço novo. Só quando nunca a teve —
+  // apagar o utilizador no formulário é tirar o serviço do controlo de acesso,
+  // e inventar outro login partia o equipamento do cliente.
+  if (data.planId && !service.pppoeUsername && !data.pppoeUsername?.trim() && routerIntegrationOn(db)) {
+    const owner = db.prepare('SELECT full_name AS fullName FROM clients WHERE id = ?').get(data.clientId) as { fullName: string };
+    db.prepare(`
+      UPDATE services
+      SET pppoe_username = ?, pppoe_password = ?, pppoe_password_sync_pending = 1
+      WHERE id = ?
+    `).run(pppoeUsernameFor(owner.fullName, id), data.pppoePassword?.trim() || generatePppoePassword(), id);
+  }
 
   const statusResult = changeServiceStatus(db, id, data.status, { reason: 'Alteração no formulário do serviço' });
   if (!statusResult.ok) {

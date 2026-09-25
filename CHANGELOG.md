@@ -6,11 +6,13 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
-> **Uma migração.** A `0065` acrescenta aos planos o **perfil PPP no router** e passa o estado lido de cada serviço a guardar o perfil em vez da velocidade, que nunca chegou a ser lida. Não apaga nada.
+> **Duas migrações.** A `0065` acrescenta aos planos o **perfil PPP no router** e passa o estado lido de cada serviço a guardar o perfil em vez da velocidade, que nunca chegou a ser lida. A `0066` cria a tabela com o estado da sincronização de cada plano com o router. Nenhuma apaga nada.
 
 Tudo o que está abaixo foi encontrado a testar a integração contra o router de gestão verdadeiro (hEX S, RouterOS 7.24.2), numa cópia da base e só com utilizadores PPPoE de teste.
 
 ### Mudado
+
+- **Os planos sincronizam-se sozinhos com o router.** Gravar um plano cria ou atualiza logo o perfil PPP dele no MikroTik, sem carregar em **Criar no router**. Um plano gravado sem nome de perfil recebe `ispm-plano-<nº>`. Os perfis são tratados antes dos clientes, e um cliente cujo perfil ainda não existe no router fica pendente, sem ser criado nem ativado. Associar um plano a um serviço antigo sem utilizador PPPoE gera as credenciais, e o cliente é criado no router na mesma passagem. Os **Planos** ganham a coluna **Router**: pronto, pendente, do operador, erro ou em ensaio, com o motivo ao passar o rato. Com o router em baixo, o plano grava na mesma e a passagem seguinte volta a tentar.
 
 - **Suspender um serviço coloca o secret ativo no perfil PPP `SUSPENSO`**, por omissão, e desliga
   a sessão para aplicar logo a velocidade mínima. Reativar repõe o perfil do plano (ou o perfil-base
