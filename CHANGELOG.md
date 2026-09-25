@@ -4,9 +4,12 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
-## Por lançar
+## [2.4](https://github.com/Harrydevcod/IspManager/releases/tag/v2.4.0) — 2026-09-25
 
-> **Duas migrações.** A `0065` acrescenta aos planos o **perfil PPP no router** e passa o estado lido de cada serviço a guardar o perfil em vez da velocidade, que nunca chegou a ser lida. A `0066` cria a tabela com o estado da sincronização de cada plano com o router. Nenhuma apaga nada.
+> **Duas migrações.** A `0065` acrescenta aos planos o **perfil PPP no router** e passa o estado lido de cada serviço a guardar o perfil em vez da velocidade, que nunca chegou a ser lida. A `0066` cria a tabela com o estado da sincronização de cada plano com o router. Nenhuma apaga nada, e o arranque deixa de reescrever credenciais — passa só a lê-las.
+
+> **Com o router em ensaio nada muda no MikroTik.** As mudanças de suspensão e de perfis só atuam depois de passar a efetivo (Definições → Rede). Os planos que já existem só ganham perfil quando forem gravados de novo: até lá a coluna **Router** diz "Sem perfil".
+
 
 Tudo o que está abaixo foi encontrado a testar a integração contra o router de gestão verdadeiro (hEX S, RouterOS 7.24.2), numa cópia da base e só com utilizadores PPPoE de teste.
 
@@ -38,12 +41,6 @@ Tudo o que está abaixo foi encontrado a testar a integração contra o router d
 - **Os erros do router passam a dizer o motivo.** Uma recusa aparecia só como "Bad Request". Agora vem com a explicação que o RouterOS deu, por exemplo "input does not match any value of profile".
 - **O diagnóstico deixa de mandar desligar o `www-ssl`.** O RouterOS 7.24 descreve o serviço sem certificado, e o diagnóstico propunha `/ip service disable www-ssl`, no mesmo relatório em que a ligação por TLS a esse serviço tinha passado. É por aí que o ISPM fala com o router: seguir o conselho deixava o ISPM sem acesso.
 - **Sem senha disponível, o ISPM deixa de tentar entrar no router.** Quando a senha selada não abre nesta conta, a reconciliação tentava entrar de 2 em 2 minutos com a senha vazia e deixava um login recusado no registo do router de cada vez.
-
-## [2.4](https://github.com/Harrydevcod/IspManager/releases/tag/v2.4.0) — 2026-09-24
-
-> **Sem migrações.** Nada muda na estrutura da base. O arranque deixa de reescrever credenciais — passa só a lê-las.
-
-### Corrigido
 
 - **Restaurar um backup noutra máquina deixa de apagar as credenciais.** Desde a 2.0 que as credenciais de infraestrutura — a senha do router de gestão e o token da UltraMsg — são seladas na conta do Windows. Isso é o que se quer: um `ispm.sqlite` copiado para outro computador não dá credencial nenhuma a quem o copiou.
 
