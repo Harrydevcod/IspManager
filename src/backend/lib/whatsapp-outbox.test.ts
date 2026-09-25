@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import type { UltraMsgMessage, UltraMsgSendResult } from './ultramsg';
+import { writeSecret } from './secrets';
 
 let db: Database.Database;
 let dataDir: string;
@@ -20,7 +21,7 @@ beforeAll(async () => {
   outbox = await import('./whatsapp-outbox');
   // UltraMsg must be configured for the worker not to skip.
   db.prepare(`INSERT INTO app_settings (key, value, updated_at) VALUES ('ultraMsgInstanceId','i1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
-  db.prepare(`INSERT INTO app_settings (key, value, updated_at) VALUES ('ultraMsgToken','t1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
+  writeSecret(db, 'ultraMsgToken', 't1');
 });
 
 // Seed a minimal client + service + payment so FK constraints on

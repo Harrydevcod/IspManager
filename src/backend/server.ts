@@ -1,7 +1,10 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { getDatabase, getSqliteDatabase } from './db/database';
-import { sealPendingSecrets } from './lib/secrets';
+import { getLocalProtection } from './lib/local-protection';
+import { refreshSecretsLost, setCredentialVault } from './lib/secrets';
+import { openVault } from './lib/vault';
+import { migrateCredentials } from './lib/vault-migration';
 import { registerAuthRoutes } from './routes/auth';
 import { registerAuditRoutes } from './routes/audit';
 import { registerHealthRoutes } from './routes/health';
@@ -72,17 +75,21 @@ export async function createBackendApp() {
 
   getDatabase();
 
-  // Sela as credenciais na conta do sistema operativo, e deteta as que vieram
-  // seladas por outra. Corre **antes** do backup de arranque de propósito: um
-  // backup é uma cópia integral do ficheiro, e não vale a pena passar a selar
-  // segredos para os continuar a mandar em claro para dentro de uma pen.
+  // Abre o cofre e converte as credenciais legadas. Corre **antes** do backup
+  // de arranque de propósito: um backup é uma cópia integral do ficheiro, e não
+  // vale a pena migrar para depois mandar a versão em claro para uma pen.
+  // Nunca impede o arranque (D4): com o cofre trancado, só as integrações param.
   try {
-    const lost = sealPendingSecrets(getSqliteDatabase());
-    if (lost.length > 0) app.log.warn({ lost }, 'credenciais seladas noutra maquina');
+    const db = getSqliteDatabase();
+    const protection = getLocalProtection();
+    const vault = openVault(db, protection);
+    setCredentialVault(vault);
+    const migration = migrateCredentials(db, vault, protection);
+    if (!migration.ok) app.log.error({ field: migration.field, reason: migration.reason }, 'credenciais por converter para o cofre');
+    const lost = refreshSecretsLost(db);
+    if (lost.length > 0) app.log.warn({ lost, vault: vault.status() }, 'credenciais indisponiveis nesta maquina');
   } catch (err) {
-    // Nunca impedir o arranque por causa disto: sem selar, a aplicação
-    // funciona como funcionava ontem.
-    app.log.error({ err }, 'nao foi possivel selar as credenciais');
+    app.log.error({ err }, 'nao foi possivel abrir o cofre de credenciais');
   }
 
   // One consistent backup per boot. Availability > backup: never block the

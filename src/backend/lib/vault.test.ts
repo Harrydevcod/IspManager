@@ -1,26 +1,14 @@
 import Database from 'better-sqlite3';
 import { describe, expect, test } from 'vitest';
 import { runMigrations } from '../db/migrate';
-import { createLocalProtection, type LocalProtection } from './local-protection';
+import { fakeMachine as machine } from './credentials.testing';
+import { createLocalProtection } from './local-protection';
 import { openVault } from './vault';
 
 function memoryDb() {
   const db = new Database(':memory:');
   runMigrations(db);
   return db;
-}
-
-/** DPAPI de brincar: o que uma "máquina" sela só essa máquina abre. */
-function machine(name: string): LocalProtection {
-  return createLocalProtection({
-    isEncryptionAvailable: () => true,
-    encryptString: (plain: string) => Buffer.from(`${name}:${plain}`, 'utf8'),
-    decryptString: (buf: Buffer) => {
-      const text = buf.toString('utf8');
-      if (!text.startsWith(`${name}:`)) throw new Error('outra máquina');
-      return text.slice(name.length + 1);
-    }
-  });
 }
 
 const noProtection = createLocalProtection(null);

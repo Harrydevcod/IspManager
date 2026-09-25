@@ -34,6 +34,18 @@ export function createLocalProtection(storage: StorageBackend | null): LocalProt
   };
 }
 
+let current: LocalProtection | undefined;
+
+/** A proteção deste processo: o `safeStorage` sob Electron, indisponível fora dele (D3). */
+export function getLocalProtection(): LocalProtection {
+  return (current ??= electronProtection());
+}
+
+/** Costura para os testes; `undefined` repõe a deteção automática. */
+export function setLocalProtection(next: LocalProtection | undefined): void {
+  current = next;
+}
+
 export function electronProtection(): LocalProtection {
   if (!process.versions.electron) return createLocalProtection(null);
   // eslint-disable-next-line @typescript-eslint/no-require-imports

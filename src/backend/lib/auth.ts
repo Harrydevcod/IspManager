@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { getSqliteDatabase } from '../db/database';
-import { readSecret, writeSecret } from './secrets';
+import { getLocalProtection } from './local-protection';
+import { loadSessionSecret } from './session-secret';
 
 export type UserRole = 'admin' | 'operator' | 'technician';
 
@@ -19,22 +20,7 @@ const TOKEN_VERSION = 1;
 let cachedSecret: Buffer | null = null;
 
 function loadSecret(): Buffer {
-  if (cachedSecret) return cachedSecret;
-
-  const db = getSqliteDatabase();
-  const existing = readSecret(db, 'auth_secret');
-
-  if (existing) {
-    cachedSecret = Buffer.from(existing, 'hex');
-    return cachedSecret;
-  }
-
-  // Vazio também é o que se lê depois de um restauro noutra máquina: a chave
-  // antiga já não abre, e gerar outra só custa a toda a gente entrar de novo.
-  const next = randomBytes(48);
-  writeSecret(db, 'auth_secret', next.toString('hex'));
-  cachedSecret = next;
-  return cachedSecret;
+  return (cachedSecret ??= loadSessionSecret(getSqliteDatabase(), getLocalProtection()));
 }
 
 export function resetAuthSecretCache(): void {

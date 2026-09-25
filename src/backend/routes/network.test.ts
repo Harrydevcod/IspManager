@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import type { FastifyInstance } from 'fastify';
+import { writeSecret } from '../lib/secrets';
 
 let app: FastifyInstance;
 let db: Database.Database;
@@ -482,7 +483,7 @@ describe('POST /api/network/router/test', () => {
     expect(missing.steps[0].status).toBe('fail');
     expect(missing.steps[0].detail).toContain('senha');
 
-    setSetting('routerosPassword', 'guardada');
+    writeSecret(db, 'routerosPassword', 'guardada');
     const resolved = await app.inject({
       method: 'POST',
       url: '/api/network/router/test',

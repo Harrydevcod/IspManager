@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
+import { writeSecret } from '../lib/secrets';
 
 let app: FastifyInstance;
 let db: Database.Database;
@@ -79,9 +80,9 @@ describe('SMS routes', () => {
       INSERT INTO app_settings (key,value) VALUES
       ('smsCompanionEnabled','true'),
       ('smsCompanionBaseUrl','http://192.168.1.50:8765'),
-      ('smsCompanionDeviceName','Android A'),
-      ('smsCompanionPairingKey','secret')
+      ('smsCompanionDeviceName','Android A')
     `).run();
+    writeSecret(db, 'smsCompanionPairingKey', 'secret');
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
 
     const response = await app.inject({ method: 'GET', url: '/api/sms/status' });

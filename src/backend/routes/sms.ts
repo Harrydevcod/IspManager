@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
-import { readSecret, writeSecret } from '../lib/secrets';
+import { canStoreSecrets, readSecret, writeSecret } from '../lib/secrets';
 import { requireRole } from './auth';
 import { discoverCompanionHosts, enqueueSmsNotification, findPairedCompanion, verifyCompanionPairing } from '../lib/sms-outbox';
 import { SMS_REPORT_TIMEZONE, smsReportMonthUtcRange } from '../../shared/sms-report';
@@ -138,6 +138,9 @@ export async function registerSmsRoutes(app: FastifyInstance) {
   app.post('/api/sms/pairing', adminOnly, async (request, reply) => {
     const parsed = pairingSchema.safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: 'Pareamento SMS invalido' });
+    if (!canStoreSecrets()) {
+      return reply.status(409).send({ error: 'Cofre de credenciais trancado: nao e possivel parear nesta sessao.' });
+    }
     const secret = randomBytes(32).toString('hex');
     setSetting('smsCompanionEnabled', 'true');
     setSetting('smsCompanionBaseUrl', parsed.data.baseUrl);

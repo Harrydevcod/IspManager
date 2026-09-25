@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
+import { readSecret, writeSecret } from '../lib/secrets';
 
 let app: FastifyInstance;
 let db: Database.Database;
@@ -197,8 +198,7 @@ describe('settings routes', () => {
       ultraMsgToken: '••••••••'
     });
     // O que conta e que ficou guardado inteiro, para o backend o usar.
-    const stored = db.prepare("SELECT value FROM app_settings WHERE key='ultraMsgToken'").get() as { value: string };
-    expect(stored.value).toBe('token-teste');
+        expect(readSecret(db, 'ultraMsgToken')).toBe('token-teste');
   });
 });
 
@@ -219,7 +219,7 @@ describe('whatsapp routes', () => {
 
   test('sends WhatsApp messages through UltraMsg', async () => {
     db.prepare("INSERT INTO app_settings (key, value) VALUES ('ultraMsgInstanceId', 'instance1150')").run();
-    db.prepare("INSERT INTO app_settings (key, value) VALUES ('ultraMsgToken', 'token-teste')").run();
+    writeSecret(db, 'ultraMsgToken', 'token-teste');
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ sent: true }), { status: 200 }));
 
     const response = await app.inject({
@@ -249,7 +249,7 @@ describe('whatsapp routes', () => {
 
   test('uses operational templates for overdue and suspension notices', async () => {
     db.prepare("INSERT INTO app_settings (key, value) VALUES ('ultraMsgInstanceId', 'instance1150')").run();
-    db.prepare("INSERT INTO app_settings (key, value) VALUES ('ultraMsgToken', 'token-teste')").run();
+    writeSecret(db, 'ultraMsgToken', 'token-teste');
     db.prepare("INSERT INTO app_settings (key, value) VALUES ('companyName', 'ISP CV')").run();
     db.prepare("INSERT INTO app_settings (key, value) VALUES ('whatsappOverdueTemplate', 'Atraso {nome} {fatura} {valor} {mes} {vencimento} {empresa}')").run();
     db.prepare("INSERT INTO app_settings (key, value) VALUES ('whatsappSuspensionTemplate', 'Corte {nome} {dias_atraso}/{dias_suspensao} {fatura}')").run();

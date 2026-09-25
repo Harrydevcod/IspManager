@@ -104,17 +104,23 @@ export function openVault(db: Database.Database, protection: LocalProtection): V
 - [x] Criação da chave de dados e dos dois wrappers **numa transação**, persistindo só depois de verificar que ambos reabrem. Nunca recriar em silêncio quando já existe ciphertext sem metadados.
 - [x] Verde; commit.
 
-## Tarefa 3 — Migração dos valores legados e sessão independente
+## Tarefa 3 — Migração dos valores legados e sessão independente · **feito**
 
 **Criar:** `src/backend/lib/vault-migration.ts` (+teste), `session-secret.ts` (+teste).
 **Modificar:** `secrets.ts`, `secrets.test.ts`, `src/backend/lib/auth.ts`.
 
-- [ ] Testes RED: valores em texto simples, `enc:v1:` que abre, `enc:v1:` que não abre, prefixo `enc:` desconhecido. **Uma linha inválida preserva todas as outras e aborta a transação.** Reexecução após sucesso é idempotente.
-- [ ] `migrateCredentials(db, vault, protection)`: numa transação síncrona, para cada chave de `SECRET_KEYS` e para cada `services.pppoe_password` não vazio — abrir o legado, cifrar com o AAD novo, decifrar e **comparar antes de gravar**. Não tocar em `pppoe_password_sync_pending`, estados de serviço ou configuração de jobs.
-- [ ] Preservar bytes: remover o `.trim()` dos caminhos de segredo (`readSecret`/`writeSecret`) sem reescrever passwords existentes.
-- [ ] `auth_secret` sai da lista portátil → `session-secret.ts`, selado só localmente. Num restauro recria-se a assinatura (todos entram outra vez); os hashes `scrypt` continuam a validar. Sem proteção local, falhar explicitamente — nunca gravar assinatura em claro.
-- [ ] `readSecret`/`writeSecret` mantêm o nome mas passam pelo cofre e lançam quando ele está `locked`/`absent`. Erros expõem código/campo/id, nunca conteúdo. Rever todos os consumidores para não contactarem transportes externos quando o segredo está indisponível.
-- [ ] Verde; inspecionar a DB temporária a olho; commit.
+- [x] Testes RED: valores em texto simples, `enc:v1:` que abre, `enc:v1:` que não abre, prefixo `enc:` desconhecido. **Uma linha inválida preserva todas as outras e aborta a transação.** Reexecução após sucesso é idempotente.
+- [x] `migrateCredentials(db, vault, protection)`: numa transação síncrona, para cada chave de `SECRET_KEYS` e para cada `services.pppoe_password` não vazio — abrir o legado, cifrar com o AAD novo, decifrar e **comparar antes de gravar**. Não tocar em `pppoe_password_sync_pending`, estados de serviço ou configuração de jobs.
+- [x] Preservar bytes: remover o `.trim()` dos caminhos de segredo (`readSecret`/`writeSecret`) sem reescrever passwords existentes.
+- [x] `auth_secret` sai da lista portátil → `session-secret.ts`, selado só localmente. Num restauro recria-se a assinatura (todos entram outra vez); os hashes `scrypt` continuam a validar. Sem proteção local, falhar explicitamente — nunca gravar assinatura em claro.
+- [x] `readSecret`/`writeSecret` mantêm o nome mas passam pelo cofre e lançam quando ele está `locked`/`absent`. Erros expõem código/campo/id, nunca conteúdo. Rever todos os consumidores para não contactarem transportes externos quando o segredo está indisponível.
+- [x] Verde; inspecionar a DB temporária a olho; commit.
+
+**Desvios, com razão:**
+- `readSecret` devolve **vazio** (não lança) quando o cofre está `locked`/`absent`: todos os consumidores já tratam vazio como "não configurado" e não contactam o transporte, e lançar derrubava as Definições e o estado do SMS com o cofre trancado (contra a D4). `writeSecret` lança — nunca cai para texto simples — e as rotas respondem 409.
+- `session-secret.ts` sem proteção local não falha: usa uma assinatura **efémera em memória**, nunca gravada. Falhar deixava o `npm run dev` sem login (contra a D3/D4).
+- O arranque (abrir cofre → migrar → aviso) já está no `server.ts`, porque `readSecret` passou a depender do cofre. A Tarefa 5 acrescenta as rotas e o resto da ordem.
+- **Atenção:** a migração já converte `services.pppoe_password` para `enc:v2:`, mas os consumidores de PPPoE só passam pela fachada na Tarefa 4. **Não lançar este ramo sem a Tarefa 4.**
 
 ## Tarefa 4 — APIs sem revelação
 

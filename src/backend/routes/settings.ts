@@ -4,7 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { validateBackupDir } from '../lib/backup';
 import { recordAudit } from '../lib/audit';
 import { requireRole } from './auth';
-import { readSecret, readSecretsLost, refreshSecretsLost, SECRET_KEYS, writeSecret, type SecretKey } from '../lib/secrets';
+import { canStoreSecrets, readSecret, readSecretsLost, refreshSecretsLost, SECRET_KEYS, writeSecret, type SecretKey } from '../lib/secrets';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
   fallbackWhatsappOverdueTemplate,
@@ -351,6 +351,13 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     `);
 
     const sealedKeys = new Set<string>(SECRET_KEYS);
+    const writesSecret = Object.entries(parsed.data).some(
+      ([key, value]) => sealedKeys.has(key) && value !== SECRET_MASK && value !== ''
+    );
+    // Sem cofre aberto nenhuma credencial se grava — nunca em claro (D4).
+    if (writesSecret && !canStoreSecrets()) {
+      return reply.status(409).send({ error: 'Cofre de credenciais trancado: nao e possivel gravar senhas nesta sessao.' });
+    }
     const run = db.transaction(() => {
       for (const [key, value] of Object.entries(parsed.data)) {
         // Gravar a máscara apagaria a credencial à primeira gravação de
