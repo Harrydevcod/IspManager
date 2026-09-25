@@ -102,6 +102,13 @@ describe('planActions', () => {
     expect(JSON.stringify(plan.actions)).not.toContain('segredo');
   });
 
+  test('credenciais pendentes com outro nome no router: a mesma ação renomeia o secret', () => {
+    const plan = planActions([service({ passwordPending: true })], [secret({ name: 'ana-antiga-1' })]);
+    expect(plan.actions).toEqual([
+      { kind: 'password', serviceId: 1, username: 'joao-1', secretId: '*1', clientName: 'Joao Silva', rename: true }
+    ]);
+  });
+
   test('sincronização isolada não chama órfãos aos outros clientes do router', () => {
     const plan = planActions(
       [service()],
@@ -307,6 +314,39 @@ describe('runNetworkEnforcement', () => {
     expect(calls).toContainEqual({ method: 'DELETE', path: '/ppp/active/*A' });
     expect(db.prepare('SELECT divergence FROM service_network_state WHERE service_id = 1').get())
       .toEqual({ divergence: 'state' });
+  });
+
+  test('reinstalação: renomeia o secret, muda a password e derruba a sessão do inquilino anterior', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    db.prepare(`UPDATE services SET pppoe_password = 'senha-nova-123', pppoe_password_sync_pending = 1 WHERE id = 1`).run();
+    const { transport, calls } = recordingTransport(
+      [secret({ name: 'ana-antiga-1' })],
+      [{ id: '*A', name: 'ana-antiga-1' }]
+    );
+
+    const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+
+    expect(summary.failed).toBe(0);
+    expect(calls).toContainEqual({
+      method: 'PATCH',
+      path: '/ppp/secret/*1',
+      body: { name: 'joao-1', password: 'senha-nova-123' }
+    });
+    expect(calls).toContainEqual({ method: 'DELETE', path: '/ppp/active/*A' });
+    expect(db.prepare('SELECT pppoe_password_sync_pending AS pending FROM services WHERE id = 1').get())
+      .toEqual({ pending: 0 });
+  });
+
+  test('só a password mudou: não renomeia nem derruba a sessão', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    db.prepare(`UPDATE services SET pppoe_password = 'senha-nova-123', pppoe_password_sync_pending = 1 WHERE id = 1`).run();
+    const { transport, calls } = recordingTransport([secret()], [{ id: '*A', name: 'joao-1' }]);
+
+    await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+
+    expect(calls.filter((call) => call.method !== 'GET')).toEqual([
+      { method: 'PATCH', path: '/ppp/secret/*1', body: { password: 'senha-nova-123' } }
+    ]);
   });
 
   test('password alterada durante o PATCH continua pendente', async () => {
