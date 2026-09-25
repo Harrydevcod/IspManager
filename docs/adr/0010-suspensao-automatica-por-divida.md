@@ -33,6 +33,10 @@ engano quem pagou, ou transformar um erro de dados num corte em massa.
   uma suspensão manual. Linhas antigas com origem nula são tratadas como manuais.
 - Um pagamento só reativa automaticamente um serviço suspenso por `nonpayment`
   e quando já não resta dívida fora da tolerância.
+- Reativar um serviço (à mão ou por pagamento) isenta as faturas que já estavam
+  em condição de corte nesse momento: a passagem seguinte não desfaz a decisão.
+  Só uma fatura que passe a tolerância depois da reativação volta a cortar. A
+  marca é o evento `reativacao` em `service_events`; não há coluna nova.
 - O job corre no arranque e em intervalo configurável, porque a aplicação é
   desktop e pode estar desligada no momento em que a tolerância expira.
 - O job muda a intenção; a reconciliação do ADR 0007 continua a ser a única
