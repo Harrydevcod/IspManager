@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
+import type Database from 'better-sqlite3';
 import { validateBackupDir } from '../lib/backup';
 import { recordAudit } from '../lib/audit';
 import { requireRole } from './auth';
@@ -101,7 +102,8 @@ const settingsSchema = z.object({
   autoNoticesEnabled: z.coerce.boolean().optional().default(false),
   noticeCooldownDays: z.coerce.number().int().min(1).max(90).optional().default(7),
   ultraMsgInstanceId: z.string().trim().max(64).optional().nullable(),
-  ultraMsgToken: z.string().trim().max(255).optional().nullable(),
+  // Credenciais sem trim (preservam bytes). Omitida ou vazia = manter a guardada.
+  ultraMsgToken: z.string().max(255).optional().nullable(),
   smsCompanionEnabled: strictOptionalBoolean,
   smsCompanionBaseUrl: smsCompanionBaseUrlSchema.optional().default(''),
   smsDispatchIntervalSeconds: z.coerce.number().int().min(15).max(3600).optional().default(60),
@@ -143,10 +145,17 @@ const settingsSchema = z.object({
 });
 
 /**
- * A senha do router nunca sai do backend em claro: o GET devolve este sentinela
- * e o PUT que o receba de volta mantém a que está guardada.
+ * As credenciais nunca saem do backend: o GET devolve-as vazias e diz só se
+ * estão configuradas (`…Configured`). Configurada = abre aqui — uma credencial
+ * que esta máquina não abre continua gravada, mas não conta; o `secretsLost`
+ * explica porquê.
  */
-export const SECRET_MASK = '••••••••';
+function secretFlags(db: Database.Database) {
+  return {
+    routerosPasswordConfigured: readSecret(db, 'routerosPassword') !== '',
+    ultraMsgTokenConfigured: readSecret(db, 'ultraMsgToken') !== ''
+  };
+}
 
 const defaultSettings = {
   companyName: 'ISPM',
@@ -272,15 +281,8 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         // Só um "false" explícito desliga o ensaio.
         settings.routerosDryRun = row.value !== 'false' && row.value !== '0';
       } else if (row.key === 'routerosPassword' || row.key === 'ultraMsgToken') {
-        // Credenciais que o renderer nunca usa: quem fala com o router e com a
-        // UltraMsg e o backend. Voltam mascaradas para poderem ser editadas sem
-        // alguma vez saírem daqui em claro.
-        //
-        // A máscara sai do valor *aberto*, não da presença de bytes: uma
-        // credencial selada noutra máquina continua gravada (não se apaga o que
-        // ainda abre lá), mas aqui não há senha nenhuma para usar — mascará-la
-        // seria fingir que está configurada. O `secretsLost` abaixo explica.
-        settings[row.key] = readSecret(db, row.key) ? SECRET_MASK : '';
+        // Nunca saem: ver `secretFlags`.
+        settings[row.key] = '';
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
       } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled' || row.key === 'autoSuspensionEnabled') {
@@ -299,7 +301,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
 
     // So de leitura: nao entra no schema do PUT porque nao se edita. Fica
     // gravado pela passagem de arranque, que corre antes de alguem abrir isto.
-    return { ...settings, secretsLost: readSecretsLost(db) };
+    return { ...settings, ...secretFlags(db), secretsLost: readSecretsLost(db) };
   });
 
   app.put('/api/settings', adminOnly, async (request, reply) => {
@@ -352,7 +354,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
 
     const sealedKeys = new Set<string>(SECRET_KEYS);
     const writesSecret = Object.entries(parsed.data).some(
-      ([key, value]) => sealedKeys.has(key) && value !== SECRET_MASK && value !== ''
+      ([key, value]) => sealedKeys.has(key) && typeof value === 'string' && value !== ''
     );
     // Sem cofre aberto nenhuma credencial se grava — nunca em claro (D4).
     if (writesSecret && !canStoreSecrets()) {
@@ -360,12 +362,9 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     }
     const run = db.transaction(() => {
       for (const [key, value] of Object.entries(parsed.data)) {
-        // Gravar a máscara apagaria a credencial à primeira gravação de
-        // qualquer outra definição: quem a devolve intacta não a quer mudar. O
-        // mesmo vale para vazio — é o que chega de um formulário que nunca
-        // mostrou a senha, e de uma credencial que esta máquina não abre.
-        // ponytail: vazio = "não mexi"; a remoção explícita chega com o cofre.
-        if (sealedKeys.has(key) && (value === SECRET_MASK || value === '')) continue;
+        // Omitida ou vazia = manter: é o que chega de um formulário que nunca
+        // mostra a credencial guardada. Só um valor preenchido a substitui.
+        if (sealedKeys.has(key) && (value === '' || value === null || value === undefined)) continue;
         if (sealedKeys.has(key)) {
           writeSecret(db, key as SecretKey, String(value ?? ''));
           continue;
@@ -392,10 +391,10 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     });
     return {
       ...parsed.data,
-      // Do que ficou gravado, não do que veio no pedido: vazio quer dizer "não
-      // mexi", e devolver vazio punha o formulário a dizer que não há senha.
-      routerosPassword: readSecret(db, 'routerosPassword') ? SECRET_MASK : '',
-      ultraMsgToken: readSecret(db, 'ultraMsgToken') ? SECRET_MASK : ''
+      // As credenciais nunca voltam; as flags dizem do que ficou gravado.
+      routerosPassword: '',
+      ultraMsgToken: '',
+      ...secretFlags(db)
     };
   });
 }

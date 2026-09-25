@@ -475,8 +475,21 @@ export function SettingsModule() {
         return;
       }
 
-      setForm(savedForm);
-      setLastSavedForm(savedForm);
+      // As credenciais acabadas de gravar saem do formulário: quem diz que
+      // existem são as flags da resposta, não o texto que ficou no campo.
+      const result = await response.json().catch(() => ({})) as {
+        routerosPasswordConfigured?: boolean;
+        ultraMsgTokenConfigured?: boolean;
+      };
+      const settledForm = {
+        ...savedForm,
+        routerosPassword: '',
+        ultraMsgToken: '',
+        routerosPasswordConfigured: result.routerosPasswordConfigured ?? savedForm.routerosPasswordConfigured,
+        ultraMsgTokenConfigured: result.ultraMsgTokenConfigured ?? savedForm.ultraMsgTokenConfigured
+      };
+      setForm(settledForm);
+      setLastSavedForm(settledForm);
       setSecretsLost([]);
       setMessage({ tone: 'success', text: 'Configuracoes gravadas com sucesso.', placement: 'save' });
     } catch {

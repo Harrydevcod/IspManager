@@ -194,9 +194,11 @@ export function NetworkTab({
           <Field
             label="Senha"
             type="password"
+            autoComplete="new-password"
             value={form.routerosPassword}
             onChange={(event) => onUpdate('routerosPassword', event.target.value)}
-            hint="Fica selada nesta máquina e nunca volta a sair em claro. Deixe a máscara como está para manter o que já está guardado."
+            placeholder={form.routerosPasswordConfigured ? 'Configurada — escreva para substituir' : undefined}
+            hint="Fica cifrada no cofre e nunca volta a sair. Em branco, fica a que está guardada."
           />
           <div className="settings-router-cert wide-field">
             <span className="field-label">Certificado do router</span>

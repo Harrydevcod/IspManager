@@ -59,22 +59,16 @@ const serviceStatusActionSchema = z.object({
   reason: z.string().trim().max(300).optional().nullable()
 }).strict();
 
+// Sem trim: a senha preserva os bytes. O limite 8–64 vive em changePppoePassword.
 const pppoePasswordActionSchema = z.object({
-  password: z.string().trim().min(8).max(64)
+  password: z.string().max(64)
 }).strict();
 
 export async function registerFinanceRoutes(app: FastifyInstance) {
   const billingWrite = { preHandler: requireRole(['admin', 'operator']) };
 
-  app.get('/api/services', { preHandler: requireAuth() }, async (request) => {
+  app.get('/api/services', { preHandler: requireAuth() }, async () => {
     const db = getSqliteDatabase();
-    // A senha PPPoE só interessa a quem edita serviços. Sem este corte, a lista
-    // entregava a credencial de acesso à rede de **todos** os clientes a
-    // qualquer sessão aberta — incluindo o papel técnico, que nem pode escrever
-    // serviços. Sem `request.user` a autenticação está desligada (ISPM_AUTH=off),
-    // e aí não há papel nenhum a fazer valer.
-    const user = request.user;
-    const canSeeCredentials = !user || user.role === 'admin' || user.role === 'operator';
     const rows = db.prepare(`
       SELECT
         s.id,
@@ -94,7 +88,8 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         s.audiovisual_monthly_cve AS audiovisualMonthlyCve,
         s.audiovisual_annual_cve AS audiovisualAnnualCve,
         s.pppoe_username AS pppoeUsername,
-        s.pppoe_password AS pppoePassword,
+        -- Só a presença: a senha nunca sai na lista, para papel nenhum.
+        (s.pppoe_password IS NOT NULL AND s.pppoe_password <> '') AS pppoePasswordConfigured,
         s.pppoe_password_sync_pending AS pppoePasswordPending,
         -- Realidade lida do router (ADR 0007): a lista mostra quem está mesmo
         -- online, sem ir buscá-lo serviço a serviço.
@@ -123,8 +118,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       ORDER BY c.full_name
     `).all() as Array<Record<string, unknown>>;
 
-    if (canSeeCredentials) return rows;
-    return rows.map(({ pppoePassword: _omitida, ...rest }) => rest);
+    return rows.map((row) => ({ ...row, pppoePasswordConfigured: row.pppoePasswordConfigured === 1 }));
   });
 
   // Config do produto audiovisual para o formulário de serviços (qualquer

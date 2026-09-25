@@ -70,8 +70,8 @@ export type ServiceRow = {
   deviceIps: string | null;
   /** Identidade no MikroTik. Null = serviço fora do controlo de acesso. */
   pppoeUsername: string | null;
-  /** Ausente para quem não pode editar serviços: a API não a envia. */
-  pppoePassword?: string | null;
+  /** A senha nunca sai da API: só se sabe se existe. */
+  pppoePasswordConfigured?: boolean;
   /** Password alterada localmente e ainda não confirmada no MikroTik. */
   pppoePasswordPending?: number | null;
   /** Realidade lida do router (ADR 0007); null enquanto nunca foi lido. */

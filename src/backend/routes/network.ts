@@ -37,7 +37,6 @@ import { runJob } from '../lib/jobRuns';
 import { recordAudit } from '../lib/audit';
 import { isIpv4, isPrivateIpv4, SWEEP_BATCH_SIZE } from '../../shared/ip-range';
 import { requireAuth, requireRole } from './auth';
-import { SECRET_MASK } from './settings';
 
 const serviceParamsSchema = z.object({
   id: z.coerce.number().int().positive()
@@ -570,9 +569,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       port: override.port ?? saved.port,
       user: override.user ?? saved.user,
       password:
-        override.password === undefined || override.password === SECRET_MASK
-          ? saved.password
-          : override.password,
+        // Vazio = usar a guardada: o formulário nunca a mostra.
+        override.password ? override.password : saved.password,
       tlsCert: override.tlsCert ?? saved.tlsCert
     };
 

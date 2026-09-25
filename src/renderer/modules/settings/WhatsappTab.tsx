@@ -33,7 +33,8 @@ export function WhatsappTab({ form, onUpdate, onToggle, testPhone, onTestPhoneCh
         spellCheck={false}
         value={form.ultraMsgToken}
         onChange={(event) => onUpdate('ultraMsgToken', event.target.value)}
-        hint="Fica selado nesta máquina e nunca volta a sair em claro. Deixe a máscara como está para manter o que já está guardado."
+        placeholder={form.ultraMsgTokenConfigured ? 'Configurado — escreva para substituir' : undefined}
+        hint="Fica cifrado no cofre e nunca volta a sair. Em branco, fica o que está guardado."
       />
       <Field
         label="Avisar suspensao apos X dias"

@@ -118,6 +118,30 @@ export function writeSecret(db: Database.Database, key: SecretKey, value: string
   saveSetting(db, key, vault.encrypt(secretContext(key), value));
 }
 
+// ------------------------------------------------------------------ PPPoE
+
+/**
+ * Senha PPPoE de um serviço, aberta. Vazio quando não há, ou quando não abre
+ * aqui — quem a manda para o router tem de tratar vazio como "não enviar".
+ */
+export function readPppoeSecret(db: Database.Database, serviceId: number): string {
+  const row = db.prepare('SELECT pppoe_password AS value FROM services WHERE id = ?').get(serviceId) as
+    | { value: string | null }
+    | undefined;
+  return openStored(PPPOE_CONTEXT, row?.value ?? '') ?? '';
+}
+
+/** Cifra uma senha PPPoE para gravar. Lança sem cofre — nunca em claro. */
+export function sealPppoeSecret(plain: string): string {
+  if (!vault) throw new Error('VAULT_UNAVAILABLE');
+  return vault.encrypt(PPPOE_CONTEXT, plain);
+}
+
+/** Grava a senha PPPoE de um serviço (sem mexer na marca de sincronização). */
+export function writePppoeSecret(db: Database.Database, serviceId: number, plain: string): void {
+  db.prepare('UPDATE services SET pppoe_password = ? WHERE id = ?').run(sealPppoeSecret(plain), serviceId);
+}
+
 /**
  * Recalcula — a partir do que está gravado — que credenciais não se conseguem
  * abrir aqui, e deixa a lista escrita para as Definições a mostrarem.

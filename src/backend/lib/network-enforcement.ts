@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
+import { readPppoeSecret } from './secrets';
 import {
   createSecret,
   createTransport,
@@ -35,7 +36,8 @@ export type DesiredService = {
   serviceId: number;
   clientName: string;
   username: string;
-  password: string | null;
+  /** Há senha gravada? O texto em claro só se abre no momento de a enviar. */
+  hasPassword: boolean;
   /** Password local alterada e ainda não confirmada no router. */
   passwordPending: boolean;
   /** Verdadeiro só para serviços ativos: suspenso e cancelado ficam desativados. */
@@ -71,7 +73,7 @@ type ServiceRow = {
   clientName: string;
   status: string;
   username: string;
-  password: string | null;
+  hasPassword: number;
   passwordPending: number;
   downloadMbps: number | null;
   uploadMbps: number | null;
@@ -91,7 +93,7 @@ export function loadDesiredServices(db: Database.Database): DesiredService[] {
       c.full_name AS clientName,
       s.status AS status,
       s.pppoe_username AS username,
-      s.pppoe_password AS password,
+      (s.pppoe_password IS NOT NULL AND s.pppoe_password <> '') AS hasPassword,
       s.pppoe_password_sync_pending AS passwordPending,
       p.download_mbps AS downloadMbps,
       p.upload_mbps AS uploadMbps
@@ -106,7 +108,7 @@ export function loadDesiredServices(db: Database.Database): DesiredService[] {
     serviceId: row.serviceId,
     clientName: row.clientName,
     username: row.username,
-    password: row.password,
+    hasPassword: row.hasPassword === 1,
     passwordPending: row.passwordPending === 1,
     enabled: row.status === 'active',
     rateLimit: rateLimitFor(row.uploadMbps, row.downloadMbps)
@@ -199,7 +201,7 @@ export function planActions(
     // A password não é comparada com o router: o utilizador REST pode não ter
     // política sensitive. Uma alteração local deixa uma marca explícita que só
     // é limpa depois de um PATCH bem sucedido.
-    if (service.passwordPending && service.password) {
+    if (service.passwordPending && service.hasPassword) {
       divergences.push({
         serviceId: service.serviceId,
         username: service.username,
@@ -396,12 +398,15 @@ async function applyAction(
 ): Promise<void> {
   if (action.kind === 'create') {
     const service = desired.find((item) => item.serviceId === action.serviceId);
-    if (!service?.password) {
-      throw new Error('Servico sem senha PPPoE gravada');
+    // Aberta só aqui, e verificada antes de qualquer transporte: vazio = sem
+    // senha ou cofre trancado, e nesse caso o router nem é contactado.
+    const password = readPppoeSecret(db, action.serviceId);
+    if (!service || !password) {
+      throw new Error('Servico sem senha PPPoE disponivel');
     }
     const id = await createSecret(transport, {
       name: action.username,
-      password: service.password,
+      password,
       comment: `${COMMENT_PREFIX}${action.serviceId}`,
       rateLimit: action.rateLimit
     });
@@ -415,9 +420,9 @@ async function applyAction(
   }
 
   if (action.kind === 'password') {
-    const service = desired.find((item) => item.serviceId === action.serviceId);
-    if (!service?.password) throw new Error('Servico sem senha PPPoE gravada');
-    await patchSecret(transport, action.secretId, { password: service.password });
+    const password = readPppoeSecret(db, action.serviceId);
+    if (!password) throw new Error('Servico sem senha PPPoE disponivel');
+    await patchSecret(transport, action.secretId, { password });
     db.prepare('UPDATE services SET pppoe_password_sync_pending = 0 WHERE id = ?').run(action.serviceId);
     recordSystemAudit(db, 'network_password', action.serviceId, `Atualizou a password PPPoE de ${action.username}`);
     return;

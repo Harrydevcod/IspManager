@@ -120,21 +120,27 @@ export function openVault(db: Database.Database, protection: LocalProtection): V
 - `readSecret` devolve **vazio** (não lança) quando o cofre está `locked`/`absent`: todos os consumidores já tratam vazio como "não configurado" e não contactam o transporte, e lançar derrubava as Definições e o estado do SMS com o cofre trancado (contra a D4). `writeSecret` lança — nunca cai para texto simples — e as rotas respondem 409.
 - `session-secret.ts` sem proteção local não falha: usa uma assinatura **efémera em memória**, nunca gravada. Falhar deixava o `npm run dev` sem login (contra a D3/D4).
 - O arranque (abrir cofre → migrar → aviso) já está no `server.ts`, porque `readSecret` passou a depender do cofre. A Tarefa 5 acrescenta as rotas e o resto da ordem.
-- **Atenção:** a migração já converte `services.pppoe_password` para `enc:v2:`, mas os consumidores de PPPoE só passam pela fachada na Tarefa 4. **Não lançar este ramo sem a Tarefa 4.**
+- ~~Não lançar este ramo sem a Tarefa 4~~ — resolvido na Tarefa 4.
 
-## Tarefa 4 — APIs sem revelação
+## Tarefa 4 — APIs sem revelação · **feito**
 
 **Modificar:** `src/backend/lib/services.ts`, `serviceTransfer.ts`, `network-enforcement.ts`; `src/backend/routes/finance.ts`, `settings.ts`, `network.ts` e os testes `services.credentials.test.ts`, `settings.test.ts`, `network.test.ts`, `serviceTransfer.test.ts`, `network-enforcement.test.ts`.
 
 Fachada nova em `secrets.ts`: `writePppoeSecret(db, serviceId, plain)`, `readPppoeSecret(db, serviceId)`.
 Respostas passam a `pppoePasswordConfigured`, `routerosPasswordConfigured`, `ultraMsgTokenConfigured`. `SECRET_MASK` desaparece.
 
-- [ ] Testes RED: GET de serviços nos três papéis → `expect(row).not.toHaveProperty('pppoePassword')`. Editar só o preço preserva o ciphertext. Gravar Definições sem propriedades secretas preserva credenciais e flags.
-- [ ] `finance.ts:97` deixa de selecionar a coluna; calcula presença (`s.pppoe_password <> '' AS pppoePasswordConfigured`). O `.map()` de omissão em `finance.ts:127` deixa de ser preciso.
-- [ ] Protocolo de escrita: **propriedade omitida = manter**; string não vazia = substituir; `null` explícito = remover onde é permitido. PPPoE com username não aceita remoção involuntária. Limites 8–64 só para passwords novas.
-- [ ] Criação, alteração e transferência de serviços passam pela fachada (`services.ts:181,322,384`; `serviceTransfer.ts:148`). Com o AAD em `tabela.coluna` (D2) a transferência **não** precisa de recifrar.
-- [ ] `network-enforcement.ts:94`: o planeamento recebe só presença/pending; `applyAction` chama `readPppoeSecret` apenas para criar/alterar password. Dry-run não precisa do plaintext. Verificar o cofre antes de qualquer transporte.
-- [ ] Testar com um segredo-marcador que ele não aparece em respostas, logs nem auditoria. Verde; commit.
+- [x] Testes RED: GET de serviços nos três papéis → `expect(row).not.toHaveProperty('pppoePassword')`. Editar só o preço preserva o ciphertext. Gravar Definições sem propriedades secretas preserva credenciais e flags.
+- [x] `finance.ts:97` deixa de selecionar a coluna; calcula presença (`s.pppoe_password <> '' AS pppoePasswordConfigured`). O `.map()` de omissão em `finance.ts:127` deixa de ser preciso.
+- [x] Protocolo de escrita: **propriedade omitida = manter**; string não vazia = substituir; `null` explícito = remover onde é permitido. PPPoE com username não aceita remoção involuntária. Limites 8–64 só para passwords novas.
+- [x] Criação, alteração e transferência de serviços passam pela fachada (`services.ts:181,322,384`; `serviceTransfer.ts:148`). Com o AAD em `tabela.coluna` (D2) a transferência **não** precisa de recifrar.
+- [x] `network-enforcement.ts:94`: o planeamento recebe só presença/pending; `applyAction` chama `readPppoeSecret` apenas para criar/alterar password. Dry-run não precisa do plaintext. Verificar o cofre antes de qualquer transporte.
+- [x] Testar com um segredo-marcador que ele não aparece em respostas, logs nem auditoria. Verde; commit.
+
+**Notas de implementação:**
+- `null` explícito **não** remove a senha PPPoE nem as das Definições: omitida, vazia e `null` querem todas dizer "manter". A remoção explícita fica para quando houver um botão para isso (Tarefa 5).
+- A criação automática de credenciais (router ligado) é **saltada** com o cofre trancado — o serviço nasce e fatura na mesma (D4); credenciais pedidas explicitamente respondem 409.
+- Renderer tocado só no mínimo para a 2.5 funcionar: sem pré-preenchimento, placeholder "Configurada — escreva para substituir" a partir das flags, e as credenciais saem do formulário depois de gravar. O `SecretField` continua na Tarefa 5.
+- O ramo volta a ser lançável: todos os consumidores de PPPoE passam pela fachada.
 
 ---
 

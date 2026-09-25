@@ -11,6 +11,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
+import { readPppoeSecret } from './secrets';
 
 let db: Database.Database;
 let dataDir: string;
@@ -159,9 +160,11 @@ describe('identidade PPPoE de um serviço novo', () => {
       .run(name).lastInsertRowid);
   }
 
+  // A senha lê-se aberta (na base está cifrada); null continua a querer dizer "sem senha".
   function pppoeOf(serviceId: number) {
-    return db.prepare('SELECT pppoe_username AS username, pppoe_password AS password FROM services WHERE id = ?')
+    const row = db.prepare('SELECT pppoe_username AS username, pppoe_password AS password FROM services WHERE id = ?')
       .get(serviceId) as { username: string | null; password: string | null };
+    return { username: row.username, password: row.password === null ? null : readPppoeSecret(db, serviceId) };
   }
 
   beforeEach(() => {

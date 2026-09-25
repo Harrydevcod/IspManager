@@ -471,14 +471,14 @@ describe('POST /api/network/router/test', () => {
     expect(db.prepare('SELECT value FROM app_settings WHERE key = ?').get('routerosUser')).toBeUndefined();
   });
 
-  test('a máscara da senha significa "a que já está guardada"', async () => {
+  test('senha vazia no teste significa "a que já está guardada"', async () => {
     setSetting('routerosPassword', '');
     const masked = await app.inject({
       method: 'POST',
       url: '/api/network/router/test',
-      payload: { host: '127.0.0.1', port: 1, user: 'ispm', password: '••••••••' }
+      payload: { host: '127.0.0.1', port: 1, user: 'ispm', password: '' }
     });
-    // Sem senha guardada, a máscara resolve para vazio e a etapa 1 reclama.
+    // Sem senha guardada, vazio continua vazio e a etapa 1 reclama.
     const missing = masked.json() as { steps: Array<{ id: string; status: string; detail: string }> };
     expect(missing.steps[0].status).toBe('fail');
     expect(missing.steps[0].detail).toContain('senha');
@@ -487,7 +487,7 @@ describe('POST /api/network/router/test', () => {
     const resolved = await app.inject({
       method: 'POST',
       url: '/api/network/router/test',
-      payload: { host: '127.0.0.1', port: 1, user: 'ispm', password: '••••••••' }
+      payload: { host: '127.0.0.1', port: 1, user: 'ispm', password: '' }
     });
     const report = resolved.json() as { steps: Array<{ id: string; status: string }> };
     expect(report.steps[0].status).toBe('ok');

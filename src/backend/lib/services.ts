@@ -11,6 +11,7 @@ import {
 } from './serviceInstall';
 import { insertInstallationFeeIfDue, loadInstallationFeeCve } from './billing';
 import { ownedSharedAssignments } from './deviceShares';
+import { canStoreSecrets, readPppoeSecret, sealPppoeSecret } from './secrets';
 
 const serviceItemSchema = z.object({
   catalogId: z.coerce.number().int().positive(),
@@ -45,7 +46,8 @@ export const serviceSchema = z.object({
   // Identidade do cliente no router (ADR 0007). Vazio = serviço fora do
   // controlo de acesso; a reconciliação ignora-o por completo.
   pppoeUsername: z.string().trim().max(64).optional().nullable(),
-  pppoePassword: z.string().trim().max(64).optional().nullable()
+  // Sem trim: a senha preserva os bytes. Omitida, vazia ou null = manter a atual.
+  pppoePassword: z.string().max(64).optional().nullable()
 });
 
 export type ServiceInput = z.infer<typeof serviceSchema>;
@@ -81,6 +83,14 @@ function routerIntegrationOn(db: Database): boolean {
 }
 
 export type ServiceOpResult<T> = { ok: true; value: T } | { ok: false; status: number; error: string };
+
+const PPPOE_LENGTH_ERROR = 'A senha PPPoE deve ter entre 8 e 64 caracteres';
+const VAULT_LOCKED_ERROR = 'Cofre de credenciais trancado: nao e possivel gravar a senha PPPoE nesta sessao';
+
+/** Senha PPPoE nova vinda de fora: 8–64, validada antes de qualquer escrita. */
+function newPppoePasswordError(password: string): string | null {
+  return password.length < 8 || password.length > 64 ? PPPOE_LENGTH_ERROR : null;
+}
 
 /**
  * Regras do add-on audiovisual: a modalidade ativa exige o respetivo preço > 0; e
@@ -150,6 +160,19 @@ export function createService(db: Database, data: ServiceInput, userId: number |
   }
   const installCosts = (data.installCosts ?? []) as InstallCostInput[];
 
+  // Credenciais pedidas explicitamente têm de se poder gravar; as automáticas
+  // (router ligado) ficam por gerar se o cofre estiver trancado — o serviço
+  // nasce na mesma e a faturação não para (D4).
+  const explicitPppoe = Boolean(data.pppoeUsername?.trim() || data.pppoePassword);
+  if (data.pppoePassword) {
+    const lengthError = newPppoePasswordError(data.pppoePassword);
+    if (lengthError) return { ok: false, status: 400, error: lengthError };
+  }
+  if (explicitPppoe && !canStoreSecrets()) {
+    return { ok: false, status: 409, error: VAULT_LOCKED_ERROR };
+  }
+  const wantsPppoe = explicitPppoe || (routerIntegrationOn(db) && canStoreSecrets());
+
   const run = db.transaction(() => {
     const inserted = db.prepare(`
       INSERT INTO services (
@@ -174,7 +197,6 @@ export function createService(db: Database, data: ServiceInput, userId: number |
 
     // Com o router ligado, um serviço novo já nasce com identidade na rede. Sem
     // router, não se inventam credenciais que ninguém vai usar.
-    const wantsPppoe = data.pppoeUsername?.trim() || routerIntegrationOn(db);
     if (wantsPppoe) {
       db.prepare(`
         UPDATE services
@@ -182,7 +204,7 @@ export function createService(db: Database, data: ServiceInput, userId: number |
         WHERE id = ?
       `).run(
         data.pppoeUsername?.trim() || pppoeUsernameFor(client.fullName, serviceId),
-        data.pppoePassword?.trim() || generatePppoePassword(),
+        sealPppoeSecret(data.pppoePassword || generatePppoePassword()),
         serviceId
       );
     }
@@ -282,11 +304,7 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
     return { ok: false, status: 400, error: validationError };
   }
 
-  const service = db.prepare(`
-    SELECT id, pppoe_password AS pppoePassword
-    FROM services
-    WHERE id = ?
-  `).get(id) as { id: number; pppoePassword: string | null } | undefined;
+  const service = db.prepare('SELECT id FROM services WHERE id = ?').get(id);
   if (!service) {
     return { ok: false, status: 404, error: 'Servico nao encontrado' };
   }
@@ -303,8 +321,14 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
     }
   }
 
-  const nextPppoePassword = data.pppoePassword?.trim() || null;
-  const passwordChanged = nextPppoePassword !== service.pppoePassword && nextPppoePassword !== null;
+  // Protocolo de escrita: omitida/vazia = manter; preenchida = substituir.
+  let sealedPassword: string | null = null;
+  if (data.pppoePassword) {
+    const lengthError = newPppoePasswordError(data.pppoePassword);
+    if (lengthError) return { ok: false, status: 400, error: lengthError };
+    if (!canStoreSecrets()) return { ok: false, status: 409, error: VAULT_LOCKED_ERROR };
+    if (data.pppoePassword !== readPppoeSecret(db, id)) sealedPassword = sealPppoeSecret(data.pppoePassword);
+  }
 
   // O estado sai deste UPDATE: passa por `changeServiceStatus`, que o regista.
   db.prepare(`
@@ -319,7 +343,7 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
         audiovisual_monthly_cve = ?,
         audiovisual_annual_cve = ?,
         pppoe_username = ?,
-        pppoe_password = ?,
+        pppoe_password = COALESCE(?, pppoe_password),
         pppoe_password_sync_pending = CASE
           WHEN ? = 1 THEN 1
           ELSE pppoe_password_sync_pending
@@ -337,8 +361,8 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
     data.audiovisualMonthlyCve,
     data.audiovisualAnnualCve,
     data.pppoeUsername?.trim() || null,
-    nextPppoePassword,
-    passwordChanged ? 1 : 0,
+    sealedPassword,
+    sealedPassword ? 1 : 0,
     id
   );
 
@@ -360,22 +384,19 @@ export function changePppoePassword(
   id: number,
   password: string
 ): ServiceOpResult<{ changed: boolean }> {
-  const cleanPassword = password.trim();
-  if (cleanPassword.length < 8 || cleanPassword.length > 64) {
-    return { ok: false, status: 400, error: 'A senha PPPoE deve ter entre 8 e 64 caracteres' };
-  }
+  const lengthError = newPppoePasswordError(password);
+  if (lengthError) return { ok: false, status: 400, error: lengthError };
 
-  const row = db.prepare(`
-    SELECT pppoe_username AS username, pppoe_password AS password
-    FROM services
-    WHERE id = ?
-  `).get(id) as { username: string | null; password: string | null } | undefined;
+  const row = db.prepare('SELECT pppoe_username AS username FROM services WHERE id = ?').get(id) as
+    | { username: string | null }
+    | undefined;
 
   if (!row) return { ok: false, status: 404, error: 'Servico nao encontrado' };
   if (!row.username?.trim()) {
     return { ok: false, status: 409, error: 'Este servico ainda nao tem utilizador PPPoE' };
   }
-  if (row.password === cleanPassword) {
+  if (!canStoreSecrets()) return { ok: false, status: 409, error: VAULT_LOCKED_ERROR };
+  if (readPppoeSecret(db, id) === password) {
     return { ok: true, value: { changed: false } };
   }
 
@@ -385,7 +406,7 @@ export function changePppoePassword(
         pppoe_password_sync_pending = 1,
         updated_at = datetime('now')
     WHERE id = ?
-  `).run(cleanPassword, id);
+  `).run(sealPppoeSecret(password), id);
 
   return { ok: true, value: { changed: true } };
 }

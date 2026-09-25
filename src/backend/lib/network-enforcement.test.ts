@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
+import { getCredentialVault, setCredentialVault, writePppoeSecret } from './secrets';
 import {
   loadDesiredServices,
   planActions,
@@ -15,7 +16,7 @@ function service(overrides: Partial<DesiredService> = {}): DesiredService {
     serviceId: 1,
     clientName: 'Joao Silva',
     username: 'joao-1',
-    password: 'segredo',
+    hasPassword: true,
     passwordPending: false,
     enabled: true,
     rateLimit: '2M/10M',
@@ -134,9 +135,10 @@ function memoryDb() {
 
 function addService(db: Database.Database, id: number, status: string, username: string | null) {
   db.prepare(`
-    INSERT INTO services (id, client_id, plan_id, monthly_value_cve, status, pppoe_username, pppoe_password)
-    VALUES (?, 1, 1, 3000, ?, ?, 'senha')
+    INSERT INTO services (id, client_id, plan_id, monthly_value_cve, status, pppoe_username)
+    VALUES (?, 1, 1, 3000, ?, ?)
   `).run(id, status, username);
+  writePppoeSecret(db, id, 'senha');
 }
 
 function recordingTransport(secrets: RouterSecret[], active: Array<{ id: string; name: string }> = []) {
@@ -230,11 +232,8 @@ describe('runNetworkEnforcement', () => {
 
   test('password pendente é aplicada no router e a marca só limpa depois do PATCH', async () => {
     addService(db, 1, 'active', 'joao-1');
-    db.prepare(`
-      UPDATE services
-      SET pppoe_password = 'nova-senha-segura', pppoe_password_sync_pending = 1
-      WHERE id = 1
-    `).run();
+    writePppoeSecret(db, 1, 'nova-senha-segura');
+    db.prepare('UPDATE services SET pppoe_password_sync_pending = 1 WHERE id = 1').run();
     const { transport, calls } = recordingTransport([secret()]);
 
     const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
@@ -247,6 +246,25 @@ describe('runNetworkEnforcement', () => {
     });
     expect(db.prepare('SELECT pppoe_password_sync_pending AS pending FROM services WHERE id = 1').get())
       .toEqual({ pending: 0 });
+  });
+
+  test('cofre trancado: nem cria nem muda password no router, e a marca fica', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    addService(db, 2, 'active', 'maria-2');
+    db.prepare('UPDATE services SET pppoe_password_sync_pending = 1 WHERE id = 1').run();
+    const { transport, calls } = recordingTransport([secret()]);
+    const vault = getCredentialVault();
+    setCredentialVault(null);
+    try {
+      await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+    } finally {
+      setCredentialVault(vault);
+    }
+    const writes = calls.filter((call) => call.method !== 'GET');
+    expect(writes.some((call) => JSON.stringify(call.body ?? {}).includes('password'))).toBe(false);
+    expect(writes.some((call) => call.method === 'PUT' || call.method === 'POST')).toBe(false);
+    expect(db.prepare('SELECT pppoe_password_sync_pending AS pending FROM services WHERE id = 1').get())
+      .toEqual({ pending: 1 });
   });
 
   test('dry-run mostra a password pendente mas não a limpa nem escreve no router', async () => {

@@ -47,7 +47,9 @@ type ServiceFormState = {
   status: 'active' | 'suspended' | 'cancelled';
   technicalNotes: string;
   pppoeUsername: string;
+  /** Só uma senha nova; vazia = manter a guardada. */
   pppoePassword: string;
+  pppoePasswordConfigured: boolean;
   audiovisualMode: 'none' | 'monthly' | 'annual';
   audiovisualMonthlyCve: string;
   audiovisualAnnualCve: string;
@@ -64,6 +66,7 @@ function emptyServiceForm(): ServiceFormState {
     technicalNotes: '',
     pppoeUsername: '',
     pppoePassword: '',
+    pppoePasswordConfigured: false,
     audiovisualMode: 'none',
     audiovisualMonthlyCve: '',
     audiovisualAnnualCve: ''
@@ -229,7 +232,9 @@ export function ServicesModule({
       status: service.status,
       technicalNotes: service.technicalNotes || '',
       pppoeUsername: service.pppoeUsername || '',
-      pppoePassword: service.pppoePassword || '',
+      // A senha guardada nunca vem: o campo serve só para escrever uma nova.
+      pppoePassword: '',
+      pppoePasswordConfigured: Boolean(service.pppoePasswordConfigured),
       audiovisualMode: service.audiovisualMode,
       audiovisualMonthlyCve: service.audiovisualMonthlyCve ? String(service.audiovisualMonthlyCve) : '',
       audiovisualAnnualCve: service.audiovisualAnnualCve ? String(service.audiovisualAnnualCve) : ''
@@ -1267,9 +1272,14 @@ export function ServicesModule({
           />
           <Field
             label="Senha PPPoE"
+            type="password"
+            autoComplete="new-password"
             value={form.pppoePassword}
             onChange={(event) => updateForm('pppoePassword', event.target.value)}
-            hint="É esta que o cliente configura no equipamento dele."
+            placeholder={form.pppoePasswordConfigured ? 'Configurada — escreva para substituir' : undefined}
+            hint={form.pppoePasswordConfigured
+              ? 'A senha guardada não se mostra. Em branco, fica a que está.'
+              : 'É esta que o cliente configura no equipamento dele (8 a 64 caracteres).'}
           />
           <Field wide label="Notas tecnicas" value={form.technicalNotes} onChange={(event) => updateForm('technicalNotes', event.target.value)} />
 
