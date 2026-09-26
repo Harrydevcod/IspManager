@@ -6,7 +6,16 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
-> **Sem migrações.** Tudo o que é novo é leitura ao vivo do router, e só com pedidos GET.
+- **Tráfego das WAN ao vivo na Visão geral do Router de gestão.** Um cartão por interface da lista `WAN` do MikroTik (os dois Starlink), com download e upload atuais e a curva dos últimos 2 minutos, os dois na mesma escala para se compararem. Por baixo, o total e como o download se reparte entre as WAN, para ver o load balance a funcionar. Atualiza de segundo a segundo enquanto a Visão geral está aberta; só leitura (a taxa é a que o próprio router mede, a mesma do Winbox).
+- **A ligação ao router passa a ser reutilizada.** O ISPM deixa de abrir uma ligação segura nova em cada pedido ao MikroTik; o certificado fixado continua a ser verificado em cada ligação nova. Menos carga no router em todas as leituras e na reconciliação.
+- **Aba Registo no Router de gestão.** O registo do MikroTik lido ao vivo (as 300 linhas mais recentes), com erros a vermelho, avisos a amarelo e o filtro "Só erros e avisos". Por cima, **o que o registo diz**, lido do registo todo: o **DHCP intruso** que o dhcp-snooping está a travar (porta, MAC, fabricante e cliente, se o ISPM o conhecer), as **falhas de login** por origem e serviço, as **quedas de PPPoE** por cliente com o motivo, e os **aparelhos em ciclo de DHCP**, que enchem o registo e escondem o resto. Só leitura.
+- **As divergências da Visão geral batem com a reconciliação.** Os utilizadores do router marcados pelo ISPM que já não têm serviço contavam na reconciliação mas não na Visão geral, que mostrava 0. Agora contam, e o cartão abre as Sessões PPPoE, onde aparecem como "Sem serviço no ISPM".
+
+## [2.5](https://github.com/Harrydevcod/IspManager/releases/tag/v2.5.0) — 2026-09-26
+
+> **Sem migrações.** Tudo o que é novo é leitura ao vivo do router, e só com pedidos GET: nada do que esta versão acrescenta escreve no MikroTik.
+
+> **Onde está agora a configuração do router:** saiu de Configurações → Rede para a aba **Configuração** do módulo novo **Router de gestão**, no menu lateral. Os valores gravados são os mesmos; não é preciso voltar a configurar nada.
 
 - **Módulo Router de gestão.** O MikroTik da operadora passa a ter uma entrada própria no menu (só para administradores), com cinco abas: **Visão geral** (identidade, placa, RouterOS, CPU, memória, há quanto tempo está ligado, sessões ativas, divergências e os serviços de gestão abertos com o comando que os fecha), **Sessões PPPoE** (cada serviço do ISPM ao lado do seu utilizador no router: online, offline, desativado, sem utilizador no router, e os utilizadores do router que nenhum serviço reclama; desligar a sessão a partir daqui), **Perfis PPP** (a velocidade de cada perfil e os planos que o usam, incluindo os perfis que um plano pede e o router não tem), **Interfaces** (estado, MAC e tráfego acumulado) e **Configuração**. Os dados atualizam-se de 30 em 30 segundos enquanto a aba está aberta.
 - **A configuração do router saiu das Configurações.** A ligação, o certificado, o diagnóstico por etapas, o ensaio, a reconciliação e a suspensão automática vivem agora na aba Configuração do módulo novo. É o mesmo formulário, gravado da mesma maneira, e passar a efetivo continua a pedir a senha outra vez. Em Configurações → Rede fica só a sonda de rede.

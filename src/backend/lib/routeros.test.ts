@@ -1,8 +1,10 @@
-import { describe, expect, test } from 'vitest';
+import { createServer } from 'node:https';
+import { afterEach, describe, expect, test } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import {
   auditRouterServices,
+  createTransport,
   createProfile,
   createSecret,
   describeRouterFailure,
@@ -14,11 +16,17 @@ import {
   listSecrets,
   patchSecret,
   readRouterConfig,
+  resetRouterAgentCacheForTests,
   removeActive,
   RouterError,
   testConnection,
   readSystem,
   listInterfaces,
+  listInterfaceListMembers,
+  monitorTraffic,
+  listLog,
+  summarizeLog,
+  DHCP_CHURN_THRESHOLD,
   type RouterRequest,
   type RouterService,
   listArp,
@@ -26,6 +34,87 @@ import {
   neighborModel,
   type RouterTransport
 } from './routeros';
+import { TEST_ROUTER_CA_PEM, TEST_ROUTER_KEY_PEM, TEST_ROUTER_LEAF_PEM } from './routerosTestCerts';
+
+afterEach(resetRouterAgentCacheForTests);
+
+function localConfig(port: number, tlsCert = TEST_ROUTER_LEAF_PEM + TEST_ROUTER_CA_PEM) {
+  return {
+    enabled: true, host: '127.0.0.1', port, user: 'ispm', password: 'segredo',
+    dryRun: true, intervalSeconds: 120, tlsCert, maxDisablesPerRun: 5
+  };
+}
+
+async function withHttpsServer(
+  onRequest: (requestNumber: number, socket: import('node:net').Socket, respond: () => void) => void,
+  run: (port: number, connections: () => number, requests: () => number, tcpConnections: () => number) => Promise<void>
+) {
+  let connections = 0;
+  let tcpConnections = 0;
+  let requests = 0;
+  const server = createServer({ cert: TEST_ROUTER_LEAF_PEM + TEST_ROUTER_CA_PEM, key: TEST_ROUTER_KEY_PEM }, (_req, res) => {
+    requests += 1;
+    onRequest(requests, res.socket!, () => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+  });
+  server.on('secureConnection', () => { connections += 1; });
+  server.on('connection', () => { tcpConnections += 1; });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    await run((server.address() as { port: number }).port, () => connections, () => requests, () => tcpConnections);
+  } finally {
+    resetRouterAgentCacheForTests();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
+describe('ligação HTTPS reutilizada', () => {
+  test('dois GET de transportes diferentes usam a mesma ligação TLS', async () => {
+    await withHttpsServer((_number, _socket, respond) => respond(), async (port, connections) => {
+      const config = localConfig(port);
+      await createTransport(config)({ method: 'GET', path: '/system/resource' });
+      await createTransport(config)({ method: 'GET', path: '/system/resource' });
+      expect(connections()).toBe(1);
+    });
+  });
+
+  test('trocar o certificado fixado abre outra ligação e recusa a identidade errada', async () => {
+    await withHttpsServer((_number, _socket, respond) => respond(), async (port, _connections, _requests, tcpConnections) => {
+      await createTransport(localConfig(port))({ method: 'GET', path: '/system/resource' });
+      await expect(createTransport(localConfig(port, TEST_ROUTER_CA_PEM))({ method: 'GET', path: '/system/resource' }))
+        .rejects.toMatchObject({ code: 'CERT_MISMATCH' });
+      expect(tcpConnections()).toBe(2);
+    });
+  });
+
+  test('repete uma vez um GET quando o router fecha a ligação reutilizada', async () => {
+    await withHttpsServer((number, socket, respond) => {
+      if (number === 2) socket.destroy();
+      else respond();
+    }, async (port, connections, requests) => {
+      const transport = createTransport(localConfig(port));
+      await transport({ method: 'GET', path: '/system/resource' });
+      await expect(transport({ method: 'GET', path: '/system/resource' })).resolves.toEqual({ ok: true });
+      expect(requests()).toBe(3);
+      expect(connections()).toBe(2);
+    });
+  });
+
+  test('não repete PATCH quando o router fecha a ligação reutilizada', async () => {
+    await withHttpsServer((number, socket, respond) => {
+      if (number === 2) socket.destroy();
+      else respond();
+    }, async (port, _connections, requests) => {
+      const transport = createTransport(localConfig(port));
+      await transport({ method: 'GET', path: '/system/resource' });
+      await expect(transport({ method: 'PATCH', path: '/ppp/secret', body: { name: 'x' } }))
+        .rejects.toMatchObject({ code: 'ECONNRESET' });
+      expect(requests()).toBe(2);
+    });
+  });
+});
 
 /** Transporte falso: guarda as chamadas e devolve o que o teste mandar. */
 function fakeTransport(responses: unknown[] = []): RouterTransport & { calls: RouterRequest[] } {
@@ -543,5 +632,94 @@ describe('leituras do módulo Router de gestão', () => {
       method: 'GET',
       path: '/interface?.proplist=name,type,running,disabled,mac-address,rx-byte,tx-byte,comment'
     });
+  });
+
+  test('listInterfaceListMembers lê os membros da lista pedida', async () => {
+    const transport = fakeTransport([[{ interface: 'WAN1-STARLINK' }, { interface: 'WAN2-STARLINK' }, {}]]);
+    await expect(listInterfaceListMembers(transport, 'WAN')).resolves.toEqual(['WAN1-STARLINK', 'WAN2-STARLINK']);
+    expect(transport.calls[0]).toEqual({ method: 'GET', path: '/interface/list/member?list=WAN&.proplist=interface' });
+  });
+
+  test('monitorTraffic lê as taxas medidas pelo router sem inventar valores ausentes', async () => {
+    const transport = fakeTransport([[
+      { name: 'WAN1-STARLINK', 'rx-bits-per-second': '10000000', 'tx-bits-per-second': '1000000' },
+      { name: 'WAN2-STARLINK', 'rx-bits-per-second': '5000000' }
+    ]]);
+    await expect(monitorTraffic(transport, ['WAN1-STARLINK', 'WAN2-STARLINK'])).resolves.toEqual([
+      { name: 'WAN1-STARLINK', rxBps: 10_000_000, txBps: 1_000_000 },
+      { name: 'WAN2-STARLINK', rxBps: 5_000_000, txBps: null }
+    ]);
+    expect(transport.calls[0]).toEqual({
+      method: 'POST',
+      path: '/interface/monitor-traffic',
+      body: { interface: 'WAN1-STARLINK,WAN2-STARLINK', once: '' }
+    });
+  });
+
+  test('listLog devolve o registo todo, as mais recentes primeiro, e ignora linhas vazias', async () => {
+    const transport = fakeTransport([[
+      { '.id': '*1', time: '2026-09-25 23:59:01', topics: 'system,info', message: 'router rebooted' },
+      { '.id': '*2', time: '02:40:13', topics: 'system,error,critical', message: 'login failure for user admin from 10.0.0.9 via winbox' },
+      { '.id': '*3', time: '02:41:00', topics: 'pppoe,info' }
+    ]]);
+    await expect(listLog(transport)).resolves.toEqual([
+      { id: '*2', time: '02:40:13', topics: 'system,error,critical', message: 'login failure for user admin from 10.0.0.9 via winbox' },
+      { id: '*1', time: '2026-09-25 23:59:01', topics: 'system,info', message: 'router rebooted' }
+    ]);
+    expect(transport.calls[0]).toEqual({ method: 'GET', path: '/log?.proplist=.id,time,topics,message' });
+  });
+
+  // Linhas do registo real do hEX S (RouterOS 7.24.2), exportado a 2026-09-26.
+  const line = (message: string) => ({ id: '*1', time: '', topics: '', message });
+
+  test('summarizeLog agrupa as falhas de login por origem e serviço, pior primeiro', () => {
+    const { loginFailures } = summarizeLog([
+      line('login failure for user admin from 10.0.0.9 via winbox'),
+      line('login failure for user root from 10.0.0.9 via ssh'),
+      line('login failure for user ubnt from 10.0.0.9 via ssh'),
+      line('login failure for user root from 10.0.0.9 via ssh'),
+      line('user admin logged in from 192.168.2.250 via winbox')
+    ]);
+    expect(loginFailures).toEqual([
+      { address: '10.0.0.9', via: 'ssh', users: ['root', 'ubnt'], count: 3 },
+      { address: '10.0.0.9', via: 'winbox', users: ['admin'], count: 1 }
+    ]);
+  });
+
+  test('summarizeLog aponta o servidor DHCP intruso travado pelo snooping, por MAC', () => {
+    const intruder = 'LAN1: received DHCP server message on untrusted port from source IP 192.168.0.1, MAC 30:16:9d:aa:53:8b';
+    const { rogueDhcp } = summarizeLog([
+      line(intruder),
+      line(intruder),
+      line('LAN1: received DHCP server message on untrusted port from source IP 192.168.0.254, MAC 18:69:45:23:68:04')
+    ]);
+    expect(rogueDhcp).toEqual([
+      { port: 'LAN1', address: '192.168.0.1', mac: '30:16:9D:AA:53:8B', count: 2 },
+      { port: 'LAN1', address: '192.168.0.254', mac: '18:69:45:23:68:04', count: 1 }
+    ]);
+  });
+
+  test('summarizeLog conta as quedas de PPPoE por utilizador, com os motivos', () => {
+    const { pppoeDrops } = summarizeLog([
+      line('<pppoe-skn001>: terminating... - peer is not responding'),
+      line('<pppoe-skn001>: terminating... - peer is not responding'),
+      line('<pppoe-skn001>: terminating... - hungup '),
+      line('skn001 logged out, 3551 1846177 2860783 13155 13532 from 18:FD:74:22:23:B7'),
+      line('<pppoe-skn001>: disconnected ')
+    ]);
+    expect(pppoeDrops).toEqual([{ login: 'skn001', reasons: ['peer is not responding', 'hungup'], count: 3 }]);
+  });
+
+  test('summarizeLog só marca como ciclo de DHCP a partir do limiar', () => {
+    const camera = 'dhcp-SKYNET deassigned 192.168.2.97 for 90:6A:94:F7:DE:11 NOMI-IPC-S7X-10M0WED-ECE2';
+    const entries = [
+      ...Array.from({ length: DHCP_CHURN_THRESHOLD }, () => line(camera)),
+      line('dhcp-SKYNET deassigned 192.168.2.60 for 5C:E9:1E:00:00:01 Redmi-Note-9'),
+      line('dhcp-SKYNET deassigned 192.168.2.61 for 5C:E9:1E:00:00:02')
+    ];
+    expect(summarizeLog(entries).dhcpChurn).toEqual([
+      { mac: '90:6A:94:F7:DE:11', address: '192.168.2.97', hostname: 'NOMI-IPC-S7X-10M0WED-ECE2', count: DHCP_CHURN_THRESHOLD }
+    ]);
+    expect(summarizeLog([])).toEqual({ loginFailures: [], rogueDhcp: [], pppoeDrops: [], dhcpChurn: [] });
   });
 });

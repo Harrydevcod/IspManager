@@ -40,6 +40,7 @@ import { pollWhatsappDeliveryIfDue, runWhatsappOutboxIfDue } from './lib/whatsap
 import { pollSmsStatusIfDue, runSmsOutboxIfDue, smsDispatchIntervalMs } from './lib/sms-outbox';
 import { registerNetworkRoutes } from './routes/network';
 import { networkProbeIntervalMs, runNetworkProbeIfDue } from './lib/network-probe';
+import { runWanUsageIfDue } from './lib/wan-usage';
 import { requestNetworkSync } from './lib/network-sync';
 import { routerosIntervalMs } from './lib/routeros';
 import { autoSuspensionIntervalMs, runAutomaticSuspension } from './lib/auto-suspension';
@@ -245,6 +246,12 @@ export async function createBackendApp() {
     };
     probeTick();
     scheduleProbe();
+  }
+
+  if (!process.env.VITEST) {
+    const wanUsageTick = () => { void runJob('wan_usage', runWanUsageIfDue).catch((err) => app.log.error({ err }, 'wan usage failed')); };
+    wanUsageTick();
+    setInterval(wanUsageTick, 60_000).unref();
   }
 
   // Suspensão automática por dívida: decide apenas a intenção na base de dados.

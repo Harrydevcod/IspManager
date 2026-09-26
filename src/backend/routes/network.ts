@@ -13,6 +13,10 @@ import {
   listNeighbors,
   listActive,
   listInterfaces,
+  listInterfaceListMembers,
+  monitorTraffic,
+  listLog,
+  summarizeLog,
   listServices,
   readSystem,
   auditRouterServices,
@@ -26,7 +30,7 @@ import {
   type RouterTransport
 } from '../lib/routeros';
 import { identifyModel } from '../lib/device-model';
-import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecret, runNetworkEnforcement } from '../lib/network-enforcement';
+import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecret, planActions, runNetworkEnforcement } from '../lib/network-enforcement';
 import { loadAutoSuspensionPreview, runAutomaticSuspension } from '../lib/auto-suspension';
 import {
   loadRegisteredDevices,
@@ -42,6 +46,7 @@ import {
 import { crossReference, type ObservedHost } from '../lib/network-inventory';
 import { buildProposals, dismissalKey, findOrphans, type ProposalKind } from '../lib/discovery-reconcile';
 import { runJob } from '../lib/jobRuns';
+import { loadWanUsage } from '../lib/wan-usage';
 import { applyPlanProfile, readBaseProfileName } from '../lib/plan-profiles';
 import { recordAudit } from '../lib/audit';
 import { isIpv4, isPrivateIpv4, SWEEP_BATCH_SIZE } from '../../shared/ip-range';
@@ -358,6 +363,10 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       listServices(transport)
     ]);
     const state = loadNetworkEnforcementState(db);
+    // Os secrets órfãos não têm serviço onde a divergência se grave; contam-se
+    // aqui ao vivo, para a Visão geral dizer o mesmo número que a reconciliação.
+    const orphans = planActions(loadDesiredServices(db), secrets).divergences
+      .filter((divergence) => divergence.kind === 'orphan_secret').length;
     const lastEnforcement = db.prepare(`
       SELECT status, ran_at AS ranAt FROM job_runs
       WHERE job LIKE 'network_enforcement%' ORDER BY id DESC LIMIT 1
@@ -368,7 +377,7 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       secrets: secrets.length,
       disabledSecrets: secrets.filter((secret) => secret.disabled).length,
       activeSessions: active.length,
-      divergences: state.divergences,
+      divergences: state.divergences + orphans,
       findings: auditRouterServices(services),
       lastEnforcement
     };
@@ -382,6 +391,70 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
   app.get('/api/network/router/interfaces', adminOnly, async () => readLive(async (transport) => ({
     interfaces: await listInterfaces(transport)
   })));
+
+  // Cache de 60 s: a lista WAN quase nunca muda. Cada amostra lê o estado das
+  // interfaces e as taxas medidas pelo router em paralelo.
+  let wanNames: { host: string; names: string[]; at: number } | null = null;
+
+  /** Taxas medidas pelo router para as interfaces da lista WAN. */
+  app.get('/api/network/router/wan', adminOnly, async () => {
+    const result = await readLive(async (transport, config) => {
+      if (!wanNames || wanNames.host !== config.host || Date.now() - wanNames.at > 60_000) {
+        wanNames = { host: config.host, names: await listInterfaceListMembers(transport, 'WAN'), at: Date.now() };
+      }
+      const names = wanNames.names;
+      if (names.length === 0) return { missing: true as const };
+      const [listed, traffic] = await Promise.all([listInterfaces(transport), monitorTraffic(transport, names)]);
+      const rates = new Map(traffic.map((item) => [item.name, item]));
+      const interfaces = listed
+        .filter((item) => names.includes(item.name))
+        .map(({ name, running, disabled }) => ({
+          name,
+          running: running && !disabled,
+          downBps: rates.get(name)?.rxBps ?? null,
+          upBps: rates.get(name)?.txBps ?? null
+        }));
+      return { sampledAt: Date.now(), interfaces };
+    });
+    if (result.available && 'missing' in result) {
+      return { available: false as const, reason: 'O router não tem a lista de interfaces WAN (/interface list).' };
+    }
+    return result;
+  });
+
+  app.get('/api/network/router/wan/usage', adminOnly, async () => loadWanUsage(getSqliteDatabase()));
+
+  app.get('/api/network/router/log', adminOnly, async () => readLive(async (transport) => {
+    // Resume-se o registo todo; o ecrã só lista as linhas mais recentes.
+    const entries = await listLog(transport);
+    const summary = summarizeLog(entries);
+    const db = getSqliteDatabase();
+    const clientOfMac = db.prepare(`
+      SELECT c.full_name AS name FROM service_device_assignments a
+      JOIN services s ON s.id = a.service_id JOIN clients c ON c.id = s.client_id
+      WHERE upper(a.mac_address) = ? AND a.end_date IS NULL LIMIT 1
+    `);
+    const vendorOfMac = db.prepare(`
+      SELECT vendor FROM network_discovery_hosts WHERE upper(mac_address) = ? ORDER BY last_seen_at DESC LIMIT 1
+    `);
+    const clientOfLogin = db.prepare(`
+      SELECT c.full_name AS name FROM services s JOIN clients c ON c.id = s.client_id WHERE s.pppoe_username = ? LIMIT 1
+    `);
+    const aboutMac = (mac: string) => ({
+      clientName: (clientOfMac.get(mac) as { name: string } | undefined)?.name ?? null,
+      vendor: (vendorOfMac.get(mac) as { vendor: string | null } | undefined)?.vendor ?? null
+    });
+    return {
+      entries: entries.slice(0, 300),
+      loginFailures: summary.loginFailures,
+      rogueDhcp: summary.rogueDhcp.map((row) => ({ ...row, ...aboutMac(row.mac) })),
+      pppoeDrops: summary.pppoeDrops.map((row) => ({
+        ...row,
+        clientName: (clientOfLogin.get(row.login) as { name: string } | undefined)?.name ?? null
+      })),
+      dhcpChurn: summary.dhcpChurn.map((row) => ({ ...row, ...aboutMac(row.mac) }))
+    };
+  }));
 
   /** Cria ou atualiza o perfil do plano. Em ensaio só diz o que faria. */
   app.post('/api/plans/:id/router-profile', adminOnly, async (request, reply) => {

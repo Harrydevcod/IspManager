@@ -1,4 +1,4 @@
-import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 /**
  * Single source of truth for the database shape.
@@ -528,16 +528,12 @@ export const smsCompanionPairing = sqliteTable('sms_companion_pairing', {
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
 });
 
-// Contador sequencial por série/ano dos documentos (migration 0020). A PK real é
-// composta (series, year); o guarda de drift compara a flag PK por coluna, por
-// isso modela-se `series` como PK — a tabela é só acedida por SQL cru em
-// numbering.ts, nunca pelo query builder. ponytail: PK composta como single-col,
-// suficiente porque é uma tabela-contador congelada.
+// Contador sequencial por série/ano dos documentos (migration 0020).
 export const documentSequences = sqliteTable('document_sequences', {
-  series: text('series').primaryKey(),
+  series: text('series').notNull(),
   year: integer('year').notNull(),
   lastNumber: integer('last_number').notNull().default(0)
-});
+}, (table) => [primaryKey({ columns: [table.series, table.year] })]);
 
 // Rate-limit / lockout do login (migration 0022).
 export const loginThrottle = sqliteTable('login_throttle', {
@@ -722,3 +718,18 @@ export type NetworkProbeStateRow = typeof networkProbeState.$inferSelect;
 export type NetworkProbeEventRow = typeof networkProbeEvents.$inferSelect;
 export type ServiceNetworkStateRow = typeof serviceNetworkState.$inferSelect;
 export type NetworkDiscoveryHostRow = typeof networkDiscoveryHosts.$inferSelect;
+
+// Download/upload acumulado por dia e por WAN (migration 0067).
+export const wanTrafficDaily = sqliteTable('wan_traffic_daily', {
+  day: text('day').notNull(),
+  interface: text('interface').notNull(),
+  rxBytes: integer('rx_bytes').notNull().default(0),
+  txBytes: integer('tx_bytes').notNull().default(0)
+}, (table) => [primaryKey({ columns: [table.day, table.interface] })]);
+
+export const wanCounterState = sqliteTable('wan_counter_state', {
+  interface: text('interface').primaryKey(),
+  rxLast: integer('rx_last').notNull(),
+  txLast: integer('tx_last').notNull(),
+  seenAt: text('seen_at').notNull()
+});

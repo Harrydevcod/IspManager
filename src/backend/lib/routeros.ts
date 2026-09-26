@@ -1,5 +1,5 @@
 import { X509Certificate } from 'node:crypto';
-import { request as httpsRequest } from 'node:https';
+import { Agent, request as httpsRequest } from 'node:https';
 import { connect as tlsConnect } from 'node:tls';
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
@@ -31,6 +31,45 @@ export const DEFAULT_ROUTER_PORT = 443;
 const DEFAULT_INTERVAL_SECONDS = 120;
 const DEFAULT_MAX_DISABLES = 5;
 const REQUEST_TIMEOUT_MS = 10_000;
+const routerAgents = new Map<string, Agent>();
+
+/**
+ * O certificado fixado vive no agente, não no pedido: desde o Node 24.21 um
+ * `checkServerIdentity` por pedido dá a cada pedido um conjunto de ligações
+ * próprio e nenhuma é reutilizada. A chave é o PEM fixado inteiro, não só a
+ * impressão digital da folha: a folha sozinha e a cadeia têm a mesma impressão
+ * digital mas âncoras diferentes, e um agente só serve aquilo com que foi criado.
+ */
+function routerAgent(host: string, port: number, pinnedPem: string, pinnedFingerprint: string): Agent {
+  const key = `${host}|${port}|${pinnedPem}`;
+  const cached = routerAgents.get(key);
+  if (cached) return cached;
+  for (const agent of routerAgents.values()) agent.destroy();
+  routerAgents.clear();
+  const agent = new Agent({
+    keepAlive: true, maxSockets: 2, maxFreeSockets: 2, timeout: REQUEST_TIMEOUT_MS,
+    ...(pinnedPem
+      ? {
+          ca: [pinnedPem],
+          // O nome no certificado do router não corresponde a nada
+          // resolvível; a identidade aqui é o próprio certificado. O Node
+          // chama isto antes de escrever no socket, e uma ligação reutilizada
+          // já passou por aqui ao abrir.
+          checkServerIdentity: (_host: string, cert: { fingerprint256?: string }) =>
+            cert.fingerprint256?.toUpperCase() === pinnedFingerprint
+              ? undefined
+              : new RouterError('O certificado do router nao e o que esta fixado nas definicoes', 0, undefined, 'CERT_MISMATCH')
+        }
+      : {})
+  });
+  routerAgents.set(key, agent);
+  return agent;
+}
+
+export function resetRouterAgentCacheForTests(): void {
+  for (const agent of routerAgents.values()) agent.destroy();
+  routerAgents.clear();
+}
 
 // ---------------------------------------------------------------- definições
 
@@ -298,7 +337,7 @@ export function createTransport(config: RouterConfig): RouterTransport {
   const pinnedPem = config.tlsCert.trim();
   const pinnedFingerprint = pinnedPem ? fingerprintOf(pinnedPem) : '';
 
-  return (req) =>
+  const send = (req: RouterRequest, retried = false): Promise<unknown> =>
     new Promise((resolve, reject) => {
       const payload = req.body === undefined ? null : Buffer.from(JSON.stringify(req.body));
       const call = httpsRequest(
@@ -308,23 +347,8 @@ export function createTransport(config: RouterConfig): RouterTransport {
           path: `/rest${req.path}`,
           method: req.method,
           auth,
+          agent: routerAgent(config.host, config.port, pinnedPem, pinnedFingerprint),
           rejectUnauthorized: true,
-          ...(pinnedPem
-            ? {
-                ca: [pinnedPem],
-                // O nome no certificado do router não corresponde a nada
-                // resolvível; a identidade aqui é o próprio certificado.
-                checkServerIdentity: (_host: string, cert: { fingerprint256?: string }) =>
-                  cert.fingerprint256?.toUpperCase() === pinnedFingerprint
-                    ? undefined
-                    : new RouterError(
-                        'O certificado do router nao e o que esta fixado nas definicoes',
-                        0,
-                        undefined,
-                        'CERT_MISMATCH'
-                      )
-              }
-            : {}),
           timeout: REQUEST_TIMEOUT_MS,
           headers: {
             accept: 'application/json',
@@ -365,6 +389,10 @@ export function createTransport(config: RouterConfig): RouterTransport {
         call.destroy(new RouterError('O router não respondeu a tempo', 0, undefined, 'ETIMEDOUT'))
       );
       call.on('error', (err: NodeJS.ErrnoException) => {
+        if (!retried && req.method === 'GET' && call.reusedSocket && err.code === 'ECONNRESET') {
+          resolve(send(req, true));
+          return;
+        }
         if (err instanceof RouterError) {
           reject(err);
           return;
@@ -390,6 +418,8 @@ export function createTransport(config: RouterConfig): RouterTransport {
       if (payload) call.write(payload);
       call.end();
     });
+
+  return (req) => send(req);
 }
 
 // ----------------------------------------------------------------- modelo
@@ -502,6 +532,111 @@ export async function listInterfaces(transport: RouterTransport): Promise<Router
       comment: str(row.comment)
     }))
     .filter((item) => item.name);
+}
+
+/**
+ * `monitor-traffic` é um comando só de leitura: a REST API expõe comandos via
+ * POST, mas este não escreve nada no router. É a única exceção deliberada ao
+ * GET nas leituras deste módulo. Os contadores `/interface rx-byte` são
+ * atualizados pelo router cerca de uma vez por segundo e dão taxas aos saltos.
+ * O transporte só repete GET; este POST não deve ser repetido.
+ */
+export async function monitorTraffic(
+  transport: RouterTransport,
+  names: string[]
+): Promise<Array<{ name: string; rxBps: number | null; txBps: number | null }>> {
+  const raw = await transport({
+    method: 'POST',
+    path: '/interface/monitor-traffic',
+    body: { interface: names.join(','), once: '' }
+  });
+  return asArray(raw)
+    .map((row) => ({
+      name: str(row.name) ?? '',
+      rxBps: num(row['rx-bits-per-second']),
+      txBps: num(row['tx-bits-per-second'])
+    }))
+    .filter((item) => item.name);
+}
+
+/** Os membros de uma lista de interfaces (/interface/list), p.ex. a WAN do load balance. */
+export async function listInterfaceListMembers(transport: RouterTransport, list: string): Promise<string[]> {
+  const raw = await transport({ method: 'GET', path: `/interface/list/member?list=${encodeURIComponent(list)}&.proplist=interface` });
+  return asArray(raw).map((row) => str(row.interface)).filter((name): name is string => Boolean(name));
+}
+
+export type RouterLogEntry ={ id: string; time: string; topics: string; message: string };
+
+/** O log em memória do router (1000 linhas por omissão), as mais recentes primeiro. */
+export async function listLog(transport: RouterTransport): Promise<RouterLogEntry[]> {
+  const raw = await transport({ method: 'GET', path: '/log?.proplist=.id,time,topics,message' });
+  return asArray(raw)
+    .map((row, index) => ({ id: str(row['.id']) ?? String(index), time: str(row.time) ?? '', topics: str(row.topics) ?? '', message: str(row.message) ?? '' }))
+    .filter((entry) => entry.message)
+    .reverse();
+}
+
+export type RouterLoginFailures = { address: string; via: string; users: string[]; count: number };
+export type RouterRogueDhcp = { port: string; address: string; mac: string; count: number };
+export type RouterPppoeDrops = { login: string; reasons: string[]; count: number };
+export type RouterDhcpChurn = { mac: string; address: string; hostname: string | null; count: number };
+export type RouterLogSummary = {
+  loginFailures: RouterLoginFailures[];
+  rogueDhcp: RouterRogueDhcp[];
+  pppoeDrops: RouterPppoeDrops[];
+  dhcpChurn: RouterDhcpChurn[];
+};
+
+// Mensagens do RouterOS 7, tal como aparecem no /log.
+const LOGIN_FAILURE = /login failure for user (.+?) from (\S+) via (\S+)/;
+const ROGUE_DHCP = /^(\S+): received DHCP server message on untrusted port from source IP (\S+), MAC (\S+)/;
+const PPPOE_DROP = /^<pppoe-(.+?)>: terminating\.\.\. - (.+?)\s*$/;
+const DHCP_RELEASE = /deassigned (\S+) for (\S+)(?: (\S+))?/;
+
+/** Um aparelho que liberta o IP mais do que isto no registo está em ciclo, não a sair da rede. */
+export const DHCP_CHURN_THRESHOLD = 10;
+
+function tally<T extends { count: number }>(
+  entries: RouterLogEntry[],
+  pattern: RegExp,
+  keyOf: (match: RegExpExecArray) => string,
+  create: (match: RegExpExecArray) => T,
+  update?: (row: T, match: RegExpExecArray) => void
+): T[] {
+  const rows = new Map<string, T>();
+  for (const entry of entries) {
+    const match = pattern.exec(entry.message.trim());
+    if (!match) continue;
+    const key = keyOf(match);
+    const row = rows.get(key) ?? create(match);
+    row.count += 1;
+    update?.(row, match);
+    rows.set(key, row);
+  }
+  return [...rows.values()].sort((a, b) => b.count - a.count);
+}
+
+const addOnce = (list: string[], value: string) => { if (!list.includes(value)) list.push(value); };
+
+/**
+ * O que o registo diz sobre a rede, agrupado. Pura.
+ * - falhas de login por origem e serviço: quem está a bater à porta;
+ * - DHCP intruso travado pelo dhcp-snooping: um router de cliente ligado ao contrário;
+ * - quedas de PPPoE por utilizador: ligação física ou alimentação do cliente;
+ * - aparelhos em ciclo de DHCP: enchem o registo e escondem o resto.
+ */
+export function summarizeLog(entries: RouterLogEntry[]): RouterLogSummary {
+  return {
+    loginFailures: tally(entries, LOGIN_FAILURE, (m) => `${m[2]} ${m[3]}`,
+      (m) => ({ address: m[2], via: m[3], users: [], count: 0 }), (row, m) => addOnce(row.users, m[1])),
+    rogueDhcp: tally(entries, ROGUE_DHCP, (m) => m[3].toUpperCase(),
+      (m) => ({ port: m[1], address: m[2], mac: m[3].toUpperCase(), count: 0 })),
+    pppoeDrops: tally(entries, PPPOE_DROP, (m) => m[1],
+      (m) => ({ login: m[1], reasons: [], count: 0 }), (row, m) => addOnce(row.reasons, m[2])),
+    dhcpChurn: tally(entries, DHCP_RELEASE, (m) => m[2].toUpperCase(),
+      (m) => ({ mac: m[2].toUpperCase(), address: m[1], hostname: m[3] ?? null, count: 0 }))
+      .filter((row) => row.count >= DHCP_CHURN_THRESHOLD)
+  };
 }
 
 // ------------------------------------------------------------- diagnóstico

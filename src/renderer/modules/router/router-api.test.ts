@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { formatBytes, profileRows, SESSION_STATE } from './router-api';
+import { formatBitrate, formatBytes, profileRows, SESSION_STATE } from './router-api';
 
 describe('formatBytes', () => {
   test('usa unidades binárias com vírgula decimal (pt-PT)', () => {
@@ -45,5 +45,15 @@ describe('SESSION_STATE', () => {
   test('tem rótulo pt-PT para cada estado do servidor', () => {
     expect(Object.keys(SESSION_STATE).sort()).toEqual(['desativado', 'offline', 'online', 'sem_secret', 'sem_servico']);
     expect(SESSION_STATE.sem_servico.label).toBe('Sem serviço no ISPM');
+  });
+});
+
+describe('formatBitrate', () => {
+  test('unidades decimais, como a velocidade dos planos, com vírgula pt-PT', () => {
+    expect(formatBitrate(0)).toBe('0 bit/s');
+    expect(formatBitrate(950)).toBe('950 bit/s');
+    expect(formatBitrate(12_400_000)).toBe('12,4 Mbit/s');
+    expect(formatBitrate(1_500_000_000)).toBe('1,5 Gbit/s');
+    expect(formatBitrate(null)).toBe('—');
   });
 });
