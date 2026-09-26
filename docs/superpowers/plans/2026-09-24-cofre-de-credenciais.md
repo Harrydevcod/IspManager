@@ -177,14 +177,20 @@ type SecretFieldProps = { label: string; configured: boolean; draft: SecretDraft
 
 ## Tarefa 6 — Verificação integrada e documentação
 
-**Criar:** `src/backend/routes/vault.integration.test.ts`, `docs/adr/0011-cofre-de-credenciais.md`.
+**Criar:** `src/backend/routes/vault.integration.test.ts`, `docs/adr/0012-cofre-de-credenciais.md` (o 0011 foi para os perfis PPP).
 **Modificar:** ADR 0008 (tirar a afirmação de password visível), ADR 0009 (tirar o fallback em claro), a especificação aprovada, `CHANGELOG.md`.
 
-- [ ] E2E com DB temporária: legado → migração → edição → backup → "máquina B" → login → `locked` → recuperação → transporte RouterOS falso recebe o valor original, e a API nunca o recebe. Snapshot das flags antes/depois idêntico.
-- [ ] `npm.cmd run typecheck`, `npm.cmd run lint`, `npm.cmd test`, `npx.cmd tsc -p tsconfig.main.json --noEmit`.
+- [x] E2E com DB temporária: legado → migração → edição → backup → "máquina B" → login → `locked` → recuperação → transporte RouterOS falso recebe o valor original, e a API nunca o recebe. Snapshot das flags antes/depois idêntico.
+- [x] `npm.cmd run typecheck`, `npm.cmd run lint`, `npm.cmd test`, `npx.cmd tsc -p tsconfig.main.json --noEmit`.
 - [ ] Verificar no Electron real com dados artificiais: criar/editar/cancelar, olho, relock, reinício, entrega pendente interrompida. Sem segredos reais em screenshots; sem router real.
-- [ ] Documentar: o que o cofre protege e o que não protege (ver **Context**); porque é que o cofre fica `locked` em `npm run dev`; que um `enc:v1:` que não abra exige a máquina original ou substituição explícita dessa credencial.
+- [x] Documentar: o que o cofre protege e o que não protege (ver **Context**); porque é que o cofre fica `locked` em `npm run dev`; que um `enc:v1:` que não abra exige a máquina original ou substituição explícita dessa credencial.
 - [ ] Nota de lançamento: **esta versão tem de arrancar uma vez na máquina original** para converter os valores legados antes de qualquer restauro noutro sítio. O administrador tem de guardar a chave de recuperação.
+
+**Notas de implementação (Tarefa 6 e correções da revisão da 5):**
+- A revisão da Tarefa 5 encontrou que `recovery_pending` só se via em Configurações → Cofre: um administrador que nunca abrisse o separador nunca guardava a chave. Acrescentado o `VaultBanner`, um aviso em todos os módulos, só para admin, que abre o separador Cofre. Também avisa do cofre trancado e das credenciais por converter. O painel ganhou o botão "Copiar".
+- O ADR ficou com o número 0012, porque o 0011 são os perfis PPP.
+- As senhas PPPoE geradas automaticamente deixam de ser recuperáveis (spec, linha 159). O caminho para as dar ao técnico está escrito no ADR 0008 e no 0012.
+- A nota de lançamento vai no `CHANGELOG.md` do ramo `release/2.6`, não neste ramo.
 
 ---
 

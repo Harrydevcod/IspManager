@@ -2,7 +2,10 @@
 
 ## Estado
 
-Aceite e implementado.
+Aceite e implementado; **substituído em parte pelo ADR 0012** (2.6). A selagem direta com o DPAPI deu
+lugar a um cofre com chave de recuperação, que cifra também a senha PPPoE e sobrevive a um restauro
+noutra máquina. O que se mantém daqui: a porta única em `secrets.ts`, a base não cifrada e a análise de
+ameaças. Os parágrafos marcados com **(até à 2.5)** descrevem o comportamento anterior.
 
 ## Contexto
 
@@ -25,9 +28,10 @@ Selar essas quatro credenciais com o `safeStorage` do Electron — DPAPI no Wind
 keyring no Linux. A chave de cifra é da **conta do sistema operativo**, e nunca chega ao disco da
 aplicação.
 
-O formato guardado é `enc:v1:<base64>`. Um valor sem esse prefixo é texto simples: é assim que se leem
-as instalações que já existem, e é assim que a aplicação continua a funcionar onde não há cifra
-disponível.
+**(até à 2.5)** O formato guardado era `enc:v1:<base64>`, e um valor sem esse prefixo era texto
+simples, também onde não havia cifra disponível. Desde o ADR 0012 **não há fallback em claro**: uma
+escrita sem cofre aberto é recusada, e os `enc:v1:` e os valores em claro são convertidos para
+`enc:v2:` no arranque.
 
 Toda a leitura e escrita passa por `src/backend/lib/secrets.ts`. **Nenhum chamador vê o `safeStorage`.**
 
@@ -49,7 +53,9 @@ fasquia; não a torna intransponível.
 quem copia um copia a outra. O SQLCipher teria esse mesmo problema, mais uma dependência nativa a
 recompilar por plataforma.
 
-**`services.pppoe_password` não é selado.** Selá-lo protegia um campo numa base que continua a ter o
+**(até à 2.5) `services.pppoe_password` não era selado**, e o ADR 0012 reverte isto: com a chave de
+recuperação, um restauro noutra máquina já não deixa as senhas ilegíveis, que era a objeção. O
+raciocínio original: selá-lo protegia um campo numa base que continua a ter o
 nome, o NIF, a morada e o histórico financeiro de toda a gente em claro — e criava uma avaria a sério:
 num restauro noutra máquina ficavam centenas de credenciais ilegíveis, e regenerá-las derrubava o parque
 inteiro até cada CPE reconectar. A exposição real desse campo era outra, e foi essa que se fechou: a
@@ -62,13 +68,12 @@ vale a pena passar a selar segredos para os continuar a copiar em claro para den
 uma migração SQL de propósito: é idempotente, auto-curativa, e não fica presa à cadeia de migrações
 (ver ADR 0003).
 
-**Um backup restaurado noutra máquina ou noutra conta perde estas credenciais** — é a proteção a
-funcionar. O arranque deteta-o (cifra disponível, bloco que não abre), limpa os valores para as
-Definições não mostrarem uma máscara a fingir que há senha, e deixa a lista do que se perdeu para a
-interface avisar. Clientes, faturas e histórico são restaurados na íntegra. A chave das sessões
-regenera-se e toda a gente entra de novo.
+**(até à 2.5) Um backup restaurado noutra máquina ou noutra conta perdia estas credenciais.** Desde o
+ADR 0012 o cofre fica `locked` e a chave de recuperação desbloqueia-o sem perder nada. Clientes, faturas
+e histórico são restaurados na íntegra. A chave das sessões é local e regenera-se: toda a gente entra
+de novo.
 
-**Sem cifra disponível nada é apagado.** Um bloco selado que não abre num arranque sem keyring é só um
+**Nada é apagado por não abrir** (desde a 2.4, e é a decisão D5 do cofre). Um bloco selado que não abre num arranque sem keyring é só um
 bloco que esta máquina não sabe abrir hoje.
 
 **A API síncrona do `safeStorage` desaparece no Electron 46**, substituída por `encryptStringAsync` /
