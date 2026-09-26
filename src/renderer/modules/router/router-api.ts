@@ -170,6 +170,26 @@ export function profileRows(profiles: RouterProfileOption[], plans: PlanRef[]): 
 export type WanRate = { name: string; running: boolean; downBps: number | null; upBps: number | null };
 export type RouterWan = { sampledAt: number; interfaces: WanRate[] };
 
+export type WanUsageRow = { interface: string; rxBytes: number; txBytes: number };
+export type RouterWanUsage = {
+  since: string | null;
+  today: WanUsageRow[];
+  month: WanUsageRow[];
+  days: Array<{ day: string; perInterface: Array<{ interface: string; rxBytes: number }> }>;
+};
+
+const DATA_UNITS = ['B', 'kB', 'MB', 'GB', 'TB'];
+
+export function formatDataVolume(bytes: number): string {
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1000 && unit < DATA_UNITS.length - 1) {
+    value /= 1000;
+    unit += 1;
+  }
+  return `${decimal.format(value)} ${DATA_UNITS[unit]}`;
+}
+
 const BIT_UNITS = ['bit/s', 'kbit/s', 'Mbit/s', 'Gbit/s'];
 
 export function formatBitrate(bps: number | null): string {

@@ -46,6 +46,7 @@ import {
 import { crossReference, type ObservedHost } from '../lib/network-inventory';
 import { buildProposals, dismissalKey, findOrphans, type ProposalKind } from '../lib/discovery-reconcile';
 import { runJob } from '../lib/jobRuns';
+import { loadWanUsage } from '../lib/wan-usage';
 import { applyPlanProfile, readBaseProfileName } from '../lib/plan-profiles';
 import { recordAudit } from '../lib/audit';
 import { isIpv4, isPrivateIpv4, SWEEP_BATCH_SIZE } from '../../shared/ip-range';
@@ -421,6 +422,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     }
     return result;
   });
+
+  app.get('/api/network/router/wan/usage', adminOnly, async () => loadWanUsage(getSqliteDatabase()));
 
   app.get('/api/network/router/log', adminOnly, async () => readLive(async (transport) => {
     // Resume-se o registo todo; o ecrã só lista as linhas mais recentes.

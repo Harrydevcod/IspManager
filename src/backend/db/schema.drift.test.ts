@@ -72,7 +72,7 @@ describe('schema drift: Drizzle ↔ migrations', () => {
       const declaredCols = new Map(
         table.columns.map((c) => [
           c.name,
-          { type: c.getSQLType().toUpperCase(), pk: c.primary }
+          { type: c.getSQLType().toUpperCase(), pk: c.primary || table.primaryKeys.some((key) => key.columns.includes(c)) }
         ])
       );
 
@@ -87,7 +87,7 @@ describe('schema drift: Drizzle ↔ migrations', () => {
         const liveCol = liveCols.get(colName);
         if (!liveCol) continue; // covered by the set comparison above
         expect(declaredCol.type, `affinity mismatch on ${table.name}.${colName}`).toBe(liveCol.type);
-        expect(declaredCol.pk, `primary-key flag mismatch on ${table.name}.${colName}`).toBe(liveCol.pk === 1);
+        expect(declaredCol.pk, `primary-key flag mismatch on ${table.name}.${colName}`).toBe(liveCol.pk > 0);
       }
     });
   }

@@ -11,6 +11,8 @@ let dataDir: string;
 let closeDatabaseForTests: () => void;
 
 const TABLES_TO_CLEAR = [
+  'wan_traffic_daily',
+  'wan_counter_state',
   'network_probe_events',
   'network_probe_state',
   'network_discovery_hosts',
@@ -19,6 +21,15 @@ const TABLES_TO_CLEAR = [
   'equipment_catalog',
   'app_settings'
 ];
+
+describe('GET /api/network/router/wan/usage', () => {
+  test('responde sem router configurado', async () => {
+    const response = await app.inject('/api/network/router/wan/usage');
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ since: null, today: [], month: [] });
+    expect(response.json().days).toHaveLength(30);
+  });
+});
 
 beforeAll(async () => {
   dataDir = mkdtempSync(path.join(tmpdir(), 'ispm-network-routes-test-'));
