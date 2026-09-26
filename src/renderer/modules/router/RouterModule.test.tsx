@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ConfirmProvider, ToastProvider } from '../../components';
 import { AuthProvider } from '../../lib/auth';
 import RouterModule from './RouterModule';
+import { formatDataVolume } from './router-api';
 
 const overview = {
   available: true,
@@ -172,6 +173,32 @@ describe('Router de gestão', () => {
     // Os mosaicos repetiam os mesmos números: a secção do acumulado ficou só com o histórico.
     expect(container.querySelector('.router-usage-period')).toBeNull();
     expect(container.textContent).toContain('Download diário das WAN');
+  });
+
+  test('o histórico mostra o total diário das WAN no tooltip e na última barra', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const original = fetchMock.getMockImplementation()!;
+    const firstRx = 2_000_000_000;
+    const secondRx = 1_000_000_000;
+    fetchMock.mockImplementation(async (input: string | URL | Request) => {
+      const response = await original(input);
+      if (!String(input).endsWith('/router/wan/usage')) return response;
+      const body = await response.json();
+      return json({ ...body, days: [
+        { day: '2026-09-24', perInterface: [{ interface: 'WAN2-STARLINK', rxBytes: 500_000_000 }] },
+        { day: '2026-09-25', perInterface: [
+          { interface: 'WAN1-STARLINK', rxBytes: firstRx },
+          { interface: 'WAN2-STARLINK', rxBytes: secondRx }
+        ] }
+      ] });
+    });
+    const container = await mount();
+    const history = container.querySelector('.router-usage-history');
+    const total = formatDataVolume(firstRx + secondRx);
+    expect(history?.querySelector('g:last-of-type title')?.textContent).toContain(`Total ${total}`);
+    expect(history?.querySelectorAll('.router-usage-total')).toHaveLength(1);
+    expect(history?.querySelector('g:last-of-type .router-usage-total')?.textContent).toBe(total);
+    expect(history?.querySelector('g:first-of-type rect')?.getAttribute('fill')).toBe('var(--info)');
   });
 
   test('sem registo do acumulado, os cartões mostram "—" e mantêm a linha', async () => {
