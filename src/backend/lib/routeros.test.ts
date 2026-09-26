@@ -19,6 +19,7 @@ import {
   testConnection,
   readSystem,
   listInterfaces,
+  listInterfaceListMembers,
   listLog,
   summarizeLog,
   DHCP_CHURN_THRESHOLD,
@@ -536,6 +537,12 @@ describe('leituras do módulo Router de gestão', () => {
       method: 'GET',
       path: '/interface?.proplist=name,type,running,disabled,mac-address,rx-byte,tx-byte,comment'
     });
+  });
+
+  test('listInterfaceListMembers lê os membros da lista pedida', async () => {
+    const transport = fakeTransport([[{ interface: 'WAN1-STARLINK' }, { interface: 'WAN2-STARLINK' }, {}]]);
+    await expect(listInterfaceListMembers(transport, 'WAN')).resolves.toEqual(['WAN1-STARLINK', 'WAN2-STARLINK']);
+    expect(transport.calls[0]).toEqual({ method: 'GET', path: '/interface/list/member?list=WAN&.proplist=interface' });
   });
 
   test('listLog devolve o registo todo, as mais recentes primeiro, e ignora linhas vazias', async () => {

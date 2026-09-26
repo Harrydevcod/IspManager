@@ -6,6 +6,7 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
+- **Tráfego das WAN ao vivo na Visão geral do Router de gestão.** Um cartão por interface da lista `WAN` do MikroTik (os dois Starlink), com download e upload atuais e a curva dos últimos 2 minutos, os dois na mesma escala para se compararem. Por baixo, o total e como o download se reparte entre as WAN, para ver o load balance a funcionar. Atualiza de 3 em 3 segundos enquanto a Visão geral está aberta; só leitura (a taxa vem da diferença dos contadores, sem comandos ao router).
 - **Aba Registo no Router de gestão.** O registo do MikroTik lido ao vivo (as 300 linhas mais recentes), com erros a vermelho, avisos a amarelo e o filtro "Só erros e avisos". Por cima, **o que o registo diz**, lido do registo todo: o **DHCP intruso** que o dhcp-snooping está a travar (porta, MAC, fabricante e cliente, se o ISPM o conhecer), as **falhas de login** por origem e serviço, as **quedas de PPPoE** por cliente com o motivo, e os **aparelhos em ciclo de DHCP**, que enchem o registo e escondem o resto. Só leitura.
 - **As divergências da Visão geral batem com a reconciliação.** Os utilizadores do router marcados pelo ISPM que já não têm serviço contavam na reconciliação mas não na Visão geral, que mostrava 0. Agora contam, e o cartão abre as Sessões PPPoE, onde aparecem como "Sem serviço no ISPM".
 

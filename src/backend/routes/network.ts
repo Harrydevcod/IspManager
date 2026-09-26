@@ -13,6 +13,7 @@ import {
   listNeighbors,
   listActive,
   listInterfaces,
+  listInterfaceListMembers,
   listLog,
   summarizeLog,
   listServices,
@@ -389,6 +390,29 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
   app.get('/api/network/router/interfaces', adminOnly, async () => readLive(async (transport) => ({
     interfaces: await listInterfaces(transport)
   })));
+
+  // ponytail: cache de 60 s; a lista WAN quase nunca muda e assim cada leitura
+  // do card é um só pedido ao router (o transporte abre um TLS novo por pedido).
+  let wanNames: { host: string; names: string[]; at: number } | null = null;
+
+  /** Contadores das interfaces da lista WAN; a taxa calcula-a o ecrã entre duas leituras. */
+  app.get('/api/network/router/wan', adminOnly, async () => {
+    const result = await readLive(async (transport, config) => {
+      if (!wanNames || wanNames.host !== config.host || Date.now() - wanNames.at > 60_000) {
+        wanNames = { host: config.host, names: await listInterfaceListMembers(transport, 'WAN'), at: Date.now() };
+      }
+      const names = wanNames.names;
+      if (names.length === 0) return { missing: true as const };
+      const interfaces = (await listInterfaces(transport))
+        .filter((item) => names.includes(item.name))
+        .map(({ name, running, disabled, rxBytes, txBytes }) => ({ name, running: running && !disabled, rxBytes, txBytes }));
+      return { sampledAt: Date.now(), interfaces };
+    });
+    if (result.available && 'missing' in result) {
+      return { available: false as const, reason: 'O router não tem a lista de interfaces WAN (/interface list).' };
+    }
+    return result;
+  });
 
   app.get('/api/network/router/log', adminOnly, async () => readLive(async (transport) => {
     // Resume-se o registo todo; o ecrã só lista as linhas mais recentes.

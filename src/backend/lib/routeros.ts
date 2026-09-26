@@ -504,7 +504,13 @@ export async function listInterfaces(transport: RouterTransport): Promise<Router
     .filter((item) => item.name);
 }
 
-export type RouterLogEntry = { id: string; time: string; topics: string; message: string };
+/** Os membros de uma lista de interfaces (/interface/list), p.ex. a WAN do load balance. */
+export async function listInterfaceListMembers(transport: RouterTransport, list: string): Promise<string[]> {
+  const raw = await transport({ method: 'GET', path: `/interface/list/member?list=${encodeURIComponent(list)}&.proplist=interface` });
+  return asArray(raw).map((row) => str(row.interface)).filter((name): name is string => Boolean(name));
+}
+
+export type RouterLogEntry ={ id: string; time: string; topics: string; message: string };
 
 /** O log em memória do router (1000 linhas por omissão), as mais recentes primeiro. */
 export async function listLog(transport: RouterTransport): Promise<RouterLogEntry[]> {
