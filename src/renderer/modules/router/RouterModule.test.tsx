@@ -129,12 +129,35 @@ describe('Router de gestão', () => {
     const container = await mount();
     expect(container.textContent).toContain('Tráfego das WAN');
     const cards = [...container.querySelectorAll('.router-wan-card')];
-    expect(cards.map((card) => card.querySelector('strong')?.textContent)).toEqual(['WAN1-STARLINK', 'WAN2-STARLINK']);
+    expect(cards.map((card) => card.querySelector('strong')?.textContent)).toEqual(['WAN1-STARLINK', 'WAN2-STARLINK', 'Total']);
     expect(cards[0].textContent).toContain('10 Mbit/s');
     expect(cards[0].textContent).toContain('1 Mbit/s');
     expect(cards[1].textContent).toContain('5 Mbit/s');
     expect(cards[1].textContent).toContain('Sem ligação');
-    expect(container.querySelector('.router-wan-total')?.textContent).toContain('67% / 33%');
+  });
+
+  test('o cartão Total, ao lado das WAN, soma as duas e mostra a repartição', async () => {
+    const container = await mount();
+    const total = container.querySelector('.router-wan-grid.has-total > .router-wan-card.is-total');
+    const [down, up] = [...(total?.querySelectorAll('.router-wan-rates strong') ?? [])].map((node) => node.textContent);
+    expect(down).toBe('15 Mbit/s');
+    expect(up).toBe('1,5 Mbit/s');
+    expect(total?.textContent).toContain('1 de 2 ligadas');
+    expect(total?.querySelector('.router-wan-split')?.textContent).toBe('WAN1-STARLINK 67% · WAN2-STARLINK 33%');
+  });
+
+  test('com uma só WAN não há cartão Total', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input: string | URL | Request) => {
+      const response = await original(input);
+      if (!String(input).endsWith('/router/wan')) return response;
+      const body = await response.json();
+      return json({ ...body, interfaces: body.interfaces.slice(0, 1) });
+    });
+    const container = await mount();
+    expect(container.querySelectorAll('.router-wan-card')).toHaveLength(1);
+    expect(container.querySelector('.is-total')).toBeNull();
   });
 
   test('mostra os acumulados de hoje e do mês com a repartição por WAN', async () => {
