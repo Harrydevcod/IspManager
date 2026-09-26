@@ -503,6 +503,9 @@ export function deleteService(db: Database, id: number): ServiceOpResult<{
     db.prepare('DELETE FROM service_install_costs WHERE service_id = ?').run(id);
     db.prepare('DELETE FROM service_material_lines WHERE service_id = ?').run(id);
     db.prepare('DELETE FROM service_events WHERE service_id = ?').run(id);
+    // O que a reconciliação leu do router: sem isto, a chave estrangeira
+    // impedia apagar qualquer serviço que já tivesse passado por uma passagem.
+    db.prepare('DELETE FROM service_network_state WHERE service_id = ?').run(id);
     // Child-first: partilhas antes das atribuições, sem depender do ON DELETE CASCADE.
     db.prepare('DELETE FROM service_device_shares WHERE service_id = ?').run(id);
     db.prepare('DELETE FROM service_device_assignments WHERE service_id = ?').run(id);
