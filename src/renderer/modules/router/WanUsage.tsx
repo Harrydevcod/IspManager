@@ -7,6 +7,7 @@ const shortDate = (day: string) => `${day.slice(8, 10)}-${day.slice(5, 7)}`;
 function History({ data }: { data: RouterWanUsage }) {
   const names = [...new Set(data.days.flatMap((day) => day.perInterface.map((row) => row.interface)))].sort();
   const max = Math.max(1, ...data.days.map((day) => day.perInterface.reduce((total, row) => total + row.rxBytes, 0)));
+  const peakIndex = data.days.findIndex((day) => day.perInterface.reduce((total, row) => total + row.rxBytes, 0) === max);
   const baseline = 105;
   const height = 86;
   return (
@@ -14,16 +15,18 @@ function History({ data }: { data: RouterWanUsage }) {
       <svg viewBox="0 0 600 124" preserveAspectRatio="none" role="img" aria-label="Download diário das WAN nos últimos 30 dias">
         {data.days.map((day, index) => {
           const rows = [...day.perInterface].sort((a, b) => a.interface.localeCompare(b.interface));
+          const total = rows.reduce((sum, row) => sum + row.rxBytes, 0);
           let top = baseline;
           const x = index * 20 + 2;
           return (
             <g key={day.day}>
-              <title>{dateLabel(day.day)} · {rows.map((row) => `${row.interface} ${formatDataVolume(row.rxBytes)}`).join(' · ')}</title>
-              {rows.map((row, rowIndex) => {
+              <title>{dateLabel(day.day)} · Total {formatDataVolume(total)} · {rows.map((row) => `${row.interface} ${formatDataVolume(row.rxBytes)}`).join(' · ')}</title>
+              {rows.map((row) => {
                 const barHeight = row.rxBytes / max * height;
                 top -= barHeight;
-                return <rect key={row.interface} x={x} y={top} width="15" height={barHeight} fill={rowIndex === 0 ? 'var(--accent)' : 'var(--info)'} />;
+                return <rect key={row.interface} x={x} y={top} width="15" height={barHeight} fill={names.indexOf(row.interface) === 0 ? 'var(--accent)' : 'var(--info)'} />;
               })}
+              {total > 0 && (index === data.days.length - 1 || index === peakIndex) && <text className="router-usage-total" x={x} y={top - 4}>{formatDataVolume(total)}</text>}
               {index % 5 === 0 && <text x={x} y="121">{shortDate(day.day)}</text>}
             </g>
           );
