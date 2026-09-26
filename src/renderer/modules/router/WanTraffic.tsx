@@ -5,12 +5,12 @@ import { formatBitrate, ROUTER_API, trafficRates, type Live, type RouterWan, typ
 import { useLive } from './useLive';
 
 /**
- * ponytail: 3 s porque o transporte abre um TLS novo por pedido e o hEX S é
- * fraco de CPU; com um agente keep-alive no transporte podia descer para 1 s.
+ * ponytail: com a ligação TLS reutilizada, 1 s acompanha o ritmo médio do Winbox
+ * sem abrir uma ligação nova em cada leitura no hEX S.
  */
-const WAN_POLL_MS = 3_000;
-/** 40 pontos de 3 s = os últimos 2 minutos. */
-const HISTORY = 40;
+const WAN_POLL_MS = 1_000;
+/** 120 pontos de 1 s = os últimos 2 minutos. */
+const HISTORY = 120;
 
 const peak = (points: WanRate[]) => Math.max(1, ...points.flatMap((point) => [point.downBps ?? 0, point.upBps ?? 0]));
 

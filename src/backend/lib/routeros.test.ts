@@ -1,8 +1,10 @@
-import { describe, expect, test } from 'vitest';
+import { createServer } from 'node:https';
+import { afterEach, describe, expect, test } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import {
   auditRouterServices,
+  createTransport,
   createProfile,
   createSecret,
   describeRouterFailure,
@@ -14,6 +16,7 @@ import {
   listSecrets,
   patchSecret,
   readRouterConfig,
+  resetRouterAgentCacheForTests,
   removeActive,
   RouterError,
   testConnection,
@@ -30,6 +33,87 @@ import {
   neighborModel,
   type RouterTransport
 } from './routeros';
+import { TEST_ROUTER_CA_PEM, TEST_ROUTER_KEY_PEM, TEST_ROUTER_LEAF_PEM } from './routerosTestCerts';
+
+afterEach(resetRouterAgentCacheForTests);
+
+function localConfig(port: number, tlsCert = TEST_ROUTER_LEAF_PEM + TEST_ROUTER_CA_PEM) {
+  return {
+    enabled: true, host: '127.0.0.1', port, user: 'ispm', password: 'segredo',
+    dryRun: true, intervalSeconds: 120, tlsCert, maxDisablesPerRun: 5
+  };
+}
+
+async function withHttpsServer(
+  onRequest: (requestNumber: number, socket: import('node:net').Socket, respond: () => void) => void,
+  run: (port: number, connections: () => number, requests: () => number, tcpConnections: () => number) => Promise<void>
+) {
+  let connections = 0;
+  let tcpConnections = 0;
+  let requests = 0;
+  const server = createServer({ cert: TEST_ROUTER_LEAF_PEM + TEST_ROUTER_CA_PEM, key: TEST_ROUTER_KEY_PEM }, (_req, res) => {
+    requests += 1;
+    onRequest(requests, res.socket!, () => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+  });
+  server.on('secureConnection', () => { connections += 1; });
+  server.on('connection', () => { tcpConnections += 1; });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    await run((server.address() as { port: number }).port, () => connections, () => requests, () => tcpConnections);
+  } finally {
+    resetRouterAgentCacheForTests();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
+describe('ligação HTTPS reutilizada', () => {
+  test('dois GET de transportes diferentes usam a mesma ligação TLS', async () => {
+    await withHttpsServer((_number, _socket, respond) => respond(), async (port, connections) => {
+      const config = localConfig(port);
+      await createTransport(config)({ method: 'GET', path: '/system/resource' });
+      await createTransport(config)({ method: 'GET', path: '/system/resource' });
+      expect(connections()).toBe(1);
+    });
+  });
+
+  test('trocar o certificado fixado abre outra ligação e recusa a identidade errada', async () => {
+    await withHttpsServer((_number, _socket, respond) => respond(), async (port, _connections, _requests, tcpConnections) => {
+      await createTransport(localConfig(port))({ method: 'GET', path: '/system/resource' });
+      await expect(createTransport(localConfig(port, TEST_ROUTER_CA_PEM))({ method: 'GET', path: '/system/resource' }))
+        .rejects.toMatchObject({ code: 'CERT_MISMATCH' });
+      expect(tcpConnections()).toBe(2);
+    });
+  });
+
+  test('repete uma vez um GET quando o router fecha a ligação reutilizada', async () => {
+    await withHttpsServer((number, socket, respond) => {
+      if (number === 2) socket.destroy();
+      else respond();
+    }, async (port, connections, requests) => {
+      const transport = createTransport(localConfig(port));
+      await transport({ method: 'GET', path: '/system/resource' });
+      await expect(transport({ method: 'GET', path: '/system/resource' })).resolves.toEqual({ ok: true });
+      expect(requests()).toBe(3);
+      expect(connections()).toBe(2);
+    });
+  });
+
+  test('não repete PATCH quando o router fecha a ligação reutilizada', async () => {
+    await withHttpsServer((number, socket, respond) => {
+      if (number === 2) socket.destroy();
+      else respond();
+    }, async (port, _connections, requests) => {
+      const transport = createTransport(localConfig(port));
+      await transport({ method: 'GET', path: '/system/resource' });
+      await expect(transport({ method: 'PATCH', path: '/ppp/secret', body: { name: 'x' } }))
+        .rejects.toMatchObject({ code: 'ECONNRESET' });
+      expect(requests()).toBe(2);
+    });
+  });
+});
 
 /** Transporte falso: guarda as chamadas e devolve o que o teste mandar. */
 function fakeTransport(responses: unknown[] = []): RouterTransport & { calls: RouterRequest[] } {

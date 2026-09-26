@@ -1,5 +1,5 @@
 import { X509Certificate } from 'node:crypto';
-import { request as httpsRequest } from 'node:https';
+import { Agent, request as httpsRequest } from 'node:https';
 import { connect as tlsConnect } from 'node:tls';
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
@@ -31,6 +31,23 @@ export const DEFAULT_ROUTER_PORT = 443;
 const DEFAULT_INTERVAL_SECONDS = 120;
 const DEFAULT_MAX_DISABLES = 5;
 const REQUEST_TIMEOUT_MS = 10_000;
+const routerAgents = new Map<string, Agent>();
+
+function routerAgent(host: string, port: number, pinnedFingerprint: string): Agent {
+  const key = `${host}|${port}|${pinnedFingerprint}`;
+  const cached = routerAgents.get(key);
+  if (cached) return cached;
+  for (const agent of routerAgents.values()) agent.destroy();
+  routerAgents.clear();
+  const agent = new Agent({ keepAlive: true, maxSockets: 2, maxFreeSockets: 1, timeout: REQUEST_TIMEOUT_MS });
+  routerAgents.set(key, agent);
+  return agent;
+}
+
+export function resetRouterAgentCacheForTests(): void {
+  for (const agent of routerAgents.values()) agent.destroy();
+  routerAgents.clear();
+}
 
 // ---------------------------------------------------------------- definições
 
@@ -298,7 +315,7 @@ export function createTransport(config: RouterConfig): RouterTransport {
   const pinnedPem = config.tlsCert.trim();
   const pinnedFingerprint = pinnedPem ? fingerprintOf(pinnedPem) : '';
 
-  return (req) =>
+  const send = (req: RouterRequest, retried = false): Promise<unknown> =>
     new Promise((resolve, reject) => {
       const payload = req.body === undefined ? null : Buffer.from(JSON.stringify(req.body));
       const call = httpsRequest(
@@ -308,12 +325,15 @@ export function createTransport(config: RouterConfig): RouterTransport {
           path: `/rest${req.path}`,
           method: req.method,
           auth,
+          agent: routerAgent(config.host, config.port, pinnedFingerprint),
           rejectUnauthorized: true,
           ...(pinnedPem
             ? {
                 ca: [pinnedPem],
                 // O nome no certificado do router não corresponde a nada
                 // resolvível; a identidade aqui é o próprio certificado.
+                // Uma ligação reutilizada já passou esta verificação ao abrir.
+                // A impressão digital na chave do agente impede que sirva outro certificado.
                 checkServerIdentity: (_host: string, cert: { fingerprint256?: string }) =>
                   cert.fingerprint256?.toUpperCase() === pinnedFingerprint
                     ? undefined
@@ -365,6 +385,10 @@ export function createTransport(config: RouterConfig): RouterTransport {
         call.destroy(new RouterError('O router não respondeu a tempo', 0, undefined, 'ETIMEDOUT'))
       );
       call.on('error', (err: NodeJS.ErrnoException) => {
+        if (!retried && req.method === 'GET' && call.reusedSocket && err.code === 'ECONNRESET') {
+          resolve(send(req, true));
+          return;
+        }
         if (err instanceof RouterError) {
           reject(err);
           return;
@@ -390,6 +414,8 @@ export function createTransport(config: RouterConfig): RouterTransport {
       if (payload) call.write(payload);
       call.end();
     });
+
+  return (req) => send(req);
 }
 
 // ----------------------------------------------------------------- modelo

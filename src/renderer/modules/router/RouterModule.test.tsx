@@ -62,16 +62,16 @@ beforeEach(() => {
     if (url.endsWith('/router/sessions')) return json(sessions);
     if (url.endsWith('/router/log')) return json(log);
     if (url.endsWith('/router/wan')) {
-      // Cada leitura avança 3 s: 3,75 MB/0,375 MB na WAN1 = 10/1 Mbit/s; a WAN2 a metade.
+      // Cada leitura avança 1 s: 1,25 MB/0,125 MB na WAN1 = 10/1 Mbit/s; a WAN2 a metade.
       wanReads += 1;
-      const t = wanReads * 3000;
+      const t = wanReads * 1000;
       return json({
         available: true,
         dryRun: true,
         sampledAt: t,
         interfaces: [
-          { name: 'WAN1-STARLINK', running: true, rxBytes: wanReads * 3_750_000, txBytes: wanReads * 375_000 },
-          { name: 'WAN2-STARLINK', running: false, rxBytes: wanReads * 1_875_000, txBytes: wanReads * 187_500 }
+          { name: 'WAN1-STARLINK', running: true, rxBytes: wanReads * 1_250_000, txBytes: wanReads * 125_000 },
+          { name: 'WAN2-STARLINK', running: false, rxBytes: wanReads * 625_000, txBytes: wanReads * 62_500 }
         ]
       });
     }
@@ -118,7 +118,7 @@ describe('Router de gestão', () => {
     try {
       const container = await mount();
       expect(container.textContent).toContain('Tráfego das WAN');
-      await act(async () => { vi.advanceTimersByTime(3000); });
+      await act(async () => { vi.advanceTimersByTime(1000); });
       const cards = [...container.querySelectorAll('.router-wan-card')];
       expect(cards.map((card) => card.querySelector('strong')?.textContent)).toEqual(['WAN1-STARLINK', 'WAN2-STARLINK']);
       expect(cards[0].textContent).toContain('10 Mbit/s');
