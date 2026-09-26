@@ -61,3 +61,113 @@
   justify-content: flex-end;
   margin: var(--space-4) 0 var(--space-2);
 }
+
+/* Tráfego das WAN: download a azul, upload a verde, nas linhas e nos rótulos. */
+.router-wan {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.router-wan-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.router-wan-header h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.router-wan-header h3 svg {
+  color: var(--text-3);
+}
+
+.router-wan-header span {
+  font-size: var(--fs-sm);
+}
+
+.router-wan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-3);
+}
+
+.router-wan-card {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r3);
+  background: var(--surface);
+}
+
+.router-wan-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.router-wan-rates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.router-wan-rates > div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.router-wan-rates span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+
+.router-wan-rates .is-down span svg { color: var(--accent); }
+.router-wan-rates .is-up span svg { color: var(--success); }
+
+.router-wan-rates strong {
+  font-size: var(--fs-xl, 1.5rem);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.router-wan-spark {
+  width: 100%;
+  height: 48px;
+}
+
+.router-wan-spark polyline {
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.router-wan-spark .is-down { stroke: var(--accent); }
+.router-wan-spark .is-up { stroke: var(--success); }
+
+.router-wan-total {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-2, var(--text));
+}

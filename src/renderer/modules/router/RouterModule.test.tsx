@@ -43,6 +43,7 @@ const log = {
 };
 
 let routerAvailable = true;
+let wanReads = 0;
 const roots: Root[] = [];
 
 function json(body: unknown) {
@@ -51,6 +52,7 @@ function json(body: unknown) {
 
 beforeEach(() => {
   routerAvailable = true;
+  wanReads = 0;
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
     const url = String(input);
@@ -59,6 +61,20 @@ beforeEach(() => {
     if (url.endsWith('/router/overview')) return json(overview);
     if (url.endsWith('/router/sessions')) return json(sessions);
     if (url.endsWith('/router/log')) return json(log);
+    if (url.endsWith('/router/wan')) {
+      // Cada leitura avança 3 s: 3,75 MB/0,375 MB na WAN1 = 10/1 Mbit/s; a WAN2 a metade.
+      wanReads += 1;
+      const t = wanReads * 3000;
+      return json({
+        available: true,
+        dryRun: true,
+        sampledAt: t,
+        interfaces: [
+          { name: 'WAN1-STARLINK', running: true, rxBytes: wanReads * 3_750_000, txBytes: wanReads * 375_000 },
+          { name: 'WAN2-STARLINK', running: false, rxBytes: wanReads * 1_875_000, txBytes: wanReads * 187_500 }
+        ]
+      });
+    }
     return json({});
   }));
 });
@@ -95,6 +111,24 @@ describe('Router de gestão', () => {
     expect(container.textContent).toContain('31');
     expect(container.textContent).toContain('50%');
     expect(container.textContent).toContain('/ip service disable www');
+  });
+
+  test('a visão geral mede o download e o upload de cada WAN entre duas leituras', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    try {
+      const container = await mount();
+      expect(container.textContent).toContain('Tráfego das WAN');
+      await act(async () => { vi.advanceTimersByTime(3000); });
+      const cards = [...container.querySelectorAll('.router-wan-card')];
+      expect(cards.map((card) => card.querySelector('strong')?.textContent)).toEqual(['WAN1-STARLINK', 'WAN2-STARLINK']);
+      expect(cards[0].textContent).toContain('10 Mbit/s');
+      expect(cards[0].textContent).toContain('1 Mbit/s');
+      expect(cards[1].textContent).toContain('5 Mbit/s');
+      expect(cards[1].textContent).toContain('Sem ligação');
+      expect(container.querySelector('.router-wan-total')?.textContent).toContain('67% / 33%');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('as sessões mostram também o secret que nenhum serviço reclama', async () => {

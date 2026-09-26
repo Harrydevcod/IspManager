@@ -494,7 +494,7 @@ describe('POST /api/network/router/test', () => {
 });
 
 describe('GET /api/network/router/* — leituras do módulo Router de gestão', () => {
-  const urls = ['/api/network/router/overview', '/api/network/router/sessions', '/api/network/router/interfaces', '/api/network/router/log'];
+  const urls = ['/api/network/router/overview', '/api/network/router/sessions', '/api/network/router/interfaces', '/api/network/router/log', '/api/network/router/wan'];
 
   function setSetting(key: string, value: string) {
     db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run(key, value);

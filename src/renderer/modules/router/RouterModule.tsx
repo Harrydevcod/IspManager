@@ -1,8 +1,7 @@
 import { AlertTriangle, Cable, Cpu, Gauge, Layers, MemoryStick, RefreshCw, Router, ScrollText, Settings2, ShieldAlert, Timer, Waypoints, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { Badge, Button, EmptyState, ErrorRetry, MetricCard, MetricGrid, ModuleHeaderActions, SkeletonList } from '../../components';
-import { authFetch } from '../../lib/auth';
 import { formatPtDateTime } from '../../lib/format';
 import type { PlanRow } from '../../types';
 import { SettingsModule } from '../SettingsModule';
@@ -18,6 +17,8 @@ import {
   type RouterSession
 } from './router-api';
 import { InterfacesTable, LogView, ProfilesTable, SessionsTable } from './RouterTables';
+import { useLive } from './useLive';
+import { WanTraffic } from './WanTraffic';
 import './RouterModule.css';
 
 type RouterTab = 'overview' | 'sessions' | 'profiles' | 'interfaces' | 'log' | 'config';
@@ -30,42 +31,6 @@ const TABS: ReadonlyArray<{ id: RouterTab; label: string; icon: typeof Router }>
   { id: 'log', label: 'Registo', icon: ScrollText },
   { id: 'config', label: 'Configuração', icon: Settings2 }
 ];
-
-/** Igual ao painel Operação: o router é lido ao vivo, só enquanto a aba está à vista. */
-const POLL_MS = 30_000;
-
-/**
- * Lê um endpoint enquanto `active`. Cada efeito tem a sua bandeira: em
- * StrictMode a montagem dupla não deixa o pedido antigo escrever no estado.
- */
-function useLive<T>(url: string, active: boolean) {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [tick, setTick] = useState(0);
-  const reload = useCallback(() => setTick((current) => current + 1), []);
-
-  useEffect(() => {
-    if (!active) return;
-    let alive = true;
-    const read = () => {
-      setLoading(true);
-      authFetch(url)
-        .then(async (response) => {
-          if (!response.ok) throw new Error(String(response.status));
-          const body = await response.json() as T;
-          if (alive) { setData(body); setError(null); }
-        })
-        .catch(() => { if (alive) setError('Não foi possível ler o router.'); })
-        .finally(() => { if (alive) setLoading(false); });
-    };
-    read();
-    const timer = window.setInterval(read, POLL_MS);
-    return () => { alive = false; window.clearInterval(timer); };
-  }, [url, active, tick]);
-
-  return { data, error, loading, reload };
-}
 
 function percent(used: number, total: number) {
   return `${Math.round((used / total) * 100)}%`;
@@ -100,6 +65,7 @@ function Overview({ data, onOpen }: { data: RouterOverview & { dryRun: boolean }
   const usedMemory = system.totalMemory !== null && system.freeMemory !== null ? system.totalMemory - system.freeMemory : null;
   return (
     <>
+      <WanTraffic />
       <MetricGrid label="Estado do router">
         <MetricCard
           icon={Cable}

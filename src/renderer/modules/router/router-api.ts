@@ -163,3 +163,42 @@ export function profileRows(profiles: RouterProfileOption[], plans: PlanRef[]): 
   }
   return rows;
 }
+
+// ------------------------------------------------------------ tráfego das WAN
+
+export type WanCounters = { name: string; running: boolean; rxBytes: number | null; txBytes: number | null };
+export type RouterWan = { sampledAt: number; interfaces: WanCounters[] };
+
+/** Numa WAN, RX é o que entra da Internet (download) e TX o que sai (upload). */
+export type WanRate = { name: string; running: boolean; downBps: number | null; upBps: number | null };
+
+function perSecond(prev: number | null | undefined, next: number | null, seconds: number): number | null {
+  // Contador que desce = router reiniciado ou contadores limpos: esta amostra não conta.
+  if (prev == null || next == null || next < prev || seconds <= 0) return null;
+  return ((next - prev) * 8) / seconds;
+}
+
+/** Bits por segundo entre duas leituras dos contadores. Pura. */
+export function trafficRates(prev: RouterWan | null, next: RouterWan): WanRate[] {
+  const seconds = prev ? (next.sampledAt - prev.sampledAt) / 1000 : 0;
+  const before = new Map(prev?.interfaces.map((item) => [item.name, item]));
+  return next.interfaces.map((item) => ({
+    name: item.name,
+    running: item.running,
+    downBps: perSecond(before.get(item.name)?.rxBytes, item.rxBytes, seconds),
+    upBps: perSecond(before.get(item.name)?.txBytes, item.txBytes, seconds)
+  }));
+}
+
+const BIT_UNITS = ['bit/s', 'kbit/s', 'Mbit/s', 'Gbit/s'];
+
+export function formatBitrate(bps: number | null): string {
+  if (bps === null) return '—';
+  let value = bps;
+  let unit = 0;
+  while (value >= 1000 && unit < BIT_UNITS.length - 1) {
+    value /= 1000;
+    unit += 1;
+  }
+  return `${decimal.format(value)} ${BIT_UNITS[unit]}`;
+}
