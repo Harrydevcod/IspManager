@@ -4,6 +4,15 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## Por lançar
+
+> **Sem migrações.** Tudo o que é novo é leitura ao vivo do router, e só com pedidos GET.
+
+- **Módulo Router de gestão.** O MikroTik da operadora passa a ter uma entrada própria no menu (só para administradores), com cinco abas: **Visão geral** (identidade, placa, RouterOS, CPU, memória, há quanto tempo está ligado, sessões ativas, divergências e os serviços de gestão abertos com o comando que os fecha), **Sessões PPPoE** (cada serviço do ISPM ao lado do seu utilizador no router: online, offline, desativado, sem utilizador no router, e os utilizadores do router que nenhum serviço reclama; desligar a sessão a partir daqui), **Perfis PPP** (a velocidade de cada perfil e os planos que o usam, incluindo os perfis que um plano pede e o router não tem), **Interfaces** (estado, MAC e tráfego acumulado) e **Configuração**. Os dados atualizam-se de 30 em 30 segundos enquanto a aba está aberta.
+- **A configuração do router saiu das Configurações.** A ligação, o certificado, o diagnóstico por etapas, o ensaio, a reconciliação e a suspensão automática vivem agora na aba Configuração do módulo novo. É o mesmo formulário, gravado da mesma maneira, e passar a efetivo continua a pedir a senha outra vez. Em Configurações → Rede fica só a sonda de rede.
+- **Os serviços abertos do router deixam de vir repetidos.** O RouterOS 7.24 lista o winbox duas vezes, e o aviso dizia "ssh, winbox, winbox" com o comando a colar em duplicado — também no diagnóstico da ligação.
+- **O painel Automatismos passa a dar nome aos jobs de rede** (reconciliação, suspensão automática, sonda, descoberta, backup agendado), que apareciam com o nome interno.
+
 ## [2.4](https://github.com/Harrydevcod/IspManager/releases/tag/v2.4.0) — 2026-09-25
 
 > **Duas migrações.** A `0065` acrescenta aos planos o **perfil PPP no router** e passa o estado lido de cada serviço a guardar o perfil em vez da velocidade, que nunca chegou a ser lida. A `0066` cria a tabela com o estado da sincronização de cada plano com o router. Nenhuma apaga nada, e o arranque deixa de reescrever credenciais — passa só a lê-las.

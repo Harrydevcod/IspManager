@@ -433,6 +433,77 @@ export async function testConnection(transport: RouterTransport): Promise<{ vers
   };
 }
 
+/** RouterOS devolve números como texto; o que não vier fica `null`, não zero. */
+function num(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function firstRow(raw: unknown): Record<string, unknown> | undefined {
+  return (Array.isArray(raw) ? raw[0] : raw) as Record<string, unknown> | undefined;
+}
+
+export type RouterSystem = {
+  identity: string | null;
+  version: string | null;
+  boardName: string | null;
+  architecture: string | null;
+  uptime: string | null;
+  cpuLoad: number | null;
+  freeMemory: number | null;
+  totalMemory: number | null;
+};
+
+/** Visão geral do equipamento. Leitura pura. */
+export async function readSystem(transport: RouterTransport): Promise<RouterSystem> {
+  const resource = firstRow(await transport({
+    method: 'GET',
+    path: '/system/resource?.proplist=version,board-name,architecture-name,uptime,cpu-load,free-memory,total-memory'
+  }));
+  const identity = firstRow(await transport({ method: 'GET', path: '/system/identity' }));
+  return {
+    identity: str(identity?.name),
+    version: str(resource?.version),
+    boardName: str(resource?.['board-name']),
+    architecture: str(resource?.['architecture-name']),
+    uptime: str(resource?.uptime),
+    cpuLoad: num(resource?.['cpu-load']),
+    freeMemory: num(resource?.['free-memory']),
+    totalMemory: num(resource?.['total-memory'])
+  };
+}
+
+export type RouterInterface = {
+  name: string;
+  type: string | null;
+  running: boolean;
+  disabled: boolean;
+  macAddress: string | null;
+  rxBytes: number | null;
+  txBytes: number | null;
+  comment: string | null;
+};
+
+/** As interfaces do router. Leitura pura; os contadores são os acumulados desde o arranque. */
+export async function listInterfaces(transport: RouterTransport): Promise<RouterInterface[]> {
+  const raw = await transport({
+    method: 'GET',
+    path: '/interface?.proplist=name,type,running,disabled,mac-address,rx-byte,tx-byte,comment'
+  });
+  return asArray(raw)
+    .map((row) => ({
+      name: str(row.name) ?? '',
+      type: str(row.type),
+      running: toBool(row.running),
+      disabled: toBool(row.disabled),
+      macAddress: str(row['mac-address']),
+      rxBytes: num(row['rx-byte']),
+      txBytes: num(row['tx-byte']),
+      comment: str(row.comment)
+    }))
+    .filter((item) => item.name);
+}
+
 // ------------------------------------------------------------- diagnóstico
 
 export type RouterCheckId = 'config' | 'reach' | 'cert' | 'rest' | 'hardening';
@@ -759,7 +830,10 @@ const POINTLESS_SERVICES = ['btest'];
  */
 export function auditRouterServices(services: RouterService[]): RouterServiceFinding[] {
   const findings: RouterServiceFinding[] = [];
-  const active = services.filter((service) => !service.disabled);
+  // Um nome por serviço: o RouterOS 7.24 devolve o winbox duas vezes, e a
+  // lista repetida passava para o texto e para o comando a colar no terminal.
+  const seen = new Set<string>();
+  const active = services.filter((service) => !service.disabled && !seen.has(service.name) && seen.add(service.name));
 
   const cleartext = active
     .filter((service) => CLEARTEXT_SERVICES.includes(service.name))

@@ -68,6 +68,8 @@ const DIVERGENCE_LABEL: Record<string, string> = {
 };
 
 type NetworkTabProps = {
+  /** A sonda fica nas Configurações; o router vive no módulo Router de gestão. */
+  part: 'probe' | 'router';
   form: SettingsFormState;
   onUpdate: UpdateField;
   onToggle: ToggleField;
@@ -92,6 +94,7 @@ type NetworkTabProps = {
 };
 
 export function NetworkTab({
+  part,
   form,
   onUpdate,
   onToggle,
@@ -113,7 +116,7 @@ export function NetworkTab({
   onAutoSuspendNow
 }: NetworkTabProps) {
   const divergent = (routerState?.services ?? []).filter((row) => row.divergence || row.lastError);
-  return (
+  if (part === 'probe') return (
     <>
       <Toggle
         title="Sonda de rede"
@@ -162,7 +165,15 @@ export function NetworkTab({
           </Button>
         </div>
       </div>
+      <Message tone="neutral">
+        A ligação ao router de gestão, a reconciliação e a suspensão automática estão no módulo
+        Router de gestão, no menu lateral.
+      </Message>
+    </>
+  );
 
+  return (
+    <>
       <Toggle
         title="Router de gestão do ISP"
         description="O MikroTik da operadora, à cabeça da rede. Liga o ISPM a ele para cortar e repor clientes sozinho, aprovisionar o acesso PPPoE e mostrar quem está mesmo online. Enquanto o ensaio estiver ligado, nada é alterado no router. Não é o router do cliente: o ISPM nunca se liga a equipamento que esteja em casa de alguém."

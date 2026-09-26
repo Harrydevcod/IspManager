@@ -1,0 +1,57 @@
+/* =========================================================================
+   Router de gestão — só o que os primitivos não têm: subtítulo, texto de
+   máquina (logins, IPs, perfis) e o bloco dos serviços abertos.
+   ========================================================================= */
+
+.router-subtitle {
+  margin: var(--space-1) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.router-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-sm);
+  background: none;
+  color: var(--text-2, var(--text));
+}
+
+.router-number {
+  font-variant-numeric: tabular-nums;
+}
+
+.router-muted {
+  color: var(--text-3);
+}
+
+.router-findings {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.router-findings h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.router-findings h3 svg {
+  color: var(--text-3);
+}
+
+.router-findings p {
+  margin: 0;
+}
+
+/* O modo (ensaio / a controlar) é do router, não uma ação: fica colado ao nome. */
+.router-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}

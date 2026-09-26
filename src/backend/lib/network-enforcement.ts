@@ -123,6 +123,66 @@ export function matchSecret(service: Pick<DesiredService, 'serviceId' | 'usernam
   );
 }
 
+export type SessionState = 'online' | 'offline' | 'desativado' | 'sem_secret' | 'sem_servico';
+
+export type SessionRow = {
+  serviceId: number | null;
+  clientName: string | null;
+  /** O nome do secret no router — é o que a sessão usa. */
+  login: string;
+  state: SessionState;
+  online: boolean;
+  suspended: boolean;
+  address: string | null;
+  uptime: string | null;
+  routerProfile: string | null;
+};
+
+/**
+ * Função pura: cada serviço PPPoE do ISPM ao lado do seu secret e da sessão, e
+ * no fim os secrets do router que nenhum serviço reclama. O casamento é o da
+ * reconciliação (`matchSecret`), para as duas vistas nunca discordarem.
+ */
+export function buildSessionRows(desired: DesiredService[], secrets: RouterSecret[], active: RouterActive[]): SessionRow[] {
+  const sessions = new Map(active.map((session) => [session.name, session]));
+  const claimed = new Set<string>();
+
+  const rows: SessionRow[] = desired.map((service) => {
+    const secret = matchSecret(service, secrets);
+    if (secret) claimed.add(secret.id);
+    const login = secret?.name ?? service.username;
+    const session = secret ? sessions.get(login) : undefined;
+    return {
+      serviceId: service.serviceId,
+      clientName: service.clientName,
+      login,
+      state: !secret ? 'sem_secret' : secret.disabled ? 'desativado' : session ? 'online' : 'offline',
+      online: Boolean(session),
+      suspended: Boolean(service.suspended),
+      address: session?.address ?? null,
+      uptime: session?.uptime ?? null,
+      routerProfile: secret?.profile ?? null
+    };
+  });
+
+  for (const secret of secrets) {
+    if (claimed.has(secret.id)) continue;
+    const session = sessions.get(secret.name);
+    rows.push({
+      serviceId: null,
+      clientName: null,
+      login: secret.name,
+      state: 'sem_servico',
+      online: Boolean(session),
+      suspended: false,
+      address: session?.address ?? null,
+      uptime: session?.uptime ?? null,
+      routerProfile: secret.profile
+    });
+  }
+  return rows;
+}
+
 /**
  * Função pura: dado o desejado e o que está no router, o que há a fazer.
  * É aqui que vive a decisão toda — o resto do módulo é entrada/saída.

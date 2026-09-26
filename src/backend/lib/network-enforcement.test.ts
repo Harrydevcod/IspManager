@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import {
+  buildSessionRows,
   loadDesiredServices,
   planActions,
   runNetworkEnforcement,
@@ -592,5 +593,46 @@ describe('runNetworkEnforcement', () => {
     const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
     expect(summary.skipped).toBe(true);
     expect(calls).toEqual([]);
+  });
+});
+
+describe('buildSessionRows — o router visto pelo lado do ISPM', () => {
+  const active = (name: string, address = '10.0.0.5') => ({ id: `*A-${name}`, name, address, uptime: '1h' });
+
+  test('cruza serviço, secret e sessão, e diz o estado de cada um', () => {
+    const rows = buildSessionRows(
+      [
+        service({ serviceId: 1, username: 'joao-1' }),
+        service({ serviceId: 2, clientName: 'Ana', username: 'ana-2' }),
+        service({ serviceId: 3, clientName: 'Rui', username: 'rui-3' }),
+        service({ serviceId: 4, clientName: 'Eva', username: 'eva-4' })
+      ],
+      [
+        secret({ id: '*1', name: 'joao-1', comment: 'ispm:1' }),
+        secret({ id: '*2', name: 'ana-2', comment: 'ispm:2' }),
+        secret({ id: '*3', name: 'rui-3', comment: 'ispm:3', disabled: true }),
+        secret({ id: '*9', name: 'vizinho', comment: null, profile: 'default' })
+      ],
+      [active('joao-1'), active('vizinho', '10.0.0.9')]
+    );
+    expect(rows.map((row) => [row.serviceId, row.login, row.state])).toEqual([
+      [1, 'joao-1', 'online'],
+      [2, 'ana-2', 'offline'],
+      [3, 'rui-3', 'desativado'],
+      [4, 'eva-4', 'sem_secret'],
+      [null, 'vizinho', 'sem_servico']
+    ]);
+    expect(rows[0]).toMatchObject({ clientName: 'Joao Silva', address: '10.0.0.5', uptime: '1h', routerProfile: 'plano-10M' });
+    expect(rows[4]).toMatchObject({ clientName: null, address: '10.0.0.9', online: true });
+  });
+
+  test('um secret renomeado no router continua ligado ao serviço pelo comment', () => {
+    const rows = buildSessionRows(
+      [service({ serviceId: 7, username: 'antigo' })],
+      [secret({ id: '*7', name: 'novo', comment: 'ispm:7' })],
+      [active('novo')]
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ serviceId: 7, login: 'novo', state: 'online' });
   });
 });

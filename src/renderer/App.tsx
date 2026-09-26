@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, Landmark, LogOut, Network, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
+import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, Landmark, LogOut, Network, PanelLeftClose, PanelLeftOpen, Plus, Router, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, PageHeader, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider } from './components';
 import type { CommandPaletteItem } from './components';
@@ -17,6 +17,7 @@ import { StockModule } from './modules/StockModule';
 import { WorkOrdersModule } from './modules/WorkOrdersModule';
 import { ReportsModule } from './modules/ReportsModule';
 import { SettingsModule } from './modules/SettingsModule';
+import RouterModule from './modules/router/RouterModule';
 import { ClientsModule } from './modules/ClientsModule';
 import { UsersModule } from './modules/UsersModule';
 import { AuditModule } from './modules/AuditModule';
@@ -37,6 +38,7 @@ const sections: SidebarItem[] = [
   { id: 'plans', label: 'Planos', icon: Wifi },
   { id: 'services', label: 'Serviços', icon: Cable },
   { id: 'topology', label: 'Topologia', icon: Network },
+  { id: 'router', label: 'Router de gestão', icon: Router, roles: ['admin'] },
   { id: 'finance', label: 'Financeiro', icon: TrendingUp, roles: ['admin', 'operator'] },
   { id: 'treasury', label: 'Tesouraria', icon: Landmark, roles: ['admin', 'operator'] },
   { id: 'work-orders', label: 'OS técnicas', icon: ClipboardList },
@@ -453,6 +455,7 @@ function AppShell() {
               />
             </Suspense>
           )}
+          {section === 'router' && <RouterModule />}
           {section === 'finance' && (
             <FinanceModule
               paymentsFocus={paymentsFocus}
