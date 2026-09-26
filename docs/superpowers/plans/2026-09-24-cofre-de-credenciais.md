@@ -182,7 +182,16 @@ type SecretFieldProps = { label: string; configured: boolean; draft: SecretDraft
 
 - [x] E2E com DB temporária: legado → migração → edição → backup → "máquina B" → login → `locked` → recuperação → transporte RouterOS falso recebe o valor original, e a API nunca o recebe. Snapshot das flags antes/depois idêntico.
 - [x] `npm.cmd run typecheck`, `npm.cmd run lint`, `npm.cmd test`, `npx.cmd tsc -p tsconfig.main.json --noEmit`.
-- [ ] Verificar no Electron real com dados artificiais: criar/editar/cancelar, olho, relock, reinício, entrega pendente interrompida. Sem segredos reais em screenshots; sem router real.
+- [x] Verificar no Electron real com dados artificiais: criar/editar/cancelar, olho, relock, reinício, entrega pendente interrompida. Sem segredos reais em screenshots; sem router real.
+  - **Feito em 2026-09-26 numa cópia da base real**, com o `Local State` da app, o Electron em dev e o browser na 5173, sem capturas de chaves:
+    - a conversão deixou `routerosPassword` e `ultraMsgToken` em `enc:v2`, sem nada em claro (as 31 senhas PPPoE estão vazias na base real);
+    - o cofre nasceu em `recovery_pending` e o aviso global apareceu; "Abrir cofre" abre o separador Cofre;
+    - a chave foi entregue sem ficar em localStorage/sessionStorage, e confirmar pô-la em `ready` e tirou o aviso;
+    - o router respondeu com a senha decifrada;
+    - na "máquina B" (userData vazio) o cofre ficou `locked` e o router indisponível; uma chave errada deu "Chave incorreta."; a certa desbloqueou e o router voltou;
+    - ao reiniciar a B o cofre abriu sozinho (`ready`).
+  - Com `ISPM_AUTH=off` qualquer senha entrega a chave, porque não há sessão para confirmar. É só no modo de desenvolvimento; o pacote impõe o login.
+  - O router real foi lido pelas rotas da app. O job de reconciliação da cópia correu com a mesma configuração e os mesmos dados da app instalada, por isso não tinha nada de diferente para aplicar.
 - [x] Documentar: o que o cofre protege e o que não protege (ver **Context**); porque é que o cofre fica `locked` em `npm run dev`; que um `enc:v1:` que não abra exige a máquina original ou substituição explícita dessa credencial.
 - [ ] Nota de lançamento: **esta versão tem de arrancar uma vez na máquina original** para converter os valores legados antes de qualquer restauro noutro sítio. O administrador tem de guardar a chave de recuperação.
 
