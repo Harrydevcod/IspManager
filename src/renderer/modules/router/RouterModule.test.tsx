@@ -111,8 +111,8 @@ describe('Router de gestão', () => {
     const container = await mount();
     await click(container.querySelector('#router-tab-log'));
     const titles = [...container.querySelectorAll('.router-findings strong')].map((node) => node.textContent);
-    expect(titles).toEqual(['DHCP intruso na porta LAN1', 'Falhas de login de 10.0.0.9', 'PPPoE de Cibel Restaurante caiu 4 vezes']);
-    expect(container.textContent).toContain('30:16:9D:AA:53:8B · 192.168.0.1 · MERCUSYS — 187 avisos');
+    expect(titles).toEqual(['DHCP intruso na porta LAN1 · MERCUSYS', 'Falhas de login de 10.0.0.9', 'PPPoE de Cibel Restaurante caiu 4 vezes']);
+    expect(container.textContent).toContain('30:16:9D:AA:53:8B · 192.168.0.1 — 187 avisos');
     expect(container.textContent).toContain('1 tentativa por winbox · admin');
     expect(container.querySelectorAll('.data-table-row')).toHaveLength(2);
     await click(container.querySelector('#router-panel-log input[type="checkbox"]'));

@@ -80,8 +80,8 @@ export function logFindings(log: Omit<RouterLog, 'entries'>): LogFinding[] {
     ...log.rogueDhcp.map((row) => ({
       key: `dhcp-${row.mac}`,
       severity: 'grave' as const,
-      title: `DHCP intruso na porta ${row.port}`,
-      detail: `${who(row.mac, row.address, row.vendor, row.clientName)} — ${times(row.count, 'aviso', 'avisos')}. O dhcp-snooping está a travá-lo; normalmente é o router de um cliente com o cabo na porta LAN em vez da WAN.`
+      title: `DHCP intruso na porta ${row.port}${row.vendor ? ` · ${row.vendor}` : ''}`,
+      detail: `${who(row.mac, row.address, row.clientName)} — ${times(row.count, 'aviso', 'avisos')}. O dhcp-snooping está a travá-lo; normalmente é o router de um cliente com o cabo na porta LAN em vez da WAN.`
     })),
     ...log.loginFailures.map((row) => ({
       key: `login-${row.address}-${row.via}`,
