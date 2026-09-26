@@ -27,6 +27,7 @@ export type SectionId =
   | 'plans'
   | 'services'
   | 'topology'
+  | 'router'
   | 'finance'
   | 'treasury'
   | 'work-orders'

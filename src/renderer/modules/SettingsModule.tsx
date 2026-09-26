@@ -58,14 +58,23 @@ function routerNote(summary: string, tone: 'neutral' | 'error'): RouterTestRepor
   return { ok: false, steps: [], summary, tone };
 }
 
-export function SettingsModule() {
+type SettingsModuleProps = {
+  /**
+   * `router`: só a configuração do router de gestão, embutida no módulo Router
+   * de gestão. É o mesmo formulário e a mesma gravação — incluindo o passo a
+   * mais para sair do ensaio (RouterLiveDialog) — e não uma segunda porta.
+   */
+  scope?: 'all' | 'router';
+};
+
+export function SettingsModule({ scope = 'all' }: SettingsModuleProps = {}) {
   const [message, setMessage] = useState<{ tone: 'neutral' | 'success' | 'error'; text: string; placement: 'top' | 'save' } | null>(null);
   const [saving, setSaving] = useState(false);
   const [testSending, setTestSending] = useState(false);
   const [testPhone, setTestPhone] = useState('');
   const [testMessage, setTestMessage] = useState<{ tone: 'neutral' | 'success' | 'error'; text: string } | null>(null);
   const [lastSavedForm, setLastSavedForm] = useState<SettingsFormState | null>(null);
-  const [activeTab, setActiveTab] = useState<SettingsTab>('company');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(scope === 'router' ? 'network' : 'company');
   const [form, setForm] = useState<SettingsFormState>({
     companyName: 'ISPM',
     nif: '',
@@ -690,7 +699,8 @@ export function SettingsModule() {
   }
 
   return (
-    <section className="module-panel">
+    <section className={scope === 'router' ? undefined : 'module-panel'}>
+      {scope === 'all' && (<>
       <div className="module-header">
         <div>
           <p className="eyebrow">Sistema</p>
@@ -717,6 +727,7 @@ export function SettingsModule() {
           );
         })}
       </nav>
+      </>)}
 
       {secretsLost.length > 0 && (
         <Message tone="error">
@@ -778,6 +789,7 @@ export function SettingsModule() {
 
         {activeTab === 'network' && (
           <NetworkTab
+            part={scope === 'router' ? 'router' : 'probe'}
             form={form}
             onUpdate={updateForm}
             onToggle={toggleForm}

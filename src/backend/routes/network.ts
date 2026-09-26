@@ -12,15 +12,21 @@ import {
   listDhcpLeases,
   listNeighbors,
   listActive,
+  listInterfaces,
+  listServices,
+  readSystem,
+  auditRouterServices,
   listProfiles,
   listSecrets,
   removeActive,
   neighborModel,
   readRouterConfig,
-  type RouterNeighbor
+  type RouterConfig,
+  type RouterNeighbor,
+  type RouterTransport
 } from '../lib/routeros';
 import { identifyModel } from '../lib/device-model';
-import { loadNetworkEnforcementState, matchSecret, runNetworkEnforcement } from '../lib/network-enforcement';
+import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecret, runNetworkEnforcement } from '../lib/network-enforcement';
 import { loadAutoSuspensionPreview, runAutomaticSuspension } from '../lib/auto-suspension';
 import {
   loadRegisteredDevices,
@@ -322,6 +328,61 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       return { available: false, reason: `${failure.title}. ${failure.detail}`, baseProfile, profiles: [] };
     }
   });
+
+  // ------------------------------------------ módulo Router de gestão (leitura)
+
+  /**
+   * As leituras ao vivo do módulo. Sempre 200: router desligado ou em baixo é
+   * um estado do ecrã, não um erro — como o diagnóstico. Só GETs no router.
+   * ponytail: sem cache; se o polling de 30 s pesar no router, 10 s de cache aqui.
+   */
+  async function readLive<T extends object>(read: (transport: RouterTransport, config: RouterConfig) => Promise<T>) {
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return { available: false as const, reason: 'Integração MikroTik desligada ou por configurar' };
+    }
+    try {
+      return { available: true as const, dryRun: config.dryRun, ...(await read(createTransport(config), config)) };
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return { available: false as const, reason: `${failure.title}. ${failure.detail}` };
+    }
+  }
+
+  app.get('/api/network/router/overview', adminOnly, async () => readLive(async (transport, config) => {
+    const db = getSqliteDatabase();
+    const [system, secrets, active, services] = await Promise.all([
+      readSystem(transport),
+      listSecrets(transport),
+      listActive(transport),
+      listServices(transport)
+    ]);
+    const state = loadNetworkEnforcementState(db);
+    const lastEnforcement = db.prepare(`
+      SELECT status, ran_at AS ranAt FROM job_runs
+      WHERE job LIKE 'network_enforcement%' ORDER BY id DESC LIMIT 1
+    `).get() ?? null;
+    return {
+      host: config.host,
+      system,
+      secrets: secrets.length,
+      disabledSecrets: secrets.filter((secret) => secret.disabled).length,
+      activeSessions: active.length,
+      divergences: state.divergences,
+      findings: auditRouterServices(services),
+      lastEnforcement
+    };
+  }));
+
+  app.get('/api/network/router/sessions', adminOnly, async () => readLive(async (transport) => {
+    const [secrets, active] = await Promise.all([listSecrets(transport), listActive(transport)]);
+    return { sessions: buildSessionRows(loadDesiredServices(getSqliteDatabase()), secrets, active) };
+  }));
+
+  app.get('/api/network/router/interfaces', adminOnly, async () => readLive(async (transport) => ({
+    interfaces: await listInterfaces(transport)
+  })));
 
   /** Cria ou atualiza o perfil do plano. Em ensaio só diz o que faria. */
   app.post('/api/plans/:id/router-profile', adminOnly, async (request, reply) => {

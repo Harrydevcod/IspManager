@@ -27,6 +27,7 @@ const form = {
 function render(routerReport: RouterTestReport | null) {
   return renderToStaticMarkup(
     <NetworkTab
+      part="router"
       form={form}
       onUpdate={vi.fn()}
       onToggle={vi.fn()}
@@ -131,5 +132,46 @@ describe('NetworkTab — diagnóstico do router', () => {
     expect(html).toContain('Certificado esquecido.');
     expect(html).not.toContain('settings-router-steps');
     expect(html).not.toContain('module-message error');
+  });
+});
+
+describe('NetworkTab — partes', () => {
+  function renderPart(part: 'probe' | 'router') {
+    return renderToStaticMarkup(
+      <NetworkTab
+        part={part}
+        form={form}
+        onUpdate={vi.fn()}
+        onToggle={vi.fn()}
+        probeBusy={false}
+        probeMessage=""
+        onProbeNow={vi.fn()}
+        routerBusy={false}
+        routerReport={null}
+        routerFingerprint=""
+        onRouterTest={vi.fn()}
+        onTrustCertificate={vi.fn()}
+        onForgetCertificate={vi.fn()}
+        routerState={null}
+        enforceBusy={false}
+        enforceMessage=""
+        onEnforceNow={vi.fn()}
+        autoSuspendBusy={false}
+        autoSuspendMessage=""
+        onAutoSuspendNow={vi.fn()}
+      />
+    );
+  }
+
+  test('a sonda não mostra nada do router — o router tem módulo próprio', () => {
+    const html = renderPart('probe');
+    expect(html).toContain('Sonda de rede');
+    expect(html).not.toContain('Router de gestão do ISP');
+  });
+
+  test('o router não traz a sonda', () => {
+    const html = renderPart('router');
+    expect(html).toContain('Router de gestão do ISP');
+    expect(html).not.toContain('Sonda de rede');
   });
 });

@@ -17,6 +17,8 @@ import {
   removeActive,
   RouterError,
   testConnection,
+  readSystem,
+  listInterfaces,
   type RouterRequest,
   type RouterService,
   listArp,
@@ -463,7 +465,73 @@ describe('auditRouterServices', () => {
     expect(findings[0].command).toBe('/ip service disable btest');
   });
 
+  test('o RouterOS 7.24 lista o winbox duas vezes: o achado e o comando dizem-no uma vez só', () => {
+    const findings = auditRouterServices([
+      service({ name: 'ssh', port: 22 }),
+      service({ name: 'winbox', port: 8291 }),
+      service({ name: 'winbox', port: 8291 })
+    ]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].services).toEqual(['ssh', 'winbox']);
+    expect(findings[0].command.split('\n')).toHaveLength(2);
+  });
+
   test('um serviço desligado não conta, mesmo sendo dos perigosos', () => {
     expect(auditRouterServices([service({ name: 'telnet', port: 23, disabled: true })])).toEqual([]);
+  });
+});
+
+describe('leituras do módulo Router de gestão', () => {
+  test('readSystem junta recurso e identidade e converte números do RouterOS', async () => {
+    const transport = fakeTransport([
+      [{
+        version: '7.24.2 (stable)',
+        'board-name': 'hEX S',
+        uptime: '3d4h12m',
+        'cpu-load': '7',
+        'free-memory': '200278016',
+        'total-memory': '268435456',
+        'architecture-name': 'mmips'
+      }],
+      { name: 'ISP-Gestao' }
+    ]);
+    await expect(readSystem(transport)).resolves.toEqual({
+      identity: 'ISP-Gestao',
+      version: '7.24.2 (stable)',
+      boardName: 'hEX S',
+      architecture: 'mmips',
+      uptime: '3d4h12m',
+      cpuLoad: 7,
+      freeMemory: 200278016,
+      totalMemory: 268435456
+    });
+    expect(transport.calls.map((call) => call.method)).toEqual(['GET', 'GET']);
+    expect(transport.calls[1].path).toBe('/system/identity');
+  });
+
+  test('readSystem não inventa números que o router não deu', async () => {
+    const transport = fakeTransport([[{}], {}]);
+    await expect(readSystem(transport)).resolves.toMatchObject({
+      identity: null,
+      cpuLoad: null,
+      freeMemory: null,
+      totalMemory: null
+    });
+  });
+
+  test('listInterfaces lê só o que se mostra e normaliza booleanos e contadores', async () => {
+    const transport = fakeTransport([[
+      { name: 'ether1', type: 'ether', running: 'true', disabled: 'false', 'mac-address': '48:A9:8A:00:00:01', 'rx-byte': '1024', 'tx-byte': '2048', comment: 'WAN Starlink' },
+      { name: 'pppoe-in1', type: 'pppoe-in', running: 'true', disabled: 'false' },
+      { type: 'ether' }
+    ]]);
+    await expect(listInterfaces(transport)).resolves.toEqual([
+      { name: 'ether1', type: 'ether', running: true, disabled: false, macAddress: '48:A9:8A:00:00:01', rxBytes: 1024, txBytes: 2048, comment: 'WAN Starlink' },
+      { name: 'pppoe-in1', type: 'pppoe-in', running: true, disabled: false, macAddress: null, rxBytes: null, txBytes: null, comment: null }
+    ]);
+    expect(transport.calls[0]).toEqual({
+      method: 'GET',
+      path: '/interface?.proplist=name,type,running,disabled,mac-address,rx-byte,tx-byte,comment'
+    });
   });
 });
