@@ -14,7 +14,8 @@ import {
   type RouterLog,
   type RouterOverview,
   type RouterProfileOption,
-  type RouterSession
+  type RouterSession,
+  type RouterWanUsage
 } from './router-api';
 import { InterfacesTable, LogView, ProfilesTable, SessionsTable } from './RouterTables';
 import { useLive } from './useLive';
@@ -64,10 +65,12 @@ function LiveGate<T>({ live, onRetry, onConfigure, children }: {
 function Overview({ data, onOpen }: { data: RouterOverview & { dryRun: boolean }; onOpen: (tab: RouterTab) => void }) {
   const { system } = data;
   const usedMemory = system.totalMemory !== null && system.freeMemory !== null ? system.totalMemory - system.freeMemory : null;
+  // Uma só leitura do acumulado: os cartões ao vivo e o histórico partilham-na.
+  const usage = useLive<RouterWanUsage>(`${ROUTER_API}/wan/usage`, true, 60_000);
   return (
     <>
-      <WanTraffic />
-      <WanUsage />
+      <WanTraffic usage={usage.data} />
+      <WanUsage live={usage} />
       <MetricGrid label="Estado do router">
         <MetricCard
           icon={Cable}

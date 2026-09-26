@@ -1,7 +1,16 @@
 import { Activity, ArrowDown, ArrowUp } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Badge } from '../../components';
-import { formatBitrate, ROUTER_API, type Live, type RouterWan, type WanRate } from './router-api';
+import {
+  formatBitrate,
+  formatDataVolume,
+  ROUTER_API,
+  type Live,
+  type RouterWan,
+  type RouterWanUsage,
+  type WanRate,
+  type WanUsageRow
+} from './router-api';
 import { useLive } from './useLive';
 
 /**
@@ -44,12 +53,48 @@ function totalOf(rates: WanRate[]): WanRate {
   };
 }
 
-function WanCard({ title, badge, rate, points, max, footer, total = false }: {
+/** Bytes de um período; `null` quando ainda não há registo para mostrar. */
+type Volume = { rx: number; tx: number } | null;
+type Consumption = { today: Volume; month: Volume };
+
+/** Soma as linhas das interfaces pedidas; sem nenhuma, não há volume. */
+function volumeOf(rows: WanUsageRow[] | undefined, names: string[]): Volume {
+  const picked = (rows ?? []).filter((row) => names.includes(row.interface));
+  if (picked.length === 0) return null;
+  return picked.reduce((total, row) => ({ rx: total.rx + row.rxBytes, tx: total.tx + row.txBytes }), { rx: 0, tx: 0 });
+}
+
+function consumptionOf(usage: RouterWanUsage | null, names: string[]): Consumption {
+  return { today: volumeOf(usage?.today, names), month: volumeOf(usage?.month, names) };
+}
+
+/**
+ * Hoje e o mês, por baixo do gráfico. A linha fica mesmo sem dados ("—"),
+ * para os três cartões manterem a mesma altura.
+ */
+function Ledger({ consumption }: { consumption: Consumption }) {
+  const rows: Array<[string, Volume]> = [['Hoje', consumption.today], ['Mês', consumption.month]];
+  const volume = (bytes: number | undefined) => (bytes === undefined ? '—' : formatDataVolume(bytes));
+  return (
+    <dl className="router-wan-ledger">
+      {rows.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd className="is-down"><ArrowDown size={12} aria-label="Download" /> {volume(value?.rx)}</dd>
+          <dd className="is-up"><ArrowUp size={12} aria-label="Upload" /> {volume(value?.tx)}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function WanCard({ title, badge, rate, points, max, consumption, footer, total = false }: {
   title: string;
   badge: ReactNode;
   rate: WanRate;
   points: WanRate[];
   max: number;
+  consumption: Consumption;
   footer?: ReactNode;
   total?: boolean;
 }) {
@@ -70,13 +115,19 @@ function WanCard({ title, badge, rate, points, max, footer, total = false }: {
         </div>
       </div>
       <Sparkline points={points} max={max} />
-      {footer}
+      <div className="router-wan-foot">
+        <Ledger consumption={consumption} />
+        {footer}
+      </div>
     </article>
   );
 }
 
-/** Download e upload de cada interface da lista WAN, ao vivo, só enquanto está à vista. */
-export function WanTraffic() {
+/**
+ * Download e upload de cada interface da lista WAN, ao vivo, só enquanto está
+ * à vista, com o consumo de hoje e do mês lido da BD (`usage`, de 60 em 60 s).
+ */
+export function WanTraffic({ usage }: { usage: RouterWanUsage | null }) {
   const live = useLive<Live<RouterWan>>(`${ROUTER_API}/wan`, true, WAN_POLL_MS);
   const previousSampledAt = useRef<number | null>(null);
   const [latest, setLatest] = useState<WanRate[]>([]);
@@ -120,6 +171,7 @@ export function WanTraffic() {
               rate={rate}
               points={history[rate.name] ?? []}
               max={scale}
+              consumption={consumptionOf(usage, [rate.name])}
             />
           ))}
           {latest.length > 1 && (
@@ -130,6 +182,7 @@ export function WanTraffic() {
               rate={total}
               points={history[TOTAL_KEY] ?? []}
               max={scale}
+              consumption={consumptionOf(usage, latest.map((rate) => rate.name))}
               footer={totalDown ? (
                 <p className="router-wan-split router-muted">
                   {latest.map((rate) => `${rate.name} ${Math.round(((rate.downBps ?? 0) / totalDown) * 100)}%`).join(' · ')}

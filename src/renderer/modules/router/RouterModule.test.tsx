@@ -160,14 +160,30 @@ describe('Router de gestão', () => {
     expect(container.querySelector('.is-total')).toBeNull();
   });
 
-  test('mostra os acumulados de hoje e do mês com a repartição por WAN', async () => {
+  test('cada cartão mostra o consumo de hoje e do mês; o Total soma as WAN', async () => {
     const container = await mount();
-    const periods = [...container.querySelectorAll('.router-usage-period')];
-    expect(periods).toHaveLength(2);
-    expect(periods[0].textContent).toContain('3 GB');
-    expect(periods[0].textContent).toContain('WAN1-STARLINK 2 GB · WAN2-STARLINK 1 GB');
-    expect(periods[1].textContent).toContain('8 GB');
-    expect(periods[1].textContent).toContain('WAN1-STARLINK 5 GB · WAN2-STARLINK 3 GB');
+    const ledgers = [...container.querySelectorAll('.router-wan-card .router-wan-ledger')].map((ledger) =>
+      [...ledger.querySelectorAll(':scope > div')].map((row) => [...row.children].map((cell) => cell.textContent?.trim())));
+    expect(ledgers).toEqual([
+      [['Hoje', '2 GB', '100 MB'], ['Mês', '5 GB', '200 MB']],
+      [['Hoje', '1 GB', '50 MB'], ['Mês', '3 GB', '100 MB']],
+      [['Hoje', '3 GB', '150 MB'], ['Mês', '8 GB', '300 MB']]
+    ]);
+    // Os mosaicos repetiam os mesmos números: a secção do acumulado ficou só com o histórico.
+    expect(container.querySelector('.router-usage-period')).toBeNull();
+    expect(container.textContent).toContain('Download diário das WAN');
+  });
+
+  test('sem registo do acumulado, os cartões mostram "—" e mantêm a linha', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input: string | URL | Request) =>
+      String(input).endsWith('/router/wan/usage')
+        ? json({ since: null, today: [], month: [], days: [] })
+        : original(input));
+    const container = await mount();
+    const first = container.querySelector('.router-wan-card .router-wan-ledger');
+    expect([...(first?.querySelectorAll('dd') ?? [])].map((cell) => cell.textContent?.trim())).toEqual(['—', '—', '—', '—']);
   });
 
   test('as sessões mostram também o secret que nenhum serviço reclama', async () => {
