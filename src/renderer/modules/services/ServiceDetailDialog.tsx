@@ -255,6 +255,7 @@ export function ServiceDetailDialog({
           <>
             <dl className="technical-item-meta">
               <div><dt>Utilizador PPPoE</dt><dd><code>{service.pppoeUsername}</code></dd></div>
+              <div><dt>Senha PPPoE</dt><dd>{service.pppoePasswordConfigured ? 'Configurada' : 'Não configurada'}</dd></div>
               <div><dt>Plano</dt><dd>{service.planName || '-'} · {speedLabel}</dd></div>
               <div>
                 <dt>Secret no router</dt>

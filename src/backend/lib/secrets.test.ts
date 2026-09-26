@@ -1,24 +1,19 @@
 import Database from 'better-sqlite3';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 import { runMigrations } from '../db/migrate';
+import { fakeMachine, memoryVault } from './credentials.testing';
 import {
-  isSealed,
+  canStoreSecrets,
   readSecret,
   readSecretsLost,
   refreshSecretsLost,
-  resetSealingCache,
-  sealPendingSecrets,
+  SECRET_KEYS,
   SECRETS_LOST_KEY,
-  setSealingBackend,
+  setCredentialVault,
   writeSecret
 } from './secrets';
+import { openVault } from './vault';
 
-/**
- * Os testes correm sem Electron, por isso o caminho por omissão aqui é o do
- * texto simples — que é exatamente o que se quer garantir que continua a
- * funcionar (Linux sem keyring, arranque headless). O caminho selado força-se
- * com um `safeStorage` de mentira.
- */
 function memoryDb() {
   const db = new Database(':memory:');
   runMigrations(db);
@@ -32,142 +27,84 @@ function raw(db: Database.Database, key: string): string {
   return row?.value ?? '';
 }
 
-/** Cifra de brincar, com "conta" para simular outra máquina. */
-function fakeSafeStorage(account = 'A') {
-  return {
-    isEncryptionAvailable: () => true,
-    encryptString: (plain: string) => Buffer.from(`${account}:${plain}`, 'utf8'),
-    decryptString: (buf: Buffer) => {
-      const text = buf.toString('utf8');
-      if (!text.startsWith(`${account}:`)) throw new Error('selado noutra conta');
-      return text.slice(account.length + 1);
-    }
-  };
-}
-
-function withSealing(account: string, run: () => void) {
-  setSealingBackend(fakeSafeStorage(account));
-  try {
-    run();
-  } finally {
-    setSealingBackend(null);
-  }
-}
-
-// Sem Electron a deteção automática já daria texto simples, mas dizê-lo aqui
-// evita que um dia um teste vizinho deixe a costura suja.
-beforeEach(() => {
-  setSealingBackend(null);
-});
-
+// O setup global deixa um cofre pronto; cada teste que o troque repõe-no.
 afterEach(() => {
-  resetSealingCache();
+  setCredentialVault(memoryVault());
 });
 
-describe('sem cifra disponível', () => {
-  test('grava e lê em texto simples, como antes', () => {
-    const db = memoryDb();
-    writeSecret(db, 'routerosPassword', 'senha-do-router');
-    expect(raw(db, 'routerosPassword')).toBe('senha-do-router');
-    expect(readSecret(db, 'routerosPassword')).toBe('senha-do-router');
-    db.close();
-  });
-
-  test('um valor selado não abre — e não é apagado', () => {
-    const db = memoryDb();
-    db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)')
-      .run('ultraMsgToken', 'enc:v1:QTp0b2tlbg==');
-
-    expect(readSecret(db, 'ultraMsgToken')).toBe('');
-    expect(sealPendingSecrets(db)).toEqual([]);
-    // Apagá-lo seria destruir a credencial de quem abriu a aplicação no sítio
-    // errado, ou num Linux sem keyring nesse arranque.
-    expect(raw(db, 'ultraMsgToken')).toBe('enc:v1:QTp0b2tlbg==');
-    db.close();
-  });
-});
-
-describe('com cifra disponível', () => {
+describe('com o cofre pronto', () => {
   test('o que se grava fica ilegível no ficheiro e legível pela aplicação', () => {
     const db = memoryDb();
-    withSealing('A', () => {
-      writeSecret(db, 'routerosPassword', 'senha-do-router');
-      expect(isSealed(raw(db, 'routerosPassword'))).toBe(true);
-      expect(raw(db, 'routerosPassword')).not.toContain('senha-do-router');
-      expect(readSecret(db, 'routerosPassword')).toBe('senha-do-router');
-    });
-    db.close();
+    writeSecret(db, 'routerosPassword', 'senha-do-router');
+    expect(raw(db, 'routerosPassword').startsWith('enc:v2:')).toBe(true);
+    expect(raw(db, 'routerosPassword')).not.toContain('senha-do-router');
+    expect(readSecret(db, 'routerosPassword')).toBe('senha-do-router');
   });
 
-  test('sela o que já lá estava em claro, e a segunda passagem não mexe', () => {
+  test('preserva os bytes: espaços nas pontas fazem parte da senha', () => {
     const db = memoryDb();
-    db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)').run('ultraMsgToken', 'token-antigo');
-
-    withSealing('A', () => {
-      expect(sealPendingSecrets(db)).toEqual([]);
-      const first = raw(db, 'ultraMsgToken');
-      expect(isSealed(first)).toBe(true);
-      expect(readSecret(db, 'ultraMsgToken')).toBe('token-antigo');
-
-      expect(sealPendingSecrets(db)).toEqual([]);
-      expect(raw(db, 'ultraMsgToken')).toBe(first);
-    });
-    db.close();
+    writeSecret(db, 'ultraMsgToken', '  tok en  ');
+    expect(readSecret(db, 'ultraMsgToken')).toBe('  tok en  ');
   });
 
-  test('base vinda de outra conta: avisa, preserva os bytes, e não toca no resto', () => {
+  test('vazio apaga, e não precisa do cofre', () => {
     const db = memoryDb();
-    withSealing('OUTRA', () => {
-      writeSecret(db, 'routerosPassword', 'senha-da-outra-maquina');
-    });
-    const seladoLa = raw(db, 'routerosPassword');
-    db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)').run('companyName', 'SKYNET');
+    writeSecret(db, 'ultraMsgToken', 'x');
+    setCredentialVault(null);
+    writeSecret(db, 'ultraMsgToken', '');
+    expect(raw(db, 'ultraMsgToken')).toBe('');
+  });
 
-    withSealing('A', () => {
-      const lost = sealPendingSecrets(db);
-      expect(lost).toEqual(['Senha do router de gestão']);
-      // Não se apaga. Quem restaurou um backup no sítio errado leva o ficheiro
-      // de volta à máquina original e encontra lá a credencial; apagá-la aqui
-      // tornava a viagem de ida sem volta. Quem lê a credencial continua a ver
-      // vazio — `readSecret` já devolve '' para o que não abre — e é isso que
-      // mantém as Definições honestas sem destruir nada.
-      expect(raw(db, 'routerosPassword')).toBe(seladoLa);
-      expect(readSecret(db, 'routerosPassword')).toBe('');
-      expect(readSecretsLost(db)).toEqual(['Senha do router de gestão']);
+  test('a chave das sessões já não é uma credencial portátil', () => {
+    expect(SECRET_KEYS).not.toContain('auth_secret');
+  });
+});
 
-      // Segunda passagem: mesmo aviso, mesmos bytes. Nada se acumula.
-      expect(sealPendingSecrets(db)).toEqual(['Senha do router de gestão']);
-      expect(raw(db, 'routerosPassword')).toBe(seladoLa);
-    });
+describe('com o cofre trancado ou ausente', () => {
+  test('gravar recusa — nunca cai para texto simples', () => {
+    const db = memoryDb();
+    setCredentialVault(openVault(db, fakeMachine('A')));
+    const locked = openVault(new Database(db.serialize()), fakeMachine('B'));
+    expect(locked.status()).toBe('locked');
+    setCredentialVault(locked);
+    expect(canStoreSecrets()).toBe(false);
+    expect(() => writeSecret(db, 'routerosPassword', 'nova')).toThrow('VAULT_LOCKED');
 
+    setCredentialVault(null);
+    expect(canStoreSecrets()).toBe(false);
+    expect(() => writeSecret(db, 'routerosPassword', 'nova')).toThrow('VAULT_UNAVAILABLE');
+    expect(raw(db, 'routerosPassword')).toBe('');
+  });
+
+  test('ler devolve vazio e não apaga nada; o aviso diz o que não abre', () => {
+    const db = memoryDb();
+    writeSecret(db, 'routerosPassword', 'senha');
+    const stored = raw(db, 'routerosPassword');
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('companyName', 'SKYNET')").run();
+
+    setCredentialVault(null);
+    expect(readSecret(db, 'routerosPassword')).toBe('');
+    expect(refreshSecretsLost(db)).toEqual(['Senha do router de gestão']);
+    expect(readSecretsLost(db)).toEqual(['Senha do router de gestão']);
+    expect(raw(db, 'routerosPassword')).toBe(stored);
     expect(raw(db, 'companyName')).toBe('SKYNET');
-    db.close();
+  });
+});
+
+describe('aviso de credenciais perdidas', () => {
+  test('valores legados por migrar contam como indisponíveis', () => {
+    const db = memoryDb();
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('ultraMsgToken', 'token-em-claro')").run();
+    expect(readSecret(db, 'ultraMsgToken')).toBe('');
+    expect(refreshSecretsLost(db)).toEqual(['Token UltraMsg']);
   });
 
-  test('reescrever a credencial na máquina nova cala o aviso', () => {
+  test('reescrever a credencial cala o aviso; vazio não conta como perdido', () => {
     const db = memoryDb();
-    withSealing('OUTRA', () => {
-      writeSecret(db, 'routerosPassword', 'senha-da-outra-maquina');
-    });
-
-    withSealing('A', () => {
-      expect(sealPendingSecrets(db)).toEqual(['Senha do router de gestão']);
-
-      writeSecret(db, 'routerosPassword', 'senha-desta-maquina');
-      expect(refreshSecretsLost(db)).toEqual([]);
-      expect(readSecretsLost(db)).toEqual([]);
-      expect(readSecret(db, 'routerosPassword')).toBe('senha-desta-maquina');
-    });
-    db.close();
-  });
-
-  test('vazio não conta como perdido', () => {
-    const db = memoryDb();
-    withSealing('A', () => {
-      writeSecret(db, 'ultraMsgToken', '');
-      expect(sealPendingSecrets(db)).toEqual([]);
-      expect(raw(db, SECRETS_LOST_KEY)).toBe('[]');
-    });
-    db.close();
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('ultraMsgToken', 'enc:v1:QTp0b2tlbg==')").run();
+    expect(refreshSecretsLost(db)).toEqual(['Token UltraMsg']);
+    writeSecret(db, 'ultraMsgToken', 'novo');
+    expect(refreshSecretsLost(db)).toEqual([]);
+    expect(raw(db, SECRETS_LOST_KEY)).toBe('[]');
   });
 });

@@ -8,8 +8,13 @@ import * as schema from './schema';
 
 let database: ReturnType<typeof drizzle<typeof schema>> | null = null;
 let sqliteInstance: Database.Database | null = null;
+let restartRequired = false;
+
+export function requiresRestart(): boolean { return restartRequired; }
+export function markRequiresRestart(): void { restartRequired = true; }
 
 export function getDatabase() {
+  if (restartRequired) throw new Error('RESTART_REQUIRED');
   if (database) {
     return database;
   }
@@ -35,6 +40,7 @@ export function getDatabase() {
 }
 
 export function getSqliteDatabase() {
+  if (restartRequired) throw new Error('RESTART_REQUIRED');
   if (!sqliteInstance) {
     getDatabase();
   }
@@ -56,4 +62,5 @@ export function closeDatabase() {
 
 export function closeDatabaseForTests() {
   closeDatabase();
+  restartRequired = false;
 }

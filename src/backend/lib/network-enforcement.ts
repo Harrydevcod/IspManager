@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
+import { readPppoeSecret } from './secrets';
 import { readBaseProfileName, readSuspendedProfileName, syncPlanProfiles, type PlanSyncSummary } from './plan-profiles';
 import {
   createSecret,
@@ -37,7 +38,8 @@ export type DesiredService = {
   serviceId: number;
   clientName: string;
   username: string;
-  password: string | null;
+  /** Há senha gravada? O texto em claro só se abre no momento de a enviar. */
+  hasPassword: boolean;
   /** Password local alterada e ainda não confirmada no router. */
   passwordPending: boolean;
   /** Verdadeiro para ativos e suspensos por perfil. */
@@ -79,7 +81,7 @@ type ServiceRow = {
   clientName: string;
   status: string;
   username: string;
-  password: string | null;
+  hasPassword: number;
   passwordPending: number;
   profile: string | null;
 };
@@ -91,7 +93,7 @@ export function loadDesiredServices(db: Database.Database, options: { suspendedP
       c.full_name AS clientName,
       s.status AS status,
       s.pppoe_username AS username,
-      s.pppoe_password AS password,
+      (s.pppoe_password IS NOT NULL AND s.pppoe_password <> '') AS hasPassword,
       s.pppoe_password_sync_pending AS passwordPending,
       NULLIF(TRIM(p.router_profile), '') AS profile
     FROM services s
@@ -105,7 +107,7 @@ export function loadDesiredServices(db: Database.Database, options: { suspendedP
     serviceId: row.serviceId,
     clientName: row.clientName,
     username: row.username,
-    password: row.password,
+    hasPassword: row.hasPassword === 1,
     passwordPending: row.passwordPending === 1,
     enabled: row.status === 'active' || (row.status === 'suspended' && Boolean(options.suspendedProfile)),
     profile: row.status === 'suspended' && options.suspendedProfile ? options.suspendedProfile : row.profile,
@@ -269,7 +271,7 @@ export function planActions(
     // é limpa depois de um PATCH bem sucedido. Com a marca, as credenciais do
     // ISPM mandam: um nome diferente no router é renomeado na mesma ação.
     const renamed = secret.name !== service.username;
-    if (service.passwordPending && service.password) {
+    if (service.passwordPending && service.hasPassword) {
       divergences.push({
         serviceId: service.serviceId,
         username: service.username,
@@ -539,9 +541,24 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
   };
 }
 
-/** Só limpa a marca se a password na BD ainda é a que foi enviada ao router. */
-function clearPasswordPending(db: Database.Database, serviceId: number, sent: string): void {
-  db.prepare('UPDATE services SET pppoe_password_sync_pending = 0 WHERE id = ? AND pppoe_password = ?').run(serviceId, sent);
+/**
+ * A password a enviar, aberta pelo cofre, e o ciphertext de onde saiu. Vazio =
+ * sem senha ou cofre trancado: quem chama lança antes de contactar o router.
+ */
+function openPassword(db: Database.Database, serviceId: number): { plain: string; sealed: string | null } {
+  const row = db.prepare('SELECT pppoe_password AS sealed FROM services WHERE id = ?').get(serviceId) as
+    | { sealed: string | null }
+    | undefined;
+  return { plain: readPppoeSecret(db, serviceId), sealed: row?.sealed ?? null };
+}
+
+/**
+ * Só limpa a marca se a coluna ainda guarda o ciphertext que foi aberto e
+ * enviado. Cada gravação cifra com um nonce novo, por isso uma password gravada
+ * durante o PATCH muda o ciphertext e a marca fica para a passagem seguinte.
+ */
+function clearPasswordPending(db: Database.Database, serviceId: number, sealed: string | null): void {
+  db.prepare('UPDATE services SET pppoe_password_sync_pending = 0 WHERE id = ? AND pppoe_password = ?').run(serviceId, sealed);
 }
 
 function rank(action: PlannedAction): number {
@@ -563,12 +580,15 @@ async function applyAction(
 ): Promise<void> {
   if (action.kind === 'create') {
     const service = desired.find((item) => item.serviceId === action.serviceId);
-    if (!service?.password) {
-      throw new Error('Servico sem senha PPPoE gravada');
+    // Aberta só aqui, e verificada antes de qualquer transporte: vazio = sem
+    // senha ou cofre trancado, e nesse caso o router nem é contactado.
+    const password = openPassword(db, action.serviceId);
+    if (!service || !password.plain) {
+      throw new Error('Servico sem senha PPPoE disponivel');
     }
     const id = await createSecret(transport, {
       name: action.username,
-      password: service.password,
+      password: password.plain,
       comment: `${COMMENT_PREFIX}${action.serviceId}`,
       profile: action.profile
     });
@@ -576,19 +596,19 @@ async function applyAction(
     if (!service.enabled && id) {
       await patchSecret(transport, id, { disabled: true });
     }
-    clearPasswordPending(db, action.serviceId, service.password);
+    clearPasswordPending(db, action.serviceId, password.sealed);
     recordSystemAudit(db, 'network_provision', action.serviceId, `Criou utilizador PPPoE ${action.username} no router`);
     return;
   }
 
   if (action.kind === 'password') {
-    const service = desired.find((item) => item.serviceId === action.serviceId);
-    if (!service?.password) throw new Error('Servico sem senha PPPoE gravada');
+    const password = openPassword(db, action.serviceId);
+    if (!password.plain) throw new Error('Servico sem senha PPPoE disponivel');
     await patchSecret(transport, action.secretId, {
       ...(action.rename ? { name: action.username } : {}),
-      password: service.password
+      password: password.plain
     });
-    clearPasswordPending(db, action.serviceId, service.password);
+    clearPasswordPending(db, action.serviceId, password.sealed);
     if (action.rename) {
       // A sessão viva é do titular anterior, com as credenciais antigas.
       const session = activeByName.get(login);

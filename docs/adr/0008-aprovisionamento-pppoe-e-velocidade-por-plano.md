@@ -69,8 +69,9 @@ com hardware à frente:
 
 ## Consequências
 
-- Criar um serviço com o router ligado dá acesso à rede sem ninguém abrir o Winbox; a senha fica visível
-  na ficha do serviço para o técnico a configurar no equipamento do cliente.
+- Criar um serviço com o router ligado dá acesso à rede sem ninguém abrir o Winbox. A senha fica cifrada
+  no cofre (ADR 0012) e a ficha do serviço só diz se está configurada: para a dar ao técnico, o
+  administrador escreve-a ao criar o serviço ou muda-a com a ação "Alterar senha PPPoE".
 - Mudar um cliente de plano muda-lhe a velocidade na passagem seguinte, sem intervenção.
 - O ensaio (dry-run) vem ligado e é o único modo utilizável até alguém o desligar de propósito. O relatório
   de divergências é o que se confere contra o parque real antes disso.

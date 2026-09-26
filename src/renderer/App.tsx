@@ -1,6 +1,6 @@
 import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, Landmark, LogOut, Network, PanelLeftClose, PanelLeftOpen, Plus, Router, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, PageHeader, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider } from './components';
+import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, PageHeader, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider, VaultBanner } from './components';
 import type { CommandPaletteItem } from './components';
 import { AuthProvider, authFetch, useAuth } from './lib/auth';
 import { LicenseProvider } from './lib/license';
@@ -131,6 +131,8 @@ function AppShell() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [releaseNotesVersion, setReleaseNotesVersion] = useState<string | null>(null);
   const [navCollapsed, setNavCollapsed] = useState(readSidebarCollapsed);
+  // Muda a cada pedido do aviso do cofre: remonta as Configurações já no separador Cofre.
+  const [vaultOpenRequest, setVaultOpenRequest] = useState(0);
 
   useEffect(() => writeSidebarCollapsed(navCollapsed), [navCollapsed]);
   useEffect(() => installKeyboardNavigationIntent(), []);
@@ -388,6 +390,7 @@ function AppShell() {
 
         <section className="content" id="app-content" tabIndex={-1}>
           <LicenseBanner />
+          <VaultBanner onOpen={() => { setVaultOpenRequest((request) => request + 1); setSection('settings'); }} />
           <PageHeader
             eyebrow="Cabo Verde"
             title="Painel operacional"
@@ -479,7 +482,12 @@ function AppShell() {
           )}
           {section === 'users' && <UsersModule />}
           {section === 'audit' && <AuditModule />}
-          {section === 'settings' && <SettingsModule />}
+          {section === 'settings' && (
+            <SettingsModule
+              key={vaultOpenRequest}
+              initialTab={vaultOpenRequest > 0 ? 'vault' : undefined}
+            />
+          )}
         </section>
 
         <CommandPalette

@@ -3660,6 +3660,16 @@ h2 {
   text-transform: uppercase;
 }
 
+.secret-field { max-width: 30rem; }
+.secret-field-control { display: flex; align-items: center; gap: var(--space-2); }
+.secret-field-control input { min-width: 0; flex: 1; }
+.secret-field-control > span { color: var(--text-2); font-size: var(--fs-sm); }
+.vault-panel { display: grid; gap: var(--space-4); max-width: 38rem; }
+.vault-panel form { display: grid; gap: var(--space-3); max-width: 30rem; }
+.vault-panel form > button { justify-self: start; }
+.vault-recovery { display: flex; align-items: center; gap: var(--space-3); }
+.vault-recovery-key { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; font-family: ui-monospace, monospace; color: var(--text); }
+
 /* Inputs numéricos curtos (segundos, minutos, dias): a caixa acompanha o
    tamanho do valor esperado em vez de esticar pela célula do grid. */
 .field-short input {
@@ -6353,7 +6363,8 @@ button.danger:disabled {
    O aviso vive acima do cabeçalho da página e nunca tapa a aplicação: uma
    licença caducada bloqueia a escrita, não a consulta. Daí a faixa discreta
    em vez de um ecrã de bloqueio. */
-.license-banner {
+.license-banner,
+.shell-banner {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -6363,7 +6374,8 @@ button.danger:disabled {
   margin-bottom: var(--space-4);
 }
 
-.license-banner p {
+.license-banner p,
+.shell-banner p {
   margin: 0;
   flex: 1;
   min-width: 0;
@@ -6371,20 +6383,26 @@ button.danger:disabled {
   color: var(--text-2);
 }
 
-.license-banner > svg { flex: none; }
+.license-banner > svg,
+.shell-banner > svg { flex: none; }
 
-.license-banner-warn {
+.license-banner-warn,
+.shell-banner-warn {
   background: color-mix(in oklch, var(--warn) 10%, transparent);
   border-color: color-mix(in oklch, var(--warn) 34%, transparent);
 }
-.license-banner-warn > svg { color: var(--warn); }
+.license-banner-warn > svg,
+.shell-banner-warn > svg { color: var(--warn); }
 
-.license-banner-danger {
+.license-banner-danger,
+.shell-banner-danger {
   background: color-mix(in oklch, var(--danger) 12%, transparent);
   border-color: color-mix(in oklch, var(--danger) 40%, transparent);
 }
-.license-banner-danger > svg { color: var(--danger); }
-.license-banner-danger p { color: var(--text); }
+.license-banner-danger > svg,
+.shell-banner-danger > svg { color: var(--danger); }
+.license-banner-danger p,
+.shell-banner-danger p { color: var(--text); }
 
 .license-panel {
   margin-top: var(--space-6);

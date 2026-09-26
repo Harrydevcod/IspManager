@@ -39,7 +39,9 @@ export type SettingsFormState = {
   autoNoticesEnabled: boolean;
   noticeCooldownDays: string;
   ultraMsgInstanceId: string;
+  /** Só um token novo; vazio = manter o guardado. */
   ultraMsgToken: string;
+  ultraMsgTokenConfigured?: boolean;
   smsCompanionEnabled: boolean;
   smsCompanionBaseUrl: string;
   smsDispatchIntervalSeconds: string;
@@ -56,7 +58,9 @@ export type SettingsFormState = {
   routerosHost: string;
   routerosPort: string;
   routerosUser: string;
+  /** Só uma senha nova; vazia = manter a guardada. */
   routerosPassword: string;
+  routerosPasswordConfigured?: boolean;
   routerosTlsCert: string;
   routerosDryRun: boolean;
   routerosIntervalSeconds: string;

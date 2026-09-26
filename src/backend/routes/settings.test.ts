@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
+import { getCredentialVault, readSecret, setCredentialVault, type SecretKey } from '../lib/secrets';
 
 let app: FastifyInstance;
 let db: Database.Database;
@@ -284,30 +285,30 @@ describe('settings SMS validation', () => {
 });
 
 describe('definicoes do MikroTik', () => {
-  const MASK = '••••••••';
 
-  test('a senha do router nunca sai em claro e a mascara nao a apaga', async () => {
+  test('a senha do router nunca sai e gravar com ela vazia nao a apaga', async () => {
     const saved = await app.inject({
       method: 'PUT',
       url: '/api/settings',
       payload: { ...validSettings, routerosHost: '192.168.88.1', routerosUser: 'ispm', routerosPassword: 'segredo' }
     });
     expect(saved.statusCode).toBe(200);
-    expect(saved.json().routerosPassword).toBe(MASK);
+    expect(saved.json()).toMatchObject({ routerosPassword: '', routerosPasswordConfigured: true });
 
     const read = await app.inject({ method: 'GET', url: '/api/settings' });
-    expect(read.json().routerosPassword).toBe(MASK);
-    expect((db.prepare(`SELECT value FROM app_settings WHERE key='routerosPassword'`).get() as { value: string }).value)
-      .toBe('segredo');
+    expect(read.json()).toMatchObject({ routerosPassword: '', routerosPasswordConfigured: true });
+    const raw = (db.prepare(`SELECT value FROM app_settings WHERE key='routerosPassword'`).get() as { value: string }).value;
+    expect(raw.startsWith('enc:v2:')).toBe(true);
+    expect(raw).not.toContain('segredo');
+    expect(readSecret(db, 'routerosPassword')).toBe('segredo');
 
-    // Gravar outra definicao qualquer devolve a mascara ao servidor: a senha fica.
+    // Gravar outra definicao qualquer com a senha vazia: a senha fica.
     await app.inject({
       method: 'PUT',
       url: '/api/settings',
-      payload: { ...validSettings, routerosHost: '192.168.88.1', routerosUser: 'ispm', routerosPassword: MASK }
+      payload: { ...validSettings, routerosHost: '192.168.88.1', routerosUser: 'ispm', routerosPassword: '' }
     });
-    expect((db.prepare(`SELECT value FROM app_settings WHERE key='routerosPassword'`).get() as { value: string }).value)
-      .toBe('segredo');
+    expect(readSecret(db, 'routerosPassword')).toBe('segredo');
   });
 
   test('o ensaio (dry-run) so se desliga com um false explicito', async () => {
@@ -334,13 +335,10 @@ describe('definicoes do MikroTik', () => {
 });
 
 describe('credenciais nas definicoes', () => {
-  const MASK = '••••••••';
 
-  function stored(key: string): string {
-    const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as
-      | { value: string }
-      | undefined;
-    return row?.value ?? '';
+  // O que o backend consegue usar, não os bytes: no ficheiro está cifrado.
+  function stored(key: SecretKey): string {
+    return readSecret(db, key);
   }
 
   test('o token da UltraMsg tem o mesmo tratamento da senha do router', async () => {
@@ -352,16 +350,16 @@ describe('credenciais nas definicoes', () => {
     expect(saved.statusCode).toBe(200);
     // O renderer nunca chama a UltraMsg: quem o faz e o backend, por isso o
     // token nao tem razao nenhuma para sair daqui em claro.
-    expect(saved.json().ultraMsgToken).toBe(MASK);
+    expect(saved.json()).toMatchObject({ ultraMsgToken: '', ultraMsgTokenConfigured: true });
 
     const read = await app.inject({ method: 'GET', url: '/api/settings' });
-    expect(read.json().ultraMsgToken).toBe(MASK);
+    expect(read.json()).toMatchObject({ ultraMsgToken: '', ultraMsgTokenConfigured: true });
     // O instance id nao e segredo e continua legivel.
     expect(read.json().ultraMsgInstanceId).toBe('instance1');
     expect(stored('ultraMsgToken')).toBe('token-secreto');
   });
 
-  test('devolver a mascara intacta nao apaga o token guardado', async () => {
+  test('gravar sem o token (vazio) nao apaga o guardado', async () => {
     await app.inject({
       method: 'PUT',
       url: '/api/settings',
@@ -370,7 +368,7 @@ describe('credenciais nas definicoes', () => {
     await app.inject({
       method: 'PUT',
       url: '/api/settings',
-      payload: { ...validSettings, companyName: 'Outra coisa qualquer', ultraMsgToken: MASK }
+      payload: { ...validSettings, companyName: 'Outra coisa qualquer', ultraMsgToken: '' }
     });
     expect(stored('ultraMsgToken')).toBe('token-secreto');
   });
@@ -391,6 +389,25 @@ describe('credenciais nas definicoes', () => {
     });
 
     expect(stored('routerosPassword')).toBe('segredo');
+  });
+
+  test('com o cofre trancado, gravar uma senha responde 409 e não escreve nada', async () => {
+    const vault = getCredentialVault();
+    setCredentialVault(null);
+    try {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/settings',
+        payload: { ...validSettings, companyName: 'Nao deve gravar', routerosPassword: 'nova-senha' }
+      });
+      expect(response.statusCode).toBe(409);
+      expect(JSON.stringify(response.json())).not.toContain('nova-senha');
+    } finally {
+      setCredentialVault(vault);
+    }
+    expect(stored('routerosPassword')).not.toBe('nova-senha');
+    const company = db.prepare("SELECT value FROM app_settings WHERE key='companyName'").get() as { value: string } | undefined;
+    expect(company?.value).not.toBe('Nao deve gravar');
   });
 
   test('o aviso dos segredos perdidos chega ao cliente e some ao gravar', async () => {

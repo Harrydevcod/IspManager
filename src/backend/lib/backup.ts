@@ -11,8 +11,16 @@ import {
   constants,
 } from 'node:fs';
 import path from 'node:path';
-import { getSqliteDatabase, closeDatabase } from '../db/database';
+import { getSqliteDatabase, closeDatabase, markRequiresRestart } from '../db/database';
+import type { Vault } from './vault';
 import { resolveDataDir } from './paths';
+
+let vaultForRestore: Vault | null = null;
+export function setVaultForRestore(vault: Vault | null): void { vaultForRestore = vault; }
+
+let normalBackupsBlocked = false;
+export function setNormalBackupsBlocked(blocked: boolean): void { normalBackupsBlocked = blocked; }
+export function areNormalBackupsBlocked(): boolean { return normalBackupsBlocked; }
 
 export interface BackupEntry {
   /** Filename only (not a full path). */
@@ -201,6 +209,7 @@ export async function runScheduledBackupIfDue(
 export async function createBackup(
   reason: 'startup' | 'manual' | 'scheduled',
 ): Promise<BackupEntry> {
+  if (normalBackupsBlocked) throw new Error('BACKUP_BLOCKED_BY_VAULT');
   void reason; // kept for future audit-log divergence; retention is uniform
   const dir = resolveBackupDir();
   const now = new Date();
@@ -344,6 +353,8 @@ async function doRestoreBackup(
   }
 
   closeDatabase();
+  vaultForRestore?.dispose();
+  vaultForRestore = null;
 
   try {
     for (const side of ['-wal', '-shm']) {
@@ -366,5 +377,6 @@ async function doRestoreBackup(
     );
   }
 
+  markRequiresRestart();
   return { restartRequired: true, snapshotPath };
 }

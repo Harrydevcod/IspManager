@@ -12,7 +12,11 @@ beforeAll(async () => {
   process.env.ISPM_DATA_DIR = dataDir;
   process.env.ISPM_AUTH = 'off';
   const server = await import('../server');
-  app = await server.createBackendApp();
+  app = await server.createBackendApp({ localProtection: {
+    available: () => true,
+    seal: (value: string) => `test:${value}`,
+    open: (value: string) => value.slice(5)
+  } });
   await app.ready();
 });
 
@@ -39,6 +43,16 @@ describe('backup routes', () => {
     expect(res.statusCode).toBe(200);
     const after = (await app.inject({ method: 'GET', url: '/api/backups' })).json();
     expect(after.entries.length).toBeGreaterThanOrEqual(before.entries.length);
+  });
+
+  test('cofre indisponível devolve erro administrativo ao criar backup', async () => {
+    const { setNormalBackupsBlocked } = await import('../lib/backup');
+    setNormalBackupsBlocked(true);
+    try {
+      const res = await app.inject({ method: 'POST', url: '/api/backups' });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error).toContain('cofre');
+    } finally { setNormalBackupsBlocked(false); }
   });
 
   test('POST /api/backups/restore rejects path traversal', async () => {

@@ -12,7 +12,11 @@ beforeAll(async () => {
   process.env.ISPM_DATA_DIR = dataDir;
   process.env.ISPM_AUTH = 'off';
   const server = await import('../server');
-  app = await server.createBackendApp();
+  app = await server.createBackendApp({ localProtection: {
+    available: () => true,
+    seal: (value: string) => `test:${value}`,
+    open: (value: string) => value.slice(5)
+  } });
   await app.ready();
 });
 
@@ -27,6 +31,10 @@ afterAll(async () => {
 });
 
 describe('POST /api/backups/setup-import (primeiro arranque)', () => {
+  test('rejeita ficheiro inexistente antes do restauro', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/backups/setup-import', payload: { path: path.join(dataDir, 'nao-existe.sqlite') } });
+    expect(res.statusCode).toBe(400);
+  });
   test('restaura um backup válido enquanto não existem utilizadores', async () => {
     // Um backup real: o de arranque criado pelo próprio servidor.
     const list = (await app.inject({ method: 'GET', url: '/api/backups' })).json() as {
@@ -45,29 +53,24 @@ describe('POST /api/backups/setup-import (primeiro arranque)', () => {
     expect(res.json().restartRequired).toBe(true);
   });
 
-  test('rejeita ficheiro inexistente', async () => {
+  test('depois do restauro só pede reinício', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/backups/setup-import',
       payload: { path: path.join(dataDir, 'nao-existe.sqlite') }
     });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(503);
+    expect(res.json().restartRequired).toBe(true);
   });
 
-  test('fecha-se assim que existe um utilizador (setup completo → 409)', async () => {
-    const { getSqliteDatabase } = await import('../db/database');
-    getSqliteDatabase().prepare(`
-      INSERT INTO users (username, password_hash, role, full_name, active)
-      VALUES ('admin', 'hash', 'admin', 'Admin', 1)
-    `).run();
-
+  test('não reabre a BD em pedidos posteriores', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/backups/setup-import',
       payload: { path: path.join(dataDir, 'qualquer.sqlite') }
     });
 
-    expect(res.statusCode).toBe(409);
-    expect(res.json().error).toContain('Setup ja foi concluido');
+    expect(res.statusCode).toBe(503);
+    expect(res.json().restartRequired).toBe(true);
   });
 });

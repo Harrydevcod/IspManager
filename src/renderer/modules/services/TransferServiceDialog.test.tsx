@@ -51,7 +51,7 @@ const service = {
   audiovisualAnnualCve: 0,
   deviceIps: '10.0.0.10',
   pppoeUsername: null,
-  pppoePassword: null,
+  pppoePasswordConfigured: false,
   routerOnline: null,
   routerEnabled: null,
   routerDivergence: null

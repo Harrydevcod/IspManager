@@ -69,7 +69,7 @@ const services: ServiceRow[] = [
     audiovisualAnnualCve: 0,
     deviceIps: null,
     pppoeUsername: null,
-    pppoePassword: null,
+    pppoePasswordConfigured: false,
     routerOnline: null,
     routerEnabled: null,
     routerDivergence: null
@@ -91,7 +91,7 @@ const services: ServiceRow[] = [
     audiovisualAnnualCve: 0,
     deviceIps: null,
     pppoeUsername: null,
-    pppoePassword: null,
+    pppoePasswordConfigured: false,
     routerOnline: null,
     routerEnabled: null,
     routerDivergence: null

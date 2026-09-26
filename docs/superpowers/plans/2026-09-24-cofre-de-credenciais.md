@@ -69,7 +69,7 @@ Independente de todo o resto e lançável sozinho.
 - [x] Correr `npx.cmd vitest run src/backend/lib/secrets.test.ts src/backend/routes/settings.test.ts`; commit.
 - [x] Lançar 2.4: bump do `package.json`, entrada no `CHANGELOG.md`, build do instalador Windows, **criar a release antes da tag** e anexar os assets na criação.
 
-## Tarefa 2 — Primitivas e estado do cofre
+## Tarefa 2 — Primitivas e estado do cofre · **feito**
 
 **Criar:** `src/backend/lib/vault-crypto.ts` (+teste), `local-protection.ts` (+teste), `vault.ts` (+teste), migração `0064_credential_vault.ts`.
 **Modificar:** `src/backend/db/migrations/index.ts`, `src/backend/db/schema.ts`.
@@ -96,39 +96,52 @@ export interface Vault {
 export function openVault(db: Database.Database, protection: LocalProtection): Vault;
 ```
 
-- [ ] Testes RED: round-trip; dois `encryptValue` do mesmo valor diferem (nonce); contexto errado lança; tag corrompida lança; envelope > 16 KiB rejeitado; encoding não canónico rejeitado.
-- [ ] Testes RED do cofre com duas `LocalProtection` incompatíveis (máquinas A e B): criar em A, guardar segredo, copiar DB, abrir em B → `locked`; chave errada não altera wrappers; chave certa devolve o valor exato; `dispose()` impede uso posterior; **`openVault` sem proteção disponível devolve `absent` e não escreve nada** (D3).
-- [ ] Formato `enc:v2:<nonce-b64url>:<tag-b64url>:<ct-b64url>`; chave 32 B, nonce 12 B, tag 16 B; AAD UTF-8 = `v2|<contexto>`. Validar tamanhos, encoding e versão **antes** de decifrar.
-- [ ] `LocalProtection`: `available()` exige Electron pronto, `isEncryptionAvailable()` e backend ≠ `basic_text`. `seal`/`open` lançam erro tipado que nunca inclui o conteúdo.
-- [ ] Migração 0064: tabela singleton `credential_vault` (`vault_id`, `format_version`, `local_wrapped_key`, `recovery_wrapped_key`, `pending_recovery_local`, `recovery_confirmed_at`). Só a tabela; não converte dados.
-- [ ] Criação da chave de dados e dos dois wrappers **numa transação**, persistindo só depois de verificar que ambos reabrem. Nunca recriar em silêncio quando já existe ciphertext sem metadados.
-- [ ] Verde; commit.
+- [x] Testes RED: round-trip; dois `encryptValue` do mesmo valor diferem (nonce); contexto errado lança; tag corrompida lança; envelope > 16 KiB rejeitado; encoding não canónico rejeitado.
+- [x] Testes RED do cofre com duas `LocalProtection` incompatíveis (máquinas A e B): criar em A, guardar segredo, copiar DB, abrir em B → `locked`; chave errada não altera wrappers; chave certa devolve o valor exato; `dispose()` impede uso posterior; **`openVault` sem proteção disponível devolve `absent` e não escreve nada** (D3).
+- [x] Formato `enc:v2:<nonce-b64url>:<tag-b64url>:<ct-b64url>`; chave 32 B, nonce 12 B, tag 16 B; AAD UTF-8 = `v2|<contexto>`. Validar tamanhos, encoding e versão **antes** de decifrar.
+- [x] `LocalProtection`: `available()` exige Electron pronto, `isEncryptionAvailable()` e backend ≠ `basic_text`. `seal`/`open` lançam erro tipado que nunca inclui o conteúdo.
+- [x] Migração 0064: tabela singleton `credential_vault` (`vault_id`, `format_version`, `local_wrapped_key`, `recovery_wrapped_key`, `pending_recovery_local`, `recovery_confirmed_at`). Só a tabela; não converte dados.
+- [x] Criação da chave de dados e dos dois wrappers **numa transação**, persistindo só depois de verificar que ambos reabrem. Nunca recriar em silêncio quando já existe ciphertext sem metadados.
+- [x] Verde; commit.
 
-## Tarefa 3 — Migração dos valores legados e sessão independente
+## Tarefa 3 — Migração dos valores legados e sessão independente · **feito**
 
 **Criar:** `src/backend/lib/vault-migration.ts` (+teste), `session-secret.ts` (+teste).
 **Modificar:** `secrets.ts`, `secrets.test.ts`, `src/backend/lib/auth.ts`.
 
-- [ ] Testes RED: valores em texto simples, `enc:v1:` que abre, `enc:v1:` que não abre, prefixo `enc:` desconhecido. **Uma linha inválida preserva todas as outras e aborta a transação.** Reexecução após sucesso é idempotente.
-- [ ] `migrateCredentials(db, vault, protection)`: numa transação síncrona, para cada chave de `SECRET_KEYS` e para cada `services.pppoe_password` não vazio — abrir o legado, cifrar com o AAD novo, decifrar e **comparar antes de gravar**. Não tocar em `pppoe_password_sync_pending`, estados de serviço ou configuração de jobs.
-- [ ] Preservar bytes: remover o `.trim()` dos caminhos de segredo (`readSecret`/`writeSecret`) sem reescrever passwords existentes.
-- [ ] `auth_secret` sai da lista portátil → `session-secret.ts`, selado só localmente. Num restauro recria-se a assinatura (todos entram outra vez); os hashes `scrypt` continuam a validar. Sem proteção local, falhar explicitamente — nunca gravar assinatura em claro.
-- [ ] `readSecret`/`writeSecret` mantêm o nome mas passam pelo cofre e lançam quando ele está `locked`/`absent`. Erros expõem código/campo/id, nunca conteúdo. Rever todos os consumidores para não contactarem transportes externos quando o segredo está indisponível.
-- [ ] Verde; inspecionar a DB temporária a olho; commit.
+- [x] Testes RED: valores em texto simples, `enc:v1:` que abre, `enc:v1:` que não abre, prefixo `enc:` desconhecido. **Uma linha inválida preserva todas as outras e aborta a transação.** Reexecução após sucesso é idempotente.
+- [x] `migrateCredentials(db, vault, protection)`: numa transação síncrona, para cada chave de `SECRET_KEYS` e para cada `services.pppoe_password` não vazio — abrir o legado, cifrar com o AAD novo, decifrar e **comparar antes de gravar**. Não tocar em `pppoe_password_sync_pending`, estados de serviço ou configuração de jobs.
+- [x] Preservar bytes: remover o `.trim()` dos caminhos de segredo (`readSecret`/`writeSecret`) sem reescrever passwords existentes.
+- [x] `auth_secret` sai da lista portátil → `session-secret.ts`, selado só localmente. Num restauro recria-se a assinatura (todos entram outra vez); os hashes `scrypt` continuam a validar. Sem proteção local, falhar explicitamente — nunca gravar assinatura em claro.
+- [x] `readSecret`/`writeSecret` mantêm o nome mas passam pelo cofre e lançam quando ele está `locked`/`absent`. Erros expõem código/campo/id, nunca conteúdo. Rever todos os consumidores para não contactarem transportes externos quando o segredo está indisponível.
+- [x] Verde; inspecionar a DB temporária a olho; commit.
 
-## Tarefa 4 — APIs sem revelação
+**Desvios, com razão:**
+- `readSecret` devolve **vazio** (não lança) quando o cofre está `locked`/`absent`: todos os consumidores já tratam vazio como "não configurado" e não contactam o transporte, e lançar derrubava as Definições e o estado do SMS com o cofre trancado (contra a D4). `writeSecret` lança — nunca cai para texto simples — e as rotas respondem 409.
+- `session-secret.ts` sem proteção local não falha: usa uma assinatura **efémera em memória**, nunca gravada. Falhar deixava o `npm run dev` sem login (contra a D3/D4).
+- O arranque (abrir cofre → migrar → aviso) já está no `server.ts`, porque `readSecret` passou a depender do cofre. A Tarefa 5 acrescenta as rotas e o resto da ordem.
+- ~~Não lançar este ramo sem a Tarefa 4~~ — resolvido na Tarefa 4.
+
+## Tarefa 4 — APIs sem revelação · **feito**
 
 **Modificar:** `src/backend/lib/services.ts`, `serviceTransfer.ts`, `network-enforcement.ts`; `src/backend/routes/finance.ts`, `settings.ts`, `network.ts` e os testes `services.credentials.test.ts`, `settings.test.ts`, `network.test.ts`, `serviceTransfer.test.ts`, `network-enforcement.test.ts`.
 
 Fachada nova em `secrets.ts`: `writePppoeSecret(db, serviceId, plain)`, `readPppoeSecret(db, serviceId)`.
 Respostas passam a `pppoePasswordConfigured`, `routerosPasswordConfigured`, `ultraMsgTokenConfigured`. `SECRET_MASK` desaparece.
 
-- [ ] Testes RED: GET de serviços nos três papéis → `expect(row).not.toHaveProperty('pppoePassword')`. Editar só o preço preserva o ciphertext. Gravar Definições sem propriedades secretas preserva credenciais e flags.
-- [ ] `finance.ts:97` deixa de selecionar a coluna; calcula presença (`s.pppoe_password <> '' AS pppoePasswordConfigured`). O `.map()` de omissão em `finance.ts:127` deixa de ser preciso.
-- [ ] Protocolo de escrita: **propriedade omitida = manter**; string não vazia = substituir; `null` explícito = remover onde é permitido. PPPoE com username não aceita remoção involuntária. Limites 8–64 só para passwords novas.
-- [ ] Criação, alteração e transferência de serviços passam pela fachada (`services.ts:181,322,384`; `serviceTransfer.ts:148`). Com o AAD em `tabela.coluna` (D2) a transferência **não** precisa de recifrar.
-- [ ] `network-enforcement.ts:94`: o planeamento recebe só presença/pending; `applyAction` chama `readPppoeSecret` apenas para criar/alterar password. Dry-run não precisa do plaintext. Verificar o cofre antes de qualquer transporte.
-- [ ] Testar com um segredo-marcador que ele não aparece em respostas, logs nem auditoria. Verde; commit.
+- [x] Testes RED: GET de serviços nos três papéis → `expect(row).not.toHaveProperty('pppoePassword')`. Editar só o preço preserva o ciphertext. Gravar Definições sem propriedades secretas preserva credenciais e flags.
+- [x] `finance.ts:97` deixa de selecionar a coluna; calcula presença (`s.pppoe_password <> '' AS pppoePasswordConfigured`). O `.map()` de omissão em `finance.ts:127` deixa de ser preciso.
+- [x] Protocolo de escrita: **propriedade omitida = manter**; string não vazia = substituir; `null` explícito = remover onde é permitido. PPPoE com username não aceita remoção involuntária. Limites 8–64 só para passwords novas.
+- [x] Criação, alteração e transferência de serviços passam pela fachada (`services.ts:181,322,384`; `serviceTransfer.ts:148`). Com o AAD em `tabela.coluna` (D2) a transferência **não** precisa de recifrar.
+- [x] `network-enforcement.ts:94`: o planeamento recebe só presença/pending; `applyAction` chama `readPppoeSecret` apenas para criar/alterar password. Dry-run não precisa do plaintext. Verificar o cofre antes de qualquer transporte.
+- [x] Testar com um segredo-marcador que ele não aparece em respostas, logs nem auditoria. Verde; commit.
+
+**Notas de implementação:**
+- `null` explícito **não** remove a senha PPPoE nem as das Definições: omitida, vazia e `null` querem todas dizer "manter". A remoção explícita fica para quando houver um botão para isso (Tarefa 5).
+- A criação automática de credenciais (router ligado) é **saltada** com o cofre trancado — o serviço nasce e fatura na mesma (D4); credenciais pedidas explicitamente respondem 409.
+- Renderer tocado só no mínimo para a 2.5 funcionar: sem pré-preenchimento, placeholder "Configurada — escreva para substituir" a partir das flags, e as credenciais saem do formulário depois de gravar. O `SecretField` continua na Tarefa 5.
+- O ramo volta a ser lançável: todos os consumidores de PPPoE passam pela fachada.
+- Merge do `fix/mikrotik-review` (PR #165): a marca `pppoe_password_sync_pending` limpa-se comparando o **ciphertext** lido antes do PATCH, não o texto (a coluna está cifrada; comparar o texto nunca casava e a password era reenviada a cada passagem). `createSecret`/`patchSecret` recusam qualquer password em `enc:` — a última barreira antes do router.
 
 ---
 
@@ -147,25 +160,46 @@ type SecretDraft = { editing: false } | { editing: true; value: string };
 type SecretFieldProps = { label: string; configured: boolean; draft: SecretDraft; onDraftChange(next: SecretDraft): void; disabled?: boolean };
 ```
 
-- [ ] Testes RED: acesso por papel (admin/operador/técnico), chave errada, repetição depois de confirmada, limite de tentativas; o logger nunca mostra o body da recuperação.
-- [ ] Arranque em `server.ts`: migrations → sessão local → cofre + migração de credenciais → backup → jobs → escuta. Migração falhada mantém a API comercial de pé com erro administrativo, bloqueando integrações e backups normais (D4). Injetar `LocalProtection` explicitamente em `createBackendApp` para os testes; detetar Electron em produção.
-- [ ] `standalone.ts` mantém-se (D3): abre o cofre se conseguir, nunca o cria, e o comando `dev` não muda. Sem canal HTTP de desencriptação; `safeStorage` nunca chega ao renderer.
-- [ ] `SecretField`: configurado não tem input; "Editar" produz input vazio e foca-o; olho com `aria-pressed` alterna só aquele input; "Cancelar" remove input e draft; nova renderização depois de gravar volta a trancar. Botões `type="button"`, nunca aninhados no `<label>`.
-- [ ] Ligar às flags `…Configured`. Payload leva a propriedade secreta **só** quando há draft editado não vazio. Em `ServicesModule.tsx:232` remover o pré-preenchimento com a password antiga; alterar PPPoE passa a ser ação dedicada.
-- [ ] `VaultPanel`: estado, entrega pendente e formulário de desbloqueio. Chave mostrada só na entrega autenticada, nunca carregada ao montar, nunca em `localStorage`/`sessionStorage`; confirmação exige reintroduzir. Explicar que backups antigos continuam a precisar da chave da sua geração.
-- [ ] Restauro: `vault.dispose()` + `requiresRestart()` — depois da troca do ficheiro a API só informa que é preciso reiniciar; nenhum timer reabre a DB. Sem máquina de drenagem (cortada).
-- [ ] Verde; commit.
+- [x] Testes RED: acesso por papel (admin/operador/técnico), chave errada, repetição depois de confirmada, limite de tentativas; o logger nunca mostra o body da recuperação.
+- [x] Arranque em `server.ts`: migrations → sessão local → cofre + migração de credenciais → backup → jobs → escuta. Migração falhada mantém a API comercial de pé com erro administrativo, bloqueando integrações e backups normais (D4). Injetar `LocalProtection` explicitamente em `createBackendApp` para os testes; detetar Electron em produção.
+- [x] `standalone.ts` mantém-se (D3): abre o cofre se conseguir, nunca o cria, e o comando `dev` não muda. Sem canal HTTP de desencriptação; `safeStorage` nunca chega ao renderer.
+- [x] `SecretField`: configurado não tem input; "Editar" produz input vazio e foca-o; olho com `aria-pressed` alterna só aquele input; "Cancelar" remove input e draft; nova renderização depois de gravar volta a trancar. Botões `type="button"`, nunca aninhados no `<label>`.
+- [x] Ligar às flags `…Configured`. Payload leva a propriedade secreta **só** quando há draft editado não vazio. Em `ServicesModule.tsx:232` remover o pré-preenchimento com a password antiga; alterar PPPoE passa a ser ação dedicada.
+- [x] `VaultPanel`: estado, entrega pendente e formulário de desbloqueio. Chave mostrada só na entrega autenticada, nunca carregada ao montar, nunca em `localStorage`/`sessionStorage`; confirmação exige reintroduzir. Explicar que backups antigos continuam a precisar da chave da sua geração.
+- [x] Restauro: `vault.dispose()` + `requiresRestart()` — depois da troca do ficheiro a API só informa que é preciso reiniciar; nenhum timer reabre a DB. Sem máquina de drenagem (cortada).
+- [x] Verde; commit.
+
+**Notas de implementação:**
+- A ação dedicada de alteração PPPoE (`PATCH /api/services/:id/pppoe-password`) já existia. Foi reutilizada; o formulário geral mostra apenas o estado da senha em serviços existentes. O `SecretField` cobre a criação e a ação dedicada.
+- `SmsTab.tsx` não mostra a chave de pareamento persistida; só inicia/revoga o pareamento. Por isso não há campo SMS para substituir. As flags necessárias já existiam em `types.ts`, sem alterações de tipos ou migrações.
+- Após restauro, `requiresRestart()` bloqueia a reabertura da base e todos os pedidos devolvem 503 com `restartRequired`. Os testes antigos de restauro foram ajustados a esse contrato.
+- Em standalone sem cofre (`absent`), os backups normais também ficam suspensos: uma base ainda com credenciais legadas não deve gerar uma cópia nova antes da migração sob Electron. Os testes de backup injetam proteção local artificial.
 
 ## Tarefa 6 — Verificação integrada e documentação
 
-**Criar:** `src/backend/routes/vault.integration.test.ts`, `docs/adr/0011-cofre-de-credenciais.md`.
+**Criar:** `src/backend/routes/vault.integration.test.ts`, `docs/adr/0012-cofre-de-credenciais.md` (o 0011 foi para os perfis PPP).
 **Modificar:** ADR 0008 (tirar a afirmação de password visível), ADR 0009 (tirar o fallback em claro), a especificação aprovada, `CHANGELOG.md`.
 
-- [ ] E2E com DB temporária: legado → migração → edição → backup → "máquina B" → login → `locked` → recuperação → transporte RouterOS falso recebe o valor original, e a API nunca o recebe. Snapshot das flags antes/depois idêntico.
-- [ ] `npm.cmd run typecheck`, `npm.cmd run lint`, `npm.cmd test`, `npx.cmd tsc -p tsconfig.main.json --noEmit`.
-- [ ] Verificar no Electron real com dados artificiais: criar/editar/cancelar, olho, relock, reinício, entrega pendente interrompida. Sem segredos reais em screenshots; sem router real.
-- [ ] Documentar: o que o cofre protege e o que não protege (ver **Context**); porque é que o cofre fica `locked` em `npm run dev`; que um `enc:v1:` que não abra exige a máquina original ou substituição explícita dessa credencial.
+- [x] E2E com DB temporária: legado → migração → edição → backup → "máquina B" → login → `locked` → recuperação → transporte RouterOS falso recebe o valor original, e a API nunca o recebe. Snapshot das flags antes/depois idêntico.
+- [x] `npm.cmd run typecheck`, `npm.cmd run lint`, `npm.cmd test`, `npx.cmd tsc -p tsconfig.main.json --noEmit`.
+- [x] Verificar no Electron real com dados artificiais: criar/editar/cancelar, olho, relock, reinício, entrega pendente interrompida. Sem segredos reais em screenshots; sem router real.
+  - **Feito em 2026-09-26 numa cópia da base real**, com o `Local State` da app, o Electron em dev e o browser na 5173, sem capturas de chaves:
+    - a conversão deixou `routerosPassword` e `ultraMsgToken` em `enc:v2`, sem nada em claro (as 31 senhas PPPoE estão vazias na base real);
+    - o cofre nasceu em `recovery_pending` e o aviso global apareceu; "Abrir cofre" abre o separador Cofre;
+    - a chave foi entregue sem ficar em localStorage/sessionStorage, e confirmar pô-la em `ready` e tirou o aviso;
+    - o router respondeu com a senha decifrada;
+    - na "máquina B" (userData vazio) o cofre ficou `locked` e o router indisponível; uma chave errada deu "Chave incorreta."; a certa desbloqueou e o router voltou;
+    - ao reiniciar a B o cofre abriu sozinho (`ready`).
+  - Com `ISPM_AUTH=off` qualquer senha entrega a chave, porque não há sessão para confirmar. É só no modo de desenvolvimento; o pacote impõe o login.
+  - O router real foi lido pelas rotas da app. O job de reconciliação da cópia correu com a mesma configuração e os mesmos dados da app instalada, por isso não tinha nada de diferente para aplicar.
+- [x] Documentar: o que o cofre protege e o que não protege (ver **Context**); porque é que o cofre fica `locked` em `npm run dev`; que um `enc:v1:` que não abra exige a máquina original ou substituição explícita dessa credencial.
 - [ ] Nota de lançamento: **esta versão tem de arrancar uma vez na máquina original** para converter os valores legados antes de qualquer restauro noutro sítio. O administrador tem de guardar a chave de recuperação.
+
+**Notas de implementação (Tarefa 6 e correções da revisão da 5):**
+- A revisão da Tarefa 5 encontrou que `recovery_pending` só se via em Configurações → Cofre: um administrador que nunca abrisse o separador nunca guardava a chave. Acrescentado o `VaultBanner`, um aviso em todos os módulos, só para admin, que abre o separador Cofre. Também avisa do cofre trancado e das credenciais por converter. O painel ganhou o botão "Copiar".
+- O ADR ficou com o número 0012, porque o 0011 são os perfis PPP.
+- As senhas PPPoE geradas automaticamente deixam de ser recuperáveis (spec, linha 159). O caminho para as dar ao técnico está escrito no ADR 0008 e no 0012.
+- A nota de lançamento vai no `CHANGELOG.md` do ramo `release/2.6`, não neste ramo.
 
 ---
 

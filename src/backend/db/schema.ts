@@ -635,6 +635,18 @@ export const networkDiscoveryDismissals = sqliteTable('network_discovery_dismiss
   dismissedAt: text('dismissed_at').notNull().default("(datetime('now'))")
 });
 
+/** Cofre de credenciais: uma linha (id = 1), chave de dados embrulhada duas vezes. Ver migração 0064. */
+export const credentialVault = sqliteTable('credential_vault', {
+  id: integer('id').primaryKey(),
+  vaultId: text('vault_id').notNull(),
+  formatVersion: integer('format_version').notNull().default(1),
+  localWrappedKey: text('local_wrapped_key').notNull(),
+  recoveryWrappedKey: text('recovery_wrapped_key').notNull(),
+  pendingRecoveryLocal: text('pending_recovery_local'),
+  recoveryConfirmedAt: text('recovery_confirmed_at'),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
 /**
  * Inferred row types — one `select` (read) and `insert` (write) per table.
  * Prefer these over hand-written `as { ... }` casts in raw queries: renaming a

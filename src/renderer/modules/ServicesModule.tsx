@@ -1,7 +1,7 @@
 import { Network, Pencil, Plus, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, Select, SkeletonList, Textarea, Toggle, WanModeSelect, OperationModeSelect, useConfirm, useToast } from '../components';
+import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, SecretField, Select, SkeletonList, Textarea, Toggle, WanModeSelect, OperationModeSelect, useConfirm, useToast, type SecretDraft } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import { todayIso } from '../../shared/assignment-dates';
@@ -47,7 +47,9 @@ type ServiceFormState = {
   status: 'active' | 'suspended' | 'cancelled';
   technicalNotes: string;
   pppoeUsername: string;
+  /** Só uma senha nova; vazia = manter a guardada. */
   pppoePassword: string;
+  pppoePasswordConfigured: boolean;
   audiovisualMode: 'none' | 'monthly' | 'annual';
   audiovisualMonthlyCve: string;
   audiovisualAnnualCve: string;
@@ -64,6 +66,7 @@ function emptyServiceForm(): ServiceFormState {
     technicalNotes: '',
     pppoeUsername: '',
     pppoePassword: '',
+    pppoePasswordConfigured: false,
     audiovisualMode: 'none',
     audiovisualMonthlyCve: '',
     audiovisualAnnualCve: ''
@@ -99,6 +102,7 @@ export function ServicesModule({
   const [avConfig, setAvConfig] = useState<AudiovisualConfig | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingService, setEditingService] = useState<ServiceRow | null>(null);
+  const [pppoeDraft, setPppoeDraft] = useState<SecretDraft>({ editing: false });
   const [attachItems, setAttachItems] = useState(false);
   const [itemDrafts, setItemDrafts] = useState<ItemDraft[]>([]);
   const [laborCve, setLaborCve] = useState('');
@@ -198,6 +202,7 @@ export function ServicesModule({
   }
 
   function openCreate() {
+    setPppoeDraft({ editing: false });
     setSelectedService(null);
     setEditingService(null);
     setForm(emptyServiceForm());
@@ -218,6 +223,7 @@ export function ServicesModule({
   }
 
   function editService(service: ServiceRow) {
+    setPppoeDraft({ editing: false });
     setEditingService(service);
     setSelectedService(null);
     setForm({
@@ -229,7 +235,9 @@ export function ServicesModule({
       status: service.status,
       technicalNotes: service.technicalNotes || '',
       pppoeUsername: service.pppoeUsername || '',
-      pppoePassword: service.pppoePassword || '',
+      // A senha guardada nunca vem: o campo serve só para escrever uma nova.
+      pppoePassword: '',
+      pppoePasswordConfigured: Boolean(service.pppoePasswordConfigured),
       audiovisualMode: service.audiovisualMode,
       audiovisualMonthlyCve: service.audiovisualMonthlyCve ? String(service.audiovisualMonthlyCve) : '',
       audiovisualAnnualCve: service.audiovisualAnnualCve ? String(service.audiovisualAnnualCve) : ''
@@ -238,6 +246,7 @@ export function ServicesModule({
   }
 
   function closeForm() {
+    setPppoeDraft({ editing: false });
     setEditingService(null);
     setShowForm(false);
     setForm(emptyServiceForm());
@@ -1008,7 +1017,7 @@ export function ServicesModule({
         status: form.status,
         technicalNotes: form.technicalNotes,
         pppoeUsername: form.pppoeUsername,
-        pppoePassword: form.pppoePassword,
+        ...(pppoeDraft.editing && pppoeDraft.value ? { pppoePassword: pppoeDraft.value } : {}),
         audiovisualMode: form.audiovisualMode,
         audiovisualMonthlyCve: form.audiovisualMode === 'monthly' ? Number(form.audiovisualMonthlyCve || 0) : 0,
         audiovisualAnnualCve: form.audiovisualMode === 'annual' ? Number(form.audiovisualAnnualCve || 0) : 0,
@@ -1265,12 +1274,12 @@ export function ServicesModule({
             onChange={(event) => updateForm('pppoeUsername', event.target.value)}
             hint="Identidade deste cliente no router. Em branco, o serviço fica fora do controlo de acesso."
           />
-          <Field
-            label="Senha PPPoE"
-            value={form.pppoePassword}
-            onChange={(event) => updateForm('pppoePassword', event.target.value)}
-            hint="É esta que o cliente configura no equipamento dele."
-          />
+          {editingService ? <div className="field">
+            <span className="field-label">Senha PPPoE</span>
+            <span>{form.pppoePasswordConfigured ? 'Configurada' : 'Não configurada'}</span>
+            <Button type="button" variant="ghost" onClick={() => openPasswordChange(editingService)}>Alterar senha PPPoE</Button>
+          </div> : <SecretField label="Senha PPPoE" configured={false} draft={pppoeDraft}
+            onDraftChange={(next) => { setPppoeDraft(next); updateForm('pppoePassword', next.editing ? next.value : ''); }} />}
           <Field wide label="Notas tecnicas" value={form.technicalNotes} onChange={(event) => updateForm('technicalNotes', event.target.value)} />
 
           {avConfig?.enabled && (
@@ -1371,17 +1380,11 @@ export function ServicesModule({
             A nova password fica pendente no ISPM até uma reconciliação LIVE a aplicar no MikroTik.
             Em modo de ensaio, o router não é alterado.
           </Message>
-          <Field
-            wide
-            required
-            type="password"
-            minLength={8}
-            maxLength={64}
-            label="Nova password PPPoE"
-            value={newPppoePassword}
-            onChange={(event) => setNewPppoePassword(event.target.value)}
-            hint="Entre 8 e 64 caracteres."
-          />
+          <SecretField label="Nova senha PPPoE" configured={Boolean(passwordTarget?.pppoePasswordConfigured)}
+            draft={{ editing: true, value: newPppoePassword }}
+            disabled={networkAction === 'password'}
+            onDraftChange={(next) => next.editing ? setNewPppoePassword(next.value) : closePasswordChange()} />
+          <p>Entre 8 e 64 caracteres.</p>
         </form>
       </Dialog>
 

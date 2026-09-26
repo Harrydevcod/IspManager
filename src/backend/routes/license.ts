@@ -28,7 +28,7 @@ import { confirmSessionPassword, ensureRole, requireRole } from './auth';
  *                       e restaurar. Os dados são do cliente: levá-los ou
  *                       recuperá-los nunca depende de estar em dia connosco.
  */
-const EXEMPT_PREFIXES = ['/health', '/api/license', '/api/auth', '/api/backups'];
+const EXEMPT_PREFIXES = ['/health', '/api/license', '/api/auth', '/api/backups', '/api/vault'];
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 

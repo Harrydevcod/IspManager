@@ -5,6 +5,7 @@ import path from 'node:path';
 import type Database from 'better-sqlite3';
 import { closeDatabaseForTests, getSqliteDatabase } from '../db/database';
 import { discoverCompanionHosts, enqueueSmsNotification, findPairedCompanion, pollSmsStatusIfDue, runSmsOutboxIfDue, smsDispatchIntervalMs, verifyCompanionPairing } from './sms-outbox';
+import { writeSecret } from './secrets';
 
 const oneWifiInterface = {
   wifi: [{ address: '192.168.1.220', family: 'IPv4', internal: false, netmask: '255.255.255.0', mac: '', cidr: null }]
@@ -164,7 +165,7 @@ describe('SMS outbox', () => {
   });
 
   test('default transport posts signed request to Android companion', async () => {
-    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
+    writeSecret(db, 'smsCompanionPairingKey', 'secret');
     const calls: Array<{ url: string; init: RequestInit }> = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
       calls.push({ url, init });
@@ -181,7 +182,7 @@ describe('SMS outbox', () => {
   });
 
   test('status poll calls the signed Android status endpoint', async () => {
-    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
+    writeSecret(db, 'smsCompanionPairingKey', 'secret');
     const calls: Array<{ url: string; init: RequestInit }> = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
       calls.push({ url, init });
@@ -200,7 +201,7 @@ describe('SMS outbox', () => {
   });
 
   test('default transport includes clientName resolved from the client', async () => {
-    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
+    writeSecret(db, 'smsCompanionPairingKey', 'secret');
     const clientId = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('SMS-N','Ana Lopes','active')`).run().lastInsertRowid as number;
     let body: any = null;
     vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
@@ -213,19 +214,19 @@ describe('SMS outbox', () => {
   });
 
   test('verifyCompanionPairing reports paired when the phone accepts the signature', async () => {
-    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
+    writeSecret(db, 'smsCompanionPairingKey', 'secret');
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, text: async () => '{}' })));
     expect(await verifyCompanionPairing()).toEqual({ reachable: true, paired: true });
   });
 
   test('verifyCompanionPairing reports not paired when the phone rejects the signature (401)', async () => {
-    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
+    writeSecret(db, 'smsCompanionPairingKey', 'secret');
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 401, text: async () => '{}' })));
     expect(await verifyCompanionPairing()).toEqual({ reachable: true, paired: false });
   });
 
   test('verifyCompanionPairing reports unreachable when the phone is offline', async () => {
-    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
+    writeSecret(db, 'smsCompanionPairingKey', 'secret');
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
     expect(await verifyCompanionPairing()).toEqual({ reachable: false, paired: false });
   });
@@ -243,7 +244,7 @@ describe('SMS companion discovery', () => {
   });
 
   test('findPairedCompanion picks the host that accepts our signed ping', async () => {
-    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
+    writeSecret(db, 'smsCompanionPairingKey', 'secret');
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       // Only .77 accepts our secret (non-401); .55 is some other server on :8765.
       if (url.startsWith('http://192.168.1.77:8765')) return { status: 200 } as Response;
@@ -254,7 +255,7 @@ describe('SMS companion discovery', () => {
   });
 
   test('findPairedCompanion returns null when nothing holds the secret', async () => {
-    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionPairingKey','secret')`).run();
+    writeSecret(db, 'smsCompanionPairingKey', 'secret');
     vi.stubGlobal('fetch', vi.fn(async () => ({ status: 401 } as Response)));
     expect(await findPairedCompanion(['http://192.168.1.55:8765'], 50)).toBeNull();
   });

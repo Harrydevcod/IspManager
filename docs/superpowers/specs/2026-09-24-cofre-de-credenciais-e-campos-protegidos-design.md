@@ -2,7 +2,7 @@
 
 **Data:** 2026-09-24
 
-**Estado:** Aprovado
+**Estado:** Aprovado e implementado (2.6). A decisão final está no ADR 0012. Os cortes face a esta spec estão no plano `docs/superpowers/plans/2026-09-24-cofre-de-credenciais.md`: sem rotação da chave de recuperação, AAD por `tabela.coluna` e não por linha, e sem quiescência de operações no restauro.
 
 **Âmbito:** autenticação, Configurações, serviços PPPoE, backend local, backups e restauro
 

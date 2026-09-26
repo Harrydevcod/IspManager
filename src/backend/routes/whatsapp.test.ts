@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
+import { writeSecret } from '../lib/secrets';
 
 let app: FastifyInstance;
 let db: Database.Database;
@@ -89,7 +90,7 @@ describe('WhatsApp outbox routes', () => {
   test('POST /api/whatsapp/send enqueues and processes the row', async () => {
     stubUltraMsg(200, { sent: 'true', id: 'msg-1' });
     db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgInstanceId','i1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
-    db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgToken','t1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
+    writeSecret(db, 'ultraMsgToken', 't1');
 
     const response = await app.inject({
       method: 'POST', url: '/api/whatsapp/send',
@@ -110,7 +111,7 @@ describe('WhatsApp outbox routes', () => {
       VALUES (?, ?, '2026-05', 4500, '2026-05-10', 'paid')
     `).run(clientId, serviceId).lastInsertRowid as number;
     db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgInstanceId','i1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
-    db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgToken','t1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
+    writeSecret(db, 'ultraMsgToken', 't1');
 
     const response = await app.inject({
       method: 'POST', url: `/api/payments/${paymentId}/whatsapp`,
@@ -133,7 +134,7 @@ describe('WhatsApp outbox routes', () => {
       VALUES (?, ?, '2026-05', 4500, '2026-05-10', 'paid')
     `).run(clientId, serviceId).lastInsertRowid as number;
     db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgInstanceId','i1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
-    db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgToken','bad',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
+    writeSecret(db, 'ultraMsgToken', 'bad');
 
     const response = await app.inject({
       method: 'POST', url: `/api/payments/${paymentId}/whatsapp`,
@@ -153,7 +154,7 @@ describe('WhatsApp outbox routes', () => {
     const serviceId = db.prepare(`INSERT INTO services (client_id, plan_id, monthly_value_cve, due_day, status) VALUES (?, ?, 4500, 10, 'active')`).run(clientId, planId).lastInsertRowid as number;
     const paymentId = db.prepare(`INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status) VALUES (?, ?, '2026-05', 4500, '2026-05-10', 'paid')`).run(clientId, serviceId).lastInsertRowid as number;
     db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgInstanceId','i1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
-    db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgToken','t1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();
+    writeSecret(db, 'ultraMsgToken', 't1');
     const response = await app.inject({ method: 'POST', url: `/api/payments/${paymentId}/whatsapp`, payload: { kind: 'receipt' } });
     expect(response.statusCode).toBe(400);
   });

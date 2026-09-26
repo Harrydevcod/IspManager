@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
+import { writeSecret } from './secrets';
 
 let db: Database.Database;
 let dataDir: string;
@@ -48,7 +49,7 @@ function setSetting(key: string, value: string) {
 function enableNotices() {
   setSetting('autoNoticesEnabled', 'true');
   setSetting('ultraMsgInstanceId', 'instance123');
-  setSetting('ultraMsgToken', 'token123');
+  writeSecret(db, 'ultraMsgToken', 'token123');
   setSetting('whatsappSuspensionNoticeDays', '15');
   setSetting('noticeCooldownDays', '7');
 }

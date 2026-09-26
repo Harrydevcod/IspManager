@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
+import { getCredentialVault, setCredentialVault, writePppoeSecret } from './secrets';
 import {
   buildSessionRows,
   loadDesiredServices,
@@ -15,7 +16,7 @@ function service(overrides: Partial<DesiredService> = {}): DesiredService {
     serviceId: 1,
     clientName: 'Joao Silva',
     username: 'joao-1',
-    password: 'segredo',
+    hasPassword: true,
     passwordPending: false,
     enabled: true,
     profile: 'plano-10M',
@@ -163,9 +164,10 @@ function memoryDb() {
 
 function addService(db: Database.Database, id: number, status: string, username: string | null) {
   db.prepare(`
-    INSERT INTO services (id, client_id, plan_id, monthly_value_cve, status, pppoe_username, pppoe_password)
-    VALUES (?, 1, 1, 3000, ?, ?, 'senha')
+    INSERT INTO services (id, client_id, plan_id, monthly_value_cve, status, pppoe_username)
+    VALUES (?, 1, 1, 3000, ?, ?)
   `).run(id, status, username);
+  writePppoeSecret(db, id, 'senha');
 }
 
 function setting(db: Database.Database, key: string, value: string) {
@@ -442,11 +444,8 @@ describe('runNetworkEnforcement', () => {
 
   test('password pendente é aplicada no router e a marca só limpa depois do PATCH', async () => {
     addService(db, 1, 'active', 'joao-1');
-    db.prepare(`
-      UPDATE services
-      SET pppoe_password = 'nova-senha-segura', pppoe_password_sync_pending = 1
-      WHERE id = 1
-    `).run();
+    writePppoeSecret(db, 1, 'nova-senha-segura');
+    db.prepare('UPDATE services SET pppoe_password_sync_pending = 1 WHERE id = 1').run();
     const { transport, calls } = recordingTransport([secret()]);
 
     const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
@@ -457,8 +456,32 @@ describe('runNetworkEnforcement', () => {
       path: '/ppp/secret/*1',
       body: { password: 'nova-senha-segura' }
     });
+    // A coluna está cifrada e é o texto aberto que segue — nunca o ciphertext.
+    expect(db.prepare('SELECT pppoe_password AS stored FROM services WHERE id = 1').get())
+      .toEqual({ stored: expect.stringMatching(/^enc:v2:/) });
+    expect(calls.some((call) => JSON.stringify(call.body ?? {}).includes('enc:'))).toBe(false);
+    // Com a coluna cifrada, a marca tem de limpar na mesma.
     expect(db.prepare('SELECT pppoe_password_sync_pending AS pending FROM services WHERE id = 1').get())
       .toEqual({ pending: 0 });
+  });
+
+  test('cofre trancado: nem cria nem muda password no router, e a marca fica', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    addService(db, 2, 'active', 'maria-2');
+    db.prepare('UPDATE services SET pppoe_password_sync_pending = 1 WHERE id = 1').run();
+    const { transport, calls } = recordingTransport([secret()]);
+    const vault = getCredentialVault();
+    setCredentialVault(null);
+    try {
+      await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+    } finally {
+      setCredentialVault(vault);
+    }
+    const writes = calls.filter((call) => call.method !== 'GET');
+    expect(writes.some((call) => JSON.stringify(call.body ?? {}).includes('password'))).toBe(false);
+    expect(writes.some((call) => call.method === 'PUT' || call.method === 'POST')).toBe(false);
+    expect(db.prepare('SELECT pppoe_password_sync_pending AS pending FROM services WHERE id = 1').get())
+      .toEqual({ pending: 1 });
   });
 
   test('dry-run mostra a password pendente mas não a limpa nem escreve no router', async () => {
@@ -519,7 +542,8 @@ describe('runNetworkEnforcement', () => {
 
   test('reinstalação: renomeia o secret, muda a password e derruba a sessão do inquilino anterior', async () => {
     addService(db, 1, 'active', 'joao-1');
-    db.prepare(`UPDATE services SET pppoe_password = 'senha-nova-123', pppoe_password_sync_pending = 1 WHERE id = 1`).run();
+    writePppoeSecret(db, 1, 'senha-nova-123');
+    db.prepare('UPDATE services SET pppoe_password_sync_pending = 1 WHERE id = 1').run();
     const { transport, calls } = recordingTransport(
       [secret({ name: 'ana-antiga-1' })],
       [{ id: '*A', name: 'ana-antiga-1' }]
@@ -540,7 +564,8 @@ describe('runNetworkEnforcement', () => {
 
   test('só a password mudou: não renomeia nem derruba a sessão', async () => {
     addService(db, 1, 'active', 'joao-1');
-    db.prepare(`UPDATE services SET pppoe_password = 'senha-nova-123', pppoe_password_sync_pending = 1 WHERE id = 1`).run();
+    writePppoeSecret(db, 1, 'senha-nova-123');
+    db.prepare('UPDATE services SET pppoe_password_sync_pending = 1 WHERE id = 1').run();
     const { transport, calls } = recordingTransport([secret()], [{ id: '*A', name: 'joao-1' }]);
 
     await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
@@ -552,18 +577,23 @@ describe('runNetworkEnforcement', () => {
 
   test('password alterada durante o PATCH continua pendente', async () => {
     addService(db, 1, 'active', 'joao-1');
-    db.prepare(`UPDATE services SET pppoe_password = 'primeira-senha', pppoe_password_sync_pending = 1 WHERE id = 1`).run();
+    writePppoeSecret(db, 1, 'primeira-senha');
+    db.prepare('UPDATE services SET pppoe_password_sync_pending = 1 WHERE id = 1').run();
     const base = recordingTransport([secret()]);
     const transport = (async (req: RouterRequest) => {
       if (req.method === 'PATCH') {
         // O operador grava outra password enquanto a primeira vai a caminho.
-        db.prepare(`UPDATE services SET pppoe_password = 'segunda-senha', pppoe_password_sync_pending = 1 WHERE id = 1`).run();
+        writePppoeSecret(db, 1, 'segunda-senha');
+        db.prepare('UPDATE services SET pppoe_password_sync_pending = 1 WHERE id = 1').run();
       }
       return base.transport(req);
     }) as RouterTransport;
 
     await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
 
+    // A primeira chegou mesmo ao router (prova que a ação correu)...
+    expect(base.calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { password: 'primeira-senha' } });
+    // ...mas a segunda ainda não, por isso a marca fica.
     expect(db.prepare('SELECT pppoe_password_sync_pending AS pending FROM services WHERE id = 1').get())
       .toEqual({ pending: 1 });
   });

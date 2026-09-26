@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
 import { ownedSharedAssignments } from './deviceShares';
+import { canStoreSecrets, sealPppoeSecret } from './secrets';
 import {
   changeServiceStatus,
   generatePppoePassword,
@@ -117,6 +118,10 @@ export function transferService(
       .filter((ip): ip is string => Boolean(ip && ip.trim()))
     : [];
   const pppoeRegenerated = data.mode === 'reinstalar' && Boolean(service.pppoeUsername);
+  // Credenciais novas só se gravam com o cofre aberto; nunca em claro.
+  if (pppoeRegenerated && !canStoreSecrets()) {
+    return { ok: false, status: 409, error: 'Cofre de credenciais trancado: nao e possivel gerar a nova senha PPPoE nesta sessao' };
+  }
   const willReactivate = data.reactivateService && service.status !== 'active';
 
   let statusChange: ServiceOpResult<ServiceStatusChange> | null = null;
@@ -148,7 +153,7 @@ export function transferService(
         // A marca manda a reconciliação empurrar nome e password para o secret
         // (casado pelo comment) e derrubar a sessão do inquilino anterior.
         db.prepare('UPDATE services SET pppoe_username = ?, pppoe_password = ?, pppoe_password_sync_pending = 1 WHERE id = ?')
-          .run(pppoeUsernameFor(toClient.fullName, serviceId), generatePppoePassword(), serviceId);
+          .run(pppoeUsernameFor(toClient.fullName, serviceId), sealPppoeSecret(generatePppoePassword()), serviceId);
       }
     }
 
