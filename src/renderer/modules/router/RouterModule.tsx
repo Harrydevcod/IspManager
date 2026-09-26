@@ -1,4 +1,4 @@
-import { AlertTriangle, Cable, Cpu, Gauge, Layers, MemoryStick, RefreshCw, Router, Settings2, ShieldAlert, Timer, Waypoints, X } from 'lucide-react';
+import { AlertTriangle, Cable, Cpu, Gauge, Layers, MemoryStick, RefreshCw, Router, ScrollText, Settings2, ShieldAlert, Timer, Waypoints, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { Badge, Button, EmptyState, ErrorRetry, MetricCard, MetricGrid, ModuleHeaderActions, SkeletonList } from '../../components';
@@ -12,20 +12,22 @@ import {
   ROUTER_API,
   type Live,
   type RouterInterface,
+  type RouterLog,
   type RouterOverview,
   type RouterProfileOption,
   type RouterSession
 } from './router-api';
-import { InterfacesTable, ProfilesTable, SessionsTable } from './RouterTables';
+import { InterfacesTable, LogView, ProfilesTable, SessionsTable } from './RouterTables';
 import './RouterModule.css';
 
-type RouterTab = 'overview' | 'sessions' | 'profiles' | 'interfaces' | 'config';
+type RouterTab = 'overview' | 'sessions' | 'profiles' | 'interfaces' | 'log' | 'config';
 
 const TABS: ReadonlyArray<{ id: RouterTab; label: string; icon: typeof Router }> = [
   { id: 'overview', label: 'Visão geral', icon: Gauge },
   { id: 'sessions', label: 'Sessões PPPoE', icon: Cable },
   { id: 'profiles', label: 'Perfis PPP', icon: Layers },
   { id: 'interfaces', label: 'Interfaces', icon: Waypoints },
+  { id: 'log', label: 'Registo', icon: ScrollText },
   { id: 'config', label: 'Configuração', icon: Settings2 }
 ];
 
@@ -113,7 +115,7 @@ function Overview({ data, onOpen }: { data: RouterOverview & { dryRun: boolean }
           value={String(data.divergences)}
           trend={data.divergences ? 'ISPM e router discordam' : 'ISPM e router de acordo'}
           tone={data.divergences ? 'danger' : 'neutral'}
-          onActivate={() => onOpen('config')}
+          onActivate={() => onOpen('sessions')}
         />
         <MetricCard icon={Cpu} label="CPU" value={system.cpuLoad === null ? '—' : `${system.cpuLoad}%`} trend={system.architecture ?? undefined} tone={system.cpuLoad !== null && system.cpuLoad >= 80 ? 'warning' : 'info'} />
         <MetricCard
@@ -169,9 +171,10 @@ export default function RouterModule() {
   const sessions = useLive<Live<{ sessions: RouterSession[] }>>(`${ROUTER_API}/sessions`, tab === 'sessions');
   const interfaces = useLive<Live<{ interfaces: RouterInterface[] }>>(`${ROUTER_API}/interfaces`, tab === 'interfaces');
   const profiles = useLive<Live<{ profiles: RouterProfileOption[] }>>(`${ROUTER_API}/profiles`, tab === 'profiles');
+  const log = useLive<Live<RouterLog>>(`${ROUTER_API}/log`, tab === 'log');
   const plans = useLive<PlanRow[]>('http://127.0.0.1:3001/api/plans', tab === 'profiles');
 
-  const current = { overview, sessions, interfaces, profiles, config: null }[tab];
+  const current = { overview, sessions, interfaces, profiles, log, config: null }[tab];
 
   const selectTab = useCallback((next: RouterTab, moveFocus = false) => {
     if (next === 'config') setConfigVisited(true);
@@ -201,7 +204,7 @@ export default function RouterModule() {
           <p className="router-subtitle">
             {head
               ? [head.system.identity, head.host, head.system.boardName, head.system.version && `RouterOS ${head.system.version}`].filter(Boolean).join(' · ')
-              : 'O MikroTik da operadora, à cabeça da rede: sessões, perfis, interfaces e a ligação ao ISPM.'}
+              : 'O MikroTik da operadora, à cabeça da rede: sessões, perfis, interfaces, registo e a ligação ao ISPM.'}
           </p>
         </div>
         <ModuleHeaderActions
@@ -262,6 +265,11 @@ export default function RouterModule() {
         {tab === 'interfaces' && (
           <LiveGate live={interfaces} onRetry={interfaces.reload} onConfigure={openConfig}>
             {(data) => <InterfacesTable interfaces={data.interfaces} />}
+          </LiveGate>
+        )}
+        {tab === 'log' && (
+          <LiveGate live={log} onRetry={log.reload} onConfigure={openConfig}>
+            {(data) => <LogView log={data} />}
           </LiveGate>
         )}
       </div>

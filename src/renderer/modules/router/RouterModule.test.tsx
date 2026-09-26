@@ -29,6 +29,19 @@ const sessions = {
   ]
 };
 
+const log = {
+  available: true,
+  dryRun: true,
+  entries: [
+    { id: '*2', time: '02:40:13', topics: 'system,error,critical', message: 'login failure for user admin from 10.0.0.9 via winbox' },
+    { id: '*1', time: '02:39:00', topics: 'pppoe,ppp,info', message: 'skn001 logged in, 10.20.0.10' }
+  ],
+  loginFailures: [{ address: '10.0.0.9', via: 'winbox', users: ['admin'], count: 1 }],
+  rogueDhcp: [{ port: 'LAN1', address: '192.168.0.1', mac: '30:16:9D:AA:53:8B', count: 187, vendor: 'MERCUSYS', clientName: null }],
+  pppoeDrops: [{ login: 'skn001', reasons: ['peer is not responding'], count: 4, clientName: 'Cibel Restaurante' }],
+  dhcpChurn: []
+};
+
 let routerAvailable = true;
 const roots: Root[] = [];
 
@@ -45,6 +58,7 @@ beforeEach(() => {
     if (!routerAvailable && url.includes('/api/network/router/')) return json({ available: false, reason: 'Integração MikroTik desligada ou por configurar' });
     if (url.endsWith('/router/overview')) return json(overview);
     if (url.endsWith('/router/sessions')) return json(sessions);
+    if (url.endsWith('/router/log')) return json(log);
     return json({});
   }));
 });
@@ -74,7 +88,7 @@ describe('Router de gestão', () => {
   test('abre na visão geral com o equipamento, o modo e os serviços abertos', async () => {
     const container = await mount();
     expect([...container.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent)).toEqual([
-      'Visão geral', 'Sessões PPPoE', 'Perfis PPP', 'Interfaces', 'Configuração'
+      'Visão geral', 'Sessões PPPoE', 'Perfis PPP', 'Interfaces', 'Registo', 'Configuração'
     ]);
     expect(container.querySelector('.router-subtitle')?.textContent).toBe('ISP-Gestao · 192.168.88.1 · hEX S · RouterOS 7.24.2');
     expect(container.textContent).toContain('Em ensaio');
@@ -91,6 +105,19 @@ describe('Router de gestão', () => {
     expect(container.textContent).toContain('Sem serviço no ISPM');
     // Só a sessão viva de um serviço do ISPM se pode desligar.
     expect(container.querySelectorAll('[aria-label^="Desligar a sessão"]')).toHaveLength(1);
+  });
+
+  test('o registo resume o que pede ação e filtra só erros e avisos', async () => {
+    const container = await mount();
+    await click(container.querySelector('#router-tab-log'));
+    const titles = [...container.querySelectorAll('.router-findings strong')].map((node) => node.textContent);
+    expect(titles).toEqual(['DHCP intruso na porta LAN1 · MERCUSYS', 'Falhas de login de 10.0.0.9', 'PPPoE de Cibel Restaurante caiu 4 vezes']);
+    expect(container.textContent).toContain('30:16:9D:AA:53:8B · 192.168.0.1 — 187 avisos');
+    expect(container.textContent).toContain('1 tentativa por winbox · admin');
+    expect(container.querySelectorAll('.data-table-row')).toHaveLength(2);
+    await click(container.querySelector('#router-panel-log input[type="checkbox"]'));
+    expect(container.querySelectorAll('.data-table-row')).toHaveLength(1);
+    expect(container.textContent).not.toContain('skn001 logged in');
   });
 
   test('router por configurar é um estado vazio que leva à configuração, não um erro', async () => {
