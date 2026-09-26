@@ -61,6 +61,18 @@ beforeEach(() => {
     if (url.endsWith('/router/overview')) return json(overview);
     if (url.endsWith('/router/sessions')) return json(sessions);
     if (url.endsWith('/router/log')) return json(log);
+    if (url.endsWith('/router/wan/usage')) return json({
+      since: '2026-09-25T12:00:00.000Z',
+      today: [
+        { interface: 'WAN1-STARLINK', rxBytes: 2_000_000_000, txBytes: 100_000_000 },
+        { interface: 'WAN2-STARLINK', rxBytes: 1_000_000_000, txBytes: 50_000_000 }
+      ],
+      month: [
+        { interface: 'WAN1-STARLINK', rxBytes: 5_000_000_000, txBytes: 200_000_000 },
+        { interface: 'WAN2-STARLINK', rxBytes: 3_000_000_000, txBytes: 100_000_000 }
+      ],
+      days: []
+    });
     if (url.endsWith('/router/wan')) {
       // Cada resposta traz as taxas que o router mediu para as duas WAN.
       wanReads += 1;
@@ -123,6 +135,16 @@ describe('Router de gestão', () => {
     expect(cards[1].textContent).toContain('5 Mbit/s');
     expect(cards[1].textContent).toContain('Sem ligação');
     expect(container.querySelector('.router-wan-total')?.textContent).toContain('67% / 33%');
+  });
+
+  test('mostra os acumulados de hoje e do mês com a repartição por WAN', async () => {
+    const container = await mount();
+    const periods = [...container.querySelectorAll('.router-usage-period')];
+    expect(periods).toHaveLength(2);
+    expect(periods[0].textContent).toContain('3 GB');
+    expect(periods[0].textContent).toContain('WAN1-STARLINK 2 GB · WAN2-STARLINK 1 GB');
+    expect(periods[1].textContent).toContain('8 GB');
+    expect(periods[1].textContent).toContain('WAN1-STARLINK 5 GB · WAN2-STARLINK 3 GB');
   });
 
   test('as sessões mostram também o secret que nenhum serviço reclama', async () => {

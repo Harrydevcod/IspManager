@@ -19,6 +19,7 @@ import {
 import { InterfacesTable, LogView, ProfilesTable, SessionsTable } from './RouterTables';
 import { useLive } from './useLive';
 import { WanTraffic } from './WanTraffic';
+import { WanUsage } from './WanUsage';
 import './RouterModule.css';
 
 type RouterTab = 'overview' | 'sessions' | 'profiles' | 'interfaces' | 'log' | 'config';
@@ -66,6 +67,7 @@ function Overview({ data, onOpen }: { data: RouterOverview & { dryRun: boolean }
   return (
     <>
       <WanTraffic />
+      <WanUsage />
       <MetricGrid label="Estado do router">
         <MetricCard
           icon={Cable}
