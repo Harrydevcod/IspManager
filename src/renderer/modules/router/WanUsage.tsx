@@ -1,21 +1,8 @@
-import { ArrowDown, ArrowUp, ChartColumn } from 'lucide-react';
-import { formatDataVolume, ROUTER_API, type RouterWanUsage, type WanUsageRow } from './router-api';
-import { useLive } from './useLive';
+import { ChartColumn } from 'lucide-react';
+import { formatDataVolume, type RouterWanUsage } from './router-api';
 
-const sum = (rows: WanUsageRow[], key: 'rxBytes' | 'txBytes') => rows.reduce((total, row) => total + row[key], 0);
 const dateLabel = (day: string) => `${day.slice(8, 10)}-${day.slice(5, 7)}-${day.slice(0, 4)}`;
 const shortDate = (day: string) => `${day.slice(8, 10)}-${day.slice(5, 7)}`;
-
-function Period({ label, rows }: { label: string; rows: WanUsageRow[] }) {
-  return (
-    <article className="router-usage-period">
-      <h4>{label}</h4>
-      <strong className="router-usage-value"><ArrowDown size={18} aria-hidden /> {formatDataVolume(sum(rows, 'rxBytes'))}</strong>
-      <p className="router-usage-split">{rows.map((row) => `${row.interface} ${formatDataVolume(row.rxBytes)}`).join(' · ')}</p>
-      <p className="router-usage-upload"><ArrowUp size={13} aria-hidden /> Upload {formatDataVolume(sum(rows, 'txBytes'))}</p>
-    </article>
-  );
-}
 
 function History({ data }: { data: RouterWanUsage }) {
   const names = [...new Set(data.days.flatMap((day) => day.perInterface.map((row) => row.interface)))].sort();
@@ -24,7 +11,6 @@ function History({ data }: { data: RouterWanUsage }) {
   const height = 86;
   return (
     <div className="router-usage-history">
-      <h4>Últimos 30 dias</h4>
       <svg viewBox="0 0 600 124" preserveAspectRatio="none" role="img" aria-label="Download diário das WAN nos últimos 30 dias">
         {data.days.map((day, index) => {
           const rows = [...day.perInterface].sort((a, b) => a.interface.localeCompare(b.interface));
@@ -48,8 +34,8 @@ function History({ data }: { data: RouterWanUsage }) {
   );
 }
 
-export function WanUsage() {
-  const live = useLive<RouterWanUsage>(`${ROUTER_API}/wan/usage`, true, 60_000);
+/** O histórico diário; hoje e o mês de cada WAN estão nos cartões ao vivo. */
+export function WanUsage({ live }: { live: { data: RouterWanUsage | null; error: string | null } }) {
   const data = live.data;
   const since = data?.since;
   const start = since ? new Date(since) : null;
@@ -57,16 +43,15 @@ export function WanUsage() {
     ? `${String(start.getDate()).padStart(2, '0')}-${String(start.getMonth() + 1).padStart(2, '0')}-${start.getFullYear()} às ${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`
     : null;
   return (
-    <section className="router-wan router-usage" aria-label="Tráfego acumulado das WAN">
-      <div className="router-wan-header"><h3><ChartColumn size={16} aria-hidden /> Tráfego acumulado das WAN</h3></div>
+    <section className="router-wan router-usage" aria-label="Download diário das WAN">
+      <div className="router-wan-header">
+        <h3><ChartColumn size={16} aria-hidden /> Download diário das WAN</h3>
+        {startLabel && <span className="router-muted router-usage-since">últimos 30 dias · a contar desde {startLabel}</span>}
+      </div>
       {!data ? <p className="router-muted">{live.error ?? 'A ler os registos…'}</p> : !since ? (
         <p className="router-muted">Ainda sem registos</p>
       ) : (
-        <>
-          <p className="router-muted router-usage-since">A contar desde {startLabel}</p>
-          <div className="router-usage-grid"><Period label="Hoje" rows={data.today} /><Period label="Este mês" rows={data.month} /></div>
-          <History data={data} />
-        </>
+        <History data={data} />
       )}
     </section>
   );
