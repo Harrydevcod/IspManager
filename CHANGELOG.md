@@ -4,9 +4,27 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
-## Por lançar
+## [2.6](https://github.com/Harrydevcod/IspManager/releases/tag/v2.6.0) — 2026-09-26
 
-- **Tráfego das WAN ao vivo na Visão geral do Router de gestão.** Um cartão por interface da lista `WAN` do MikroTik (os dois Starlink), com download e upload atuais e a curva dos últimos 2 minutos, os dois na mesma escala para se compararem. Por baixo, o total e como o download se reparte entre as WAN, para ver o load balance a funcionar. Atualiza de segundo a segundo enquanto a Visão geral está aberta; só leitura (a taxa é a que o próprio router mede, a mesma do Winbox).
+> **Antes de instalar: esta versão tem de arrancar uma vez neste computador** antes de restaurar qualquer backup noutro sítio. É no primeiro arranque que as credenciais passam para o cofre novo. Depois disso, **guarde a chave de recuperação**: um aviso em todos os módulos pede-a até ser confirmada, em Configurações → Cofre. Sem ela, um backup restaurado noutro computador fica sem as senhas do router, do WhatsApp e dos clientes.
+
+> **Duas migrações.** A `0064` cria o cofre de credenciais. A `0067` cria duas tabelas novas para o consumo das WAN, por dia e por interface. Nenhuma mexe no que já existe. As credenciais são convertidas no arranque, fora das migrações, e só depois disso é feito o backup de arranque. O consumo das WAN começa a contar quando esta versão arranca pela primeira vez: os dias anteriores ficam a zero, porque o router não guarda esse histórico.
+
+> **Nada escreve no MikroTik.** O consumo lê os contadores das interfaces, e as taxas ao vivo usam o `monitor-traffic`, o comando que o Winbox usa para as mostrar. É um POST da API REST, mas só lê.
+
+### Cofre de credenciais
+
+- **As credenciais passam a viver num cofre cifrado.** A senha do router, o token do WhatsApp (UltraMsg) e as senhas PPPoE dos clientes ficam cifradas na base de dados, e a senha PPPoE deixa de estar em claro. Um `ispm.sqlite` ou um backup copiado sem a chave de recuperação já não dá credencial nenhuma.
+- **Restaurar um backup noutro computador já não perde credenciais.** O cofre abre trancado e desbloqueia-se com a chave de recuperação, em Configurações → Cofre. Com ele trancado, o login, a faturação e os relatórios funcionam normalmente; só param as integrações e os backups normais até ao desbloqueio.
+- **As senhas nunca mais aparecem no ecrã nem saem da API**, para nenhum papel. Os campos mostram "Configurada" e só abrem, vazios, ao carregar em "Editar"; gravar outra definição deixa a senha como estava.
+- **Senhas PPPoE geradas pelo ISPM deixam de poder ser consultadas depois.** Para dar a senha ao técnico, escreva-a ao criar o serviço, ou mude-a com "Alterar senha PPPoE".
+
+### Router de gestão
+
+- **Tráfego das WAN ao vivo na Visão geral do Router de gestão.** Um cartão por interface da lista `WAN` do MikroTik (os dois Starlink), com o download e o upload atuais e a curva dos últimos 2 minutos. A taxa é a que o próprio router mede, a mesma do Winbox, e atualiza de segundo a segundo enquanto a Visão geral está aberta.
+- **Cartão Total ao lado das duas WAN.** A banda consumida pelas duas somadas, quantas estão ligadas e como o download se reparte entre elas, para ver o load balance a funcionar. As três curvas estão na mesma escala: uma curva mais alta quer dizer mais tráfego a sério. Em ecrã mais estreito, o Total passa para a fila de baixo.
+- **Consumo de hoje e do mês em cada cartão.** Cada WAN, e o Total, mostra quanto já descarregou e enviou hoje e neste mês. O ISPM regista-o de minuto a minuto, e um reinício do router não faz perder nem contar a dobrar.
+- **Download diário das WAN.** Por baixo dos cartões, as colunas dos últimos 30 dias, com a parte de cada WAN.
 - **A ligação ao router passa a ser reutilizada.** O ISPM deixa de abrir uma ligação segura nova em cada pedido ao MikroTik; o certificado fixado continua a ser verificado em cada ligação nova. Menos carga no router em todas as leituras e na reconciliação.
 - **Aba Registo no Router de gestão.** O registo do MikroTik lido ao vivo (as 300 linhas mais recentes), com erros a vermelho, avisos a amarelo e o filtro "Só erros e avisos". Por cima, **o que o registo diz**, lido do registo todo: o **DHCP intruso** que o dhcp-snooping está a travar (porta, MAC, fabricante e cliente, se o ISPM o conhecer), as **falhas de login** por origem e serviço, as **quedas de PPPoE** por cliente com o motivo, e os **aparelhos em ciclo de DHCP**, que enchem o registo e escondem o resto. Só leitura.
 - **As divergências da Visão geral batem com a reconciliação.** Os utilizadores do router marcados pelo ISPM que já não têm serviço contavam na reconciliação mas não na Visão geral, que mostrava 0. Agora contam, e o cartão abre as Sessões PPPoE, onde aparecem como "Sem serviço no ISPM".
