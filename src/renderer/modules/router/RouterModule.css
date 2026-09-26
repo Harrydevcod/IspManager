@@ -243,11 +243,20 @@
 }
 
 .router-usage-history { display: grid; gap: var(--space-3); }
-.router-usage-history svg { width: 100%; height: 150px; overflow: visible; }
-.router-usage-history text { fill: var(--text-3); font-size: var(--fs-sm); }
-.router-usage-history .router-usage-total { fill: var(--text-2); }
+.router-usage-chart { display: grid; gap: var(--space-2); padding-top: var(--space-5); }
+.router-usage-bars { display: grid; gap: 3px; align-items: end; height: 120px; }
+.router-usage-day { position: relative; height: 100%; display: flex; flex-direction: column-reverse; transition: filter 150ms ease-out; }
+.router-usage-day:hover { filter: brightness(1.15); }
+.router-usage-day i { display: block; width: 100%; }
+.router-usage-day i:last-of-type { border-radius: 2px 2px 0 0; }
+.router-usage-day.is-empty::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--border); }
+.router-usage-total { position: absolute; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; color: var(--text-2); }
+.router-usage-total.is-start { left: 0; transform: none; }
+.router-usage-total.is-end { left: auto; right: 0; transform: none; }
+.router-usage-axis { display: grid; gap: 3px; color: var(--text-3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.router-usage-axis span { white-space: nowrap; }
 .router-usage-legend { display: flex; flex-wrap: wrap; gap: var(--space-3); color: var(--text-2); font-size: var(--fs-sm); }
 .router-usage-legend span { display: inline-flex; align-items: center; gap: var(--space-1); }
 .router-usage-legend i { width: var(--space-2); height: var(--space-2); border-radius: var(--r3); }
-.router-usage-legend .is-first { background: var(--accent); }
-.router-usage-legend .is-second { background: var(--info); }
+.router-usage-legend .is-first, .router-usage-day .is-first { background: var(--accent); }
+.router-usage-legend .is-second, .router-usage-day .is-second { background: var(--info); }
