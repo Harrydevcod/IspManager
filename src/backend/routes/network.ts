@@ -13,6 +13,8 @@ import {
   listNeighbors,
   listActive,
   listInterfaces,
+  listLog,
+  summarizeLog,
   listServices,
   readSystem,
   auditRouterServices,
@@ -26,7 +28,7 @@ import {
   type RouterTransport
 } from '../lib/routeros';
 import { identifyModel } from '../lib/device-model';
-import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecret, runNetworkEnforcement } from '../lib/network-enforcement';
+import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecret, planActions, runNetworkEnforcement } from '../lib/network-enforcement';
 import { loadAutoSuspensionPreview, runAutomaticSuspension } from '../lib/auto-suspension';
 import {
   loadRegisteredDevices,
@@ -359,6 +361,10 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       listServices(transport)
     ]);
     const state = loadNetworkEnforcementState(db);
+    // Os secrets órfãos não têm serviço onde a divergência se grave; contam-se
+    // aqui ao vivo, para a Visão geral dizer o mesmo número que a reconciliação.
+    const orphans = planActions(loadDesiredServices(db), secrets).divergences
+      .filter((divergence) => divergence.kind === 'orphan_secret').length;
     const lastEnforcement = db.prepare(`
       SELECT status, ran_at AS ranAt FROM job_runs
       WHERE job LIKE 'network_enforcement%' ORDER BY id DESC LIMIT 1
@@ -369,7 +375,7 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       secrets: secrets.length,
       disabledSecrets: secrets.filter((secret) => secret.disabled).length,
       activeSessions: active.length,
-      divergences: state.divergences,
+      divergences: state.divergences + orphans,
       findings: auditRouterServices(services),
       lastEnforcement
     };
@@ -383,6 +389,11 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
   app.get('/api/network/router/interfaces', adminOnly, async () => readLive(async (transport) => ({
     interfaces: await listInterfaces(transport)
   })));
+
+  app.get('/api/network/router/log', adminOnly, async () => readLive(async (transport) => {
+    const entries = await listLog(transport);
+    return { entries, loginFailures: summarizeLog(entries) };
+  }));
 
   /** Cria ou atualiza o perfil do plano. Em ensaio só diz o que faria. */
   app.post('/api/plans/:id/router-profile', adminOnly, async (request, reply) => {

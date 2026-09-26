@@ -504,6 +504,39 @@ export async function listInterfaces(transport: RouterTransport): Promise<Router
     .filter((item) => item.name);
 }
 
+export type RouterLogEntry = { id: string; time: string; topics: string; message: string };
+
+/** O log em memória do router (1000 linhas por omissão), as mais recentes primeiro. */
+export async function listLog(transport: RouterTransport, limit = 300): Promise<RouterLogEntry[]> {
+  const raw = await transport({ method: 'GET', path: '/log?.proplist=.id,time,topics,message' });
+  return asArray(raw)
+    .map((row, index) => ({ id: str(row['.id']) ?? String(index), time: str(row.time) ?? '', topics: str(row.topics) ?? '', message: str(row.message) ?? '' }))
+    .filter((entry) => entry.message)
+    .slice(-limit)
+    .reverse();
+}
+
+export type RouterLoginFailures = { address: string; via: string; users: string[]; count: number };
+
+// RouterOS 7: "login failure for user admin from 1.2.3.4 via winbox"
+const LOGIN_FAILURE = /login failure for user (.+?) from (\S+) via (\S+)/;
+
+/** Falhas de login por origem e serviço — quem está a bater à porta. Pura. */
+export function summarizeLog(entries: RouterLogEntry[]): RouterLoginFailures[] {
+  const byKey = new Map<string, RouterLoginFailures>();
+  for (const entry of entries) {
+    const match = LOGIN_FAILURE.exec(entry.message);
+    if (!match) continue;
+    const [, user, address, via] = match;
+    const key = `${address} ${via}`;
+    const row = byKey.get(key) ?? { address, via, users: [], count: 0 };
+    row.count += 1;
+    if (!row.users.includes(user)) row.users.push(user);
+    byKey.set(key, row);
+  }
+  return [...byKey.values()].sort((a, b) => b.count - a.count);
+}
+
 // ------------------------------------------------------------- diagnóstico
 
 export type RouterCheckId = 'config' | 'reach' | 'cert' | 'rest' | 'hardening';

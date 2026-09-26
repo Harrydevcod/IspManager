@@ -1,9 +1,9 @@
-import { Cable, Layers, Unplug, Waypoints } from 'lucide-react';
+import { AlertTriangle, Cable, Layers, ScrollText, ShieldAlert, Unplug, Waypoints } from 'lucide-react';
 import { useState } from 'react';
-import { Badge, Button, DataTable, EmptyState, useToast, type DataTableColumn } from '../../components';
+import { Badge, Button, DataTable, EmptyState, Toggle, useToast, type DataTableColumn } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { routerSyncBadge } from '../plans/routerSync';
-import { formatBytes, SESSION_STATE, type ProfileRow, type RouterInterface, type RouterSession } from './router-api';
+import { formatBytes, logTone, SESSION_STATE, type ProfileRow, type RouterLogEntry, type RouterLoginFailures, type RouterInterface, type RouterSession } from './router-api';
 
 const SESSION_COLUMNS: DataTableColumn<RouterSession>[] = [
   { header: 'Cliente', sortValue: (row) => row.clientName ?? '', cell: (row) => row.clientName ? <strong>{row.clientName}</strong> : <span className="router-muted">—</span> },
@@ -149,5 +149,56 @@ export function InterfacesTable({ interfaces }: { interfaces: RouterInterface[] 
       columns={INTERFACE_COLUMNS}
       empty={<EmptyState icon={Waypoints} title="Sem interfaces" description="O router não devolveu interfaces." />}
     />
+  );
+}
+
+const LOG_COLUMNS: DataTableColumn<RouterLogEntry>[] = [
+  // O RouterOS escreve só a hora nas linhas de hoje; a ordem vem do .id (*hex, crescente).
+  { header: 'Hora', sortValue: (row) => parseInt(row.id.replace('*', ''), 16) || 0, cell: (row) => <span className="router-mono router-number">{row.time}</span> },
+  {
+    header: 'Tópicos',
+    sortValue: (row) => row.topics,
+    cell: (row) => logTone(row.topics) === 'neutral'
+      ? <span className="router-mono">{row.topics}</span>
+      : <Badge tone={logTone(row.topics)}>{row.topics}</Badge>
+  },
+  { header: 'Mensagem', sortValue: (row) => row.message, cell: (row) => row.message }
+];
+
+export function LogView({ entries, loginFailures }: { entries: RouterLogEntry[]; loginFailures: RouterLoginFailures[] }) {
+  const [onlyProblems, setOnlyProblems] = useState(false);
+  const rows = onlyProblems ? entries.filter((entry) => logTone(entry.topics) !== 'neutral') : entries;
+  return (
+    <>
+      {loginFailures.length > 0 && (
+        <section className="router-findings" aria-label="Falhas de login no router">
+          <h3><ShieldAlert size={16} aria-hidden /> Falhas de login</h3>
+          <ol className="settings-router-steps">
+            {loginFailures.map((failure) => (
+              <li key={`${failure.address} ${failure.via}`} data-status="warn">
+                <AlertTriangle size={14} aria-hidden className="settings-router-step-icon" />
+                <div>
+                  <strong className="router-mono">{failure.address}</strong>
+                  <p>{failure.count} {failure.count === 1 ? 'tentativa' : 'tentativas'} por {failure.via} · {failure.users.join(', ')}</p>
+                </div>
+                <span />
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+      <div className="router-log-filter">
+        <Toggle title="Só erros e avisos" wide={false} checked={onlyProblems} onChange={(event) => setOnlyProblems(event.target.checked)} />
+      </div>
+      <DataTable
+        rows={rows}
+        rowKey={(row) => row.id}
+        stickyHeader
+        defaultSort={{ key: 'Hora', direction: 'desc' }}
+        gridTemplateColumns="minmax(150px, 0.6fr) minmax(140px, 0.6fr) minmax(260px, 3fr)"
+        columns={LOG_COLUMNS}
+        empty={<EmptyState icon={ScrollText} title={onlyProblems ? 'Sem erros nem avisos' : 'Registo vazio'} description="O router não tem linhas no registo em memória." />}
+      />
+    </>
   );
 }

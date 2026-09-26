@@ -19,6 +19,8 @@ import {
   testConnection,
   readSystem,
   listInterfaces,
+  listLog,
+  summarizeLog,
   type RouterRequest,
   type RouterService,
   listArp,
@@ -533,5 +535,35 @@ describe('leituras do módulo Router de gestão', () => {
       method: 'GET',
       path: '/interface?.proplist=name,type,running,disabled,mac-address,rx-byte,tx-byte,comment'
     });
+  });
+
+  test('listLog devolve as mais recentes primeiro, com limite, e ignora linhas vazias', async () => {
+    const transport = fakeTransport([[
+      { '.id': '*1', time: '2026-09-25 23:59:01', topics: 'system,info', message: 'router rebooted' },
+      { '.id': '*2', time: '02:40:13', topics: 'system,error,critical', message: 'login failure for user admin from 10.0.0.9 via winbox' },
+      { '.id': '*3', time: '02:41:00', topics: 'pppoe,info' },
+      { '.id': '*4', time: '02:42:00', topics: 'pppoe,ppp,info', message: 'skn001 logged in, 10.20.0.10' }
+    ]]);
+    await expect(listLog(transport, 2)).resolves.toEqual([
+      { id: '*4', time: '02:42:00', topics: 'pppoe,ppp,info', message: 'skn001 logged in, 10.20.0.10' },
+      { id: '*2', time: '02:40:13', topics: 'system,error,critical', message: 'login failure for user admin from 10.0.0.9 via winbox' }
+    ]);
+    expect(transport.calls[0]).toEqual({ method: 'GET', path: '/log?.proplist=.id,time,topics,message' });
+  });
+
+  test('summarizeLog agrupa as falhas de login por origem e serviço, pior primeiro', () => {
+    const line = (message: string) => ({ id: '*1', time: '', topics: 'system,error,critical', message });
+    expect(summarizeLog([
+      line('login failure for user admin from 10.0.0.9 via winbox'),
+      line('login failure for user root from 10.0.0.9 via ssh'),
+      line('login failure for user ubnt from 10.0.0.9 via ssh'),
+      line('login failure for user root from 10.0.0.9 via ssh'),
+      line('user admin logged in from 192.168.2.250 via winbox'),
+      line('skn001 logged in, 10.20.0.10')
+    ])).toEqual([
+      { address: '10.0.0.9', via: 'ssh', users: ['root', 'ubnt'], count: 3 },
+      { address: '10.0.0.9', via: 'winbox', users: ['admin'], count: 1 }
+    ]);
+    expect(summarizeLog([])).toEqual([]);
   });
 });

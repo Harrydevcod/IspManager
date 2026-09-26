@@ -52,7 +52,19 @@ export type RouterInterface = {
   comment: string | null;
 };
 
-export type RouterProfileOption = { name: string; rateLimit: string | null; ownerPlanId: number | null };
+export type RouterLogEntry = { id: string; time: string; topics: string; message: string };
+
+export type RouterLoginFailures = { address: string; via: string; users: string[]; count: number };
+
+/** O RouterOS separa os tópicos por vírgula ("system,error,critical"). */
+export function logTone(topics: string): Tone {
+  const list = topics.split(',');
+  if (list.includes('critical') || list.includes('error')) return 'danger';
+  if (list.includes('warning')) return 'warn';
+  return 'neutral';
+}
+
+export type RouterProfileOption ={ name: string; rateLimit: string | null; ownerPlanId: number | null };
 
 type Tone = 'success' | 'danger' | 'info' | 'neutral' | 'warn';
 

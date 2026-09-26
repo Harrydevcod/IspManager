@@ -4,6 +4,11 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## Por lançar
+
+- **Aba Registo no Router de gestão.** O registo do MikroTik lido ao vivo (as 300 linhas mais recentes), com erros a vermelho, avisos a amarelo e o filtro "Só erros e avisos". Por cima, as falhas de login agrupadas por origem e serviço (winbox, ssh, api…), para ver quem está a bater à porta. Só leitura.
+- **As divergências da Visão geral batem com a reconciliação.** Os utilizadores do router marcados pelo ISPM que já não têm serviço contavam na reconciliação mas não na Visão geral, que mostrava 0. Agora contam, e o cartão abre as Sessões PPPoE, onde aparecem como "Sem serviço no ISPM".
+
 ## [2.5](https://github.com/Harrydevcod/IspManager/releases/tag/v2.5.0) — 2026-09-26
 
 > **Sem migrações.** Tudo o que é novo é leitura ao vivo do router, e só com pedidos GET: nada do que esta versão acrescenta escreve no MikroTik.

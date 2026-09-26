@@ -55,3 +55,9 @@
   gap: var(--space-3);
   flex-wrap: wrap;
 }
+
+.router-log-filter {
+  display: flex;
+  justify-content: flex-end;
+  margin: var(--space-4) 0 var(--space-2);
+}
