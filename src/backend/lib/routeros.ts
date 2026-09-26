@@ -33,13 +33,35 @@ const DEFAULT_MAX_DISABLES = 5;
 const REQUEST_TIMEOUT_MS = 10_000;
 const routerAgents = new Map<string, Agent>();
 
-function routerAgent(host: string, port: number, pinnedFingerprint: string): Agent {
-  const key = `${host}|${port}|${pinnedFingerprint}`;
+/**
+ * O certificado fixado vive no agente, não no pedido: desde o Node 24.21 um
+ * `checkServerIdentity` por pedido dá a cada pedido um conjunto de ligações
+ * próprio e nenhuma é reutilizada. A chave é o PEM fixado inteiro, não só a
+ * impressão digital da folha: a folha sozinha e a cadeia têm a mesma impressão
+ * digital mas âncoras diferentes, e um agente só serve aquilo com que foi criado.
+ */
+function routerAgent(host: string, port: number, pinnedPem: string, pinnedFingerprint: string): Agent {
+  const key = `${host}|${port}|${pinnedPem}`;
   const cached = routerAgents.get(key);
   if (cached) return cached;
   for (const agent of routerAgents.values()) agent.destroy();
   routerAgents.clear();
-  const agent = new Agent({ keepAlive: true, maxSockets: 2, maxFreeSockets: 2, timeout: REQUEST_TIMEOUT_MS });
+  const agent = new Agent({
+    keepAlive: true, maxSockets: 2, maxFreeSockets: 2, timeout: REQUEST_TIMEOUT_MS,
+    ...(pinnedPem
+      ? {
+          ca: [pinnedPem],
+          // O nome no certificado do router não corresponde a nada
+          // resolvível; a identidade aqui é o próprio certificado. O Node
+          // chama isto antes de escrever no socket, e uma ligação reutilizada
+          // já passou por aqui ao abrir.
+          checkServerIdentity: (_host: string, cert: { fingerprint256?: string }) =>
+            cert.fingerprint256?.toUpperCase() === pinnedFingerprint
+              ? undefined
+              : new RouterError('O certificado do router nao e o que esta fixado nas definicoes', 0, undefined, 'CERT_MISMATCH')
+        }
+      : {})
+  });
   routerAgents.set(key, agent);
   return agent;
 }
@@ -325,26 +347,8 @@ export function createTransport(config: RouterConfig): RouterTransport {
           path: `/rest${req.path}`,
           method: req.method,
           auth,
-          agent: routerAgent(config.host, config.port, pinnedFingerprint),
+          agent: routerAgent(config.host, config.port, pinnedPem, pinnedFingerprint),
           rejectUnauthorized: true,
-          ...(pinnedPem
-            ? {
-                ca: [pinnedPem],
-                // O nome no certificado do router não corresponde a nada
-                // resolvível; a identidade aqui é o próprio certificado.
-                // Uma ligação reutilizada já passou esta verificação ao abrir.
-                // A impressão digital na chave do agente impede que sirva outro certificado.
-                checkServerIdentity: (_host: string, cert: { fingerprint256?: string }) =>
-                  cert.fingerprint256?.toUpperCase() === pinnedFingerprint
-                    ? undefined
-                    : new RouterError(
-                        'O certificado do router nao e o que esta fixado nas definicoes',
-                        0,
-                        undefined,
-                        'CERT_MISMATCH'
-                      )
-              }
-            : {}),
           timeout: REQUEST_TIMEOUT_MS,
           headers: {
             accept: 'application/json',
