@@ -1,5 +1,5 @@
 import { Activity, ArrowDown, ArrowUp } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Badge } from '../../components';
 import { formatBitrate, ROUTER_API, type Live, type RouterWan, type WanRate } from './router-api';
 import { useLive } from './useLive';
@@ -32,6 +32,49 @@ function Sparkline({ points, max }: { points: WanRate[]; max: number }) {
 const sum = (rates: WanRate[], pick: (rate: WanRate) => number | null) =>
   rates.some((rate) => pick(rate) !== null) ? rates.reduce((total, rate) => total + (pick(rate) ?? 0), 0) : null;
 
+/** Chave do histórico da soma; não colide com um nome de interface do RouterOS. */
+const TOTAL_KEY = '\0total';
+
+function totalOf(rates: WanRate[]): WanRate {
+  return {
+    name: TOTAL_KEY,
+    running: rates.some((rate) => rate.running),
+    downBps: sum(rates, (rate) => rate.downBps),
+    upBps: sum(rates, (rate) => rate.upBps)
+  };
+}
+
+function WanCard({ title, badge, rate, points, max, footer, total = false }: {
+  title: string;
+  badge: ReactNode;
+  rate: WanRate;
+  points: WanRate[];
+  max: number;
+  footer?: ReactNode;
+  total?: boolean;
+}) {
+  return (
+    <article className={total ? 'router-wan-card is-total' : 'router-wan-card'}>
+      <div className="router-wan-card-head">
+        <strong className={total ? undefined : 'router-mono'}>{title}</strong>
+        {badge}
+      </div>
+      <div className="router-wan-rates">
+        <div className="is-down">
+          <span><ArrowDown size={14} aria-hidden /> Download</span>
+          <strong className="router-number">{formatBitrate(rate.downBps)}</strong>
+        </div>
+        <div className="is-up">
+          <span><ArrowUp size={14} aria-hidden /> Upload</span>
+          <strong className="router-number">{formatBitrate(rate.upBps)}</strong>
+        </div>
+      </div>
+      <Sparkline points={points} max={max} />
+      {footer}
+    </article>
+  );
+}
+
 /** Download e upload de cada interface da lista WAN, ao vivo, só enquanto está à vista. */
 export function WanTraffic() {
   const live = useLive<Live<RouterWan>>(`${ROUTER_API}/wan`, true, WAN_POLL_MS);
@@ -47,12 +90,14 @@ export function WanTraffic() {
     const rates = data.interfaces;
     previousSampledAt.current = data.sampledAt;
     setLatest(rates);
-    setHistory((current) => Object.fromEntries(rates.map((rate) => [rate.name, [...(current[rate.name] ?? []), rate].slice(-HISTORY)])));
+    setHistory((current) => Object.fromEntries([...rates, totalOf(rates)].map((rate) => [rate.name, [...(current[rate.name] ?? []), rate].slice(-HISTORY)])));
   }, [live.data]);
 
+  // A soma entra na escala: os três cartões medem-se com a mesma régua.
   const scale = peak(Object.values(history).flat());
-  const totalDown = sum(latest, (rate) => rate.downBps);
-  const totalUp = sum(latest, (rate) => rate.upBps);
+  const total = totalOf(latest);
+  const totalDown = total.downBps;
+  const linked = latest.filter((rate) => rate.running).length;
 
   return (
     <section className="router-wan" aria-label="Tráfego das WAN">
@@ -66,42 +111,33 @@ export function WanTraffic() {
       ) : latest.length === 0 ? (
         <p className="router-muted">{live.error ?? 'A ler as interfaces WAN…'}</p>
       ) : (
-        <>
-          <div className="router-wan-grid">
-            {latest.map((rate) => (
-              <article key={rate.name} className="router-wan-card">
-                <div className="router-wan-card-head">
-                  <strong className="router-mono">{rate.name}</strong>
-                  {rate.running ? <Badge tone="success">Ligada</Badge> : <Badge tone="danger">Sem ligação</Badge>}
-                </div>
-                <div className="router-wan-rates">
-                  <div className="is-down">
-                    <span><ArrowDown size={14} aria-hidden /> Download</span>
-                    <strong className="router-number">{formatBitrate(rate.downBps)}</strong>
-                  </div>
-                  <div className="is-up">
-                    <span><ArrowUp size={14} aria-hidden /> Upload</span>
-                    <strong className="router-number">{formatBitrate(rate.upBps)}</strong>
-                  </div>
-                </div>
-                <Sparkline points={history[rate.name] ?? []} max={scale} />
-              </article>
-            ))}
-          </div>
+        <div className={latest.length > 1 ? 'router-wan-grid has-total' : 'router-wan-grid'}>
+          {latest.map((rate) => (
+            <WanCard
+              key={rate.name}
+              title={rate.name}
+              badge={rate.running ? <Badge tone="success">Ligada</Badge> : <Badge tone="danger">Sem ligação</Badge>}
+              rate={rate}
+              points={history[rate.name] ?? []}
+              max={scale}
+            />
+          ))}
           {latest.length > 1 && (
-            <p className="router-wan-total">
-              Total <ArrowDown size={13} aria-hidden /> <strong className="router-number">{formatBitrate(totalDown)}</strong>
-              {' · '}
-              <ArrowUp size={13} aria-hidden /> <strong className="router-number">{formatBitrate(totalUp)}</strong>
-              {totalDown ? (
-                <span className="router-muted">
-                  {' · download repartido '}
-                  {latest.map((rate) => `${Math.round(((rate.downBps ?? 0) / totalDown) * 100)}%`).join(' / ')}
-                </span>
+            <WanCard
+              total
+              title="Total"
+              badge={<Badge tone={linked === latest.length ? 'accent' : 'warn'}>{linked} de {latest.length} ligadas</Badge>}
+              rate={total}
+              points={history[TOTAL_KEY] ?? []}
+              max={scale}
+              footer={totalDown ? (
+                <p className="router-wan-split router-muted">
+                  {latest.map((rate) => `${rate.name} ${Math.round(((rate.downBps ?? 0) / totalDown) * 100)}%`).join(' · ')}
+                </p>
               ) : null}
-            </p>
+            />
           )}
-        </>
+        </div>
       )}
     </section>
   );
