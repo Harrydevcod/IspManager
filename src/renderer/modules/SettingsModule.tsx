@@ -2,7 +2,7 @@ import { Activity, Banknote, Building2, DatabaseBackup, KeyRound, MessageCircle,
 import QRCode from 'qrcode';
 import type { FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { Button, Message } from '../components';
+import { Button, Message, type SecretDraft } from '../components';
 import { authFetch } from '../lib/auth';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
@@ -33,8 +33,10 @@ import { NetworkTab, type RouterEnforcementState, type RouterTestReport } from '
 import { RouterLiveDialog } from './settings/RouterLiveDialog';
 import { JobHealthPanel } from './JobHealthPanel';
 import { LicensePanel } from './LicensePanel';
+import { VaultPanel } from './settings/VaultPanel';
+import { useAuth } from '../lib/auth';
 
-type SettingsTab = 'company' | 'billing' | 'whatsapp' | 'sms' | 'network' | 'backups' | 'jobs' | 'license';
+type SettingsTab = 'company' | 'billing' | 'whatsapp' | 'sms' | 'network' | 'backups' | 'jobs' | 'license' | 'vault';
 
 const TABS: { id: SettingsTab; label: string; icon: typeof Building2 }[] = [
   { id: 'company', label: 'Empresa', icon: Building2 },
@@ -44,7 +46,8 @@ const TABS: { id: SettingsTab; label: string; icon: typeof Building2 }[] = [
   { id: 'network', label: 'Rede', icon: Radar },
   { id: 'backups', label: 'Backups', icon: DatabaseBackup },
   { id: 'jobs', label: 'Automatismos', icon: Activity },
-  { id: 'license', label: 'Licença', icon: KeyRound }
+  { id: 'license', label: 'Licença', icon: KeyRound },
+  { id: 'vault', label: 'Cofre', icon: KeyRound }
 ];
 
 /**
@@ -68,6 +71,9 @@ type SettingsModuleProps = {
 };
 
 export function SettingsModule({ scope = 'all' }: SettingsModuleProps = {}) {
+  const auth = useAuth();
+  const [routerSecretDraft, setRouterSecretDraft] = useState<SecretDraft>({ editing: false });
+  const [ultraSecretDraft, setUltraSecretDraft] = useState<SecretDraft>({ editing: false });
   const [message, setMessage] = useState<{ tone: 'neutral' | 'success' | 'error'; text: string; placement: 'top' | 'save' } | null>(null);
   const [saving, setSaving] = useState(false);
   const [testSending, setTestSending] = useState(false);
@@ -481,6 +487,8 @@ export function SettingsModule({ scope = 'all' }: SettingsModuleProps = {}) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...savedForm,
+          routerosPassword: routerSecretDraft.editing && routerSecretDraft.value ? routerSecretDraft.value : undefined,
+          ultraMsgToken: ultraSecretDraft.editing && ultraSecretDraft.value ? ultraSecretDraft.value : undefined,
           defaultDueDay: Number(savedForm.defaultDueDay),
           autoBillingDay: Number(savedForm.autoBillingDay),
           audiovisualMonthlyCve: Number(savedForm.audiovisualMonthlyCve),
@@ -525,6 +533,8 @@ export function SettingsModule({ scope = 'all' }: SettingsModuleProps = {}) {
         ultraMsgTokenConfigured: result.ultraMsgTokenConfigured ?? savedForm.ultraMsgTokenConfigured
       };
       setForm(settledForm);
+      setRouterSecretDraft({ editing: false });
+      setUltraSecretDraft({ editing: false });
       setLastSavedForm(settledForm);
       setSecretsLost([]);
       setMessage({ tone: 'success', text: 'Configuracoes gravadas com sucesso.', placement: 'save' });
@@ -722,7 +732,7 @@ export function SettingsModule({ scope = 'all' }: SettingsModuleProps = {}) {
       </div>
 
       <nav className="settings-tabs" role="tablist" aria-label="Configurações por tópico">
-        {TABS.map((tab) => {
+        {TABS.filter((tab) => tab.id !== 'vault' || auth.isAuthBypassed || auth.hasRole('admin')).map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
           return (
@@ -752,7 +762,7 @@ export function SettingsModule({ scope = 'all' }: SettingsModuleProps = {}) {
       )}
       {message && message.placement === 'top' && <Message tone={message.tone}>{message.text}</Message>}
 
-      {activeTab !== 'backups' && activeTab !== 'jobs' && activeTab !== 'license' && (
+      {activeTab !== 'backups' && activeTab !== 'jobs' && activeTab !== 'license' && activeTab !== 'vault' && (
       <form className="client-form settings-form" onSubmit={saveSettings}>
         {activeTab === 'company' && (
           <CompanyTab
@@ -768,6 +778,8 @@ export function SettingsModule({ scope = 'all' }: SettingsModuleProps = {}) {
         {activeTab === 'whatsapp' && (
           <WhatsappTab
             form={form}
+            secretDraft={ultraSecretDraft}
+            onSecretDraftChange={setUltraSecretDraft}
             onUpdate={updateForm}
             onToggle={toggleForm}
             testPhone={testPhone}
@@ -804,6 +816,8 @@ export function SettingsModule({ scope = 'all' }: SettingsModuleProps = {}) {
           <NetworkTab
             part={scope === 'router' ? 'router' : 'probe'}
             form={form}
+            secretDraft={routerSecretDraft}
+            onSecretDraftChange={setRouterSecretDraft}
             onUpdate={updateForm}
             onToggle={toggleForm}
             probeBusy={probeBusy}
@@ -870,6 +884,7 @@ export function SettingsModule({ scope = 'all' }: SettingsModuleProps = {}) {
       {activeTab === 'jobs' && <JobHealthPanel />}
 
       {activeTab === 'license' && <LicensePanel />}
+      {activeTab === 'vault' && (auth.isAuthBypassed || auth.hasRole('admin')) && <VaultPanel />}
     </section>
   );
 }

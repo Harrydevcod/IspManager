@@ -6,6 +6,7 @@ export * from './RevenueBars';
 export * from './Button';
 export * from './ModuleHeaderActions';
 export * from './Field';
+export * from './SecretField';
 export * from './Select';
 export * from './ModeSelect';
 export * from './WanModeSelect';

@@ -1,4 +1,4 @@
-import { Button, Field, Message, Textarea, Toggle } from '../../components';
+import { Button, Field, Message, SecretField, Textarea, Toggle, type SecretDraft } from '../../components';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
 import { templateRows, type SettingsFormState, type ToggleField, type UpdateField } from './settingsForm';
 
@@ -7,6 +7,8 @@ type TestMessage = { tone: 'neutral' | 'success' | 'error'; text: string } | nul
 type WhatsappTabProps = {
   form: SettingsFormState;
   onUpdate: UpdateField;
+  secretDraft?: SecretDraft;
+  onSecretDraftChange?: (next: SecretDraft) => void;
   onToggle: ToggleField;
   testPhone: string;
   onTestPhoneChange: (value: string) => void;
@@ -15,7 +17,7 @@ type WhatsappTabProps = {
   onSendTest: () => void;
 };
 
-export function WhatsappTab({ form, onUpdate, onToggle, testPhone, onTestPhoneChange, testMessage, testSending, onSendTest }: WhatsappTabProps) {
+export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, onSecretDraftChange = () => undefined, onToggle, testPhone, onTestPhoneChange, testMessage, testSending, onSendTest }: WhatsappTabProps) {
   return (
     <>
       <Field
@@ -26,16 +28,8 @@ export function WhatsappTab({ form, onUpdate, onToggle, testPhone, onTestPhoneCh
         onChange={(event) => onUpdate('ultraMsgInstanceId', event.target.value)}
         placeholder="instance00000"
       />
-      <Field
-        label="UltraMsg token"
-        type="password"
-        autoComplete="off"
-        spellCheck={false}
-        value={form.ultraMsgToken}
-        onChange={(event) => onUpdate('ultraMsgToken', event.target.value)}
-        placeholder={form.ultraMsgTokenConfigured ? 'Configurado — escreva para substituir' : undefined}
-        hint="Fica cifrado no cofre e nunca volta a sair. Em branco, fica o que está guardado."
-      />
+      <SecretField label="Token UltraMsg" configured={Boolean(form.ultraMsgTokenConfigured)}
+        draft={secretDraft} onDraftChange={(next) => { onSecretDraftChange(next); onUpdate('ultraMsgToken', next.editing ? next.value : ''); }} />
       <Field
         label="Avisar suspensao apos X dias"
         type="number"

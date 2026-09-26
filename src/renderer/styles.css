@@ -3660,6 +3660,15 @@ h2 {
   text-transform: uppercase;
 }
 
+.secret-field { max-width: 30rem; }
+.secret-field-control { display: flex; align-items: center; gap: var(--space-2); }
+.secret-field-control input { min-width: 0; flex: 1; }
+.secret-field-control > span { color: var(--text-2); font-size: var(--fs-sm); }
+.vault-panel { display: grid; gap: var(--space-4); max-width: 38rem; }
+.vault-panel form { display: grid; gap: var(--space-3); max-width: 30rem; }
+.vault-panel form > button { justify-self: start; }
+.vault-recovery-key { overflow-wrap: anywhere; font-family: ui-monospace, monospace; color: var(--text); }
+
 /* Inputs numéricos curtos (segundos, minutos, dias): a caixa acompanha o
    tamanho do valor esperado em vez de esticar pela célula do grid. */
 .field-short input {

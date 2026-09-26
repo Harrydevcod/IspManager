@@ -1,5 +1,5 @@
 import { AlertTriangle, Check, Minus, Radar, RefreshCw, Router, ShieldCheck, X } from 'lucide-react';
-import { Button, Field, Message, Toggle } from '../../components';
+import { Button, Field, Message, SecretField, Toggle, type SecretDraft } from '../../components';
 import type { SettingsFormState, ToggleField, UpdateField } from './settingsForm';
 
 export type RouterEnforcementState = {
@@ -72,6 +72,8 @@ type NetworkTabProps = {
   part: 'probe' | 'router';
   form: SettingsFormState;
   onUpdate: UpdateField;
+  secretDraft?: SecretDraft;
+  onSecretDraftChange?: (next: SecretDraft) => void;
   onToggle: ToggleField;
   probeBusy: boolean;
   probeMessage: string;
@@ -97,6 +99,8 @@ export function NetworkTab({
   part,
   form,
   onUpdate,
+  secretDraft = { editing: false },
+  onSecretDraftChange = () => undefined,
   onToggle,
   probeBusy,
   probeMessage,
@@ -203,15 +207,8 @@ export function NetworkTab({
             onChange={(event) => onUpdate('routerosUser', event.target.value)}
             hint="Utilizador dedicado, com o grupo limitado a read, write, api e rest-api — nunca full."
           />
-          <Field
-            label="Senha"
-            type="password"
-            autoComplete="new-password"
-            value={form.routerosPassword}
-            onChange={(event) => onUpdate('routerosPassword', event.target.value)}
-            placeholder={form.routerosPasswordConfigured ? 'Configurada — escreva para substituir' : undefined}
-            hint="Fica cifrada no cofre e nunca volta a sair. Em branco, fica a que está guardada."
-          />
+          <SecretField label="Senha do router" configured={Boolean(form.routerosPasswordConfigured)}
+            draft={secretDraft} onDraftChange={(next) => { onSecretDraftChange(next); onUpdate('routerosPassword', next.editing ? next.value : ''); }} />
           <div className="settings-router-cert wide-field">
             <span className="field-label">Certificado do router</span>
             <p>
