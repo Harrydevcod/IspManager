@@ -4,6 +4,13 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.7](https://github.com/Harrydevcod/IspManager/releases/tag/v2.7.0) — 2026-09-26
+
+> **Sem migrações.** Se vier da 2.5 ou anterior, esta versão traz também o cofre de credenciais da 2.6: **arranque-a uma vez neste computador** antes de restaurar qualquer backup noutro sítio, e **guarde a chave de recuperação** em Configurações → Cofre (ver as notas da 2.6).
+
+- **Apagar um serviço que o router já tinha lido deixava de funcionar.** Qualquer serviço que já tivesse passado por uma reconciliação com o MikroTik dava erro ao ser apagado. Agora apaga-se normalmente, com tudo o que lhe pertence.
+- **O estado de rede deixa de mostrar serviços que já não têm PPPoE.** Um serviço que perdesse o utilizador PPPoE ficava com a última leitura do router para sempre, e continuava a contar como online ou com divergência no Router de gestão e no painel Operação. Cada reconciliação esquece agora esses serviços.
+
 ## [2.6](https://github.com/Harrydevcod/IspManager/releases/tag/v2.6.0) — 2026-09-26
 
 > **Antes de instalar: esta versão tem de arrancar uma vez neste computador** antes de restaurar qualquer backup noutro sítio. É no primeiro arranque que as credenciais passam para o cofre novo. Depois disso, **guarde a chave de recuperação**: um aviso em todos os módulos pede-a até ser confirmada, em Configurações → Cofre. Sem ela, um backup restaurado noutro computador fica sem as senhas do router, do WhatsApp e dos clientes.
