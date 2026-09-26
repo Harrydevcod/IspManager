@@ -208,3 +208,59 @@ describe('identidade PPPoE de um serviço novo', () => {
     expect(pppoeOf(created.value.serviceId)).toEqual({ username: 'ana-lima-antiga', password: 'senha-do-terreno' });
   });
 });
+
+describe('associar um plano a um serviço existente', () => {
+  function seed(pppoeUsername: string | null) {
+    db.prepare(`INSERT INTO clients (id, client_code, full_name, phone) VALUES (1, 'CL-0001', 'João Silva', '9110001')`).run();
+    db.prepare(`INSERT OR IGNORE INTO internet_plans (id, name, download_speed, upload_speed) VALUES (71, 'Base', '10', '2')`).run();
+    db.prepare(`
+      INSERT INTO services (id, client_id, plan_id, monthly_value_cve, status, pppoe_username, pppoe_password)
+      VALUES (5, 1, NULL, 2500, 'active', ?, ?)
+    `).run(pppoeUsername, pppoeUsername ? 'antiga' : null);
+  }
+  const setRouter = (on: boolean) =>
+    db.prepare(`INSERT INTO app_settings (key, value) VALUES ('routerosEnabled', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
+      .run(on ? 'true' : 'false');
+  const credentials = () =>
+    db.prepare('SELECT pppoe_username AS username, pppoe_password AS password, pppoe_password_sync_pending AS pending FROM services WHERE id = 5').get() as
+      { username: string | null; password: string | null; pending: number };
+  const form = { clientId: 1, planId: 71, monthlyValueCve: 2500, dueDay: 1, status: 'active' as const, audiovisualMode: 'none' as const, audiovisualMonthlyCve: 0, audiovisualAnnualCve: 0 };
+
+  afterAll(() => setRouter(false));
+
+  test('com o router ligado, gera utilizador e senha PPPoE para a reconciliação criar o secret', () => {
+    setRouter(true);
+    seed(null);
+    expect(services.updateService(db, 5, form)).toEqual({ ok: true, value: undefined });
+    const after = credentials();
+    expect(after.username).toBe('joao-silva-5');
+    // Nasce selada, como na criação: nunca em claro na base.
+    expect(after.password).toMatch(/^enc:/);
+    expect(readPppoeSecret(db, 5)).toMatch(/^[\w-]{12}$/);
+    expect(after.pending).toBe(1);
+  });
+
+  test('credenciais existentes ficam como estão', () => {
+    setRouter(true);
+    seed('joao-velho');
+    services.updateService(db, 5, form);
+    expect(credentials()).toMatchObject({ username: 'joao-velho', password: 'antiga', pending: 0 });
+  });
+
+  test('com o router desligado não se inventam credenciais', () => {
+    setRouter(false);
+    seed(null);
+    services.updateService(db, 5, form);
+    expect(credentials()).toMatchObject({ username: null, password: null });
+  });
+
+  test('remover o login de um serviço já associado não volta a gerar credenciais', () => {
+    setRouter(true);
+    seed(null);
+    services.updateService(db, 5, form);
+    services.updateService(db, 5, { ...form, pppoeUsername: '', pppoePassword: '' });
+    expect(credentials()).toMatchObject({ username: null, password: null });
+    services.updateService(db, 5, form);
+    expect(credentials()).toMatchObject({ username: null, password: null });
+  });
+});

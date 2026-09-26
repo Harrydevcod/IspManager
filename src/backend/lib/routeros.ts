@@ -67,8 +67,12 @@ export function routerosIntervalMs(): number {
   return readRouterConfig(getSqliteDatabase()).intervalSeconds * 1000;
 }
 
+/**
+ * A senha conta: vazia quer dizer também "selada e por abrir nesta conta", e
+ * tentar assim só deixa um login recusado no registo do router a cada passagem.
+ */
 export function isRouterConfigured(config: RouterConfig): boolean {
-  return Boolean(config.host && config.user);
+  return Boolean(config.host && config.user && config.password);
 }
 
 // ------------------------------------------------------------------ erros
@@ -343,10 +347,12 @@ export function createTransport(config: RouterConfig): RouterTransport {
               }
             }
             if (status < 200 || status >= 300) {
+              // O RouterOS põe a causa em `detail`; o `message` é só a frase
+              // do HTTP ("Bad Request"), que sozinha não diz nada ao operador.
+              const body = (parsed && typeof parsed === 'object' ? parsed : {}) as { message?: unknown; detail?: unknown };
               const detail =
-                parsed && typeof parsed === 'object' && 'message' in parsed
-                  ? String((parsed as { message: unknown }).message)
-                  : `HTTP ${status}`;
+                [body.message, body.detail].filter((part) => part != null && part !== '').map(String).join(': ')
+                || `HTTP ${status}`;
               reject(new RouterError(status === 401 ? 'Utilizador ou senha recusados pelo router' : detail, status));
               return;
             }
@@ -393,7 +399,6 @@ export type RouterSecret = {
   name: string;
   disabled: boolean;
   profile: string | null;
-  rateLimit: string | null;
   comment: string | null;
 };
 
@@ -426,6 +431,77 @@ export async function testConnection(transport: RouterTransport): Promise<{ vers
     version: str(row?.version) ?? 'desconhecida',
     boardName: str(row?.['board-name']) ?? 'desconhecido'
   };
+}
+
+/** RouterOS devolve números como texto; o que não vier fica `null`, não zero. */
+function num(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function firstRow(raw: unknown): Record<string, unknown> | undefined {
+  return (Array.isArray(raw) ? raw[0] : raw) as Record<string, unknown> | undefined;
+}
+
+export type RouterSystem = {
+  identity: string | null;
+  version: string | null;
+  boardName: string | null;
+  architecture: string | null;
+  uptime: string | null;
+  cpuLoad: number | null;
+  freeMemory: number | null;
+  totalMemory: number | null;
+};
+
+/** Visão geral do equipamento. Leitura pura. */
+export async function readSystem(transport: RouterTransport): Promise<RouterSystem> {
+  const resource = firstRow(await transport({
+    method: 'GET',
+    path: '/system/resource?.proplist=version,board-name,architecture-name,uptime,cpu-load,free-memory,total-memory'
+  }));
+  const identity = firstRow(await transport({ method: 'GET', path: '/system/identity' }));
+  return {
+    identity: str(identity?.name),
+    version: str(resource?.version),
+    boardName: str(resource?.['board-name']),
+    architecture: str(resource?.['architecture-name']),
+    uptime: str(resource?.uptime),
+    cpuLoad: num(resource?.['cpu-load']),
+    freeMemory: num(resource?.['free-memory']),
+    totalMemory: num(resource?.['total-memory'])
+  };
+}
+
+export type RouterInterface = {
+  name: string;
+  type: string | null;
+  running: boolean;
+  disabled: boolean;
+  macAddress: string | null;
+  rxBytes: number | null;
+  txBytes: number | null;
+  comment: string | null;
+};
+
+/** As interfaces do router. Leitura pura; os contadores são os acumulados desde o arranque. */
+export async function listInterfaces(transport: RouterTransport): Promise<RouterInterface[]> {
+  const raw = await transport({
+    method: 'GET',
+    path: '/interface?.proplist=name,type,running,disabled,mac-address,rx-byte,tx-byte,comment'
+  });
+  return asArray(raw)
+    .map((row) => ({
+      name: str(row.name) ?? '',
+      type: str(row.type),
+      running: toBool(row.running),
+      disabled: toBool(row.disabled),
+      macAddress: str(row['mac-address']),
+      rxBytes: num(row['rx-byte']),
+      txBytes: num(row['tx-byte']),
+      comment: str(row.comment)
+    }))
+    .filter((item) => item.name);
 }
 
 // ------------------------------------------------------------- diagnóstico
@@ -658,7 +734,7 @@ export async function diagnoseRouter(config: RouterConfig): Promise<RouterDiagno
 export async function listSecrets(transport: RouterTransport): Promise<RouterSecret[]> {
   const raw = await transport({
     method: 'GET',
-    path: '/ppp/secret?.proplist=.id,name,disabled,profile,rate-limit,comment'
+    path: '/ppp/secret?.proplist=.id,name,disabled,profile,comment'
   });
   return asArray(raw)
     .map((row) => ({
@@ -666,7 +742,6 @@ export async function listSecrets(transport: RouterTransport): Promise<RouterSec
       name: str(row.name) ?? '',
       disabled: toBool(row.disabled),
       profile: str(row.profile),
-      rateLimit: str(row['rate-limit']),
       comment: str(row.comment)
     }))
     .filter((secret) => secret.id && secret.name);
@@ -755,7 +830,10 @@ const POINTLESS_SERVICES = ['btest'];
  */
 export function auditRouterServices(services: RouterService[]): RouterServiceFinding[] {
   const findings: RouterServiceFinding[] = [];
-  const active = services.filter((service) => !service.disabled);
+  // Um nome por serviço: o RouterOS 7.24 devolve o winbox duas vezes, e a
+  // lista repetida passava para o texto e para o comando a colar no terminal.
+  const seen = new Set<string>();
+  const active = services.filter((service) => !service.disabled && !seen.has(service.name) && seen.add(service.name));
 
   const cleartext = active
     .filter((service) => CLEARTEXT_SERVICES.includes(service.name))
@@ -770,8 +848,11 @@ export function auditRouterServices(services: RouterService[]): RouterServiceFin
   }
 
   // Um serviço "ssl" sem certificado não faz TLS nenhum: está ligado a fingir.
+  // O www-ssl fica de fora: é onde a REST do ISPM vive, e esta auditoria só
+  // corre depois de o aperto TLS com o certificado fixado ter passado nele.
+  // No RouterOS 7.24 a leitura veio sem certificado mesmo assim.
   const fakeTls = active
-    .filter((service) => service.name.endsWith('-ssl') && !service.certificate)
+    .filter((service) => service.name.endsWith('-ssl') && service.name !== 'www-ssl' && !service.certificate)
     .map((service) => service.name);
   if (fakeTls.length > 0) {
     findings.push({
@@ -932,7 +1013,6 @@ export type NewSecret = {
   name: string;
   password: string;
   comment: string;
-  rateLimit?: string | null;
   profile?: string | null;
 };
 
@@ -954,7 +1034,6 @@ export async function createSecret(transport: RouterTransport, input: NewSecret)
       password: input.password,
       service: 'pppoe',
       comment: input.comment,
-      ...(input.rateLimit ? { 'rate-limit': input.rateLimit } : {}),
       ...(input.profile ? { profile: input.profile } : {})
     }
   });
@@ -962,17 +1041,81 @@ export async function createSecret(transport: RouterTransport, input: NewSecret)
   return str(row?.['.id']) ?? '';
 }
 
-export type SecretPatch = { disabled?: boolean; rateLimit?: string | null; password?: string; name?: string };
+export type SecretPatch = { disabled?: boolean; profile?: string; password?: string; name?: string };
 
 export async function patchSecret(transport: RouterTransport, id: string, patch: SecretPatch): Promise<void> {
   assertPlainPassword(patch.password);
   const body: Record<string, string> = {};
   if (patch.disabled !== undefined) body.disabled = patch.disabled ? 'yes' : 'no';
-  if (patch.rateLimit !== undefined) body['rate-limit'] = patch.rateLimit ?? '';
+  if (patch.profile !== undefined) body.profile = patch.profile;
   if (patch.name !== undefined) body.name = patch.name;
   if (patch.password !== undefined) body.password = patch.password;
   if (Object.keys(body).length === 0) return;
   await transport({ method: 'PATCH', path: `/ppp/secret/${id}`, body });
+}
+
+/**
+ * Perfil PPP. É no perfil que o RouterOS guarda a velocidade (`rate-limit`) e
+ * os endereços que o cliente recebe; o secret só aponta para ele.
+ */
+export type RouterProfile = {
+  id: string;
+  name: string;
+  rateLimit: string | null;
+  localAddress: string | null;
+  remoteAddress: string | null;
+  dnsServer: string | null;
+  onlyOne: string | null;
+  comment: string | null;
+};
+
+export async function listProfiles(transport: RouterTransport): Promise<RouterProfile[]> {
+  const raw = await transport({
+    method: 'GET',
+    path: '/ppp/profile?.proplist=.id,name,rate-limit,local-address,remote-address,dns-server,only-one,comment'
+  });
+  return asArray(raw)
+    .map((row) => ({
+      id: str(row['.id']) ?? '',
+      name: str(row.name) ?? '',
+      rateLimit: str(row['rate-limit']),
+      localAddress: str(row['local-address']),
+      remoteAddress: str(row['remote-address']),
+      dnsServer: str(row['dns-server']),
+      onlyOne: str(row['only-one']),
+      comment: str(row.comment)
+    }))
+    .filter((profile) => profile.id && profile.name);
+}
+
+/**
+ * Cria um perfil copiando do base o que faz o cliente ter rede (endereços,
+ * DNS, sessão única). Campo a campo e não `copy-from`, que a REST não prova.
+ */
+export async function createProfile(
+  transport: RouterTransport,
+  input: { name: string; rateLimit: string; comment: string; base: RouterProfile }
+): Promise<string> {
+  const { base } = input;
+  const raw = await transport({
+    method: 'PUT',
+    path: '/ppp/profile',
+    body: {
+      name: input.name,
+      'rate-limit': input.rateLimit,
+      comment: input.comment,
+      ...(base.localAddress ? { 'local-address': base.localAddress } : {}),
+      ...(base.remoteAddress ? { 'remote-address': base.remoteAddress } : {}),
+      ...(base.dnsServer ? { 'dns-server': base.dnsServer } : {}),
+      ...(base.onlyOne ? { 'only-one': base.onlyOne } : {})
+    }
+  });
+  const row = (Array.isArray(raw) ? raw[0] : raw) as Record<string, unknown> | undefined;
+  return str(row?.['.id']) ?? '';
+}
+
+export async function patchProfile(transport: RouterTransport, id: string, patch: { rateLimit: string }): Promise<void> {
+  await transport({ method: 'PATCH', path: `/ppp/profile/${id}`, body: { 'rate-limit': patch.rateLimit } });
 }
 
 /**

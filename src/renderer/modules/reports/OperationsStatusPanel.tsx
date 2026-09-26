@@ -471,7 +471,7 @@ export function OperationsStatusPanel({ active }: { active: boolean }) {
                   {accessLayer.routerDryRun ? 'router em ensaio' : 'router a controlar'}
                 </Badge>
                 {' '}{accessLayer.provisionedServices} de {accessLayer.sharedUplinkServices} serviço(s) aprovisionados ·
-                {' '}{accessLayer.rateLimitedServices} com limite de débito · {accessLayer.onlineServices} online.
+                {' '}{accessLayer.rateLimitedServices} no perfil do plano · {accessLayer.onlineServices} online.
               </p>
               <p className="ops-note">
                 {accessLayer.automaticSuspensions} corte(s) automático(s) em 7 dias ·

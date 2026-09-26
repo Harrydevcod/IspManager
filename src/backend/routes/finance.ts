@@ -5,6 +5,7 @@ import { computeMonthlyBilling, generateMonthlyBilling } from '../lib/billing';
 import { loadAudiovisualConfig } from '../lib/audiovisual';
 import { runAudiovisualAnnualIfDue } from '../lib/audiovisual-billing';
 import { recordAudit } from '../lib/audit';
+import { requestNetworkSync } from '../lib/network-sync';
 import {
   applyClientCreditToPayment,
   balanceSqlExpr,
@@ -100,7 +101,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         n.uptime AS routerUptime,
         n.checked_at AS routerLastSyncAt,
         n.last_error AS routerLastError,
-        n.rate_limit AS routerRateLimit,
+        n.profile AS routerProfile,
         -- IPs dos equipamentos ativos: chave de identificacao das antenas para
         -- manutencao remota, por isso vem ja na lista e nao so no detalhe.
         -- Pela vista assignment_services, para uma antena partilhada aparecer em
@@ -173,6 +174,8 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         /* o catch-up do arranque reemite */
       }
     }
+    // O secret nasce na reconciliação, fora da transação que criou o serviço.
+    requestNetworkSync();
     return reply.status(201).send({
       id: created.serviceId,
       ...(created.install ?? {}),
@@ -209,6 +212,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       summary: `Atualizou servico ${id}`,
       metadata: { clientId: parsed.data.clientId, planId: parsed.data.planId ?? null, status: parsed.data.status }
     });
+    requestNetworkSync();
     return { ok: true };
   });
 

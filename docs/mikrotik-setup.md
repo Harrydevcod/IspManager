@@ -40,10 +40,21 @@ colida com a tua rede de gestão nem com as redes das CPEs.
 # Bolsa de endereços que o router entrega a cada cliente que autentica
 /ip pool add name=pool-clientes ranges=10.10.1.1-10.10.254.254
 
-# Perfil dos clientes. Sem rate-limit aqui de propósito: a velocidade é
-# escrita pelo ISPM em cada utilizador, a partir do plano.
+# Perfil por omissão dos clientes (sem limite de velocidade). A velocidade
+# vive num perfil por plano, mais abaixo: o RouterOS não aceita rate-limit
+# num secret.
 /ppp profile add name=clientes local-address=10.10.0.1 remote-address=pool-clientes \
     dns-server=8.8.8.8,1.1.1.1 only-one=yes
+
+# Um perfil por plano, com a velocidade (upload/download, visto do router).
+# Opcional: o ISPM cria-o sozinho a partir do perfil-base ao gravar o plano.
+# Fazê-lo à mão só serve para um perfil com burst ou outras opções; nesse
+# caso escreve-se o nome em "Perfil PPP no router" e o ISPM não lhe mexe.
+/ppp profile add name=plano-20M copy-from=clientes rate-limit=20M/20M
+
+# Perfil de suspensão: mantém o secret ativo, com velocidade mínima.
+# Cria-o antes de ativar a reconciliação efetiva no ISPM.
+/ppp profile add name=SUSPENSO copy-from=clientes rate-limit=128k/128k
 
 # Servidor PPPoE na interface dos clientes
 /interface pppoe-server server add service-name=ispm interface=<lan> \
@@ -203,6 +214,14 @@ Definições → Rede → **Router MikroTik**:
 | Utilizador da API | `ispm-api` |
 | Senha | a do passo 5 |
 | Ensaio | **ligado** (deixa ficar) |
+| Perfil-base dos planos | `clientes`, se usares o perfil-base deste guia |
+| Perfil dos suspensos | `SUSPENSO` (já criado no passo 1); vazio para desativar o secret ao suspender |
+
+O perfil `SUSPENSO` tem de existir no router antes de suspender serviços em modo efetivo. Se faltar,
+o ISPM desativa o secret do suspenso, derruba a sessão e regista o erro no serviço. Se o perfil
+desaparecer entre a verificação e o `PATCH`, aplica o mesmo corte de segurança. Um secret já
+desativado não é ativado. Na primeira passagem, os serviços suspensos que hoje têm o secret desativado passam
+primeiro para `SUSPENSO` e só depois são ativados; esta reposição não conta como corte na trava.
 
 Depois **Testar ligação** — não é preciso gravar primeiro, o teste corre contra o que está no ecrã.
 
@@ -248,11 +267,22 @@ No ISPM: **Reconciliar agora**. Em ensaio, deve reportar o `teste-ispm` como *ut
 **Escreve** (só em `/ppp`):
 
 - cria `/ppp secret` para serviços que ainda não existem no router, com `comment=ispm:<id do serviço>`
-- liga e desliga (`disabled`) esses secrets conforme o estado do serviço no ISPM
-- escreve `rate-limit` a partir dos Mbps do plano — **só** se o plano tiver os dois números preenchidos
-- remove a sessão em `/ppp active` quando corta, para o corte ter efeito imediato
+- mantém ativos os secrets dos serviços ativos e suspensos; desativa os cancelados (e os suspensos
+  se **Perfil dos suspensos** estiver vazio)
+- põe o secret suspenso no perfil `SUSPENSO` (ou no nome configurado), com velocidade mínima
+- em cada passagem, **antes dos secrets**, cria o perfil de cada plano que ainda não existe (plano
+  gravado sem nome recebe `ispm-plano-<id>`), copiando endereços e DNS do perfil-base e marcando-o
+  `comment=ispm:plano:<id>`; volta a mexer só no `rate-limit` desses perfis marcados. Gravar um plano
+  ou um serviço desencadeia logo uma passagem. O estado de cada plano aparece na coluna **Router** dos
+  Planos (ADR 0011)
+- põe cada secret no perfil PPP do plano (`profile=`); um serviço ativo cujo perfil ainda não existe
+  no router fica pendente, sem ser criado nem ativado, com o motivo no serviço
+- remove a sessão em `/ppp active` ao entrar ou sair do perfil de suspensão, ou ao desativar
+  o secret, para a alteração ter efeito imediato; mudanças entre perfis de planos esperam
+  pela próxima ligação
 
-**Nunca toca**: firewall, NAT, rotas, interfaces, DNS, perfis PPP, utilizadores do router, nem secrets que
+**Nunca toca**: firewall, NAT, rotas, interfaces, DNS, perfis PPP sem a marca `ispm:plano:` (nem apaga
+nenhum), utilizadores do router, nem secrets que
 não tenham a marca `ispm:` no comentário. Um secret com essa marca e sem serviço correspondente é
 **reportado**, nunca apagado.
 

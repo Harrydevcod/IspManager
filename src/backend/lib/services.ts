@@ -304,7 +304,11 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
     return { ok: false, status: 400, error: validationError };
   }
 
-  const service = db.prepare('SELECT id FROM services WHERE id = ?').get(id);
+  const service = db.prepare(`
+    SELECT id, plan_id AS planId, pppoe_username AS pppoeUsername
+    FROM services
+    WHERE id = ?
+  `).get(id) as { id: number; planId: number | null; pppoeUsername: string | null } | undefined;
   if (!service) {
     return { ok: false, status: 404, error: 'Servico nao encontrado' };
   }
@@ -321,7 +325,10 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
     }
   }
 
-  // Protocolo de escrita: omitida/vazia = manter; preenchida = substituir.
+  // Nome omitido = manter; vazio = tirar o serviço do controlo de acesso.
+  const nextPppoeUsername = data.pppoeUsername === undefined ? service.pppoeUsername : data.pppoeUsername?.trim() || null;
+
+  // Protocolo de escrita da senha: omitida/vazia = manter; preenchida = substituir.
   let sealedPassword: string | null = null;
   if (data.pppoePassword) {
     const lengthError = newPppoePasswordError(data.pppoePassword);
@@ -343,8 +350,11 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
         audiovisual_monthly_cve = ?,
         audiovisual_annual_cve = ?,
         pppoe_username = ?,
-        pppoe_password = COALESCE(?, pppoe_password),
+        -- Sem utilizador não há credencial: a senha vai com ele, em vez de
+        -- ficar selada e órfã. Com utilizador, vazia = manter.
+        pppoe_password = CASE WHEN ? IS NULL THEN NULL ELSE COALESCE(?, pppoe_password) END,
         pppoe_password_sync_pending = CASE
+          WHEN ? IS NULL THEN 0
           WHEN ? = 1 THEN 1
           ELSE pppoe_password_sync_pending
         END,
@@ -360,11 +370,27 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
     data.audiovisualMode,
     data.audiovisualMonthlyCve,
     data.audiovisualAnnualCve,
-    data.pppoeUsername?.trim() || null,
+    nextPppoeUsername,
+    nextPppoeUsername,
     sealedPassword,
+    nextPppoeUsername,
     sealedPassword ? 1 : 0,
     id
   );
+
+  // Serviço antigo que ganha um plano com o router ligado: nasce a identidade
+  // na rede, uma única vez, como num serviço novo. Só quando nunca a teve —
+  // apagar o utilizador no formulário é tirar o serviço do controlo de acesso,
+  // e inventar outro login partia o equipamento do cliente.
+  // Como na criação: sem cofre aberto não nasce credencial nenhuma — nunca em claro.
+  if (data.planId && !service.planId && !service.pppoeUsername && !nextPppoeUsername && routerIntegrationOn(db) && canStoreSecrets()) {
+    const owner = db.prepare('SELECT full_name AS fullName FROM clients WHERE id = ?').get(data.clientId) as { fullName: string };
+    db.prepare(`
+      UPDATE services
+      SET pppoe_username = ?, pppoe_password = ?, pppoe_password_sync_pending = 1
+      WHERE id = ?
+    `).run(pppoeUsernameFor(owner.fullName, id), sealPppoeSecret(data.pppoePassword?.trim() || generatePppoePassword()), id);
+  }
 
   const statusResult = changeServiceStatus(db, id, data.status, { reason: 'Alteração no formulário do serviço' });
   if (!statusResult.ok) {

@@ -6402,6 +6402,22 @@ button.danger:disabled {
   max-width: 58ch;
 }
 
+/* Confirmação ensaio → efetivo do router: o que passa a acontecer, em prosa. */
+.router-live-lead {
+  margin: 0 0 var(--space-3);
+  max-width: 62ch;
+  color: var(--text-2);
+}
+
+.router-live-effects {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-5);
+  max-width: 62ch;
+  display: grid;
+  gap: var(--space-2);
+  color: var(--text);
+}
+
 /* Pares rótulo/valor em grelha: a densidade tabular que o resto do produto usa. */
 .license-details {
   display: grid;

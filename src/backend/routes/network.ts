@@ -12,14 +12,21 @@ import {
   listDhcpLeases,
   listNeighbors,
   listActive,
+  listInterfaces,
+  listServices,
+  readSystem,
+  auditRouterServices,
+  listProfiles,
   listSecrets,
   removeActive,
   neighborModel,
   readRouterConfig,
-  type RouterNeighbor
+  type RouterConfig,
+  type RouterNeighbor,
+  type RouterTransport
 } from '../lib/routeros';
 import { identifyModel } from '../lib/device-model';
-import { loadNetworkEnforcementState, matchSecret, runNetworkEnforcement } from '../lib/network-enforcement';
+import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecret, runNetworkEnforcement } from '../lib/network-enforcement';
 import { loadAutoSuspensionPreview, runAutomaticSuspension } from '../lib/auto-suspension';
 import {
   loadRegisteredDevices,
@@ -35,6 +42,7 @@ import {
 import { crossReference, type ObservedHost } from '../lib/network-inventory';
 import { buildProposals, dismissalKey, findOrphans, type ProposalKind } from '../lib/discovery-reconcile';
 import { runJob } from '../lib/jobRuns';
+import { applyPlanProfile, readBaseProfileName } from '../lib/plan-profiles';
 import { recordAudit } from '../lib/audit';
 import { isIpv4, isPrivateIpv4, SWEEP_BATCH_SIZE } from '../../shared/ip-range';
 import { requireAuth, requireRole } from './auth';
@@ -287,6 +295,118 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
         summary: `Desconectou a sessão PPPoE de ${service.username}`
       });
       return { dryRun: false, online: true, disconnected: true };
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return reply.status(502).send({ error: `${failure.title}. ${failure.detail}`, code: failure.code });
+    }
+  });
+
+  // ------------------------------------------------ perfis PPP dos planos (ADR 0011)
+
+  /** Perfis do router, para o campo do plano. Router em baixo não é erro do formulário. */
+  app.get('/api/network/router/profiles', networkWrite, async () => {
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    const baseProfile = readBaseProfileName(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return { available: false, reason: 'Integração MikroTik desligada ou por configurar', baseProfile, profiles: [] };
+    }
+    try {
+      const profiles = await listProfiles(createTransport(config));
+      return {
+        available: true,
+        baseProfile,
+        profiles: profiles.map(({ name, rateLimit, comment }) => ({
+          name,
+          rateLimit,
+          ownerPlanId: comment?.startsWith('ispm:plano:') ? Number(comment.slice('ispm:plano:'.length)) || null : null
+        }))
+      };
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return { available: false, reason: `${failure.title}. ${failure.detail}`, baseProfile, profiles: [] };
+    }
+  });
+
+  // ------------------------------------------ módulo Router de gestão (leitura)
+
+  /**
+   * As leituras ao vivo do módulo. Sempre 200: router desligado ou em baixo é
+   * um estado do ecrã, não um erro — como o diagnóstico. Só GETs no router.
+   * ponytail: sem cache; se o polling de 30 s pesar no router, 10 s de cache aqui.
+   */
+  async function readLive<T extends object>(read: (transport: RouterTransport, config: RouterConfig) => Promise<T>) {
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return { available: false as const, reason: 'Integração MikroTik desligada ou por configurar' };
+    }
+    try {
+      return { available: true as const, dryRun: config.dryRun, ...(await read(createTransport(config), config)) };
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return { available: false as const, reason: `${failure.title}. ${failure.detail}` };
+    }
+  }
+
+  app.get('/api/network/router/overview', adminOnly, async () => readLive(async (transport, config) => {
+    const db = getSqliteDatabase();
+    const [system, secrets, active, services] = await Promise.all([
+      readSystem(transport),
+      listSecrets(transport),
+      listActive(transport),
+      listServices(transport)
+    ]);
+    const state = loadNetworkEnforcementState(db);
+    const lastEnforcement = db.prepare(`
+      SELECT status, ran_at AS ranAt FROM job_runs
+      WHERE job LIKE 'network_enforcement%' ORDER BY id DESC LIMIT 1
+    `).get() ?? null;
+    return {
+      host: config.host,
+      system,
+      secrets: secrets.length,
+      disabledSecrets: secrets.filter((secret) => secret.disabled).length,
+      activeSessions: active.length,
+      divergences: state.divergences,
+      findings: auditRouterServices(services),
+      lastEnforcement
+    };
+  }));
+
+  app.get('/api/network/router/sessions', adminOnly, async () => readLive(async (transport) => {
+    const [secrets, active] = await Promise.all([listSecrets(transport), listActive(transport)]);
+    return { sessions: buildSessionRows(loadDesiredServices(getSqliteDatabase()), secrets, active) };
+  }));
+
+  app.get('/api/network/router/interfaces', adminOnly, async () => readLive(async (transport) => ({
+    interfaces: await listInterfaces(transport)
+  })));
+
+  /** Cria ou atualiza o perfil do plano. Em ensaio só diz o que faria. */
+  app.post('/api/plans/:id/router-profile', adminOnly, async (request, reply) => {
+    const params = serviceParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ error: 'Plano invalido' });
+
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return reply.status(400).send({ error: 'Integração MikroTik desligada ou por configurar' });
+    }
+
+    try {
+      const result = await applyPlanProfile(db, { transport: createTransport(config), dryRun: config.dryRun }, params.data.id);
+      if (!result) return reply.status(404).send({ error: 'Plano nao encontrado' });
+      const { action } = result;
+      if (action.kind !== 'none') {
+        recordAudit(request, {
+          action: result.applied ? `router_profile_${action.kind}` : `router_profile_${action.kind}_dry_run`,
+          entityType: 'plan',
+          entityId: params.data.id,
+          summary: `${result.applied ? '' : 'Simulou: '}${action.kind === 'create' ? 'criou' : 'atualizou'} o perfil ${action.name} (${action.rateLimit}) no router`
+        });
+      }
+      return result;
     } catch (err) {
       const failure = describeRouterFailure(err);
       return reply.status(502).send({ error: `${failure.title}. ${failure.detail}`, code: failure.code });

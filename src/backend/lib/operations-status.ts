@@ -639,14 +639,18 @@ function loadAccessLayer(
 
   // O router é a realidade; `service_network_state` é o que a última passagem
   // lá encontrou. Contar daqui é a diferença entre medir e declarar.
+  // Limitado = o secret está no perfil PPP do plano: é no perfil que o RouterOS
+  // guarda a velocidade. Um secret no perfil por omissão não tem limite nenhum.
   const state = db.prepare(`
     SELECT
-      COUNT(CASE WHEN NULLIF(TRIM(COALESCE(secret_id, '')), '') IS NOT NULL THEN 1 END) AS provisioned,
-      COUNT(CASE WHEN NULLIF(TRIM(COALESCE(rate_limit, '')), '') IS NOT NULL THEN 1 END) AS rateLimited,
-      COUNT(CASE WHEN online = 1 THEN 1 END) AS online,
-      COUNT(CASE WHEN NULLIF(TRIM(COALESCE(divergence, '')), '') IS NOT NULL THEN 1 END) AS divergent,
-      MAX(checked_at) AS lastCheckedAt
-    FROM service_network_state
+      COUNT(CASE WHEN NULLIF(TRIM(COALESCE(n.secret_id, '')), '') IS NOT NULL THEN 1 END) AS provisioned,
+      COUNT(CASE WHEN n.profile IS NOT NULL AND n.profile = TRIM(p.router_profile) THEN 1 END) AS rateLimited,
+      COUNT(CASE WHEN n.online = 1 THEN 1 END) AS online,
+      COUNT(CASE WHEN NULLIF(TRIM(COALESCE(n.divergence, '')), '') IS NOT NULL THEN 1 END) AS divergent,
+      MAX(n.checked_at) AS lastCheckedAt
+    FROM service_network_state n
+    LEFT JOIN services s ON s.id = n.service_id
+    LEFT JOIN internet_plans p ON p.id = s.plan_id
   `).get() as {
     provisioned: number; rateLimited: number; online: number;
     divergent: number; lastCheckedAt: string | null;
@@ -701,7 +705,7 @@ function loadAccessLayer(
         code: 'access.no-qos',
         severity: unlimited >= 10 ? 'red' : 'amber',
         title: `${unlimited} serviço(s) sem limite de débito`,
-        detail: `${rateLimitedServices} de ${provisionedServices} serviços aprovisionados têm limite aplicado. Um plano sem velocidade definida fica sem limite no router — e um cliente sem limite degrada os do mesmo tubo.`
+        detail: `${rateLimitedServices} de ${provisionedServices} serviços aprovisionados estão no perfil PPP do plano. Um plano sem perfil definido fica sem limite no router — e um cliente sem limite degrada os do mesmo tubo.`
       });
     }
     if (routerDryRun) {
@@ -1466,10 +1470,10 @@ function deriveActions(status: Omit<OperationsStatus, 'risks' | 'actions' | 'sev
     actions.push({
       code: 'A-QOS',
       title: accessLayer.routerEnabled
-        ? 'Dar velocidade aos planos que não a têm'
+        ? 'Dar um perfil PPP aos planos que não o têm'
         : 'Implementar QoS por cliente',
       detail: accessLayer.routerEnabled
-        ? `${accessLayer.provisionedServices - accessLayer.rateLimitedServices} serviço(s) aprovisionados sem limite. O limite escreve-se a partir do download e upload do plano: um plano sem esses números fica sem limite no router.`
+        ? `${accessLayer.provisionedServices - accessLayer.rateLimitedServices} serviço(s) aprovisionados sem limite. O limite vem do perfil PPP do plano, feito no Winbox: um plano sem perfil definido fica sem limite no router.`
         : `${accessLayer.sharedUplinkServices} serviços partilham o mesmo uplink. Com um só tubo, o shaping deixa de ser melhoria e passa a ser proteção do serviço.`,
       horizon: accessLayer.routerEnabled ? 'week' : 'quarter',
       severity: 'amber',

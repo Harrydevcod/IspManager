@@ -27,6 +27,7 @@ export type SectionId =
   | 'plans'
   | 'services'
   | 'topology'
+  | 'router'
   | 'finance'
   | 'treasury'
   | 'work-orders'
@@ -82,7 +83,7 @@ export type ServiceRow = {
   routerUptime?: string | null;
   routerLastSyncAt?: string | null;
   routerLastError?: string | null;
-  routerRateLimit?: string | null;
+  routerProfile?: string | null;
 };
 
 export type AudiovisualConfig = {
@@ -226,6 +227,11 @@ export type PlanRow = {
   /** Débito em Mbps. Null = sem limite definido; o router fica como está. */
   downloadMbps: number | null;
   uploadMbps: number | null;
+  routerProfile?: string | null;
+  /** Última sincronização do perfil PPP com o router; null = nunca lida. */
+  routerSyncStatus?: 'synced' | 'pending' | 'external' | 'error' | 'dry_run' | null;
+  routerSyncDetail?: string | null;
+  routerSyncError?: string | null;
 };
 
 export type StockCatalogRow = {

@@ -61,13 +61,15 @@ const CHECK_ICON = {
 const DIVERGENCE_LABEL: Record<string, string> = {
   missing_secret: 'Sem utilizador no router',
   state: 'Estado diferente do ISPM',
-  rate_limit: 'Velocidade diferente do plano',
+  profile: 'Perfil PPP diferente do plano',
   password: 'Password PPPoE pendente',
   username: 'Nome PPPoE diferente no router',
   orphan_secret: 'Utilizador sem serviço'
 };
 
 type NetworkTabProps = {
+  /** A sonda fica nas Configurações; o router vive no módulo Router de gestão. */
+  part: 'probe' | 'router';
   form: SettingsFormState;
   onUpdate: UpdateField;
   onToggle: ToggleField;
@@ -92,6 +94,7 @@ type NetworkTabProps = {
 };
 
 export function NetworkTab({
+  part,
   form,
   onUpdate,
   onToggle,
@@ -113,7 +116,7 @@ export function NetworkTab({
   onAutoSuspendNow
 }: NetworkTabProps) {
   const divergent = (routerState?.services ?? []).filter((row) => row.divergence || row.lastError);
-  return (
+  if (part === 'probe') return (
     <>
       <Toggle
         title="Sonda de rede"
@@ -162,7 +165,15 @@ export function NetworkTab({
           </Button>
         </div>
       </div>
+      <Message tone="neutral">
+        A ligação ao router de gestão, a reconciliação e a suspensão automática estão no módulo
+        Router de gestão, no menu lateral.
+      </Message>
+    </>
+  );
 
+  return (
+    <>
       <Toggle
         title="Router de gestão do ISP"
         description="O MikroTik da operadora, à cabeça da rede. Liga o ISPM a ele para cortar e repor clientes sozinho, aprovisionar o acesso PPPoE e mostrar quem está mesmo online. Enquanto o ensaio estiver ligado, nada é alterado no router. Não é o router do cliente: o ISPM nunca se liga a equipamento que esteja em casa de alguém."
@@ -214,7 +225,7 @@ export function NetworkTab({
           </div>
           <Toggle
             title="Ensaio (não altera nada no router)"
-            description="Calcula tudo o que faria — cortes, reposições, secrets em falta, velocidades — e mostra o relatório sem tocar no router. Desligue só depois de conferir o relatório contra o parque real."
+            description="Calcula tudo o que faria — cortes, reposições, secrets em falta, perfis — e mostra o relatório sem tocar no router. Desligue só depois de conferir o relatório contra o parque real."
             checked={form.routerosDryRun}
             onChange={(event) => onToggle('routerosDryRun', event.target.checked)}
           />
@@ -235,6 +246,20 @@ export function NetworkTab({
             value={form.routerosMaxDisablesPerRun}
             onChange={(event) => onUpdate('routerosMaxDisablesPerRun', event.target.value)}
             hint="Trava da reconciliação: se uma passagem quiser cortar mais, não corta nenhum."
+          />
+          <Field
+            label="Perfil-base dos planos"
+            value={form.routerosBaseProfile}
+            maxLength={64}
+            onChange={(event) => onUpdate('routerosBaseProfile', event.target.value)}
+            hint="Perfil PPP que já dá rede aos clientes. Os perfis que o ISPM cria para os planos copiam dele os endereços e o DNS."
+          />
+          <Field
+            label="Perfil dos suspensos"
+            value={form.routerosSuspendedProfile}
+            maxLength={64}
+            onChange={(event) => onUpdate('routerosSuspendedProfile', event.target.value)}
+            hint="Perfil PPP para onde vai o cliente suspenso (velocidade mínima). Vazio: o secret é desativado."
           />
           <Toggle
             title="Suspensão automática por falta de pagamento"

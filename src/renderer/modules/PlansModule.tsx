@@ -7,6 +7,8 @@ import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import type { PlanRow } from '../types';
 import { RepriceDialog } from './plans/RepriceDialog';
+import { RouterProfileField } from './plans/RouterProfileField';
+import { routerSyncBadge } from './plans/routerSync';
 import './PlansModule.css';
 
 type PlanFormState = {
@@ -15,6 +17,7 @@ type PlanFormState = {
   uploadSpeed: string;
   downloadMbps: string;
   uploadMbps: string;
+  routerProfile: string;
   connectionType: 'radio' | 'fibra' | 'cabo' | 'outro';
   monthlyPriceCve: string;
   installationFeeCve: string;
@@ -29,6 +32,7 @@ function emptyPlanForm(): PlanFormState {
     uploadSpeed: '',
     downloadMbps: '',
     uploadMbps: '',
+    routerProfile: '',
     connectionType: 'fibra',
     monthlyPriceCve: '',
     installationFeeCve: '',
@@ -115,6 +119,7 @@ export function PlansModule() {
       uploadSpeed: plan.uploadSpeed,
       downloadMbps: plan.downloadMbps == null ? '' : String(plan.downloadMbps),
       uploadMbps: plan.uploadMbps == null ? '' : String(plan.uploadMbps),
+      routerProfile: plan.routerProfile ?? '',
       connectionType: plan.connectionType,
       monthlyPriceCve: String(plan.monthlyPriceCve),
       installationFeeCve: String(plan.installationFeeCve),
@@ -144,6 +149,7 @@ export function PlansModule() {
         // receber um zero que cortaria a velocidade toda.
         downloadMbps: form.downloadMbps ? Number(form.downloadMbps) : null,
         uploadMbps: form.uploadMbps ? Number(form.uploadMbps) : null,
+        routerProfile: form.routerProfile.trim() || null,
         active: form.active === '1'
       })
     });
@@ -254,8 +260,8 @@ export function PlansModule() {
           rowKey={(plan) => plan.id}
           stickyHeader
           onRowClick={canManagePlans ? editPlan : undefined}
-          gridTemplateColumns="minmax(160px, 1.5fr) 120px 150px 140px 110px"
-          actionsWidth="96px"
+          gridTemplateColumns="minmax(140px, 1.5fr) 90px 125px 100px 100px 90px"
+          actionsWidth="88px"
           defaultSort={{ key: 'Nome', direction: 'asc' }}
           columns={[
             { header: 'Nome', sortValue: (plan) => plan.name, cell: (plan) => <strong>{plan.name}</strong> },
@@ -284,6 +290,15 @@ export function PlansModule() {
               }
             },
             { header: 'Preço/mês', align: 'end', sortValue: (plan) => plan.monthlyPriceCve, defaultDirection: 'desc', cell: (plan) => <b>{formatCve(plan.monthlyPriceCve)}</b> },
+            {
+              header: 'Router',
+              align: 'center',
+              sortValue: (plan) => routerSyncBadge(plan).label,
+              cell: (plan) => {
+                const sync = routerSyncBadge(plan);
+                return <span title={sync.title}><Badge tone={sync.tone}>{sync.label}</Badge></span>;
+              }
+            },
             {
               header: 'Estado',
               align: 'center',
@@ -351,7 +366,7 @@ export function PlansModule() {
             max={10000}
             value={form.downloadMbps}
             onChange={(event) => updateForm('downloadMbps', event.target.value)}
-            hint="Número usado para limitar a velocidade no router. Em branco, o router fica como está."
+            hint="Número para relatórios. A velocidade no router vem do perfil PPP."
           />
           <Field
             label="Upload (Mbps)"
@@ -360,7 +375,13 @@ export function PlansModule() {
             max={10000}
             value={form.uploadMbps}
             onChange={(event) => updateForm('uploadMbps', event.target.value)}
-            hint="Idem. Os dois campos são precisos para o limite ser aplicado."
+            hint="Idem."
+          />
+          <RouterProfileField
+            value={form.routerProfile}
+            onChange={(value) => updateForm('routerProfile', value)}
+            savedPlan={editingPlan ? { id: editingPlan.id, routerProfile: editingPlan.routerProfile ?? null } : null}
+            canWriteRouter={canReprice}
           />
           <Field label="Mensalidade CVE" required type="number" min={0} value={form.monthlyPriceCve} onChange={(event) => updateForm('monthlyPriceCve', event.target.value)} />
           <Field label="Instalacao CVE" type="number" min={0} value={form.installationFeeCve} onChange={(event) => updateForm('installationFeeCve', event.target.value)} />

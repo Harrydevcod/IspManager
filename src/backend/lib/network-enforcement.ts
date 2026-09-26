@@ -1,11 +1,13 @@
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { readPppoeSecret } from './secrets';
+import { readBaseProfileName, readSuspendedProfileName, syncPlanProfiles, type PlanSyncSummary } from './plan-profiles';
 import {
   createSecret,
   createTransport,
   isRouterConfigured,
   listActive,
+  listProfiles,
   listSecrets,
   patchSecret,
   readRouterConfig,
@@ -40,23 +42,28 @@ export type DesiredService = {
   hasPassword: boolean;
   /** Password local alterada e ainda não confirmada no router. */
   passwordPending: boolean;
-  /** Verdadeiro só para serviços ativos: suspenso e cancelado ficam desativados. */
+  /** Verdadeiro para ativos e suspensos por perfil. */
   enabled: boolean;
-  /** `<upload>M/<download>M`, ou null quando o plano não tem velocidade definida. */
-  rateLimit: string | null;
+  suspended?: boolean;
+  /**
+   * Perfil PPP do plano (`internet_plans.router_profile`). É no perfil que o
+   * RouterOS guarda a velocidade; o perfil é do operador, o ISPM só aponta o
+   * secret para ele. Null = o plano não diz, e o que estiver no secret fica.
+   */
+  profile: string | null;
 };
 
 export type PlannedAction =
-  | { kind: 'create'; serviceId: number; username: string; rateLimit: string | null; clientName: string }
-  | { kind: 'enable' | 'disable'; serviceId: number; username: string; secretId: string; clientName: string }
-  | { kind: 'rate_limit'; serviceId: number; username: string; secretId: string; rateLimit: string; clientName: string }
+  | { kind: 'create'; serviceId: number; username: string; profile: string | null; clientName: string }
+  | { kind: 'enable' | 'disable'; serviceId: number; username: string; secretId: string; clientName: string; cut?: true }
+  | { kind: 'profile'; serviceId: number; username: string; secretId: string; profile: string; from: string | null; clientName: string; cut?: true }
   /** `rename`: o secret no router tem outro nome e as credenciais do ISPM mandam (reinstalação). */
   | { kind: 'password'; serviceId: number; username: string; secretId: string; clientName: string; rename?: true };
 
 export type Divergence = {
   serviceId: number | null;
   username: string;
-  kind: 'missing_secret' | 'state' | 'rate_limit' | 'password' | 'username' | 'orphan_secret';
+  kind: 'missing_secret' | 'state' | 'profile' | 'password' | 'username' | 'orphan_secret';
   detail: string;
 };
 
@@ -76,18 +83,10 @@ type ServiceRow = {
   username: string;
   hasPassword: number;
   passwordPending: number;
-  downloadMbps: number | null;
-  uploadMbps: number | null;
+  profile: string | null;
 };
 
-export function rateLimitFor(uploadMbps: number | null, downloadMbps: number | null): string | null {
-  // Sem os dois números não se escreve velocidade nenhuma: um rate-limit
-  // adivinhado a partir de texto livre estrangula quem paga.
-  if (!uploadMbps || !downloadMbps || uploadMbps <= 0 || downloadMbps <= 0) return null;
-  return `${uploadMbps}M/${downloadMbps}M`;
-}
-
-export function loadDesiredServices(db: Database.Database): DesiredService[] {
+export function loadDesiredServices(db: Database.Database, options: { suspendedProfile: string } = { suspendedProfile: readSuspendedProfileName(db) }): DesiredService[] {
   const rows = db.prepare(`
     SELECT
       s.id AS serviceId,
@@ -96,8 +95,7 @@ export function loadDesiredServices(db: Database.Database): DesiredService[] {
       s.pppoe_username AS username,
       (s.pppoe_password IS NOT NULL AND s.pppoe_password <> '') AS hasPassword,
       s.pppoe_password_sync_pending AS passwordPending,
-      p.download_mbps AS downloadMbps,
-      p.upload_mbps AS uploadMbps
+      NULLIF(TRIM(p.router_profile), '') AS profile
     FROM services s
     JOIN clients c ON c.id = s.client_id
     LEFT JOIN internet_plans p ON p.id = s.plan_id
@@ -111,8 +109,9 @@ export function loadDesiredServices(db: Database.Database): DesiredService[] {
     username: row.username,
     hasPassword: row.hasPassword === 1,
     passwordPending: row.passwordPending === 1,
-    enabled: row.status === 'active',
-    rateLimit: rateLimitFor(row.uploadMbps, row.downloadMbps)
+    enabled: row.status === 'active' || (row.status === 'suspended' && Boolean(options.suspendedProfile)),
+    profile: row.status === 'suspended' && options.suspendedProfile ? options.suspendedProfile : row.profile,
+    ...(row.status === 'suspended' && options.suspendedProfile ? { suspended: true } : {})
   }));
 }
 
@@ -126,6 +125,66 @@ export function matchSecret(service: Pick<DesiredService, 'serviceId' | 'usernam
   );
 }
 
+export type SessionState = 'online' | 'offline' | 'desativado' | 'sem_secret' | 'sem_servico';
+
+export type SessionRow = {
+  serviceId: number | null;
+  clientName: string | null;
+  /** O nome do secret no router — é o que a sessão usa. */
+  login: string;
+  state: SessionState;
+  online: boolean;
+  suspended: boolean;
+  address: string | null;
+  uptime: string | null;
+  routerProfile: string | null;
+};
+
+/**
+ * Função pura: cada serviço PPPoE do ISPM ao lado do seu secret e da sessão, e
+ * no fim os secrets do router que nenhum serviço reclama. O casamento é o da
+ * reconciliação (`matchSecret`), para as duas vistas nunca discordarem.
+ */
+export function buildSessionRows(desired: DesiredService[], secrets: RouterSecret[], active: RouterActive[]): SessionRow[] {
+  const sessions = new Map(active.map((session) => [session.name, session]));
+  const claimed = new Set<string>();
+
+  const rows: SessionRow[] = desired.map((service) => {
+    const secret = matchSecret(service, secrets);
+    if (secret) claimed.add(secret.id);
+    const login = secret?.name ?? service.username;
+    const session = secret ? sessions.get(login) : undefined;
+    return {
+      serviceId: service.serviceId,
+      clientName: service.clientName,
+      login,
+      state: !secret ? 'sem_secret' : secret.disabled ? 'desativado' : session ? 'online' : 'offline',
+      online: Boolean(session),
+      suspended: Boolean(service.suspended),
+      address: session?.address ?? null,
+      uptime: session?.uptime ?? null,
+      routerProfile: secret?.profile ?? null
+    };
+  });
+
+  for (const secret of secrets) {
+    if (claimed.has(secret.id)) continue;
+    const session = sessions.get(secret.name);
+    rows.push({
+      serviceId: null,
+      clientName: null,
+      login: secret.name,
+      state: 'sem_servico',
+      online: Boolean(session),
+      suspended: false,
+      address: session?.address ?? null,
+      uptime: session?.uptime ?? null,
+      routerProfile: secret.profile
+    });
+  }
+  return rows;
+}
+
 /**
  * Função pura: dado o desejado e o que está no router, o que há a fazer.
  * É aqui que vive a decisão toda — o resto do módulo é entrada/saída.
@@ -133,7 +192,7 @@ export function matchSecret(service: Pick<DesiredService, 'serviceId' | 'usernam
 export function planActions(
   desired: DesiredService[],
   secrets: RouterSecret[],
-  options: { reportOrphans?: boolean } = {}
+  options: { reportOrphans?: boolean; suspendedProfile?: string; baseProfile?: string } = {}
 ): EnforcementPlan {
   const actions: PlannedAction[] = [];
   const divergences: Divergence[] = [];
@@ -154,7 +213,7 @@ export function planActions(
         kind: 'create',
         serviceId: service.serviceId,
         username: service.username,
-        rateLimit: service.rateLimit,
+        profile: service.profile,
         clientName: service.clientName
       });
       continue;
@@ -176,26 +235,34 @@ export function planActions(
         serviceId: service.serviceId,
         username: service.username,
         secretId: secret.id,
-        clientName: service.clientName
+        clientName: service.clientName,
+        ...(!service.enabled ? { cut: true as const } : {})
       });
     }
 
-    // Velocidade: só se age quando o plano tem números. Um plano sem Mbps
-    // definidos deixa em paz o que estiver configurado à mão no router.
-    if (service.rateLimit && secret.rateLimit !== service.rateLimit) {
+    // Velocidade = perfil. Um plano sem perfil preserva o ajuste manual,
+    // exceto quando é preciso sair do perfil de suspensão.
+    const targetProfile = service.profile ?? (
+      service.enabled && options.suspendedProfile && secret.profile === options.suspendedProfile
+        ? options.baseProfile ?? 'default'
+        : null
+    );
+    if (targetProfile && secret.profile !== targetProfile) {
       divergences.push({
         serviceId: service.serviceId,
         username: service.username,
-        kind: 'rate_limit',
-        detail: `Router em ${secret.rateLimit ?? 'sem limite'}, plano pede ${service.rateLimit}`
+        kind: 'profile',
+        detail: `Router no perfil ${secret.profile ?? 'por omissão'}, plano pede ${targetProfile}`
       });
       actions.push({
-        kind: 'rate_limit',
+        kind: 'profile',
         serviceId: service.serviceId,
         username: service.username,
         secretId: secret.id,
-        rateLimit: service.rateLimit,
-        clientName: service.clientName
+        profile: targetProfile,
+        from: secret.profile,
+        clientName: service.clientName,
+        ...(service.suspended && options.suspendedProfile === targetProfile && routerEnabled ? { cut: true as const } : {})
       });
     }
 
@@ -274,11 +341,13 @@ export type EnforcementSummary = {
   divergences: number;
   aborted?: true;
   actions: PlannedAction[];
+  /** Passagem dos perfis dos planos, feita antes da dos secrets. */
+  planProfiles?: PlanSyncSummary | { error: string };
 };
 
 const upsertState = `
   INSERT INTO service_network_state (
-    service_id, secret_id, router_enabled, desired_enabled, rate_limit,
+    service_id, secret_id, router_enabled, desired_enabled, profile,
     online, address, uptime, last_online_at, divergence, last_error, checked_at
   )
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
@@ -286,7 +355,7 @@ const upsertState = `
     secret_id = excluded.secret_id,
     router_enabled = excluded.router_enabled,
     desired_enabled = excluded.desired_enabled,
-    rate_limit = excluded.rate_limit,
+    profile = excluded.profile,
     online = excluded.online,
     address = excluded.address,
     uptime = excluded.uptime,
@@ -321,43 +390,112 @@ function recordNetworkEvent(db: Database.Database, serviceId: number, type: 'cor
  * fica registado no serviço e a passagem seguinte volta a tentar.
  */
 export async function runNetworkEnforcement(db: Database.Database, deps: EnforcementDeps): Promise<EnforcementSummary> {
-  const allDesired = loadDesiredServices(db);
+  const suspendedProfile = readSuspendedProfileName(db);
+  const baseProfile = readBaseProfileName(db);
+  const allDesired = loadDesiredServices(db, { suspendedProfile });
   const wanted = deps.serviceIds ? new Set(deps.serviceIds) : null;
-  const desired = wanted ? allDesired.filter((service) => wanted.has(service.serviceId)) : allDesired;
-  if (desired.length === 0) {
+  const selected = wanted ? allDesired.filter((service) => wanted.has(service.serviceId)) : allDesired;
+  if (selected.length === 0) {
     return { dryRun: deps.dryRun, services: 0, online: 0, planned: 0, applied: 0, failed: 0, divergences: 0, actions: [], skipped: true, reason: 'Nenhum servico com utilizador PPPoE' };
   }
 
   const [secrets, active] = await Promise.all([listSecrets(deps.transport), listActive(deps.transport)]);
-  const plan = planActions(desired, secrets, { reportOrphans: deps.reportOrphans });
+  // Os perfis que existem no router. Sem esta leitura não se sabe se um secret
+  // vai apontar para um perfil que falta; `null` = não foi possível ler.
+  let routerProfiles: Set<string> | null = null;
+  let profilesReadError: string | null = null;
+  try {
+    routerProfiles = new Set((await listProfiles(deps.transport)).map((profile) => profile.name));
+  } catch (err) {
+    profilesReadError = err instanceof Error ? err.message : String(err);
+  }
+
+  let suspendedProfileError: string | null = null;
+  if (suspendedProfile && selected.some((service) => service.suspended)) {
+    if (!routerProfiles) {
+      suspendedProfileError = `Não foi possível confirmar o perfil PPP de suspensão ${suspendedProfile}: ${profilesReadError}; corte de segurança necessário`;
+    } else if (!routerProfiles.has(suspendedProfile)) {
+      suspendedProfileError = `Perfil PPP de suspensão ${suspendedProfile} não existe no router; corte de segurança necessário`;
+    }
+  }
+  // Sem perfil de suspensão confirmado, um suspenso volta ao corte por disable.
+  // A decisão acontece antes do planeamento para respeitar a mesma trava.
+  const desired = suspendedProfileError
+    ? selected.map((service) => service.suspended ? { ...service, enabled: false, profile: null, suspended: false } : service)
+    : selected;
+  const plan = planActions(desired, secrets, { reportOrphans: deps.reportOrphans, suspendedProfile, baseProfile });
   const activeByName = new Map<string, RouterActive>(active.map((session) => [session.name, session]));
   // A sessão PPPoE tem o nome com que o equipamento se autentica: o do secret
   // no router, que pode já não ser o da BD.
   const loginOf = (service: { serviceId: number; username: string }) =>
     plan.matched.get(service.serviceId)?.name ?? service.username;
 
-  const disables = plan.actions.filter((action) => action.kind === 'disable').length;
+  const cutServiceIds = new Set(plan.actions.filter((action) => 'cut' in action && action.cut).map((action) => action.serviceId));
+  const disables = cutServiceIds.size;
   // Trava de segurança: uma passagem que quer cortar meia cidade é um erro de
-  // dados ou de mapeamento, não um dia de cobranças. Não corta nenhum — mas
-  // repor, criar e atualizar continuam: quem pagou não fica refém da trava.
+  // dados ou de mapeamento, não um dia de cobranças. Não executa qualquer
+  // ação dos serviços afetados; os restantes continuam a ser reconciliados.
   const aborted = !deps.dryRun && disables > deps.maxDisables;
 
   const errors = new Map<number, string>();
   let applied = 0;
 
+  // Perfil do plano que ainda não existe no router (a passagem dos perfis
+  // falhou, ou o plano não tem Mbps): quem deve ter acesso fica pendente — nem
+  // criado nem ativado — até o perfil existir. Quem deve ficar sem acesso
+  // continua a ser cortado.
+  if (!routerProfiles) {
+    for (const service of desired) {
+      if (service.enabled) errors.set(service.serviceId, `Não foi possível confirmar os perfis PPP: ${profilesReadError}`);
+    }
+  } else {
+    for (const service of desired) {
+      if (service.enabled && service.profile && !routerProfiles.has(service.profile)) {
+        errors.set(service.serviceId, `Perfil PPP ${service.profile} ainda não existe no router`);
+      }
+    }
+  }
+
   if (!deps.dryRun) {
     // Repor antes de cortar: se a passagem falhar a meio, ninguém fica sem
     // serviço à espera do tick seguinte.
     const ordered = plan.actions
-      .filter((action) => !(aborted && action.kind === 'disable'))
+      .filter((action) => !(aborted && cutServiceIds.has(action.serviceId)))
       .sort((a, b) => rank(a) - rank(b));
     for (const action of ordered) {
+      if (errors.has(action.serviceId)) continue;
       try {
-        await applyAction(db, deps.transport, action, activeByName, desired, loginOf(action));
+        await applyAction(db, deps.transport, action, activeByName, desired, loginOf(action), suspendedProfile);
         applied += 1;
       } catch (err) {
-        errors.set(action.serviceId, err instanceof Error ? err.message : String(err));
+        let message = err instanceof Error ? err.message : String(err);
+        // O perfil podia existir na leitura e desaparecer antes do PATCH. Um
+        // suspenso ainda ativo não pode conservar a velocidade do plano.
+        const secret = plan.matched.get(action.serviceId);
+        if (action.kind === 'profile' && action.profile === suspendedProfile
+          && desired.some((service) => service.serviceId === action.serviceId && service.suspended)
+          && secret && !secret.disabled) {
+          try {
+            await applyAction(db, deps.transport, {
+              kind: 'disable',
+              serviceId: action.serviceId,
+              username: action.username,
+              secretId: action.secretId,
+              clientName: action.clientName,
+              cut: true
+            }, activeByName, desired, loginOf(action), suspendedProfile);
+            applied += 1;
+          } catch (fallbackError) {
+            message += `; falhou também o corte de segurança: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`;
+          }
+        }
+        errors.set(action.serviceId, message);
       }
+    }
+  }
+  if (suspendedProfileError) {
+    for (const service of selected) {
+      if (service.suspended && !errors.has(service.serviceId)) errors.set(service.serviceId, suspendedProfileError);
     }
   }
 
@@ -378,7 +516,7 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
         secret?.id ?? null,
         secret ? (secret.disabled ? 0 : 1) : null,
         service.enabled ? 1 : 0,
-        secret?.rateLimit ?? null,
+        secret?.profile ?? null,
         session ? 1 : 0,
         session?.address ?? null,
         session?.uptime ?? null,
@@ -425,9 +563,9 @@ function clearPasswordPending(db: Database.Database, serviceId: number, sealed: 
 
 function rank(action: PlannedAction): number {
   if (action.kind === 'create') return 0;
-  if (action.kind === 'enable') return 1;
-  if (action.kind === 'password') return 2;
-  if (action.kind === 'rate_limit') return 3;
+  if (action.kind === 'password') return 1;
+  if (action.kind === 'profile') return 2;
+  if (action.kind === 'enable') return 3;
   return 4; // disable
 }
 
@@ -437,7 +575,8 @@ async function applyAction(
   action: PlannedAction,
   activeByName: Map<string, RouterActive>,
   desired: DesiredService[],
-  login: string
+  login: string,
+  suspendedProfile: string
 ): Promise<void> {
   if (action.kind === 'create') {
     const service = desired.find((item) => item.serviceId === action.serviceId);
@@ -451,7 +590,7 @@ async function applyAction(
       name: action.username,
       password: password.plain,
       comment: `${COMMENT_PREFIX}${action.serviceId}`,
-      rateLimit: action.rateLimit
+      profile: action.profile
     });
     // Um secret nasce ativo; se o serviço não está ativo, corta-se já.
     if (!service.enabled && id) {
@@ -489,9 +628,25 @@ async function applyAction(
     return;
   }
 
-  if (action.kind === 'rate_limit') {
-    await patchSecret(transport, action.secretId, { rateLimit: action.rateLimit });
-    recordSystemAudit(db, 'network_rate_limit', action.serviceId, `Velocidade de ${action.username} passou a ${action.rateLimit}`);
+  if (action.kind === 'profile') {
+    // O RouterOS aplica o perfil no login. Mudanças entre planos normais aguardam
+    // a próxima ligação; entrar ou sair da suspensão exige reconexão imediata.
+    await patchSecret(transport, action.secretId, { profile: action.profile });
+    const enteringSuspension = Boolean(suspendedProfile && action.profile === suspendedProfile && action.from !== suspendedProfile);
+    const leavingSuspension = Boolean(suspendedProfile && action.from === suspendedProfile && action.profile !== suspendedProfile);
+    if (enteringSuspension || leavingSuspension) {
+      const session = activeByName.get(login);
+      if (session) {
+        await removeActive(transport, session.id);
+        activeByName.delete(login);
+      }
+      recordNetworkEvent(db, action.serviceId, enteringSuspension ? 'corte_rede' : 'reposicao_rede',
+        enteringSuspension ? `Perfil de suspensão ${suspendedProfile} aplicado` : `Perfil de suspensão ${suspendedProfile} removido`);
+    }
+    recordSystemAudit(db, 'network_profile', action.serviceId,
+      enteringSuspension ? `Suspendeu ${action.clientName} (${action.username}) no perfil ${suspendedProfile}`
+        : leavingSuspension ? `Repôs ${action.clientName} (${action.username}) no perfil ${action.profile}`
+          : `Perfil de ${action.username} passou a ${action.profile}`);
     return;
   }
 
@@ -529,11 +684,22 @@ export async function runNetworkEnforcementIfDue(): Promise<EnforcementSummary> 
   if (!config.enabled || !isRouterConfigured(config)) {
     return { skipped: true, reason: 'Router desligado ou por configurar', dryRun: config.dryRun, services: 0, online: 0, planned: 0, applied: 0, failed: 0, divergences: 0, actions: [] };
   }
-  return runNetworkEnforcement(db, {
-    transport: createTransport(config),
+  const transport = createTransport(config);
+  // Perfis antes dos secrets: um secret nunca aponta para um perfil que ainda
+  // não existe. Uma falha aqui não trava cortes nem reposições — os serviços do
+  // plano em falta ficam pendentes na passagem dos secrets.
+  let planProfiles: PlanSyncSummary | { error: string };
+  try {
+    planProfiles = await syncPlanProfiles(db, { transport, dryRun: config.dryRun });
+  } catch (err) {
+    planProfiles = { error: err instanceof Error ? err.message : String(err) };
+  }
+  const summary = await runNetworkEnforcement(db, {
+    transport,
     dryRun: config.dryRun,
     maxDisables: config.maxDisablesPerRun
   });
+  return { ...summary, planProfiles };
 }
 
 // ------------------------------------------------------------------ leitura

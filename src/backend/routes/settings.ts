@@ -4,7 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import type Database from 'better-sqlite3';
 import { validateBackupDir } from '../lib/backup';
 import { recordAudit } from '../lib/audit';
-import { requireRole } from './auth';
+import { confirmSessionPassword, requireRole } from './auth';
 import { canStoreSecrets, readSecret, readSecretsLost, refreshSecretsLost, SECRET_KEYS, writeSecret, type SecretKey } from '../lib/secrets';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
@@ -136,6 +136,9 @@ const settingsSchema = z.object({
   }, z.boolean().optional().default(true)),
   routerosIntervalSeconds: z.coerce.number().int().min(30).max(3600).optional().default(120),
   routerosMaxDisablesPerRun: z.coerce.number().int().min(1).max(500).optional().default(5),
+  // Perfil PPP de onde os perfis criados para os planos copiam endereços e DNS.
+  routerosBaseProfile: z.string().trim().max(64).regex(/^[\w .-]*$/).optional().default('default'),
+  routerosSuspendedProfile: z.string().trim().max(64).regex(/^[\w .-]*$/).optional().default('SUSPENSO'),
   autoSuspensionEnabled: strictOptionalBoolean,
   autoSuspensionGraceDays: z.coerce.number().int().min(1).max(120).optional().default(15),
   autoSuspensionIntervalMinutes: z.coerce.number().int().min(5).max(1440).optional().default(60),
@@ -213,6 +216,8 @@ const defaultSettings = {
   routerosDryRun: true,
   routerosIntervalSeconds: 120,
   routerosMaxDisablesPerRun: 5,
+  routerosBaseProfile: 'default',
+  routerosSuspendedProfile: 'SUSPENSO',
   autoSuspensionEnabled: false,
   autoSuspensionGraceDays: 15,
   autoSuspensionIntervalMinutes: 60,
@@ -344,6 +349,19 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: backupDirError });
     }
 
+    // Desligar o ensaio arma cortes a sério no router e a suspensão automática.
+    // Uma sessão aberta num PC destrancado não chega: admin (já garantido pela
+    // rota) e a password dele outra vez. Voltar a ensaio é a direção segura e
+    // continua livre. Mesma regra de leitura do `routeros.ts`: só um "false"
+    // explícito é modo efetivo.
+    const storedDryRun = db.prepare(`SELECT value FROM app_settings WHERE key = 'routerosDryRun'`).get() as { value: string } | undefined;
+    const wasLive = storedDryRun?.value === 'false' || storedDryRun?.value === '0';
+    const goesLive = !wasLive && parsed.data.routerosDryRun === false;
+    if (goesLive) {
+      const confirmPassword = (request.body as { confirmPassword?: unknown } | null)?.confirmPassword;
+      if (!(await confirmSessionPassword(request, reply, confirmPassword))) return reply;
+    }
+
     const save = db.prepare(`
       INSERT INTO app_settings (key, value, updated_at)
       VALUES (?, ?, datetime('now'))
@@ -389,6 +407,14 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         autoSuspensionGraceDays: parsed.data.autoSuspensionGraceDays
       }
     });
+    if (goesLive || (wasLive && parsed.data.routerosDryRun)) {
+      recordAudit(request, {
+        action: 'update',
+        entityType: 'settings',
+        summary: goesLive ? 'Passou o router de ensaio para modo efetivo' : 'Voltou o router a ensaio',
+        metadata: { routerosDryRun: parsed.data.routerosDryRun }
+      });
+    }
     return {
       ...parsed.data,
       // As credenciais nunca voltam; as flags dizem do que ficou gravado.

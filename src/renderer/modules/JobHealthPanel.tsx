@@ -24,7 +24,17 @@ const JOB_LABELS: Record<string, string> = {
   whatsapp_drain: 'Envio WhatsApp (fila)',
   whatsapp_poll: 'Estado de entrega WhatsApp',
   sms_drain: 'Envio SMS (fila)',
-  sms_poll: 'Estado de entrega SMS'
+  sms_poll: 'Estado de entrega SMS',
+  network_enforcement: 'Reconciliação com o router',
+  network_enforcement_manual: 'Reconciliação com o router (manual)',
+  network_enforcement_service_manual: 'Sincronização de um serviço (manual)',
+  auto_suspension: 'Suspensão automática por dívida',
+  auto_suspension_manual: 'Suspensão automática (manual)',
+  network_probe: 'Sonda de rede',
+  network_probe_manual: 'Sonda de rede (manual)',
+  network_discovery_sweep: 'Descoberta: varrimento',
+  network_discovery_identify: 'Descoberta: identificação',
+  scheduled_backup: 'Backup agendado'
 };
 
 const statusTone: Record<JobStatus, 'success' | 'neutral' | 'danger'> = {

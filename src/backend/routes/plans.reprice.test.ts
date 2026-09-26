@@ -285,3 +285,62 @@ describe('POST /api/plans/:id/reprice', () => {
     expect(row.lines.map((l) => l.kind)).toEqual(['internet', 'aluguer', 'aluguer']);
   });
 });
+
+describe('perfil PPP do plano', () => {
+  const base = { name: 'PLANO', downloadSpeed: '20 Mb/s', uploadSpeed: '20 Mb/s', monthlyPriceCve: 2500 };
+
+  // Apanhado no lab contra o router real: a regex perdeu a barra do `\w` e só
+  // aceitava a letra "w" — nenhum perfil verdadeiro passava.
+  test('grava e devolve o nome do perfil tal como está no Winbox', async () => {
+    const id = seedPlan(2500);
+    const put = await app.inject({ method: 'PUT', url: `/api/plans/${id}`, payload: { ...base, routerProfile: 'plano-20M' } });
+    expect(put.statusCode).toBe(200);
+    const plan = (await app.inject({ method: 'GET', url: `/api/plans/${id}` })).json();
+    expect(plan.routerProfile).toBe('plano-20M');
+  });
+
+  test('plano novo sem perfil recebe um nome estável ispm-plano-<id>', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/plans', payload: base });
+    expect(created.statusCode).toBe(201);
+    const { id } = created.json();
+    const plan = (await app.inject({ method: 'GET', url: `/api/plans/${id}` })).json();
+    expect(plan.routerProfile).toBe(`ispm-plano-${id}`);
+  });
+
+  test('gravar um plano com o perfil em branco repõe o nome estável; um nome do operador fica', async () => {
+    const id = seedPlan(2500);
+    await app.inject({ method: 'PUT', url: `/api/plans/${id}`, payload: { ...base, routerProfile: '' } });
+    expect((await app.inject({ method: 'GET', url: `/api/plans/${id}` })).json().routerProfile).toBe(`ispm-plano-${id}`);
+    await app.inject({ method: 'PUT', url: `/api/plans/${id}`, payload: { ...base, routerProfile: 'PLANO-20-20' } });
+    expect((await app.inject({ method: 'GET', url: `/api/plans/${id}` })).json().routerProfile).toBe('PLANO-20-20');
+  });
+
+  test('a lista de planos traz o estado da sincronização com o router', async () => {
+    const id = seedPlan(2500);
+    db.prepare(`INSERT INTO plan_router_sync (plan_id, status, detail, last_error) VALUES (?, 'error', 'Criar perfil', 'router ocupado')`).run(id);
+    const plans = (await app.inject({ method: 'GET', url: '/api/plans' })).json() as Array<Record<string, unknown>>;
+    expect(plans.find((plan) => plan.id === id)).toMatchObject({
+      routerSyncStatus: 'error', routerSyncDetail: 'Criar perfil', routerSyncError: 'router ocupado'
+    });
+  });
+
+  test('recusa um nome que não é de perfil', async () => {
+    const id = seedPlan(2500);
+    const put = await app.inject({ method: 'PUT', url: `/api/plans/${id}`, payload: { ...base, routerProfile: 'x"; /system reset' } });
+    expect(put.statusCode).toBe(400);
+  });
+});
+
+describe('perfis do router sem router configurado', () => {
+  test('a lista responde 200 e diz porque não há perfis', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/network/router/profiles' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ available: false, baseProfile: 'default', profiles: [] });
+  });
+
+  test('criar o perfil de um plano recusa sem integração', async () => {
+    const id = seedPlan(2500);
+    const response = await app.inject({ method: 'POST', url: `/api/plans/${id}/router-profile` });
+    expect(response.statusCode).toBe(400);
+  });
+});

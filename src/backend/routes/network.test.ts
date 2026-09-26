@@ -493,3 +493,31 @@ describe('POST /api/network/router/test', () => {
     expect(report.steps[0].status).toBe('ok');
   });
 });
+
+describe('GET /api/network/router/* — leituras do módulo Router de gestão', () => {
+  const urls = ['/api/network/router/overview', '/api/network/router/sessions', '/api/network/router/interfaces'];
+
+  function setSetting(key: string, value: string) {
+    db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run(key, value);
+  }
+
+  test.each(urls)('%s sem integração ligada responde 200 com o motivo', async (url) => {
+    const response = await app.inject({ method: 'GET', url });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ available: false, reason: 'Integração MikroTik desligada ou por configurar' });
+  });
+
+  test.each(urls)('%s com o router inacessível responde 200 e diz porquê, sem credenciais', async (url) => {
+    setSetting('routerosEnabled', 'true');
+    setSetting('routerosHost', '127.0.0.1');
+    setSetting('routerosPort', '1');
+    setSetting('routerosUser', 'ispm');
+    setSetting('routerosPassword', 'segredo');
+    const response = await app.inject({ method: 'GET', url });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { available: boolean; reason: string };
+    expect(body.available).toBe(false);
+    expect(body.reason.length).toBeGreaterThan(0);
+    expect(response.body).not.toContain('segredo');
+  });
+});

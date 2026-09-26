@@ -3,9 +3,13 @@ import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import {
   auditRouterServices,
+  createProfile,
   createSecret,
   describeRouterFailure,
+  listProfiles,
+  patchProfile,
   diagnoseRouter,
+  isRouterConfigured,
   listActive,
   listSecrets,
   patchSecret,
@@ -13,6 +17,8 @@ import {
   removeActive,
   RouterError,
   testConnection,
+  readSystem,
+  listInterfaces,
   type RouterRequest,
   type RouterService,
   listArp,
@@ -68,6 +74,18 @@ describe('readRouterConfig', () => {
   });
 });
 
+describe('isRouterConfigured', () => {
+  const base = { enabled: true, host: '192.168.2.1', port: 443, user: 'ispm-api', password: 'x', dryRun: true, intervalSeconds: 120, tlsCert: '', maxDisablesPerRun: 5 };
+
+  // Medido no router real: com a senha selada por abrir (cópia da base noutra
+  // conta), o job batia no router a cada 2 min com a senha vazia — um 401 no
+  // registo do router por passagem — enquanto o diagnóstico dizia "falta a senha".
+  test('sem senha o router não está configurado', () => {
+    expect(isRouterConfigured(base)).toBe(true);
+    expect(isRouterConfigured({ ...base, password: '' })).toBe(false);
+  });
+});
+
 describe('operações RouterOS', () => {
   test('testConnection lê versão e board', async () => {
     const transport = fakeTransport([[{ version: '7.15.3', 'board-name': 'hEX S' }]]);
@@ -81,15 +99,15 @@ describe('operações RouterOS', () => {
   test('listSecrets normaliza booleanos em texto e descarta linhas sem id', async () => {
     const transport = fakeTransport([
       [
-        { '.id': '*1', name: 'joao-12', disabled: 'true', 'rate-limit': '2M/10M', comment: 'ispm:12' },
+        { '.id': '*1', name: 'joao-12', disabled: 'true', profile: 'plano-10M', comment: 'ispm:12' },
         { '.id': '*2', name: 'ana-13', disabled: 'false' },
         { name: 'sem-id' }
       ]
     ]);
     const secrets = await listSecrets(transport);
     expect(secrets).toEqual([
-      { id: '*1', name: 'joao-12', disabled: true, profile: null, rateLimit: '2M/10M', comment: 'ispm:12' },
-      { id: '*2', name: 'ana-13', disabled: false, profile: null, rateLimit: null, comment: null }
+      { id: '*1', name: 'joao-12', disabled: true, profile: 'plano-10M', comment: 'ispm:12' },
+      { id: '*2', name: 'ana-13', disabled: false, profile: null, comment: null }
     ]);
   });
 
@@ -106,7 +124,7 @@ describe('operações RouterOS', () => {
       name: 'joao-12',
       password: 'abc123',
       comment: 'ispm:12',
-      rateLimit: '2M/10M'
+      profile: 'plano-10M'
     });
     expect(id).toBe('*7');
     expect(transport.calls[0]).toEqual({
@@ -117,7 +135,7 @@ describe('operações RouterOS', () => {
         password: 'abc123',
         service: 'pppoe',
         comment: 'ispm:12',
-        'rate-limit': '2M/10M'
+        profile: 'plano-10M'
       }
     });
   });
@@ -125,12 +143,12 @@ describe('operações RouterOS', () => {
   test('patchSecret escreve "yes"/"no", que é o que o RouterOS entende', async () => {
     const transport = fakeTransport([null, null]);
     await patchSecret(transport, '*1', { disabled: true });
-    await patchSecret(transport, '*1', { disabled: false, rateLimit: '2M/10M' });
+    await patchSecret(transport, '*1', { disabled: false, profile: 'plano-10M' });
     expect(transport.calls[0]).toEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { disabled: 'yes' } });
     expect(transport.calls[1]).toEqual({
       method: 'PATCH',
       path: '/ppp/secret/*1',
-      body: { disabled: 'no', 'rate-limit': '2M/10M' }
+      body: { disabled: 'no', profile: 'plano-10M' }
     });
   });
 
@@ -142,6 +160,54 @@ describe('operações RouterOS', () => {
     await expect(patchSecret(transport, '*1', { password: sealed }))
       .rejects.toThrow('Password PPPoE por decifrar');
     expect(transport.calls).toHaveLength(0);
+  });
+
+  test('listProfiles normaliza os perfis e descarta linhas sem id', async () => {
+    const transport = fakeTransport([
+      [
+        { '.id': '*0', name: 'default', 'local-address': '10.10.0.1', 'remote-address': 'pool-clientes', 'dns-server': '1.1.1.1', 'only-one': 'yes' },
+        { '.id': '*A', name: 'plano-20M', 'rate-limit': '20M/20M', comment: 'ispm:plano:1' },
+        { name: 'sem-id' }
+      ]
+    ]);
+    await expect(listProfiles(transport)).resolves.toEqual([
+      { id: '*0', name: 'default', rateLimit: null, localAddress: '10.10.0.1', remoteAddress: 'pool-clientes', dnsServer: '1.1.1.1', onlyOne: 'yes', comment: null },
+      { id: '*A', name: 'plano-20M', rateLimit: '20M/20M', localAddress: null, remoteAddress: null, dnsServer: null, onlyOne: null, comment: 'ispm:plano:1' }
+    ]);
+    expect(transport.calls[0]).toEqual({
+      method: 'GET',
+      path: '/ppp/profile?.proplist=.id,name,rate-limit,local-address,remote-address,dns-server,only-one,comment'
+    });
+  });
+
+  test('createProfile copia os endereços do perfil-base e junta o limite e a marca', async () => {
+    const transport = fakeTransport([{ '.id': '*B' }]);
+    const id = await createProfile(transport, {
+      name: 'plano-20M',
+      rateLimit: '20M/20M',
+      comment: 'ispm:plano:1',
+      base: { id: '*0', name: 'default', rateLimit: null, localAddress: '10.10.0.1', remoteAddress: 'pool-clientes', dnsServer: null, onlyOne: 'yes', comment: null }
+    });
+    expect(id).toBe('*B');
+    // O que o base não tem não se envia: o RouterOS fica com a omissão dele.
+    expect(transport.calls[0]).toEqual({
+      method: 'PUT',
+      path: '/ppp/profile',
+      body: {
+        name: 'plano-20M',
+        'rate-limit': '20M/20M',
+        comment: 'ispm:plano:1',
+        'local-address': '10.10.0.1',
+        'remote-address': 'pool-clientes',
+        'only-one': 'yes'
+      }
+    });
+  });
+
+  test('patchProfile só mexe no limite', async () => {
+    const transport = fakeTransport([null]);
+    await patchProfile(transport, '*B', { rateLimit: '30M/30M' });
+    expect(transport.calls[0]).toEqual({ method: 'PATCH', path: '/ppp/profile/*B', body: { 'rate-limit': '30M/30M' } });
   });
 
   test('patchSecret sem nada para mudar não chega a falar com o router', async () => {
@@ -341,6 +407,17 @@ describe('auditRouterServices', () => {
     expect(auditRouterServices(fechado)).toEqual([]);
   });
 
+  // Medido no router real (RouterOS 7.24.2): a leitura de /ip/service veio sem
+  // certificado no www-ssl, e o diagnóstico mandou desligá-lo — no mesmo
+  // relatório em que o aperto TLS com o certificado fixado tinha passado. O
+  // www-ssl é onde a REST do ISPM vive; desligá-lo corta o ISPM do router.
+  test('nunca manda desligar o www-ssl, mesmo lido sem certificado', () => {
+    const lido = fechado.map((s) => (s.name === 'www-ssl' ? { ...s, certificate: null } : s));
+    const achados = auditRouterServices(lido);
+    expect(achados.flatMap((a) => a.services)).not.toContain('www-ssl');
+    expect(achados.map((a) => a.command).join('\n')).not.toContain('www-ssl');
+  });
+
   test('apanha os que levam credenciais em texto simples', () => {
     const findings = auditRouterServices([
       ...fechado.filter((s) => !['ftp', 'telnet', 'www', 'api'].includes(s.name)),
@@ -398,7 +475,73 @@ describe('auditRouterServices', () => {
     expect(findings[0].command).toBe('/ip service disable btest');
   });
 
+  test('o RouterOS 7.24 lista o winbox duas vezes: o achado e o comando dizem-no uma vez só', () => {
+    const findings = auditRouterServices([
+      service({ name: 'ssh', port: 22 }),
+      service({ name: 'winbox', port: 8291 }),
+      service({ name: 'winbox', port: 8291 })
+    ]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].services).toEqual(['ssh', 'winbox']);
+    expect(findings[0].command.split('\n')).toHaveLength(2);
+  });
+
   test('um serviço desligado não conta, mesmo sendo dos perigosos', () => {
     expect(auditRouterServices([service({ name: 'telnet', port: 23, disabled: true })])).toEqual([]);
+  });
+});
+
+describe('leituras do módulo Router de gestão', () => {
+  test('readSystem junta recurso e identidade e converte números do RouterOS', async () => {
+    const transport = fakeTransport([
+      [{
+        version: '7.24.2 (stable)',
+        'board-name': 'hEX S',
+        uptime: '3d4h12m',
+        'cpu-load': '7',
+        'free-memory': '200278016',
+        'total-memory': '268435456',
+        'architecture-name': 'mmips'
+      }],
+      { name: 'ISP-Gestao' }
+    ]);
+    await expect(readSystem(transport)).resolves.toEqual({
+      identity: 'ISP-Gestao',
+      version: '7.24.2 (stable)',
+      boardName: 'hEX S',
+      architecture: 'mmips',
+      uptime: '3d4h12m',
+      cpuLoad: 7,
+      freeMemory: 200278016,
+      totalMemory: 268435456
+    });
+    expect(transport.calls.map((call) => call.method)).toEqual(['GET', 'GET']);
+    expect(transport.calls[1].path).toBe('/system/identity');
+  });
+
+  test('readSystem não inventa números que o router não deu', async () => {
+    const transport = fakeTransport([[{}], {}]);
+    await expect(readSystem(transport)).resolves.toMatchObject({
+      identity: null,
+      cpuLoad: null,
+      freeMemory: null,
+      totalMemory: null
+    });
+  });
+
+  test('listInterfaces lê só o que se mostra e normaliza booleanos e contadores', async () => {
+    const transport = fakeTransport([[
+      { name: 'ether1', type: 'ether', running: 'true', disabled: 'false', 'mac-address': '48:A9:8A:00:00:01', 'rx-byte': '1024', 'tx-byte': '2048', comment: 'WAN Starlink' },
+      { name: 'pppoe-in1', type: 'pppoe-in', running: 'true', disabled: 'false' },
+      { type: 'ether' }
+    ]]);
+    await expect(listInterfaces(transport)).resolves.toEqual([
+      { name: 'ether1', type: 'ether', running: true, disabled: false, macAddress: '48:A9:8A:00:00:01', rxBytes: 1024, txBytes: 2048, comment: 'WAN Starlink' },
+      { name: 'pppoe-in1', type: 'pppoe-in', running: true, disabled: false, macAddress: null, rxBytes: null, txBytes: null, comment: null }
+    ]);
+    expect(transport.calls[0]).toEqual({
+      method: 'GET',
+      path: '/interface?.proplist=name,type,running,disabled,mac-address,rx-byte,tx-byte,comment'
+    });
   });
 });

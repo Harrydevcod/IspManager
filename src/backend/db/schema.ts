@@ -76,7 +76,8 @@ export const internetPlans = sqliteTable('internet_plans', {
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP'),
   downloadMbps: integer('download_mbps'),
-  uploadMbps: integer('upload_mbps')
+  uploadMbps: integer('upload_mbps'),
+  routerProfile: text('router_profile')
 });
 
 export const services = sqliteTable('services', {
@@ -590,12 +591,21 @@ export const serviceNetworkState = sqliteTable('service_network_state', {
   secretId: text('secret_id'),
   routerEnabled: integer('router_enabled'),
   desiredEnabled: integer('desired_enabled').notNull().default(1),
-  rateLimit: text('rate_limit'),
+  profile: text('profile'),
   online: integer('online').notNull().default(0),
   address: text('address'),
   uptime: text('uptime'),
   lastOnlineAt: text('last_online_at'),
   divergence: text('divergence'),
+  lastError: text('last_error'),
+  checkedAt: text('checked_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
+/** Última sincronização do perfil PPP de cada plano com o router (migration 0066). */
+export const planRouterSync = sqliteTable('plan_router_sync', {
+  planId: integer('plan_id').primaryKey(),
+  status: text('status').notNull(),
+  detail: text('detail'),
   lastError: text('last_error'),
   checkedAt: text('checked_at').notNull().default('CURRENT_TIMESTAMP')
 });

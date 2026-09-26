@@ -138,7 +138,7 @@ describe('pt-PT na navegação', () => {
     const labels = [...container.querySelectorAll('.nav-list button')]
       .map((button) => (button.textContent ?? '').trim());
 
-    for (const esperado of ['Serviços', 'OS técnicas', 'Relatórios', 'Configurações']) {
+    for (const esperado of ['Serviços', 'Router de gestão', 'OS técnicas', 'Relatórios', 'Configurações']) {
       expect(labels.some((label) => label.startsWith(esperado))).toBe(true);
     }
     expect(container.querySelector('.skip-link')?.textContent).toBe('Saltar para conteúdo');

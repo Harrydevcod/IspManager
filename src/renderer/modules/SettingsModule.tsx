@@ -30,6 +30,7 @@ import { SmsTab } from './settings/SmsTab';
 import { WhatsappTab } from './settings/WhatsappTab';
 import type { SettingsFormState } from './settings/settingsForm';
 import { NetworkTab, type RouterEnforcementState, type RouterTestReport } from './settings/NetworkTab';
+import { RouterLiveDialog } from './settings/RouterLiveDialog';
 import { JobHealthPanel } from './JobHealthPanel';
 import { LicensePanel } from './LicensePanel';
 
@@ -57,14 +58,23 @@ function routerNote(summary: string, tone: 'neutral' | 'error'): RouterTestRepor
   return { ok: false, steps: [], summary, tone };
 }
 
-export function SettingsModule() {
+type SettingsModuleProps = {
+  /**
+   * `router`: só a configuração do router de gestão, embutida no módulo Router
+   * de gestão. É o mesmo formulário e a mesma gravação — incluindo o passo a
+   * mais para sair do ensaio (RouterLiveDialog) — e não uma segunda porta.
+   */
+  scope?: 'all' | 'router';
+};
+
+export function SettingsModule({ scope = 'all' }: SettingsModuleProps = {}) {
   const [message, setMessage] = useState<{ tone: 'neutral' | 'success' | 'error'; text: string; placement: 'top' | 'save' } | null>(null);
   const [saving, setSaving] = useState(false);
   const [testSending, setTestSending] = useState(false);
   const [testPhone, setTestPhone] = useState('');
   const [testMessage, setTestMessage] = useState<{ tone: 'neutral' | 'success' | 'error'; text: string } | null>(null);
   const [lastSavedForm, setLastSavedForm] = useState<SettingsFormState | null>(null);
-  const [activeTab, setActiveTab] = useState<SettingsTab>('company');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(scope === 'router' ? 'network' : 'company');
   const [form, setForm] = useState<SettingsFormState>({
     companyName: 'ISPM',
     nif: '',
@@ -121,6 +131,8 @@ export function SettingsModule() {
     routerosDryRun: true,
     routerosIntervalSeconds: '120',
     routerosMaxDisablesPerRun: '5',
+    routerosBaseProfile: 'default',
+    routerosSuspendedProfile: 'SUSPENSO',
     autoSuspensionEnabled: false,
     autoSuspensionGraceDays: '15',
     autoSuspensionIntervalMinutes: '60',
@@ -139,6 +151,8 @@ export function SettingsModule() {
   const [enforceMessage, setEnforceMessage] = useState('');
   const [autoSuspendBusy, setAutoSuspendBusy] = useState(false);
   const [autoSuspendMessage, setAutoSuspendMessage] = useState('');
+  const [liveConfirmOpen, setLiveConfirmOpen] = useState(false);
+  const [liveError, setLiveError] = useState<string | null>(null);
   const [smsStatus, setSmsStatus] = useState<SmsStatus | null>(null);
   const [smsReportMonth, setSmsReportMonth] = useState(currentSmsReportMonth);
   const [smsReport, setSmsReport] = useState<SmsMonthlyReport | null>(null);
@@ -429,6 +443,26 @@ export function SettingsModule() {
       return;
     }
 
+    // Ensaio → efetivo arma cortes a sério: explica e pede a password primeiro.
+    // O servidor recusa a passagem sem ela; isto é só o caminho para lha dar.
+    if (lastSavedForm?.routerosDryRun && !form.routerosDryRun) {
+      setLiveError(null);
+      setLiveConfirmOpen(true);
+      return;
+    }
+
+    await persistSettings();
+  }
+
+  async function confirmRouterLive(password: string) {
+    setLiveError(null);
+    const error = await persistSettings(password);
+    if (error === null) setLiveConfirmOpen(false);
+    else setLiveError(error);
+  }
+
+  /** Grava o formulário. Devolve `null` se gravou, ou a mensagem de erro. */
+  async function persistSettings(confirmPassword?: string): Promise<string | null> {
     setSaving(true);
     setMessage({ tone: 'neutral', text: 'A gravar configuracoes...', placement: 'save' });
 
@@ -465,14 +499,16 @@ export function SettingsModule() {
           autoSuspensionGraceDays: Number(savedForm.autoSuspensionGraceDays),
           autoSuspensionIntervalMinutes: Number(savedForm.autoSuspensionIntervalMinutes),
           autoSuspensionMaxPerRun: Number(savedForm.autoSuspensionMaxPerRun),
-          autoSuspensionMaxPercent: Number(savedForm.autoSuspensionMaxPercent)
+          autoSuspensionMaxPercent: Number(savedForm.autoSuspensionMaxPercent),
+          ...(confirmPassword === undefined ? {} : { confirmPassword })
         })
       });
 
       if (!response.ok) {
         const result = await response.json().catch(() => ({ error: 'Nao foi possivel gravar configuracoes.' })) as { error?: string };
-        setMessage({ tone: 'error', text: result.error || 'Nao foi possivel gravar configuracoes.', placement: 'save' });
-        return;
+        const text = result.error || 'Nao foi possivel gravar configuracoes.';
+        setMessage({ tone: 'error', text, placement: 'save' });
+        return text;
       }
 
       // As credenciais acabadas de gravar saem do formulário: quem diz que
@@ -492,8 +528,11 @@ export function SettingsModule() {
       setLastSavedForm(settledForm);
       setSecretsLost([]);
       setMessage({ tone: 'success', text: 'Configuracoes gravadas com sucesso.', placement: 'save' });
+      return null;
     } catch {
-      setMessage({ tone: 'error', text: 'Falha de rede ao gravar configuracoes.', placement: 'save' });
+      const text = 'Falha de rede ao gravar configuracoes.';
+      setMessage({ tone: 'error', text, placement: 'save' });
+      return text;
     } finally {
       setSaving(false);
     }
@@ -673,7 +712,8 @@ export function SettingsModule() {
   }
 
   return (
-    <section className="module-panel">
+    <section className={scope === 'router' ? undefined : 'module-panel'}>
+      {scope === 'all' && (<>
       <div className="module-header">
         <div>
           <p className="eyebrow">Sistema</p>
@@ -700,6 +740,7 @@ export function SettingsModule() {
           );
         })}
       </nav>
+      </>)}
 
       {secretsLost.length > 0 && (
         <Message tone="error">
@@ -761,6 +802,7 @@ export function SettingsModule() {
 
         {activeTab === 'network' && (
           <NetworkTab
+            part={scope === 'router' ? 'router' : 'probe'}
             form={form}
             onUpdate={updateForm}
             onToggle={toggleForm}
@@ -812,6 +854,16 @@ export function SettingsModule() {
         </div>
       </form>
       )}
+
+      <RouterLiveDialog
+        open={liveConfirmOpen}
+        form={form}
+        routerState={routerState}
+        busy={saving}
+        error={liveError}
+        onConfirm={(password) => void confirmRouterLive(password)}
+        onClose={() => setLiveConfirmOpen(false)}
+      />
 
       {activeTab === 'backups' && <BackupsPanel />}
 

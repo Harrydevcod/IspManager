@@ -4,11 +4,52 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
-## [2.4](https://github.com/Harrydevcod/IspManager/releases/tag/v2.4.0) — 2026-09-24
+## Por lançar
 
-> **Sem migrações.** Nada muda na estrutura da base. O arranque deixa de reescrever credenciais — passa só a lê-las.
+> **Sem migrações.** Tudo o que é novo é leitura ao vivo do router, e só com pedidos GET.
+
+- **Módulo Router de gestão.** O MikroTik da operadora passa a ter uma entrada própria no menu (só para administradores), com cinco abas: **Visão geral** (identidade, placa, RouterOS, CPU, memória, há quanto tempo está ligado, sessões ativas, divergências e os serviços de gestão abertos com o comando que os fecha), **Sessões PPPoE** (cada serviço do ISPM ao lado do seu utilizador no router: online, offline, desativado, sem utilizador no router, e os utilizadores do router que nenhum serviço reclama; desligar a sessão a partir daqui), **Perfis PPP** (a velocidade de cada perfil e os planos que o usam, incluindo os perfis que um plano pede e o router não tem), **Interfaces** (estado, MAC e tráfego acumulado) e **Configuração**. Os dados atualizam-se de 30 em 30 segundos enquanto a aba está aberta.
+- **A configuração do router saiu das Configurações.** A ligação, o certificado, o diagnóstico por etapas, o ensaio, a reconciliação e a suspensão automática vivem agora na aba Configuração do módulo novo. É o mesmo formulário, gravado da mesma maneira, e passar a efetivo continua a pedir a senha outra vez. Em Configurações → Rede fica só a sonda de rede.
+- **Os serviços abertos do router deixam de vir repetidos.** O RouterOS 7.24 lista o winbox duas vezes, e o aviso dizia "ssh, winbox, winbox" com o comando a colar em duplicado — também no diagnóstico da ligação.
+- **O painel Automatismos passa a dar nome aos jobs de rede** (reconciliação, suspensão automática, sonda, descoberta, backup agendado), que apareciam com o nome interno.
+
+## [2.4](https://github.com/Harrydevcod/IspManager/releases/tag/v2.4.0) — 2026-09-25
+
+> **Duas migrações.** A `0065` acrescenta aos planos o **perfil PPP no router** e passa o estado lido de cada serviço a guardar o perfil em vez da velocidade, que nunca chegou a ser lida. A `0066` cria a tabela com o estado da sincronização de cada plano com o router. Nenhuma apaga nada, e o arranque deixa de reescrever credenciais — passa só a lê-las.
+
+> **Com o router em ensaio nada muda no MikroTik.** As mudanças de suspensão e de perfis só atuam depois de passar a efetivo (Definições → Rede). Os planos que já existem só ganham perfil quando forem gravados de novo: até lá a coluna **Router** diz "Sem perfil".
+
+
+Tudo o que está abaixo foi encontrado a testar a integração contra o router de gestão verdadeiro (hEX S, RouterOS 7.24.2), numa cópia da base e só com utilizadores PPPoE de teste.
+
+### Mudado
+
+- **Os planos sincronizam-se sozinhos com o router.** Gravar um plano cria ou atualiza logo o perfil PPP dele no MikroTik, sem carregar em **Criar no router**. Um plano gravado sem nome de perfil recebe `ispm-plano-<nº>`. Os perfis são tratados antes dos clientes, e um cliente cujo perfil ainda não existe no router fica pendente, sem ser criado nem ativado. Associar um plano a um serviço antigo sem utilizador PPPoE gera as credenciais, e o cliente é criado no router na mesma passagem. Os **Planos** ganham a coluna **Router**: pronto, pendente, do operador, erro ou em ensaio, com o motivo ao passar o rato. Com o router em baixo, o plano grava na mesma e a passagem seguinte volta a tentar.
+
+- **Suspender um serviço coloca o secret ativo no perfil PPP `SUSPENSO`**, por omissão, e desliga
+  a sessão para aplicar logo a velocidade mínima. Reativar repõe o perfil do plano (ou o perfil-base
+  se o plano não tiver perfil) e volta a ligar; cancelar continua a desativar o secret. Em
+  Definições → Rede, **Perfil dos suspensos** pode ficar vazio para conservar o corte por
+  desativação. A trava de cortes conta também as entradas no perfil de suspensão.
+
+- **A velocidade de cada plano passa a vir de um perfil PPP.** Até aqui o ISPM tentava escrever a velocidade em cada utilizador PPPoE. O RouterOS **não aceita** velocidade no utilizador ("unknown parameter rate-limit"): ela pertence ao perfil. Com a integração em modo efetivo, **nenhum cliente novo chegava a ser criado no router** enquanto o plano tivesse Mbps preenchidos.
+
+  Agora cada plano diz o seu perfil, no campo novo **Perfil PPP no router**, e o ISPM põe cada cliente do plano nesse perfil. O perfil pode ser um que já existe no router ou um que o ISPM cria (ver abaixo). Um plano sem perfil deixa o router como está. A mudança chega à sessão de cada cliente quando ele volta a ligar. Para forçar, usa-se **Desligar sessão** na ficha.
+
+- **Os perfis PPP do router aparecem no ISPM, e o ISPM cria o perfil de cada plano.** O campo **Perfil PPP no router**, no plano, mostra a lista dos perfis que já existem no MikroTik e diz, por baixo, se o escolhido tem limite e de quem é. Ao gravar um nome novo, a reconciliação cria o perfil sem abrir o Winbox: copia os endereços e o DNS do **Perfil-base dos planos** (Definições → Rede, por omissão `default`) e junta a velocidade tirada dos Mbps do plano. Mudar os Mbps atualiza o limite na próxima passagem. O ISPM só mexe nos perfis que ele próprio criou, nunca apaga nenhum, e em ensaio só diz o que faria.
+
+- **Passar o router de ensaio a efetivo pede a password do administrador**, num diálogo que explica o que vai passar a acontecer e mostra os números do último ensaio. Voltar a ensaio continua livre.
 
 ### Corrigido
+
+- **Um perfil de suspensão em falta já não deixa o cliente com a velocidade do plano.** O ISPM
+  verifica o perfil no router antes de reconciliar; se não existir ou o `PATCH` falhar,
+  desativa o secret suspenso e derruba a sessão, dentro da trava de cortes. O erro fica
+  visível na ficha do serviço.
+
+- **Os erros do router passam a dizer o motivo.** Uma recusa aparecia só como "Bad Request". Agora vem com a explicação que o RouterOS deu, por exemplo "input does not match any value of profile".
+- **O diagnóstico deixa de mandar desligar o `www-ssl`.** O RouterOS 7.24 descreve o serviço sem certificado, e o diagnóstico propunha `/ip service disable www-ssl`, no mesmo relatório em que a ligação por TLS a esse serviço tinha passado. É por aí que o ISPM fala com o router: seguir o conselho deixava o ISPM sem acesso.
+- **Sem senha disponível, o ISPM deixa de tentar entrar no router.** Quando a senha selada não abre nesta conta, a reconciliação tentava entrar de 2 em 2 minutos com a senha vazia e deixava um login recusado no registo do router de cada vez.
 
 - **Restaurar um backup noutra máquina deixa de apagar as credenciais.** Desde a 2.0 que as credenciais de infraestrutura — a senha do router de gestão e o token da UltraMsg — são seladas na conta do Windows. Isso é o que se quer: um `ispm.sqlite` copiado para outro computador não dá credencial nenhuma a quem o copiou.
 
