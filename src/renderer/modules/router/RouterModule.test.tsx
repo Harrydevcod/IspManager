@@ -195,10 +195,12 @@ describe('Router de gestão', () => {
     const container = await mount();
     const history = container.querySelector('.router-usage-history');
     const total = formatDataVolume(firstRx + secondRx);
-    expect(history?.querySelector('g:last-of-type title')?.textContent).toContain(`Total ${total}`);
+    const lastDay = history?.querySelector('.router-usage-day:last-child');
+    expect(lastDay?.getAttribute('title')).toContain(`Total ${total}`);
     expect(history?.querySelectorAll('.router-usage-total')).toHaveLength(1);
-    expect(history?.querySelector('g:last-of-type .router-usage-total')?.textContent).toBe(total);
-    expect(history?.querySelector('g:first-of-type rect')?.getAttribute('fill')).toBe('var(--info)');
+    expect(lastDay?.querySelector('.router-usage-total')?.textContent).toBe(total);
+    expect(lastDay?.querySelector('.router-usage-total')?.classList.contains('is-end')).toBe(true);
+    expect(history?.querySelector('.router-usage-day:first-child i')?.classList.contains('is-second')).toBe(true);
   });
 
   test('sem registo do acumulado, os cartões mostram "—" e mantêm a linha', async () => {
