@@ -530,6 +530,31 @@ export async function listInterfaces(transport: RouterTransport): Promise<Router
     .filter((item) => item.name);
 }
 
+/**
+ * `monitor-traffic` é um comando só de leitura: a REST API expõe comandos via
+ * POST, mas este não escreve nada no router. É a única exceção deliberada ao
+ * GET nas leituras deste módulo. Os contadores `/interface rx-byte` são
+ * atualizados pelo router cerca de uma vez por segundo e dão taxas aos saltos.
+ * O transporte só repete GET; este POST não deve ser repetido.
+ */
+export async function monitorTraffic(
+  transport: RouterTransport,
+  names: string[]
+): Promise<Array<{ name: string; rxBps: number | null; txBps: number | null }>> {
+  const raw = await transport({
+    method: 'POST',
+    path: '/interface/monitor-traffic',
+    body: { interface: names.join(','), once: '' }
+  });
+  return asArray(raw)
+    .map((row) => ({
+      name: str(row.name) ?? '',
+      rxBps: num(row['rx-bits-per-second']),
+      txBps: num(row['tx-bits-per-second'])
+    }))
+    .filter((item) => item.name);
+}
+
 /** Os membros de uma lista de interfaces (/interface/list), p.ex. a WAN do load balance. */
 export async function listInterfaceListMembers(transport: RouterTransport, list: string): Promise<string[]> {
   const raw = await transport({ method: 'GET', path: `/interface/list/member?list=${encodeURIComponent(list)}&.proplist=interface` });

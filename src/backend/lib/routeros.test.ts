@@ -23,6 +23,7 @@ import {
   readSystem,
   listInterfaces,
   listInterfaceListMembers,
+  monitorTraffic,
   listLog,
   summarizeLog,
   DHCP_CHURN_THRESHOLD,
@@ -627,6 +628,22 @@ describe('leituras do módulo Router de gestão', () => {
     const transport = fakeTransport([[{ interface: 'WAN1-STARLINK' }, { interface: 'WAN2-STARLINK' }, {}]]);
     await expect(listInterfaceListMembers(transport, 'WAN')).resolves.toEqual(['WAN1-STARLINK', 'WAN2-STARLINK']);
     expect(transport.calls[0]).toEqual({ method: 'GET', path: '/interface/list/member?list=WAN&.proplist=interface' });
+  });
+
+  test('monitorTraffic lê as taxas medidas pelo router sem inventar valores ausentes', async () => {
+    const transport = fakeTransport([[
+      { name: 'WAN1-STARLINK', 'rx-bits-per-second': '10000000', 'tx-bits-per-second': '1000000' },
+      { name: 'WAN2-STARLINK', 'rx-bits-per-second': '5000000' }
+    ]]);
+    await expect(monitorTraffic(transport, ['WAN1-STARLINK', 'WAN2-STARLINK'])).resolves.toEqual([
+      { name: 'WAN1-STARLINK', rxBps: 10_000_000, txBps: 1_000_000 },
+      { name: 'WAN2-STARLINK', rxBps: 5_000_000, txBps: null }
+    ]);
+    expect(transport.calls[0]).toEqual({
+      method: 'POST',
+      path: '/interface/monitor-traffic',
+      body: { interface: 'WAN1-STARLINK,WAN2-STARLINK', once: '' }
+    });
   });
 
   test('listLog devolve o registo todo, as mais recentes primeiro, e ignora linhas vazias', async () => {

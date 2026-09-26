@@ -1,12 +1,12 @@
 import { Activity, ArrowDown, ArrowUp } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../components';
-import { formatBitrate, ROUTER_API, trafficRates, type Live, type RouterWan, type WanRate } from './router-api';
+import { formatBitrate, ROUTER_API, type Live, type RouterWan, type WanRate } from './router-api';
 import { useLive } from './useLive';
 
 /**
- * ponytail: com a ligação TLS reutilizada, 1 s acompanha o ritmo médio do Winbox
- * sem abrir uma ligação nova em cada leitura no hEX S.
+ * Com a ligação TLS reutilizada, 1 s acompanha as taxas que o router mede,
+ * as mesmas do Winbox, sem abrir uma ligação nova em cada leitura no hEX S.
  */
 const WAN_POLL_MS = 1_000;
 /** 120 pontos de 1 s = os últimos 2 minutos. */
@@ -35,18 +35,17 @@ const sum = (rates: WanRate[], pick: (rate: WanRate) => number | null) =>
 /** Download e upload de cada interface da lista WAN, ao vivo, só enquanto está à vista. */
 export function WanTraffic() {
   const live = useLive<Live<RouterWan>>(`${ROUTER_API}/wan`, true, WAN_POLL_MS);
-  const previous = useRef<RouterWan | null>(null);
+  const previousSampledAt = useRef<number | null>(null);
   const [latest, setLatest] = useState<WanRate[]>([]);
   const [history, setHistory] = useState<Record<string, WanRate[]>>({});
 
   useEffect(() => {
     const data = live.data;
     if (!data?.available) return;
-    const sample: RouterWan = { sampledAt: data.sampledAt, interfaces: data.interfaces };
     // Uma resposta atrasada (ou o efeito duplo do StrictMode) não pode andar para trás.
-    if (previous.current && sample.sampledAt <= previous.current.sampledAt) return;
-    const rates = trafficRates(previous.current, sample);
-    previous.current = sample;
+    if (previousSampledAt.current !== null && data.sampledAt <= previousSampledAt.current) return;
+    const rates = data.interfaces;
+    previousSampledAt.current = data.sampledAt;
     setLatest(rates);
     setHistory((current) => Object.fromEntries(rates.map((rate) => [rate.name, [...(current[rate.name] ?? []), rate].slice(-HISTORY)])));
   }, [live.data]);

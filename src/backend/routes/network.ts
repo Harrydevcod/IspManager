@@ -14,6 +14,7 @@ import {
   listActive,
   listInterfaces,
   listInterfaceListMembers,
+  monitorTraffic,
   listLog,
   summarizeLog,
   listServices,
@@ -391,11 +392,11 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     interfaces: await listInterfaces(transport)
   })));
 
-  // ponytail: cache de 60 s; a lista WAN quase nunca muda e assim cada leitura
-  // do card é um só pedido ao router (o transporte abre um TLS novo por pedido).
+  // Cache de 60 s: a lista WAN quase nunca muda. Cada amostra lê o estado das
+  // interfaces e as taxas medidas pelo router em paralelo.
   let wanNames: { host: string; names: string[]; at: number } | null = null;
 
-  /** Contadores das interfaces da lista WAN; a taxa calcula-a o ecrã entre duas leituras. */
+  /** Taxas medidas pelo router para as interfaces da lista WAN. */
   app.get('/api/network/router/wan', adminOnly, async () => {
     const result = await readLive(async (transport, config) => {
       if (!wanNames || wanNames.host !== config.host || Date.now() - wanNames.at > 60_000) {
@@ -403,9 +404,16 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       }
       const names = wanNames.names;
       if (names.length === 0) return { missing: true as const };
-      const interfaces = (await listInterfaces(transport))
+      const [listed, traffic] = await Promise.all([listInterfaces(transport), monitorTraffic(transport, names)]);
+      const rates = new Map(traffic.map((item) => [item.name, item]));
+      const interfaces = listed
         .filter((item) => names.includes(item.name))
-        .map(({ name, running, disabled, rxBytes, txBytes }) => ({ name, running: running && !disabled, rxBytes, txBytes }));
+        .map(({ name, running, disabled }) => ({
+          name,
+          running: running && !disabled,
+          downBps: rates.get(name)?.rxBps ?? null,
+          upBps: rates.get(name)?.txBps ?? null
+        }));
       return { sampledAt: Date.now(), interfaces };
     });
     if (result.available && 'missing' in result) {
