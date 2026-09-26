@@ -39,7 +39,7 @@ function routerAgent(host: string, port: number, pinnedFingerprint: string): Age
   if (cached) return cached;
   for (const agent of routerAgents.values()) agent.destroy();
   routerAgents.clear();
-  const agent = new Agent({ keepAlive: true, maxSockets: 2, maxFreeSockets: 1, timeout: REQUEST_TIMEOUT_MS });
+  const agent = new Agent({ keepAlive: true, maxSockets: 2, maxFreeSockets: 2, timeout: REQUEST_TIMEOUT_MS });
   routerAgents.set(key, agent);
   return agent;
 }
