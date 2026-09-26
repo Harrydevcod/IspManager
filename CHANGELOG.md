@@ -4,6 +4,14 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.8](https://github.com/Harrydevcod/IspManager/releases/tag/v2.8.0) — 2026-09-26
+
+> **Sem migrações.**
+
+- **O histórico de download das WAN mostra o total do dia.** No Router de gestão, as barras continuam divididas por WAN. Ao passar o rato por um dia, o total das WAN juntas aparece primeiro, e o valor de hoje e o do dia de pico ficam escritos por cima da barra.
+- **O gráfico deixa de deformar o texto e os números ficam sempre dentro do cartão.** As datas e os totais já não saem esticados. O valor da última barra, que passava a margem direita, fica agora alinhado por dentro. Os dias sem registo aparecem como um traço na base.
+- **As cores de cada WAN batem sempre com a legenda.** Um dia em que só a segunda WAN tinha registo saía pintado com a cor da primeira.
+
 ## [2.7](https://github.com/Harrydevcod/IspManager/releases/tag/v2.7.0) — 2026-09-26
 
 > **Sem migrações.** Se vier da 2.5 ou anterior, esta versão traz também o cofre de credenciais da 2.6: **arranque-a uma vez neste computador** antes de restaurar qualquer backup noutro sítio, e **guarde a chave de recuperação** em Configurações → Cofre (ver as notas da 2.6).
