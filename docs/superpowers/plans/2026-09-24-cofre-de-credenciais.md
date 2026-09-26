@@ -160,14 +160,20 @@ type SecretDraft = { editing: false } | { editing: true; value: string };
 type SecretFieldProps = { label: string; configured: boolean; draft: SecretDraft; onDraftChange(next: SecretDraft): void; disabled?: boolean };
 ```
 
-- [ ] Testes RED: acesso por papel (admin/operador/técnico), chave errada, repetição depois de confirmada, limite de tentativas; o logger nunca mostra o body da recuperação.
-- [ ] Arranque em `server.ts`: migrations → sessão local → cofre + migração de credenciais → backup → jobs → escuta. Migração falhada mantém a API comercial de pé com erro administrativo, bloqueando integrações e backups normais (D4). Injetar `LocalProtection` explicitamente em `createBackendApp` para os testes; detetar Electron em produção.
-- [ ] `standalone.ts` mantém-se (D3): abre o cofre se conseguir, nunca o cria, e o comando `dev` não muda. Sem canal HTTP de desencriptação; `safeStorage` nunca chega ao renderer.
-- [ ] `SecretField`: configurado não tem input; "Editar" produz input vazio e foca-o; olho com `aria-pressed` alterna só aquele input; "Cancelar" remove input e draft; nova renderização depois de gravar volta a trancar. Botões `type="button"`, nunca aninhados no `<label>`.
-- [ ] Ligar às flags `…Configured`. Payload leva a propriedade secreta **só** quando há draft editado não vazio. Em `ServicesModule.tsx:232` remover o pré-preenchimento com a password antiga; alterar PPPoE passa a ser ação dedicada.
-- [ ] `VaultPanel`: estado, entrega pendente e formulário de desbloqueio. Chave mostrada só na entrega autenticada, nunca carregada ao montar, nunca em `localStorage`/`sessionStorage`; confirmação exige reintroduzir. Explicar que backups antigos continuam a precisar da chave da sua geração.
-- [ ] Restauro: `vault.dispose()` + `requiresRestart()` — depois da troca do ficheiro a API só informa que é preciso reiniciar; nenhum timer reabre a DB. Sem máquina de drenagem (cortada).
-- [ ] Verde; commit.
+- [x] Testes RED: acesso por papel (admin/operador/técnico), chave errada, repetição depois de confirmada, limite de tentativas; o logger nunca mostra o body da recuperação.
+- [x] Arranque em `server.ts`: migrations → sessão local → cofre + migração de credenciais → backup → jobs → escuta. Migração falhada mantém a API comercial de pé com erro administrativo, bloqueando integrações e backups normais (D4). Injetar `LocalProtection` explicitamente em `createBackendApp` para os testes; detetar Electron em produção.
+- [x] `standalone.ts` mantém-se (D3): abre o cofre se conseguir, nunca o cria, e o comando `dev` não muda. Sem canal HTTP de desencriptação; `safeStorage` nunca chega ao renderer.
+- [x] `SecretField`: configurado não tem input; "Editar" produz input vazio e foca-o; olho com `aria-pressed` alterna só aquele input; "Cancelar" remove input e draft; nova renderização depois de gravar volta a trancar. Botões `type="button"`, nunca aninhados no `<label>`.
+- [x] Ligar às flags `…Configured`. Payload leva a propriedade secreta **só** quando há draft editado não vazio. Em `ServicesModule.tsx:232` remover o pré-preenchimento com a password antiga; alterar PPPoE passa a ser ação dedicada.
+- [x] `VaultPanel`: estado, entrega pendente e formulário de desbloqueio. Chave mostrada só na entrega autenticada, nunca carregada ao montar, nunca em `localStorage`/`sessionStorage`; confirmação exige reintroduzir. Explicar que backups antigos continuam a precisar da chave da sua geração.
+- [x] Restauro: `vault.dispose()` + `requiresRestart()` — depois da troca do ficheiro a API só informa que é preciso reiniciar; nenhum timer reabre a DB. Sem máquina de drenagem (cortada).
+- [x] Verde; commit.
+
+**Notas de implementação:**
+- A ação dedicada de alteração PPPoE (`PATCH /api/services/:id/pppoe-password`) já existia. Foi reutilizada; o formulário geral mostra apenas o estado da senha em serviços existentes. O `SecretField` cobre a criação e a ação dedicada.
+- `SmsTab.tsx` não mostra a chave de pareamento persistida; só inicia/revoga o pareamento. Por isso não há campo SMS para substituir. As flags necessárias já existiam em `types.ts`, sem alterações de tipos ou migrações.
+- Após restauro, `requiresRestart()` bloqueia a reabertura da base e todos os pedidos devolvem 503 com `restartRequired`. Os testes antigos de restauro foram ajustados a esse contrato.
+- Em standalone sem cofre (`absent`), os backups normais também ficam suspensos: uma base ainda com credenciais legadas não deve gerar uma cópia nova antes da migração sob Electron. Os testes de backup injetam proteção local artificial.
 
 ## Tarefa 6 — Verificação integrada e documentação
 
