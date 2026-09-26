@@ -6,7 +6,7 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Por lançar
 
-- **Aba Registo no Router de gestão.** O registo do MikroTik lido ao vivo (as 300 linhas mais recentes), com erros a vermelho, avisos a amarelo e o filtro "Só erros e avisos". Por cima, as falhas de login agrupadas por origem e serviço (winbox, ssh, api…), para ver quem está a bater à porta. Só leitura.
+- **Aba Registo no Router de gestão.** O registo do MikroTik lido ao vivo (as 300 linhas mais recentes), com erros a vermelho, avisos a amarelo e o filtro "Só erros e avisos". Por cima, **o que o registo diz**, lido do registo todo: o **DHCP intruso** que o dhcp-snooping está a travar (porta, MAC, fabricante e cliente, se o ISPM o conhecer), as **falhas de login** por origem e serviço, as **quedas de PPPoE** por cliente com o motivo, e os **aparelhos em ciclo de DHCP**, que enchem o registo e escondem o resto. Só leitura.
 - **As divergências da Visão geral batem com a reconciliação.** Os utilizadores do router marcados pelo ISPM que já não têm serviço contavam na reconciliação mas não na Visão geral, que mostrava 0. Agora contam, e o cartão abre as Sessões PPPoE, onde aparecem como "Sem serviço no ISPM".
 
 ## [2.5](https://github.com/Harrydevcod/IspManager/releases/tag/v2.5.0) — 2026-09-26

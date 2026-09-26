@@ -391,8 +391,35 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
   })));
 
   app.get('/api/network/router/log', adminOnly, async () => readLive(async (transport) => {
+    // Resume-se o registo todo; o ecrã só lista as linhas mais recentes.
     const entries = await listLog(transport);
-    return { entries, loginFailures: summarizeLog(entries) };
+    const summary = summarizeLog(entries);
+    const db = getSqliteDatabase();
+    const clientOfMac = db.prepare(`
+      SELECT c.full_name AS name FROM service_device_assignments a
+      JOIN services s ON s.id = a.service_id JOIN clients c ON c.id = s.client_id
+      WHERE upper(a.mac_address) = ? AND a.end_date IS NULL LIMIT 1
+    `);
+    const vendorOfMac = db.prepare(`
+      SELECT vendor FROM network_discovery_hosts WHERE upper(mac_address) = ? ORDER BY last_seen_at DESC LIMIT 1
+    `);
+    const clientOfLogin = db.prepare(`
+      SELECT c.full_name AS name FROM services s JOIN clients c ON c.id = s.client_id WHERE s.pppoe_username = ? LIMIT 1
+    `);
+    const aboutMac = (mac: string) => ({
+      clientName: (clientOfMac.get(mac) as { name: string } | undefined)?.name ?? null,
+      vendor: (vendorOfMac.get(mac) as { vendor: string | null } | undefined)?.vendor ?? null
+    });
+    return {
+      entries: entries.slice(0, 300),
+      loginFailures: summary.loginFailures,
+      rogueDhcp: summary.rogueDhcp.map((row) => ({ ...row, ...aboutMac(row.mac) })),
+      pppoeDrops: summary.pppoeDrops.map((row) => ({
+        ...row,
+        clientName: (clientOfLogin.get(row.login) as { name: string } | undefined)?.name ?? null
+      })),
+      dhcpChurn: summary.dhcpChurn.map((row) => ({ ...row, ...aboutMac(row.mac) }))
+    };
   }));
 
   /** Cria ou atualiza o perfil do plano. Em ensaio só diz o que faria. */

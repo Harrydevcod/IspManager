@@ -12,8 +12,7 @@ import {
   ROUTER_API,
   type Live,
   type RouterInterface,
-  type RouterLogEntry,
-  type RouterLoginFailures,
+  type RouterLog,
   type RouterOverview,
   type RouterProfileOption,
   type RouterSession
@@ -172,7 +171,7 @@ export default function RouterModule() {
   const sessions = useLive<Live<{ sessions: RouterSession[] }>>(`${ROUTER_API}/sessions`, tab === 'sessions');
   const interfaces = useLive<Live<{ interfaces: RouterInterface[] }>>(`${ROUTER_API}/interfaces`, tab === 'interfaces');
   const profiles = useLive<Live<{ profiles: RouterProfileOption[] }>>(`${ROUTER_API}/profiles`, tab === 'profiles');
-  const log = useLive<Live<{ entries: RouterLogEntry[]; loginFailures: RouterLoginFailures[] }>>(`${ROUTER_API}/log`, tab === 'log');
+  const log = useLive<Live<RouterLog>>(`${ROUTER_API}/log`, tab === 'log');
   const plans = useLive<PlanRow[]>('http://127.0.0.1:3001/api/plans', tab === 'profiles');
 
   const current = { overview, sessions, interfaces, profiles, log, config: null }[tab];
@@ -270,7 +269,7 @@ export default function RouterModule() {
         )}
         {tab === 'log' && (
           <LiveGate live={log} onRetry={log.reload} onConfigure={openConfig}>
-            {(data) => <LogView entries={data.entries} loginFailures={data.loginFailures} />}
+            {(data) => <LogView log={data} />}
           </LiveGate>
         )}
       </div>

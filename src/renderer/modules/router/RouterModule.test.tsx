@@ -36,7 +36,10 @@ const log = {
     { id: '*2', time: '02:40:13', topics: 'system,error,critical', message: 'login failure for user admin from 10.0.0.9 via winbox' },
     { id: '*1', time: '02:39:00', topics: 'pppoe,ppp,info', message: 'skn001 logged in, 10.20.0.10' }
   ],
-  loginFailures: [{ address: '10.0.0.9', via: 'winbox', users: ['admin'], count: 1 }]
+  loginFailures: [{ address: '10.0.0.9', via: 'winbox', users: ['admin'], count: 1 }],
+  rogueDhcp: [{ port: 'LAN1', address: '192.168.0.1', mac: '30:16:9D:AA:53:8B', count: 187, vendor: 'MERCUSYS', clientName: null }],
+  pppoeDrops: [{ login: 'skn001', reasons: ['peer is not responding'], count: 4, clientName: 'Cibel Restaurante' }],
+  dhcpChurn: []
 };
 
 let routerAvailable = true;
@@ -104,10 +107,12 @@ describe('Router de gestão', () => {
     expect(container.querySelectorAll('[aria-label^="Desligar a sessão"]')).toHaveLength(1);
   });
 
-  test('o registo mostra as falhas de login e filtra só erros e avisos', async () => {
+  test('o registo resume o que pede ação e filtra só erros e avisos', async () => {
     const container = await mount();
     await click(container.querySelector('#router-tab-log'));
-    expect(container.textContent).toContain('Falhas de login');
+    const titles = [...container.querySelectorAll('.router-findings strong')].map((node) => node.textContent);
+    expect(titles).toEqual(['DHCP intruso na porta LAN1', 'Falhas de login de 10.0.0.9', 'PPPoE de Cibel Restaurante caiu 4 vezes']);
+    expect(container.textContent).toContain('30:16:9D:AA:53:8B · 192.168.0.1 · MERCUSYS — 187 avisos');
     expect(container.textContent).toContain('1 tentativa por winbox · admin');
     expect(container.querySelectorAll('.data-table-row')).toHaveLength(2);
     await click(container.querySelector('#router-panel-log input[type="checkbox"]'));

@@ -1,9 +1,9 @@
-import { AlertTriangle, Cable, Layers, ScrollText, ShieldAlert, Unplug, Waypoints } from 'lucide-react';
+import { AlertTriangle, Cable, Layers, ScrollText, ShieldAlert, Unplug, Waypoints, X } from 'lucide-react';
 import { useState } from 'react';
 import { Badge, Button, DataTable, EmptyState, Toggle, useToast, type DataTableColumn } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { routerSyncBadge } from '../plans/routerSync';
-import { formatBytes, logTone, SESSION_STATE, type ProfileRow, type RouterLogEntry, type RouterLoginFailures, type RouterInterface, type RouterSession } from './router-api';
+import { formatBytes, logFindings, logTone, SESSION_STATE, type ProfileRow, type RouterLog, type RouterLogEntry, type RouterInterface, type RouterSession } from './router-api';
 
 const SESSION_COLUMNS: DataTableColumn<RouterSession>[] = [
   { header: 'Cliente', sortValue: (row) => row.clientName ?? '', cell: (row) => row.clientName ? <strong>{row.clientName}</strong> : <span className="router-muted">—</span> },
@@ -165,21 +165,24 @@ const LOG_COLUMNS: DataTableColumn<RouterLogEntry>[] = [
   { header: 'Mensagem', sortValue: (row) => row.message, cell: (row) => row.message }
 ];
 
-export function LogView({ entries, loginFailures }: { entries: RouterLogEntry[]; loginFailures: RouterLoginFailures[] }) {
+export function LogView({ log }: { log: RouterLog }) {
   const [onlyProblems, setOnlyProblems] = useState(false);
-  const rows = onlyProblems ? entries.filter((entry) => logTone(entry.topics) !== 'neutral') : entries;
+  const findings = logFindings(log);
+  const rows = onlyProblems ? log.entries.filter((entry) => logTone(entry.topics) !== 'neutral') : log.entries;
   return (
     <>
-      {loginFailures.length > 0 && (
-        <section className="router-findings" aria-label="Falhas de login no router">
-          <h3><ShieldAlert size={16} aria-hidden /> Falhas de login</h3>
+      {findings.length > 0 && (
+        <section className="router-findings" aria-label="O que o registo diz">
+          <h3><ShieldAlert size={16} aria-hidden /> O que o registo diz</h3>
           <ol className="settings-router-steps">
-            {loginFailures.map((failure) => (
-              <li key={`${failure.address} ${failure.via}`} data-status="warn">
-                <AlertTriangle size={14} aria-hidden className="settings-router-step-icon" />
+            {findings.map((finding) => (
+              <li key={finding.key} data-status={finding.severity === 'grave' ? 'fail' : 'warn'}>
+                {finding.severity === 'grave'
+                  ? <X size={14} aria-hidden className="settings-router-step-icon" />
+                  : <AlertTriangle size={14} aria-hidden className="settings-router-step-icon" />}
                 <div>
-                  <strong className="router-mono">{failure.address}</strong>
-                  <p>{failure.count} {failure.count === 1 ? 'tentativa' : 'tentativas'} por {failure.via} · {failure.users.join(', ')}</p>
+                  <strong>{finding.title}</strong>
+                  <p>{finding.detail}</p>
                 </div>
                 <span />
               </li>

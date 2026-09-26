@@ -507,34 +507,75 @@ export async function listInterfaces(transport: RouterTransport): Promise<Router
 export type RouterLogEntry = { id: string; time: string; topics: string; message: string };
 
 /** O log em memória do router (1000 linhas por omissão), as mais recentes primeiro. */
-export async function listLog(transport: RouterTransport, limit = 300): Promise<RouterLogEntry[]> {
+export async function listLog(transport: RouterTransport): Promise<RouterLogEntry[]> {
   const raw = await transport({ method: 'GET', path: '/log?.proplist=.id,time,topics,message' });
   return asArray(raw)
     .map((row, index) => ({ id: str(row['.id']) ?? String(index), time: str(row.time) ?? '', topics: str(row.topics) ?? '', message: str(row.message) ?? '' }))
     .filter((entry) => entry.message)
-    .slice(-limit)
     .reverse();
 }
 
 export type RouterLoginFailures = { address: string; via: string; users: string[]; count: number };
+export type RouterRogueDhcp = { port: string; address: string; mac: string; count: number };
+export type RouterPppoeDrops = { login: string; reasons: string[]; count: number };
+export type RouterDhcpChurn = { mac: string; address: string; hostname: string | null; count: number };
+export type RouterLogSummary = {
+  loginFailures: RouterLoginFailures[];
+  rogueDhcp: RouterRogueDhcp[];
+  pppoeDrops: RouterPppoeDrops[];
+  dhcpChurn: RouterDhcpChurn[];
+};
 
-// RouterOS 7: "login failure for user admin from 1.2.3.4 via winbox"
+// Mensagens do RouterOS 7, tal como aparecem no /log.
 const LOGIN_FAILURE = /login failure for user (.+?) from (\S+) via (\S+)/;
+const ROGUE_DHCP = /^(\S+): received DHCP server message on untrusted port from source IP (\S+), MAC (\S+)/;
+const PPPOE_DROP = /^<pppoe-(.+?)>: terminating\.\.\. - (.+?)\s*$/;
+const DHCP_RELEASE = /deassigned (\S+) for (\S+)(?: (\S+))?/;
 
-/** Falhas de login por origem e serviço — quem está a bater à porta. Pura. */
-export function summarizeLog(entries: RouterLogEntry[]): RouterLoginFailures[] {
-  const byKey = new Map<string, RouterLoginFailures>();
+/** Um aparelho que liberta o IP mais do que isto no registo está em ciclo, não a sair da rede. */
+export const DHCP_CHURN_THRESHOLD = 10;
+
+function tally<T extends { count: number }>(
+  entries: RouterLogEntry[],
+  pattern: RegExp,
+  keyOf: (match: RegExpExecArray) => string,
+  create: (match: RegExpExecArray) => T,
+  update?: (row: T, match: RegExpExecArray) => void
+): T[] {
+  const rows = new Map<string, T>();
   for (const entry of entries) {
-    const match = LOGIN_FAILURE.exec(entry.message);
+    const match = pattern.exec(entry.message.trim());
     if (!match) continue;
-    const [, user, address, via] = match;
-    const key = `${address} ${via}`;
-    const row = byKey.get(key) ?? { address, via, users: [], count: 0 };
+    const key = keyOf(match);
+    const row = rows.get(key) ?? create(match);
     row.count += 1;
-    if (!row.users.includes(user)) row.users.push(user);
-    byKey.set(key, row);
+    update?.(row, match);
+    rows.set(key, row);
   }
-  return [...byKey.values()].sort((a, b) => b.count - a.count);
+  return [...rows.values()].sort((a, b) => b.count - a.count);
+}
+
+const addOnce = (list: string[], value: string) => { if (!list.includes(value)) list.push(value); };
+
+/**
+ * O que o registo diz sobre a rede, agrupado. Pura.
+ * - falhas de login por origem e serviço: quem está a bater à porta;
+ * - DHCP intruso travado pelo dhcp-snooping: um router de cliente ligado ao contrário;
+ * - quedas de PPPoE por utilizador: ligação física ou alimentação do cliente;
+ * - aparelhos em ciclo de DHCP: enchem o registo e escondem o resto.
+ */
+export function summarizeLog(entries: RouterLogEntry[]): RouterLogSummary {
+  return {
+    loginFailures: tally(entries, LOGIN_FAILURE, (m) => `${m[2]} ${m[3]}`,
+      (m) => ({ address: m[2], via: m[3], users: [], count: 0 }), (row, m) => addOnce(row.users, m[1])),
+    rogueDhcp: tally(entries, ROGUE_DHCP, (m) => m[3].toUpperCase(),
+      (m) => ({ port: m[1], address: m[2], mac: m[3].toUpperCase(), count: 0 })),
+    pppoeDrops: tally(entries, PPPOE_DROP, (m) => m[1],
+      (m) => ({ login: m[1], reasons: [], count: 0 }), (row, m) => addOnce(row.reasons, m[2])),
+    dhcpChurn: tally(entries, DHCP_RELEASE, (m) => m[2].toUpperCase(),
+      (m) => ({ mac: m[2].toUpperCase(), address: m[1], hostname: m[3] ?? null, count: 0 }))
+      .filter((row) => row.count >= DHCP_CHURN_THRESHOLD)
+  };
 }
 
 // ------------------------------------------------------------- diagnóstico

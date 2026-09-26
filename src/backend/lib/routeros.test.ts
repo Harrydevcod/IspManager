@@ -21,6 +21,7 @@ import {
   listInterfaces,
   listLog,
   summarizeLog,
+  DHCP_CHURN_THRESHOLD,
   type RouterRequest,
   type RouterService,
   listArp,
@@ -537,33 +538,70 @@ describe('leituras do módulo Router de gestão', () => {
     });
   });
 
-  test('listLog devolve as mais recentes primeiro, com limite, e ignora linhas vazias', async () => {
+  test('listLog devolve o registo todo, as mais recentes primeiro, e ignora linhas vazias', async () => {
     const transport = fakeTransport([[
       { '.id': '*1', time: '2026-09-25 23:59:01', topics: 'system,info', message: 'router rebooted' },
       { '.id': '*2', time: '02:40:13', topics: 'system,error,critical', message: 'login failure for user admin from 10.0.0.9 via winbox' },
-      { '.id': '*3', time: '02:41:00', topics: 'pppoe,info' },
-      { '.id': '*4', time: '02:42:00', topics: 'pppoe,ppp,info', message: 'skn001 logged in, 10.20.0.10' }
+      { '.id': '*3', time: '02:41:00', topics: 'pppoe,info' }
     ]]);
-    await expect(listLog(transport, 2)).resolves.toEqual([
-      { id: '*4', time: '02:42:00', topics: 'pppoe,ppp,info', message: 'skn001 logged in, 10.20.0.10' },
-      { id: '*2', time: '02:40:13', topics: 'system,error,critical', message: 'login failure for user admin from 10.0.0.9 via winbox' }
+    await expect(listLog(transport)).resolves.toEqual([
+      { id: '*2', time: '02:40:13', topics: 'system,error,critical', message: 'login failure for user admin from 10.0.0.9 via winbox' },
+      { id: '*1', time: '2026-09-25 23:59:01', topics: 'system,info', message: 'router rebooted' }
     ]);
     expect(transport.calls[0]).toEqual({ method: 'GET', path: '/log?.proplist=.id,time,topics,message' });
   });
 
+  // Linhas do registo real do hEX S (RouterOS 7.24.2), exportado a 2026-09-26.
+  const line = (message: string) => ({ id: '*1', time: '', topics: '', message });
+
   test('summarizeLog agrupa as falhas de login por origem e serviço, pior primeiro', () => {
-    const line = (message: string) => ({ id: '*1', time: '', topics: 'system,error,critical', message });
-    expect(summarizeLog([
+    const { loginFailures } = summarizeLog([
       line('login failure for user admin from 10.0.0.9 via winbox'),
       line('login failure for user root from 10.0.0.9 via ssh'),
       line('login failure for user ubnt from 10.0.0.9 via ssh'),
       line('login failure for user root from 10.0.0.9 via ssh'),
-      line('user admin logged in from 192.168.2.250 via winbox'),
-      line('skn001 logged in, 10.20.0.10')
-    ])).toEqual([
+      line('user admin logged in from 192.168.2.250 via winbox')
+    ]);
+    expect(loginFailures).toEqual([
       { address: '10.0.0.9', via: 'ssh', users: ['root', 'ubnt'], count: 3 },
       { address: '10.0.0.9', via: 'winbox', users: ['admin'], count: 1 }
     ]);
-    expect(summarizeLog([])).toEqual([]);
+  });
+
+  test('summarizeLog aponta o servidor DHCP intruso travado pelo snooping, por MAC', () => {
+    const intruder = 'LAN1: received DHCP server message on untrusted port from source IP 192.168.0.1, MAC 30:16:9d:aa:53:8b';
+    const { rogueDhcp } = summarizeLog([
+      line(intruder),
+      line(intruder),
+      line('LAN1: received DHCP server message on untrusted port from source IP 192.168.0.254, MAC 18:69:45:23:68:04')
+    ]);
+    expect(rogueDhcp).toEqual([
+      { port: 'LAN1', address: '192.168.0.1', mac: '30:16:9D:AA:53:8B', count: 2 },
+      { port: 'LAN1', address: '192.168.0.254', mac: '18:69:45:23:68:04', count: 1 }
+    ]);
+  });
+
+  test('summarizeLog conta as quedas de PPPoE por utilizador, com os motivos', () => {
+    const { pppoeDrops } = summarizeLog([
+      line('<pppoe-skn001>: terminating... - peer is not responding'),
+      line('<pppoe-skn001>: terminating... - peer is not responding'),
+      line('<pppoe-skn001>: terminating... - hungup '),
+      line('skn001 logged out, 3551 1846177 2860783 13155 13532 from 18:FD:74:22:23:B7'),
+      line('<pppoe-skn001>: disconnected ')
+    ]);
+    expect(pppoeDrops).toEqual([{ login: 'skn001', reasons: ['peer is not responding', 'hungup'], count: 3 }]);
+  });
+
+  test('summarizeLog só marca como ciclo de DHCP a partir do limiar', () => {
+    const camera = 'dhcp-SKYNET deassigned 192.168.2.97 for 90:6A:94:F7:DE:11 NOMI-IPC-S7X-10M0WED-ECE2';
+    const entries = [
+      ...Array.from({ length: DHCP_CHURN_THRESHOLD }, () => line(camera)),
+      line('dhcp-SKYNET deassigned 192.168.2.60 for 5C:E9:1E:00:00:01 Redmi-Note-9'),
+      line('dhcp-SKYNET deassigned 192.168.2.61 for 5C:E9:1E:00:00:02')
+    ];
+    expect(summarizeLog(entries).dhcpChurn).toEqual([
+      { mac: '90:6A:94:F7:DE:11', address: '192.168.2.97', hostname: 'NOMI-IPC-S7X-10M0WED-ECE2', count: DHCP_CHURN_THRESHOLD }
+    ]);
+    expect(summarizeLog([])).toEqual({ loginFailures: [], rogueDhcp: [], pppoeDrops: [], dhcpChurn: [] });
   });
 });
