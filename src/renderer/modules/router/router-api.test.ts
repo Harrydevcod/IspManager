@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { formatBitrate, formatBytes, profileRows, SESSION_STATE, trafficRates, type RouterWan } from './router-api';
+import { formatBitrate, formatBytes, profileRows, SESSION_STATE } from './router-api';
 
 describe('formatBytes', () => {
   test('usa unidades binárias com vírgula decimal (pt-PT)', () => {
@@ -45,33 +45,6 @@ describe('SESSION_STATE', () => {
   test('tem rótulo pt-PT para cada estado do servidor', () => {
     expect(Object.keys(SESSION_STATE).sort()).toEqual(['desativado', 'offline', 'online', 'sem_secret', 'sem_servico']);
     expect(SESSION_STATE.sem_servico.label).toBe('Sem serviço no ISPM');
-  });
-});
-
-describe('trafficRates', () => {
-  const sample = (sampledAt: number, rx: number | null, tx: number | null): RouterWan => ({
-    sampledAt,
-    interfaces: [{ name: 'WAN1-STARLINK', running: true, rxBytes: rx, txBytes: tx }]
-  });
-
-  test('bits por segundo entre duas leituras: RX é download, TX é upload', () => {
-    // 3 s, 3 750 000 bytes recebidos = 10 Mbit/s; 375 000 enviados = 1 Mbit/s.
-    expect(trafficRates(sample(0, 1_000_000, 500_000), sample(3000, 4_750_000, 875_000))).toEqual([
-      { name: 'WAN1-STARLINK', running: true, downBps: 10_000_000, upBps: 1_000_000 }
-    ]);
-  });
-
-  test('a primeira leitura ainda não tem taxa', () => {
-    expect(trafficRates(null, sample(0, 1, 1))[0]).toMatchObject({ downBps: null, upBps: null });
-  });
-
-  test('contador que desce (router reiniciado) não dá taxa negativa', () => {
-    expect(trafficRates(sample(0, 9_000, 9_000), sample(3000, 100, 100))[0]).toMatchObject({ downBps: null, upBps: null });
-  });
-
-  test('uma interface que aparece de novo começa sem taxa', () => {
-    const next: RouterWan = { sampledAt: 3000, interfaces: [{ name: 'WAN2-STARLINK', running: true, rxBytes: 10, txBytes: 10 }] };
-    expect(trafficRates(sample(0, 1, 1), next)[0]).toMatchObject({ name: 'WAN2-STARLINK', downBps: null });
   });
 });
 

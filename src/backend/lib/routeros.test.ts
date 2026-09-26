@@ -1,8 +1,10 @@
-import { describe, expect, test } from 'vitest';
+import { createServer } from 'node:https';
+import { afterEach, describe, expect, test } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import {
   auditRouterServices,
+  createTransport,
   createProfile,
   createSecret,
   describeRouterFailure,
@@ -14,12 +16,14 @@ import {
   listSecrets,
   patchSecret,
   readRouterConfig,
+  resetRouterAgentCacheForTests,
   removeActive,
   RouterError,
   testConnection,
   readSystem,
   listInterfaces,
   listInterfaceListMembers,
+  monitorTraffic,
   listLog,
   summarizeLog,
   DHCP_CHURN_THRESHOLD,
@@ -30,6 +34,87 @@ import {
   neighborModel,
   type RouterTransport
 } from './routeros';
+import { TEST_ROUTER_CA_PEM, TEST_ROUTER_KEY_PEM, TEST_ROUTER_LEAF_PEM } from './routerosTestCerts';
+
+afterEach(resetRouterAgentCacheForTests);
+
+function localConfig(port: number, tlsCert = TEST_ROUTER_LEAF_PEM + TEST_ROUTER_CA_PEM) {
+  return {
+    enabled: true, host: '127.0.0.1', port, user: 'ispm', password: 'segredo',
+    dryRun: true, intervalSeconds: 120, tlsCert, maxDisablesPerRun: 5
+  };
+}
+
+async function withHttpsServer(
+  onRequest: (requestNumber: number, socket: import('node:net').Socket, respond: () => void) => void,
+  run: (port: number, connections: () => number, requests: () => number, tcpConnections: () => number) => Promise<void>
+) {
+  let connections = 0;
+  let tcpConnections = 0;
+  let requests = 0;
+  const server = createServer({ cert: TEST_ROUTER_LEAF_PEM + TEST_ROUTER_CA_PEM, key: TEST_ROUTER_KEY_PEM }, (_req, res) => {
+    requests += 1;
+    onRequest(requests, res.socket!, () => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+  });
+  server.on('secureConnection', () => { connections += 1; });
+  server.on('connection', () => { tcpConnections += 1; });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    await run((server.address() as { port: number }).port, () => connections, () => requests, () => tcpConnections);
+  } finally {
+    resetRouterAgentCacheForTests();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
+describe('ligação HTTPS reutilizada', () => {
+  test('dois GET de transportes diferentes usam a mesma ligação TLS', async () => {
+    await withHttpsServer((_number, _socket, respond) => respond(), async (port, connections) => {
+      const config = localConfig(port);
+      await createTransport(config)({ method: 'GET', path: '/system/resource' });
+      await createTransport(config)({ method: 'GET', path: '/system/resource' });
+      expect(connections()).toBe(1);
+    });
+  });
+
+  test('trocar o certificado fixado abre outra ligação e recusa a identidade errada', async () => {
+    await withHttpsServer((_number, _socket, respond) => respond(), async (port, _connections, _requests, tcpConnections) => {
+      await createTransport(localConfig(port))({ method: 'GET', path: '/system/resource' });
+      await expect(createTransport(localConfig(port, TEST_ROUTER_CA_PEM))({ method: 'GET', path: '/system/resource' }))
+        .rejects.toMatchObject({ code: 'CERT_MISMATCH' });
+      expect(tcpConnections()).toBe(2);
+    });
+  });
+
+  test('repete uma vez um GET quando o router fecha a ligação reutilizada', async () => {
+    await withHttpsServer((number, socket, respond) => {
+      if (number === 2) socket.destroy();
+      else respond();
+    }, async (port, connections, requests) => {
+      const transport = createTransport(localConfig(port));
+      await transport({ method: 'GET', path: '/system/resource' });
+      await expect(transport({ method: 'GET', path: '/system/resource' })).resolves.toEqual({ ok: true });
+      expect(requests()).toBe(3);
+      expect(connections()).toBe(2);
+    });
+  });
+
+  test('não repete PATCH quando o router fecha a ligação reutilizada', async () => {
+    await withHttpsServer((number, socket, respond) => {
+      if (number === 2) socket.destroy();
+      else respond();
+    }, async (port, _connections, requests) => {
+      const transport = createTransport(localConfig(port));
+      await transport({ method: 'GET', path: '/system/resource' });
+      await expect(transport({ method: 'PATCH', path: '/ppp/secret', body: { name: 'x' } }))
+        .rejects.toMatchObject({ code: 'ECONNRESET' });
+      expect(requests()).toBe(2);
+    });
+  });
+});
 
 /** Transporte falso: guarda as chamadas e devolve o que o teste mandar. */
 function fakeTransport(responses: unknown[] = []): RouterTransport & { calls: RouterRequest[] } {
@@ -543,6 +628,22 @@ describe('leituras do módulo Router de gestão', () => {
     const transport = fakeTransport([[{ interface: 'WAN1-STARLINK' }, { interface: 'WAN2-STARLINK' }, {}]]);
     await expect(listInterfaceListMembers(transport, 'WAN')).resolves.toEqual(['WAN1-STARLINK', 'WAN2-STARLINK']);
     expect(transport.calls[0]).toEqual({ method: 'GET', path: '/interface/list/member?list=WAN&.proplist=interface' });
+  });
+
+  test('monitorTraffic lê as taxas medidas pelo router sem inventar valores ausentes', async () => {
+    const transport = fakeTransport([[
+      { name: 'WAN1-STARLINK', 'rx-bits-per-second': '10000000', 'tx-bits-per-second': '1000000' },
+      { name: 'WAN2-STARLINK', 'rx-bits-per-second': '5000000' }
+    ]]);
+    await expect(monitorTraffic(transport, ['WAN1-STARLINK', 'WAN2-STARLINK'])).resolves.toEqual([
+      { name: 'WAN1-STARLINK', rxBps: 10_000_000, txBps: 1_000_000 },
+      { name: 'WAN2-STARLINK', rxBps: 5_000_000, txBps: null }
+    ]);
+    expect(transport.calls[0]).toEqual({
+      method: 'POST',
+      path: '/interface/monitor-traffic',
+      body: { interface: 'WAN1-STARLINK,WAN2-STARLINK', once: '' }
+    });
   });
 
   test('listLog devolve o registo todo, as mais recentes primeiro, e ignora linhas vazias', async () => {

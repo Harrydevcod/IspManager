@@ -18,7 +18,10 @@ export function useLive<T>(url: string, active: boolean, intervalMs = POLL_MS) {
   useEffect(() => {
     if (!active) return;
     let alive = true;
+    let inFlight = false;
     const read = () => {
+      if (inFlight) return;
+      inFlight = true;
       setLoading(true);
       authFetch(url)
         .then(async (response) => {
@@ -27,7 +30,7 @@ export function useLive<T>(url: string, active: boolean, intervalMs = POLL_MS) {
           if (alive) { setData(body); setError(null); }
         })
         .catch(() => { if (alive) setError('Não foi possível ler o router.'); })
-        .finally(() => { if (alive) setLoading(false); });
+        .finally(() => { inFlight = false; if (alive) setLoading(false); });
     };
     read();
     const timer = window.setInterval(read, intervalMs);

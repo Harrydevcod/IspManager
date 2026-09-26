@@ -16,7 +16,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # A linha 24 do Electron 41 (24.15): a app corre nela. Sem versão
+          # exata de propósito — o Node 24.21 mudou o conjunto de ligações
+          # HTTPS e foi a CI que o apanhou antes de o Electron o trazer.
+          node-version: 24
           cache: npm
 
       - run: npm ci

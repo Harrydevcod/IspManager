@@ -1,5 +1,5 @@
 import { X509Certificate } from 'node:crypto';
-import { request as httpsRequest } from 'node:https';
+import { Agent, request as httpsRequest } from 'node:https';
 import { connect as tlsConnect } from 'node:tls';
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
@@ -31,6 +31,45 @@ export const DEFAULT_ROUTER_PORT = 443;
 const DEFAULT_INTERVAL_SECONDS = 120;
 const DEFAULT_MAX_DISABLES = 5;
 const REQUEST_TIMEOUT_MS = 10_000;
+const routerAgents = new Map<string, Agent>();
+
+/**
+ * O certificado fixado vive no agente, não no pedido: desde o Node 24.21 um
+ * `checkServerIdentity` por pedido dá a cada pedido um conjunto de ligações
+ * próprio e nenhuma é reutilizada. A chave é o PEM fixado inteiro, não só a
+ * impressão digital da folha: a folha sozinha e a cadeia têm a mesma impressão
+ * digital mas âncoras diferentes, e um agente só serve aquilo com que foi criado.
+ */
+function routerAgent(host: string, port: number, pinnedPem: string, pinnedFingerprint: string): Agent {
+  const key = `${host}|${port}|${pinnedPem}`;
+  const cached = routerAgents.get(key);
+  if (cached) return cached;
+  for (const agent of routerAgents.values()) agent.destroy();
+  routerAgents.clear();
+  const agent = new Agent({
+    keepAlive: true, maxSockets: 2, maxFreeSockets: 2, timeout: REQUEST_TIMEOUT_MS,
+    ...(pinnedPem
+      ? {
+          ca: [pinnedPem],
+          // O nome no certificado do router não corresponde a nada
+          // resolvível; a identidade aqui é o próprio certificado. O Node
+          // chama isto antes de escrever no socket, e uma ligação reutilizada
+          // já passou por aqui ao abrir.
+          checkServerIdentity: (_host: string, cert: { fingerprint256?: string }) =>
+            cert.fingerprint256?.toUpperCase() === pinnedFingerprint
+              ? undefined
+              : new RouterError('O certificado do router nao e o que esta fixado nas definicoes', 0, undefined, 'CERT_MISMATCH')
+        }
+      : {})
+  });
+  routerAgents.set(key, agent);
+  return agent;
+}
+
+export function resetRouterAgentCacheForTests(): void {
+  for (const agent of routerAgents.values()) agent.destroy();
+  routerAgents.clear();
+}
 
 // ---------------------------------------------------------------- definições
 
@@ -298,7 +337,7 @@ export function createTransport(config: RouterConfig): RouterTransport {
   const pinnedPem = config.tlsCert.trim();
   const pinnedFingerprint = pinnedPem ? fingerprintOf(pinnedPem) : '';
 
-  return (req) =>
+  const send = (req: RouterRequest, retried = false): Promise<unknown> =>
     new Promise((resolve, reject) => {
       const payload = req.body === undefined ? null : Buffer.from(JSON.stringify(req.body));
       const call = httpsRequest(
@@ -308,23 +347,8 @@ export function createTransport(config: RouterConfig): RouterTransport {
           path: `/rest${req.path}`,
           method: req.method,
           auth,
+          agent: routerAgent(config.host, config.port, pinnedPem, pinnedFingerprint),
           rejectUnauthorized: true,
-          ...(pinnedPem
-            ? {
-                ca: [pinnedPem],
-                // O nome no certificado do router não corresponde a nada
-                // resolvível; a identidade aqui é o próprio certificado.
-                checkServerIdentity: (_host: string, cert: { fingerprint256?: string }) =>
-                  cert.fingerprint256?.toUpperCase() === pinnedFingerprint
-                    ? undefined
-                    : new RouterError(
-                        'O certificado do router nao e o que esta fixado nas definicoes',
-                        0,
-                        undefined,
-                        'CERT_MISMATCH'
-                      )
-              }
-            : {}),
           timeout: REQUEST_TIMEOUT_MS,
           headers: {
             accept: 'application/json',
@@ -365,6 +389,10 @@ export function createTransport(config: RouterConfig): RouterTransport {
         call.destroy(new RouterError('O router não respondeu a tempo', 0, undefined, 'ETIMEDOUT'))
       );
       call.on('error', (err: NodeJS.ErrnoException) => {
+        if (!retried && req.method === 'GET' && call.reusedSocket && err.code === 'ECONNRESET') {
+          resolve(send(req, true));
+          return;
+        }
         if (err instanceof RouterError) {
           reject(err);
           return;
@@ -390,6 +418,8 @@ export function createTransport(config: RouterConfig): RouterTransport {
       if (payload) call.write(payload);
       call.end();
     });
+
+  return (req) => send(req);
 }
 
 // ----------------------------------------------------------------- modelo
@@ -500,6 +530,31 @@ export async function listInterfaces(transport: RouterTransport): Promise<Router
       rxBytes: num(row['rx-byte']),
       txBytes: num(row['tx-byte']),
       comment: str(row.comment)
+    }))
+    .filter((item) => item.name);
+}
+
+/**
+ * `monitor-traffic` é um comando só de leitura: a REST API expõe comandos via
+ * POST, mas este não escreve nada no router. É a única exceção deliberada ao
+ * GET nas leituras deste módulo. Os contadores `/interface rx-byte` são
+ * atualizados pelo router cerca de uma vez por segundo e dão taxas aos saltos.
+ * O transporte só repete GET; este POST não deve ser repetido.
+ */
+export async function monitorTraffic(
+  transport: RouterTransport,
+  names: string[]
+): Promise<Array<{ name: string; rxBps: number | null; txBps: number | null }>> {
+  const raw = await transport({
+    method: 'POST',
+    path: '/interface/monitor-traffic',
+    body: { interface: names.join(','), once: '' }
+  });
+  return asArray(raw)
+    .map((row) => ({
+      name: str(row.name) ?? '',
+      rxBps: num(row['rx-bits-per-second']),
+      txBps: num(row['tx-bits-per-second'])
     }))
     .filter((item) => item.name);
 }
