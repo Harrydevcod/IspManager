@@ -365,6 +365,21 @@ const upsertState = `
     checked_at = datetime('now')
 `;
 
+/**
+ * Esquece o estado dos serviços que a passagem deixou de acompanhar: perderam o
+ * utilizador PPPoE ou deixaram de existir. Sem isto, a última leitura ficava para
+ * sempre a contar como online ou divergente no Router e no painel Operação.
+ * Uma passagem só de alguns serviços (`scope`) não mexe no estado dos outros.
+ */
+function forgetUntrackedState(db: Database.Database, tracked: DesiredService[], scope: Set<number> | null): void {
+  const trackedIds = new Set(tracked.map((service) => service.serviceId));
+  const forget = db.prepare('DELETE FROM service_network_state WHERE service_id = ?');
+  const rows = db.prepare('SELECT service_id AS serviceId FROM service_network_state').all() as Array<{ serviceId: number }>;
+  for (const { serviceId } of rows) {
+    if (!trackedIds.has(serviceId) && (!scope || scope.has(serviceId))) forget.run(serviceId);
+  }
+}
+
 function recordSystemAudit(db: Database.Database, action: string, serviceId: number, summary: string): void {
   try {
     db.prepare(`
@@ -396,6 +411,7 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
   const wanted = deps.serviceIds ? new Set(deps.serviceIds) : null;
   const selected = wanted ? allDesired.filter((service) => wanted.has(service.serviceId)) : allDesired;
   if (selected.length === 0) {
+    forgetUntrackedState(db, allDesired, wanted);
     return { dryRun: deps.dryRun, services: 0, online: 0, planned: 0, applied: 0, failed: 0, divergences: 0, actions: [], skipped: true, reason: 'Nenhum servico com utilizador PPPoE' };
   }
 
@@ -525,6 +541,7 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
         errors.get(service.serviceId) ?? null
       );
     }
+    forgetUntrackedState(db, allDesired, wanted);
   });
   persist();
 

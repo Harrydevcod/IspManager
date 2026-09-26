@@ -676,6 +676,22 @@ describe('finance routes', () => {
     expect(db.prepare('SELECT service_id AS s FROM work_orders WHERE id = ?').get(wo.lastInsertRowid)).toEqual({ s: null });
   });
 
+  test('apaga um serviço que já passou pela reconciliação do router', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-NET','Cliente Rede','active')`).run();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: { clientId: client.lastInsertRowid, monthlyValueCve: 3500, dueDay: 10 }
+    });
+    const serviceId = (created.json() as { id: number }).id;
+    // O que a reconciliação deixa por cada serviço que acompanha.
+    db.prepare(`INSERT INTO service_network_state (service_id, secret_id, online, divergence) VALUES (?, '*1', 1, 'profile')`).run(serviceId);
+
+    const response = await app.inject({ method: 'DELETE', url: `/api/services/${serviceId}` });
+    expect(response.statusCode).toBe(204);
+    expect(db.prepare('SELECT count(*) AS n FROM service_network_state WHERE service_id = ?').get(serviceId)).toEqual({ n: 0 });
+  });
+
   test('rolls back the whole service when one item is out of stock', async () => {
     const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-NS','Sem Stock','active')`).run();
     const router = db.prepare(`INSERT INTO equipment_catalog (category, type, model, is_serialized, stock_total, active) VALUES ('equipamento','router','R1',1,5,1)`).run();

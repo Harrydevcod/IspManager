@@ -263,6 +263,39 @@ describe('runNetworkEnforcement', () => {
     });
   });
 
+  test('um serviço que perde o PPPoE deixa de ter estado de rede', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    addService(db, 2, 'active', 'ana-2');
+    const stateIds = () => (db.prepare('SELECT service_id FROM service_network_state ORDER BY service_id').all() as Array<{ service_id: number }>)
+      .map((row) => row.service_id);
+    await runNetworkEnforcement(db, { transport: recordingTransport([secret()], [{ id: '*A', name: 'joao-1' }]).transport, dryRun: true, maxDisables: 5 });
+    expect(stateIds()).toEqual([1, 2]);
+
+    db.prepare('UPDATE services SET pppoe_username = NULL WHERE id = 1').run();
+    await runNetworkEnforcement(db, { transport: recordingTransport([]).transport, dryRun: true, maxDisables: 5 });
+    // Contava como online e com divergência para sempre, no Router e no painel Operação.
+    expect(stateIds()).toEqual([2]);
+  });
+
+  test('sem nenhum serviço com PPPoE, o estado antigo é esquecido na mesma', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    await runNetworkEnforcement(db, { transport: recordingTransport([secret()]).transport, dryRun: true, maxDisables: 5 });
+    db.prepare('UPDATE services SET pppoe_username = NULL WHERE id = 1').run();
+    const summary = await runNetworkEnforcement(db, { transport: recordingTransport([]).transport, dryRun: true, maxDisables: 5 });
+    expect(summary.skipped).toBe(true);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM service_network_state').get()).toEqual({ n: 0 });
+  });
+
+  test('uma passagem só de alguns serviços não mexe no estado dos outros', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    addService(db, 2, 'active', 'ana-2');
+    await runNetworkEnforcement(db, { transport: recordingTransport([secret()]).transport, dryRun: true, maxDisables: 5 });
+    db.prepare('UPDATE services SET pppoe_username = NULL WHERE id = 1').run();
+    await runNetworkEnforcement(db, { transport: recordingTransport([]).transport, dryRun: true, maxDisables: 5, serviceIds: [2] });
+    // O 1 perdeu o PPPoE, mas esta passagem não era sobre ele: a seguinte completa trata-o.
+    expect(db.prepare('SELECT COUNT(*) AS n FROM service_network_state').get()).toEqual({ n: 2 });
+  });
+
   test('secret criado para um serviço já suspenso nasce ativo em SUSPENSO', async () => {
     addService(db, 1, 'suspended', 'joao-1');
     const { transport, calls } = recordingTransport([]);
