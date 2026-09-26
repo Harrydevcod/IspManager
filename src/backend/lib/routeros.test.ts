@@ -71,16 +71,10 @@ async function withHttpsServer(
 }
 
 describe('ligação HTTPS reutilizada', () => {
-  // O agente só devolve o socket ao conjunto depois do fim da resposta, num
-  // tique seguinte; um segundo pedido feito logo a seguir podia abrir outra
-  // ligação (visto na CI em Linux). Na app os pedidos vêm espaçados.
-  const socketBackInPool = () => new Promise((resolve) => setTimeout(resolve, 25));
-
   test('dois GET de transportes diferentes usam a mesma ligação TLS', async () => {
     await withHttpsServer((_number, _socket, respond) => respond(), async (port, connections) => {
       const config = localConfig(port);
       await createTransport(config)({ method: 'GET', path: '/system/resource' });
-      await socketBackInPool();
       await createTransport(config)({ method: 'GET', path: '/system/resource' });
       expect(connections()).toBe(1);
     });
@@ -102,7 +96,6 @@ describe('ligação HTTPS reutilizada', () => {
     }, async (port, connections, requests) => {
       const transport = createTransport(localConfig(port));
       await transport({ method: 'GET', path: '/system/resource' });
-      await socketBackInPool();
       await expect(transport({ method: 'GET', path: '/system/resource' })).resolves.toEqual({ ok: true });
       expect(requests()).toBe(3);
       expect(connections()).toBe(2);
@@ -116,7 +109,6 @@ describe('ligação HTTPS reutilizada', () => {
     }, async (port, _connections, requests) => {
       const transport = createTransport(localConfig(port));
       await transport({ method: 'GET', path: '/system/resource' });
-      await socketBackInPool();
       await expect(transport({ method: 'PATCH', path: '/ppp/secret', body: { name: 'x' } }))
         .rejects.toMatchObject({ code: 'ECONNRESET' });
       expect(requests()).toBe(2);

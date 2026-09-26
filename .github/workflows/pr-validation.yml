@@ -16,7 +16,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # O mesmo Node que o Electron 41 traz (24.x): a app corre nele, e o
+          # agente HTTPS do Node 22 não reutiliza a ligação ao router.
+          node-version: 24
           cache: npm
 
       - run: npm ci
