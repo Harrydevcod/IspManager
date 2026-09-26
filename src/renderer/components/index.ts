@@ -7,6 +7,7 @@ export * from './Button';
 export * from './ModuleHeaderActions';
 export * from './Field';
 export * from './SecretField';
+export * from './VaultBanner';
 export * from './Select';
 export * from './ModeSelect';
 export * from './WanModeSelect';

@@ -68,9 +68,11 @@ type SettingsModuleProps = {
    * mais para sair do ensaio (RouterLiveDialog) — e não uma segunda porta.
    */
   scope?: 'all' | 'router';
+  /** Separador a abrir quando se chega de fora (o aviso do cofre abre o Cofre). */
+  initialTab?: 'vault';
 };
 
-export function SettingsModule({ scope = 'all' }: SettingsModuleProps = {}) {
+export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProps = {}) {
   const auth = useAuth();
   const [routerSecretDraft, setRouterSecretDraft] = useState<SecretDraft>({ editing: false });
   const [ultraSecretDraft, setUltraSecretDraft] = useState<SecretDraft>({ editing: false });
@@ -80,7 +82,7 @@ export function SettingsModule({ scope = 'all' }: SettingsModuleProps = {}) {
   const [testPhone, setTestPhone] = useState('');
   const [testMessage, setTestMessage] = useState<{ tone: 'neutral' | 'success' | 'error'; text: string } | null>(null);
   const [lastSavedForm, setLastSavedForm] = useState<SettingsFormState | null>(null);
-  const [activeTab, setActiveTab] = useState<SettingsTab>(scope === 'router' ? 'network' : 'company');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(scope === 'router' ? 'network' : initialTab ?? 'company');
   const [form, setForm] = useState<SettingsFormState>({
     companyName: 'ISPM',
     nif: '',

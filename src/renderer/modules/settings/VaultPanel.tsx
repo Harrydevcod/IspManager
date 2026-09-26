@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Button, Field, Message } from '../../components';
+import { announceVaultChanged, Button, Field, Message } from '../../components';
 import { authFetch } from '../../lib/auth';
 
 type VaultState = 'ready' | 'recovery_pending' | 'locked' | 'absent';
@@ -13,6 +13,7 @@ export function VaultPanel() {
   const [unlockKey, setUnlockKey] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState<'idle' | 'done' | 'failed'>('idle');
 
   useEffect(() => {
     let cancelled = false;
@@ -35,9 +36,12 @@ export function VaultPanel() {
       });
       const result = await response.json() as { error?: string; recoveryKey?: string; status?: VaultState; migrationError?: string };
       if (!response.ok) throw new Error(result.error ?? 'Operação indisponível.');
-      if (result.recoveryKey) setRecoveryKey(result.recoveryKey);
+      if (result.recoveryKey) { setRecoveryKey(result.recoveryKey); setCopied('idle'); }
       if (result.migrationError) setMigrationError(result.migrationError);
-      if (result.status) { setStatus(result.status); setRecoveryKey(''); setConfirmation(''); setUnlockKey(''); }
+      if (result.status) {
+        setStatus(result.status); setRecoveryKey(''); setConfirmation(''); setUnlockKey('');
+        announceVaultChanged();
+      }
       setPassword('');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Operação indisponível.');
@@ -49,6 +53,12 @@ export function VaultPanel() {
     event.preventDefault();
     if (confirmation !== recoveryKey) { setError('A chave reintroduzida não coincide.'); return; }
     void send('confirm', { recoveryKey: confirmation });
+  }
+  function copyKey() {
+    // A chave vai só para a área de transferência; nunca para armazenamento do browser.
+    navigator.clipboard.writeText(recoveryKey)
+      .then(() => setCopied('done'))
+      .catch(() => setCopied('failed'));
   }
   function unlock(event: FormEvent) { event.preventDefault(); void send('unlock', { recoveryKey: unlockKey }); }
 
@@ -66,7 +76,11 @@ export function VaultPanel() {
         <Field label="Palavra-passe atual" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
         <Button type="submit" disabled={busy}>Mostrar chave de recuperação</Button>
       </form> : <>
-        <p className="vault-recovery-key">{recoveryKey}</p>
+        <div className="vault-recovery">
+          <p className="vault-recovery-key">{recoveryKey}</p>
+          <Button type="button" variant="secondary" size="sm" onClick={copyKey}>{copied === 'done' ? 'Copiada' : 'Copiar'}</Button>
+        </div>
+        {copied === 'failed' && <Message tone="error">Não foi possível copiar. Selecione a chave e copie-a à mão.</Message>}
         <form onSubmit={confirm}>
           <Field label="Reintroduza a chave de recuperação" type="password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" required />
           <Button type="submit" disabled={busy}>Confirmar chave guardada</Button>
