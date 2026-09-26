@@ -12,7 +12,11 @@ beforeAll(async () => {
   process.env.ISPM_DATA_DIR = dataDir;
   process.env.ISPM_AUTH = 'off';
   const server = await import('../server');
-  app = await server.createBackendApp();
+  app = await server.createBackendApp({ localProtection: {
+    available: () => true,
+    seal: (value: string) => `test:${value}`,
+    open: (value: string) => value.slice(5)
+  } });
   await app.ready();
 });
 

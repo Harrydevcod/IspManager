@@ -4,6 +4,7 @@ import path from 'node:path';
 import { copyFileSync, existsSync, statSync } from 'node:fs';
 import {
   createBackup,
+  areNormalBackupsBlocked,
   listBackups,
   pruneBackups,
   readBackupIntervalHours,
@@ -77,7 +78,8 @@ export async function registerBackupRoutes(app: FastifyInstance) {
     return { backupDir: resolveBackupDir(), intervalHours: parsed.data.intervalHours };
   });
 
-  app.post('/api/backups', adminOnly, async (request) => {
+  app.post('/api/backups', adminOnly, async (request, reply) => {
+    if (areNormalBackupsBlocked()) return reply.status(409).send({ error: 'O cofre está indisponível. Desbloqueie ou conclua a migração antes de criar backups.' });
     const entry = await createBackup('manual');
     pruneBackups();
     recordAudit(request, {

@@ -22,6 +22,20 @@ afterEach(() => {
 });
 
 describe('arranque do cofre', () => {
+  test('standalone não cria o cofre e não cria backup sem cifrar credenciais', async () => {
+    dir = mkdtempSync(path.join(tmpdir(), 'ispm-vault-standalone-'));
+    process.env.ISPM_DATA_DIR = dir;
+    process.env.ISPM_AUTH = 'off';
+    process.env.ISPM_AUTO_BILLING = 'off';
+    const { createBackendApp } = await import('../server');
+    const app = await createBackendApp({ localProtection: { available: () => false, seal: () => { throw new Error('UNAVAILABLE'); }, open: () => { throw new Error('UNAVAILABLE'); } } });
+    try {
+      expect((await app.inject({ method: 'GET', url: '/api/vault/status' })).json().status).toBe('absent');
+      expect(getSqliteDatabase().prepare('SELECT COUNT(*) AS n FROM credential_vault').get()).toEqual({ n: 0 });
+      await expect(createBackup('manual')).rejects.toThrow('BACKUP_BLOCKED_BY_VAULT');
+    } finally { await app.close(); }
+  });
+
   test('restauro noutra proteção entra trancado e desbloqueia sem perder o backup', async () => {
     dir = mkdtempSync(path.join(tmpdir(), 'ispm-vault-other-machine-'));
     process.env.ISPM_DATA_DIR = dir;

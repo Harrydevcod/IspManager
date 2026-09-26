@@ -115,7 +115,7 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
     app.log.error({ err }, 'nao foi possivel abrir o cofre de credenciais');
   }
 
-  setNormalBackupsBlocked(Boolean(migrationError) || vault?.status() === 'locked');
+  setNormalBackupsBlocked(Boolean(migrationError) || vault?.status() === 'locked' || vault?.status() === 'absent');
   setVaultForRestore(vault);
 
   // One consistent backup per boot. Availability > backup: never block the

@@ -20,6 +20,7 @@ export function setVaultForRestore(vault: Vault | null): void { vaultForRestore 
 
 let normalBackupsBlocked = false;
 export function setNormalBackupsBlocked(blocked: boolean): void { normalBackupsBlocked = blocked; }
+export function areNormalBackupsBlocked(): boolean { return normalBackupsBlocked; }
 
 export interface BackupEntry {
   /** Filename only (not a full path). */
