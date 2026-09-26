@@ -6,9 +6,20 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## [2.6](https://github.com/Harrydevcod/IspManager/releases/tag/v2.6.0) — 2026-09-26
 
-> **Uma migração.** A `0067` cria duas tabelas novas para o consumo das WAN (por dia e por interface, e a última leitura dos contadores). Não mexe em nada do que já existe. O consumo começa a contar quando esta versão arranca pela primeira vez: os dias anteriores ficam a zero, porque o router não guarda esse histórico.
+> **Antes de instalar: esta versão tem de arrancar uma vez neste computador** antes de restaurar qualquer backup noutro sítio. É no primeiro arranque que as credenciais passam para o cofre novo. Depois disso, **guarde a chave de recuperação**: um aviso em todos os módulos pede-a até ser confirmada, em Configurações → Cofre. Sem ela, um backup restaurado noutro computador fica sem as senhas do router, do WhatsApp e dos clientes.
+
+> **Duas migrações.** A `0064` cria o cofre de credenciais. A `0067` cria duas tabelas novas para o consumo das WAN, por dia e por interface. Nenhuma mexe no que já existe. As credenciais são convertidas no arranque, fora das migrações, e só depois disso é feito o backup de arranque. O consumo das WAN começa a contar quando esta versão arranca pela primeira vez: os dias anteriores ficam a zero, porque o router não guarda esse histórico.
 
 > **Nada escreve no MikroTik.** O consumo lê os contadores das interfaces, e as taxas ao vivo usam o `monitor-traffic`, o comando que o Winbox usa para as mostrar. É um POST da API REST, mas só lê.
+
+### Cofre de credenciais
+
+- **As credenciais passam a viver num cofre cifrado.** A senha do router, o token do WhatsApp (UltraMsg) e as senhas PPPoE dos clientes ficam cifradas na base de dados, e a senha PPPoE deixa de estar em claro. Um `ispm.sqlite` ou um backup copiado sem a chave de recuperação já não dá credencial nenhuma.
+- **Restaurar um backup noutro computador já não perde credenciais.** O cofre abre trancado e desbloqueia-se com a chave de recuperação, em Configurações → Cofre. Com ele trancado, o login, a faturação e os relatórios funcionam normalmente; só param as integrações e os backups normais até ao desbloqueio.
+- **As senhas nunca mais aparecem no ecrã nem saem da API**, para nenhum papel. Os campos mostram "Configurada" e só abrem, vazios, ao carregar em "Editar"; gravar outra definição deixa a senha como estava.
+- **Senhas PPPoE geradas pelo ISPM deixam de poder ser consultadas depois.** Para dar a senha ao técnico, escreva-a ao criar o serviço, ou mude-a com "Alterar senha PPPoE".
+
+### Router de gestão
 
 - **Tráfego das WAN ao vivo na Visão geral do Router de gestão.** Um cartão por interface da lista `WAN` do MikroTik (os dois Starlink), com o download e o upload atuais e a curva dos últimos 2 minutos. A taxa é a que o próprio router mede, a mesma do Winbox, e atualiza de segundo a segundo enquanto a Visão geral está aberta.
 - **Cartão Total ao lado das duas WAN.** A banda consumida pelas duas somadas, quantas estão ligadas e como o download se reparte entre elas, para ver o load balance a funcionar. As três curvas estão na mesma escala: uma curva mais alta quer dizer mais tráfego a sério. Em ecrã mais estreito, o Total passa para a fila de baixo.
