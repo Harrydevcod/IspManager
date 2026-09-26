@@ -23,7 +23,7 @@ import {
   type BackupEntry,
 } from './backup';
 import { runMigrations } from '../db/migrate';
-import { getSqliteDatabase, closeDatabase } from '../db/database';
+import { getSqliteDatabase, closeDatabaseForTests, requiresRestart } from '../db/database';
 
 function entry(iso: string): BackupEntry {
   return { file: `ispm-${iso}.sqlite`, createdAt: new Date(iso), sizeBytes: 1 };
@@ -106,7 +106,7 @@ describe('backup engine IO', () => {
   // singleton opened inside createBackup) keeps a lock on the temp file,
   // so the singleton must be closed before removing the temp directory.
   function cleanup(): void {
-    closeDatabase();
+    closeDatabaseForTests();
     rmSync(dir, { recursive: true, force: true });
   }
 
@@ -208,7 +208,7 @@ describe('runScheduledBackupIfDue', () => {
   }
 
   function cleanup(): void {
-    closeDatabase();
+    closeDatabaseForTests();
     rmSync(dir, { recursive: true, force: true });
   }
 
@@ -278,7 +278,7 @@ describe('restoreBackup', () => {
     db.prepare(
       `INSERT INTO clients (client_code, full_name) VALUES (?, ?)`,
     ).run('LIVE-1', 'Live Row');
-    closeDatabase();
+    closeDatabaseForTests();
 
     const fresh = new Database(path.join(dir, 'tmpsrc.sqlite'));
     runMigrations(fresh);
@@ -293,12 +293,15 @@ describe('restoreBackup', () => {
     const snaps = readdirSync(bdir).filter((f) => f.startsWith('pre-restore-'));
     expect(snaps.length).toBeGreaterThanOrEqual(1);
 
+    expect(requiresRestart()).toBe(true);
+    expect(() => getSqliteDatabase()).toThrow('RESTART_REQUIRED');
+    closeDatabaseForTests(); // simula um novo processo após o restauro
     const reopened = getSqliteDatabase();
     const live = reopened
       .prepare('SELECT 1 FROM clients WHERE client_code = ?')
       .get('LIVE-1');
     expect(live).toBeUndefined();
-    closeDatabase();
+    closeDatabaseForTests();
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -320,7 +323,7 @@ describe('restoreBackup', () => {
     await expect(restoreBackup(backupFile)).rejects.toThrow('restauro em curso');
     await expect(first).resolves.toMatchObject({ restartRequired: true });
 
-    closeDatabase();
+    closeDatabaseForTests();
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -349,7 +352,7 @@ describe('restoreBackup', () => {
       .get('SNAP-1') as { full_name: string } | undefined;
     snap.close();
     expect(row?.full_name).toBe('Snap Row');
-    closeDatabase();
+    closeDatabaseForTests();
     rmSync(dir, { recursive: true, force: true });
   });
 });

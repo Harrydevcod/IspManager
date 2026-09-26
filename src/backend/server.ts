@@ -1,11 +1,13 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import { getDatabase, getSqliteDatabase } from './db/database';
-import { getLocalProtection } from './lib/local-protection';
+import { getDatabase, getSqliteDatabase, requiresRestart } from './db/database';
+import { getLocalProtection, setLocalProtection, type LocalProtection } from './lib/local-protection';
+import { loadSessionSecret } from './lib/session-secret';
 import { refreshSecretsLost, setCredentialVault } from './lib/secrets';
 import { openVault } from './lib/vault';
 import { migrateCredentials } from './lib/vault-migration';
 import { registerAuthRoutes } from './routes/auth';
+import { registerVaultRoutes } from './routes/vault';
 import { registerAuditRoutes } from './routes/audit';
 import { registerHealthRoutes } from './routes/health';
 import { registerClientRoutes } from './routes/clients';
@@ -32,7 +34,7 @@ import { licenseGateHook, registerLicenseRoutes } from './routes/license';
 import { licenseAllowsWrites } from './lib/license';
 import { registerTopologyRoutes } from './routes/topology';
 import { registerTopologyManagementRoutes } from './routes/topology-management';
-import { createBackup, pruneBackups, runScheduledBackupIfDue } from './lib/backup';
+import { createBackup, pruneBackups, runScheduledBackupIfDue, setNormalBackupsBlocked, setVaultForRestore } from './lib/backup';
 import { runMonthlyBillingIfDue } from './lib/auto-billing';
 import { runAudiovisualAnnualIfDue } from './lib/audiovisual-billing';
 import { runOverdueNoticesIfDue } from './lib/notices';
@@ -48,9 +50,16 @@ import { runJob, runJobSync } from './lib/jobRuns';
 
 let serverStarted = false;
 
-export async function createBackendApp() {
+export async function createBackendApp(options: { localProtection?: LocalProtection } = {}) {
+  if (options.localProtection) setLocalProtection(options.localProtection);
   const app = Fastify({
     logger: process.env.NODE_ENV === 'development'
+  });
+  app.addHook('onClose', async () => {
+    if (options.localProtection) setLocalProtection(undefined);
+    setCredentialVault(null);
+    setVaultForRestore(null);
+    setNormalBackupsBlocked(false);
   });
 
   await app.register(cors, {
@@ -69,6 +78,10 @@ export async function createBackendApp() {
     exposedHeaders: ['Content-Disposition']
   });
 
+  app.addHook('onRequest', async (_request, reply) => {
+    if (requiresRestart()) reply.status(503).send({ restartRequired: true, error: 'Reinicie a aplicação para concluir o restauro.' });
+  });
+
   // Portão de licenciamento antes de tudo o resto: bloqueia escritas quando a
   // licença não as permite e deixa passar leituras, autenticação e backups.
   // Inerte enquanto não houver chave pública configurada (ver ./lib/license-key).
@@ -80,26 +93,40 @@ export async function createBackendApp() {
   // de arranque de propósito: um backup é uma cópia integral do ficheiro, e não
   // vale a pena migrar para depois mandar a versão em claro para uma pen.
   // Nunca impede o arranque (D4): com o cofre trancado, só as integrações param.
+  let vault: ReturnType<typeof openVault> | null = null;
+  let migrationError: string | null = null;
   try {
     const db = getSqliteDatabase();
     const protection = getLocalProtection();
-    const vault = openVault(db, protection);
+    loadSessionSecret(db, protection);
+    vault = openVault(db, protection);
     setCredentialVault(vault);
     const migration = migrateCredentials(db, vault, protection);
-    if (!migration.ok) app.log.error({ field: migration.field, reason: migration.reason }, 'credenciais por converter para o cofre');
+    if (!migration.ok && vault.status() !== 'locked' && vault.status() !== 'absent') {
+      migrationError = `${migration.field}: ${migration.reason}`;
+      setCredentialVault(null);
+      app.log.error({ field: migration.field, reason: migration.reason }, 'credenciais por converter para o cofre');
+    }
     const lost = refreshSecretsLost(db);
     if (lost.length > 0) app.log.warn({ lost, vault: vault.status() }, 'credenciais indisponiveis nesta maquina');
   } catch (err) {
+    setCredentialVault(null);
+    migrationError = 'VAULT_STARTUP_FAILED';
     app.log.error({ err }, 'nao foi possivel abrir o cofre de credenciais');
   }
 
+  setNormalBackupsBlocked(Boolean(migrationError) || vault?.status() === 'locked');
+  setVaultForRestore(vault);
+
   // One consistent backup per boot. Availability > backup: never block the
   // app if the backup directory is unwritable.
-  try {
-    await createBackup('startup');
-    pruneBackups();
-  } catch (err) {
-    app.log.error({ err }, 'startup backup failed');
+  if (vault && (vault.status() === 'ready' || vault.status() === 'recovery_pending') && !migrationError) {
+    try {
+      await createBackup('startup');
+      pruneBackups();
+    } catch (err) {
+      app.log.error({ err }, 'startup backup failed');
+    }
   }
 
   // Auto-bill the closed month(s) once today >= autoBillingDay (default 30),
@@ -145,6 +172,7 @@ export async function createBackendApp() {
   }
 
   await registerAuthRoutes(app);
+  await registerVaultRoutes(app, vault, migrationError);
   await registerLicenseRoutes(app);
   await registerAuditRoutes(app);
   await registerUserRoutes(app);
@@ -291,12 +319,12 @@ export async function createBackendApp() {
   return app;
 }
 
-export async function startBackend() {
+export async function startBackend(options: { localProtection?: LocalProtection } = {}) {
   if (serverStarted) {
     return;
   }
 
-  const app = await createBackendApp();
+  const app = await createBackendApp(options);
 
   await app.listen({
     host: '127.0.0.1',

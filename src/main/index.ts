@@ -1,8 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, safeStorage, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { autoUpdater } from 'electron-updater';
 import { startBackend } from '../backend/server';
+import { createLocalProtection } from '../backend/lib/local-protection';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
 
@@ -325,7 +326,7 @@ app.whenReady().then(async () => {
   buildAppMenu();
 
   if (!isDevelopment) {
-    await startBackend();
+    await startBackend({ localProtection: createLocalProtection(safeStorage) });
   }
 
   ipcMain.handle('app:relaunch', () => {
