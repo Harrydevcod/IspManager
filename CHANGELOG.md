@@ -4,6 +4,15 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.9](https://github.com/Harrydevcod/IspManager/releases/tag/v2.9.0) — 2026-09-27
+
+> **Uma migração (0068):** cada equipamento de backbone ganha a porta do router de gestão onde liga. Nasce vazia; nada muda nos dados existentes.
+
+- **O mapa da Topologia mostra a rede nova: duas Starlink, o router de gestão, o switch e as antenas.** Cada papel tem o seu ícone: satélite nas origens de Internet, router no MikroTik (com a etiqueta "Router de gestão do ISP") e em qualquer outro router, switch no switch.
+- **O router de gestão pinta os ramos ao vivo.** A ligação de cada Starlink ao MikroTik mostra o débito de download no momento, ou "WAN caída" a vermelho. A ligação ao switch mostra a porta, ou "Porta caída". O mapa atualiza-se sozinho, sem fechar os ramos abertos.
+- **O router diz em que porta vê cada equipamento.** Quando o registo não bate com o que o router vê, o equipamento fica assinalado e o painel lateral explica: "Visto na porta LAN1 · registo diz …". Para quem liga diretamente ao router há o botão **Aplicar**. A porta de um switch sem gestão deduz-se das antenas que estão atrás dele.
+- **Campo novo "Porta do router de gestão do ISP"** no registo do backbone, para quem liga ao router ou o alimenta. A lista mostra só portas reais (sem a bridge, o loopback nem as sessões PPPoE).
+
 ## [2.8](https://github.com/Harrydevcod/IspManager/releases/tag/v2.8.0) — 2026-09-26
 
 > **Sem migrações.**
