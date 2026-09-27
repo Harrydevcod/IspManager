@@ -24,6 +24,7 @@ const backbone: BackboneDeviceSummary = {
   assetTag: null,
   ipAddress: '10.0.0.10',
   macAddress: null,
+  routerInterface: null,
   wanMode: 'static',
   operationMode: 'router',
   island: 'São Vicente',
@@ -119,7 +120,12 @@ let currentRole: 'admin' | 'operator' | 'technician' = 'admin';
 let workspaceApi: BackboneApi;
 
 vi.mock('../../lib/auth', () => ({
-  authFetch: vi.fn(),
+  authFetch: vi.fn(async (url: string) => ({
+    ok: true,
+    json: async () => url.includes('/topology/live')
+      ? { available: false, routerDeviceId: null, reason: 'Desligado' }
+      : { available: false, interfaces: [] }
+  })),
   useAuth: () => ({
     isAuthBypassed: false,
     hasRole: (...roles: string[]) => roles.includes(currentRole)
@@ -480,6 +486,7 @@ describe('Backbone workspace', () => {
       assetTag: null,
       ipAddress: null,
       macAddress: null,
+      routerInterface: null,
       wanMode: null,
       operationMode: null,
       island: 'São Vicente',

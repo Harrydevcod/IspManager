@@ -1,9 +1,11 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import type { FastifyInstance } from 'fastify';
+import * as routerLive from '../lib/router-live';
+import type { RouterConfig, RouterTransport } from '../lib/routeros';
 
 let app: FastifyInstance;
 let db: Database.Database;
@@ -33,6 +35,45 @@ const TABLES_TO_CLEAR = [
   'equipment_catalog',
   'clients'
 ];
+
+test('GET /api/topology/live reports an unavailable router with HTTP 200', async () => {
+  const response = await app.inject({ method: 'GET', url: '/api/topology/live' });
+  expect(response.statusCode).toBe(200);
+  expect(response.json()).toMatchObject({ available: false, routerDeviceId: null });
+});
+
+test('GET /api/topology/live combines a fake router transport with registered ports', async () => {
+  const catalogId = insertCatalog({ model: 'hEX S', type: 'router' });
+  insertBackboneDevice({ id: 801, catalogId, name: 'Router de gestão', ip: '10.10.0.1' });
+  insertBackboneDevice({ id: 802, catalogId, name: 'Switch', mac: 'AA:BB:CC:00:00:02', upstreamDeviceId: 801 });
+  db.prepare("UPDATE backbone_devices SET router_interface = 'ether3' WHERE id = 802").run();
+  const previousHost = db.prepare("SELECT value FROM app_settings WHERE key = 'routerosHost'").get() as { value: string } | undefined;
+  db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('routerosHost', '10.10.0.1')").run();
+  const transport: RouterTransport = async (request) => {
+    if (request.path.startsWith('/interface/list/member')) return [{ interface: 'WAN1-STARLINK' }];
+    if (request.path === '/interface/monitor-traffic') return [{ name: 'WAN1-STARLINK', 'rx-bits-per-second': '12000000', 'tx-bits-per-second': '1000000' }];
+    if (request.path.startsWith('/interface/bridge/host')) return [{ 'mac-address': 'AA:BB:CC:00:00:02', 'on-interface': 'ether3', local: 'false' }];
+    if (request.path.startsWith('/interface?')) return [{ name: 'WAN1-STARLINK', running: 'true' }, { name: 'ether3', running: 'true' }];
+    throw new Error(request.path);
+  };
+  const spy = vi.spyOn(routerLive, 'readRouterLive').mockImplementation(async (_db, read) => ({
+    available: true as const, dryRun: true,
+    ...await read(transport, { host: '10.10.0.1', port: 443, user: 'test' } as RouterConfig)
+  }));
+  try {
+    const response = await app.inject({ method: 'GET', url: '/api/topology/live' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ available: true, routerDeviceId: 801, seen: [{ deviceId: 802, onInterface: 'ether3' }] });
+    expect(response.json().checks).toContainEqual(expect.objectContaining({ deviceId: 802, portCheck: 'ok' }));
+    db.prepare("UPDATE backbone_devices SET router_interface = 'ether4' WHERE id = 802").run();
+    const changed = await app.inject({ method: 'GET', url: '/api/topology/live' });
+    expect(changed.json().checks).toContainEqual(expect.objectContaining({ deviceId: 802, portCheck: 'divergente' }));
+  } finally {
+    spy.mockRestore();
+    if (previousHost) db.prepare("UPDATE app_settings SET value = ? WHERE key = 'routerosHost'").run(previousHost.value);
+    else db.prepare("DELETE FROM app_settings WHERE key = 'routerosHost'").run();
+  }
+});
 
 beforeAll(async () => {
   dataDir = mkdtempSync(path.join(tmpdir(), 'ispm-topology-test-'));
@@ -282,6 +323,7 @@ describe('GET /api/topology', () => {
       'backbones',
       'edges',
       'generatedAt',
+      'probeIntervalSeconds',
       'root',
       'stats'
     ]);

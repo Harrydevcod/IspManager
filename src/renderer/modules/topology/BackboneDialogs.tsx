@@ -14,6 +14,8 @@ import type { BackboneCatalogOption } from './backbone-api';
 import type { BackbonePrefill } from './BackboneWorkspace';
 import { CV_ISLANDS, isKnownIsland } from '../../lib/islands';
 import { Badge, Button, Combobox, Dialog, Field, Select, Textarea, Toggle, WanModeSelect, OperationModeSelect } from '../../components';
+import type { TopologyLive } from '../../../shared/topology';
+import { useLive } from '../router/useLive';
 
 type EditorProps = {
   open: boolean;
@@ -43,6 +45,7 @@ type EditorState = {
   assetTag: string;
   ipAddress: string;
   macAddress: string;
+  routerInterface: string;
   wanMode: string;
   operationMode: string;
   island: string;
@@ -79,6 +82,7 @@ function editorState(
     assetTag: backbone?.assetTag ?? '',
     ipAddress: backbone?.ipAddress ?? seed?.ipAddress ?? '',
     macAddress: backbone?.macAddress ?? seed?.macAddress ?? '',
+    routerInterface: backbone?.routerInterface ?? '',
     wanMode: backbone?.wanMode ?? '',
     operationMode: backbone?.operationMode ?? '',
     island: backbone?.island ?? '',
@@ -107,6 +111,14 @@ export function BackboneEditorDialog({
 }: EditorProps) {
   const [form, setForm] = useState<EditorState>(() => editorState(backbone, prefill, catalogs));
   const [validation, setValidation] = useState<string | null>(null);
+  const routerLive = useLive<TopologyLive>('http://127.0.0.1:3001/api/topology/live', open, 5_000);
+  const routerInterfaces = routerLive.data?.available ? routerLive.data.interfaces : null;
+  const routerDeviceId = routerLive.data?.routerDeviceId;
+  const hasRouterUpstream = routerDeviceId != null && form.upstreamDeviceIds.includes(routerDeviceId);
+  const hadRouterUpstream = routerDeviceId != null && backbone?.upstreams.some((item) => item.id === routerDeviceId);
+  // Quem alimenta o router de gestão liga numa porta WAN dele (os Starlink).
+  const feedsRouter = backbone != null && routerDeviceId != null && upstreamOptions
+    .some((item) => item.id === routerDeviceId && item.upstreams.some((up) => up.id === backbone.id));
 
   // ponytail: a lista é a página de backbones ativos já carregada (25). Chega para
   // o tamanho desta rede; passar dos 25 exige a paginação que o diálogo de
@@ -157,6 +169,8 @@ export function BackboneEditorDialog({
       wanMode: nullable(form.wanMode),
       operationMode: nullable(form.operationMode),
       macAddress: nullable(form.macAddress),
+      routerInterface: hasRouterUpstream || feedsRouter ? nullable(form.routerInterface)
+        : hadRouterUpstream ? null : backbone?.routerInterface ?? null,
       island: nullable(form.island),
       zone: nullable(form.zone),
       notes: nullable(form.notes),
@@ -322,6 +336,17 @@ export function BackboneEditorDialog({
           <small className="backbone-form-note">
             Campos sem valor serão apresentados como “Não informado”.
           </small>
+          {routerDeviceId != null && (hasRouterUpstream || feedsRouter) && (
+            <div className="topology-router-port-field">
+            {routerInterfaces?.length ? (
+              <Select label="Porta do router de gestão do ISP" value={form.routerInterface} onChange={(event) => update('routerInterface', event.target.value)}>
+                <option value="">Por definir</option>
+                {form.routerInterface && !routerInterfaces.some((item) => item.name === form.routerInterface) && <option value={form.routerInterface}>{form.routerInterface}</option>}
+                {routerInterfaces.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+              </Select>
+            ) : <Field label="Porta do router de gestão do ISP" value={form.routerInterface} onChange={(event) => update('routerInterface', event.target.value)} />}
+            </div>
+          )}
         </div>
         <div className="backbone-dialog-section">
           <p>Implantação</p>

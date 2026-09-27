@@ -94,6 +94,23 @@
 
 .topology-node[data-live='down'] { border-color: color-mix(in oklch, var(--danger) 55%, var(--border)); }
 
+.topology-node[data-port-check='divergente']::before,
+.topology-node[data-port-check='nao_visto']::before {
+  content: '!';
+  position: absolute;
+  top: 0.35rem;
+  left: 0.35rem;
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--topology-amber);
+  color: var(--topology-bg);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
 .topology-node[data-selected] {
   border-color: var(--topology-accent);
   box-shadow:

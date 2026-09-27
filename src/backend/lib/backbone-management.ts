@@ -27,6 +27,7 @@ const BACKBONE_COLUMNS = `
   bd.id, bd.catalog_id AS catalogId, ec.brand AS catalogBrand, ec.model AS catalogModel,
   ec.type AS catalogType, bd.name, bd.status, bd.serial_number AS serialNumber,
   bd.asset_tag AS assetTag, bd.ip_address AS ipAddress, bd.mac_address AS macAddress,
+  bd.router_interface AS routerInterface,
   bd.wan_mode AS wanMode, bd.operation_mode AS operationMode,
   bd.island, bd.zone, bd.provisional,
   bd.created_at AS createdAt, bd.updated_at AS updatedAt,
@@ -318,6 +319,9 @@ function normalizeInput(input: BackboneWriteInput): Omit<BackboneWriteInput, 'ex
   if (upstreamDeviceIds.some((value) => !Number.isInteger(value) || value <= 0)) {
     throw new BackboneValidationError('Backbone a montante inválido');
   }
+  if (input.routerInterface != null && (typeof input.routerInterface !== 'string' || input.routerInterface.trim().length > 64)) {
+    throw new BackboneValidationError('Porta do router inválida');
+  }
   return {
     ...input,
     name,
@@ -326,6 +330,7 @@ function normalizeInput(input: BackboneWriteInput): Omit<BackboneWriteInput, 'ex
     assetTag: normalizeOptional(input.assetTag),
     ipAddress: normalizeOptional(input.ipAddress),
     macAddress: normalizeMac(input.macAddress),
+    routerInterface: normalizeOptional(input.routerInterface ?? null),
     wanMode: normalizeOptional(input.wanMode ?? null),
     operationMode: normalizeOptional(input.operationMode ?? null),
     island: normalizeOptional(input.island),
@@ -479,12 +484,12 @@ export function createBackbone(
     const result = db.prepare(`
       INSERT INTO backbone_devices (
         catalog_id, name, status, serial_number, asset_tag, ip_address, mac_address,
-        wan_mode, operation_mode, island, zone, notes, created_by, provisional
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        wan_mode, operation_mode, router_interface, island, zone, notes, created_by, provisional
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `).run(
       normalized.catalogId, normalized.name, normalized.status, normalized.serialNumber,
       normalized.assetTag, normalized.ipAddress, normalized.macAddress, normalized.wanMode,
-      normalized.operationMode, normalized.island, normalized.zone, normalized.notes, actorId
+      normalized.operationMode, normalized.routerInterface, normalized.island, normalized.zone, normalized.notes, actorId
     );
     const createdId = Number(result.lastInsertRowid);
     replaceUpstreams(db, createdId, normalized.upstreamDeviceIds, actorId);
@@ -530,7 +535,7 @@ export function updateBackbone(
       UPDATE backbone_devices SET
         catalog_id = ?, name = ?, status = ?, serial_number = ?, asset_tag = ?,
         ip_address = ?, mac_address = ?, wan_mode = ?, operation_mode = ?, island = ?,
-        zone = ?, notes = ?,
+        zone = ?, notes = ?, router_interface = ?,
         updated_at = ?
       WHERE id = ? AND (? IS NULL OR updated_at = ?)
         AND (? <> 'retired' OR NOT EXISTS (
@@ -540,7 +545,7 @@ export function updateBackbone(
     `).run(
       normalized.catalogId, normalized.name, normalized.status, normalized.serialNumber,
       normalized.assetTag, normalized.ipAddress, normalized.macAddress, normalized.wanMode,
-      normalized.operationMode, normalized.island, normalized.zone, normalized.notes,
+      normalized.operationMode, normalized.island, normalized.zone, normalized.notes, normalized.routerInterface,
       nextUpdatedAt(existing.updatedAt), id,
       normalized.expectedUpdatedAt ?? null, normalized.expectedUpdatedAt ?? null, normalized.status
     );

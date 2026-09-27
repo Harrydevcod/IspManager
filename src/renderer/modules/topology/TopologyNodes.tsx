@@ -4,6 +4,8 @@ import {
   ChevronRight,
   Network,
   RadioTower,
+  Router,
+  Satellite,
   RotateCw,
   User
 } from 'lucide-react';
@@ -11,6 +13,7 @@ import { Handle, Position } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
 import type { KeyboardEvent } from 'react';
 import type { TopologyNode } from '../../../shared/topology';
+import type { TopologyPortCheck } from '../../../shared/topology';
 import { isKnownWanMode, shortLabelForWanMode } from '../../../shared/wan';
 import { shortLabelForOperationMode } from '../../../shared/operation';
 import { Button } from '../../components';
@@ -24,6 +27,8 @@ export type TopologyNodeContentProps = {
   loading?: boolean;
   error?: string;
   branchCount?: number;
+  routerDeviceId?: number | null;
+  portCheck?: TopologyPortCheck['portCheck'];
   /** Direção do mapa: manda no lado por onde o ramo abre. */
   flow?: TopologyDirection;
   onSelect: () => void;
@@ -100,9 +105,15 @@ function nodeStatusLabel(node: TopologyNode): string {
   return node.administrativeState === 'active' ? 'Ativo' : 'Inativo';
 }
 
-function nodeIcon(node: TopologyNode) {
+function nodeIcon(node: TopologyNode, routerDeviceId?: number | null) {
   if (node.kind === 'logical-root') return <Network size={17} aria-hidden />;
-  if (node.kind === 'backbone') return <RadioTower size={17} aria-hidden />;
+  if (node.kind === 'backbone') {
+    if (node.backboneDeviceId === routerDeviceId) return <Router size={17} aria-hidden />;
+    if (node.catalogType === 'switch') return <Network size={17} aria-hidden />;
+    // Sem alimentação = origem de Internet (ADR 0005): não há tipo próprio.
+    if (node.parentIds.length === 1 && node.parentIds[0] === 'root:isp') return <Satellite size={17} aria-hidden />;
+    return <RadioTower size={17} aria-hidden />;
+  }
   if (node.kind === 'client') return <User size={16} aria-hidden />;
   return <Box size={16} aria-hidden />;
 }
@@ -141,8 +152,9 @@ function BranchControl({
 function NodeSelectControl({
   node,
   branchCount,
+  routerDeviceId,
   onSelect
-}: Pick<TopologyNodeContentProps, 'node' | 'branchCount' | 'onSelect'>) {
+}: Pick<TopologyNodeContentProps, 'node' | 'branchCount' | 'routerDeviceId' | 'onSelect'>) {
   const wanMode = nodeWanMode(node);
   const operationMode = nodeOperationMode(node);
   return (
@@ -154,9 +166,10 @@ function NodeSelectControl({
       onClick={onSelect}
       onKeyDown={(event) => selectWithEnter(event, onSelect)}
     >
-      <span className="topology-node-glyph">{nodeIcon(node)}</span>
+      <span className="topology-node-glyph">{nodeIcon(node, routerDeviceId)}</span>
       <span className="topology-node-copy">
         <strong>{node.label}</strong>
+        {node.kind === 'backbone' && node.backboneDeviceId === routerDeviceId && <span className="topology-node-op">Router de gestão do ISP</span>}
         <small>{nodeMeta(node, branchCount)}</small>
         {(wanMode || operationMode) && (
           <span className="topology-node-modes">
@@ -204,6 +217,8 @@ export function TopologyNodeContent({
   loading = false,
   error,
   branchCount,
+  routerDeviceId,
+  portCheck,
   flow = 'LR',
   onSelect,
   onToggle,
@@ -216,11 +231,12 @@ export function TopologyNodeContent({
       className="topology-node"
       data-kind={node.kind}
       data-flow={flow}
-      data-state={node.issueCodes.length > 0 ? 'attention' : node.administrativeState}
+      data-state={node.issueCodes.length > 0 || portCheck === 'divergente' || portCheck === 'nao_visto' ? 'attention' : node.administrativeState}
+      data-port-check={portCheck}
       data-live={liveState}
       data-selected={selected || undefined}
     >
-      <NodeSelectControl node={node} branchCount={branchCount} onSelect={onSelect} />
+      <NodeSelectControl node={node} branchCount={branchCount} routerDeviceId={routerDeviceId} onSelect={onSelect} />
       <BranchControl
         node={node}
         expanded={expanded}

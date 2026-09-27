@@ -11,6 +11,10 @@ import type {
   TopologyNode,
   TopologySnapshot
 } from '../../../shared/topology';
+import type { TopologyLive } from '../../../shared/topology';
+import { formatBitrate } from '../router/router-api';
+import { createBackboneApi } from './backbone-api';
+import { useTopologyLive } from './useTopologyLive';
 import { Button, EmptyState } from '../../components';
 import { BackboneEditorDialog } from './BackboneDialogs';
 import { TopologyCanvas, type TopologyCanvasHandle } from './TopologyCanvas';
@@ -57,7 +61,7 @@ type NodeDecorators = Pick<
   | 'setSelectedNode'
 >;
 
-function decorateNodes(graph: TopologyGraph, state: NodeDecorators): TopologyCanvasNode[] {
+function decorateNodes(graph: TopologyGraph, state: NodeDecorators, live: TopologyLive | null): TopologyCanvasNode[] {
   return graph.nodes.map((node) => {
     const topology = node.data.topology;
     const backboneDeviceId = topology.kind === 'backbone'
@@ -72,6 +76,10 @@ function decorateNodes(graph: TopologyGraph, state: NodeDecorators): TopologyCan
       data: {
         ...node.data,
         ui: {
+          routerDeviceId: live?.routerDeviceId,
+          portCheck: live?.available && topology.kind === 'backbone'
+            ? live.checks.find((check) => check.deviceId === topology.backboneDeviceId)?.portCheck
+            : undefined,
           expanded: backboneDeviceId === null
             ? false
             : state.expanded.has(backboneDeviceId),
@@ -107,19 +115,26 @@ function edgeStroke(kind: string | undefined) {
   return { stroke: 'var(--border-2)', strokeWidth: 1.25 };
 }
 
-function decorateEdges(graph: TopologyGraph, labelsVisible: boolean): TopologyFlowEdge[] {
-  return graph.edges.map((edge) => ({
-    ...edge,
-    type: 'smoothstep',
-    label: labelsVisible && edge.data
-      ? topologyRelationshipLabel(edge.data.topology.relationship)
-      : undefined,
-    labelStyle: { fill: 'var(--text-2)', fontSize: 11, fontWeight: 650 },
-    labelBgStyle: { fill: 'var(--surface)', fillOpacity: 0.96 },
-    labelBgPadding: [6, 3] as [number, number],
-    labelBgBorderRadius: 3,
-    style: edgeStroke(edge.data?.topology.kind)
-  }));
+export function decorateEdges(graph: TopologyGraph, labelsVisible: boolean, live: TopologyLive | null, snapshot: TopologySnapshot | null): TopologyFlowEdge[] {
+  return graph.edges.map((edge) => {
+    const routerId = live?.routerDeviceId === null || live?.routerDeviceId === undefined ? null : `backbone:${live.routerDeviceId}`;
+    const backbone = edge.source === routerId ? snapshot?.backbones.find((node) => node.id === edge.target)
+      : edge.target === routerId ? snapshot?.backbones.find((node) => node.id === edge.source) : undefined;
+    const iface = live?.available && backbone?.routerInterface
+      ? live.interfaces.find((item) => item.name === backbone.routerInterface) : undefined;
+    return {
+      ...edge,
+      type: 'smoothstep',
+      // A montante do router é uma WAN; a jusante é uma porta da LAN (o switch).
+      label: iface ? (iface.running ? (iface.downBps === null ? backbone?.routerInterface : `↓ ${formatBitrate(iface.downBps)}`) : edge.target === routerId ? 'WAN caída' : 'Porta caída')
+        : labelsVisible && edge.data ? topologyRelationshipLabel(edge.data.topology.relationship) : undefined,
+      labelStyle: { fill: iface && !iface.running ? 'var(--danger)' : 'var(--topology-ink)', fontSize: 11, fontWeight: 650 },
+      labelBgStyle: { fill: 'var(--surface)', fillOpacity: 0.96 },
+      labelBgPadding: [6, 3] as [number, number],
+      labelBgBorderRadius: 3,
+      style: iface && !iface.running ? { stroke: 'var(--danger)', strokeWidth: 1.8, strokeDasharray: '5 4' } : edgeStroke(edge.data?.topology.kind)
+    };
+  });
 }
 
 function branchForNode(
@@ -255,7 +270,8 @@ function useRenderedGraph(
   snapshot: TopologySnapshot | null,
   workspace: ReturnType<typeof useTopologyWorkspace>,
   labelsVisible: boolean,
-  direction: TopologyDirection
+  direction: TopologyDirection,
+  live: TopologyLive | null
 ) {
   const focusedBackboneId = workspace.focusedBackboneId;
   const graph = useMemo(() => {
@@ -279,12 +295,12 @@ function useRenderedGraph(
     workspace.filters
   ]);
   const nodes = useMemo(
-    () => decorateNodes(graph, workspace),
-    [graph, workspace]
+    () => decorateNodes(graph, workspace, live),
+    [graph, workspace, live]
   );
   const edges = useMemo(
-    () => decorateEdges(graph, labelsVisible),
-    [graph, labelsVisible]
+    () => decorateEdges(graph, labelsVisible, live, snapshot),
+    [graph, labelsVisible, live, snapshot]
   );
   return { nodes, edges };
 }
@@ -340,7 +356,7 @@ function useCanvasEffects(
  *
  * Recarregar em vez de remontar: os ramos abertos ficam abertos.
  */
-function useMapFreshness(refresh: () => Promise<void>, revision: number, active: boolean) {
+function useMapFreshness(refresh: () => Promise<void>, revision: number, active: boolean, intervalSeconds = 60) {
   const seenRef = useRef({ revision, active });
   useEffect(() => {
     const seen = seenRef.current;
@@ -351,6 +367,11 @@ function useMapFreshness(refresh: () => Promise<void>, revision: number, active:
     // com o mapa escondido espera pelo regresso em vez de pedir duas vezes.
     if (becameActive || (changed && active)) void refresh();
   }, [active, refresh, revision]);
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(() => { void refresh(); }, intervalSeconds * 1_000);
+    return () => window.clearInterval(timer);
+  }, [active, refresh, intervalSeconds]);
 }
 
 /**
@@ -509,7 +530,11 @@ function TopologyStage({
   toolsSlot,
   onCloseInspector,
   authoring,
-  canvasRef
+  canvasRef,
+  live,
+  onApplyProposal,
+  proposalPending,
+  proposalError
 }: {
   props: TopologyModuleProps;
   workspace: ReturnType<typeof useTopologyWorkspace>;
@@ -524,6 +549,10 @@ function TopologyStage({
   onCloseInspector: () => void;
   authoring: MapAuthoring;
   canvasRef: React.RefObject<TopologyCanvasHandle | null>;
+  live: TopologyLive | null;
+  onApplyProposal: (deviceId: number, routerInterface: string) => Promise<void>;
+  proposalPending: boolean;
+  proposalError: string | null;
 }) {
   const filteredEmpty = nodes.length === 0
     || (hasActiveFilters(workspace.filters) && nodes.length === 1);
@@ -561,6 +590,10 @@ function TopologyStage({
           <TopologyInspector
             node={workspace.selectedNode}
             snapshot={snapshot}
+            live={live}
+            onApplyProposal={authoring.canManage ? onApplyProposal : undefined}
+            proposalPending={proposalPending}
+            proposalError={proposalError}
             branch={inspectorBranch}
             onClose={onCloseInspector}
             onOpenClient={props.onOpenClient}
@@ -577,6 +610,10 @@ function TopologyStage({
 
 function TopologyMapWorkspace(props: TopologyMapViewProps) {
   const workspace = useTopologyWorkspace(props.api);
+  const topologyLive = useTopologyLive(props.active);
+  const live = topologyLive.data;
+  const [proposalPending, setProposalPending] = useState(false);
+  const [proposalError, setProposalError] = useState<string | null>(null);
   // Registar ou ligar recarrega o mapa no sítio — remontar fecharia os ramos
   // abertos — e avisa o módulo para refrescar a lista da aba Backbone.
   const { onMutation } = props;
@@ -585,7 +622,32 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
     void refresh();
     onMutation();
   }, [refresh, onMutation]));
-  useMapFreshness(refresh, props.revision, props.active);
+  const onApplyProposal = useCallback(async (deviceId: number, routerInterface: string) => {
+    if (proposalPending) return;
+    setProposalPending(true);
+    setProposalError(null);
+    try {
+      const api = createBackboneApi();
+      const detail = await api.getBackbone(deviceId);
+      await api.updateBackbone(deviceId, {
+        catalogId: detail.catalogId, name: detail.name, status: detail.status,
+        serialNumber: detail.serialNumber, assetTag: detail.assetTag,
+        ipAddress: detail.ipAddress, macAddress: detail.macAddress,
+        wanMode: detail.wanMode, operationMode: detail.operationMode,
+        island: detail.island, zone: detail.zone, notes: detail.notes,
+        upstreamDeviceIds: detail.upstreams.map((item) => item.id),
+        routerInterface, expectedUpdatedAt: detail.updatedAt
+      });
+      await refresh();
+      topologyLive.reload();
+      onMutation();
+    } catch (error) {
+      setProposalError(error instanceof Error ? error.message : 'Não foi possível aplicar a porta.');
+    } finally {
+      setProposalPending(false);
+    }
+  }, [refresh, topologyLive, onMutation, proposalPending]);
+  useMapFreshness(refresh, props.revision, props.active, workspace.snapshot?.probeIntervalSeconds);
   const canvasRef = useRef<TopologyCanvasHandle>(null);
   const [labelsVisible, setLabelsVisible] = useState(false);
   const [legendVisible, setLegendVisible] = useState(true);
@@ -597,7 +659,8 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
     workspace.snapshot,
     workspace,
     labelsVisible,
-    direction
+    direction,
+    live
   );
   useRefitOnShapeChange(canvasRef, direction, nodes.length);
   // Escolher um nó com o painel recolhido volta a abri-lo — senão o clique
@@ -700,6 +763,10 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
         }}
         authoring={authoring}
         canvasRef={canvasRef}
+        live={live}
+        onApplyProposal={onApplyProposal}
+        proposalPending={proposalPending}
+        proposalError={proposalError}
       />
       {authoring.canManage && (
         <BackboneEditorDialog

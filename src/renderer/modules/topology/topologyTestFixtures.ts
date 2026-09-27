@@ -19,6 +19,7 @@ export const backboneOne: TopologyBackboneNode = {
   assetTag: 'AT-010',
   ipAddress: '10.20.0.1',
   macAddress: 'AA:BB:CC:DD:EE:10',
+  routerInterface: null,
   wanMode: 'static',
   operationMode: 'router',
   island: 'São Vicente',
@@ -43,6 +44,7 @@ export const backboneTwo: TopologyBackboneNode = {
   assetTag: null,
   ipAddress: null,
   macAddress: null,
+  routerInterface: null,
   // Sem endereco e sem MAC: e o parque por classificar que a 0056 deixou nulo.
   wanMode: null,
   operationMode: null,

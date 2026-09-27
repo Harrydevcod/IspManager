@@ -82,6 +82,15 @@ afterEach(() => {
 });
 
 describe('backbone management repository', () => {
+  test('stores, trims and clears the router interface; rejects names over 64 characters', () => {
+    db = freshDb();
+    const { catalogId, actorId } = seed(db);
+    const created = createBackbone(db, input(catalogId, { routerInterface: ' ether3 ' }), actorId);
+    expect(created.routerInterface).toBe('ether3');
+    const cleared = updateBackbone(db, created.id, input(catalogId, { routerInterface: '  ', expectedUpdatedAt: created.updatedAt }), actorId);
+    expect(cleared.routerInterface).toBeNull();
+    expect(() => updateBackbone(db!, created.id, input(catalogId, { routerInterface: 'x'.repeat(65) }), actorId)).toThrow(BackboneValidationError);
+  });
   test('normalizes identity fields and returns a complete backbone detail', () => {
     db = freshDb();
     const fixture = seed(db);

@@ -30,6 +30,7 @@ import {
   type RouterRequest,
   type RouterService,
   listArp,
+  listBridgeHosts,
   listNeighbors,
   neighborModel,
   type RouterTransport
@@ -37,6 +38,20 @@ import {
 import { TEST_ROUTER_CA_PEM, TEST_ROUTER_KEY_PEM, TEST_ROUTER_LEAF_PEM } from './routerosTestCerts';
 
 afterEach(resetRouterAgentCacheForTests);
+
+test('listBridgeHosts reads only remote MACs and their observed ports', async () => {
+  const requests: RouterRequest[] = [];
+  const transport: RouterTransport = async (request) => {
+    requests.push(request);
+    return [
+      { 'mac-address': 'AA:BB:CC:00:00:02', 'on-interface': 'ether3', local: 'false' },
+      { 'mac-address': 'AA:BB:CC:00:00:01', 'on-interface': 'bridge', local: 'true' },
+      { 'mac-address': 'AA:BB:CC:00:00:03', local: 'false' }
+    ];
+  };
+  expect(await listBridgeHosts(transport)).toEqual([{ macAddress: 'AA:BB:CC:00:00:02', onInterface: 'ether3' }]);
+  expect(requests).toEqual([{ method: 'GET', path: '/interface/bridge/host?.proplist=mac-address,on-interface,local' }]);
+});
 
 function localConfig(port: number, tlsCert = TEST_ROUTER_LEAF_PEM + TEST_ROUTER_CA_PEM) {
   return {

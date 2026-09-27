@@ -470,3 +470,11 @@
   font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
 }
+.topology-inspector-router {
+  padding: var(--space-3);
+  border: 1px solid var(--topology-amber);
+  border-radius: 0.5rem;
+  color: var(--topology-ink);
+}
+
+.topology-inspector-router h4 { font-family: var(--font-display); }
