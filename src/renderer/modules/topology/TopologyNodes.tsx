@@ -111,6 +111,7 @@ export function nodeIcon(node: TopologyNode, routerDeviceId?: number | null, siz
   if (node.kind === 'backbone') {
     if (node.backboneDeviceId === routerDeviceId) return <Router size={size} aria-hidden />;
     if (node.catalogType === 'switch') return <Network size={size} aria-hidden />;
+    if (node.catalogType === 'router') return <Router size={size} aria-hidden />;
     // Sem alimentação = origem de Internet (ADR 0005): não há tipo próprio.
     if (node.parentIds.length === 1 && node.parentIds[0] === 'root:isp') return <Satellite size={size} aria-hidden />;
     return <RadioTower size={size} aria-hidden />;

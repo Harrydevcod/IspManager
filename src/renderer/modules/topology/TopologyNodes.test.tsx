@@ -56,6 +56,9 @@ describe('TopologyNodeContent', () => {
     expect(antenna).toContain('lucide-radio-tower');
     expect(await render({ ...backboneOne, catalogType: 'switch', parentIds: ['root:isp'] })).toContain('lucide-network');
     expect(container.textContent).not.toContain('Router de gestão do ISP');
+    // A rede interna da empresa (Archer) é um router, mas não o de gestão.
+    expect(await render({ ...backboneOne, backboneDeviceId: 10, catalogType: 'router', parentIds: ['backbone:9'] })).toContain('lucide-router');
+    expect(container.textContent).not.toContain('Router de gestão do ISP');
   });
   test('announces the map direction so the branch control can follow it', async () => {
     const { container } = await mount();
