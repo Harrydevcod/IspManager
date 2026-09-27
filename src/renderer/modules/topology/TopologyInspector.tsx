@@ -17,12 +17,18 @@ import type {
   TopologyNode,
   TopologySnapshot
 } from '../../../shared/topology';
+import type { TopologyLive } from '../../../shared/topology';
 import { Badge, Button, EmptyState } from '../../components';
+import { nodeIcon } from './TopologyNodes';
 import { statusLabel } from '../../lib/status';
 
 export type TopologyInspectorProps = {
   node: TopologyNode | null;
   snapshot: TopologySnapshot;
+  live?: TopologyLive | null;
+  onApplyProposal?: (deviceId: number, routerInterface: string) => Promise<void>;
+  proposalPending?: boolean;
+  proposalError?: string | null;
   branch?: TopologyBackboneBranch;
   onClose: () => void;
   onOpenClient: (clientId: number) => void;
@@ -48,11 +54,6 @@ function kindLabel(node: TopologyNode): string {
   return 'Equipamento de cliente';
 }
 
-function KindIcon({ node }: { node: TopologyNode }) {
-  if (node.kind === 'logical-root') return <Network size={18} aria-hidden />;
-  if (node.kind === 'backbone') return <RadioTower size={18} aria-hidden />;
-  return <Box size={18} aria-hidden />;
-}
 
 /**
  * O endereço, e quando não há, porque não há.
@@ -364,7 +365,7 @@ export function TopologyInspector(props: TopologyInspectorProps) {
       {!node ? <EmptyInspector /> : (
         <>
           <header className="topology-inspector-head">
-            <span className="topology-inspector-kind"><KindIcon node={node} /></span>
+            <span className="topology-inspector-kind">{nodeIcon(node, props.live?.routerDeviceId, 18)}</span>
             <div>
               <p className="eyebrow">{kindLabel(node)}</p>
               <h3>{node.label}</h3>
@@ -382,6 +383,21 @@ export function TopologyInspector(props: TopologyInspectorProps) {
           <StateBadges node={node} />
           {node.kind === 'logical-root' && <RootDetails snapshot={snapshot} />}
           {node.kind === 'backbone' && (
+            <>
+            {props.live?.available && (() => {
+              const check = props.live.checks.find((item) => item.deviceId === node.backboneDeviceId);
+              if (!check) return null;
+              return <section className="topology-inspector-router">
+                <h4>Router de gestão do ISP</h4>
+                <p>{check.onInterface
+                  ? `Visto na porta ${check.onInterface} · registo diz ${check.registeredInterface ?? 'sem porta'}`
+                  : check.portCheck === 'sem_registo' ? 'Sem MAC ou porta registada.' : 'Não visto pelo router.'}</p>
+                {check.proposal && props.onApplyProposal && <Button variant="secondary" size="sm" loading={props.proposalPending} disabled={props.proposalPending} onClick={() => {
+                  void props.onApplyProposal?.(check.proposal!.deviceId, check.proposal!.routerInterface);
+                }}>Aplicar · definir porta = {check.proposal.routerInterface}</Button>}
+                {props.proposalError && <p role="alert">{props.proposalError}</p>}
+              </section>;
+            })()}
             <BackboneDetails
               node={node}
               snapshot={snapshot}
@@ -391,6 +407,7 @@ export function TopologyInspector(props: TopologyInspectorProps) {
               focused={props.focusedBackboneId === node.backboneDeviceId}
               onFocusBackbone={props.onFocusBackbone}
             />
+            </>
           )}
           {node.kind === 'client-device' && (
             <>
@@ -411,7 +428,7 @@ export function TopologyInspector(props: TopologyInspectorProps) {
           )}
           <p className="topology-lineage-note">
             Este mapa representa ligações definidas e configuração administrativa;
-            não representa alcance na rede nem telemetria em tempo real.
+            não representa alcance na rede. O estado das portas vem do router quando disponível.
           </p>
         </>
       )}

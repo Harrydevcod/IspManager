@@ -36,6 +36,7 @@ function backbone(id: number): TopologyBackboneNode {
     assetTag: null,
     ipAddress: `10.0.0.${id}`,
     macAddress: null,
+    routerInterface: null,
     wanMode: 'static',
     operationMode: null,
     island: 'São Vicente',

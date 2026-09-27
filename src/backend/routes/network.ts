@@ -13,8 +13,6 @@ import {
   listNeighbors,
   listActive,
   listInterfaces,
-  listInterfaceListMembers,
-  monitorTraffic,
   listLog,
   summarizeLog,
   listServices,
@@ -29,6 +27,7 @@ import {
   type RouterNeighbor,
   type RouterTransport
 } from '../lib/routeros';
+import { readRouterLive, readWanInterfaces } from '../lib/router-live';
 import { identifyModel } from '../lib/device-model';
 import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecret, planActions, runNetworkEnforcement } from '../lib/network-enforcement';
 import { loadAutoSuspensionPreview, runAutomaticSuspension } from '../lib/auto-suspension';
@@ -341,17 +340,7 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
    * ponytail: sem cache; se o polling de 30 s pesar no router, 10 s de cache aqui.
    */
   async function readLive<T extends object>(read: (transport: RouterTransport, config: RouterConfig) => Promise<T>) {
-    const db = getSqliteDatabase();
-    const config = readRouterConfig(db);
-    if (!config.enabled || !isRouterConfigured(config)) {
-      return { available: false as const, reason: 'Integração MikroTik desligada ou por configurar' };
-    }
-    try {
-      return { available: true as const, dryRun: config.dryRun, ...(await read(createTransport(config), config)) };
-    } catch (err) {
-      const failure = describeRouterFailure(err);
-      return { available: false as const, reason: `${failure.title}. ${failure.detail}` };
-    }
+    return readRouterLive(getSqliteDatabase(), read);
   }
 
   app.get('/api/network/router/overview', adminOnly, async () => readLive(async (transport, config) => {
@@ -394,28 +383,10 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
 
   // Cache de 60 s: a lista WAN quase nunca muda. Cada amostra lê o estado das
   // interfaces e as taxas medidas pelo router em paralelo.
-  let wanNames: { host: string; names: string[]; at: number } | null = null;
 
   /** Taxas medidas pelo router para as interfaces da lista WAN. */
   app.get('/api/network/router/wan', adminOnly, async () => {
-    const result = await readLive(async (transport, config) => {
-      if (!wanNames || wanNames.host !== config.host || Date.now() - wanNames.at > 60_000) {
-        wanNames = { host: config.host, names: await listInterfaceListMembers(transport, 'WAN'), at: Date.now() };
-      }
-      const names = wanNames.names;
-      if (names.length === 0) return { missing: true as const };
-      const [listed, traffic] = await Promise.all([listInterfaces(transport), monitorTraffic(transport, names)]);
-      const rates = new Map(traffic.map((item) => [item.name, item]));
-      const interfaces = listed
-        .filter((item) => names.includes(item.name))
-        .map(({ name, running, disabled }) => ({
-          name,
-          running: running && !disabled,
-          downBps: rates.get(name)?.rxBps ?? null,
-          upBps: rates.get(name)?.txBps ?? null
-        }));
-      return { sampledAt: Date.now(), interfaces };
-    });
+    const result = await readLive(readWanInterfaces);
     if (result.available && 'missing' in result) {
       return { available: false as const, reason: 'O router não tem a lista de interfaces WAN (/interface list).' };
     }

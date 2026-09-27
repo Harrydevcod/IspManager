@@ -1069,6 +1069,15 @@ export async function listArp(transport: RouterTransport): Promise<RouterArpEntr
     .filter((entry) => entry.address && entry.macAddress);
 }
 
+/** MACs aprendidos pela bridge do router de gestão do ISP. Entradas locais não são equipamentos a jusante. */
+export async function listBridgeHosts(transport: RouterTransport): Promise<Array<{ macAddress: string; onInterface: string }>> {
+  const raw = await transport({ method: 'GET', path: '/interface/bridge/host?.proplist=mac-address,on-interface,local' });
+  return asArray(raw)
+    .filter((row) => !toBool(row.local))
+    .map((row) => ({ macAddress: str(row['mac-address']) ?? '', onInterface: str(row['on-interface']) ?? '' }))
+    .filter((row) => row.macAddress && row.onInterface);
+}
+
 /**
  * Concessões DHCP. É a única fonte que traz o nome que o próprio equipamento
  * anuncia (`host-name`) — o DNS inverso raramente responde numa LAN destas.

@@ -23,6 +23,32 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
+test('shows a detected router port proposal and an application error', async () => {
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  const onApplyProposal = vi.fn(async () => undefined);
+  await act(async () => root?.render(<TopologyInspector
+    node={backboneOne}
+    snapshot={snapshot}
+    live={{ available: true, routerDeviceId: 20, interfaces: [], seen: [{ deviceId: 10, onInterface: 'ether3' }], checks: [{
+      deviceId: 10, onInterface: 'ether3', registeredInterface: 'ether4', portCheck: 'divergente',
+      proposal: { deviceId: 10, routerInterface: 'ether3' }
+    }] }}
+    proposalError="O backbone foi alterado por outra pessoa"
+    onApplyProposal={onApplyProposal}
+    onClose={() => undefined} onOpenClient={() => undefined} onOpenService={() => undefined}
+    onOpenStock={() => undefined} focusedBackboneId={null} onFocusBackbone={() => undefined}
+  />));
+  expect(container.textContent).toContain('Visto na porta ether3 · registo diz ether4');
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('alterado por outra pessoa');
+  const apply = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Aplicar'));
+  await act(async () => apply?.click());
+  expect(onApplyProposal).toHaveBeenCalledWith(10, 'ether3');
+  // A proposta continua explícita e pode ser tentada de novo após um conflito.
+  expect(container.textContent).toContain('Aplicar · definir porta = ether3');
+});
+
 test('shows factual CPE associations and routes destination actions', async () => {
   const container = document.createElement('div');
   document.body.append(container);

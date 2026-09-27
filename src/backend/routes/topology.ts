@@ -4,6 +4,10 @@ import { getSqliteDatabase } from '../db/database';
 import { loadBackboneBranch, loadTopologySnapshot } from '../lib/topology-read-model';
 import { searchTopology } from '../lib/topology-search';
 import { requireAuth } from './auth';
+import { readRouterConfig } from '../lib/routeros';
+import { readRouterLive } from '../lib/router-live';
+import { readTopologyLive } from '../lib/topology-live';
+import type { TopologyLive } from '../../shared/topology';
 
 const backboneParamsSchema = z.object({
   id: z.coerce.number().int().positive()
@@ -20,6 +24,30 @@ const searchQuerySchema = z.object({
 
 export async function registerTopologyRoutes(app: FastifyInstance) {
   const readOnly = { preHandler: requireAuth() };
+  let liveCache: { db: object; key: string; at: number; value: TopologyLive } | null = null;
+  let livePending: { db: object; key: string; promise: Promise<TopologyLive> } | null = null;
+
+  app.get('/api/topology/live', readOnly, async (): Promise<TopologyLive> => {
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    const host = config.host;
+    const revision = (db.prepare('SELECT total_changes() AS revision').get() as { revision: number }).revision;
+    const key = `${host}:${config.enabled}:${revision}`;
+    const backbones = loadTopologySnapshot(db).backbones;
+    const routerDeviceId = backbones.find((node) => node.ipAddress === host && host)?.backboneDeviceId ?? null;
+    if (liveCache?.db === db && liveCache.key === key && Date.now() - liveCache.at < 5_000) return liveCache.value;
+    if (livePending?.db === db && livePending.key === key) return livePending.promise;
+    const promise = (async (): Promise<TopologyLive> => {
+      const result = await readRouterLive(db, (transport, config) => readTopologyLive(transport, config, backbones, routerDeviceId));
+      const value: TopologyLive = result.available
+        ? { available: true, routerDeviceId, interfaces: result.interfaces, seen: result.seen, checks: result.checks }
+        : { available: false, routerDeviceId, reason: result.reason };
+      if (value.available) liveCache = { db, key, at: Date.now(), value };
+      return value;
+    })();
+    livePending = { db, key, promise };
+    try { return await promise; } finally { if (livePending?.promise === promise) livePending = null; }
+  });
 
   app.get('/api/topology', readOnly, async () => {
     return loadTopologySnapshot(getSqliteDatabase());

@@ -662,3 +662,4 @@
   overflow: hidden;
   background: var(--topology-bg);
 }
+.topology-router-port-field { max-width: 18rem; }

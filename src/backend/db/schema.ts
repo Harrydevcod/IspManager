@@ -240,6 +240,7 @@ export const backboneDevices = sqliteTable('backbone_devices', {
   assetTag: text('asset_tag'),
   ipAddress: text('ip_address'),
   macAddress: text('mac_address'),
+  routerInterface: text('router_interface'),
   /** Como obtem endereco: predefinidos em shared/wan.ts, texto livre aceite. NULL = por classificar (migracao 0056). */
   wanMode: text('wan_mode'),
   /** Que papel desempenha: predefinidos em shared/operation.ts, texto livre. NULL = por classificar (migracao 0057). */

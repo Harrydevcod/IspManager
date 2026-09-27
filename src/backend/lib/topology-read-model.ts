@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { readProbeConfig } from './network-probe';
 import { STATIC_IP_REQUIRED_TYPES_SQL, requiresStaticIp } from '../../shared/equipment';
 import { WAN_MODES_REQUIRING_IP_SQL } from '../../shared/wan';
 import { BACKBONE_UPLINK_TYPES_SQL } from '../../shared/topology';
@@ -31,6 +32,7 @@ type BackboneRow = EquipmentRow & {
   assetTag: string | null;
   ipAddress: string | null;
   macAddress: string | null;
+  routerInterface: string | null;
   wanMode: string | null;
   operationMode: string | null;
   island: string | null;
@@ -146,7 +148,7 @@ function loadBackboneRows(db: Database.Database): BackboneRow[] {
     SELECT
       bd.id AS backboneDeviceId, bd.catalog_id AS catalogId, bd.name,
       bd.serial_number AS serialNumber, bd.asset_tag AS assetTag,
-      bd.ip_address AS ipAddress, bd.mac_address AS macAddress, bd.wan_mode AS wanMode,
+      bd.ip_address AS ipAddress, bd.mac_address AS macAddress, bd.router_interface AS routerInterface, bd.wan_mode AS wanMode,
       bd.operation_mode AS operationMode,
       bd.island, bd.zone, bd.status, bd.provisional,
       ec.brand, ec.model, ec.type AS catalogType,
@@ -196,7 +198,7 @@ function loadBackboneRow(
     SELECT
       bd.id AS backboneDeviceId, bd.catalog_id AS catalogId, bd.name,
       bd.serial_number AS serialNumber, bd.asset_tag AS assetTag,
-      bd.ip_address AS ipAddress, bd.mac_address AS macAddress, bd.wan_mode AS wanMode,
+      bd.ip_address AS ipAddress, bd.mac_address AS macAddress, bd.router_interface AS routerInterface, bd.wan_mode AS wanMode,
       bd.operation_mode AS operationMode,
       bd.island, bd.zone, bd.status, bd.provisional,
       ec.brand, ec.model, ec.type AS catalogType,
@@ -334,6 +336,7 @@ function backboneNode(row: BackboneRow, uplinks: number[] = []): TopologyBackbon
     wanMode: row.wanMode,
     operationMode: row.operationMode,
     macAddress: row.macAddress,
+    routerInterface: row.routerInterface,
     island: row.island,
     zone: row.zone,
     provisional,
@@ -635,6 +638,7 @@ export function loadTopologySnapshot(
     .map((row) => backboneNode(row, uplinks.get(row.backboneDeviceId) ?? []));
   return {
     generatedAt: now.toISOString(),
+    probeIntervalSeconds: readProbeConfig(db).intervalSeconds,
     root: {
       id: 'root:isp',
       kind: 'logical-root',

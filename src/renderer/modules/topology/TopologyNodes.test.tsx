@@ -40,6 +40,23 @@ afterEach(async () => {
 });
 
 describe('TopologyNodeContent', () => {
+  test('uses distinct icons for Internet source, management router, switch and antenna', async () => {
+    const { container } = await mount();
+    const render = async (node: typeof backboneOne, routerDeviceId: number | null = 1) => {
+      await act(async () => root?.render(<TopologyNodeContent node={node} selected={false} routerDeviceId={routerDeviceId} onSelect={vi.fn()} />));
+      return container.querySelector('.topology-node-glyph svg')?.getAttribute('class');
+    };
+    const source = await render({ ...backboneOne, label: 'Starlink Standard', model: 'Starlink Standard', parentIds: ['root:isp'] });
+    const router = await render({ ...backboneOne, backboneDeviceId: 1 });
+    const switchIcon = await render({ ...backboneOne, catalogType: 'switch', parentIds: ['backbone:1'] });
+    const antenna = await render({ ...backboneOne, parentIds: ['backbone:1'] });
+    expect(source).toContain('lucide-satellite');
+    expect(router).toContain('lucide-router');
+    expect(switchIcon).toContain('lucide-network');
+    expect(antenna).toContain('lucide-radio-tower');
+    expect(await render({ ...backboneOne, catalogType: 'switch', parentIds: ['root:isp'] })).toContain('lucide-network');
+    expect(container.textContent).not.toContain('Router de gestão do ISP');
+  });
   test('announces the map direction so the branch control can follow it', async () => {
     const { container } = await mount();
     expect(container.querySelector('.topology-node')?.getAttribute('data-flow')).toBe('LR');

@@ -69,6 +69,7 @@ export type TopologyBackboneNode = {
   /** Que papel desempenha: predefinidos em shared/operation.ts, livre aceite. NULL = por classificar. */
   operationMode: string | null;
   macAddress: string | null;
+  routerInterface: string | null;
   island: string | null;
   zone: string | null;
   provisional: boolean;
@@ -203,11 +204,24 @@ export type TopologyStats = {
 
 export type TopologySnapshot = {
   generatedAt: string;
+  probeIntervalSeconds?: number;
   root: TopologyLogicalRootNode;
   backbones: TopologyBackboneNode[];
   edges: TopologyCoreLinkEdge[];
   stats: TopologyStats;
 };
+
+export type TopologyLiveInterface = { name: string; running: boolean; downBps: number | null; upBps: number | null };
+export type TopologyPortCheck = {
+  deviceId: number;
+  onInterface: string | null;
+  registeredInterface: string | null;
+  portCheck: 'ok' | 'divergente' | 'nao_visto' | 'sem_registo';
+  proposal: { deviceId: number; routerInterface: string } | null;
+};
+export type TopologyLive =
+  | { available: false; reason: string; routerDeviceId: number | null }
+  | { available: true; routerDeviceId: number | null; interfaces: TopologyLiveInterface[]; seen: Array<{ deviceId: number; onInterface: string }>; checks: TopologyPortCheck[] };
 
 export type TopologyBackboneBranch = {
   generatedAt: string;
