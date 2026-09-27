@@ -105,17 +105,18 @@ function nodeStatusLabel(node: TopologyNode): string {
   return node.administrativeState === 'active' ? 'Ativo' : 'Inativo';
 }
 
-function nodeIcon(node: TopologyNode, routerDeviceId?: number | null) {
-  if (node.kind === 'logical-root') return <Network size={17} aria-hidden />;
+/** Ícone por papel — o mesmo no cartão e no painel lateral. */
+export function nodeIcon(node: TopologyNode, routerDeviceId?: number | null, size = 17) {
+  if (node.kind === 'logical-root') return <Network size={size} aria-hidden />;
   if (node.kind === 'backbone') {
-    if (node.backboneDeviceId === routerDeviceId) return <Router size={17} aria-hidden />;
-    if (node.catalogType === 'switch') return <Network size={17} aria-hidden />;
+    if (node.backboneDeviceId === routerDeviceId) return <Router size={size} aria-hidden />;
+    if (node.catalogType === 'switch') return <Network size={size} aria-hidden />;
     // Sem alimentação = origem de Internet (ADR 0005): não há tipo próprio.
-    if (node.parentIds.length === 1 && node.parentIds[0] === 'root:isp') return <Satellite size={17} aria-hidden />;
-    return <RadioTower size={17} aria-hidden />;
+    if (node.parentIds.length === 1 && node.parentIds[0] === 'root:isp') return <Satellite size={size} aria-hidden />;
+    return <RadioTower size={size} aria-hidden />;
   }
-  if (node.kind === 'client') return <User size={16} aria-hidden />;
-  return <Box size={16} aria-hidden />;
+  if (node.kind === 'client') return <User size={size - 1} aria-hidden />;
+  return <Box size={size - 1} aria-hidden />;
 }
 
 function selectWithEnter(

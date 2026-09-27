@@ -72,7 +72,10 @@ export async function readTopologyLive(transport: RouterTransport, config: Route
   const wan = await readWanInterfaces(transport, config, listed);
   const wanRates = 'interfaces' in wan && wan.interfaces ? wan.interfaces : [];
   const rates = new Map(wanRates.map((item) => [item.name, item]));
-  const interfaces = listed.map((item) => rates.get(item.name) ?? ({
+  // Só portas onde se liga um cabo: a bridge, o loopback e as sessões PPPoE
+  // dinâmicas (`<pppoe-...>`) não são sítio de equipamento nenhum.
+  const ports = listed.filter((item) => !['bridge', 'loopback', 'pppoe-in', 'pppoe-out'].includes(item.type ?? '') && !item.name.startsWith('<'));
+  const interfaces = ports.map((item) => rates.get(item.name) ?? ({
     name: item.name, running: item.running && !item.disabled, downBps: null, upBps: null
   }));
   const byMac = new Map(backbones.filter((node) => node.macAddress).map((node) => [normalizeMacAddress(node.macAddress), node.backboneDeviceId]));

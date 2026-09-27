@@ -27,12 +27,16 @@ describe('checkTopologyPorts', () => {
       if (request.path.startsWith('/interface/bridge/host')) return [{ 'mac-address': 'AA:BB:CC:00:00:02', 'on-interface': 'ether3', local: 'false' }];
       if (request.path.startsWith('/interface?')) return [
         { name: 'WAN1-STARLINK', running: 'true', disabled: 'false' },
-        { name: 'ether3', running: 'true', disabled: 'false' }
+        { name: 'ether3', running: 'true', disabled: 'false' },
+        { name: 'bridge-LAN', type: 'bridge', running: 'true', disabled: 'false' },
+        { name: 'lo', type: 'loopback', running: 'true', disabled: 'false' },
+        { name: '<pppoe-skn001>', type: 'pppoe-in', running: 'true', disabled: 'false' }
       ];
       throw new Error(request.path);
     };
     const config = { host: 'router-test', port: 443, user: 'ispm' } as RouterConfig;
     const result = await readTopologyLive(transport, config, [router, switchNode], 1);
+    expect(result.interfaces.map((item) => item.name)).toEqual(['WAN1-STARLINK', 'ether3']);
     expect(result.interfaces).toMatchObject([
       { name: 'WAN1-STARLINK', running: true, downBps: 12400000 },
       { name: 'ether3', running: true, downBps: null }

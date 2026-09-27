@@ -19,6 +19,7 @@ import type {
 } from '../../../shared/topology';
 import type { TopologyLive } from '../../../shared/topology';
 import { Badge, Button, EmptyState } from '../../components';
+import { nodeIcon } from './TopologyNodes';
 import { statusLabel } from '../../lib/status';
 
 export type TopologyInspectorProps = {
@@ -53,11 +54,6 @@ function kindLabel(node: TopologyNode): string {
   return 'Equipamento de cliente';
 }
 
-function KindIcon({ node }: { node: TopologyNode }) {
-  if (node.kind === 'logical-root') return <Network size={18} aria-hidden />;
-  if (node.kind === 'backbone') return <RadioTower size={18} aria-hidden />;
-  return <Box size={18} aria-hidden />;
-}
 
 /**
  * O endereço, e quando não há, porque não há.
@@ -369,7 +365,7 @@ export function TopologyInspector(props: TopologyInspectorProps) {
       {!node ? <EmptyInspector /> : (
         <>
           <header className="topology-inspector-head">
-            <span className="topology-inspector-kind"><KindIcon node={node} /></span>
+            <span className="topology-inspector-kind">{nodeIcon(node, props.live?.routerDeviceId, 18)}</span>
             <div>
               <p className="eyebrow">{kindLabel(node)}</p>
               <h3>{node.label}</h3>
