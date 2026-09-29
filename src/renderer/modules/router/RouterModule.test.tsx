@@ -215,7 +215,7 @@ describe('Router de gestão', () => {
       const response = await original(input);
       if (!String(input).endsWith('/router/wan/usage')) return response;
       const body = await response.json();
-      return json({ ...body, routerImportedAt: active ? '2026-09-25T12:00:00.000Z' : null });
+      return json({ ...body, routerImportedAt: active ? new Date().toISOString() : null });
     });
     const container = await mount();
     const button = [...container.querySelectorAll('button')].find((item) => item.textContent === 'Contar no router');

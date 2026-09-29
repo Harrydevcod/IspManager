@@ -1,9 +1,15 @@
 /** Written every five minutes. Raise the scheduler interval to 15m if flash wear matters. */
-export const WAN_USAGE_SCRIPT = String.raw`# ispm-wan-usage v1
+export const WAN_USAGE_SCRIPT = String.raw`# ispm-wan-usage v2
 # Escreve a cada 5 min; subir para 15 min se o desgaste da flash preocupar.
 :global ispmWanLast
 :global ispmWanTotals
-:if ([:typeof $ispmWanLast] != "array") do={ :set ispmWanLast [:toarray ""] }
+:local baseline false
+:if ([:typeof $ispmWanLast] != "array") do={
+  :set ispmWanLast [:toarray ""]
+  # Globais vazias com o router ligado ha muito = instalacao ou reset do script:
+  # os contadores trazem o acumulado desde o arranque, que nao e de hoje.
+  :if ([/system resource get uptime] > 00:10:00) do={ :set baseline true }
+}
 :local fileName "ispm-wan-usage.txt"
 :if ([:len [/file find where name="flash"]] > 0) do={ :set fileName "flash/ispm-wan-usage.txt" }
 :if ([:typeof $ispmWanTotals] != "array") do={
@@ -30,7 +36,7 @@ export const WAN_USAGE_SCRIPT = String.raw`# ispm-wan-usage v1
 }
 :local rawDate [/system clock get date]
 :local day $rawDate
-:if ([:pick $rawDate 4 5] = "/") do={
+:if ([:pick $rawDate 3 4] = "/") do={
   :local months {jan="01";feb="02";mar="03";apr="04";may="05";jun="06";jul="07";aug="08";sep="09";oct="10";nov="11";dec="12"}
   :local month ($months->[:pick $rawDate 0 3])
   :local number [:pick $rawDate 4 6]
@@ -45,6 +51,7 @@ export const WAN_USAGE_SCRIPT = String.raw`# ispm-wan-usage v1
     :local previous ($ispmWanLast->$name)
     :local drx $rx
     :local dtx $tx
+    :if ($baseline) do={ :set drx 0; :set dtx 0 }
     :if ([:typeof $previous] != "nil") do={
       :local separator [:find $previous ";"]
       :local oldRx [:tonum [:pick $previous 0 $separator]]

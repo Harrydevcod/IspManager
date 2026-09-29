@@ -44,6 +44,8 @@ export function WanUsage({ live }: { live: { data: RouterWanUsage | null; error:
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const data = live.data;
+  // Só conta como ativo se o último import do ficheiro do router for recente; senão o job voltou ao fallback.
+  const counting = !!data?.routerImportedAt && Date.now() - Date.parse(data.routerImportedAt) < 10 * 60_000;
   const since = data?.since;
   const start = since ? new Date(since) : null;
   const startLabel = start && !Number.isNaN(start.getTime())
@@ -70,7 +72,7 @@ export function WanUsage({ live }: { live: { data: RouterWanUsage | null; error:
       <div className="router-wan-header">
         <h3><ChartColumn size={16} aria-hidden /> Download diário das WAN</h3>
         <div className="router-usage-actions">
-          {data?.routerImportedAt
+          {counting
             ? <span className="router-muted">A contar no router</span>
             : <Button variant="secondary" onClick={install} disabled={busy}>{busy ? 'A instalar…' : 'Contar no router'}</Button>}
           {startLabel && <span className="router-muted router-usage-since">últimos 30 dias · a contar desde {startLabel}</span>}
