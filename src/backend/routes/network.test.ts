@@ -32,6 +32,18 @@ describe('GET /api/network/router/wan/usage', () => {
   });
 });
 
+describe('POST /api/network/router/wan/usage/counter', () => {
+  test('recusa um router por configurar e preserva o modo de ensaio sem contactar o router', async () => {
+    const missing = await app.inject({ method: 'POST', url: '/api/network/router/wan/usage/counter' });
+    expect(missing.statusCode).toBe(400);
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('routerosEnabled', 'true'), ('routerosHost', '127.0.0.1'), ('routerosUser', 'ispm')").run();
+    writeSecret(db, 'routerosPassword', 'segredo');
+    const dryRun = await app.inject({ method: 'POST', url: '/api/network/router/wan/usage/counter' });
+    expect(dryRun.statusCode).toBe(409);
+    expect(dryRun.json().error).toContain('modo de ensaio');
+  });
+});
+
 beforeAll(async () => {
   dataDir = mkdtempSync(path.join(tmpdir(), 'ispm-network-routes-test-'));
   process.env.ISPM_DATA_DIR = dataDir;

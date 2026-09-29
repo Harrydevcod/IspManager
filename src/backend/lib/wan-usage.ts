@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
-import { createTransport, isRouterConfigured, listInterfaceListMembers, listInterfaces, readRouterConfig, type RouterTransport } from './routeros';
+import { createTransport, isRouterConfigured, listInterfaceListMembers, listInterfaces, readRouterConfig, readWanUsageFile, type RouterTransport } from './routeros';
 
 function localDay(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -13,6 +13,34 @@ export function counterDelta(last: number | null, current: number): number {
 
 type CounterState = { rxLast: number; txLast: number };
 type UsageRow = { interface: string; rxBytes: number; txBytes: number };
+export type RouterUsageRow = { day: string; interface: string; rxBytes: number; txBytes: number };
+
+export function parseWanUsageFile(text: string): RouterUsageRow[] {
+  return text.split(/\r?\n/).flatMap((line) => {
+    const parts = line.split(';');
+    if (parts.length !== 4 || !/^\d{4}-\d{2}-\d{2}$/.test(parts[0]) || !parts[1] ||
+      !/^\d+$/.test(parts[2]) || !/^\d+$/.test(parts[3])) return [];
+    const rxBytes = Number(parts[2]);
+    const txBytes = Number(parts[3]);
+    if (!Number.isSafeInteger(rxBytes) || !Number.isSafeInteger(txBytes)) return [];
+    return [{ day: parts[0], interface: parts[1], rxBytes, txBytes }];
+  });
+}
+
+export function importRouterUsage(db: Database.Database, rows: RouterUsageRow[]) {
+  const upsert = db.prepare(`
+    INSERT INTO wan_traffic_daily (day, interface, rx_bytes, tx_bytes) VALUES (?, ?, ?, ?)
+    ON CONFLICT(day, interface) DO UPDATE SET
+      rx_bytes = excluded.rx_bytes, tx_bytes = excluded.tx_bytes
+  `);
+  return db.transaction(() => {
+    for (const row of rows) upsert.run(row.day, row.interface, row.rxBytes, row.txBytes);
+    const importedAt = new Date().toISOString();
+    db.prepare(`INSERT INTO app_settings (key, value, updated_at) VALUES ('wanUsageRouterImportedAt', ?, datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).run(importedAt);
+    return { source: 'router' as const, rows: rows.length, importedAt };
+  })();
+}
 
 export async function recordWanUsage(db: Database.Database, transport: RouterTransport, today = localDay()) {
   const names = new Set(await listInterfaceListMembers(transport, 'WAN'));
@@ -38,7 +66,7 @@ export async function recordWanUsage(db: Database.Database, transport: RouterTra
       const previous = state.get(item.name) as CounterState | undefined;
       const rx = counterDelta(previous?.rxLast ?? null, item.rxBytes!);
       const tx = counterDelta(previous?.txLast ?? null, item.txBytes!);
-      // ponytail: o tráfego enquanto o ISPM está fechado fica no dia da reabertura; os contadores do router não permitem reparti-lo por dias.
+      // Fallback apenas: sem ficheiro do router, o tráfego com a app fechada fica no dia da reabertura.
       add.run(today, item.name, rx, tx);
       save.run(item.name, item.rxBytes, item.txBytes, seenAt);
       rxBytes += rx;
@@ -54,11 +82,18 @@ export async function runWanUsageIfDue() {
   if (!config.enabled || !isRouterConfigured(config)) {
     return { skipped: true, reason: 'Router desligado ou por configurar' };
   }
-  return recordWanUsage(db, createTransport(config));
+  return collectWanUsage(db, createTransport(config));
+}
+
+export async function collectWanUsage(db: Database.Database, transport: RouterTransport) {
+  const file = await readWanUsageFile(transport);
+  if (file !== null) return importRouterUsage(db, parseWanUsageFile(file));
+  return { source: 'fallback' as const, ...await recordWanUsage(db, transport) };
 }
 
 export function loadWanUsage(db: Database.Database, today = localDay()) {
   const since = (db.prepare('SELECT MIN(seen_at) AS since FROM wan_counter_state').get() as { since: string | null }).since;
+  const routerImportedAt = (db.prepare("SELECT value FROM app_settings WHERE key = 'wanUsageRouterImportedAt'").get() as { value: string } | undefined)?.value ?? null;
   const dayRows = db.prepare(`SELECT interface, rx_bytes AS rxBytes, tx_bytes AS txBytes
     FROM wan_traffic_daily WHERE day = ? ORDER BY interface`).all(today) as UsageRow[];
   const monthRows = db.prepare(`SELECT interface, SUM(rx_bytes) AS rxBytes, SUM(tx_bytes) AS txBytes
@@ -67,20 +102,20 @@ export function loadWanUsage(db: Database.Database, today = localDay()) {
   const start = new Date(`${today}T00:00:00Z`);
   start.setUTCDate(start.getUTCDate() - 29);
   const startDay = start.toISOString().slice(0, 10);
-  const history = db.prepare(`SELECT day, interface, rx_bytes AS rxBytes
+  const history = db.prepare(`SELECT day, interface, rx_bytes AS rxBytes, tx_bytes AS txBytes
     FROM wan_traffic_daily WHERE day >= ? AND day <= ? ORDER BY day, interface`)
-    .all(startDay, today) as Array<{ day: string; interface: string; rxBytes: number }>;
+    .all(startDay, today) as Array<{ day: string; interface: string; rxBytes: number; txBytes: number }>;
   const names = [...new Set((db.prepare('SELECT interface FROM wan_counter_state UNION SELECT interface FROM wan_traffic_daily').all() as Array<{ interface: string }>).map((row) => row.interface))].sort();
-  const byDay = new Map<string, Map<string, number>>();
+  const byDay = new Map<string, Map<string, { rxBytes: number; txBytes: number }>>();
   for (const row of history) {
     if (!byDay.has(row.day)) byDay.set(row.day, new Map());
-    byDay.get(row.day)!.set(row.interface, row.rxBytes);
+    byDay.get(row.day)!.set(row.interface, { rxBytes: row.rxBytes, txBytes: row.txBytes });
   }
   const days = Array.from({ length: 30 }, (_, offset) => {
     const date = new Date(`${startDay}T00:00:00Z`);
     date.setUTCDate(date.getUTCDate() + offset);
     const day = date.toISOString().slice(0, 10);
-    return { day, perInterface: names.map((name) => ({ interface: name, rxBytes: byDay.get(day)?.get(name) ?? 0 })) };
+    return { day, perInterface: names.map((name) => ({ interface: name, rxBytes: byDay.get(day)?.get(name)?.rxBytes ?? 0, txBytes: byDay.get(day)?.get(name)?.txBytes ?? 0 })) };
   });
-  return { since, today: dayRows, month: monthRows, days };
+  return { since: since ?? (history[0]?.day ?? null), routerImportedAt, today: dayRows, month: monthRows, days };
 }

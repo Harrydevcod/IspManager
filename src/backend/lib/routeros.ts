@@ -4,6 +4,7 @@ import { connect as tlsConnect } from 'node:tls';
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { readSecret } from './secrets';
+import { WAN_USAGE_SCRIPT } from './routeros-wan-script';
 
 /**
  * Cliente REST do RouterOS (v7). Fino de propósito: o ISPM só precisa de listar
@@ -1260,6 +1261,53 @@ export async function createProfile(
 
 export async function patchProfile(transport: RouterTransport, id: string, patch: { rateLimit: string }): Promise<void> {
   await transport({ method: 'PATCH', path: `/ppp/profile/${id}`, body: { 'rate-limit': patch.rateLimit } });
+}
+
+const WAN_USAGE_NAME = 'ispm-wan-usage';
+const WAN_USAGE_VERSION = 'ispm-wan-usage v1';
+const WAN_USAGE_POLICY = 'read,write,ftp';
+
+/** Instala ou reconcilia os três objetos. PUT/PATCH não são repetidos pelo transporte. */
+export async function ensureWanUsageCounter(transport: RouterTransport): Promise<void> {
+  const scripts = asArray(await transport({ method: 'GET', path: '/system/script?.proplist=.id,name,comment' }));
+  const script = scripts.find((row) => row.name === WAN_USAGE_NAME);
+  if (!script) {
+    await transport({ method: 'PUT', path: '/system/script', body: {
+      name: WAN_USAGE_NAME, comment: WAN_USAGE_VERSION, source: WAN_USAGE_SCRIPT, policy: WAN_USAGE_POLICY
+    } });
+  } else if (script.comment !== WAN_USAGE_VERSION) {
+    await transport({ method: 'PATCH', path: `/system/script/${script['.id']}`, body: {
+      comment: WAN_USAGE_VERSION, source: WAN_USAGE_SCRIPT, policy: WAN_USAGE_POLICY
+    } });
+  }
+
+  const schedulers = asArray(await transport({ method: 'GET', path: '/system/scheduler?.proplist=.id,name,on-event,start-time,interval,policy' }));
+  const expected = [
+    { name: WAN_USAGE_NAME, 'on-event': WAN_USAGE_NAME, 'start-time': '00:00:00', interval: '5m', policy: WAN_USAGE_POLICY },
+    { name: `${WAN_USAGE_NAME}-startup`, 'on-event': WAN_USAGE_NAME, 'start-time': 'startup', interval: '0s', policy: WAN_USAGE_POLICY }
+  ];
+  for (const fields of expected) {
+    const existing = schedulers.find((row) => row.name === fields.name);
+    if (!existing) {
+      await transport({ method: 'PUT', path: '/system/scheduler', body: fields });
+    } else if (existing['on-event'] !== fields['on-event'] || existing['start-time'] !== fields['start-time'] ||
+      existing.interval !== fields.interval || existing.policy !== fields.policy) {
+      await transport({ method: 'PATCH', path: `/system/scheduler/${existing['.id']}`, body: fields });
+    }
+  }
+}
+
+/** O hAP pode guardar ficheiros persistentes em flash/; outros modelos usam a raiz. */
+export async function readWanUsageFile(transport: RouterTransport): Promise<string | null> {
+  for (const name of ['flash/ispm-wan-usage.txt', 'ispm-wan-usage.txt']) {
+    const rows = asArray(await transport({ method: 'GET', path: `/file?name=${encodeURIComponent(name)}` }));
+    const file = rows.find((row) => row.name === name);
+    if (file) {
+      if (typeof file.contents !== 'string') throw new RouterError('O ficheiro de consumo do router não devolveu contents', 0, undefined, 'bad_response');
+      return file.contents;
+    }
+  }
+  return null;
 }
 
 /**

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
-import { counterDelta, loadWanUsage, recordWanUsage } from './wan-usage';
+import { collectWanUsage, counterDelta, importRouterUsage, loadWanUsage, parseWanUsageFile, recordWanUsage } from './wan-usage';
 import type { RouterRequest, RouterTransport } from './routeros';
 
 let db: Database.Database;
@@ -34,6 +34,46 @@ beforeAll(async () => {
 beforeEach(() => {
   db.prepare('DELETE FROM wan_traffic_daily').run();
   db.prepare('DELETE FROM wan_counter_state').run();
+  db.prepare("DELETE FROM app_settings WHERE key = 'wanUsageRouterImportedAt'").run();
+});
+
+describe('ficheiro do contador no router', () => {
+  test('aceita linhas válidas e ignora linhas malformadas, negativas e valores sem precisão', () => {
+    expect(parseWanUsageFile('2026-09-25;WAN1;123;45\nmalformada\n2026-09-26;WAN2;-1;3\n2026-09-27;WAN2;9007199254740992;3\n2026-09-28;WAN2;0;7'))
+      .toEqual([
+        { day: '2026-09-25', interface: 'WAN1', rxBytes: 123, txBytes: 45 },
+        { day: '2026-09-28', interface: 'WAN2', rxBytes: 0, txBytes: 7 }
+      ]);
+  });
+
+  test('substitui apenas os dias presentes no ficheiro e conserva os restantes', () => {
+    db.prepare('INSERT INTO wan_traffic_daily (day, interface, rx_bytes, tx_bytes) VALUES (?, ?, ?, ?)').run('2026-09-24', 'WAN1', 10, 2);
+    db.prepare('INSERT INTO wan_traffic_daily (day, interface, rx_bytes, tx_bytes) VALUES (?, ?, ?, ?)').run('2026-09-25', 'WAN1', 50, 5);
+    importRouterUsage(db, [{ day: '2026-09-25', interface: 'WAN1', rxBytes: 100, txBytes: 20 }]);
+    expect(db.prepare('SELECT day, rx_bytes AS rx, tx_bytes AS tx FROM wan_traffic_daily ORDER BY day').all()).toEqual([
+      { day: '2026-09-24', rx: 10, tx: 2 }, { day: '2026-09-25', rx: 100, tx: 20 }
+    ]);
+    expect(loadWanUsage(db, '2026-09-25').routerImportedAt).toBeTruthy();
+    expect(loadWanUsage(db, '2026-09-25').days.at(-1)?.perInterface[0]).toEqual({ interface: 'WAN1', rxBytes: 100, txBytes: 20 });
+  });
+
+  test('com ficheiro não lê os contadores locais; sem ficheiro usa o fallback', async () => {
+    const calls: RouterRequest[] = [];
+    const withFile: RouterTransport = async (request) => {
+      calls.push(request);
+      if (request.path.startsWith('/file?name=flash')) return [];
+      if (request.path.startsWith('/file?name=')) return [{ name: 'ispm-wan-usage.txt', contents: '2026-09-25;WAN1;7;3\n' }];
+      throw new Error('Não devia ler interfaces');
+    };
+    await expect(collectWanUsage(db, withFile)).resolves.toMatchObject({ source: 'router', rows: 1 });
+    expect(calls.every((call) => call.path.startsWith('/file?name='))).toBe(true);
+    const withoutFile: RouterTransport = async (request) => {
+      if (request.path.startsWith('/file?name=')) return [];
+      return fakeTransport(100, 200)(request);
+    };
+    await expect(collectWanUsage(db, withoutFile)).resolves.toMatchObject({ source: 'fallback', interfaces: 2 });
+    expect(db.prepare("SELECT rx_bytes AS rx FROM wan_traffic_daily WHERE day = '2026-09-25' AND interface = 'WAN1'").get()).toEqual({ rx: 7 });
+  });
 });
 
 afterAll(() => {

@@ -6,10 +6,12 @@ import {
   auditRouterServices,
   createTransport,
   createProfile,
+  ensureWanUsageCounter,
   createSecret,
   describeRouterFailure,
   listProfiles,
   patchProfile,
+  readWanUsageFile,
   diagnoseRouter,
   isRouterConfigured,
   listActive,
@@ -191,6 +193,46 @@ describe('isRouterConfigured', () => {
 });
 
 describe('operações RouterOS', () => {
+  test('instala o contador uma vez e não repete escritas quando já está correto', async () => {
+    const calls: RouterRequest[] = [];
+    const scripts: Record<string, unknown>[] = [];
+    const schedulers: Record<string, unknown>[] = [];
+    const transport: RouterTransport = async (request) => {
+      calls.push(request);
+      if (request.method === 'GET') return request.path.startsWith('/system/script?') ? scripts : schedulers;
+      const body = request.body as Record<string, unknown>;
+      if (request.method === 'PUT' && request.path === '/system/script') scripts.push({ '.id': '*1', ...body });
+      if (request.method === 'PUT' && request.path === '/system/scheduler') schedulers.push({ '.id': `*${schedulers.length + 2}`, ...body });
+      return null;
+    };
+    await ensureWanUsageCounter(transport);
+    expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(3);
+    expect((scripts[0].source as string)).toContain('ispm-wan-usage v1');
+    expect(schedulers.map((row) => row.name)).toEqual(['ispm-wan-usage', 'ispm-wan-usage-startup']);
+    calls.length = 0;
+    await ensureWanUsageCounter(transport);
+    expect(calls.map((call) => call.method)).toEqual(['GET', 'GET']);
+  });
+
+  test('lê o ficheiro persistente em flash e devolve null quando não existe', async () => {
+    const found = fakeTransport([[{ name: 'flash/ispm-wan-usage.txt', contents: '2026-09-25;WAN;1;2\n' }]]);
+    await expect(readWanUsageFile(found)).resolves.toBe('2026-09-25;WAN;1;2\n');
+    await expect(readWanUsageFile(fakeTransport([[], []]))).resolves.toBeNull();
+  });
+
+  test('atualiza a versão antiga do script e os campos dos schedulers', async () => {
+    const transport = fakeTransport([
+      [{ '.id': '*1', name: 'ispm-wan-usage', comment: 'ispm-wan-usage v0' }], null,
+      [
+        { '.id': '*2', name: 'ispm-wan-usage', 'on-event': 'outro', 'start-time': '01:00:00', interval: '10m', policy: 'read' },
+        { '.id': '*3', name: 'ispm-wan-usage-startup', 'on-event': 'ispm-wan-usage', 'start-time': 'startup', interval: '0s', policy: 'read,write,ftp' }
+      ], null
+    ]);
+    await ensureWanUsageCounter(transport);
+    expect(transport.calls.filter((call) => call.method === 'PATCH').map((call) => call.path))
+      .toEqual(['/system/script/*1', '/system/scheduler/*2']);
+  });
+
   test('testConnection lê versão e board', async () => {
     const transport = fakeTransport([[{ version: '7.15.3', 'board-name': 'hEX S' }]]);
     await expect(testConnection(transport)).resolves.toEqual({ version: '7.15.3', boardName: 'hEX S' });

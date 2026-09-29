@@ -4,6 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { loadNetworkStatus, loadProbeEvents, mapWithLimit, readProbeConfig, runNetworkProbe } from '../lib/network-probe';
 import {
   createTransport,
+  ensureWanUsageCounter,
   DEFAULT_ROUTER_PORT,
   describeRouterFailure,
   diagnoseRouter,
@@ -45,7 +46,7 @@ import {
 import { crossReference, type ObservedHost } from '../lib/network-inventory';
 import { buildProposals, dismissalKey, findOrphans, type ProposalKind } from '../lib/discovery-reconcile';
 import { runJob } from '../lib/jobRuns';
-import { loadWanUsage } from '../lib/wan-usage';
+import { collectWanUsage, loadWanUsage } from '../lib/wan-usage';
 import { applyPlanProfile, readBaseProfileName } from '../lib/plan-profiles';
 import { recordAudit } from '../lib/audit';
 import { isIpv4, isPrivateIpv4, SWEEP_BATCH_SIZE } from '../../shared/ip-range';
@@ -394,6 +395,26 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/network/router/wan/usage', adminOnly, async () => loadWanUsage(getSqliteDatabase()));
+
+  app.post('/api/network/router/wan/usage/counter', adminOnly, async (request, reply) => {
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return reply.status(400).send({ error: 'Integração MikroTik desligada ou por configurar' });
+    }
+    if (config.dryRun) return reply.status(409).send({ error: 'Desative o modo de ensaio para instalar o contador no router' });
+    try {
+      const transport = createTransport(config);
+      await ensureWanUsageCounter(transport);
+      await transport({ method: 'POST', path: '/system/script/run', body: { '.id': 'ispm-wan-usage' } });
+      const result = await collectWanUsage(db, transport);
+      recordAudit(request, { action: 'router_wan_usage_counter', entityType: 'router', summary: 'Instalou a contagem das WAN no router' });
+      return result;
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return reply.status(502).send({ error: `${failure.title}. ${failure.detail}`, code: failure.code });
+    }
+  });
 
   app.get('/api/network/router/log', adminOnly, async () => readLive(async (transport) => {
     // Resume-se o registo todo; o ecrã só lista as linhas mais recentes.

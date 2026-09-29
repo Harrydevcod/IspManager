@@ -194,6 +194,14 @@ Se o ISPM devolver **401** com a senha certa, acrescenta `web` às políticas:
 /user group set ispm policy=read,write,api,rest-api,web
 ```
 
+Para usar **Contar no router** no ecrã WAN, o script precisa da política `ftp` para criar e escrever o ficheiro de consumo. Acrescenta-a ao grupo da API antes de instalar o contador; isto não liga o serviço FTP, que permanece desligado:
+
+```routeros
+/user group set ispm policy=read,write,api,rest-api,ftp
+```
+
+Se o teu grupo também precisar de `web` para a REST, conserva-a na lista acima. O contador guarda até 31 dias em `flash/ispm-wan-usage.txt` quando o router tem diretório `flash`, e em `ispm-wan-usage.txt` nos restantes modelos.
+
 Teste rápido, do próprio router:
 
 ```routeros

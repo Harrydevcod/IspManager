@@ -185,10 +185,10 @@ describe('Router de gestão', () => {
       if (!String(input).endsWith('/router/wan/usage')) return response;
       const body = await response.json();
       return json({ ...body, days: [
-        { day: '2026-09-24', perInterface: [{ interface: 'WAN2-STARLINK', rxBytes: 500_000_000 }] },
+        { day: '2026-09-24', perInterface: [{ interface: 'WAN2-STARLINK', rxBytes: 500_000_000, txBytes: 50_000_000 }] },
         { day: '2026-09-25', perInterface: [
-          { interface: 'WAN1-STARLINK', rxBytes: firstRx },
-          { interface: 'WAN2-STARLINK', rxBytes: secondRx }
+          { interface: 'WAN1-STARLINK', rxBytes: firstRx, txBytes: 100_000_000 },
+          { interface: 'WAN2-STARLINK', rxBytes: secondRx, txBytes: 50_000_000 }
         ] }
       ] });
     });
@@ -196,11 +196,33 @@ describe('Router de gestão', () => {
     const history = container.querySelector('.router-usage-history');
     const total = formatDataVolume(firstRx + secondRx);
     const lastDay = history?.querySelector('.router-usage-day:last-child');
-    expect(lastDay?.getAttribute('title')).toContain(`Total ${total}`);
+    expect(lastDay?.getAttribute('title')).toContain(`↓ ${formatDataVolume(firstRx)} · ↑ ${formatDataVolume(100_000_000)} · total ${formatDataVolume(firstRx + 100_000_000)}`);
     expect(history?.querySelectorAll('.router-usage-total')).toHaveLength(1);
     expect(lastDay?.querySelector('.router-usage-total')?.textContent).toBe(total);
     expect(lastDay?.querySelector('.router-usage-total')?.classList.contains('is-end')).toBe(true);
     expect(history?.querySelector('.router-usage-day:first-child i')?.classList.contains('is-second')).toBe(true);
+  });
+
+  test('instala o contador pelo botão e mostra o estado após a importação', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const original = fetchMock.getMockImplementation()!;
+    let active = false;
+    fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).endsWith('/router/wan/usage/counter') && init?.method === 'POST') {
+        active = true;
+        return json({ source: 'router', rows: 1 });
+      }
+      const response = await original(input);
+      if (!String(input).endsWith('/router/wan/usage')) return response;
+      const body = await response.json();
+      return json({ ...body, routerImportedAt: active ? '2026-09-25T12:00:00.000Z' : null });
+    });
+    const container = await mount();
+    const button = [...container.querySelectorAll('button')].find((item) => item.textContent === 'Contar no router');
+    expect(button).toBeTruthy();
+    await click(button);
+    expect(container.textContent).toContain('A contar no router');
+    expect(fetchMock.mock.calls.some(([input, init]) => String(input).endsWith('/router/wan/usage/counter') && (init as RequestInit)?.method === 'POST')).toBe(true);
   });
 
   test('sem registo do acumulado, os cartões mostram "—" e mantêm a linha', async () => {

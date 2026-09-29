@@ -173,9 +173,10 @@ export type RouterWan = { sampledAt: number; interfaces: WanRate[] };
 export type WanUsageRow = { interface: string; rxBytes: number; txBytes: number };
 export type RouterWanUsage = {
   since: string | null;
+  routerImportedAt: string | null;
   today: WanUsageRow[];
   month: WanUsageRow[];
-  days: Array<{ day: string; perInterface: Array<{ interface: string; rxBytes: number }> }>;
+  days: Array<{ day: string; perInterface: Array<{ interface: string; rxBytes: number; txBytes: number }> }>;
 };
 
 const DATA_UNITS = ['B', 'kB', 'MB', 'GB', 'TB'];
