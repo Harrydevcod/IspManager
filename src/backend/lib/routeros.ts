@@ -1264,7 +1264,7 @@ export async function patchProfile(transport: RouterTransport, id: string, patch
 }
 
 const WAN_USAGE_NAME = 'ispm-wan-usage';
-const WAN_USAGE_VERSION = 'ispm-wan-usage v5';
+const WAN_USAGE_VERSION = 'ispm-wan-usage v6';
 const WAN_USAGE_POLICY = 'read,write';
 
 /** Instala ou reconcilia os três objetos. PUT/PATCH não são repetidos pelo transporte. */

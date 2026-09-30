@@ -2,8 +2,12 @@ import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { createTransport, isRouterConfigured, listInterfaceListMembers, listInterfaces, readRouterConfig, readWanUsageData, type RouterTransport } from './routeros';
 
-function localDay(date = new Date()): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+/**
+ * O dia é o UTC, como o da conta Starlink ("seguida no fuso horário UTC"): em Cabo Verde
+ * (UTC−1) cada dia vai da 01:00 à 01:00 locais. Dias gravados antes de 2026-09-30 são locais.
+ */
+function utcDay(date = new Date()): string {
+  return date.toISOString().slice(0, 10);
 }
 
 export function counterDelta(last: number | null, current: number): number {
@@ -16,8 +20,27 @@ type UsageRow = { interface: string; rxBytes: number; txBytes: number };
 export type RouterUsageRow = { day: string; interface: string; rxBytes: number; txBytes: number };
 
 export function parseWanUsageFile(text: string): RouterUsageRow[] {
+  // No dia da passagem para UTC há uma linha da v5 (dia local, até à mudança) e outra da v6
+  // (dia UTC, desde a mudança) para o mesmo dia: são troços diferentes, somam-se.
+  const merged = new Map<string, RouterUsageRow>();
+  for (const row of parseLines(text)) {
+    const key = `${row.day};${row.interface}`;
+    const existing = merged.get(key);
+    if (existing) {
+      existing.rxBytes += row.rxBytes;
+      existing.txBytes += row.txBytes;
+    } else {
+      merged.set(key, { ...row });
+    }
+  }
+  return [...merged.values()];
+}
+
+function parseLines(text: string): RouterUsageRow[] {
   return text.split(/\r?\n/).flatMap((line) => {
     const parts = line.replace(/^# /, '').split(';');
+    // O router grava o dia como dias desde 1970 (UTC), para não fazer contas de datas no RouterOS.
+    if (/^\d{1,6}$/.test(parts[0])) parts[0] = new Date(Number(parts[0]) * 86_400_000).toISOString().slice(0, 10);
     if (parts.length !== 4 || !/^\d{4}-\d{2}-\d{2}$/.test(parts[0]) || !parts[1] ||
       !/^\d+$/.test(parts[2]) || !/^\d+$/.test(parts[3])) return [];
     const rxBytes = Number(parts[2]);
@@ -54,7 +77,7 @@ export function importRouterUsage(db: Database.Database, rows: RouterUsageRow[])
   })();
 }
 
-export async function recordWanUsage(db: Database.Database, transport: RouterTransport, today = localDay()) {
+export async function recordWanUsage(db: Database.Database, transport: RouterTransport, today = utcDay()) {
   const names = new Set(await listInterfaceListMembers(transport, 'WAN'));
   const interfaces = (await listInterfaces(transport))
     .filter((item) => names.has(item.name) && item.rxBytes !== null && item.txBytes !== null);
@@ -97,7 +120,7 @@ export async function runWanUsageIfDue() {
   return collectWanUsage(db, createTransport(config));
 }
 
-export async function collectWanUsage(db: Database.Database, transport: RouterTransport, today = localDay()) {
+export async function collectWanUsage(db: Database.Database, transport: RouterTransport, today = utcDay()) {
   const data = await readWanUsageData(transport);
   const rows = data === null ? [] : parseWanUsageFile(data);
   // Script de dados vazio = o contador do router ainda não somou nada: não se deixa de contar.
@@ -119,7 +142,7 @@ export async function collectWanUsage(db: Database.Database, transport: RouterTr
   return { source: 'fallback' as const, ...await recordWanUsage(db, transport) };
 }
 
-export function loadWanUsage(db: Database.Database, today = localDay()) {
+export function loadWanUsage(db: Database.Database, today = utcDay()) {
   const since = (db.prepare('SELECT MIN(seen_at) AS since FROM wan_counter_state').get() as { since: string | null }).since;
   const routerImportedAt = (db.prepare("SELECT value FROM app_settings WHERE key = 'wanUsageRouterImportedAt'").get() as { value: string } | undefined)?.value ?? null;
   const dayRows = db.prepare(`SELECT interface, rx_bytes AS rxBytes, tx_bytes AS txBytes

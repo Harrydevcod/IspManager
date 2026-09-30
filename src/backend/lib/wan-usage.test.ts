@@ -38,6 +38,14 @@ beforeEach(() => {
 });
 
 describe('ficheiro do contador no router', () => {
+  test('o dia do router vem em dias desde 1970 (UTC) e soma-se ao troço da v5 do mesmo dia', () => {
+    // 20726 = 2026-09-30.
+    expect(parseWanUsageFile('# 2026-09-30;WAN1;10;1\n# 20726;WAN1;5;2\n# 20725;WAN1;7;0\n')).toEqual([
+      { day: '2026-09-30', interface: 'WAN1', rxBytes: 15, txBytes: 3 },
+      { day: '2026-09-29', interface: 'WAN1', rxBytes: 7, txBytes: 0 }
+    ]);
+  });
+
   test('aceita linhas válidas e ignora linhas malformadas, negativas e valores sem precisão', () => {
     expect(parseWanUsageFile('2026-09-25;WAN1;123;45\nmalformada\n2026-09-26;WAN2;-1;3\n2026-09-27;WAN2;9007199254740992;3\n# 2026-09-28;WAN2;0;7\n# last;WAN2;5;6\n# uptime;1d02:03:04'))
       .toEqual([

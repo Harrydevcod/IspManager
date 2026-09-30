@@ -172,7 +172,7 @@ describe('Router de gestão', () => {
     ]);
     // Os mosaicos repetiam os mesmos números: a secção do acumulado ficou só com o histórico.
     expect(container.querySelector('.router-usage-period')).toBeNull();
-    expect(container.textContent).toContain('Download diário das WAN');
+    expect(container.textContent).toContain('Consumo diário das WAN');
   });
 
   test('o histórico mostra o total diário das WAN no tooltip e na última barra', async () => {
@@ -194,7 +194,7 @@ describe('Router de gestão', () => {
     });
     const container = await mount();
     const history = container.querySelector('.router-usage-history');
-    const total = formatDataVolume(firstRx + secondRx);
+    const total = formatDataVolume(firstRx + 100_000_000 + secondRx + 50_000_000);
     const lastDay = history?.querySelector('.router-usage-day:last-child');
     expect(lastDay?.getAttribute('title')).toContain(`↓ ${formatDataVolume(firstRx)} · ↑ ${formatDataVolume(100_000_000)} · total ${formatDataVolume(firstRx + 100_000_000)}`);
     expect(history?.querySelectorAll('.router-usage-total')).toHaveLength(1);

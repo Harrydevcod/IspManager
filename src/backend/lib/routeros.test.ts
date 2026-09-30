@@ -207,7 +207,7 @@ describe('operações RouterOS', () => {
     };
     await ensureWanUsageCounter(transport);
     expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(3);
-    expect((scripts[0].source as string)).toContain('ispm-wan-usage v5');
+    expect((scripts[0].source as string)).toContain('ispm-wan-usage v6');
     expect(schedulers.map((row) => row.name)).toEqual(['ispm-wan-usage', 'ispm-wan-usage-startup']);
     calls.length = 0;
     await ensureWanUsageCounter(transport);
@@ -231,7 +231,7 @@ describe('operações RouterOS', () => {
   test('atualiza a versão antiga do script e os campos dos schedulers', async () => {
     const transport = fakeTransport([
       [{ '.id': '*1', name: 'ispm-wan-usage', comment: 'ispm-wan-usage v0' }], null,
-      [{ source: '# ispm-wan-usage v5', invalid: 'false' }],
+      [{ source: '# ispm-wan-usage v6', invalid: 'false' }],
       [
         { '.id': '*2', name: 'ispm-wan-usage', 'on-event': 'outro', 'start-time': '01:00:00', interval: '10m', policy: 'read' },
         { '.id': '*3', name: 'ispm-wan-usage-startup', 'on-event': 'ispm-wan-usage', 'start-time': 'startup', interval: '0s', policy: 'read,write' }

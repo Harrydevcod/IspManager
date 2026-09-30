@@ -2,20 +2,23 @@
  * Contador das WAN que corre no próprio MikroTik.
  * Todo o estado vive como comentários no script `ispm-wan-usage-data` (só precisa de
  * read,write e sobrevive a reinícios):
- *   # 2026-09-29;WAN1;rx;tx   totais do dia (últimos 31 dias)
+ *   # 20726;WAN1;rx;tx        totais do dia UTC, em dias desde 1970 (últimos 31 dias)
+ *   # 2026-09-29;WAN1;rx;tx   linhas da v5 (dia local), mantidas tal como estão
  *   # last;WAN1;rx;tx         contador visto na corrida anterior
  *   # uptime;1d02:03:04       tempo ligado na corrida anterior
  * Medido no hAP: as globais do scheduler não passam de uma corrida para a outra, por isso
  * não se usam. Tempo ligado a descer = o router reiniciou e os contadores voltaram a zero.
+ * O dia vem do texto de :timestamp ("2960w6d10:12:34", desde 1970 em UTC): semanas × 7 + dias,
+ * sem contas de datas no RouterOS; é o dia da conta Starlink.
  * Posição de array inexistente tem tipo "nothing" (não "nil", que é o do :find sem
  * resultado): os valores testam-se pelo tipo esperado.
  * Corre de hora a hora às hh:59:50 (e no arranque): cada gravação deixa uma entrada longa no
- * registo do router, e de 5 em 5 min enchia-o em menos de um dia. O dia fecha a 10 s da meia-noite;
+ * registo do router, e de 5 em 5 min enchia-o em menos de um dia. O dia UTC fecha a 10 s da meia-noite UTC (01:00 em Cabo Verde);
  * num corte de luz perde-se no máximo a última hora. O ISPM aberto soma a hoje o que falta.
  */
 export const WAN_USAGE_DATA_NAME = 'ispm-wan-usage-data';
 
-export const WAN_USAGE_SCRIPT = String.raw`# ispm-wan-usage v5
+export const WAN_USAGE_SCRIPT = String.raw`# ispm-wan-usage v6
 :local dataName "ispm-wan-usage-data"
 :local totals [:toarray ""]
 :local last [:toarray ""]
@@ -51,12 +54,11 @@ export const WAN_USAGE_SCRIPT = String.raw`# ispm-wan-usage v5
 :if ([:len $lastUptime] > 0) do={
   :if ([:totime $lastUptime] > $uptime) do={ :set rebooted true }
 }
-:local rawDate [/system clock get date]
-:local day $rawDate
-:if ([:pick $rawDate 3 4] = "/") do={
-  :local months {jan="01";feb="02";mar="03";apr="04";may="05";jun="06";jul="07";aug="08";sep="09";oct="10";nov="11";dec="12"}
-  :set day ([:pick $rawDate 7 11] . "-" . ($months->[:pick $rawDate 0 3]) . "-" . [:pick $rawDate 4 6])
-}
+:local stamp [:tostr [:timestamp]]
+:local w [:find $stamp "w"]
+:local d [:find $stamp "d"]
+:local day ([:tonum [:pick $stamp 0 $w]] * 7)
+:if ([:typeof $d] != "nil") do={ :set day ($day + [:tonum [:pick $stamp ($w + 1) $d]]) }
 :local seen [:toarray ""]
 :foreach member in=[/interface list member find where list="WAN"] do={
   :local iface [/interface list member get $member interface]
@@ -87,19 +89,13 @@ export const WAN_USAGE_SCRIPT = String.raw`# ispm-wan-usage v5
     :set ($totals->$key) ($sumRx . ";" . $sumTx)
   }
 }
-:local days [:toarray ""]
-:foreach key,value in=$totals do={ :set ($days->[:pick $key 0 10]) 1 }
-:local skip ([:len $days] - 31)
-:local oldDays [:toarray ""]
-:foreach d,ignored in=$days do={
-  :if ($skip > 0) do={ :set ($oldDays->$d) 1; :set skip ($skip - 1) }
-}
 :local output ("# uptime;" . $uptime . "\n")
 :foreach iface,value in=$seen do={ :set output ($output . "# last;" . $iface . ";" . $value . "\n") }
 :foreach key,value in=$totals do={
-  :if ([:typeof ($oldDays->[:pick $key 0 10])] != "num") do={
-    :set output ($output . "# " . $key . ";" . $value . "\n")
-  }
+  :local head [:pick $key 0 [:find $key ";"]]
+  :local keep true
+  :if ([:typeof [:find $head "-"]] = "nil") do={ :if ([:tonum $head] < ($day - 30)) do={ :set keep false } }
+  :if ($keep) do={ :set output ($output . "# " . $key . ";" . $value . "\n") }
 }
 :if ([:len $dataIds] = 0) do={
   /system script add name=$dataName policy=read comment="dados do ispm-wan-usage; nao editar" source=$output
