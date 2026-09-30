@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
-import { createTransport, isRouterConfigured, listInterfaceListMembers, listInterfaces, readRouterConfig, readWanUsageFile, type RouterTransport } from './routeros';
+import { createTransport, isRouterConfigured, listInterfaceListMembers, listInterfaces, readRouterConfig, readWanUsageData, type RouterTransport } from './routeros';
 
 function localDay(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -17,7 +17,7 @@ export type RouterUsageRow = { day: string; interface: string; rxBytes: number; 
 
 export function parseWanUsageFile(text: string): RouterUsageRow[] {
   return text.split(/\r?\n/).flatMap((line) => {
-    const parts = line.split(';');
+    const parts = line.replace(/^# /, '').split(';');
     if (parts.length !== 4 || !/^\d{4}-\d{2}-\d{2}$/.test(parts[0]) || !parts[1] ||
       !/^\d+$/.test(parts[2]) || !/^\d+$/.test(parts[3])) return [];
     const rxBytes = Number(parts[2]);
@@ -27,11 +27,13 @@ export function parseWanUsageFile(text: string): RouterUsageRow[] {
   });
 }
 
+// MAX, não sobrescrever: no dia da instalação o router só conta desde a instalação e o ISPM
+// já tinha o dia até ali. Depois disso o fallback para, e o router só cresce dentro do dia.
 export function importRouterUsage(db: Database.Database, rows: RouterUsageRow[]) {
   const upsert = db.prepare(`
     INSERT INTO wan_traffic_daily (day, interface, rx_bytes, tx_bytes) VALUES (?, ?, ?, ?)
     ON CONFLICT(day, interface) DO UPDATE SET
-      rx_bytes = excluded.rx_bytes, tx_bytes = excluded.tx_bytes
+      rx_bytes = MAX(rx_bytes, excluded.rx_bytes), tx_bytes = MAX(tx_bytes, excluded.tx_bytes)
   `);
   return db.transaction(() => {
     for (const row of rows) upsert.run(row.day, row.interface, row.rxBytes, row.txBytes);
@@ -86,8 +88,10 @@ export async function runWanUsageIfDue() {
 }
 
 export async function collectWanUsage(db: Database.Database, transport: RouterTransport) {
-  const file = await readWanUsageFile(transport);
-  if (file !== null) return importRouterUsage(db, parseWanUsageFile(file));
+  const data = await readWanUsageData(transport);
+  const rows = data === null ? [] : parseWanUsageFile(data);
+  // Script de dados vazio = o contador do router ainda não somou nada: não se deixa de contar.
+  if (rows.length > 0) return importRouterUsage(db, rows);
   return { source: 'fallback' as const, ...await recordWanUsage(db, transport) };
 }
 

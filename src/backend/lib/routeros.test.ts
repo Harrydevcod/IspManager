@@ -11,7 +11,7 @@ import {
   describeRouterFailure,
   listProfiles,
   patchProfile,
-  readWanUsageFile,
+  readWanUsageData,
   diagnoseRouter,
   isRouterConfigured,
   listActive,
@@ -207,25 +207,34 @@ describe('operações RouterOS', () => {
     };
     await ensureWanUsageCounter(transport);
     expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(3);
-    expect((scripts[0].source as string)).toContain('ispm-wan-usage v2');
+    expect((scripts[0].source as string)).toContain('ispm-wan-usage v5');
     expect(schedulers.map((row) => row.name)).toEqual(['ispm-wan-usage', 'ispm-wan-usage-startup']);
     calls.length = 0;
     await ensureWanUsageCounter(transport);
-    expect(calls.map((call) => call.method)).toEqual(['GET', 'GET']);
+    expect(calls.map((call) => call.method)).toEqual(['GET', 'GET', 'GET']);
   });
 
-  test('lê o ficheiro persistente em flash e devolve null quando não existe', async () => {
-    const found = fakeTransport([[{ name: 'flash/ispm-wan-usage.txt', contents: '2026-09-25;WAN;1;2\n' }]]);
-    await expect(readWanUsageFile(found)).resolves.toBe('2026-09-25;WAN;1;2\n');
-    await expect(readWanUsageFile(fakeTransport([[], []]))).resolves.toBeNull();
+  // Medido no router real: o PUT foi aceite e o script ficou vazio e INVALID, sem erro.
+  test('recusa a instalação quando o router guarda o script vazio ou inválido', async () => {
+    const empty = fakeTransport([[], null, [{ source: '', invalid: 'true' }]]);
+    await expect(ensureWanUsageCounter(empty)).rejects.toThrow('sem texto');
+    const invalid = fakeTransport([[], null, [{ source: '# x', invalid: 'true' }]]);
+    await expect(ensureWanUsageCounter(invalid)).rejects.toThrow('inválido');
+  });
+
+  test('lê os totais do script de dados e devolve null quando o contador ainda não correu', async () => {
+    const found = fakeTransport([[{ source: '# 2026-09-25;WAN;1;2\n' }]]);
+    await expect(readWanUsageData(found)).resolves.toBe('# 2026-09-25;WAN;1;2\n');
+    await expect(readWanUsageData(fakeTransport([[]]))).resolves.toBeNull();
   });
 
   test('atualiza a versão antiga do script e os campos dos schedulers', async () => {
     const transport = fakeTransport([
       [{ '.id': '*1', name: 'ispm-wan-usage', comment: 'ispm-wan-usage v0' }], null,
+      [{ source: '# ispm-wan-usage v5', invalid: 'false' }],
       [
         { '.id': '*2', name: 'ispm-wan-usage', 'on-event': 'outro', 'start-time': '01:00:00', interval: '10m', policy: 'read' },
-        { '.id': '*3', name: 'ispm-wan-usage-startup', 'on-event': 'ispm-wan-usage', 'start-time': 'startup', interval: '0s', policy: 'read,write,ftp' }
+        { '.id': '*3', name: 'ispm-wan-usage-startup', 'on-event': 'ispm-wan-usage', 'start-time': 'startup', interval: '0s', policy: 'read,write' }
       ], null
     ]);
     await ensureWanUsageCounter(transport);

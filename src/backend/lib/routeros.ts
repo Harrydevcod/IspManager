@@ -4,7 +4,7 @@ import { connect as tlsConnect } from 'node:tls';
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { readSecret } from './secrets';
-import { WAN_USAGE_SCRIPT } from './routeros-wan-script';
+import { WAN_USAGE_DATA_NAME, WAN_USAGE_SCRIPT } from './routeros-wan-script';
 
 /**
  * Cliente REST do RouterOS (v7). Fino de propósito: o ISPM só precisa de listar
@@ -1264,8 +1264,8 @@ export async function patchProfile(transport: RouterTransport, id: string, patch
 }
 
 const WAN_USAGE_NAME = 'ispm-wan-usage';
-const WAN_USAGE_VERSION = 'ispm-wan-usage v2';
-const WAN_USAGE_POLICY = 'read,write,ftp';
+const WAN_USAGE_VERSION = 'ispm-wan-usage v5';
+const WAN_USAGE_POLICY = 'read,write';
 
 /** Instala ou reconcilia os três objetos. PUT/PATCH não são repetidos pelo transporte. */
 export async function ensureWanUsageCounter(transport: RouterTransport): Promise<void> {
@@ -1279,6 +1279,16 @@ export async function ensureWanUsageCounter(transport: RouterTransport): Promise
     await transport({ method: 'PATCH', path: `/system/script/${script['.id']}`, body: {
       comment: WAN_USAGE_VERSION, source: WAN_USAGE_SCRIPT, policy: WAN_USAGE_POLICY
     } });
+  }
+
+  // O router aceita o PUT e pode guardar o script vazio ou inválido sem dar erro:
+  // só a releitura prova que o contador vai correr.
+  const saved = asArray(await transport({ method: 'GET', path: `/system/script?name=${WAN_USAGE_NAME}&.proplist=source,invalid` }))[0];
+  if (!saved || typeof saved.source !== 'string' || saved.source.length === 0) {
+    throw new RouterError('O router guardou o script do contador sem texto', 0, undefined, 'bad_response');
+  }
+  if (toBool(saved.invalid)) {
+    throw new RouterError('O router marcou o script do contador como inválido', 0, undefined, 'bad_response');
   }
 
   const schedulers = asArray(await transport({ method: 'GET', path: '/system/scheduler?.proplist=.id,name,on-event,start-time,interval,policy' }));
@@ -1297,17 +1307,12 @@ export async function ensureWanUsageCounter(transport: RouterTransport): Promise
   }
 }
 
-/** O hAP pode guardar ficheiros persistentes em flash/; outros modelos usam a raiz. */
-export async function readWanUsageFile(transport: RouterTransport): Promise<string | null> {
-  for (const name of ['flash/ispm-wan-usage.txt', 'ispm-wan-usage.txt']) {
-    const rows = asArray(await transport({ method: 'GET', path: `/file?name=${encodeURIComponent(name)}` }));
-    const file = rows.find((row) => row.name === name);
-    if (file) {
-      if (typeof file.contents !== 'string') throw new RouterError('O ficheiro de consumo do router não devolveu contents', 0, undefined, 'bad_response');
-      return file.contents;
-    }
-  }
-  return null;
+/** Os totais que o contador do router guardou; `null` enquanto o contador não correu. */
+export async function readWanUsageData(transport: RouterTransport): Promise<string | null> {
+  const row = asArray(await transport({ method: 'GET', path: `/system/script?name=${WAN_USAGE_DATA_NAME}&.proplist=source` }))[0];
+  if (!row) return null;
+  if (typeof row.source !== 'string') throw new RouterError('O script de dados do contador não devolveu source', 0, undefined, 'bad_response');
+  return row.source;
 }
 
 /**

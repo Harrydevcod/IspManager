@@ -409,6 +409,10 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       await transport({ method: 'POST', path: '/system/script/run', body: { '.id': 'ispm-wan-usage' } });
       const result = await collectWanUsage(db, transport);
       recordAudit(request, { action: 'router_wan_usage_counter', entityType: 'router', summary: 'Instalou a contagem das WAN no router' });
+      // O run da REST não devolve o erro do script: sem dados, o contador não correu.
+      if (result.source !== 'router') {
+        return reply.status(502).send({ error: 'O contador foi instalado mas não gravou dados. Veja System → Scripts no router.' });
+      }
       return result;
     } catch (err) {
       const failure = describeRouterFailure(err);

@@ -39,7 +39,7 @@ beforeEach(() => {
 
 describe('ficheiro do contador no router', () => {
   test('aceita linhas válidas e ignora linhas malformadas, negativas e valores sem precisão', () => {
-    expect(parseWanUsageFile('2026-09-25;WAN1;123;45\nmalformada\n2026-09-26;WAN2;-1;3\n2026-09-27;WAN2;9007199254740992;3\n2026-09-28;WAN2;0;7'))
+    expect(parseWanUsageFile('2026-09-25;WAN1;123;45\nmalformada\n2026-09-26;WAN2;-1;3\n2026-09-27;WAN2;9007199254740992;3\n# 2026-09-28;WAN2;0;7\n# last;WAN2;5;6\n# uptime;1d02:03:04'))
       .toEqual([
         { day: '2026-09-25', interface: 'WAN1', rxBytes: 123, txBytes: 45 },
         { day: '2026-09-28', interface: 'WAN2', rxBytes: 0, txBytes: 7 }
@@ -57,21 +57,28 @@ describe('ficheiro do contador no router', () => {
     expect(loadWanUsage(db, '2026-09-25').days.at(-1)?.perInterface[0]).toEqual({ interface: 'WAN1', rxBytes: 100, txBytes: 20 });
   });
 
-  test('com ficheiro não lê os contadores locais; sem ficheiro usa o fallback', async () => {
+  test('com dados do router não lê os contadores locais; sem dados usa o fallback', async () => {
     const calls: RouterRequest[] = [];
     const withFile: RouterTransport = async (request) => {
       calls.push(request);
-      if (request.path.startsWith('/file?name=flash')) return [];
-      if (request.path.startsWith('/file?name=')) return [{ name: 'ispm-wan-usage.txt', contents: '2026-09-25;WAN1;7;3\n' }];
+      if (request.path.startsWith('/system/script?name=ispm-wan-usage-data')) return [{ source: '# uptime;1d\n# last;WAN1;9;9\n# 2026-09-25;WAN1;7;3\n' }];
       throw new Error('Não devia ler interfaces');
     };
     await expect(collectWanUsage(db, withFile)).resolves.toMatchObject({ source: 'router', rows: 1 });
-    expect(calls.every((call) => call.path.startsWith('/file?name='))).toBe(true);
+    expect(calls.every((call) => call.path.startsWith('/system/script?name=ispm-wan-usage-data'))).toBe(true);
     const withoutFile: RouterTransport = async (request) => {
-      if (request.path.startsWith('/file?name=')) return [];
+      if (request.path.startsWith('/system/script?name=ispm-wan-usage-data')) return [];
       return fakeTransport(100, 200)(request);
     };
     await expect(collectWanUsage(db, withoutFile)).resolves.toMatchObject({ source: 'fallback', interfaces: 2 });
+    // Script de dados já criado mas ainda sem totais: continua o fallback.
+    const emptyData: RouterTransport = async (request) => {
+      if (request.path.startsWith('/system/script?name=ispm-wan-usage-data')) return [{ source: '# uptime;5m\n' }];
+      return fakeTransport(100, 200)(request);
+    };
+    await expect(collectWanUsage(db, emptyData)).resolves.toMatchObject({ source: 'fallback' });
+    // Dia da instalação: o router só conta desde a instalação, não apaga o que o ISPM já tinha.
+    importRouterUsage(db, [{ day: '2026-09-25', interface: 'WAN1', rxBytes: 3, txBytes: 1 }]);
     expect(db.prepare("SELECT rx_bytes AS rx FROM wan_traffic_daily WHERE day = '2026-09-25' AND interface = 'WAN1'").get()).toEqual({ rx: 7 });
   });
 });

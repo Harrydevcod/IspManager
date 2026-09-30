@@ -1,95 +1,106 @@
-/** Written every five minutes. Raise the scheduler interval to 15m if flash wear matters. */
-export const WAN_USAGE_SCRIPT = String.raw`# ispm-wan-usage v2
-# Escreve a cada 5 min; subir para 15 min se o desgaste da flash preocupar.
-:global ispmWanLast
-:global ispmWanTotals
-:local baseline false
-:if ([:typeof $ispmWanLast] != "array") do={
-  :set ispmWanLast [:toarray ""]
-  # Globais vazias com o router ligado ha muito = instalacao ou reset do script:
-  # os contadores trazem o acumulado desde o arranque, que nao e de hoje.
-  :if ([/system resource get uptime] > 00:10:00) do={ :set baseline true }
-}
-:local fileName "ispm-wan-usage.txt"
-:if ([:len [/file find where name="flash"]] > 0) do={ :set fileName "flash/ispm-wan-usage.txt" }
-:if ([:typeof $ispmWanTotals] != "array") do={
-  :set ispmWanTotals [:toarray ""]
-  :local files [/file find where name=$fileName]
-  :if ([:len $files] > 0) do={
-    :local text [/file get $files contents]
-    :while ([:len $text] > 0) do={
-      :local end [:find $text "\n"]
-      :if ([:typeof $end] = "nil") do={ :set end [:len $text] }
-      :local line [:pick $text 0 $end]
-      :set text [:pick $text ($end + 1) [:len $text]]
-      :local a [:find $line ";"]
-      :if ([:typeof $a] != "nil") do={
-        :local b [:find $line ";" ($a + 1)]
-        :local c [:find $line ";" ($b + 1)]
-        :if (([:typeof $b] != "nil") && ([:typeof $c] != "nil")) do={
-          :local key [:pick $line 0 $b]
-          :set ($ispmWanTotals->$key) [:pick $line ($b + 1) [:len $line]]
+/**
+ * Contador das WAN que corre no próprio MikroTik (scheduler de 5 min alinhado às 00:00).
+ * Todo o estado vive como comentários no script `ispm-wan-usage-data` (só precisa de
+ * read,write e sobrevive a reinícios):
+ *   # 2026-09-29;WAN1;rx;tx   totais do dia (últimos 31 dias)
+ *   # last;WAN1;rx;tx         contador visto na corrida anterior
+ *   # uptime;1d02:03:04       tempo ligado na corrida anterior
+ * Medido no hAP: as globais do scheduler não passam de uma corrida para a outra, por isso
+ * não se usam. Tempo ligado a descer = o router reiniciou e os contadores voltaram a zero.
+ * Posição de array inexistente tem tipo "nothing" (não "nil", que é o do :find sem
+ * resultado): os valores testam-se pelo tipo esperado.
+ * ponytail: grava a cada corrida (288/dia); subir o intervalo para 15m se o desgaste da flash preocupar.
+ */
+export const WAN_USAGE_DATA_NAME = 'ispm-wan-usage-data';
+
+export const WAN_USAGE_SCRIPT = String.raw`# ispm-wan-usage v5
+:local dataName "ispm-wan-usage-data"
+:local totals [:toarray ""]
+:local last [:toarray ""]
+:local lastUptime ""
+:local dataIds [/system script find where name=$dataName]
+:if ([:len $dataIds] > 0) do={
+  :local text [/system script get $dataIds source]
+  :while ([:len $text] > 0) do={
+    :local stop [:find $text "\n"]
+    :if ([:typeof $stop] = "nil") do={ :set stop [:len $text] }
+    :local line [:pick $text 0 $stop]
+    :set text [:pick $text ($stop + 1) [:len $text]]
+    :if ([:pick $line 0 2] = "# ") do={ :set line [:pick $line 2 [:len $line]] }
+    :local a [:find $line ";"]
+    :if ([:typeof $a] != "nil") do={
+      :local head [:pick $line 0 $a]
+      :local rest [:pick $line ($a + 1) [:len $line]]
+      :if ($head = "uptime") do={ :set lastUptime $rest } else={
+        :local b [:find $rest ";"]
+        :if ([:typeof $b] != "nil") do={
+          :if ($head = "last") do={
+            :set ($last->[:pick $rest 0 $b]) [:pick $rest ($b + 1) [:len $rest]]
+          } else={
+            :set ($totals->($head . ";" . [:pick $rest 0 $b])) [:pick $rest ($b + 1) [:len $rest]]
+          }
         }
       }
     }
   }
 }
+:local uptime [/system resource get uptime]
+:local rebooted false
+:if ([:len $lastUptime] > 0) do={
+  :if ([:totime $lastUptime] > $uptime) do={ :set rebooted true }
+}
 :local rawDate [/system clock get date]
 :local day $rawDate
 :if ([:pick $rawDate 3 4] = "/") do={
   :local months {jan="01";feb="02";mar="03";apr="04";may="05";jun="06";jul="07";aug="08";sep="09";oct="10";nov="11";dec="12"}
-  :local month ($months->[:pick $rawDate 0 3])
-  :local number [:pick $rawDate 4 6]
-  :set day ([:pick $rawDate 7 11] . "-" . $month . "-" . $number)
+  :set day ([:pick $rawDate 7 11] . "-" . ($months->[:pick $rawDate 0 3]) . "-" . [:pick $rawDate 4 6])
 }
+:local seen [:toarray ""]
 :foreach member in=[/interface list member find where list="WAN"] do={
-  :local name [/interface list member get $member interface]
-  :local ids [/interface find where name=$name]
+  :local iface [/interface list member get $member interface]
+  :local ids [/interface find where name=$iface]
   :if ([:len $ids] > 0) do={
     :local rx [:tonum [/interface get $ids rx-byte]]
     :local tx [:tonum [/interface get $ids tx-byte]]
-    :local previous ($ispmWanLast->$name)
-    :local drx $rx
-    :local dtx $tx
-    :if ($baseline) do={ :set drx 0; :set dtx 0 }
-    :if ([:typeof $previous] != "nil") do={
-      :local separator [:find $previous ";"]
-      :local oldRx [:tonum [:pick $previous 0 $separator]]
-      :local oldTx [:tonum [:pick $previous ($separator + 1) [:len $previous]]]
-      :if ($rx >= $oldRx) do={ :set drx ($rx - $oldRx) }
-      :if ($tx >= $oldTx) do={ :set dtx ($tx - $oldTx) }
+    :local drx 0
+    :local dtx 0
+    :local previous ($last->$iface)
+    :if ([:typeof $previous] = "str") do={
+      :local s [:find $previous ";"]
+      :local oldRx [:tonum [:pick $previous 0 $s]]
+      :local oldTx [:tonum [:pick $previous ($s + 1) [:len $previous]]]
+      :if ($rebooted || ($rx < $oldRx)) do={ :set drx $rx } else={ :set drx ($rx - $oldRx) }
+      :if ($rebooted || ($tx < $oldTx)) do={ :set dtx $tx } else={ :set dtx ($tx - $oldTx) }
     }
-    :set ($ispmWanLast->$name) ($rx . ";" . $tx)
-    :local key ($day . ";" . $name)
-    :local total ($ispmWanTotals->$key)
-    :local oldTotalRx 0
-    :local oldTotalTx 0
-    :if ([:typeof $total] != "nil") do={
-      :local separator [:find $total ";"]
-      :set oldTotalRx [:tonum [:pick $total 0 $separator]]
-      :set oldTotalTx [:tonum [:pick $total ($separator + 1) [:len $total]]]
+    :set ($seen->$iface) ($rx . ";" . $tx)
+    :local key ($day . ";" . $iface)
+    :local sumRx $drx
+    :local sumTx $dtx
+    :local total ($totals->$key)
+    :if ([:typeof $total] = "str") do={
+      :local s [:find $total ";"]
+      :set sumRx ($sumRx + [:tonum [:pick $total 0 $s]])
+      :set sumTx ($sumTx + [:tonum [:pick $total ($s + 1) [:len $total]]])
     }
-    :set ($ispmWanTotals->$key) (($oldTotalRx + $drx) . ";" . ($oldTotalTx + $dtx))
+    :set ($totals->$key) ($sumRx . ";" . $sumTx)
   }
 }
 :local days [:toarray ""]
-:foreach key,value in=$ispmWanTotals do={ :set ($days->[:pick $key 0 10]) true }
-:while ([:len $days] > 31) do={
-  :local oldest ""
-  :local oldestNumber 99999999
-  :foreach date,ignored in=$days do={
-    :local number [:tonum ([:pick $date 0 4] . [:pick $date 5 7] . [:pick $date 8 10])]
-    :if ($number < $oldestNumber) do={ :set oldest $date; :set oldestNumber $number }
-  }
-  :local removeKeys [:toarray ""]
-  :foreach key,ignored in=$ispmWanTotals do={
-    :if ([:pick $key 0 10] = $oldest) do={ :set ($removeKeys->$key) true }
-  }
-  :foreach key,ignored in=$removeKeys do={ :set ($ispmWanTotals->$key) }
-  :set ($days->$oldest)
+:foreach key,value in=$totals do={ :set ($days->[:pick $key 0 10]) 1 }
+:local skip ([:len $days] - 31)
+:local oldDays [:toarray ""]
+:foreach d,ignored in=$days do={
+  :if ($skip > 0) do={ :set ($oldDays->$d) 1; :set skip ($skip - 1) }
 }
-:local output ""
-:foreach key,value in=$ispmWanTotals do={ :set output ($output . $key . ";" . $value . "\n") }
-:local files [/file find where name=$fileName]
-:if ([:len $files] = 0) do={ /file add name=$fileName; :set files [/file find where name=$fileName] }
-/file set $files contents=$output`;
+:local output ("# uptime;" . $uptime . "\n")
+:foreach iface,value in=$seen do={ :set output ($output . "# last;" . $iface . ";" . $value . "\n") }
+:foreach key,value in=$totals do={
+  :if ([:typeof ($oldDays->[:pick $key 0 10])] != "num") do={
+    :set output ($output . "# " . $key . ";" . $value . "\n")
+  }
+}
+:if ([:len $dataIds] = 0) do={
+  /system script add name=$dataName policy=read comment="dados do ispm-wan-usage; nao editar" source=$output
+} else={
+  /system script set $dataIds source=$output
+}`;
