@@ -4,6 +4,15 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.10](https://github.com/Harrydevcod/IspManager/releases/tag/v2.10.0) — 2026-09-30
+
+> **Sem migrações.** O consumo das WAN passa a contar-se no próprio router. Depois de atualizar, carregar uma vez em **Contar no router** (Router de gestão → Visão geral) se o contador ainda não estiver instalado.
+
+- **O consumo diário das WAN bate com a conta Starlink.** O ISPM contava o tráfego a partir do PC e, com a app fechada, punha tudo no dia em que voltava a abrir: na base real, 17 GB num dia e 188 GB no seguinte, quando a Starlink via cerca de 115 GB em cada um. O total estava certo; o dia é que estava errado.
+- **O router conta sozinho, mesmo com o ISPM fechado.** O botão **Contar no router** instala no MikroTik um script que corre de hora a hora e no arranque. Guarda o total de cada dia, sobrevive a reinícios e a cortes de luz (perde no máximo a última hora) e só precisa das permissões que o utilizador da API já tem. Ao abrir, o ISPM importa os dias; enquanto está aberto, o "Hoje" junta o que passou desde a última gravação do router.
+- **Os dias são UTC e o consumo é download + upload, como na Starlink.** O gráfico chama-se agora "Consumo diário das WAN"; em Cabo Verde cada dia vai da 01:00 à 01:00. O tooltip de cada barra mostra ↓, ↑ e o total por WAN.
+- Os dias gravados antes desta versão ficam como estavam (dia local, com o defeito antigo).
+
 ## [2.9](https://github.com/Harrydevcod/IspManager/releases/tag/v2.9.0) — 2026-09-27
 
 > **Uma migração (0068):** cada equipamento de backbone ganha a porta do router de gestão onde liga. Nasce vazia; nada muda nos dados existentes.
