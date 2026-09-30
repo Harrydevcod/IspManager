@@ -4,6 +4,7 @@ import { connect as tlsConnect } from 'node:tls';
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { readSecret } from './secrets';
+import { WAN_USAGE_DATA_NAME, WAN_USAGE_SCRIPT } from './routeros-wan-script';
 
 /**
  * Cliente REST do RouterOS (v7). Fino de propósito: o ISPM só precisa de listar
@@ -1260,6 +1261,58 @@ export async function createProfile(
 
 export async function patchProfile(transport: RouterTransport, id: string, patch: { rateLimit: string }): Promise<void> {
   await transport({ method: 'PATCH', path: `/ppp/profile/${id}`, body: { 'rate-limit': patch.rateLimit } });
+}
+
+const WAN_USAGE_NAME = 'ispm-wan-usage';
+const WAN_USAGE_VERSION = 'ispm-wan-usage v6';
+const WAN_USAGE_POLICY = 'read,write';
+
+/** Instala ou reconcilia os três objetos. PUT/PATCH não são repetidos pelo transporte. */
+export async function ensureWanUsageCounter(transport: RouterTransport): Promise<void> {
+  const scripts = asArray(await transport({ method: 'GET', path: '/system/script?.proplist=.id,name,comment' }));
+  const script = scripts.find((row) => row.name === WAN_USAGE_NAME);
+  if (!script) {
+    await transport({ method: 'PUT', path: '/system/script', body: {
+      name: WAN_USAGE_NAME, comment: WAN_USAGE_VERSION, source: WAN_USAGE_SCRIPT, policy: WAN_USAGE_POLICY
+    } });
+  } else if (script.comment !== WAN_USAGE_VERSION) {
+    await transport({ method: 'PATCH', path: `/system/script/${script['.id']}`, body: {
+      comment: WAN_USAGE_VERSION, source: WAN_USAGE_SCRIPT, policy: WAN_USAGE_POLICY
+    } });
+  }
+
+  // O router aceita o PUT e pode guardar o script vazio ou inválido sem dar erro:
+  // só a releitura prova que o contador vai correr.
+  const saved = asArray(await transport({ method: 'GET', path: `/system/script?name=${WAN_USAGE_NAME}&.proplist=source,invalid` }))[0];
+  if (!saved || typeof saved.source !== 'string' || saved.source.length === 0) {
+    throw new RouterError('O router guardou o script do contador sem texto', 0, undefined, 'bad_response');
+  }
+  if (toBool(saved.invalid)) {
+    throw new RouterError('O router marcou o script do contador como inválido', 0, undefined, 'bad_response');
+  }
+
+  const schedulers = asArray(await transport({ method: 'GET', path: '/system/scheduler?.proplist=.id,name,on-event,start-time,interval,policy' }));
+  const expected = [
+    { name: WAN_USAGE_NAME, 'on-event': WAN_USAGE_NAME, 'start-time': '23:59:50', interval: '1h', policy: WAN_USAGE_POLICY },
+    { name: `${WAN_USAGE_NAME}-startup`, 'on-event': WAN_USAGE_NAME, 'start-time': 'startup', interval: '0s', policy: WAN_USAGE_POLICY }
+  ];
+  for (const fields of expected) {
+    const existing = schedulers.find((row) => row.name === fields.name);
+    if (!existing) {
+      await transport({ method: 'PUT', path: '/system/scheduler', body: fields });
+    } else if (existing['on-event'] !== fields['on-event'] || existing['start-time'] !== fields['start-time'] ||
+      existing.interval !== fields.interval || existing.policy !== fields.policy) {
+      await transport({ method: 'PATCH', path: `/system/scheduler/${existing['.id']}`, body: fields });
+    }
+  }
+}
+
+/** Os totais que o contador do router guardou; `null` enquanto o contador não correu. */
+export async function readWanUsageData(transport: RouterTransport): Promise<string | null> {
+  const row = asArray(await transport({ method: 'GET', path: `/system/script?name=${WAN_USAGE_DATA_NAME}&.proplist=source` }))[0];
+  if (!row) return null;
+  if (typeof row.source !== 'string') throw new RouterError('O script de dados do contador não devolveu source', 0, undefined, 'bad_response');
+  return row.source;
 }
 
 /**

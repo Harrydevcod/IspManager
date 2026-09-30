@@ -194,6 +194,8 @@ Se o ISPM devolver **401** com a senha certa, acrescenta `web` às políticas:
 /user group set ispm policy=read,write,api,rest-api,web
 ```
 
+**Contar no router** (ecrã WAN) instala o script `ispm-wan-usage` e dois agendamentos (de hora a hora às hh:59:50, e no arranque; com o ISPM aberto, o "Hoje" junta o que passou desde a última gravação). Os totais diários dos últimos 31 dias ficam no script `ispm-wan-usage-data` — não o edites. Chega a política `read,write` que o grupo já tem.
+
 Teste rápido, do próprio router:
 
 ```routeros
