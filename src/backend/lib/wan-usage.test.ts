@@ -57,15 +57,25 @@ describe('ficheiro do contador no router', () => {
     expect(loadWanUsage(db, '2026-09-25').days.at(-1)?.perInterface[0]).toEqual({ interface: 'WAN1', rxBytes: 100, txBytes: 20 });
   });
 
-  test('com dados do router não lê os contadores locais; sem dados usa o fallback', async () => {
-    const calls: RouterRequest[] = [];
+  test('com dados do router soma a hoje o que passou desde a gravação; sem dados usa o fallback', async () => {
     const withFile: RouterTransport = async (request) => {
-      calls.push(request);
-      if (request.path.startsWith('/system/script?name=ispm-wan-usage-data')) return [{ source: '# uptime;1d\n# last;WAN1;9;9\n# 2026-09-25;WAN1;7;3\n' }];
-      throw new Error('Não devia ler interfaces');
+      if (request.path.startsWith('/system/script?name=ispm-wan-usage-data')) {
+        return [{ source: '# uptime;1d\n# last;WAN1-STARLINK;90;40\n# last;WAN2-STARLINK;500;0\n# 2026-09-25;WAN1-STARLINK;7;3\n# 2026-09-24;WAN2-STARLINK;1;1\n' }];
+      }
+      if (request.path.startsWith('/interface/list/member')) throw new Error('Não devia usar o fallback');
+      return fakeTransport(100, 200, 45)(request);
     };
-    await expect(collectWanUsage(db, withFile)).resolves.toMatchObject({ source: 'router', rows: 1 });
-    expect(calls.every((call) => call.path.startsWith('/system/script?name=ispm-wan-usage-data'))).toBe(true);
+    await expect(collectWanUsage(db, withFile, '2026-09-25')).resolves.toMatchObject({ source: 'router', rows: 3 });
+    const today = (name: string) => db.prepare("SELECT rx_bytes AS rx, tx_bytes AS tx FROM wan_traffic_daily WHERE day = '2026-09-25' AND interface = ?").get(name);
+    // WAN1: 7 gravados + (100 − 90) desde a gravação; WAN2: contador abaixo do gravado = reinício, conta 200.
+    expect(today('WAN1-STARLINK')).toEqual({ rx: 17, tx: 8 });
+    expect(today('WAN2-STARLINK')).toEqual({ rx: 200, tx: 0 });
+    db.prepare('DELETE FROM wan_traffic_daily').run();
+    const onlyTotals: RouterTransport = async (request) => {
+      if (request.path.startsWith('/system/script?name=ispm-wan-usage-data')) return [{ source: '# uptime;1d\n# last;WAN1;9;9\n# 2026-09-25;WAN1;7;3\n' }];
+      return fakeTransport(100, 200)(request);
+    };
+    await expect(collectWanUsage(db, onlyTotals, '2026-09-25')).resolves.toMatchObject({ source: 'router', rows: 1 });
     const withoutFile: RouterTransport = async (request) => {
       if (request.path.startsWith('/system/script?name=ispm-wan-usage-data')) return [];
       return fakeTransport(100, 200)(request);

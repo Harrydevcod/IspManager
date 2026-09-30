@@ -1293,7 +1293,7 @@ export async function ensureWanUsageCounter(transport: RouterTransport): Promise
 
   const schedulers = asArray(await transport({ method: 'GET', path: '/system/scheduler?.proplist=.id,name,on-event,start-time,interval,policy' }));
   const expected = [
-    { name: WAN_USAGE_NAME, 'on-event': WAN_USAGE_NAME, 'start-time': '00:00:00', interval: '5m', policy: WAN_USAGE_POLICY },
+    { name: WAN_USAGE_NAME, 'on-event': WAN_USAGE_NAME, 'start-time': '23:59:50', interval: '1h', policy: WAN_USAGE_POLICY },
     { name: `${WAN_USAGE_NAME}-startup`, 'on-event': WAN_USAGE_NAME, 'start-time': 'startup', interval: '0s', policy: WAN_USAGE_POLICY }
   ];
   for (const fields of expected) {

@@ -1,5 +1,5 @@
 /**
- * Contador das WAN que corre no próprio MikroTik (scheduler de 5 min alinhado às 00:00).
+ * Contador das WAN que corre no próprio MikroTik.
  * Todo o estado vive como comentários no script `ispm-wan-usage-data` (só precisa de
  * read,write e sobrevive a reinícios):
  *   # 2026-09-29;WAN1;rx;tx   totais do dia (últimos 31 dias)
@@ -9,7 +9,9 @@
  * não se usam. Tempo ligado a descer = o router reiniciou e os contadores voltaram a zero.
  * Posição de array inexistente tem tipo "nothing" (não "nil", que é o do :find sem
  * resultado): os valores testam-se pelo tipo esperado.
- * ponytail: grava a cada corrida (288/dia); subir o intervalo para 15m se o desgaste da flash preocupar.
+ * Corre de hora a hora às hh:59:50 (e no arranque): cada gravação deixa uma entrada longa no
+ * registo do router, e de 5 em 5 min enchia-o em menos de um dia. O dia fecha a 10 s da meia-noite;
+ * num corte de luz perde-se no máximo a última hora. O ISPM aberto soma a hoje o que falta.
  */
 export const WAN_USAGE_DATA_NAME = 'ispm-wan-usage-data';
 

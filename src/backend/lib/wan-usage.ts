@@ -27,6 +27,16 @@ export function parseWanUsageFile(text: string): RouterUsageRow[] {
   });
 }
 
+/** `# last;iface;rx;tx`: o contador que o router viu na última gravação. */
+export function parseWanUsageLast(text: string): Map<string, { rx: number; tx: number }> {
+  const last = new Map<string, { rx: number; tx: number }>();
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^# last;([^;]+);(\d+);(\d+)$/.exec(line);
+    if (match) last.set(match[1], { rx: Number(match[2]), tx: Number(match[3]) });
+  }
+  return last;
+}
+
 // MAX, não sobrescrever: no dia da instalação o router só conta desde a instalação e o ISPM
 // já tinha o dia até ali. Depois disso o fallback para, e o router só cresce dentro do dia.
 export function importRouterUsage(db: Database.Database, rows: RouterUsageRow[]) {
@@ -87,11 +97,25 @@ export async function runWanUsageIfDue() {
   return collectWanUsage(db, createTransport(config));
 }
 
-export async function collectWanUsage(db: Database.Database, transport: RouterTransport) {
+export async function collectWanUsage(db: Database.Database, transport: RouterTransport, today = localDay()) {
   const data = await readWanUsageData(transport);
   const rows = data === null ? [] : parseWanUsageFile(data);
   // Script de dados vazio = o contador do router ainda não somou nada: não se deixa de contar.
-  if (rows.length > 0) return importRouterUsage(db, rows);
+  if (rows.length > 0) {
+    // O router só grava de hora a hora (cada gravação é uma linha no registo dele). Com a app
+    // aberta, soma-se a hoje o que passou desde essa gravação; o MAX da importação deixa a
+    // próxima gravação do router, que já inclui isto, tomar o lugar.
+    const last = parseWanUsageLast(data!);
+    for (const item of await listInterfaces(transport)) {
+      const previous = last.get(item.name);
+      if (!previous || item.rxBytes === null || item.txBytes === null) continue;
+      let row = rows.find((candidate) => candidate.day === today && candidate.interface === item.name);
+      if (!row) rows.push(row = { day: today, interface: item.name, rxBytes: 0, txBytes: 0 });
+      row.rxBytes += counterDelta(previous.rx, item.rxBytes);
+      row.txBytes += counterDelta(previous.tx, item.txBytes);
+    }
+    return importRouterUsage(db, rows);
+  }
   return { source: 'fallback' as const, ...await recordWanUsage(db, transport) };
 }
 
