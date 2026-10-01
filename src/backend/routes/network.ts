@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
+import { detectAdminNetwork, isOffNetwork, offNetworkReason } from '../lib/admin-network';
 import { loadNetworkStatus, loadProbeEvents, mapWithLimit, readProbeConfig, runNetworkProbe } from '../lib/network-probe';
 import {
   createTransport,
@@ -122,6 +123,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
   const readOnly = { preHandler: requireAuth() };
   const adminOnly = { preHandler: requireRole(['admin']) };
   const networkWrite = { preHandler: requireRole(['admin', 'operator']) };
+
+  app.get('/api/network/presence', adminOnly, async () => detectAdminNetwork(getSqliteDatabase()));
 
   app.get('/api/network/status', readOnly, async (request, reply) => {
     const parsed = statusQuerySchema.safeParse(request.query);
@@ -496,6 +499,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     if (!parsed.success || !parsed.data.ips.every(isIpv4)) {
       return reply.status(400).send({ error: 'Parametros invalidos' });
     }
+    const presence = await detectAdminNetwork(getSqliteDatabase());
+    if (isOffNetwork(presence)) return reply.status(409).send({ error: offNetworkReason(presence) });
     const { ips, range, batchIndex } = parsed.data;
 
     // Uma linha de auditoria por varrimento, não por lote (ADR 0007: nada
@@ -534,9 +539,13 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     }
     const { rangeIps, alive, includeRouter } = parsed.data;
     const db = getSqliteDatabase();
+    // Esta rota também abre a aba, por isso responde sempre. Mas fora da rede de
+    // gestão o que a máquina vê (ping, ARP) é de outra rede: não se observa nem se
+    // grava nada, devolve-se só o que já estava guardado.
+    const outside = isOffNetwork(await detectAdminNetwork(db));
 
     const byIp = new Map<string, ObservedHost>();
-    for (const entry of alive) {
+    for (const entry of outside ? [] : alive) {
       if (!isIpv4(entry.ip)) continue;
       byIp.set(entry.ip, { ip: entry.ip, mac: null, hostname: null, source: 'ping', rttMs: entry.rttMs });
     }
@@ -558,12 +567,12 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       byIp.set(ip, { ip, mac, hostname, source, rttMs: null });
     };
 
-    for (const entry of await readLocalArp()) attach(entry.ip, entry.mac, null, 'arp');
+    if (!outside) for (const entry of await readLocalArp()) attach(entry.ip, entry.mac, null, 'arp');
 
     let routerEnriched = false;
     let routerNeighbors: RouterNeighbor[] = [];
     const config = readRouterConfig(db);
-    if (includeRouter && isRouterConfigured(config)) {
+    if (!outside && includeRouter && isRouterConfigured(config)) {
       const transport = createTransport(config);
       // Cada chamada falha por si: o router em baixo nunca pode derrubar a
       // página, só tira-lhe o enriquecimento.
@@ -604,7 +613,7 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     }
 
     const observed = [...byIp.values()];
-    persistSeen(db, observed.map((host): DiscoveredHost => ({
+    if (!outside) persistSeen(db, observed.map((host): DiscoveredHost => ({
       ip: host.ip,
       mac: host.mac,
       hostname: host.hostname,
@@ -654,6 +663,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     }
     const { ips, batchIndex } = parsed.data;
     const db = getSqliteDatabase();
+    const presence = await detectAdminNetwork(db);
+    if (isOffNetwork(presence)) return reply.status(409).send({ error: offNetworkReason(presence) });
 
     if (batchIndex === 0) {
       recordAudit(request, {

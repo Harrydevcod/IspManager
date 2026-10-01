@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
+import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-network';
 import { readPppoeSecret } from './secrets';
 import { readBaseProfileName, readSuspendedProfileName, syncPlanProfiles, type PlanSyncSummary } from './plan-profiles';
 import {
@@ -700,6 +701,10 @@ export async function runNetworkEnforcementIfDue(): Promise<EnforcementSummary> 
   const config = readRouterConfig(db);
   if (!config.enabled || !isRouterConfigured(config)) {
     return { skipped: true, reason: 'Router desligado ou por configurar', dryRun: config.dryRun, services: 0, online: 0, planned: 0, applied: 0, failed: 0, divergences: 0, actions: [] };
+  }
+  const presence = await detectAdminNetwork(db);
+  if (isOffNetwork(presence)) {
+    return { skipped: true, reason: offNetworkReason(presence), dryRun: config.dryRun, services: 0, online: 0, planned: 0, applied: 0, failed: 0, divergences: 0, actions: [] };
   }
   const transport = createTransport(config);
   // Perfis antes dos secrets: um secret nunca aponta para um perfil que ainda

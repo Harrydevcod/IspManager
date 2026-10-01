@@ -263,7 +263,7 @@ describe('Router de gestão', () => {
   test('router por configurar é um estado vazio que leva à configuração, não um erro', async () => {
     routerAvailable = false;
     const container = await mount();
-    expect(container.querySelector('.empty-state-title')?.textContent).toBe('Router indisponível');
+    expect(container.querySelector('.empty-state-title')?.textContent).toBe('Router de gestão do ISP indisponível');
     expect(container.querySelector('[role="alert"]')).toBeNull();
     await click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Abrir configuração'));
     expect(container.querySelector('#router-tab-config')?.getAttribute('aria-selected')).toBe('true');

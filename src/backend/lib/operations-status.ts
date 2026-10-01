@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
+import { isOffNetwork, type AdminNetworkPresence } from './admin-network';
 import { listBackups } from './backup';
 import { INSTALLED_UNITS_SQL, landedCostSql } from './capex';
 import { buildProposals, dismissalKey, type ProposalKind } from './discovery-reconcile';
@@ -131,7 +132,7 @@ type BackboneAggregateRow = {
   mrrCve: number;
 };
 
-function loadNetwork(db: Database.Database): OperationsNetwork {
+function loadNetwork(db: Database.Database, presence?: AdminNetworkPresence): OperationsNetwork {
   // MRR por equipamento: cada serviço conta uma vez, mesmo servido por vários
   // equipamentos ligados ao mesmo backbone (DISTINCT no subselect, não SUM
   // direto — senão um cliente com CPE + router aparecia a dobrar).
@@ -333,12 +334,19 @@ function loadNetwork(db: Database.Database): OperationsNetwork {
   const down = devices
     .filter((device) => device.liveState === 'down')
     .sort((a, b) => b.clientCount - a.clientCount);
+  // Fora da rede de gestão a sonda está em pausa: o estado guardado é o da última
+  // leitura no local, não um alarme. Só "fora" provado o diz; router por configurar
+  // (unknown) não prova nada e os alarmes ficam como estão.
+  const stale = presence !== undefined && isOffNetwork(presence);
+  const lastReading = probeStatus.lastRunAt
+    ? `Última leitura no local: ${formatPtDateTime(probeStatus.lastRunAt)}.`
+    : 'Sem leitura recente no local.';
   for (const device of down) {
     findings.unshift({
       code: 'network.device-down',
-      severity: device.clientCount > 0 ? 'red' : 'amber',
-      title: `${device.name} não responde`,
-      detail: `Sem resposta ao ping desde ${device.liveSince ? formatPtDateTime(device.liveSince) : 'a última leitura'}${device.clientCount > 0 ? ` — ${device.clientCount} cliente(s), ${cve(device.mrrCve)}/mês por trás` : ''}.`
+      severity: stale ? 'green' : device.clientCount > 0 ? 'red' : 'amber',
+      title: stale ? `${device.name}: estado por confirmar` : `${device.name} não responde`,
+      detail: stale ? lastReading : `Sem resposta ao ping desde ${device.liveSince ? formatPtDateTime(device.liveSince) : 'a última leitura'}${device.clientCount > 0 ? ` — ${device.clientCount} cliente(s), ${cve(device.mrrCve)}/mês por trás` : ''}.`
     });
   }
 
@@ -346,9 +354,9 @@ function loadNetwork(db: Database.Database): OperationsNetwork {
     if (device.liveState === 'up' && device.uptime !== null && device.uptime < 0.99 && device.clientCount > 0) {
       findings.push({
         code: 'network.flapping',
-        severity: 'amber',
-        title: `${device.name} instável`,
-        detail: `${pct(device.uptime)} de disponibilidade no tempo observado. Uma ligação que cai e volta gasta-se em chamadas antes de se avariar de vez.`
+        severity: stale ? 'green' : 'amber',
+        title: stale ? `${device.name}: estabilidade por confirmar` : `${device.name} instável`,
+        detail: stale ? lastReading : `${pct(device.uptime)} de disponibilidade no tempo observado. Uma ligação que cai e volta gasta-se em chamadas antes de se avariar de vez.`
       });
     }
   }
@@ -1558,7 +1566,8 @@ function buildHeadline(
 
 export function loadOperationsStatus(
   db: Database.Database = getSqliteDatabase(),
-  now: Date = new Date()
+  now: Date = new Date(),
+  presence?: AdminNetworkPresence
 ): OperationsStatus {
   // Janela fixada uma vez: se cada secção chamasse date('now') por si, uma
   // consulta à meia-noite podia contar dias diferentes na mesma resposta.
@@ -1566,7 +1575,7 @@ export function loadOperationsStatus(
   const previousFrom = isoDate(new Date(now.getTime() - 14 * 86_400_000));
   const settings = loadSettings(db);
 
-  const network = loadNetwork(db);
+  const network = loadNetwork(db, presence);
   const customers = loadCustomers(db, from, previousFrom);
   const fleet = loadFleet(db);
   const accessLayer = loadAccessLayer(db, network, settings, now, from);

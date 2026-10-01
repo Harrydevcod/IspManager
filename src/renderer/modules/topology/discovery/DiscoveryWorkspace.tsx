@@ -37,6 +37,8 @@ import { labelForWanMode } from '../../../../shared/wan';
 import { labelForOperationMode } from '../../../../shared/operation';
 import { createDiscoveryApi, type DiscoveryCategory, type DiscoveryRow } from './discovery-api';
 import { useDiscovery } from './useDiscovery';
+import { useLive } from '../../router/useLive';
+import { PRESENCE_URL, type NetworkPresence } from '../../../lib/networkPresence';
 import { AssignIpDialog } from './AssignIpDialog';
 import { ReconcilePanel } from './ReconcilePanel';
 import { BatchRegisterDialog, candidatesFor } from './BatchRegisterDialog';
@@ -261,6 +263,8 @@ const DISCOVERY_COLUMNS: DataTableColumn<DiscoveryRow>[] = [
 
 export function DiscoveryWorkspace({ active, onRegisterBackbone, onOpenService, onOpenBackbone }: DiscoveryWorkspaceProps) {
   const discovery = useDiscovery(active, api);
+  const presence = useLive<NetworkPresence>(PRESENCE_URL, active, 60_000);
+  const outside = presence.data?.state === 'offsite' || presence.data?.state === 'foreign';
   const { report, progress, scanning } = discovery;
   const [filter, setFilter] = useState<Filter>('todos');
   const [sort, setSort] = useState<SortState<string>>(DEFAULT_SORT);
@@ -365,7 +369,7 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone, onOpenService, 
           onChange={(event) => discovery.setIdentifyModels(event.target.checked)}
         />
         <div className="discovery-toolbar-actions">
-          {scanning ? (
+          {outside ? null : scanning ? (
             <Button variant="secondary" leadingIcon={<Square size={16} aria-hidden />} onClick={discovery.stop}>
               Parar
             </Button>
@@ -400,6 +404,7 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone, onOpenService, 
           </Button>
         </div>
       </div>
+      {outside && <Message tone="neutral">Fora da rede de gestão: {presence.data?.detail}</Message>}
 
       {progress ? (
         <div className="discovery-progress" role="status" aria-live="polite">
