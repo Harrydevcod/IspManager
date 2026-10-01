@@ -4,6 +4,16 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.11](https://github.com/Harrydevcod/IspManager/releases/tag/v2.11.0) — 2026-10-01
+
+> **Sem migrações.** Nada a fazer depois de atualizar.
+
+- **O ISPM sabe quando está fora da rede de gestão do ISP — e deixa de tirar conclusões erradas.** Aberto noutra rede (em casa, num hotspot, ou com o PC a receber o endereço de um DHCP estranho), o ISPM punha o parque inteiro "em baixo": a sonda gravava a falha de cada equipamento, a disponibilidade dos últimos 30 dias descia e o painel Operações ficava com alarmes que continuavam acesos depois de voltar. Agora o ISPM confirma primeiro que está a falar com o router de gestão — pelo certificado fixado, sem enviar credenciais — e, se não está, põe a monitorização em pausa sem gravar nada.
+- **Uma faixa no topo diz porquê.** "Fora da rede de gestão do ISP — monitorização, contagens e reconciliação em pausa. Os dados mostrados são os da última leitura no local." Se outro aparelho responder no endereço do router de gestão, a faixa diz isso mesmo.
+- **Em pausa fora da rede:** a sonda dos equipamentos, o consumo das WAN, a reconciliação do acesso e a suspensão automática. Ficam registados como "saltado" em vez de "erro", e a suspensão automática deixa de escrever uma linha de auditoria a cada passagem.
+- **A Descoberta não regista equipamentos de outra rede.** Fora da rede de gestão não varre nem identifica; a lista continua a abrir com o que já estava guardado.
+- **O painel Operações não inventa alarmes.** Um equipamento que estava em baixo na última leitura aparece como "estado por confirmar", com a hora dessa leitura, em vez de "não responde".
+
 ## [2.10](https://github.com/Harrydevcod/IspManager/releases/tag/v2.10.0) — 2026-09-30
 
 > **Sem migrações.** O consumo das WAN passa a contar-se no próprio router. Depois de atualizar, carregar uma vez em **Contar no router** (Router de gestão → Visão geral) se o contador ainda não estiver instalado.
