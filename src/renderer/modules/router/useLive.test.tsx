@@ -10,9 +10,12 @@ function Probe() {
   return null;
 }
 
+let reloadProbe = () => {};
+
 function LoadingProbe() {
   const { loading, reload } = useLive('/api/network/router/wan', true, 1_000);
-  return <button onClick={reload}>{loading ? 'A carregar' : 'Pronto'}</button>;
+  reloadProbe = reload;
+  return <>{loading ? 'A carregar' : 'Pronto'}</>;
 }
 
 afterEach(() => {
@@ -61,7 +64,7 @@ test('as leituras automáticas não ativam o carregamento, mas reload ativa', as
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(container.textContent).toBe('Pronto');
     await act(async () => { resolveSecond(response()); });
-    await act(async () => { container.querySelector('button')!.click(); });
+    await act(async () => { reloadProbe(); });
     expect(fetch).toHaveBeenCalledTimes(3);
     expect(container.textContent).toBe('A carregar');
   } finally {
