@@ -19,6 +19,7 @@ import {
 } from './router-api';
 import { InterfacesTable, LogView, ProfilesTable, SessionsTable } from './RouterTables';
 import { useLive } from './useLive';
+import { PRESENCE_URL, presenceMessage, type NetworkPresence } from '../../lib/networkPresence';
 import { WanTraffic } from './WanTraffic';
 import { WanUsage } from './WanUsage';
 import './RouterModule.css';
@@ -42,7 +43,7 @@ function Unavailable({ reason, onConfigure }: { reason: string; onConfigure: () 
   return (
     <EmptyState
       icon={Router}
-      title="Router indisponível"
+      title="Router de gestão do ISP indisponível"
       description={reason}
       action={<Button variant="secondary" leadingIcon={<Settings2 size={14} aria-hidden />} onClick={onConfigure}>Abrir configuração</Button>}
     />
@@ -50,15 +51,16 @@ function Unavailable({ reason, onConfigure }: { reason: string; onConfigure: () 
 }
 
 /** O estado comum a todas as vistas ao vivo: a carregar, falhou, router indisponível. */
-function LiveGate<T>({ live, onRetry, onConfigure, children }: {
+function LiveGate<T>({ live, onRetry, onConfigure, presence, children }: {
   live: { data: Live<T> | null; error: string | null };
   onRetry: () => void;
   onConfigure: () => void;
+  presence?: NetworkPresence | null;
   children: (data: T & { dryRun: boolean }) => ReactNode;
 }) {
   if (live.error && !live.data) return <ErrorRetry message={live.error} onRetry={onRetry} />;
   if (!live.data) return <SkeletonList rows={5} />;
-  if (!live.data.available) return <Unavailable reason={live.data.reason} onConfigure={onConfigure} />;
+  if (!live.data.available) return <Unavailable reason={presence && (presence.state === 'offsite' || presence.state === 'foreign') ? presenceMessage(presence) : live.data.reason} onConfigure={onConfigure} />;
   return children(live.data);
 }
 
@@ -132,6 +134,7 @@ function Overview({ data, onOpen }: { data: RouterOverview & { dryRun: boolean }
 }
 
 export default function RouterModule() {
+  const presence = useLive<NetworkPresence>(PRESENCE_URL, true, 60_000);
   const [tab, setTab] = useState<RouterTab>('overview');
   // A configuração fica montada depois da primeira visita: trocar de aba não
   // pode deitar fora um formulário por gravar.
@@ -169,7 +172,7 @@ export default function RouterModule() {
         <div>
           <p className="eyebrow">Rede</p>
           <div className="router-title">
-            <h2>Router de gestão</h2>
+            <h2>Router de gestão do ISP</h2>
             {head && <Badge tone={head.dryRun ? 'info' : 'success'}>{head.dryRun ? 'Em ensaio' : 'A controlar'}</Badge>}
           </div>
           <p className="router-subtitle">
@@ -193,7 +196,7 @@ export default function RouterModule() {
         />
       </div>
 
-      <nav ref={tabListRef} className="segmented-tabs" role="tablist" aria-label="Router de gestão">
+      <nav ref={tabListRef} className="segmented-tabs" role="tablist" aria-label="Router de gestão do ISP">
         {TABS.map((item) => {
           const Icon = item.icon;
           const selected = tab === item.id;
@@ -219,27 +222,27 @@ export default function RouterModule() {
 
       <div id={tab === 'config' ? undefined : `router-panel-${tab}`} role="tabpanel" aria-labelledby={`router-tab-${tab}`} hidden={tab === 'config'}>
         {tab === 'overview' && (
-          <LiveGate live={overview} onRetry={overview.reload} onConfigure={openConfig}>
+          <LiveGate live={overview} onRetry={overview.reload} onConfigure={openConfig} presence={presence.data}>
             {(data) => <Overview data={data} onOpen={selectTab} />}
           </LiveGate>
         )}
         {tab === 'sessions' && (
-          <LiveGate live={sessions} onRetry={sessions.reload} onConfigure={openConfig}>
+          <LiveGate live={sessions} onRetry={sessions.reload} onConfigure={openConfig} presence={presence.data}>
             {(data) => <SessionsTable sessions={data.sessions} onChanged={sessions.reload} />}
           </LiveGate>
         )}
         {tab === 'profiles' && (
-          <LiveGate live={profiles} onRetry={profiles.reload} onConfigure={openConfig}>
+          <LiveGate live={profiles} onRetry={profiles.reload} onConfigure={openConfig} presence={presence.data}>
             {(data) => <ProfilesTable profiles={profileRows(data.profiles, plans.data ?? [])} />}
           </LiveGate>
         )}
         {tab === 'interfaces' && (
-          <LiveGate live={interfaces} onRetry={interfaces.reload} onConfigure={openConfig}>
+          <LiveGate live={interfaces} onRetry={interfaces.reload} onConfigure={openConfig} presence={presence.data}>
             {(data) => <InterfacesTable interfaces={data.interfaces} />}
           </LiveGate>
         )}
         {tab === 'log' && (
-          <LiveGate live={log} onRetry={log.reload} onConfigure={openConfig}>
+          <LiveGate live={log} onRetry={log.reload} onConfigure={openConfig} presence={presence.data}>
             {(data) => <LogView log={data} />}
           </LiveGate>
         )}

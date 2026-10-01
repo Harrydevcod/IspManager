@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import * as adminNetwork from '../lib/admin-network';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -60,7 +61,30 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  adminNetwork.resetAdminNetworkCacheForTests();
+  vi.restoreAllMocks();
   for (const table of TABLES_TO_CLEAR) db.prepare(`DELETE FROM ${table}`).run();
+});
+
+describe('presença da rede de gestão', () => {
+  test('GET /api/network/presence devolve unknown sem router configurado', async () => {
+    const response = await app.inject('/api/network/presence');
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ state: 'unknown', checkedAt: expect.any(String) });
+  });
+
+  test('varrimento fora da rede devolve 409 sem escrever auditoria', async () => {
+    vi.spyOn(adminNetwork, 'detectAdminNetwork').mockResolvedValue({
+      state: 'foreign', checkedAt: new Date().toISOString(),
+      detail: 'Outro aparelho responde em 192.0.2.1 — não é o router de gestão do ISP.'
+    });
+    const before = (db.prepare('SELECT COUNT(*) AS n FROM audit_logs').get() as { n: number }).n;
+    const response = await app.inject({ method: 'POST', url: '/api/network/discovery/sweep',
+      payload: { ips: ['203.0.113.1'], range: '203.0.113.1', batchIndex: 0 } });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toContain('Fora da rede de gestão');
+    expect((db.prepare('SELECT COUNT(*) AS n FROM audit_logs').get() as { n: number }).n).toBe(before);
+  });
 });
 
 afterAll(async () => {

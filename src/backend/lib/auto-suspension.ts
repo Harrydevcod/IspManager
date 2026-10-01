@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { escudosToCentavos, roundEscudos } from '../../shared/money';
 import { changeServiceStatus } from './services';
+import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-network';
 import {
   createTransport,
   describeRouterFailure,
@@ -9,6 +10,12 @@ import {
   readRouterConfig,
   testConnection
 } from './routeros';
+
+let lastGate: 'ok' | 'offsite' | 'foreign' | 'unreachable' | null = null;
+
+export function resetAutoSuspensionGateForTests(): void {
+  lastGate = null;
+}
 
 const DEFAULT_GRACE_DAYS = 15;
 const DEFAULT_INTERVAL_MINUTES = 60;
@@ -64,10 +71,7 @@ export type AutoSuspensionRun = AutoSuspensionPreview & {
 };
 
 export type AutoSuspensionDeps = {
-  /**
-   * Injetável para testes. Em produção faz um GET real a /system/resource
-   * através do mesmo transporte TLS/credenciais usado pela reconciliação.
-   */
+  /** Compatibilidade com testes que simulam uma falha da ligação. */
   probeRouter?: () => Promise<void>;
 };
 
@@ -327,23 +331,6 @@ export async function runAutomaticSuspension(
     };
   }
 
-  if (preview.guardTriggered) {
-    systemAudit(
-      db,
-      'mass_suspension_guard_triggered',
-      null,
-      `Suspensão automática travada: ${preview.guardReason ?? 'limite de segurança'}`
-    );
-    return {
-      ...preview,
-      aborted: true,
-      simulated: 0,
-      applied: 0,
-      revalidatedOut: 0,
-      reason: preview.guardReason ?? 'Limite de segurança atingido'
-    };
-  }
-
   // Sem candidatos não vale a pena abrir uma ligação ao router.
   if (preview.candidateCount === 0) {
     return {
@@ -357,36 +344,48 @@ export async function runAutomaticSuspension(
 
   /**
    * Segurança operacional: só mudamos a intenção comercial para "suspended"
-   * quando o MikroTik está realmente alcançável agora. Sem isto, um portátil
-   * fora da LAN (ou uma VPN caída) podia acumular suspensões locais e aplicá-las
-   * todas de uma vez quando a rede regressasse.
+   * quando o router de gestão está realmente utilizável agora. Sem isto, um
+   * portátil fora da rede (ou uma senha que deixou de servir) acumulava
+   * suspensões locais e aplicava-as todas de uma vez quando a ligação voltasse.
    *
-   * A leitura não escreve nada no router. O corte continua a ser feito apenas
-   * pelo motor de reconciliação (ADR 0007).
+   * Duas perguntas, por ordem: estamos na rede de gestão (aperto de mão TLS,
+   * sem credenciais) e, estando, o router aceita-nos (GET autenticado)? A
+   * auditoria regista só a passagem para "adiado", não cada passagem do job.
    */
-  const routerConfig = readRouterConfig(db);
+  const postpone = (state: 'offsite' | 'foreign' | 'unreachable', reason: string, routerFailureCode?: string) => {
+    if (lastGate === 'ok' || lastGate === null) systemAudit(db, 'auto_suspension_router_unreachable', null, reason);
+    lastGate = state;
+    return { ...preview, skipped: true as const, simulated: 0, applied: 0, revalidatedOut: 0,
+      routerReachable: false, retryPending: true, routerFailureCode, reason };
+  };
+  // Com a sonda injetada (testes de domínio) não se toca na rede.
+  if (!deps.probeRouter) {
+    const presence = await detectAdminNetwork(db);
+    if (isOffNetwork(presence)) {
+      return postpone(presence.state as 'offsite' | 'foreign',
+        `${offNetworkReason(presence)} Suspensão adiada; o serviço mantém-se ativo.`);
+    }
+  }
   const probeRouter = deps.probeRouter ?? (async () => {
-    await testConnection(createTransport(routerConfig));
+    await testConnection(createTransport(readRouterConfig(db)));
   });
-
   try {
     await probeRouter();
   } catch (error) {
     const failure = describeRouterFailure(error);
-    const reason = `Router inacessível: ${failure.title}. Suspensão adiada; o serviço mantém-se ativo e será reavaliado na próxima passagem.`;
-    systemAudit(db, 'auto_suspension_router_unreachable', null, reason);
-    return {
-      ...preview,
-      skipped: true,
-      simulated: 0,
-      applied: 0,
-      revalidatedOut: 0,
-      routerReachable: false,
-      retryPending: true,
-      routerFailureCode: failure.code,
-      reason
-    };
+    return postpone('unreachable',
+      `Router inacessível: ${failure.title}. Suspensão adiada; o serviço mantém-se ativo e será reavaliado na próxima passagem.`,
+      failure.code);
   }
+  lastGate = 'ok';
+
+  if (preview.guardTriggered) {
+    systemAudit(db, 'mass_suspension_guard_triggered', null,
+      `Suspensão automática travada: ${preview.guardReason ?? 'limite de segurança'}`);
+    return { ...preview, aborted: true, simulated: 0, applied: 0, revalidatedOut: 0,
+      reason: preview.guardReason ?? 'Limite de segurança atingido' };
+  }
+
 
   let applied = 0;
   let revalidatedOut = 0;

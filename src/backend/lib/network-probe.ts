@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
+import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-network';
 
 export type ProbeState = 'up' | 'down';
 export type ProbeTargetKind = 'backbone' | 'assignment';
@@ -199,7 +200,7 @@ export type ProbeRunSummary = {
 /** Sonda todos os alvos uma vez e persiste estado + transições. */
 export async function runNetworkProbe(
   db: Database.Database,
-  options: { includeClients: boolean; failThreshold: number; ping?: Pinger; timeoutMs?: number }
+  options: { includeClients: boolean; failThreshold: number; ping?: Pinger; timeoutMs?: number; presenceUnknown?: boolean }
 ): Promise<ProbeRunSummary> {
   const ping = options.ping ?? systemPing;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -211,6 +212,9 @@ export async function runNetworkProbe(
   const previousRows = loadProbeStates(db);
   const previousByKey = new Map(previousRows.map((row) => [`${row.targetKind}:${row.targetId}`, row]));
   const results = await mapWithLimit(targets, MAX_CONCURRENCY, (target) => ping(target.ipAddress, timeoutMs));
+  if (options.presenceUnknown && targets.length >= 2 && results.every((result) => !result.ok)) {
+    return { skipped: true, reason: 'nenhum equipamento responde — o PC parece estar sem rede', checked: targets.length, up: 0, down: 0, transitions: 0 };
+  }
 
   const now = sqlNow();
   const upsert = db.prepare(`
@@ -286,7 +290,11 @@ export async function runNetworkProbeIfDue(): Promise<ProbeRunSummary> {
   if (!config.enabled) {
     return { skipped: true, reason: 'sonda desligada', checked: 0, up: 0, down: 0, transitions: 0 };
   }
-  return runNetworkProbe(db, { includeClients: config.includeClients, failThreshold: config.failThreshold });
+  const presence = await detectAdminNetwork(db);
+  if (isOffNetwork(presence)) {
+    return { skipped: true, reason: offNetworkReason(presence), checked: 0, up: 0, down: 0, transitions: 0 };
+  }
+  return runNetworkProbe(db, { includeClients: config.includeClients, failThreshold: config.failThreshold, presenceUnknown: presence.state === 'unknown' });
 }
 
 // ------------------------------------------------------------ leitura de estado

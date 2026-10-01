@@ -177,6 +177,9 @@ describe('suspensão automática por falta de pagamento', () => {
       WHERE action = 'auto_suspension_router_unreachable'
       ORDER BY id DESC LIMIT 1
     `).get()).toEqual({ action: 'auto_suspension_router_unreachable' });
+    const auditCount = (db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'auto_suspension_router_unreachable'").get() as { n: number }).n;
+    await runAutomaticSuspension(db, { probeRouter: async () => { throw new RouterError('Sem rota', 0, undefined, 'ENETUNREACH'); } });
+    expect((db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'auto_suspension_router_unreachable'").get() as { n: number }).n).toBe(auditCount);
   });
 
   test('depois de uma falha de rede, a passagem seguinte volta a tentar e pode suspender', async () => {

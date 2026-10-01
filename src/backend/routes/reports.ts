@@ -6,6 +6,7 @@ import { computeIncompleteFlags, findDuplicateGroups, type DqClient } from '../l
 import { recordAudit } from '../lib/audit';
 import { balanceSqlExpr, cashReceiptFilterSql, overdueSqlPredicate } from '../lib/payments';
 import { loadOperationsStatus } from '../lib/operations-status';
+import { detectAdminNetwork } from '../lib/admin-network';
 import { buildOperationsStatusPdf } from '../lib/operations-export';
 import { LANDED_COST_SQL, parkValue, portfolioRows } from '../lib/capex';
 
@@ -46,7 +47,8 @@ export async function registerReportRoutes(app: FastifyInstance) {
    * monitorização mente exatamente quando mais importa acertar.
    */
   app.get('/api/reports/operations', { preHandler: requireRole(['admin', 'operator']) }, async () => {
-    return loadOperationsStatus();
+    const db = getSqliteDatabase();
+    return loadOperationsStatus(db, new Date(), await detectAdminNetwork(db));
   });
 
   /**

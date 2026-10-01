@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
+import { detectAdminNetwork, isOffNetwork, offNetworkReason } from '../lib/admin-network';
 import { loadNetworkStatus, loadProbeEvents, mapWithLimit, readProbeConfig, runNetworkProbe } from '../lib/network-probe';
 import {
   createTransport,
@@ -122,6 +123,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
   const readOnly = { preHandler: requireAuth() };
   const adminOnly = { preHandler: requireRole(['admin']) };
   const networkWrite = { preHandler: requireRole(['admin', 'operator']) };
+
+  app.get('/api/network/presence', adminOnly, async () => detectAdminNetwork(getSqliteDatabase()));
 
   app.get('/api/network/status', readOnly, async (request, reply) => {
     const parsed = statusQuerySchema.safeParse(request.query);
@@ -496,6 +499,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     if (!parsed.success || !parsed.data.ips.every(isIpv4)) {
       return reply.status(400).send({ error: 'Parametros invalidos' });
     }
+    const presence = await detectAdminNetwork(getSqliteDatabase());
+    if (isOffNetwork(presence)) return reply.status(409).send({ error: offNetworkReason(presence) });
     const { ips, range, batchIndex } = parsed.data;
 
     // Uma linha de auditoria por varrimento, não por lote (ADR 0007: nada

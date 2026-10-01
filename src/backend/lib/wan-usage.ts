@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
+import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-network';
 import { createTransport, isRouterConfigured, listInterfaceListMembers, listInterfaces, readRouterConfig, readWanUsageData, type RouterTransport } from './routeros';
 
 /**
@@ -117,6 +118,8 @@ export async function runWanUsageIfDue() {
   if (!config.enabled || !isRouterConfigured(config)) {
     return { skipped: true, reason: 'Router desligado ou por configurar' };
   }
+  const presence = await detectAdminNetwork(db);
+  if (isOffNetwork(presence)) return { skipped: true, reason: offNetworkReason(presence) };
   return collectWanUsage(db, createTransport(config));
 }
 

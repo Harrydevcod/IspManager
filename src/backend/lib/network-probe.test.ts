@@ -131,6 +131,16 @@ describe('decideProbeTransition', () => {
 });
 
 describe('runNetworkProbe', () => {
+  test('sem presença confirmada, falha de todos os alvos não grava estado nem transições', async () => {
+    seedBackbone('Torre A', '10.0.0.1');
+    seedBackbone('Torre B', '10.0.0.2');
+    const result = await probe.runNetworkProbe(db, {
+      includeClients: false, failThreshold: 1, ping: pingerFor(['10.0.0.1', '10.0.0.2']), presenceUnknown: true
+    });
+    expect(result).toMatchObject({ skipped: true, transitions: 0 });
+    expect((db.prepare('SELECT COUNT(*) AS n FROM network_probe_state').get() as { n: number }).n).toBe(0);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM network_probe_events').get() as { n: number }).n).toBe(0);
+  });
   test('só sonda equipamentos ativos com IP', async () => {
     seedBackbone('Com IP', '10.0.0.1');
     seedBackbone('Sem IP', null);

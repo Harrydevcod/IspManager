@@ -1,8 +1,10 @@
 import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, Landmark, LogOut, Network, PanelLeftClose, PanelLeftOpen, Plus, Router, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, PageHeader, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider, VaultBanner } from './components';
+import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, Message, PageHeader, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider, VaultBanner } from './components';
 import type { CommandPaletteItem } from './components';
 import { AuthProvider, authFetch, useAuth } from './lib/auth';
+import { PRESENCE_URL, presenceMessage, type NetworkPresence } from './lib/networkPresence';
+import { useLive } from './modules/router/useLive';
 import { LicenseProvider } from './lib/license';
 import type { UserRole } from './lib/auth';
 import { installKeyboardNavigationIntent } from './lib/keyboardNavigation';
@@ -106,6 +108,7 @@ export function App() {
 
 function AppShell() {
   const auth = useAuth();
+  const presence = useLive<NetworkPresence>(PRESENCE_URL, auth.user?.role === 'admin', 60_000);
   const visibleSections = sections.filter((item) => (
     sectionVisible(item, auth.user?.role ?? null, auth.isAuthBypassed)
   ));
@@ -389,6 +392,9 @@ function AppShell() {
       </aside>
 
         <section className="content" id="app-content" tabIndex={-1}>
+          {presence.data && (presence.data.state === 'offsite' || presence.data.state === 'foreign') && (
+            <Message tone="neutral">{presenceMessage(presence.data)}</Message>
+          )}
           <LicenseBanner />
           <VaultBanner onOpen={() => { setVaultOpenRequest((request) => request + 1); setSection('settings'); }} />
           <PageHeader

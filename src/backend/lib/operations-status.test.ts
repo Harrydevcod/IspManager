@@ -18,6 +18,8 @@ const TABLES_TO_CLEAR = [
   'audit_logs',
   'service_events',
   'service_network_state',
+  'network_probe_events',
+  'network_probe_state',
   'network_discovery_dismissals',
   'network_discovery_hosts',
   'work_orders',
@@ -162,6 +164,26 @@ function seedReceipt(paymentId: number, amountCve: number, paymentDate: string, 
 }
 
 describe('loadOperationsStatus', () => {
+  test('fora da rede, uma leitura antiga em baixo é informativa', () => {
+    const catalog = insertCatalog('Torre', 1, 'antena');
+    const id = insertBackbone('Torre Sul', catalog, '10.0.0.2');
+    db.prepare(`INSERT INTO network_probe_state
+      (target_kind, target_id, ip_address, state, consecutive_fails, last_change_at, checked_at)
+      VALUES ('backbone', ?, '10.0.0.2', 'down', 3, datetime('now', '-1 hour'), datetime('now', '-1 hour'))`).run(id);
+    const onsite = loadOperationsStatus(db);
+    const offsite = loadOperationsStatus(db, new Date(), {
+      state: 'offsite', checkedAt: new Date().toISOString(), detail: 'Fora da rede de gestão'
+    });
+    expect(onsite.network.findings.find((finding) => finding.code === 'network.device-down')?.severity).toBe('amber');
+    expect(offsite.network.findings.find((finding) => finding.code === 'network.device-down')).toMatchObject({
+      severity: 'green', title: 'Torre Sul: estado por confirmar', detail: expect.stringContaining('no local')
+    });
+    // Router por configurar não prova que estamos fora: o alarme mantém-se.
+    const unknown = loadOperationsStatus(db, new Date(), {
+      state: 'unknown', checkedAt: new Date().toISOString(), detail: 'Router de gestão do ISP desligado ou por configurar.'
+    });
+    expect(unknown.network.findings.find((finding) => finding.code === 'network.device-down')?.severity).toBe('amber');
+  });
   test('base vazia devolve um estado coerente em vez de rebentar', () => {
     const status = loadOperationsStatus(db);
 
