@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
 import { ArrowRight, Check, EyeOff, Wrench } from 'lucide-react';
 import { Badge, Button, EmptyState, useToast } from '../../../components';
+import { createBackboneApi } from '../backbone-api';
 import type { DiscoveryApi, Orphan, Proposal, ProposalKind, Reconciliation } from './discovery-api';
+
+const backboneApi = createBackboneApi();
 
 /**
  * O que a rede sabe e o registo ainda não.
@@ -124,13 +127,28 @@ export function ReconcilePanel({ data, api, onChanged, onOpenService, onOpenBack
   }
 
   async function apply(proposal: Proposal) {
-    if (proposal.targetKind !== 'assignment') return;
     setBusy(key(proposal));
     try {
       const patch = proposal.kind === 'mac_em_falta'
         ? { macAddress: proposal.proposed }
         : { ipAddress: proposal.proposed };
-      await api.patchAssignment(proposal.targetId, patch);
+      if (proposal.targetKind === 'backbone') {
+        // O backbone só tem PUT de ficha inteira: lê-se, muda-se um campo, grava-se.
+        const current = await backboneApi.getBackbone(proposal.targetId);
+        await backboneApi.updateBackbone(proposal.targetId, {
+          catalogId: current.catalogId, name: current.name, status: current.status,
+          serialNumber: current.serialNumber, assetTag: current.assetTag,
+          ipAddress: current.ipAddress, macAddress: current.macAddress,
+          routerInterface: current.routerInterface, wanMode: current.wanMode,
+          operationMode: current.operationMode, island: current.island, zone: current.zone,
+          notes: current.notes,
+          upstreamDeviceIds: current.upstreams.map((unit) => unit.id),
+          expectedUpdatedAt: current.updatedAt,
+          ...patch
+        });
+      } else {
+        await api.patchAssignment(proposal.targetId, patch);
+      }
       toast(`${KIND_LABEL[proposal.kind]} de ${proposal.name} atualizado`, 'success');
       onChanged();
     } catch (err) {
