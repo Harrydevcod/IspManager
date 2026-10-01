@@ -539,9 +539,13 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     }
     const { rangeIps, alive, includeRouter } = parsed.data;
     const db = getSqliteDatabase();
+    // Esta rota também abre a aba, por isso responde sempre. Mas fora da rede de
+    // gestão o que a máquina vê (ping, ARP) é de outra rede: não se observa nem se
+    // grava nada, devolve-se só o que já estava guardado.
+    const outside = isOffNetwork(await detectAdminNetwork(db));
 
     const byIp = new Map<string, ObservedHost>();
-    for (const entry of alive) {
+    for (const entry of outside ? [] : alive) {
       if (!isIpv4(entry.ip)) continue;
       byIp.set(entry.ip, { ip: entry.ip, mac: null, hostname: null, source: 'ping', rttMs: entry.rttMs });
     }
@@ -563,12 +567,12 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       byIp.set(ip, { ip, mac, hostname, source, rttMs: null });
     };
 
-    for (const entry of await readLocalArp()) attach(entry.ip, entry.mac, null, 'arp');
+    if (!outside) for (const entry of await readLocalArp()) attach(entry.ip, entry.mac, null, 'arp');
 
     let routerEnriched = false;
     let routerNeighbors: RouterNeighbor[] = [];
     const config = readRouterConfig(db);
-    if (includeRouter && isRouterConfigured(config)) {
+    if (!outside && includeRouter && isRouterConfigured(config)) {
       const transport = createTransport(config);
       // Cada chamada falha por si: o router em baixo nunca pode derrubar a
       // página, só tira-lhe o enriquecimento.
@@ -609,7 +613,7 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     }
 
     const observed = [...byIp.values()];
-    persistSeen(db, observed.map((host): DiscoveredHost => ({
+    if (!outside) persistSeen(db, observed.map((host): DiscoveredHost => ({
       ip: host.ip,
       mac: host.mac,
       hostname: host.hostname,
@@ -659,6 +663,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     }
     const { ips, batchIndex } = parsed.data;
     const db = getSqliteDatabase();
+    const presence = await detectAdminNetwork(db);
+    if (isOffNetwork(presence)) return reply.status(409).send({ error: offNetworkReason(presence) });
 
     if (batchIndex === 0) {
       recordAudit(request, {
