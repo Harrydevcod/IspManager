@@ -5,8 +5,9 @@ import { authFetch } from '../../lib/auth';
 const POLL_MS = 30_000;
 
 /**
- * Lê um endpoint enquanto `active`. Cada efeito tem a sua bandeira: em
- * StrictMode a montagem dupla não deixa o pedido antigo escrever no estado.
+ * Lê um endpoint enquanto `active`. A leitura inicial e `reload` mostram
+ * carregamento; as leituras periódicas são silenciosas. Cada efeito tem a sua
+ * bandeira: em StrictMode a montagem dupla não deixa o pedido antigo escrever no estado.
  */
 export function useLive<T>(url: string, active: boolean, intervalMs = POLL_MS) {
   const [data, setData] = useState<T | null>(null);
@@ -19,10 +20,10 @@ export function useLive<T>(url: string, active: boolean, intervalMs = POLL_MS) {
     if (!active) return;
     let alive = true;
     let inFlight = false;
-    const read = () => {
+    const read = (manual: boolean) => {
       if (inFlight) return;
       inFlight = true;
-      setLoading(true);
+      if (manual) setLoading(true);
       authFetch(url)
         .then(async (response) => {
           if (!response.ok) throw new Error(String(response.status));
@@ -32,8 +33,8 @@ export function useLive<T>(url: string, active: boolean, intervalMs = POLL_MS) {
         .catch(() => { if (alive) setError('Não foi possível ler o router.'); })
         .finally(() => { inFlight = false; if (alive) setLoading(false); });
     };
-    read();
-    const timer = window.setInterval(read, intervalMs);
+    read(true);
+    const timer = window.setInterval(() => read(false), intervalMs);
     return () => { alive = false; window.clearInterval(timer); };
   }, [url, active, tick, intervalMs]);
 
