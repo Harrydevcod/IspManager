@@ -1,9 +1,18 @@
 import { AlertTriangle, Cable, Layers, ScrollText, ShieldAlert, Unplug, Waypoints, X } from 'lucide-react';
 import { useState } from 'react';
-import { Badge, Button, DataTable, EmptyState, Toggle, useToast, type DataTableColumn } from '../../components';
+import { Badge, Button, DataTable, Dialog, EmptyState, Toggle, useToast, type DataTableColumn } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { routerSyncBadge } from '../plans/routerSync';
-import { formatBytes, logFindings, logTone, SESSION_STATE, type ProfileRow, type RouterLog, type RouterLogEntry, type RouterInterface, type RouterSession } from './router-api';
+import { formatBytes, logFindings, logTone, SESSION_STATE, type PppoeBackfillPlan, type PppoeBackfillRow, type ProfileRow, type RouterLog, type RouterLogEntry, type RouterInterface, type RouterSession } from './router-api';
+
+const BACKFILL_COLUMNS: DataTableColumn<PppoeBackfillRow>[] = [
+  { header: 'Código', sortValue: (row) => row.clientCode, cell: (row) => row.clientCode },
+  { header: 'Cliente', sortValue: (row) => row.clientName, cell: (row) => row.clientName },
+  { header: 'Utilizador', sortValue: (row) => row.username ?? '', cell: (row) => row.username ?? '—' },
+  { header: 'Estado', sortValue: (row) => row.reason ?? '', cell: (row) => row.reason
+    ? <Badge tone="warn">Saltado: {row.reason}</Badge>
+    : <Badge tone="success">A criar</Badge> }
+];
 
 const SESSION_COLUMNS: DataTableColumn<RouterSession>[] = [
   { header: 'Cliente', sortValue: (row) => row.clientName ?? '', cell: (row) => row.clientName ? <strong>{row.clientName}</strong> : <span className="router-muted">—</span> },
@@ -30,6 +39,31 @@ const SESSION_COLUMNS: DataTableColumn<RouterSession>[] = [
 export function SessionsTable({ sessions, onChanged }: { sessions: RouterSession[]; onChanged: () => void }) {
   const { toast } = useToast();
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [plan, setPlan] = useState<PppoeBackfillPlan | null>(null);
+  const [backfillBusy, setBackfillBusy] = useState(false);
+
+  async function backfill(apply: boolean) {
+    setBackfillBusy(true);
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/network/pppoe/backfill', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apply })
+      });
+      const result = await response.json() as PppoeBackfillPlan & { error?: string };
+      if (!response.ok) {
+        toast(result.error ?? 'Não foi possível preparar os utilizadores PPPoE.', 'error');
+      } else if (apply) {
+        setPlan(null);
+        toast(`${result.applied ?? 0} utilizadores PPPoE preparados.`, 'success');
+        onChanged();
+      } else {
+        setPlan(result);
+      }
+    } catch {
+      toast('Falha de rede ao preparar os utilizadores PPPoE.', 'error');
+    } finally {
+      setBackfillBusy(false);
+    }
+  }
 
   async function disconnect(row: RouterSession) {
     if (row.serviceId === null) return;
@@ -50,6 +84,32 @@ export function SessionsTable({ sessions, onChanged }: { sessions: RouterSession
   }
 
   return (
+    <>
+    <div className="router-log-filter">
+      <Button variant="secondary" size="sm" loading={backfillBusy && !plan} onClick={() => void backfill(false)}>Criar utilizadores em falta</Button>
+    </div>
+    <Dialog
+      open={plan !== null}
+      onClose={() => setPlan(null)}
+      eyebrow="Sessões PPPoE"
+      title="Criar utilizadores em falta"
+      size="xl"
+      actions={<>
+        <Button variant="secondary" onClick={() => setPlan(null)}>Cancelar</Button>
+        <Button loading={backfillBusy} disabled={!plan?.create.length} onClick={() => void backfill(true)}>Confirmar criação</Button>
+      </>}
+    >
+      <p className="router-muted">
+        {plan?.create.length ?? 0} a criar · {plan?.skipped.length ?? 0} saltados. Os secrets que já existem no router não são alterados.
+      </p>
+      <DataTable
+        rows={[...(plan?.create ?? []), ...(plan?.skipped ?? [])]}
+        rowKey={(row) => String(row.serviceId)}
+        columns={BACKFILL_COLUMNS}
+        gridTemplateColumns="100px minmax(180px, 1fr) 150px minmax(180px, 1fr)"
+        empty={<EmptyState icon={Cable} title="Nada em falta" description="Todos os serviços ativos já têm utilizador PPPoE." />}
+      />
+    </Dialog>
     <DataTable
       rows={sessions}
       rowKey={(row) => `${row.serviceId ?? 'x'}-${row.login}`}
@@ -73,6 +133,7 @@ export function SessionsTable({ sessions, onChanged }: { sessions: RouterSession
       ) : null}
       empty={<EmptyState icon={Cable} title="Sem utilizadores PPPoE" description="Nem o ISPM nem o router têm secrets PPPoE." />}
     />
+    </>
   );
 }
 

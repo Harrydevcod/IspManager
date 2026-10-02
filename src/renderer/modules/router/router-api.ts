@@ -41,6 +41,9 @@ export type RouterSession = {
   routerProfile: string | null;
 };
 
+export type PppoeBackfillRow = { serviceId: number; clientCode: string; clientName: string; username: string | null; reason?: string };
+export type PppoeBackfillPlan = { create: PppoeBackfillRow[]; skipped: PppoeBackfillRow[]; applied?: number };
+
 export type RouterInterface = {
   name: string;
   type: string | null;

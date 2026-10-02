@@ -143,6 +143,15 @@ describe('settings SMS validation', () => {
     expect(bad.statusCode).toBe(400);
   });
 
+  test('o prefixo PPPoE grava-se e só aceita minúsculas, dígitos e hífen', async () => {
+    const ok = await app.inject({ method: 'PUT', url: '/api/settings', payload: { ...validSettings, routerosPppoePrefix: 'skn' } });
+    expect(ok.statusCode).toBe(200);
+    expect(db.prepare(`SELECT value FROM app_settings WHERE key='routerosPppoePrefix'`).get()).toEqual({ value: 'skn' });
+
+    const bad = await app.inject({ method: 'PUT', url: '/api/settings', payload: { ...validSettings, routerosPppoePrefix: 'SKN 1' } });
+    expect(bad.statusCode).toBe(400);
+  });
+
   test('defaults autoBillingDay to 30 when never set', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/settings' });
     expect(response.statusCode).toBe(200);

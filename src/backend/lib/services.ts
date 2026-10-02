@@ -57,7 +57,9 @@ export type ServiceInput = z.infer<typeof serviceSchema>;
  * router é criado depois pela reconciliação (ADR 0007), para não haver uma
  * chamada de rede dentro de uma transação SQL.
  */
-export function pppoeUsernameFor(clientName: string, serviceId: number): string {
+export function pppoeUsernameFor({ prefix, clientCode, clientName, serviceId }: { prefix: string; clientCode: string; clientName: string; serviceId: number }): string {
+  const digits = clientCode.match(/\d+/)?.[0];
+  if (prefix && digits) return `${prefix}${String(Number(digits)).padStart(3, '0')}`;
   const slug = clientName
     .normalize('NFD')
     // Tira acentos: "João" tem de dar "joao-12", não "joa-o-12".
@@ -68,6 +70,17 @@ export function pppoeUsernameFor(clientName: string, serviceId: number): string 
     .slice(0, 24)
     .replace(/-$/, '');
   return `${slug || 'cliente'}-${serviceId}`;
+}
+
+export function readPppoePrefix(db: Database): string {
+  const row = db.prepare(`SELECT value FROM app_settings WHERE key = 'routerosPppoePrefix'`).get() as { value: string } | undefined;
+  return row?.value?.trim() ?? '';
+}
+
+export function freePppoeUsername(db: Database, input: Parameters<typeof pppoeUsernameFor>[0]): string {
+  const username = pppoeUsernameFor(input);
+  const taken = db.prepare('SELECT id FROM services WHERE pppoe_username = ? AND id <> ? LIMIT 1').get(username, input.serviceId);
+  return taken ? `${username}-${input.serviceId}` : username;
 }
 
 export function generatePppoePassword(): string {
@@ -129,8 +142,8 @@ export function createService(db: Database, data: ServiceInput, userId: number |
     return { ok: false, status: 400, error: validationError };
   }
 
-  const client = db.prepare('SELECT id, full_name AS fullName FROM clients WHERE id = ?')
-    .get(data.clientId) as { id: number; fullName: string } | undefined;
+  const client = db.prepare('SELECT id, full_name AS fullName, client_code AS clientCode FROM clients WHERE id = ?')
+    .get(data.clientId) as { id: number; fullName: string; clientCode: string } | undefined;
   if (!client) {
     return { ok: false, status: 404, error: 'Cliente nao encontrado' };
   }
@@ -203,7 +216,7 @@ export function createService(db: Database, data: ServiceInput, userId: number |
         SET pppoe_username = ?, pppoe_password = ?, pppoe_password_sync_pending = 1
         WHERE id = ?
       `).run(
-        data.pppoeUsername?.trim() || pppoeUsernameFor(client.fullName, serviceId),
+        data.pppoeUsername?.trim() || freePppoeUsername(db, { prefix: readPppoePrefix(db), clientCode: client.clientCode, clientName: client.fullName, serviceId }),
         sealPppoeSecret(data.pppoePassword || generatePppoePassword()),
         serviceId
       );
@@ -384,12 +397,12 @@ export function updateService(db: Database, id: number, data: ServiceInput): Ser
   // e inventar outro login partia o equipamento do cliente.
   // Como na criação: sem cofre aberto não nasce credencial nenhuma — nunca em claro.
   if (data.planId && !service.planId && !service.pppoeUsername && !nextPppoeUsername && routerIntegrationOn(db) && canStoreSecrets()) {
-    const owner = db.prepare('SELECT full_name AS fullName FROM clients WHERE id = ?').get(data.clientId) as { fullName: string };
+    const owner = db.prepare('SELECT full_name AS fullName, client_code AS clientCode FROM clients WHERE id = ?').get(data.clientId) as { fullName: string; clientCode: string };
     db.prepare(`
       UPDATE services
       SET pppoe_username = ?, pppoe_password = ?, pppoe_password_sync_pending = 1
       WHERE id = ?
-    `).run(pppoeUsernameFor(owner.fullName, id), sealPppoeSecret(data.pppoePassword?.trim() || generatePppoePassword()), id);
+    `).run(freePppoeUsername(db, { prefix: readPppoePrefix(db), clientCode: owner.clientCode, clientName: owner.fullName, serviceId: id }), sealPppoeSecret(data.pppoePassword?.trim() || generatePppoePassword()), id);
   }
 
   const statusResult = changeServiceStatus(db, id, data.status, { reason: 'Alteração no formulário do serviço' });

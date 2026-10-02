@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import type { FastifyInstance } from 'fastify';
-import { writeSecret } from '../lib/secrets';
+import { getCredentialVault, setCredentialVault, writeSecret } from '../lib/secrets';
 
 let app: FastifyInstance;
 let db: Database.Database;
@@ -581,5 +581,57 @@ describe('GET /api/network/router/* — leituras do módulo Router de gestão', 
     expect(body.available).toBe(false);
     expect(body.reason.length).toBeGreaterThan(0);
     expect(response.body).not.toContain('segredo');
+  });
+});
+
+describe('POST /api/network/pppoe/backfill', () => {
+  function setSetting(key: string, value: string) {
+    db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run(key, value);
+  }
+
+  function unreachableRouter() {
+    setSetting('routerosEnabled', 'true');
+    setSetting('routerosHost', '127.0.0.1');
+    setSetting('routerosPort', '1');
+    setSetting('routerosUser', 'ispm');
+    writeSecret(db, 'routerosPassword', 'segredo');
+  }
+
+  const backfill = (apply: boolean) => app.inject({ method: 'POST', url: '/api/network/pppoe/backfill', payload: { apply } });
+
+  test('sem prefixo configurado recusa antes de contactar o router', async () => {
+    unreachableRouter();
+    const response = await backfill(true);
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toContain('prefixo PPPoE');
+  });
+
+  test('com o cofre trancado recusa: nenhuma senha nasce em claro', async () => {
+    setSetting('routerosPppoePrefix', 'skn');
+    unreachableRouter();
+    const vault = getCredentialVault();
+    setCredentialVault(null);
+    try {
+      expect((await backfill(true)).statusCode).toBe(409);
+    } finally {
+      setCredentialVault(vault);
+    }
+  });
+
+  test('router ilegível responde 502 e não escreve utilizador nenhum', async () => {
+    setSetting('routerosPppoePrefix', 'skn');
+    unreachableRouter();
+    const clientId = Number(db.prepare(`INSERT INTO clients (client_code, full_name, phone) VALUES ('C0002', 'Ana Lima', '9110002')`).run().lastInsertRowid);
+    const serviceId = Number(db.prepare(`INSERT INTO services (client_id, monthly_value_cve, status) VALUES (?, 2500, 'active')`).run(clientId).lastInsertRowid);
+    try {
+      const response = await backfill(true);
+      expect(response.statusCode).toBe(502);
+      expect(response.body).not.toContain('segredo');
+      expect(db.prepare('SELECT pppoe_username AS u, pppoe_password AS p FROM services WHERE id = ?').get(serviceId))
+        .toEqual({ u: null, p: null });
+    } finally {
+      db.prepare('DELETE FROM services WHERE id = ?').run(serviceId);
+      db.prepare('DELETE FROM clients WHERE id = ?').run(clientId);
+    }
   });
 });

@@ -50,6 +50,10 @@ import { runJob } from '../lib/jobRuns';
 import { collectWanUsage, loadWanUsage } from '../lib/wan-usage';
 import { applyPlanProfile, readBaseProfileName } from '../lib/plan-profiles';
 import { recordAudit } from '../lib/audit';
+import { canStoreSecrets } from '../lib/secrets';
+import { readPppoePrefix } from '../lib/services';
+import { applyPppoeBackfill, planPppoeBackfill, type BackfillService } from '../lib/pppoe-backfill';
+import { requestNetworkSync } from '../lib/network-sync';
 import { isIpv4, isPrivateIpv4, SWEEP_BATCH_SIZE } from '../../shared/ip-range';
 import { requireAuth, requireRole } from './auth';
 
@@ -380,6 +384,52 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     const [secrets, active] = await Promise.all([listSecrets(transport), listActive(transport)]);
     return { sessions: buildSessionRows(loadDesiredServices(getSqliteDatabase()), secrets, active) };
   }));
+
+  /**
+   * Dá utilizador PPPoE aos serviços ativos que ainda não o têm; o secret nasce
+   * depois, na reconciliação. Um nome que já exista no router nunca é adotado:
+   * a reconciliação casa também pelo nome e trocava a senha a uma sessão viva.
+   */
+  app.post('/api/network/pppoe/backfill', adminOnly, async (request, reply) => {
+    const parsed = z.object({ apply: z.boolean() }).strict().safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Pedido inválido' });
+    const db = getSqliteDatabase();
+    const prefix = readPppoePrefix(db);
+    if (!prefix) return reply.status(400).send({ error: 'Configure o prefixo PPPoE nas definições de rede' });
+    if (!canStoreSecrets()) return reply.status(409).send({ error: 'Cofre de credenciais trancado' });
+    const config = readRouterConfig(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return reply.status(400).send({ error: 'Integração MikroTik desligada ou por configurar' });
+    }
+    // Sem a lista do router não há prova de que um nome está livre: não se escreve.
+    let secrets: Awaited<ReturnType<typeof listSecrets>>;
+    try {
+      secrets = await listSecrets(createTransport(config));
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return reply.status(502).send({ error: `${failure.title}. ${failure.detail}`, code: failure.code });
+    }
+    const services = db.prepare(`
+      SELECT s.id AS serviceId, s.status, s.pppoe_username AS username,
+        c.client_code AS clientCode, c.full_name AS clientName, c.status AS clientStatus
+      FROM services s JOIN clients c ON c.id = s.client_id ORDER BY s.id
+    `).all() as BackfillService[];
+    const plan = planPppoeBackfill(services, {
+      router: new Set(secrets.map((secret) => secret.name)),
+      ispm: new Set(services.map((service) => service.username?.trim()).filter((name): name is string => Boolean(name))),
+      // Secret já ancorado ao serviço pelo comentário `ispm:<id>`: também seria adotado.
+      routerServiceIds: new Set(secrets.map((secret) => Number(/^ispm:(\d+)$/.exec(secret.comment ?? '')?.[1])).filter(Boolean))
+    }, prefix);
+    if (!parsed.data.apply) return plan;
+    const applied = applyPppoeBackfill(db, plan);
+    recordAudit(request, {
+      action: 'pppoe_backfill', entityType: 'router',
+      summary: `Preparou ${applied} utilizadores PPPoE em falta`,
+      metadata: { applied, skipped: plan.skipped.length }
+    });
+    if (applied) requestNetworkSync();
+    return { ...plan, applied };
+  });
 
   app.get('/api/network/router/interfaces', adminOnly, async () => readLive(async (transport) => ({
     interfaces: await listInterfaces(transport)

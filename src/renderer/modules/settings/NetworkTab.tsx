@@ -282,6 +282,13 @@ export function NetworkTab({
             onChange={(event) => onUpdate('routerosSuspendedProfile', event.target.value)}
             hint="Perfil PPP para onde vai o cliente suspenso (velocidade mínima). Vazio: o secret é desativado."
           />
+          <Field
+            label="Prefixo dos utilizadores PPPoE"
+            value={form.routerosPppoePrefix}
+            maxLength={16}
+            onChange={(event) => onUpdate('routerosPppoePrefix', event.target.value)}
+            hint="Com «skn», o cliente C0002 fica skn002. Vazio: o utilizador sai do nome do cliente."
+          />
           <Toggle
             title="Suspensão automática por falta de pagamento"
             description="Depois da tolerância, suspende apenas o serviço em dívida. O ensaio protege também esta automação: enquanto estiver ligado, só mostra quem seria suspenso."
