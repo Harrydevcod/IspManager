@@ -1,4 +1,4 @@
-import { AlertTriangle, Cable, Cpu, Gauge, Layers, MemoryStick, RefreshCw, Router, ScrollText, Settings2, ShieldAlert, Timer, Waypoints, X } from 'lucide-react';
+import { AlertTriangle, Cable, Cpu, Gauge, Layers, MemoryStick, Router, ScrollText, Settings2, ShieldAlert, Timer, Waypoints, X } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { Badge, Button, EmptyState, ErrorRetry, MetricCard, MetricGrid, ModuleHeaderActions, SkeletonList } from '../../components';
@@ -18,6 +18,7 @@ import {
   type RouterWanUsage
 } from './router-api';
 import { InterfacesTable, LogView, ProfilesTable, SessionsTable } from './RouterTables';
+import { SyncStatus } from './SyncStatus';
 import { useLive } from './useLive';
 import { PRESENCE_URL, presenceMessage, type NetworkPresence } from '../../lib/networkPresence';
 import { WanTraffic } from './WanTraffic';
@@ -184,14 +185,12 @@ export default function RouterModule() {
         <ModuleHeaderActions
           ariaLabel="Ações do router"
           secondary={current ? (
-            <Button
-              variant="secondary"
-              leadingIcon={<RefreshCw size={16} aria-hidden />}
-              loading={current.loading}
-              onClick={() => { current.reload(); if (tab === 'profiles') plans.reload(); }}
-            >
-              Atualizar
-            </Button>
+            <SyncStatus
+              syncing={current.syncing}
+              syncedAt={current.syncedAt}
+              error={current.error}
+              onSync={() => { current.reload(); if (tab === 'profiles') plans.reload(); }}
+            />
           ) : undefined}
         />
       </div>

@@ -12,10 +12,10 @@ function Probe() {
 
 let reloadProbe = () => {};
 
-function LoadingProbe() {
-  const { loading, reload } = useLive('/api/network/router/wan', true, 1_000);
+function SyncProbe() {
+  const { syncing, syncedAt, error, reload } = useLive('/api/network/router/wan', true, 1_000);
   reloadProbe = reload;
-  return <>{loading ? 'A carregar' : 'Pronto'}</>;
+  return <>{`${syncing ? 'sync' : 'idle'}|${syncedAt ?? '-'}|${error ? 'erro' : 'ok'}`}</>;
 }
 
 afterEach(() => {
@@ -43,30 +43,36 @@ test('não inicia outra leitura enquanto a anterior está pendente', async () =>
   }
 });
 
-test('as leituras automáticas não ativam o carregamento, mas reload ativa', async () => {
-  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+test('syncing acompanha cada leitura; syncedAt só avança quando corre bem', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+  vi.setSystemTime(10_000);
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  let resolveSecond!: (response: Response) => void;
-  const second = new Promise<Response>((resolve) => { resolveSecond = resolve; });
-  const response = () => new Response(JSON.stringify({ available: true, sampledAt: 1, interfaces: [] }));
-  const fetch = vi.fn()
-    .mockResolvedValueOnce(response())
-    .mockReturnValueOnce(second)
-    .mockImplementation(() => new Promise<Response>(() => {}));
+  const resolvers: Array<(response: Response) => void> = [];
+  const fetch = vi.fn(() => new Promise<Response>((resolve) => { resolvers.push(resolve); }));
   vi.stubGlobal('fetch', fetch);
+  const ok = () => new Response(JSON.stringify({ available: true }));
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
   try {
-    await act(async () => { root.render(<LoadingProbe />); });
-    expect(container.textContent).toBe('Pronto');
+    await act(async () => { root.render(<SyncProbe />); });
+    expect(container.textContent).toBe('sync|-|ok');
+    await act(async () => { resolvers.shift()!(ok()); });
+    expect(container.textContent).toBe('idle|10000|ok');
+
+    // Leitura automática: mostra que sincroniza, sem mexer na hora até acabar.
+    vi.setSystemTime(11_000);
     await act(async () => { vi.advanceTimersByTime(1_000); });
-    expect(fetch).toHaveBeenCalledTimes(2);
-    expect(container.textContent).toBe('Pronto');
-    await act(async () => { resolveSecond(response()); });
+    expect(container.textContent).toBe('sync|10000|ok');
+    await act(async () => { resolvers.shift()!(new Response('', { status: 500 })); });
+    expect(container.textContent).toBe('idle|10000|erro');
+
+    // Pedida pelo utilizador: o mesmo estado, e a hora avança quando corre bem.
+    vi.setSystemTime(12_500);
     await act(async () => { reloadProbe(); });
-    expect(fetch).toHaveBeenCalledTimes(3);
-    expect(container.textContent).toBe('A carregar');
+    expect(container.textContent).toBe('sync|10000|erro');
+    await act(async () => { resolvers.shift()!(ok()); });
+    expect(container.textContent).toBe('idle|12500|ok');
   } finally {
     await act(async () => { root.unmount(); });
   }

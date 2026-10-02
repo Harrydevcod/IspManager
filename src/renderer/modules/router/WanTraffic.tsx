@@ -1,4 +1,4 @@
-import { Activity, ArrowDown, ArrowUp, RefreshCw } from 'lucide-react';
+import { Activity, ArrowDown, ArrowUp } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Badge } from '../../components';
 import {
@@ -14,10 +14,11 @@ import {
 import { useLive } from './useLive';
 
 /**
- * Lê de 5 em 5 s para a sincronização ser calma e leve no hEX S.
+ * Com a ligação TLS reutilizada, 1 s acompanha as taxas que o router mede,
+ * as mesmas do Winbox, sem abrir uma ligação nova em cada leitura no hEX S.
  */
-const WAN_POLL_MS = 5_000;
-/** 120 pontos de 5 s = os últimos 10 minutos. */
+const WAN_POLL_MS = 1_000;
+/** 120 pontos de 1 s = os últimos 2 minutos. */
 const HISTORY = 120;
 
 const peak = (points: WanRate[]) => Math.max(1, ...points.flatMap((point) => [point.downBps ?? 0, point.upBps ?? 0]));
@@ -50,55 +51,6 @@ function totalOf(rates: WanRate[]): WanRate {
     downBps: sum(rates, (rate) => rate.downBps),
     upBps: sum(rates, (rate) => rate.upBps)
   };
-}
-
-/**
- * Desliza as taxas da amostra anterior para a nova, em vez de saltar. A
- * primeira amostra, uma interface nova ou um valor em falta entram de imediato.
- * Com a janela escondida o browser pausa o requestAnimationFrame: aí o valor
- * novo entra logo, senão o ecrã ficava preso na amostra anterior.
- */
-export function useTween(target: WanRate[], ms = 600): WanRate[] {
-  const [shown, setShown] = useState<WanRate[]>([]);
-  const current = useRef<WanRate[]>([]);
-
-  useEffect(() => {
-    const from = new Map(current.current.map((rate) => [rate.name, rate]));
-    const at = (progress: number) => target.map((rate) => {
-      const previous = from.get(rate.name);
-      const value = (old: number | null | undefined, next: number | null) =>
-        old == null || next === null ? next : old + (next - old) * progress;
-      return {
-        name: rate.name,
-        running: rate.running,
-        downBps: value(previous?.downBps, rate.downBps),
-        upBps: value(previous?.upBps, rate.upBps)
-      };
-    });
-
-    if (from.size === 0 || document.hidden || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      current.current = target;
-      setShown(target);
-      return;
-    }
-
-    let frame: number;
-    const start = performance.now();
-    const step = (now: number) => {
-      const progress = Math.min(1, (now - start) / ms);
-      const next = at(progress);
-      current.current = next;
-      setShown(next);
-      if (progress < 1) frame = window.requestAnimationFrame(step);
-    };
-    const first = at(0);
-    current.current = first;
-    setShown(first);
-    frame = window.requestAnimationFrame(step);
-    return () => window.cancelAnimationFrame(frame);
-  }, [target, ms]);
-
-  return shown.length ? shown : target;
 }
 
 /** Bytes de um período; `null` quando ainda não há registo para mostrar. */
@@ -179,7 +131,6 @@ export function WanTraffic({ usage }: { usage: RouterWanUsage | null }) {
   const live = useLive<Live<RouterWan>>(`${ROUTER_API}/wan`, true, WAN_POLL_MS);
   const previousSampledAt = useRef<number | null>(null);
   const [latest, setLatest] = useState<WanRate[]>([]);
-  const [sampledAt, setSampledAt] = useState<number | null>(null);
   const [history, setHistory] = useState<Record<string, WanRate[]>>({});
 
   useEffect(() => {
@@ -190,28 +141,20 @@ export function WanTraffic({ usage }: { usage: RouterWanUsage | null }) {
     const rates = data.interfaces;
     previousSampledAt.current = data.sampledAt;
     setLatest(rates);
-    setSampledAt(data.sampledAt);
     setHistory((current) => Object.fromEntries([...rates, totalOf(rates)].map((rate) => [rate.name, [...(current[rate.name] ?? []), rate].slice(-HISTORY)])));
   }, [live.data]);
 
-  const shown = useTween(latest);
   // A soma entra na escala: os três cartões medem-se com a mesma régua.
   const scale = peak(Object.values(history).flat());
-  const total = totalOf(shown);
-  const actualTotal = totalOf(latest);
-  const totalDown = actualTotal.downBps;
+  const total = totalOf(latest);
+  const totalDown = total.downBps;
   const linked = latest.filter((rate) => rate.running).length;
 
   return (
     <section className="router-wan" aria-label="Tráfego das WAN">
       <div className="router-wan-header">
         <h3><Activity size={16} aria-hidden /> Tráfego das WAN</h3>
-        <div className="router-wan-status">
-          <span className="router-muted">ao vivo · de {WAN_POLL_MS / 1000} em {WAN_POLL_MS / 1000} s</span>
-          {sampledAt !== null && live.data?.available && latest.length > 0 && (
-            <RefreshCw key={sampledAt} size={14} className="router-wan-sync" aria-hidden />
-          )}
-        </div>
+        <span className="router-muted">ao vivo · de {WAN_POLL_MS / 1000} em {WAN_POLL_MS / 1000} s</span>
       </div>
 
       {live.data && !live.data.available ? (
@@ -220,27 +163,24 @@ export function WanTraffic({ usage }: { usage: RouterWanUsage | null }) {
         <p className="router-muted">{live.error ?? 'A ler as interfaces WAN…'}</p>
       ) : (
         <div className={latest.length > 1 ? 'router-wan-grid has-total' : 'router-wan-grid'}>
-          {latest.map((rate) => {
-            const displayed = shown.find((item) => item.name === rate.name) ?? rate;
-            return (
-              <WanCard
-                key={rate.name}
-                title={rate.name}
-                badge={rate.running ? <Badge tone="success">Ligada</Badge> : <Badge tone="danger">Sem ligação</Badge>}
-                rate={displayed}
-                points={[...(history[rate.name] ?? []).slice(0, -1), displayed]}
-                max={scale}
-                consumption={consumptionOf(usage, [rate.name])}
-              />
-            );
-          })}
+          {latest.map((rate) => (
+            <WanCard
+              key={rate.name}
+              title={rate.name}
+              badge={rate.running ? <Badge tone="success">Ligada</Badge> : <Badge tone="danger">Sem ligação</Badge>}
+              rate={rate}
+              points={history[rate.name] ?? []}
+              max={scale}
+              consumption={consumptionOf(usage, [rate.name])}
+            />
+          ))}
           {latest.length > 1 && (
             <WanCard
               total
               title="Total"
               badge={<Badge tone={linked === latest.length ? 'accent' : 'warn'}>{linked} de {latest.length} ligadas</Badge>}
               rate={total}
-              points={[...(history[TOTAL_KEY] ?? []).slice(0, -1), total]}
+              points={history[TOTAL_KEY] ?? []}
               max={scale}
               consumption={consumptionOf(usage, latest.map((rate) => rate.name))}
               footer={totalDown ? (

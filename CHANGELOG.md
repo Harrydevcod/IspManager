@@ -8,8 +8,7 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 > **Sem migrações.** Nada a fazer depois de atualizar.
 
-- **O tráfego das WAN sincroniza com calma, em vez de parecer alguém a carregar em Atualizar.** No Router de gestão → Visão geral, os cartões leem o router de 5 em 5 s. Uma roda pequena no cabeçalho dá uma volta a cada sincronização, e o download e o upload deslizam para o valor novo em vez de saltarem. O gráfico cobre agora os últimos 10 minutos.
-- **O botão Atualizar fica quieto.** As leituras automáticas do router passam a ser silenciosas; o botão só mostra carregamento quando é clicado.
+- **Router de gestão: o estado da sincronização em vez de um botão a piscar.** O botão Atualizar entrava em carregamento sozinho a cada leitura automática e parecia um clique. No lugar dele aparece agora "Sincronizado há 12 s": durante cada leitura do router o ícone gira, como nas apps de sincronização na nuvem, sem nunca desativar, e um clique sincroniza logo. Sem ligação, diz "Sem ligação ao router". As WAN continuam ao vivo, de 1 em 1 s.
 - **A cobrança automática mostra quem seria suspenso.** Em Definições → Rede, por baixo da contagem, uma tabela com o cliente, o PPPoE, o vencimento, os dias de atraso e o saldo, ordenável por qualquer coluna. Em ensaio diz "Clientes que seriam suspensos"; os clientes protegidos por crédito aparecem à parte, com o nome.
 - **Corrigido: Aplicar na Descoberta não fazia nada em equipamento de backbone.** As propostas de MAC e IP para o router de gestão, as antenas de transmissão e o resto do backbone passam a gravar, com o registo de auditoria.
 
