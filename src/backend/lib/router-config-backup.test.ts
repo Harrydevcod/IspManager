@@ -39,6 +39,24 @@ describe('cópia da configuração do router', () => {
       .toEqual({ content: '# software id = ABCD-1234\n/ip address\nadd address=10.0.0.1/24', routerosVersion: '7.24.2' });
   });
 
+  test('os scripts de dados dos contadores não entram: o router reescreve-os de hora a hora', () => {
+    const script = (data: string) => exported('2026-10-02 12:00:00', [
+      '/system script',
+      'add dont-require-permissions=no name=ispm-wan-usage owner=*sys policy=read,write source="# ispm-wan-usage v6"',
+      'add dont-require-permissions=no comment="dados do ispm-wan-usage; nao editar" \\',
+      `    name=ispm-wan-usage-data owner=*sys policy=read source="# uptime;${data}\\`,
+      '    \\n# last;WAN1;10;20"',
+      '/ip dns',
+      'set servers=1.1.1.1'
+    ].join('\n'));
+    const { content } = normalizeExport(script('2d14:06:00'));
+    expect(content).toContain('name=ispm-wan-usage owner');
+    expect(content).not.toContain('ispm-wan-usage-data');
+    expect(content).toContain('set servers=1.1.1.1');
+    storeSnapshot(db, script('2d14:06:00'));
+    expect(storeSnapshot(db, script('2d15:06:00')).stored).toBe(false);
+  });
+
   test('a mesma configuração exportada noutra hora não é uma versão nova', () => {
     expect(storeSnapshot(db, exported('2026-10-01 08:00:00', '/ip dns\nset servers=1.1.1.1')).stored).toBe(true);
     expect(storeSnapshot(db, exported('2026-10-02 09:30:00', '/ip dns\nset servers=1.1.1.1'))).toMatchObject({ stored: false, id: null });

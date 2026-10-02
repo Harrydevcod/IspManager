@@ -6,17 +6,26 @@ import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-netw
 import { createTransport, exportConfig, isRouterConfigured, readRouterConfig, type RouterTransport } from './routeros';
 
 /**
- * A exportação abre com "# 2026-10-02 12:00:00 by RouterOS 7.24.2": a data muda a cada
- * exportação e faria de cada cópia uma versão nova. Sai do texto; a versão fica à parte.
+ * O que muda sem ninguém mexer na configuração faria de cada cópia uma versão nova:
+ * - a linha "# 2026-10-02 12:00:00 by RouterOS 7.24.2" (sai; a versão fica à parte);
+ * - os scripts de dados dos contadores do ISPM, que o router reescreve de hora a hora
+ *   (medido no hEX S: o `ispm-wan-usage-data` vem inteiro na exportação).
+ * Uma entrada da exportação continua nas linhas seguintes enquanto acabar em "\".
  */
 export function normalizeExport(raw: string): { content: string; routerosVersion: string | null } {
   let routerosVersion: string | null = null;
-  const lines = raw.replace(/\r\n/g, '\n').split('\n').filter((line) => {
-    const header = /^# .* by RouterOS (\S+)/.exec(line);
+  const entries: string[][] = [];
+  for (const line of raw.replace(/\r\n/g, '\n').split('\n')) {
+    const previous = entries.at(-1);
+    if (previous && previous.at(-1)!.endsWith('\\')) previous.push(line);
+    else entries.push([line]);
+  }
+  const kept = entries.filter((entry) => {
+    const header = /^# .* by RouterOS (\S+)/.exec(entry[0]);
     if (header) routerosVersion = header[1];
-    return !header;
+    return !header && !/\bname=ispm-[a-z-]+-data\b/.test(entry.join('\n'));
   });
-  return { content: lines.join('\n').trim(), routerosVersion };
+  return { content: kept.flat().join('\n').trim(), routerosVersion };
 }
 
 export type SnapshotResult = { stored: boolean; id: number | null; addedLines: number; removedLines: number };
