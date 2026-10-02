@@ -6027,6 +6027,18 @@ button.danger:disabled {
   font-weight: 600;
 }
 
+.settings-router-candidates {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.settings-router-candidates-scroll {
+  max-height: 360px;
+  min-width: 0;
+  overflow: auto;
+}
+
 .settings-router-divergences {
   display: grid;
   gap: var(--space-1-5);

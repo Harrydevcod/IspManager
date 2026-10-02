@@ -1,6 +1,28 @@
 import { AlertTriangle, Check, Minus, Radar, RefreshCw, Router, ShieldCheck, X } from 'lucide-react';
-import { Button, Field, Message, SecretField, Toggle, type SecretDraft } from '../../components';
+import { Button, DataTable, Field, Message, SecretField, Toggle, type DataTableColumn, type SecretDraft } from '../../components';
+import { formatCve, formatPtDate } from '../../lib/format';
 import type { SettingsFormState, ToggleField, UpdateField } from './settingsForm';
+
+type SuspensionCandidate = {
+  serviceId: number;
+  clientId: number;
+  clientName: string;
+  username: string;
+  paymentId: number;
+  invoiceNumber: string | null;
+  dueDate: string;
+  daysOverdue: number;
+  balanceCve: number;
+  creditCve: number;
+};
+
+const CANDIDATE_COLUMNS: DataTableColumn<SuspensionCandidate>[] = [
+  { header: 'Cliente', sortValue: (row) => row.clientName, cell: (row) => row.clientName },
+  { header: 'PPPoE', sortValue: (row) => row.username, cell: (row) => <code>{row.username}</code> },
+  { header: 'Vencimento', sortValue: (row) => row.dueDate, defaultDirection: 'desc', cell: (row) => formatPtDate(row.dueDate) },
+  { header: 'Atraso', sortValue: (row) => row.daysOverdue, defaultDirection: 'desc', cell: (row) => `${row.daysOverdue} dia(s)` },
+  { header: 'Saldo', sortValue: (row) => row.balanceCve, defaultDirection: 'desc', align: 'end', cell: (row) => formatCve(row.balanceCve) }
+];
 
 export type RouterEnforcementState = {
   services: Array<{
@@ -25,6 +47,8 @@ export type RouterEnforcementState = {
     candidatePercent: number;
     guardTriggered: boolean;
     guardReason: string | null;
+    candidates?: SuspensionCandidate[];
+    blockedByCredit?: SuspensionCandidate[];
   };
 };
 
@@ -389,6 +413,29 @@ export function NetworkTab({
               {routerState.autoSuspension.guardTriggered
                 ? ` · TRAVADO: ${routerState.autoSuspension.guardReason}`
                 : ''}
+            </Message>
+          )}
+          {(routerState.autoSuspension?.candidates?.length ?? 0) > 0 && (
+            <div className="settings-router-candidates">
+              <strong>
+                {routerState.autoSuspension?.dryRun ? 'Clientes que seriam suspensos' : 'Clientes elegíveis para suspensão'}
+              </strong>
+              <div className="settings-router-candidates-scroll">
+                <DataTable
+                  rows={routerState.autoSuspension?.candidates ?? []}
+                  rowKey={(row) => row.serviceId}
+                  columns={CANDIDATE_COLUMNS}
+                  gridTemplateColumns="minmax(150px, 1.4fr) minmax(130px, 1fr) minmax(120px, 0.9fr) minmax(90px, 0.7fr) minmax(110px, 0.9fr)"
+                  stickyHeader
+                  empty={null}
+                />
+              </div>
+            </div>
+          )}
+          {(routerState.autoSuspension?.blockedByCredit?.length ?? 0) > 0 && (
+            <Message tone="neutral">
+              Protegidos por crédito: {routerState.autoSuspension?.blockedByCredit?.map((candidate) => candidate.clientName).join(', ')}.
+              {' '}Estes casos não entram em suspensão automática até o crédito ser revisto ou aplicado.
             </Message>
           )}
           {divergent.length > 0 && (
