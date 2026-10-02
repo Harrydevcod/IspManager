@@ -95,21 +95,6 @@
   font-size: var(--fs-sm);
 }
 
-.router-wan-status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.router-wan-sync {
-  color: var(--text-3);
-  animation: spin 700ms ease-in-out 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .router-wan-sync { animation: none; }
-}
-
 .router-wan-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -280,3 +265,24 @@
 .router-usage-legend i { width: var(--space-2); height: var(--space-2); border-radius: var(--r3); }
 .router-usage-legend .is-first, .router-usage-day .is-first { background: var(--accent); }
 .router-usage-legend .is-second, .router-usage-day .is-second { background: var(--info); }
+
+/* Estado da sincronização no cabeçalho, ao jeito das apps de nuvem: discreto,
+   sem nunca desativar; a roda gira só enquanto o router está a ser lido. */
+.router-sync {
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  min-width: 13.5rem;
+  justify-content: flex-start;
+}
+
+.router-sync.is-syncing svg {
+  animation: spin 700ms linear infinite;
+}
+
+.router-sync.is-failed svg {
+  color: var(--warn);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .router-sync.is-syncing svg { animation: none; }
+}
