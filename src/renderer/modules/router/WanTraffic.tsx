@@ -55,8 +55,10 @@ function totalOf(rates: WanRate[]): WanRate {
 /**
  * Desliza as taxas da amostra anterior para a nova, em vez de saltar. A
  * primeira amostra, uma interface nova ou um valor em falta entram de imediato.
+ * Com a janela escondida o browser pausa o requestAnimationFrame: aí o valor
+ * novo entra logo, senão o ecrã ficava preso na amostra anterior.
  */
-function useTween(target: WanRate[], ms = 600): WanRate[] {
+export function useTween(target: WanRate[], ms = 600): WanRate[] {
   const [shown, setShown] = useState<WanRate[]>([]);
   const current = useRef<WanRate[]>([]);
 
@@ -74,7 +76,7 @@ function useTween(target: WanRate[], ms = 600): WanRate[] {
       };
     });
 
-    if (from.size === 0 || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    if (from.size === 0 || document.hidden || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
       current.current = target;
       setShown(target);
       return;
