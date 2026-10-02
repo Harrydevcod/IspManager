@@ -36,6 +36,13 @@ responde com `…Configured` (`pppoePasswordConfigured`, `routerosPasswordConfig
 string não vazia quer dizer substituir. A interface mostra "Configurada" e só abre um campo vazio ao
 carregar em "Editar" (`SecretField`).
 
+**Uma exceção, desde a 2.14: a senha PPPoE de um serviço.** O ISPM gera senhas aleatórias e sem a senha
+não se configura o router do cliente, por isso `POST /api/services/:id/pppoe-password/reveal` devolve-a.
+Leva a barra das ações que desarmam a instalação: papel `admin` **e** a password da sessão outra vez
+(`confirmSessionPassword`, com o throttle do login), resposta `no-store` e registo na auditoria sem a
+senha. A lista de serviços continua a devolver só `pppoePasswordConfigured`, e os segredos das Definições
+(router, UltraMsg) continuam sem leitura nenhuma.
+
 ### O que isto protege, e o que não protege
 
 | Cenário | Antes (ADR 0009) | Agora |

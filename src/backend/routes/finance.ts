@@ -24,13 +24,15 @@ import { loadReceivables } from '../lib/receivables';
 import {
   changePppoePassword,
   changeServiceStatus,
+  createPppoeCredentials,
   createService,
   deleteService,
   serviceSchema,
   updateService
 } from '../lib/services';
+import { readPppoeSecret } from '../lib/secrets';
 import { serviceTransferSchema, transferService } from '../lib/serviceTransfer';
-import { requireAuth, requireRole } from './auth';
+import { confirmSessionPassword, requireAuth, requireRole } from './auth';
 
 const monthSchema = z.object({
   referenceMonth: z.string().regex(/^\d{4}-\d{2}$/)
@@ -63,6 +65,15 @@ const serviceStatusActionSchema = z.object({
 // Sem trim: a senha preserva os bytes. O limite 8–64 vive em changePppoePassword.
 const pppoePasswordActionSchema = z.object({
   password: z.string().max(64)
+}).strict();
+
+// Vazio ou omitido = nome automático.
+const pppoeCreateSchema = z.object({
+  username: z.string().trim().max(64).optional().nullable()
+}).strict();
+
+const pppoeRevealSchema = z.object({
+  password: z.string().min(1).max(200).optional()
 }).strict();
 
 export async function registerFinanceRoutes(app: FastifyInstance) {
@@ -276,6 +287,64 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     });
 
     return result.value;
+  });
+
+  // "Criar PPPoE" na ficha: utilizador + senha aleatória para um serviço que
+  // ainda não os tem. O secret no router fica para a reconciliação.
+  app.post('/api/services/:id/pppoe', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const parsed = pppoeCreateSchema.safeParse(request.body ?? {});
+    if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Utilizador PPPoE invalido' });
+    }
+
+    const result = createPppoeCredentials(getSqliteDatabase(), id, parsed.data.username);
+    if (!result.ok) return reply.status(result.status).send({ error: result.error });
+
+    recordAudit(request, {
+      action: 'create_pppoe',
+      entityType: 'service',
+      entityId: id,
+      summary: `Criou o utilizador PPPoE ${result.value.username} para o servico ${id}`
+    });
+    requestNetworkSync();
+
+    return result.value;
+  });
+
+  /**
+   * A única rota que devolve uma credencial (exceção ao ADR 0012): sem a senha
+   * não se configura o router do cliente. Admin, e a password dele outra vez —
+   * uma sessão aberta prova quem entrou, não quem está ao teclado.
+   */
+  app.post('/api/services/:id/pppoe-password/reveal', { preHandler: requireRole(['admin']) }, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const parsed = pppoeRevealSchema.safeParse(request.body ?? {});
+    if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Pedido inválido' });
+    }
+    if (!(await confirmSessionPassword(request, reply, parsed.data.password))) return reply;
+
+    const db = getSqliteDatabase();
+    const service = db.prepare('SELECT pppoe_username AS username FROM services WHERE id = ?').get(id) as
+      | { username: string | null }
+      | undefined;
+    if (!service) return reply.status(404).send({ error: 'Servico nao encontrado' });
+
+    const password = readPppoeSecret(db, id);
+    if (!password) {
+      return reply.status(409).send({ error: 'Sem senha PPPoE legível: o serviço não tem senha ou o cofre está trancado' });
+    }
+
+    recordAudit(request, {
+      action: 'reveal_pppoe_password',
+      entityType: 'service',
+      entityId: id,
+      summary: `Consultou a senha PPPoE do servico ${id}`
+    });
+
+    reply.header('Cache-Control', 'no-store');
+    return { username: service.username, password };
   });
 
   // Transferir o titular: a casa muda de inquilino, ou o equipamento é recolhido

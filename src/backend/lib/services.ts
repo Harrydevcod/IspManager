@@ -527,3 +527,44 @@ export function deleteService(db: Database, id: number): ServiceOpResult<{
 
   return { ok: true, value: { clientName: service.clientName, restoredStock: restoreStock } };
 }
+
+/**
+ * Dá credenciais PPPoE a um serviço que ainda não as tem. Como na criação, só
+ * escreve na base de dados: o secret nasce na reconciliação. Sem nome indicado
+ * usa o automático; um nome que já seja de outro serviço é recusado, porque a
+ * reconciliação casa pelo nome e os dois disputavam o mesmo secret.
+ */
+export function createPppoeCredentials(
+  db: Database,
+  id: number,
+  requestedUsername?: string | null
+): ServiceOpResult<{ username: string }> {
+  const row = db.prepare(`
+    SELECT s.pppoe_username AS username, c.client_code AS clientCode, c.full_name AS clientName
+    FROM services s JOIN clients c ON c.id = s.client_id
+    WHERE s.id = ?
+  `).get(id) as { username: string | null; clientCode: string; clientName: string } | undefined;
+
+  if (!row) return { ok: false, status: 404, error: 'Servico nao encontrado' };
+  if (row.username?.trim()) return { ok: false, status: 409, error: 'Este servico ja tem utilizador PPPoE' };
+  if (!canStoreSecrets()) return { ok: false, status: 409, error: VAULT_LOCKED_ERROR };
+
+  const requested = requestedUsername?.trim();
+  if (requested && db.prepare('SELECT 1 FROM services WHERE pppoe_username = ? AND id <> ?').get(requested, id)) {
+    return { ok: false, status: 409, error: `O utilizador PPPoE ${requested} ja pertence a outro servico` };
+  }
+  const username = requested || freePppoeUsername(db, {
+    prefix: readPppoePrefix(db),
+    clientCode: row.clientCode,
+    clientName: row.clientName,
+    serviceId: id
+  });
+
+  db.prepare(`
+    UPDATE services
+    SET pppoe_username = ?, pppoe_password = ?, pppoe_password_sync_pending = 1, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(username, sealPppoeSecret(generatePppoePassword()), id);
+
+  return { ok: true, value: { username } };
+}

@@ -6,6 +6,9 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## 2.14 — por publicar
 
+- **Ver a senha PPPoE de um cliente.** Na ficha do serviço, ao lado de "Senha PPPoE: Configurada", há agora "Mostrar". Só administradores, e pede a sua password outra vez; cada consulta fica na auditoria. É o que faltava para configurar o router do cliente com a senha que o ISPM gerou.
+- **Criar PPPoE a partir do serviço.** Um serviço sem utilizador PPPoE ganha o botão "Criar PPPoE" na ficha: pode indicar o nome ou deixar vazio para sair do código do cliente. A senha é gerada e o router recebe-o na sincronização seguinte.
+- **Corrigido: o diálogo "Alterar password" estava desalinhado.** A ajuda e o "Mostrar" sobrepunham-se ao campo e havia dois "Cancelar".
 - **Corrigido: a mensagem do prefixo PPPoE apontava para o ecrã errado.** "Criar utilizadores em falta" sem prefixo mandava para as definições de rede; o campo está em Router de gestão → Configuração, e é isso que a mensagem diz agora.
 
 ## [2.13](https://github.com/Harrydevcod/IspManager/releases/tag/v2.13.0) — 2026-10-02
