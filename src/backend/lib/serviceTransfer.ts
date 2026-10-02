@@ -5,7 +5,8 @@ import { canStoreSecrets, sealPppoeSecret } from './secrets';
 import {
   changeServiceStatus,
   generatePppoePassword,
-  pppoeUsernameFor,
+  freePppoeUsername,
+  readPppoePrefix,
   type ServiceOpResult,
   type ServiceStatus,
   type ServiceStatusChange
@@ -43,7 +44,7 @@ type ServiceRow = {
   pppoeUsername: string | null;
 };
 
-type ClientRow = { id: number; fullName: string; status: string };
+type ClientRow = { id: number; fullName: string; clientCode: string; status: string };
 
 /**
  * Muda o titular de um serviço.
@@ -76,9 +77,9 @@ export function transferService(
     return { ok: false, status: 404, error: 'Servico nao encontrado' };
   }
 
-  const fromClient = db.prepare('SELECT id, full_name AS fullName, status FROM clients WHERE id = ?')
+  const fromClient = db.prepare('SELECT id, full_name AS fullName, client_code AS clientCode, status FROM clients WHERE id = ?')
     .get(service.clientId) as ClientRow | undefined;
-  const toClient = db.prepare('SELECT id, full_name AS fullName, status FROM clients WHERE id = ?')
+  const toClient = db.prepare('SELECT id, full_name AS fullName, client_code AS clientCode, status FROM clients WHERE id = ?')
     .get(data.toClientId) as ClientRow | undefined;
   if (!toClient) {
     return { ok: false, status: 404, error: 'Cliente de destino nao encontrado' };
@@ -153,7 +154,7 @@ export function transferService(
         // A marca manda a reconciliação empurrar nome e password para o secret
         // (casado pelo comment) e derrubar a sessão do inquilino anterior.
         db.prepare('UPDATE services SET pppoe_username = ?, pppoe_password = ?, pppoe_password_sync_pending = 1 WHERE id = ?')
-          .run(pppoeUsernameFor(toClient.fullName, serviceId), sealPppoeSecret(generatePppoePassword()), serviceId);
+          .run(freePppoeUsername(db, { prefix: readPppoePrefix(db), clientCode: toClient.clientCode, clientName: toClient.fullName, serviceId }), sealPppoeSecret(generatePppoePassword()), serviceId);
       }
     }
 

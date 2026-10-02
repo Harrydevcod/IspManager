@@ -247,6 +247,32 @@ describe('Router de gestão', () => {
     expect(container.querySelectorAll('[aria-label^="Desligar a sessão"]')).toHaveLength(1);
   });
 
+  test('criar utilizadores em falta mostra o plano antes de gravar', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const original = fetchMock.getMockImplementation()!;
+    const sent: boolean[] = [];
+    fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+      if (!String(input).endsWith('/pppoe/backfill')) return original(input);
+      const { apply } = JSON.parse(String(init?.body)) as { apply: boolean };
+      sent.push(apply);
+      return json({
+        create: [{ serviceId: 4, clientCode: 'C0002', clientName: 'Ana Lima', username: 'skn002' }],
+        skipped: [{ serviceId: 3, clientCode: 'C0001', clientName: 'Isa Rafe', username: 'skn001', reason: 'nome já existe no router' }],
+        ...(apply ? { applied: 1 } : {})
+      });
+    });
+    const container = await mount();
+    await click(container.querySelector('#router-tab-sessions'));
+    await click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Criar utilizadores em falta'));
+    expect(sent).toEqual([false]);
+    expect(document.body.textContent).toContain('1 a criar · 1 saltados');
+    expect(document.body.textContent).toContain('skn002');
+    expect(document.body.textContent).toContain('nome já existe no router');
+    await click([...document.body.querySelectorAll('button')].find((button) => button.textContent === 'Confirmar criação'));
+    expect(sent).toEqual([false, true]);
+    expect(document.body.textContent).toContain('1 utilizadores PPPoE preparados.');
+  });
+
   test('o registo resume o que pede ação e filtra só erros e avisos', async () => {
     const container = await mount();
     await click(container.querySelector('#router-tab-log'));

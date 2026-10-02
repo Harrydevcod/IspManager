@@ -141,6 +141,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     routerosMaxDisablesPerRun: '5',
     routerosBaseProfile: 'default',
     routerosSuspendedProfile: 'SUSPENSO',
+    routerosPppoePrefix: '',
     autoSuspensionEnabled: false,
     autoSuspensionGraceDays: '15',
     autoSuspensionIntervalMinutes: '60',

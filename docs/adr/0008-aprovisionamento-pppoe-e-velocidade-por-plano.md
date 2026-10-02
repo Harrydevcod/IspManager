@@ -28,6 +28,12 @@ com hardware à frente:
   antigo ganha identidade quando alguém lhe escreve o utilizador no formulário — a migração para PPPoE
   faz-se ao ritmo do terreno, cliente a cliente, e a reconciliação ignora quem ainda não tem.
 
+- **Nome por código do cliente quando há prefixo configurado.** Com `routerosPppoePrefix=skn`, C0002
+  recebe `skn002`; sem prefixo mantém-se o nome derivado do nome do cliente. O preenchimento em massa
+  consulta primeiro todos os secrets do router e os nomes da base. Se o nome ou a marca `ispm:<serviceId>`
+  já existir no router, salta o serviço e reporta-o: a reconciliação também casa pelo nome e poderia
+  alterar a senha de uma ligação viva. A criação no router continua exclusiva da reconciliação.
+
 - **A âncora do mapeamento é o `comment` do secret**, `ispm:<serviceId>`, e não o nome. Um utilizador
   renomeado no Winbox continua a ser reconhecido; o nome é só o fallback.
   Um nome diferente no router só se reporta (divergência `username`) — exceto quando o ISPM tem
