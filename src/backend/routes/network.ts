@@ -395,7 +395,7 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.status(400).send({ error: 'Pedido inválido' });
     const db = getSqliteDatabase();
     const prefix = readPppoePrefix(db);
-    if (!prefix) return reply.status(400).send({ error: 'Configure o prefixo PPPoE nas definições de rede' });
+    if (!prefix) return reply.status(400).send({ error: 'Defina o prefixo dos utilizadores PPPoE em Router de gestão → Configuração' });
     if (!canStoreSecrets()) return reply.status(409).send({ error: 'Cofre de credenciais trancado' });
     const config = readRouterConfig(db);
     if (!config.enabled || !isRouterConfigured(config)) {

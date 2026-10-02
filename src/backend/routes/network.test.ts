@@ -603,7 +603,7 @@ describe('POST /api/network/pppoe/backfill', () => {
     unreachableRouter();
     const response = await backfill(true);
     expect(response.statusCode).toBe(400);
-    expect(response.json().error).toContain('prefixo PPPoE');
+    expect(response.json().error).toContain('Router de gestão → Configuração');
   });
 
   test('com o cofre trancado recusa: nenhuma senha nasce em claro', async () => {
