@@ -8,9 +8,14 @@ export type SecretFieldProps = {
   draft: SecretDraft;
   onDraftChange(next: SecretDraft): void;
   disabled?: boolean;
+  /** Ocupa a linha inteira de um formulário em grelha. */
+  wide?: boolean;
+  hint?: string;
+  /** Falso quando o campo é o próprio diálogo: aí cancela-se no rodapé. */
+  cancellable?: boolean;
 };
 
-export function SecretField({ label, configured, draft, onDraftChange, disabled }: SecretFieldProps) {
+export function SecretField({ label, configured, draft, onDraftChange, disabled, wide, hint, cancellable = true }: SecretFieldProps) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
   const [visible, setVisible] = useState(false);
@@ -21,7 +26,7 @@ export function SecretField({ label, configured, draft, onDraftChange, disabled 
     onDraftChange({ editing: true, value: '' });
   }
 
-  return <div className="field secret-field">
+  return <div className={wide ? 'field secret-field wide-field' : 'field secret-field'}>
     <span className="field-label">{label}</span>
     {draft.editing ? <>
       <div className="secret-field-control">
@@ -30,7 +35,8 @@ export function SecretField({ label, configured, draft, onDraftChange, disabled 
         <Button type="button" variant="ghost" aria-label={visible ? 'Ocultar senha' : 'Mostrar senha'} aria-pressed={visible}
           disabled={disabled} onClick={() => setVisible((current) => !current)}>{visible ? 'Ocultar' : 'Mostrar'}</Button>
       </div>
-      <Button type="button" variant="ghost" disabled={disabled} onClick={() => { setVisible(false); onDraftChange({ editing: false }); }}>Cancelar</Button>
+      {hint && <span className="field-hint">{hint}</span>}
+      {cancellable && <Button type="button" variant="ghost" disabled={disabled} onClick={() => { setVisible(false); onDraftChange({ editing: false }); }}>Cancelar</Button>}
     </> : configured ? <div className="secret-field-control">
       <span>Configurada</span>
       <Button type="button" variant="ghost" disabled={disabled} onClick={edit}>Editar</Button>

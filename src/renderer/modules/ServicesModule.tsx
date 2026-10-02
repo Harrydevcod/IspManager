@@ -1138,6 +1138,7 @@ export function ServicesModule({
           monthlyTotalCve={monthlyTotalCve(selectedService)}
           audiovisualLabel={avConfig?.label}
           canManage={canManageServices}
+          canReveal={auth.isAuthBypassed || auth.hasRole('admin')}
           canRecordTechnical={canRecordTechnical}
           submitting={submitting}
           networkActionBusy={networkAction !== null}
@@ -1160,6 +1161,7 @@ export function ServicesModule({
           onReactivate={() => void changeServiceStateFromNetwork(selectedService, 'active')}
           onChangePlan={() => editService(selectedService)}
           onChangePassword={() => openPasswordChange(selectedService)}
+          onPppoeCreated={() => void loadServices()}
         />
       )}
 
@@ -1382,9 +1384,9 @@ export function ServicesModule({
           </Message>
           <SecretField label="Nova senha PPPoE" configured={Boolean(passwordTarget?.pppoePasswordConfigured)}
             draft={{ editing: true, value: newPppoePassword }}
+            wide hint="Entre 8 e 64 caracteres." cancellable={false}
             disabled={networkAction === 'password'}
             onDraftChange={(next) => next.editing ? setNewPppoePassword(next.value) : closePasswordChange()} />
-          <p>Entre 8 e 64 caracteres.</p>
         </form>
       </Dialog>
 

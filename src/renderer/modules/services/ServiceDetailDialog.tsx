@@ -5,6 +5,7 @@ import { labelForOperationMode } from '../../../shared/operation';
 import { Badge, Button, Dialog, EmptyState, Message } from '../../components';
 import { formatCve, formatPtDate, formatPtDateTime } from '../../lib/format';
 import { statusLabel, statusTone } from '../../lib/status';
+import { CreatePppoeButton, RevealPppoePassword } from './PppoeCredentials';
 import type { DeviceAssignment, ManualServiceEventType, ServiceEvent, ServiceEventType, ServiceRow, TechnicalHistory } from '../../types';
 
 /** Os tipos que o operador escolhe no formulário de evento. */
@@ -74,6 +75,8 @@ type ServiceDetailDialogProps = {
   monthlyTotalCve: number;
   audiovisualLabel: string | undefined;
   canManage: boolean;
+  /** Ver a senha PPPoE: só administradores. */
+  canReveal: boolean;
   canRecordTechnical: boolean;
   submitting: boolean;
   networkActionBusy: boolean;
@@ -100,6 +103,8 @@ type ServiceDetailDialogProps = {
   onReactivate: () => void;
   onChangePlan: () => void;
   onChangePassword: () => void;
+  /** O serviço ganhou utilizador PPPoE: recarregar. */
+  onPppoeCreated: () => void;
 };
 
 export function ServiceDetailDialog({
@@ -109,6 +114,7 @@ export function ServiceDetailDialog({
   monthlyTotalCve,
   audiovisualLabel,
   canManage,
+  canReveal,
   canRecordTechnical,
   submitting,
   networkActionBusy,
@@ -130,7 +136,8 @@ export function ServiceDetailDialog({
   onSuspend,
   onReactivate,
   onChangePlan,
-  onChangePassword
+  onChangePassword,
+  onPppoeCreated
 }: ServiceDetailDialogProps) {
   // Fonte fresca após uma edição; enquanto o histórico carrega usa o valor da lista.
   const activeIps = technicalHistory
@@ -248,14 +255,24 @@ export function ServiceDetailDialog({
         </header>
 
         {!service.pppoeUsername ? (
-          <Message tone="neutral">
-            Este serviço ainda não tem utilizador PPPoE. Ativa/configura a integração MikroTik e edita o serviço para o colocar sob controlo de rede.
-          </Message>
+          <>
+            <Message tone="neutral">
+              Este serviço ainda não tem utilizador PPPoE, por isso está fora do controlo de acesso na rede.
+            </Message>
+            {canManage && (
+              <div className="technical-item-actions">
+                <CreatePppoeButton serviceId={service.id} clientName={service.clientName} onCreated={onPppoeCreated} />
+              </div>
+            )}
+          </>
         ) : (
           <>
             <dl className="technical-item-meta">
               <div><dt>Utilizador PPPoE</dt><dd><code>{service.pppoeUsername}</code></dd></div>
-              <div><dt>Senha PPPoE</dt><dd>{service.pppoePasswordConfigured ? 'Configurada' : 'Não configurada'}</dd></div>
+              <div><dt>Senha PPPoE</dt><dd>
+                {service.pppoePasswordConfigured ? 'Configurada' : 'Não configurada'}
+                {canReveal && service.pppoePasswordConfigured && <> <RevealPppoePassword serviceId={service.id} /></>}
+              </dd></div>
               <div><dt>Plano</dt><dd>{service.planName || '-'} · {speedLabel}</dd></div>
               <div>
                 <dt>Secret no router</dt>
