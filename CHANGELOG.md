@@ -4,6 +4,15 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.12](https://github.com/Harrydevcod/IspManager/releases/tag/v2.12.0) — 2026-10-02
+
+> **Sem migrações.** Nada a fazer depois de atualizar.
+
+- **O tráfego das WAN sincroniza com calma, em vez de parecer alguém a carregar em Atualizar.** No Router de gestão → Visão geral, os cartões leem o router de 5 em 5 s. Uma roda pequena no cabeçalho dá uma volta a cada sincronização, e o download e o upload deslizam para o valor novo em vez de saltarem. O gráfico cobre agora os últimos 10 minutos.
+- **O botão Atualizar fica quieto.** As leituras automáticas do router passam a ser silenciosas; o botão só mostra carregamento quando é clicado.
+- **A cobrança automática mostra quem seria suspenso.** Em Definições → Rede, por baixo da contagem, uma tabela com o cliente, o PPPoE, o vencimento, os dias de atraso e o saldo, ordenável por qualquer coluna. Em ensaio diz "Clientes que seriam suspensos"; os clientes protegidos por crédito aparecem à parte, com o nome.
+- **Corrigido: Aplicar na Descoberta não fazia nada em equipamento de backbone.** As propostas de MAC e IP para o router de gestão, as antenas de transmissão e o resto do backbone passam a gravar, com o registo de auditoria.
+
 ## [2.11](https://github.com/Harrydevcod/IspManager/releases/tag/v2.11.0) — 2026-10-01
 
 > **Sem migrações.** Nada a fazer depois de atualizar.
