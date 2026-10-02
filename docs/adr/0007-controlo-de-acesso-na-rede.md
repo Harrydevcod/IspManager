@@ -87,6 +87,8 @@ Two failure modes shape the decision:
 
 ## Consequences
 
+- O ISPM lê a exportação da configuração (`/export` por `POST /execute`, sem passwords) e
+  guarda o histórico das versões na sua base. É leitura: não altera o router.
 - Além do contador das WAN, o ISPM instala (por botão próprio, na aba Consumo) um segundo
   script no MikroTik para acumular o consumo das sessões PPPoE por cliente. O ISPM importa esses totais e associa-os ao serviço
   pelo utilizador PPPoE; a leitura obedece à mesma guarda de rede de gestão.

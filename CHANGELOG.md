@@ -6,6 +6,7 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+- **Cópias da configuração do router.** Nova aba Cópias no Router de gestão: o ISPM lê a exportação do router uma vez por dia e guarda uma versão sempre que ela muda, sem passwords. Cada versão mostra o que entrou e saiu face à anterior e descarrega-se como `.rsc`. Inclui a migração 0070.
 - **Incidentes do backbone.** Nova aba Incidentes na Topologia: cada queda que a sonda registou, com início, fim, duração, os equipamentos que arrastou e os clientes que ficaram sem serviço. O que caiu por arrasto não aparece como incidente próprio. Sem migrações.
 - **Consumo por cliente PPPoE.** O router acumula os bytes por sessão mesmo com o ISPM fechado; a nova aba Consumo mostra hoje e o mês por serviço. O contador instala-se pelo botão "Contar no router" da própria aba; só é medido quem liga por PPPoE. Inclui a migração 0069.
 

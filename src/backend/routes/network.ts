@@ -52,6 +52,7 @@ import { buildProposals, dismissalKey, findOrphans, type ProposalKind } from '..
 import { runJob } from '../lib/jobRuns';
 import { collectWanUsage, loadWanUsage } from '../lib/wan-usage';
 import { collectClientUsage, loadClientUsage } from '../lib/client-usage';
+import { backupRouterConfig, listSnapshots, loadSnapshot } from '../lib/router-config-backup';
 import { applyPlanProfile, readBaseProfileName } from '../lib/plan-profiles';
 import { recordAudit } from '../lib/audit';
 import { canStoreSecrets } from '../lib/secrets';
@@ -505,6 +506,34 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       }
       const result = await collectClientUsage(db, transport);
       recordAudit(request, { action: 'router_client_usage_counter', entityType: 'router', summary: 'Instalou a contagem do consumo por cliente no router' });
+      return result;
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return reply.status(502).send({ error: `${failure.title}. ${failure.detail}`, code: failure.code });
+    }
+  });
+
+  app.get('/api/network/router/config/snapshots', adminOnly, async () => listSnapshots(getSqliteDatabase()));
+
+  app.get('/api/network/router/config/snapshots/:id', adminOnly, async (request, reply) => {
+    const params = z.object({ id: z.coerce.number().int().positive() }).safeParse(request.params);
+    const snapshot = params.success ? loadSnapshot(getSqliteDatabase(), params.data.id) : null;
+    if (!snapshot) return reply.status(404).send({ error: 'Cópia não encontrada' });
+    return snapshot;
+  });
+
+  // "Copiar agora". Só lê o router; corre mesmo em modo de ensaio.
+  app.post('/api/network/router/config/snapshots', adminOnly, async (request, reply) => {
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return reply.status(400).send({ error: 'Integração MikroTik desligada ou por configurar' });
+    }
+    try {
+      const result = await backupRouterConfig(db, createTransport(config));
+      if (result.stored) {
+        recordAudit(request, { action: 'router_config_snapshot', entityType: 'router', summary: 'Guardou uma cópia da configuração do router' });
+      }
       return result;
     } catch (err) {
       const failure = describeRouterFailure(err);

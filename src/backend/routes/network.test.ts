@@ -48,6 +48,16 @@ describe('GET /api/network/incidents', () => {
   });
 });
 
+describe('cópias da configuração do router', () => {
+  test('lista vazia, cópia inexistente e router por configurar', async () => {
+    const list = await app.inject('/api/network/router/config/snapshots');
+    expect(list.json()).toEqual({ checkedAt: null, snapshots: [] });
+    expect((await app.inject('/api/network/router/config/snapshots/999')).statusCode).toBe(404);
+    expect((await app.inject('/api/network/router/config/snapshots/abc')).statusCode).toBe(404);
+    expect((await app.inject({ method: 'POST', url: '/api/network/router/config/snapshots' })).statusCode).toBe(400);
+  });
+});
+
 describe('GET /api/network/router/wan/usage', () => {
   test('responde sem router configurado', async () => {
     const response = await app.inject('/api/network/router/wan/usage');

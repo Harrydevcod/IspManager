@@ -286,3 +286,7 @@
 @media (prefers-reduced-motion: reduce) {
   .router-sync.is-syncing svg { animation: none; }
 }
+
+.router-config-text { margin: 0; max-height: 60vh; overflow: auto; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--r3); background: var(--surface); color: var(--text-2); font-size: var(--fs-xs); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.router-config-text .is-added { color: var(--success); }
+.router-config-text .is-removed { color: var(--danger); }

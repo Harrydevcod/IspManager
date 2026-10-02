@@ -44,6 +44,7 @@ import { registerNetworkRoutes } from './routes/network';
 import { networkProbeIntervalMs, runNetworkProbeIfDue } from './lib/network-probe';
 import { runWanUsageIfDue } from './lib/wan-usage';
 import { runClientUsageIfDue } from './lib/client-usage';
+import { runRouterConfigBackupIfDue } from './lib/router-config-backup';
 import { requestNetworkSync } from './lib/network-sync';
 import { routerosIntervalMs } from './lib/routeros';
 import { autoSuspensionIntervalMs, runAutomaticSuspension } from './lib/auto-suspension';
@@ -284,6 +285,10 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
     const clientUsageTick = () => { void runJob('client_usage', runClientUsageIfDue).catch((err) => app.log.error({ err }, 'client usage failed')); };
     clientUsageTick();
     setInterval(clientUsageTick, 60_000).unref();
+    // Uma cópia por dia; o tick curto só serve para apanhar o primeiro momento na rede de gestão.
+    const routerConfigTick = () => { void runJob('router_config_backup', runRouterConfigBackupIfDue).catch((err) => app.log.error({ err }, 'router config backup failed')); };
+    routerConfigTick();
+    setInterval(routerConfigTick, 10 * 60_000).unref();
   }
 
   // Suspensão automática por dívida: decide apenas a intenção na base de dados.
