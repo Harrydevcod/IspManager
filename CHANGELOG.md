@@ -4,7 +4,9 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
-## 2.14 — por publicar
+## [2.14](https://github.com/Harrydevcod/IspManager/releases/tag/v2.14.0) — 2026-10-02
+
+> **Sem migrações.** Nada a fazer depois de atualizar.
 
 - **Ver a senha PPPoE de um cliente.** Na ficha do serviço, ao lado de "Senha PPPoE: Configurada", há agora "Mostrar". Só administradores, e pede a sua password outra vez; cada consulta fica na auditoria. É o que faltava para configurar o router do cliente com a senha que o ISPM gerou.
 - **Criar PPPoE a partir do serviço.** Um serviço sem utilizador PPPoE ganha o botão "Criar PPPoE" na ficha: pode indicar o nome ou deixar vazio para sair do código do cliente. A senha é gerada e o router recebe-o na sincronização seguinte.
