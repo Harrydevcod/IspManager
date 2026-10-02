@@ -4,11 +4,15 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## 2.14 — por publicar
+
+- **Corrigido: a mensagem do prefixo PPPoE apontava para o ecrã errado.** "Criar utilizadores em falta" sem prefixo mandava para as definições de rede; o campo está em Router de gestão → Configuração, e é isso que a mensagem diz agora.
+
 ## [2.13](https://github.com/Harrydevcod/IspManager/releases/tag/v2.13.0) — 2026-10-02
 
 > **Sem migrações.** Nada muda sozinho depois de atualizar: o prefixo vem vazio e os utilizadores só se criam pelo botão.
 
-- **Utilizadores PPPoE pelo código do cliente.** Em Definições → Rede há um novo "Prefixo dos utilizadores PPPoE". Com `skn`, o cliente C0002 fica `skn002`, e os serviços novos já nascem assim. Vazio, tudo fica como estava.
+- **Utilizadores PPPoE pelo código do cliente.** Em Router de gestão → Configuração há um novo "Prefixo dos utilizadores PPPoE". Com `skn`, o cliente C0002 fica `skn002`, e os serviços novos já nascem assim. Vazio, tudo fica como estava.
 - **Criar de uma vez os utilizadores em falta.** Em Router → Sessões PPPoE, "Criar utilizadores em falta" mostra primeiro a lista — quem vai ser criado e quem é saltado, com o motivo — e só grava depois de confirmar. Cada um leva uma senha própria, visível na ficha do serviço. Só entram serviços ativos.
 - **Quem já está ligado não é tocado.** Um nome que já exista no router ou no ISPM é saltado e nunca adotado, e sem resposta do router nada é gravado.
 
