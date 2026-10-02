@@ -6,6 +6,7 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+- **Incidentes do backbone.** Nova aba Incidentes na Topologia: cada queda que a sonda registou, com início, fim, duração, os equipamentos que arrastou e os clientes que ficaram sem serviço. O que caiu por arrasto não aparece como incidente próprio. Sem migrações.
 - **Consumo por cliente PPPoE.** O router acumula os bytes por sessão mesmo com o ISPM fechado; a nova aba Consumo mostra hoje e o mês por serviço. O contador instala-se pelo botão "Contar no router" da própria aba; só é medido quem liga por PPPoE. Inclui a migração 0069.
 
 ## [2.14](https://github.com/Harrydevcod/IspManager/releases/tag/v2.14.0) — 2026-10-02

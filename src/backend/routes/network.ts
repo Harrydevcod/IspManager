@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from '../lib/admin-network';
+import { loadIncidents } from '../lib/network-incidents';
 import { loadNetworkStatus, loadProbeEvents, mapWithLimit, readProbeConfig, runNetworkProbe } from '../lib/network-probe';
 import {
   createTransport,
@@ -139,6 +140,14 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Parametros invalidos' });
     }
     return loadNetworkStatus(getSqliteDatabase(), parsed.data.days);
+  });
+
+  app.get('/api/network/incidents', readOnly, async (request, reply) => {
+    const parsed = statusQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Parametros invalidos' });
+    }
+    return loadIncidents(getSqliteDatabase(), parsed.data.days);
   });
 
   app.get('/api/network/targets/:kind/:id/events', readOnly, async (request, reply) => {

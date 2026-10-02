@@ -40,6 +40,7 @@ describe('colunas ordenáveis', () => {
       'router/ClientUsage.tsx',
       'router/RouterTables.tsx',
       'settings/NetworkTab.tsx',
+      'topology/IncidentsWorkspace.tsx',
       'topology/discovery/DiscoveryWorkspace.tsx',
       'treasury/TreasuryModule.tsx'
     ]);

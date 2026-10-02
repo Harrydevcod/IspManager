@@ -177,14 +177,14 @@ export async function mapWithLimit<T, R>(items: T[], limit: number, fn: (item: T
   return results;
 }
 
-function secondsBetween(from: string, to: string): number {
+export function secondsBetween(from: string, to: string): number {
   const start = Date.parse(`${from.replace(' ', 'T')}Z`);
   const end = Date.parse(`${to.replace(' ', 'T')}Z`);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
   return Math.max(0, Math.round((end - start) / 1000));
 }
 
-function sqlNow(): string {
+export function sqlNow(): string {
   return new Date().toISOString().slice(0, 19).replace('T', ' ');
 }
 

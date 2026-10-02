@@ -67,6 +67,11 @@ vi.mock('./discovery/DiscoveryWorkspace', () => ({
   )
 }));
 
+// A aba tem teste próprio; aqui só interessa a tira das abas.
+vi.mock('./IncidentsWorkspace', () => ({
+  IncidentsWorkspace: () => <section aria-label="Incidentes do backbone" />
+}));
+
 function json(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -284,7 +289,7 @@ describe('TopologyModule tab shell', () => {
     const container = await mountModule();
     const names = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
       .map((node) => node.textContent?.trim());
-    expect(names).toEqual(['Backbone', 'Topologia', 'Descoberta']);
+    expect(names).toEqual(['Backbone', 'Topologia', 'Descoberta', 'Incidentes']);
 
     async function arrow(from: HTMLButtonElement, key: 'ArrowRight' | 'ArrowLeft') {
       from.focus();
@@ -300,10 +305,11 @@ describe('TopologyModule tab shell', () => {
 
     // A envolvência é o que um alternador binário não dava: da última volta à primeira.
     await arrow(tab(container, 'Descoberta'), 'ArrowRight');
+    await arrow(tab(container, 'Incidentes'), 'ArrowRight');
     expect(tab(container, 'Backbone').getAttribute('aria-selected')).toBe('true');
 
     await arrow(tab(container, 'Backbone'), 'ArrowLeft');
-    expect(tab(container, 'Descoberta').getAttribute('aria-selected')).toBe('true');
+    expect(tab(container, 'Incidentes').getAttribute('aria-selected')).toBe('true');
   });
 
   test('the discovery panel stays unmounted until the tab is opened', async () => {
