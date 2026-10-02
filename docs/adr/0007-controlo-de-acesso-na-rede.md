@@ -87,6 +87,10 @@ Two failure modes shape the decision:
 
 ## Consequences
 
+- Além do contador das WAN, o ISPM instala (por botão próprio, na aba Consumo) um segundo
+  script no MikroTik para acumular o consumo das sessões PPPoE por cliente. O ISPM importa esses totais e associa-os ao serviço
+  pelo utilizador PPPoE; a leitura obedece à mesma guarda de rede de gestão.
+
 - Suspension gains a history today: `service_events` records the transition and the reason,
   which is visible in the customer timeline and countable in the operations panel.
 - The service form no longer writes `status` directly; the field is applied through the door.

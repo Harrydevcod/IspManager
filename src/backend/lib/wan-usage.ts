@@ -7,7 +7,7 @@ import { createTransport, isRouterConfigured, listInterfaceListMembers, listInte
  * O dia é o UTC, como o da conta Starlink ("seguida no fuso horário UTC"): em Cabo Verde
  * (UTC−1) cada dia vai da 01:00 à 01:00 locais. Dias gravados antes de 2026-09-30 são locais.
  */
-function utcDay(date = new Date()): string {
+export function utcDay(date = new Date()): string {
   return date.toISOString().slice(0, 10);
 }
 

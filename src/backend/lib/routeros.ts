@@ -5,6 +5,7 @@ import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { readSecret } from './secrets';
 import { WAN_USAGE_DATA_NAME, WAN_USAGE_SCRIPT } from './routeros-wan-script';
+import { CLIENT_USAGE_DATA_NAME, CLIENT_USAGE_SCRIPT } from './routeros-client-script';
 
 /**
  * Cliente REST do RouterOS (v7). Fino de propósito: o ISPM só precisa de listar
@@ -1268,22 +1269,22 @@ const WAN_USAGE_VERSION = 'ispm-wan-usage v6';
 const WAN_USAGE_POLICY = 'read,write';
 
 /** Instala ou reconcilia os três objetos. PUT/PATCH não são repetidos pelo transporte. */
-export async function ensureWanUsageCounter(transport: RouterTransport): Promise<void> {
+async function ensureUsageCounter(transport: RouterTransport, { name, version, source }: { name: string; version: string; source: string }): Promise<void> {
   const scripts = asArray(await transport({ method: 'GET', path: '/system/script?.proplist=.id,name,comment' }));
-  const script = scripts.find((row) => row.name === WAN_USAGE_NAME);
+  const script = scripts.find((row) => row.name === name);
   if (!script) {
     await transport({ method: 'PUT', path: '/system/script', body: {
-      name: WAN_USAGE_NAME, comment: WAN_USAGE_VERSION, source: WAN_USAGE_SCRIPT, policy: WAN_USAGE_POLICY
+      name, comment: version, source, policy: WAN_USAGE_POLICY
     } });
-  } else if (script.comment !== WAN_USAGE_VERSION) {
+  } else if (script.comment !== version) {
     await transport({ method: 'PATCH', path: `/system/script/${script['.id']}`, body: {
-      comment: WAN_USAGE_VERSION, source: WAN_USAGE_SCRIPT, policy: WAN_USAGE_POLICY
+      comment: version, source, policy: WAN_USAGE_POLICY
     } });
   }
 
   // O router aceita o PUT e pode guardar o script vazio ou inválido sem dar erro:
   // só a releitura prova que o contador vai correr.
-  const saved = asArray(await transport({ method: 'GET', path: `/system/script?name=${WAN_USAGE_NAME}&.proplist=source,invalid` }))[0];
+  const saved = asArray(await transport({ method: 'GET', path: `/system/script?name=${name}&.proplist=source,invalid` }))[0];
   if (!saved || typeof saved.source !== 'string' || saved.source.length === 0) {
     throw new RouterError('O router guardou o script do contador sem texto', 0, undefined, 'bad_response');
   }
@@ -1293,8 +1294,8 @@ export async function ensureWanUsageCounter(transport: RouterTransport): Promise
 
   const schedulers = asArray(await transport({ method: 'GET', path: '/system/scheduler?.proplist=.id,name,on-event,start-time,interval,policy' }));
   const expected = [
-    { name: WAN_USAGE_NAME, 'on-event': WAN_USAGE_NAME, 'start-time': '23:59:50', interval: '1h', policy: WAN_USAGE_POLICY },
-    { name: `${WAN_USAGE_NAME}-startup`, 'on-event': WAN_USAGE_NAME, 'start-time': 'startup', interval: '0s', policy: WAN_USAGE_POLICY }
+    { name, 'on-event': name, 'start-time': '23:59:50', interval: '1h', policy: WAN_USAGE_POLICY },
+    { name: `${name}-startup`, 'on-event': name, 'start-time': 'startup', interval: '0s', policy: WAN_USAGE_POLICY }
   ];
   for (const fields of expected) {
     const existing = schedulers.find((row) => row.name === fields.name);
@@ -1307,9 +1308,24 @@ export async function ensureWanUsageCounter(transport: RouterTransport): Promise
   }
 }
 
+export async function ensureWanUsageCounter(transport: RouterTransport): Promise<void> {
+  return ensureUsageCounter(transport, { name: WAN_USAGE_NAME, version: WAN_USAGE_VERSION, source: WAN_USAGE_SCRIPT });
+}
+
+export async function ensureClientUsageCounter(transport: RouterTransport): Promise<void> {
+  return ensureUsageCounter(transport, { name: 'ispm-client-usage', version: 'ispm-client-usage v1', source: CLIENT_USAGE_SCRIPT });
+}
+
 /** Os totais que o contador do router guardou; `null` enquanto o contador não correu. */
 export async function readWanUsageData(transport: RouterTransport): Promise<string | null> {
   const row = asArray(await transport({ method: 'GET', path: `/system/script?name=${WAN_USAGE_DATA_NAME}&.proplist=source` }))[0];
+  if (!row) return null;
+  if (typeof row.source !== 'string') throw new RouterError('O script de dados do contador não devolveu source', 0, undefined, 'bad_response');
+  return row.source;
+}
+
+export async function readClientUsageData(transport: RouterTransport): Promise<string | null> {
+  const row = asArray(await transport({ method: 'GET', path: `/system/script?name=${CLIENT_USAGE_DATA_NAME}&.proplist=source` }))[0];
   if (!row) return null;
   if (typeof row.source !== 'string') throw new RouterError('O script de dados do contador não devolveu source', 0, undefined, 'bad_response');
   return row.source;

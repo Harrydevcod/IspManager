@@ -37,6 +37,7 @@ describe('colunas ordenáveis', () => {
       'StockModule.tsx',
       'finance/PortfolioTable.tsx',
       'payments/PaymentsList.tsx',
+      'router/ClientUsage.tsx',
       'router/RouterTables.tsx',
       'settings/NetworkTab.tsx',
       'topology/discovery/DiscoveryWorkspace.tsx',

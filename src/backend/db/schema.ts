@@ -734,3 +734,17 @@ export const wanCounterState = sqliteTable('wan_counter_state', {
   txLast: integer('tx_last').notNull(),
   seenAt: text('seen_at').notNull()
 });
+
+export const clientTrafficDaily = sqliteTable('client_traffic_daily', {
+  day: text('day').notNull(),
+  serviceId: integer('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+  rxBytes: integer('rx_bytes').notNull().default(0),
+  txBytes: integer('tx_bytes').notNull().default(0)
+}, (table) => [primaryKey({ columns: [table.day, table.serviceId] })]);
+
+export const clientUsageState = sqliteTable('client_usage_state', {
+  pppoeName: text('pppoe_name').primaryKey(),
+  rxTotal: integer('rx_total').notNull(),
+  txTotal: integer('tx_total').notNull(),
+  seenAt: text('seen_at').notNull()
+});
