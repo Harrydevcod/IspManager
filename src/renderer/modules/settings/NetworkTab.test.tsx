@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test, vi } from 'vitest';
-import { NetworkTab, type RouterTestReport } from './NetworkTab';
+import { NetworkTab, type RouterEnforcementState, type RouterTestReport } from './NetworkTab';
 import type { SettingsFormState } from './settingsForm';
 
 const form = {
@@ -24,7 +24,7 @@ const form = {
   autoSuspensionMaxPercent: '20'
 } as SettingsFormState;
 
-function render(routerReport: RouterTestReport | null) {
+function render(routerReport: RouterTestReport | null, routerState: RouterEnforcementState | null = null) {
   return renderToStaticMarkup(
     <NetworkTab
       part="router"
@@ -40,7 +40,7 @@ function render(routerReport: RouterTestReport | null) {
       onRouterTest={vi.fn()}
       onTrustCertificate={vi.fn()}
       onForgetCertificate={vi.fn()}
-      routerState={null}
+      routerState={routerState}
       enforceBusy={false}
       enforceMessage=""
       onEnforceNow={vi.fn()}
@@ -132,6 +132,70 @@ describe('NetworkTab — diagnóstico do router', () => {
     expect(html).toContain('Certificado esquecido.');
     expect(html).not.toContain('settings-router-steps');
     expect(html).not.toContain('module-message error');
+  });
+});
+
+const candidate = {
+  serviceId: 7,
+  clientId: 3,
+  clientName: 'João Silva',
+  username: 'joao-7',
+  paymentId: 99,
+  invoiceNumber: 'FT-99',
+  dueDate: '2026-09-10',
+  daysOverdue: 9,
+  balanceCve: 1500,
+  creditCve: 0
+};
+
+function suspensionState(dryRun: boolean): RouterEnforcementState {
+  return {
+    services: [], online: 0, divergences: 0, enabled: true, dryRun, configured: true,
+    autoSuspension: {
+      enabled: true, dryRun, graceDays: 5, candidateCount: 1, blockedByCreditCount: 0,
+      candidatePercent: 10, guardTriggered: false, guardReason: null,
+      candidates: [candidate], blockedByCredit: []
+    }
+  };
+}
+
+describe('NetworkTab — pré-visualização da suspensão', () => {
+  test('mostra os cinco dados dos candidatos em colunas com cabeçalho', () => {
+    const html = render(null, suspensionState(true));
+    expect(html).toContain('Clientes que seriam suspensos');
+    expect(html.match(/role="columnheader"/g)).toHaveLength(5);
+    for (const header of ['Cliente', 'PPPoE', 'Vencimento', 'Atraso', 'Saldo']) {
+      expect(html).toContain(header);
+    }
+    for (const value of ['João Silva', 'joao-7', '10-09-2026', '9 dia(s)', '1.500$00']) {
+      expect(html).toContain(value);
+    }
+    expect(html.match(/role="cell"/g)).toHaveLength(5);
+  });
+
+  test('muda o título em modo efetivo', () => {
+    const html = render(null, suspensionState(false));
+    expect(html).toContain('Clientes elegíveis para suspensão');
+    expect(html).not.toContain('Clientes que seriam suspensos');
+  });
+
+  test('identifica os clientes protegidos por crédito', () => {
+    const state = suspensionState(true);
+    state.autoSuspension!.blockedByCredit = [
+      { ...candidate, serviceId: 8, clientName: 'Maria Lopes', creditCve: 500 },
+      { ...candidate, serviceId: 9, clientName: 'Ana Costa', creditCve: 200 }
+    ];
+    const html = render(null, state);
+    expect(html).toContain('Protegidos por crédito: Maria Lopes, Ana Costa.');
+    expect(html).toContain('Estes casos não entram em suspensão automática até o crédito ser revisto ou aplicado.');
+  });
+
+  test('sem candidatos não mostra a tabela, inclusive com resposta antiga', () => {
+    const state = suspensionState(true);
+    delete state.autoSuspension!.candidates;
+    expect(render(null, state)).not.toContain('Clientes que seriam suspensos');
+    state.autoSuspension!.candidates = [];
+    expect(render(null, state)).not.toContain('role="table"');
   });
 });
 
