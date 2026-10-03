@@ -7,6 +7,7 @@ import {
   createTransport,
   createProfile,
   ensureWanUsageCounter,
+  ensureClientUsageCounter,
   createSecret,
   describeRouterFailure,
   listProfiles,
@@ -212,6 +213,21 @@ describe('operações RouterOS', () => {
     calls.length = 0;
     await ensureWanUsageCounter(transport);
     expect(calls.map((call) => call.method)).toEqual(['GET', 'GET', 'GET']);
+  });
+
+  test('instala o contador dos clientes com os dois agendamentos', async () => {
+    const scripts: Record<string, unknown>[] = [];
+    const schedulers: Record<string, unknown>[] = [];
+    const transport: RouterTransport = async (request) => {
+      if (request.method === 'GET') return request.path.startsWith('/system/script?') ? scripts : schedulers;
+      const body = request.body as Record<string, unknown>;
+      if (request.method === 'PUT' && request.path === '/system/script') scripts.push({ '.id': '*1', ...body });
+      if (request.method === 'PUT' && request.path === '/system/scheduler') schedulers.push({ '.id': `*${schedulers.length + 2}`, ...body });
+      return null;
+    };
+    await ensureClientUsageCounter(transport);
+    expect((scripts[0].source as string)).toContain('ispm-client-usage v1');
+    expect(schedulers.map((row) => row.name)).toEqual(['ispm-client-usage', 'ispm-client-usage-startup']);
   });
 
   // Medido no router real: o PUT foi aceite e o script ficou vazio e INVALID, sem erro.

@@ -13,6 +13,8 @@ let dataDir: string;
 let closeDatabaseForTests: () => void;
 
 const TABLES_TO_CLEAR = [
+  'client_traffic_daily',
+  'client_usage_state',
   'wan_traffic_daily',
   'wan_counter_state',
   'network_probe_events',
@@ -23,6 +25,19 @@ const TABLES_TO_CLEAR = [
   'equipment_catalog',
   'app_settings'
 ];
+
+describe('GET /api/network/router/clients/usage', () => {
+  test('devolve os serviços PPPoE ativos com totais e medição', async () => {
+    db.prepare("INSERT INTO clients (client_code, full_name) VALUES ('C9001', 'Ana Lopes')").run();
+    db.prepare("INSERT INTO services (client_id, pppoe_username, status) VALUES ((SELECT id FROM clients WHERE client_code = 'C9001'), 'ana', 'active')").run();
+    db.prepare("INSERT INTO client_usage_state (pppoe_name, rx_total, tx_total, seen_at) VALUES ('ana', 1, 2, '2026-10-02')").run();
+    const response = await app.inject('/api/network/router/clients/usage');
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(expect.arrayContaining([expect.objectContaining({ clientCode: 'C9001', clientName: 'Ana Lopes', measured: 1 })]));
+    db.prepare("DELETE FROM services WHERE pppoe_username = 'ana'").run();
+    db.prepare("DELETE FROM clients WHERE client_code = 'C9001'").run();
+  });
+});
 
 describe('GET /api/network/router/wan/usage', () => {
   test('responde sem router configurado', async () => {
@@ -40,6 +55,18 @@ describe('POST /api/network/router/wan/usage/counter', () => {
     db.prepare("INSERT INTO app_settings (key, value) VALUES ('routerosEnabled', 'true'), ('routerosHost', '127.0.0.1'), ('routerosUser', 'ispm')").run();
     writeSecret(db, 'routerosPassword', 'segredo');
     const dryRun = await app.inject({ method: 'POST', url: '/api/network/router/wan/usage/counter' });
+    expect(dryRun.statusCode).toBe(409);
+    expect(dryRun.json().error).toContain('modo de ensaio');
+  });
+});
+
+describe('POST /api/network/router/clients/usage/counter', () => {
+  test('recusa um router por configurar e preserva o modo de ensaio sem contactar o router', async () => {
+    const missing = await app.inject({ method: 'POST', url: '/api/network/router/clients/usage/counter' });
+    expect(missing.statusCode).toBe(400);
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('routerosEnabled', 'true'), ('routerosHost', '127.0.0.1'), ('routerosUser', 'ispm')").run();
+    writeSecret(db, 'routerosPassword', 'segredo');
+    const dryRun = await app.inject({ method: 'POST', url: '/api/network/router/clients/usage/counter' });
     expect(dryRun.statusCode).toBe(409);
     expect(dryRun.json().error).toContain('modo de ensaio');
   });

@@ -43,6 +43,7 @@ import { pollSmsStatusIfDue, runSmsOutboxIfDue, smsDispatchIntervalMs } from './
 import { registerNetworkRoutes } from './routes/network';
 import { networkProbeIntervalMs, runNetworkProbeIfDue } from './lib/network-probe';
 import { runWanUsageIfDue } from './lib/wan-usage';
+import { runClientUsageIfDue } from './lib/client-usage';
 import { requestNetworkSync } from './lib/network-sync';
 import { routerosIntervalMs } from './lib/routeros';
 import { autoSuspensionIntervalMs, runAutomaticSuspension } from './lib/auto-suspension';
@@ -280,6 +281,9 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
     const wanUsageTick = () => { void runJob('wan_usage', runWanUsageIfDue).catch((err) => app.log.error({ err }, 'wan usage failed')); };
     wanUsageTick();
     setInterval(wanUsageTick, 60_000).unref();
+    const clientUsageTick = () => { void runJob('client_usage', runClientUsageIfDue).catch((err) => app.log.error({ err }, 'client usage failed')); };
+    clientUsageTick();
+    setInterval(clientUsageTick, 60_000).unref();
   }
 
   // Suspensão automática por dívida: decide apenas a intenção na base de dados.

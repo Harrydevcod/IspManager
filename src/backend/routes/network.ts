@@ -6,6 +6,8 @@ import { loadNetworkStatus, loadProbeEvents, mapWithLimit, readProbeConfig, runN
 import {
   createTransport,
   ensureWanUsageCounter,
+  ensureClientUsageCounter,
+  readClientUsageData,
   DEFAULT_ROUTER_PORT,
   describeRouterFailure,
   diagnoseRouter,
@@ -48,6 +50,7 @@ import { crossReference, type ObservedHost } from '../lib/network-inventory';
 import { buildProposals, dismissalKey, findOrphans, type ProposalKind } from '../lib/discovery-reconcile';
 import { runJob } from '../lib/jobRuns';
 import { collectWanUsage, loadWanUsage } from '../lib/wan-usage';
+import { collectClientUsage, loadClientUsage } from '../lib/client-usage';
 import { applyPlanProfile, readBaseProfileName } from '../lib/plan-profiles';
 import { recordAudit } from '../lib/audit';
 import { canStoreSecrets } from '../lib/secrets';
@@ -448,6 +451,7 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/network/router/wan/usage', adminOnly, async () => loadWanUsage(getSqliteDatabase()));
+  app.get('/api/network/router/clients/usage', adminOnly, async () => loadClientUsage(getSqliteDatabase()));
 
   app.post('/api/network/router/wan/usage/counter', adminOnly, async (request, reply) => {
     const db = getSqliteDatabase();
@@ -466,6 +470,32 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       if (result.source !== 'router') {
         return reply.status(502).send({ error: 'O contador foi instalado mas não gravou dados. Veja System → Scripts no router.' });
       }
+      return result;
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return reply.status(502).send({ error: `${failure.title}. ${failure.detail}`, code: failure.code });
+    }
+  });
+
+  // Rota própria: o botão das WAN desaparece depois de instalado, e uma falha deste script
+  // não pode partir a contagem das WAN.
+  app.post('/api/network/router/clients/usage/counter', adminOnly, async (request, reply) => {
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return reply.status(400).send({ error: 'Integração MikroTik desligada ou por configurar' });
+    }
+    if (config.dryRun) return reply.status(409).send({ error: 'Desative o modo de ensaio para instalar o contador no router' });
+    try {
+      const transport = createTransport(config);
+      await ensureClientUsageCounter(transport);
+      await transport({ method: 'POST', path: '/system/script/run', body: { '.id': 'ispm-client-usage' } });
+      // O run da REST não devolve o erro do script: sem o script de dados, o contador não correu.
+      if (await readClientUsageData(transport) === null) {
+        return reply.status(502).send({ error: 'O contador foi instalado mas não gravou dados. Veja System → Scripts no router.' });
+      }
+      const result = await collectClientUsage(db, transport);
+      recordAudit(request, { action: 'router_client_usage_counter', entityType: 'router', summary: 'Instalou a contagem do consumo por cliente no router' });
       return result;
     } catch (err) {
       const failure = describeRouterFailure(err);
