@@ -181,7 +181,8 @@ export type RouterWanUsage = {
   exactSince: string | null;
   today: WanUsageRow[];
   month: WanUsageRow[];
-  days: Array<{ day: string; perInterface: Array<{ interface: string; rxBytes: number; txBytes: number }> }>;
+  /** source 'starlink': copiado da conta Starlink, só o total (fica em rx). */
+  days: Array<{ day: string; perInterface: Array<{ interface: string; rxBytes: number; txBytes: number; source: 'counted' | 'starlink' }> }>;
 };
 
 const DATA_UNITS = ['B', 'kB', 'MB', 'GB', 'TB'];

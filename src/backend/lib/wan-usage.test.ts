@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
-import { collectWanUsage, counterDelta, importRouterUsage, loadWanUsage, parseWanUsageFile, recordWanUsage } from './wan-usage';
+import { collectWanUsage, counterDelta, importRouterUsage, importStarlinkUsage, loadWanUsage, parseWanUsageFile, recordWanUsage } from './wan-usage';
 import type { RouterRequest, RouterTransport } from './routeros';
 
 let db: Database.Database;
@@ -62,7 +62,25 @@ describe('ficheiro do contador no router', () => {
       { day: '2026-09-24', rx: 10, tx: 2 }, { day: '2026-09-25', rx: 100, tx: 20 }
     ]);
     expect(loadWanUsage(db, '2026-09-25').routerImportedAt).toBeTruthy();
-    expect(loadWanUsage(db, '2026-09-25').days.at(-1)?.perInterface[0]).toEqual({ interface: 'WAN1', rxBytes: 100, txBytes: 20 });
+    expect(loadWanUsage(db, '2026-09-25').days.at(-1)?.perInterface[0]).toEqual({ interface: 'WAN1', rxBytes: 100, txBytes: 20, source: 'counted' });
+  });
+
+  test('dia da conta Starlink: só o total, e o router não lhe toca; dias contados seguem com MAX', () => {
+    importRouterUsage(db, [{ day: '2026-09-29', interface: 'WAN1', rxBytes: 180, txBytes: 7 }]);
+    importStarlinkUsage(db, [{ day: '2026-09-29', interface: 'WAN1', bytes: 115 }]);
+    importRouterUsage(db, [
+      { day: '2026-09-29', interface: 'WAN1', rxBytes: 900, txBytes: 90 },
+      { day: '2026-09-30', interface: 'WAN1', rxBytes: 10, txBytes: 1 },
+      { day: '2026-09-30', interface: 'WAN1', rxBytes: 0, txBytes: 0 }
+    ]);
+    importRouterUsage(db, [{ day: '2026-09-30', interface: 'WAN1', rxBytes: 5, txBytes: 3 }]);
+    const days = loadWanUsage(db, '2026-09-30').days.slice(-2).map((day) => day.perInterface[0]);
+    expect(days).toEqual([
+      { interface: 'WAN1', rxBytes: 115, txBytes: 0, source: 'starlink' },
+      { interface: 'WAN1', rxBytes: 10, txBytes: 3, source: 'counted' }
+    ]);
+    expect(() => importStarlinkUsage(db, [{ day: '2026-13-01', interface: 'WAN1', bytes: 1 }])).toThrow();
+    expect(() => importStarlinkUsage(db, [{ day: '2026-09-01', interface: 'WAN1', bytes: -1 }])).toThrow();
   });
 
   test('exactSince: dia seguinte ao primeiro que o router contou, e não avança quando o router poda', () => {
