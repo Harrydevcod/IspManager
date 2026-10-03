@@ -6,6 +6,12 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.19](https://github.com/Harrydevcod/IspManager/releases/tag/v2.19.0) — 2026-10-03
+
+> **Uma migração.** A `0072` acrescenta ao consumo diário das WAN a origem de cada dia (contado ou copiado da conta Starlink). Todos os dias existentes ficam como contados; não muda nenhum valor.
+
+- **Dias copiados da conta Starlink.** Um dia do consumo das WAN pode ser substituído pelo total que a conta Starlink mostra. Esse dia aparece normal no gráfico, entra na escala e, ao passar o rato, mostra o total com "(conta Starlink)". A contagem do router já não escreve por cima dele.
+
 ## [2.18](https://github.com/Harrydevcod/IspManager/releases/tag/v2.18.0) — 2026-10-03
 
 > **Sem migrações.** Nada a fazer depois de atualizar.
