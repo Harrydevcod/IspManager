@@ -39,6 +39,15 @@ describe('GET /api/network/router/clients/usage', () => {
   });
 });
 
+describe('GET /api/network/incidents', () => {
+  test('responde sem sonda e recusa uma janela inválida', async () => {
+    const response = await app.inject('/api/network/incidents');
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ probeEnabled: false, windowDays: 30, incidents: [] });
+    expect((await app.inject('/api/network/incidents?days=0')).statusCode).toBe(400);
+  });
+});
+
 describe('GET /api/network/router/wan/usage', () => {
   test('responde sem router configurado', async () => {
     const response = await app.inject('/api/network/router/wan/usage');

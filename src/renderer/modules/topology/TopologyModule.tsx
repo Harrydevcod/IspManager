@@ -5,6 +5,7 @@ import type { KeyboardEvent } from 'react';
 import { Button } from '../../components';
 import { BackboneWorkspace, type BackbonePrefill } from './BackboneWorkspace';
 import { DiscoveryWorkspace } from './discovery/DiscoveryWorkspace';
+import { IncidentsWorkspace } from './IncidentsWorkspace';
 import type { TopologyApi } from './topology-api';
 
 const TopologyMapView = lazy(() => import('./TopologyMapView'));
@@ -20,12 +21,13 @@ export type TopologyModuleProps = {
   onOpenStock: (catalogId: number) => void;
 };
 
-type TopologyTab = 'backbone' | 'topology' | 'discovery';
+type TopologyTab = 'backbone' | 'topology' | 'discovery' | 'incidents';
 
 const tabs: ReadonlyArray<{ id: TopologyTab; label: string }> = [
   { id: 'backbone', label: 'Backbone' },
   { id: 'topology', label: 'Topologia' },
-  { id: 'discovery', label: 'Descoberta' }
+  { id: 'discovery', label: 'Descoberta' },
+  { id: 'incidents', label: 'Incidentes' }
 ];
 
 function MapLoadingFallback() {
@@ -194,6 +196,17 @@ export default function TopologyModule(props: TopologyModuleProps) {
             onOpenBackbone={() => selectTab('backbone')}
           />
         )}
+      </div>
+
+      <div
+        id="topology-panel-incidents"
+        className="topology-tab-panel"
+        role="tabpanel"
+        aria-labelledby="topology-tab-incidents"
+        hidden={activeTab !== 'incidents'}
+      >
+        {/* `active` desliga o pedido: quem nunca abre a aba nunca o faz. */}
+        <IncidentsWorkspace active={activeTab === 'incidents'} />
       </div>
     </section>
   );
