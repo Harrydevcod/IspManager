@@ -6,6 +6,13 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.18](https://github.com/Harrydevcod/IspManager/releases/tag/v2.18.0) — 2026-10-03
+
+> **Sem migrações.** Nada a fazer depois de atualizar.
+
+- **Consumo diário das WAN honesto.** Os dias de antes de o router contar (a contagem antiga da app empurrava o tráfego para o dia em que a app reabria) aparecem esbatidos, com aviso no tooltip, e já não ditam a escala do gráfico. Desde que o router conta, os dias batem com a conta Starlink.
+- **Soma das duas WAN em cada dia.** Por cima de cada barra aparece a soma das WAN em GB (as duas contas Starlink juntas), com hoje e o pico em destaque; ao passar o rato, o tooltip abre com essa soma e depois o detalhe de cada WAN.
+
 ## [2.17](https://github.com/Harrydevcod/IspManager/releases/tag/v2.17.0) — 2026-10-03
 
 > **Sem migrações.** Nada a fazer depois de atualizar.
