@@ -6,6 +6,10 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.16](https://github.com/Harrydevcod/IspManager/releases/tag/v2.16.0) — 2026-10-03
+
+> **Uma migração.** A `0071` cria as tabelas dos pedidos de assistência e acrescenta às OS a ligação ao pedido de origem. Não mexe em nenhum dado existente.
+
 - **Pedidos de assistência.** Nova secção Assistência: o que o cliente reporta (sem ligação, lento, fatura…) fica registado com o canal por onde chegou, a prioridade e o técnico, numa linha do tempo de notas e mudanças de estado. Resolver ou fechar pede sempre o que se fez. Um pedido gera as OS técnicas de que precisar, e a OS mostra de que pedido nasceu. Também se abre na ficha do cliente. O painel mostra os abertos, os que aguardam o cliente e o tempo médio até à primeira resposta. Inclui a migração 0071.
 
 ## [2.15](https://github.com/Harrydevcod/IspManager/releases/tag/v2.15.0) — 2026-10-03
