@@ -254,6 +254,7 @@
 .router-usage-day:hover { filter: brightness(1.15); }
 .router-usage-day i { display: block; width: 100%; }
 .router-usage-day i:last-of-type { border-radius: 2px 2px 0 0; }
+.router-usage-day.is-estimated i { opacity: 0.35; }
 .router-usage-day.is-empty::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--border); }
 .router-usage-total { position: absolute; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; color: var(--text-2); max-width: min(90vw, 100px); overflow: hidden; text-overflow: ellipsis; }
 .router-usage-total.is-start { left: 0; transform: none; }

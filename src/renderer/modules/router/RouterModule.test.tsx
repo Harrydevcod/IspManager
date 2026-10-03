@@ -203,6 +203,27 @@ describe('Router de gestão', () => {
     expect(history?.querySelector('.router-usage-day:first-child i')?.classList.contains('is-second')).toBe(true);
   });
 
+  test('dias anteriores à contagem no router ficam esbatidos e não ditam a escala', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input: string | URL | Request) => {
+      const response = await original(input);
+      if (!String(input).endsWith('/router/wan/usage')) return response;
+      const body = await response.json();
+      return json({ ...body, exactSince: '2026-09-30', days: [
+        { day: '2026-09-29', perInterface: [{ interface: 'WAN1-STARLINK', rxBytes: 4_000_000_000, txBytes: 0 }] },
+        { day: '2026-09-30', perInterface: [{ interface: 'WAN1-STARLINK', rxBytes: 1_000_000_000, txBytes: 0 }] }
+      ] });
+    });
+    const container = await mount();
+    const [old, exact] = [...container.querySelectorAll('.router-usage-history .router-usage-day')];
+    expect(old.classList.contains('is-estimated')).toBe(true);
+    expect(old.getAttribute('title')).toContain('não comparável com a Starlink');
+    expect(exact.classList.contains('is-estimated')).toBe(false);
+    expect((exact.querySelector('i') as HTMLElement).style.height).toBe('100%');
+    expect((old.querySelector('i') as HTMLElement).style.height).toBe('100%');
+  });
+
   test('instala o contador pelo botão e mostra o estado após a importação', async () => {
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
     const original = fetchMock.getMockImplementation()!;
