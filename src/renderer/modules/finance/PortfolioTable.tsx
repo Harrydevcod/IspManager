@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Badge, Button, Card, DataTable, EmptyState, FilterBar } from '../../components';
+import { Badge, Button, Card, ColumnPicker, DataTable, EmptyState, FilterBar } from '../../components';
+import type { DataTableColumn } from '../../components/DataTable';
+import { useColumnVisibility } from '../../lib/columnVisibility';
 import type { SortState } from '../../lib/listView';
 import { formatCve } from '../../lib/format';
 import type { PortfolioReport, PortfolioRow } from '../../types';
@@ -28,11 +30,55 @@ function recoveryLabel(row: PortfolioRow) {
   return `${Math.ceil(row.monthsToBreakeven)} meses`;
 }
 
+const PORTFOLIO_COLUMNS: DataTableColumn<PortfolioRow>[] = [
+  { header: 'Código', sortValue: (row) => row.clientCode, cell: (row) => <span className="entity-code">{row.clientCode || '—'}</span> },
+  { header: 'Cliente', sortValue: (row) => row.fullName, cell: (row) => <strong title={row.fullName}>{row.fullName}</strong> },
+  { header: 'Zona', sortValue: (row) => row.zone, cell: (row) => <span title={row.zone || undefined}>{row.zone || '—'}</span> },
+  {
+    header: 'Capital',
+    sortValue: (row) => row.installationCostCve,
+    defaultDirection: 'desc',
+    align: 'end',
+    cell: (row) => formatCve(row.installationCostCve)
+  },
+  {
+    // Capital + OPEX acumulado por cobrir: e o que falta o cliente
+    // entregar para deixar de dar prejuizo, nao so o preco da antena.
+    header: 'Por recuperar',
+    sortValue: (row) => row.unrecoveredCve,
+    defaultDirection: 'desc',
+    align: 'end',
+    cell: (row) => (row.unrecoveredCve > 0
+      ? <strong>{formatCve(row.unrecoveredCve)}</strong>
+      : <Badge tone="success">Recuperado</Badge>)
+  },
+  {
+    header: 'Margem/mês',
+    sortValue: (row) => row.monthlyMarginCve,
+    align: 'end',
+    // Ja com o desgaste do equipamento descontado: e esta que se compara
+    // entre clientes, porque nao depende do mes em que a antena subiu.
+    cell: (row) => (row.monthlyMarginCve < 0
+      ? <Badge tone="danger">{formatCve(row.monthlyMarginCve)}</Badge>
+      : formatCve(row.monthlyMarginCve))
+  },
+  {
+    header: 'Recupera em',
+    // Sem prazo (null) vai para o fim: nao e "zero meses", e "nunca, ao ritmo atual".
+    sortValue: (row) => row.monthsToBreakeven,
+    align: 'end',
+    cell: (row) => recoveryLabel(row)
+  }
+];
+
+const PORTFOLIO_HEADERS = PORTFOLIO_COLUMNS.map((column) => column.header);
+
 export function PortfolioTable({ data, onOpenClient }: {
   data: PortfolioReport;
   onOpenClient?: (clientId: number) => void;
 }) {
   const [filter, setFilter] = useState<PortfolioFilter>('porRecuperar');
+  const columnVisibility = useColumnVisibility('ispm.finance.portfolio.hiddenColumns', PORTFOLIO_HEADERS);
 
   const rows = useMemo(() => data.rows.filter((row) => {
     if (filter === 'porRecuperar') return row.installationCostCve > 0 && !row.isRecovered;
@@ -56,6 +102,12 @@ export function PortfolioTable({ data, onOpenClient }: {
               {option.label}
             </Button>
           ))}
+          <ColumnPicker
+            headers={PORTFOLIO_HEADERS}
+            hidden={columnVisibility.hidden}
+            onToggle={columnVisibility.toggle}
+            onReset={columnVisibility.reset}
+          />
         </FilterBar>
       )}
     >
@@ -65,7 +117,8 @@ export function PortfolioTable({ data, onOpenClient }: {
         defaultSort={DEFAULT_SORT}
         stickyHeader
         onRowClick={onOpenClient ? (row) => onOpenClient(row.clientId) : undefined}
-        gridTemplateColumns="88px minmax(180px, 1.4fr) 116px 124px 132px 124px 116px"
+        // Cliente e Zona encolhem com reticências; o resto tem a largura do seu dado.
+        gridTemplateColumns="88px minmax(112px, 1.4fr) minmax(0, 0.8fr) 124px 132px 124px 116px"
         empty={(
           <EmptyState
             title={filter === 'porRecuperar' ? 'Capital todo recuperado' : 'Nada nesta vista'}
@@ -74,46 +127,8 @@ export function PortfolioTable({ data, onOpenClient }: {
               : 'Nenhum cliente corresponde a este filtro.'}
           />
         )}
-        columns={[
-          { header: 'Código', sortValue: (row) => row.clientCode, cell: (row) => <span className="entity-code">{row.clientCode || '—'}</span> },
-          { header: 'Cliente', sortValue: (row) => row.fullName, cell: (row) => <strong>{row.fullName}</strong> },
-          { header: 'Zona', sortValue: (row) => row.zone, cell: (row) => row.zone || '—' },
-          {
-            header: 'Capital',
-            sortValue: (row) => row.installationCostCve,
-            defaultDirection: 'desc',
-            align: 'end',
-            cell: (row) => formatCve(row.installationCostCve)
-          },
-          {
-            // Capital + OPEX acumulado por cobrir: e o que falta o cliente
-            // entregar para deixar de dar prejuizo, nao so o preco da antena.
-            header: 'Por recuperar',
-            sortValue: (row) => row.unrecoveredCve,
-            defaultDirection: 'desc',
-            align: 'end',
-            cell: (row) => (row.unrecoveredCve > 0
-              ? <strong>{formatCve(row.unrecoveredCve)}</strong>
-              : <Badge tone="success">Recuperado</Badge>)
-          },
-          {
-            header: 'Margem/mês',
-            sortValue: (row) => row.monthlyMarginCve,
-            align: 'end',
-            // Ja com o desgaste do equipamento descontado: e esta que se compara
-            // entre clientes, porque nao depende do mes em que a antena subiu.
-            cell: (row) => (row.monthlyMarginCve < 0
-              ? <Badge tone="danger">{formatCve(row.monthlyMarginCve)}</Badge>
-              : formatCve(row.monthlyMarginCve))
-          },
-          {
-            header: 'Recupera em',
-            // Sem prazo (null) vai para o fim: nao e "zero meses", e "nunca, ao ritmo atual".
-            sortValue: (row) => row.monthsToBreakeven,
-            align: 'end',
-            cell: (row) => recoveryLabel(row)
-          }
-        ]}
+        columns={PORTFOLIO_COLUMNS}
+        hiddenColumns={columnVisibility.hidden}
       />
     </Card>
   );

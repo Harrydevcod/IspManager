@@ -148,6 +148,9 @@
 /* `:not([hidden])`: qualquer `display` de autor venceria o `hidden` do UA. */
 .topology-tab-panel:not([hidden]) {
   display: grid;
+  /* Coluna explícita: a implícita é `auto` e crescia até à largura mínima da
+     tabela da Descoberta, empurrando a página para o lado (302px a 150%). */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   min-height: 0;
 }

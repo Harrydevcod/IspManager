@@ -3,6 +3,7 @@ import { AlertTriangle, Clock, Users, Wallet } from 'lucide-react';
 import {
   Badge,
   Button,
+  ColumnPicker,
   DataTable,
   EmptyState,
   ErrorRetry,
@@ -11,7 +12,9 @@ import {
   MetricGrid,
   SkeletonList
 } from '../components';
+import type { DataTableColumn } from '../components/DataTable';
 import { authFetch } from '../lib/auth';
+import { useColumnVisibility } from '../lib/columnVisibility';
 import { formatCve, formatPtDate } from '../lib/format';
 import { AGING_LABELS, type AgingBucket, type ReceivableClient, type ReceivablesReport } from '../types';
 
@@ -36,11 +39,56 @@ const BUCKET_TONE: Record<AgingBucket, 'success' | 'info' | 'warn' | 'danger' | 
 
 const BUCKET_ORDER: AgingBucket[] = ['current', 'd30', 'd60', 'd90', 'd90plus'];
 
+const RECEIVABLE_COLUMNS: DataTableColumn<ReceivableClient>[] = [
+  { header: 'Código', sortValue: (c) => c.clientCode, cell: (c) => <span className="entity-code">{c.clientCode || '—'}</span> },
+  { header: 'Cliente', sortValue: (c) => c.clientName, cell: (c) => <strong title={c.clientName}>{c.clientName}</strong> },
+  { header: 'Zona', sortValue: (c) => c.zone, cell: (c) => <span title={c.zone || undefined}>{c.zone || '—'}</span> },
+  { header: 'Telefone', sortValue: (c) => c.phone, cell: (c) => <span>{c.phone || '—'}</span> },
+  {
+    header: 'Faturas',
+    align: 'center',
+    sortValue: (c) => c.invoices,
+    defaultDirection: 'desc',
+    cell: (c) => <span>{c.invoices}</span>
+  },
+  {
+    header: 'Mais antiga',
+    sortValue: (c) => c.oldestDueDate,
+    cell: (c) => <span>{formatPtDate(c.oldestDueDate)}</span>
+  },
+  {
+    header: 'Antiguidade',
+    sortValue: (c) => c.maxDaysOverdue,
+    defaultDirection: 'desc',
+    align: 'center',
+    cell: (c) => <Badge tone={BUCKET_TONE[c.bucket]}>{AGING_LABELS[c.bucket]}</Badge>
+  },
+  {
+    header: 'Em aberto',
+    sortValue: (c) => c.openCve,
+    defaultDirection: 'desc',
+    align: 'end',
+    cell: (c) => <b>{formatCve(c.openCve)}</b>
+  },
+  {
+    // O crédito fica ao lado do saldo porque muda a conversa: não se
+    // liga a cobrar a quem já tem dinheiro nosso a favor.
+    header: 'Crédito',
+    align: 'end',
+    sortValue: (c) => (c.creditCve > 0 ? c.creditCve : null),
+    defaultDirection: 'desc',
+    cell: (c) => <span>{c.creditCve > 0 ? formatCve(c.creditCve) : '—'}</span>
+  }
+];
+
+const RECEIVABLE_HEADERS = RECEIVABLE_COLUMNS.map((column) => column.header);
+
 export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: number) => void } = {}) {
   const [report, setReport] = useState<ReceivablesReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [bucketFilter, setBucketFilter] = useState<AgingBucket | 'all'>('all');
+  const columnVisibility = useColumnVisibility('ispm.finance.receivables.hiddenColumns', RECEIVABLE_HEADERS);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -136,6 +184,12 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
             </Button>
           );
         })}
+        <ColumnPicker
+          headers={RECEIVABLE_HEADERS}
+          hidden={columnVisibility.hidden}
+          onToggle={columnVisibility.toggle}
+          onReset={columnVisibility.reset}
+        />
       </FilterBar>
 
       <DataTable<ReceivableClient>
@@ -143,7 +197,8 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
         rowKey={(c) => c.clientId}
         defaultSort={{ key: 'Em aberto', direction: 'desc' }}
         onRowClick={onOpenClient ? (c) => onOpenClient(c.clientId) : undefined}
-        gridTemplateColumns="80px minmax(160px, 1.5fr) minmax(96px, 0.8fr) 104px 80px 108px 132px 116px 104px"
+        // Cliente e Zona encolhem com reticências; o resto tem a largura do seu dado.
+        gridTemplateColumns="80px minmax(112px, 1.5fr) minmax(0, 0.8fr) 104px 80px 108px 132px 116px 104px"
         empty={
           <EmptyState
             title="Nada por cobrar"
@@ -154,47 +209,8 @@ export function ReceivablesModule({ onOpenClient }: { onOpenClient?: (clientId: 
             }
           />
         }
-        columns={[
-          { header: 'Código', sortValue: (c) => c.clientCode, cell: (c) => <span className="entity-code">{c.clientCode || '—'}</span> },
-          { header: 'Cliente', sortValue: (c) => c.clientName, cell: (c) => <strong>{c.clientName}</strong> },
-          { header: 'Zona', sortValue: (c) => c.zone, cell: (c) => <span>{c.zone || '—'}</span> },
-          { header: 'Telefone', sortValue: (c) => c.phone, cell: (c) => <span>{c.phone || '—'}</span> },
-          {
-            header: 'Faturas',
-            align: 'center',
-            sortValue: (c) => c.invoices,
-            defaultDirection: 'desc',
-            cell: (c) => <span>{c.invoices}</span>
-          },
-          {
-            header: 'Mais antiga',
-            sortValue: (c) => c.oldestDueDate,
-            cell: (c) => <span>{formatPtDate(c.oldestDueDate)}</span>
-          },
-          {
-            header: 'Antiguidade',
-            sortValue: (c) => c.maxDaysOverdue,
-            defaultDirection: 'desc',
-            align: 'center',
-            cell: (c) => <Badge tone={BUCKET_TONE[c.bucket]}>{AGING_LABELS[c.bucket]}</Badge>
-          },
-          {
-            header: 'Em aberto',
-            sortValue: (c) => c.openCve,
-            defaultDirection: 'desc',
-            align: 'end',
-            cell: (c) => <b>{formatCve(c.openCve)}</b>
-          },
-          {
-            // O crédito fica ao lado do saldo porque muda a conversa: não se
-            // liga a cobrar a quem já tem dinheiro nosso a favor.
-            header: 'Crédito',
-            align: 'end',
-            sortValue: (c) => (c.creditCve > 0 ? c.creditCve : null),
-            defaultDirection: 'desc',
-            cell: (c) => <span>{c.creditCve > 0 ? formatCve(c.creditCve) : '—'}</span>
-          }
-        ]}
+        columns={RECEIVABLE_COLUMNS}
+        hiddenColumns={columnVisibility.hidden}
       />
     </div>
   );

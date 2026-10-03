@@ -17,6 +17,7 @@ import {
 import {
   Badge,
   Button,
+  ColumnPicker,
   DataTable,
   EmptyState,
   ErrorRetry,
@@ -31,6 +32,7 @@ import {
 import { downloadCsv } from '../../../lib/csv';
 import { formatPtDateTime } from '../../../lib/format';
 import { sortByColumns, type SortState } from '../../../lib/listView';
+import { useColumnVisibility } from '../../../lib/columnVisibility';
 import type { DataTableColumn } from '../../../components/DataTable';
 import { ipToInt } from '../../../../shared/ip-range';
 import { labelForWanMode } from '../../../../shared/wan';
@@ -206,7 +208,8 @@ const DISCOVERY_COLUMNS: DataTableColumn<DiscoveryRow>[] = [
   {
     header: 'Nome',
     sortValue: (row) => (row.registeredAs.length > 0 ? displayName(row) : row.hostname),
-    cell: (row) => displayName(row)
+    // Num `span` para cortar com reticências numa linha; o nome inteiro fica no title.
+    cell: (row) => <span title={displayName(row)}>{displayName(row)}</span>
   },
   {
     header: 'MAC',
@@ -256,10 +259,17 @@ const DISCOVERY_COLUMNS: DataTableColumn<DiscoveryRow>[] = [
     header: 'Visto desde',
     sortValue: (row) => row.firstSeenAt,
     cell: (row) => row.firstSeenAt
-      ? formatPtDateTime(row.firstSeenAt)
+      ? <span>{formatPtDateTime(row.firstSeenAt)}</span>
       : <span className="discovery-muted">—</span>
   }
 ];
+
+const DISCOVERY_HEADERS = DISCOVERY_COLUMNS.map((column) => column.header);
+/**
+ * As nove não cabem num 1920 a 150%. Ligação e Operação saem por omissão: só
+ * têm valor nas linhas registadas, nas outras mostram "—". Ficam em "Colunas".
+ */
+const DISCOVERY_DEFAULT_HIDDEN = ['Ligação', 'Operação'];
 
 export function DiscoveryWorkspace({ active, onRegisterBackbone, onOpenService, onOpenBackbone }: DiscoveryWorkspaceProps) {
   const discovery = useDiscovery(active, api);
@@ -270,6 +280,11 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone, onOpenService, 
   const [sort, setSort] = useState<SortState<string>>(DEFAULT_SORT);
   const [assigning, setAssigning] = useState<DiscoveryRow | null>(null);
   const [batchOpen, setBatchOpen] = useState(false);
+  const columnVisibility = useColumnVisibility(
+    'ispm.discovery.hiddenColumns',
+    DISCOVERY_HEADERS,
+    DISCOVERY_DEFAULT_HIDDEN
+  );
   const { toast } = useToast();
 
   const rows = useMemo(
@@ -479,27 +494,40 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone, onOpenService, 
       ) : null}
 
       {report ? (
-        <div className="discovery-chips" role="group" aria-label="Filtrar por estado">
-          {FILTERS.map((item) => (
-            <Button
-              key={item.id}
-              variant="ghost"
-              size="sm"
-              className={filter === item.id ? 'is-active' : undefined}
-              aria-pressed={filter === item.id}
-              onClick={() => setFilter(item.id)}
-            >
-              {item.label}
-              {item.id !== 'todos' ? <span className="discovery-chip-count">{counts?.[item.id] ?? 0}</span> : null}
-            </Button>
-          ))}
+        <div className="discovery-tablebar">
+          <div className="discovery-chips" role="group" aria-label="Filtrar por estado">
+            {FILTERS.map((item) => (
+              <Button
+                key={item.id}
+                variant="ghost"
+                size="sm"
+                className={filter === item.id ? 'is-active' : undefined}
+                aria-pressed={filter === item.id}
+                onClick={() => setFilter(item.id)}
+              >
+                {item.label}
+                {item.id !== 'todos' ? <span className="discovery-chip-count">{counts?.[item.id] ?? 0}</span> : null}
+              </Button>
+            ))}
+          </div>
+          <ColumnPicker
+            headers={DISCOVERY_HEADERS}
+            hidden={columnVisibility.hidden}
+            onToggle={columnVisibility.toggle}
+            onReset={columnVisibility.reset}
+          />
         </div>
       ) : null}
 
       <DataTable<DiscoveryRow>
         rows={rows}
         rowKey={(row) => row.ip}
-        gridTemplateColumns="minmax(130px, 0.8fr) 130px minmax(160px, 1.4fr) minmax(150px, 1fr) minmax(150px, 1.1fr) minmax(110px, 0.7fr) minmax(100px, 0.7fr) 90px minmax(140px, 1fr)"
+        /* Nome e Equipamento encolhem com reticências; o resto tem a largura do
+           seu dado. Com mínimos de 130–160px em todas a tabela pedia ~1430px e
+           não cabia num 1920 a 150% (~1150px úteis). Quem precisar de mais
+           espaço esconde colunas no `ColumnPicker`. */
+        gridTemplateColumns="112px 128px minmax(0, 1.4fr) 144px minmax(0, 1.2fr) minmax(96px, 0.6fr) minmax(104px, 0.6fr) 84px 136px"
+        hiddenColumns={columnVisibility.hidden}
         stickyHeader
         sort={sort}
         onSortChange={setSort}

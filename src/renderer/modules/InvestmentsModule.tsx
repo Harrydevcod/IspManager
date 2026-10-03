@@ -1,8 +1,10 @@
 import { Pencil, Plus, Trash2, Wallet, X } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Card, Combobox, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, MetricGrid, ModuleHeaderActions, Select, SkeletonList, Textarea, useConfirm, useToast } from '../components';
+import { Badge, Button, Card, ColumnPicker, Combobox, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, MetricGrid, ModuleHeaderActions, Select, SkeletonList, Textarea, useConfirm, useToast } from '../components';
+import type { DataTableColumn } from '../components/DataTable';
 import { authFetch } from '../lib/auth';
+import { useColumnVisibility } from '../lib/columnVisibility';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './InvestmentsModule.css';
 import { AccountSelect } from './treasury/AccountSelect';
@@ -196,9 +198,48 @@ function formatMonths(value: number | null): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)} meses`;
 }
 
+const statusMeta = Object.fromEntries(STATUSES.map((s) => [s.value, s]));
+
+const INVESTMENT_COLUMNS: DataTableColumn<Investment>[] = [
+  { header: 'Data', sortValue: (investment) => investment.investmentDate, defaultDirection: 'desc', cell: (investment) => <span>{formatPtDate(investment.investmentDate)}</span> },
+  { header: 'Nome', sortValue: (investment) => investment.name, cell: (investment) => <strong title={investment.name}>{investment.name}</strong> },
+  { header: 'Zona', sortValue: (investment) => investment.zone, cell: (investment) => <span title={investment.zone || undefined}>{investment.zone || '—'}</span> },
+  {
+    header: 'Clientes',
+    sortValue: (investment) => investment.clients[0]?.name || investment.clientName,
+    cell: (investment) => (
+      <span>
+        {investment.clients.length > 0
+          ? `${investment.clients[0].name}${investment.clients.length > 1 ? ` +${investment.clients.length - 1}` : ''}`
+          : investment.clientName || '—'}
+      </span>
+    )
+  },
+  {
+    header: 'Estado',
+    align: 'center',
+    sortValue: (investment) => statusMeta[investment.status]?.label || investment.status,
+    cell: (investment) => (
+      <Badge tone={statusMeta[investment.status]?.tone || 'neutral'}>
+        {statusMeta[investment.status]?.label || investment.status}
+      </Badge>
+    )
+  },
+  { header: 'Custo', align: 'end', sortValue: (investment) => investment.totalCostCve, defaultDirection: 'desc', cell: (investment) => <b>{formatCve(investment.totalCostCve)}</b> }
+];
+
+const INVESTMENT_HEADERS = INVESTMENT_COLUMNS.map((column) => column.header);
+/**
+ * A tabela divide a largura com o painel de detalhe. Zona e Estado saem por
+ * omissão: a zona quase nunca está preenchida, e o estado lê-se no painel.
+ * Ficam em "Colunas".
+ */
+const INVESTMENT_DEFAULT_HIDDEN = ['Zona', 'Estado'];
+
 export function InvestmentsModule() {
   const [data, setData] = useState<InvestmentList>(EMPTY_INVESTMENT_LIST);
   const [loading, setLoading] = useState(true);
+  const columnVisibility = useColumnVisibility('ispm.finance.investments.hiddenColumns', INVESTMENT_HEADERS, INVESTMENT_DEFAULT_HIDDEN);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [month, setMonth] = useState(currentMonth());
@@ -242,7 +283,6 @@ export function InvestmentsModule() {
   const confirm = useConfirm();
 
   const selected = data.rows.find((row) => row.id === selectedId) || data.rows[0] || null;
-  const statusMeta = useMemo(() => Object.fromEntries(STATUSES.map((s) => [s.value, s])), []);
   const typeLabel = useMemo(() => Object.fromEntries(TYPES.map((t) => [t.value, t.label])), []);
   const itemTypeLabel = useMemo(() => Object.fromEntries(ITEM_TYPES.map((t) => [t.value, t.label])), []);
   const formTotal = form.items.reduce((sum, item) => sum + itemTotal(item), 0);
@@ -522,6 +562,12 @@ export function InvestmentsModule() {
           Limpar filtros
         </Button>
         <small>{showAllMonths ? 'Todos os meses' : formatPtMonth(month)}</small>
+        <ColumnPicker
+          headers={INVESTMENT_HEADERS}
+          hidden={columnVisibility.hidden}
+          onToggle={columnVisibility.toggle}
+          onReset={columnVisibility.reset}
+        />
       </FilterBar>
 
       <div className="investments-layout">
@@ -533,36 +579,13 @@ export function InvestmentsModule() {
           rowKey={(investment) => investment.id}
           activeKey={selected?.id}
           onRowClick={(investment) => setSelectedId(investment.id)}
-          gridTemplateColumns="96px minmax(120px, 1.3fr) minmax(80px, 0.8fr) minmax(96px, 1fr) 104px 112px"
+          // Partilha a largura com o painel de detalhe: Nome, Zona e Clientes encolhem
+          // com reticências, o resto tem a largura do seu dado.
+          gridTemplateColumns="96px minmax(112px, 1.3fr) minmax(0, 0.8fr) minmax(0, 1fr) 104px 112px"
           actionsWidth="80px"
           defaultSort={{ key: 'Data', direction: 'desc' }}
-          columns={[
-            { header: 'Data', sortValue: (investment) => investment.investmentDate, defaultDirection: 'desc', cell: (investment) => <span>{formatPtDate(investment.investmentDate)}</span> },
-            { header: 'Nome', sortValue: (investment) => investment.name, cell: (investment) => <strong>{investment.name}</strong> },
-            { header: 'Zona', sortValue: (investment) => investment.zone, cell: (investment) => <span>{investment.zone || '—'}</span> },
-            {
-              header: 'Clientes',
-              sortValue: (investment) => investment.clients[0]?.name || investment.clientName,
-              cell: (investment) => (
-                <span>
-                  {investment.clients.length > 0
-                    ? `${investment.clients[0].name}${investment.clients.length > 1 ? ` +${investment.clients.length - 1}` : ''}`
-                    : investment.clientName || '—'}
-                </span>
-              )
-            },
-            {
-              header: 'Estado',
-              align: 'center',
-              sortValue: (investment) => statusMeta[investment.status]?.label || investment.status,
-              cell: (investment) => (
-                <Badge tone={statusMeta[investment.status]?.tone || 'neutral'}>
-                  {statusMeta[investment.status]?.label || investment.status}
-                </Badge>
-              )
-            },
-            { header: 'Custo', align: 'end', sortValue: (investment) => investment.totalCostCve, defaultDirection: 'desc', cell: (investment) => <b>{formatCve(investment.totalCostCve)}</b> }
-          ]}
+          columns={INVESTMENT_COLUMNS}
+          hiddenColumns={columnVisibility.hidden}
           actions={(investment) => (
             <>
               <Button variant="icon" size="sm" title="Editar" onClick={() => openEdit(investment)}>

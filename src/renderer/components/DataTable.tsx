@@ -2,6 +2,7 @@ import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
 import { hasTextSelection } from '../lib/textSelection';
 import { useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { sortByColumns, type SortDirection, type SortState, type SortValue } from '../lib/listView';
+import { visibleColumns } from '../lib/columnVisibility';
 import type { SelectAllState } from '../lib/useRowSelection';
 
 type DataTableAlign = 'start' | 'center' | 'end';
@@ -66,6 +67,8 @@ type DataTableProps<T> = {
   onRowClick?: (row: T) => void;
   activeKey?: string | number | null;
   selection?: DataTableSelection;
+  /** Headers escondidos pelo `ColumnPicker`; a faixa da grelha sai com eles. */
+  hiddenColumns?: ReadonlySet<string>;
 };
 
 function alignClass(align: DataTableAlign = 'start') {
@@ -81,8 +84,8 @@ function sortIcon(direction: SortDirection | undefined) {
 export function DataTable<T>({
   rows: inputRows,
   rowKey,
-  columns,
-  gridTemplateColumns,
+  columns: allColumns,
+  gridTemplateColumns: fullTemplate,
   actions,
   actionsHeader = 'Ações',
   actionsWidth = '92px',
@@ -94,7 +97,8 @@ export function DataTable<T>({
   onSortChange,
   onRowClick,
   activeKey,
-  selection
+  selection,
+  hiddenColumns
 }: DataTableProps<T>) {
   const isControlled = Boolean(onSortChange);
   const [ownSort, setOwnSort] = useState<SortState<string> | undefined>(defaultSort);
@@ -102,7 +106,8 @@ export function DataTable<T>({
   const setSort = isControlled ? onSortChange! : setOwnSort;
   // ponytail: ordena a cada render (as colunas são literais recriados); as listas
   // não controladas têm centenas de linhas. Memoizar se alguma passar aos milhares.
-  const rows = isControlled ? inputRows : sortByColumns(inputRows, ownSort, columns, defaultSort?.key);
+  const rows = isControlled ? inputRows : sortByColumns(inputRows, ownSort, allColumns, defaultSort?.key);
+  const { columns, gridTemplateColumns } = visibleColumns(allColumns, fullTemplate, hiddenColumns);
 
   if (!rows.length) return <>{empty}</>;
 

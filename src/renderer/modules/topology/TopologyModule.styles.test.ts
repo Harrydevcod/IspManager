@@ -73,6 +73,13 @@ describe('folhas de estilo da topologia', () => {
     }
   );
 
+  // Sem coluna explícita, a implícita `auto` crescia até à largura mínima da
+  // tabela da Descoberta e a página rolava para o lado (302px a 150%).
+  test('o painel da aba tem a largura da casca, não a do conteúdo', () => {
+    expect(declarations(sheets['TopologyModule.css'], '.topology-tab-panel:not([hidden])'))
+      .toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  });
+
   test('o menu de filtros aberto lê-se como carregado, não a rodar', () => {
     const open = declarations(
       sheets['TopologyModule.css'],

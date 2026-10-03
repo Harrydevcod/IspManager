@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CalendarPlus, RotateCcw, Send } from 'lucide-react';
-import { BulkActionBar, Button, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
+import { BulkActionBar, Button, ColumnPicker, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { formatCve, formatPtMonth } from '../lib/format';
 import { authFetch } from '../lib/auth';
 import { downloadAuthenticated, printAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
 import { paginateRows, sortByColumns, type SortState } from '../lib/listView';
 import { runBulk, summarizeBulk } from '../lib/bulkRun';
 import { useRowSelection } from '../lib/useRowSelection';
+import { useColumnVisibility } from '../lib/columnVisibility';
 import { effectivePaymentStatus } from '../lib/status';
 import { defaultPostpaidReferenceMonth } from '../../shared/billing-period';
 import {
@@ -22,7 +23,7 @@ import {
 import type { PaymentReceipt, PaymentRow, SmsEventType } from '../types';
 import { IndividualRevertDialog } from './payments/IndividualRevertDialog';
 import { PaymentDetailDialog, type PaymentActionMode, type PaymentMethod } from './payments/PaymentDetailDialog';
-import { PAYMENT_COLUMNS, PaymentsList } from './payments/PaymentsList';
+import { PAYMENT_COLUMNS, PAYMENT_DEFAULT_HIDDEN, PAYMENT_HEADERS, PaymentsList } from './payments/PaymentsList';
 import { MonthlyBillingPreview, type BillingPreview } from './payments/MonthlyBillingPreview';
 import { OverdueNotifyDialog, type OverdueNotifyPreview, type WhatsappNoticeType } from './payments/OverdueNotifyDialog';
 import { PaymentsTotals } from './payments/PaymentsTotals';
@@ -124,6 +125,7 @@ export function PaymentsModule({
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const selection = useRowSelection<number>();
   const { toast } = useToast();
+  const columnVisibility = useColumnVisibility('ispm.finance.payments.hiddenColumns', PAYMENT_HEADERS, PAYMENT_DEFAULT_HIDDEN);
   const confirm = useConfirm();
 
   // Atalho vindo do Dashboard: foca o estado pedido (atraso varre todos os meses)
@@ -1052,6 +1054,12 @@ export function PaymentsModule({
           Limpar filtros
         </Button>
         <small>{visiblePayments.length} cobrancas{showAllMonths ? ' (todos os meses)' : ` em ${formatPtMonth(referenceMonth)}`}</small>
+        <ColumnPicker
+          headers={PAYMENT_HEADERS}
+          hidden={columnVisibility.hidden}
+          onToggle={columnVisibility.toggle}
+          onReset={columnVisibility.reset}
+        />
       </FilterBar>
 
       <PaymentsTotals totals={totals} />
@@ -1151,6 +1159,7 @@ export function PaymentsModule({
             onOpenCancelForm={openCancelForm}
             onRevert={openIndividualRevert}
             onRegenerate={(p) => void regenerateMonthlyPayment(p)}
+            hiddenColumns={columnVisibility.hidden}
           />
 
           <PaginationControls

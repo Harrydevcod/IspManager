@@ -21,6 +21,7 @@ export * from './PageHeader';
 export * from './Badge';
 export * from './FilterBar';
 export * from './DataTable';
+export * from './ColumnPicker';
 export * from './PaginationControls';
 export * from './BulkActionBar';
 export * from './RowActionsMenu';

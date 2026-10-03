@@ -108,6 +108,7 @@ afterEach(async () => {
     while (roots.length > 0) roots.pop()?.unmount();
   });
   document.body.replaceChildren();
+  localStorage.clear();
   vi.unstubAllGlobals();
 });
 
@@ -160,5 +161,25 @@ describe('Pendentes', () => {
     await act(async () => { row.click(); });
 
     expect(onOpenClient).toHaveBeenCalledWith(1);
+  });
+
+  test('esconder uma coluna em "Colunas" tira o cabecalho, as celulas e a faixa', async () => {
+    const container = await mount();
+    const picker = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Colunas'));
+    if (!picker) throw new Error('botao Colunas nao encontrado');
+    await act(async () => { picker.click(); });
+
+    const telefone = [...container.querySelectorAll('.column-picker-item')]
+      .find((item) => item.textContent?.includes('Telefone'))?.querySelector('input');
+    if (!telefone) throw new Error('coluna Telefone nao encontrada');
+    await act(async () => { telefone.click(); });
+
+    const headers = [...container.querySelectorAll('[role="columnheader"]')].map((n) => n.textContent?.trim());
+    expect(headers).not.toContain('Telefone');
+    expect(headers).toHaveLength(8);
+    for (const row of container.querySelectorAll('.data-table-row')) {
+      expect(row.querySelectorAll('[role="cell"]')).toHaveLength(8);
+    }
+    expect(localStorage.getItem('ispm.finance.receivables.hiddenColumns')).toBe('["Telefone"]');
   });
 });
