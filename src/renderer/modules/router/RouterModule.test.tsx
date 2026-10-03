@@ -194,11 +194,12 @@ describe('Router de gestão', () => {
     });
     const container = await mount();
     const history = container.querySelector('.router-usage-history');
-    const total = formatDataVolume(firstRx + 100_000_000 + secondRx + 50_000_000);
     const lastDay = history?.querySelector('.router-usage-day:last-child');
+    expect(lastDay?.getAttribute('title')).toContain(`soma das WAN ${formatDataVolume(firstRx + 100_000_000 + secondRx + 50_000_000)}`);
     expect(lastDay?.getAttribute('title')).toContain(`↓ ${formatDataVolume(firstRx)} · ↑ ${formatDataVolume(100_000_000)} · total ${formatDataVolume(firstRx + 100_000_000)}`);
-    expect(history?.querySelectorAll('.router-usage-total')).toHaveLength(1);
-    expect(lastDay?.querySelector('.router-usage-total')?.textContent).toBe(total);
+    // Cada dia com tráfego mostra a soma das WAN em GB; hoje e o pico em destaque.
+    expect([...history!.querySelectorAll('.router-usage-total')].map((label) => label.textContent)).toEqual(['0,6', '3,2']);
+    expect(lastDay?.querySelector('.router-usage-total')?.classList.contains('is-key')).toBe(true);
     expect(lastDay?.querySelector('.router-usage-total')?.classList.contains('is-end')).toBe(true);
     expect(history?.querySelector('.router-usage-day:first-child i')?.classList.contains('is-second')).toBe(true);
   });

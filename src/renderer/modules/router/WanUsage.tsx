@@ -8,6 +8,8 @@ const dateLabel = (day: string) => `${day.slice(8, 10)}-${day.slice(5, 7)}-${day
 const shortDate = (day: string) => `${day.slice(8, 10)}-${day.slice(5, 7)}`;
 // A Starlink cobra o total (↓+↑): as barras mostram o mesmo número que a conta.
 const volume = (row: { rxBytes: number; txBytes: number }) => row.rxBytes + row.txBytes;
+// Rótulo curto em cada barra (a unidade está na legenda): cabe numa coluna de 30 dias.
+const gigabytes = (bytes: number) => new Intl.NumberFormat('pt-PT', { maximumFractionDigits: bytes < 10e9 ? 1 : 0 }).format(bytes / 1e9);
 
 function History({ data }: { data: RouterWanUsage }) {
   const names = [...new Set(data.days.flatMap((day) => day.perInterface.map((row) => row.interface)))].sort();
@@ -26,13 +28,13 @@ function History({ data }: { data: RouterWanUsage }) {
             const rows = [...day.perInterface].sort((a, b) => a.interface.localeCompare(b.interface));
             const total = rows.reduce((sum, row) => sum + volume(row), 0);
             const isEstimated = total > 0 && estimated(day.day);
-            const tooltip = `${dateLabel(day.day)} · ${rows.map((row) => `${row.interface}: ↓ ${formatDataVolume(row.rxBytes)} · ↑ ${formatDataVolume(row.txBytes)} · total ${formatDataVolume(row.rxBytes + row.txBytes)}`).join(' · ')}${isEstimated ? ' · contagem antiga da app, não comparável com a Starlink' : ''}`;
+            const tooltip = `${dateLabel(day.day)} · soma das WAN ${formatDataVolume(total)} · ${rows.map((row) => `${row.interface}: ↓ ${formatDataVolume(row.rxBytes)} · ↑ ${formatDataVolume(row.txBytes)} · total ${formatDataVolume(row.rxBytes + row.txBytes)}`).join(' · ')}${isEstimated ? ' · contagem antiga da app, não comparável com a Starlink' : ''}`;
             const labelPosition = index >= data.days.length - 3 ? 'is-end' : index < 3 ? 'is-start' : '';
             return (
               <div key={day.day} className={`router-usage-day${total === 0 ? ' is-empty' : ''}${isEstimated ? ' is-estimated' : ''}`} title={tooltip}>
                 {rows.map((row) => <i key={row.interface} className={names.indexOf(row.interface) === 0 ? 'is-first' : 'is-second'} style={{ height: `${volume(row) / Math.max(max, total) * 100}%` }} />)}
-                {total > 0 && (index === data.days.length - 1 || index === peakIndex) && (
-                  <span className={`router-usage-total ${labelPosition}`} style={{ bottom: `calc(${total / max * 100}% + 4px)` }}>{formatDataVolume(total)}</span>
+                {total > 0 && (
+                  <span className={`router-usage-total ${labelPosition}${index === data.days.length - 1 || index === peakIndex ? ' is-key' : ''}`} style={{ bottom: `calc(${Math.min(total, max) / max * 100}% + 4px)` }}>{gigabytes(total)}</span>
                 )}
               </div>
             );
@@ -42,7 +44,7 @@ function History({ data }: { data: RouterWanUsage }) {
           {data.days.map((day, index) => index % 5 === 0 && <span key={day.day} style={{ gridColumn: index + 1 }}>{shortDate(day.day)}</span>)}
         </div>
       </div>
-      <div className="router-usage-legend">{names.map((name, index) => <span key={name}><i className={index === 0 ? 'is-first' : 'is-second'} />{name}</span>)}</div>
+      <div className="router-usage-legend">{names.map((name, index) => <span key={name}><i className={index === 0 ? 'is-first' : 'is-second'} />{name}</span>)}<span className="router-muted">número por cima = soma das WAN, em GB</span></div>
     </div>
   );
 }
