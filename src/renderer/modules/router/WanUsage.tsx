@@ -11,8 +11,13 @@ const volume = (row: { rxBytes: number; txBytes: number }) => row.rxBytes + row.
 
 function History({ data }: { data: RouterWanUsage }) {
   const names = [...new Set(data.days.flatMap((day) => day.perInterface.map((row) => row.interface)))].sort();
-  const max = Math.max(1, ...data.days.map((day) => day.perInterface.reduce((total, row) => total + volume(row), 0)));
-  const peakIndex = data.days.findIndex((day) => day.perInterface.reduce((total, row) => total + volume(row), 0) === max);
+  const dayTotal = (day: RouterWanUsage['days'][number]) => day.perInterface.reduce((total, row) => total + volume(row), 0);
+  // Antes de o router contar, a app fechada empurrava o tráfego para o dia da reabertura: picos
+  // falsos que não podem ditar a escala.
+  const estimated = (day: string) => !data.exactSince || day < data.exactSince;
+  const scaled = data.days.some((day) => !estimated(day.day)) ? data.days.filter((day) => !estimated(day.day)) : data.days;
+  const max = Math.max(1, ...scaled.map(dayTotal));
+  const peakIndex = data.days.findIndex((day) => scaled.includes(day) && dayTotal(day) === max);
   return (
     <div className="router-usage-history">
       <div className="router-usage-chart" role="img" aria-label="Consumo diário das WAN nos últimos 30 dias">
@@ -20,11 +25,12 @@ function History({ data }: { data: RouterWanUsage }) {
           {data.days.map((day, index) => {
             const rows = [...day.perInterface].sort((a, b) => a.interface.localeCompare(b.interface));
             const total = rows.reduce((sum, row) => sum + volume(row), 0);
-            const tooltip = `${dateLabel(day.day)} · ${rows.map((row) => `${row.interface}: ↓ ${formatDataVolume(row.rxBytes)} · ↑ ${formatDataVolume(row.txBytes)} · total ${formatDataVolume(row.rxBytes + row.txBytes)}`).join(' · ')}`;
+            const isEstimated = total > 0 && estimated(day.day);
+            const tooltip = `${dateLabel(day.day)} · ${rows.map((row) => `${row.interface}: ↓ ${formatDataVolume(row.rxBytes)} · ↑ ${formatDataVolume(row.txBytes)} · total ${formatDataVolume(row.rxBytes + row.txBytes)}`).join(' · ')}${isEstimated ? ' · contagem antiga da app, não comparável com a Starlink' : ''}`;
             const labelPosition = index >= data.days.length - 3 ? 'is-end' : index < 3 ? 'is-start' : '';
             return (
-              <div key={day.day} className={`router-usage-day${total === 0 ? ' is-empty' : ''}`} title={tooltip}>
-                {rows.map((row) => <i key={row.interface} className={names.indexOf(row.interface) === 0 ? 'is-first' : 'is-second'} style={{ height: `${volume(row) / max * 100}%` }} />)}
+              <div key={day.day} className={`router-usage-day${total === 0 ? ' is-empty' : ''}${isEstimated ? ' is-estimated' : ''}`} title={tooltip}>
+                {rows.map((row) => <i key={row.interface} className={names.indexOf(row.interface) === 0 ? 'is-first' : 'is-second'} style={{ height: `${volume(row) / Math.max(max, total) * 100}%` }} />)}
                 {total > 0 && (index === data.days.length - 1 || index === peakIndex) && (
                   <span className={`router-usage-total ${labelPosition}`} style={{ bottom: `calc(${total / max * 100}% + 4px)` }}>{formatDataVolume(total)}</span>
                 )}

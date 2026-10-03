@@ -177,6 +177,8 @@ export type WanUsageRow = { interface: string; rxBytes: number; txBytes: number 
 export type RouterWanUsage = {
   since: string | null;
   routerImportedAt: string | null;
+  /** Primeiro dia contado por inteiro no router; antes disso é a contagem antiga da app. */
+  exactSince: string | null;
   today: WanUsageRow[];
   month: WanUsageRow[];
   days: Array<{ day: string; perInterface: Array<{ interface: string; rxBytes: number; txBytes: number }> }>;

@@ -74,6 +74,12 @@ export function importRouterUsage(db: Database.Database, rows: RouterUsageRow[])
     const importedAt = new Date().toISOString();
     db.prepare(`INSERT INTO app_settings (key, value, updated_at) VALUES ('wanUsageRouterImportedAt', ?, datetime('now'))
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).run(importedAt);
+    // O router apaga linhas com mais de 30 dias: guarda-se o primeiro dia que alguma vez contou.
+    const firstDay = rows.reduce<string | null>((min, row) => (min === null || row.day < min ? row.day : min), null);
+    if (firstDay) {
+      db.prepare(`INSERT INTO app_settings (key, value, updated_at) VALUES ('wanUsageRouterFirstDay', ?, datetime('now'))
+        ON CONFLICT(key) DO UPDATE SET value = MIN(value, excluded.value), updated_at = excluded.updated_at`).run(firstDay);
+    }
     return { source: 'router' as const, rows: rows.length, importedAt };
   })();
 }
@@ -148,6 +154,10 @@ export async function collectWanUsage(db: Database.Database, transport: RouterTr
 export function loadWanUsage(db: Database.Database, today = utcDay()) {
   const since = (db.prepare('SELECT MIN(seen_at) AS since FROM wan_counter_state').get() as { since: string | null }).since;
   const routerImportedAt = (db.prepare("SELECT value FROM app_settings WHERE key = 'wanUsageRouterImportedAt'").get() as { value: string } | undefined)?.value ?? null;
+  // O dia da instalação é parcial e mistura-se com a contagem antiga da app (MAX): só o seguinte
+  // é exato. Antes disso, com a app fechada, o tráfego caía no dia da reabertura.
+  const firstDay = (db.prepare("SELECT value FROM app_settings WHERE key = 'wanUsageRouterFirstDay'").get() as { value: string } | undefined)?.value;
+  const exactSince = firstDay ? new Date(Date.parse(`${firstDay}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10) : null;
   const dayRows = db.prepare(`SELECT interface, rx_bytes AS rxBytes, tx_bytes AS txBytes
     FROM wan_traffic_daily WHERE day = ? ORDER BY interface`).all(today) as UsageRow[];
   const monthRows = db.prepare(`SELECT interface, SUM(rx_bytes) AS rxBytes, SUM(tx_bytes) AS txBytes
@@ -171,5 +181,5 @@ export function loadWanUsage(db: Database.Database, today = utcDay()) {
     const day = date.toISOString().slice(0, 10);
     return { day, perInterface: names.map((name) => ({ interface: name, rxBytes: byDay.get(day)?.get(name)?.rxBytes ?? 0, txBytes: byDay.get(day)?.get(name)?.txBytes ?? 0 })) };
   });
-  return { since: since ?? (history[0]?.day ?? null), routerImportedAt, today: dayRows, month: monthRows, days };
+  return { since: since ?? (history[0]?.day ?? null), routerImportedAt, exactSince, today: dayRows, month: monthRows, days };
 }

@@ -34,7 +34,7 @@ beforeAll(async () => {
 beforeEach(() => {
   db.prepare('DELETE FROM wan_traffic_daily').run();
   db.prepare('DELETE FROM wan_counter_state').run();
-  db.prepare("DELETE FROM app_settings WHERE key = 'wanUsageRouterImportedAt'").run();
+  db.prepare("DELETE FROM app_settings WHERE key IN ('wanUsageRouterImportedAt', 'wanUsageRouterFirstDay')").run();
 });
 
 describe('ficheiro do contador no router', () => {
@@ -63,6 +63,13 @@ describe('ficheiro do contador no router', () => {
     ]);
     expect(loadWanUsage(db, '2026-09-25').routerImportedAt).toBeTruthy();
     expect(loadWanUsage(db, '2026-09-25').days.at(-1)?.perInterface[0]).toEqual({ interface: 'WAN1', rxBytes: 100, txBytes: 20 });
+  });
+
+  test('exactSince: dia seguinte ao primeiro que o router contou, e não avança quando o router poda', () => {
+    expect(loadWanUsage(db, '2026-10-03').exactSince).toBeNull();
+    importRouterUsage(db, [{ day: '2026-09-30', interface: 'WAN1', rxBytes: 1, txBytes: 1 }, { day: '2026-09-29', interface: 'WAN1', rxBytes: 1, txBytes: 1 }]);
+    importRouterUsage(db, [{ day: '2026-10-02', interface: 'WAN1', rxBytes: 1, txBytes: 1 }]);
+    expect(loadWanUsage(db, '2026-10-03').exactSince).toBe('2026-09-30');
   });
 
   test('com dados do router soma a hoje o que passou desde a gravação; sem dados usa o fallback', async () => {
