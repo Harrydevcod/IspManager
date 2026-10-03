@@ -1332,6 +1332,19 @@ export async function readClientUsageData(transport: RouterTransport): Promise<s
 }
 
 /**
+ * A exportação da configuração, sem passwords (o RouterOS 7 omite-as por omissão).
+ * Só o `/execute` com `as-string` devolve o texto na própria resposta.
+ */
+export async function exportConfig(transport: RouterTransport): Promise<string> {
+  const raw = await transport({ method: 'POST', path: '/execute', body: { script: '/export', 'as-string': 'true' } });
+  const text = (raw as { ret?: unknown } | null)?.ret;
+  if (typeof text !== 'string' || text.trim().length === 0) {
+    throw new RouterError('O router não devolveu a exportação da configuração', 0, undefined, 'bad_response');
+  }
+  return text;
+}
+
+/**
  * Derruba a sessão viva. Sem isto, desativar o secret só produz efeito quando o
  * cliente reconectar — pode ficar online durante dias depois de "cortado".
  */

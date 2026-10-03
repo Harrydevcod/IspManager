@@ -1,4 +1,4 @@
-import { AlertTriangle, Cable, Cpu, Gauge, Layers, MemoryStick, Router, ScrollText, Settings2, ShieldAlert, Timer, Waypoints, X, ChartNoAxesCombined } from 'lucide-react';
+import { AlertTriangle, Cable, Cpu, Gauge, Layers, MemoryStick, Router, ScrollText, Settings2, ShieldAlert, Timer, Waypoints, X, ChartNoAxesCombined, History } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { Badge, Button, EmptyState, ErrorRetry, MetricCard, MetricGrid, ModuleHeaderActions, SkeletonList } from '../../components';
@@ -24,9 +24,10 @@ import { PRESENCE_URL, presenceMessage, type NetworkPresence } from '../../lib/n
 import { WanTraffic } from './WanTraffic';
 import { WanUsage } from './WanUsage';
 import { ClientUsage, type ClientUsageRow } from './ClientUsage';
+import { ConfigBackups, type ConfigSnapshots } from './ConfigBackups';
 import './RouterModule.css';
 
-type RouterTab = 'overview' | 'sessions' | 'profiles' | 'interfaces' | 'consumption' | 'log' | 'config';
+type RouterTab = 'overview' | 'sessions' | 'profiles' | 'interfaces' | 'consumption' | 'backups' | 'log' | 'config';
 
 const TABS: ReadonlyArray<{ id: RouterTab; label: string; icon: typeof Router }> = [
   { id: 'overview', label: 'Visão geral', icon: Gauge },
@@ -34,6 +35,7 @@ const TABS: ReadonlyArray<{ id: RouterTab; label: string; icon: typeof Router }>
   { id: 'profiles', label: 'Perfis PPP', icon: Layers },
   { id: 'interfaces', label: 'Interfaces', icon: Waypoints },
   { id: 'consumption', label: 'Consumo', icon: ChartNoAxesCombined },
+  { id: 'backups', label: 'Cópias', icon: History },
   { id: 'log', label: 'Registo', icon: ScrollText },
   { id: 'config', label: 'Configuração', icon: Settings2 }
 ];
@@ -152,7 +154,8 @@ export default function RouterModule() {
   const consumption = useLive<ClientUsageRow[]>(`${ROUTER_API}/clients/usage`, tab === 'consumption', 60_000);
   const plans = useLive<PlanRow[]>('http://127.0.0.1:3001/api/plans', tab === 'profiles');
 
-  const current = { overview, sessions, interfaces, profiles, consumption, log, config: null }[tab];
+  const backups = useLive<ConfigSnapshots>(`${ROUTER_API}/config/snapshots`, tab === 'backups', 60_000);
+  const current = { overview, sessions, interfaces, profiles, consumption, backups, log, config: null }[tab];
 
   const selectTab = useCallback((next: RouterTab, moveFocus = false) => {
     if (next === 'config') setConfigVisited(true);
@@ -247,6 +250,10 @@ export default function RouterModule() {
           <LiveGate live={log} onRetry={log.reload} onConfigure={openConfig} presence={presence.data}>
             {(data) => <LogView log={data} />}
           </LiveGate>
+        )}
+        {tab === 'backups' && (
+          backups.error && !backups.data ? <ErrorRetry message={backups.error} onRetry={backups.reload} />
+            : backups.data ? <ConfigBackups data={backups.data} onChanged={backups.reload} /> : <SkeletonList rows={5} />
         )}
         {tab === 'consumption' && (
           consumption.error && !consumption.data ? <ErrorRetry message={consumption.error} onRetry={consumption.reload} />

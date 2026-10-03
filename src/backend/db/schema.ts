@@ -748,3 +748,13 @@ export const clientUsageState = sqliteTable('client_usage_state', {
   txTotal: integer('tx_total').notNull(),
   seenAt: text('seen_at').notNull()
 });
+
+export const routerConfigSnapshots = sqliteTable('router_config_snapshots', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  takenAt: text('taken_at').notNull(),
+  sha256: text('sha256').notNull(),
+  routerosVersion: text('routeros_version'),
+  content: text('content').notNull(),
+  addedLines: integer('added_lines').notNull().default(0),
+  removedLines: integer('removed_lines').notNull().default(0)
+});
