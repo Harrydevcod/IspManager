@@ -28,6 +28,7 @@ import { registerStockRoutes } from './routes/stock';
 import { registerWhatsappRoutes } from './routes/whatsapp';
 import { registerSmsRoutes } from './routes/sms';
 import { registerWorkOrderRoutes } from './routes/work-orders';
+import { registerSupportTicketRoutes } from './routes/support-tickets';
 import { registerBackupRoutes } from './routes/backup';
 import { registerJobRoutes } from './routes/jobs';
 import { licenseGateHook, registerLicenseRoutes } from './routes/license';
@@ -195,6 +196,7 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
   await registerWhatsappRoutes(app);
   await registerSmsRoutes(app);
   await registerWorkOrderRoutes(app);
+  await registerSupportTicketRoutes(app);
   await registerBackupRoutes(app);
   await registerJobRoutes(app);
   await registerTopologyRoutes(app);

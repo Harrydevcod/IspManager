@@ -13,6 +13,7 @@ type DashboardMetricRow = {
   lowStockModels: number;
   activeServices: number;
   openWorkOrders: number;
+  openTickets: number;
   paidMonthCve: number;
   paidPrevMonthCve: number;
   pendingMonthCve: number;
@@ -78,6 +79,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         (SELECT count(*) FROM equipment_catalog WHERE active = 1 AND stock_total <= 3) AS lowStockModels,
         (SELECT count(*) FROM services WHERE status = 'active') AS activeServices,
         (SELECT count(*) FROM work_orders WHERE status NOT IN ('concluida','cancelada')) AS openWorkOrders,
+        (SELECT count(*) FROM support_tickets WHERE status IN ('aberto','em_curso')) AS openTickets,
         COALESCE((
           -- Regime de caixa: o que ENTROU este mês, seja qual for a competência.
           -- Com faturação pós-paga a competência corrente nem existe até dia 30,
@@ -232,6 +234,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       lowStockModels: summary.lowStockModels ?? 0,
       activeServices: summary.activeServices ?? 0,
       openWorkOrders: summary.openWorkOrders ?? 0,
+      openTickets: summary.openTickets ?? 0,
       paidMonthCve: Number(summary.paidMonthCve) || 0,
       paidPrevMonthCve: Number(summary.paidPrevMonthCve) || 0,
       pendingMonthCve: Number(summary.pendingMonthCve) || 0,

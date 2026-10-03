@@ -365,6 +365,7 @@ export function WorkOrdersModule() {
                     else if (order.scheduledAt) metaParts.push(formatDate(order.scheduledAt) ?? '');
                     if (order.assignedTo) metaParts.push(order.assignedTo);
                     if (order.eventType) metaParts.push(EVENT_LABEL[order.eventType].toLowerCase());
+                    if (order.ticketId) metaParts.push(`pedido nº ${order.ticketId}`);
                     return (
                       <article
                         key={order.id}

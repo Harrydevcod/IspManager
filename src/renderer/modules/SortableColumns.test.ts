@@ -41,6 +41,7 @@ describe('colunas ordenáveis', () => {
       'router/ConfigBackups.tsx',
       'router/RouterTables.tsx',
       'settings/NetworkTab.tsx',
+      'support/SupportModule.tsx',
       'topology/IncidentsWorkspace.tsx',
       'topology/discovery/DiscoveryWorkspace.tsx',
       'treasury/TreasuryModule.tsx'

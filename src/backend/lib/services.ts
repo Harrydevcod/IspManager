@@ -512,6 +512,7 @@ export function deleteService(db: Database, id: number): ServiceOpResult<{
     }
     db.prepare('DELETE FROM stock_movements WHERE service_id = ?').run(id);
     db.prepare('UPDATE work_orders SET service_id = NULL WHERE service_id = ?').run(id);
+    db.prepare('UPDATE support_tickets SET service_id = NULL WHERE service_id = ?').run(id);
     db.prepare('UPDATE sms_outbox SET service_id = NULL WHERE service_id = ?').run(id);
     db.prepare('DELETE FROM service_install_costs WHERE service_id = ?').run(id);
     db.prepare('DELETE FROM service_material_lines WHERE service_id = ?').run(id);

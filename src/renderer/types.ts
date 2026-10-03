@@ -30,6 +30,7 @@ export type SectionId =
   | 'router'
   | 'finance'
   | 'treasury'
+  | 'support'
   | 'work-orders'
   | 'stock'
   | 'reports'
@@ -692,6 +693,7 @@ export type DashboardSummary = {
   lowStockModels: number;
   activeServices: number;
   openWorkOrders: number;
+  openTickets: number;
   paidMonthCve: number;
   paidPrevMonthCve: number;
   pendingMonthCve: number;
@@ -939,6 +941,7 @@ export type WorkOrder = {
   startedAt: string | null;
   completedAt: string | null;
   completionNotes: string | null;
+  ticketId: number | null;
   createdAt: string;
   updatedAt: string;
 };
