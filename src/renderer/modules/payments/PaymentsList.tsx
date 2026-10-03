@@ -24,7 +24,7 @@ const isPartial = (p: PaymentRow) => p.receivedCve > 0 && p.balanceCve > 0;
  */
 export const PAYMENT_COLUMNS: DataTableColumn<PaymentRow>[] = [
   { header: 'Código', sortValue: (p) => p.clientCode, cell: (p) => <span className="entity-code">{p.clientCode || '—'}</span> },
-  { header: 'Cliente', sortValue: (p) => p.clientName, cell: (p) => <strong>{p.clientName}</strong> },
+  { header: 'Cliente', sortValue: (p) => p.clientName, cell: (p) => <strong title={p.clientName}>{p.clientName}</strong> },
   // 'INSTALACAO' não é um mês e mostra "-": ordena como vazio, no fim.
   { header: 'Referência', sortValue: (p) => (/^\d{4}-\d{2}$/.test(p.referenceMonth) ? p.referenceMonth : null), defaultDirection: 'desc', cell: (p) => <span>{formatPtMonth(p.referenceMonth)}</span> },
   { header: 'Fatura', sortValue: (p) => p.invoiceNumber, cell: (p) => <span>{p.invoiceNumber || '—'}</span> },
@@ -66,6 +66,14 @@ export const PAYMENT_COLUMNS: DataTableColumn<PaymentRow>[] = [
   }
 ];
 
+export const PAYMENT_HEADERS = PAYMENT_COLUMNS.map((column) => column.header);
+/**
+ * Num 1920 a 150% as oito não cabem ao lado do nome. Recebido sai por omissão:
+ * só tem valor nas faturas meio pagas, e essas já se leem no Estado (Parcial)
+ * e no Valor (o que falta). Fica em "Colunas".
+ */
+export const PAYMENT_DEFAULT_HIDDEN = ['Recebido'];
+
 type PaymentsListProps = {
   payments: PaymentRow[];
   activeId: number | null;
@@ -84,6 +92,7 @@ type PaymentsListProps = {
   onOpenCancelForm: (payment: PaymentRow) => void;
   onRevert: (payment: PaymentRow) => void;
   onRegenerate: (payment: PaymentRow) => void;
+  hiddenColumns?: ReadonlySet<string>;
 };
 
 export function PaymentsList({
@@ -103,7 +112,8 @@ export function PaymentsList({
   onSendSms,
   onOpenCancelForm,
   onRevert,
-  onRegenerate
+  onRegenerate,
+  hiddenColumns
 }: PaymentsListProps) {
   return (
     <DataTable
@@ -115,8 +125,11 @@ export function PaymentsList({
       sort={sort}
       onSortChange={onSortChange}
       onRowClick={(p) => onPreview(p)}
-      gridTemplateColumns="80px minmax(160px, 1.5fr) 104px minmax(96px, 0.8fr) 108px 110px 116px 120px"
-      actionsWidth="104px"
+      // Cliente encolhe com reticências; o resto tem a largura do seu dado.
+      gridTemplateColumns="80px minmax(112px, 1.5fr) 104px 116px 108px 110px 116px 120px"
+      hiddenColumns={hiddenColumns}
+      // Só o menu "⋯" (36px) e o cabeçalho "Ações".
+      actionsWidth="64px"
       columns={PAYMENT_COLUMNS}
       actions={(p) => {
         if (p.status === 'cancelled') return null;

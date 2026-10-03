@@ -1563,6 +1563,26 @@ h2 {
   flex: 0 0 auto;
 }
 
+/* Coluna estreita: o cabeçalho corta como as células, não invade a vizinha.
+   Nos ordenáveis corta o texto dentro do botão; cortar o cabeçalho levava com
+   ele o anel de foco do botão. */
+.data-table-heading {
+  min-width: 0;
+}
+
+.data-table-heading:not(:has(> .data-table-sort)) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-table-sort > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .data-table-row {
   min-height: 58px;
   border: 1px solid var(--border);
@@ -1706,6 +1726,90 @@ h2 {
   color: var(--text);
   background: var(--surface-3);
 }
+
+/* Escolher colunas: o mesmo painel suspenso do menu de linha, com checkboxes. */
+.column-picker {
+  position: relative;
+  display: inline-flex;
+}
+
+.column-picker-count {
+  margin-inline-start: var(--space-1-5);
+  padding-inline: var(--space-1-5);
+  border-radius: var(--rpill);
+  background: color-mix(in oklch, var(--accent) 16%, transparent);
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.column-picker-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  flex-direction: column;
+  min-width: 13rem;
+  padding: var(--space-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  box-shadow: var(--shadow-2);
+}
+
+/* Na `.filter-bar` encosta à direita. Os seletores do painel levam
+   `.column-picker` à frente para pesar mais que `.filter-bar label/input/button`,
+   que de outro modo punham os itens em maiúsculas e os inputs a 40px. */
+.filter-bar > .column-picker {
+  margin-inline-start: auto;
+}
+
+.column-picker .column-picker-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+  padding: 0 var(--space-2);
+  border-radius: var(--r1);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.column-picker .column-picker-item:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.column-picker .column-picker-item input {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.column-picker .column-picker-reset {
+  min-height: 0;
+  margin-top: var(--space-1);
+  padding: var(--space-2);
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-3);
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+
+.column-picker .column-picker-reset:hover:not(:disabled) { color: var(--text); }
+.column-picker .column-picker-reset:disabled { cursor: default; opacity: 0.5; }
 
 /* Row overflow menu ("⋯") — kebab + dropdown panel of grouped actions. */
 .row-actions-menu {

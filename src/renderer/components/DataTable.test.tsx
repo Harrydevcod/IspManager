@@ -150,3 +150,49 @@ describe('DataTable: copiar texto de uma linha clicável', () => {
     expect(onRowClick).toHaveBeenCalledWith(ROWS[0]);
   });
 });
+
+describe('DataTable: colunas escondidas', () => {
+  type Device = { id: number; ip: string; mac: string; name: string };
+  const DEVICES: Device[] = [{ id: 1, ip: '10.0.0.1', mac: 'AA:BB', name: 'cpe' }];
+
+  function mountWith(hiddenColumns?: ReadonlySet<string>) {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root!.render(
+        <DataTable
+          rows={DEVICES}
+          rowKey={(row) => row.id}
+          gridTemplateColumns="112px minmax(0, 1fr) 144px"
+          hiddenColumns={hiddenColumns}
+          columns={[
+            { header: 'IP', cell: (row: Device) => row.ip },
+            { header: 'Nome', cell: (row: Device) => row.name },
+            { header: 'MAC', cell: (row: Device) => row.mac }
+          ]}
+          empty={<p>sem linhas</p>}
+        />
+      );
+    });
+    return container;
+  }
+
+  const headings = (host: HTMLElement) =>
+    [...host.querySelectorAll('[role="columnheader"]')].map((node) => node.textContent);
+
+  test('sai o cabeçalho, a célula e a faixa da grelha da coluna escondida', () => {
+    const host = mountWith(new Set(['Nome']));
+    expect(headings(host)).toEqual(['IP', 'MAC']);
+    expect(host.textContent).not.toContain('cpe');
+    const row = host.querySelector<HTMLElement>('[role="row"]')!;
+    expect(row.style.gridTemplateColumns).toBe('112px 144px');
+  });
+
+  test('sem a prop fica igual', () => {
+    const host = mountWith();
+    expect(headings(host)).toEqual(['IP', 'Nome', 'MAC']);
+    const row = host.querySelector<HTMLElement>('[role="row"]')!;
+    expect(row.style.gridTemplateColumns).toBe('112px minmax(0, 1fr) 144px');
+  });
+});

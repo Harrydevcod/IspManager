@@ -1,8 +1,10 @@
 import { FileText, Pencil, Plus, Repeat, Trash2 } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, ModuleHeaderActions, Select, SkeletonList, Textarea, Toggle, useConfirm, useToast } from '../components';
+import { Badge, Button, ColumnPicker, Combobox, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, ModuleHeaderActions, Select, SkeletonList, Textarea, Toggle, useConfirm, useToast } from '../components';
+import type { DataTableColumn } from '../components/DataTable';
 import { authFetch } from '../lib/auth';
+import { useColumnVisibility } from '../lib/columnVisibility';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './ExpensesModule.css';
 import { AccountSelect } from './treasury/AccountSelect';
@@ -95,12 +97,67 @@ function parseMoney(value: string): number {
   return Number.isFinite(parsed) ? parsed : NaN;
 }
 
+const categoryMeta = Object.fromEntries(CATEGORIES.map((c) => [c.value, c])) as Record<ExpenseCategory, (typeof CATEGORIES)[number]>;
+
+const EXPENSE_COLUMNS: DataTableColumn<Expense>[] = [
+  { header: 'Data', sortValue: (expense) => expense.expenseDate, defaultDirection: 'desc', cell: (expense) => <span>{formatPtDate(expense.expenseDate)}</span> },
+  { header: 'Descrição', sortValue: (expense) => expense.description, cell: (expense) => <strong title={expense.description}>{expense.description}</strong> },
+  { header: 'Fornecedor', sortValue: (expense) => expense.supplier, cell: (expense) => <span title={expense.supplier || undefined}>{expense.supplier || '—'}</span> },
+  { header: 'Fatura', sortValue: (expense) => expense.invoiceReference, cell: (expense) => <span>{expense.invoiceReference || '—'}</span> },
+  {
+    header: 'Alocação',
+    align: 'center',
+    // Rateio (sem alvo) conta como vazio: fica no fim.
+    sortValue: (expense) => expense.investmentName || expense.clientName || expense.zone,
+    cell: (expense) => {
+      const allocLabel = expense.investmentName
+        ? `→ ${expense.investmentName}`
+        : expense.clientName
+          ? `→ ${expense.clientName}`
+          : expense.zone
+            ? `→ ${expense.zone}`
+            : null;
+      return allocLabel ? (
+        <Badge tone="info">{allocLabel}</Badge>
+      ) : (
+        <span className="expenses-alloc-tag">rateio</span>
+      );
+    }
+  },
+  {
+    header: 'Categoria',
+    align: 'center',
+    sortValue: (expense) => categoryMeta[expense.category]?.label || expense.category,
+    cell: (expense) => (
+      <Badge tone={categoryMeta[expense.category]?.tone || 'neutral'}>
+        {categoryMeta[expense.category]?.label || expense.category}
+      </Badge>
+    )
+  },
+  { header: 'Pago por', sortValue: (expense) => expense.accountName, cell: (expense) => <span title={expense.accountName || undefined}>{expense.accountName || '—'}</span> },
+  {
+    header: 'Valor',
+    align: 'end',
+    sortValue: (expense) => expense.amountCve,
+    defaultDirection: 'desc',
+    cell: (expense) => <span className="expenses-amount">{formatCve(expense.amountCve)}</span>
+  }
+];
+
+const EXPENSE_HEADERS = EXPENSE_COLUMNS.map((column) => column.header);
+/**
+ * As oito não cabem num 1920 a 150%. Fatura e Pago por saem por omissão: nos
+ * lançamentos reais estão quase sempre vazias. Ficam em "Colunas".
+ */
+const EXPENSE_DEFAULT_HIDDEN = ['Fatura', 'Pago por'];
+
 export function ExpensesModule() {
   const { toast } = useToast();
   const confirm = useConfirm();
   const [month, setMonth] = useState(currentMonth());
   const [showAllMonths, setShowAllMonths] = useState(false);
   const [category, setCategory] = useState<'all' | ExpenseCategory>('all');
+  const columnVisibility = useColumnVisibility('ispm.finance.expenses.hiddenColumns', EXPENSE_HEADERS, EXPENSE_DEFAULT_HIDDEN);
   const [data, setData] = useState<ExpenseList>({
     rows: [],
     totals: {
@@ -222,11 +279,6 @@ export function ExpensesModule() {
     for (const cl of clients) if (cl.zone) set.add(cl.zone);
     return [...set].sort();
   }, [investments, clients]);
-
-  const categoryMeta = useMemo(
-    () => Object.fromEntries(CATEGORIES.map((c) => [c.value, c])) as Record<ExpenseCategory, (typeof CATEGORIES)[number]>,
-    []
-  );
 
   const load = async () => {
     setLoading(true);
@@ -412,6 +464,12 @@ export function ExpensesModule() {
               </option>
             ))}
           </Select>
+          <ColumnPicker
+            headers={EXPENSE_HEADERS}
+            hidden={columnVisibility.hidden}
+            onToggle={columnVisibility.toggle}
+            onReset={columnVisibility.reset}
+          />
         </FilterBar>
       </div>
 
@@ -449,7 +507,10 @@ export function ExpensesModule() {
         rows={data.rows}
         rowKey={(expense) => expense.id}
         className="expenses-table"
-        gridTemplateColumns="100px minmax(180px, 1.4fr) minmax(110px, 1fr) 112px 170px 150px minmax(110px, 0.8fr) 124px"
+        // Descrição, Fornecedor e Pago por encolhem com reticências; o resto tem a
+        // largura do seu dado. Com os mínimos antigos pedia ~1250px e não cabia num
+        // 1920 a 150% (~1150px úteis).
+        gridTemplateColumns="100px minmax(112px, 1.4fr) minmax(0, 1fr) 112px 170px 150px minmax(0, 0.8fr) 124px"
         actionsHeader="Ações"
         actionsWidth="92px"
         empty={
@@ -458,50 +519,8 @@ export function ExpensesModule() {
             : <div className="module-message">Sem despesas registadas para os filtros atuais.</div>
         }
         defaultSort={{ key: 'Data', direction: 'desc' }}
-        columns={[
-          { header: 'Data', sortValue: (expense) => expense.expenseDate, defaultDirection: 'desc', cell: (expense) => <span>{formatPtDate(expense.expenseDate)}</span> },
-          { header: 'Descrição', sortValue: (expense) => expense.description, cell: (expense) => <strong>{expense.description}</strong> },
-          { header: 'Fornecedor', sortValue: (expense) => expense.supplier, cell: (expense) => <span>{expense.supplier || '—'}</span> },
-          { header: 'Fatura', sortValue: (expense) => expense.invoiceReference, cell: (expense) => <span>{expense.invoiceReference || '—'}</span> },
-          {
-            header: 'Alocação',
-            align: 'center',
-            // Rateio (sem alvo) conta como vazio: fica no fim.
-            sortValue: (expense) => expense.investmentName || expense.clientName || expense.zone,
-            cell: (expense) => {
-              const allocLabel = expense.investmentName
-                ? `→ ${expense.investmentName}`
-                : expense.clientName
-                  ? `→ ${expense.clientName}`
-                  : expense.zone
-                    ? `→ ${expense.zone}`
-                    : null;
-              return allocLabel ? (
-                <Badge tone="info">{allocLabel}</Badge>
-              ) : (
-                <span className="expenses-alloc-tag">rateio</span>
-              );
-            }
-          },
-          {
-            header: 'Categoria',
-            align: 'center',
-            sortValue: (expense) => categoryMeta[expense.category]?.label || expense.category,
-            cell: (expense) => (
-              <Badge tone={categoryMeta[expense.category]?.tone || 'neutral'}>
-                {categoryMeta[expense.category]?.label || expense.category}
-              </Badge>
-            )
-          },
-          { header: 'Pago por', sortValue: (expense) => expense.accountName, cell: (expense) => <span>{expense.accountName || '—'}</span> },
-          {
-            header: 'Valor',
-            align: 'end',
-            sortValue: (expense) => expense.amountCve,
-            defaultDirection: 'desc',
-            cell: (expense) => <span className="expenses-amount">{formatCve(expense.amountCve)}</span>
-          }
-        ]}
+        columns={EXPENSE_COLUMNS}
+        hiddenColumns={columnVisibility.hidden}
         actions={(expense) => (
           <>
             <Button variant="icon" size="sm" title="Editar" aria-label="Editar despesa" onClick={() => openEdit(expense)}>
