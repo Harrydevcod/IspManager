@@ -6,6 +6,13 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.17](https://github.com/Harrydevcod/IspManager/releases/tag/v2.17.0) — 2026-10-03
+
+> **Sem migrações.** Nada a fazer depois de atualizar.
+
+- **As tabelas cabem no ecrã.** A Descoberta e as tabelas do Financeiro (Pagamentos, Pendentes, Lucro, Investimentos, Despesas) já não fogem para o lado num ecrã 1920 a 150%. Os nomes compridos cortam com reticências e mostram-se inteiros ao passar o rato.
+- **Escolher as colunas.** Um botão "Colunas" à direita dos filtros esconde ou mostra colunas; a escolha fica guardada em cada computador. Saem por omissão só as que estão quase sempre vazias: Ligação e Operação na Descoberta, Recebido nos Pagamentos, Fatura e Pago por nas Despesas, Zona e Estado nos Investimentos. Voltam em "Colunas".
+
 ## [2.16](https://github.com/Harrydevcod/IspManager/releases/tag/v2.16.0) — 2026-10-03
 
 > **Uma migração.** A `0071` cria as tabelas dos pedidos de assistência e acrescenta às OS a ligação ao pedido de origem. Não mexe em nenhum dado existente.
