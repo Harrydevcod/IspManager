@@ -225,6 +225,27 @@ describe('Router de gestão', () => {
     expect((old.querySelector('i') as HTMLElement).style.height).toBe('100%');
   });
 
+  test('dia copiado da conta Starlink não fica esbatido, conta para a escala e mostra só o total', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input: string | URL | Request) => {
+      const response = await original(input);
+      if (!String(input).endsWith('/router/wan/usage')) return response;
+      const body = await response.json();
+      return json({ ...body, exactSince: '2026-09-30', days: [
+        { day: '2026-09-29', perInterface: [{ interface: 'WAN1-STARLINK', rxBytes: 2_000_000_000, txBytes: 0, source: 'starlink' }] },
+        { day: '2026-09-30', perInterface: [{ interface: 'WAN1-STARLINK', rxBytes: 1_000_000_000, txBytes: 0, source: 'counted' }] }
+      ] });
+    });
+    const container = await mount();
+    const [copied, exact] = [...container.querySelectorAll('.router-usage-history .router-usage-day')];
+    expect(copied.classList.contains('is-estimated')).toBe(false);
+    expect(copied.getAttribute('title')).toContain(`WAN1-STARLINK: total ${formatDataVolume(2_000_000_000)} (conta Starlink)`);
+    expect(copied.getAttribute('title')).not.toContain('↓');
+    expect((copied.querySelector('i') as HTMLElement).style.height).toBe('100%');
+    expect((exact.querySelector('i') as HTMLElement).style.height).toBe('50%');
+  });
+
   test('instala o contador pelo botão e mostra o estado após a importação', async () => {
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
     const original = fetchMock.getMockImplementation()!;

@@ -17,7 +17,8 @@ export function counterDelta(last: number | null, current: number): number {
 }
 
 type CounterState = { rxLast: number; txLast: number };
-type UsageRow = { interface: string; rxBytes: number; txBytes: number };
+type WanUsageSource = 'counted' | 'starlink';
+type UsageRow ={ interface: string; rxBytes: number; txBytes: number };
 export type RouterUsageRow = { day: string; interface: string; rxBytes: number; txBytes: number };
 
 export function parseWanUsageFile(text: string): RouterUsageRow[] {
@@ -68,6 +69,7 @@ export function importRouterUsage(db: Database.Database, rows: RouterUsageRow[])
     INSERT INTO wan_traffic_daily (day, interface, rx_bytes, tx_bytes) VALUES (?, ?, ?, ?)
     ON CONFLICT(day, interface) DO UPDATE SET
       rx_bytes = MAX(rx_bytes, excluded.rx_bytes), tx_bytes = MAX(tx_bytes, excluded.tx_bytes)
+      WHERE wan_traffic_daily.source = 'counted'
   `);
   return db.transaction(() => {
     for (const row of rows) upsert.run(row.day, row.interface, row.rxBytes, row.txBytes);
@@ -84,6 +86,27 @@ export function importRouterUsage(db: Database.Database, rows: RouterUsageRow[])
   })();
 }
 
+export type StarlinkUsageRow = { day: string; interface: string; bytes: number };
+
+/**
+ * Dias copiados da conta Starlink, que só mostra o total (↓+↑): fica tudo em rx e o tx a zero, sem
+ * inventar a divisão. Substitui o que lá estiver e a importação do router deixa de tocar no dia.
+ */
+export function importStarlinkUsage(db: Database.Database, rows: StarlinkUsageRow[]) {
+  for (const row of rows) {
+    const parsed = Date.parse(`${row.day}T00:00:00Z`);
+    if (Number.isNaN(parsed) || new Date(parsed).toISOString().slice(0, 10) !== row.day) throw new Error(`Dia inválido: ${row.day}`);
+    if (!row.interface) throw new Error('Interface em falta');
+    if (!Number.isSafeInteger(row.bytes) || row.bytes < 0) throw new Error(`Bytes inválidos em ${row.day} ${row.interface}`);
+  }
+  const upsert = db.prepare(`
+    INSERT INTO wan_traffic_daily (day, interface, rx_bytes, tx_bytes, source) VALUES (?, ?, ?, 0, 'starlink')
+    ON CONFLICT(day, interface) DO UPDATE SET rx_bytes = excluded.rx_bytes, tx_bytes = 0, source = 'starlink'
+  `);
+  db.transaction(() => { for (const row of rows) upsert.run(row.day, row.interface, row.bytes); })();
+  return { rows: rows.length };
+}
+
 export async function recordWanUsage(db: Database.Database, transport: RouterTransport, today = utcDay()) {
   const names = new Set(await listInterfaceListMembers(transport, 'WAN'));
   const interfaces = (await listInterfaces(transport))
@@ -94,6 +117,7 @@ export async function recordWanUsage(db: Database.Database, transport: RouterTra
     ON CONFLICT(day, interface) DO UPDATE SET
       rx_bytes = rx_bytes + excluded.rx_bytes,
       tx_bytes = tx_bytes + excluded.tx_bytes
+      WHERE wan_traffic_daily.source = 'counted'
   `);
   const save = db.prepare(`
     INSERT INTO wan_counter_state (interface, rx_last, tx_last, seen_at) VALUES (?, ?, ?, ?)
@@ -166,20 +190,23 @@ export function loadWanUsage(db: Database.Database, today = utcDay()) {
   const start = new Date(`${today}T00:00:00Z`);
   start.setUTCDate(start.getUTCDate() - 29);
   const startDay = start.toISOString().slice(0, 10);
-  const history = db.prepare(`SELECT day, interface, rx_bytes AS rxBytes, tx_bytes AS txBytes
+  const history = db.prepare(`SELECT day, interface, rx_bytes AS rxBytes, tx_bytes AS txBytes, source
     FROM wan_traffic_daily WHERE day >= ? AND day <= ? ORDER BY day, interface`)
-    .all(startDay, today) as Array<{ day: string; interface: string; rxBytes: number; txBytes: number }>;
+    .all(startDay, today) as Array<{ day: string; interface: string; rxBytes: number; txBytes: number; source: WanUsageSource }>;
   const names = [...new Set((db.prepare('SELECT interface FROM wan_counter_state UNION SELECT interface FROM wan_traffic_daily').all() as Array<{ interface: string }>).map((row) => row.interface))].sort();
-  const byDay = new Map<string, Map<string, { rxBytes: number; txBytes: number }>>();
+  const byDay = new Map<string, Map<string, { rxBytes: number; txBytes: number; source: WanUsageSource }>>();
   for (const row of history) {
     if (!byDay.has(row.day)) byDay.set(row.day, new Map());
-    byDay.get(row.day)!.set(row.interface, { rxBytes: row.rxBytes, txBytes: row.txBytes });
+    byDay.get(row.day)!.set(row.interface, { rxBytes: row.rxBytes, txBytes: row.txBytes, source: row.source });
   }
   const days = Array.from({ length: 30 }, (_, offset) => {
     const date = new Date(`${startDay}T00:00:00Z`);
     date.setUTCDate(date.getUTCDate() + offset);
     const day = date.toISOString().slice(0, 10);
-    return { day, perInterface: names.map((name) => ({ interface: name, rxBytes: byDay.get(day)?.get(name)?.rxBytes ?? 0, txBytes: byDay.get(day)?.get(name)?.txBytes ?? 0 })) };
+    return { day, perInterface: names.map((name) => {
+      const row = byDay.get(day)?.get(name);
+      return { interface: name, rxBytes: row?.rxBytes ?? 0, txBytes: row?.txBytes ?? 0, source: row?.source ?? 'counted' };
+    }) };
   });
   return { since: since ?? (history[0]?.day ?? null), routerImportedAt, exactSince, today: dayRows, month: monthRows, days };
 }

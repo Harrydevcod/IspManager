@@ -16,8 +16,10 @@ function History({ data }: { data: RouterWanUsage }) {
   const dayTotal = (day: RouterWanUsage['days'][number]) => day.perInterface.reduce((total, row) => total + volume(row), 0);
   // Antes de o router contar, a app fechada empurrava o tráfego para o dia da reabertura: picos
   // falsos que não podem ditar a escala.
-  const estimated = (day: string) => !data.exactSince || day < data.exactSince;
-  const scaled = data.days.some((day) => !estimated(day.day)) ? data.days.filter((day) => !estimated(day.day)) : data.days;
+  // Um dia copiado da conta Starlink já é a verdade e conta como exato.
+  const estimated = (day: RouterWanUsage['days'][number]) => (!data.exactSince || day.day < data.exactSince) &&
+    day.perInterface.some((row) => row.source !== 'starlink' && volume(row) > 0);
+  const scaled = data.days.some((day) => !estimated(day)) ? data.days.filter((day) => !estimated(day)) : data.days;
   const max = Math.max(1, ...scaled.map(dayTotal));
   const peakIndex = data.days.findIndex((day) => scaled.includes(day) && dayTotal(day) === max);
   return (
@@ -27,8 +29,10 @@ function History({ data }: { data: RouterWanUsage }) {
           {data.days.map((day, index) => {
             const rows = [...day.perInterface].sort((a, b) => a.interface.localeCompare(b.interface));
             const total = rows.reduce((sum, row) => sum + volume(row), 0);
-            const isEstimated = total > 0 && estimated(day.day);
-            const tooltip = `${dateLabel(day.day)} · soma das WAN ${formatDataVolume(total)} · ${rows.map((row) => `${row.interface}: ↓ ${formatDataVolume(row.rxBytes)} · ↑ ${formatDataVolume(row.txBytes)} · total ${formatDataVolume(row.rxBytes + row.txBytes)}`).join(' · ')}${isEstimated ? ' · contagem antiga da app, não comparável com a Starlink' : ''}`;
+            const isEstimated = total > 0 && estimated(day);
+            const tooltip = `${dateLabel(day.day)} · soma das WAN ${formatDataVolume(total)} · ${rows.map((row) => row.source === 'starlink'
+              ? `${row.interface}: total ${formatDataVolume(volume(row))} (conta Starlink)`
+              : `${row.interface}: ↓ ${formatDataVolume(row.rxBytes)} · ↑ ${formatDataVolume(row.txBytes)} · total ${formatDataVolume(row.rxBytes + row.txBytes)}`).join(' · ')}${isEstimated ? ' · contagem antiga da app, não comparável com a Starlink' : ''}`;
             const labelPosition = index >= data.days.length - 3 ? 'is-end' : index < 3 ? 'is-start' : '';
             return (
               <div key={day.day} className={`router-usage-day${total === 0 ? ' is-empty' : ''}${isEstimated ? ' is-estimated' : ''}`} title={tooltip}>

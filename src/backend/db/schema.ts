@@ -726,7 +726,8 @@ export const wanTrafficDaily = sqliteTable('wan_traffic_daily', {
   day: text('day').notNull(),
   interface: text('interface').notNull(),
   rxBytes: integer('rx_bytes').notNull().default(0),
-  txBytes: integer('tx_bytes').notNull().default(0)
+  txBytes: integer('tx_bytes').notNull().default(0),
+  source: text('source').notNull().default('counted')
 }, (table) => [primaryKey({ columns: [table.day, table.interface] })]);
 
 export const wanCounterState = sqliteTable('wan_counter_state', {
