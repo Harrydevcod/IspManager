@@ -4,6 +4,10 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## Não lançado
+
+- **Pedidos de assistência.** Nova secção Assistência: o que o cliente reporta (sem ligação, lento, fatura…) fica registado com o canal por onde chegou, a prioridade e o técnico, numa linha do tempo de notas e mudanças de estado. Resolver ou fechar pede sempre o que se fez. Um pedido gera as OS técnicas de que precisar, e a OS mostra de que pedido nasceu. Também se abre na ficha do cliente. O painel mostra os abertos, os que aguardam o cliente e o tempo médio até à primeira resposta. Inclui a migração 0071.
+
 ## [2.15](https://github.com/Harrydevcod/IspManager/releases/tag/v2.15.0) — 2026-10-03
 
 > **Duas migrações.** A `0069` cria as tabelas do consumo por cliente e a `0070` a das cópias da configuração. Nenhuma mexe no que já existe. Depois de atualizar, carregar uma vez em **Contar no router** na aba **Consumo** (Router de gestão) se o contador dos clientes ainda não estiver instalado. As cópias da configuração começam sozinhas, com o ISPM aberto na rede de gestão: só leem o router.

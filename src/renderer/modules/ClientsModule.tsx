@@ -1,9 +1,10 @@
-import { ArrowRightLeft, Cable, MessageCircle, Pencil, Plus, Upload, UsersRound, Wallet } from 'lucide-react';
+import { ArrowRightLeft, Cable, LifeBuoy, MessageCircle, Pencil, Plus, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge, BulkActionBar, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { ClientImportDialog } from './clients/import';
 import { TransferServiceDialog } from './services/TransferServiceDialog';
+import { NewTicketDialog } from './support/NewTicketDialog';
 import { authFetch, useAuth } from '../lib/auth';
 import { CV_ISLANDS, DEFAULT_ISLAND, isKnownIsland } from '../lib/islands';
 import { formatCve, formatPtDate } from '../lib/format';
@@ -100,6 +101,8 @@ export function ClientsModule({
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   /** Cliente que vai receber um serviço já existente (transferência de titular). */
   const [transferTo, setTransferTo] = useState<Client | null>(null);
+  /** Cliente para quem se está a registar um pedido de assistência. */
+  const [ticketFor, setTicketFor] = useState<number | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
@@ -521,6 +524,14 @@ export function ClientsModule({
               >
                 Instalar equipamento
               </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                leadingIcon={<LifeBuoy size={16} aria-hidden />}
+                onClick={() => setTicketFor(selectedClient.id)}
+              >
+                Novo pedido
+              </Button>
               {canManageClients && (
                 <Button
                   variant="secondary"
@@ -821,6 +832,9 @@ export function ClientsModule({
           </Select>
         </div>
       </Dialog>
+
+      <NewTicketDialog open={ticketFor !== null} clientId={ticketFor ?? undefined} onClose={() => setTicketFor(null)}
+        onCreated={(ticket) => { setTicketFor(null); toast(`Pedido nº ${ticket.id} aberto. Siga-o em Assistência.`, 'success'); }} />
     </section>
   );
 }

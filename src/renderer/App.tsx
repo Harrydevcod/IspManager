@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, Landmark, LogOut, Network, PanelLeftClose, PanelLeftOpen, Plus, Router, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
+import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, Landmark, LifeBuoy, LogOut, Network, PanelLeftClose, PanelLeftOpen, Plus, Router, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, Message, PageHeader, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider, VaultBanner } from './components';
 import type { CommandPaletteItem } from './components';
@@ -17,6 +17,7 @@ import { PlansModule } from './modules/PlansModule';
 import { ServicesModule } from './modules/ServicesModule';
 import { StockModule } from './modules/StockModule';
 import { WorkOrdersModule } from './modules/WorkOrdersModule';
+import { SupportModule } from './modules/support/SupportModule';
 import { ReportsModule } from './modules/ReportsModule';
 import { SettingsModule } from './modules/SettingsModule';
 import RouterModule from './modules/router/RouterModule';
@@ -43,6 +44,7 @@ const sections: SidebarItem[] = [
   { id: 'router', label: 'Router de gestão', icon: Router, roles: ['admin'] },
   { id: 'finance', label: 'Financeiro', icon: TrendingUp, roles: ['admin', 'operator'] },
   { id: 'treasury', label: 'Tesouraria', icon: Landmark, roles: ['admin', 'operator'] },
+  { id: 'support', label: 'Assistência', icon: LifeBuoy },
   { id: 'work-orders', label: 'OS técnicas', icon: ClipboardList },
   { id: 'stock', label: 'Stock', icon: Boxes },
   { id: 'reports', label: 'Relatórios', icon: FileText, roles: ['admin', 'operator'] },
@@ -76,6 +78,10 @@ function counterFor(id: SectionId, summary: DashboardSummary | null): SidebarCou
     case 'stock':
       return summary.lowStockModels > 0
         ? { count: summary.lowStockModels, tone: 'info' }
+        : null;
+    case 'support':
+      return summary.openTickets > 0
+        ? { count: summary.openTickets, tone: 'danger' }
         : null;
     case 'work-orders':
       return summary.openWorkOrders > 0
@@ -474,6 +480,7 @@ function AppShell() {
             />
           )}
           {section === 'treasury' && <TreasuryModule />}
+          {section === 'support' && <SupportModule />}
           {section === 'work-orders' && <WorkOrdersModule />}
           {section === 'stock' && (
             <StockModule

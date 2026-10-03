@@ -1,0 +1,34 @@
+.support-module { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+/* client-form só para herdar o estilo dos campos; a grelha e a moldura não interessam aqui. */
+.support-filters.client-form { display: flex; gap: var(--space-3); max-width: 280px; border: 0; background: transparent; padding: 0; margin: 0; }
+.support-muted { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
+
+.support-ticket.client-form { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); min-width: 0; }
+.support-ticket-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-3); margin: 0; }
+.support-ticket-facts dt { color: var(--text-3); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.04em; }
+.support-ticket-facts dd { margin: var(--space-1) 0 0; color: var(--text); }
+.support-ticket-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 240px)); gap: var(--space-3); }
+
+/* A linha do tempo: notas em destaque, mudanças de estado e OS em tom secundário. */
+.support-timeline { list-style: none; margin: 0; padding: 0 0 0 var(--space-4); border-left: 1px solid var(--border-2); display: grid; gap: var(--space-3); }
+.support-timeline-entry { position: relative; }
+.support-timeline-entry::before {
+  content: ''; position: absolute; left: calc(-1 * var(--space-4) - 4px); top: 6px;
+  width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+}
+.support-timeline-entry.is-mudanca_estado::before { background: var(--text-3); }
+.support-timeline-entry.is-os_criada::before { background: var(--info); }
+.support-timeline-meta { color: var(--text-3); font-size: var(--fs-xs); }
+.support-timeline-entry p { margin: var(--space-1) 0 0; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.support-timeline-entry:not(.is-nota) p { color: var(--text-2); font-size: var(--fs-sm); }
+
+.support-ticket-compose { display: grid; gap: var(--space-2); }
+.support-ticket-compose-actions { display: flex; align-items: flex-end; flex-wrap: wrap; gap: var(--space-2); }
+.support-ticket-compose-actions > :first-child { max-width: 280px; }
+.support-ticket-orders { display: grid; gap: var(--space-2); }
+.support-ticket-orders h3 { margin: 0; font-size: var(--fs-sm); color: var(--text-2); }
+.support-ticket-orders ul { margin: 0; padding-left: var(--space-4); color: var(--text); font-size: var(--fs-sm); }
+
+/* O global .dialog-lg .dialog-body é 0 (pré-visualização de PDF a toda a largura): o pedido repõe o espaço. */
+.dialog:has(.support-ticket-dialog) .dialog-body { padding: var(--space-6); }
+.support-ticket-dialog { display: grid; gap: var(--space-4); }

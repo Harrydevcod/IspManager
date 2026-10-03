@@ -2,11 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
+import { createWorkOrder, WORK_ORDER_EVENT_TYPES as EVENT_TYPES, WORK_ORDER_PRIORITIES as PRIORITIES, WORK_ORDER_STATUSES as STATUSES } from '../lib/work-orders';
 import { requireAuth, requireRole } from './auth';
-
-const STATUSES = ['aguarda', 'agendada', 'em_curso', 'concluida', 'cancelada'] as const;
-const PRIORITIES = ['baixa', 'media', 'alta'] as const;
-const EVENT_TYPES = ['instalacao', 'manutencao', 'troca_equipamento', 'visita', 'alteracao_servico'] as const;
 
 const createSchema = z.object({
   serviceId: z.coerce.number().int().positive().optional().nullable(),
@@ -48,6 +45,7 @@ type WorkOrderRow = {
   startedAt: string | null;
   completedAt: string | null;
   completionNotes: string | null;
+  ticketId: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -71,6 +69,7 @@ function selectOrders(filter: string, params: unknown[] = []) {
       w.started_at AS startedAt,
       w.completed_at AS completedAt,
       w.completion_notes AS completionNotes,
+      w.ticket_id AS ticketId,
       w.created_at AS createdAt,
       w.updated_at AS updatedAt
     FROM work_orders w
@@ -150,38 +149,8 @@ export async function registerWorkOrderRoutes(app: FastifyInstance) {
       }
     }
 
-    const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    const status = parsed.data.status ?? 'aguarda';
-    const startedAt = status === 'em_curso' ? now : null;
-    const completedAt = status === 'concluida' ? now : null;
-
-    const result = db.prepare(`
-      INSERT INTO work_orders (
-        service_id, title, description, status, priority, event_type,
-        assigned_to, scheduled_at, started_at, completed_at, created_at, updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-    `).run(
-      parsed.data.serviceId ?? null,
-      parsed.data.title,
-      parsed.data.description ?? null,
-      status,
-      parsed.data.priority ?? 'media',
-      parsed.data.eventType ?? null,
-      parsed.data.assignedTo ?? null,
-      parsed.data.scheduledAt ?? null,
-      startedAt,
-      completedAt
-    );
-
-    const created = db.prepare(selectOrders('WHERE w.id = ?')).get(result.lastInsertRowid) as WorkOrderRow;
-
-    if (status === 'concluida' && created.serviceId && created.eventType) {
-      db.prepare(`
-        INSERT INTO service_events (service_id, event_type, notes)
-        VALUES (?, ?, ?)
-      `).run(created.serviceId, created.eventType, created.title);
-    }
+    const id = createWorkOrder(db, parsed.data);
+    const created = db.prepare(selectOrders('WHERE w.id = ?')).get(id) as WorkOrderRow;
 
     recordAudit(request, {
       action: 'create',

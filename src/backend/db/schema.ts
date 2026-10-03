@@ -324,7 +324,8 @@ export const workOrders = sqliteTable('work_orders', {
   completedAt: text('completed_at'),
   completionNotes: text('completion_notes'),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
-  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
+  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP'),
+  ticketId: integer('ticket_id')
 });
 
 export const investments = sqliteTable('investments', {
@@ -757,4 +758,31 @@ export const routerConfigSnapshots = sqliteTable('router_config_snapshots', {
   content: text('content').notNull(),
   addedLines: integer('added_lines').notNull().default(0),
   removedLines: integer('removed_lines').notNull().default(0)
+});
+
+export const supportTickets = sqliteTable('support_tickets', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  clientId: integer('client_id').notNull().references(() => clients.id),
+  serviceId: integer('service_id').references(() => services.id),
+  subject: text('subject').notNull(),
+  channel: text('channel').notNull(),
+  category: text('category').notNull(),
+  priority: text('priority').notNull().default('media'),
+  status: text('status').notNull().default('aberto'),
+  openedBy: integer('opened_by').references(() => users.id),
+  assignedTo: integer('assigned_to').references(() => users.id),
+  openedAt: text('opened_at').notNull().default("(datetime('now'))"),
+  firstResponseAt: text('first_response_at'),
+  resolvedAt: text('resolved_at'),
+  closedAt: text('closed_at'),
+  updatedAt: text('updated_at').notNull().default("(datetime('now'))")
+});
+
+export const supportTicketEntries = sqliteTable('support_ticket_entries', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ticketId: integer('ticket_id').notNull().references(() => supportTickets.id, { onDelete: 'cascade' }),
+  authorId: integer('author_id').references(() => users.id),
+  kind: text('kind').notNull(),
+  body: text('body').notNull(),
+  createdAt: text('created_at').notNull().default("(datetime('now'))")
 });
