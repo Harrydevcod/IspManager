@@ -1187,7 +1187,7 @@ export async function createSecret(transport: RouterTransport, input: NewSecret)
   return str(row?.['.id']) ?? '';
 }
 
-export type SecretPatch = { disabled?: boolean; profile?: string; password?: string; name?: string };
+export type SecretPatch = { disabled?: boolean; profile?: string; password?: string; name?: string; comment?: string };
 
 export async function patchSecret(transport: RouterTransport, id: string, patch: SecretPatch): Promise<void> {
   assertPlainPassword(patch.password);
@@ -1196,6 +1196,7 @@ export async function patchSecret(transport: RouterTransport, id: string, patch:
   if (patch.profile !== undefined) body.profile = patch.profile;
   if (patch.name !== undefined) body.name = patch.name;
   if (patch.password !== undefined) body.password = patch.password;
+  if (patch.comment !== undefined) body.comment = patch.comment;
   if (Object.keys(body).length === 0) return;
   await transport({ method: 'PATCH', path: `/ppp/secret/${id}`, body });
 }

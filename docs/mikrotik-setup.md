@@ -268,7 +268,7 @@ No ISPM: **Reconciliar agora**. Em ensaio, deve reportar o `teste-ispm` como *ut
 
 **Escreve** (só em `/ppp`):
 
-- cria `/ppp secret` para serviços que ainda não existem no router, com `comment=ispm:<id do serviço>`
+- cria `/ppp secret` para serviços que ainda não existem no router, com `comment=ispm:<id do serviço> <nome do cliente>`
 - mantém ativos os secrets dos serviços ativos e suspensos; desativa os cancelados (e os suspensos
   se **Perfil dos suspensos** estiver vazio)
 - põe o secret suspenso no perfil `SUSPENSO` (ou no nome configurado), com velocidade mínima

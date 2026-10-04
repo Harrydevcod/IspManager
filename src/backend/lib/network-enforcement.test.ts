@@ -30,7 +30,7 @@ function secret(overrides: Partial<RouterSecret> = {}): RouterSecret {
     name: 'joao-1',
     disabled: false,
     profile: 'plano-10M',
-    comment: 'ispm:1',
+    comment: 'ispm:1 Joao Silva',
     ...overrides
   };
 }
@@ -147,6 +147,33 @@ describe('planActions', () => {
     const plan = planActions([], [secret({ id: '*5', name: 'router-do-vizinho', comment: null })]);
     expect(plan.divergences).toEqual([]);
   });
+
+  test('comentário antigo (só a âncora) ganha o nome do cliente, sem divergência', () => {
+    const plan = planActions([service()], [secret({ comment: 'ispm:1' })]);
+    expect(plan.actions).toEqual([
+      { kind: 'comment', serviceId: 1, username: 'joao-1', secretId: '*1', comment: 'ispm:1 Joao Silva', clientName: 'Joao Silva' }
+    ]);
+    expect(plan.divergences).toEqual([]);
+  });
+
+  test('o nome vai para o router em ASCII', () => {
+    const plan = planActions([service({ clientName: 'João  Conceição' })], [secret({ comment: 'ispm:1' })]);
+    expect(plan.actions).toEqual([expect.objectContaining({ kind: 'comment', comment: 'ispm:1 Joao Conceicao' })]);
+  });
+
+  test('secret casado só pelo nome guarda o comentário do operador', () => {
+    const plan = planActions([service()], [secret({ comment: 'casa da esquina' })]);
+    expect(plan.actions).toEqual([]);
+  });
+
+  test('a âncora do serviço 12 não serve ao serviço 1', () => {
+    const plan = planActions([service()], [secret({ id: '*12', name: 'ana-12', comment: 'ispm:12 Ana' })]);
+    expect(plan.matched.size).toBe(0);
+    expect(plan.divergences).toEqual([
+      expect.objectContaining({ kind: 'missing_secret', serviceId: 1 }),
+      expect.objectContaining({ kind: 'orphan_secret', serviceId: 12 })
+    ]);
+  });
 });
 
 // ------------------------------------------------------------------ passagem
@@ -259,7 +286,7 @@ describe('runNetworkEnforcement', () => {
     expect(calls).toContainEqual({
       method: 'PUT',
       path: '/ppp/secret',
-      body: { name: 'joao-1', password: 'senha', service: 'pppoe', comment: 'ispm:1', profile: 'plano-10M' }
+      body: { name: 'joao-1', password: 'senha', service: 'pppoe', comment: 'ispm:1 Joao Silva', profile: 'plano-10M' }
     });
   });
 
@@ -303,7 +330,7 @@ describe('runNetworkEnforcement', () => {
     await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
 
     expect(calls).toContainEqual({ method: 'PUT', path: '/ppp/secret',
-      body: { name: 'joao-1', password: 'senha', service: 'pppoe', comment: 'ispm:1', profile: 'SUSPENSO' } });
+      body: { name: 'joao-1', password: 'senha', service: 'pppoe', comment: 'ispm:1 Joao Silva', profile: 'SUSPENSO' } });
     expect(calls.some((call) => call.method === 'PATCH' && call.path === '/ppp/secret/*77')).toBe(false);
   });
 
@@ -546,7 +573,7 @@ describe('runNetworkEnforcement', () => {
     for (let id = 1; id <= 3; id += 1) addService(db, id, 'suspended', `cliente-${id}`);
     addService(db, 4, 'active', 'cliente-4');
     const secrets = [1, 2, 3].map((id) => secret({ id: `*${id}`, name: `cliente-${id}`, comment: `ispm:${id}` }));
-    secrets.push(secret({ id: '*4', name: 'cliente-4', comment: 'ispm:4', disabled: true }));
+    secrets.push(secret({ id: '*4', name: 'cliente-4', comment: 'ispm:4 Joao Silva', disabled: true }));
     const { transport, calls } = recordingTransport(secrets);
 
     const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 2 });
@@ -634,7 +661,7 @@ describe('runNetworkEnforcement', () => {
   test('uma ação que falha fica registada no serviço e não afeta as outras', async () => {
     addService(db, 1, 'suspended', 'joao-1');
     addService(db, 2, 'suspended', 'ana-2');
-    const secrets = [secret(), secret({ id: '*2', name: 'ana-2', comment: 'ispm:2' })];
+    const secrets = [secret(), secret({ id: '*2', name: 'ana-2', comment: 'ispm:2 Joao Silva' })];
     const base = recordingTransport(secrets);
     const transport = (async (req: RouterRequest) => {
       if (req.method === 'PATCH' && req.path.endsWith('*1')) throw new Error('router inacessivel');
@@ -649,6 +676,18 @@ describe('runNetworkEnforcement', () => {
     expect(failed.last_error).toContain('router inacessivel');
     const ok = db.prepare('SELECT last_error FROM service_network_state WHERE service_id = 2').get() as { last_error: string | null };
     expect(ok.last_error).toBeNull();
+  });
+
+  test('secret com o comentário antigo recebe o nome do cliente e mais nada', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    const { transport, calls } = recordingTransport([secret({ comment: 'ispm:1' })]);
+
+    const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
+
+    expect(summary).toMatchObject({ applied: 1, failed: 0, divergences: 0 });
+    expect(calls.filter((call) => call.method !== 'GET')).toEqual([
+      { method: 'PATCH', path: '/ppp/secret/*1', body: { comment: 'ispm:1 Joao Silva' } }
+    ]);
   });
 
   test('sem serviços com PPPoE não fala com o router de todo', async () => {

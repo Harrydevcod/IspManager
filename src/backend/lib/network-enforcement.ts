@@ -35,6 +35,22 @@ import {
 // A âncora do mapeamento. Sobrevive a alguém renomear o utilizador no router.
 const COMMENT_PREFIX = 'ispm:';
 
+/**
+ * `ispm:<id> <nome>`: a âncora primeiro, o nome do cliente depois, para quem lê
+ * o Winbox. O nome vai em ASCII — o Winbox não mostra UTF-8 e o que se lê tem
+ * de ser igual ao que se escreveu, senão a passagem corrigia-o para sempre.
+ */
+export function secretComment(serviceId: number, clientName: string): string {
+  const name = clientName.normalize('NFD').replace(/[^\x20-\x7E]/g, '').replace(/\s+/g, ' ').trim();
+  return name ? `${COMMENT_PREFIX}${serviceId} ${name}` : `${COMMENT_PREFIX}${serviceId}`;
+}
+
+/** O serviço a que o comentário ancora o secret; null se não for nosso. */
+export function serviceIdFromComment(comment: string | null | undefined): number | null {
+  const match = /^ispm:(\d+)(?: |$)/.exec(comment ?? '');
+  return match ? Number(match[1]) : null;
+}
+
 export type DesiredService = {
   serviceId: number;
   clientName: string;
@@ -59,7 +75,9 @@ export type PlannedAction =
   | { kind: 'enable' | 'disable'; serviceId: number; username: string; secretId: string; clientName: string; cut?: true }
   | { kind: 'profile'; serviceId: number; username: string; secretId: string; profile: string; from: string | null; clientName: string; cut?: true }
   /** `rename`: o secret no router tem outro nome e as credenciais do ISPM mandam (reinstalação). */
-  | { kind: 'password'; serviceId: number; username: string; secretId: string; clientName: string; rename?: true };
+  | { kind: 'password'; serviceId: number; username: string; secretId: string; clientName: string; rename?: true }
+  /** Só o texto do comentário (nome do cliente); não mexe em acesso nem em sessões. */
+  | { kind: 'comment'; serviceId: number; username: string; secretId: string; comment: string; clientName: string };
 
 export type Divergence = {
   serviceId: number | null;
@@ -119,9 +137,8 @@ export function loadDesiredServices(db: Database.Database, options: { suspendedP
 // --------------------------------------------------------------- planeamento
 
 export function matchSecret(service: Pick<DesiredService, 'serviceId' | 'username'>, secrets: RouterSecret[]): RouterSecret | undefined {
-  const tag = `${COMMENT_PREFIX}${service.serviceId}`;
   return (
-    secrets.find((secret) => secret.comment === tag) ??
+    secrets.find((secret) => serviceIdFromComment(secret.comment) === service.serviceId) ??
     secrets.find((secret) => secret.name === service.username)
   );
 }
@@ -299,6 +316,20 @@ export function planActions(
         detail: `No router chama-se ${secret.name}`
       });
     }
+
+    // O nome do cliente no comentário, só em secrets já ancorados: um secret
+    // casado pelo nome tem o comentário do operador, e esse não é nosso.
+    const comment = secretComment(service.serviceId, service.clientName);
+    if (serviceIdFromComment(secret.comment) === service.serviceId && secret.comment !== comment) {
+      actions.push({
+        kind: 'comment',
+        serviceId: service.serviceId,
+        username: service.username,
+        secretId: secret.id,
+        comment,
+        clientName: service.clientName
+      });
+    }
   }
 
   // Secrets marcados como nossos que já não correspondem a nenhum serviço.
@@ -308,7 +339,7 @@ export function planActions(
     if (usedSecretIds.has(secret.id)) continue;
     if (!secret.comment?.startsWith(COMMENT_PREFIX)) continue;
     divergences.push({
-      serviceId: Number(secret.comment.slice(COMMENT_PREFIX.length)) || null,
+      serviceId: serviceIdFromComment(secret.comment),
       username: secret.name,
       kind: 'orphan_secret',
       detail: 'Utilizador no router sem serviço correspondente no ISPM'
@@ -584,7 +615,8 @@ function rank(action: PlannedAction): number {
   if (action.kind === 'password') return 1;
   if (action.kind === 'profile') return 2;
   if (action.kind === 'enable') return 3;
-  return 4; // disable
+  if (action.kind === 'disable') return 4;
+  return 5; // comment
 }
 
 async function applyAction(
@@ -607,7 +639,7 @@ async function applyAction(
     const id = await createSecret(transport, {
       name: action.username,
       password: password.plain,
-      comment: `${COMMENT_PREFIX}${action.serviceId}`,
+      comment: secretComment(action.serviceId, action.clientName),
       profile: action.profile
     });
     // Um secret nasce ativo; se o serviço não está ativo, corta-se já.
@@ -643,6 +675,11 @@ async function applyAction(
         ? `Renomeou ${login} para ${action.username} e atualizou a password PPPoE`
         : `Atualizou a password PPPoE de ${action.username}`
     );
+    return;
+  }
+
+  if (action.kind === 'comment') {
+    await patchSecret(transport, action.secretId, { comment: action.comment });
     return;
   }
 

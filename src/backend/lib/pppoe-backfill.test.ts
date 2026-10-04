@@ -74,7 +74,7 @@ describe('na base de dados', () => {
   let db: Database.Database;
 
   // O parque real em miniatura: a Cibel (C0014) já tem o skn001 que a regra daria à C0001.
-  const liveSecret: RouterSecret = { id: '*1', name: 'skn001', disabled: false, profile: 'plano-10M', comment: 'ispm:15' };
+  const liveSecret: RouterSecret = { id: '*1', name: 'skn001', disabled: false, profile: 'plano-10M', comment: 'ispm:15 Cibel Restaurante' };
 
   function rows(): BackfillService[] {
     return db.prepare(`
