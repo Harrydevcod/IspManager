@@ -36,6 +36,9 @@ com hardware à frente:
 
 - **A âncora do mapeamento é o `comment` do secret**, `ispm:<serviceId>`, e não o nome. Um utilizador
   renomeado no Winbox continua a ser reconhecido; o nome é só o fallback.
+  Depois da âncora vai o nome do cliente em ASCII (`ispm:15 Cibel Monteiro`), só para quem lê o
+  Winbox: a reconciliação mantém-no em dia nos secrets já ancorados e nunca escreve no comentário de
+  um secret casado apenas pelo nome.
   Um nome diferente no router só se reporta (divergência `username`) — exceto quando o ISPM tem
   credenciais por empurrar (`pppoe_password_sync_pending`, ex.: transferência em modo reinstalar):
   aí a mesma ação renomeia o secret, muda a password e derruba a sessão antiga. O que o ISPM muda

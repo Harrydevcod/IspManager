@@ -34,7 +34,7 @@ import {
 } from '../lib/routeros';
 import { readRouterLive, readWanInterfaces } from '../lib/router-live';
 import { identifyModel } from '../lib/device-model';
-import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecret, planActions, runNetworkEnforcement } from '../lib/network-enforcement';
+import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecret, planActions, runNetworkEnforcement, serviceIdFromComment } from '../lib/network-enforcement';
 import { loadAutoSuspensionPreview, runAutomaticSuspension } from '../lib/auto-suspension';
 import {
   loadRegisteredDevices,
@@ -431,7 +431,7 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       router: new Set(secrets.map((secret) => secret.name)),
       ispm: new Set(services.map((service) => service.username?.trim()).filter((name): name is string => Boolean(name))),
       // Secret já ancorado ao serviço pelo comentário `ispm:<id>`: também seria adotado.
-      routerServiceIds: new Set(secrets.map((secret) => Number(/^ispm:(\d+)$/.exec(secret.comment ?? '')?.[1])).filter(Boolean))
+      routerServiceIds: new Set(secrets.map((secret) => serviceIdFromComment(secret.comment)).filter((id): id is number => id !== null))
     }, prefix);
     if (!parsed.data.apply) return plan;
     const applied = applyPppoeBackfill(db, plan);
