@@ -6,6 +6,12 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.20](https://github.com/Harrydevcod/IspManager/releases/tag/v2.20.0) — 2026-10-04
+
+> **Sem migrações.**
+
+- **Nome do cliente no comentário dos utilizadores PPPoE.** Os utilizadores que o ISPM cria no router passam a ter o comentário `ispm:<id> <nome do cliente>`, para se perceber no Winbox de quem é cada um. Os que já existem com a marca `ispm:<id>` são corrigidos na sincronização seguinte, sem mexer em senhas nem derrubar sessões; se o cliente mudar de nome ou o serviço de titular, o comentário acompanha. Utilizadores criados à mão ficam com o comentário que têm.
+
 ## [2.19](https://github.com/Harrydevcod/IspManager/releases/tag/v2.19.0) — 2026-10-03
 
 > **Uma migração.** A `0072` acrescenta ao consumo diário das WAN a origem de cada dia (contado ou copiado da conta Starlink). Todos os dias existentes ficam como contados; não muda nenhum valor.
