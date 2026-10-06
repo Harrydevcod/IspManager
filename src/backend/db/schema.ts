@@ -596,7 +596,9 @@ export const serviceNetworkState = sqliteTable('service_network_state', {
   lastOnlineAt: text('last_online_at'),
   divergence: text('divergence'),
   lastError: text('last_error'),
-  checkedAt: text('checked_at').notNull().default('CURRENT_TIMESTAMP')
+  checkedAt: text('checked_at').notNull().default('CURRENT_TIMESTAMP'),
+  /** MAC de quem discou este utilizador PPPoE por último (migration 0073). */
+  callerId: text('caller_id')
 });
 
 /** Última sincronização do perfil PPP de cada plano com o router (migration 0066). */

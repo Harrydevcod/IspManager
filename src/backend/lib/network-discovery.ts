@@ -417,6 +417,15 @@ export function persistSeen(db: Database.Database, hosts: DiscoveredHost[]): voi
   })();
 }
 
+/** O MAC que discou o PPPoE de cada serviço, como a reconciliação da rede o deixou. */
+export function loadPppoeCallers(db: Database.Database): Array<{ serviceId: number; mac: string; address: string | null }> {
+  return db.prepare(`
+    SELECT service_id AS serviceId, caller_id AS mac, address
+    FROM service_network_state
+    WHERE caller_id IS NOT NULL
+  `).all() as Array<{ serviceId: number; mac: string; address: string | null }>;
+}
+
 export function loadSeenHosts(db: Database.Database): SeenHostRow[] {
   return db.prepare(`
     SELECT ip_address AS ipAddress, mac_address AS macAddress, hostname, vendor, source,

@@ -37,6 +37,7 @@ import { identifyModel } from '../lib/device-model';
 import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecret, planActions, runNetworkEnforcement, serviceIdFromComment } from '../lib/network-enforcement';
 import { loadAutoSuspensionPreview, runAutomaticSuspension } from '../lib/auto-suspension';
 import {
+  loadPppoeCallers,
   loadRegisteredDevices,
   loadSeenHosts,
   normalizeMac,
@@ -833,7 +834,7 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
 
     const claimedIps = new Set(devices.flatMap((device) => (device.ip ? [device.ip] : [])));
     return {
-      proposals: buildProposals({ devices, hosts, dismissed }),
+      proposals: buildProposals({ devices, hosts, dismissed, callers: loadPppoeCallers(db) }),
       orphans: findOrphans(devices, hosts, claimedIps)
     };
   });

@@ -439,6 +439,8 @@ export type RouterActive = {
   name: string;
   address: string | null;
   uptime: string | null;
+  /** MAC do equipamento que abriu a sessão. */
+  callerId: string | null;
 };
 
 /** RouterOS devolve booleanos como texto ("true"/"yes"). */
@@ -885,13 +887,14 @@ export async function listSecrets(transport: RouterTransport): Promise<RouterSec
 }
 
 export async function listActive(transport: RouterTransport): Promise<RouterActive[]> {
-  const raw = await transport({ method: 'GET', path: '/ppp/active?.proplist=.id,name,address,uptime' });
+  const raw = await transport({ method: 'GET', path: '/ppp/active?.proplist=.id,name,address,uptime,caller-id' });
   return asArray(raw)
     .map((row) => ({
       id: str(row['.id']) ?? '',
       name: str(row.name) ?? '',
       address: str(row.address),
-      uptime: str(row.uptime)
+      uptime: str(row.uptime),
+      callerId: str(row['caller-id'])
     }))
     .filter((session) => session.name);
 }
