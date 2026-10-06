@@ -86,6 +86,8 @@ Arranca em paralelo:
 - Fastify backend em `:3001`
 - Janela Electron com hot reload
 
+O modo desenvolvimento **nunca abre a base instalada**: trabalha em `%APPDATA%/ISPM-dev`, uma cópia feita no primeiro `npm run dev`. `npm run dev:data` volta a copiar a base instalada por cima (perde o que se fez em dev). Avisos, filas de WhatsApp/SMS, suspensão automática e backup agendado ficam desligados, para uma cópia desatualizada não falar com clientes reais.
+
 ### Testes
 
 ```bash
