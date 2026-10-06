@@ -1,4 +1,4 @@
-import { normalizeMacAddress } from '../../shared/mac';
+import { isMacAddress, normalizeMacAddress } from '../../shared/mac';
 import type { RegisteredDevice, SeenHostRow } from './network-discovery';
 import { sameModel } from '../../shared/model-match';
 
@@ -113,11 +113,41 @@ export type ProposalInput = {
   hosts: SeenHostRow[];
   /** `kind|targetKind|targetId` das que já foram dispensadas. */
   dismissed?: Set<string>;
+  /** Quem se autenticou por PPPoE em cada serviço — o MAC que o router de gestão viu. */
+  callers?: PppoeCaller[];
   /** Dias sem resposta a partir dos quais um backbone ativo se propõe em manutenção. */
   absentDays?: number;
   /** Hoje, em `AAAA-MM-DD HH:MM:SS`. Parâmetro para os testes não dependerem do relógio. */
   now?: string;
 };
+
+export type PppoeCaller = { serviceId: number; mac: string; address: string | null };
+
+/** WAN e LAN do mesmo aparelho costumam ser MAC seguidos: é o mesmo equipamento, não outro. */
+function sameUnit(a: string, b: string): boolean {
+  const value = (mac: string) => parseInt(mac.replace(/:/g, ''), 16);
+  return Math.abs(value(a) - value(b)) <= 1;
+}
+
+/**
+ * A que equipamento do serviço pertence o MAC que discou o PPPoE.
+ *
+ * É a única ligação segura entre um router de cliente e o cliente: o modelo
+ * repete-se pelo parque e o endereço vem por DHCP, mas o utilizador PPPoE é do
+ * serviço. Na dúvida não se propõe — MAC que já é de alguém (o CPE a discar),
+ * dois candidatos no mesmo serviço, ou o mesmo MAC em dois serviços.
+ */
+function callerTarget(caller: PppoeCaller, devices: RegisteredDevice[], callers: PppoeCaller[]): RegisteredDevice | null {
+  if (devices.some((device) => device.mac === caller.mac)) return null;
+  if (callers.filter((other) => other.mac === caller.mac).length > 1) return null;
+  const mine = devices.filter((device) => device.kind === 'assignment' && device.serviceId === caller.serviceId);
+  if (mine.some((device) => device.mac && sameUnit(device.mac, caller.mac))) return null;
+  const blank = mine.filter((device) => !device.mac);
+  // Quem o registo diz que disca é o alvo; sem essa etiqueta, o único router.
+  const dialers = blank.filter((device) => device.wanMode === 'pppoe');
+  const candidates = dialers.length > 0 ? dialers : blank.filter((device) => device.catalogType === 'router');
+  return candidates.length === 1 ? candidates[0] : null;
+}
 
 export function dismissalKey(kind: ProposalKind, targetKind: string, targetId: number): string {
   return `${kind}|${targetKind}|${targetId}`;
@@ -166,6 +196,26 @@ export function buildProposals(input: ProposalInput): Proposal[] {
     if (device.model && host.model && !sameModel(device.model, host.model)) {
       add({ ...base, kind: 'modelo_diferente', current: device.model, proposed: host.model });
     }
+  }
+
+  // O PPPoE identifica quem a varredura não consegue ligar a um cliente. Quem
+  // já recebeu proposta pelo endereço fica com essa: uma linha por equipamento.
+  const callers = (input.callers ?? []).filter((caller) => isMacAddress(caller.mac));
+  for (const caller of callers) {
+    const device = callerTarget(caller, input.devices, callers);
+    if (!device) continue;
+    if (out.some((proposal) => proposal.kind === 'mac_em_falta' && proposal.targetKind === device.kind && proposal.targetId === device.id)) continue;
+    add({
+      kind: 'mac_em_falta',
+      targetKind: device.kind,
+      targetId: device.id,
+      name: device.name,
+      current: null,
+      proposed: caller.mac,
+      ip: caller.address ?? 'PPPoE',
+      serviceId: device.serviceId,
+      clientId: device.clientId
+    });
   }
 
   // Um backbone ativo cujo último avistamento já tem dias. Fora do casamento

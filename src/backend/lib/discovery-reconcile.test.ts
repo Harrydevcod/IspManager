@@ -227,6 +227,51 @@ describe('buildProposals', () => {
 
 // --------------------------------------------------- sem identidade na rede
 
+describe('buildProposals — quem discou o PPPoE', () => {
+  // O parque real: CPE identificado + router do cliente sem MAC nem endereço.
+  const cpe = device({ id: 1, ip: '192.168.1.40', mac: '50:C7:BF:00:00:10' });
+  const router = device({ id: 2, ip: null, catalogType: 'router' });
+  const caller = { serviceId: 7, mac: 'BC:07:1D:5E:42:9F', address: '10.20.3.9' };
+  const propose = (devices: RegisteredDevice[], callers = [caller], dismissed?: Set<string>) =>
+    buildProposals({ devices, hosts: [], callers, dismissed, now: NOW });
+
+  test('o MAC que discou vai para o único router sem MAC do serviço', () => {
+    expect(propose([cpe, router])).toEqual([expect.objectContaining({
+      kind: 'mac_em_falta', targetKind: 'assignment', targetId: 2, proposed: 'BC:07:1D:5E:42:9F', ip: '10.20.3.9', serviceId: 7
+    })]);
+  });
+
+  test('quem o registo diz que disca passa à frente do router', () => {
+    const dialer = device({ id: 3, ip: null, wanMode: 'pppoe' });
+    expect(propose([dialer, router]).map((proposal) => proposal.targetId)).toEqual([3]);
+  });
+
+  test('cala-se quando o MAC já é de alguém — é o CPE a discar', () => {
+    expect(propose([device({ id: 1, mac: caller.mac }), router])).toEqual([]);
+    // WAN e LAN do mesmo aparelho: MAC seguidos.
+    expect(propose([device({ id: 1, mac: 'BC:07:1D:5E:42:9E' }), router])).toEqual([]);
+  });
+
+  test('cala-se na dúvida: dois routers, serviço alheio, MAC em dois serviços', () => {
+    expect(propose([router, device({ id: 4, ip: null, catalogType: 'router' })])).toEqual([]);
+    expect(propose([device({ id: 2, ip: null, catalogType: 'router', serviceId: 8 })])).toEqual([]);
+    const other = device({ id: 5, ip: null, catalogType: 'router', serviceId: 8 });
+    expect(propose([router, other], [caller, { ...caller, serviceId: 8 }])).toEqual([]);
+  });
+
+  test('dispensada não volta, e o que não é MAC nem entra', () => {
+    expect(propose([router], [caller], new Set([dismissalKey('mac_em_falta', 'assignment', 2)]))).toEqual([]);
+    expect(propose([router], [{ ...caller, mac: '10.0.0.7' }])).toEqual([]);
+  });
+
+  test('quem já tem proposta pelo endereço fica só com essa', () => {
+    const proposals = buildProposals({
+      devices: [device({ id: 2, catalogType: 'router' })], hosts: [host()], callers: [caller], now: NOW
+    });
+    expect(proposals.map((proposal) => proposal.proposed)).toEqual(['50:C7:BF:AA:BB:CC']);
+  });
+});
+
 describe('findOrphans', () => {
   const semIdentidade = device({ ip: null, mac: null, id: 7, name: 'Anilsa', model: 'TP-Link Archer C20' });
 

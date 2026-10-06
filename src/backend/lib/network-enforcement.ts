@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-network';
 import { readPppoeSecret } from './secrets';
+import { isMacAddress, normalizeMacAddress } from '../../shared/mac';
 import { readBaseProfileName, readSuspendedProfileName, syncPlanProfiles, type PlanSyncSummary } from './plan-profiles';
 import {
   createSecret,
@@ -377,12 +378,17 @@ export type EnforcementSummary = {
   planProfiles?: PlanSyncSummary | { error: string };
 };
 
+function callerMac(raw: string | null | undefined): string | null {
+  const mac = normalizeMacAddress(raw);
+  return mac && isMacAddress(mac) ? mac : null;
+}
+
 const upsertState = `
   INSERT INTO service_network_state (
     service_id, secret_id, router_enabled, desired_enabled, profile,
-    online, address, uptime, last_online_at, divergence, last_error, checked_at
+    online, address, uptime, last_online_at, divergence, last_error, caller_id, checked_at
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
   ON CONFLICT(service_id) DO UPDATE SET
     secret_id = excluded.secret_id,
     router_enabled = excluded.router_enabled,
@@ -394,6 +400,7 @@ const upsertState = `
     last_online_at = COALESCE(excluded.last_online_at, service_network_state.last_online_at),
     divergence = excluded.divergence,
     last_error = excluded.last_error,
+    caller_id = COALESCE(excluded.caller_id, service_network_state.caller_id),
     checked_at = datetime('now')
 `;
 
@@ -570,7 +577,12 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
         session?.uptime ?? null,
         session ? new Date().toISOString().slice(0, 19).replace('T', ' ') : null,
         divergenceByService.get(service.serviceId) ?? null,
-        errors.get(service.serviceId) ?? null
+        errors.get(service.serviceId) ?? null,
+        // Quem discou. Só MAC — noutros túneis o caller-id é um endereço IP.
+        // ponytail: só a sessão viva; o `last-caller-id` do secret apanhava quem
+        // nunca está online à hora da passagem, mas é mais uma propriedade na
+        // leitura de que depende todo o controlo de acesso — juntar se fizer falta.
+        callerMac(session?.callerId)
       );
     }
     forgetUntrackedState(db, allDesired, wanted);

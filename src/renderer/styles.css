@@ -4931,6 +4931,12 @@ label.field-toggle {
   align-items: center;
 }
 
+.bulk-ip-mac {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: start;
+}
+
 .bulk-ip-head {
   position: sticky;
   top: 0;

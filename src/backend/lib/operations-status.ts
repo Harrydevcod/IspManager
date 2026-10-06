@@ -4,7 +4,7 @@ import { isOffNetwork, type AdminNetworkPresence } from './admin-network';
 import { listBackups } from './backup';
 import { INSTALLED_UNITS_SQL, landedCostSql } from './capex';
 import { buildProposals, dismissalKey, type ProposalKind } from './discovery-reconcile';
-import { loadRegisteredDevices, loadSeenHosts } from './network-discovery';
+import { loadPppoeCallers, loadRegisteredDevices, loadSeenHosts } from './network-discovery';
 import { jobHealth } from './jobRuns';
 import { loadNetworkStatus } from './network-probe';
 import { balanceSqlExpr, overdueSqlPredicate } from './payments';
@@ -116,7 +116,7 @@ function countDiscoveryProposals(db: Database.Database): number {
     `).all() as Array<{ kind: ProposalKind; targetKind: string; targetId: number }>)
       .map((row) => dismissalKey(row.kind, row.targetKind, row.targetId))
   );
-  return buildProposals({ devices, hosts, dismissed }).length;
+  return buildProposals({ devices, hosts, dismissed, callers: loadPppoeCallers(db) }).length;
 }
 
 type BackboneAggregateRow = {

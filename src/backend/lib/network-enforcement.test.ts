@@ -204,7 +204,7 @@ function setting(db: Database.Database, key: string, value: string) {
 
 function recordingTransport(
   secrets: RouterSecret[],
-  active: Array<{ id: string; name: string }> = [],
+  active: Array<{ id: string; name: string; callerId?: string }> = [],
   profiles: string[] = ['default', 'plano-10M', 'SUSPENSO']
 ) {
   const calls: RouterRequest[] = [];
@@ -223,7 +223,7 @@ function recordingTransport(
       }));
     }
     if (req.path.startsWith('/ppp/active?')) {
-      return active.map((session) => ({ '.id': session.id, name: session.name, address: '10.0.0.9', uptime: '1h' }));
+      return active.map((session) => ({ '.id': session.id, name: session.name, address: '10.0.0.9', uptime: '1h', 'caller-id': session.callerId }));
     }
     if (req.method === 'PUT') return { '.id': '*77' };
     return null;
@@ -241,6 +241,29 @@ describe('runNetworkEnforcement', () => {
   test('serviços sem utilizador PPPoE são ignorados sem rebentar', () => {
     addService(db, 1, 'active', null);
     expect(loadDesiredServices(db)).toEqual([]);
+  });
+
+  test('guarda o MAC de quem discou e não o perde quando a sessão cai', async () => {
+    addService(db, 1, 'active', 'joao-1');
+    const callerOf = () => (db.prepare('SELECT caller_id FROM service_network_state WHERE service_id = 1').get() as { caller_id: string | null }).caller_id;
+
+    // Sessão viva: o caller-id dela manda, já canónico.
+    const online = recordingTransport([secret()], [{ id: '*A', name: 'joao-1', callerId: 'bc:07:1d:5e:42:9f' }]);
+    await runNetworkEnforcement(db, { transport: online.transport, dryRun: true, maxDisables: 5 });
+    expect(callerOf()).toBe('BC:07:1D:5E:42:9F');
+
+    // Caiu e o router já não diz nada: fica o último conhecido.
+    const offline = recordingTransport([secret()]);
+    await runNetworkEnforcement(db, { transport: offline.transport, dryRun: true, maxDisables: 5 });
+    expect(callerOf()).toBe('BC:07:1D:5E:42:9F');
+
+    // Router trocado: o MAC novo substitui. E um IP (outro túnel) não é MAC.
+    const swapped = recordingTransport([secret()], [{ id: '*A', name: 'joao-1', callerId: '30:68:93:E0:21:41' }]);
+    await runNetworkEnforcement(db, { transport: swapped.transport, dryRun: true, maxDisables: 5 });
+    expect(callerOf()).toBe('30:68:93:E0:21:41');
+    const tunnel = recordingTransport([secret()], [{ id: '*A', name: 'joao-1', callerId: '10.0.0.7' }]);
+    await runNetworkEnforcement(db, { transport: tunnel.transport, dryRun: true, maxDisables: 5 });
+    expect(callerOf()).toBe('30:68:93:E0:21:41');
   });
 
   test('o ensaio calcula tudo e não escreve uma única vez no router', async () => {
@@ -699,7 +722,7 @@ describe('runNetworkEnforcement', () => {
 });
 
 describe('buildSessionRows — o router visto pelo lado do ISPM', () => {
-  const active = (name: string, address = '10.0.0.5') => ({ id: `*A-${name}`, name, address, uptime: '1h' });
+  const active = (name: string, address = '10.0.0.5') => ({ id: `*A-${name}`, name, address, uptime: '1h', callerId: null });
 
   test('cruza serviço, secret e sessão, e diz o estado de cada um', () => {
     const rows = buildSessionRows(

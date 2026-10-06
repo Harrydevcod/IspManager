@@ -282,11 +282,16 @@ describe('operações RouterOS', () => {
     ]);
   });
 
-  test('listActive devolve as sessões vivas', async () => {
-    const transport = fakeTransport([[{ '.id': '*A', name: 'joao-12', address: '10.0.0.5', uptime: '3h2m' }]]);
+  test('listActive devolve as sessões vivas, com o MAC de quem discou', async () => {
+    const transport = fakeTransport([[
+      { '.id': '*A', name: 'joao-12', address: '10.0.0.5', uptime: '3h2m', 'caller-id': 'BC:07:1D:5E:42:9F' },
+      { '.id': '*B', name: 'ana-13' }
+    ]]);
     await expect(listActive(transport)).resolves.toEqual([
-      { id: '*A', name: 'joao-12', address: '10.0.0.5', uptime: '3h2m' }
+      { id: '*A', name: 'joao-12', address: '10.0.0.5', uptime: '3h2m', callerId: 'BC:07:1D:5E:42:9F' },
+      { id: '*B', name: 'ana-13', address: null, uptime: null, callerId: null }
     ]);
+    expect(transport.calls[0].path).toContain('caller-id');
   });
 
   test('createSecret usa PUT (o "add" do RouterOS) e marca o serviço no comment', async () => {

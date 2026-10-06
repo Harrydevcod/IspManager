@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button, Dialog, EmptyState, Field, Message, SkeletonList, useToast } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { suggestIpPrefix } from '../../lib/ip';
+import type { Reconciliation } from '../topology/discovery/discovery-api';
 import { IpField } from './IpField';
 import { Cable } from 'lucide-react';
 
@@ -43,6 +44,8 @@ export function BulkIpDialog({ onClose, onSaved }: BulkIdentityDialogProps) {
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
   const [onlyUnidentified, setOnlyUnidentified] = useState(false);
+  /** MAC que a rede propõe para cada atribuição ainda sem ele. */
+  const [suggestedMacs, setSuggestedMacs] = useState<Record<number, string>>({});
 
   useEffect(() => {
     authFetch('http://127.0.0.1:3001/api/service-device-assignments')
@@ -58,6 +61,16 @@ export function BulkIpDialog({ onClose, onSaved }: BulkIdentityDialogProps) {
       })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
+    // O que a rede já sabe: o MAC que discou o PPPoE do serviço, ou o que a
+    // varredura viu no endereço registado. Sem resposta, o diálogo fica como era.
+    authFetch('http://127.0.0.1:3001/api/network/discovery/proposals')
+      .then((response) => response.ok ? response.json() as Promise<Reconciliation> : Promise.reject(new Error('load')))
+      .then((data) => setSuggestedMacs(Object.fromEntries(
+        data.proposals
+          .filter((proposal) => proposal.kind === 'mac_em_falta' && proposal.targetKind === 'assignment')
+          .map((proposal) => [proposal.targetId, proposal.proposed])
+      )))
+      .catch(() => setSuggestedMacs({}));
   }, []);
 
   const prefix = useMemo(() => suggestIpPrefix(rows.map((row) => row.ipAddress)), [rows]);
@@ -218,14 +231,26 @@ export function BulkIpDialog({ onClose, onSaved }: BulkIdentityDialogProps) {
                   prefix={prefix}
                   onChange={(ipAddress) => update(row.id, { ipAddress })}
                 />
-                <Field
-                  hideLabel
-                  label="MAC"
-                  aria-label={`MAC de ${row.clientName}, ${row.model}`}
-                  placeholder="AA:BB:CC:DD:EE:FF"
-                  value={drafts[row.id]?.macAddress ?? ''}
-                  onChange={(event) => update(row.id, { macAddress: event.target.value })}
-                />
+                <span className="bulk-ip-mac">
+                  <Field
+                    hideLabel
+                    label="MAC"
+                    aria-label={`MAC de ${row.clientName}, ${row.model}`}
+                    placeholder="AA:BB:CC:DD:EE:FF"
+                    value={drafts[row.id]?.macAddress ?? ''}
+                    onChange={(event) => update(row.id, { macAddress: event.target.value })}
+                  />
+                  {suggestedMacs[row.id] && !isFilled(drafts[row.id]?.macAddress) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="MAC visto na rede para este equipamento. Só fica gravado com o botão Gravar."
+                      onClick={() => update(row.id, { macAddress: suggestedMacs[row.id] })}
+                    >
+                      Usar {suggestedMacs[row.id]}
+                    </Button>
+                  )}
+                </span>
               </div>
             ))}
           </div>
