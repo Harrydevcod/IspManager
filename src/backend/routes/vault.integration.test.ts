@@ -184,5 +184,8 @@ describe('cofre de ponta a ponta', () => {
     // Em nenhum momento a API devolveu uma credencial.
     const everything = bodies.join('\n');
     for (const marker of MARCADORES) expect(everything).not.toContain(marker);
-  });
+    // Dois arranques completos e um backup: anda nos 5 s numa máquina normal. Com o
+    // limite por omissão o teste rebentava a meio, a limpeza apagava o ISPM_DATA_DIR
+    // e o resto do corpo continuava a correr — sobre a base de dados real.
+  }, 30_000);
 });
