@@ -6,6 +6,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.21](https://github.com/Harrydevcod/IspManager/releases/tag/v2.21.0) — 2026-10-06
+
 > **Uma migração.** A `0073` acrescenta ao estado de rede de cada serviço o MAC de quem se autenticou por PPPoE. Não muda nenhum valor existente.
 
 - **Identificar o router do cliente pelo PPPoE.** O ISPM passa a ler no router de gestão o MAC do equipamento que se autentica com o utilizador PPPoE de cada serviço e propõe-o para o router desse cliente — o único que, até aqui, só se identificava indo ler a etiqueta. A proposta aparece na Descoberta e, em Serviços → "Identificar equipamentos", como um botão "Usar" ao lado do campo do MAC; nada fica gravado sem o "Gravar". Só propõe quando não há dúvida: cala-se se o MAC já é de outro equipamento (o CPE a discar) ou se o serviço tem mais de um router por identificar.
