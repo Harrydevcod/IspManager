@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:backend\" \"npm:dev:main\"",
     "dev:renderer": "vite --host 127.0.0.1 --port 5173",
-    "dev:backend": "tsx watch src/backend/standalone.ts",
+    "predev": "node scripts/seed-dev-data.cjs",
+    "dev:data": "node scripts/seed-dev-data.cjs --refresh",
+    "dev:backend": "cross-env NODE_ENV=development ISPM_AUTO_NOTICES=off ISPM_WHATSAPP_OUTBOX=off ISPM_SMS_OUTBOX=off ISPM_AUTO_SUSPENSION=off ISPM_SCHEDULED_BACKUP=off tsx watch src/backend/standalone.ts",
     "dev:main": "tsc -p tsconfig.preload.json && wait-on tcp:5173 && cross-env NODE_ENV=development electron --require tsx/cjs electron/dev.cjs",
     "import:clients": "node scripts/import-clients.cjs",
     "import:finance": "node scripts/import-finance.cjs",

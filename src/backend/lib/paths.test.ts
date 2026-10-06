@@ -26,6 +26,17 @@ describe('resolveDataDir', () => {
     }
   });
 
+  test('em desenvolvimento usa uma pasta própria, nunca a de produção', () => {
+    delete process.env.ISPM_DATA_DIR;
+    vi.stubEnv('VITEST', '');
+    vi.stubEnv('NODE_ENV', 'development');
+    try {
+      expect(path.basename(resolveDataDir())).toBe('ISPM-dev');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   test('num teste sem pasta própria rebenta em vez de apontar para a base real', () => {
     delete process.env.ISPM_DATA_DIR;
     expect(() => resolveDataDir()).toThrow(/ISPM_DATA_DIR/);
