@@ -1029,11 +1029,14 @@ describe('finance routes', () => {
     const original = db.prepare('SELECT id, invoice_number AS invoiceNumber FROM payments WHERE service_id = ?')
       .get(service.lastInsertRowid) as { id: number; invoiceNumber: string };
 
-    await app.inject({
+    // A data é a de hoje: a fatura nasce hoje e o /pay recusa um pagamento
+    // anterior à emissão. Uma data fixa passava até ao dia em que deixou de passar.
+    const pay = await app.inject({
       method: 'POST',
       url: `/api/payments/${original.id}/pay`,
-      payload: { paymentMethod: 'numerario', paymentDate: '2026-10-05' }
+      payload: { paymentMethod: 'numerario', paymentDate: new Date().toISOString().slice(0, 10) }
     });
+    expect(pay.statusCode).toBe(200);
     const cancel = await app.inject({
       method: 'POST',
       url: `/api/payments/${original.id}/cancel`,
