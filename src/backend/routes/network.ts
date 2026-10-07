@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from '../lib/admin-network';
+import { createDiaryEntry, listDiary, loadNetworkHealth, loginLookup, macLookup, updateDiaryEntry } from '../lib/network-health';
 import { loadIncidents } from '../lib/network-incidents';
 import { loadNetworkStatus, loadProbeEvents, mapWithLimit, readProbeConfig, runNetworkProbe } from '../lib/network-probe';
 import {
@@ -70,6 +71,21 @@ const serviceParamsSchema = z.object({
 const statusQuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(90).default(30)
 }).strict();
+
+const healthQuerySchema = z.object({
+  hours: z.coerce.number().int().min(1).max(24 * 30).default(72)
+}).strict();
+
+const diaryText = z.string().trim().max(2000);
+const diaryCreateSchema = z.object({
+  // O que o <input type="datetime-local"> entrega: a hora local, sem fuso.
+  happenedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'Indique a data e a hora'),
+  title: z.string().trim().min(1, 'Descreva a situação').max(140),
+  cause: diaryText.optional(),
+  resolution: diaryText.optional(),
+  status: z.enum(['aberta', 'resolvida']).optional()
+}).strict();
+const diaryPatchSchema = diaryCreateSchema.partial();
 
 const eventsParamsSchema = z.object({
   kind: z.enum(['backbone', 'assignment']),
@@ -150,6 +166,44 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Parametros invalidos' });
     }
     return loadIncidents(getSqliteDatabase(), parsed.data.days);
+  });
+
+  app.get('/api/network/health', readOnly, async (request, reply) => {
+    const parsed = healthQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Parametros invalidos' });
+    }
+    return loadNetworkHealth(getSqliteDatabase(), parsed.data.hours);
+  });
+
+  // O diário de ocorrências: qualquer sessão lê, quem opera a rede escreve.
+  const diaryWrite = { preHandler: requireRole(['admin', 'operator']) };
+
+  app.get('/api/network/diary', readOnly, async () => listDiary(getSqliteDatabase()));
+
+  app.post('/api/network/diary', diaryWrite, async (request, reply) => {
+    const body = diaryCreateSchema.safeParse(request.body);
+    if (!body.success) return reply.status(400).send({ error: body.error.issues[0]?.message ?? 'Dados inválidos' });
+    const entry = createDiaryEntry(getSqliteDatabase(), body.data, request.user?.id ?? null);
+    recordAudit(request, {
+      action: 'create', entityType: 'network_diary', entityId: entry.id,
+      summary: `Registou a ocorrência de rede "${entry.title}"`, metadata: { status: entry.status }
+    });
+    return reply.status(201).send(entry);
+  });
+
+  app.patch('/api/network/diary/:id', diaryWrite, async (request, reply) => {
+    const params = serviceParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.status(404).send({ error: 'Ocorrência não encontrada' });
+    const body = diaryPatchSchema.safeParse(request.body);
+    if (!body.success) return reply.status(400).send({ error: body.error.issues[0]?.message ?? 'Dados inválidos' });
+    const entry = updateDiaryEntry(getSqliteDatabase(), params.data.id, body.data);
+    if (!entry) return reply.status(404).send({ error: 'Ocorrência não encontrada' });
+    recordAudit(request, {
+      action: 'update', entityType: 'network_diary', entityId: entry.id,
+      summary: `Atualizou a ocorrência de rede "${entry.title}"`, metadata: { status: entry.status }
+    });
+    return entry;
   });
 
   app.get('/api/network/targets/:kind/:id/events', readOnly, async (request, reply) => {
@@ -547,29 +601,13 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     const entries = await listLog(transport);
     const summary = summarizeLog(entries);
     const db = getSqliteDatabase();
-    const clientOfMac = db.prepare(`
-      SELECT c.full_name AS name FROM service_device_assignments a
-      JOIN services s ON s.id = a.service_id JOIN clients c ON c.id = s.client_id
-      WHERE upper(a.mac_address) = ? AND a.end_date IS NULL LIMIT 1
-    `);
-    const vendorOfMac = db.prepare(`
-      SELECT vendor FROM network_discovery_hosts WHERE upper(mac_address) = ? ORDER BY last_seen_at DESC LIMIT 1
-    `);
-    const clientOfLogin = db.prepare(`
-      SELECT c.full_name AS name FROM services s JOIN clients c ON c.id = s.client_id WHERE s.pppoe_username = ? LIMIT 1
-    `);
-    const aboutMac = (mac: string) => ({
-      clientName: (clientOfMac.get(mac) as { name: string } | undefined)?.name ?? null,
-      vendor: (vendorOfMac.get(mac) as { vendor: string | null } | undefined)?.vendor ?? null
-    });
+    const aboutMac = macLookup(db);
+    const clientOfLogin = loginLookup(db);
     return {
       entries: entries.slice(0, 300),
       loginFailures: summary.loginFailures,
       rogueDhcp: summary.rogueDhcp.map((row) => ({ ...row, ...aboutMac(row.mac) })),
-      pppoeDrops: summary.pppoeDrops.map((row) => ({
-        ...row,
-        clientName: (clientOfLogin.get(row.login) as { name: string } | undefined)?.name ?? null
-      })),
+      pppoeDrops: summary.pppoeDrops.map((row) => ({ ...row, clientName: clientOfLogin(row.login) })),
       dhcpChurn: summary.dhcpChurn.map((row) => ({ ...row, ...aboutMac(row.mac) }))
     };
   }));

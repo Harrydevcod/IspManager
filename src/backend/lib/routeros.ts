@@ -569,6 +569,12 @@ export async function listInterfaceListMembers(transport: RouterTransport, list:
   return asArray(raw).map((row) => str(row.interface)).filter((name): name is string => Boolean(name));
 }
 
+/** Os endereços IP do próprio router (/ip/address), sem a máscara. */
+export async function listAddresses(transport: RouterTransport): Promise<string[]> {
+  const raw = await transport({ method: 'GET', path: '/ip/address?.proplist=address' });
+  return asArray(raw).map((row) => str(row.address)?.split('/')[0]).filter((address): address is string => Boolean(address));
+}
+
 export type RouterLogEntry ={ id: string; time: string; topics: string; message: string };
 
 /** O log em memória do router (1000 linhas por omissão), as mais recentes primeiro. */
@@ -592,10 +598,10 @@ export type RouterLogSummary = {
 };
 
 // Mensagens do RouterOS 7, tal como aparecem no /log.
-const LOGIN_FAILURE = /login failure for user (.+?) from (\S+) via (\S+)/;
-const ROGUE_DHCP = /^(\S+): received DHCP server message on untrusted port from source IP (\S+), MAC (\S+)/;
-const PPPOE_DROP = /^<pppoe-(.+?)>: terminating\.\.\. - (.+?)\s*$/;
-const DHCP_RELEASE = /deassigned (\S+) for (\S+)(?: (\S+))?/;
+export const LOGIN_FAILURE = /login failure for user (.+?) from (\S+) via (\S+)/;
+export const ROGUE_DHCP = /^(\S+): received DHCP server message on untrusted port from source IP (\S+), MAC (\S+)/;
+export const PPPOE_DROP = /^<pppoe-(.+?)>: terminating\.\.\. - (.+?)\s*$/;
+export const DHCP_RELEASE = /deassigned (\S+) for (\S+)(?: (\S+))?/;
 
 /** Um aparelho que liberta o IP mais do que isto no registo está em ciclo, não a sair da rede. */
 export const DHCP_CHURN_THRESHOLD = 10;

@@ -789,3 +789,25 @@ export const supportTicketEntries = sqliteTable('support_ticket_entries', {
   body: text('body').notNull(),
   createdAt: text('created_at').notNull().default("(datetime('now'))")
 });
+
+export const routerLogFindings = sqliteTable('router_log_findings', {
+  day: text('day').notNull(),
+  kind: text('kind').notNull(),
+  subject: text('subject').notNull(),
+  label: text('label').notNull().default(''),
+  count: integer('count').notNull().default(0),
+  firstAt: text('first_at').notNull(),
+  lastAt: text('last_at').notNull()
+}, (table) => [primaryKey({ columns: [table.day, table.kind, table.subject] })]);
+
+export const networkDiary = sqliteTable('network_diary', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  happenedAt: text('happened_at').notNull(),
+  title: text('title').notNull(),
+  cause: text('cause').notNull().default(''),
+  resolution: text('resolution').notNull().default(''),
+  status: text('status').notNull().default('aberta'),
+  createdBy: integer('created_by').references(() => users.id),
+  createdAt: text('created_at').notNull().default("(datetime('now'))"),
+  updatedAt: text('updated_at').notNull().default("(datetime('now'))")
+});
