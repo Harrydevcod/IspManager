@@ -119,6 +119,7 @@ test('situações: o que o router já contou não se repete pela sonda', () => {
 test('as horas locais do router e do diário não passam pelo fuso', () => {
   expect(formatLocalStamp('2026-10-07 13:16:00')).toBe('07/10/2026 13:16');
   expect(formatLocalStamp('2026-10-06T17:54')).toBe('06/10/2026 17:54');
+  expect(formatLocalStamp('2026-10-07 13:16:00', false)).toBe('07/10 13:16');
   expect(formatLocalStamp('ontem')).toBe('ontem');
 });
 

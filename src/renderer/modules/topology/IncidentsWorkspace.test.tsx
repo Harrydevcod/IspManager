@@ -74,11 +74,11 @@ test('a vista Router lista os achados do registo, um dado por coluna', async () 
   });
   await openView(host, 'Router');
   expect([...host.querySelectorAll('[role="columnheader"]')].map((node) => node.textContent))
-    .toEqual(['Tipo', 'Endereço', 'Pertence a', 'Detalhe', 'Ocorrências', 'Primeira vez', 'Última vez']);
+    .toEqual(['Tipo', 'Endereço', 'Pertence a', 'Detalhe', 'Vezes', 'Desde', 'Última vez']);
   const row = [...host.querySelectorAll<HTMLElement>('[role="row"]')][1];
   expect(row.textContent).toContain('Endereço do router duplicado');
   expect(row.textContent).toContain('TP-Link');
-  expect(row.textContent).toContain('07/10/2026 13:16');
+  expect(row.textContent).toContain('07/10 13:16');
   await act(async () => root.unmount());
 });
 

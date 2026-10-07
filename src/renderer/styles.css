@@ -795,9 +795,7 @@ h2 {
 
 .dashboard-topline {
   display: grid;
-  /* Receita e rede lado a lado; a rede é o cartão estreito. */
-  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
-  align-items: stretch;
+  grid-template-columns: 1fr;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
 }
@@ -5051,7 +5049,27 @@ label.field-toggle {
   height: 156px;
 }
 
-/* Saúde da rede: três números, as situações mais graves e até onde se viu. */
+/* Saúde da rede: uma faixa a toda a largura — os números e as ações à esquerda, as situações
+   à direita. Ao lado do gráfico ficava mais alta do que ele e abria um vazio no cartão da receita. */
+/* O estado fica à direita do título, não numa terceira linha do cabeçalho. */
+.network-health-card .section-heading { position: relative; }
+.network-health-card .section-heading > .badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+.network-health-body {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.6fr);
+  gap: var(--space-4);
+  align-items: stretch;
+}
+.network-health-summary {
+  display: flex;
+  flex-direction: column;
+}
+.network-health-body > .dashboard-list { align-content: start; }
+.network-health-body > .empty-state { align-content: center; }
 .network-health-figures {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5066,8 +5084,9 @@ label.field-toggle {
   border-radius: 6px;
   background: color-mix(in oklch, var(--surface-2) 70%, var(--bg));
 }
-.network-health-figures > div[data-alert='warning'] { border-color: color-mix(in oklch, var(--warn) 45%, var(--border)); }
-.network-health-figures > div[data-alert='danger'] { border-color: color-mix(in oklch, var(--danger) 55%, var(--border)); }
+/* `oklab`, não `oklch`: entre o âmbar e o azul da borda, a mistura por matiz passava pelo rosa. */
+.network-health-figures > div[data-alert='warning'] { border-color: color-mix(in oklab, var(--warn) 55%, var(--border)); }
+.network-health-figures > div[data-alert='danger'] { border-color: color-mix(in oklab, var(--danger) 60%, var(--border)); }
 .network-health-figures dt {
   color: var(--text-3);
   font-size: var(--fs-xs);
@@ -5084,12 +5103,16 @@ label.field-toggle {
   font-size: var(--fs-xs);
 }
 .network-health-card .dashboard-card-footer {
+  /* Encosta ao fundo da coluna: a altura é a da lista ao lado. */
+  margin-top: auto;
+  padding-top: var(--space-3);
   gap: var(--space-2);
   flex-wrap: wrap;
+  justify-content: flex-start;
 }
 
-@media (max-width: 1100px) {
-  .dashboard-topline { grid-template-columns: 1fr; }
+@media (max-width: 900px) {
+  .network-health-body { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 1280px) {

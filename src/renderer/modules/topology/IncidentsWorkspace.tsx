@@ -62,13 +62,14 @@ const clientColumns: DataTableColumn<IncidentClient>[] = [
 ];
 
 const findingColumns: DataTableColumn<HealthFinding>[] = [
-  { header: 'Tipo', sortValue: (row) => KIND_LABEL[row.kind], cell: (row) => <strong>{KIND_LABEL[row.kind]}</strong> },
+  // Sem negrito: o negrito corta com reticências, e "Endereço do router duplicado" tem de se ler inteiro.
+  { header: 'Tipo', sortValue: (row) => KIND_LABEL[row.kind], cell: (row) => KIND_LABEL[row.kind] },
   { header: 'Endereço', sortValue: (row) => row.subject, cell: (row) => row.subject },
   { header: 'Pertence a', sortValue: (row) => findingWho(row), cell: (row) => findingWho(row) },
   { header: 'Detalhe', sortValue: (row) => row.label, cell: (row) => row.label || '—' },
-  { header: 'Ocorrências', sortValue: (row) => row.count, defaultDirection: 'desc', align: 'end', cell: (row) => row.count },
-  { header: 'Primeira vez', sortValue: (row) => row.firstAt, defaultDirection: 'desc', cell: (row) => formatLocalStamp(row.firstAt) },
-  { header: 'Última vez', sortValue: (row) => row.lastAt, defaultDirection: 'desc', cell: (row) => formatLocalStamp(row.lastAt) }
+  { header: 'Vezes', sortValue: (row) => row.count, defaultDirection: 'desc', align: 'end', cell: (row) => row.count },
+  { header: 'Desde', sortValue: (row) => row.firstAt, defaultDirection: 'desc', cell: (row) => formatLocalStamp(row.firstAt, false) },
+  { header: 'Última vez', sortValue: (row) => row.lastAt, defaultDirection: 'desc', cell: (row) => formatLocalStamp(row.lastAt, false) }
 ];
 
 const diaryColumns: DataTableColumn<DiaryEntry>[] = [
@@ -130,7 +131,8 @@ function RouterFindingsView({ active }: { active: boolean }) {
 
   return (
     <DataTable rows={live.data.findings} rowKey={(row) => `${row.kind}:${row.subject}`} columns={findingColumns}
-      gridTemplateColumns="minmax(170px, 1.2fr) 150px minmax(120px, 1fr) minmax(120px, 1fr) 104px 132px 132px"
+      // Cabe nos 857 px que a tabela tem no ecrã de 1920 a 150%.
+      gridTemplateColumns="minmax(128px, 1.2fr) 138px minmax(100px, 1fr) minmax(88px, 0.8fr) 56px 98px 98px"
       empty={live.data.lastRouterReadAt
         ? <EmptyState title="Sem achados" description="O registo do router não assinalou nada nos últimos 7 dias." />
         : <EmptyState title="Registo do router por ler" description="Os achados aparecem depois da primeira leitura, com o ISPM na rede de gestão." />} />

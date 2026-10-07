@@ -50,18 +50,20 @@ export function findingWho(finding: HealthFinding): string {
 /**
  * Horas que já estão na hora local — as do registo do router (`AAAA-MM-DD hh:mm:ss`) e as do
  * diário (`AAAA-MM-DDThh:mm`). Passá-las pelo formatador das datas da base, que as lê como
- * UTC, desviava-as uma hora.
+ * UTC, desviava-as uma hora. Sem o ano cabe numa coluna estreita: a janela é de dias.
  */
-export function formatLocalStamp(value: string): string {
+export function formatLocalStamp(value: string, withYear = true): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(value);
-  return match ? `${match[3]}/${match[2]}/${match[1]} ${match[4]}:${match[5]}` : value;
+  if (!match) return value;
+  return `${match[3]}/${match[2]}${withYear ? `/${match[1]}` : ''} ${match[4]}:${match[5]}`;
 }
 
 export type Situation = { key: string; tone: 'danger' | 'warn' | 'neutral'; title: string; detail: string; count: number | null };
 
 /**
- * O que o painel mostra primeiro: o que está em baixo agora, depois os achados do router pela
- * gravidade, depois as antenas que a sonda viu cair e o router não (lido tarde ou nunca).
+ * O que o painel mostra primeiro: o backbone em baixo agora, depois os achados do router pela
+ * gravidade, depois as antenas que a sonda viu cair e o router não (lido tarde ou nunca), e por
+ * fim os equipamentos de cliente sem resposta.
  */
 export function healthSituations(health: NetworkHealth): Situation[] {
   const seenByRouter = new Set(health.findings.filter((row) => row.kind === 'antena_em_baixo').map((row) => row.subject));
@@ -80,6 +82,9 @@ export function healthSituations(health: NetworkHealth): Situation[] {
     })),
     ...health.antennas.filter((row) => !seenByRouter.has(row.ipAddress)).map((row): Situation => ({
       key: `probe:${row.id}`, tone: 'warn', title: `${row.name} caiu`, detail: `${row.ipAddress} · visto pela sonda`, count: row.downs
+    })),
+    ...health.downNow.filter((row) => row.kind === 'assignment').map((row): Situation => ({
+      key: `client:${row.id}`, tone: 'neutral', title: `${row.name} sem resposta`, detail: `${row.ipAddress} · equipamento de cliente`, count: null
     }))
   ];
 }
