@@ -142,6 +142,9 @@ function AppShell() {
   const [navCollapsed, setNavCollapsed] = useState(readSidebarCollapsed);
   // Muda a cada pedido do aviso do cofre: remonta as Configurações já no separador Cofre.
   const [vaultOpenRequest, setVaultOpenRequest] = useState(0);
+  // O cartão da rede no painel abre a Topologia já nos Incidentes; sair dela esquece o pedido.
+  const [topologyTab, setTopologyTab] = useState<'incidents' | undefined>(undefined);
+  useEffect(() => { if (section !== 'topology') setTopologyTab(undefined); }, [section]);
 
   useEffect(() => writeSidebarCollapsed(navCollapsed), [navCollapsed]);
   useEffect(() => installKeyboardNavigationIntent(), []);
@@ -425,6 +428,7 @@ function AppShell() {
               onOpenLowStock={() => { setStockLowFocus(true); setSection('stock'); }}
               onOpenWorkOrders={() => setSection('work-orders')}
               onOpenMonth={(month) => { setPaymentsMonth(month); setSection('finance'); }}
+              onOpenNetwork={() => { setTopologyTab('incidents'); setSection('topology'); }}
             />
           )}
           {section === 'clients' && (
@@ -453,6 +457,7 @@ function AppShell() {
           {section === 'topology' && (
             <Suspense fallback={<TopologyModuleFallback />}>
               <TopologyModule
+                initialTab={topologyTab}
                 onOpenClient={(id) => {
                   setFocusClientId(id);
                   setSection('clients');

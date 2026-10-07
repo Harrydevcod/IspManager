@@ -12,6 +12,8 @@ const TopologyMapView = lazy(() => import('./TopologyMapView'));
 
 export type TopologyModuleProps = {
   api?: TopologyApi;
+  /** A aba em que o módulo abre; o painel inicial manda abrir nos Incidentes. */
+  initialTab?: 'incidents';
   onOpenClient: (clientId: number) => void;
   /**
    * O `assignmentId` é opcional porque só a Descoberta o sabe: o mapa manda
@@ -40,7 +42,7 @@ function MapLoadingFallback() {
 }
 
 export default function TopologyModule(props: TopologyModuleProps) {
-  const [activeTab, setActiveTab] = useState<TopologyTab>('backbone');
+  const [activeTab, setActiveTab] = useState<TopologyTab>(props.initialTab ?? 'backbone');
   const [revision, setRevision] = useState(0);
   const [backboneRevision, setBackboneRevision] = useState(0);
   const [focusBackboneDeviceId, setFocusBackboneDeviceId] = useState<number | null>(null);

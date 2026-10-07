@@ -6,6 +6,13 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+> **Uma migração.** A `0074` cria duas tabelas novas (achados do registo do router e diário de ocorrências). Não toca em nenhum dado existente.
+
+- **Saúde da rede no painel inicial.** Um cartão novo mostra as últimas 72 horas: quantas vezes as antenas caíram, o que está em baixo agora e as três situações mais graves. "Ver detalhe" abre Topologia › Incidentes. O cartão diz a hora da última leitura da sonda e do router, porque só se vê o que aconteceu com o ISPM aberto.
+- **O que o router regista deixa de se perder.** O router só guarda umas horas de registo. De 5 em 5 minutos o ISPM lê-o (só leitura) e soma por dia o que encontra: quedas vistas pelo netwatch, DHCP intruso, quedas de PPPoE, aparelhos em ciclo de DHCP e logins falhados. Aparece na vista nova **Router** da aba Incidentes.
+- **Endereço do router duplicado.** Um equipamento que anuncia DHCP com o endereço do próprio router passa a ser assinalado como crítico — foi o que pôs as antenas a cair a 6 e 7 de outubro (um TL-WR850N de cliente no 192.168.1.1).
+- **Diário de ocorrências.** Na vista nova **Diário** da aba Incidentes, e pelo botão "Registar ocorrência" do cartão, escreve-se o que aconteceu, a causa e como se resolveu. Uma ocorrência fecha-se, não se apaga; cada alteração fica na auditoria.
+
 ## [2.21](https://github.com/Harrydevcod/IspManager/releases/tag/v2.21.0) — 2026-10-06
 
 > **Uma migração.** A `0073` acrescenta ao estado de rede de cada serviço o MAC de quem se autenticou por PPPoE. Não muda nenhum valor existente.

@@ -666,3 +666,10 @@
   background: var(--topology-bg);
 }
 .topology-router-port-field { max-width: 18rem; }
+
+/* Incidentes: a ação do diário fica por cima da tabela, encostada à direita. */
+.incidents-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-3);
+}

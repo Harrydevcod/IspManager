@@ -61,6 +61,9 @@ ISPM is a desktop application for day-to-day ISP operations in Cabo Verde.
 - Plan changes appear in the customer history timeline as their own events.
 - Payments, suspensions, reactivations, and overrides appear as separate timeline events even on the same day.
 - The customer history timeline keeps final-state records visible instead of hiding them.
+- The router keeps only a few hours of log. An `achado do router` is what ISPM read from that log and summed per day (netwatch drops, rogue DHCP, PPPoE drops); it only exists for periods when ISPM was open on the management network.
+- A rogue DHCP server announcing one of the router's own addresses is an `endereço duplicado` and is treated as critical.
+- An `ocorrência` is a network diary entry written by the operator (what happened, cause, resolution). It is closed, never deleted.
 
 ## System language
 
