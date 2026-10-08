@@ -9,15 +9,6 @@
    indirection. If you change one, change the other.
    ========================================================================= */
 
-.sparkline svg .expense-line {
-  opacity: 0.85;
-  filter: drop-shadow(0 0 1px color-mix(in oklch, var(--danger) 60%, transparent));
-}
-
-.sparkline svg .expense-dot {
-  transition: r 180ms ease;
-}
-
 /* Expenses (OPEX) module — editorial dark-first */
 .expenses-module {
   overflow: hidden;

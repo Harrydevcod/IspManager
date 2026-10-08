@@ -186,7 +186,7 @@ export function Dashboard({
         >
           {summary
             ? <RevenueBars points={summary.revenueByMonth} onSelectMonth={onOpenMonth} />
-            : <Skeleton height={180} radius={12} />}
+            : <Skeleton height={246} radius={12} />}
         </Card>
         <NetworkHealthCard onOpenNetwork={onOpenNetwork} />
       </section>
