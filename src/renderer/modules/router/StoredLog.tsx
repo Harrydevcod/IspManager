@@ -1,6 +1,6 @@
 import { Download, ScrollText } from 'lucide-react';
 import { useState } from 'react';
-import { Button, DataTable, EmptyState, ErrorRetry, Field, Select, SkeletonList, Toggle } from '../../components';
+import { Button, DataTable, EmptyState, ErrorRetry, Field, FilterBar, Select, SkeletonList, Toggle } from '../../components';
 import { logTone, ROUTER_API, type RouterLogEntry } from './router-api';
 import { LOG_COLUMNS } from './RouterTables';
 import { useLive } from './useLive';
@@ -55,7 +55,7 @@ export function StoredLog() {
 
   return (
     <>
-      <div className="router-log-bar">
+      <FilterBar className="router-log-bar">
         <Select label="Dia" className="router-log-day" value={day} onChange={(event) => setPicked(event.target.value)}>
           {list.map((item) => (
             <option key={item.day} value={item.day}>{formatDay(item.day)} · {item.lines.toLocaleString('pt-PT')} linhas</option>
@@ -67,7 +67,7 @@ export function StoredLog() {
         <Button variant="secondary" leadingIcon={<Download size={14} aria-hidden />} disabled={!loaded} onClick={() => loaded && download(loaded)}>
           Exportar .txt
         </Button>
-      </div>
+      </FilterBar>
       {history.error && !loaded ? <ErrorRetry message="Não foi possível ler as linhas deste dia." onRetry={history.reload} />
         : !loaded ? <SkeletonList rows={6} />
           : (

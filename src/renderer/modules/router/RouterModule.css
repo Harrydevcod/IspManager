@@ -63,15 +63,22 @@
 }
 
 .router-log-bar {
-  display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-3) var(--space-4);
-  margin: var(--space-4) 0 var(--space-3);
+  margin-top: var(--space-4);
 }
 
-.router-log-bar .router-log-day { flex: 0 0 240px; }
-.router-log-bar .router-log-search { flex: 0 1 280px; }
+.router-log-bar .router-log-day { flex: 0 0 220px; }
+.router-log-bar .router-log-search { flex: 0 1 240px; }
+/* O interruptor é um rótulo com caixa: não leva as maiúsculas dos rótulos de campo. */
+.router-log-bar .field-toggle {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  letter-spacing: 0;
+  text-transform: none;
+}
 .router-log-bar .btn { margin-left: auto; }
 
 .router-log-filter {
