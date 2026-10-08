@@ -28,6 +28,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  db.prepare('DELETE FROM whatsapp_notices').run();
   db.prepare('DELETE FROM whatsapp_outbox').run();
   db.prepare('DELETE FROM client_credits').run();
   db.prepare('DELETE FROM payment_receipts').run();
@@ -192,5 +193,52 @@ describe('POST /api/payments/notify-overdue', () => {
       expect.objectContaining({ clientName: 'Cliente Opt Out', status: 'skipped', reason: 'opt-out' }),
       expect.objectContaining({ clientName: 'Cliente Sem Telefone', status: 'skipped', reason: 'sem telefone valido' })
     ]));
+  });
+
+  // Regressao: a rota lia o token com um SELECT direto e mandava ao UltraMsg
+  // o texto cifrado do cofre (`enc:v2:...`) em vez do token.
+  test('sends with the opened token, never the vault ciphertext', async () => {
+    stubUltraMsg(200, { sent: 'true', id: 'msg-9' });
+    db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgInstanceId','i1',datetime('now'))`).run();
+    writeSecret(db, 'ultraMsgToken', 'token-aberto');
+    insertOverdueClient({ code: 'CLT-A', name: 'Cliente Atrasado', phone: '9910000', daysOverdue: 20 });
+
+    const response = await app.inject({ method: 'POST', url: '/api/payments/notify-overdue', payload: {} });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ sent: 1, failed: [] });
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    const sentToken = new URLSearchParams(String(init.body)).get('token');
+    expect(sentToken).toBe('token-aberto');
+  });
+});
+
+describe('fornecedor por configuracao', () => {
+  test('whatsappProvider = meta-cloud envia pela Graph API e a linha fica com esse fornecedor', async () => {
+    stubUltraMsg(200, { messages: [{ id: 'wamid.77' }] });
+    const setting = db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES (?, ?, datetime('now'))`);
+    setting.run('whatsappProvider', 'meta-cloud');
+    setting.run('metaPhoneNumberId', '1055');
+    writeSecret(db, 'metaAccessToken', 'meta-token');
+
+    const response = await app.inject({ method: 'POST', url: '/api/whatsapp/send', payload: { phone: '9912233', body: 'ola' } });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ ok: true, provider: 'meta-cloud', status: 'sent' });
+    const [url] = vi.mocked(fetch).mock.calls[0] as [string];
+    expect(url).toContain('graph.facebook.com');
+    const row = db.prepare('SELECT provider, provider_message_id AS pid FROM whatsapp_outbox').get() as { provider: string; pid: string };
+    expect(row).toEqual({ provider: 'meta-cloud', pid: 'wamid.77' });
+  });
+
+  test('com a Meta escolhida mas por configurar, o erro diz Meta e nada e enviado', async () => {
+    stubUltraMsg(200, {});
+    db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('whatsappProvider','meta-cloud',datetime('now'))`).run();
+
+    const response = await app.inject({ method: 'POST', url: '/api/whatsapp/send', payload: { phone: '9912233', body: 'ola' } });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: 'Meta Cloud API nao configurado' });
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
 });

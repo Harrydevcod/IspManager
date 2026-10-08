@@ -13,7 +13,7 @@ import {
   fallbackWhatsappTemplate,
   normalizeWhatsappPhone,
   renderWhatsappMessage,
-  sendWhatsappViaUltraMsg
+  sendWhatsapp
 } from '../lib/whatsapp';
 import {
   fallbackSmsInvoiceIssuedTemplate,
@@ -76,6 +76,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
   const auth = useAuth();
   const [routerSecretDraft, setRouterSecretDraft] = useState<SecretDraft>({ editing: false });
   const [ultraSecretDraft, setUltraSecretDraft] = useState<SecretDraft>({ editing: false });
+  const [metaSecretDraft, setMetaSecretDraft] = useState<SecretDraft>({ editing: false });
   const [message, setMessage] = useState<{ tone: 'neutral' | 'success' | 'error'; text: string; placement: 'top' | 'save' } | null>(null);
   const [saving, setSaving] = useState(false);
   const [testSending, setTestSending] = useState(false);
@@ -118,6 +119,9 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     noticeCooldownDays: '7',
     ultraMsgInstanceId: '',
     ultraMsgToken: '',
+    whatsappProvider: 'ultramsg',
+    metaPhoneNumberId: '',
+    metaAccessToken: '',
     smsCompanionEnabled: false,
     smsCompanionBaseUrl: '',
     smsDispatchIntervalSeconds: '60',
@@ -492,6 +496,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
           ...savedForm,
           routerosPassword: routerSecretDraft.editing && routerSecretDraft.value ? routerSecretDraft.value : undefined,
           ultraMsgToken: ultraSecretDraft.editing && ultraSecretDraft.value ? ultraSecretDraft.value : undefined,
+          metaAccessToken: metaSecretDraft.editing && metaSecretDraft.value ? metaSecretDraft.value : undefined,
           defaultDueDay: Number(savedForm.defaultDueDay),
           autoBillingDay: Number(savedForm.autoBillingDay),
           audiovisualMonthlyCve: Number(savedForm.audiovisualMonthlyCve),
@@ -527,17 +532,21 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
       const result = await response.json().catch(() => ({})) as {
         routerosPasswordConfigured?: boolean;
         ultraMsgTokenConfigured?: boolean;
+        metaAccessTokenConfigured?: boolean;
       };
       const settledForm = {
         ...savedForm,
         routerosPassword: '',
         ultraMsgToken: '',
+        metaAccessToken: '',
         routerosPasswordConfigured: result.routerosPasswordConfigured ?? savedForm.routerosPasswordConfigured,
-        ultraMsgTokenConfigured: result.ultraMsgTokenConfigured ?? savedForm.ultraMsgTokenConfigured
+        ultraMsgTokenConfigured: result.ultraMsgTokenConfigured ?? savedForm.ultraMsgTokenConfigured,
+        metaAccessTokenConfigured: result.metaAccessTokenConfigured ?? savedForm.metaAccessTokenConfigured
       };
       setForm(settledForm);
       setRouterSecretDraft({ editing: false });
       setUltraSecretDraft({ editing: false });
+      setMetaSecretDraft({ editing: false });
       setLastSavedForm(settledForm);
       setSecretsLost([]);
       setMessage({ tone: 'success', text: 'Configuracoes gravadas com sucesso.', placement: 'save' });
@@ -712,8 +721,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
         { fullName: 'Teste ISPM', clientCode: 'TESTE', phone: testPhone },
         form.companyName
       );
-      await sendWhatsappViaUltraMsg(testPhone, body);
-      setTestMessage({ tone: 'success', text: 'Mensagem de teste enviada via UltraMsg.' });
+      await sendWhatsapp(testPhone, body);
+      setTestMessage({ tone: 'success', text: 'Mensagem de teste enviada.' });
     } catch (err) {
       setTestMessage({
         tone: 'error',
@@ -783,6 +792,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
             form={form}
             secretDraft={ultraSecretDraft}
             onSecretDraftChange={setUltraSecretDraft}
+            metaSecretDraft={metaSecretDraft}
+            onMetaSecretDraftChange={setMetaSecretDraft}
             onUpdate={updateForm}
             onToggle={toggleForm}
             testPhone={testPhone}

@@ -1,7 +1,7 @@
 import { formatPtDate, formatPtMonth } from './date';
 
 export const fallbackWhatsappTemplate = 'Ola {nome}, somos da {empresa}. Entramos em contacto sobre o seu servico de internet.';
-export const fallbackWhatsappTestTemplate = 'Teste UltraMsg - {empresa}. Ola {nome}, esta mensagem confirma que a integracao WhatsApp esta ativa.';
+export const fallbackWhatsappTestTemplate = 'Teste WhatsApp - {empresa}. Ola {nome}, esta mensagem confirma que a integracao WhatsApp esta ativa.';
 export const fallbackWhatsappInvoiceReadyTemplate = 'Ola {nome}, a sua fatura {fatura} de {mes} no valor de {valor} CVE ja esta pronta. Vencimento: {vencimento}. {empresa}';
 export const fallbackWhatsappReceiptTemplate = 'Ola {nome}, confirmamos o recebimento de {valor} CVE referente a {mes}. O seu recibo {recibo} foi emitido. Obrigado, {empresa}.';
 export const fallbackWhatsappReminderTemplate = 'Ola {nome}, lembramos que a sua fatura {fatura} de {mes}, no valor de {valor} CVE, vence a {vencimento}. {empresa}';

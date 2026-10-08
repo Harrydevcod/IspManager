@@ -13,7 +13,7 @@ import type { DataTableColumn } from '../components/DataTable';
 import { runBulk, summarizeBulk } from '../lib/bulkRun';
 import { useRowSelection } from '../lib/useRowSelection';
 import { statusLabel, statusTone } from '../lib/status';
-import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
+import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsapp } from '../lib/whatsapp';
 import type { Client, ClientProfitability } from '../types';
 
 type ClientFormState = {
@@ -260,8 +260,8 @@ export function ClientsModule({
   async function sendClientWhatsapp(client: Client) {
     const message = renderWhatsappMessage(messagingSettings.whatsappTemplate, client, messagingSettings.companyName);
     try {
-      await sendWhatsappViaUltraMsg(client.phone, message);
-      toast('Mensagem WhatsApp enviada via UltraMsg.', 'success');
+      await sendWhatsapp(client.phone, message);
+      toast('Mensagem WhatsApp enviada.', 'success');
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Nao foi possivel enviar WhatsApp', 'error');
     }
@@ -379,7 +379,7 @@ export function ClientsModule({
     try {
       const result = await runBulk(targets, async (client) => {
         const message = renderWhatsappMessage(messagingSettings.whatsappTemplate, client, messagingSettings.companyName);
-        await sendWhatsappViaUltraMsg(client.phone, message);
+        await sendWhatsapp(client.phone, message);
       });
       toast(summarizeBulk(result, 'notificados'), result.failed ? 'info' : 'success');
       selection.clear();

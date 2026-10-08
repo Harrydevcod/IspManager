@@ -6,6 +6,9 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+- **WhatsApp: escolha do fornecedor.** Em Definições › WhatsApp escolhe-se entre o UltraMsg e a Cloud API oficial da Meta (ID do número e token, guardado no cofre). Com a Meta, o texto livre só chega a quem escreveu à empresa nas últimas 24 horas; os avisos de fatura, atraso e corte precisam de modelos aprovados, que ainda não são enviados, e não há confirmação de entrega nem de leitura.
+- **Corrigido: o envio manual de avisos em atraso falhava sempre.** O botão mandava ao UltraMsg o token cifrado do cofre em vez do token. O envio automático e os PDF não eram afetados.
+
 ## [2.25](https://github.com/Harrydevcod/IspManager/releases/tag/v2.25.0) — 2026-10-08
 
 - **A faixa "Painel operacional" saiu de todos os ecrãs.** O título repetia-se por cima de cada módulo sem dizer nada e gastava altura; os módulos começam agora mais acima.

@@ -1,4 +1,4 @@
-import { Button, Field, Message, SecretField, Textarea, Toggle, type SecretDraft } from '../../components';
+import { Button, Field, Message, SecretField, Select, Textarea, Toggle, type SecretDraft } from '../../components';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
 import { templateRows, type SettingsFormState, type ToggleField, type UpdateField } from './settingsForm';
 
@@ -9,6 +9,8 @@ type WhatsappTabProps = {
   onUpdate: UpdateField;
   secretDraft?: SecretDraft;
   onSecretDraftChange?: (next: SecretDraft) => void;
+  metaSecretDraft?: SecretDraft;
+  onMetaSecretDraftChange?: (next: SecretDraft) => void;
   onToggle: ToggleField;
   testPhone: string;
   onTestPhoneChange: (value: string) => void;
@@ -17,19 +19,49 @@ type WhatsappTabProps = {
   onSendTest: () => void;
 };
 
-export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, onSecretDraftChange = () => undefined, onToggle, testPhone, onTestPhoneChange, testMessage, testSending, onSendTest }: WhatsappTabProps) {
+export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, onSecretDraftChange = () => undefined, metaSecretDraft = { editing: false }, onMetaSecretDraftChange = () => undefined, onToggle, testPhone, onTestPhoneChange, testMessage, testSending, onSendTest }: WhatsappTabProps) {
+  const usesMeta = form.whatsappProvider === 'meta-cloud';
   return (
     <>
-      <Field
-        label="UltraMsg instance ID"
-        autoComplete="off"
-        spellCheck={false}
-        value={form.ultraMsgInstanceId}
-        onChange={(event) => onUpdate('ultraMsgInstanceId', event.target.value)}
-        placeholder="instance00000"
-      />
-      <SecretField label="Token UltraMsg" configured={Boolean(form.ultraMsgTokenConfigured)}
-        draft={secretDraft} onDraftChange={(next) => { onSecretDraftChange(next); onUpdate('ultraMsgToken', next.editing ? next.value : ''); }} />
+      <Select
+        label="Fornecedor"
+        value={form.whatsappProvider}
+        onChange={(event) => onUpdate('whatsappProvider', event.target.value)}
+      >
+        <option value="ultramsg">UltraMsg</option>
+        <option value="meta-cloud">Meta Cloud API (oficial)</option>
+      </Select>
+      {usesMeta ? (
+        <>
+          <Field
+            label="ID do número (Phone number ID)"
+            autoComplete="off"
+            spellCheck={false}
+            inputMode="numeric"
+            value={form.metaPhoneNumberId}
+            onChange={(event) => onUpdate('metaPhoneNumberId', event.target.value.replace(/\D/g, ''))}
+            placeholder="105500000000000"
+          />
+          <SecretField label="Token de acesso Meta" configured={Boolean(form.metaAccessTokenConfigured)}
+            draft={metaSecretDraft} onDraftChange={(next) => { onMetaSecretDraftChange(next); onUpdate('metaAccessToken', next.editing ? next.value : ''); }} />
+          <Message tone="neutral">
+            A Cloud API só entrega texto livre a quem escreveu à empresa nas últimas 24 horas. Avisos de fatura, atraso e corte precisam de modelos aprovados pela Meta, que o ISPM ainda não envia: fora dessa janela o envio falha. A confirmação de entrega e de leitura também não está disponível com este fornecedor.
+          </Message>
+        </>
+      ) : (
+        <>
+          <Field
+            label="UltraMsg instance ID"
+            autoComplete="off"
+            spellCheck={false}
+            value={form.ultraMsgInstanceId}
+            onChange={(event) => onUpdate('ultraMsgInstanceId', event.target.value)}
+            placeholder="instance00000"
+          />
+          <SecretField label="Token UltraMsg" configured={Boolean(form.ultraMsgTokenConfigured)}
+            draft={secretDraft} onDraftChange={(next) => { onSecretDraftChange(next); onUpdate('ultraMsgToken', next.editing ? next.value : ''); }} />
+        </>
+      )}
       <Field
         label="Avisar suspensao apos X dias"
         type="number"
@@ -40,7 +72,7 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
       />
       <Toggle
         title="Enviar avisos de atraso automaticamente"
-        description="Uma vez por dia, o sistema envia avisos de atraso/suspensao aos clientes elegiveis via WhatsApp. Desligado por defeito — liga so com consentimento dos clientes e UltraMsg configurado."
+        description="Uma vez por dia, o sistema envia avisos de atraso/suspensao aos clientes elegiveis via WhatsApp. Desligado por defeito — liga so com consentimento dos clientes e o fornecedor configurado."
         checked={form.autoNoticesEnabled}
         onChange={(event) => onToggle('autoNoticesEnabled', event.target.checked)}
       />

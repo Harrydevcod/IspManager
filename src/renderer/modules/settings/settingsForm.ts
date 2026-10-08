@@ -42,6 +42,11 @@ export type SettingsFormState = {
   /** Só um token novo; vazio = manter o guardado. */
   ultraMsgToken: string;
   ultraMsgTokenConfigured?: boolean;
+  whatsappProvider: 'ultramsg' | 'meta-cloud';
+  metaPhoneNumberId: string;
+  /** Só um token novo; vazio = manter o guardado. */
+  metaAccessToken: string;
+  metaAccessTokenConfigured?: boolean;
   smsCompanionEnabled: boolean;
   smsCompanionBaseUrl: string;
   smsDispatchIntervalSeconds: string;

@@ -8,21 +8,6 @@ export type UltraMsgSendResult =
   | { ok: true; result: unknown; messageId?: string }
   | { ok: false; reason: string; details?: unknown };
 
-/** Normalize a raw phone to UltraMsg's `+<country><number>` form (Cabo Verde). */
-export function normalizeUltraMsgPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (!digits) {
-    return '';
-  }
-  if (digits.startsWith('238')) {
-    return `+${digits}`;
-  }
-  if (digits.length === 7) {
-    return `+238${digits}`;
-  }
-  return `+${digits}`;
-}
-
 async function readUltraMsgResponse(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text) {

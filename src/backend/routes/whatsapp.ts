@@ -9,8 +9,8 @@ import {
   renderWhatsappTemplate
 } from '../../shared/whatsapp';
 import { balanceSqlExpr, overdueSqlPredicate } from '../lib/payments';
-import { normalizeUltraMsgPhone, sendViaUltraMsg } from '../lib/ultramsg';
 import { enqueueWhatsapp, runWhatsappOutboxIfDue } from '../lib/whatsapp-outbox';
+import { configuredWhatsappProviderLabel, normalizeWhatsappPhone, resolveWhatsappProvider } from '../lib/whatsapp-provider';
 
 const sendWhatsappSchema = z.object({
   phone: z.string().trim().min(1),
@@ -80,13 +80,12 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Mensagem WhatsApp invalida' });
     }
 
-    const instanceId = getSetting('ultraMsgInstanceId');
-    const token = getSetting('ultraMsgToken');
-    if (!instanceId || !token) {
-      return reply.status(400).send({ error: 'UltraMsg nao configurado' });
+    const provider = resolveWhatsappProvider(getSqliteDatabase());
+    if (!provider) {
+      return reply.status(400).send({ error: `${configuredWhatsappProviderLabel(getSqliteDatabase())} nao configurado` });
     }
 
-    const to = normalizeUltraMsgPhone(parsed.data.phone);
+    const to = normalizeWhatsappPhone(parsed.data.phone);
     if (!to) {
       return reply.status(400).send({ error: 'Telefone WhatsApp invalido' });
     }
@@ -96,7 +95,7 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
     const row = getSqliteDatabase().prepare('SELECT status, last_error FROM whatsapp_outbox WHERE id = ?').get(id) as ManualOutboxStatus;
     const failed = replyWithManualOutboxResult(reply, row, 'Falha no envio');
     if (failed) return failed;
-    return { ok: true, provider: 'ultramsg', id, status: row.status };
+    return { ok: true, provider: provider.id, id, status: row.status };
   });
 
   const sendDocumentSchema = z.object({ kind: z.enum(['invoice', 'receipt']) });
@@ -107,10 +106,9 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
     if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
       return reply.status(400).send({ error: 'Pedido invalido' });
     }
-    const instanceId = getSetting('ultraMsgInstanceId');
-    const token = getSetting('ultraMsgToken');
-    if (!instanceId || !token) {
-      return reply.status(400).send({ error: 'UltraMsg nao configurado' });
+    const provider = resolveWhatsappProvider(getSqliteDatabase());
+    if (!provider) {
+      return reply.status(400).send({ error: `${configuredWhatsappProviderLabel(getSqliteDatabase())} nao configurado` });
     }
     const payment = getSqliteDatabase().prepare(`
       SELECT py.id AS id, c.id AS clientId, c.phone AS phone
@@ -120,7 +118,7 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
     if (!payment) {
       return reply.status(404).send({ error: 'Pagamento nao encontrado' });
     }
-    const to = normalizeUltraMsgPhone(payment.phone || '');
+    const to = normalizeWhatsappPhone(payment.phone || '');
     if (!to) {
       return reply.status(400).send({ error: 'Cliente sem telefone WhatsApp valido' });
     }
@@ -172,7 +170,7 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
 
     const eligible = candidatesForNotice.filter((row) => {
       if (row.whatsappOptOut) return false;
-      const phone = normalizeUltraMsgPhone(row.phone || '');
+      const phone = normalizeWhatsappPhone(row.phone || '');
       return phone.length > 0;
     });
 
@@ -206,10 +204,9 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
       return { dryRun: false, total: candidatesForNotice.length, sent: 0, failed: [], skipped, details: [] };
     }
 
-    const instanceId = getSetting('ultraMsgInstanceId');
-    const token = getSetting('ultraMsgToken');
-    if (!instanceId || !token) {
-      return reply.status(400).send({ error: 'UltraMsg nao configurado' });
+    const provider = resolveWhatsappProvider(getSqliteDatabase());
+    if (!provider) {
+      return reply.status(400).send({ error: `${configuredWhatsappProviderLabel(getSqliteDatabase())} nao configurado` });
     }
 
     const template = parsed.data.noticeType === 'suspension'
@@ -228,7 +225,7 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
 
     for (let i = 0; i < eligible.length; i++) {
       const row = eligible[i];
-      const to = normalizeUltraMsgPhone(row.phone || '');
+      const to = normalizeWhatsappPhone(row.phone || '');
       const body = renderWhatsappTemplate(
         template,
         {
@@ -244,7 +241,7 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
         },
         companyName
       );
-      const result = await sendViaUltraMsg(instanceId, token, to, body);
+      const result = await provider.sendText({ to, body });
       if (result.ok) {
         sent += 1;
         logNotice.run(row.paymentId, row.clientId, parsed.data.noticeType, to, body, 'sent', null);
