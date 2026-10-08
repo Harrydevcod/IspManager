@@ -49,9 +49,10 @@ test('lista o incidente e abre os clientes afetados ao clicar na linha', async (
   expect(row.textContent).toContain('Antena X');
   expect(row.textContent).toContain('37 min');
   expect(host.querySelectorAll('[role="columnheader"]')).toHaveLength(8);
+  expect(host.textContent).toContain('1 em curso · últimos 30 dias');
 
   await act(async () => row.click());
-  expect(document.body.textContent).toContain('Arrastou: AP Norte');
+  expect(document.body.textContent).toContain('Arrastou AP Norte');
   expect(document.body.textContent).toContain('Ana Lopes');
   await act(async () => root.unmount());
 });

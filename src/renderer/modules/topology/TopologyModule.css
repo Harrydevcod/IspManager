@@ -140,8 +140,9 @@
   min-height: 22rem;
 }
 
-/* A Descoberta não tem scroll próprio — a tabela cresce e a página rola. */
-.content > .topology-shell:has(> #topology-panel-discovery:not([hidden])) {
+/* A Descoberta e os Incidentes não têm scroll próprio — a tabela cresce e a página rola. */
+.content > .topology-shell:has(> #topology-panel-discovery:not([hidden])),
+.content > .topology-shell:has(> #topology-panel-incidents:not([hidden])) {
   flex: 1 0 auto;
 }
 
@@ -667,9 +668,73 @@
 }
 .topology-router-port-field { max-width: 18rem; }
 
-/* Incidentes: a ação do diário fica por cima da tabela, encostada à direita. */
-.incidents-actions {
+/* Incidentes: como a Descoberta, sem caixa própria — a casca já é a moldura. */
+.incidents-workspace {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: var(--space-3);
+  flex-direction: column;
+  gap: var(--space-4);
+  align-self: stretch;
+  min-height: 0;
+}
+
+/* Uma só linha antes do primeiro dado: vistas à esquerda, contexto e ação à direita. */
+.incidents-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+
+.incidents-bar .segmented-tabs { margin: 0; }
+
+.incidents-bar-side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.incidents-meta {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.incidents-num { font-variant-numeric: tabular-nums; }
+
+.incidents-ongoing { color: var(--danger); }
+
+/* A gravidade é um ponto antes do texto. A tabela corta com reticências um
+   `span` sozinho na célula; aqui o tipo tem de se ler inteiro, por isso dobra. */
+.data-table .data-table-cell > span.incidents-kind:only-child {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2);
+  overflow: visible;
+  white-space: normal;
+}
+
+.incidents-kind::before {
+  content: '';
+  width: var(--space-1-5);
+  height: var(--space-1-5);
+  margin-top: calc(0.5lh - var(--space-1-5) / 2);
+  border-radius: var(--rpill);
+  background: var(--text-3);
+}
+
+.incidents-kind[data-tone='danger']::before { background: var(--danger); }
+.incidents-kind[data-tone='warn']::before { background: var(--warn); }
+
+/* O diálogo largo não dá margem ao corpo: alinha-se aqui pelo título. */
+.incidents-detail { padding: var(--space-4) var(--space-6) var(--space-6); }
+
+.incidents-dragged {
+  margin: 0 0 var(--space-4);
+  color: var(--text);
+}
+
+.incidents-dragged .field-label {
+  display: block;
+  margin-bottom: var(--space-1);
 }
