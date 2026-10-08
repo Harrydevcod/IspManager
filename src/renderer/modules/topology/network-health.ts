@@ -43,6 +43,11 @@ export const KIND_LABEL: Record<FindingKind, string> = {
   login_falhado: 'Login falhado no router'
 };
 
+/** A gravidade de um achado: o painel e a aba Incidentes pintam-no pela mesma escala. */
+export function findingTone(kind: FindingKind): 'danger' | 'warn' | 'neutral' {
+  return kind === 'ip_duplicado' ? 'danger' : kind === 'antena_em_baixo' || kind === 'dhcp_intruso' ? 'warn' : 'neutral';
+}
+
 /** A quem o achado diz respeito, do nome mais útil para o menos. */
 export function findingWho(finding: HealthFinding): string {
   return finding.deviceName ?? finding.clientName ?? finding.vendor ?? '—';
@@ -74,7 +79,7 @@ export function healthSituations(health: NetworkHealth): Situation[] {
     })),
     ...health.findings.map((row): Situation => ({
       key: `${row.kind}:${row.subject}`,
-      tone: row.kind === 'ip_duplicado' ? 'danger' : row.kind === 'antena_em_baixo' || row.kind === 'dhcp_intruso' ? 'warn' : 'neutral',
+      tone: findingTone(row.kind),
       title: row.kind === 'antena_em_baixo' ? `${row.deviceName ?? row.clientName ?? row.subject} caiu` : KIND_LABEL[row.kind],
       detail: row.kind === 'antena_em_baixo'
         ? `${row.subject} · visto pelo router`

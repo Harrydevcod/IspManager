@@ -5045,10 +5045,6 @@ label.field-toggle {
   align-content: center;
 }
 
-.dashboard-card-chart .sparkline svg {
-  height: 156px;
-}
-
 /* Saúde da rede: uma faixa a toda a largura — os números e as ações à esquerda, as situações
    à direita. Ao lado do gráfico ficava mais alta do que ele e abria um vazio no cartão da receita. */
 /* O estado fica à direita do título, não numa terceira linha do cabeçalho. */
@@ -5121,98 +5117,110 @@ label.field-toggle {
   }
 }
 
-/* Revenue chart: stacked vertical bars (paid base + pending top).
-   Current month rendered with full opacity; previous months recede.
-   Hover surfaces a floating tooltip with exact paid/pending/total and
-   MoM delta; non-hovered bars dim. Average paid line + year breaks
-   give analytical context without colour candy. */
+/* Gráfico de receita: barras empilhadas (pago na base, pendente em cima), desenhadas
+   à largura real do cartão. A escala é a da receita; investimentos e despesas são uma
+   marca por mês, presa no topo quando rebentam a escala. A coluna sob o cursor ganha
+   uma faixa e um tooltip ao lado com pago/pendente/custos/lucro e a variação mensal. */
 .sparkline {
   display: block;
   position: relative;
-  /* Séries do gráfico de receita alinhadas à marca: azul para o recebido,
-     âmbar para o pendente. Ambos legíveis nos dois temas. */
+  /* Séries alinhadas à marca: azul para o recebido, âmbar para o pendente. */
   --chart-paid: var(--accent);
   --chart-pending: var(--warn);
 }
+/* No tema claro o accent é dourado e o âmbar do aviso confundia-se com ele:
+   o pendente passa a um dourado claro, distinto pela luminosidade. */
+:root[data-theme="light"] .sparkline {
+  --chart-pending: color-mix(in oklab, var(--warn) 42%, var(--surface));
+}
 .sparkline svg {
   width: 100%;
-  height: 156px;
+  height: 220px;
   display: block;
   overflow: visible;
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
 }
-.sparkline svg .bar rect {
-  transition: fill-opacity 180ms ease, transform 220ms ease;
-}
-.sparkline svg .bar.bar-dim rect {
-  fill-opacity: 0.35;
-}
-.sparkline svg .bar:not(.bar-current):not(.bar-hovered):hover rect {
-  fill-opacity: 1;
-}
-.sparkline svg .bar {
-  cursor: default;
-  animation: bar-grow-in 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
-  animation-delay: calc(var(--i, 0) * 32ms);
-}
-.sparkline svg .bar.bar-clickable {
-  cursor: pointer;
-}
-@keyframes bar-grow-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-.sparkline svg .bar rect:not(.bar-hitbox) {
+.sparkline svg .bar-baseline { stroke: var(--border); stroke-width: 1; }
+.sparkline svg .bar-grid { stroke: var(--border); stroke-opacity: 0.55; stroke-width: 1; }
+.sparkline svg .bar-tick { font-size: var(--fs-xs); fill: var(--text-3); }
+.sparkline svg .bar-year-break { stroke: var(--border-2); stroke-dasharray: 2 3; }
+.sparkline svg .bar-avg { stroke: var(--text-3); stroke-opacity: 0.6; stroke-dasharray: 3 4; }
+.sparkline svg .bar-band { fill: var(--surface-2); }
+
+.sparkline svg .bar { cursor: default; outline: none; }
+.sparkline svg .bar.bar-clickable { cursor: pointer; }
+.sparkline svg .bar-hitbox { fill: transparent; }
+.sparkline svg .bar:focus-visible .bar-hitbox { stroke: var(--accent); stroke-width: 2; }
+
+.sparkline svg .bar-seg {
   transform-box: fill-box;
   transform-origin: center bottom;
-  animation: bar-rect-rise 520ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
-  animation-delay: calc(var(--i, 0) * 32ms);
+  transition: fill-opacity var(--motion-base) var(--ease-out);
+  animation: bar-rect-rise 520ms var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 28ms);
 }
+.sparkline svg .bar-seg-paid { fill: var(--chart-paid); fill-opacity: 0.82; }
+.sparkline svg .bar-seg-pending { fill: var(--chart-pending); fill-opacity: 0.82; }
+.sparkline svg .bar-current .bar-seg,
+.sparkline svg .bar-hovered .bar-seg { fill-opacity: 1; }
 @keyframes bar-rect-rise {
   from { transform: scaleY(0); }
   to   { transform: scaleY(1); }
 }
-.sparkline svg .bar-axis {
-  font-family: var(--font-ui);
-  font-size: 10px;
-  letter-spacing: 0.01em;
-  text-transform: uppercase;
-  fill: var(--text-3);
+
+/* Marcas de custo: traço à largura da barra, com um anel da cor do cartão por baixo
+   para se ler em cima do azul. Investimentos a cheio, despesas a tracejado: a
+   distinção não depende só da cor. */
+.sparkline svg .bar-mark-ring { stroke: var(--surface); stroke-width: 4; stroke-linecap: round; }
+.sparkline svg .bar-mark-line { stroke-width: 2; stroke-linecap: round; }
+.sparkline svg .bar-mark-expense .bar-mark-line { stroke: var(--danger); }
+.sparkline svg .bar-mark-opex .bar-mark-line { stroke: var(--text-2); stroke-dasharray: 1 5; }
+
+/* Halo da cor do cartão: o texto lê-se mesmo quando cruza a média ou uma marca. */
+.sparkline svg text {
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
 }
-.sparkline svg .bar-axis-current {
-  fill: var(--chart-paid);
+.sparkline svg .bar-value {
+  font-size: var(--fs-xs);
   font-weight: 600;
+  fill: var(--text-2);
 }
-.sparkline svg .bar-axis-future {
-  fill-opacity: 0.4;
-}
-.sparkline svg .bar-axis-meta {
-  fill: var(--text-3);
-  font-size: 9px;
+.sparkline svg .bar-current .bar-value,
+.sparkline svg .bar-hovered .bar-value { fill: var(--text); }
+.sparkline svg .bar-value-over { fill: var(--text-2); font-weight: 500; }
+.sparkline svg .bar-axis {
+  font-size: var(--fs-xs);
+  font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  fill: var(--text-3);
 }
+.sparkline svg .bar-axis-current { fill: var(--text); font-weight: 700; }
+.sparkline svg .bar-axis-future { fill-opacity: 0.45; }
+.sparkline svg .bar-axis-meta { text-transform: none; letter-spacing: 0; }
 
-/* Floating hover tooltip with breakdown + month-over-month delta.
-   Positioned absolutely over the chart in % of viewBox so it tracks
-   the bar regardless of how the SVG scales horizontally. */
+/* Tooltip ao lado da coluna (à direita; à esquerda na metade direita do gráfico). */
 .bar-tooltip {
   position: absolute;
-  transform: translate(-50%, calc(-100% - 12px));
-  min-width: 180px;
+  min-width: 184px;
   padding: var(--space-2-5) var(--space-3);
-  background: color-mix(in oklch, var(--surface-2) 92%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 12px 32px -16px rgba(0, 0, 0, 0.45);
+  background: var(--surface-3);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r1);
+  box-shadow: var(--shadow-2);
   pointer-events: none;
   z-index: var(--z-base);
-  animation: bar-tooltip-in 140ms ease-out;
+  animation: bar-tooltip-in var(--motion-fast) var(--ease-out);
 }
+.bar-tooltip-left { transform: translateX(-100%); }
 @keyframes bar-tooltip-in {
-  from { opacity: 0; transform: translate(-50%, calc(-100% - 4px)); }
-  to   { opacity: 1; transform: translate(-50%, calc(-100% - 12px)); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 .bar-tooltip-month {
   margin: 0 0 var(--space-1-5);
@@ -5243,7 +5251,6 @@ label.field-toggle {
 }
 .bar-tooltip-rows dd {
   margin: 0;
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
   color: var(--text);
@@ -5255,11 +5262,13 @@ label.field-toggle {
   display: inline-block;
 }
 .bar-tooltip-rows .dot-paid { background: var(--chart-paid); }
-.bar-tooltip-rows .dot-pending { background: var(--chart-pending); opacity: 0.62; }
+.bar-tooltip-rows .dot-pending { background: var(--chart-pending); }
+.bar-tooltip-rows .dot-expense { background: var(--danger); }
+.bar-tooltip-rows .dot-opex { background: var(--text-2); }
 .bar-tooltip-rows .bar-tooltip-total {
   padding-top: var(--space-1-5);
   margin-top: var(--space-0-5);
-  border-top: 1px dashed var(--border);
+  border-top: 1px solid var(--border-2);
 }
 .bar-tooltip-rows .bar-tooltip-total dt {
   font-weight: 600;
@@ -5268,47 +5277,36 @@ label.field-toggle {
 .bar-tooltip-rows .bar-tooltip-total dd {
   font-weight: 600;
 }
+.bar-tooltip-rows .profit-positive dd { color: var(--success); }
+.bar-tooltip-rows .profit-negative dd { color: var(--danger); }
 .bar-tooltip-delta {
   margin: var(--space-2) 0 0;
   font-size: var(--fs-xs);
-  letter-spacing: 0.02em;
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-variant-numeric: tabular-nums;
 }
 .bar-tooltip-delta.positive { color: var(--success); }
 .bar-tooltip-delta.negative { color: var(--danger); }
-.sparkline svg .bar-value {
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 10px;
-  letter-spacing: 0.02em;
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
-}
-.sparkline svg .bar-value-inside {
-  fill: var(--bg);
-  font-weight: 600;
-}
-.sparkline svg .bar-value-above {
-  fill: var(--text-2);
-}
+
 .sparkline-empty {
-  height: 156px;
+  height: 220px;
   display: grid;
   place-items: center;
   color: var(--text-3);
   font-size: var(--fs-sm);
 }
 .sparkline-legend {
-  display: inline-flex;
-  gap: var(--space-4);
-  margin-top: var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-2);
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
 .legend-item {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1-5);
 }
 .legend-item::before {
   content: "";
@@ -5318,35 +5316,17 @@ label.field-toggle {
   border-radius: 2px;
 }
 .legend-paid::before { background: var(--chart-paid); }
-.legend-pending::before {
-  background: var(--chart-pending);
-  opacity: 0.62;
-}
-.legend-expense::before {
-  background: var(--danger);
+.legend-pending::before { background: var(--chart-pending); }
+.legend-expense::before,
+.legend-opex::before {
   height: 2px;
   width: 14px;
-  border-radius: 999px;
+  border-radius: var(--rpill);
 }
-
-.bar-tooltip-rows .dot-expense {
-  background: var(--danger);
-  opacity: 0.7;
+.legend-expense::before { background: var(--danger); }
+.legend-opex::before {
+  background: repeating-linear-gradient(90deg, var(--text-2) 0 3px, transparent 3px 6px);
 }
-.sparkline svg .opex-line {
-  filter: drop-shadow(0 0 1px color-mix(in oklch, var(--accent-2) 60%, transparent));
-  opacity: 0.85;
-}
-.sparkline svg .opex-dot {
-  transition: r 180ms ease;
-  opacity: 0.85;
-}
-.bar-tooltip-rows .dot-opex {
-  background: var(--accent-2);
-  opacity: 0.8;
-}
-.bar-tooltip-rows .profit-positive dd { color: var(--success); }
-.bar-tooltip-rows .profit-negative dd { color: var(--danger); }
 
 /* Investments module: operational finance cockpit. */
 .investments-panel {
