@@ -606,9 +606,9 @@ const LOG_JOURNAL_FILE = 'ispm-log';
 // Sem `account`: cada leitura do ISPM deixa duas linhas de entrada e saída da API, e enchiam o
 // diário. Os logins falhados são `error,critical` e continuam a entrar.
 const LOG_JOURNAL_TOPICS = ['info,!account', 'warning', 'error', 'critical'];
-// 200 linhas ficam à volta de 20 kB: a REST só devolve o `contents` de ficheiros pequenos.
+// 200 linhas ficam à volta de 20 kB: cada ficheiro lê-se num só bloco do `/file/read`.
 // 500 ficheiros = 100 000 linhas, cerca de 11 MB no cartão.
-const LOG_JOURNAL_FIELDS = { target: 'disk', 'disk-lines-per-file': '200', 'disk-file-count': '500', 'disk-stop-on-full': 'false' };
+const LOG_JOURNAL_FIELDS ={ target: 'disk', 'disk-lines-per-file': '200', 'disk-file-count': '500', 'disk-stop-on-full': 'false' };
 
 /**
  * Põe o router a escrever o registo também no cartão, com rotação. As regras que escrevem
@@ -655,13 +655,17 @@ export async function readLogJournal(transport: RouterTransport, disk: string, s
     .sort((a, b) => a.modified.localeCompare(b.modified) || a.name.localeCompare(b.name));
   let text = '';
   for (const file of files) {
-    const row = asArray(await transport({ method: 'GET', path: `/file?name=${encodeURIComponent(file.name)}&.proplist=contents` }))[0];
-    // ponytail: só `contents`; se o router o cortar em ficheiros deste tamanho, ler por blocos com /file/read.
+    // Medido no hEX S (7.24): a listagem deixa de trazer o `contents` quando o ficheiro cresce,
+    // e o `/file/read` por blocos pede uma permissão que o grupo do ISPM não tem. O
+    // `/file get` serve até 60 kB e vem pelo mesmo `/execute` da cópia da configuração.
+    if (!/^[\w./-]+$/.test(file.name)) continue;
+    const raw = await transport({ method: 'POST', path: '/execute', body: { script: `:put [/file get "${file.name}" contents]`, 'as-string': 'true' } });
+    const body = (raw as { ret?: unknown } | null)?.ret;
     // Um texto mais curto do que o ficheiro é um corte: rebenta em vez de contar a menos.
-    if (typeof row?.contents !== 'string' || row.contents.length < file.size * 0.9) {
+    if (typeof body !== 'string' || body.length < file.size * 0.9) {
       throw new RouterError(`O router não devolveu o texto de ${file.name}`, 0, undefined, 'bad_response');
     }
-    text += row.contents.endsWith('\n') ? row.contents : `${row.contents}\n`;
+    text += body.endsWith('\n') ? body : `${body}\n`;
   }
   return text;
 }

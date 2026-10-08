@@ -6,6 +6,10 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.23](https://github.com/Harrydevcod/IspManager/releases/tag/v2.23.0) — 2026-10-08
+
+- **Corrigido: "Guardar o registo no cartão" falhava com "O router não devolveu o texto".** O router deixa de devolver o texto de um ficheiro na listagem assim que ele cresce uns kB. O ISPM passa a lê-lo pelo mesmo caminho da cópia da configuração, que serve ficheiros até 60 kB. Quem já carregou no botão na 2.22 só tem de carregar outra vez: as regras no router já ficaram certas.
+
 ## [2.22](https://github.com/Harrydevcod/IspManager/releases/tag/v2.22.0) — 2026-10-08
 
 > **Uma migração.** A `0074` cria duas tabelas novas (achados do registo do router e diário de ocorrências). Não toca em nenhum dado existente.

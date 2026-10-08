@@ -165,13 +165,15 @@ describe('vigia do registo do router', () => {
     const files: Record<string, string> = { 'sd1/ispm-log.0.txt': `Oct/07/2026 10:20:00 netwatch,info ${DOWN('192.168.1.251')}\n` };
     const writes: string[] = [];
     const transport: RouterTransport = async ({ method, path: requested, body }) => {
+      // O texto vem pelo /execute, como a cópia da configuração.
+      if (requested === '/execute') return { ret: files[/get "([^"]+)" contents/.exec((body as { script: string }).script)![1]] };
       if (method !== 'GET') { writes.push(`${method} ${requested} ${JSON.stringify(body)}`); return {}; }
       if (requested.startsWith('/ip/address')) return [];
       if (requested.startsWith('/log')) return memory;
       if (requested.startsWith('/system/logging/action')) return writes.length ? [{ '.id': '*9', 'disk-file-name': 'sd1/ispm-log' }] : [];
       if (requested.startsWith('/system/logging')) return [{ topics: 'info', action: 'memory' }];
       if (requested.startsWith('/file?.proplist')) return Object.entries(files).map(([name, text]) => ({ name, size: String(text.length), 'last-modified': '2026-10-07 10:20:00' }));
-      return [{ contents: files[decodeURIComponent(/name=([^&]+)/.exec(requested)![1])] }];
+      return [];
     };
     await installLogJournal(db, transport, 'sd1', NOW);
     expect(writes).toHaveLength(5); // a ação e as quatro regras
