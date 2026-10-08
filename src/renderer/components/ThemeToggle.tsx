@@ -22,15 +22,17 @@ export function ThemeToggle() {
     applyThemePref(theme === 'dark' ? 'light' : 'dark');
   }
 
+  const label = theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro';
+
   return (
     <button
       type="button"
       className="theme-toggle"
       onClick={toggle}
-      aria-label={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+      aria-label={label}
+      title={label}
     >
-      {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-      <span>{theme === 'dark' ? 'Claro' : 'Escuro'}</span>
+      {theme === 'dark' ? <Sun size={14} aria-hidden /> : <Moon size={14} aria-hidden />}
     </button>
   );
 }

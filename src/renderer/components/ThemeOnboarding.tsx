@@ -7,7 +7,7 @@ import { applyThemePref, readThemePref, systemTheme, type ThemePref } from '../l
 /**
  * Primeiro arranque: sem preferência guardada, sugere acompanhar o tema do
  * Windows (mostrando o detetado) ou fixar claro/escuro. Uma escolha, uma vez;
- * depois o ThemeToggle no topo continua disponível para mudar.
+ * depois o ThemeToggle na barra lateral continua disponível para mudar.
  */
 export function ThemeOnboarding() {
   const [open, setOpen] = useState(() => readThemePref() === null);
