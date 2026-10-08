@@ -1,6 +1,6 @@
 import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, Landmark, LifeBuoy, LogOut, Network, PanelLeftClose, PanelLeftOpen, Plus, Router, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, Message, PageHeader, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider, VaultBanner } from './components';
+import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, Message, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider, VaultBanner } from './components';
 import type { CommandPaletteItem } from './components';
 import { AuthProvider, authFetch, useAuth } from './lib/auth';
 import { PRESENCE_URL, presenceMessage, type NetworkPresence } from './lib/networkPresence';
@@ -315,6 +315,8 @@ function AppShell() {
     technician: 'Tecnico'
   };
 
+  const healthLabel = health === 'checking' ? 'A verificar API' : health === 'online' ? 'API local online' : 'API offline';
+
   return (
     <>
       <a className="skip-link" href="#app-content">Saltar para conteúdo</a>
@@ -378,26 +380,36 @@ function AppShell() {
           })}
         </nav>
 
-        {auth.user && !auth.isAuthBypassed && (
-          <div className="sidebar-user">
-            <div className="sidebar-user-identity">
-              <span className="sidebar-user-mark">{auth.user.fullName.charAt(0).toUpperCase()}</span>
-              <div>
-                <p className="sidebar-user-name">{auth.user.fullName}</p>
-                <p className="sidebar-user-role">{roleLabel[auth.user.role]} &middot; @{auth.user.username}</p>
-              </div>
+        <div className="sidebar-foot">
+          <div className="sidebar-system">
+            <div className={`status ${health}`} role="status" aria-live="polite" title={healthLabel}>
+              <Activity size={14} aria-hidden />
+              <span>{healthLabel}</span>
             </div>
-            <button
-              type="button"
-              className="sidebar-user-logout"
-              onClick={() => auth.logout()}
-              title="Terminar sessao"
-              aria-label="Terminar sessao"
-            >
-              <LogOut size={14} aria-hidden />
-            </button>
+            <ThemeToggle />
           </div>
-        )}
+
+          {auth.user && !auth.isAuthBypassed && (
+            <div className="sidebar-user">
+              <div className="sidebar-user-identity">
+                <span className="sidebar-user-mark">{auth.user.fullName.charAt(0).toUpperCase()}</span>
+                <div>
+                  <p className="sidebar-user-name">{auth.user.fullName}</p>
+                  <p className="sidebar-user-role">{roleLabel[auth.user.role]} &middot; @{auth.user.username}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="sidebar-user-logout"
+                onClick={() => auth.logout()}
+                title="Terminar sessao"
+                aria-label="Terminar sessao"
+              >
+                <LogOut size={14} aria-hidden />
+              </button>
+            </div>
+          )}
+        </div>
       </aside>
 
         <section className="content" id="app-content" tabIndex={-1}>
@@ -406,19 +418,7 @@ function AppShell() {
           )}
           <LicenseBanner />
           <VaultBanner onOpen={() => { setVaultOpenRequest((request) => request + 1); setSection('settings'); }} />
-          <PageHeader
-            eyebrow="Cabo Verde"
-            title="Painel operacional"
-            actions={
-              <>
-                <ThemeToggle />
-                <div className={`status ${health}`} role="status" aria-live="polite">
-                  <Activity size={16} aria-hidden />
-                  <span>{health === 'checking' ? 'A verificar API' : health === 'online' ? 'API local online' : 'API offline'}</span>
-                </div>
-              </>
-            }
-          />
+          <h1 className="sr-only">ISPM</h1>
 
           {section === 'dashboard' && (
             <Dashboard

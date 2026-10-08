@@ -397,7 +397,6 @@ export function ExpensesModule() {
     <section className="module-panel expenses-module">
       <div className="module-header">
         <div>
-          <p className="eyebrow">Painel operacional</p>
           <h2>Despesas operacionais</h2>
         </div>
         <ModuleHeaderActions

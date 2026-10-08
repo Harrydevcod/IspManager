@@ -645,6 +645,21 @@ a:hover {
     font-size: 0;
   }
 
+  /* O texto do estado sai da vista mas fica para o leitor de ecrã (aria-live);
+     o ícone guarda a cor e o `title` diz o resto. */
+  .app-shell[data-nav='rail'] .status > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .app-shell[data-nav='rail'] .status {
+    flex: initial;
+  }
+
+  .app-shell[data-nav='rail'] .sidebar-system,
   .app-shell[data-nav='rail'] .sidebar-user {
     flex-direction: column;
     gap: var(--space-2);
@@ -673,14 +688,6 @@ a:hover {
 .content > .finance-shell,
 .content > .receivables-module {
   flex: 1 0 auto;
-}
-
-.topbar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-6);
-  margin-bottom: var(--space-4);
 }
 
 .eyebrow {
@@ -715,17 +722,39 @@ h2 {
   line-height: 1.15;
 }
 
-.status {
-  display: inline-flex;
+/* Rodapé da barra lateral: estado da API e tema. Vivem aqui, e não numa faixa
+   por cima dos módulos, para a altura do ecrã ficar toda para o conteúdo. */
+/* O rodapé cola ao fundo: em ecrã baixo (617px a 150%) o menu não cabe e rola
+   por baixo dele, em vez de esconder o estado, o tema e a saída. O fundo é o
+   da barra lateral sem a transparência, para tapar o que passa por trás. */
+.sidebar-foot {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  background: color-mix(in oklch, var(--surface) 62%, var(--bg));
+}
+
+.sidebar-system {
+  padding: var(--space-2);
+  display: flex;
   align-items: center;
   gap: var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--rpill);
-  background: var(--surface);
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--text-2);
+}
+
+.status {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.status svg {
+  flex-shrink: 0;
 }
 
 .status svg {
@@ -746,36 +775,26 @@ h2 {
   color: var(--danger);
 }
 
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
+/* Mesma caixa do botão de terminar sessão, logo abaixo. */
 .theme-toggle {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  min-height: 38px;
-  padding: 0 var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--rpill);
-  background: var(--surface);
-  color: var(--text-2);
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
   cursor: pointer;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+  transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease;
 }
 
 .theme-toggle:hover {
   border-color: var(--border-2);
   color: var(--text);
   background: var(--surface-2);
-}
-
-.theme-toggle svg {
-  color: var(--accent);
 }
 
 /* =========================================================================
@@ -3461,6 +3480,16 @@ h2 {
     height: 3px;
   }
 
+  .sidebar-foot {
+    position: static;
+    margin-top: 0;
+    background: none;
+  }
+
+  .sidebar-system {
+    padding: 0;
+  }
+
   .sidebar-user {
     margin-top: 0;
     padding: var(--space-2) 0 0;
@@ -3472,7 +3501,6 @@ h2 {
 }
 
 @media (max-width: 760px) {
-  .topbar,
   .module-header {
     align-items: stretch;
     flex-direction: column;
@@ -3502,14 +3530,12 @@ h2 {
     margin-left: auto;
   }
 
-  .topbar-actions,
   .inline-actions,
   .filter-bar,
   .dialog-actions {
     flex-wrap: wrap;
   }
 
-  .topbar-actions > *,
   .inline-actions > *,
   .filter-bar > *,
   .dialog-actions > button {
@@ -6686,25 +6712,9 @@ button.danger:disabled {
 }
 
 /* Ecrã baixo — portátil pequeno, ou 1080p com escala a 150%. A altura é o
-   recurso escasso e o cabeçalho da página é decoração: a sobrancelha sai, o
-   título cabe numa linha e a folga das margens volta para o conteúdo. Os
-   módulos com caixa de altura fixa (Topologia) descontam este cabeçalho mais
-   baixo nas suas próprias contas. */
+   recurso escasso: a folga das margens volta para o conteúdo. */
 @media (max-height: 820px) {
   .content {
     padding-block: var(--space-3) var(--space-4);
-  }
-
-  .topbar {
-    align-items: center;
-    margin-bottom: var(--space-3);
-  }
-
-  .topbar .eyebrow {
-    display: none;
-  }
-
-  .topbar h1 {
-    font-size: var(--fs-xl);
   }
 }

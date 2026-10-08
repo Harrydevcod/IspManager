@@ -131,7 +131,7 @@ Universal in `src/renderer/modules/**` (enforced by ESLint `no-restricted-syntax
 - **DataList / DataTable** — list and grid table primitives
 - **Combobox** — code→name entity picker (the CNNNN/PLN-NNN pattern)
 - **FilterBar** — `<div className="filter-bar">` shell with bare-label layout (caps via `.filter-bar label`)
-- **PageHeader** — topbar with eyebrow + title + actions
+- **Sidebar system row** — `.sidebar-system`: API status + theme toggle at the sidebar foot. There is no shell topbar; each module owns its header.
 - **MetricCard / MetricGrid** — dashboard tiles
 - **Card** — section panel with eyebrow + title + actions
 - **Message** — inline status with `role=alert` (error) or `status` (success/neutral)
