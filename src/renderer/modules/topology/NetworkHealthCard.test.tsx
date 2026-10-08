@@ -55,6 +55,13 @@ test('rede estável: diz que não há nada a assinalar e até onde viu', async (
   expect(host.textContent).toContain('Sem nada a assinalar');
   expect(host.textContent).toContain('Sonda:');
   expect(host.querySelectorAll('.dashboard-list li')).toHaveLength(0);
+  expect(host.textContent).not.toContain('registo contínuo no cartão');
+  await act(async () => root.unmount());
+});
+
+test('com o diário em disco, o cartão diz que o registo do router é contínuo', async () => {
+  const { host, root } = await mount({ ...calm, routerJournal: true });
+  expect(host.querySelector('.network-health-seen')!.textContent).toContain('registo contínuo no cartão');
   await act(async () => root.unmount());
 });
 

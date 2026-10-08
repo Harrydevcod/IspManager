@@ -82,6 +82,31 @@ test('a vista Router lista os achados do registo, um dado por coluna', async () 
   await act(async () => root.unmount());
 });
 
+test('com um disco no router, a vista Router oferece guardar o registo no cartão e o botão sai depois de ligado', async () => {
+  const { host, root } = await mount(body);
+  const health = {
+    hours: 168, tone: 'ok', probeEnabled: true, lastProbeAt: null, lastRouterReadAt: '2026-10-07T22:14:00.000Z', routerJournal: false,
+    antennas: [], clients: [], downNow: [], diary: [], findings: []
+  };
+  const posts: string[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes('/api/auth/')) return new Response('{}', { status: 401 });
+    if (!url.includes('/router/log-journal')) return new Response(JSON.stringify(health), { status: 200 });
+    if (init?.method !== 'POST') return new Response(JSON.stringify({ installed: null, available: true, disks: [{ slot: 'sd1' }] }), { status: 200 });
+    posts.push(String(init.body));
+    health.routerJournal = true;
+    return new Response(JSON.stringify({ installed: 'sd1' }), { status: 200 });
+  }));
+  await openView(host, 'Router');
+  const button = [...host.querySelectorAll<HTMLElement>('button')].find((node) => node.textContent?.includes('Guardar o registo no cartão (sd1)'))!;
+  await act(async () => button.click());
+  await settle();
+  expect(posts).toEqual(['{"disk":"sd1"}']);
+  expect(host.textContent).not.toContain('Guardar o registo no cartão');
+  await act(async () => root.unmount());
+});
+
 test('a vista Diário lista as ocorrências e abre a edição ao clicar na linha', async () => {
   const { host, root } = await mount(body);
   stubFetch([{
