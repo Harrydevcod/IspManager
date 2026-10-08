@@ -6,6 +6,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.24](https://github.com/Harrydevcod/IspManager/releases/tag/v2.24.0) — 2026-10-08
+
 - **O comentário do utilizador PPPoE no router passa a mostrar o número do cliente.** Ao lado do `skn001` lê-se agora `ispm:1 Isa Rafe #3`: o primeiro número é o do código do cliente, o mesmo do nome PPPoE; o `#3` no fim é a referência interna do serviço. Os comentários existentes são reescritos sozinhos na primeira sincronização, sem tocar em acessos nem em sessões. **Depois de sincronizar, não abrir uma versão anterior contra o mesmo router:** as versões antigas leem o primeiro número como o do serviço.
 
 ## [2.23](https://github.com/Harrydevcod/IspManager/releases/tag/v2.23.0) — 2026-10-08
