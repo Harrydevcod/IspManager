@@ -18,6 +18,7 @@ import {
   type RouterWanUsage
 } from './router-api';
 import { InterfacesTable, LogView, ProfilesTable, SessionsTable } from './RouterTables';
+import { StoredLog } from './StoredLog';
 import { SyncStatus } from './SyncStatus';
 import { useLive } from './useLive';
 import { PRESENCE_URL, presenceMessage, type NetworkPresence } from '../../lib/networkPresence';
@@ -38,6 +39,12 @@ const TABS: ReadonlyArray<{ id: RouterTab; label: string; icon: typeof Router }>
   { id: 'backups', label: 'Cópias', icon: History },
   { id: 'log', label: 'Registo', icon: ScrollText },
   { id: 'config', label: 'Configuração', icon: Settings2 }
+];
+
+type LogViewId = 'live' | 'stored';
+const LOG_VIEWS: ReadonlyArray<{ id: LogViewId; label: string }> = [
+  { id: 'live', label: 'Ao vivo' },
+  { id: 'stored', label: 'Guardado' }
 ];
 
 function percent(used: number, total: number) {
@@ -145,6 +152,10 @@ export default function RouterModule() {
   // pode deitar fora um formulário por gravar.
   const [configVisited, setConfigVisited] = useState(false);
   const tabListRef = useRef<HTMLElement>(null);
+  // Fora da rede de gestão o registo ao vivo não tem o que mostrar: abre no que está guardado.
+  const [pickedLogView, setLogView] = useState<LogViewId | null>(null);
+  const offNetwork = presence.data?.state === 'offsite' || presence.data?.state === 'foreign';
+  const logView = pickedLogView ?? (offNetwork ? 'stored' : 'live');
 
   const overview = useLive<Live<RouterOverview>>(`${ROUTER_API}/overview`, tab === 'overview');
   const sessions = useLive<Live<{ sessions: RouterSession[] }>>(`${ROUTER_API}/sessions`, tab === 'sessions');
@@ -247,9 +258,21 @@ export default function RouterModule() {
           </LiveGate>
         )}
         {tab === 'log' && (
-          <LiveGate live={log} onRetry={log.reload} onConfigure={openConfig} presence={presence.data}>
-            {(data) => <LogView log={data} />}
-          </LiveGate>
+          <>
+            <nav className="segmented-tabs router-log-views" role="tablist" aria-label="Vistas do registo">
+              {LOG_VIEWS.map((item) => (
+                <Button key={item.id} variant="ghost" role="tab" aria-selected={logView === item.id}
+                  className={`segmented-tab${logView === item.id ? ' is-active' : ''}`} onClick={() => setLogView(item.id)}>
+                  {item.label}
+                </Button>
+              ))}
+            </nav>
+            {logView === 'stored' ? <StoredLog /> : (
+              <LiveGate live={log} onRetry={log.reload} onConfigure={openConfig} presence={presence.data}>
+                {(data) => <LogView log={data} />}
+              </LiveGate>
+            )}
+          </>
         )}
         {tab === 'backups' && (
           backups.error && !backups.data ? <ErrorRetry message={backups.error} onRetry={backups.reload} />

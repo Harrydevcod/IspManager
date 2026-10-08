@@ -329,6 +329,60 @@ describe('Router de gestão', () => {
     expect(container.textContent).not.toContain('skn001 logged in');
   });
 
+  test('o registo guardado lê-se por dia, filtra-se e exporta o dia inteiro', async () => {
+    const stored: Record<string, Array<{ id: string; time: string; topics: string; message: string }>> = {
+      '2026-10-08': [
+        { id: '*1', time: '2026-10-08 20:06:54', topics: 'bridge,warning', message: 'LAN1: received DHCP server message on untrusted port from source IP 192.168.1.1, MAC 04:f4:1c:45:fd:96' },
+        { id: '*2', time: '2026-10-08 20:07:07', topics: 'netwatch,info', message: 'event down [ type: simple, host: 192.168.1.110 ]' }
+      ],
+      '2026-10-07': [{ id: '*3', time: '2026-10-07 18:19:05', topics: 'netwatch,info', message: 'event down [ type: simple, host: 192.168.1.251 ]' }]
+    };
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/router/log/days')) return json([{ day: '2026-10-08', lines: 2 }, { day: '2026-10-07', lines: 1 }]);
+      const day = url.split('/router/log/history?day=')[1];
+      return day ? json({ day, entries: stored[day] ?? [] }) : original(input);
+    });
+    const blobs: Blob[] = [];
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: (blob: Blob) => { blobs.push(blob); return 'blob:registo'; }, revokeObjectURL: () => undefined }));
+    const container = await mount();
+    await click(container.querySelector('#router-tab-log'));
+    const views = [...container.querySelectorAll('.router-log-views [role="tab"]')];
+    expect(views.map((node) => node.textContent)).toEqual(['Ao vivo', 'Guardado']);
+    await click(views[1]);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+    const panel = container.querySelector('#router-panel-log')!;
+    const select = panel.querySelector('select')!;
+    expect([...select.options].map((option) => option.textContent)).toEqual(['08/10/2026 · 2 linhas', '07/10/2026 · 1 linhas']);
+    expect(panel.querySelectorAll('.data-table-row')).toHaveLength(2);
+    // Com o dia escolhido, a coluna mostra só a hora.
+    expect(panel.textContent).toContain('20:06:54');
+    expect(panel.textContent).not.toContain('2026-10-08 20:06:54');
+
+    const type = async (element: HTMLInputElement | HTMLSelectElement, value: string, event: string) => {
+      const proto = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(element, value);
+        element.dispatchEvent(new Event(event, { bubbles: true }));
+      });
+    };
+    await type(panel.querySelector<HTMLInputElement>('input[type="search"]')!, 'NETWATCH', 'input');
+    expect(panel.querySelectorAll('.data-table-row')).toHaveLength(1);
+
+    // O ficheiro leva o dia inteiro, não o que o filtro deixa à vista.
+    await click([...panel.querySelectorAll('button')].find((button) => button.textContent?.includes('Exportar .txt')));
+    expect((await blobs[0].text()).split('\n').filter(Boolean)).toHaveLength(2);
+    expect(await blobs[0].text()).toContain('2026-10-08 20:07:07 netwatch,info event down');
+
+    await type(select, '2026-10-07', 'change');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(panel.textContent).toContain('192.168.1.251');
+    expect(panel.textContent).not.toContain('192.168.1.110');
+  });
+
   test('router por configurar é um estado vazio que leva à configuração, não um erro', async () => {
     routerAvailable = false;
     const container = await mount();

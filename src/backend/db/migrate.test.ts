@@ -629,4 +629,27 @@ describe('runMigrations', () => {
 
     db.close();
   });
+
+  test('a 0075 aceita o laco na rede e guarda os achados que ja existiam', () => {
+    const db = freshDb();
+    runMigrations(db, migrations.filter((migration) => migration.version < 75));
+    const insert = db.prepare(`
+      INSERT INTO router_log_findings (day, kind, subject, label, count, first_at, last_at)
+      VALUES ('2026-10-08', ?, '04:F4:1C:45:FD:96', 'LAN1 · 192.168.1.1', 1, '2026-10-08 20:06:54', '2026-10-08 20:06:54')
+    `);
+    expect(() => insert.run('laco_rede')).toThrow(/CHECK/);
+    insert.run('ip_duplicado');
+
+    runMigrations(db, migrations.filter((migration) => migration.version <= 75));
+
+    insert.run('laco_rede');
+    expect(db.prepare('SELECT kind, count FROM router_log_findings ORDER BY kind').all()).toEqual([
+      { kind: 'ip_duplicado', count: 1 },
+      { kind: 'laco_rede', count: 1 }
+    ]);
+    expect(() => insert.run('outra_coisa')).toThrow(/CHECK/);
+    expect(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_router_log_findings_last'").get()).toBeTruthy();
+
+    db.close();
+  });
 });

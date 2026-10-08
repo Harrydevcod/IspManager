@@ -800,6 +800,13 @@ export const routerLogFindings = sqliteTable('router_log_findings', {
   lastAt: text('last_at').notNull()
 }, (table) => [primaryKey({ columns: [table.day, table.kind, table.subject] })]);
 
+export const routerLogLines = sqliteTable('router_log_lines', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  at: text('at').notNull(),
+  topics: text('topics').notNull(),
+  message: text('message').notNull()
+});
+
 export const networkDiary = sqliteTable('network_diary', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   happenedAt: text('happened_at').notNull(),

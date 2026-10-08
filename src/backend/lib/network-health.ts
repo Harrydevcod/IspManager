@@ -34,8 +34,10 @@ export type NetworkHealth = {
 };
 
 // Do mais grave para o menos: é a ordem em que o painel os mostra.
-const SEVERITY: FindingKind[] = ['ip_duplicado', 'antena_em_baixo', 'dhcp_intruso', 'pppoe_queda', 'dhcp_ciclo', 'login_falhado'];
-const MAC_KINDS: FindingKind[] = ['ip_duplicado', 'dhcp_intruso', 'dhcp_ciclo'];
+const SEVERITY: FindingKind[] = ['laco_rede', 'ip_duplicado', 'antena_em_baixo', 'dhcp_intruso', 'pppoe_queda', 'dhcp_ciclo', 'login_falhado'];
+const MAC_KINDS: FindingKind[] = ['laco_rede', 'ip_duplicado', 'dhcp_intruso', 'dhcp_ciclo'];
+// Os dois que deitam a rede abaixo: um dia depois ainda pintam o cartão de crítico.
+const CRITICAL_KINDS: FindingKind[] = ['laco_rede', 'ip_duplicado'];
 
 const pad = (value: number) => String(value).padStart(2, '0');
 const utcSql = (date: Date) => date.toISOString().slice(0, 19).replace('T', ' ');
@@ -122,9 +124,9 @@ export function loadNetworkHealth(db: Database.Database, hours = 72, now = new D
     .sort((a, b) => SEVERITY.indexOf(a.kind) - SEVERITY.indexOf(b.kind) || b.count - a.count);
 
   const dayAgo = localSql(new Date(now.getTime() - 24 * 3_600_000));
-  const tone: HealthTone = downNow.some((row) => row.kind === 'backbone') || findings.some((row) => row.kind === 'ip_duplicado' && row.lastAt >= dayAgo)
+  const tone: HealthTone = downNow.some((row) => row.kind === 'backbone') || findings.some((row) => CRITICAL_KINDS.includes(row.kind) && row.lastAt >= dayAgo)
     ? 'danger'
-    : antennas.length > 0 || findings.some((row) => ['ip_duplicado', 'antena_em_baixo', 'dhcp_intruso'].includes(row.kind)) ? 'warn' : 'ok';
+    : antennas.length > 0 || findings.some((row) => [...CRITICAL_KINDS, 'antena_em_baixo', 'dhcp_intruso'].includes(row.kind)) ? 'warn' : 'ok';
 
   return {
     hours,

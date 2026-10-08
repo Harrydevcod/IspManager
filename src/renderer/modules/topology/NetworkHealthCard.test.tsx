@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { AuthProvider } from '../../lib/auth';
 import { NetworkHealthCard } from './NetworkHealthCard';
-import { antennaDrops, formatLocalStamp, healthSituations, type HealthFinding, type NetworkHealth } from './network-health';
+import { antennaDrops, findingWho, formatLocalStamp, healthSituations, type HealthFinding, type NetworkHealth } from './network-health';
 
 const finding = (row: Partial<HealthFinding> & Pick<HealthFinding, 'kind' | 'subject' | 'count'>): HealthFinding => ({
   label: '', firstAt: '2026-10-07 10:29:23', lastAt: '2026-10-07 13:16:00', deviceName: null, clientName: null, vendor: null, ...row
@@ -121,6 +121,15 @@ test('situações: o que o router já contou não se repete pela sonda', () => {
     'down:5', 'ip_duplicado:BC:07:1D:5E:42:9E', 'antena_em_baixo:192.168.1.251', 'dhcp_intruso:30:16:9D:AA:53:8B', 'probe:1'
   ]);
   expect(antennaDrops(calm)).toBe(0);
+});
+
+test('um laço na rede diz a porta e o que procurar, em vez do MAC do próprio router', () => {
+  const loop = finding({ kind: 'laco_rede', subject: '04:F4:1C:45:FD:96', count: 1, label: 'LAN1 · 192.168.1.1', vendor: 'MikroTik' });
+  expect(healthSituations({ ...calm, findings: [loop] })).toEqual([{
+    key: 'laco_rede:04:F4:1C:45:FD:96', tone: 'danger', title: 'Laço na rede',
+    detail: 'O router ouviu a própria resposta DHCP em LAN1 · procure um cabo em anel', count: 1
+  }]);
+  expect(findingWho(loop)).toBe('O próprio router');
 });
 
 test('as horas locais do router e do diário não passam pelo fuso', () => {
