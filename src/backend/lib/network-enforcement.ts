@@ -37,24 +37,34 @@ import {
 const COMMENT_PREFIX = 'ispm:';
 
 /**
- * `ispm:<id> <nome>`: a âncora primeiro, o nome do cliente depois, para quem lê
- * o Winbox. O nome vai em ASCII — o Winbox não mostra UTF-8 e o que se lê tem
- * de ser igual ao que se escreveu, senão a passagem corrigia-o para sempre.
+ * `ispm:<nº do cliente> <nome> #<id do serviço>`: o número que se lê primeiro é
+ * o do código do cliente, o mesmo do utilizador PPPoE (`skn001` ↔ `ispm:1`); a
+ * âncora é o id do serviço, no fim. O nome vai em ASCII — o Winbox não mostra
+ * UTF-8 e o que se lê tem de ser igual ao que se escreveu, senão a passagem
+ * corrigia-o para sempre — e sem `#`, para o sufixo ser inequívoco. Um código
+ * sem número fica no formato antigo, `ispm:<id> <nome>`.
  */
-export function secretComment(serviceId: number, clientName: string): string {
-  const name = clientName.normalize('NFD').replace(/[^\x20-\x7E]/g, '').replace(/\s+/g, ' ').trim();
-  return name ? `${COMMENT_PREFIX}${serviceId} ${name}` : `${COMMENT_PREFIX}${serviceId}`;
+export function secretComment(serviceId: number, clientName: string, clientCode: string): string {
+  const name = clientName.normalize('NFD').replace(/[^ -~]|#/g, '').replace(/\s+/g, ' ').trim();
+  const digits = clientCode.match(/\d+/)?.[0];
+  if (!digits) return name ? `${COMMENT_PREFIX}${serviceId} ${name}` : `${COMMENT_PREFIX}${serviceId}`;
+  return `${COMMENT_PREFIX}${Number(digits)}${name ? ` ${name}` : ''} #${serviceId}`;
 }
 
-/** O serviço a que o comentário ancora o secret; null se não for nosso. */
+/**
+ * O serviço a que o comentário ancora o secret; null se não for nosso. Lê os
+ * dois formatos: com sufixo ` #<id>` a âncora é o sufixo; sem ele (secrets
+ * escritos antes da 2.24) é o primeiro número.
+ */
 export function serviceIdFromComment(comment: string | null | undefined): number | null {
-  const match = /^ispm:(\d+)(?: |$)/.exec(comment ?? '');
-  return match ? Number(match[1]) : null;
+  const match = /^ispm:(\d+)(?:(?: .*)? #(\d+)| .*)?$/.exec(comment ?? '');
+  return match ? Number(match[2] ?? match[1]) : null;
 }
 
 export type DesiredService = {
   serviceId: number;
   clientName: string;
+  clientCode: string;
   username: string;
   /** Há senha gravada? O texto em claro só se abre no momento de a enviar. */
   hasPassword: boolean;
@@ -99,6 +109,7 @@ export type EnforcementPlan = {
 type ServiceRow = {
   serviceId: number;
   clientName: string;
+  clientCode: string;
   status: string;
   username: string;
   hasPassword: number;
@@ -111,6 +122,7 @@ export function loadDesiredServices(db: Database.Database, options: { suspendedP
     SELECT
       s.id AS serviceId,
       c.full_name AS clientName,
+      c.client_code AS clientCode,
       s.status AS status,
       s.pppoe_username AS username,
       (s.pppoe_password IS NOT NULL AND s.pppoe_password <> '') AS hasPassword,
@@ -126,6 +138,7 @@ export function loadDesiredServices(db: Database.Database, options: { suspendedP
   return rows.map((row) => ({
     serviceId: row.serviceId,
     clientName: row.clientName,
+    clientCode: row.clientCode,
     username: row.username,
     hasPassword: row.hasPassword === 1,
     passwordPending: row.passwordPending === 1,
@@ -320,7 +333,7 @@ export function planActions(
 
     // O nome do cliente no comentário, só em secrets já ancorados: um secret
     // casado pelo nome tem o comentário do operador, e esse não é nosso.
-    const comment = secretComment(service.serviceId, service.clientName);
+    const comment = secretComment(service.serviceId, service.clientName, service.clientCode);
     if (serviceIdFromComment(secret.comment) === service.serviceId && secret.comment !== comment) {
       actions.push({
         kind: 'comment',
@@ -651,7 +664,7 @@ async function applyAction(
     const id = await createSecret(transport, {
       name: action.username,
       password: password.plain,
-      comment: secretComment(action.serviceId, action.clientName),
+      comment: secretComment(action.serviceId, action.clientName, service.clientCode),
       profile: action.profile
     });
     // Um secret nasce ativo; se o serviço não está ativo, corta-se já.
