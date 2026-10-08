@@ -4,7 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from '../lib/admin-network';
 import { createDiaryEntry, listDiary, loadNetworkHealth, loginLookup, macLookup, updateDiaryEntry } from '../lib/network-health';
 import { loadIncidents } from '../lib/network-incidents';
-import { installLogJournal, journalDisk } from '../lib/router-log-watch';
+import { installLogJournal, journalDisk, listLogDays, loadLogDay } from '../lib/router-log-watch';
 import { loadNetworkStatus, loadProbeEvents, mapWithLimit, readProbeConfig, runNetworkProbe } from '../lib/network-probe';
 import {
   createTransport,
@@ -646,6 +646,15 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       dhcpChurn: summary.dhcpChurn.map((row) => ({ ...row, ...aboutMac(row.mac) }))
     };
   }));
+
+  // O registo guardado lê-se da base: responde mesmo com o router fora de alcance.
+  app.get('/api/network/router/log/days', adminOnly, async () => listLogDays(getSqliteDatabase()));
+
+  app.get('/api/network/router/log/history', adminOnly, async (request, reply) => {
+    const query = z.object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ error: 'Dia inválido' });
+    return { day: query.data.day, entries: loadLogDay(getSqliteDatabase(), query.data.day) };
+  });
 
   /** Cria ou atualiza o perfil do plano. Em ensaio só diz o que faria. */
   app.post('/api/plans/:id/router-profile', adminOnly, async (request, reply) => {

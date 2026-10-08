@@ -15,6 +15,7 @@ let closeDatabaseForTests: () => void;
 const TABLES_TO_CLEAR = [
   'network_diary',
   'router_log_findings',
+  'router_log_lines',
   'client_traffic_daily',
   'client_usage_state',
   'wan_traffic_daily',
@@ -87,6 +88,26 @@ describe('saúde da rede e diário de ocorrências', () => {
     expect((await post({ happenedAt: '2026-10-06T17:54', title: 'Queda', dono: 'x' })).statusCode).toBe(400);
     expect((await app.inject({ method: 'PATCH', url: '/api/network/diary/999999', payload: { status: 'resolvida' } })).statusCode).toBe(404);
     expect((await app.inject({ method: 'PATCH', url: '/api/network/diary/1', payload: { status: 'apagada' } })).statusCode).toBe(400);
+  });
+});
+
+describe('registo do router guardado', () => {
+  test('lista os dias, devolve as linhas de um dia e recusa um dia inválido', async () => {
+    expect((await app.inject('/api/network/router/log/days')).json()).toEqual([]);
+    const insert = db.prepare('INSERT INTO router_log_lines (at, topics, message) VALUES (?, ?, ?)');
+    insert.run('2026-10-07 23:59:59', 'dhcp,info', 'ontem');
+    insert.run('2026-10-08 20:06:54', 'bridge,warning', 'laço');
+    insert.run('2026-10-08 20:07:07', 'netwatch,info', 'queda');
+    expect((await app.inject('/api/network/router/log/days')).json()).toEqual([{ day: '2026-10-08', lines: 2 }, { day: '2026-10-07', lines: 1 }]);
+    const history = (await app.inject('/api/network/router/log/history?day=2026-10-08')).json();
+    expect(history.day).toBe('2026-10-08');
+    expect(history.entries.map((row: { time: string; topics: string; message: string }) => [row.time, row.topics, row.message])).toEqual([
+      ['2026-10-08 20:06:54', 'bridge,warning', 'laço'],
+      ['2026-10-08 20:07:07', 'netwatch,info', 'queda']
+    ]);
+    expect((await app.inject('/api/network/router/log/history?day=2026-10-09')).json().entries).toEqual([]);
+    expect((await app.inject('/api/network/router/log/history?day=hoje')).statusCode).toBe(400);
+    expect((await app.inject('/api/network/router/log/history')).statusCode).toBe(400);
   });
 });
 

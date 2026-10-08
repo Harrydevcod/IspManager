@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import * as adminNetwork from './admin-network';
-import { collectFindings, freshEntries, freshJournalLines, installLogJournal, parseJournal, runRouterLogWatchIfDue, watchRouterLog } from './router-log-watch';
+import {
+  collectFindings, freshEntries, freshJournalLines, installLogJournal, listLogDays, loadLogDay, parseJournal, runRouterLogWatchIfDue, watchRouterLog
+} from './router-log-watch';
 import type { RouterLogEntry, RouterTransport } from './routeros';
 import { writeSecret } from './secrets';
 
@@ -44,6 +46,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   db.prepare('DELETE FROM router_log_findings').run();
+  db.prepare('DELETE FROM router_log_lines').run();
   db.prepare('DELETE FROM app_settings').run();
   vi.restoreAllMocks();
 });
@@ -213,6 +216,88 @@ describe('vigia do registo do router', () => {
     expect(await watchRouterLog(db, transport, NOW)).toEqual({ lines: 1, findings: 1 });
     expect(await watchRouterLog(db, transport, NOW)).toEqual({ lines: 0, findings: 0 });
     expect(findings()).toMatchObject([{ count: 2, lastAt: '2026-10-07 23:10:00' }]);
+  });
+
+  test('cada linha lida fica guardada uma vez, com a hora completa, e lê-se por dia', async () => {
+    const rows = log(
+      [1, '2026-10-06 23:59:00', 'netwatch,info', DOWN('192.168.1.110')],
+      [2, '00:01:00', 'dhcp,info', 'dhcp-SKYNET assigned 192.168.2.230 for 3C:64:CF:7B:80:08 Archer_C20'],
+      [3, '00:01:00', 'dhcp,info', 'dhcp-SKYNET assigned 192.168.2.230 for 3C:64:CF:7B:80:08 Archer_C20']
+    );
+    await watchRouterLog(db, router(rows), NOW);
+    await watchRouterLog(db, router(rows), NOW);
+    expect(listLogDays(db)).toEqual([{ day: '2026-10-07', lines: 2 }, { day: '2026-10-06', lines: 1 }]);
+    expect(loadLogDay(db, '2026-10-06').map(({ time, topics, message }) => ({ time, topics, message }))).toEqual([
+      { time: '2026-10-06 23:59:00', topics: 'netwatch,info', message: DOWN('192.168.1.110') }
+    ]);
+    // Duas linhas iguais no mesmo segundo são duas linhas; o id dá a ordem ao ecrã.
+    expect(loadLogDay(db, '2026-10-07').map((row) => row.time)).toEqual(['2026-10-07 00:01:00', '2026-10-07 00:01:00']);
+    expect(new Set(loadLogDay(db, '2026-10-07').map((row) => row.id)).size).toBe(2);
+  });
+
+  test('as linhas guardadas há mais de 90 dias saem na passagem seguinte', async () => {
+    const insert = db.prepare("INSERT INTO router_log_lines (at, topics, message) VALUES (?, 'system,info', 'antiga')");
+    insert.run('2026-07-08 23:59:59');
+    insert.run('2026-07-09 00:00:00');
+    await watchRouterLog(db, router(log([1, '2026-10-07 10:00:00', 'system,info', 'nova'])), NOW);
+    expect(listLogDays(db)).toEqual([{ day: '2026-10-07', lines: 1 }, { day: '2026-07-09', lines: 1 }]);
+  });
+
+  /** Um router com o diário em `sd1`: só o cartão tem linhas. */
+  function card(files: Record<string, string>, reads: string[] = []): RouterTransport {
+    return async ({ path: requested, body }) => {
+      if (requested === '/execute') {
+        const name = /get "([^"]+)" contents/.exec((body as { script: string }).script)![1];
+        reads.push(name);
+        return { ret: files[name] };
+      }
+      if (requested.startsWith('/interface')) return [{ name: 'bridge-LAN', 'mac-address': ROUTER_MAC }];
+      if (requested.startsWith('/file?.proplist')) return Object.entries(files).map(([name, text]) => ({ name, size: String(text.length), 'last-modified': '2026-10-08 20:00:00' }));
+      return [];
+    };
+  }
+
+  test('a primeira passagem traz do cartão o que já tinha sido contado, sem o contar outra vez', async () => {
+    const setting = db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)');
+    setting.run('routerLogJournal', 'sd1');
+    setting.run('routerLogJournalCursor', JSON.stringify({ time: '2026-10-08 20:07:07', seen: 1 }));
+    const files = {
+      'sd1/ispm-log.0.txt': [
+        `Oct/08/2026 08:31:04 netwatch,info ${DOWN('192.168.1.110')}`,
+        `Oct/08/2026 20:07:07 netwatch,info ${DOWN('192.168.1.110')}`,
+        `Oct/08/2026 20:07:07 netwatch,info ${DOWN('192.168.1.122')}`,
+        ''
+      ].join('\n')
+    };
+    expect(await watchRouterLog(db, card(files), NOW)).toEqual({ lines: 1, findings: 1, recovered: 2 });
+    // Só a linha depois do cursor é um achado novo; as duas de trás ficam guardadas e mais nada.
+    expect(findings()).toMatchObject([{ subject: '192.168.1.122', count: 1 }]);
+    expect(loadLogDay(db, '2026-10-08').map((row) => row.time)).toEqual(['2026-10-08 08:31:04', '2026-10-08 20:07:07', '2026-10-08 20:07:07']);
+
+    // Feito uma vez: a passagem seguinte não volta a ler o cartão todo nem repete linhas.
+    expect(await watchRouterLog(db, card(files), NOW)).toEqual({ lines: 0, findings: 0 });
+    expect(listLogDays(db)).toEqual([{ day: '2026-10-08', lines: 3 }]);
+  });
+
+  test('se o cartão não se deixar ler todo, a vigia segue com o que é novo e não insiste', async () => {
+    const setting = db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)');
+    setting.run('routerLogJournal', 'sd1');
+    setting.run('routerLogJournalCursor', JSON.stringify({ time: '2026-10-08 20:00:00', seen: 1 }));
+    const fresh = `Oct/08/2026 20:07:07 netwatch,info ${DOWN('192.168.1.110')}\n`;
+    const reads: string[] = [];
+    const transport = card({ 'sd1/ispm-log.0.txt': 'x'.repeat(500), 'sd1/ispm-log.1.txt': fresh }, reads);
+    // O ficheiro antigo vem cortado: a listagem diz 500 bytes e o router devolve menos.
+    const broken: RouterTransport = async (request) => {
+      const result = await transport(request);
+      return request.path === '/execute' && reads.at(-1) === 'sd1/ispm-log.0.txt' ? { ret: 'x' } : result;
+    };
+    const stale: RouterTransport = async (request) => request.path.startsWith('/file?.proplist')
+      ? [{ name: 'sd1/ispm-log.0.txt', size: '500', 'last-modified': '2026-10-08 10:00:00' }, { name: 'sd1/ispm-log.1.txt', size: String(fresh.length), 'last-modified': '2026-10-08 20:07:07' }]
+      : broken(request);
+    expect(await watchRouterLog(db, stale, NOW)).toEqual({ lines: 1, findings: 1, recovered: 0 });
+    reads.length = 0;
+    await watchRouterLog(db, stale, NOW);
+    expect(reads).toEqual(['sd1/ispm-log.1.txt']);
   });
 
   test('router por configurar ou fora da rede de gestão: salta sem escrever', async () => {

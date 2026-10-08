@@ -6,6 +6,9 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+- **O registo do router fica guardado no ISPM.** Na aba Registo do router de gestão há agora duas vistas: "Ao vivo" (como até aqui) e "Guardado", com as linhas por dia, procura, filtro de erros e avisos e exportação do dia para `.txt`. O guardado lê-se mesmo fora da rede de gestão e fica 90 dias. Na primeira passagem depois de atualizar, o ISPM vai buscar ao cartão do router o que lá está de dias anteriores.
+- **Saúde da rede: um laço na rede deixa de aparecer como endereço duplicado.** Quando o router recebe a sua própria resposta DHCP por uma porta, o cartão diz "Laço na rede" com a porta, em vez de mandar procurar um equipamento intruso. O que já estava registado é corrigido sozinho.
+
 ## [2.26](https://github.com/Harrydevcod/IspManager/releases/tag/v2.26.0) — 2026-10-08
 
 - **WhatsApp: escolha do fornecedor.** Em Definições › WhatsApp escolhe-se entre o UltraMsg e a Cloud API oficial da Meta (ID do número e token, guardado no cofre). Com a Meta, o texto livre só chega a quem escreveu à empresa nas últimas 24 horas; os avisos de fatura, atraso e corte precisam de modelos aprovados, que ainda não são enviados, e não há confirmação de entrega nem de leitura.

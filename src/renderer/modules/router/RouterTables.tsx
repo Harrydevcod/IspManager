@@ -213,7 +213,7 @@ export function InterfacesTable({ interfaces }: { interfaces: RouterInterface[] 
   );
 }
 
-const LOG_COLUMNS: DataTableColumn<RouterLogEntry>[] = [
+export const LOG_COLUMNS: DataTableColumn<RouterLogEntry>[] = [
   // O RouterOS escreve só a hora nas linhas de hoje; a ordem vem do .id (*hex, crescente).
   { header: 'Hora', sortValue: (row) => parseInt(row.id.replace('*', ''), 16) || 0, cell: (row) => <span className="router-mono router-number">{row.time}</span> },
   {
