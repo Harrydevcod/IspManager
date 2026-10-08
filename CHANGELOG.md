@@ -6,6 +6,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.22](https://github.com/Harrydevcod/IspManager/releases/tag/v2.22.0) — 2026-10-08
+
 > **Uma migração.** A `0074` cria duas tabelas novas (achados do registo do router e diário de ocorrências). Não toca em nenhum dado existente.
 
 - **Saúde da rede no painel inicial.** Um cartão novo mostra as últimas 72 horas: quantas vezes as antenas caíram, o que está em baixo agora e as três situações mais graves. "Ver detalhe" abre Topologia › Incidentes. O cartão diz a hora da última leitura da sonda e do router, porque só se vê o que aconteceu com o ISPM aberto.
