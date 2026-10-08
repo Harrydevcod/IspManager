@@ -128,6 +128,15 @@ describe('saúde da rede', () => {
     expect(loadNetworkHealth(db, 72, new Date('2026-10-08T13:17:00')).tone).toBe('warn');
   });
 
+  test('o laço na rede é crítico durante 24 horas e vem à frente de tudo', () => {
+    finding('ip_duplicado', 'BC:07:1D:5E:42:9E', '2026-10-05 13:16:00', 74, 'LAN1 · 192.168.1.1');
+    finding('laco_rede', '04:F4:1C:45:FD:96', '2026-10-07 13:16:00', 1, 'LAN1 · 192.168.1.1');
+    const health = loadNetworkHealth(db, 72, NOW);
+    expect(health.tone).toBe('danger');
+    expect(health.findings.map((row) => row.kind)).toEqual(['laco_rede', 'ip_duplicado']);
+    expect(loadNetworkHealth(db, 72, new Date('2026-10-08T13:17:00')).tone).toBe('warn');
+  });
+
   test('diz quando foi a última leitura do router', () => {
     db.prepare("INSERT INTO app_settings (key, value) VALUES ('routerLogReadAt', '2026-10-07T14:55:00.000Z'), ('networkProbeEnabled', 'true')").run();
     expect(loadNetworkHealth(db, 72, NOW)).toMatchObject({ lastRouterReadAt: '2026-10-07T14:55:00.000Z', probeEnabled: true });

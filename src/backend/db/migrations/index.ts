@@ -70,6 +70,7 @@ import m0071 from './0071_support_tickets';
 import m0072 from './0072_wan_traffic_source';
 import m0073 from './0073_service_network_caller_id';
 import m0074 from './0074_network_health';
+import m0075 from './0075_router_log_loop_kind';
 
 /**
  * The migration chain, in the order new migrations are appended.
@@ -80,6 +81,6 @@ import m0074 from './0074_network_health';
  * the runner enforces this via checksum drift detection.
  */
 // 0021 (money_centavos) ficou por usar — o runner ordena por versão e tolera o gap.
-export const migrations: Migration[] = [m0001, m0002, m0003, m0004, m0005, m0006, m0007, m0008, m0009, m0010, m0011, m0012, m0013, m0014, m0015, m0016, m0017, m0018, m0019, m0020, m0022, m0023, m0024, m0025, m0026, m0027, m0028, m0029, m0030, m0033, m0034, m0035, m0036, m0037, m0038, m0039, m0040, m0041, m0042, m0043, m0044, m0045, m0046, m0047, m0048, m0049, m0050, m0051, m0052, m0053, m0054, m0055, m0056, m0057, m0058, m0059, m0060, m0061, m0062, m0063, m0064, m0065, m0066, m0067, m0068, m0069, m0070, m0071, m0072, m0073, m0074];
+export const migrations: Migration[] = [m0001, m0002, m0003, m0004, m0005, m0006, m0007, m0008, m0009, m0010, m0011, m0012, m0013, m0014, m0015, m0016, m0017, m0018, m0019, m0020, m0022, m0023, m0024, m0025, m0026, m0027, m0028, m0029, m0030, m0033, m0034, m0035, m0036, m0037, m0038, m0039, m0040, m0041, m0042, m0043, m0044, m0045, m0046, m0047, m0048, m0049, m0050, m0051, m0052, m0053, m0054, m0055, m0056, m0057, m0058, m0059, m0060, m0061, m0062, m0063, m0064, m0065, m0066, m0067, m0068, m0069, m0070, m0071, m0072, m0073, m0074, m0075];
 
 export type { Migration } from './types';

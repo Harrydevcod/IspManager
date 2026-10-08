@@ -2,13 +2,16 @@ import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-network';
 import {
-  createTransport, DHCP_RELEASE, ensureLogJournal, isRouterConfigured, listAddresses, listLog, LOGIN_FAILURE, PPPOE_DROP, readLogJournal,
-  readRouterConfig, ROGUE_DHCP,
+  createTransport, DHCP_RELEASE, ensureLogJournal, isRouterConfigured, listAddresses, listInterfaces, listLog, LOGIN_FAILURE, PPPOE_DROP,
+  readLogJournal, readRouterConfig, ROGUE_DHCP,
   type RouterLogEntry, type RouterTransport
 } from './routeros';
 
-export const FINDING_KINDS = ['antena_em_baixo', 'ip_duplicado', 'dhcp_intruso', 'dhcp_ciclo', 'pppoe_queda', 'login_falhado'] as const;
+export const FINDING_KINDS = ['antena_em_baixo', 'ip_duplicado', 'laco_rede', 'dhcp_intruso', 'dhcp_ciclo', 'pppoe_queda', 'login_falhado'] as const;
 export type FindingKind = typeof FINDING_KINDS[number];
+
+/** O que o router diz de si próprio: é contra isto que se lê um DHCP numa porta não confiável. */
+export type RouterIdentity = { addresses: string[]; macs: string[] };
 
 export type Finding = {
   day: string; kind: FindingKind; subject: string; label: string; count: number; firstAt: string; lastAt: string;
@@ -75,9 +78,12 @@ export function freshJournalLines(entries: RouterLogEntry[], cursor: JournalCurs
 /**
  * O que as linhas dizem, somado por dia e por sujeito. Pura.
  * Um DHCP intruso que anuncia um endereço do próprio router é outro equipamento a responder
- * por esse endereço — foi isso que pôs as antenas a cair em 2026-10-06.
+ * por esse endereço — foi isso que pôs as antenas a cair em 2026-10-06. Se o MAC também for
+ * do router, é a resposta dele a voltar-lhe por um laço na rede (2026-10-08), e não há
+ * intruso nenhum para procurar.
  */
-export function collectFindings(entries: RouterLogEntry[], routerAddresses: string[], now = new Date()): Finding[] {
+export function collectFindings(entries: RouterLogEntry[], router: RouterIdentity, now = new Date()): Finding[] {
+  const routerMacs = router.macs.map((mac) => mac.toUpperCase());
   const found = new Map<string, Finding>();
   const add = (at: string, kind: FindingKind, subject: string, label: string) => {
     const day = at.slice(0, 10);
@@ -92,7 +98,9 @@ export function collectFindings(entries: RouterLogEntry[], routerAddresses: stri
     let match: RegExpExecArray | null;
     if ((match = NETWATCH_DOWN.exec(message))) add(at, 'antena_em_baixo', match[1], '');
     else if ((match = ROGUE_DHCP.exec(message))) {
-      add(at, routerAddresses.includes(match[2]) ? 'ip_duplicado' : 'dhcp_intruso', match[3].toUpperCase(), `${match[1]} · ${match[2]}`);
+      const mac = match[3].toUpperCase();
+      const kind = routerMacs.includes(mac) ? 'laco_rede' : router.addresses.includes(match[2]) ? 'ip_duplicado' : 'dhcp_intruso';
+      add(at, kind, mac, `${match[1]} · ${match[2]}`);
     } else if ((match = PPPOE_DROP.exec(message))) add(at, 'pppoe_queda', match[1], match[2]);
     else if ((match = DHCP_RELEASE.exec(message))) add(at, 'dhcp_ciclo', match[2].toUpperCase(), [match[3], match[1]].filter(Boolean).join(' · '));
     else if ((match = LOGIN_FAILURE.exec(message))) add(at, 'login_falhado', `${match[2]} ${match[3]}`, match[1]);
@@ -127,20 +135,36 @@ async function readFresh(db: Database.Database, transport: RouterTransport): Pro
   return { fresh, key: 'routerLogJournalCursor', cursor: cursor && JSON.stringify(cursor) };
 }
 
+async function readRouterIdentity(transport: RouterTransport): Promise<RouterIdentity> {
+  const [addresses, interfaces] = await Promise.all([listAddresses(transport), listInterfaces(transport)]);
+  const macs = interfaces.map((item) => item.macAddress?.toUpperCase()).filter((mac): mac is string => Boolean(mac));
+  return { addresses, macs: [...new Set(macs)] };
+}
+
 /**
  * Lê o registo do router e soma o que é novo. Só GETs no router.
  * Uma fonte de cada vez: o upsert soma contagens, e as duas contariam a dobrar.
  */
 export async function watchRouterLog(db: Database.Database, transport: RouterTransport, now = new Date()) {
   const { fresh, key, cursor } = await readFresh(db, transport);
-  const findings = fresh.length > 0 ? collectFindings(fresh, await listAddresses(transport), now) : [];
+  const router = fresh.length > 0 ? await readRouterIdentity(transport) : null;
+  const findings = router ? collectFindings(fresh, router, now) : [];
+  const MERGE = `ON CONFLICT(day, kind, subject) DO UPDATE SET count = count + excluded.count, label = excluded.label,
+      first_at = min(first_at, excluded.first_at), last_at = max(last_at, excluded.last_at)`;
   const upsert = db.prepare(`INSERT INTO router_log_findings (day, kind, subject, label, count, first_at, last_at)
-    VALUES (@day, @kind, @subject, @label, @count, @firstAt, @lastAt)
-    ON CONFLICT(day, kind, subject) DO UPDATE SET count = count + excluded.count, label = excluded.label,
-      first_at = min(first_at, excluded.first_at), last_at = max(last_at, excluded.last_at)`);
+    VALUES (@day, @kind, @subject, @label, @count, @firstAt, @lastAt) ${MERGE}`);
+  // Antes de a vigia conhecer os MAC do router, um laço gravava-se como endereço duplicado.
+  const moveToLoop = db.prepare(`INSERT INTO router_log_findings (day, kind, subject, label, count, first_at, last_at)
+    SELECT day, 'laco_rede', subject, label, count, first_at, last_at FROM router_log_findings
+    WHERE kind = 'ip_duplicado' AND subject = ? ${MERGE}`);
+  const dropDuplicate = db.prepare("DELETE FROM router_log_findings WHERE kind = 'ip_duplicado' AND subject = ?");
   const setSetting = db.prepare(`INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`);
   db.transaction(() => {
+    for (const mac of router?.macs ?? []) {
+      moveToLoop.run(mac);
+      dropDuplicate.run(mac);
+    }
     for (const finding of findings) upsert.run(finding);
     if (cursor !== null) setSetting.run(key, cursor);
     setSetting.run('routerLogReadAt', now.toISOString());

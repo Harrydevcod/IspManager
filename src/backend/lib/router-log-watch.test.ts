@@ -21,10 +21,14 @@ function log(...lines: Array<[id: number, time: string, topics: string, message:
   return lines.map(([id, time, topics, message]) => ({ '.id': `*${id.toString(16).toUpperCase()}`, time, topics, message }));
 }
 
+const ROUTER_MAC = '04:F4:1C:45:FD:96';
+
 function router(rows: ReturnType<typeof log>, addresses = ['192.168.1.1/24', '192.168.2.1/24']): RouterTransport {
-  return async ({ path: requested }) => requested.startsWith('/ip/address')
-    ? addresses.map((address) => ({ address }))
-    : rows;
+  return async ({ path: requested }) => {
+    if (requested.startsWith('/ip/address')) return addresses.map((address) => ({ address }));
+    if (requested.startsWith('/interface')) return [{ name: 'bridge-LAN', 'mac-address': ROUTER_MAC }, { name: 'pppoe-out1' }];
+    return rows;
+  };
 }
 
 const findings = () => db.prepare('SELECT day, kind, subject, label, count, first_at AS firstAt, last_at AS lastAt FROM router_log_findings ORDER BY day, kind, subject').all();
@@ -62,7 +66,7 @@ describe('achados do registo do router', () => {
       entry('*5', '2026-10-07 10:33:00', 'system,error,critical', 'login failure for user admin from 192.168.2.50 via winbox'),
       entry('*6', '2026-10-07 10:34:00', 'netwatch,info', 'event up [ type: simple, host: 192.168.1.251 ]'),
       entry('*7', '2026-10-07 10:35:00', 'script,warning', 'ANTENA EM BAIXO: TL-S5 Espia')
-    ], ['192.168.1.1'], NOW);
+    ], { addresses: ['192.168.1.1'], macs: [] }, NOW);
     expect(found.map(({ kind, subject, label, count }) => ({ kind, subject, label, count }))).toEqual([
       { kind: 'antena_em_baixo', subject: '192.168.1.251', label: '', count: 1 },
       { kind: 'dhcp_intruso', subject: '30:16:9D:AA:53:8B', label: 'LAN1 · 192.168.0.1', count: 1 },
@@ -76,18 +80,25 @@ describe('achados do registo do router', () => {
     const found = collectFindings([
       entry('*1', '2026-10-07 10:29:23', 'bridge,warning', ROGUE('192.168.1.1', 'bc:07:1d:5e:42:9e')),
       entry('*2', '2026-10-07 13:16:00', 'bridge,warning', ROGUE('192.168.1.1', 'bc:07:1d:5e:42:9e'))
-    ], ['192.168.1.1', '192.168.2.1'], NOW);
+    ], { addresses: ['192.168.1.1', '192.168.2.1'], macs: [ROUTER_MAC] }, NOW);
     expect(found).toEqual([{
       day: '2026-10-07', kind: 'ip_duplicado', subject: 'BC:07:1D:5E:42:9E', label: 'LAN1 · 192.168.1.1',
       count: 2, firstAt: '2026-10-07 10:29:23', lastAt: '2026-10-07 13:16:00'
     }]);
   });
 
+  test('o router a ouvir a própria resposta DHCP é um laço na rede, não um endereço duplicado', () => {
+    const found = collectFindings([
+      entry('*1', '2026-10-08 20:06:54', 'bridge,warning', ROGUE('192.168.1.1', '04:f4:1c:45:fd:96'))
+    ], { addresses: ['192.168.1.1'], macs: [ROUTER_MAC.toLowerCase()] }, NOW);
+    expect(found).toMatchObject([{ kind: 'laco_rede', subject: ROUTER_MAC, label: 'LAN1 · 192.168.1.1', count: 1 }]);
+  });
+
   test('linhas de dois dias caem em dois dias; uma hora sem data é de hoje', () => {
     const found = collectFindings([
       entry('*1', '2026-10-06 23:59:00', 'netwatch,info', DOWN('192.168.1.110')),
       entry('*2', '00:01:00', 'netwatch,info', DOWN('192.168.1.110'))
-    ], [], NOW);
+    ], { addresses: [], macs: [] }, NOW);
     expect(found.map(({ day, count, firstAt }) => ({ day, count, firstAt }))).toEqual([
       { day: '2026-10-06', count: 1, firstAt: '2026-10-06 23:59:00' },
       { day: '2026-10-07', count: 1, firstAt: '2026-10-07 00:01:00' }
@@ -126,13 +137,30 @@ describe('vigia do registo do router', () => {
     expect(findings()).toMatchObject([{ kind: 'ip_duplicado', subject: 'BC:07:1D:5E:42:9E' }]);
   });
 
+  test('o laço grava-se com os MAC que o router diz ter, e o que estava como duplicado é corrigido', async () => {
+    const insert = db.prepare("INSERT INTO router_log_findings (day, kind, subject, label, count, first_at, last_at) VALUES (?, 'ip_duplicado', ?, 'LAN1 · 192.168.1.1', ?, ?, ?)");
+    insert.run('2026-10-08', ROUTER_MAC, 1, '2026-10-08 20:06:54', '2026-10-08 20:06:54');
+    insert.run('2026-10-07', 'BC:07:1D:5E:42:9E', 49, '2026-10-07 16:13:12', '2026-10-07 18:18:53');
+    const rows = log([1, '2026-10-08 21:00:00', 'bridge,warning', ROGUE('192.168.1.1', '04:f4:1c:45:fd:96')]);
+    await watchRouterLog(db, router(rows), NOW);
+    const expected = [
+      { day: '2026-10-07', kind: 'ip_duplicado', subject: 'BC:07:1D:5E:42:9E', count: 49 },
+      { day: '2026-10-08', kind: 'laco_rede', subject: ROUTER_MAC, count: 2, firstAt: '2026-10-08 20:06:54', lastAt: '2026-10-08 21:00:00' }
+    ];
+    expect(findings()).toMatchObject(expected);
+    // Outra passagem com linhas novas não volta a mexer no que já está certo.
+    await watchRouterLog(db, router([...rows, ...log([2, '2026-10-08 21:01:00', 'netwatch,info', 'event up [ type: simple, host: 192.168.1.251 ]'])]), NOW);
+    expect(findings()).toMatchObject(expected);
+    expect(findings()).toHaveLength(2);
+  });
+
   test('as linhas reais do cartão (RouterOS 7.24) viram achados', () => {
     const found = collectFindings(parseJournal([
       'Oct/07/2026 23:40:51 system,info log rule added by api:ispm-api@:: (*5 = /system logging add action=ispmdiario topics=info)',
       'Oct/07/2026 23:43:49 bridge,warning LAN1: received DHCP server message on untrusted port from source IP 192.168.0.1, MAC 30:16:9d:aa:53:8b',
       'Oct/07/2026 23:45:40 dhcp,info dhcp-SKYNET deassigned 192.168.2.230 for 3C:64:CF:7B:80:08 Archer_C20',
       'Oct/07/2026 23:45:41 dhcp,info dhcp-SKYNET assigned 192.168.2.230 for 3C:64:CF:7B:80:08 Archer_C20'
-    ].join('\n')), ['192.168.2.1'], NOW);
+    ].join('\n')), { addresses: ['192.168.2.1'], macs: [] }, NOW);
     expect(found.map(({ kind, subject, firstAt }) => ({ kind, subject, firstAt }))).toEqual([
       { kind: 'dhcp_intruso', subject: '30:16:9D:AA:53:8B', firstAt: '2026-10-07 23:43:49' },
       { kind: 'dhcp_ciclo', subject: '3C:64:CF:7B:80:08', firstAt: '2026-10-07 23:45:40' }

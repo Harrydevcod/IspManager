@@ -1,6 +1,6 @@
 import { authFetch } from '../../lib/auth';
 
-export type FindingKind = 'antena_em_baixo' | 'ip_duplicado' | 'dhcp_intruso' | 'dhcp_ciclo' | 'pppoe_queda' | 'login_falhado';
+export type FindingKind = 'antena_em_baixo' | 'ip_duplicado' | 'laco_rede' | 'dhcp_intruso' | 'dhcp_ciclo' | 'pppoe_queda' | 'login_falhado';
 export type HealthTone = 'ok' | 'warn' | 'danger';
 export type HealthOutage = { id: number; name: string; ipAddress: string; downs: number; downSeconds: number; longestSeconds: number };
 export type HealthDown = { kind: 'backbone' | 'assignment'; id: number; name: string; ipAddress: string; since: string };
@@ -35,6 +35,7 @@ export const TONE_LABEL: Record<HealthTone, { label: string; badge: 'success' | 
 };
 
 export const KIND_LABEL: Record<FindingKind, string> = {
+  laco_rede: 'Laço na rede',
   ip_duplicado: 'Endereço do router duplicado',
   antena_em_baixo: 'Queda vista pelo router',
   dhcp_intruso: 'DHCP intruso',
@@ -45,12 +46,26 @@ export const KIND_LABEL: Record<FindingKind, string> = {
 
 /** A gravidade de um achado: o painel e a aba Incidentes pintam-no pela mesma escala. */
 export function findingTone(kind: FindingKind): 'danger' | 'warn' | 'neutral' {
-  return kind === 'ip_duplicado' ? 'danger' : kind === 'antena_em_baixo' || kind === 'dhcp_intruso' ? 'warn' : 'neutral';
+  return kind === 'ip_duplicado' || kind === 'laco_rede' ? 'danger' : kind === 'antena_em_baixo' || kind === 'dhcp_intruso' ? 'warn' : 'neutral';
 }
 
 /** A quem o achado diz respeito, do nome mais útil para o menos. */
 export function findingWho(finding: HealthFinding): string {
+  if (finding.kind === 'laco_rede') return 'O próprio router';
   return finding.deviceName ?? finding.clientName ?? finding.vendor ?? '—';
+}
+
+/**
+ * O que um achado quer dizer em uma linha. No laço, o MAC é o do router e não ajuda ninguém:
+ * o que serve é a porta por onde a resposta DHCP dele lhe voltou (o início do `label`).
+ */
+function findingDetail(finding: HealthFinding): string {
+  if (finding.kind === 'antena_em_baixo') return `${finding.subject} · visto pelo router`;
+  if (finding.kind === 'laco_rede') {
+    const port = finding.label.split(' · ')[0];
+    return `O router ouviu a própria resposta DHCP${port ? ` em ${port}` : ''} · procure um cabo em anel`;
+  }
+  return [finding.clientName ?? finding.vendor, finding.subject, finding.label].filter(Boolean).join(' · ');
 }
 
 /**
@@ -81,9 +96,7 @@ export function healthSituations(health: NetworkHealth): Situation[] {
       key: `${row.kind}:${row.subject}`,
       tone: findingTone(row.kind),
       title: row.kind === 'antena_em_baixo' ? `${row.deviceName ?? row.clientName ?? row.subject} caiu` : KIND_LABEL[row.kind],
-      detail: row.kind === 'antena_em_baixo'
-        ? `${row.subject} · visto pelo router`
-        : [row.clientName ?? row.vendor, row.subject, row.label].filter(Boolean).join(' · '),
+      detail: findingDetail(row),
       count: row.count
     })),
     ...health.antennas.filter((row) => !seenByRouter.has(row.ipAddress)).map((row): Situation => ({
