@@ -34,11 +34,13 @@ com hardware à frente:
   já existir no router, salta o serviço e reporta-o: a reconciliação também casa pelo nome e poderia
   alterar a senha de uma ligação viva. A criação no router continua exclusiva da reconciliação.
 
-- **A âncora do mapeamento é o `comment` do secret**, `ispm:<serviceId>`, e não o nome. Um utilizador
-  renomeado no Winbox continua a ser reconhecido; o nome é só o fallback.
-  Depois da âncora vai o nome do cliente em ASCII (`ispm:15 Cibel Monteiro`), só para quem lê o
-  Winbox: a reconciliação mantém-no em dia nos secrets já ancorados e nunca escreve no comentário de
-  um secret casado apenas pelo nome.
+- **A âncora do mapeamento é o `comment` do secret**, e não o nome. Um utilizador renomeado no
+  Winbox continua a ser reconhecido; o nome é só o fallback.
+  O formato é `ispm:<nº do cliente> <nome> #<serviceId>` (`ispm:14 Cibel Monteiro #15`): primeiro o
+  número do código do cliente, o mesmo do utilizador PPPoE (`skn014`), depois o nome em ASCII, e no
+  fim a âncora. Até à 2.23 era `ispm:<serviceId> <nome>`; esse formato continua a ser lido e é
+  reescrito na passagem seguinte. A reconciliação mantém o comentário em dia nos secrets já
+  ancorados e nunca escreve no comentário de um secret casado apenas pelo nome.
   Um nome diferente no router só se reporta (divergência `username`) — exceto quando o ISPM tem
   credenciais por empurrar (`pppoe_password_sync_pending`, ex.: transferência em modo reinstalar):
   aí a mesma ação renomeia o secret, muda a password e derruba a sessão antiga. O que o ISPM muda

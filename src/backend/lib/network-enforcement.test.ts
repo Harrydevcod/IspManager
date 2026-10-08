@@ -15,6 +15,7 @@ function service(overrides: Partial<DesiredService> = {}): DesiredService {
   return {
     serviceId: 1,
     clientName: 'Joao Silva',
+    clientCode: 'CL-0001',
     username: 'joao-1',
     hasPassword: true,
     passwordPending: false,
@@ -30,7 +31,7 @@ function secret(overrides: Partial<RouterSecret> = {}): RouterSecret {
     name: 'joao-1',
     disabled: false,
     profile: 'plano-10M',
-    comment: 'ispm:1 Joao Silva',
+    comment: 'ispm:1 Joao Silva #1',
     ...overrides
   };
 }
@@ -151,14 +152,41 @@ describe('planActions', () => {
   test('comentário antigo (só a âncora) ganha o nome do cliente, sem divergência', () => {
     const plan = planActions([service()], [secret({ comment: 'ispm:1' })]);
     expect(plan.actions).toEqual([
-      { kind: 'comment', serviceId: 1, username: 'joao-1', secretId: '*1', comment: 'ispm:1 Joao Silva', clientName: 'Joao Silva' }
+      { kind: 'comment', serviceId: 1, username: 'joao-1', secretId: '*1', comment: 'ispm:1 Joao Silva #1', clientName: 'Joao Silva' }
     ]);
     expect(plan.divergences).toEqual([]);
   });
 
   test('o nome vai para o router em ASCII', () => {
     const plan = planActions([service({ clientName: 'João  Conceição' })], [secret({ comment: 'ispm:1' })]);
-    expect(plan.actions).toEqual([expect.objectContaining({ kind: 'comment', comment: 'ispm:1 Joao Conceicao' })]);
+    expect(plan.actions).toEqual([expect.objectContaining({ kind: 'comment', comment: 'ispm:1 Joao Conceicao #1' })]);
+  });
+
+  test('o comentário mostra o nº do cliente e ancora pelo serviço, no fim', () => {
+    const plan = planActions([service({ serviceId: 3, clientCode: 'C0001', clientName: 'Isa Rafe', username: 'skn001' })],
+      [secret({ id: '*1B', name: 'skn001', comment: 'ispm:3 Isa Rafe' })]);
+    expect(plan.actions).toEqual([expect.objectContaining({ kind: 'comment', secretId: '*1B', comment: 'ispm:1 Isa Rafe #3' })]);
+    expect(plan.divergences).toEqual([]);
+  });
+
+  test('com sufixo, o primeiro número é o do cliente e nunca a âncora', () => {
+    const anilsa = service({ serviceId: 1, clientCode: 'C0003', clientName: 'Anilsa', username: 'skn003' });
+    const isa = service({ serviceId: 3, clientCode: 'C0001', clientName: 'Isa Rafe', username: 'skn001' });
+    const plan = planActions([anilsa, isa], [
+      secret({ id: '*A', name: 'skn003', comment: 'ispm:3 Anilsa #1' }),
+      secret({ id: '*B', name: 'skn001', comment: 'ispm:1 Isa Rafe #3' })
+    ]);
+    expect(plan.matched.get(1)?.id).toBe('*A');
+    expect(plan.matched.get(3)?.id).toBe('*B');
+    expect(plan.actions).toEqual([]);
+    expect(plan.divergences).toEqual([]);
+  });
+
+  test('código sem número e nome com cardinal não baralham a âncora', () => {
+    const semNumero = planActions([service({ clientCode: 'AVULSO' })], [secret({ comment: 'ispm:1' })]);
+    expect(semNumero.actions).toEqual([expect.objectContaining({ kind: 'comment', comment: 'ispm:1 Joao Silva' })]);
+    const cardinal = planActions([service({ clientName: 'Casa #9' })], [secret({ comment: 'ispm:1' })]);
+    expect(cardinal.actions).toEqual([expect.objectContaining({ kind: 'comment', comment: 'ispm:1 Casa 9 #1' })]);
   });
 
   test('secret casado só pelo nome guarda o comentário do operador', () => {
@@ -309,7 +337,7 @@ describe('runNetworkEnforcement', () => {
     expect(calls).toContainEqual({
       method: 'PUT',
       path: '/ppp/secret',
-      body: { name: 'joao-1', password: 'senha', service: 'pppoe', comment: 'ispm:1 Joao Silva', profile: 'plano-10M' }
+      body: { name: 'joao-1', password: 'senha', service: 'pppoe', comment: 'ispm:1 Joao Silva #1', profile: 'plano-10M' }
     });
   });
 
@@ -353,7 +381,7 @@ describe('runNetworkEnforcement', () => {
     await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
 
     expect(calls).toContainEqual({ method: 'PUT', path: '/ppp/secret',
-      body: { name: 'joao-1', password: 'senha', service: 'pppoe', comment: 'ispm:1 Joao Silva', profile: 'SUSPENSO' } });
+      body: { name: 'joao-1', password: 'senha', service: 'pppoe', comment: 'ispm:1 Joao Silva #1', profile: 'SUSPENSO' } });
     expect(calls.some((call) => call.method === 'PATCH' && call.path === '/ppp/secret/*77')).toBe(false);
   });
 
@@ -596,7 +624,7 @@ describe('runNetworkEnforcement', () => {
     for (let id = 1; id <= 3; id += 1) addService(db, id, 'suspended', `cliente-${id}`);
     addService(db, 4, 'active', 'cliente-4');
     const secrets = [1, 2, 3].map((id) => secret({ id: `*${id}`, name: `cliente-${id}`, comment: `ispm:${id}` }));
-    secrets.push(secret({ id: '*4', name: 'cliente-4', comment: 'ispm:4 Joao Silva', disabled: true }));
+    secrets.push(secret({ id: '*4', name: 'cliente-4', comment: 'ispm:1 Joao Silva #4', disabled: true }));
     const { transport, calls } = recordingTransport(secrets);
 
     const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 2 });
@@ -684,7 +712,7 @@ describe('runNetworkEnforcement', () => {
   test('uma ação que falha fica registada no serviço e não afeta as outras', async () => {
     addService(db, 1, 'suspended', 'joao-1');
     addService(db, 2, 'suspended', 'ana-2');
-    const secrets = [secret(), secret({ id: '*2', name: 'ana-2', comment: 'ispm:2 Joao Silva' })];
+    const secrets = [secret(), secret({ id: '*2', name: 'ana-2', comment: 'ispm:1 Joao Silva #2' })];
     const base = recordingTransport(secrets);
     const transport = (async (req: RouterRequest) => {
       if (req.method === 'PATCH' && req.path.endsWith('*1')) throw new Error('router inacessivel');
@@ -709,7 +737,7 @@ describe('runNetworkEnforcement', () => {
 
     expect(summary).toMatchObject({ applied: 1, failed: 0, divergences: 0 });
     expect(calls.filter((call) => call.method !== 'GET')).toEqual([
-      { method: 'PATCH', path: '/ppp/secret/*1', body: { comment: 'ispm:1 Joao Silva' } }
+      { method: 'PATCH', path: '/ppp/secret/*1', body: { comment: 'ispm:1 Joao Silva #1' } }
     ]);
   });
 
