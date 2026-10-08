@@ -13,6 +13,8 @@ let dataDir: string;
 let closeDatabaseForTests: () => void;
 
 const TABLES_TO_CLEAR = [
+  'network_diary',
+  'router_log_findings',
   'client_traffic_daily',
   'client_usage_state',
   'wan_traffic_daily',
@@ -45,6 +47,46 @@ describe('GET /api/network/incidents', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ probeEnabled: false, windowDays: 30, incidents: [] });
     expect((await app.inject('/api/network/incidents?days=0')).statusCode).toBe(400);
+  });
+});
+
+describe('saúde da rede e diário de ocorrências', () => {
+  test('GET /api/network/health responde vazio e recusa uma janela inválida', async () => {
+    const response = await app.inject('/api/network/health');
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ hours: 72, tone: 'ok', antennas: [], clients: [], downNow: [], findings: [], diary: [] });
+    expect((await app.inject('/api/network/health?hours=24')).json().hours).toBe(24);
+    expect((await app.inject('/api/network/health?hours=0')).statusCode).toBe(400);
+  });
+
+  test('regista uma ocorrência, fecha-a e deixa rasto na auditoria', async () => {
+    const created = await app.inject({
+      method: 'POST', url: '/api/network/diary',
+      payload: { happenedAt: '2026-10-06T17:54', title: '  Antenas a cair em conjunto  ' }
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ title: 'Antenas a cair em conjunto', status: 'aberta', cause: '', resolution: '' });
+    const { id } = created.json();
+
+    const closed = await app.inject({
+      method: 'PATCH', url: `/api/network/diary/${id}`,
+      payload: { status: 'resolvida', cause: 'TL-WR850N no 192.168.1.1', resolution: 'Retirado da rede' }
+    });
+    expect(closed.json()).toMatchObject({ id, status: 'resolvida', resolution: 'Retirado da rede', title: 'Antenas a cair em conjunto' });
+    expect((await app.inject('/api/network/diary')).json()).toHaveLength(1);
+    expect((await app.inject('/api/network/health')).json().diary).toHaveLength(1);
+    expect(db.prepare("SELECT action FROM audit_logs WHERE entity_type = 'network_diary' AND entity_id = ? ORDER BY id").all(String(id)))
+      .toEqual([{ action: 'create' }, { action: 'update' }]);
+    db.prepare("DELETE FROM audit_logs WHERE entity_type = 'network_diary'").run();
+  });
+
+  test('recusa uma ocorrência sem situação, sem data, com campos a mais ou que não existe', async () => {
+    const post = (payload: object) => app.inject({ method: 'POST', url: '/api/network/diary', payload });
+    expect((await post({ happenedAt: '2026-10-06T17:54', title: '   ' })).statusCode).toBe(400);
+    expect((await post({ happenedAt: 'ontem', title: 'Queda' })).statusCode).toBe(400);
+    expect((await post({ happenedAt: '2026-10-06T17:54', title: 'Queda', dono: 'x' })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'PATCH', url: '/api/network/diary/999999', payload: { status: 'resolvida' } })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'PATCH', url: '/api/network/diary/1', payload: { status: 'apagada' } })).statusCode).toBe(400);
   });
 });
 

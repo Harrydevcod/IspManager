@@ -3,6 +3,7 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { AuthProvider } from '../../lib/auth';
 import { formatDuration, IncidentsWorkspace, type IncidentsResponse } from './IncidentsWorkspace';
 
 const body: IncidentsResponse = {
@@ -15,18 +16,31 @@ const body: IncidentsResponse = {
   }]
 };
 
+/** Tudo responde `response`, menos a sessão: sem ela o ecrã deixa escrever, como com a autenticação desligada. */
+const stubFetch = (response: unknown) => vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => String(input).includes('/api/auth/')
+  ? new Response('{}', { status: 401 })
+  : new Response(JSON.stringify(response), { status: 200 })));
+
+const settle = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
 async function mount(response: IncidentsResponse) {
-  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(response), { status: 200 })));
+  stubFetch(response);
   const host = document.createElement('div');
   document.body.append(host);
   const root = createRoot(host);
-  await act(async () => root.render(<IncidentsWorkspace active />));
-  await act(async () => { await Promise.resolve(); });
+  await act(async () => root.render(<AuthProvider><IncidentsWorkspace active /></AuthProvider>));
+  await settle();
   return { host, root };
 }
 
+const openView = async (host: HTMLElement, label: string) => {
+  const tab = [...host.querySelectorAll<HTMLElement>('[role="tab"]')].find((node) => node.textContent === label)!;
+  await act(async () => tab.click());
+  await settle();
+};
+
 beforeEach(() => vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true));
-afterEach(() => { vi.unstubAllGlobals(); document.body.innerHTML = ''; });
+afterEach(() => { vi.unstubAllGlobals(); document.body.replaceChildren(); });
 
 test('lista o incidente e abre os clientes afetados ao clicar na linha', async () => {
   const { host, root } = await mount(body);
@@ -45,6 +59,68 @@ test('lista o incidente e abre os clientes afetados ao clicar na linha', async (
 test('sem incidentes distingue a sonda desligada', async () => {
   const { host, root } = await mount({ probeEnabled: false, windowDays: 30, incidents: [] });
   expect(host.textContent).toContain('Sonda de rede desligada');
+  await act(async () => root.unmount());
+});
+
+test('a vista Router lista os achados do registo, um dado por coluna', async () => {
+  const { host, root } = await mount(body);
+  stubFetch({
+    hours: 168, tone: 'danger', probeEnabled: true, lastProbeAt: null, lastRouterReadAt: '2026-10-07T22:14:00.000Z', routerJournal: false,
+    antennas: [], clients: [], downNow: [], diary: [],
+    findings: [{
+      kind: 'ip_duplicado', subject: 'BC:07:1D:5E:42:9E', label: 'LAN1 · 192.168.1.1', count: 74,
+      firstAt: '2026-10-07 10:29:23', lastAt: '2026-10-07 13:16:00', deviceName: null, clientName: null, vendor: 'TP-Link'
+    }]
+  });
+  await openView(host, 'Router');
+  expect([...host.querySelectorAll('[role="columnheader"]')].map((node) => node.textContent))
+    .toEqual(['Tipo', 'Endereço', 'Pertence a', 'Detalhe', 'Vezes', 'Desde', 'Última vez']);
+  const row = [...host.querySelectorAll<HTMLElement>('[role="row"]')][1];
+  expect(row.textContent).toContain('Endereço do router duplicado');
+  expect(row.textContent).toContain('TP-Link');
+  expect(row.textContent).toContain('07/10 13:16');
+  await act(async () => root.unmount());
+});
+
+test('com um disco no router, a vista Router oferece guardar o registo no cartão e o botão sai depois de ligado', async () => {
+  const { host, root } = await mount(body);
+  const health = {
+    hours: 168, tone: 'ok', probeEnabled: true, lastProbeAt: null, lastRouterReadAt: '2026-10-07T22:14:00.000Z', routerJournal: false,
+    antennas: [], clients: [], downNow: [], diary: [], findings: []
+  };
+  const posts: string[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes('/api/auth/')) return new Response('{}', { status: 401 });
+    if (!url.includes('/router/log-journal')) return new Response(JSON.stringify(health), { status: 200 });
+    if (init?.method !== 'POST') return new Response(JSON.stringify({ installed: null, available: true, disks: [{ slot: 'sd1' }] }), { status: 200 });
+    posts.push(String(init.body));
+    health.routerJournal = true;
+    return new Response(JSON.stringify({ installed: 'sd1' }), { status: 200 });
+  }));
+  await openView(host, 'Router');
+  const button = [...host.querySelectorAll<HTMLElement>('button')].find((node) => node.textContent?.includes('Guardar o registo no cartão (sd1)'))!;
+  await act(async () => button.click());
+  await settle();
+  expect(posts).toEqual(['{"disk":"sd1"}']);
+  expect(host.textContent).not.toContain('Guardar o registo no cartão');
+  await act(async () => root.unmount());
+});
+
+test('a vista Diário lista as ocorrências e abre a edição ao clicar na linha', async () => {
+  const { host, root } = await mount(body);
+  stubFetch([{
+    id: 3, happenedAt: '2026-10-06T17:54', title: 'Antenas a cair em conjunto', cause: 'TL-WR850N no 192.168.1.1',
+    resolution: 'Retirado da rede', status: 'resolvida', createdAt: '', updatedAt: ''
+  }]);
+  await openView(host, 'Diário');
+  expect(host.textContent).toContain('Nova ocorrência');
+  const row = [...host.querySelectorAll<HTMLElement>('[role="row"]')][1];
+  expect(row.textContent).toContain('Resolvida');
+  expect(row.textContent).toContain('06/10/2026 17:54');
+  expect(row.textContent).toContain('Retirado da rede');
+  await act(async () => row.click());
+  expect(document.querySelector<HTMLInputElement>('#network-diary-form input[maxlength="140"]')!.value).toBe('Antenas a cair em conjunto');
   await act(async () => root.unmount());
 });
 

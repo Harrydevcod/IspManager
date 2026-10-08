@@ -92,6 +92,11 @@ Two failure modes shape the decision:
 - Além do contador das WAN, o ISPM instala (por botão próprio, na aba Consumo) um segundo
   script no MikroTik para acumular o consumo das sessões PPPoE por cliente. O ISPM importa esses totais e associa-os ao serviço
   pelo utilizador PPPoE; a leitura obedece à mesma guarda de rede de gestão.
+- Por botão próprio (Topologia › Incidentes › Router, só administrador), o ISPM cria em
+  `/system/logging` a ação `ispmdiario` (registo em disco, com rotação, no cartão do router) e
+  as regras `info`/`warning`/`error`/`critical` a apontar para ela. Não altera as regras que
+  já existem. A vigia do registo passa a ler esses ficheiros em vez das 1000 linhas em memória,
+  para contar o que aconteceu com o ISPM fechado ou através de um reinício do router.
 
 - Suspension gains a history today: `service_events` records the transition and the reason,
   which is visible in the customer timeline and countable in the operations panel.

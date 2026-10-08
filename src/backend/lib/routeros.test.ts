@@ -753,7 +753,7 @@ describe('leituras do módulo Router de gestão', () => {
       { id: '*2', time: '02:40:13', topics: 'system,error,critical', message: 'login failure for user admin from 10.0.0.9 via winbox' },
       { id: '*1', time: '2026-09-25 23:59:01', topics: 'system,info', message: 'router rebooted' }
     ]);
-    expect(transport.calls[0]).toEqual({ method: 'GET', path: '/log?.proplist=.id,time,topics,message' });
+    expect(transport.calls[0]).toEqual({ method: 'GET', path: '/log?buffer=memory&.proplist=.id,time,topics,message' });
   });
 
   // Linhas do registo real do hEX S (RouterOS 7.24.2), exportado a 2026-09-26.

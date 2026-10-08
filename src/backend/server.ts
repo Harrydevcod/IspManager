@@ -46,6 +46,7 @@ import { networkProbeIntervalMs, runNetworkProbeIfDue } from './lib/network-prob
 import { runWanUsageIfDue } from './lib/wan-usage';
 import { runClientUsageIfDue } from './lib/client-usage';
 import { runRouterConfigBackupIfDue } from './lib/router-config-backup';
+import { runRouterLogWatchIfDue } from './lib/router-log-watch';
 import { requestNetworkSync } from './lib/network-sync';
 import { routerosIntervalMs } from './lib/routeros';
 import { autoSuspensionIntervalMs, runAutomaticSuspension } from './lib/auto-suspension';
@@ -291,6 +292,10 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
     const routerConfigTick = () => { void runJob('router_config_backup', runRouterConfigBackupIfDue).catch((err) => app.log.error({ err }, 'router config backup failed')); };
     routerConfigTick();
     setInterval(routerConfigTick, 10 * 60_000).unref();
+    // O router só guarda umas horas de registo: lê-se de 5 em 5 minutos e soma-se o que é novo.
+    const routerLogTick = () => { void runJob('router_log_watch', runRouterLogWatchIfDue).catch((err) => app.log.error({ err }, 'router log watch failed')); };
+    routerLogTick();
+    setInterval(routerLogTick, 5 * 60_000).unref();
   }
 
   // Suspensão automática por dívida: decide apenas a intenção na base de dados.

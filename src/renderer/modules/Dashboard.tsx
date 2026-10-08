@@ -4,6 +4,7 @@ import { Badge, Button, Card, EmptyState, ErrorRetry, MetricCard, MetricGrid, Re
 import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
 import type { DashboardSummary } from '../types';
+import { NetworkHealthCard } from './topology/NetworkHealthCard';
 
 type DashboardProps = {
   onOpenClients: () => void;
@@ -12,6 +13,7 @@ type DashboardProps = {
   onOpenLowStock: () => void;
   onOpenWorkOrders: () => void;
   onOpenMonth: (referenceMonth: string) => void;
+  onOpenNetwork: () => void;
 };
 
 // Torna um tile/elemento informativo acionável por teclado (Enter/Espaço) e rato.
@@ -35,7 +37,8 @@ export function Dashboard({
   onOpenPending,
   onOpenLowStock,
   onOpenWorkOrders,
-  onOpenMonth
+  onOpenMonth,
+  onOpenNetwork
 }: DashboardProps) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -185,6 +188,7 @@ export function Dashboard({
             ? <RevenueBars points={summary.revenueByMonth} onSelectMonth={onOpenMonth} />
             : <Skeleton height={180} radius={12} />}
         </Card>
+        <NetworkHealthCard onOpenNetwork={onOpenNetwork} />
       </section>
 
       <div className="dashboard-section-label">
