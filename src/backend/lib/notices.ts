@@ -1,5 +1,4 @@
 import { getSqliteDatabase } from '../db/database';
-import { readSecret } from './secrets';
 import { balanceSqlExpr } from './payments';
 import {
   fallbackWhatsappOverdueTemplate,
@@ -9,8 +8,8 @@ import {
   fallbackWhatsappWarningTemplate,
   renderWhatsappTemplate
 } from '../../shared/whatsapp';
-import { normalizeUltraMsgPhone } from './ultramsg';
 import { enqueueWhatsapp } from './whatsapp-outbox';
+import { configuredWhatsappProviderLabel, normalizeWhatsappPhone, resolveWhatsappProvider } from './whatsapp-provider';
 
 const LAST_RUN_KEY = 'lastOverdueNoticesDate';
 const DEFAULT_REMINDER_DAYS = 3;
@@ -123,10 +122,8 @@ export async function runOverdueNoticesIfDue(
     return { skipped: true, reason: 'avisos automaticos desativados' };
   }
 
-  const instanceId = getSetting('ultraMsgInstanceId');
-  const token = readSecret(getSqliteDatabase(), 'ultraMsgToken');
-  if (!instanceId || !token) {
-    return { skipped: true, reason: 'UltraMsg nao configurado' };
+  if (!resolveWhatsappProvider(getSqliteDatabase())) {
+    return { skipped: true, reason: `${configuredWhatsappProviderLabel(getSqliteDatabase())} nao configurado` };
   }
 
   const todayIso = now.toISOString().slice(0, 10);
@@ -180,7 +177,7 @@ export async function runOverdueNoticesIfDue(
 
   const eligible = candidates.filter((row) => {
     if (row.whatsappOptOut) { skipped += 1; return false; }
-    if (!normalizeUltraMsgPhone(row.phone || '')) { skipped += 1; return false; }
+    if (!normalizeWhatsappPhone(row.phone || '')) { skipped += 1; return false; }
     return true;
   });
 
@@ -192,7 +189,7 @@ export async function runOverdueNoticesIfDue(
     const alreadySent = recentlyNotified.get(row.paymentId, type, `-${cooldownDays} days`);
     if (alreadySent) { skipped += 1; continue; }
 
-    const to = normalizeUltraMsgPhone(row.phone || '');
+    const to = normalizeWhatsappPhone(row.phone || '');
     const body = renderWhatsappTemplate(
       templateFor(type),
       {

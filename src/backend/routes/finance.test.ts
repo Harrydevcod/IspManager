@@ -118,7 +118,7 @@ describe('settings routes', () => {
       invoicePrefix: 'FT',
       receiptPrefix: 'RC',
       whatsappTemplate: 'Ola {nome}, somos da {empresa}. Entramos em contacto sobre o seu servico de internet.',
-      whatsappTestTemplate: 'Teste UltraMsg - {empresa}. Ola {nome}, esta mensagem confirma que a integracao WhatsApp esta ativa.',
+      whatsappTestTemplate: 'Teste WhatsApp - {empresa}. Ola {nome}, esta mensagem confirma que a integracao WhatsApp esta ativa.',
       whatsappInvoiceReadyTemplate: 'Ola {nome}, a sua fatura {fatura} de {mes} no valor de {valor} CVE ja esta pronta. Vencimento: {vencimento}. {empresa}',
       whatsappReceiptTemplate: 'Ola {nome}, confirmamos o recebimento de {valor} CVE referente a {mes}. O seu recibo {recibo} foi emitido. Obrigado, {empresa}.',
       whatsappOverdueTemplate: 'Ola {nome}, a sua fatura {fatura} de {mes}, no valor de {valor} CVE, esta em atraso desde {vencimento}. Por favor regularize para evitar constrangimentos. {empresa}',

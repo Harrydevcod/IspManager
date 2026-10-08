@@ -350,6 +350,32 @@ describe('credenciais nas definicoes', () => {
     return readSecret(db, key);
   }
 
+  test('o fornecedor de WhatsApp grava-se e o token da Meta nunca sai', async () => {
+    const saved = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, whatsappProvider: 'meta-cloud', metaPhoneNumberId: '1055', metaAccessToken: 'meta-secreto' }
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({ metaAccessToken: '', metaAccessTokenConfigured: true });
+
+    const read = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(read.json()).toMatchObject({
+      whatsappProvider: 'meta-cloud',
+      metaPhoneNumberId: '1055',
+      metaAccessToken: '',
+      metaAccessTokenConfigured: true
+    });
+    expect(stored('metaAccessToken')).toBe('meta-secreto');
+
+    const invalid = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, whatsappProvider: 'telegram' }
+    });
+    expect(invalid.statusCode).toBe(400);
+  });
+
   test('o token da UltraMsg tem o mesmo tratamento da senha do router', async () => {
     const saved = await app.inject({
       method: 'PUT',

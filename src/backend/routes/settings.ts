@@ -6,6 +6,7 @@ import { validateBackupDir } from '../lib/backup';
 import { recordAudit } from '../lib/audit';
 import { confirmSessionPassword, requireRole } from './auth';
 import { canStoreSecrets, readSecret, readSecretsLost, refreshSecretsLost, SECRET_KEYS, writeSecret, type SecretKey } from '../lib/secrets';
+import { WHATSAPP_PROVIDER_IDS, type WhatsappProviderId } from '../lib/whatsapp-provider';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
   fallbackWhatsappOverdueTemplate,
@@ -104,6 +105,10 @@ const settingsSchema = z.object({
   ultraMsgInstanceId: z.string().trim().max(64).optional().nullable(),
   // Credenciais sem trim (preservam bytes). Omitida ou vazia = manter a guardada.
   ultraMsgToken: z.string().max(255).optional().nullable(),
+  whatsappProvider: z.enum(WHATSAPP_PROVIDER_IDS).optional().default('ultramsg'),
+  metaPhoneNumberId: z.string().trim().max(32).regex(/^\d*$/).optional().default(''),
+  // Os tokens da Meta passam bem dos 255 caracteres.
+  metaAccessToken: z.string().max(1024).optional().nullable(),
   smsCompanionEnabled: strictOptionalBoolean,
   smsCompanionBaseUrl: smsCompanionBaseUrlSchema.optional().default(''),
   smsDispatchIntervalSeconds: z.coerce.number().int().min(15).max(3600).optional().default(60),
@@ -157,7 +162,8 @@ const settingsSchema = z.object({
 function secretFlags(db: Database.Database) {
   return {
     routerosPasswordConfigured: readSecret(db, 'routerosPassword') !== '',
-    ultraMsgTokenConfigured: readSecret(db, 'ultraMsgToken') !== ''
+    ultraMsgTokenConfigured: readSecret(db, 'ultraMsgToken') !== '',
+    metaAccessTokenConfigured: readSecret(db, 'metaAccessToken') !== ''
   };
 }
 
@@ -196,6 +202,9 @@ const defaultSettings = {
   noticeCooldownDays: 7,
   ultraMsgInstanceId: '',
   ultraMsgToken: '',
+  whatsappProvider: 'ultramsg' as WhatsappProviderId,
+  metaPhoneNumberId: '',
+  metaAccessToken: '',
   smsCompanionEnabled: false,
   smsCompanionBaseUrl: '',
   smsDispatchIntervalSeconds: 60,
@@ -287,7 +296,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       } else if (row.key === 'routerosDryRun') {
         // Só um "false" explícito desliga o ensaio.
         settings.routerosDryRun = row.value !== 'false' && row.value !== '0';
-      } else if (row.key === 'routerosPassword' || row.key === 'ultraMsgToken') {
+      } else if (row.key === 'routerosPassword' || row.key === 'ultraMsgToken' || row.key === 'metaAccessToken') {
         // Nunca saem: ver `secretFlags`.
         settings[row.key] = '';
       } else if (row.key === 'fiscalRegime') {
@@ -422,6 +431,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       // As credenciais nunca voltam; as flags dizem do que ficou gravado.
       routerosPassword: '',
       ultraMsgToken: '',
+      metaAccessToken: '',
       ...secretFlags(db)
     };
   });

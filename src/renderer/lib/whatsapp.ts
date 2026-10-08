@@ -38,7 +38,7 @@ export function renderWhatsappMessage(template: string, client: WhatsappMessageD
   return renderWhatsappTemplate(template, { ...context, ...client }, companyName);
 }
 
-export async function sendWhatsappViaUltraMsg(phone: string | null, body: string) {
+export async function sendWhatsapp(phone: string | null, body: string) {
   const normalizedPhone = normalizeWhatsappPhone(phone);
   if (!normalizedPhone) {
     throw new Error('Telefone WhatsApp invalido');

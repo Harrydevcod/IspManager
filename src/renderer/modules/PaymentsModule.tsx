@@ -18,7 +18,7 @@ import {
   fallbackWhatsappTemplate,
   normalizeWhatsappPhone,
   renderWhatsappMessage,
-  sendWhatsappViaUltraMsg
+  sendWhatsapp
 } from '../lib/whatsapp';
 import type { PaymentReceipt, PaymentRow, SmsEventType } from '../types';
 import { IndividualRevertDialog } from './payments/IndividualRevertDialog';
@@ -277,7 +277,7 @@ export function PaymentsModule({
     }
     setSubmitting(true);
     try {
-      await sendWhatsappViaUltraMsg(payment.clientPhone, whatsappMessageFor(payment));
+      await sendWhatsapp(payment.clientPhone, whatsappMessageFor(payment));
       if (payment.status !== 'paid') {
         markReminderSent(payment.id);
       }
@@ -728,7 +728,7 @@ export function PaymentsModule({
     setBulkSubmitting(true);
     try {
       const result = await runBulk(targets, async (payment) => {
-        await sendWhatsappViaUltraMsg(payment.clientPhone, whatsappMessageFor(payment));
+        await sendWhatsapp(payment.clientPhone, whatsappMessageFor(payment));
         markReminderSent(payment.id);
       });
       setWhatsappTick((tick) => tick + 1);

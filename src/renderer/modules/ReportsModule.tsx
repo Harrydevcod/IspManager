@@ -4,7 +4,7 @@ import { Button, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, 
 import { authFetch } from '../lib/auth';
 import { downloadCsv } from '../lib/csv';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
-import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsappViaUltraMsg } from '../lib/whatsapp';
+import { fallbackWhatsappTemplate, normalizeWhatsappPhone, renderWhatsappMessage, sendWhatsapp } from '../lib/whatsapp';
 import { referenceMonthLabel } from '../../shared/billing-period';
 import { OperationsStatusPanel } from './reports/OperationsStatusPanel';
 import type { DataQualityIncompleteFlag, DataQualitySummary, ReportsSummary, ReportView } from '../types';
@@ -161,9 +161,9 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
       messagingSettings.companyName
     );
     try {
-      await sendWhatsappViaUltraMsg(row.phone, message);
+      await sendWhatsapp(row.phone, message);
       setError(null);
-      setWhatsappStatus('Mensagem WhatsApp enviada via UltraMsg.');
+      setWhatsappStatus('Mensagem WhatsApp enviada.');
     } catch (err) {
       setWhatsappStatus(null);
       setError(err instanceof Error ? err.message : 'Nao foi possivel enviar WhatsApp');

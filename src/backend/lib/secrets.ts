@@ -6,7 +6,7 @@ import type { Vault } from './vault';
  * `docs/superpowers/plans/2026-09-24-cofre-de-credenciais.md`).
  *
  * O ISPM precisa destes valores **em claro em tempo de execução** — são senhas
- * que ele tem de apresentar ao router, à UltraMsg e ao telemóvel. Não podem ser
+ * que ele tem de apresentar ao router, à UltraMsg, à Meta e ao telemóvel. Não podem ser
  * hashes. Ficam gravadas como `enc:v2:` com o AAD `app_settings.<chave>`; a
  * chave de dados não viaja com o ficheiro, e noutra máquina só a chave de
  * recuperação a devolve.
@@ -36,7 +36,7 @@ export const SECRETS_LOST_KEY = 'secretsLost';
  * As credenciais portáteis de infraestrutura. A assinatura das sessões saiu
  * daqui para `session-secret.ts`: recria-se num restauro, não se recupera.
  */
-export const SECRET_KEYS = ['routerosPassword', 'ultraMsgToken', 'smsCompanionPairingKey'] as const;
+export const SECRET_KEYS = ['routerosPassword', 'ultraMsgToken', 'metaAccessToken', 'smsCompanionPairingKey'] as const;
 
 export type SecretKey = (typeof SECRET_KEYS)[number];
 
@@ -44,6 +44,7 @@ export type SecretKey = (typeof SECRET_KEYS)[number];
 export const SECRET_LABELS: Record<SecretKey, string> = {
   routerosPassword: 'Senha do router de gestão',
   ultraMsgToken: 'Token UltraMsg',
+  metaAccessToken: 'Token Meta Cloud API',
   smsCompanionPairingKey: 'Pareamento do telemóvel SMS'
 };
 
