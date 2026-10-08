@@ -46,11 +46,13 @@ export function NetworkHealthCard({ onOpenNetwork }: { onOpenNetwork: () => void
               </div>
             </dl>
 
-            {/* Só se vê o que aconteceu com o ISPM aberto: dizer até onde se viu. */}
+            {/* A sonda só vê com o ISPM aberto, e o router também enquanto não escrever o registo
+                no cartão: dizer até onde se viu. */}
             <p className="network-health-seen">
               Sonda: {health.lastProbeAt ? formatPtDateTime(health.lastProbeAt) : 'sem leituras'}
               {' · '}
               Router: {health.lastRouterReadAt ? formatPtDateTime(health.lastRouterReadAt) : 'por ler'}
+              {health.routerJournal && ' · registo contínuo no cartão'}
             </p>
 
             <div className="dashboard-card-footer">

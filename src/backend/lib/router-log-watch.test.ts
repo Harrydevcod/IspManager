@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import * as adminNetwork from './admin-network';
-import { collectFindings, freshEntries, runRouterLogWatchIfDue, watchRouterLog } from './router-log-watch';
+import { collectFindings, freshEntries, freshJournalLines, installLogJournal, parseJournal, runRouterLogWatchIfDue, watchRouterLog } from './router-log-watch';
 import type { RouterLogEntry, RouterTransport } from './routeros';
 import { writeSecret } from './secrets';
 
@@ -124,6 +124,65 @@ describe('vigia do registo do router', () => {
   test('o endereço duplicado grava-se com os endereços que o router diz ter', async () => {
     await watchRouterLog(db, router(log([1, '2026-10-07 10:29:23', 'bridge,warning', ROGUE('192.168.1.1', 'bc:07:1d:5e:42:9e')])), NOW);
     expect(findings()).toMatchObject([{ kind: 'ip_duplicado', subject: 'BC:07:1D:5E:42:9E' }]);
+  });
+
+  test('as linhas reais do cartão (RouterOS 7.24) viram achados', () => {
+    const found = collectFindings(parseJournal([
+      'Oct/07/2026 23:40:51 system,info log rule added by api:ispm-api@:: (*5 = /system logging add action=ispmdiario topics=info)',
+      'Oct/07/2026 23:43:49 bridge,warning LAN1: received DHCP server message on untrusted port from source IP 192.168.0.1, MAC 30:16:9d:aa:53:8b',
+      'Oct/07/2026 23:45:40 dhcp,info dhcp-SKYNET deassigned 192.168.2.230 for 3C:64:CF:7B:80:08 Archer_C20',
+      'Oct/07/2026 23:45:41 dhcp,info dhcp-SKYNET assigned 192.168.2.230 for 3C:64:CF:7B:80:08 Archer_C20'
+    ].join('\n')), ['192.168.2.1'], NOW);
+    expect(found.map(({ kind, subject, firstAt }) => ({ kind, subject, firstAt }))).toEqual([
+      { kind: 'dhcp_intruso', subject: '30:16:9D:AA:53:8B', firstAt: '2026-10-07 23:43:49' },
+      { kind: 'dhcp_ciclo', subject: '3C:64:CF:7B:80:08', firstAt: '2026-10-07 23:45:40' }
+    ]);
+  });
+
+  test('o diário em disco lê-se pela ordem do texto e ignora o que não é linha de registo', () => {
+    expect(parseJournal(`Oct/07/2026 10:29:34 netwatch,info ${DOWN('192.168.1.251')}\r\nlixo\n\nOct/07/2026 10:30:00 system,error,critical login failure for user admin from 192.168.2.50 via winbox\n`)).toEqual([
+      { id: '*0', time: '2026-10-07 10:29:34', topics: 'netwatch,info', message: DOWN('192.168.1.251') },
+      { id: '*1', time: '2026-10-07 10:30:00', topics: 'system,error,critical', message: 'login failure for user admin from 192.168.2.50 via winbox' }
+    ]);
+  });
+
+  test('o cursor do diário é o segundo da última linha e quantas desse segundo já se contaram', () => {
+    const line = (time: string, message: string): RouterLogEntry => ({ id: '', time, topics: '', message });
+    const entries = [line('10:00:00', 'a'), line('10:00:01', 'b'), line('10:00:01', 'c')];
+    expect(freshJournalLines(entries, null)).toEqual({ fresh: entries, cursor: { time: '10:00:01', seen: 2 } });
+    expect(freshJournalLines(entries, { time: '10:00:01', seen: 2 })).toEqual({ fresh: [], cursor: { time: '10:00:01', seen: 2 } });
+    // Mais uma linha no mesmo segundo, depois de lido: só essa é nova.
+    const more = freshJournalLines([...entries, line('10:00:01', 'd'), line('10:00:02', 'e')], { time: '10:00:01', seen: 2 });
+    expect(more.fresh.map((row) => row.message)).toEqual(['d', 'e']);
+    expect(more.cursor).toEqual({ time: '10:00:02', seen: 1 });
+    expect(freshJournalLines([line('10:00:01', 'd')], { time: '10:00:01', seen: 0 }).cursor).toEqual({ time: '10:00:01', seen: 1 });
+    // A rotação levou os ficheiros antigos: o que sobra depois do cursor conta na mesma.
+    expect(freshJournalLines([line('10:00:05', 'f')], { time: '10:00:01', seen: 2 }).fresh).toHaveLength(1);
+  });
+
+  test('ligar o diário conta o que a memória tinha e passa a ler só o que o cartão ganhar', async () => {
+    const memory = log([1, '2026-10-07 10:29:34', 'netwatch,info', DOWN('192.168.1.251')]);
+    const files: Record<string, string> = { 'sd1/ispm-log.0.txt': `Oct/07/2026 10:20:00 netwatch,info ${DOWN('192.168.1.251')}\n` };
+    const writes: string[] = [];
+    const transport: RouterTransport = async ({ method, path: requested, body }) => {
+      if (method !== 'GET') { writes.push(`${method} ${requested} ${JSON.stringify(body)}`); return {}; }
+      if (requested.startsWith('/ip/address')) return [];
+      if (requested.startsWith('/log')) return memory;
+      if (requested.startsWith('/system/logging/action')) return writes.length ? [{ '.id': '*9', 'disk-file-name': 'sd1/ispm-log' }] : [];
+      if (requested.startsWith('/system/logging')) return [{ topics: 'info', action: 'memory' }];
+      if (requested.startsWith('/file?.proplist')) return Object.entries(files).map(([name, text]) => ({ name, size: String(text.length), 'last-modified': '2026-10-07 10:20:00' }));
+      return [{ contents: files[decodeURIComponent(/name=([^&]+)/.exec(requested)![1])] }];
+    };
+    await installLogJournal(db, transport, 'sd1', NOW);
+    expect(writes).toHaveLength(5); // a ação e as quatro regras
+    expect(writes[0]).toContain('"disk-file-name":"sd1/ispm-log"');
+    // A linha que já estava no cartão ficou atrás do cursor; a da memória contou.
+    expect(findings()).toMatchObject([{ count: 1, firstAt: '2026-10-07 10:29:34' }]);
+
+    files['sd1/ispm-log.0.txt'] += `Oct/07/2026 23:10:00 netwatch,info ${DOWN('192.168.1.251')}\n`;
+    expect(await watchRouterLog(db, transport, NOW)).toEqual({ lines: 1, findings: 1 });
+    expect(await watchRouterLog(db, transport, NOW)).toEqual({ lines: 0, findings: 0 });
+    expect(findings()).toMatchObject([{ count: 2, lastAt: '2026-10-07 23:10:00' }]);
   });
 
   test('router por configurar ou fora da rede de gestão: salta sem escrever', async () => {

@@ -62,7 +62,7 @@ const finding = (kind: string, subject: string, lastAt: string, count = 1, label
 describe('saúde da rede', () => {
   test('rede sem nada a assinalar', () => {
     expect(loadNetworkHealth(db, 72, NOW)).toMatchObject({
-      hours: 72, tone: 'ok', probeEnabled: false, lastProbeAt: null, lastRouterReadAt: null,
+      hours: 72, tone: 'ok', probeEnabled: false, lastProbeAt: null, lastRouterReadAt: null, routerJournal: false,
       antennas: [], clients: [], downNow: [], findings: [], diary: []
     });
   });

@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { HardDrive, Plus } from 'lucide-react';
 import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, SkeletonList, type DataTableColumn } from '../../components';
 import { useAuth } from '../../lib/auth';
 import { formatPtDateTime } from '../../lib/format';
 import { useLive } from '../router/useLive';
 import { NetworkDiaryDialog } from './NetworkDiaryDialog';
-import { findingWho, formatLocalStamp, KIND_LABEL, NETWORK_API, type DiaryEntry, type HealthFinding, type NetworkHealth } from './network-health';
+import { findingWho, formatLocalStamp, KIND_LABEL, NETWORK_API, networkRequest, type DiaryEntry, type HealthFinding, type NetworkHealth } from './network-health';
 
 export type IncidentClient = { clientId: number; clientCode: string; clientName: string; zone: string | null };
 
@@ -122,7 +122,10 @@ function OutagesView({ active }: { active: boolean }) {
   );
 }
 
-/** O que o registo do router contou: o ISPM lê-o de 5 em 5 minutos enquanto está aberto. */
+/**
+ * O que o registo do router contou: o ISPM lê-o de 5 em 5 minutos enquanto está aberto. Com o
+ * diário no cartão, o que aconteceu com ele fechado conta-se na leitura seguinte.
+ */
 function RouterFindingsView({ active }: { active: boolean }) {
   const live = useLive<NetworkHealth>(`${NETWORK_API}/health?hours=${FINDINGS_HOURS}`, active, 60_000);
 
@@ -130,12 +133,51 @@ function RouterFindingsView({ active }: { active: boolean }) {
   if (!live.data) return <SkeletonList rows={5} />;
 
   return (
-    <DataTable rows={live.data.findings} rowKey={(row) => `${row.kind}:${row.subject}`} columns={findingColumns}
-      // Cabe nos 857 px que a tabela tem no ecrã de 1920 a 150%.
-      gridTemplateColumns="minmax(128px, 1.2fr) 138px minmax(100px, 1fr) minmax(88px, 0.8fr) 56px 98px 98px"
-      empty={live.data.lastRouterReadAt
-        ? <EmptyState title="Sem achados" description="O registo do router não assinalou nada nos últimos 7 dias." />
-        : <EmptyState title="Registo do router por ler" description="Os achados aparecem depois da primeira leitura, com o ISPM na rede de gestão." />} />
+    <>
+      {!live.data.routerJournal && <JournalInstall active={active} onInstalled={live.reload} />}
+      <DataTable rows={live.data.findings} rowKey={(row) => `${row.kind}:${row.subject}`} columns={findingColumns}
+        // Cabe nos 857 px que a tabela tem no ecrã de 1920 a 150%.
+        gridTemplateColumns="minmax(128px, 1.2fr) 138px minmax(100px, 1fr) minmax(88px, 0.8fr) 56px 98px 98px"
+        empty={live.data.lastRouterReadAt
+          ? <EmptyState title="Sem achados" description="O registo do router não assinalou nada nos últimos 7 dias." />
+          : <EmptyState title="Registo do router por ler" description="Os achados aparecem depois da primeira leitura, com o ISPM na rede de gestão." />} />
+    </>
+  );
+}
+
+type JournalStatus = { installed: string | null; available: boolean; disks?: Array<{ slot: string }> };
+
+/**
+ * Sem diário, o router só guarda 1000 linhas em memória e perde-as ao reiniciar. Com um cartão
+ * no router, o botão põe-no a escrever lá o registo; quem não é administrador recebe 403 e não vê nada.
+ */
+function JournalInstall({ active, onInstalled }: { active: boolean; onInstalled: () => void }) {
+  const status = useLive<JournalStatus>(`${NETWORK_API}/router/log-journal`, active, 600_000);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const disk = status.data?.disks?.[0]?.slot;
+  if (!disk) return null;
+
+  const install = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await networkRequest('/router/log-journal', { method: 'POST', body: { disk } });
+      onInstalled();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível ligar o diário.');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="incidents-actions">
+      {error && <span role="alert">{error}</span>}
+      <Button variant="secondary" leadingIcon={<HardDrive size={16} aria-hidden />} disabled={busy} onClick={() => { void install(); }}
+        title="O router passa a escrever o registo no cartão; o ISPM lê o que aconteceu com ele fechado.">
+        Guardar o registo no cartão ({disk})
+      </Button>
+    </div>
   );
 }
 

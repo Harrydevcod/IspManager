@@ -12,7 +12,7 @@ const finding = (row: Partial<HealthFinding> & Pick<HealthFinding, 'kind' | 'sub
 });
 
 const calm: NetworkHealth = {
-  hours: 72, tone: 'ok', probeEnabled: true, lastProbeAt: '2026-10-07 22:15:06', lastRouterReadAt: '2026-10-07T22:14:00.000Z',
+  hours: 72, tone: 'ok', probeEnabled: true, lastProbeAt: '2026-10-07 22:15:06', lastRouterReadAt: '2026-10-07T22:14:00.000Z', routerJournal: false,
   antennas: [], clients: [], downNow: [], findings: [], diary: []
 };
 

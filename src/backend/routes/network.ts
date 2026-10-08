@@ -4,6 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from '../lib/admin-network';
 import { createDiaryEntry, listDiary, loadNetworkHealth, loginLookup, macLookup, updateDiaryEntry } from '../lib/network-health';
 import { loadIncidents } from '../lib/network-incidents';
+import { installLogJournal, journalDisk } from '../lib/router-log-watch';
 import { loadNetworkStatus, loadProbeEvents, mapWithLimit, readProbeConfig, runNetworkProbe } from '../lib/network-probe';
 import {
   createTransport,
@@ -19,6 +20,7 @@ import {
   listNeighbors,
   listActive,
   listInterfaces,
+  listDisks,
   listLog,
   summarizeLog,
   listServices,
@@ -562,6 +564,39 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       const result = await collectClientUsage(db, transport);
       recordAudit(request, { action: 'router_client_usage_counter', entityType: 'router', summary: 'Instalou a contagem do consumo por cliente no router' });
       return result;
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return reply.status(502).send({ error: `${failure.title}. ${failure.detail}`, code: failure.code });
+    }
+  });
+
+  /** O diário do registo em disco: onde está instalado e os discos que o router tem. */
+  app.get('/api/network/router/log-journal', adminOnly, async () => {
+    const installed = journalDisk(getSqliteDatabase());
+    return { installed, ...await readLive(async (transport) => ({ disks: await listDisks(transport) })) };
+  });
+
+  app.post('/api/network/router/log-journal', adminOnly, async (request, reply) => {
+    const body = z.object({ disk: z.string().trim().regex(/^[\w-]{1,32}$/, 'Disco inválido') }).safeParse(request.body);
+    if (!body.success) return reply.status(400).send({ error: body.error.issues[0]?.message ?? 'Dados inválidos' });
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return reply.status(400).send({ error: 'Integração MikroTik desligada ou por configurar' });
+    }
+    if (config.dryRun) return reply.status(409).send({ error: 'Desative o modo de ensaio para ligar o diário no router' });
+    try {
+      const transport = createTransport(config);
+      // O disco vem do que o router diz ter, não do pedido: a flash interna não serve.
+      if (!(await listDisks(transport)).some((disk) => disk.slot === body.data.disk)) {
+        return reply.status(400).send({ error: 'O router não tem esse disco' });
+      }
+      await installLogJournal(db, transport, body.data.disk);
+      recordAudit(request, {
+        action: 'router_log_journal', entityType: 'router',
+        summary: `Ligou o diário do registo do router no disco ${body.data.disk}`, metadata: { disk: body.data.disk }
+      });
+      return { installed: body.data.disk };
     } catch (err) {
       const failure = describeRouterFailure(err);
       return reply.status(502).send({ error: `${failure.title}. ${failure.detail}`, code: failure.code });

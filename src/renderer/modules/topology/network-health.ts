@@ -18,6 +18,7 @@ export type NetworkHealth = {
   probeEnabled: boolean;
   lastProbeAt: string | null;
   lastRouterReadAt: string | null;
+  routerJournal: boolean;
   antennas: HealthOutage[];
   clients: HealthOutage[];
   downNow: HealthDown[];

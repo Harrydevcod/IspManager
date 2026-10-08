@@ -577,16 +577,96 @@ export async function listAddresses(transport: RouterTransport): Promise<string[
 
 export type RouterLogEntry ={ id: string; time: string; topics: string; message: string };
 
-/** O log em memória do router (1000 linhas por omissão), as mais recentes primeiro. */
+/**
+ * O log em memória do router (1000 linhas por omissão), as mais recentes primeiro.
+ * Só o buffer `memory`: medido no RouterOS 7.24, o /log devolve uma linha por cada ação de
+ * registo que a apanha, e com o diário em disco ligado vinha tudo a dobrar.
+ */
 export async function listLog(transport: RouterTransport): Promise<RouterLogEntry[]> {
-  const raw = await transport({ method: 'GET', path: '/log?.proplist=.id,time,topics,message' });
+  const raw = await transport({ method: 'GET', path: '/log?buffer=memory&.proplist=.id,time,topics,message' });
   return asArray(raw)
     .map((row, index) => ({ id: str(row['.id']) ?? String(index), time: str(row.time) ?? '', topics: str(row.topics) ?? '', message: str(row.message) ?? '' }))
     .filter((entry) => entry.message)
     .reverse();
 }
 
-export type RouterLoginFailures = { address: string; via: string; users: string[]; count: number };
+export type RouterDisk = { slot: string; fs: string | null; sizeBytes: number | null; freeBytes: number | null };
+
+/** Os discos amovíveis do router (cartão SD, USB). A flash interna não aparece em /disk. */
+export async function listDisks(transport: RouterTransport): Promise<RouterDisk[]> {
+  const raw = await transport({ method: 'GET', path: '/disk' });
+  return asArray(raw)
+    .map((row) => ({ slot: str(row['mount-point']) ?? str(row.slot) ?? '', fs: str(row.fs), sizeBytes: num(row.size), freeBytes: num(row.free) }))
+    .filter((disk) => disk.slot);
+}
+
+// O RouterOS só aceita letras e algarismos no nome de uma ação de registo.
+const LOG_JOURNAL_ACTION = 'ispmdiario';
+const LOG_JOURNAL_FILE = 'ispm-log';
+// Sem `account`: cada leitura do ISPM deixa duas linhas de entrada e saída da API, e enchiam o
+// diário. Os logins falhados são `error,critical` e continuam a entrar.
+const LOG_JOURNAL_TOPICS = ['info,!account', 'warning', 'error', 'critical'];
+// 200 linhas ficam à volta de 20 kB: a REST só devolve o `contents` de ficheiros pequenos.
+// 500 ficheiros = 100 000 linhas, cerca de 11 MB no cartão.
+const LOG_JOURNAL_FIELDS = { target: 'disk', 'disk-lines-per-file': '200', 'disk-file-count': '500', 'disk-stop-on-full': 'false' };
+
+/**
+ * Põe o router a escrever o registo também no cartão, com rotação. As regras que escrevem
+ * em memória ficam como estão. PUT/PATCH não são repetidos pelo transporte.
+ */
+export async function ensureLogJournal(transport: RouterTransport, disk: string): Promise<void> {
+  const fields: Record<string, string> = { ...LOG_JOURNAL_FIELDS, 'disk-file-name': `${disk}/${LOG_JOURNAL_FILE}` };
+  const proplist = `.id,name,${Object.keys(fields).join(',')}`;
+  const readAction = async () => asArray(await transport({ method: 'GET', path: `/system/logging/action?name=${LOG_JOURNAL_ACTION}&.proplist=${proplist}` }))[0];
+  const action = await readAction();
+  if (!action) {
+    await transport({ method: 'PUT', path: '/system/logging/action', body: { name: LOG_JOURNAL_ACTION, ...fields } });
+  } else if (Object.entries(fields).some(([key, value]) => str(action[key]) !== value)) {
+    await transport({ method: 'PATCH', path: `/system/logging/action/${action['.id']}`, body: fields });
+  }
+  const saved = await readAction();
+  if (!saved || str(saved['disk-file-name']) !== fields['disk-file-name']) {
+    throw new RouterError('O router não guardou a ação de registo em disco', 0, undefined, 'bad_response');
+  }
+
+  // Só as regras desta ação: as que já estavam no router não se tocam. Uma regra a mais
+  // (de uma versão anterior) escrevia cada linha duas vezes, por isso sai.
+  const rules = asArray(await transport({ method: 'GET', path: '/system/logging?.proplist=.id,topics,action' }))
+    .filter((rule) => rule.action === LOG_JOURNAL_ACTION);
+  for (const rule of rules) {
+    if (!LOG_JOURNAL_TOPICS.includes(String(rule.topics))) await transport({ method: 'DELETE', path: `/system/logging/${rule['.id']}` });
+  }
+  for (const topics of LOG_JOURNAL_TOPICS) {
+    if (!rules.some((rule) => rule.topics === topics)) {
+      await transport({ method: 'PUT', path: '/system/logging', body: { topics, action: LOG_JOURNAL_ACTION } });
+    }
+  }
+}
+
+/**
+ * O texto dos ficheiros do diário mexidos desde `since` (hora do router, "AAAA-MM-DD hh:mm:ss"),
+ * do mais antigo para o mais recente.
+ */
+export async function readLogJournal(transport: RouterTransport, disk: string, since: string | null): Promise<string> {
+  const prefix = `${disk}/${LOG_JOURNAL_FILE}.`;
+  const files = asArray(await transport({ method: 'GET', path: '/file?.proplist=name,size,last-modified' }))
+    .map((row) => ({ name: str(row.name) ?? '', size: num(row.size) ?? 0, modified: str(row['last-modified']) ?? '' }))
+    .filter((file) => file.name.startsWith(prefix) && file.size > 0 && (since === null || !file.modified || file.modified >= since))
+    .sort((a, b) => a.modified.localeCompare(b.modified) || a.name.localeCompare(b.name));
+  let text = '';
+  for (const file of files) {
+    const row = asArray(await transport({ method: 'GET', path: `/file?name=${encodeURIComponent(file.name)}&.proplist=contents` }))[0];
+    // ponytail: só `contents`; se o router o cortar em ficheiros deste tamanho, ler por blocos com /file/read.
+    // Um texto mais curto do que o ficheiro é um corte: rebenta em vez de contar a menos.
+    if (typeof row?.contents !== 'string' || row.contents.length < file.size * 0.9) {
+      throw new RouterError(`O router não devolveu o texto de ${file.name}`, 0, undefined, 'bad_response');
+    }
+    text += row.contents.endsWith('\n') ? row.contents : `${row.contents}\n`;
+  }
+  return text;
+}
+
+export type RouterLoginFailures ={ address: string; via: string; users: string[]; count: number };
 export type RouterRogueDhcp = { port: string; address: string; mac: string; count: number };
 export type RouterPppoeDrops = { login: string; reasons: string[]; count: number };
 export type RouterDhcpChurn = { mac: string; address: string; hostname: string | null; count: number };

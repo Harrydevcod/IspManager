@@ -65,7 +65,7 @@ test('sem incidentes distingue a sonda desligada', async () => {
 test('a vista Router lista os achados do registo, um dado por coluna', async () => {
   const { host, root } = await mount(body);
   stubFetch({
-    hours: 168, tone: 'danger', probeEnabled: true, lastProbeAt: null, lastRouterReadAt: '2026-10-07T22:14:00.000Z',
+    hours: 168, tone: 'danger', probeEnabled: true, lastProbeAt: null, lastRouterReadAt: '2026-10-07T22:14:00.000Z', routerJournal: false,
     antennas: [], clients: [], downNow: [], diary: [],
     findings: [{
       kind: 'ip_duplicado', subject: 'BC:07:1D:5E:42:9E', label: 'LAN1 · 192.168.1.1', count: 74,
