@@ -7,12 +7,20 @@ import { batchTime, batchVerdict, PLAN_CHANGE_API, type PlanChangeBatch } from '
 
 const when = new Intl.DateTimeFormat('pt-PT', { dateStyle: 'short', timeStyle: 'short' });
 const total = (batch: PlanChangeBatch) => Object.values(batch.counts).reduce((sum, count) => sum + count, 0);
+/** Falhados e por processar: os serviços que ficaram como estavam sem ser por escolha. */
+const withoutEffect = (batch: PlanChangeBatch) => batch.counts.failed + batch.counts.not_processed;
 
 const COLUMNS: DataTableColumn<PlanChangeBatch>[] = [
   { header: 'Quando', sortValue: (row) => row.createdAt, defaultDirection: 'desc', cell: (row) => when.format(batchTime(row.createdAt)!) },
   { header: 'Plano de destino', sortValue: (row) => row.targetPlanName, cell: (row) => <strong>{row.targetPlanName}</strong> },
   { header: 'Serviços', align: 'end', sortValue: total, defaultDirection: 'desc', cell: (row) => total(row) },
-  { header: 'Falhados', align: 'end', sortValue: (row) => row.counts.failed + row.counts.not_processed, defaultDirection: 'desc', cell: (row) => row.counts.failed + row.counts.not_processed || '—' },
+  {
+    header: 'Sem efeito',
+    align: 'end',
+    sortValue: withoutEffect,
+    defaultDirection: 'desc',
+    cell: (row) => withoutEffect(row) ? <b className="plan-change-bad">{withoutEffect(row)}</b> : '—'
+  },
   { header: 'Por', sortValue: (row) => row.createdByName ?? '', cell: (row) => row.createdByName ?? '—' },
   { header: 'Motivo', sortValue: (row) => row.reason ?? '', cell: (row) => row.reason ?? '' },
   { header: 'Resultado', sortValue: (row) => batchVerdict(row).label, cell: (row) => <Badge tone={batchVerdict(row).tone}>{batchVerdict(row).label}</Badge> }
@@ -26,6 +34,7 @@ export function PlanChangeHistory({ onClose }: { onClose: () => void }) {
   const [openId, setOpenId] = useState<number | null>(null);
   const [detail, setDetail] = useState<PlanChangeBatch | null>(null);
   const [tick, setTick] = useState(0);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -44,10 +53,17 @@ export function PlanChangeHistory({ onClose }: { onClose: () => void }) {
   }, [openId, tick]);
 
   async function cancelDrop(batch: PlanChangeBatch) {
-    const response = await authFetch(`${PLAN_CHANGE_API}/${batch.id}/cancel`, { method: 'POST' });
-    if (!response.ok) toast('Não foi possível desmarcar as sessões.', 'error');
-    else toast('As sessões agendadas já não vão ser derrubadas.', 'success');
-    setTick((current) => current + 1);
+    setCancelling(true);
+    try {
+      const response = await authFetch(`${PLAN_CHANGE_API}/${batch.id}/cancel`, { method: 'POST' });
+      if (!response.ok) toast('Não foi possível desmarcar as sessões.', 'error');
+      else toast('As sessões agendadas já não vão ser derrubadas.', 'success');
+    } catch {
+      toast('Falha de rede ao desmarcar as sessões.', 'error');
+    } finally {
+      setCancelling(false);
+      setTick((current) => current + 1);
+    }
   }
 
   const back = () => { setOpenId(null); setDetail(null); };
@@ -57,11 +73,11 @@ export function PlanChangeHistory({ onClose }: { onClose: () => void }) {
       open
       onClose={onClose}
       eyebrow="Planos"
-      title={detail ? `Mudança para ${detail.targetPlanName} · ${when.format(batchTime(detail.createdAt)!)}` : 'Mudanças de plano em massa'}
+      title={detail ? `Mudança para ${detail.targetPlanName}` : 'Histórico de mudanças de plano'}
       size="xl"
       actions={openId === null ? <Button onClick={onClose}>Fechar</Button> : (
         <>
-          {detail?.dropStatus === 'pending' && <Button variant="secondary" onClick={() => void cancelDrop(detail)}>Não derrubar as sessões</Button>}
+          {detail?.dropStatus === 'pending' && <Button variant="secondary" loading={cancelling} onClick={() => void cancelDrop(detail)}>Não derrubar as sessões</Button>}
           <Button variant="secondary" onClick={back}>Voltar à lista</Button>
         </>
       )}
@@ -69,7 +85,7 @@ export function PlanChangeHistory({ onClose }: { onClose: () => void }) {
       {error ? <ErrorRetry message={error} onRetry={() => setTick((current) => current + 1)} />
         : openId !== null ? (detail ? (
           <>
-            <p className="muted">{[detail.createdByName && `Por ${detail.createdByName}`, detail.reason].filter(Boolean).join(' · ') || 'Sem motivo registado.'}</p>
+            <p className="muted plan-change-meta">{[when.format(batchTime(detail.createdAt)!), detail.createdByName && `por ${detail.createdByName}`, detail.reason ?? 'sem motivo registado'].filter(Boolean).join(' · ')}</p>
             <PlanChangeResult batch={detail} />
           </>
         ) : <SkeletonList rows={5} />)

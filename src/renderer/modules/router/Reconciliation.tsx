@@ -1,6 +1,6 @@
 import { ArrowLeftRight } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Badge, BulkActionBar, Button, Combobox, DataTable, Dialog, EmptyState, Field, Select, useToast, type DataTableColumn } from '../../components';
+import { Badge, BulkActionBar, Button, Combobox, DataTable, Dialog, EmptyState, Field, Message, Select, useToast, type DataTableColumn } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { useRowSelection } from '../../lib/useRowSelection';
 import { ROUTER_API, type ReconDirection, type ReconKind, type ReconResult, type ReconRow, type Reconciliation as ReconciliationData } from './router-api';
@@ -18,6 +18,16 @@ const RESULT: Record<ReconResult['status'], { label: string; tone: 'success' | '
   dry_run: { label: 'Ensaio', tone: 'info' },
   not_processed: { label: 'Por processar', tone: 'neutral' }
 };
+
+const SIDES: ReadonlyArray<{ id: ReconDirection; label: string }> = [
+  { id: 'ispm', label: 'ISPM' },
+  { id: 'router', label: 'Router' }
+];
+
+/** Um utilizador que o ISPM não criou é outra diferença: desativá-lo pede o nome escrito. */
+const kindOf = (row: ReconRow) => (row.kind === 'only_router' && !row.managed
+  ? { label: 'Feito à mão no router', tone: 'warn' as const, rank: 3.5 }
+  : KIND[row.kind]);
 
 type Extra = { planId?: number; targetServiceId?: number; confirmName?: string };
 
@@ -96,9 +106,9 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
   const columns: DataTableColumn<ReconRow>[] = [
     { header: 'Cliente', sortValue: (row) => row.clientName ?? '', cell: (row) => row.clientName ? <strong>{row.clientName}</strong> : <span className="router-muted">—</span> },
     { header: 'Utilizador PPPoE', sortValue: (row) => row.login, cell: (row) => <code className="router-mono">{row.login}</code> },
-    { header: 'Diferença', sortValue: (row) => KIND[row.kind].rank, cell: (row) => <Badge tone={KIND[row.kind].tone}>{KIND[row.kind].label}</Badge> },
+    { header: 'Diferença', sortValue: (row) => kindOf(row).rank, cell: (row) => <Badge tone={kindOf(row).tone}>{kindOf(row).label}</Badge> },
     { header: 'No ISPM', sortValue: (row) => row.ispm, cell: (row) => row.ispm },
-    { header: 'No router', sortValue: (row) => row.router, cell: (row) => <>{row.router}{row.kind === 'only_router' && !row.managed ? ' · feito à mão' : ''}</> },
+    { header: 'No router', sortValue: (row) => row.router, cell: (row) => row.router },
     {
       header: 'Situação',
       sortValue: (row) => (row.held ? 0 : 1),
@@ -107,20 +117,28 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
         : <span title="Foi o ISPM que mudou: a passagem automática trata disto sozinha."><Badge tone="neutral">A aplicar sozinho</Badge></span>
     },
     {
-      header: 'Decisão',
+      header: 'Fica a valer',
       // As já decididas primeiro: é o que se quer rever antes de aplicar.
       sortValue: (row) => (decisions[row.key] ? 0 : 1),
       cell: (row) => (
-        <Select
-          label={`Decisão para ${row.login}`}
-          hideLabel
-          value={decisions[row.key] ?? ''}
-          onChange={(event) => decide([row.key], event.target.value as ReconDirection | '')}
-        >
-          <option value="">Não decidir agora</option>
-          <option value="ispm">{KIND[row.kind].ispm}</option>
-          <option value="router">{KIND[row.kind].router}</option>
-        </Select>
+        <div className="segmented-tabs recon-choice" role="group" aria-label={`Fica a valer para ${row.login}`}>
+          {SIDES.map((side) => {
+            const chosen = decisions[row.key] === side.id;
+            return (
+              <Button
+                key={side.id}
+                variant="ghost"
+                size="sm"
+                aria-pressed={chosen}
+                title={KIND[row.kind][side.id]}
+                className={`segmented-tab${chosen ? ' is-active' : ''}`}
+                onClick={() => decide([row.key], chosen ? '' : side.id)}
+              >
+                {side.label}
+              </Button>
+            );
+          })}
+        </div>
       )
     }
   ];
@@ -131,18 +149,18 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
     <>
       <div className="recon-bar">
         <p className="router-muted">
-          Nada aqui é resolvido sozinho. Escolha, linha a linha, qual dos dois lados está certo.
+          Escolha, linha a linha, qual dos dois lados fica a valer. Nada é aplicado antes da revisão.
           {dryRun ? ' O router está em ensaio: aplicar só diz o que faria.' : ''}
         </p>
         <Button disabled={decided.length === 0} onClick={() => setReviewing(true)}>
-          Rever {decided.length || ''} {decided.length === 1 ? 'decisão' : 'decisões'}
+          {decided.length === 0 ? 'Rever decisões' : `Rever ${decided.length} ${decided.length === 1 ? 'decisão' : 'decisões'}`}
         </Button>
       </div>
 
       <BulkActionBar count={selection.count} onClear={selection.clear} noun={{ one: 'selecionada', many: 'selecionadas' }}>
-        <Button variant="secondary" size="sm" onClick={() => decide([...selection.selected], 'ispm')}>ISPM → router</Button>
-        <Button variant="secondary" size="sm" onClick={() => decide([...selection.selected], 'router')}>Router → ISPM</Button>
-        <Button variant="ghost" size="sm" onClick={() => decide([...selection.selected], '')}>Limpar decisão</Button>
+        <Button variant="secondary" size="sm" onClick={() => decide([...selection.selected], 'ispm')}>Fica a valer o ISPM</Button>
+        <Button variant="secondary" size="sm" onClick={() => decide([...selection.selected], 'router')}>Fica a valer o router</Button>
+        <Button variant="ghost" size="sm" onClick={() => decide([...selection.selected], '')}>Limpar</Button>
       </BulkActionBar>
 
       <DataTable
@@ -151,7 +169,7 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
         className="recon-table"
         stickyHeader
         defaultSort={{ key: 'Situação', direction: 'asc' }}
-        gridTemplateColumns="minmax(140px, 1.2fr) minmax(110px, 0.9fr) minmax(120px, 0.8fr) minmax(130px, 1.1fr) minmax(130px, 1.1fr) minmax(130px, 0.9fr) minmax(190px, 1.3fr)"
+        gridTemplateColumns="minmax(120px, 1.2fr) minmax(96px, 0.8fr) minmax(128px, 0.9fr) minmax(120px, 1.1fr) minmax(120px, 1.1fr) minmax(136px, 0.9fr) 148px"
         columns={columns}
         selection={{
           isSelected: (key) => selection.isSelected(String(key)),
@@ -177,6 +195,18 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
               </Button>
             </>}
       >
+        {results && (
+          <p className="recon-summary">
+            {(['applied', 'dry_run', 'failed', 'not_processed'] as const).map((status) => {
+              const count = results.filter((result) => result.status === status).length;
+              return count === 0 ? null : (
+                <span key={status} className={status === 'failed' || status === 'not_processed' ? 'is-bad' : undefined}>
+                  <b>{count}</b> {RESULT[status].label.toLowerCase()}
+                </span>
+              );
+            })}
+          </p>
+        )}
         <ol className="client-form recon-review">
           {decided.map((row) => {
             const direction = decisions[row.key];
@@ -186,11 +216,24 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
             return (
               <li key={row.key}>
                 <div className="recon-review-head">
-                  <strong>{row.clientName ?? row.login}</strong>
-                  {result ? <Badge tone={RESULT[result.status].tone}>{RESULT[result.status].label}</Badge> : <Badge tone={KIND[row.kind].tone}>{KIND[row.kind].label}</Badge>}
+                  <span>
+                    <strong>{row.clientName ?? row.login}</strong>
+                    {row.clientName && <code className="router-mono">{row.login}</code>}
+                  </span>
+                  {result ? <Badge tone={RESULT[result.status].tone}>{RESULT[result.status].label}</Badge> : <Badge tone={kindOf(row).tone}>{kindOf(row).label}</Badge>}
                 </div>
-                <p>{result ? result.message : `${KIND[row.kind][direction]} — ISPM: ${row.ispm} · router: ${row.router}`}</p>
-                {!result && dropsSession(row, direction) && <p className="recon-warning">Está ligado agora: a sessão vai ser derrubada.</p>}
+                <p className="recon-review-action">{result ? result.message : KIND[row.kind][direction]}</p>
+                {!result && (
+                  <dl className="recon-review-sides">
+                    {SIDES.map((side) => (
+                      <div key={side.id} data-chosen={side.id === direction || undefined}>
+                        <dt>{side.label}{side.id === direction ? ', fica a valer' : ''}</dt>
+                        <dd>{row[side.id]}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+                {!result && dropsSession(row, direction) && <Message tone="warn">Está ligado agora: a sessão vai ser derrubada.</Message>}
                 {!result && direction === 'router' && row.kind === 'plan' && row.planOptions.length > 1 && (
                   <Select label="Plano a atribuir" value={extra.planId ?? ''} onChange={(event) => setExtra(row.key, { planId: Number(event.target.value) || undefined })}>
                     <option value="">Escolher…</option>

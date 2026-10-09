@@ -1,6 +1,6 @@
 import { ArrowRightLeft } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Badge, Button, DataTable, Dialog, EmptyState, Field, Message, Select, Toggle, useToast, type DataTableColumn } from '../../components';
+import { Badge, Button, DataTable, Dialog, EmptyState, Field, Message, Select, SkeletonList, Toggle, useToast, type DataTableColumn } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { formatCve } from '../../lib/format';
 import type { PlanRow } from '../../types';
@@ -23,10 +23,10 @@ const PREVIEW_COLUMNS: DataTableColumn<PreviewRow>[] = [
     sortValue: (row) => row.toValueCve + row.rentalCve,
     defaultDirection: 'desc',
     cell: (row) => row.toValueCve === row.fromValueCve
-      ? <span className="plan-change-muted">{formatCve(row.toValueCve + row.rentalCve)}</span>
+      ? <span className="muted">{formatCve(row.toValueCve + row.rentalCve)}</span>
       : <b>{formatCve(row.toValueCve + row.rentalCve)}</b>
   },
-  { header: 'Sessão', sortValue: (row) => (row.online ? 0 : 1), cell: (row) => row.online ? <Badge tone="success">Ligado</Badge> : <span className="plan-change-muted">—</span> },
+  { header: 'Sessão', sortValue: (row) => (row.online ? 0 : 1), cell: (row) => row.online ? <Badge tone="success">Ligado</Badge> : <span className="muted">—</span> },
   { header: 'O que acontece', sortValue: (row) => OUTCOME[row.outcome].rank, cell: (row) => <Badge tone={OUTCOME[row.outcome].tone}>{OUTCOME[row.outcome].label}</Badge> }
 ];
 
@@ -34,7 +34,7 @@ const RESULT_COLUMNS: DataTableColumn<PlanChangeItem>[] = [
   { header: 'Cliente', sortValue: (row) => row.clientName, cell: (row) => <strong>{row.clientName}</strong> },
   { header: 'Plano anterior', sortValue: (row) => row.fromPlanName ?? '', cell: (row) => row.fromPlanName ?? '—' },
   { header: 'Resultado', sortValue: (row) => ITEM_STATUS[row.status].rank, cell: (row) => <Badge tone={ITEM_STATUS[row.status].tone}>{ITEM_STATUS[row.status].label}</Badge> },
-  { header: 'Sessão', sortValue: (row) => (row.sessionDroppedAt ? 0 : 1), cell: (row) => row.sessionDroppedAt ? 'Derrubada' : <span className="plan-change-muted">—</span> },
+  { header: 'Sessão', sortValue: (row) => (row.sessionDroppedAt ? 0 : 1), cell: (row) => row.sessionDroppedAt ? 'Derrubada' : <span className="muted">—</span> },
   { header: 'Detalhe', sortValue: (row) => row.error ?? row.note ?? '', cell: (row) => row.error ?? row.note ?? '' }
 ];
 
@@ -47,10 +47,10 @@ export function PlanChangeResult({ batch }: { batch: PlanChangeBatch }) {
     <>
       <div className="plan-change-summary">
         <Badge tone={verdict.tone}>{verdict.label}</Badge>
-        <span><b>{counts.applied}</b> aplicados</span>
-        <span><b>{counts.unchanged}</b> sem alteração</span>
-        <span className={counts.failed ? 'is-bad' : undefined}><b>{counts.failed}</b> falhados</span>
-        <span className={counts.not_processed ? 'is-bad' : undefined}><b>{counts.not_processed}</b> por processar</span>
+        <span className={counts.applied ? undefined : 'is-zero'}><b>{counts.applied}</b> aplicados</span>
+        <span className={counts.unchanged ? undefined : 'is-zero'}><b>{counts.unchanged}</b> sem alteração</span>
+        <span className={counts.failed ? 'is-bad' : 'is-zero'}><b>{counts.failed}</b> falhados</span>
+        <span className={counts.not_processed ? 'is-bad' : 'is-zero'}><b>{counts.not_processed}</b> por processar</span>
       </div>
       {batch.stopReason && <Message tone={batch.status === 'stopped' ? 'error' : 'neutral'}>{batch.stopReason}</Message>}
       {batch.status === 'cancelled' && counts.applied > 0 && (
@@ -72,6 +72,7 @@ export function PlanChangeResult({ batch }: { batch: PlanChangeBatch }) {
 }
 
 type Step = 'options' | 'preview' | 'run';
+const STEPS: readonly Step[] = ['options', 'preview', 'run'];
 
 export function BulkPlanChangeDialog({ serviceIds, plans, onClose, onDone }: {
   serviceIds: number[];
@@ -180,9 +181,9 @@ export function BulkPlanChangeDialog({ serviceIds, plans, onClose, onDone }: {
       onClose={close}
       // A meio da execução um clique fora não pode fechar o que mostra o progresso.
       closeOnBackdrop={step !== 'run'}
-      eyebrow="Serviços"
+      eyebrow={`Serviços · passo ${STEPS.indexOf(step) + 1} de ${STEPS.length}`}
       title={step === 'run' ? (running ? 'A mudar de plano…' : 'Mudança de plano') : `Mudar ${serviceIds.length} ${serviceIds.length === 1 ? 'serviço' : 'serviços'} de plano`}
-      size="xl"
+      size={step === 'options' ? 'md' : 'xl'}
       actions={actions}
     >
       {step === 'options' && (
@@ -208,8 +209,8 @@ export function BulkPlanChangeDialog({ serviceIds, plans, onClose, onDone }: {
             value={dropMode}
             onChange={(event) => setDropMode(event.target.value as DropMode)}
           >
-            <option value="none">Quando o cliente reconectar — ninguém é derrubado</option>
-            <option value="now">Já — derruba a sessão e o cliente reconecta em segundos</option>
+            <option value="none">Quando o cliente voltar a ligar: ninguém é derrubado</option>
+            <option value="now">Já: derruba a sessão e o cliente volta a ligar em segundos</option>
             <option value="scheduled">A uma hora marcada</option>
           </Select>
           {dropMode === 'scheduled' && (
@@ -239,18 +240,18 @@ export function BulkPlanChangeDialog({ serviceIds, plans, onClose, onDone }: {
             {preview.groups.map((group) => <span key={group.planName}>{group.count} de {group.planName}</span>)}
           </div>
           {preview.sessionsOnline > 0 && dropMode === 'now' && (
-            <Message tone="error">
+            <Message tone="warn">
               {preview.sessionsOnline} {preview.sessionsOnline === 1 ? 'cliente está ligado e a sessão vai ser derrubada' : 'clientes estão ligados e as sessões vão ser derrubadas'} agora. Voltam a ligar-se sozinhos em segundos.
             </Message>
           )}
           {preview.sessionsOnline > 0 && dropMode === 'scheduled' && dropAt && (
-            <Message tone="error">
+            <Message tone="warn">
               As sessões de {preview.sessionsOnline} {preview.sessionsOnline === 1 ? 'cliente ligado vão' : 'clientes ligados vão'} ser derrubadas {clock.format(new Date(dropAt))}.
             </Message>
           )}
           {preview.sessionsOnline > 0 && dropMode === 'none' && (
             <Message>
-              {preview.sessionsOnline} {preview.sessionsOnline === 1 ? 'está ligado' : 'estão ligados'}: ninguém é derrubado, e só {preview.sessionsOnline === 1 ? 'apanha' : 'apanham'} a velocidade nova quando {preview.sessionsOnline === 1 ? 'reconectar' : 'reconectarem'}.
+              {preview.sessionsOnline} {preview.sessionsOnline === 1 ? 'está ligado' : 'estão ligados'}: ninguém é derrubado, e só {preview.sessionsOnline === 1 ? 'apanha' : 'apanham'} a velocidade nova quando {preview.sessionsOnline === 1 ? 'voltar a ligar' : 'voltarem a ligar'}.
             </Message>
           )}
           {preview.dryRun && <Message>O router está em ensaio: o plano muda no ISPM e o router não é alterado.</Message>}
@@ -269,11 +270,13 @@ export function BulkPlanChangeDialog({ serviceIds, plans, onClose, onDone }: {
         <>
           {running && (
             <div className="plan-change-progress">
-              <progress value={processed} max={total} aria-label="Progresso da mudança de plano" />
+              <div className="plan-change-bar" role="progressbar" aria-label="Progresso da mudança de plano" aria-valuemin={0} aria-valuemax={total} aria-valuenow={processed}>
+                <span style={{ transform: `scaleX(${total ? processed / total : 0})` }} />
+              </div>
               <span>{processed} de {total}</span>
             </div>
           )}
-          {batch ? <PlanChangeResult batch={batch} /> : <Message>A começar…</Message>}
+          {batch ? <PlanChangeResult batch={batch} /> : <SkeletonList rows={Math.min(serviceIds.length, 5)} />}
         </>
       )}
     </Dialog>

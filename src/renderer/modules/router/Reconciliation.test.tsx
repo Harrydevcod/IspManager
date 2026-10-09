@@ -29,13 +29,9 @@ function render(rows: ReconRow[], dryRun = false) {
 
 const buttonNamed = (text: string) => [...document.querySelectorAll('button')].find((item) => item.textContent?.includes(text))!;
 
-async function choose(label: string, value: string) {
-  const select = [...document.querySelectorAll('select')].find((item) => document.querySelector(`label[for="${item.id}"]`)?.textContent?.includes(label))!;
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(select, value);
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-}
+/** O lado que fica a valer, na linha desse utilizador. */
+const side = (login: string, label: 'ISPM' | 'Router') =>
+  [...document.querySelector(`[aria-label="Fica a valer para ${login}"]`)!.querySelectorAll('button')].find((item) => item.textContent === label)!;
 
 async function type(input: HTMLInputElement, value: string) {
   await act(async () => {
@@ -71,7 +67,7 @@ test('a decisão passa por uma revisão antes de ser enviada, e o resultado fica
   authFetch.mockResolvedValue({ ok: true, json: async () => ({ results: [{ key: 'plan:1', status: 'applied', message: 'Trouxe do router o plano' }] }) });
   await render([row({})]);
 
-  await choose('Decisão para skn001', 'router');
+  await click(side('skn001', 'Router'));
   expect(authFetch).not.toHaveBeenCalled();
   await click(buttonNamed('Rever'));
   expect(document.body.textContent).toContain('Passar o serviço ao plano do router');
@@ -87,7 +83,7 @@ test('a decisão passa por uma revisão antes de ser enviada, e o resultado fica
 test('desativar um utilizador feito à mão só avança com o nome escrito', async () => {
   await render([row({ key: 'only_router:*A', kind: 'only_router', serviceId: null, secretId: '*A', clientName: null, login: 'torre-norte', ispm: 'Não existe', router: 'Ativo · default', managed: false, online: true, planOptions: [] })]);
 
-  await choose('Decisão para torre-norte', 'ispm');
+  await click(side('torre-norte', 'ISPM'));
   await click(buttonNamed('Rever'));
   expect(document.body.textContent).toContain('a sessão vai ser derrubada');
   expect(buttonNamed('Aplicar 1 decisão').disabled).toBe(true);
@@ -98,7 +94,22 @@ test('desativar um utilizador feito à mão só avança com o nome escrito', asy
 
 test('em ensaio o botão diz que é ensaio', async () => {
   await render([row({})], true);
-  await choose('Decisão para skn001', 'ispm');
+  await click(side('skn001', 'ISPM'));
   await click(buttonNamed('Rever'));
   expect(buttonNamed('Ensaiar 1 decisão')).toBeTruthy();
+});
+
+test('clicar no lado já escolhido retira a decisão', async () => {
+  await render([row({})]);
+  await click(side('skn001', 'Router'));
+  expect(side('skn001', 'Router').getAttribute('aria-pressed')).toBe('true');
+  expect(buttonNamed('Rever').textContent).toBe('Rever 1 decisão');
+  await click(side('skn001', 'Router'));
+  expect(side('skn001', 'Router').getAttribute('aria-pressed')).toBe('false');
+  expect(buttonNamed('Rever').disabled).toBe(true);
+});
+
+test('um utilizador feito à mão lê-se como diferença própria', async () => {
+  await render([row({ key: 'only_router:*A', kind: 'only_router', serviceId: null, clientName: null, login: 'torre-norte', managed: false, planOptions: [] })]);
+  expect(container.textContent).toContain('Feito à mão no router');
 });

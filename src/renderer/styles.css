@@ -1318,7 +1318,6 @@ h2 {
 .inline-actions input,
 .filter-bar input,
 .filter-bar select,
-.recon-table select,
 .payments-search,
 .payment-action-form select,
 .payment-action-form input,
@@ -1342,7 +1341,6 @@ h2 {
 .inline-actions input:focus-visible,
 .filter-bar input:focus-visible,
 .filter-bar select:focus-visible,
-.recon-table select:focus-visible,
 .payments-search:focus-visible,
 .payment-action-form select:focus-visible,
 .payment-action-form input:focus-visible,
@@ -1472,6 +1470,10 @@ h2 {
 
 .module-message.error {
   color: var(--danger);
+}
+
+.module-message.warn {
+  color: var(--warn);
 }
 
 /* Loading skeletons */

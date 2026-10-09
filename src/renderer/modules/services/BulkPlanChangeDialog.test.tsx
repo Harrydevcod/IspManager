@@ -93,8 +93,8 @@ test('por omissão não derruba ninguém, e nada é executado sem a pré-visuali
   expect(selectByLabel('Quando aplicar a velocidade nova').value).toBe('none');
   // A opção de aplicar já tem de se ler sem abrir a documentação.
   expect([...selectByLabel('Quando aplicar a velocidade nova').options].map((option) => option.textContent)).toEqual([
-    'Quando o cliente reconectar — ninguém é derrubado',
-    'Já — derruba a sessão e o cliente reconecta em segundos',
+    'Quando o cliente voltar a ligar: ninguém é derrubado',
+    'Já: derruba a sessão e o cliente volta a ligar em segundos',
     'A uma hora marcada'
   ]);
 

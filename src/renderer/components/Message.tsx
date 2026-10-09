@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-type MessageProps = { tone?: 'error' | 'success' | 'neutral'; children: ReactNode };
+type MessageProps = { tone?: 'error' | 'warn' | 'success' | 'neutral'; children: ReactNode };
 
 /**
  * Inline status message.

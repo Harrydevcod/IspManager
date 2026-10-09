@@ -200,7 +200,7 @@ export function PlansModule() {
             ariaLabel="Ações de planos"
             secondary={canReprice ? (
               <Button variant="secondary" leadingIcon={<History size={16} aria-hidden />} onClick={() => setShowPlanChanges(true)}>
-                Mudanças em massa
+                Histórico de mudanças
               </Button>
             ) : undefined}
             primary={

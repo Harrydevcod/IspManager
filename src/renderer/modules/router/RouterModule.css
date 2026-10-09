@@ -320,28 +320,58 @@
 .router-config-text .is-added { color: var(--success); }
 .router-config-text .is-removed { color: var(--danger); }
 
-/* Reconciliação: a revisão das decisões antes de aplicar. */
+/* Reconciliação. */
+.recon-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.recon-bar p {
+  margin: 0;
+  max-width: 68ch;
+}
+
+/* Os dois lados de uma linha: a primitiva das abas, sem a margem de secção. */
+.segmented-tabs.recon-choice {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  margin: 0;
+  padding: var(--space-0-5);
+}
+
+.recon-choice .segmented-tab {
+  min-height: 0;
+  padding: var(--space-1) var(--space-2-5);
+}
+
+/* A revisão das decisões antes de aplicar. */
 /* `client-form` dá o estilo dos campos; a lista é de uma coluna. */
 .client-form.recon-review {
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
+  gap: var(--space-4);
   margin: 0;
-  padding: 0;
+  padding: var(--space-5) var(--space-6);
   list-style: none;
 }
 
 .recon-review > li {
   display: grid;
   gap: var(--space-2);
-  padding-bottom: var(--space-3);
+  padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--border);
 }
 
 .recon-review > li:last-child {
+  padding-bottom: 0;
   border-bottom: 0;
 }
 
-.recon-review p {
+.recon-review p,
+.recon-review dl,
+.recon-review dd {
   margin: 0;
 }
 
@@ -357,18 +387,67 @@
   gap: var(--space-3);
 }
 
-.recon-warning {
-  color: var(--danger);
-}
-
-.recon-bar {
+.recon-review-head > span {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin: var(--space-4) 0 var(--space-2);
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
-.recon-bar p {
+.recon-review-action {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.recon-review-sides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.recon-review-sides > div {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  color: var(--text-3);
+}
+
+.recon-review-sides > div[data-chosen] {
+  border-color: color-mix(in oklch, var(--accent) 38%, var(--border));
+  background: color-mix(in oklch, var(--accent) 8%, transparent);
+  color: var(--text);
+}
+
+.recon-review-sides dt {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.recon-review-sides dd {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.recon-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
   margin: 0;
+  padding: var(--space-4) var(--space-6) 0;
+  color: var(--text-2);
+}
+
+.recon-summary b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.recon-summary .is-bad,
+.recon-summary .is-bad b {
+  color: var(--danger);
 }

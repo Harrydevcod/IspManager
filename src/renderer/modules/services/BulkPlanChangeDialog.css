@@ -19,6 +19,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+.plan-change-summary .is-zero,
+.plan-change-summary .is-zero b {
+  color: var(--text-3);
+}
+
 .plan-change-summary .is-bad,
 .plan-change-summary .is-bad b {
   color: var(--danger);
@@ -32,12 +37,29 @@
   font-variant-numeric: tabular-nums;
 }
 
-.plan-change-progress progress {
+.plan-change-bar {
   flex: 1;
   height: 6px;
-  accent-color: var(--accent);
+  overflow: hidden;
+  border-radius: var(--rpill);
+  background: var(--surface-3);
 }
 
-.plan-change-muted {
-  color: var(--text-2);
+.plan-change-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform var(--motion-base) var(--ease-out);
+}
+
+/* Histórico: o que ficou sem efeito e a linha de quem, quando e porquê. */
+.plan-change-bad {
+  color: var(--danger);
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-change-meta {
+  margin: 0 0 var(--space-3);
 }
