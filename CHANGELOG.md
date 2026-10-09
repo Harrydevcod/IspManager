@@ -6,6 +6,11 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.29](https://github.com/Harrydevcod/IspManager/releases/tag/v2.29.0) — 2026-10-09
+
+- **Reconciliação: cada botão diz o que faz.** Em vez de "ISPM" e "Router", os dois botões de cada linha passam a ter o efeito por extenso, conforme a diferença: "Reativar no router" ou "Suspender no ISPM", "Repor o plano no router" ou "Mudar o plano no ISPM", "Criar no router" ou "Tirar do serviço", "Desativar no router" ou "Associar a um serviço". A coluna chama-se agora "Decisão".
+- **Corrigido: dois serviços podiam ficar ligados ao mesmo utilizador PPPoE do router.** Com os nomes trocados entre dois clientes, um serviço ficava com o utilizador pelo comentário e outro com o mesmo utilizador pelo nome, e suspender ou mudar o plano de um mexia no acesso do outro. Agora cada utilizador do router pertence a um só serviço, e quem o tem pelo comentário fica com ele. O serviço que sobra aparece na Reconciliação como "É de <cliente>" e na ficha como "O utilizador PPPoE existe no router mas é de outro serviço", sem que o ISPM mexa em nada no router por ele: corrige-se o utilizador PPPoE de um dos dois serviços.
+
 ## [2.28](https://github.com/Harrydevcod/IspManager/releases/tag/v2.28.0) — 2026-10-09
 
 - **O que se muda à mão no router deixa de ser desfeito sozinho.** Se alguém mudar o perfil de um cliente no Winbox, o ativar, desativar ou apagar o utilizador PPPoE, a passagem automática já não repõe o que o ISPM tinha: mostra a diferença e espera. O que se muda no ISPM (plano, suspensão, reativação, cliente novo) continua a ir para o router sozinho. Para impor o ISPM num cliente, usa-se "Sincronizar" na ficha do serviço.
