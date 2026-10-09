@@ -74,7 +74,7 @@ describe('na base de dados', () => {
   let db: Database.Database;
 
   // O parque real em miniatura: a Cibel (C0014) já tem o skn001 que a regra daria à C0001.
-  const liveSecret: RouterSecret = { id: '*1', name: 'skn001', disabled: false, profile: 'plano-10M', comment: 'ispm:14 Cibel Restaurante #15' };
+  const liveSecret: RouterSecret = { id: '*1', name: 'skn001', disabled: false, profile: 'plano-10M', comment: 'ispm:14 Cibel Restaurante' };
 
   function rows(): BackfillService[] {
     return db.prepare(`
@@ -122,6 +122,23 @@ describe('na base de dados', () => {
     const sealed = db.prepare('SELECT pppoe_password AS s FROM services WHERE id = 4').get();
     expect(applyPppoeBackfill(db, plan)).toBe(0);
     expect(db.prepare('SELECT pppoe_password AS s FROM services WHERE id = 4').get()).toEqual(sealed);
+  });
+
+  test('principal é o primeiro serviço com PPPoE do cliente, e só se o número for só dele', () => {
+    const service = db.prepare(`INSERT INTO services (id, client_id, plan_id, monthly_value_cve, status, pppoe_username) VALUES (?, ?, 1, 2500, 'active', ?)`);
+    service.run(16, 14, 'skn014-16');
+    const primaries = () => Object.fromEntries(loadDesiredServices(db).map((item) => [item.serviceId, item.primary]));
+    expect(primaries()).toEqual({ 15: true, 16: false });
+
+    db.prepare(`INSERT INTO clients (id, client_code, full_name, phone) VALUES (20, 'X-14', 'Outro Catorze', '9110020')`).run();
+    service.run(17, 20, 'outro-17');
+    expect(primaries()).toEqual({ 15: false, 16: false, 17: false });
+  });
+
+  test('cliente já ancorado no router pelo número não ganha utilizador novo', () => {
+    const plan = planPppoeBackfill(rows(), { router: new Set(['renomeado']), ispm: new Set(['skn001']), routerClientNumbers: new Set([2]) }, 'skn');
+    expect(plan.create).toEqual([]);
+    expect(plan.skipped).toContainEqual(expect.objectContaining({ serviceId: 4, reason: 'nome já existe no router' }));
   });
 
   test('a reconciliação seguinte só cria: nenhum secret existente é tocado', () => {

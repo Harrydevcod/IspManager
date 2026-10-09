@@ -37,7 +37,7 @@ import {
 } from '../lib/routeros';
 import { readRouterLive, readWanInterfaces } from '../lib/router-live';
 import { identifyModel } from '../lib/device-model';
-import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecret, planActions, runNetworkEnforcement, serviceIdFromComment } from '../lib/network-enforcement';
+import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecret, planActions, runNetworkEnforcement, secretAnchor } from '../lib/network-enforcement';
 import { loadAutoSuspensionPreview, runAutomaticSuspension } from '../lib/auto-suspension';
 import {
   loadPppoeCallers,
@@ -348,8 +348,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       const transport = createTransport(config);
       const [secrets, active] = await Promise.all([listSecrets(transport), listActive(transport)]);
       // A sessão tem o nome do secret no router, que pode ter sido renomeado.
-      const login = matchSecret({ serviceId: params.data.id, username: service.username }, secrets)?.name
-        ?? service.username;
+      const desired = loadDesiredServices(db).find((item) => item.serviceId === params.data.id);
+      const login = (desired && matchSecret(desired, secrets)?.name) ?? service.username;
       const session = active.find((item) => item.name === login);
 
       if (config.dryRun) {
@@ -484,11 +484,13 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
         c.client_code AS clientCode, c.full_name AS clientName, c.status AS clientStatus
       FROM services s JOIN clients c ON c.id = s.client_id ORDER BY s.id
     `).all() as BackfillService[];
+    const anchors = secrets.map((secret) => secretAnchor(secret.comment));
     const plan = planPppoeBackfill(services, {
       router: new Set(secrets.map((secret) => secret.name)),
       ispm: new Set(services.map((service) => service.username?.trim()).filter((name): name is string => Boolean(name))),
-      // Secret já ancorado ao serviço pelo comentário `ispm:<id>`: também seria adotado.
-      routerServiceIds: new Set(secrets.map((secret) => serviceIdFromComment(secret.comment)).filter((id): id is number => id !== null))
+      // Secret já ancorado pelo comentário, ao serviço ou ao cliente: também seria adotado.
+      routerServiceIds: new Set(anchors.flatMap((anchor) => (anchor && 'serviceId' in anchor ? [anchor.serviceId] : []))),
+      routerClientNumbers: new Set(anchors.flatMap((anchor) => (anchor && 'clientNumber' in anchor ? [anchor.clientNumber] : [])))
     }, prefix);
     if (!parsed.data.apply) return plan;
     const applied = applyPppoeBackfill(db, plan);
