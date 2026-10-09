@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import { recordAuditStrict } from './audit';
-import { matchSecret } from './network-enforcement';
+import { loadDesiredServices, matchSecret } from './network-enforcement';
 import { readSuspendedProfileName } from './plan-profiles';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-network';
 import {
@@ -112,6 +112,15 @@ function loadServices(db: Database.Database, serviceIds: number[]): ServiceRow[]
   `).all(...serviceIds) as ServiceRow[];
 }
 
+/** Serviço → secret no router, pela mesma âncora da reconciliação. */
+function secretFinder(db: Database.Database, secrets: RouterSecret[]): (serviceId: number) => RouterSecret | undefined {
+  const desired = new Map(loadDesiredServices(db).map((service) => [service.serviceId, service]));
+  return (serviceId) => {
+    const service = desired.get(serviceId);
+    return service ? matchSecret(service, secrets) : undefined;
+  };
+}
+
 const CHANGING: ReadonlySet<PreviewOutcome> = new Set(['change', 'suspended', 'no_secret', 'no_pppoe']);
 
 /**
@@ -128,11 +137,12 @@ export function previewPlanChange(
   const suspendedProfile = readSuspendedProfileName(db);
   const online = new Set((router?.active ?? []).map((session) => session.name));
   const blockers: string[] = [];
+  const secretOf = router ? secretFinder(db, router.secrets) : () => undefined;
 
   const rows: PreviewRow[] = !target ? [] : loadServices(db, input.serviceIds).map((service) => {
     const toValueCve = input.updatePrice ? target.monthlyPriceCve : service.valueCve;
     const dbChange = service.planId !== target.id || service.valueCve !== toValueCve;
-    const secret = service.login && router ? matchSecret({ serviceId: service.serviceId, username: service.login }, router.secrets) : undefined;
+    const secret = secretOf(service.serviceId);
     const suspended = service.status === 'suspended';
     const toProfile = suspended && suspendedProfile ? suspendedProfile : target.routerProfile;
     const routerChange = Boolean(secret && !suspended && service.status === 'active' && secret.profile !== target.routerProfile);
@@ -367,6 +377,7 @@ export async function runPlanChangeBatch(
   const target = loadTargetPlan(db, batch.targetPlanId);
   if (!target?.routerProfile) return finish('stopped', 'O plano de destino deixou de existir ou ficou sem perfil PPP.');
   const targetProfile = target.routerProfile;
+  const secretOf = secretFinder(db, router.secrets);
 
   const processItem = async (item: ItemRow): Promise<ItemOutcome> => {
     const service = db.prepare(`
@@ -378,7 +389,7 @@ export async function runPlanChangeBatch(
 
     const toValueCve = batch.updatePrice ? target.monthlyPriceCve : service.valueCve;
     const dbChange = service.planId !== target.id || service.valueCve !== toValueCve;
-    const secret = service.login ? matchSecret({ serviceId: item.serviceId, username: service.login }, router.secrets) : undefined;
+    const secret = service.login ? secretOf(item.serviceId) : undefined;
     // Só um serviço ativo tem o perfil do plano no router. Um suspenso está no
     // perfil de suspensão e é lá que fica: mudar-lho era reativá-lo por engano.
     const routerChange = Boolean(!deps.dryRun && secret && service.status === 'active' && secret.profile !== targetProfile);
@@ -572,6 +583,7 @@ export async function runDueSessionDrops(
     }
     router ??= await read();
     const sessions = new Map(router.active.map((session) => [session.name, session]));
+    const secretOf = secretFinder(db, router.secrets);
     const items = db.prepare(`
       SELECT i.id, i.service_id AS serviceId, i.processed_at AS processedAt, NULLIF(TRIM(s.pppoe_username), '') AS login
       FROM plan_change_items i JOIN services s ON s.id = i.service_id
@@ -581,7 +593,7 @@ export async function runDueSessionDrops(
 
     for (const item of items) {
       if (!item.login) continue;
-      const name = matchSecret({ serviceId: item.serviceId, username: item.login }, router.secrets)?.name ?? item.login;
+      const name = secretOf(item.serviceId)?.name ?? item.login;
       const session = sessions.get(name);
       if (!session) continue;
       const age = uptimeSeconds(session.uptime);

@@ -10,7 +10,7 @@ const PROFILES = ['default', 'plano-10M', 'plano-20M', 'SUSPENSO'];
 const admin = { user: { id: 7, username: 'ana', fullName: 'Ana', role: 'admin' } } as never;
 
 function secret(overrides: Partial<RouterSecret> = {}): RouterSecret {
-  return { id: '*1', name: 'joao-1', disabled: false, profile: 'plano-10M', comment: 'ispm:1 Joao Silva #1', ...overrides };
+  return { id: '*1', name: 'joao-1', disabled: false, profile: 'plano-10M', comment: 'ispm:1 Joao Silva', ...overrides };
 }
 
 /** Um router em memória: as escritas mudam o que a leitura seguinte devolve. */
@@ -262,7 +262,7 @@ describe('resolveReconciliation', () => {
   test('só no ISPM: recriar no router, ou tirar o utilizador do serviço', async () => {
     addService(1, 'active', 'joao-1');
     addService(2, 'active', 'ana-2');
-    const router = fakeRouter([secret(), secret({ id: '*2', name: 'ana-2', comment: 'ispm:2 Cliente 2 #2' })]);
+    const router = fakeRouter([secret(), secret({ id: '*2', name: 'ana-2', comment: 'ispm:2 Cliente 2' })]);
     await agree(router);
     router.secrets.length = 0;
 
@@ -330,7 +330,7 @@ describe('resolveReconciliation', () => {
   test('router inacessível a meio: pára e diz o que ficou por processar', async () => {
     addService(1, 'active', 'joao-1');
     addService(2, 'active', 'ana-2');
-    const router = fakeRouter([secret(), secret({ id: '*2', name: 'ana-2', comment: 'ispm:2 Cliente 2 #2' })]);
+    const router = fakeRouter([secret(), secret({ id: '*2', name: 'ana-2', comment: 'ispm:2 Cliente 2' })]);
     await agree(router);
     router.secrets[0].profile = 'plano-20M';
     router.secrets[1].profile = 'plano-20M';

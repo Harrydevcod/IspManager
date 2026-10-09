@@ -36,35 +36,59 @@ import {
 // A âncora do mapeamento. Sobrevive a alguém renomear o utilizador no router.
 const COMMENT_PREFIX = 'ispm:';
 
-/**
- * `ispm:<nº do cliente> <nome> #<id do serviço>`: o número que se lê primeiro é
- * o do código do cliente, o mesmo do utilizador PPPoE (`skn001` ↔ `ispm:1`); a
- * âncora é o id do serviço, no fim. O nome vai em ASCII — o Winbox não mostra
- * UTF-8 e o que se lê tem de ser igual ao que se escreveu, senão a passagem
- * corrigia-o para sempre — e sem `#`, para o sufixo ser inequívoco. Um código
- * sem número fica no formato antigo, `ispm:<id> <nome>`.
- */
-export function secretComment(serviceId: number, clientName: string, clientCode: string): string {
-  const name = clientName.normalize('NFD').replace(/[^ -~]|#/g, '').replace(/\s+/g, ' ').trim();
+function clientNumber(clientCode: string): number | null {
   const digits = clientCode.match(/\d+/)?.[0];
-  if (!digits) return name ? `${COMMENT_PREFIX}${serviceId} ${name}` : `${COMMENT_PREFIX}${serviceId}`;
-  return `${COMMENT_PREFIX}${Number(digits)}${name ? ` ${name}` : ''} #${serviceId}`;
+  return digits ? Number(digits) : null;
 }
 
 /**
- * O serviço a que o comentário ancora o secret; null se não for nosso. Lê os
- * dois formatos: com sufixo ` #<id>` a âncora é o sufixo; sem ele (secrets
- * escritos antes da 2.24) é o primeiro número.
+ * `ispm:<nº do cliente> <nome>`: o número é o do código do cliente, o mesmo do
+ * utilizador PPPoE (`skn005` ↔ `ispm:5`), e é ele a âncora. Só leva o sufixo
+ * ` #<id do serviço>` quem não pode ser ancorado pelo cliente: um segundo
+ * serviço do mesmo cliente, ou um código sem número. O nome vai em ASCII — o
+ * Winbox não mostra UTF-8 e o que se lê tem de ser igual ao que se escreveu,
+ * senão a passagem corrigia-o para sempre — e sem `#`, para o sufixo ser
+ * inequívoco.
  */
-export function serviceIdFromComment(comment: string | null | undefined): number | null {
+export function secretComment(service: Pick<DesiredService, 'serviceId' | 'clientName' | 'clientCode' | 'primary'>): string {
+  const name = service.clientName.normalize('NFD').replace(/[^ -~]|#/g, '').replace(/\s+/g, ' ').trim();
+  const number = clientNumber(service.clientCode);
+  const head = `${COMMENT_PREFIX}${number ?? service.serviceId}${name ? ` ${name}` : ''}`;
+  return number !== null && service.primary ? head : `${head} #${service.serviceId}`;
+}
+
+export type SecretAnchor = { serviceId: number } | { clientNumber: number };
+
+/**
+ * A quem o comentário ancora o secret; null se não for nosso. Com sufixo
+ * ` #<id>` é o serviço; sem ele é o nº do cliente. Até à 2.23 um comentário sem
+ * sufixo trazia o id do serviço: esses foram reescritos pelas versões 2.24 a
+ * 2.27 e já não são lidos como tal.
+ */
+export function secretAnchor(comment: string | null | undefined): SecretAnchor | null {
   const match = /^ispm:(\d+)(?:(?: .*)? #(\d+)| .*)?$/.exec(comment ?? '');
-  return match ? Number(match[2] ?? match[1]) : null;
+  if (!match) return null;
+  return match[2] ? { serviceId: Number(match[2]) } : { clientNumber: Number(match[1]) };
+}
+
+type AnchoredService = Pick<DesiredService, 'serviceId' | 'clientCode' | 'primary'>;
+
+function anchorsService(comment: string | null | undefined, service: AnchoredService): boolean {
+  const anchor = secretAnchor(comment);
+  if (!anchor) return false;
+  if ('serviceId' in anchor) return anchor.serviceId === service.serviceId;
+  return service.primary && anchor.clientNumber === clientNumber(service.clientCode);
 }
 
 export type DesiredService = {
   serviceId: number;
   clientName: string;
   clientCode: string;
+  /**
+   * O serviço que o nº do cliente identifica sozinho: o primeiro com PPPoE, e
+   * só se nenhum outro cliente partilhar o número.
+   */
+  primary: boolean;
   username: string;
   /** Há senha gravada? O texto em claro só se abre no momento de a enviar. */
   hasPassword: boolean;
@@ -123,6 +147,7 @@ export type EnforcementPlan = {
 
 type ServiceRow = {
   serviceId: number;
+  clientId: number;
   clientName: string;
   clientCode: string;
   status: string;
@@ -136,6 +161,7 @@ export function loadDesiredServices(db: Database.Database, options: { suspendedP
   const rows = db.prepare(`
     SELECT
       s.id AS serviceId,
+      s.client_id AS clientId,
       c.full_name AS clientName,
       c.client_code AS clientCode,
       s.status AS status,
@@ -150,10 +176,25 @@ export function loadDesiredServices(db: Database.Database, options: { suspendedP
     ORDER BY s.id
   `).all() as ServiceRow[];
 
+  // As linhas vêm por id: a primeira de cada cliente é a principal. Dois
+  // clientes com o mesmo número (`A-5` e `B-5`) ficam os dois pelo sufixo.
+  const firstOfClient = new Map<number, number>();
+  const clientsByNumber = new Map<number, Set<number>>();
+  for (const row of rows) {
+    if (!firstOfClient.has(row.clientId)) firstOfClient.set(row.clientId, row.serviceId);
+    const number = clientNumber(row.clientCode);
+    if (number !== null) clientsByNumber.set(number, (clientsByNumber.get(number) ?? new Set()).add(row.clientId));
+  }
+  const isPrimary = (row: ServiceRow) => {
+    const number = clientNumber(row.clientCode);
+    return number !== null && firstOfClient.get(row.clientId) === row.serviceId && clientsByNumber.get(number)?.size === 1;
+  };
+
   return rows.map((row) => ({
     serviceId: row.serviceId,
     clientName: row.clientName,
     clientCode: row.clientCode,
+    primary: isPrimary(row),
     username: row.username,
     hasPassword: row.hasPassword === 1,
     passwordPending: row.passwordPending === 1,
@@ -165,11 +206,13 @@ export function loadDesiredServices(db: Database.Database, options: { suspendedP
 
 // --------------------------------------------------------------- planeamento
 
-export function matchSecret(service: Pick<DesiredService, 'serviceId' | 'username'>, secrets: RouterSecret[]): RouterSecret | undefined {
-  return (
-    secrets.find((secret) => serviceIdFromComment(secret.comment) === service.serviceId) ??
-    secrets.find((secret) => secret.name === service.username)
-  );
+export function matchSecret(service: AnchoredService & Pick<DesiredService, 'username'>, secrets: RouterSecret[]): RouterSecret | undefined {
+  const anchored = secrets.filter((secret) => anchorsService(secret.comment, service));
+  // Dois secrets com o número do mesmo cliente (um órfão de um serviço antigo
+  // ao lado do atual): o comentário não escolhe, e errar aqui era cortar ou
+  // mudar a senha a outro. Desempata o nome.
+  if (anchored.length === 1) return anchored[0];
+  return anchored.find((secret) => secret.name === service.username) ?? secrets.find((secret) => secret.name === service.username);
 }
 
 export type SessionState = 'online' | 'offline' | 'desativado' | 'sem_secret' | 'sem_servico';
@@ -384,8 +427,8 @@ export function planActions(
 
     // O nome do cliente no comentário, só em secrets já ancorados: um secret
     // casado pelo nome tem o comentário do operador, e esse não é nosso.
-    const comment = secretComment(service.serviceId, service.clientName, service.clientCode);
-    if (serviceIdFromComment(secret.comment) === service.serviceId && secret.comment !== comment) {
+    const comment = secretComment(service);
+    if (anchorsService(secret.comment, service) && secret.comment !== comment) {
       actions.push({
         kind: 'comment',
         serviceId: service.serviceId,
@@ -403,8 +446,9 @@ export function planActions(
   if (options.reportOrphans !== false) for (const secret of secrets) {
     if (usedSecretIds.has(secret.id)) continue;
     if (!secret.comment?.startsWith(COMMENT_PREFIX)) continue;
+    const anchor = secretAnchor(secret.comment);
     divergences.push({
-      serviceId: serviceIdFromComment(secret.comment),
+      serviceId: anchor && 'serviceId' in anchor ? anchor.serviceId : null,
       username: secret.name,
       kind: 'orphan_secret',
       detail: 'Utilizador no router sem serviço correspondente no ISPM'
@@ -790,7 +834,7 @@ async function applyAction(
     const id = await createSecret(transport, {
       name: action.username,
       password: password.plain,
-      comment: secretComment(action.serviceId, action.clientName, service.clientCode),
+      comment: secretComment(service),
       profile: action.profile
     });
     // Um secret nasce ativo; se o serviço não está ativo, corta-se já.

@@ -15,7 +15,7 @@ const login = (id: number) => `skn${String(id).padStart(3, '0')}`;
 /** Um router em memória. `onWrite` deixa um teste falhar, cortar ou cancelar a meio. */
 function fakeRouter(count: number, options: { online?: number[]; profiles?: string[]; uptime?: string } = {}) {
   const secrets: RouterSecret[] = Array.from({ length: count }, (_, index) => ({
-    id: `*${index + 1}`, name: login(index + 1), disabled: false, profile: 'plano-10M', comment: `ispm:${index + 1} Cliente ${String(index + 1).padStart(2, '0')} #${index + 1}`
+    id: `*${index + 1}`, name: login(index + 1), disabled: false, profile: 'plano-10M', comment: `ispm:${index + 1} Cliente ${String(index + 1).padStart(2, '0')}`
   }));
   const sessions = (options.online ?? []).map((id) => ({ id: `*S${id}`, name: login(id), uptime: options.uptime ?? '5h' }));
   const profiles = options.profiles ?? ['default', 'plano-10M', 'plano-20M', 'SUSPENSO'];

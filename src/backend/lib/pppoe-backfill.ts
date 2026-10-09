@@ -17,7 +17,7 @@ type Skipped = Omit<Candidate, 'username'> & {
   reason: 'nome já existe no router' | 'nome já usado no ISPM' | 'código sem número';
 };
 export type PppoeBackfillPlan = { create: Candidate[]; skipped: Skipped[] };
-export type TakenPppoeNames = { router: ReadonlySet<string>; ispm: ReadonlySet<string>; routerServiceIds?: ReadonlySet<number> };
+export type TakenPppoeNames = { router: ReadonlySet<string>; ispm: ReadonlySet<string>; routerServiceIds?: ReadonlySet<number>; routerClientNumbers?: ReadonlySet<number> };
 
 export function planPppoeBackfill(services: BackfillService[], takenNames: TakenPppoeNames, prefix: string): PppoeBackfillPlan {
   const create: Candidate[] = [];
@@ -31,7 +31,9 @@ export function planPppoeBackfill(services: BackfillService[], takenNames: Taken
       continue;
     }
     const username = pppoeUsernameFor({ prefix, clientCode: service.clientCode, clientName: service.clientName, serviceId: service.serviceId });
-    if (takenNames.router.has(username) || takenNames.routerServiceIds?.has(service.serviceId)) {
+    const anchored = takenNames.routerServiceIds?.has(service.serviceId)
+      || takenNames.routerClientNumbers?.has(Number(service.clientCode.match(/\d+/)?.[0]));
+    if (takenNames.router.has(username) || anchored) {
       skipped.push({ ...identity, username, reason: 'nome já existe no router' });
     } else if (takenNames.ispm.has(username) || planned.has(username)) {
       skipped.push({ ...identity, username, reason: 'nome já usado no ISPM' });
