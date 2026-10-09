@@ -31,6 +31,10 @@ export type ReconRow = {
   /** Só em `only_router`: o secret tem a marca `ispm:`. Sem ela foi feito à mão. */
   managed: boolean;
   online: boolean;
+  /** O secret dá acesso à rede agora? Numa diferença de estado, diz para que lado cada escolha empurra. */
+  routerAccess: boolean;
+  /** Só em `only_ispm`: o nome existe no router mas é do serviço deste cliente. Não há o que criar. */
+  takenBy: string | null;
   /** Só em `plan`: os planos do ISPM que usam o perfil que está no router. */
   planOptions: Array<{ id: number; name: string }>;
 };
@@ -97,13 +101,16 @@ function build(db: Database.Database, secrets: RouterSecret[], active: RouterAct
       clientName: service.clientName,
       held: !pending.has(service.serviceId),
       managed: true,
+      routerAccess: false,
+      takenBy: null,
       planOptions: []
     };
 
     if (!secret) {
+      const takenBy = plan.takenBy.get(service.serviceId) ?? null;
       rows.push({
-        ...base, key: `only_ispm:${service.serviceId}`, kind: 'only_ispm', secretId: null,
-        login: service.username, ispm: `Utilizador ${service.username}`, router: 'Não existe', online: false
+        ...base, key: `only_ispm:${service.serviceId}`, kind: 'only_ispm', secretId: null, takenBy,
+        login: service.username, ispm: `Utilizador ${service.username}`, router: takenBy ? `É de ${takenBy}` : 'Não existe', online: false
       });
       continue;
     }
@@ -113,7 +120,7 @@ function build(db: Database.Database, secrets: RouterSecret[], active: RouterAct
 
     if (ispmGivesAccess(service) !== routerAccess) {
       rows.push({
-        ...base, key: `state:${service.serviceId}`, kind: 'state', secretId: secret.id, login: secret.name, online,
+        ...base, key: `state:${service.serviceId}`, kind: 'state', secretId: secret.id, login: secret.name, online, routerAccess,
         ispm: STATUS_LABEL[status?.status ?? ''] ?? status?.status ?? '—',
         router: routerAccess
           ? `Com serviço (${secret.profile ?? 'perfil por omissão'})`
@@ -121,7 +128,7 @@ function build(db: Database.Database, secrets: RouterSecret[], active: RouterAct
       });
     } else if (routerAccess && service.profile && secret.profile !== service.profile) {
       rows.push({
-        ...base, key: `plan:${service.serviceId}`, kind: 'plan', secretId: secret.id, login: secret.name, online,
+        ...base, key: `plan:${service.serviceId}`, kind: 'plan', secretId: secret.id, login: secret.name, online, routerAccess,
         ispm: `${status?.planName ?? 'Sem plano'} · ${service.profile}`,
         router: secret.profile ?? 'perfil por omissão',
         planOptions: secret.profile ? plansByProfile.get(secret.profile) ?? [] : []
@@ -135,7 +142,8 @@ function build(db: Database.Database, secrets: RouterSecret[], active: RouterAct
       key: `only_router:${secret.id}`, kind: 'only_router', serviceId: null, secretId: secret.id, clientName: null,
       login: secret.name, ispm: 'Não existe',
       router: `${secret.disabled ? 'Desativado' : 'Ativo'} · ${secret.profile ?? 'perfil por omissão'}`,
-      held: true, managed: Boolean(secret.comment?.startsWith('ispm:')), online: sessions.has(secret.name), planOptions: []
+      held: true, managed: Boolean(secret.comment?.startsWith('ispm:')), online: sessions.has(secret.name),
+      routerAccess: routerGivesAccess(secret, suspendedProfile), takenBy: null, planOptions: []
     });
   }
 
@@ -362,6 +370,14 @@ export async function resolveReconciliation(
     }
     if (!row) {
       results.push({ key: item.key, status: 'failed', message: 'Esta divergência já não existe: atualize a lista' });
+      continue;
+    }
+    if (item.direction === 'ispm' && row.takenBy) {
+      results.push({
+        key: item.key,
+        status: 'failed',
+        message: `O utilizador ${row.login} no router é de ${row.takenBy}: corrija o utilizador PPPoE de um dos dois serviços`
+      });
       continue;
     }
     const summary = describe(row, item);

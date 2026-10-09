@@ -91,7 +91,8 @@ const DIVERGENCE_LABEL: Record<string, string> = {
   orphan_secret: 'Utilizador sem serviço',
   profile_drift: 'Perfil alterado no router, à espera de decisão',
   state_drift: 'Estado alterado no router, à espera de decisão',
-  secret_removed: 'Utilizador apagado no router, à espera de decisão'
+  secret_removed: 'Utilizador apagado no router, à espera de decisão',
+  username_taken: 'Utilizador em uso por outro serviço no router'
 };
 
 type NetworkTabProps = {

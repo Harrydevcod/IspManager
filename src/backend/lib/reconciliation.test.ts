@@ -152,6 +152,29 @@ describe('buildReconciliation', () => {
     ]);
   });
 
+  test('nomes trocados: o secret fica com quem o comentário diz, e o outro serviço lê-se como tal', async () => {
+    addService(1, 'active', 'skn003');
+    addService(3, 'active', 'skn001');
+    const router = fakeRouter([secret({ id: '*1B', name: 'skn003', comment: 'ispm:3 Cliente 3' }), secret({ id: '*2C', name: 'skn014', comment: null })]);
+
+    expect(rows(router)).toEqual([
+      expect.objectContaining({ key: 'only_ispm:1', held: true, router: 'É de Cliente 3', takenBy: 'Cliente 3' }),
+      expect.objectContaining({ key: 'only_router:*2C', login: 'skn014' })
+    ]);
+
+    // Criar no router não existe aqui: o nome já lá está, e é de outro.
+    const [result] = await resolve(router, [{ key: 'only_ispm:1', direction: 'ispm' }]);
+    expect(result).toMatchObject({ status: 'failed', message: expect.stringContaining('é de Cliente 3') });
+    expect(router.writes()).toEqual([]);
+  });
+
+  test('diz se o router está a dar acesso, para o botão escrever o efeito', async () => {
+    addService(1, 'suspended', 'joao-1');
+    expect(rows(fakeRouter([secret()]))).toEqual([expect.objectContaining({ kind: 'state', routerAccess: true })]);
+    db.prepare(`UPDATE services SET status = 'active' WHERE id = 1`).run();
+    expect(rows(fakeRouter([secret({ disabled: true })]))).toEqual([expect.objectContaining({ kind: 'state', routerAccess: false })]);
+  });
+
   test('lista os serviços sem utilizador PPPoE para associar', () => {
     addService(1, 'active', null);
     const { secrets, active } = fakeRouter([]).read();

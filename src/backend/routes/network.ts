@@ -37,7 +37,7 @@ import {
 } from '../lib/routeros';
 import { readRouterLive, readWanInterfaces } from '../lib/router-live';
 import { identifyModel } from '../lib/device-model';
-import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecret, planActions, runNetworkEnforcement, secretAnchor } from '../lib/network-enforcement';
+import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecrets, planActions, runNetworkEnforcement, secretAnchor } from '../lib/network-enforcement';
 import { loadAutoSuspensionPreview, runAutomaticSuspension } from '../lib/auto-suspension';
 import {
   loadPppoeCallers,
@@ -367,8 +367,10 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       const transport = createTransport(config);
       const [secrets, active] = await Promise.all([listSecrets(transport), listActive(transport)]);
       // A sessão tem o nome do secret no router, que pode ter sido renomeado.
-      const desired = loadDesiredServices(db).find((item) => item.serviceId === params.data.id);
-      const login = (desired && matchSecret(desired, secrets)?.name) ?? service.username;
+      // Sem secret, só vale o nome do ISPM se ninguém o tiver no router: se
+      // tiver, é de outro serviço, e a sessão com esse nome é de outro cliente.
+      const secret = matchSecrets(loadDesiredServices(db), secrets).get(params.data.id);
+      const login = secret?.name ?? (secrets.some((item) => item.name === service.username) ? null : service.username);
       const session = active.find((item) => item.name === login);
 
       if (config.dryRun) {

@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import { recordAuditStrict } from './audit';
-import { loadDesiredServices, matchSecret } from './network-enforcement';
+import { loadDesiredServices, matchSecrets } from './network-enforcement';
 import { readSuspendedProfileName } from './plan-profiles';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-network';
 import {
@@ -114,11 +114,8 @@ function loadServices(db: Database.Database, serviceIds: number[]): ServiceRow[]
 
 /** Serviço → secret no router, pela mesma âncora da reconciliação. */
 function secretFinder(db: Database.Database, secrets: RouterSecret[]): (serviceId: number) => RouterSecret | undefined {
-  const desired = new Map(loadDesiredServices(db).map((service) => [service.serviceId, service]));
-  return (serviceId) => {
-    const service = desired.get(serviceId);
-    return service ? matchSecret(service, secrets) : undefined;
-  };
+  const matched = matchSecrets(loadDesiredServices(db), secrets);
+  return (serviceId) => matched.get(serviceId);
 }
 
 const CHANGING: ReadonlySet<PreviewOutcome> = new Set(['change', 'suspended', 'no_secret', 'no_pppoe']);

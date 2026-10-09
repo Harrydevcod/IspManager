@@ -6,12 +6,35 @@ import { useColumnVisibility } from '../../lib/columnVisibility';
 import { useRowSelection } from '../../lib/useRowSelection';
 import { ROUTER_API, type ReconDirection, type ReconKind, type ReconResult, type ReconRow, type Reconciliation as ReconciliationData } from './router-api';
 
-const KIND: Record<ReconKind, { label: string; tone: 'danger' | 'warn' | 'info'; rank: number; ispm: string; router: string }> = {
-  plan: { label: 'Plano', tone: 'warn', rank: 0, ispm: 'Repor o plano do ISPM no router', router: 'Passar o serviço ao plano do router' },
-  state: { label: 'Estado', tone: 'danger', rank: 1, ispm: 'Impor o estado do ISPM no router', router: 'Trazer o estado do router' },
-  only_ispm: { label: 'Só no ISPM', tone: 'info', rank: 2, ispm: 'Criar o utilizador no router', router: 'Tirar o utilizador do serviço' },
-  only_router: { label: 'Só no router', tone: 'info', rank: 3, ispm: 'Desativar no router', router: 'Associar a um serviço' }
+const KIND: Record<ReconKind, { label: string; tone: 'danger' | 'warn' | 'info'; rank: number }> = {
+  plan: { label: 'Plano', tone: 'warn', rank: 0 },
+  state: { label: 'Estado', tone: 'danger', rank: 1 },
+  only_ispm: { label: 'Só no ISPM', tone: 'info', rank: 2 },
+  only_router: { label: 'Só no router', tone: 'info', rank: 3 }
 };
+
+/**
+ * O que a escolha faz nesta linha, e onde: é o texto do botão. "ISPM" e
+ * "Router" sozinhos foram lidos ao contrário no terreno — quem fica a valer
+ * não diz quem é mexido.
+ */
+function effect(row: ReconRow, direction: ReconDirection): string {
+  const ispm = direction === 'ispm';
+  if (row.kind === 'plan') return ispm ? 'Repor o plano no router' : 'Mudar o plano no ISPM';
+  if (row.kind === 'state') {
+    if (ispm) return row.routerAccess ? 'Cortar no router' : 'Reativar no router';
+    return row.routerAccess ? 'Reativar no ISPM' : 'Suspender no ISPM';
+  }
+  if (row.kind === 'only_ispm') return ispm ? 'Criar no router' : 'Tirar do serviço';
+  return ispm ? 'Desativar no router' : 'Associar a um serviço';
+}
+
+/** Uma escolha que não existe nesta linha, e porquê; null = existe. */
+function unavailable(row: ReconRow, direction: ReconDirection): string | null {
+  return direction === 'ispm' && row.takenBy
+    ? `O utilizador ${row.login} já existe no router e é de ${row.takenBy}. Corrija o utilizador PPPoE de um dos dois serviços.`
+    : null;
+}
 
 const RESULT: Record<ReconResult['status'], { label: string; tone: 'success' | 'danger' | 'info' | 'neutral' }> = {
   applied: { label: 'Aplicado', tone: 'success' },
@@ -35,7 +58,7 @@ const kindOf = (row: ReconRow) => (row.kind === 'only_router' && !row.managed
   ? { label: 'Feito à mão', tone: 'warn' as const, rank: 3.5 }
   : KIND[row.kind]);
 
-const HEADERS = ['Cliente', 'Utilizador', 'Diferença', 'No ISPM', 'No router', 'Situação', 'Fica a valer'] as const;
+const HEADERS = ['Cliente', 'Utilizador', 'Diferença', 'No ISPM', 'No router', 'Situação', 'Decisão'] as const;
 // Quase tudo o que aqui aparece está por decidir: a coluna diz pouco e a 150% falta-lhe o espaço.
 const DEFAULT_HIDDEN = ['Situação'];
 
@@ -48,6 +71,9 @@ function dropsSession(row: ReconRow, direction: ReconDirection): boolean {
 
 /** O que falta escolher antes de se poder aplicar esta decisão; null = nada. */
 function missing(row: ReconRow, direction: ReconDirection, extra: Extra): string | null {
+  // Chega aqui pela escolha em massa, que não passa pelo botão da linha.
+  const refusal = unavailable(row, direction);
+  if (refusal) return refusal;
   if (direction === 'router' && row.kind === 'plan') {
     if (row.planOptions.length === 0) return `Nenhum plano do ISPM usa o perfil ${row.router}.`;
     if (row.planOptions.length > 1 && !extra.planId) return 'Escolha o plano.';
@@ -128,24 +154,26 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
         : <span title="Foi o ISPM que mudou: a passagem automática trata disto sozinha."><Badge tone="neutral">Automático</Badge></span>
     },
     {
-      header: 'Fica a valer',
+      header: 'Decisão',
       // As já decididas primeiro: é o que se quer rever antes de aplicar.
       sortValue: (row) => (decisions[row.key] ? 0 : 1),
       cell: (row) => (
-        <div className="segmented-tabs recon-choice" role="group" aria-label={`Fica a valer para ${row.login}`}>
+        <div className="segmented-tabs recon-choice" role="group" aria-label={`Decisão para ${row.login}`}>
           {SIDES.map((side) => {
             const chosen = decisions[row.key] === side.id;
+            const refusal = unavailable(row, side.id);
             return (
               <Button
                 key={side.id}
                 variant="ghost"
                 size="sm"
                 aria-pressed={chosen}
-                title={KIND[row.kind][side.id]}
+                disabled={Boolean(refusal)}
+                title={refusal ?? `Fica a valer o ${side.label}`}
                 className={`segmented-tab${chosen ? ' is-active' : ''}`}
                 onClick={() => decide([row.key], chosen ? '' : side.id)}
               >
-                {side.label}
+                {effect(row, side.id)}
               </Button>
             );
           })}
@@ -160,7 +188,7 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
     <>
       <div className="recon-bar">
         <p className="router-muted">
-          Escolha, linha a linha, qual dos dois lados fica a valer. Nada é aplicado antes da revisão.
+          Escolha, linha a linha, o que fazer: cada botão diz o que muda e onde. Nada é aplicado antes da revisão.
           {dryRun ? ' O router está em ensaio: aplicar só diz o que faria.' : ''}
         </p>
         <ColumnPicker headers={HEADERS} hidden={columnVisibility.hidden} onToggle={columnVisibility.toggle} onReset={columnVisibility.reset} />
@@ -182,7 +210,7 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
         stickyHeader
         defaultSort={{ key: 'Diferença', direction: 'asc' }}
         hiddenColumns={columnVisibility.hidden}
-        gridTemplateColumns="minmax(88px, 1.3fr) 100px 116px minmax(88px, 1fr) minmax(88px, 1fr) 100px 128px"
+        gridTemplateColumns="minmax(88px, 1.3fr) 100px 116px minmax(88px, 1fr) minmax(88px, 1fr) 100px 164px"
         columns={columns}
         selection={{
           isSelected: (key) => selection.isSelected(String(key)),
@@ -235,7 +263,7 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
                   </span>
                   {result ? <Badge tone={RESULT[result.status].tone}>{RESULT[result.status].label}</Badge> : <Badge tone={kindOf(row).tone}>{kindOf(row).label}</Badge>}
                 </div>
-                <p className="recon-review-action">{result ? result.message : KIND[row.kind][direction]}</p>
+                <p className="recon-review-action">{result ? result.message : effect(row, direction)}</p>
                 {!result && (
                   <dl className="recon-review-sides">
                     {SIDES.map((side) => (

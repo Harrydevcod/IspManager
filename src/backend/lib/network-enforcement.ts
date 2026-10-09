@@ -120,9 +120,11 @@ export type Divergence = {
   /**
    * `*_drift` e `secret_removed`: foi o router que mudou, não o ISPM. Ficam
    * retidos — sem ação — até o operador escolher a direção (ADR 0014).
+   * `username_taken`: o nome do serviço existe no router mas é de outro
+   * serviço; também sem ação, até alguém corrigir o utilizador de um dos dois.
    */
   kind: 'missing_secret' | 'state' | 'profile' | 'password' | 'username' | 'orphan_secret'
-    | 'state_drift' | 'profile_drift' | 'secret_removed';
+    | 'state_drift' | 'profile_drift' | 'secret_removed' | 'username_taken';
   detail: string;
 };
 
@@ -139,6 +141,8 @@ export type EnforcementPlan = {
   divergences: Divergence[];
   /** Serviço → secret encontrado no router. */
   matched: Map<number, RouterSecret>;
+  /** Serviço sem secret porque o nome dele no router é de outro → o nome desse cliente. */
+  takenBy: Map<number, string>;
   /** Serviço → perfil que o ISPM pede para o secret; null = não pede nenhum. */
   targetProfiles: Map<number, string | null>;
 };
@@ -206,13 +210,37 @@ export function loadDesiredServices(db: Database.Database, options: { suspendedP
 
 // --------------------------------------------------------------- planeamento
 
-export function matchSecret(service: AnchoredService & Pick<DesiredService, 'username'>, secrets: RouterSecret[]): RouterSecret | undefined {
-  const anchored = secrets.filter((secret) => anchorsService(secret.comment, service));
-  // Dois secrets com o número do mesmo cliente (um órfão de um serviço antigo
-  // ao lado do atual): o comentário não escolhe, e errar aqui era cortar ou
-  // mudar a senha a outro. Desempata o nome.
-  if (anchored.length === 1) return anchored[0];
-  return anchored.find((secret) => secret.name === service.username) ?? secrets.find((secret) => secret.name === service.username);
+/**
+ * Serviço → secret, para todos de uma vez: um secret é de um serviço só.
+ * Primeiro quem o reclama pela âncora do comentário, e só depois o nome — que
+ * nunca leva um secret já dado a outro. Casar serviço a serviço, sem saber o
+ * que os outros levaram, dava o mesmo secret a dois quando os nomes estavam
+ * trocados, e a suspensão de um escrevia no secret do outro.
+ */
+export function matchSecrets(
+  services: Array<AnchoredService & Pick<DesiredService, 'username'>>,
+  secrets: RouterSecret[]
+): Map<number, RouterSecret> {
+  const matched = new Map<number, RouterSecret>();
+  const taken = new Set<string>();
+  const claim = (serviceId: number, secret: RouterSecret | undefined) => {
+    if (!secret) return;
+    matched.set(serviceId, secret);
+    taken.add(secret.id);
+  };
+
+  for (const service of services) {
+    const anchored = secrets.filter((secret) => anchorsService(secret.comment, service));
+    // Dois secrets com o número do mesmo cliente (um órfão de um serviço antigo
+    // ao lado do atual): o comentário não escolhe, e errar aqui era cortar ou
+    // mudar a senha a outro. Desempata o nome.
+    claim(service.serviceId, anchored.length === 1 ? anchored[0] : anchored.find((secret) => secret.name === service.username));
+  }
+  for (const service of services) {
+    if (matched.has(service.serviceId)) continue;
+    claim(service.serviceId, secrets.find((secret) => !taken.has(secret.id) && secret.name === service.username));
+  }
+  return matched;
 }
 
 export type SessionState = 'online' | 'offline' | 'desativado' | 'sem_secret' | 'sem_servico';
@@ -233,15 +261,15 @@ export type SessionRow = {
 /**
  * Função pura: cada serviço PPPoE do ISPM ao lado do seu secret e da sessão, e
  * no fim os secrets do router que nenhum serviço reclama. O casamento é o da
- * reconciliação (`matchSecret`), para as duas vistas nunca discordarem.
+ * reconciliação (`matchSecrets`), para as duas vistas nunca discordarem.
  */
 export function buildSessionRows(desired: DesiredService[], secrets: RouterSecret[], active: RouterActive[]): SessionRow[] {
   const sessions = new Map(active.map((session) => [session.name, session]));
-  const claimed = new Set<string>();
+  const matched = matchSecrets(desired, secrets);
+  const claimed = new Set([...matched.values()].map((secret) => secret.id));
 
   const rows: SessionRow[] = desired.map((service) => {
-    const secret = matchSecret(service, secrets);
-    if (secret) claimed.add(secret.id);
+    const secret = matched.get(service.serviceId);
     const login = secret?.name ?? service.username;
     const session = secret ? sessions.get(login) : undefined;
     return {
@@ -288,19 +316,41 @@ export function planActions(
     baseProfile?: string;
     /** Sem isto nada é retido: tudo o que difere é empurrado. */
     confirmed?: Map<number, ConfirmedState>;
+    /**
+     * Todos os serviços com PPPoE, quando `desired` é só uma parte: o casamento
+     * tem de saber o que os outros já levaram.
+     */
+    peers?: DesiredService[];
   } = {}
 ): EnforcementPlan {
   const actions: PlannedAction[] = [];
   const divergences: Divergence[] = [];
   const matched = new Map<number, RouterSecret>();
+  const takenBy = new Map<number, string>();
   const targetProfiles = new Map<number, string | null>();
-  const usedSecretIds = new Set<string>();
+  const peers = options.peers ?? desired;
+  const secretOf = matchSecrets(peers, secrets);
+  const usedSecretIds = new Set([...secretOf.values()].map((secret) => secret.id));
 
   for (const service of desired) {
-    const secret = matchSecret(service, secrets);
+    const secret = secretOf.get(service.serviceId);
     const known = options.confirmed?.get(service.serviceId);
 
     if (!secret) {
+      // O nome existe no router e não lhe coube: é de outro serviço. Criá-lo
+      // falhava, e escrever nele era mexer no acesso de outro cliente.
+      const holder = secrets.find((item) => item.name === service.username);
+      if (holder) {
+        const owner = peers.find((peer) => secretOf.get(peer.serviceId)?.id === holder.id)?.clientName ?? 'outro serviço';
+        takenBy.set(service.serviceId, owner);
+        divergences.push({
+          serviceId: service.serviceId,
+          username: service.username,
+          kind: 'username_taken',
+          detail: `O utilizador ${service.username} no router é de ${owner}`
+        });
+        continue;
+      }
       // Já teve secret com este mesmo utilizador e deixou de ter: alguém o
       // apagou no router. Recriá-lo sozinho era desfazer essa decisão.
       if (known?.secretId && known.username === service.username) {
@@ -329,7 +379,6 @@ export function planActions(
     }
 
     matched.set(service.serviceId, secret);
-    usedSecretIds.add(secret.id);
 
     const routerEnabled = !secret.disabled;
     // O ISPM pede o mesmo que da última vez que os dois concordaram: quem
@@ -455,7 +504,7 @@ export function planActions(
     });
   }
 
-  return { actions, divergences, matched, targetProfiles };
+  return { actions, divergences, matched, takenBy, targetProfiles };
 }
 
 // ------------------------------------------------------------------ escrita
@@ -611,12 +660,13 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
     ? selected.map((service) => service.suspended ? { ...service, enabled: false, profile: null, suspended: false } : service)
     : selected;
   const confirmed = deps.overrideDrift ? new Map<number, ConfirmedState>() : loadConfirmedState(db);
-  const plan = planActions(desired, secrets, { reportOrphans: deps.reportOrphans, suspendedProfile, baseProfile, confirmed });
+  const plan = planActions(desired, secrets, { reportOrphans: deps.reportOrphans, suspendedProfile, baseProfile, confirmed, peers: allDesired });
   const activeByName = new Map<string, RouterActive>(active.map((session) => [session.name, session]));
   // A sessão PPPoE tem o nome com que o equipamento se autentica: o do secret
-  // no router, que pode já não ser o da BD.
+  // no router, que pode já não ser o da BD. Um nome que é de outro serviço não
+  // dá sessão nenhuma a este: a que lá estiver é do outro cliente.
   const loginOf = (service: { serviceId: number; username: string }) =>
-    plan.matched.get(service.serviceId)?.name ?? service.username;
+    plan.takenBy.has(service.serviceId) ? '' : plan.matched.get(service.serviceId)?.name ?? service.username;
 
   const cutServiceIds = new Set(plan.actions.filter((action) => 'cut' in action && action.cut).map((action) => action.serviceId));
   const disables = cutServiceIds.size;

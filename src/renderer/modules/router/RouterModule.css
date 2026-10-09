@@ -345,17 +345,22 @@
   gap: var(--space-3);
 }
 
-/* Os dois lados de uma linha: a primitiva das abas, sem a margem de secção. */
+/* As duas escolhas de uma linha: a primitiva das abas, sem a margem de secção.
+   Empilhadas — cada botão leva o efeito por extenso, e lado a lado não cabiam
+   na largura útil a 150%. */
 .segmented-tabs.recon-choice {
-  display: inline-flex;
+  flex-direction: column;
   flex-wrap: nowrap;
+  width: 100%;
   margin: 0;
   padding: var(--space-0-5);
 }
 
 .recon-choice .segmented-tab {
+  justify-content: flex-start;
   min-height: 0;
-  padding: var(--space-1) var(--space-2-5);
+  padding: var(--space-1) var(--space-2);
+  white-space: nowrap;
 }
 
 /* A revisão das decisões antes de aplicar. */
