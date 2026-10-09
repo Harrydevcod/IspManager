@@ -21,7 +21,9 @@ afterEach(() => {
   delete process.env.ISPM_AUTO_BILLING;
 });
 
-describe('arranque do cofre', () => {
+// O primeiro teste paga a importação a frio do servidor inteiro (~12 s numa máquina
+// ocupada); com os 5 s por omissão rebentava e arrastava os dois seguintes.
+describe('arranque do cofre', { timeout: 30_000 }, () => {
   test('standalone não cria o cofre e não cria backup sem cifrar credenciais', async () => {
     dir = mkdtempSync(path.join(tmpdir(), 'ispm-vault-standalone-'));
     process.env.ISPM_DATA_DIR = dir;
