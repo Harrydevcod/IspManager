@@ -71,6 +71,8 @@ no Winbox são indistinguíveis.
   - Não se derrubam sessões por omissão. "Agora" derruba só quem está ligado; "agendado" derruba, à hora,
     só as sessões abertas antes da mudança, e expira sem derrubar ninguém se passar mais de uma hora (o PC
     esteve desligado).
+  - A mudança de um só serviço, pela ficha, é um lote de um: mesmo diálogo, mesmo motor, mesmo
+    histórico. É de quem já pode editar o serviço; vários de uma vez é só de administrador.
   - `plan_change_batches` e `plan_change_items` são o histórico: nomes copiados, sem chaves para serviços
     ou planos, para sobreviver a um serviço apagado. Cada item deixa também uma linha em `audit_logs`.
   - Um lote interrompido por o ISPM fechar é fechado no arranque; o serviço apanhado a meio tem o plano

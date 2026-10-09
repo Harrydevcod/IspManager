@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
@@ -219,11 +219,17 @@ export async function registerPlanRoutes(app: FastifyInstance) {
   // ------------------------------------------------- mudança de plano em massa
 
   const adminOnly = { preHandler: requireRole(['admin']) };
+  // Um serviço de cada vez é de quem já o pode editar; vários de uma vez mexem
+  // em muitas faturas e em muitos secrets, e isso é só de administrador.
+  const manyIsAdminOnly = (request: FastifyRequest, serviceIds: number[]) =>
+    serviceIds.length > 1 && request.user !== undefined && request.user.role !== 'admin';
+  const MANY_REFUSED = { error: 'Só administradores mudam o plano de vários serviços de uma vez' };
 
   /** O que a operação faria, serviço a serviço, e o que a impede. Não escreve nada. */
-  app.post('/api/plans/bulk-change/preview', adminOnly, async (request, reply) => {
+  app.post('/api/plans/bulk-change/preview', canWritePlans, async (request, reply) => {
     const parsed = bulkPreviewSchema.safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: 'Pedido inválido' });
+    if (manyIsAdminOnly(request, parsed.data.serviceIds)) return reply.status(403).send(MANY_REFUSED);
     const db = getSqliteDatabase();
     const reading = await readRouterForPlanChange(db);
     return previewPlanChange(db, parsed.data, reading.router, {
@@ -236,9 +242,10 @@ export async function registerPlanRoutes(app: FastifyInstance) {
    * Valida contra o router lido agora, grava o lote e corre-o em segundo plano,
    * na mesma fila da reconciliação. O progresso lê-se em GET …/:id.
    */
-  app.post('/api/plans/bulk-change', adminOnly, async (request, reply) => {
+  app.post('/api/plans/bulk-change', canWritePlans, async (request, reply) => {
     const parsed = bulkStartSchema.safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: 'Pedido inválido' });
+    if (manyIsAdminOnly(request, parsed.data.serviceIds)) return reply.status(403).send(MANY_REFUSED);
     const db = getSqliteDatabase();
     const reading = await readRouterForPlanChange(db);
     if (!reading.router) return reply.status(409).send({ error: reading.issue, blockers: [reading.issue] });

@@ -114,7 +114,8 @@ export function ServicesModule({
   // Mudar o plano de muitos de uma vez mexe em faturas e no router: só admin.
   const canBulkChangePlan = auth.isAuthBypassed || auth.hasRole('admin');
   const selection = useRowSelection<number>();
-  const [showBulkPlan, setShowBulkPlan] = useState(false);
+  // Os serviços a mudar de plano: os selecionados na lista, ou só o da ficha aberta.
+  const [planChangeIds, setPlanChangeIds] = useState<number[] | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | ServiceRow['status']>(
     DEFAULT_SERVICE_STATUS_FILTER
   );
@@ -1185,7 +1186,8 @@ export function ServicesModule({
           onDisconnect={() => void disconnectServiceNetwork(selectedService)}
           onSuspend={() => void changeServiceStateFromNetwork(selectedService, 'suspended')}
           onReactivate={() => void changeServiceStateFromNetwork(selectedService, 'active')}
-          onChangePlan={() => editService(selectedService)}
+          // Pelo mesmo diálogo do grupo: é lá que se escolhe derrubar a sessão já.
+          onChangePlan={() => setPlanChangeIds([selectedService.id])}
           onChangePassword={() => openPasswordChange(selectedService)}
           onPppoeCreated={() => void loadServices()}
         />
@@ -1193,18 +1195,22 @@ export function ServicesModule({
 
       {canBulkChangePlan && (
         <BulkActionBar count={selection.count} onClear={selection.clear} noun={{ one: 'serviço selecionado', many: 'serviços selecionados' }}>
-          <Button variant="secondary" size="sm" leadingIcon={<ArrowRightLeft size={14} aria-hidden />} onClick={() => setShowBulkPlan(true)}>
+          <Button variant="secondary" size="sm" leadingIcon={<ArrowRightLeft size={14} aria-hidden />} onClick={() => setPlanChangeIds([...selection.selected])}>
             Mudar de plano
           </Button>
         </BulkActionBar>
       )}
 
-      {showBulkPlan && (
+      {planChangeIds && (
         <BulkPlanChangeDialog
-          serviceIds={[...selection.selected]}
+          serviceIds={planChangeIds}
           plans={plans}
-          onClose={() => setShowBulkPlan(false)}
-          onDone={() => { selection.clear(); void loadServices(); }}
+          onClose={() => setPlanChangeIds(null)}
+          onDone={() => {
+            selection.clear();
+            void loadServices();
+            if (selectedService) void loadTechnicalHistory(selectedService.id);
+          }}
         />
       )}
 

@@ -90,7 +90,13 @@ test('só oferece planos ativos e não avança sem destino', () => {
 
 test('por omissão não derruba ninguém, e nada é executado sem a pré-visualização', async () => {
   authFetch.mockResolvedValueOnce(json(preview())).mockResolvedValueOnce(json({ batchId: 9 })).mockResolvedValue(json(batch()));
-  expect(selectByLabel('Sessões ativas').value).toBe('none');
+  expect(selectByLabel('Quando aplicar a velocidade nova').value).toBe('none');
+  // A opção de aplicar já tem de se ler sem abrir a documentação.
+  expect([...selectByLabel('Quando aplicar a velocidade nova').options].map((option) => option.textContent)).toEqual([
+    'Quando o cliente reconectar — ninguém é derrubado',
+    'Já — derruba a sessão e o cliente reconecta em segundos',
+    'A uma hora marcada'
+  ]);
 
   await choose('Plano de destino', '2');
   await click(buttonNamed('Pré-visualizar'));
@@ -119,9 +125,12 @@ test('um bloqueio impede a execução e fica à vista', async () => {
 test('derrubar agora avisa, antes de executar, quantas sessões caem', async () => {
   authFetch.mockResolvedValueOnce(json(preview()));
   await choose('Plano de destino', '2');
-  await choose('Sessões ativas', 'now');
+  await choose('Quando aplicar a velocidade nova', 'now');
   await click(buttonNamed('Pré-visualizar'));
   expect(document.body.textContent).toContain('1 cliente está ligado e a sessão vai ser derrubada agora');
+  authFetch.mockResolvedValueOnce(json({ batchId: 9 })).mockResolvedValue(json(batch()));
+  await click(buttonNamed('Mudar 1 cliente de plano'));
+  expect(bodyOf(1)).toMatchObject({ dropMode: 'now', dropAt: null });
 });
 
 test('o resumo final mostra falhas e nunca dá por concluído o que falhou', async () => {

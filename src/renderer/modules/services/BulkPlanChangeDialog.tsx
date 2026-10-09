@@ -201,14 +201,16 @@ export function BulkPlanChangeDialog({ serviceIds, plans, onClose, onDone }: {
             onChange={(event) => setUpdatePrice(event.target.checked)}
           />
           <Select
-            label="Sessões ativas"
-            hint="O router só aplica a velocidade nova quando a sessão PPPoE volta a ligar."
+            label="Quando aplicar a velocidade nova"
+            hint={dropMode === 'now'
+              ? 'Quem estiver ligado fica sem rede uns segundos: o equipamento volta a ligar sozinho, já com a velocidade nova.'
+              : 'O router só aplica a velocidade nova quando a sessão PPPoE volta a ligar.'}
             value={dropMode}
             onChange={(event) => setDropMode(event.target.value as DropMode)}
           >
-            <option value="none">Não derrubar — muda quando o cliente reconectar</option>
-            <option value="now">Derrubar agora</option>
-            <option value="scheduled">Derrubar a uma hora marcada</option>
+            <option value="none">Quando o cliente reconectar — ninguém é derrubado</option>
+            <option value="now">Já — derruba a sessão e o cliente reconecta em segundos</option>
+            <option value="scheduled">A uma hora marcada</option>
           </Select>
           {dropMode === 'scheduled' && (
             <Field
