@@ -47,7 +47,8 @@ import { runWanUsageIfDue } from './lib/wan-usage';
 import { runClientUsageIfDue } from './lib/client-usage';
 import { runRouterConfigBackupIfDue } from './lib/router-config-backup';
 import { runRouterLogWatchIfDue } from './lib/router-log-watch';
-import { requestNetworkSync } from './lib/network-sync';
+import { requestNetworkSync, runExclusive } from './lib/network-sync';
+import { hasDueSessionDrops, recoverInterruptedPlanChanges, runScheduledSessionDrops } from './lib/plan-change';
 import { routerosIntervalMs } from './lib/routeros';
 import { autoSuspensionIntervalMs, runAutomaticSuspension } from './lib/auto-suspension';
 import { runJob, runJobSync } from './lib/jobRuns';
@@ -324,6 +325,18 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
   if (process.env.ISPM_ROUTEROS !== 'off' && !process.env.VITEST) {
     // A mesma porta das gravações de planos e serviços: nunca duas passagens
     // em paralelo. A falha fica em job_runs.
+    // Um lote de mudança de plano que ficou a meio por o ISPM fechar: fecha-se
+    // aqui, antes da primeira passagem, que acerta o router pelo que ficou na base.
+    recoverInterruptedPlanChanges(getSqliteDatabase());
+    // Sessões agendadas para derrubar depois de uma mudança de plano em massa.
+    // Só entra na fila — e em job_runs — quando há alguma com a hora chegada.
+    const planDropTick = () => {
+      const db = getSqliteDatabase();
+      if (!licenseAllowsWrites() || !hasDueSessionDrops(db)) return;
+      void runExclusive(() => runJob('plan_change_drop', () => runScheduledSessionDrops(db)))
+        .catch((err) => app.log.error({ err }, 'plan change session drop failed'));
+    };
+    setInterval(planDropTick, 60_000).unref();
     const enforcementTick = () => requestNetworkSync();
     const scheduleEnforcement = () => {
       setTimeout(() => { enforcementTick(); scheduleEnforcement(); }, routerosIntervalMs()).unref();

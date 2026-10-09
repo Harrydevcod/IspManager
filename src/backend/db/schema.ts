@@ -598,7 +598,12 @@ export const serviceNetworkState = sqliteTable('service_network_state', {
   lastError: text('last_error'),
   checkedAt: text('checked_at').notNull().default('CURRENT_TIMESTAMP'),
   /** MAC de quem discou este utilizador PPPoE por último (migration 0073). */
-  callerId: text('caller_id')
+  callerId: text('caller_id'),
+  /** O último acordo entre o ISPM e o router (migration 0077). */
+  confirmedSecretId: text('confirmed_secret_id'),
+  confirmedUsername: text('confirmed_username'),
+  confirmedProfile: text('confirmed_profile'),
+  confirmedEnabled: integer('confirmed_enabled')
 });
 
 /** Última sincronização do perfil PPP de cada plano com o router (migration 0066). */
@@ -817,4 +822,45 @@ export const networkDiary = sqliteTable('network_diary', {
   createdBy: integer('created_by').references(() => users.id),
   createdAt: text('created_at').notNull().default("(datetime('now'))"),
   updatedAt: text('updated_at').notNull().default("(datetime('now'))")
+});
+
+/** Mudança de plano em massa: o lote e um item por serviço (migration 0078). */
+export const planChangeBatches = sqliteTable('plan_change_batches', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  targetPlanId: integer('target_plan_id').notNull(),
+  targetPlanName: text('target_plan_name').notNull(),
+  reason: text('reason'),
+  updatePrice: integer('update_price').notNull().default(1),
+  dropMode: text('drop_mode').notNull().default('none'),
+  dropAt: text('drop_at'),
+  dropStatus: text('drop_status'),
+  dryRun: integer('dry_run').notNull().default(0),
+  status: text('status').notNull().default('running'),
+  stopReason: text('stop_reason'),
+  cancelRequested: integer('cancel_requested').notNull().default(0),
+  createdBy: integer('created_by'),
+  createdByName: text('created_by_name'),
+  createdAt: text('created_at').notNull().default("(datetime('now'))"),
+  finishedAt: text('finished_at')
+});
+
+export const planChangeItems = sqliteTable('plan_change_items', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  batchId: integer('batch_id').notNull().references(() => planChangeBatches.id, { onDelete: 'cascade' }),
+  serviceId: integer('service_id').notNull(),
+  clientName: text('client_name').notNull(),
+  login: text('login'),
+  fromPlanId: integer('from_plan_id'),
+  fromPlanName: text('from_plan_name'),
+  fromValueCve: real('from_value_cve').notNull(),
+  toValueCve: real('to_value_cve').notNull(),
+  fromProfile: text('from_profile'),
+  toProfile: text('to_profile'),
+  status: text('status').notNull().default('queued'),
+  note: text('note'),
+  error: text('error'),
+  wasOnline: integer('was_online').notNull().default(0),
+  routerChanged: integer('router_changed').notNull().default(0),
+  sessionDroppedAt: text('session_dropped_at'),
+  processedAt: text('processed_at')
 });

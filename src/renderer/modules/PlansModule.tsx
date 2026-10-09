@@ -1,4 +1,4 @@
-import { Activity, Cable, Pencil, Plus, Tags, Wifi } from 'lucide-react';
+import { Activity, Cable, History, Pencil, Plus, Tags, Wifi } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
@@ -6,6 +6,7 @@ import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, Filter
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve } from '../lib/format';
 import type { PlanRow } from '../types';
+import { PlanChangeHistory } from './plans/PlanChangeHistory';
 import { RepriceDialog } from './plans/RepriceDialog';
 import { RouterProfileField } from './plans/RouterProfileField';
 import { routerSyncBadge } from './plans/routerSync';
@@ -79,6 +80,7 @@ export function PlansModule() {
   // Só admin alinha preços: mexe na fatura de dezenas de clientes de uma vez.
   const canReprice = auth.isAuthBypassed || auth.hasRole('admin');
   const [repricePlan, setRepricePlan] = useState<PlanRow | null>(null);
+  const [showPlanChanges, setShowPlanChanges] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -196,6 +198,11 @@ export function PlansModule() {
         {canManagePlans && (
           <ModuleHeaderActions
             ariaLabel="Ações de planos"
+            secondary={canReprice ? (
+              <Button variant="secondary" leadingIcon={<History size={16} aria-hidden />} onClick={() => setShowPlanChanges(true)}>
+                Mudanças em massa
+              </Button>
+            ) : undefined}
             primary={
               <Button leadingIcon={<Plus size={16} aria-hidden />} onClick={openCreate}>
                 Novo plano
@@ -392,6 +399,8 @@ export function PlansModule() {
           </Select>
         </form>
       </Dialog>
+
+      {showPlanChanges && <PlanChangeHistory onClose={() => setShowPlanChanges(false)} />}
 
       {repricePlan && (
         <RepriceDialog

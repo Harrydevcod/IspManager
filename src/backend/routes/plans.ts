@@ -3,7 +3,14 @@ import type { Database as DatabaseType } from 'better-sqlite3';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit, recordAuditStrict } from '../lib/audit';
-import { requestNetworkSync } from '../lib/network-sync';
+import { detectAdminNetwork, isOffNetwork, offNetworkReason } from '../lib/admin-network';
+import { runJob } from '../lib/jobRuns';
+import { requestNetworkSync, runExclusive } from '../lib/network-sync';
+import {
+  cancelPlanChange, createPlanChangeBatch, listPlanChanges, loadPlanChange, PlanChangeBlocked, previewPlanChange, runPlanChangeBatch,
+  type RouterSnapshot
+} from '../lib/plan-change';
+import { createTransport, describeRouterFailure, isRouterConfigured, listActive, listProfiles, listSecrets, readRouterConfig, type RouterTransport } from '../lib/routeros';
 import { defaultProfileName } from '../lib/plan-profiles';
 import { requireAuth, requireRole } from './auth';
 
@@ -25,6 +32,43 @@ const planSchema = z.object({
   routerProfile: z.string().trim().max(64).regex(/^[\w .-]*$/).optional().nullable(),
   active: z.coerce.boolean().default(true)
 });
+
+const bulkPreviewSchema = z.object({
+  serviceIds: z.array(z.number().int().positive()).min(1).max(1000),
+  targetPlanId: z.number().int().positive(),
+  updatePrice: z.boolean().default(true)
+}).strict();
+
+const bulkStartSchema = bulkPreviewSchema.extend({
+  reason: z.string().trim().max(500).optional().nullable(),
+  // Por omissão ninguém é derrubado: o perfil novo aplica-se quando o cliente reconectar.
+  dropMode: z.enum(['none', 'now', 'scheduled']).default('none'),
+  dropAt: z.string().datetime({ offset: true }).optional().nullable()
+}).strict();
+
+type RouterReading =
+  | { router: RouterSnapshot; transport: RouterTransport; dryRun: boolean }
+  | { router: null; issue: string; dryRun: boolean };
+
+/** A leitura do router para a mudança em massa: em série, e só dentro da rede de gestão. */
+async function readRouterForPlanChange(db: DatabaseType): Promise<RouterReading> {
+  const config = readRouterConfig(db);
+  if (!config.enabled || !isRouterConfigured(config)) {
+    return { router: null, issue: 'Integração MikroTik desligada ou por configurar.', dryRun: config.dryRun };
+  }
+  const presence = await detectAdminNetwork(db);
+  if (isOffNetwork(presence)) return { router: null, issue: offNetworkReason(presence), dryRun: config.dryRun };
+  try {
+    const transport = createTransport(config);
+    const secrets = await listSecrets(transport);
+    const active = await listActive(transport);
+    const profiles = (await listProfiles(transport)).map((profile) => profile.name);
+    return { router: { secrets, active, profiles }, transport, dryRun: config.dryRun };
+  } catch (err) {
+    const failure = describeRouterFailure(err);
+    return { router: null, issue: `${failure.title}. ${failure.detail}`, dryRun: config.dryRun };
+  }
+}
 
 export async function registerPlanRoutes(app: FastifyInstance) {
   const canWritePlans = { preHandler: requireRole(['admin', 'operator']) };
@@ -170,6 +214,72 @@ export async function registerPlanRoutes(app: FastifyInstance) {
     recordAudit(request, { action: 'update', entityType: 'plan', entityId: id, summary: `Atualizou o plano ${parsed.data.name}` });
     requestNetworkSync();
     return { ok: true };
+  });
+
+  // ------------------------------------------------- mudança de plano em massa
+
+  const adminOnly = { preHandler: requireRole(['admin']) };
+
+  /** O que a operação faria, serviço a serviço, e o que a impede. Não escreve nada. */
+  app.post('/api/plans/bulk-change/preview', adminOnly, async (request, reply) => {
+    const parsed = bulkPreviewSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Pedido inválido' });
+    const db = getSqliteDatabase();
+    const reading = await readRouterForPlanChange(db);
+    return previewPlanChange(db, parsed.data, reading.router, {
+      dryRun: reading.dryRun,
+      routerIssue: reading.router ? undefined : reading.issue
+    });
+  });
+
+  /**
+   * Valida contra o router lido agora, grava o lote e corre-o em segundo plano,
+   * na mesma fila da reconciliação. O progresso lê-se em GET …/:id.
+   */
+  app.post('/api/plans/bulk-change', adminOnly, async (request, reply) => {
+    const parsed = bulkStartSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Pedido inválido' });
+    const db = getSqliteDatabase();
+    const reading = await readRouterForPlanChange(db);
+    if (!reading.router) return reply.status(409).send({ error: reading.issue, blockers: [reading.issue] });
+
+    // Só o autor: o lote continua a correr depois de este pedido responder.
+    const actor = { user: request.user } as typeof request;
+    let batchId: number;
+    try {
+      batchId = createPlanChangeBatch(db, parsed.data, reading.router, { dryRun: reading.dryRun, actor });
+    } catch (err) {
+      if (err instanceof PlanChangeBlocked) return reply.status(409).send({ error: err.message, blockers: err.blockers });
+      throw err;
+    }
+    const { router, transport, dryRun } = reading;
+    void runExclusive(() => runJob('plan_change', async () => ({
+      batchId,
+      status: await runPlanChangeBatch(db, { transport, dryRun }, batchId, router, actor)
+    }))).catch((err) => app.log.error({ err, batchId }, 'plan change batch failed'));
+    return reply.status(202).send({ batchId });
+  });
+
+  app.get('/api/plans/bulk-change', adminOnly, async () => listPlanChanges(getSqliteDatabase()));
+
+  app.get('/api/plans/bulk-change/:id', adminOnly, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const batch = Number.isInteger(id) && id > 0 ? loadPlanChange(getSqliteDatabase(), id) : null;
+    return batch ?? reply.status(404).send({ error: 'Mudança de plano não encontrada' });
+  });
+
+  /** Em curso: pára antes do serviço seguinte. Já acabado: desmarca as sessões agendadas. */
+  app.post('/api/plans/bulk-change/:id/cancel', adminOnly, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const outcome = Number.isInteger(id) && id > 0 ? cancelPlanChange(getSqliteDatabase(), id) : 'not_found';
+    if (outcome === 'not_found') return reply.status(404).send({ error: 'Mudança de plano não encontrada' });
+    if (outcome !== 'nothing') {
+      recordAudit(request, {
+        action: 'plan_change_cancel', entityType: 'plan_change', entityId: id,
+        summary: outcome === 'cancelling' ? `Cancelou a mudança de plano em massa #${id}` : `Desmarcou as sessões agendadas da mudança de plano #${id}`
+      });
+    }
+    return { outcome };
   });
 
   // ------------------------------------------------- alinhar preços dos serviços

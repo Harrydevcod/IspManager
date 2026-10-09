@@ -93,8 +93,21 @@ export type PlannedAction =
 export type Divergence = {
   serviceId: number | null;
   username: string;
-  kind: 'missing_secret' | 'state' | 'profile' | 'password' | 'username' | 'orphan_secret';
+  /**
+   * `*_drift` e `secret_removed`: foi o router que mudou, não o ISPM. Ficam
+   * retidos — sem ação — até o operador escolher a direção (ADR 0014).
+   */
+  kind: 'missing_secret' | 'state' | 'profile' | 'password' | 'username' | 'orphan_secret'
+    | 'state_drift' | 'profile_drift' | 'secret_removed';
   detail: string;
+};
+
+/** O último acordo entre o ISPM e o router para um serviço; nulo = nunca houve. */
+export type ConfirmedState = {
+  secretId: string | null;
+  username: string | null;
+  profile: string | null;
+  enabled: boolean | null;
 };
 
 export type EnforcementPlan = {
@@ -102,6 +115,8 @@ export type EnforcementPlan = {
   divergences: Divergence[];
   /** Serviço → secret encontrado no router. */
   matched: Map<number, RouterSecret>;
+  /** Serviço → perfil que o ISPM pede para o secret; null = não pede nenhum. */
+  targetProfiles: Map<number, string | null>;
 };
 
 // ------------------------------------------------------------------ leitura
@@ -224,17 +239,36 @@ export function buildSessionRows(desired: DesiredService[], secrets: RouterSecre
 export function planActions(
   desired: DesiredService[],
   secrets: RouterSecret[],
-  options: { reportOrphans?: boolean; suspendedProfile?: string; baseProfile?: string } = {}
+  options: {
+    reportOrphans?: boolean;
+    suspendedProfile?: string;
+    baseProfile?: string;
+    /** Sem isto nada é retido: tudo o que difere é empurrado. */
+    confirmed?: Map<number, ConfirmedState>;
+  } = {}
 ): EnforcementPlan {
   const actions: PlannedAction[] = [];
   const divergences: Divergence[] = [];
   const matched = new Map<number, RouterSecret>();
+  const targetProfiles = new Map<number, string | null>();
   const usedSecretIds = new Set<string>();
 
   for (const service of desired) {
     const secret = matchSecret(service, secrets);
+    const known = options.confirmed?.get(service.serviceId);
 
     if (!secret) {
+      // Já teve secret com este mesmo utilizador e deixou de ter: alguém o
+      // apagou no router. Recriá-lo sozinho era desfazer essa decisão.
+      if (known?.secretId && known.username === service.username) {
+        divergences.push({
+          serviceId: service.serviceId,
+          username: service.username,
+          kind: 'secret_removed',
+          detail: 'O utilizador PPPoE foi apagado no router'
+        });
+        continue;
+      }
       divergences.push({
         serviceId: service.serviceId,
         username: service.username,
@@ -255,7 +289,16 @@ export function planActions(
     usedSecretIds.add(secret.id);
 
     const routerEnabled = !secret.disabled;
-    if (routerEnabled !== service.enabled) {
+    // O ISPM pede o mesmo que da última vez que os dois concordaram: quem
+    // mudou foi o router. Reporta-se e não se toca.
+    if (routerEnabled !== service.enabled && known?.enabled === service.enabled) {
+      divergences.push({
+        serviceId: service.serviceId,
+        username: service.username,
+        kind: 'state_drift',
+        detail: service.enabled ? 'Desativado no router; o ISPM não mudou' : 'Ativado no router; o ISPM não mudou'
+      });
+    } else if (routerEnabled !== service.enabled) {
       divergences.push({
         serviceId: service.serviceId,
         username: service.username,
@@ -279,7 +322,15 @@ export function planActions(
         ? options.baseProfile ?? 'default'
         : null
     );
-    if (targetProfile && secret.profile !== targetProfile) {
+    targetProfiles.set(service.serviceId, targetProfile);
+    if (targetProfile && secret.profile !== targetProfile && known?.profile === targetProfile) {
+      divergences.push({
+        serviceId: service.serviceId,
+        username: service.username,
+        kind: 'profile_drift',
+        detail: `Perfil mudado no router para ${secret.profile ?? 'por omissão'}; o ISPM continua a pedir ${targetProfile}`
+      });
+    } else if (targetProfile && secret.profile !== targetProfile) {
       divergences.push({
         serviceId: service.serviceId,
         username: service.username,
@@ -360,7 +411,7 @@ export function planActions(
     });
   }
 
-  return { actions, divergences, matched };
+  return { actions, divergences, matched, targetProfiles };
 }
 
 // ------------------------------------------------------------------ escrita
@@ -373,6 +424,11 @@ export type EnforcementDeps = {
   serviceIds?: number[];
   /** Em reconciliação de um serviço isolado, os restantes secrets não são órfãos. */
   reportOrphans?: boolean;
+  /**
+   * Impõe o ISPM mesmo onde o desvio estava retido. Só para um pedido explícito
+   * do operador sobre serviços concretos; a passagem periódica nunca o usa.
+   */
+  overrideDrift?: boolean;
 };
 
 export type EnforcementSummary = {
@@ -399,10 +455,15 @@ function callerMac(raw: string | null | undefined): string | null {
 const upsertState = `
   INSERT INTO service_network_state (
     service_id, secret_id, router_enabled, desired_enabled, profile,
-    online, address, uptime, last_online_at, divergence, last_error, caller_id, checked_at
+    online, address, uptime, last_online_at, divergence, last_error, caller_id,
+    confirmed_secret_id, confirmed_username, confirmed_profile, confirmed_enabled, checked_at
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
   ON CONFLICT(service_id) DO UPDATE SET
+    confirmed_secret_id = excluded.confirmed_secret_id,
+    confirmed_username = excluded.confirmed_username,
+    confirmed_profile = excluded.confirmed_profile,
+    confirmed_enabled = excluded.confirmed_enabled,
     secret_id = excluded.secret_id,
     router_enabled = excluded.router_enabled,
     desired_enabled = excluded.desired_enabled,
@@ -430,6 +491,20 @@ function forgetUntrackedState(db: Database.Database, tracked: DesiredService[], 
   for (const { serviceId } of rows) {
     if (!trackedIds.has(serviceId) && (!scope || scope.has(serviceId))) forget.run(serviceId);
   }
+}
+
+export function loadConfirmedState(db: Database.Database): Map<number, ConfirmedState> {
+  const rows = db.prepare(`
+    SELECT service_id AS serviceId, confirmed_secret_id AS secretId, confirmed_username AS username,
+      confirmed_profile AS profile, confirmed_enabled AS enabled
+    FROM service_network_state
+  `).all() as Array<{ serviceId: number; secretId: string | null; username: string | null; profile: string | null; enabled: number | null }>;
+  return new Map(rows.map((row) => [row.serviceId, {
+    secretId: row.secretId,
+    username: row.username,
+    profile: row.profile,
+    enabled: row.enabled == null ? null : row.enabled === 1
+  }]));
 }
 
 function recordSystemAudit(db: Database.Database, action: string, serviceId: number, summary: string): void {
@@ -491,7 +566,8 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
   const desired = suspendedProfileError
     ? selected.map((service) => service.suspended ? { ...service, enabled: false, profile: null, suspended: false } : service)
     : selected;
-  const plan = planActions(desired, secrets, { reportOrphans: deps.reportOrphans, suspendedProfile, baseProfile });
+  const confirmed = deps.overrideDrift ? new Map<number, ConfirmedState>() : loadConfirmedState(db);
+  const plan = planActions(desired, secrets, { reportOrphans: deps.reportOrphans, suspendedProfile, baseProfile, confirmed });
   const activeByName = new Map<string, RouterActive>(active.map((session) => [session.name, session]));
   // A sessão PPPoE tem o nome com que o equipamento se autentica: o do secret
   // no router, que pode já não ser o da BD.
@@ -507,6 +583,12 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
 
   const errors = new Map<number, string>();
   let applied = 0;
+  // O que esta passagem escreveu com sucesso: é o que deixa confirmar um valor
+  // que a leitura inicial ainda mostrava diferente.
+  const pushedState = new Set<number>();
+  const pushedProfile = new Set<number>();
+  // Cortes de segurança: o router ficou num estado que o ISPM não pede.
+  const forcedOff = new Set<number>();
 
   // Perfil do plano que ainda não existe no router (a passagem dos perfis
   // falhou, ou o plano não tem Mbps): quem deve ter acesso fica pendente — nem
@@ -535,6 +617,8 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
       try {
         await applyAction(db, deps.transport, action, activeByName, desired, loginOf(action), suspendedProfile);
         applied += 1;
+        if (action.kind === 'enable' || action.kind === 'disable') pushedState.add(action.serviceId);
+        if (action.kind === 'profile') pushedProfile.add(action.serviceId);
       } catch (err) {
         let message = err instanceof Error ? err.message : String(err);
         // O perfil podia existir na leitura e desaparecer antes do PATCH. Um
@@ -553,6 +637,7 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
               cut: true
             }, activeByName, desired, loginOf(action), suspendedProfile);
             applied += 1;
+            forcedOff.add(action.serviceId);
           } catch (fallbackError) {
             message += `; falhou também o corte de segurança: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`;
           }
@@ -574,11 +659,38 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
     }
   }
 
+  const removed = new Set(plan.divergences.filter((item) => item.kind === 'secret_removed').map((item) => item.serviceId));
+
+  /**
+   * O acordo a guardar. Um valor só passa a confirmado quando o router o tem —
+   * porque já o tinha ou porque esta passagem o escreveu. Enquanto não tiver,
+   * fica o anterior: uma ação falhada volta a ser tentada, um desvio continua
+   * retido. Sem secret não há acordo, salvo o apagado no router, que guarda a
+   * memória de ter existido.
+   */
+  const confirmedFor = (service: DesiredService, secret: RouterSecret | undefined): ConfirmedState => {
+    const known = confirmed.get(service.serviceId);
+    if (!secret) {
+      return removed.has(service.serviceId) && known ? known : { secretId: null, username: null, profile: null, enabled: null };
+    }
+    const target = plan.targetProfiles.get(service.serviceId) ?? null;
+    const stateAgrees = !forcedOff.has(service.serviceId)
+      && (!secret.disabled === service.enabled || pushedState.has(service.serviceId));
+    const profileAgrees = secret.profile === target || pushedProfile.has(service.serviceId);
+    return {
+      secretId: secret.id,
+      username: service.username,
+      profile: target === null ? null : profileAgrees ? target : known?.profile ?? null,
+      enabled: forcedOff.has(service.serviceId) ? null : stateAgrees ? service.enabled : known?.enabled ?? null
+    };
+  };
+
   const persist = db.transaction(() => {
     const statement = db.prepare(upsertState);
     for (const service of desired) {
       const secret = plan.matched.get(service.serviceId);
       const session = activeByName.get(loginOf(service));
+      const agreed = confirmedFor(service, secret);
       statement.run(
         service.serviceId,
         secret?.id ?? null,
@@ -595,7 +707,11 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
         // ponytail: só a sessão viva; o `last-caller-id` do secret apanhava quem
         // nunca está online à hora da passagem, mas é mais uma propriedade na
         // leitura de que depende todo o controlo de acesso — juntar se fizer falta.
-        callerMac(session?.callerId)
+        callerMac(session?.callerId),
+        agreed.secretId,
+        agreed.username,
+        agreed.profile,
+        agreed.enabled == null ? null : agreed.enabled ? 1 : 0
       );
     }
     forgetUntrackedState(db, allDesired, wanted);

@@ -31,7 +31,19 @@ export function createSyncTrigger(run: () => Promise<unknown>): () => void {
   return kick;
 }
 
-const trigger = createSyncTrigger(() => runJob('network_enforcement', runNetworkEnforcementIfDue));
+let queue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Fila única das operações que escrevem no router em série: a passagem da
+ * reconciliação e a mudança de plano em massa nunca correm ao mesmo tempo.
+ */
+export function runExclusive<T>(run: () => Promise<T>): Promise<T> {
+  const next = queue.then(run, run);
+  queue = next.catch(() => undefined);
+  return next;
+}
+
+const trigger = createSyncTrigger(() => runExclusive(() => runJob('network_enforcement', runNetworkEnforcementIfDue)));
 
 /**
  * Pede uma passagem, fora de qualquer transação SQL. Com a integração

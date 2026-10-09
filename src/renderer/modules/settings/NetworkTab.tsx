@@ -88,7 +88,10 @@ const DIVERGENCE_LABEL: Record<string, string> = {
   profile: 'Perfil PPP diferente do plano',
   password: 'Password PPPoE pendente',
   username: 'Nome PPPoE diferente no router',
-  orphan_secret: 'Utilizador sem serviço'
+  orphan_secret: 'Utilizador sem serviço',
+  profile_drift: 'Perfil alterado no router, por decidir',
+  state_drift: 'Estado alterado no router, por decidir',
+  secret_removed: 'Utilizador apagado no router, por decidir'
 };
 
 type NetworkTabProps = {

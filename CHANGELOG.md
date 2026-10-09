@@ -6,6 +6,12 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+- **O que se muda à mão no router deixa de ser desfeito sozinho.** Se alguém mudar o perfil de um cliente no Winbox, o ativar, desativar ou apagar o utilizador PPPoE, a passagem automática já não repõe o que o ISPM tinha: mostra a diferença e espera. O que se muda no ISPM (plano, suspensão, reativação, cliente novo) continua a ir para o router sozinho. Para impor o ISPM num cliente, usa-se "Sincronizar" na ficha do serviço.
+- **Mudar o plano de vários clientes de uma vez.** Nos Serviços, selecionam-se os serviços (um a um ou todos os filtrados) e usa-se "Mudar de plano". Antes de executar há sempre uma pré-visualização: quantos mudam e de que plano, a mensalidade antes e depois, quem está ligado e o que impede a operação. Por omissão ninguém é derrubado — a velocidade nova aplica-se quando o cliente reconectar; pode escolher-se derrubar agora ou a uma hora marcada. A execução mostra o progresso, pode ser cancelada a meio e acaba com um resumo de aplicados, falhados e por processar. Só administradores.
+- **Serviços: filtros por plano e por ponto de acesso.** Juntam-se à pesquisa e ao estado. O ponto de acesso é o equipamento de backbone a que o cliente está ligado na Topologia; há a opção "Sem ligação registada".
+- **Planos: histórico das mudanças em massa.** O botão "Mudanças em massa" mostra cada operação — quem a fez, quando, com que motivo, e o resultado serviço a serviço. Cada mudança fica também na auditoria.
+- **Reconciliação entre o ISPM e o router.** Nova aba no Router de gestão: lista cada diferença — plano, estado, utilizador que só existe no ISPM ou só no router, incluindo os criados à mão — com o valor dos dois lados. Em cada linha escolhe-se a direção: levar o valor do ISPM para o router ou trazer o do router para o ISPM. Nada é aplicado sem rever e confirmar, um utilizador do router nunca é apagado (só desativado), e cada decisão fica na auditoria com quem a tomou.
+
 ## [2.27](https://github.com/Harrydevcod/IspManager/releases/tag/v2.27.0) — 2026-10-08
 
 - **O registo do router fica guardado no ISPM.** Na aba Registo do router de gestão há agora duas vistas: "Ao vivo" (como até aqui) e "Guardado", com as linhas por dia, procura, filtro de erros e avisos e exportação do dia para `.txt`. O guardado lê-se mesmo fora da rede de gestão e fica 90 dias. Na primeira passagem depois de atualizar, o ISPM vai buscar ao cartão do router o que lá está de dias anteriores.

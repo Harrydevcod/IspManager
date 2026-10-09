@@ -319,3 +319,56 @@
 .router-config-text { margin: 0; max-height: 60vh; overflow: auto; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--r3); background: var(--surface); color: var(--text-2); font-size: var(--fs-xs); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 .router-config-text .is-added { color: var(--success); }
 .router-config-text .is-removed { color: var(--danger); }
+
+/* Reconciliação: a revisão das decisões antes de aplicar. */
+/* `client-form` dá o estilo dos campos; a lista é de uma coluna. */
+.client-form.recon-review {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recon-review > li {
+  display: grid;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.recon-review > li:last-child {
+  border-bottom: 0;
+}
+
+.recon-review p {
+  margin: 0;
+}
+
+.recon-review .field,
+.recon-review .combobox {
+  max-width: 360px;
+}
+
+.recon-review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.recon-warning {
+  color: var(--danger);
+}
+
+.recon-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.recon-bar p {
+  margin: 0;
+}

@@ -1318,6 +1318,7 @@ h2 {
 .inline-actions input,
 .filter-bar input,
 .filter-bar select,
+.recon-table select,
 .payments-search,
 .payment-action-form select,
 .payment-action-form input,
@@ -1341,6 +1342,7 @@ h2 {
 .inline-actions input:focus-visible,
 .filter-bar input:focus-visible,
 .filter-bar select:focus-visible,
+.recon-table select:focus-visible,
 .payments-search:focus-visible,
 .payment-action-form select:focus-visible,
 .payment-action-form input:focus-visible,
@@ -1370,6 +1372,16 @@ h2 {
   background: var(--surface);
   padding: var(--space-3);
   margin-bottom: var(--space-4);
+}
+
+/* O contador nunca parte em duas linhas quando os filtros apertam. */
+.filter-bar > small {
+  white-space: nowrap;
+}
+
+/* Serviços tem quatro filtros: os nomes compridos dos pontos de acesso não podem empurrar a barra. */
+.services-filter-bar select {
+  max-width: 168px;
 }
 
 .filter-bar label {

@@ -789,3 +789,139 @@ describe('buildSessionRows — o router visto pelo lado do ISPM', () => {
     expect(rows[0]).toMatchObject({ serviceId: 7, login: 'novo', state: 'online' });
   });
 });
+
+// ------------------------------------------------------ desvio retido (ADR 0014)
+
+describe('desvio do router fica retido', () => {
+  let db: Database.Database;
+  const live = { dryRun: false, maxDisables: 5 };
+  const writes = (calls: RouterRequest[]) => calls.filter((call) => call.method !== 'GET');
+  const divergenceOf = (id = 1) =>
+    (db.prepare('SELECT divergence FROM service_network_state WHERE service_id = ?').get(id) as { divergence: string | null }).divergence;
+
+  beforeEach(() => {
+    db = memoryDb();
+    db.prepare(`INSERT INTO internet_plans (id, name, router_profile) VALUES (2, 'Mais 20', 'plano-20M')`).run();
+    addService(db, 1, 'active', 'joao-1');
+  });
+
+  /** Uma passagem em que os dois lados concordam: é o que cria o confirmado. */
+  async function agree(routerSecret: RouterSecret = secret()) {
+    await runNetworkEnforcement(db, { transport: recordingTransport([routerSecret]).transport, ...live });
+  }
+
+  test('sem acordo anterior, a primeira passagem empurra o ISPM como sempre', async () => {
+    const { transport, calls } = recordingTransport([secret({ profile: 'feito-no-winbox' })]);
+    await runNetworkEnforcement(db, { transport, ...live });
+    expect(writes(calls)).toEqual([{ method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'plano-10M' } }]);
+  });
+
+  test('perfil mudado à mão no router não é sobreposto', async () => {
+    await agree();
+    const { transport, calls } = recordingTransport([secret({ profile: 'plano-20M' })], [], ['default', 'plano-10M', 'plano-20M', 'SUSPENSO']);
+    const summary = await runNetworkEnforcement(db, { transport, ...live });
+    expect(writes(calls)).toEqual([]);
+    expect(summary.planned).toBe(0);
+    expect(divergenceOf()).toBe('profile_drift');
+
+    // E continua retido nas passagens seguintes, não só na primeira.
+    const again = recordingTransport([secret({ profile: 'plano-20M' })], [], ['default', 'plano-10M', 'plano-20M', 'SUSPENSO']);
+    await runNetworkEnforcement(db, { transport: again.transport, ...live });
+    expect(writes(again.calls)).toEqual([]);
+  });
+
+  test('plano mudado no ISPM é empurrado', async () => {
+    await agree();
+    db.prepare('UPDATE services SET plan_id = 2 WHERE id = 1').run();
+    const { transport, calls } = recordingTransport([secret()], [], ['default', 'plano-10M', 'plano-20M', 'SUSPENSO']);
+    await runNetworkEnforcement(db, { transport, ...live });
+    expect(writes(calls)).toEqual([{ method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'plano-20M' } }]);
+
+    // O que acabou de ser escrito passa a ser o acordo: mexer-lhe à mão já é desvio.
+    const drifted = recordingTransport([secret({ profile: 'plano-10M' })], [], ['default', 'plano-10M', 'plano-20M', 'SUSPENSO']);
+    await runNetworkEnforcement(db, { transport: drifted.transport, ...live });
+    expect(writes(drifted.calls)).toEqual([]);
+    expect(divergenceOf()).toBe('profile_drift');
+  });
+
+  test('suspensão nova no ISPM continua a cortar', async () => {
+    await agree();
+    db.prepare(`UPDATE services SET status = 'suspended' WHERE id = 1`).run();
+    const { transport, calls } = recordingTransport([secret()], [{ id: '*A', name: 'joao-1' }]);
+    await runNetworkEnforcement(db, { transport, ...live });
+    expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'SUSPENSO' } });
+    expect(calls).toContainEqual({ method: 'DELETE', path: '/ppp/active/*A' });
+  });
+
+  test('suspenso reposto à mão no Winbox fica retido', async () => {
+    db.prepare(`UPDATE services SET status = 'suspended' WHERE id = 1`).run();
+    await agree(secret({ profile: 'SUSPENSO' }));
+    const { transport, calls } = recordingTransport([secret({ profile: 'plano-10M' })]);
+    await runNetworkEnforcement(db, { transport, ...live });
+    expect(writes(calls)).toEqual([]);
+    expect(divergenceOf()).toBe('profile_drift');
+  });
+
+  test('secret desativado à mão não é reativado', async () => {
+    await agree();
+    const { transport, calls } = recordingTransport([secret({ disabled: true })]);
+    await runNetworkEnforcement(db, { transport, ...live });
+    expect(writes(calls)).toEqual([]);
+    expect(divergenceOf()).toBe('state_drift');
+  });
+
+  test('secret apagado no router não é recriado', async () => {
+    await agree();
+    for (let pass = 0; pass < 2; pass += 1) {
+      const { transport, calls } = recordingTransport([]);
+      await runNetworkEnforcement(db, { transport, ...live });
+      expect(writes(calls)).toEqual([]);
+      expect(divergenceOf()).toBe('secret_removed');
+    }
+  });
+
+  test('utilizador PPPoE mudado no ISPM é aprovisionado, não retido', async () => {
+    await agree(secret({ comment: 'feito a mao' }));
+    db.prepare(`UPDATE services SET pppoe_username = 'joao-novo' WHERE id = 1`).run();
+    const { transport, calls } = recordingTransport([secret({ comment: 'feito a mao' })]);
+    await runNetworkEnforcement(db, { transport, ...live });
+    expect(writes(calls).map((call) => call.method)).toEqual(['PUT']);
+  });
+
+  test('uma ação falhada não vira acordo: a passagem seguinte volta a tentar', async () => {
+    await agree();
+    db.prepare('UPDATE services SET plan_id = 2 WHERE id = 1').run();
+    const profiles = ['default', 'plano-10M', 'plano-20M', 'SUSPENSO'];
+    const base = recordingTransport([secret()], [], profiles);
+    const failing = (async (req: RouterRequest) => {
+      if (req.method === 'PATCH') throw new Error('router ocupado');
+      return base.transport(req);
+    }) as RouterTransport;
+    const failed = await runNetworkEnforcement(db, { transport: failing, ...live });
+    expect(failed.failed).toBe(1);
+
+    const retry = recordingTransport([secret()], [], profiles);
+    await runNetworkEnforcement(db, { transport: retry.transport, ...live });
+    expect(writes(retry.calls)).toEqual([{ method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'plano-20M' } }]);
+  });
+
+  test('o ensaio não cria acordo nenhum', async () => {
+    const dry = recordingTransport([secret({ profile: 'feito-no-winbox' })]);
+    await runNetworkEnforcement(db, { transport: dry.transport, dryRun: true, maxDisables: 5 });
+    const { transport, calls } = recordingTransport([secret({ profile: 'feito-no-winbox' })]);
+    await runNetworkEnforcement(db, { transport, ...live });
+    expect(writes(calls)).toEqual([{ method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'plano-10M' } }]);
+  });
+});
+
+describe('pedido explícito do operador', () => {
+  test('overrideDrift impõe o ISPM sobre um desvio retido', async () => {
+    const db = memoryDb();
+    addService(db, 1, 'active', 'joao-1');
+    await runNetworkEnforcement(db, { transport: recordingTransport([secret()]).transport, dryRun: false, maxDisables: 5 });
+
+    const { transport, calls } = recordingTransport([secret({ profile: 'default' })]);
+    await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5, serviceIds: [1], reportOrphans: false, overrideDrift: true });
+    expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'plano-10M' } });
+  });
+});

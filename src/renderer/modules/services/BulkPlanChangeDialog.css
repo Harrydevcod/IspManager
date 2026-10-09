@@ -1,0 +1,43 @@
+/* Mudança de plano em massa: opções, resumo e progresso. */
+/* `client-form` dá o estilo dos campos; aqui é uma coluna só, estreita. */
+.client-form.plan-change-options {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 460px;
+}
+
+.plan-change-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-3);
+  color: var(--text-2);
+}
+
+.plan-change-summary b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-change-summary .is-bad,
+.plan-change-summary .is-bad b {
+  color: var(--danger);
+}
+
+.plan-change-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-change-progress progress {
+  flex: 1;
+  height: 6px;
+  accent-color: var(--accent);
+}
+
+.plan-change-muted {
+  color: var(--text-2);
+}
