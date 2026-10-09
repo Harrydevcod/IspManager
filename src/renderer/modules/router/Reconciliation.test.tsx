@@ -60,7 +60,6 @@ afterEach(async () => {
 test('sem decisão não há nada para aplicar', async () => {
   await render([row({})]);
   expect(buttonNamed('Rever').disabled).toBe(true);
-  expect(container.textContent).toContain('À espera de decisão');
 });
 
 test('a decisão passa por uma revisão antes de ser enviada, e o resultado fica à vista', async () => {
@@ -111,5 +110,5 @@ test('clicar no lado já escolhido retira a decisão', async () => {
 
 test('um utilizador feito à mão lê-se como diferença própria', async () => {
   await render([row({ key: 'only_router:*A', kind: 'only_router', serviceId: null, clientName: null, login: 'torre-norte', managed: false, planOptions: [] })]);
-  expect(container.textContent).toContain('Feito à mão no router');
+  expect(container.textContent).toContain('Feito à mão');
 });

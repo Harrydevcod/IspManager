@@ -12,7 +12,7 @@ const withoutEffect = (batch: PlanChangeBatch) => batch.counts.failed + batch.co
 
 const COLUMNS: DataTableColumn<PlanChangeBatch>[] = [
   { header: 'Quando', sortValue: (row) => row.createdAt, defaultDirection: 'desc', cell: (row) => when.format(batchTime(row.createdAt)!) },
-  { header: 'Plano de destino', sortValue: (row) => row.targetPlanName, cell: (row) => <strong>{row.targetPlanName}</strong> },
+  { header: 'Destino', sortValue: (row) => row.targetPlanName, cell: (row) => <strong>{row.targetPlanName}</strong> },
   { header: 'Serviços', align: 'end', sortValue: total, defaultDirection: 'desc', cell: (row) => total(row) },
   {
     header: 'Sem efeito',
@@ -95,7 +95,7 @@ export function PlanChangeHistory({ onClose }: { onClose: () => void }) {
             rowKey={(row) => row.id}
             defaultSort={{ key: 'Quando', direction: 'desc' }}
             onRowClick={(row) => setOpenId(row.id)}
-            gridTemplateColumns="minmax(120px, 0.9fr) minmax(130px, 1.1fr) 80px 80px minmax(80px, 0.6fr) minmax(160px, 1.6fr) minmax(140px, 1fr)"
+            gridTemplateColumns="minmax(116px, 0.9fr) minmax(120px, 1.1fr) 72px 84px minmax(72px, 0.6fr) minmax(80px, 1.6fr) 184px"
             columns={COLUMNS}
             empty={<EmptyState icon={History} title="Ainda sem mudanças em massa" description="Selecione serviços no módulo Serviços e use “Mudar de plano”." />}
           />

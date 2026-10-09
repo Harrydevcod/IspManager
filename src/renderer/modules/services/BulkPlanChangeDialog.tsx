@@ -63,7 +63,7 @@ export function PlanChangeResult({ batch }: { batch: PlanChangeBatch }) {
         rows={batch.items ?? []}
         rowKey={(row) => row.id}
         defaultSort={{ key: 'Resultado', direction: 'asc' }}
-        gridTemplateColumns="minmax(150px, 1.2fr) minmax(110px, 0.9fr) minmax(120px, 0.8fr) minmax(90px, 0.6fr) minmax(200px, 2fr)"
+        gridTemplateColumns="minmax(140px, 1.2fr) minmax(128px, 0.9fr) minmax(120px, 0.8fr) minmax(90px, 0.6fr) minmax(180px, 2fr)"
         columns={RESULT_COLUMNS}
         empty={<EmptyState icon={ArrowRightLeft} title="Sem serviços" description="Este lote não tem itens." />}
       />
@@ -259,7 +259,7 @@ export function BulkPlanChangeDialog({ serviceIds, plans, onClose, onDone }: {
             rows={preview.rows}
             rowKey={(row) => row.serviceId}
             defaultSort={{ key: 'O que acontece', direction: 'asc' }}
-            gridTemplateColumns="minmax(130px, 1.1fr) minmax(124px, 0.9fr) 110px 130px 80px minmax(180px, 1.2fr)"
+            gridTemplateColumns="minmax(120px, 1.1fr) minmax(110px, 0.9fr) 100px 116px 76px minmax(200px, 1.2fr)"
             columns={PREVIEW_COLUMNS}
             empty={<EmptyState icon={ArrowRightLeft} title="Sem serviços" description="Nenhum dos serviços escolhidos existe." />}
           />

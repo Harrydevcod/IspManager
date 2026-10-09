@@ -71,11 +71,11 @@ type Tone = 'success' | 'danger' | 'info' | 'neutral' | 'warn';
 
 export const OUTCOME: Record<PreviewOutcome, { label: string; tone: Tone; rank: number }> = {
   change: { label: 'Muda', tone: 'success', rank: 0 },
-  suspended: { label: 'Muda no ISPM · continua suspenso', tone: 'warn', rank: 1 },
-  no_secret: { label: 'Muda só no ISPM · sem utilizador no router', tone: 'warn', rank: 2 },
-  no_pppoe: { label: 'Muda só no ISPM · sem PPPoE', tone: 'info', rank: 3 },
-  unchanged: { label: 'Já está neste plano', tone: 'neutral', rank: 4 },
-  cancelled: { label: 'Cancelado · fica de fora', tone: 'neutral', rank: 5 }
+  suspended: { label: 'Muda, fica suspenso', tone: 'warn', rank: 1 },
+  no_secret: { label: 'Falta no router', tone: 'warn', rank: 2 },
+  no_pppoe: { label: 'Sem PPPoE', tone: 'info', rank: 3 },
+  unchanged: { label: 'Já neste plano', tone: 'neutral', rank: 4 },
+  cancelled: { label: 'Cancelado, fica de fora', tone: 'neutral', rank: 5 }
 };
 
 export const ITEM_STATUS: Record<ItemStatus, { label: string; tone: Tone; rank: number }> = {

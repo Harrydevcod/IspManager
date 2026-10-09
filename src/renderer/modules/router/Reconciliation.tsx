@@ -1,13 +1,14 @@
 import { ArrowLeftRight } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Badge, BulkActionBar, Button, Combobox, DataTable, Dialog, EmptyState, Field, Message, Select, useToast, type DataTableColumn } from '../../components';
+import { Badge, BulkActionBar, Button, ColumnPicker, Combobox, DataTable, Dialog, EmptyState, Field, Message, Select, useToast, type DataTableColumn } from '../../components';
 import { authFetch } from '../../lib/auth';
+import { useColumnVisibility } from '../../lib/columnVisibility';
 import { useRowSelection } from '../../lib/useRowSelection';
 import { ROUTER_API, type ReconDirection, type ReconKind, type ReconResult, type ReconRow, type Reconciliation as ReconciliationData } from './router-api';
 
 const KIND: Record<ReconKind, { label: string; tone: 'danger' | 'warn' | 'info'; rank: number; ispm: string; router: string }> = {
-  plan: { label: 'Plano diferente', tone: 'warn', rank: 0, ispm: 'Repor o plano do ISPM no router', router: 'Passar o serviço ao plano do router' },
-  state: { label: 'Estado diferente', tone: 'danger', rank: 1, ispm: 'Impor o estado do ISPM no router', router: 'Trazer o estado do router' },
+  plan: { label: 'Plano', tone: 'warn', rank: 0, ispm: 'Repor o plano do ISPM no router', router: 'Passar o serviço ao plano do router' },
+  state: { label: 'Estado', tone: 'danger', rank: 1, ispm: 'Impor o estado do ISPM no router', router: 'Trazer o estado do router' },
   only_ispm: { label: 'Só no ISPM', tone: 'info', rank: 2, ispm: 'Criar o utilizador no router', router: 'Tirar o utilizador do serviço' },
   only_router: { label: 'Só no router', tone: 'info', rank: 3, ispm: 'Desativar no router', router: 'Associar a um serviço' }
 };
@@ -19,6 +20,11 @@ const RESULT: Record<ReconResult['status'], { label: string; tone: 'success' | '
   not_processed: { label: 'Por processar', tone: 'neutral' }
 };
 
+/** As contagens do resumo, no feminino de "decisões". */
+const SUMMARY: Array<[ReconResult['status'], string]> = [
+  ['applied', 'aplicadas'], ['dry_run', 'em ensaio'], ['failed', 'falhadas'], ['not_processed', 'por processar']
+];
+
 const SIDES: ReadonlyArray<{ id: ReconDirection; label: string }> = [
   { id: 'ispm', label: 'ISPM' },
   { id: 'router', label: 'Router' }
@@ -26,8 +32,12 @@ const SIDES: ReadonlyArray<{ id: ReconDirection; label: string }> = [
 
 /** Um utilizador que o ISPM não criou é outra diferença: desativá-lo pede o nome escrito. */
 const kindOf = (row: ReconRow) => (row.kind === 'only_router' && !row.managed
-  ? { label: 'Feito à mão no router', tone: 'warn' as const, rank: 3.5 }
+  ? { label: 'Feito à mão', tone: 'warn' as const, rank: 3.5 }
   : KIND[row.kind]);
+
+const HEADERS = ['Cliente', 'Utilizador', 'Diferença', 'No ISPM', 'No router', 'Situação', 'Fica a valer'] as const;
+// Quase tudo o que aqui aparece está por decidir: a coluna diz pouco e a 150% falta-lhe o espaço.
+const DEFAULT_HIDDEN = ['Situação'];
 
 type Extra = { planId?: number; targetServiceId?: number; confirmName?: string };
 
@@ -50,6 +60,7 @@ function missing(row: ReconRow, direction: ReconDirection, extra: Extra): string
 export function Reconciliation({ data, dryRun, onChanged }: { data: ReconciliationData; dryRun: boolean; onChanged: () => void }) {
   const { toast } = useToast();
   const selection = useRowSelection<string>();
+  const columnVisibility = useColumnVisibility('ispm.router.reconciliation.hiddenColumns', HEADERS, DEFAULT_HIDDEN);
   const [decisions, setDecisions] = useState<Record<string, ReconDirection>>({});
   const [extras, setExtras] = useState<Record<string, Extra>>({});
   const [reviewing, setReviewing] = useState(false);
@@ -105,7 +116,7 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
 
   const columns: DataTableColumn<ReconRow>[] = [
     { header: 'Cliente', sortValue: (row) => row.clientName ?? '', cell: (row) => row.clientName ? <strong>{row.clientName}</strong> : <span className="router-muted">—</span> },
-    { header: 'Utilizador PPPoE', sortValue: (row) => row.login, cell: (row) => <code className="router-mono">{row.login}</code> },
+    { header: 'Utilizador', sortValue: (row) => row.login, cell: (row) => <code className="router-mono">{row.login}</code> },
     { header: 'Diferença', sortValue: (row) => kindOf(row).rank, cell: (row) => <Badge tone={kindOf(row).tone}>{kindOf(row).label}</Badge> },
     { header: 'No ISPM', sortValue: (row) => row.ispm, cell: (row) => row.ispm },
     { header: 'No router', sortValue: (row) => row.router, cell: (row) => row.router },
@@ -113,8 +124,8 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
       header: 'Situação',
       sortValue: (row) => (row.held ? 0 : 1),
       cell: (row) => row.held
-        ? <Badge tone="warn">À espera de decisão</Badge>
-        : <span title="Foi o ISPM que mudou: a passagem automática trata disto sozinha."><Badge tone="neutral">A aplicar sozinho</Badge></span>
+        ? <Badge tone="warn">Por decidir</Badge>
+        : <span title="Foi o ISPM que mudou: a passagem automática trata disto sozinha."><Badge tone="neutral">Automático</Badge></span>
     },
     {
       header: 'Fica a valer',
@@ -152,6 +163,7 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
           Escolha, linha a linha, qual dos dois lados fica a valer. Nada é aplicado antes da revisão.
           {dryRun ? ' O router está em ensaio: aplicar só diz o que faria.' : ''}
         </p>
+        <ColumnPicker headers={HEADERS} hidden={columnVisibility.hidden} onToggle={columnVisibility.toggle} onReset={columnVisibility.reset} />
         <Button disabled={decided.length === 0} onClick={() => setReviewing(true)}>
           {decided.length === 0 ? 'Rever decisões' : `Rever ${decided.length} ${decided.length === 1 ? 'decisão' : 'decisões'}`}
         </Button>
@@ -168,8 +180,9 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
         rowKey={(row) => row.key}
         className="recon-table"
         stickyHeader
-        defaultSort={{ key: 'Situação', direction: 'asc' }}
-        gridTemplateColumns="minmax(120px, 1.2fr) minmax(96px, 0.8fr) minmax(128px, 0.9fr) minmax(120px, 1.1fr) minmax(120px, 1.1fr) minmax(136px, 0.9fr) 148px"
+        defaultSort={{ key: 'Diferença', direction: 'asc' }}
+        hiddenColumns={columnVisibility.hidden}
+        gridTemplateColumns="minmax(88px, 1.3fr) 100px 116px minmax(88px, 1fr) minmax(88px, 1fr) 100px 128px"
         columns={columns}
         selection={{
           isSelected: (key) => selection.isSelected(String(key)),
@@ -197,11 +210,11 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
       >
         {results && (
           <p className="recon-summary">
-            {(['applied', 'dry_run', 'failed', 'not_processed'] as const).map((status) => {
+            {SUMMARY.map(([status, label]) => {
               const count = results.filter((result) => result.status === status).length;
               return count === 0 ? null : (
                 <span key={status} className={status === 'failed' || status === 'not_processed' ? 'is-bad' : undefined}>
-                  <b>{count}</b> {RESULT[status].label.toLowerCase()}
+                  <b>{count}</b> {label}
                 </span>
               );
             })}

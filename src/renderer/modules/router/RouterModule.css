@@ -330,8 +330,19 @@
 }
 
 .recon-bar p {
+  flex: 1;
   margin: 0;
   max-width: 68ch;
+}
+
+.recon-bar > .column-picker {
+  margin-left: auto;
+}
+
+/* Sete colunas e a seleção têm de caber em 868 px (1920 a 150%): um degrau a menos no intervalo. */
+.recon-table .data-table-head,
+.recon-table .data-table-row {
+  gap: var(--space-3);
 }
 
 /* Os dois lados de uma linha: a primitiva das abas, sem a margem de secção. */
@@ -349,7 +360,7 @@
 
 /* A revisão das decisões antes de aplicar. */
 /* `client-form` dá o estilo dos campos; a lista é de uma coluna. */
-.client-form.recon-review {
+.dialog-body .client-form.recon-review {
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
   margin: 0;
