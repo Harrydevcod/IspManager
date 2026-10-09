@@ -211,6 +211,17 @@ describe('planActions', () => {
     expect(plan.actions).toEqual([expect.objectContaining({ kind: 'create', serviceId: 2 })]);
   });
 
+  test('dois secrets com o número do mesmo cliente: desempata o nome, o outro é órfão', () => {
+    const helen = service({ serviceId: 6, clientCode: 'C0005', clientName: 'Helen', username: 'skn005' });
+    const plan = planActions([helen], [
+      secret({ id: '*VELHO', name: 'isaias-5', comment: 'ispm:5 Isaias', disabled: true }),
+      secret({ id: '*B', name: 'skn005', comment: 'ispm:5 Helen' })
+    ]);
+    expect(plan.matched.get(6)?.id).toBe('*B');
+    expect(plan.actions).toEqual([]);
+    expect(plan.divergences).toEqual([expect.objectContaining({ kind: 'orphan_secret', username: 'isaias-5' })]);
+  });
+
   test('secret casado só pelo nome guarda o comentário do operador', () => {
     const plan = planActions([service()], [secret({ comment: 'casa da esquina' })]);
     expect(plan.actions).toEqual([]);

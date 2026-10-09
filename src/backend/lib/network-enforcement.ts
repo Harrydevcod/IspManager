@@ -192,10 +192,12 @@ export function loadDesiredServices(db: Database.Database, options: { suspendedP
 // --------------------------------------------------------------- planeamento
 
 export function matchSecret(service: AnchoredService & Pick<DesiredService, 'username'>, secrets: RouterSecret[]): RouterSecret | undefined {
-  return (
-    secrets.find((secret) => anchorsService(secret.comment, service)) ??
-    secrets.find((secret) => secret.name === service.username)
-  );
+  const anchored = secrets.filter((secret) => anchorsService(secret.comment, service));
+  // Dois secrets com o número do mesmo cliente (um órfão de um serviço antigo
+  // ao lado do atual): o comentário não escolhe, e errar aqui era cortar ou
+  // mudar a senha a outro. Desempata o nome.
+  if (anchored.length === 1) return anchored[0];
+  return anchored.find((secret) => secret.name === service.username) ?? secrets.find((secret) => secret.name === service.username);
 }
 
 export type SessionState = 'online' | 'offline' | 'desativado' | 'sem_secret' | 'sem_servico';

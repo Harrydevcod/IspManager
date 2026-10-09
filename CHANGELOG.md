@@ -6,6 +6,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.28](https://github.com/Harrydevcod/IspManager/releases/tag/v2.28.0) — 2026-10-09
+
 - **O comentário do PPPoE no router perde o `#número` do fim.** Lia-se `ispm:5 Helen #6` e o `#6` (o número interno do serviço) parecia um engano ao lado do `5` do cliente. Passa a ser `ispm:5 Helen`: o número é o do código do cliente, o mesmo do utilizador (`skn005`). A sincronização seguinte reescreve os comentários sozinha, sem tocar em sessões nem em senhas. O `#número` só continua em quem tem um segundo serviço com PPPoE. Instalar por cima de uma versão 2.24 ou posterior já sincronizada com o router.
 
 ## [2.27](https://github.com/Harrydevcod/IspManager/releases/tag/v2.27.0) — 2026-10-08
