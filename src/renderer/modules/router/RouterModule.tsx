@@ -1,4 +1,4 @@
-import { AlertTriangle, Cable, Cpu, Gauge, Layers, MemoryStick, Router, ScrollText, Settings2, ShieldAlert, Timer, Waypoints, X, ChartNoAxesCombined, History } from 'lucide-react';
+import { AlertTriangle, ArrowLeftRight, Cable, Cpu, Gauge, Layers, MemoryStick, Router, ScrollText, Settings2, ShieldAlert, Timer, Waypoints, X, ChartNoAxesCombined, History } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { Badge, Button, EmptyState, ErrorRetry, MetricCard, MetricGrid, ModuleHeaderActions, SkeletonList } from '../../components';
@@ -10,6 +10,7 @@ import {
   profileRows,
   ROUTER_API,
   type Live,
+  type Reconciliation as ReconciliationData,
   type RouterInterface,
   type RouterLog,
   type RouterOverview,
@@ -18,6 +19,7 @@ import {
   type RouterWanUsage
 } from './router-api';
 import { InterfacesTable, LogView, ProfilesTable, SessionsTable } from './RouterTables';
+import { Reconciliation } from './Reconciliation';
 import { StoredLog } from './StoredLog';
 import { SyncStatus } from './SyncStatus';
 import { useLive } from './useLive';
@@ -28,11 +30,12 @@ import { ClientUsage, type ClientUsageRow } from './ClientUsage';
 import { ConfigBackups, type ConfigSnapshots } from './ConfigBackups';
 import './RouterModule.css';
 
-type RouterTab = 'overview' | 'sessions' | 'profiles' | 'interfaces' | 'consumption' | 'backups' | 'log' | 'config';
+type RouterTab = 'overview' | 'sessions' | 'reconciliation' | 'profiles' | 'interfaces' | 'consumption' | 'backups' | 'log' | 'config';
 
 const TABS: ReadonlyArray<{ id: RouterTab; label: string; icon: typeof Router }> = [
   { id: 'overview', label: 'Visão geral', icon: Gauge },
   { id: 'sessions', label: 'Sessões PPPoE', icon: Cable },
+  { id: 'reconciliation', label: 'Reconciliação', icon: ArrowLeftRight },
   { id: 'profiles', label: 'Perfis PPP', icon: Layers },
   { id: 'interfaces', label: 'Interfaces', icon: Waypoints },
   { id: 'consumption', label: 'Consumo', icon: ChartNoAxesCombined },
@@ -100,7 +103,7 @@ function Overview({ data, onOpen }: { data: RouterOverview & { dryRun: boolean }
           value={String(data.divergences)}
           trend={data.divergences ? 'ISPM e router discordam' : 'ISPM e router de acordo'}
           tone={data.divergences ? 'danger' : 'neutral'}
-          onActivate={() => onOpen('sessions')}
+          onActivate={() => onOpen('reconciliation')}
         />
         <MetricCard icon={Cpu} label="CPU" value={system.cpuLoad === null ? '—' : `${system.cpuLoad}%`} trend={system.architecture ?? undefined} tone={system.cpuLoad !== null && system.cpuLoad >= 80 ? 'warning' : 'info'} />
         <MetricCard
@@ -159,6 +162,7 @@ export default function RouterModule() {
 
   const overview = useLive<Live<RouterOverview>>(`${ROUTER_API}/overview`, tab === 'overview');
   const sessions = useLive<Live<{ sessions: RouterSession[] }>>(`${ROUTER_API}/sessions`, tab === 'sessions');
+  const reconciliation = useLive<Live<ReconciliationData>>(`${ROUTER_API}/reconciliation`, tab === 'reconciliation');
   const interfaces = useLive<Live<{ interfaces: RouterInterface[] }>>(`${ROUTER_API}/interfaces`, tab === 'interfaces');
   const profiles = useLive<Live<{ profiles: RouterProfileOption[] }>>(`${ROUTER_API}/profiles`, tab === 'profiles');
   const log = useLive<Live<RouterLog>>(`${ROUTER_API}/log`, tab === 'log');
@@ -166,7 +170,7 @@ export default function RouterModule() {
   const plans = useLive<PlanRow[]>('http://127.0.0.1:3001/api/plans', tab === 'profiles');
 
   const backups = useLive<ConfigSnapshots>(`${ROUTER_API}/config/snapshots`, tab === 'backups', 60_000);
-  const current = { overview, sessions, interfaces, profiles, consumption, backups, log, config: null }[tab];
+  const current = { overview, sessions, reconciliation, interfaces, profiles, consumption, backups, log, config: null }[tab];
 
   const selectTab = useCallback((next: RouterTab, moveFocus = false) => {
     if (next === 'config') setConfigVisited(true);
@@ -245,6 +249,11 @@ export default function RouterModule() {
         {tab === 'sessions' && (
           <LiveGate live={sessions} onRetry={sessions.reload} onConfigure={openConfig} presence={presence.data}>
             {(data) => <SessionsTable sessions={data.sessions} onChanged={sessions.reload} />}
+          </LiveGate>
+        )}
+        {tab === 'reconciliation' && (
+          <LiveGate live={reconciliation} onRetry={reconciliation.reload} onConfigure={openConfig} presence={presence.data}>
+            {(data) => <Reconciliation data={data} dryRun={data.dryRun} onChanged={reconciliation.reload} />}
           </LiveGate>
         )}
         {tab === 'profiles' && (

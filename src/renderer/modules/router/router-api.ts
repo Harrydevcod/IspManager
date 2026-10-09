@@ -41,6 +41,32 @@ export type RouterSession = {
   routerProfile: string | null;
 };
 
+export type ReconKind = 'only_ispm' | 'only_router' | 'plan' | 'state';
+export type ReconDirection = 'ispm' | 'router';
+
+export type ReconRow = {
+  key: string;
+  kind: ReconKind;
+  serviceId: number | null;
+  secretId: string | null;
+  clientName: string | null;
+  login: string;
+  ispm: string;
+  router: string;
+  /** Retido à espera de decisão; falso = a passagem automática aplica-o sozinha. */
+  held: boolean;
+  managed: boolean;
+  online: boolean;
+  planOptions: Array<{ id: number; name: string }>;
+};
+
+export type Reconciliation = {
+  rows: ReconRow[];
+  unlinkedServices: Array<{ serviceId: number; clientName: string; clientCode: string }>;
+};
+
+export type ReconResult = { key: string; status: 'applied' | 'failed' | 'dry_run' | 'not_processed'; message: string };
+
 export type PppoeBackfillRow = { serviceId: number; clientCode: string; clientName: string; username: string | null; reason?: string };
 export type PppoeBackfillPlan = { create: PppoeBackfillRow[]; skipped: PppoeBackfillRow[]; applied?: number };
 

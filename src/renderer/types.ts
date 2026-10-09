@@ -70,6 +70,8 @@ export type ServiceRow = {
   audiovisualAnnualCve: number;
   /** IPs dos equipamentos ativos, separados por vírgula. Null se não houver nenhum. */
   deviceIps: string | null;
+  /** Equipamentos de backbone a que o cliente está ligado, separados por vírgula. Null = por registar. */
+  accessPoints?: string | null;
   /** Identidade no MikroTik. Null = serviço fora do controlo de acesso. */
   pppoeUsername: string | null;
   /** A senha nunca sai da API: só se sabe se existe. */

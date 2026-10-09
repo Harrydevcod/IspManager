@@ -209,6 +209,57 @@ describe('presença da rede de gestão', () => {
     expect((db.prepare('SELECT COUNT(*) AS n FROM network_discovery_hosts').get() as { n: number }).n).toBe(0);
     expect((db.prepare('SELECT COUNT(*) AS n FROM audit_logs').get() as { n: number }).n).toBe(0);
   });
+
+  describe('escritas manuais no router', () => {
+    const configureRouter = () => {
+      db.prepare("INSERT INTO app_settings (key, value) VALUES ('routerosEnabled', 'true'), ('routerosHost', '127.0.0.1'), ('routerosUser', 'ispm')").run();
+      writeSecret(db, 'routerosPassword', 'segredo');
+    };
+
+    test('fora da rede devolvem 409 sem chamar o router', async () => {
+      configureRouter();
+      vi.spyOn(adminNetwork, 'detectAdminNetwork').mockResolvedValue({
+        state: 'offsite', checkedAt: new Date().toISOString(), detail: 'O router não respondeu.'
+      });
+      db.prepare("INSERT INTO clients (client_code, full_name) VALUES ('C9002', 'Rui Silva')").run();
+      const serviceId = db.prepare("INSERT INTO services (client_id, pppoe_username, status) VALUES ((SELECT id FROM clients WHERE client_code = 'C9002'), 'rui', 'active')").run().lastInsertRowid;
+      const jobs = () => (db.prepare("SELECT COUNT(*) AS n FROM job_runs WHERE job LIKE 'network_enforcement%' OR job = 'reconciliation_resolve'").get() as { n: number }).n;
+      const before = jobs();
+      const routes = [
+        { url: '/api/network/enforce', payload: undefined },
+        { url: `/api/network/services/${serviceId}/sync`, payload: undefined },
+        { url: '/api/network/router/reconciliation/resolve', payload: { items: [{ key: 'plan:1', direction: 'ispm' }] } }
+      ];
+      try {
+        for (const route of routes) {
+          const response = await app.inject({ method: 'POST', url: route.url, payload: route.payload });
+          expect([route.url, response.statusCode]).toEqual([route.url, 409]);
+          expect(response.json().error).toContain('Fora da rede de gestão');
+        }
+        // Nenhum trabalho arrancou: nada chegou a falar com o router.
+        expect(jobs()).toBe(before);
+      } finally {
+        db.prepare("DELETE FROM services WHERE pppoe_username = 'rui'").run();
+        db.prepare("DELETE FROM clients WHERE client_code = 'C9002'").run();
+      }
+    });
+
+    test('esperam pela vez na fila das escritas no router', async () => {
+      configureRouter();
+      vi.spyOn(adminNetwork, 'detectAdminNetwork').mockResolvedValue({ state: 'onsite', checkedAt: new Date().toISOString(), detail: '' });
+      const { runExclusive } = await import('../lib/network-sync');
+      let release = () => {};
+      const ahead = runExclusive(() => new Promise<void>((resolve) => { release = resolve; }));
+      let answered = false;
+      const pending = app.inject({ method: 'POST', url: '/api/network/enforce' }).then((response) => { answered = true; return response; });
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(answered).toBe(false);
+      release();
+      await ahead;
+      await pending;
+      expect(answered).toBe(true);
+    });
+  });
 });
 
 afterAll(async () => {

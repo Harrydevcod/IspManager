@@ -122,7 +122,17 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
           FROM assignment_services asv
           JOIN service_device_assignments a ON a.id = asv.assignment_id
           WHERE asv.service_id = s.id AND a.end_date IS NULL AND a.ip_address IS NOT NULL
-        ) AS deviceIps
+        ) AS deviceIps,
+        -- Os equipamentos de backbone a que o equipamento do cliente está ligado
+        -- (o "setor"). Null = ligação por registar na Topologia.
+        (
+          SELECT group_concat(DISTINCT b.name)
+          FROM assignment_services asv
+          JOIN service_device_assignments a ON a.id = asv.assignment_id AND a.end_date IS NULL
+          JOIN backbone_assignment_links l ON l.assignment_id = a.id AND l.ended_at IS NULL
+          JOIN backbone_devices b ON b.id = l.backbone_device_id
+          WHERE asv.service_id = s.id
+        ) AS accessPoints
       FROM services s
       JOIN clients c ON c.id = s.client_id
       LEFT JOIN internet_plans p ON p.id = s.plan_id

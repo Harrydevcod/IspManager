@@ -1,8 +1,9 @@
-import { Network, Pencil, Plus, Wrench } from 'lucide-react';
+import { ArrowRightLeft, Network, Pencil, Plus, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Combobox, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, SecretField, Select, SkeletonList, Textarea, Toggle, WanModeSelect, OperationModeSelect, useConfirm, useToast, type SecretDraft } from '../components';
+import { Badge, BulkActionBar, Button, Combobox, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, SecretField, Select, SkeletonList, Textarea, Toggle, WanModeSelect, OperationModeSelect, useConfirm, useToast, type SecretDraft } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
+import { useRowSelection } from '../lib/useRowSelection';
 import { formatCve } from '../lib/format';
 import { todayIso } from '../../shared/assignment-dates';
 import { labelForType, requiresStaticIp } from '../../shared/equipment';
@@ -10,6 +11,7 @@ import { suggestIpPrefix } from '../lib/ip';
 import { statusLabel, statusTone } from '../lib/status';
 import type { AudiovisualConfig, Client, DeviceAssignment, ManualServiceEventType, PlanRow, ReturnCondition, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
 import { BulkIpDialog, type ActiveAssignment } from './services/BulkIpDialog';
+import { BulkPlanChangeDialog } from './services/BulkPlanChangeDialog';
 import { findReplaceTarget } from './services/findReplaceTarget';
 import { IpField } from './services/IpField';
 import { MANUAL_EVENT_TYPES, RETURN_CONDITION_LABELS, ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
@@ -107,6 +109,13 @@ export function ServicesModule({
   const [itemDrafts, setItemDrafts] = useState<ItemDraft[]>([]);
   const [laborCve, setLaborCve] = useState('');
   const [search, setSearch] = useState('');
+  const [planFilter, setPlanFilter] = useState('all');
+  const [accessPointFilter, setAccessPointFilter] = useState('all');
+  // Mudar o plano de muitos de uma vez mexe em faturas e no router: só admin.
+  const canBulkChangePlan = auth.isAuthBypassed || auth.hasRole('admin');
+  const selection = useRowSelection<number>();
+  // Os serviços a mudar de plano: os selecionados na lista, ou só o da ficha aberta.
+  const [planChangeIds, setPlanChangeIds] = useState<number[] | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | ServiceRow['status']>(
     DEFAULT_SERVICE_STATUS_FILTER
   );
@@ -1051,6 +1060,9 @@ export function ServicesModule({
     }
   }
 
+  const accessPointsOf = (service: ServiceRow) => (service.accessPoints ? service.accessPoints.split(',') : []);
+  const accessPointOptions = [...new Set(services.flatMap(accessPointsOf))].sort((a, b) => a.localeCompare(b, 'pt'));
+
   const visibleServices = services.filter((service) => {
     const normalizedSearch = search.trim().toLowerCase();
     const matchesSearch = !normalizedSearch
@@ -1060,7 +1072,10 @@ export function ServicesModule({
       // Manutenção remota ao contrário: do IP da antena para o cliente.
       || (service.deviceIps || '').toLowerCase().includes(normalizedSearch);
     const matchesStatus = statusFilter === 'all' || service.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesPlan = planFilter === 'all' || (planFilter === 'none' ? service.planId === null : String(service.planId) === planFilter);
+    const matchesAccessPoint = accessPointFilter === 'all'
+      || (accessPointFilter === 'none' ? !service.accessPoints : accessPointsOf(service).includes(accessPointFilter));
+    return matchesSearch && matchesStatus && matchesPlan && matchesAccessPoint;
   });
 
   return (
@@ -1095,7 +1110,7 @@ export function ServicesModule({
       )}
 
       {loadError && services.length === 0 && <ErrorRetry message={loadError} onRetry={() => { void loadServices(); }} />}
-      <FilterBar>
+      <FilterBar className="services-filter-bar">
         <Field type="search" label="Buscar" aria-label="Pesquisar servicos" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente, plano ou IP" />
         <Select label="Estado" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | ServiceRow['status'])}>
           <option value="all">Todos</option>
@@ -1103,8 +1118,20 @@ export function ServicesModule({
           <option value="suspended">Suspensos</option>
           <option value="cancelled">Cancelados</option>
         </Select>
+        <Select label="Plano" value={planFilter} onChange={(event) => setPlanFilter(event.target.value)}>
+          <option value="all">Todos</option>
+          {plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
+          <option value="none">Sem plano</option>
+        </Select>
+        <Select label="Ponto de acesso" value={accessPointFilter} onChange={(event) => setAccessPointFilter(event.target.value)}>
+          <option value="all">Todos</option>
+          {accessPointOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+          <option value="none">Sem ligação registada</option>
+        </Select>
         <Button variant="secondary" onClick={() => {
           setSearch('');
+          setPlanFilter('all');
+          setAccessPointFilter('all');
           setStatusFilter(DEFAULT_SERVICE_STATUS_FILTER);
         }}>
           Limpar filtros
@@ -1159,9 +1186,31 @@ export function ServicesModule({
           onDisconnect={() => void disconnectServiceNetwork(selectedService)}
           onSuspend={() => void changeServiceStateFromNetwork(selectedService, 'suspended')}
           onReactivate={() => void changeServiceStateFromNetwork(selectedService, 'active')}
-          onChangePlan={() => editService(selectedService)}
+          // Pelo mesmo diálogo do grupo: é lá que se escolhe derrubar a sessão já.
+          onChangePlan={() => setPlanChangeIds([selectedService.id])}
           onChangePassword={() => openPasswordChange(selectedService)}
           onPppoeCreated={() => void loadServices()}
+        />
+      )}
+
+      {canBulkChangePlan && (
+        <BulkActionBar count={selection.count} onClear={selection.clear} noun={{ one: 'serviço selecionado', many: 'serviços selecionados' }}>
+          <Button variant="secondary" size="sm" leadingIcon={<ArrowRightLeft size={14} aria-hidden />} onClick={() => setPlanChangeIds([...selection.selected])}>
+            Mudar de plano
+          </Button>
+        </BulkActionBar>
+      )}
+
+      {planChangeIds && (
+        <BulkPlanChangeDialog
+          serviceIds={planChangeIds}
+          plans={plans}
+          onClose={() => setPlanChangeIds(null)}
+          onDone={() => {
+            selection.clear();
+            void loadServices();
+            if (selectedService) void loadTechnicalHistory(selectedService.id);
+          }}
         />
       )}
 
@@ -1169,6 +1218,13 @@ export function ServicesModule({
         <DataTable
           rows={visibleServices}
           rowKey={(service) => service.id}
+          // A lista não é paginada: o cabeçalho seleciona todos os filtrados.
+          selection={canBulkChangePlan ? {
+            isSelected: (key) => selection.isSelected(Number(key)),
+            onToggleRow: (key) => selection.toggle(Number(key)),
+            headerState: selection.visibleState(visibleServices.map((service) => service.id)),
+            onToggleAll: () => selection.toggleVisible(visibleServices.map((service) => service.id))
+          } : undefined}
           stickyHeader
           onRowClick={setSelectedService}
           gridTemplateColumns="88px minmax(160px, 1.5fr) minmax(110px, 1fr) 88px minmax(120px, 1fr) 116px 96px 110px"

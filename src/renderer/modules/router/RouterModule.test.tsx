@@ -117,7 +117,7 @@ describe('Router de gestão', () => {
   test('abre na visão geral com o equipamento, o modo e os serviços abertos', async () => {
     const container = await mount();
     expect([...container.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent)).toEqual([
-      'Visão geral', 'Sessões PPPoE', 'Perfis PPP', 'Interfaces', 'Consumo', 'Cópias', 'Registo', 'Configuração'
+      'Visão geral', 'Sessões PPPoE', 'Reconciliação', 'Perfis PPP', 'Interfaces', 'Consumo', 'Cópias', 'Registo', 'Configuração'
     ]);
     expect(container.querySelector('.router-subtitle')?.textContent).toBe('ISP-Gestao · 192.168.88.1 · hEX S · RouterOS 7.24.2');
     expect(container.textContent).toContain('Em ensaio');

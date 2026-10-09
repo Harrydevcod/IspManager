@@ -1372,6 +1372,16 @@ h2 {
   margin-bottom: var(--space-4);
 }
 
+/* O contador nunca parte em duas linhas quando os filtros apertam. */
+.filter-bar > small {
+  white-space: nowrap;
+}
+
+/* Serviços tem quatro filtros: os nomes compridos dos pontos de acesso não podem empurrar a barra. */
+.services-filter-bar select {
+  max-width: 168px;
+}
+
 .filter-bar label {
   display: grid;
   gap: var(--space-1);
@@ -1460,6 +1470,10 @@ h2 {
 
 .module-message.error {
   color: var(--danger);
+}
+
+.module-message.warn {
+  color: var(--warn);
 }
 
 /* Loading skeletons */

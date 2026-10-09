@@ -65,7 +65,10 @@ const NETWORK_DIVERGENCE_LABELS: Record<string, string> = {
   profile: 'Perfil PPP diferente do plano',
   password: 'Password PPPoE pendente de sincronização',
   username: 'Nome PPPoE diferente no router',
-  orphan_secret: 'Utilizador no router sem serviço correspondente'
+  orphan_secret: 'Utilizador no router sem serviço correspondente',
+  profile_drift: 'Perfil PPP alterado no router, à espera de decisão na Reconciliação',
+  state_drift: 'Estado alterado no router, à espera de decisão na Reconciliação',
+  secret_removed: 'Utilizador PPPoE apagado no router, à espera de decisão na Reconciliação'
 };
 
 type ServiceDetailDialogProps = {

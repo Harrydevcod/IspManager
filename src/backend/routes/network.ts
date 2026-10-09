@@ -37,7 +37,7 @@ import {
 } from '../lib/routeros';
 import { readRouterLive, readWanInterfaces } from '../lib/router-live';
 import { identifyModel } from '../lib/device-model';
-import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecret, planActions, runNetworkEnforcement, serviceIdFromComment } from '../lib/network-enforcement';
+import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecret, planActions, runNetworkEnforcement, secretAnchor } from '../lib/network-enforcement';
 import { loadAutoSuspensionPreview, runAutomaticSuspension } from '../lib/auto-suspension';
 import {
   loadPppoeCallers,
@@ -62,7 +62,8 @@ import { recordAudit } from '../lib/audit';
 import { canStoreSecrets } from '../lib/secrets';
 import { readPppoePrefix } from '../lib/services';
 import { applyPppoeBackfill, planPppoeBackfill, type BackfillService } from '../lib/pppoe-backfill';
-import { requestNetworkSync } from '../lib/network-sync';
+import { requestNetworkSync, runExclusive } from '../lib/network-sync';
+import { buildReconciliation, resolveReconciliation } from '../lib/reconciliation';
 import { isIpv4, isPrivateIpv4, SWEEP_BATCH_SIZE } from '../../shared/ip-range';
 import { requireAuth, requireRole } from './auth';
 
@@ -145,6 +146,16 @@ const routerTestBodySchema = z.object({
   user: z.string().trim().max(64).optional(),
   password: z.string().max(128).optional(),
   tlsCert: z.string().trim().max(8000).optional()
+}).strict();
+
+const resolveBodySchema = z.object({
+  items: z.array(z.object({
+    key: z.string().min(1).max(80),
+    direction: z.enum(['ispm', 'router']),
+    planId: z.number().int().positive().optional(),
+    targetServiceId: z.number().int().positive().optional(),
+    confirmName: z.string().max(128).optional()
+  }).strict()).min(1).max(200)
 }).strict();
 
 export async function registerNetworkRoutes(app: FastifyInstance) {
@@ -258,12 +269,15 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     if (!isRouterConfigured(config)) {
       return reply.status(400).send({ error: 'Configure primeiro o endereco e o utilizador do router' });
     }
+    const presence = await detectAdminNetwork(db);
+    if (isOffNetwork(presence)) return reply.status(409).send({ error: offNetworkReason(presence) });
     try {
-      return await runJob('network_enforcement_manual', () => runNetworkEnforcement(db, {
+      // Na fila das escritas no router: nunca a meio de um lote ou da passagem periódica.
+      return await runExclusive(() => runJob('network_enforcement_manual', () => runNetworkEnforcement(db, {
         transport: createTransport(config),
         dryRun: config.dryRun,
         maxDisables: config.maxDisablesPerRun
-      }));
+      })));
     } catch (err) {
       // Mesma tradução do teste: `connect ECONNREFUSED` não diz a ninguém que
       // o que falta é ligar o www-ssl.
@@ -289,14 +303,19 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     const exists = db.prepare('SELECT id FROM services WHERE id = ?').get(params.data.id);
     if (!exists) return reply.status(404).send({ error: 'Servico nao encontrado' });
 
+    const presence = await detectAdminNetwork(db);
+    if (isOffNetwork(presence)) return reply.status(409).send({ error: offNetworkReason(presence) });
+
     try {
-      const result = await runJob('network_enforcement_service_manual', () => runNetworkEnforcement(db, {
+      const result = await runExclusive(() => runJob('network_enforcement_service_manual', () => runNetworkEnforcement(db, {
         transport: createTransport(config),
         dryRun: config.dryRun,
         maxDisables: config.maxDisablesPerRun,
         serviceIds: [params.data.id],
-        reportOrphans: false
-      }));
+        reportOrphans: false,
+        // Pedido explícito sobre este serviço: é a decisão que o desvio retido espera.
+        overrideDrift: true
+      })));
 
       recordAudit(request, {
         action: config.dryRun ? 'network_sync_dry_run' : 'network_sync_manual',
@@ -348,8 +367,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       const transport = createTransport(config);
       const [secrets, active] = await Promise.all([listSecrets(transport), listActive(transport)]);
       // A sessão tem o nome do secret no router, que pode ter sido renomeado.
-      const login = matchSecret({ serviceId: params.data.id, username: service.username }, secrets)?.name
-        ?? service.username;
+      const desired = loadDesiredServices(db).find((item) => item.serviceId === params.data.id);
+      const login = (desired && matchSecret(desired, secrets)?.name) ?? service.username;
       const session = active.find((item) => item.name === login);
 
       if (config.dryRun) {
@@ -455,6 +474,49 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     return { sessions: buildSessionRows(loadDesiredServices(getSqliteDatabase()), secrets, active) };
   }));
 
+  // ------------------------------------------------ reconciliação (ADR 0014)
+
+  /** Cada diferença entre o ISPM e o router, com o valor dos dois lados. Só leitura. */
+  app.get('/api/network/router/reconciliation', adminOnly, async () => readLive(async (transport) => {
+    const [secrets, active] = await Promise.all([listSecrets(transport), listActive(transport)]);
+    return buildReconciliation(getSqliteDatabase(), secrets, active);
+  }));
+
+  /**
+   * Aplica a direção escolhida para cada divergência. Nunca corre sozinho, e em
+   * ensaio só responde o que faria.
+   */
+  app.post('/api/network/router/reconciliation/resolve', adminOnly, async (request, reply) => {
+    const parsed = resolveBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Pedido inválido' });
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return reply.status(400).send({ error: 'Integração MikroTik desligada ou por configurar' });
+    }
+    const presence = await detectAdminNetwork(db);
+    if (isOffNetwork(presence)) return reply.status(409).send({ error: offNetworkReason(presence) });
+    const transport = createTransport(config);
+    try {
+      const results = await runExclusive(async () => {
+        // Lidos na vez desta decisão: aplica-se ao que o router tem, não ao que
+        // o ecrã mostrava nem ao que tinha antes de um lote que ia à frente.
+        const [secrets, active] = await Promise.all([listSecrets(transport), listActive(transport)]);
+        return runJob('reconciliation_resolve', () => resolveReconciliation(
+          db,
+          { transport, dryRun: config.dryRun, maxDisables: config.maxDisablesPerRun },
+          request,
+          parsed.data.items,
+          { secrets, active }
+        ));
+      });
+      return { dryRun: config.dryRun, results };
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return reply.status(502).send({ error: `${failure.title}. ${failure.detail}`, code: failure.code });
+    }
+  });
+
   /**
    * Dá utilizador PPPoE aos serviços ativos que ainda não o têm; o secret nasce
    * depois, na reconciliação. Um nome que já exista no router nunca é adotado:
@@ -484,11 +546,13 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
         c.client_code AS clientCode, c.full_name AS clientName, c.status AS clientStatus
       FROM services s JOIN clients c ON c.id = s.client_id ORDER BY s.id
     `).all() as BackfillService[];
+    const anchors = secrets.map((secret) => secretAnchor(secret.comment));
     const plan = planPppoeBackfill(services, {
       router: new Set(secrets.map((secret) => secret.name)),
       ispm: new Set(services.map((service) => service.username?.trim()).filter((name): name is string => Boolean(name))),
-      // Secret já ancorado ao serviço pelo comentário `ispm:<id>`: também seria adotado.
-      routerServiceIds: new Set(secrets.map((secret) => serviceIdFromComment(secret.comment)).filter((id): id is number => id !== null))
+      // Secret já ancorado pelo comentário, ao serviço ou ao cliente: também seria adotado.
+      routerServiceIds: new Set(anchors.flatMap((anchor) => (anchor && 'serviceId' in anchor ? [anchor.serviceId] : []))),
+      routerClientNumbers: new Set(anchors.flatMap((anchor) => (anchor && 'clientNumber' in anchor ? [anchor.clientNumber] : [])))
     }, prefix);
     if (!parsed.data.apply) return plan;
     const applied = applyPppoeBackfill(db, plan);
