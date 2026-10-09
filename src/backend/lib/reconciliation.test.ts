@@ -82,6 +82,10 @@ function resolve(router: ReturnType<typeof fakeRouter>, items: ResolveItem[], de
   return resolveReconciliation(db, { transport: router.transport, ...deps }, admin, items, router.read());
 }
 
+/** O que o ISPM guardou do router para este serviço: é o que o painel e a ficha mostram. */
+const storedState = (id = 1) => db.prepare('SELECT profile, router_enabled AS enabled, divergence FROM service_network_state WHERE service_id = ?').get(id) as
+  { profile: string | null; enabled: number | null; divergence: string | null };
+
 const serviceRow = (id = 1) => db.prepare('SELECT plan_id AS planId, status, pppoe_username AS username, monthly_value_cve AS value FROM services WHERE id = ?').get(id) as
   { planId: number; status: string; username: string | null; value: number };
 
@@ -167,6 +171,8 @@ describe('resolveReconciliation', () => {
     expect(results).toEqual([expect.objectContaining({ status: 'applied' })]);
     expect(router.writes()).toEqual([{ method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'plano-10M' } }]);
     expect(rows(router)).toEqual([]);
+    // O estado guardado diz o que ficou no router, sem esperar pela passagem seguinte.
+    expect(storedState()).toEqual({ profile: 'plano-10M', enabled: 1, divergence: null });
     expect(db.prepare(`SELECT actor_username AS actor, entity_id AS entity FROM audit_logs WHERE action = 'reconciliation_apply'`).get())
       .toEqual({ actor: 'ana', entity: '1' });
   });
@@ -183,6 +189,7 @@ describe('resolveReconciliation', () => {
     expect(router.writes()).toEqual([]);
     expect(serviceRow()).toMatchObject({ planId: 2, value: 3000, status: 'active' });
     expect(rows(router)).toEqual([]);
+    expect(storedState()).toEqual({ profile: 'plano-20M', enabled: 1, divergence: null });
     const audit = db.prepare(`SELECT metadata_json AS meta FROM audit_logs WHERE action = 'reconciliation_import'`).get() as { meta: string };
     expect(JSON.parse(audit.meta)).toMatchObject({ fromPlanId: 1, toPlanId: 2, direction: 'router' });
 
@@ -233,8 +240,11 @@ describe('resolveReconciliation', () => {
     expect(db.prepare(`SELECT event_type AS type, notes FROM service_events WHERE service_id = 1`).get())
       .toEqual({ type: 'suspensao', notes: 'Importado do router na reconciliação' });
     expect(rows(router)).toEqual([]);
+    // O que fica guardado é já o que a passagem seguinte vai dizer.
+    const afterDecision = storedState();
     await runNetworkEnforcement(db, { transport: router.transport, dryRun: false, maxDisables: 5 });
     expect(router.writes()).toEqual([]);
+    expect(storedState()).toEqual(afterDecision);
   });
 
   test('estado → router: suspenso reposto à mão volta a ser cortado, com a sessão derrubada', async () => {
@@ -246,6 +256,7 @@ describe('resolveReconciliation', () => {
     expect((await resolve(router, [{ key: 'state:1', direction: 'ispm' }]))[0].status).toBe('applied');
     expect(router.secrets[0].profile).toBe('SUSPENSO');
     expect(router.sessions).toEqual([]);
+    expect(storedState()).toMatchObject({ profile: 'SUSPENSO', divergence: null });
   });
 
   test('só no ISPM: recriar no router, ou tirar o utilizador do serviço', async () => {

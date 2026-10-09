@@ -647,8 +647,9 @@ describe('runNetworkEnforcement', () => {
 
     expect(summary.applied).toBe(1);
     expect(calls).toContainEqual({ method: 'DELETE', path: '/ppp/active/*A' });
-    expect(db.prepare('SELECT divergence FROM service_network_state WHERE service_id = 1').get())
-      .toEqual({ divergence: 'profile' });
+    // O corte foi escrito, por isso o perfil já não diverge; o nome continua por acertar.
+    expect(db.prepare('SELECT divergence, profile FROM service_network_state WHERE service_id = 1').get())
+      .toEqual({ divergence: 'username', profile: 'SUSPENSO' });
   });
 
   test('reinstalação: renomeia o secret, muda a password e derruba a sessão do inquilino anterior', async () => {

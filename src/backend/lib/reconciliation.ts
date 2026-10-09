@@ -226,6 +226,17 @@ function confirmIntent(db: Database.Database, serviceId: number, secret: RouterS
       confirmed_profile = excluded.confirmed_profile,
       confirmed_enabled = excluded.confirmed_enabled
   `).run(serviceId, secret.id, service.enabled ? 1 : 0, secret.id, service.username, service.profile, service.enabled ? 1 : 0);
+
+  // O estado guardado passa já a dizer o que a passagem seguinte diria: sem
+  // isto o painel e a ficha mostravam a divergência que acabou de ser decidida.
+  const plan = planActions([service], [secret], {
+    reportOrphans: false,
+    suspendedProfile,
+    baseProfile: readBaseProfileName(db),
+    confirmed: loadConfirmedState(db)
+  });
+  db.prepare('UPDATE service_network_state SET profile = ?, router_enabled = ?, divergence = ? WHERE service_id = ?')
+    .run(secret.profile, secret.disabled ? 0 : 1, plan.divergences.find((item) => item.serviceId === serviceId)?.kind ?? null, serviceId);
 }
 
 /** Uma passagem só deste serviço, depois de esquecido o acordo que retinha a diferença. */

@@ -586,7 +586,7 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
   // O que esta passagem escreveu com sucesso: é o que deixa confirmar um valor
   // que a leitura inicial ainda mostrava diferente.
   const pushedState = new Set<number>();
-  const pushedProfile = new Set<number>();
+  const pushedProfile = new Map<number, string>();
   // Cortes de segurança: o router ficou num estado que o ISPM não pede.
   const forcedOff = new Set<number>();
 
@@ -618,7 +618,7 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
         await applyAction(db, deps.transport, action, activeByName, desired, loginOf(action), suspendedProfile);
         applied += 1;
         if (action.kind === 'enable' || action.kind === 'disable') pushedState.add(action.serviceId);
-        if (action.kind === 'profile') pushedProfile.add(action.serviceId);
+        if (action.kind === 'profile') pushedProfile.set(action.serviceId, action.profile);
       } catch (err) {
         let message = err instanceof Error ? err.message : String(err);
         // O perfil podia existir na leitura e desaparecer antes do PATCH. Um
@@ -652,8 +652,15 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
     }
   }
 
+  // O que esta passagem acabou de escrever já não é divergência: sem isto o
+  // painel e a ficha mostravam, até à passagem seguinte, a fotografia de antes.
+  const justFixed = (divergence: Divergence) => divergence.serviceId != null && (
+    (divergence.kind === 'profile' && pushedProfile.has(divergence.serviceId))
+    || (divergence.kind === 'state' && pushedState.has(divergence.serviceId))
+  );
   const divergenceByService = new Map<number, string>();
   for (const divergence of plan.divergences) {
+    if (justFixed(divergence)) continue;
     if (divergence.serviceId != null && !divergenceByService.has(divergence.serviceId)) {
       divergenceByService.set(divergence.serviceId, divergence.kind);
     }
@@ -694,9 +701,12 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
       statement.run(
         service.serviceId,
         secret?.id ?? null,
-        secret ? (secret.disabled ? 0 : 1) : null,
+        !secret ? null
+          : forcedOff.has(service.serviceId) ? 0
+          : pushedState.has(service.serviceId) ? (service.enabled ? 1 : 0)
+          : secret.disabled ? 0 : 1,
         service.enabled ? 1 : 0,
-        secret?.profile ?? null,
+        pushedProfile.get(service.serviceId) ?? secret?.profile ?? null,
         session ? 1 : 0,
         session?.address ?? null,
         session?.uptime ?? null,
