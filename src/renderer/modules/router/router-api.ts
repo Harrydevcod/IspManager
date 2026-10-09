@@ -57,6 +57,10 @@ export type ReconRow = {
   held: boolean;
   managed: boolean;
   online: boolean;
+  /** O secret dá acesso à rede agora? */
+  routerAccess: boolean;
+  /** Só em `only_ispm`: o nome existe no router mas é do serviço deste cliente. */
+  takenBy: string | null;
   planOptions: Array<{ id: number; name: string }>;
 };
 

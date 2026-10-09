@@ -235,6 +235,43 @@ describe('planActions', () => {
       expect.objectContaining({ kind: 'orphan_secret', serviceId: null })
     ]);
   });
+
+  describe('um secret é de um serviço só', () => {
+    // Nomes trocados no terreno: o secret `skn003` está ancorado à Ana, e o
+    // serviço do João (id mais baixo, casa primeiro) chama-se `skn003` no ISPM.
+    const joao = service({ serviceId: 1, username: 'skn003', enabled: false });
+    const ana = service({ serviceId: 3, clientName: 'Ana', clientCode: 'CL-0003', username: 'skn001' });
+    const secrets = [
+      secret({ id: '*1B', name: 'skn003', comment: 'ispm:3 Ana' }),
+      secret({ id: '*2C', name: 'outro', comment: 'casa da esquina' })
+    ];
+
+    test('quem casa pela âncora fica com ele; o nome não o dá a outro', () => {
+      const plan = planActions([joao, ana], secrets);
+      expect([...plan.matched]).toEqual([[3, secrets[0]]]);
+      // O João está cancelado: casado pelo nome, cortava o secret da Ana.
+      expect(plan.actions).toEqual([]);
+      expect(plan.divergences).toContainEqual({
+        serviceId: 1, username: 'skn003', kind: 'username_taken', detail: 'O utilizador skn003 no router é de Ana'
+      });
+    });
+
+    test('numa passagem só de um serviço, os outros continuam a contar para o casamento', () => {
+      const plan = planActions([joao], secrets, { peers: [joao, ana], reportOrphans: false });
+      expect(plan.matched.size).toBe(0);
+      expect(plan.actions).toEqual([]);
+      expect(plan.divergences.map((item) => item.kind)).toEqual(['username_taken']);
+    });
+
+    test('nas sessões, o serviço sem secret não herda a sessão do outro', () => {
+      const rows = buildSessionRows([joao, ana], secrets, [{ id: '*A', name: 'skn003', address: '10.0.0.5', uptime: '1h', callerId: null }]);
+      expect(rows.map((row) => [row.serviceId, row.login, row.state])).toEqual([
+        [1, 'skn003', 'sem_secret'],
+        [3, 'skn003', 'online'],
+        [null, 'outro', 'sem_servico']
+      ]);
+    });
+  });
 });
 
 // ------------------------------------------------------------------ passagem
