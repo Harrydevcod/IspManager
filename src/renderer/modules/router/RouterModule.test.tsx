@@ -34,8 +34,9 @@ const log = {
   available: true,
   dryRun: true,
   entries: [
-    { id: '*2', time: '02:40:13', topics: 'system,error,critical', message: 'login failure for user admin from 10.0.0.9 via winbox' },
-    { id: '*1', time: '02:39:00', topics: 'pppoe,ppp,info', message: 'skn001 logged in, 10.20.0.10' }
+    { id: '*3', time: '02:59:50', topics: 'system,info', message: 'changed script settings by scheduler:ispm-wan-usage (/system script set ispm-wan-usage-data source=…)', text: 'Contador das WAN gravou os totais', kind: 'contador', machine: true },
+    { id: '*2', time: '02:40:13', topics: 'system,error,critical', message: 'login failure for user admin from 10.0.0.9 via winbox', text: 'Login falhado do utilizador admin a partir de 10.0.0.9 por winbox', kind: 'login', machine: false },
+    { id: '*1', time: '02:39:00', topics: 'pppoe,ppp,info', message: 'skn001 logged in, 10.20.0.10', text: 'skn001 logged in, 10.20.0.10', kind: 'outro', machine: false }
   ],
   loginFailures: [{ address: '10.0.0.9', via: 'winbox', users: ['admin'], count: 1 }],
   rogueDhcp: [{ port: 'LAN1', address: '192.168.0.1', mac: '30:16:9D:AA:53:8B', count: 187, vendor: 'MERCUSYS', clientName: null }],
@@ -323,19 +324,28 @@ describe('Router de gestão', () => {
     expect(titles).toEqual(['DHCP intruso na porta LAN1 · MERCUSYS', 'Falhas de login de 10.0.0.9', 'PPPoE de Cibel Restaurante caiu 4 vezes']);
     expect(container.textContent).toContain('30:16:9D:AA:53:8B · 192.168.0.1 — 187 avisos');
     expect(container.textContent).toContain('1 tentativa por winbox · admin');
+    // A gravação do contador é manutenção: só aparece a pedido, e já como frase.
     expect(container.querySelectorAll('.data-table-row')).toHaveLength(2);
-    await click(container.querySelector('#router-panel-log input[type="checkbox"]'));
+    expect(container.textContent).toContain('Login falhado do utilizador admin a partir de 10.0.0.9 por winbox');
+    expect(container.querySelector('.data-table-row [title^="login failure for user admin"]')).not.toBeNull();
+    const [problems, machine] = container.querySelectorAll('#router-panel-log input[type="checkbox"]');
+    await click(machine);
+    expect(container.querySelectorAll('.data-table-row')).toHaveLength(3);
+    expect(container.textContent).toContain('Contador das WAN gravou os totais');
+    await click(machine);
+    await click(problems);
     expect(container.querySelectorAll('.data-table-row')).toHaveLength(1);
     expect(container.textContent).not.toContain('skn001 logged in');
   });
 
   test('o registo guardado lê-se por dia, filtra-se e exporta o dia inteiro', async () => {
-    const stored: Record<string, Array<{ id: string; time: string; topics: string; message: string }>> = {
+    const line = (id: string, time: string, topics: string, message: string, text: string) => ({ id, time, topics, message, text, kind: 'outro', machine: false });
+    const stored: Record<string, Array<ReturnType<typeof line>>> = {
       '2026-10-08': [
-        { id: '*1', time: '2026-10-08 20:06:54', topics: 'bridge,warning', message: 'LAN1: received DHCP server message on untrusted port from source IP 192.168.1.1, MAC 04:f4:1c:45:fd:96' },
-        { id: '*2', time: '2026-10-08 20:07:07', topics: 'netwatch,info', message: 'event down [ type: simple, host: 192.168.1.110 ]' }
+        line('*1', '2026-10-08 20:06:54', 'bridge,warning', 'LAN1: received DHCP server message on untrusted port from source IP 192.168.1.1, MAC 04:f4:1c:45:fd:96', 'Resposta de um servidor DHCP numa porta não confiável (LAN1): 192.168.1.1, 04:F4:1C:45:FD:96'),
+        line('*2', '2026-10-08 20:07:07', 'netwatch,info', 'event down [ type: simple, host: 192.168.1.110 ]', '192.168.1.110 deixou de responder')
       ],
-      '2026-10-07': [{ id: '*3', time: '2026-10-07 18:19:05', topics: 'netwatch,info', message: 'event down [ type: simple, host: 192.168.1.251 ]' }]
+      '2026-10-07': [line('*3', '2026-10-07 18:19:05', 'netwatch,info', 'event down [ type: simple, host: 192.168.1.251 ]', '192.168.1.251 deixou de responder')]
     };
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
     const original = fetchMock.getMockImplementation()!;

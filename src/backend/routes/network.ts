@@ -4,6 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from '../lib/admin-network';
 import { createDiaryEntry, listDiary, loadNetworkHealth, loginLookup, macLookup, updateDiaryEntry } from '../lib/network-health';
 import { loadIncidents } from '../lib/network-incidents';
+import { readLog, type LogLookups } from '../lib/router-log-reading';
 import { installLogJournal, journalDisk, listLogDays, loadLogDay } from '../lib/router-log-watch';
 import { loadNetworkStatus, loadProbeEvents, mapWithLimit, readProbeConfig, runNetworkProbe } from '../lib/network-probe';
 import {
@@ -157,6 +158,11 @@ const resolveBodySchema = z.object({
     confirmName: z.string().max(128).optional()
   }).strict()).min(1).max(200)
 }).strict();
+
+/** O que a leitura do registo precisa de saber da base: quem é o ISPM no router e de quem é cada acesso. */
+function logLookups(db: ReturnType<typeof getSqliteDatabase>): LogLookups {
+  return { apiUser: readRouterConfig(db).user, clientOfLogin: loginLookup(db), aboutMac: macLookup(db) };
+}
 
 export async function registerNetworkRoutes(app: FastifyInstance) {
   const readOnly = { preHandler: requireAuth() };
@@ -702,10 +708,11 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     const entries = await listLog(transport);
     const summary = summarizeLog(entries);
     const db = getSqliteDatabase();
-    const aboutMac = macLookup(db);
-    const clientOfLogin = loginLookup(db);
+    const lookups = logLookups(db);
+    const { aboutMac, clientOfLogin } = lookups;
     return {
-      entries: entries.slice(0, 300),
+      // Lê-se antes de cortar: uma gravação de contador partida em fragmentos conta por uma linha.
+      entries: readLog(entries, lookups).slice(0, 300),
       loginFailures: summary.loginFailures,
       rogueDhcp: summary.rogueDhcp.map((row) => ({ ...row, ...aboutMac(row.mac) })),
       pppoeDrops: summary.pppoeDrops.map((row) => ({ ...row, clientName: clientOfLogin(row.login) })),
@@ -719,7 +726,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
   app.get('/api/network/router/log/history', adminOnly, async (request, reply) => {
     const query = z.object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(request.query);
     if (!query.success) return reply.status(400).send({ error: 'Dia inválido' });
-    return { day: query.data.day, entries: loadLogDay(getSqliteDatabase(), query.data.day) };
+    const db = getSqliteDatabase();
+    return { day: query.data.day, entries: readLog(loadLogDay(db, query.data.day), logLookups(db)) };
   });
 
   /** Cria ou atualiza o perfil do plano. Em ensaio só diz o que faria. */

@@ -84,6 +84,7 @@
 .router-log-filter {
   display: flex;
   justify-content: flex-end;
+  gap: var(--space-4);
   margin: var(--space-4) 0 var(--space-2);
 }
 
