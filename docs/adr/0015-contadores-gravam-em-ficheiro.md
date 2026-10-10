@@ -82,7 +82,8 @@ linhas do registo em memória; ia também para o diário no cartão e para a fla
 
 ## Por medir
 
-- No router de produção (hEX S com `sd1`): se o `sd1` aparece em `/file` com `type=disk`. Se
-  não aparecer, o contador fica no script de dados, como hoje — não se perde nada.
+- A atualização no router de produção. A condição do script já foi lá confirmada
+  (2026-10-10): `/file print where type=disk` mostra o `sd1`. Mostra também `flash`, que não
+  entra na escolha do ISPM porque a flash interna não aparece em `/disk`.
 - O contador do consumo com sessões PPPoE ativas (o CHR não tinha nenhuma; o corpo do script
   não mudou da v1).
