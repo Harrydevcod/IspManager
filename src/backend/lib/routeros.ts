@@ -1395,17 +1395,22 @@ async function ensureUsageCounter(transport: RouterTransport, { name, version: b
     throw new RouterError('O router marcou o script do contador como inválido', 0, undefined, 'bad_response');
   }
 
-  const schedulers = asArray(await transport({ method: 'GET', path: '/system/scheduler?.proplist=.id,name,on-event,start-time,interval,policy' }));
-  const expected = [
-    { name, 'on-event': name, 'start-time': '23:59:50', interval: '1h', policy: WAN_USAGE_POLICY },
+  const schedulers = asArray(await transport({ method: 'GET', path: '/system/scheduler?.proplist=.id,name,on-event,start-date,start-time,interval,policy' }));
+  // Com disco a gravação vai para um ficheiro e não deixa linha no registo: corre-se de 5 em 5
+  // minutos, que é o que um corte de luz leva (os contadores vivem na memória do router). Sem
+  // disco cada gravação é uma linha longa no registo e uma escrita na flash: fica de hora a hora.
+  // As 23:59:50 mantêm uma corrida às hh:59:50, a que fecha o dia no contador das WAN.
+  // A data de início fica no passado. Medido no CHR 7.24.2: sem ela o router põe a de hoje e a
+  // primeira corrida só vem às 23:59:50 — o contador ficava parado o resto do dia da instalação.
+  const expected: Array<Record<string, string>> = [
+    { name, 'on-event': name, 'start-date': '2020-01-01', 'start-time': '23:59:50', interval: disk ? '5m' : '1h', policy: WAN_USAGE_POLICY },
     { name: `${name}-startup`, 'on-event': name, 'start-time': 'startup', interval: '0s', policy: WAN_USAGE_POLICY }
   ];
   for (const fields of expected) {
     const existing = schedulers.find((row) => row.name === fields.name);
     if (!existing) {
       await transport({ method: 'PUT', path: '/system/scheduler', body: fields });
-    } else if (existing['on-event'] !== fields['on-event'] || existing['start-time'] !== fields['start-time'] ||
-      existing.interval !== fields.interval || existing.policy !== fields.policy) {
+    } else if (Object.entries(fields).some(([key, value]) => existing[key] !== value)) {
       await transport({ method: 'PATCH', path: `/system/scheduler/${existing['.id']}`, body: fields });
     }
   }

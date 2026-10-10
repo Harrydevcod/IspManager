@@ -52,6 +52,8 @@ describe('instalação dos contadores', () => {
     expect(fake.scripts[0]).toMatchObject({ name: 'ispm-wan-usage', comment: 'ispm-wan-usage v7 @sd1', policy: 'read,write' });
     // O ficheiro só se usa com o disco montado: sem ele, um `/file add` escrevia na memória interna.
     expect(fake.scripts[0].source).toContain(':if ([:len [/file find where name="sd1" type="disk"]] > 0) do={ :set dataFile "sd1/ispm-wan-usage.txt" }');
+    // No ficheiro a gravação não deixa linha no registo: corre de 5 em 5 minutos.
+    expect(fake.schedulers[0]).toMatchObject({ name: 'ispm-wan-usage', 'start-date': '2020-01-01', 'start-time': '23:59:50', interval: '5m' });
     // A corrida logo a seguir é a que passa o estado antigo para o ficheiro.
     expect(fake.calls.at(-1)).toMatchObject({ method: 'POST', path: '/system/script/run', body: { '.id': 'ispm-wan-usage' } });
     expect(setting(db, 'wanUsageCounter')).toBe('ispm-wan-usage v7 @sd1');
@@ -63,9 +65,10 @@ describe('instalação dos contadores', () => {
     const db = memoryDb();
     const fake = router();
     expect(await installUsageCounter(db, fake.transport, 'client')).toEqual({ disk: null });
-    expect(fake.scripts[0]).toMatchObject({ name: 'ispm-client-usage', comment: 'ispm-client-usage v2' });
+    expect(fake.scripts[0]).toMatchObject({ name: 'ispm-client-usage', comment: 'ispm-client-usage v3' });
     expect(fake.scripts[0].source).toContain(':local dataFile ""');
     expect(fake.scripts[0].source).not.toContain('type="disk"');
+    expect(fake.schedulers[0]).toMatchObject({ name: 'ispm-client-usage', interval: '1h' });
     expect(usageCounterDisk(db, 'client')).toBeNull();
   });
 

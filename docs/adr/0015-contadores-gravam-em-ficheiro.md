@@ -88,12 +88,58 @@ linhas do registo em memória; ia também para o diário no cartão e para a fla
 - O ecrã a 1225 px CSS (escala 150%): Registo ao vivo e guardado sem deslocamento horizontal, os
   filtros numa linha, tema escuro e claro.
 
-## Limite que a medição pôs à vista (já existia na v1)
+## A sessão que cai entre duas leituras (fechado na v3 do contador)
 
-O consumo por cliente é lido de hora a hora. Se a sessão PPPoE cair entre duas leituras, o que
-passou desde a última perde-se: no laboratório, 56 kB de uma sessão derrubada antes da leitura
-seguinte. O router regista o total da sessão à saída (`skn001 logged out, <segundos> <bytes>
-<bytes> …`, tópico `account`), o que dava para fechar esta falha; fica por fazer.
+O consumo por cliente é lido de hora a hora. Se a sessão PPPoE caísse entre duas leituras, o que
+passara desde a última perdia-se: no laboratório, 56 kB de uma sessão derrubada antes da leitura
+seguinte. O router escreve o total da sessão à saída (`skn001 logged out, <segundos> <rx> <tx>
+<pacotes> <pacotes> from <MAC>`, tópicos `pppoe,ppp,info,account`), e o `ispm-client-usage v3`
+soma dessas linhas o que faltava antes de ler as sessões ativas. O estado ganha a linha
+`@log;<id> <hora>`, a última saída tratada.
+
+Medido a 2026-10-10:
+
+- No CHR, os dois números da linha são o `rx-byte` e o `tx-byte` da interface, por esta ordem, e
+  incluem os bytes do fecho (interface 113 398 / 112 362 um segundo antes; linha 113 540 /
+  112 418). Um script com `read,write` corrido pelo agendador lê o registo.
+- No CHR, com a v3: uma sessão já vista que cai com tráfego por contar, outra que nasce e morre
+  entre corridas e uma terceira ativa — o total bateu ao byte nos dois sentidos (282 866 /
+  280 884). Corrida repetida não soma de novo. Depois de reiniciar o router (registo vazio) o
+  total mantém-se. Na primeira corrida, as saídas que já estavam no registo não se somam.
+- No hEX S de produção as linhas existem no registo em memória (11 saídas de `skn001`/`skn014`
+  a 09-10, com `/ppp aaa accounting=yes`), e esse registo guardava mais de 27 horas. Não chegam
+  ao diário do cartão, que exclui o tópico `account` — por isso não aparecem nas linhas que o
+  ISPM guarda.
+- `/ppp aaa accounting=no` não tira a linha (CHR): não é um interruptor a vigiar.
+
+## Com disco, os contadores correm de 5 em 5 minutos
+
+Corriam de hora a hora porque cada gravação era uma linha longa no registo e uma escrita na
+flash. No ficheiro do cartão não é nem uma coisa nem outra, e a hora de espera tinha dois
+custos: num reinício ou corte de luz perdia-se até uma hora de tráfego de todas as sessões e
+das WAN (os contadores vivem na memória do router), e uma linha de saída podia rodar para fora
+do registo em memória antes de ser lida. Com disco o agendamento passa a `interval=5m`; sem
+disco fica `1h`. O `start-time=23:59:50` mantém uma corrida às hh:59:50, a que fecha o dia no
+contador das WAN.
+
+Medido no CHR 7.24.2 (2026-10-10):
+
+- **Defeito que já existia:** um agendamento criado com `start-time=23:59:50` e sem data fica
+  com a de hoje, e a primeira corrida só vem às 23:59:50 — no dia da instalação o contador não
+  corria (em seis minutos, `run-count=0`, `next-run` à meia-noite). Com `start-date=2020-01-01`
+  o `next-run` cai no múltiplo de 5 minutos seguinte (11:49:50) e o agendador corre.
+- A corrida do agendador gravou o ficheiro e o registo não ganhou linha nenhuma.
+- Instalar duas vezes seguidas: a segunda não escreve nada no router.
+- Corte de luz (QEMU morto sem desligar, mesmo disco e mesmo cartão): os scripts continuam
+  válidos, os ficheiros lêem-se, e perdeu-se só o tráfego que ainda não tinha sido gravado.
+
+O que fica: o corte de luz leva até 5 minutos de tráfego (não há de onde os recuperar), e o
+contador dos clientes conta com a regra de fábrica `info → memory` a deixar passar o tópico
+`account`. Um buffer de registo próprio para esse tópico tirava a segunda dependência; não se
+fez porque é configuração nova no router para um risco que pede alguém a mexer numa regra de
+fábrica, e as linhas PPPoE passariam a aparecer a dobrar no `/log print`.
+
+Por ver no hEX S: quanto demora uma corrida com os ~30 clientes reais.
 
 ## Por medir
 

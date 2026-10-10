@@ -163,7 +163,7 @@ export async function collectWanUsage(db: Database.Database, transport: RouterTr
   const rows = data === null ? [] : parseWanUsageFile(data);
   // Script de dados vazio = o contador do router ainda não somou nada: não se deixa de contar.
   if (rows.length > 0) {
-    // O router só grava de hora a hora (cada gravação é uma linha no registo dele). Com a app
+    // O router grava de 5 em 5 minutos, ou de hora a hora sem disco. Com a app
     // aberta, soma-se a hoje o que passou desde essa gravação; o MAX da importação deixa a
     // próxima gravação do router, que já inclui isto, tomar o lugar.
     const last = parseWanUsageLast(data!);
