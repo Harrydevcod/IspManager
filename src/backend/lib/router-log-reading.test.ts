@@ -54,6 +54,29 @@ describe('gravações dos contadores', () => {
     expect(row.message).toContain(':log info ola');
   });
 
+  // Medido no CHR 7.24.2: atualizar um contador regista o script novo inteiro, em pedaços.
+  test('a instalação de um script e a criação do ficheiro, partidas em pedaços, ficam numa linha cada', () => {
+    const read = readLog([
+      entry(1, String.raw`changed script settings by api:ispm-api@::/action:2 (/system script set ispm-wan-usage comment="ispm-wan-usage v7 @sd1" policy=read,write source="# ispm-wan-usage v7\;     \n:local a [:find \$line \";\"]`),
+      entry(2, String.raw`len \$line]] }\;     \n  :set x (\$a . \"b\")`),
+      entry(3, String.raw`  :if (\$keep) do={ :set output \$x }")`),
+      entry(4, String.raw`add file by api:ispm-api@::/script:ispm-wan-usage (*0 = /file add contents="# uptime;00:02:07\;     \n# last;ether1;27746;34913\;     \n# 20736;ether1`),
+      entry(5, String.raw`;15346;17115\;     \n" name=sd1/ispm-wan-usage.txt)`),
+      entry(6, 'script removed by api:ispm-api@::/script:ispm-wan-usage/action:3 (/system script remove *2)'),
+      // Inteira e curta, mas com totais lá dentro: não é um resto de gravação, é o ficheiro a nascer.
+      entry(7, String.raw`add file by scheduler:ispm-wan-usage/script:ispm-wan-usage (*0 = /file add contents="# uptime;00:02:24\;     \n# last;ether1;56293;124178\;     \n" name=sd1/ispm-wan-usage.txt)`)
+    ], lookups);
+    expect(read.map((row) => [row.id, row.text])).toEqual([
+      ['*1', 'O ISPM alterou o script ispm-wan-usage'],
+      ['*4', 'O ISPM criou o ficheiro sd1/ispm-wan-usage.txt'],
+      ['*6', 'O ISPM removeu um script'],
+      ['*7', 'O agendamento ispm-wan-usage criou o ficheiro sd1/ispm-wan-usage.txt']
+    ]);
+    expect(read.every((row) => !row.machine)).toBe(true);
+    expect(read[0].message).toBe('changed script settings by api:ispm-api@::/action:2 (/system script set ispm-wan-usage comment="ispm-wan-usage v7 @sd1" policy=read,write source=…)');
+    expect(read[1].message).toBe('add file by api:ispm-api@::/script:ispm-wan-usage (*0 = /file add contents=… name=sd1/ispm-wan-usage.txt)');
+  });
+
   test('compactar é idempotente', () => {
     const once = compactEntries([entry(9, CLIENT), entry(10, WAN_HEAD), entry(11, WAN_TAIL)]);
     expect(compactEntries(once)).toEqual(once);
@@ -77,6 +100,10 @@ describe('leitura das linhas', () => {
     expect(one('<pppoe-skn001>: terminating...', 'pppoe,ppp,info').text).toBe('PPPoE skn001 (Isa Rafe): a sessão está a terminar');
     expect(one('<0010>: user skn014 authentication failed', 'pppoe,ppp,error').text).toBe('PPPoE skn014: autenticação falhada');
     expect(one('PPPoE connection established from 18:FD:74:22:23:B7', 'pppoe,info').text).toBe('Pedido de ligação PPPoE de 18:FD:74:22:23:B7 (Cibel Restaurante)');
+    expect(one('skn001 logged in, 10.99.0.2 from 52:54:00:AA:00:03', 'pppoe,ppp,info,account').text).toBe('PPPoE skn001 (Isa Rafe): entrou com o endereço 10.99.0.2');
+    expect(one('skn001 logged out, 143 115036 112418 106 92 from 52:54:00:AA:00:03', 'pppoe,ppp,info,account').text).toBe('PPPoE skn001 (Isa Rafe): saiu ao fim de 2 min 23 s');
+    expect(one('skn014 logged out, 27174 1 2 3 4 from 18:FD:74:22:23:B7', 'pppoe,ppp,info,account').text).toBe('PPPoE skn014: saiu ao fim de 7 h 32 min');
+    expect(one('router rebooted', 'system,info').text).toBe('O router reiniciou');
     expect(one('<pppoe-skn001> detect INTERNET', 'interface,info').text).toBe('PPPoE skn001 (Isa Rafe): deteção de Internet — com Internet');
     expect(one('WAN1-STARLINK detect UNKNOWN', 'interface,info').text).toBe('WAN1-STARLINK: deteção de Internet — por determinar');
   });
@@ -85,7 +112,7 @@ describe('leitura das linhas', () => {
     expect(one('dhcp-SKYNET assigned 192.168.2.249 for 08:8A:F1:6F:4C:93 MW325R', 'dhcp,info').text).toBe('DHCP: 192.168.2.249 entregue a 08:8A:F1:6F:4C:93 (MW325R)');
     expect(one('dhcp-SKYNET deassigned 192.168.2.81 for 16:3F:61:6E:2D:81 ', 'dhcp,info').text).toBe('DHCP: 192.168.2.81 libertado por 16:3F:61:6E:2D:81');
     expect(one('LAN1: received DHCP server message on untrusted port from source IP 192.168.0.1, MAC 30:16:9d:aa:53:8b', 'bridge,warning').text)
-      .toBe('Resposta de um servidor DHCP numa porta não confiável (LAN1): 192.168.0.1, 30:16:9D:AA:53:8B');
+      .toBe('Resposta DHCP na porta não confiável LAN1: 192.168.0.1, 30:16:9D:AA:53:8B');
     expect(one('dhcp-SKYNET assigned 192.168.2.230 for 3C:64:CF:7B:80:08 Archer C20', 'dhcp,info').text).toBe('DHCP: 192.168.2.230 entregue a 3C:64:CF:7B:80:08 (Archer C20)');
     expect(one('dhcp-SKYNET offering lease 192.168.2.118 for 18:FD:74:22:23:B7 without success', 'dhcp,warning').text)
       .toBe('DHCP: 192.168.2.118 oferecido a 18:FD:74:22:23:B7 (Cibel Restaurante) sem resposta');
@@ -107,6 +134,12 @@ describe('leitura das linhas', () => {
       .toBe('admin (WinBox) removeu uma vigia netwatch');
     expect(one('log rule added by api:ispm-api@:: (*F = /system logging add action=ispmdiario topics=info,!account)').text)
       .toBe('O ISPM criou uma regra de registo: action=ispmdiario topics=info,!account');
+    expect(one('add file by mac-msg(winbox):admin@54:14:A7:11:53:3C/terminal (*0 = /file add contents="a;1;2" name=sd1/ispm-teste.txt)').text)
+      .toBe('admin (WinBox) criou o ficheiro sd1/ispm-teste.txt');
+    expect(one('new script added by api:ispm-api@:: (*5 = /system script add name=ispm-wan-usage policy=read,write source="# x")').text)
+      .toBe('O ISPM criou o script ispm-wan-usage');
+    expect(one('new script scheduled by mac-msg(winbox):admin@54:14:A7:11:53:3C/terminal (*4 = /system scheduler add interval=10s name=ispm-teste on-event=ispm-teste policy=read,write)').text)
+      .toBe('admin (WinBox) criou o agendamento ispm-teste');
     expect(one('log action changed by tcp-msg(winbox):admin@192.168.2.250/terminal/action:132 ()').text).toBe('admin (WinBox) alterou uma ação de registo');
     expect(one('ppp profile <PLANO-20-10> added by api:ispm-api@:: (*4 = /ppp profile add comment=ispm:plano:1 name=PLANO-20-10)').text)
       .toBe('O ISPM criou o perfil PPP PLANO-20-10: comment=ispm:plano:1 name=PLANO-20-10');

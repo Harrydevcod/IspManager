@@ -1,5 +1,8 @@
+import { loadUsageState, storeUsageState } from './routeros-usage-store';
+
 /**
- * Contador PPPoE no MikroTik. O estado persiste nos comentários do segundo script.
+ * Contador PPPoE no MikroTik. O estado persiste num ficheiro do cartão ou, sem cartão, no
+ * script `ispm-client-usage-data` (ver `routeros-usage-store.ts`).
  * As globais do scheduler não persistem e uma chave de array ausente é "nothing".
  * Sessão nova = tempo ligado a descer ou contador a descer. ponytail: uma sessão que cai e
  * volta já com mais tempo ligado e mais bytes do que a anterior tinha na última gravação passa
@@ -7,25 +10,23 @@
  * ponytail: com a app fechada vários dias, o consumo cai no dia da reabertura;
  * o total do mês fica certo. Criar baldes diários no router se esse detalhe importar.
  */
+export const CLIENT_USAGE_NAME = 'ispm-client-usage';
+export const CLIENT_USAGE_VERSION = 'ispm-client-usage v2';
 export const CLIENT_USAGE_DATA_NAME = 'ispm-client-usage-data';
 
-export const CLIENT_USAGE_SCRIPT = String.raw`# ispm-client-usage v1
-:local dataName "ispm-client-usage-data"
+export const clientUsageScript = (disk: string | null) => String.raw`# ${CLIENT_USAGE_VERSION}
+${loadUsageState(CLIENT_USAGE_NAME, CLIENT_USAGE_DATA_NAME, disk)}
 :local totals [:toarray ""]
-:local dataIds [/system script find where name=$dataName]
-:if ([:len $dataIds] > 0) do={
-  :local text [/system script get $dataIds source]
-  :while ([:len $text] > 0) do={
-    :local stop [:find $text "\n"]
-    :if ([:typeof $stop] = "nil") do={ :set stop [:len $text] }
-    :local line [:pick $text 0 $stop]
-    :set text [:pick $text ($stop + 1) [:len $text]]
-    :if ([:pick $line 0 2] = "# ") do={ :set line [:pick $line 2 [:len $line]] }
-    :local separator [:find $line ";"]
-    :if ([:typeof $separator] != "nil") do={
-      :local name [:pick $line 0 $separator]
-      :if ([:len $name] > 0) do={ :set ($totals->$name) [:pick $line ($separator + 1) [:len $line]] }
-    }
+:while ([:len $text] > 0) do={
+  :local stop [:find $text "\n"]
+  :if ([:typeof $stop] = "nil") do={ :set stop [:len $text] }
+  :local line [:pick $text 0 $stop]
+  :set text [:pick $text ($stop + 1) [:len $text]]
+  :if ([:pick $line 0 2] = "# ") do={ :set line [:pick $line 2 [:len $line]] }
+  :local separator [:find $line ";"]
+  :if ([:typeof $separator] != "nil") do={
+    :local name [:pick $line 0 $separator]
+    :if ([:len $name] > 0) do={ :set ($totals->$name) [:pick $line ($separator + 1) [:len $line]] }
   }
 }
 :foreach session in=[/ppp active find] do={
@@ -60,8 +61,4 @@ export const CLIENT_USAGE_SCRIPT = String.raw`# ispm-client-usage v1
 }
 :local output ""
 :foreach name,value in=$totals do={ :set output ($output . "# " . $name . ";" . $value . "\n") }
-:if ([:len $dataIds] = 0) do={
-  /system script add name=$dataName policy=read comment="dados do ispm-client-usage; nao editar" source=$output
-} else={
-  /system script set $dataIds source=$output
-}`;
+${storeUsageState('dados do ispm-client-usage; nao editar')}`;

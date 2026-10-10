@@ -9,8 +9,6 @@ import { installLogJournal, journalDisk, listLogDays, loadLogDay } from '../lib/
 import { loadNetworkStatus, loadProbeEvents, mapWithLimit, readProbeConfig, runNetworkProbe } from '../lib/network-probe';
 import {
   createTransport,
-  ensureWanUsageCounter,
-  ensureClientUsageCounter,
   readClientUsageData,
   DEFAULT_ROUTER_PORT,
   describeRouterFailure,
@@ -56,6 +54,7 @@ import { crossReference, type ObservedHost } from '../lib/network-inventory';
 import { buildProposals, dismissalKey, findOrphans, type ProposalKind } from '../lib/discovery-reconcile';
 import { runJob } from '../lib/jobRuns';
 import { collectWanUsage, loadWanUsage } from '../lib/wan-usage';
+import { installUsageCounter } from '../lib/usage-counter';
 import { collectClientUsage, loadClientUsage } from '../lib/client-usage';
 import { backupRouterConfig, listSnapshots, loadSnapshot } from '../lib/router-config-backup';
 import { applyPlanProfile, readBaseProfileName } from '../lib/plan-profiles';
@@ -601,8 +600,7 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     if (config.dryRun) return reply.status(409).send({ error: 'Desative o modo de ensaio para instalar o contador no router' });
     try {
       const transport = createTransport(config);
-      await ensureWanUsageCounter(transport);
-      await transport({ method: 'POST', path: '/system/script/run', body: { '.id': 'ispm-wan-usage' } });
+      await installUsageCounter(db, transport, 'wan');
       const result = await collectWanUsage(db, transport);
       recordAudit(request, { action: 'router_wan_usage_counter', entityType: 'router', summary: 'Instalou a contagem das WAN no router' });
       // O run da REST não devolve o erro do script: sem dados, o contador não correu.
@@ -627,10 +625,9 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     if (config.dryRun) return reply.status(409).send({ error: 'Desative o modo de ensaio para instalar o contador no router' });
     try {
       const transport = createTransport(config);
-      await ensureClientUsageCounter(transport);
-      await transport({ method: 'POST', path: '/system/script/run', body: { '.id': 'ispm-client-usage' } });
-      // O run da REST não devolve o erro do script: sem o script de dados, o contador não correu.
-      if (await readClientUsageData(transport) === null) {
+      const { disk } = await installUsageCounter(db, transport, 'client');
+      // O run da REST não devolve o erro do script: sem dados guardados, o contador não correu.
+      if (await readClientUsageData(transport, disk) === null) {
         return reply.status(502).send({ error: 'O contador foi instalado mas não gravou dados. Veja System → Scripts no router.' });
       }
       const result = await collectClientUsage(db, transport);

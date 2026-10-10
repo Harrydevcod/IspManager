@@ -19,36 +19,68 @@ export type LogLookups = {
 
 // Os contadores guardam os totais no `source` de um script, e o router regista o texto todo.
 const COUNTER_WRITE = /^(changed script settings by \S+ \(\/system script set (ispm-(?:wan|client)-usage)-data)\b/;
-const COUNTER_CLOSED = /"\)\s*$/;
-const COUNTER_COMPACT = ' source=…)';
 // Um pedaço de gravação sem a cabeça: "…;rx;tx\; \n# dia;WAN;…". No cartão vem com mais espaços.
 const COUNTER_FRAGMENT = /;\d+(?:;[\d:dw]+)?\\;\s+\\n/;
-// Mais do que isto não é uma gravação partida, é outra coisa a correr no mesmo segundo.
+// Mais do que isto não é um texto partido, é outra coisa a correr no mesmo segundo.
 const MAX_FRAGMENTS = 40;
+// Acima disto, o texto que vem dentro de uma linha de configuração já não se lê: fica "…".
+const LONG_TEXT = 300;
+
+/**
+ * As linhas de configuração que trazem um texto inteiro lá dentro, e que o registo em memória
+ * parte em vários pedaços: o `source` de um script e o `contents` de um ficheiro. Medido no CHR
+ * 7.24.2: instalar um contador do ISPM dá cinco linhas destas, e criar o ficheiro de estado
+ * mais uma. `closed` reconhece o pedaço que fecha (a aspa final não pode ser uma `\"` do texto).
+ */
+const CARRIERS = [
+  {
+    head: /^((?:changed script settings|new script added) by \S+ \(.*?) source="/s,
+    closed: /(?<!\\)"\)\s*$/,
+    compact: (prefix: string) => `${prefix} source=…)`,
+    always: false
+  },
+  {
+    head: /^(add file by \S+ \(\*\w+ = \/file add) contents="/s,
+    closed: /(?<!\\)" name=\S+\)\s*$/,
+    compact: (prefix: string, last: string) => `${prefix} contents=…${/(?<!\\)"( name=\S+\))\s*$/.exec(last)?.[1] ?? ')'}`,
+    // O conteúdo de um ficheiro nunca se lê numa linha de registo: encurta-se sempre.
+    always: true
+  }
+];
 
 const idNumber = (id: string) => Number.parseInt(id.replace(/^\*/, ''), 16) || 0;
 
-/** O que sai e o que encurta: continuações de uma gravação, fragmentos órfãos e cabeças. */
+/** O que sai e o que encurta: continuações de um texto partido, fragmentos órfãos e cabeças. */
 function weighCounters(entries: RouterLogEntry[]) {
   const continued = new Set<RouterLogEntry>();
   const orphans = new Set<RouterLogEntry>();
   const shortened = new Map<RouterLogEntry, string>();
   const inOrder = [...entries].sort((a, b) => idNumber(a.id) - idNumber(b.id));
+  const carrierOf = (message: string) => CARRIERS.find((carrier) => carrier.head.test(message));
   for (let index = 0; index < inOrder.length; index += 1) {
     const head = inOrder[index];
-    const match = COUNTER_WRITE.exec(head.message);
-    if (!match) {
+    const carrier = carrierOf(head.message);
+    if (!carrier) {
       if (COUNTER_FRAGMENT.test(head.message)) orphans.add(head);
       continue;
     }
-    shortened.set(head, `${match[1]}${COUNTER_COMPACT}`);
-    if (head.message.endsWith(COUNTER_COMPACT) || COUNTER_CLOSED.test(head.message)) continue;
-    for (let next = index + 1; next < inOrder.length && next - index <= MAX_FRAGMENTS; next += 1) {
-      const piece = inOrder[next];
-      if (piece.time !== head.time || piece.topics !== head.topics || COUNTER_WRITE.test(piece.message)) break;
-      continued.add(piece);
-      index = next;
-      if (COUNTER_CLOSED.test(piece.message)) break;
+    const prefix = carrier.head.exec(head.message)![1];
+    let last = head.message;
+    let pieces = 0;
+    if (!carrier.closed.test(head.message)) {
+      for (let next = index + 1; next < inOrder.length && pieces < MAX_FRAGMENTS; next += 1) {
+        const piece = inOrder[next];
+        if (piece.time !== head.time || piece.topics !== head.topics || carrierOf(piece.message)) break;
+        continued.add(piece);
+        pieces += 1;
+        last = piece.message;
+        index = next;
+        if (carrier.closed.test(piece.message)) break;
+      }
+    }
+    // Um texto curto e inteiro lê-se bem como está; o estado de um contador nunca interessa.
+    if (carrier.always || pieces > 0 || !carrier.closed.test(head.message) || head.message.length > LONG_TEXT || COUNTER_WRITE.test(head.message)) {
+      shortened.set(head, carrier.compact(prefix.replace(/ policy=""$/, ''), last));
     }
   }
   const shorten = (entry: RouterLogEntry) => {
@@ -128,8 +160,18 @@ function configObject(raw: string, lookups: LogLookups): string {
     'log rule': 'uma regra de registo',
     'log action': 'uma ação de registo',
     'Netwatch config': 'uma vigia netwatch',
-    'package channel': 'o canal de atualizações'
+    'package channel': 'o canal de atualizações',
+    script: 'um script'
   } as Record<string, string>)[raw] ?? raw;
+}
+
+/** Segundos por extenso: "2 min 23 s", "3 h 05 min". */
+function duration(seconds: number): string {
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ${String(seconds % 60).padStart(2, '0')} s`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours} h ${String(minutes % 60).padStart(2, '0')} min` : `${Math.floor(hours / 24)} d ${String(hours % 24).padStart(2, '0')} h`;
 }
 
 const DETAIL_LIMIT = 140;
@@ -167,7 +209,8 @@ const RULES: Rule[] = [
   },
   {
     pattern: /^(\S+): received DHCP server message on untrusted port from source IP (\S+), MAC (\S+)$/,
-    read: (m) => ({ kind: 'dhcp_estranho', text: `Resposta de um servidor DHCP numa porta não confiável (${m[1]}): ${m[2]}, ${m[3].toUpperCase()}` })
+    // Curta de propósito: a 1225 px a coluna mostra ~75 caracteres, e o MAC é o que interessa ler.
+    read: (m) => ({ kind: 'dhcp_estranho', text: `Resposta DHCP na porta não confiável ${m[1]}: ${m[2]}, ${m[3].toUpperCase()}` })
   },
   {
     pattern: /^event (up|down) \[ type: \w+, host: (\S+) \]$/,
@@ -185,6 +228,16 @@ const RULES: Rule[] = [
     pattern: /^<[0-9a-f]+>: user (\S+) authentication failed$/,
     read: (m, lookups) => ({ kind: 'pppoe', text: `PPPoE ${withClient(m[1], lookups)}: autenticação falhada` })
   },
+  {
+    // Medido no CHR 7.24.2: a conta da sessão, com o tempo ligado em segundos à saída.
+    pattern: /^(\S+) logged in, (\S+) from (\S+)$/,
+    read: (m, lookups) => ({ kind: 'pppoe', text: `PPPoE ${withClient(m[1], lookups)}: entrou com o endereço ${m[2]}` })
+  },
+  {
+    pattern: /^(\S+) logged out, (\d+) \d+ \d+ \d+ \d+ from \S+$/,
+    read: (m, lookups) => ({ kind: 'pppoe', text: `PPPoE ${withClient(m[1], lookups)}: saiu ao fim de ${duration(Number(m[2]))}` })
+  },
+  { pattern: /^router rebooted\b.*$/, read: () => ({ kind: 'outro', text: 'O router reiniciou' }) },
   {
     pattern: /^PPPoE connection established from (\S+)$/,
     read: (m, lookups) => {
@@ -219,6 +272,18 @@ const RULES: Rule[] = [
   {
     pattern: /^\S+ on (\S+) (got|lost) IP address (\S+)(?: - .+)?$/,
     read: (m) => ({ kind: 'porta', text: `${m[1]} ${m[2] === 'got' ? 'recebeu' : 'perdeu'} o endereço ${m[3]}` })
+  },
+  {
+    // Medido em 2026-10-10: criar um ficheiro regista-se; escrever num que já existe, não.
+    pattern: /^add file by (\S+)(?: \((?:\*\w+ = )?\/file add (.*)\))?$/s,
+    read: (m, lookups) => ({ kind: 'config', text: `${configActor(m[1], lookups)} criou o ficheiro ${/\bname=(\S+)/.exec(m[2] ?? '')?.[1] ?? ''}`.trimEnd() })
+  },
+  {
+    pattern: /^new script (added|scheduled) by (\S+)(?: \((.*)\))?$/s,
+    read: (m, lookups) => {
+      const name = /\bname=(\S+)/.exec(m[3] ?? '')?.[1];
+      return { kind: 'config', text: `${configActor(m[2], lookups)} criou o ${m[1] === 'added' ? 'script' : 'agendamento'}${name ? ` ${name}` : ''}` };
+    }
   },
   {
     // Esta traz o verbo à frente, ao contrário das outras alterações.

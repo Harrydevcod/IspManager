@@ -8,8 +8,9 @@ import { createTransport, exportConfig, isRouterConfigured, readRouterConfig, ty
 /**
  * O que muda sem ninguém mexer na configuração faria de cada cópia uma versão nova:
  * - a linha "# 2026-10-02 12:00:00 by RouterOS 7.24.2" (sai; a versão fica à parte);
- * - os scripts de dados dos contadores do ISPM, que o router reescreve de hora a hora
- *   (medido no hEX S: o `ispm-wan-usage-data` vem inteiro na exportação).
+ * - os scripts de dados dos contadores do ISPM, que um router sem disco amovível reescreve de
+ *   hora a hora (medido no hEX S: o `ispm-wan-usage-data` vem inteiro na exportação). Com
+ *   disco, o estado vai para um ficheiro e não entra na exportação (ADR 0015).
  * Uma entrada da exportação continua nas linhas seguintes enquanto acabar em "\".
  */
 export function normalizeExport(raw: string): { content: string; routerosVersion: string | null } {

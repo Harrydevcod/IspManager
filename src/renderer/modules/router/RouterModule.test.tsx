@@ -342,7 +342,7 @@ describe('Router de gestão', () => {
     const line = (id: string, time: string, topics: string, message: string, text: string) => ({ id, time, topics, message, text, kind: 'outro', machine: false });
     const stored: Record<string, Array<ReturnType<typeof line>>> = {
       '2026-10-08': [
-        line('*1', '2026-10-08 20:06:54', 'bridge,warning', 'LAN1: received DHCP server message on untrusted port from source IP 192.168.1.1, MAC 04:f4:1c:45:fd:96', 'Resposta de um servidor DHCP numa porta não confiável (LAN1): 192.168.1.1, 04:F4:1C:45:FD:96'),
+        line('*1', '2026-10-08 20:06:54', 'bridge,warning', 'LAN1: received DHCP server message on untrusted port from source IP 192.168.1.1, MAC 04:f4:1c:45:fd:96', 'Resposta DHCP na porta não confiável LAN1: 192.168.1.1, 04:F4:1C:45:FD:96'),
         line('*2', '2026-10-08 20:07:07', 'netwatch,info', 'event down [ type: simple, host: 192.168.1.110 ]', '192.168.1.110 deixou de responder')
       ],
       '2026-10-07': [line('*3', '2026-10-07 18:19:05', 'netwatch,info', 'event down [ type: simple, host: 192.168.1.251 ]', '192.168.1.251 deixou de responder')]

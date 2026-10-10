@@ -4,8 +4,9 @@ import { connect as tlsConnect } from 'node:tls';
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { readSecret } from './secrets';
-import { WAN_USAGE_DATA_NAME, WAN_USAGE_SCRIPT } from './routeros-wan-script';
-import { CLIENT_USAGE_DATA_NAME, CLIENT_USAGE_SCRIPT } from './routeros-client-script';
+import { usageDataFile } from './routeros-usage-store';
+import { WAN_USAGE_DATA_NAME, WAN_USAGE_NAME, WAN_USAGE_VERSION, wanUsageScript } from './routeros-wan-script';
+import { CLIENT_USAGE_DATA_NAME, CLIENT_USAGE_NAME, CLIENT_USAGE_VERSION, clientUsageScript } from './routeros-client-script';
 
 /**
  * Cliente REST do RouterOS (v7). Fino de propósito: o ISPM só precisa de listar
@@ -1358,12 +1359,20 @@ export async function patchProfile(transport: RouterTransport, id: string, patch
   await transport({ method: 'PATCH', path: `/ppp/profile/${id}`, body: { 'rate-limit': patch.rateLimit } });
 }
 
-const WAN_USAGE_NAME = 'ispm-wan-usage';
-const WAN_USAGE_VERSION = 'ispm-wan-usage v6';
 const WAN_USAGE_POLICY = 'read,write';
 
+/**
+ * O comentário do script instalado: a versão e, com disco, onde guarda o estado. Mudar de
+ * disco reinstala o script, porque o caminho do ficheiro vai escrito nele.
+ */
+export const usageCounterMark = (version: string, disk: string | null) => (disk ? `${version} @${disk}` : version);
+
 /** Instala ou reconcilia os três objetos. PUT/PATCH não são repetidos pelo transporte. */
-async function ensureUsageCounter(transport: RouterTransport, { name, version, source }: { name: string; version: string; source: string }): Promise<void> {
+async function ensureUsageCounter(transport: RouterTransport, { name, version: baseVersion, disk, build }: {
+  name: string; version: string; disk: string | null; build: (disk: string | null) => string;
+}): Promise<void> {
+  const version = usageCounterMark(baseVersion, disk);
+  const source = build(disk);
   const scripts = asArray(await transport({ method: 'GET', path: '/system/script?.proplist=.id,name,comment' }));
   const script = scripts.find((row) => row.name === name);
   if (!script) {
@@ -1402,27 +1411,46 @@ async function ensureUsageCounter(transport: RouterTransport, { name, version, s
   }
 }
 
-export async function ensureWanUsageCounter(transport: RouterTransport): Promise<void> {
-  return ensureUsageCounter(transport, { name: WAN_USAGE_NAME, version: WAN_USAGE_VERSION, source: WAN_USAGE_SCRIPT });
+/** `disk` é o disco amovível onde o contador guarda o estado; `null` deixa-o no script de dados. */
+export async function ensureWanUsageCounter(transport: RouterTransport, disk: string | null = null): Promise<void> {
+  return ensureUsageCounter(transport, { name: WAN_USAGE_NAME, version: WAN_USAGE_VERSION, disk, build: wanUsageScript });
 }
 
-export async function ensureClientUsageCounter(transport: RouterTransport): Promise<void> {
-  return ensureUsageCounter(transport, { name: 'ispm-client-usage', version: 'ispm-client-usage v1', source: CLIENT_USAGE_SCRIPT });
+export async function ensureClientUsageCounter(transport: RouterTransport, disk: string | null = null): Promise<void> {
+  return ensureUsageCounter(transport, { name: CLIENT_USAGE_NAME, version: CLIENT_USAGE_VERSION, disk, build: clientUsageScript });
 }
 
-/** Os totais que o contador do router guardou; `null` enquanto o contador não correu. */
-export async function readWanUsageData(transport: RouterTransport): Promise<string | null> {
-  const row = asArray(await transport({ method: 'GET', path: `/system/script?name=${WAN_USAGE_DATA_NAME}&.proplist=source` }))[0];
-  if (!row) return null;
-  if (typeof row.source !== 'string') throw new RouterError('O script de dados do contador não devolveu source', 0, undefined, 'bad_response');
-  return row.source;
+/**
+ * O estado que um contador guardou; `null` enquanto não correu. O script de dados lê-se
+ * primeiro: só existe enquanto o ficheiro não serve, e nesse caso é ele o mais recente.
+ */
+async function readUsageData(transport: RouterTransport, name: string, dataName: string, disk: string | null): Promise<string | null> {
+  const row = asArray(await transport({ method: 'GET', path: `/system/script?name=${dataName}&.proplist=source` }))[0];
+  if (row) {
+    if (typeof row.source !== 'string') throw new RouterError('O script de dados do contador não devolveu source', 0, undefined, 'bad_response');
+    return row.source;
+  }
+  const file = usageDataFile(disk, name);
+  if (!file || !/^[\w./-]+$/.test(file)) return null;
+  const found = asArray(await transport({ method: 'GET', path: `/file?name=${encodeURIComponent(file)}&.proplist=name,size` }))[0];
+  if (!found) return null;
+  // O mesmo caminho do diário do registo: o `/file get` pelo `/execute` serve até 60 kB.
+  const raw = await transport({ method: 'POST', path: '/execute', body: { script: `:put [/file get "${file}" contents]`, 'as-string': 'true' } });
+  const text = (raw as { ret?: unknown } | null)?.ret;
+  // Um texto mais curto do que o ficheiro é um corte: rebenta em vez de importar a menos.
+  if (typeof text !== 'string' || text.length < (num(found.size) ?? 0) * 0.9) {
+    throw new RouterError(`O router não devolveu o texto de ${file}`, 0, undefined, 'bad_response');
+  }
+  return text;
 }
 
-export async function readClientUsageData(transport: RouterTransport): Promise<string | null> {
-  const row = asArray(await transport({ method: 'GET', path: `/system/script?name=${CLIENT_USAGE_DATA_NAME}&.proplist=source` }))[0];
-  if (!row) return null;
-  if (typeof row.source !== 'string') throw new RouterError('O script de dados do contador não devolveu source', 0, undefined, 'bad_response');
-  return row.source;
+/** Os totais que o contador das WAN guardou; `null` enquanto o contador não correu. */
+export async function readWanUsageData(transport: RouterTransport, disk: string | null = null): Promise<string | null> {
+  return readUsageData(transport, WAN_USAGE_NAME, WAN_USAGE_DATA_NAME, disk);
+}
+
+export async function readClientUsageData(transport: RouterTransport, disk: string | null = null): Promise<string | null> {
+  return readUsageData(transport, CLIENT_USAGE_NAME, CLIENT_USAGE_DATA_NAME, disk);
 }
 
 /**

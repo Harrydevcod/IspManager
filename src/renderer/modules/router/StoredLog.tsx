@@ -63,7 +63,7 @@ export function StoredLog() {
           ))}
         </Select>
         <Field type="search" label="Procurar" className="router-log-search" value={search}
-          onChange={(event) => setSearch(event.target.value)} placeholder="IP, MAC, tópico ou texto" />
+          onChange={(event) => setSearch(event.target.value)} placeholder="IP, MAC ou texto" />
         <Toggle title="Só erros e avisos" wide={false} checked={onlyProblems} onChange={(event) => setOnlyProblems(event.target.checked)} />
         <Toggle title="Manutenção do ISPM" wide={false} checked={showMachine} onChange={(event) => setShowMachine(event.target.checked)} />
         <Button variant="secondary" leadingIcon={<Download size={14} aria-hidden />} disabled={!loaded} onClick={() => loaded && download(loaded)}>

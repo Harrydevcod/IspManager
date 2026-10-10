@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-network';
 import { createTransport, isRouterConfigured, listInterfaceListMembers, listInterfaces, readRouterConfig, readWanUsageData, type RouterTransport } from './routeros';
+import { refreshUsageCounterForJob, usageCounterDisk } from './usage-counter';
 
 /**
  * O dia é o UTC, como o da conta Starlink ("seguida no fuso horário UTC"): em Cabo Verde
@@ -150,11 +151,15 @@ export async function runWanUsageIfDue() {
   }
   const presence = await detectAdminNetwork(db);
   if (isOffNetwork(presence)) return { skipped: true, reason: offNetworkReason(presence) };
-  return collectWanUsage(db, createTransport(config));
+  const transport = createTransport(config);
+  // Um contador já instalado numa versão antiga atualiza-se aqui; se falhar, conta-se na mesma.
+  const installed = db.prepare("SELECT 1 FROM app_settings WHERE key = 'wanUsageRouterImportedAt'").get() !== undefined;
+  const counter = config.dryRun ? {} : await refreshUsageCounterForJob(db, transport, 'wan', installed);
+  return { ...await collectWanUsage(db, transport), ...counter };
 }
 
 export async function collectWanUsage(db: Database.Database, transport: RouterTransport, today = utcDay()) {
-  const data = await readWanUsageData(transport);
+  const data = await readWanUsageData(transport, usageCounterDisk(db, 'wan'));
   const rows = data === null ? [] : parseWanUsageFile(data);
   // Script de dados vazio = o contador do router ainda não somou nada: não se deixa de contar.
   if (rows.length > 0) {
