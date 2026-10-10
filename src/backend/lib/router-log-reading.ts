@@ -165,6 +165,15 @@ function configObject(raw: string, lookups: LogLookups): string {
   } as Record<string, string>)[raw] ?? raw;
 }
 
+/** Segundos por extenso: "2 min 23 s", "3 h 05 min". */
+function duration(seconds: number): string {
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ${String(seconds % 60).padStart(2, '0')} s`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours} h ${String(minutes % 60).padStart(2, '0')} min` : `${Math.floor(hours / 24)} d ${String(hours % 24).padStart(2, '0')} h`;
+}
+
 const DETAIL_LIMIT = 140;
 
 /** Do comando registado fica só o que mudou: os `chave=valor`. */
@@ -200,7 +209,8 @@ const RULES: Rule[] = [
   },
   {
     pattern: /^(\S+): received DHCP server message on untrusted port from source IP (\S+), MAC (\S+)$/,
-    read: (m) => ({ kind: 'dhcp_estranho', text: `Resposta de um servidor DHCP numa porta não confiável (${m[1]}): ${m[2]}, ${m[3].toUpperCase()}` })
+    // Curta de propósito: a 1225 px a coluna mostra ~75 caracteres, e o MAC é o que interessa ler.
+    read: (m) => ({ kind: 'dhcp_estranho', text: `Resposta DHCP na porta não confiável ${m[1]}: ${m[2]}, ${m[3].toUpperCase()}` })
   },
   {
     pattern: /^event (up|down) \[ type: \w+, host: (\S+) \]$/,
@@ -218,6 +228,16 @@ const RULES: Rule[] = [
     pattern: /^<[0-9a-f]+>: user (\S+) authentication failed$/,
     read: (m, lookups) => ({ kind: 'pppoe', text: `PPPoE ${withClient(m[1], lookups)}: autenticação falhada` })
   },
+  {
+    // Medido no CHR 7.24.2: a conta da sessão, com o tempo ligado em segundos à saída.
+    pattern: /^(\S+) logged in, (\S+) from (\S+)$/,
+    read: (m, lookups) => ({ kind: 'pppoe', text: `PPPoE ${withClient(m[1], lookups)}: entrou com o endereço ${m[2]}` })
+  },
+  {
+    pattern: /^(\S+) logged out, (\d+) \d+ \d+ \d+ \d+ from \S+$/,
+    read: (m, lookups) => ({ kind: 'pppoe', text: `PPPoE ${withClient(m[1], lookups)}: saiu ao fim de ${duration(Number(m[2]))}` })
+  },
+  { pattern: /^router rebooted\b.*$/, read: () => ({ kind: 'outro', text: 'O router reiniciou' }) },
   {
     pattern: /^PPPoE connection established from (\S+)$/,
     read: (m, lookups) => {

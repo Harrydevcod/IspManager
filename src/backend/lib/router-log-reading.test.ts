@@ -100,6 +100,10 @@ describe('leitura das linhas', () => {
     expect(one('<pppoe-skn001>: terminating...', 'pppoe,ppp,info').text).toBe('PPPoE skn001 (Isa Rafe): a sessão está a terminar');
     expect(one('<0010>: user skn014 authentication failed', 'pppoe,ppp,error').text).toBe('PPPoE skn014: autenticação falhada');
     expect(one('PPPoE connection established from 18:FD:74:22:23:B7', 'pppoe,info').text).toBe('Pedido de ligação PPPoE de 18:FD:74:22:23:B7 (Cibel Restaurante)');
+    expect(one('skn001 logged in, 10.99.0.2 from 52:54:00:AA:00:03', 'pppoe,ppp,info,account').text).toBe('PPPoE skn001 (Isa Rafe): entrou com o endereço 10.99.0.2');
+    expect(one('skn001 logged out, 143 115036 112418 106 92 from 52:54:00:AA:00:03', 'pppoe,ppp,info,account').text).toBe('PPPoE skn001 (Isa Rafe): saiu ao fim de 2 min 23 s');
+    expect(one('skn014 logged out, 27174 1 2 3 4 from 18:FD:74:22:23:B7', 'pppoe,ppp,info,account').text).toBe('PPPoE skn014: saiu ao fim de 7 h 32 min');
+    expect(one('router rebooted', 'system,info').text).toBe('O router reiniciou');
     expect(one('<pppoe-skn001> detect INTERNET', 'interface,info').text).toBe('PPPoE skn001 (Isa Rafe): deteção de Internet — com Internet');
     expect(one('WAN1-STARLINK detect UNKNOWN', 'interface,info').text).toBe('WAN1-STARLINK: deteção de Internet — por determinar');
   });
@@ -108,7 +112,7 @@ describe('leitura das linhas', () => {
     expect(one('dhcp-SKYNET assigned 192.168.2.249 for 08:8A:F1:6F:4C:93 MW325R', 'dhcp,info').text).toBe('DHCP: 192.168.2.249 entregue a 08:8A:F1:6F:4C:93 (MW325R)');
     expect(one('dhcp-SKYNET deassigned 192.168.2.81 for 16:3F:61:6E:2D:81 ', 'dhcp,info').text).toBe('DHCP: 192.168.2.81 libertado por 16:3F:61:6E:2D:81');
     expect(one('LAN1: received DHCP server message on untrusted port from source IP 192.168.0.1, MAC 30:16:9d:aa:53:8b', 'bridge,warning').text)
-      .toBe('Resposta de um servidor DHCP numa porta não confiável (LAN1): 192.168.0.1, 30:16:9D:AA:53:8B');
+      .toBe('Resposta DHCP na porta não confiável LAN1: 192.168.0.1, 30:16:9D:AA:53:8B');
     expect(one('dhcp-SKYNET assigned 192.168.2.230 for 3C:64:CF:7B:80:08 Archer C20', 'dhcp,info').text).toBe('DHCP: 192.168.2.230 entregue a 3C:64:CF:7B:80:08 (Archer C20)');
     expect(one('dhcp-SKYNET offering lease 192.168.2.118 for 18:FD:74:22:23:B7 without success', 'dhcp,warning').text)
       .toBe('DHCP: 192.168.2.118 oferecido a 18:FD:74:22:23:B7 (Cibel Restaurante) sem resposta');

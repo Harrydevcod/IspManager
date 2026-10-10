@@ -80,10 +80,23 @@ linhas do registo em memória; ia também para o diário no cartão e para a fla
 - Com o disco desmontado, o contador volta ao script de dados e nada é escrito fora do disco; o
   ISPM continua a importar. Com o disco de volta, o script de dados sai.
 
+- **A aplicação inteira** (backend deste ramo sobre uma cópia da base real, apontado ao CHR com
+  uma sessão PPPoE `skn001` ativa): no primeiro minuto o trabalho da contagem atualizou os dois
+  contadores sozinho (`counterUpdated`), o consumo herdou os totais do script antigo ao byte
+  (32 622 + 24 922 = 57 544), uma sessão religada continuou a somar, e o ISPM importou o
+  consumo para o serviço certo. A limpeza das linhas guardadas correu na vigia: 243 kB → 164 kB.
+- O ecrã a 1225 px CSS (escala 150%): Registo ao vivo e guardado sem deslocamento horizontal, os
+  filtros numa linha, tema escuro e claro.
+
+## Limite que a medição pôs à vista (já existia na v1)
+
+O consumo por cliente é lido de hora a hora. Se a sessão PPPoE cair entre duas leituras, o que
+passou desde a última perde-se: no laboratório, 56 kB de uma sessão derrubada antes da leitura
+seguinte. O router regista o total da sessão à saída (`skn001 logged out, <segundos> <bytes>
+<bytes> …`, tópico `account`), o que dava para fechar esta falha; fica por fazer.
+
 ## Por medir
 
 - A atualização no router de produção. A condição do script já foi lá confirmada
   (2026-10-10): `/file print where type=disk` mostra o `sd1`. Mostra também `flash`, que não
   entra na escolha do ISPM porque a flash interna não aparece em `/disk`.
-- O contador do consumo com sessões PPPoE ativas (o CHR não tinha nenhuma; o corpo do script
-  não mudou da v1).

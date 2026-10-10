@@ -67,8 +67,11 @@
   margin-top: var(--space-4);
 }
 
-.router-log-bar .router-log-day { flex: 0 0 220px; }
-.router-log-bar .router-log-search { flex: 0 1 240px; }
+/* A 1225 px (1920 a 150%) cabem numa linha o dia, a procura, os dois interruptores e o botão:
+   a procura é quem cede largura. */
+.router-log-bar .router-log-day { flex: 0 0 200px; }
+.router-log-bar .router-log-search { flex: 1 1 120px; min-width: 0; max-width: 240px; }
+.router-log-bar .router-log-search input { min-width: 0; width: 100%; }
 /* O interruptor é um rótulo com caixa: não leva as maiúsculas dos rótulos de campo. */
 .router-log-bar .field-toggle {
   display: flex;
