@@ -1,7 +1,9 @@
+import { loadUsageState, storeUsageState } from './routeros-usage-store';
+
 /**
  * Contador das WAN que corre no próprio MikroTik.
- * Todo o estado vive como comentários no script `ispm-wan-usage-data` (só precisa de
- * read,write e sobrevive a reinícios):
+ * O estado vive num ficheiro do cartão ou, sem cartão, no script `ispm-wan-usage-data`
+ * (ver `routeros-usage-store.ts`); sobrevive a reinícios. Uma linha por facto:
  *   # 20726;WAN1;rx;tx        totais do dia UTC, em dias desde 1970 (últimos 31 dias)
  *   # 2026-09-29;WAN1;rx;tx   linhas da v5 (dia local), mantidas tal como estão
  *   # last;WAN1;rx;tx         contador visto na corrida anterior
@@ -12,38 +14,36 @@
  * sem contas de datas no RouterOS; é o dia da conta Starlink.
  * Posição de array inexistente tem tipo "nothing" (não "nil", que é o do :find sem
  * resultado): os valores testam-se pelo tipo esperado.
- * Corre de hora a hora às hh:59:50 (e no arranque): cada gravação deixa uma entrada longa no
- * registo do router, e de 5 em 5 min enchia-o em menos de um dia. O dia UTC fecha a 10 s da meia-noite UTC (01:00 em Cabo Verde);
- * num corte de luz perde-se no máximo a última hora. O ISPM aberto soma a hoje o que falta.
+ * Corre de hora a hora às hh:59:50 (e no arranque). O dia UTC fecha a 10 s da meia-noite UTC
+ * (01:00 em Cabo Verde); num corte de luz perde-se no máximo a última hora. O ISPM aberto soma
+ * a hoje o que falta.
  */
+export const WAN_USAGE_NAME = 'ispm-wan-usage';
+export const WAN_USAGE_VERSION = 'ispm-wan-usage v7';
 export const WAN_USAGE_DATA_NAME = 'ispm-wan-usage-data';
 
-export const WAN_USAGE_SCRIPT = String.raw`# ispm-wan-usage v6
-:local dataName "ispm-wan-usage-data"
+export const wanUsageScript = (dataFile: string | null) => String.raw`# ${WAN_USAGE_VERSION}
+${loadUsageState(WAN_USAGE_DATA_NAME, dataFile)}
 :local totals [:toarray ""]
 :local last [:toarray ""]
 :local lastUptime ""
-:local dataIds [/system script find where name=$dataName]
-:if ([:len $dataIds] > 0) do={
-  :local text [/system script get $dataIds source]
-  :while ([:len $text] > 0) do={
-    :local stop [:find $text "\n"]
-    :if ([:typeof $stop] = "nil") do={ :set stop [:len $text] }
-    :local line [:pick $text 0 $stop]
-    :set text [:pick $text ($stop + 1) [:len $text]]
-    :if ([:pick $line 0 2] = "# ") do={ :set line [:pick $line 2 [:len $line]] }
-    :local a [:find $line ";"]
-    :if ([:typeof $a] != "nil") do={
-      :local head [:pick $line 0 $a]
-      :local rest [:pick $line ($a + 1) [:len $line]]
-      :if ($head = "uptime") do={ :set lastUptime $rest } else={
-        :local b [:find $rest ";"]
-        :if ([:typeof $b] != "nil") do={
-          :if ($head = "last") do={
-            :set ($last->[:pick $rest 0 $b]) [:pick $rest ($b + 1) [:len $rest]]
-          } else={
-            :set ($totals->($head . ";" . [:pick $rest 0 $b])) [:pick $rest ($b + 1) [:len $rest]]
-          }
+:while ([:len $text] > 0) do={
+  :local stop [:find $text "\n"]
+  :if ([:typeof $stop] = "nil") do={ :set stop [:len $text] }
+  :local line [:pick $text 0 $stop]
+  :set text [:pick $text ($stop + 1) [:len $text]]
+  :if ([:pick $line 0 2] = "# ") do={ :set line [:pick $line 2 [:len $line]] }
+  :local a [:find $line ";"]
+  :if ([:typeof $a] != "nil") do={
+    :local head [:pick $line 0 $a]
+    :local rest [:pick $line ($a + 1) [:len $line]]
+    :if ($head = "uptime") do={ :set lastUptime $rest } else={
+      :local b [:find $rest ";"]
+      :if ([:typeof $b] != "nil") do={
+        :if ($head = "last") do={
+          :set ($last->[:pick $rest 0 $b]) [:pick $rest ($b + 1) [:len $rest]]
+        } else={
+          :set ($totals->($head . ";" . [:pick $rest 0 $b])) [:pick $rest ($b + 1) [:len $rest]]
         }
       }
     }
@@ -97,8 +97,4 @@ export const WAN_USAGE_SCRIPT = String.raw`# ispm-wan-usage v6
   :if ([:typeof [:find $head "-"]] = "nil") do={ :if ([:tonum $head] < ($day - 30)) do={ :set keep false } }
   :if ($keep) do={ :set output ($output . "# " . $key . ";" . $value . "\n") }
 }
-:if ([:len $dataIds] = 0) do={
-  /system script add name=$dataName policy=read comment="dados do ispm-wan-usage; nao editar" source=$output
-} else={
-  /system script set $dataIds source=$output
-}`;
+${storeUsageState('dados do ispm-wan-usage; nao editar')}`;

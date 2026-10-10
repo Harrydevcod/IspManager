@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-network';
 import { createTransport, isRouterConfigured, readClientUsageData, readRouterConfig, type RouterTransport } from './routeros';
+import { refreshUsageCounterForJob, usageCounterDisk } from './usage-counter';
 import { counterDelta, utcDay } from './wan-usage';
 
 export type ClientUsageCounter = { name: string; rxTotal: number; txTotal: number; rxLast: number; txLast: number; uptime: string };
@@ -19,7 +20,7 @@ export function parseClientUsageFile(text: string): ClientUsageCounter[] {
 }
 
 export async function collectClientUsage(db: Database.Database, transport: RouterTransport, today = utcDay()) {
-  const data = await readClientUsageData(transport);
+  const data = await readClientUsageData(transport, usageCounterDisk(db, 'client'));
   const rows = parseClientUsageFile(data ?? '');
   const state = db.prepare('SELECT rx_total AS rxTotal, tx_total AS txTotal FROM client_usage_state WHERE pppoe_name = ?');
   const service = db.prepare("SELECT id FROM services WHERE pppoe_username = ? ORDER BY status = 'active' DESC, id DESC LIMIT 1");
@@ -52,7 +53,11 @@ export async function runClientUsageIfDue() {
   if (!config.enabled || !isRouterConfigured(config)) return { skipped: true, reason: 'Router desligado ou por configurar' };
   const presence = await detectAdminNetwork(db);
   if (isOffNetwork(presence)) return { skipped: true, reason: offNetworkReason(presence) };
-  return collectClientUsage(db, createTransport(config));
+  const transport = createTransport(config);
+  // Um contador já instalado numa versão antiga atualiza-se aqui; se falhar, conta-se na mesma.
+  const installed = db.prepare('SELECT 1 FROM client_usage_state LIMIT 1').get() !== undefined;
+  const counter = config.dryRun ? {} : await refreshUsageCounterForJob(db, transport, 'client', installed);
+  return { ...await collectClientUsage(db, transport), ...counter };
 }
 
 export function loadClientUsage(db: Database.Database, today = utcDay()) {

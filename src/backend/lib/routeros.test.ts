@@ -208,7 +208,7 @@ describe('operações RouterOS', () => {
     };
     await ensureWanUsageCounter(transport);
     expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(3);
-    expect((scripts[0].source as string)).toContain('ispm-wan-usage v6');
+    expect((scripts[0].source as string)).toContain('ispm-wan-usage v7');
     expect(schedulers.map((row) => row.name)).toEqual(['ispm-wan-usage', 'ispm-wan-usage-startup']);
     calls.length = 0;
     await ensureWanUsageCounter(transport);
@@ -226,7 +226,7 @@ describe('operações RouterOS', () => {
       return null;
     };
     await ensureClientUsageCounter(transport);
-    expect((scripts[0].source as string)).toContain('ispm-client-usage v1');
+    expect((scripts[0].source as string)).toContain('ispm-client-usage v2');
     expect(schedulers.map((row) => row.name)).toEqual(['ispm-client-usage', 'ispm-client-usage-startup']);
   });
 

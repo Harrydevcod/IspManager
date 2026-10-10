@@ -221,6 +221,18 @@ const RULES: Rule[] = [
     read: (m) => ({ kind: 'porta', text: `${m[1]} ${m[2] === 'got' ? 'recebeu' : 'perdeu'} o endereço ${m[3]}` })
   },
   {
+    // Medido em 2026-10-10: criar um ficheiro regista-se; escrever num que já existe, não.
+    pattern: /^add file by (\S+)(?: \((?:\*\w+ = )?\/file add (.*)\))?$/s,
+    read: (m, lookups) => ({ kind: 'config', text: `${configActor(m[1], lookups)} criou o ficheiro ${/\bname=(\S+)/.exec(m[2] ?? '')?.[1] ?? ''}`.trimEnd() })
+  },
+  {
+    pattern: /^new script (added|scheduled) by (\S+)(?: \((.*)\))?$/s,
+    read: (m, lookups) => {
+      const name = /\bname=(\S+)/.exec(m[3] ?? '')?.[1];
+      return { kind: 'config', text: `${configActor(m[2], lookups)} criou o ${m[1] === 'added' ? 'script' : 'agendamento'}${name ? ` ${name}` : ''}` };
+    }
+  },
+  {
     // Esta traz o verbo à frente, ao contrário das outras alterações.
     pattern: /^changed script settings by (\S+)(?: \(\/system script set (\S+).*\))?$/s,
     read: (m, lookups) => ({ kind: 'config', text: `${configActor(m[1], lookups)} alterou o script${m[2] ? ` ${m[2]}` : ''}` })

@@ -107,6 +107,12 @@ describe('leitura das linhas', () => {
       .toBe('admin (WinBox) removeu uma vigia netwatch');
     expect(one('log rule added by api:ispm-api@:: (*F = /system logging add action=ispmdiario topics=info,!account)').text)
       .toBe('O ISPM criou uma regra de registo: action=ispmdiario topics=info,!account');
+    expect(one('add file by mac-msg(winbox):admin@54:14:A7:11:53:3C/terminal (*0 = /file add contents="a;1;2" name=sd1/ispm-teste.txt)').text)
+      .toBe('admin (WinBox) criou o ficheiro sd1/ispm-teste.txt');
+    expect(one('new script added by api:ispm-api@:: (*5 = /system script add name=ispm-wan-usage policy=read,write source="# x")').text)
+      .toBe('O ISPM criou o script ispm-wan-usage');
+    expect(one('new script scheduled by mac-msg(winbox):admin@54:14:A7:11:53:3C/terminal (*4 = /system scheduler add interval=10s name=ispm-teste on-event=ispm-teste policy=read,write)').text)
+      .toBe('admin (WinBox) criou o agendamento ispm-teste');
     expect(one('log action changed by tcp-msg(winbox):admin@192.168.2.250/terminal/action:132 ()').text).toBe('admin (WinBox) alterou uma ação de registo');
     expect(one('ppp profile <PLANO-20-10> added by api:ispm-api@:: (*4 = /ppp profile add comment=ispm:plano:1 name=PLANO-20-10)').text)
       .toBe('O ISPM criou o perfil PPP PLANO-20-10: comment=ispm:plano:1 name=PLANO-20-10');
