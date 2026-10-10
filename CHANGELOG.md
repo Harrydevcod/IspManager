@@ -6,6 +6,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.30](https://github.com/Harrydevcod/IspManager/releases/tag/v2.30.0) — 2026-10-10
+
 - **O registo do router lê-se em português.** Na aba Registo (ao vivo e guardado) cada linha passa a ser uma frase: "PPPoE skn001 (Isa Rafe): a sessão caiu — o equipamento do cliente deixou de responder", "192.168.1.110 deixou de responder", "admin (WinBox) alterou o acesso PPPoE skn014: profile=PLANO-40-10". A linha tal como o router a escreveu aparece ao passar o rato e continua a servir na procura e no ficheiro exportado. O que o ISPM ainda não sabe ler fica como veio.
 - **Os contadores do router gravam no cartão, não no registo.** Num router com cartão SD ou disco USB, os contadores das WAN e do consumo por cliente passam a guardar os totais num ficheiro desse disco (`sd1/ispm-wan-usage.txt`, `sd1/ispm-client-usage.txt`) em vez de num script: a gravação de hora a hora deixa de escrever linha no registo do router e de escrever na memória interna. A mudança faz-se sozinha no primeiro minuto com esta versão aberta na rede de gestão, fora do modo de ensaio, e os totais que o router já tinha passam para o ficheiro. Sem disco amovível fica tudo como estava. Não é preciso mexer nas permissões do utilizador da API.
 - **O consumo por cliente deixa de perder o que passou antes de uma queda.** O contador lê as sessões PPPoE de hora a hora; quando uma sessão caía entre duas leituras, o tráfego desde a última ficava por contar. O router escreve o total de cada sessão quando ela sai, e o contador passa a somar daí o que faltava. Atualiza-se sozinho, como os outros. Uma sessão perdida num reinício do router não deixa esse total; ver o ponto seguinte.
