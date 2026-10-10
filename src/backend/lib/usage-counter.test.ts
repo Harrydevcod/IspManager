@@ -63,7 +63,7 @@ describe('instalação dos contadores', () => {
     const db = memoryDb();
     const fake = router();
     expect(await installUsageCounter(db, fake.transport, 'client')).toEqual({ disk: null });
-    expect(fake.scripts[0]).toMatchObject({ name: 'ispm-client-usage', comment: 'ispm-client-usage v2' });
+    expect(fake.scripts[0]).toMatchObject({ name: 'ispm-client-usage', comment: 'ispm-client-usage v3' });
     expect(fake.scripts[0].source).toContain(':local dataFile ""');
     expect(fake.scripts[0].source).not.toContain('type="disk"');
     expect(usageCounterDisk(db, 'client')).toBeNull();

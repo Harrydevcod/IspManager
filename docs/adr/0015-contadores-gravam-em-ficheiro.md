@@ -88,12 +88,32 @@ linhas do registo em memória; ia também para o diário no cartão e para a fla
 - O ecrã a 1225 px CSS (escala 150%): Registo ao vivo e guardado sem deslocamento horizontal, os
   filtros numa linha, tema escuro e claro.
 
-## Limite que a medição pôs à vista (já existia na v1)
+## A sessão que cai entre duas leituras (fechado na v3 do contador)
 
-O consumo por cliente é lido de hora a hora. Se a sessão PPPoE cair entre duas leituras, o que
-passou desde a última perde-se: no laboratório, 56 kB de uma sessão derrubada antes da leitura
-seguinte. O router regista o total da sessão à saída (`skn001 logged out, <segundos> <bytes>
-<bytes> …`, tópico `account`), o que dava para fechar esta falha; fica por fazer.
+O consumo por cliente é lido de hora a hora. Se a sessão PPPoE caísse entre duas leituras, o que
+passara desde a última perdia-se: no laboratório, 56 kB de uma sessão derrubada antes da leitura
+seguinte. O router escreve o total da sessão à saída (`skn001 logged out, <segundos> <rx> <tx>
+<pacotes> <pacotes> from <MAC>`, tópicos `pppoe,ppp,info,account`), e o `ispm-client-usage v3`
+soma dessas linhas o que faltava antes de ler as sessões ativas. O estado ganha a linha
+`@log;<id> <hora>`, a última saída tratada.
+
+Medido a 2026-10-10:
+
+- No CHR, os dois números da linha são o `rx-byte` e o `tx-byte` da interface, por esta ordem, e
+  incluem os bytes do fecho (interface 113 398 / 112 362 um segundo antes; linha 113 540 /
+  112 418). Um script com `read,write` corrido pelo agendador lê o registo.
+- No CHR, com a v3: uma sessão já vista que cai com tráfego por contar, outra que nasce e morre
+  entre corridas e uma terceira ativa — o total bateu ao byte nos dois sentidos (282 866 /
+  280 884). Corrida repetida não soma de novo. Depois de reiniciar o router (registo vazio) o
+  total mantém-se. Na primeira corrida, as saídas que já estavam no registo não se somam.
+- No hEX S de produção as linhas existem no registo em memória (11 saídas de `skn001`/`skn014`
+  a 09-10, com `/ppp aaa accounting=yes`), e esse registo guardava mais de 27 horas. Não chegam
+  ao diário do cartão, que exclui o tópico `account` — por isso não aparecem nas linhas que o
+  ISPM guarda.
+- `/ppp aaa accounting=no` não tira a linha (CHR): não é um interruptor a vigiar.
+
+Fica de fora: uma sessão perdida num reinício do router não deixa linha, e um registo que rode
+mais de 1000 linhas numa hora pode empurrar uma saída para fora (pico medido: 160).
 
 ## Por medir
 

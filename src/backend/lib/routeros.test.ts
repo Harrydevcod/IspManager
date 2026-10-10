@@ -226,7 +226,7 @@ describe('operações RouterOS', () => {
       return null;
     };
     await ensureClientUsageCounter(transport);
-    expect((scripts[0].source as string)).toContain('ispm-client-usage v2');
+    expect((scripts[0].source as string)).toContain('ispm-client-usage v3');
     expect(schedulers.map((row) => row.name)).toEqual(['ispm-client-usage', 'ispm-client-usage-startup']);
   });
 

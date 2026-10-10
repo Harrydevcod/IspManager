@@ -38,7 +38,8 @@ afterAll(() => {
 
 describe('consumo PPPoE', () => {
   test('analisa linhas válidas e ignora valores inseguros', () => {
-    expect(parseClientUsageFile('# ana;10;20;1;2;1h\n# mau;-1;2;1;2;1h\n# grande;9007199254740992;1;1;1;1h'))
+    // `@log` é a marca da última saída de sessão que o script do router já somou.
+    expect(parseClientUsageFile('# @log;*44 2026-10-10 11:21:08\n# ana;10;20;1;2;1h\n# mau;-1;2;1;2;1h\n# grande;9007199254740992;1;1;1;1h'))
       .toEqual([{ name: 'ana', rxTotal: 10, txTotal: 20, rxLast: 1, txLast: 2, uptime: '1h' }]);
   });
 
