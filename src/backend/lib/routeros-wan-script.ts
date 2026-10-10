@@ -17,8 +17,9 @@ import { loadUsageState, storeUsageState } from './routeros-usage-store';
  * sem contas de datas no RouterOS; é o dia da conta Starlink.
  * Posição de array inexistente tem tipo "nothing" (não "nil", que é o do :find sem
  * resultado): os valores testam-se pelo tipo esperado.
- * Corre de hora a hora às hh:59:50 (e no arranque). O dia UTC fecha a 10 s da meia-noite UTC
- * (01:00 em Cabo Verde); num corte de luz perde-se no máximo a última hora. O ISPM aberto soma
+ * Corre de 5 em 5 minutos com disco, de hora a hora sem ele, sempre com uma corrida às
+ * hh:59:50 (e no arranque). O dia UTC fecha a 10 s da meia-noite UTC (01:00 em Cabo Verde);
+ * num corte de luz perde-se no máximo o último intervalo. O ISPM aberto soma
  * a hoje o que falta.
  */
 export const WAN_USAGE_NAME = 'ispm-wan-usage';

@@ -14,9 +14,11 @@ import { loadUsageState, storeUsageState } from './routeros-usage-store';
  * morreu entre corridas; depois zera o `último`, e a sessão seguinte conta do zero.
  * A linha `@log;<id> <hora>` do estado é a última saída tratada. Na primeira corrida não há
  * marca e as saídas antigas ficam por tratar: já foram contadas, por alto, pelas leituras.
+ * Uma sessão perdida num reinício ou corte de luz não deixa linha: perde-se o que passou desde
+ * a última corrida (5 minutos com disco, uma hora sem ele — ver `ensureUsageCounter`).
  * ponytail: lê-se o registo em memória (1000 linhas; o pico medido em produção foi 160 por
- * hora). Uma sessão perdida num reinício do router não deixa linha. Buffer próprio para o
- * tópico `account` se o registo passar a rodar em menos de uma hora.
+ * hora) e conta-se com a regra de fábrica `info → memory` a deixar passar `account`. Buffer de
+ * registo próprio para esse tópico se alguma das duas deixar de valer.
  * ponytail: com a app fechada vários dias, o consumo cai no dia da reabertura;
  * o total do mês fica certo. Criar baldes diários no router se esse detalhe importar.
  */
