@@ -54,6 +54,29 @@ describe('gravações dos contadores', () => {
     expect(row.message).toContain(':log info ola');
   });
 
+  // Medido no CHR 7.24.2: atualizar um contador regista o script novo inteiro, em pedaços.
+  test('a instalação de um script e a criação do ficheiro, partidas em pedaços, ficam numa linha cada', () => {
+    const read = readLog([
+      entry(1, String.raw`changed script settings by api:ispm-api@::/action:2 (/system script set ispm-wan-usage comment="ispm-wan-usage v7 @sd1" policy=read,write source="# ispm-wan-usage v7\;     \n:local a [:find \$line \";\"]`),
+      entry(2, String.raw`len \$line]] }\;     \n  :set x (\$a . \"b\")`),
+      entry(3, String.raw`  :if (\$keep) do={ :set output \$x }")`),
+      entry(4, String.raw`add file by api:ispm-api@::/script:ispm-wan-usage (*0 = /file add contents="# uptime;00:02:07\;     \n# last;ether1;27746;34913\;     \n# 20736;ether1`),
+      entry(5, String.raw`;15346;17115\;     \n" name=sd1/ispm-wan-usage.txt)`),
+      entry(6, 'script removed by api:ispm-api@::/script:ispm-wan-usage/action:3 (/system script remove *2)'),
+      // Inteira e curta, mas com totais lá dentro: não é um resto de gravação, é o ficheiro a nascer.
+      entry(7, String.raw`add file by scheduler:ispm-wan-usage/script:ispm-wan-usage (*0 = /file add contents="# uptime;00:02:24\;     \n# last;ether1;56293;124178\;     \n" name=sd1/ispm-wan-usage.txt)`)
+    ], lookups);
+    expect(read.map((row) => [row.id, row.text])).toEqual([
+      ['*1', 'O ISPM alterou o script ispm-wan-usage'],
+      ['*4', 'O ISPM criou o ficheiro sd1/ispm-wan-usage.txt'],
+      ['*6', 'O ISPM removeu um script'],
+      ['*7', 'O agendamento ispm-wan-usage criou o ficheiro sd1/ispm-wan-usage.txt']
+    ]);
+    expect(read.every((row) => !row.machine)).toBe(true);
+    expect(read[0].message).toBe('changed script settings by api:ispm-api@::/action:2 (/system script set ispm-wan-usage comment="ispm-wan-usage v7 @sd1" policy=read,write source=…)');
+    expect(read[1].message).toBe('add file by api:ispm-api@::/script:ispm-wan-usage (*0 = /file add contents=… name=sd1/ispm-wan-usage.txt)');
+  });
+
   test('compactar é idempotente', () => {
     const once = compactEntries([entry(9, CLIENT), entry(10, WAN_HEAD), entry(11, WAN_TAIL)]);
     expect(compactEntries(once)).toEqual(once);

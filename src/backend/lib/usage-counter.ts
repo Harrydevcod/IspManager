@@ -26,9 +26,13 @@ export function usageCounterDisk(db: Database.Database, kind: UsageCounterKind):
   return /@(\S+)$/.exec(readSetting(db, COUNTERS[kind].setting) ?? '')?.[1] ?? null;
 }
 
-/** O disco do diário do registo, se houver; senão o primeiro disco amovível do router. */
+/**
+ * O disco do diário do registo, se houver; senão o primeiro disco amovível do router. Um disco
+ * por formatar aparece na lista sem sistema de ficheiros (`-`) e não serve.
+ */
 async function pickDisk(db: Database.Database, transport: RouterTransport): Promise<string | null> {
-  const disks = (await listDisks(transport)).map((disk) => disk.slot).filter((slot) => /^[\w-]+$/.test(slot));
+  const disks = (await listDisks(transport)).filter((disk) => disk.fs && disk.fs !== '-')
+    .map((disk) => disk.slot).filter((slot) => /^[\w-]+$/.test(slot));
   const journal = journalDisk(db);
   return journal !== null && disks.includes(journal) ? journal : disks[0] ?? null;
 }

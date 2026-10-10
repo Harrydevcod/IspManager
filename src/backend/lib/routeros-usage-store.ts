@@ -9,6 +9,10 @@
  * `source` de um script de dados — funciona em qualquer router, mas cada gravação despeja o
  * texto inteiro no registo e escreve na flash.
  *
+ * O disco confirma-se a cada corrida (`/file find … type="disk"`). Medido no CHR 7.24.2: um
+ * `/file add` para um disco que não está montado não dá erro — cria uma pasta com esse nome no
+ * armazenamento interno e escreve lá. Com o cartão tirado, o estado tem de voltar ao script.
+ *
  * O script de dados, quando existe, é sempre o mais recente: só existe enquanto o ficheiro não
  * serve, e sai assim que uma gravação no ficheiro corre bem. Por isso lê-se primeiro.
  */
@@ -21,10 +25,13 @@ export function usageDataFile(disk: string | null, name: string): string | null 
   return disk ? `${disk}/${name}.txt` : null;
 }
 
-/** Cabeça do script: deixa em `$text` o estado da corrida anterior. */
-export function loadUsageState(dataName: string, dataFile: string | null): string {
+/** Cabeça do script: deixa em `$text` o estado da corrida anterior. `name` é o do contador. */
+export function loadUsageState(name: string, dataName: string, disk: string | null): string {
+  const mounted = disk
+    ? `\n:if ([:len [/file find where name="${disk}" type="disk"]] > 0) do={ :set dataFile "${usageDataFile(disk, name)}" }`
+    : '';
   return String.raw`:local dataName "${dataName}"
-:local dataFile "${dataFile ?? ''}"
+:local dataFile ""${mounted}
 :local text ""
 :local dataIds [/system script find where name=$dataName]
 :if ([:len $dataIds] > 0) do={ :set text [/system script get $dataIds source] } else={

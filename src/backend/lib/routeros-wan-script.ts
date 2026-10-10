@@ -10,6 +10,9 @@ import { loadUsageState, storeUsageState } from './routeros-usage-store';
  *   # uptime;1d02:03:04       tempo ligado na corrida anterior
  * Medido no hAP: as globais do scheduler não passam de uma corrida para a outra, por isso
  * não se usam. Tempo ligado a descer = o router reiniciou e os contadores voltaram a zero.
+ * Uma WAN que a corrida não encontra mantém o `last` que tinha; depois de um reinício fica a
+ * zero. Medido no CHR 7.24.2: a corrida do arranque pode vir antes de a interface existir, e sem
+ * `last` a corrida seguinte não somava nada — perdia-se o tráfego até à hora seguinte.
  * O dia vem do texto de :timestamp ("2960w6d10:12:34", desde 1970 em UTC): semanas × 7 + dias,
  * sem contas de datas no RouterOS; é o dia da conta Starlink.
  * Posição de array inexistente tem tipo "nothing" (não "nil", que é o do :find sem
@@ -22,8 +25,8 @@ export const WAN_USAGE_NAME = 'ispm-wan-usage';
 export const WAN_USAGE_VERSION = 'ispm-wan-usage v7';
 export const WAN_USAGE_DATA_NAME = 'ispm-wan-usage-data';
 
-export const wanUsageScript = (dataFile: string | null) => String.raw`# ${WAN_USAGE_VERSION}
-${loadUsageState(WAN_USAGE_DATA_NAME, dataFile)}
+export const wanUsageScript = (disk: string | null) => String.raw`# ${WAN_USAGE_VERSION}
+${loadUsageState(WAN_USAGE_NAME, WAN_USAGE_DATA_NAME, disk)}
 :local totals [:toarray ""]
 :local last [:toarray ""]
 :local lastUptime ""
@@ -87,6 +90,11 @@ ${loadUsageState(WAN_USAGE_DATA_NAME, dataFile)}
       :set sumTx ($sumTx + [:tonum [:pick $total ($s + 1) [:len $total]]])
     }
     :set ($totals->$key) ($sumRx . ";" . $sumTx)
+  }
+}
+:foreach iface,value in=$last do={
+  :if ([:typeof ($seen->$iface)] != "str") do={
+    :if ($rebooted) do={ :set ($seen->$iface) "0;0" } else={ :set ($seen->$iface) $value }
   }
 }
 :local output ("# uptime;" . $uptime . "\n")

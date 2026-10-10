@@ -1369,10 +1369,10 @@ export const usageCounterMark = (version: string, disk: string | null) => (disk 
 
 /** Instala ou reconcilia os três objetos. PUT/PATCH não são repetidos pelo transporte. */
 async function ensureUsageCounter(transport: RouterTransport, { name, version: baseVersion, disk, build }: {
-  name: string; version: string; disk: string | null; build: (dataFile: string | null) => string;
+  name: string; version: string; disk: string | null; build: (disk: string | null) => string;
 }): Promise<void> {
   const version = usageCounterMark(baseVersion, disk);
-  const source = build(usageDataFile(disk, name));
+  const source = build(disk);
   const scripts = asArray(await transport({ method: 'GET', path: '/system/script?.proplist=.id,name,comment' }));
   const script = scripts.find((row) => row.name === name);
   if (!script) {

@@ -21,7 +21,7 @@ function router({ disks = [] as string[], scripts = [] as Row[], files = {} as R
     calls.push(request);
     const { method, path } = request;
     const body = request.body as Row | undefined;
-    if (method === 'GET' && path === '/disk') return disks.map((slot) => ({ slot, fs: 'ext4' }));
+    if (method === 'GET' && path === '/disk') return disks.map((slot) => (slot.startsWith('raw') ? { slot, fs: '-' } : { slot, fs: 'ext4' }));
     if (method === 'GET' && path.startsWith('/system/script?name=')) {
       const name = /name=([^&]+)/.exec(path)![1];
       return scripts.filter((row) => row.name === name);
@@ -50,7 +50,8 @@ describe('instalação dos contadores', () => {
     const fake = router({ disks: ['sd1'] });
     expect(await installUsageCounter(db, fake.transport, 'wan')).toEqual({ disk: 'sd1' });
     expect(fake.scripts[0]).toMatchObject({ name: 'ispm-wan-usage', comment: 'ispm-wan-usage v7 @sd1', policy: 'read,write' });
-    expect(fake.scripts[0].source).toContain(':local dataFile "sd1/ispm-wan-usage.txt"');
+    // O ficheiro só se usa com o disco montado: sem ele, um `/file add` escrevia na memória interna.
+    expect(fake.scripts[0].source).toContain(':if ([:len [/file find where name="sd1" type="disk"]] > 0) do={ :set dataFile "sd1/ispm-wan-usage.txt" }');
     // A corrida logo a seguir é a que passa o estado antigo para o ficheiro.
     expect(fake.calls.at(-1)).toMatchObject({ method: 'POST', path: '/system/script/run', body: { '.id': 'ispm-wan-usage' } });
     expect(setting(db, 'wanUsageCounter')).toBe('ispm-wan-usage v7 @sd1');
@@ -64,7 +65,14 @@ describe('instalação dos contadores', () => {
     expect(await installUsageCounter(db, fake.transport, 'client')).toEqual({ disk: null });
     expect(fake.scripts[0]).toMatchObject({ name: 'ispm-client-usage', comment: 'ispm-client-usage v2' });
     expect(fake.scripts[0].source).toContain(':local dataFile ""');
+    expect(fake.scripts[0].source).not.toContain('type="disk"');
     expect(usageCounterDisk(db, 'client')).toBeNull();
+  });
+
+  test('um disco por formatar não serve', async () => {
+    const db = memoryDb();
+    expect(await installUsageCounter(db, router({ disks: ['raw1'] }).transport, 'wan')).toEqual({ disk: null });
+    expect(await installUsageCounter(db, router({ disks: ['raw1', 'usb1'] }).transport, 'wan')).toEqual({ disk: 'usb1' });
   });
 
   test('prefere o disco do diário do registo, se o router ainda o tiver', async () => {

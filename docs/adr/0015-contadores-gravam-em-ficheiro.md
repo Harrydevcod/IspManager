@@ -4,7 +4,8 @@
 
 Aceite. Implementado em `lib/routeros-usage-store.ts`, nos dois scripts (`ispm-wan-usage` v7,
 `ispm-client-usage` v2) e em `lib/usage-counter.ts`. A escrita em ficheiro foi medida no router
-real; a criação do ficheiro pelo scheduler e a migração do estado antigo ainda não.
+real (hEX S); tudo o resto num RouterOS CHR 7.24.2 local, com o código de instalação do ISPM a
+correr contra ele como `ispm-api` (`.scratch/chr-lab.cts`). Falta vê-lo no router de produção.
 
 ## Contexto
 
@@ -26,8 +27,13 @@ linhas do registo em memória; ia também para o diário no cartão e para a fla
 
 - **Sem disco, ou se a escrita falhar, fica no script de dados.** A flash gastava-se igual com
   um ficheiro na raiz, e o ISPM já esconde estas linhas na sua leitura do registo (PR #236). A
-  escrita em ficheiro corre dentro de `:do { } on-error={ }`: um cartão tirado ou cheio não pára
-  a contagem.
+  escrita em ficheiro corre dentro de `:do { } on-error={ }`: um cartão cheio não pára a
+  contagem.
+
+- **O disco confirma-se a cada corrida** (`/file find where name=<disco> type="disk"`). Um
+  `/file add` para um disco que não está montado não dá erro: cria uma pasta com esse nome no
+  armazenamento interno e escreve lá. Sem esta confirmação, tirar o cartão punha o estado na
+  flash em silêncio. Pela mesma razão, o ISPM não escolhe um disco por formatar.
 
 - **O script de dados, quando existe, é o mais recente.** Só existe enquanto o ficheiro não
   serve, e sai na primeira gravação em ficheiro que corra bem. O script do router e o ISPM leem
@@ -55,8 +61,28 @@ linhas do registo em memória; ia também para o diário no cartão e para a fla
 - O ISPM passa a escrever em `/file` no disco amovível, além de `/system/script` e
   `/system/scheduler`.
 
+- Com o cartão tirado, o contador recomeça do zero no script de dados (não vê o ficheiro), e
+  quando o cartão volta é esse estado que fica. O que o ISPM já importou mantém-se (a importação
+  guarda o maior valor de cada dia); perde-se o que ainda não tinha sido importado nesse dia.
+
+## Medido (CHR 7.24.2, 2026-10-10)
+
+- Os dois scripts instalam-se válidos pelo `ispm-api` (grupo `read,write,api,rest-api`).
+- A atualização a partir da v6/v1 herda os totais do script de dados, cria os ficheiros e apaga
+  os scripts de dados. No registo ficam, por contador: a alteração do script (partida em
+  pedaços, que o ISPM junta), a criação do ficheiro e a remoção do script de dados.
+- Um agendamento com `read,write` regrava o ficheiro sem linha nenhuma no registo, e cria-o se
+  não existir (uma linha).
+- Um ficheiro de 32 500 bytes escreve-se pelo script e lê-se inteiro pelo `/execute`.
+- O ficheiro sobrevive a um reinício e os totais continuam certos. A corrida do arranque pode
+  vir antes de a interface WAN existir: a v7 guarda `last` a zero nesse caso, senão a corrida
+  seguinte não somava nada (a v6 tinha este defeito).
+- Com o disco desmontado, o contador volta ao script de dados e nada é escrito fora do disco; o
+  ISPM continua a importar. Com o disco de volta, o script de dados sai.
+
 ## Por medir
 
-- `/file add` corrido pelo scheduler com `read,write` (o teste criou o ficheiro à mão, como
-  `admin`). Se falhar, o `on-error` deixa o contador no script de dados, como hoje.
-- O ficheiro a sobreviver a um reinício do router.
+- No router de produção (hEX S com `sd1`): se o `sd1` aparece em `/file` com `type=disk`. Se
+  não aparecer, o contador fica no script de dados, como hoje — não se perde nada.
+- O contador do consumo com sessões PPPoE ativas (o CHR não tinha nenhuma; o corpo do script
+  não mudou da v1).

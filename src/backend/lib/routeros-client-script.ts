@@ -14,8 +14,8 @@ export const CLIENT_USAGE_NAME = 'ispm-client-usage';
 export const CLIENT_USAGE_VERSION = 'ispm-client-usage v2';
 export const CLIENT_USAGE_DATA_NAME = 'ispm-client-usage-data';
 
-export const clientUsageScript = (dataFile: string | null) => String.raw`# ${CLIENT_USAGE_VERSION}
-${loadUsageState(CLIENT_USAGE_DATA_NAME, dataFile)}
+export const clientUsageScript = (disk: string | null) => String.raw`# ${CLIENT_USAGE_VERSION}
+${loadUsageState(CLIENT_USAGE_NAME, CLIENT_USAGE_DATA_NAME, disk)}
 :local totals [:toarray ""]
 :while ([:len $text] > 0) do={
   :local stop [:find $text "\n"]
