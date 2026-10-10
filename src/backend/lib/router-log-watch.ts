@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-network';
+import { compactEntries } from './router-log-reading';
 import {
   createTransport, DHCP_RELEASE, ensureLogJournal, isRouterConfigured, listAddresses, listInterfaces, listLog, LOGIN_FAILURE, PPPOE_DROP,
   readLogJournal, readRouterConfig, ROGUE_DHCP,
@@ -28,6 +29,8 @@ const localDay = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 
 export const LOG_RETENTION_DAYS = 90;
 // Marca de que o cartão já foi lido todo para as linhas guardadas (ou de que não havia nada atrás).
 const LINES_RECOVERED = 'routerLogLinesRecovered';
+// Marca de que as linhas guardadas antes de se encurtarem as gravações dos contadores já foram limpas.
+const LINES_COMPACTED = 'routerLogLinesCompacted';
 
 /** A hora completa de uma linha: o RouterOS pode escrever só a hora nas de hoje. */
 const entryTime = (entry: RouterLogEntry, now: Date) => /^\d{4}-\d{2}-\d{2} /.test(entry.time) ? entry.time : `${localDay(now)} ${entry.time}`;
@@ -175,6 +178,25 @@ async function readRouterIdentity(transport: RouterTransport): Promise<RouterIde
 }
 
 /**
+ * Tira das linhas já guardadas o peso das gravações dos contadores (os totais das WAN e do
+ * consumo vinham inteiros, de hora a hora). Devolve quantas linhas saíram.
+ */
+export function compactStoredLines(db: Database.Database): number {
+  const rows = db.prepare("SELECT id, at, topics, message FROM router_log_lines WHERE topics = 'system,info' ORDER BY id")
+    .all() as Array<{ id: number; at: string; topics: string; message: string }>;
+  const kept = new Map(compactEntries(rows.map((row) => ({ id: `*${row.id.toString(16)}`, time: row.at, topics: row.topics, message: row.message })))
+    .map((entry) => [idNumber(entry.id), entry.message]));
+  const drop = db.prepare('DELETE FROM router_log_lines WHERE id = ?');
+  const shorten = db.prepare('UPDATE router_log_lines SET message = ? WHERE id = ?');
+  for (const row of rows) {
+    const message = kept.get(row.id);
+    if (message === undefined) drop.run(row.id);
+    else if (message !== row.message) shorten.run(message, row.id);
+  }
+  return rows.length - kept.size;
+}
+
+/**
  * Lê o registo do router e soma o que é novo. Só GETs no router.
  * Uma fonte de cada vez: o upsert soma contagens, e as duas contariam a dobrar.
  */
@@ -196,7 +218,14 @@ export async function watchRouterLog(db: Database.Database, transport: RouterTra
   const keepLine = db.prepare('INSERT INTO router_log_lines (at, topics, message) VALUES (?, ?, ?)');
   const dropOldLines = db.prepare('DELETE FROM router_log_lines WHERE at < ?');
   db.transaction(() => {
-    for (const entry of [...inLogOrder(recovered ?? []), ...inLogOrder(fresh)]) keepLine.run(entryTime(entry, now), entry.topics, entry.message);
+    if (readSetting(db, LINES_COMPACTED) === null) {
+      compactStoredLines(db);
+      setSetting.run(LINES_COMPACTED, now.toISOString());
+    }
+    // Guarda-se o que aconteceu, não os totais que os contadores despejam no registo.
+    for (const entry of [...compactEntries(inLogOrder(recovered ?? [])), ...compactEntries(inLogOrder(fresh))]) {
+      keepLine.run(entryTime(entry, now), entry.topics, entry.message);
+    }
     dropOldLines.run(localDay(new Date(now.getTime() - LOG_RETENTION_DAYS * 86_400_000)));
     if (recovered !== null) setSetting.run(LINES_RECOVERED, now.toISOString());
     for (const mac of router?.macs ?? []) {

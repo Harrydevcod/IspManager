@@ -6,6 +6,9 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+- **O registo do router lê-se em português.** Na aba Registo (ao vivo e guardado) cada linha passa a ser uma frase: "PPPoE skn001 (Isa Rafe): a sessão caiu — o equipamento do cliente deixou de responder", "192.168.1.110 deixou de responder", "admin (WinBox) alterou o acesso PPPoE skn014: profile=PLANO-40-10". A linha tal como o router a escreveu aparece ao passar o rato e continua a servir na procura e no ficheiro exportado. O que o ISPM ainda não sabe ler fica como veio.
+- **As gravações dos contadores deixam de encher o registo.** De hora a hora, os contadores das WAN e do consumo por cliente despejavam os totais todos no registo, em blocos de números partidos por várias linhas. Passam a contar por uma linha ("Contador das WAN gravou os totais"), escondida por omissão junto com as entradas e saídas do próprio ISPM no router; o interruptor "Manutenção do ISPM" mostra-as. As linhas já guardadas encurtam-se sozinhas na primeira passagem da vigia.
+
 ## [2.29](https://github.com/Harrydevcod/IspManager/releases/tag/v2.29.0) — 2026-10-09
 
 - **Reconciliação: cada botão diz o que faz.** Em vez de "ISPM" e "Router", os dois botões de cada linha passam a ter o efeito por extenso, conforme a diferença: "Reativar no router" ou "Suspender no ISPM", "Repor o plano no router" ou "Mudar o plano no ISPM", "Criar no router" ou "Tirar do serviço", "Desativar no router" ou "Associar a um serviço". A coluna chama-se agora "Decisão".

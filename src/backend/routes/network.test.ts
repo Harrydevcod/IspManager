@@ -106,6 +106,21 @@ describe('registo do router guardado', () => {
       ['2026-10-08 20:07:07', 'netwatch,info', 'queda']
     ]);
     expect((await app.inject('/api/network/router/log/history?day=2026-10-09')).json().entries).toEqual([]);
+  });
+
+  test('cada linha guardada vem com a frase e a marca de manutenção', async () => {
+    const insert = db.prepare("INSERT INTO router_log_lines (at, topics, message) VALUES ('2026-10-11 05:59:50', ?, ?)");
+    insert.run('system,info', 'changed script settings by scheduler:ispm-wan-usage/script:ispm-wan-usage/action:388 (/system script set ispm-wan-usage-data source=…)');
+    insert.run('netwatch,info', 'event down [ type: simple, host: 192.168.1.110 ]');
+    insert.run('script,warning', 'ANTENA EM BAIXO: CPE710 Espia');
+    const { entries } = (await app.inject('/api/network/router/log/history?day=2026-10-11')).json();
+    expect(entries.map((row: { text: string; machine: boolean; kind: string }) => [row.text, row.machine, row.kind])).toEqual([
+      ['Contador das WAN gravou os totais', true, 'contador'],
+      ['192.168.1.110 deixou de responder', false, 'vigia'],
+      ['ANTENA EM BAIXO: CPE710 Espia', false, 'outro']
+    ]);
+    expect(entries[1].message).toBe('event down [ type: simple, host: 192.168.1.110 ]');
+    db.prepare("DELETE FROM router_log_lines WHERE at LIKE '2026-10-11%'").run();
     expect((await app.inject('/api/network/router/log/history?day=hoje')).statusCode).toBe(400);
     expect((await app.inject('/api/network/router/log/history')).statusCode).toBe(400);
   });

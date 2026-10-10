@@ -5,7 +5,7 @@ import path from 'node:path';
 import type Database from 'better-sqlite3';
 import * as adminNetwork from './admin-network';
 import {
-  collectFindings, freshEntries, freshJournalLines, installLogJournal, listLogDays, loadLogDay, parseJournal, runRouterLogWatchIfDue, watchRouterLog
+  collectFindings, compactStoredLines, freshEntries, freshJournalLines, installLogJournal, listLogDays, loadLogDay, parseJournal, runRouterLogWatchIfDue, watchRouterLog
 } from './router-log-watch';
 import type { RouterLogEntry, RouterTransport } from './routeros';
 import { writeSecret } from './secrets';
@@ -241,6 +241,41 @@ describe('vigia do registo do router', () => {
     insert.run('2026-07-09 00:00:00');
     await watchRouterLog(db, router(log([1, '2026-10-07 10:00:00', 'system,info', 'nova'])), NOW);
     expect(listLogDays(db)).toEqual([{ day: '2026-10-07', lines: 1 }, { day: '2026-07-09', lines: 1 }]);
+  });
+
+  const COUNTER = (name: string, body: string) =>
+    `changed script settings by scheduler:${name}/script:${name}/action:388 (/system script set ${name}-data policy="" source="${body}`;
+
+  test('a gravação de um contador guarda-se numa linha curta, mesmo partida em fragmentos', async () => {
+    const rows = log(
+      [1, '2026-10-07 05:59:50', 'system,info', COUNTER('ispm-client-usage', String.raw`# skn001;43;69;13;13;03:21:00\; \n")`)],
+      [2, '2026-10-07 05:59:50', 'system,info', COUNTER('ispm-wan-usage', String.raw`# uptime;4d22:49:29\; \n# 2`)],
+      [3, '2026-10-07 05:59:50', 'system,info', String.raw`0731;WAN1-STARLINK;197;163\; \n# 20736;WAN2-STARLINK;0;0\; \n")`],
+      [4, '2026-10-07 06:00:10', 'netwatch,info', DOWN('192.168.1.110')]
+    );
+    expect(await watchRouterLog(db, router(rows), NOW)).toMatchObject({ lines: 4, findings: 1 });
+    expect(loadLogDay(db, '2026-10-07').map((row) => row.message)).toEqual([
+      'changed script settings by scheduler:ispm-client-usage/script:ispm-client-usage/action:388 (/system script set ispm-client-usage-data source=…)',
+      'changed script settings by scheduler:ispm-wan-usage/script:ispm-wan-usage/action:388 (/system script set ispm-wan-usage-data source=…)',
+      DOWN('192.168.1.110')
+    ]);
+  });
+
+  test('as gravações já guardadas encurtam-se uma só vez', async () => {
+    const insert = db.prepare("INSERT INTO router_log_lines (at, topics, message) VALUES ('2026-10-06 05:59:50', ?, ?)");
+    insert.run('system,info', COUNTER('ispm-wan-usage', String.raw`# uptime;4d\; \n# 2`));
+    insert.run('system,info', String.raw`0731;WAN1-STARLINK;197;163\; \n")`);
+    insert.run('dhcp,info', 'fica');
+    await watchRouterLog(db, router([]), NOW);
+    expect(loadLogDay(db, '2026-10-06').map((row) => row.message)).toEqual([
+      'changed script settings by scheduler:ispm-wan-usage/script:ispm-wan-usage/action:388 (/system script set ispm-wan-usage-data source=…)',
+      'fica'
+    ]);
+    // Daqui para a frente as linhas já entram curtas: a limpeza não volta a correr a tabela.
+    insert.run('system,info', String.raw`0731;WAN1-STARLINK;197;163\; \n")`);
+    await watchRouterLog(db, router([]), NOW);
+    expect(loadLogDay(db, '2026-10-06')).toHaveLength(3);
+    expect(compactStoredLines(db)).toBe(1);
   });
 
   /** Um router com o diário em `sd1`: só o cartão tem linhas. */

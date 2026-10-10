@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Badge, Button, DataTable, Dialog, EmptyState, Toggle, useToast, type DataTableColumn } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { routerSyncBadge } from '../plans/routerSync';
-import { formatBytes, logFindings, logTone, SESSION_STATE, type PppoeBackfillPlan, type PppoeBackfillRow, type ProfileRow, type RouterLog, type RouterLogEntry, type RouterInterface, type RouterSession } from './router-api';
+import { formatBytes, logFindings, logTone, SESSION_STATE, visibleLogEntries, type PppoeBackfillPlan, type PppoeBackfillRow, type ProfileRow, type RouterLog, type RouterLogEntry, type RouterInterface, type RouterSession } from './router-api';
 
 const BACKFILL_COLUMNS: DataTableColumn<PppoeBackfillRow>[] = [
   { header: 'Código', sortValue: (row) => row.clientCode, cell: (row) => row.clientCode },
@@ -223,13 +223,15 @@ export const LOG_COLUMNS: DataTableColumn<RouterLogEntry>[] = [
       ? <span className="router-mono">{row.topics}</span>
       : <Badge tone={logTone(row.topics)}>{row.topics}</Badge>
   },
-  { header: 'Mensagem', sortValue: (row) => row.message, cell: (row) => row.message }
+  // A frase lê-se; a linha do router fica à distância de um passar do rato.
+  { header: 'Mensagem', sortValue: (row) => row.text, cell: (row) => <span title={row.message}>{row.text}</span> }
 ];
 
 export function LogView({ log }: { log: RouterLog }) {
   const [onlyProblems, setOnlyProblems] = useState(false);
+  const [showMachine, setShowMachine] = useState(false);
   const findings = logFindings(log);
-  const rows = onlyProblems ? log.entries.filter((entry) => logTone(entry.topics) !== 'neutral') : log.entries;
+  const rows = visibleLogEntries(log.entries, { onlyProblems, showMachine });
   return (
     <>
       {findings.length > 0 && (
@@ -253,6 +255,7 @@ export function LogView({ log }: { log: RouterLog }) {
       )}
       <div className="router-log-filter">
         <Toggle title="Só erros e avisos" wide={false} checked={onlyProblems} onChange={(event) => setOnlyProblems(event.target.checked)} />
+        <Toggle title="Manutenção do ISPM" wide={false} checked={showMachine} onChange={(event) => setShowMachine(event.target.checked)} />
       </div>
       <DataTable
         rows={rows}

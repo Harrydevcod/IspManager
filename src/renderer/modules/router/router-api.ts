@@ -85,7 +85,16 @@ export type RouterInterface = {
   comment: string | null;
 };
 
-export type RouterLogEntry = { id: string; time: string; topics: string; message: string };
+/**
+ * `message` é a linha tal como o router a escreveu; `text` é a frase que o ISPM lê nela.
+ * `machine` marca o que é só manutenção do próprio ISPM (contadores, leituras da API).
+ */
+export type RouterLogEntry = { id: string; time: string; topics: string; message: string; text: string; kind: string; machine: boolean };
+
+/** As linhas que o ecrã mostra: a manutenção do ISPM só entra a pedido. */
+export function visibleLogEntries(entries: RouterLogEntry[], { onlyProblems, showMachine }: { onlyProblems: boolean; showMachine: boolean }) {
+  return entries.filter((entry) => (showMachine || !entry.machine) && (!onlyProblems || logTone(entry.topics) !== 'neutral'));
+}
 
 export type RouterLoginFailures = { address: string; via: string; users: string[]; count: number };
 

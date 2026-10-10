@@ -1,7 +1,7 @@
 import { Download, ScrollText } from 'lucide-react';
 import { useState } from 'react';
 import { Button, DataTable, EmptyState, ErrorRetry, Field, FilterBar, Select, SkeletonList, Toggle } from '../../components';
-import { logTone, ROUTER_API, type RouterLogEntry } from './router-api';
+import { ROUTER_API, visibleLogEntries, type RouterLogEntry } from './router-api';
 import { LOG_COLUMNS } from './RouterTables';
 import { useLive } from './useLive';
 
@@ -30,6 +30,7 @@ export function StoredLog() {
   const [picked, setPicked] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [onlyProblems, setOnlyProblems] = useState(false);
+  const [showMachine, setShowMachine] = useState(false);
   // Uma resposta que não é a lista (sessão caída, versão antiga) conta como ainda por ler.
   const list = Array.isArray(days.data) ? days.data : null;
   const day = picked ?? list?.[0]?.day ?? null;
@@ -47,9 +48,9 @@ export function StoredLog() {
   // A resposta de um dia pode chegar depois de se escolher outro: só serve a do dia à vista.
   const loaded = history.data?.day === day ? history.data : null;
   const needle = search.trim().toLowerCase();
-  const rows = (loaded?.entries ?? [])
-    .filter((entry) => !onlyProblems || logTone(entry.topics) !== 'neutral')
-    .filter((entry) => !needle || `${entry.topics} ${entry.message}`.toLowerCase().includes(needle))
+  const rows = visibleLogEntries(loaded?.entries ?? [], { onlyProblems, showMachine })
+    // Procura-se pela frase e pela linha do router: um IP ou um MAC estão nas duas.
+    .filter((entry) => !needle || `${entry.topics} ${entry.text} ${entry.message}`.toLowerCase().includes(needle))
     // O dia já está escolhido: na coluna fica só a hora.
     .map((entry) => ({ ...entry, time: entry.time.slice(11) }));
 
@@ -64,6 +65,7 @@ export function StoredLog() {
         <Field type="search" label="Procurar" className="router-log-search" value={search}
           onChange={(event) => setSearch(event.target.value)} placeholder="IP, MAC, tópico ou texto" />
         <Toggle title="Só erros e avisos" wide={false} checked={onlyProblems} onChange={(event) => setOnlyProblems(event.target.checked)} />
+        <Toggle title="Manutenção do ISPM" wide={false} checked={showMachine} onChange={(event) => setShowMachine(event.target.checked)} />
         <Button variant="secondary" leadingIcon={<Download size={14} aria-hidden />} disabled={!loaded} onClick={() => loaded && download(loaded)}>
           Exportar .txt
         </Button>
@@ -78,7 +80,7 @@ export function StoredLog() {
               defaultSort={{ key: 'Hora', direction: 'desc' }}
               gridTemplateColumns="minmax(96px, 0.4fr) minmax(140px, 0.6fr) minmax(260px, 3fr)"
               columns={LOG_COLUMNS}
-              empty={<EmptyState icon={ScrollText} title="Nenhuma linha com esse filtro" description="Limpe a procura ou desligue o filtro de erros e avisos." />}
+              empty={<EmptyState icon={ScrollText} title="Nenhuma linha com esse filtro" description="Limpe a procura, desligue o filtro de erros e avisos ou mostre a manutenção do ISPM." />}
             />
           )}
     </>
