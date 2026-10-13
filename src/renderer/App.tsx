@@ -22,9 +22,10 @@ import { ReportsModule } from './modules/ReportsModule';
 import { SettingsModule } from './modules/SettingsModule';
 import RouterModule from './modules/router/RouterModule';
 import { ClientsModule } from './modules/ClientsModule';
+import { ProposalsModule } from './modules/proposals/ProposalsModule';
 import { UsersModule } from './modules/UsersModule';
 import { AuditModule } from './modules/AuditModule';
-import type { DashboardSummary, HealthState, SectionId } from './types';
+import type { Client, DashboardSummary, HealthState, SectionId } from './types';
 
 const TopologyModule = lazy(() => import('./modules/topology/TopologyModule'));
 
@@ -38,6 +39,7 @@ type SidebarItem = {
 const sections: SidebarItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: Gauge },
   { id: 'clients', label: 'Clientes', icon: UsersRound },
+  { id: 'proposals', label: 'Propostas', icon: FileText, roles: ['admin', 'operator'] },
   { id: 'plans', label: 'Planos', icon: Wifi },
   { id: 'services', label: 'Serviços', icon: Cable },
   { id: 'topology', label: 'Topologia', icon: Network },
@@ -122,6 +124,7 @@ function AppShell() {
   const [health, setHealth] = useState<HealthState>('checking');
   const [section, setSection] = useState<SectionId>(() => visibleSections[0]?.id ?? 'dashboard');
   const [focusClientId, setFocusClientId] = useState<number | null>(null);
+  const [proposalClient, setProposalClient] = useState<Client | null>(null);
   const [focusServiceClientId, setFocusServiceClientId] = useState<number | null>(null);
   const [focusServiceId, setFocusServiceId] = useState<number | null>(null);
   /**
@@ -435,6 +438,7 @@ function AppShell() {
             <ClientsModule
               focusClientId={focusClientId}
               onFocusHandled={() => setFocusClientId(null)}
+              onCreateProposal={(client) => { setProposalClient(client); setSection('proposals'); }}
               onOpenServicesForClient={(id) => {
                 setFocusServiceClientId(id);
                 setSection('services');
@@ -442,6 +446,7 @@ function AppShell() {
             />
           )}
           {section === 'plans' && <PlansModule />}
+          {section === 'proposals' && <ProposalsModule initialClient={proposalClient} onInitialClientHandled={() => setProposalClient(null)} />}
           {section === 'services' && (
             <ServicesModule
               focusClientId={focusServiceClientId}

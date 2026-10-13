@@ -86,11 +86,13 @@ function cvNifError(nif: string): string | undefined {
 export function ClientsModule({
   focusClientId,
   onFocusHandled,
+  onCreateProposal,
   onOpenServicesForClient
 }: {
   focusClientId?: number | null;
   onFocusHandled?: () => void;
   onOpenServicesForClient?: (clientId: number) => void;
+  onCreateProposal?: (client: Client) => void;
 } = {}) {
   const { toast } = useToast();
   const auth = useAuth();
@@ -554,6 +556,7 @@ export function ClientsModule({
           }
         >
           <div className="client-detail">
+            {canManageClients && !selectedClient.systemKind && onCreateProposal && <Button variant="secondary" size="sm" leadingIcon={<Plus size={16} aria-hidden />} onClick={() => onCreateProposal(selectedClient)}>Criar proposta</Button>}
           <dl>
             <div><dt>Telefone</dt><dd>{selectedClient.phone || 'Sem telefone'}</dd></div>
             <div><dt>Ilha</dt><dd>{selectedClient.island || '-'}</dd></div>
