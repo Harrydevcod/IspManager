@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, FileText, MessageCircle, ReceiptText, Rota
 import { Badge, DataTable, EmptyState, RowActionsMenu, type DataTableSelection, type RowActionGroup } from '../../components';
 import type { DataTableColumn } from '../../components/DataTable';
 import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
+import { referenceMonthLabel } from '../../../shared/billing-period';
 import type { SortState } from '../../lib/listView';
 import { effectivePaymentStatus } from '../../lib/status';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
@@ -26,7 +27,7 @@ export const PAYMENT_COLUMNS: DataTableColumn<PaymentRow>[] = [
   { header: 'Código', sortValue: (p) => p.clientCode, cell: (p) => <span className="entity-code">{p.clientCode || '—'}</span> },
   { header: 'Cliente', sortValue: (p) => p.clientName, cell: (p) => <strong title={p.clientName}>{p.clientName}</strong> },
   // 'INSTALACAO' não é um mês e mostra "-": ordena como vazio, no fim.
-  { header: 'Referência', sortValue: (p) => (/^\d{4}-\d{2}$/.test(p.referenceMonth) ? p.referenceMonth : null), defaultDirection: 'desc', cell: (p) => <span>{formatPtMonth(p.referenceMonth)}</span> },
+  { header: 'Referência', sortValue: (p) => (/^\d{4}-\d{2}$/.test(p.referenceMonth) ? p.referenceMonth : null), defaultDirection: 'desc', cell: (p) => <span>{referenceMonthLabel(p.referenceMonth, formatPtMonth)}</span> },
   { header: 'Fatura', sortValue: (p) => p.invoiceNumber, cell: (p) => <span>{p.invoiceNumber || '—'}</span> },
   {
     header: 'Vencimento',

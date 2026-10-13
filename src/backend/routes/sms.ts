@@ -5,6 +5,7 @@ import { getSqliteDatabase } from '../db/database';
 import { canStoreSecrets, readSecret, writeSecret } from '../lib/secrets';
 import { requireRole } from './auth';
 import { discoverCompanionHosts, enqueueSmsNotification, findPairedCompanion, verifyCompanionPairing } from '../lib/sms-outbox';
+import { openStripeLinkSql } from '../lib/stripe-payments';
 import { SMS_REPORT_TIMEZONE, smsReportMonthUtcRange } from '../../shared/sms-report';
 import {
   fallbackSmsInvoiceIssuedTemplate,
@@ -167,13 +168,14 @@ export async function registerSmsRoutes(app: FastifyInstance) {
       SELECT py.id, py.service_id AS serviceId, py.client_id AS clientId, py.reference_month AS referenceMonth,
              py.amount_cve AS amountCve, py.due_date AS dueDate, py.invoice_number AS invoiceNumber,
              py.receipt_number AS receiptNumber, py.status, c.full_name AS fullName,
-             c.client_code AS clientCode, c.phone
+             c.client_code AS clientCode, c.phone,
+             ${openStripeLinkSql('py')} AS paymentLink
       FROM payments py JOIN clients c ON c.id = py.client_id
       WHERE py.id = ?
     `).get(id) as {
       id: number; serviceId: number; clientId: number; referenceMonth: string; amountCve: number;
       dueDate: string; invoiceNumber: string | null; receiptNumber: string | null; status: string;
-      fullName: string; clientCode: string | null; phone: string | null;
+      fullName: string; clientCode: string | null; phone: string | null; paymentLink: string | null;
     } | undefined;
     if (!payment) return reply.status(404).send({ error: 'Pagamento nao encontrado' });
     const toPhone = normalizeSmsPhone(payment.phone || '');
@@ -193,7 +195,8 @@ export async function registerSmsRoutes(app: FastifyInstance) {
       invoiceNumber: payment.invoiceNumber,
       receiptNumber: payment.receiptNumber,
       daysOverdue,
-      suspensionDays: Number(getSetting('whatsappSuspensionNoticeDays')) || 15
+      suspensionDays: Number(getSetting('whatsappSuspensionNoticeDays')) || 15,
+      paymentLink: payment.paymentLink
     }, getSetting('companyName') || 'ISPM');
     const outboxId = enqueueSmsNotification({
       clientId: payment.clientId,

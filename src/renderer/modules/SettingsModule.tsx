@@ -1,4 +1,4 @@
-import { Activity, Banknote, Building2, DatabaseBackup, KeyRound, MessageCircle, Radar, Smartphone } from 'lucide-react';
+import { Activity, Banknote, Building2, CreditCard, DatabaseBackup, KeyRound, MessageCircle, Radar, Smartphone } from 'lucide-react';
 import QRCode from 'qrcode';
 import type { FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -28,6 +28,7 @@ import { BillingTab } from './settings/BillingTab';
 import { CompanyTab } from './settings/CompanyTab';
 import { SmsTab } from './settings/SmsTab';
 import { WhatsappTab } from './settings/WhatsappTab';
+import { StripeTab } from './settings/StripeTab';
 import type { SettingsFormState } from './settings/settingsForm';
 import { NetworkTab, type RouterEnforcementState, type RouterTestReport } from './settings/NetworkTab';
 import { RouterLiveDialog } from './settings/RouterLiveDialog';
@@ -36,11 +37,12 @@ import { LicensePanel } from './LicensePanel';
 import { VaultPanel } from './settings/VaultPanel';
 import { useAuth } from '../lib/auth';
 
-type SettingsTab = 'company' | 'billing' | 'whatsapp' | 'sms' | 'network' | 'backups' | 'jobs' | 'license' | 'vault';
+type SettingsTab = 'company' | 'billing' | 'stripe' | 'whatsapp' | 'sms' | 'network' | 'backups' | 'jobs' | 'license' | 'vault';
 
 const TABS: { id: SettingsTab; label: string; icon: typeof Building2 }[] = [
   { id: 'company', label: 'Empresa', icon: Building2 },
   { id: 'billing', label: 'Faturação', icon: Banknote },
+  { id: 'stripe', label: 'Stripe', icon: CreditCard },
   { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
   { id: 'sms', label: 'SMS', icon: Smartphone },
   { id: 'network', label: 'Rede', icon: Radar },
@@ -77,6 +79,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
   const [routerSecretDraft, setRouterSecretDraft] = useState<SecretDraft>({ editing: false });
   const [ultraSecretDraft, setUltraSecretDraft] = useState<SecretDraft>({ editing: false });
   const [metaSecretDraft, setMetaSecretDraft] = useState<SecretDraft>({ editing: false });
+  const [stripeSecretDraft, setStripeSecretDraft] = useState<SecretDraft>({ editing: false });
   const [message, setMessage] = useState<{ tone: 'neutral' | 'success' | 'error'; text: string; placement: 'top' | 'save' } | null>(null);
   const [saving, setSaving] = useState(false);
   const [testSending, setTestSending] = useState(false);
@@ -150,7 +153,10 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     autoSuspensionGraceDays: '15',
     autoSuspensionIntervalMinutes: '60',
     autoSuspensionMaxPerRun: '5',
-    autoSuspensionMaxPercent: '20'
+    autoSuspensionMaxPercent: '20',
+    stripeEnabled: false,
+    stripeSecretKey: '',
+    stripeTreasuryAccountId: ''
   });
   const [probeBusy, setProbeBusy] = useState(false);
   const [probeMessage, setProbeMessage] = useState('');
@@ -366,7 +372,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
         }
-        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold' | 'routerosPort' | 'routerosIntervalSeconds' | 'routerosMaxDisablesPerRun' | 'autoSuspensionGraceDays' | 'autoSuspensionIntervalMinutes' | 'autoSuspensionMaxPerRun' | 'autoSuspensionMaxPercent'> & { defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number; routerosPort: number; routerosIntervalSeconds: number; routerosMaxDisablesPerRun: number; autoSuspensionGraceDays: number; autoSuspensionIntervalMinutes: number; autoSuspensionMaxPerRun: number; autoSuspensionMaxPercent: number; secretsLost?: string[] }>;
+        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold' | 'routerosPort' | 'routerosIntervalSeconds' | 'routerosMaxDisablesPerRun' | 'autoSuspensionGraceDays' | 'autoSuspensionIntervalMinutes' | 'autoSuspensionMaxPerRun' | 'autoSuspensionMaxPercent' | 'stripeTreasuryAccountId'> & { stripeTreasuryAccountId: number; defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number; routerosPort: number; routerosIntervalSeconds: number; routerosMaxDisablesPerRun: number; autoSuspensionGraceDays: number; autoSuspensionIntervalMinutes: number; autoSuspensionMaxPerRun: number; autoSuspensionMaxPercent: number; secretsLost?: string[] }>;
       })
       .then((settings) => {
         const loadedForm = {
@@ -390,7 +396,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
           autoSuspensionGraceDays: String(settings.autoSuspensionGraceDays),
           autoSuspensionIntervalMinutes: String(settings.autoSuspensionIntervalMinutes),
           autoSuspensionMaxPerRun: String(settings.autoSuspensionMaxPerRun),
-          autoSuspensionMaxPercent: String(settings.autoSuspensionMaxPercent)
+          autoSuspensionMaxPercent: String(settings.autoSuspensionMaxPercent),
+          stripeTreasuryAccountId: settings.stripeTreasuryAccountId ? String(settings.stripeTreasuryAccountId) : ''
         };
         setForm(loadedForm);
         setLastSavedForm(loadedForm);
@@ -497,6 +504,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
           routerosPassword: routerSecretDraft.editing && routerSecretDraft.value ? routerSecretDraft.value : undefined,
           ultraMsgToken: ultraSecretDraft.editing && ultraSecretDraft.value ? ultraSecretDraft.value : undefined,
           metaAccessToken: metaSecretDraft.editing && metaSecretDraft.value ? metaSecretDraft.value : undefined,
+          stripeSecretKey: stripeSecretDraft.editing && stripeSecretDraft.value ? stripeSecretDraft.value : undefined,
+          stripeTreasuryAccountId: Number(savedForm.stripeTreasuryAccountId) || 0,
           defaultDueDay: Number(savedForm.defaultDueDay),
           autoBillingDay: Number(savedForm.autoBillingDay),
           audiovisualMonthlyCve: Number(savedForm.audiovisualMonthlyCve),
@@ -533,12 +542,15 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
         routerosPasswordConfigured?: boolean;
         ultraMsgTokenConfigured?: boolean;
         metaAccessTokenConfigured?: boolean;
+        stripeSecretKeyConfigured?: boolean;
       };
       const settledForm = {
         ...savedForm,
         routerosPassword: '',
         ultraMsgToken: '',
         metaAccessToken: '',
+        stripeSecretKey: '',
+        stripeSecretKeyConfigured: result.stripeSecretKeyConfigured ?? savedForm.stripeSecretKeyConfigured,
         routerosPasswordConfigured: result.routerosPasswordConfigured ?? savedForm.routerosPasswordConfigured,
         ultraMsgTokenConfigured: result.ultraMsgTokenConfigured ?? savedForm.ultraMsgTokenConfigured,
         metaAccessTokenConfigured: result.metaAccessTokenConfigured ?? savedForm.metaAccessTokenConfigured
@@ -547,6 +559,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
       setRouterSecretDraft({ editing: false });
       setUltraSecretDraft({ editing: false });
       setMetaSecretDraft({ editing: false });
+      setStripeSecretDraft({ editing: false });
       setLastSavedForm(settledForm);
       setSecretsLost([]);
       setMessage({ tone: 'success', text: 'Configuracoes gravadas com sucesso.', placement: 'save' });
@@ -785,6 +798,16 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
 
         {activeTab === 'billing' && (
           <BillingTab form={form} onUpdate={updateForm} onToggle={toggleForm} />
+        )}
+
+        {activeTab === 'stripe' && (
+          <StripeTab
+            form={form}
+            onUpdate={updateForm}
+            onToggle={toggleForm}
+            secretDraft={stripeSecretDraft}
+            onSecretDraftChange={setStripeSecretDraft}
+          />
         )}
 
         {activeTab === 'whatsapp' && (

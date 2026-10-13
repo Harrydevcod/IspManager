@@ -19,7 +19,11 @@ ISPM is a desktop application for day-to-day ISP operations in Cabo Verde.
 - One `Cliente` can have multiple `Servicos`.
 - Each `Servico` belongs to exactly one `Cliente`.
 - Each `Servico` is associated with one `Plano` at a time.
-- Each `Pagamento` belongs to one `Servico` and one `Cliente`.
+- Each `Pagamento` belongs to one `Cliente` and optionally one `Servico`.
+- A manual invoice can register a new recipient as a `Cliente` without a `Servico`.
+- A manual invoice linked to a `Servico` follows the same debt suspension rules as monthly billing.
+- A manual invoice without a `Servico` never suspends Internet access.
+- Manual invoices are numbered on issue; they are cancelled rather than deleted or regenerated.
 
 ## Operational rules
 

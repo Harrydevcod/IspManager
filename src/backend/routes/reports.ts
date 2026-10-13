@@ -9,6 +9,7 @@ import { loadOperationsStatus } from '../lib/operations-status';
 import { detectAdminNetwork } from '../lib/admin-network';
 import { buildOperationsStatusPdf } from '../lib/operations-export';
 import { LANDED_COST_SQL, parkValue, portfolioRows } from '../lib/capex';
+import { MANUAL_INVOICE_PREFIX } from '../../shared/billing-period';
 
 type ReportMetricRow = {
   totalClients: number;
@@ -147,9 +148,12 @@ export async function registerReportRoutes(app: FastifyInstance) {
      * exclui o crédito de conta corrente (liquida, mas não faz entrar dinheiro)
      * e os recibos anulados.
      */
+    // Cada fatura manual tem a sua chave (`AVULSA-<id>`): sem isto a tabela
+    // ganhava uma linha por fatura. Juntam-se numa só competência, "Avulsas".
+    const revenueKeySql = `CASE WHEN reference_month LIKE '${MANUAL_INVOICE_PREFIX}%' THEN '${MANUAL_INVOICE_PREFIX}' ELSE reference_month END`;
     const revenueByMonth = db.prepare(`
       SELECT
-        reference_month AS referenceMonth,
+        ${revenueKeySql} AS referenceMonth,
         coalesce(sum(case when status <> 'cancelled'
           then amount_cve - ${balanceSqlExpr('payments')} else 0 end), 0) AS paidCve,
         coalesce(sum(case when status in ('pending','overdue')
@@ -163,8 +167,8 @@ export async function registerReportRoutes(app: FastifyInstance) {
         ) AS cashCve
       FROM payments
       ${paymentWhereSql}
-      GROUP BY reference_month
-      ORDER BY reference_month DESC
+      GROUP BY ${revenueKeySql}
+      ORDER BY referenceMonth DESC
       LIMIT @limit
       OFFSET @offset
     `).all(params);
@@ -172,10 +176,10 @@ export async function registerReportRoutes(app: FastifyInstance) {
     const revenueTotal = db.prepare(`
       SELECT count(*) AS total
       FROM (
-        SELECT reference_month
+        SELECT 1
         FROM payments
         ${paymentWhereSql}
-        GROUP BY reference_month
+        GROUP BY ${revenueKeySql}
       )
     `).get(params) as { total: number };
 

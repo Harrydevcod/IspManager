@@ -1,4 +1,5 @@
 import { formatPtDate, formatPtMonth } from './date';
+import { expandPaymentLink } from './payment-link';
 
 export type SmsEventType = 'invoice_issued' | 'receipt_confirmed' | 'payment_overdue' | 'suspension_notice';
 
@@ -18,6 +19,11 @@ export type SmsTemplateData = {
   receiptNumber?: string | null;
   daysOverdue?: number;
   suspensionDays?: number;
+  /**
+   * Link de pagamento online. Fora dos modelos por omissão: a página do Stripe
+   * tem um URL longo, que num SMS custa vários segmentos. Quem quiser, põe `{link}`.
+   */
+  paymentLink?: string | null;
 };
 
 export function normalizeSmsPhone(phone: string): string {
@@ -44,5 +50,5 @@ export function renderSmsTemplate(template: string, data: SmsTemplateData, compa
     dias_suspensao: data.suspensionDays == null ? '-' : String(data.suspensionDays)
   };
 
-  return template.replace(/\{([a-z_]+)\}/gi, (token, key: string) => values[key.toLowerCase()] ?? token);
+  return expandPaymentLink(template, data.paymentLink).replace(/\{([a-z_]+)\}/gi, (token, key: string) => values[key.toLowerCase()] ?? token);
 }

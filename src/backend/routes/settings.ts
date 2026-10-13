@@ -5,6 +5,7 @@ import type Database from 'better-sqlite3';
 import { validateBackupDir } from '../lib/backup';
 import { recordAudit } from '../lib/audit';
 import { confirmSessionPassword, requireRole } from './auth';
+import { getAccount } from '../lib/treasury';
 import { canStoreSecrets, readSecret, readSecretsLost, refreshSecretsLost, SECRET_KEYS, writeSecret, type SecretKey } from '../lib/secrets';
 import { WHATSAPP_PROVIDER_IDS, type WhatsappProviderId } from '../lib/whatsapp-provider';
 import {
@@ -150,7 +151,13 @@ const settingsSchema = z.object({
   autoSuspensionIntervalMinutes: z.coerce.number().int().min(5).max(1440).optional().default(60),
   autoSuspensionMaxPerRun: z.coerce.number().int().min(1).max(500).optional().default(5),
   autoSuspensionMaxPercent: z.coerce.number().int().min(1).max(100).optional().default(20),
-  backupDir: z.string().trim().max(500).optional().nullable()
+  backupDir: z.string().trim().max(500).optional().nullable(),
+  // Stripe como mais uma via de pagamento (ADR 0016). A chave é uma credencial
+  // do cofre: omitida ou vazia = manter a guardada.
+  stripeEnabled: strictOptionalBoolean,
+  stripeSecretKey: z.string().max(255).optional().nullable(),
+  // Conta de tesouraria onde o Stripe liquida; 0 = por escolher.
+  stripeTreasuryAccountId: z.coerce.number().int().min(0).optional().default(0)
 });
 
 /**
@@ -163,7 +170,8 @@ function secretFlags(db: Database.Database) {
   return {
     routerosPasswordConfigured: readSecret(db, 'routerosPassword') !== '',
     ultraMsgTokenConfigured: readSecret(db, 'ultraMsgToken') !== '',
-    metaAccessTokenConfigured: readSecret(db, 'metaAccessToken') !== ''
+    metaAccessTokenConfigured: readSecret(db, 'metaAccessToken') !== '',
+    stripeSecretKeyConfigured: readSecret(db, 'stripeSecretKey') !== ''
   };
 }
 
@@ -234,7 +242,10 @@ const defaultSettings = {
   autoSuspensionIntervalMinutes: 60,
   autoSuspensionMaxPerRun: 5,
   autoSuspensionMaxPercent: 20,
-  backupDir: ''
+  backupDir: '',
+  stripeEnabled: false,
+  stripeSecretKey: '',
+  stripeTreasuryAccountId: 0
 };
 
 type SettingKey = keyof typeof defaultSettings;
@@ -290,18 +301,19 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         || row.key === 'autoSuspensionIntervalMinutes'
         || row.key === 'autoSuspensionMaxPerRun'
         || row.key === 'autoSuspensionMaxPercent'
+        || row.key === 'stripeTreasuryAccountId'
       ) {
         const n = Number(row.value);
         settings[row.key] = Number.isFinite(n) ? n : defaultSettings[row.key];
       } else if (row.key === 'routerosDryRun') {
         // Só um "false" explícito desliga o ensaio.
         settings.routerosDryRun = row.value !== 'false' && row.value !== '0';
-      } else if (row.key === 'routerosPassword' || row.key === 'ultraMsgToken' || row.key === 'metaAccessToken') {
+      } else if (row.key === 'routerosPassword' || row.key === 'ultraMsgToken' || row.key === 'metaAccessToken' || row.key === 'stripeSecretKey') {
         // Nunca saem: ver `secretFlags`.
         settings[row.key] = '';
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
-      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled' || row.key === 'autoSuspensionEnabled') {
+      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled' || row.key === 'autoSuspensionEnabled' || row.key === 'stripeEnabled') {
         settings[row.key] = row.value === 'true' || row.value === '1';
       } else if (row.key === 'bankAccounts') {
         try {
@@ -373,6 +385,17 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       if (!(await confirmSessionPassword(request, reply, confirmPassword))) return reply;
     }
 
+    // Ligar o Stripe sem chave ou sem conta de destino deixava o interruptor a
+    // dizer "ligado" com tudo parado: recusa-se aqui, com a razão.
+    if (parsed.data.stripeEnabled) {
+      if (!parsed.data.stripeSecretKey && readSecret(db, 'stripeSecretKey') === '') {
+        return reply.status(400).send({ error: 'Para ativar o Stripe indique a chave da API.' });
+      }
+      if (!getAccount(db, parsed.data.stripeTreasuryAccountId)?.active) {
+        return reply.status(400).send({ error: 'Para ativar o Stripe escolha a conta de tesouraria onde o dinheiro entra.' });
+      }
+    }
+
     const save = db.prepare(`
       INSERT INTO app_settings (key, value, updated_at)
       VALUES (?, ?, datetime('now'))
@@ -432,6 +455,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       routerosPassword: '',
       ultraMsgToken: '',
       metaAccessToken: '',
+      stripeSecretKey: '',
       ...secretFlags(db)
     };
   });

@@ -52,6 +52,7 @@ import { hasDueSessionDrops, recoverInterruptedPlanChanges, runScheduledSessionD
 import { routerosIntervalMs } from './lib/routeros';
 import { autoSuspensionIntervalMs, runAutomaticSuspension } from './lib/auto-suspension';
 import { runJob, runJobSync } from './lib/jobRuns';
+import { readStripeConfig, runStripeSweep } from './lib/stripe-payments';
 
 let serverStarted = false;
 
@@ -316,6 +317,19 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
     };
     suspensionTick();
     scheduleSuspension();
+  }
+
+  // Stripe como via de pagamento (ADR 0016): sem endereço público não há webhook,
+  // por isso pergunta-se ao Stripe pelos links abertos. Desligado nas Configurações
+  // não toca na rede nem escreve em job_runs. Opt-out com ISPM_STRIPE=off.
+  if (process.env.ISPM_STRIPE !== 'off' && !process.env.VITEST) {
+    const stripeTick = () => {
+      if (!licenseAllowsWrites() || !readStripeConfig(getSqliteDatabase()).enabled) return;
+      void runJob('stripe_sweep', () => runStripeSweep())
+        .catch((err) => app.log.error({ err }, 'stripe sweep failed'));
+    };
+    stripeTick();
+    setInterval(stripeTick, 5 * 60_000).unref();
   }
 
   // Reconciliação do acesso na rede (ADR 0007): compara a intenção da BD com o

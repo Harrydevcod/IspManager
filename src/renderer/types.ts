@@ -98,6 +98,10 @@ export type AudiovisualConfig = {
 
 export type PaymentRow = {
   id: number;
+  /** Nulo numa fatura manual sem serviço. */
+  serviceId?: number | null;
+  /** Data de emissão, como vem da lista. */
+  invoiceDate?: string | null;
   clientName: string;
   clientCode: string | null;
   clientNif: string | null;
@@ -114,6 +118,8 @@ export type PaymentRow = {
   /** Já recebido (recibos não anulados) e o que falta — o saldo é o que se cobra. */
   receivedCve: number;
   balanceCve: number;
+  /** Link de pagamento Stripe ainda válido para o saldo; ausente quando não há. */
+  stripeLinkUrl?: string | null;
 };
 
 export type PaymentStatus = PaymentRow['status'];

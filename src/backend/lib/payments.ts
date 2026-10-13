@@ -4,6 +4,7 @@ import { isAudiovisualAnnualReference, loadAudiovisualConfig } from './audiovisu
 import { allocateDocumentNumber } from './numbering';
 import { validatePaymentDates } from '../../shared/payment-dates';
 import { escudosToCentavos, isSettled, roundEscudos } from '../../shared/money';
+import { isManualInvoiceReference } from '../../shared/billing-period';
 import { recordReceiptMovement, resolveReceiptAccount, reverseReceiptMovements } from './treasury';
 import { reactivateServiceIfEligibleAfterPayment } from './auto-suspension';
 
@@ -238,6 +239,11 @@ export function regeneratePayment(db: Database, id: number): PaymentOpResult<{
   if (payment.status !== 'cancelled') {
     return { ok: false, status: 400, error: 'Apenas pagamentos anulados podem regenerar mensalidade' };
   }
+  // Regenerar reconstrói as linhas da mensalidade: numa fatura manual trocava
+  // o que foi escrito à mão pelo plano do serviço.
+  if (isManualInvoiceReference(payment.referenceMonth)) {
+    return { ok: false, status: 400, error: 'Uma fatura manual nao se regenera: passe uma nova' };
+  }
   if (payment.serviceStatus === 'cancelled') {
     return { ok: false, status: 400, error: 'Servico cancelado nao pode regenerar mensalidade' };
   }
@@ -401,7 +407,8 @@ export function clientCreditBalance(db: Database, clientId: number): number {
 type PaymentHead = {
   id: number;
   clientId: number;
-  serviceId: number;
+  /** Nulo numa fatura manual sem serviço (0081). */
+  serviceId: number | null;
   status: PaymentStatus;
   amountCve: number;
   invoiceDate: string | null;
@@ -569,7 +576,7 @@ export function payPayment(
 
     const remaining = roundEscudos(head.amountCve - receivedTotal(db, id));
     const settled = isSettled(remaining);
-    if (settled) {
+    if (settled && head.serviceId !== null) {
       reactivateServiceIfEligibleAfterPayment(db, head.serviceId, input.userId ?? null);
     }
     return {
@@ -621,7 +628,7 @@ export function applyClientCreditToPayment(
       INSERT INTO client_credits (client_id, amount_cve, receipt_id, reason)
       VALUES (?, ?, ?, ?)
     `).run(head.clientId, -applied, receipt.id, `Aplicado na fatura ${head.invoiceNumber || head.referenceMonth}`);
-    reactivateServiceIfEligibleAfterPayment(db, head.serviceId, userId ?? null);
+    if (head.serviceId !== null) reactivateServiceIfEligibleAfterPayment(db, head.serviceId, userId ?? null);
     return receipt;
   })();
 }

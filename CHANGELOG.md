@@ -6,6 +6,22 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+- **Fatura manual.** Em Pagamentos, **Nova fatura** permite faturar uma
+  deslocação, material ou outro valor avulso a um cliente existente ou a um
+  destinatário novo. O novo destinatário fica registado em Clientes, sem
+  serviço. A fatura nasce numerada, admite várias linhas e abate o crédito
+  existente. Pode ser paga, exportada para PDF ou anulada. Quando pertence a
+  um serviço, conta para o corte por dívida; sem serviço, não corta o acesso.
+- **Stripe como via de pagamento.** Configuração opcional com chave no cofre
+  e conta de tesouraria de destino. Cada fatura pode ter um link de pagamento;
+  a confirmação entra como recibo e a comissão como despesa. Reembolsos totais
+  exigem administrador e confirmação da password. Validado contra o Stripe em
+  modo de teste: cobrança em CVE, recibo, comissão, reembolso e recuperação de
+  rascunho após reinício e pagamento parcial.
+- **Formulários alinhados.** Descrições e mensagens de erro abaixo dos campos
+  deixam de deslocar os controlos das colunas vizinhas. Os seletores de cliente
+  usam a mesma altura dos restantes campos.
+
 ## [2.30](https://github.com/Harrydevcod/IspManager/releases/tag/v2.30.0) — 2026-10-10
 
 - **O registo do router lê-se em português.** Na aba Registo (ao vivo e guardado) cada linha passa a ser uma frase: "PPPoE skn001 (Isa Rafe): a sessão caiu — o equipamento do cliente deixou de responder", "192.168.1.110 deixou de responder", "admin (WinBox) alterou o acesso PPPoE skn014: profile=PLANO-40-10". A linha tal como o router a escreveu aparece ao passar o rato e continua a servir na procura e no ficheiro exportado. O que o ISPM ainda não sabe ler fica como veio.

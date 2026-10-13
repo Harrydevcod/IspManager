@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CalendarPlus, RotateCcw, Send } from 'lucide-react';
+import { AlertTriangle, CalendarPlus, FilePlus2, RotateCcw, Send } from 'lucide-react';
 import { BulkActionBar, Button, ColumnPicker, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { formatCve, formatPtMonth } from '../lib/format';
 import { authFetch } from '../lib/auth';
+import type { StripeState } from './payments/StripeLinkPanel';
+import { ManualInvoiceDialog } from './payments/ManualInvoiceDialog';
 import { downloadAuthenticated, printAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
 import { paginateRows, sortByColumns, type SortState } from '../lib/listView';
 import { runBulk, summarizeBulk } from '../lib/bulkRun';
 import { useRowSelection } from '../lib/useRowSelection';
 import { useColumnVisibility } from '../lib/columnVisibility';
 import { effectivePaymentStatus } from '../lib/status';
-import { defaultPostpaidReferenceMonth } from '../../shared/billing-period';
+import { defaultPostpaidReferenceMonth, isManualInvoiceReference } from '../../shared/billing-period';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
   fallbackWhatsappOverdueTemplate,
@@ -102,8 +104,12 @@ export function PaymentsModule({
   const [cancelReason, setCancelReason] = useState<string>('');
   const [receipts, setReceipts] = useState<PaymentReceipt[]>([]);
   const [clientCreditCve, setClientCreditCve] = useState(0);
+  const [stripe, setStripe] = useState<StripeState>({ enabled: false, link: null });
   const [voidTarget, setVoidTarget] = useState<PaymentReceipt | null>(null);
   const [voidReason, setVoidReason] = useState('');
+  const [manualInvoiceOpen, setManualInvoiceOpen] = useState(false);
+  /** O diálogo de anular em modo reembolso Stripe; a password só existe aqui. */
+  const [refundPassword, setRefundPassword] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [monthlyPreview, setMonthlyPreview] = useState<BillingPreview | null>(null);
   const [monthlyLoading, setMonthlyLoading] = useState(false);
@@ -265,7 +271,8 @@ export function PaymentsModule({
         invoiceNumber: payment.invoiceNumber,
         receiptNumber: payment.receiptNumber,
         daysOverdue,
-        suspensionDays: whatsappSuspensionNoticeDays
+        suspensionDays: whatsappSuspensionNoticeDays,
+        paymentLink: payment.stripeLinkUrl
       }
     );
   }
@@ -513,9 +520,10 @@ export function PaymentsModule({
         setClientCreditCve(0);
         return;
       }
-      const body = await response.json() as { receipts: PaymentReceipt[]; clientCreditCve: number };
+      const body = await response.json() as { receipts: PaymentReceipt[]; clientCreditCve: number; stripe?: StripeState };
       setReceipts(body.receipts);
       setClientCreditCve(body.clientCreditCve);
+      setStripe(body.stripe ?? { enabled: false, link: null });
     } catch {
       setReceipts([]);
       setClientCreditCve(0);
@@ -545,19 +553,24 @@ export function PaymentsModule({
     const paymentId = voidTarget.paymentId;
     setSubmitting(true);
     try {
-      const response = await authFetch(`http://127.0.0.1:3001/api/receipts/${voidTarget.id}/void`, {
+      const refunding = refundPassword !== null;
+      const response = await authFetch(`http://127.0.0.1:3001/api/receipts/${voidTarget.id}/${refunding ? 'stripe-refund' : 'void'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: voidReason })
+        body: JSON.stringify(refunding ? { reason: voidReason, confirmPassword: refundPassword } : { reason: voidReason })
       });
-      const body = await response.json().catch(() => ({ error: 'Nao foi possivel anular o recibo.' })) as { error?: string; reopened?: boolean };
+      const fallback = refunding ? 'Nao foi possivel reembolsar.' : 'Nao foi possivel anular o recibo.';
+      const body = await response.json().catch(() => ({ error: fallback })) as { error?: string; reopened?: boolean };
       if (!response.ok) {
-        toast(body.error || 'Nao foi possivel anular o recibo.', 'error');
+        toast(body.error || fallback, 'error');
         return;
       }
-      toast(body.reopened ? 'Recibo anulado. A fatura voltou a ficar em aberto.' : 'Recibo anulado.', 'success');
+      toast(refunding
+        ? 'Reembolsado no Stripe e recibo anulado. A fatura voltou a ficar em aberto.'
+        : body.reopened ? 'Recibo anulado. A fatura voltou a ficar em aberto.' : 'Recibo anulado.', 'success');
       setVoidTarget(null);
       setVoidReason('');
+      setRefundPassword(null);
       const refreshedPayments = await loadPayments();
       setSelectedPayment((current) => refreshedPayments.find((item) => item.id === (current?.id || paymentId)) || current);
       await loadReceipts(paymentId);
@@ -864,7 +877,9 @@ export function PaymentsModule({
   // parcelas do período umas com as outras, e o ecrã abre filtrado a Pendente —
   // se seguissem o filtro, "Atraso" e "Pago" estariam sempre a zero.
   const periodPayments = useMemo(() => payments.filter((payment) => {
-      const monthMatches = showAllMonths || payment.referenceMonth === referenceMonth;
+      // Uma fatura manual não tem mês de competência: mostra-se no mês em que foi emitida.
+      const monthMatches = showAllMonths || payment.referenceMonth === referenceMonth
+        || (isManualInvoiceReference(payment.referenceMonth) && (payment.invoiceDate || '').startsWith(referenceMonth));
       const searchMatches = !normalizedSearch
         || payment.clientName.toLowerCase().includes(normalizedSearch)
         || (payment.invoiceNumber || '').toLowerCase().includes(normalizedSearch)
@@ -993,6 +1008,9 @@ export function PaymentsModule({
           }
           secondary={
             <>
+              <Button variant="secondary" leadingIcon={<FilePlus2 size={16} aria-hidden />} onClick={() => setManualInvoiceOpen(true)}>
+                Nova fatura
+              </Button>
               <Button variant="secondary" leadingIcon={<Send size={16} aria-hidden />} onClick={() => void openOverduePreview()} disabled={notifyLoading}>
                 {notifyLoading ? 'A consultar...' : 'Notificar atrasados'}
               </Button>
@@ -1086,6 +1104,12 @@ export function PaymentsModule({
           cancelReason={cancelReason}
           receipts={receipts}
           clientCreditCve={clientCreditCve}
+          stripe={stripe}
+          onStripeChanged={() => {
+            // A lista também muda: a linha passa a trazer o link para os avisos.
+            void loadReceipts(selectedPayment.id);
+            void loadPayments().then((rows) => setSelectedPayment((current) => rows.find((item) => item.id === current?.id) || current));
+          }}
           previewDoc={previewDoc}
           previewDocType={previewDocType}
           whatsappMessage={whatsappMessageFor(selectedPayment)}
@@ -1106,7 +1130,8 @@ export function PaymentsModule({
           onPayAccountChange={setPayAccountId}
           onCancelReasonChange={setCancelReason}
           onPrintReceipt={(receipt) => openReceiptPdf(receipt)}
-          onVoidReceipt={(receipt) => { setVoidTarget(receipt); setVoidReason(''); }}
+          onVoidReceipt={(receipt) => { setVoidTarget(receipt); setVoidReason(''); setRefundPassword(null); }}
+          onRefundReceipt={(receipt) => { setVoidTarget(receipt); setVoidReason(''); setRefundPassword(''); }}
           onApplyCredit={() => void applyCredit(selectedPayment.id)}
           onSubmitPay={() => void submitPayment(selectedPayment.id, payMethod, payDate, Number(payAmount), Number(payAccountId))}
           onSubmitCancel={() => void submitCancel(selectedPayment.id, cancelReason)}
@@ -1114,12 +1139,29 @@ export function PaymentsModule({
         />
       )}
 
+      <ManualInvoiceDialog
+        open={manualInvoiceOpen}
+        onClose={() => setManualInvoiceOpen(false)}
+        onCreated={(paymentId) => {
+          setManualInvoiceOpen(false);
+          toast('Fatura emitida.', 'success');
+          // Uma avulsa não tem mês: sem mostrar todos os meses ficava escondida
+          // pelo filtro, acabada de nascer.
+          setShowAllMonths(true);
+          void loadPayments().then((rows) => {
+            const created = rows.find((item) => item.id === paymentId);
+            if (created) previewPaymentDocument(created);
+          });
+        }}
+      />
+
       <VoidReceiptDialog
         receipt={voidTarget}
         reason={voidReason}
         submitting={submitting}
         onReasonChange={setVoidReason}
-        onClose={() => { setVoidTarget(null); setVoidReason(''); }}
+        refund={refundPassword === null ? undefined : { password: refundPassword, onPasswordChange: setRefundPassword }}
+        onClose={() => { setVoidTarget(null); setVoidReason(''); setRefundPassword(null); }}
         onConfirm={() => void confirmVoidReceipt()}
       />
 
