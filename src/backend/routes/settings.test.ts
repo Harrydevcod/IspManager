@@ -81,6 +81,13 @@ afterAll(async () => {
 });
 
 describe('settings SMS validation', () => {
+  test.each(['invoicePrefix', 'receiptPrefix'])('reserves PR for proposals in %s', async (key) => {
+    const response = await app.inject({ method: 'PUT', url: '/api/settings',
+      payload: { ...validSettings, [key]: 'pr' } });
+    expect(response.statusCode).toBe(400);
+    expect(db.prepare('SELECT * FROM app_settings').all()).toEqual([]);
+  });
+
   test('accepts string false for smsCompanionEnabled without enabling SMS', async () => {
     const response = await app.inject({
       method: 'PUT',
