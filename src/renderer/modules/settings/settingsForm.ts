@@ -78,6 +78,12 @@ export type SettingsFormState = {
   autoSuspensionIntervalMinutes: string;
   autoSuspensionMaxPerRun: string;
   autoSuspensionMaxPercent: string;
+  stripeEnabled: boolean;
+  /** Só uma chave nova; vazia = manter a guardada. */
+  stripeSecretKey: string;
+  stripeSecretKeyConfigured?: boolean;
+  /** Id da conta de tesouraria como texto; '' = por escolher. */
+  stripeTreasuryAccountId: string;
 };
 
 export type UpdateField = (field: keyof SettingsFormState, value: string) => void;

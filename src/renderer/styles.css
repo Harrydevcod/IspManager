@@ -2933,6 +2933,7 @@ h2 {
 .client-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--r2);
@@ -3013,6 +3014,37 @@ h2 {
 
 .service-item-draft:last-of-type {
   border-bottom: 0;
+}
+
+/* Linha de uma fatura manual: descrição larga, valor estreito, remover ao lado. */
+.manual-invoice-line {
+  grid-template-columns: minmax(0, 1fr) 160px auto;
+  align-items: start;
+}
+
+.manual-invoice-line > button {
+  min-height: 40px;
+  margin-top: calc(var(--fs-xs) * 1.5 + var(--space-1-5));
+}
+
+.manual-invoice-line input {
+  min-width: 0;
+  width: 100%;
+}
+
+.form-actions.manual-invoice-total {
+  justify-content: space-between;
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .manual-invoice-line {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .manual-invoice-line > button {
+    margin-top: 0;
+  }
 }
 
 .form-actions {
@@ -3793,7 +3825,20 @@ h2 {
 
 .field {
   display: grid;
-  gap: var(--space-1);
+  /* Dicas e erros ocupam espaço abaixo do controlo, sem distribuir a altura
+     da linha pelos rótulos e campos das colunas vizinhas. Também vale para
+     os seletores de cliente e credenciais, cujo invólucro é um div. */
+  align-content: start;
+  min-width: 0;
+  gap: var(--space-1-5);
+}
+
+.field .combobox-trigger {
+  min-height: 40px;
+}
+
+:is(.payment-action-form, .expense-template-form) > .field {
+  align-self: start;
 }
 
 .field-label {
@@ -3802,6 +3847,7 @@ h2 {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  line-height: 1.5;
 }
 
 .secret-field { max-width: 30rem; }
@@ -4130,6 +4176,10 @@ label.field-toggle {
   background: transparent;
   padding: 0;
   margin: 0;
+}
+
+.dialog-body .client-form.manual-invoice-form {
+  padding: var(--space-6);
 }
 
 /* Dialog action buttons: same shape as form-actions, with accent variant

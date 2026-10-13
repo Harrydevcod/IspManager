@@ -11,6 +11,37 @@ let db: Database.Database;
 let dataDir: string;
 let closeDatabaseForTests: () => void;
 
+describe('fatura manual sem serviço', () => {
+  test('emite pela API, aparece na lista e agrupa as dívidas nas Avulsas do relatório', async () => {
+    const first = await app.inject({ method: 'POST', url: '/api/payments/manual', payload: {
+      newClient: { fullName: 'Destinatário avulso' },
+      lines: [{ description: 'Deslocação', amountCve: 1500 }],
+      invoiceDate: '2026-01-01', dueDate: '2026-01-31'
+    } });
+    expect(first.statusCode).toBe(201);
+    const { paymentId, clientId } = first.json();
+    const second = await app.inject({ method: 'POST', url: '/api/payments/manual', payload: {
+      clientId, lines: [{ description: 'Cabo', amountCve: 500 }],
+      invoiceDate: '2026-01-01', dueDate: '2026-01-31'
+    } });
+    expect(second.statusCode).toBe(201);
+    const list = await app.inject({ method: 'GET', url: '/api/payments' });
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: paymentId, clientId, serviceId: null, amountCve: 1500, canRegenerate: 0 })
+    ]));
+    const report = await app.inject({ method: 'GET', url: '/api/reports/summary' });
+    expect(report.statusCode).toBe(200);
+    expect(report.json().revenueByMonth).toEqual([
+      expect.objectContaining({ referenceMonth: 'AVULSA-', payments: 2, pendingCve: 2000 })
+    ]);
+    expect(report.json().metrics.overdueAmountCve).toBe(2000);
+    expect(report.json().overdueClients).toEqual([
+      expect.objectContaining({ clientName: 'Destinatário avulso', amountCve: 2000 })
+    ]);
+  });
+});
+
 // Política: vencimento = data de emissão (hoje) + 30 dias
 function expectedDueIso(): string {
   const d = new Date();
@@ -119,9 +150,9 @@ describe('settings routes', () => {
       receiptPrefix: 'RC',
       whatsappTemplate: 'Ola {nome}, somos da {empresa}. Entramos em contacto sobre o seu servico de internet.',
       whatsappTestTemplate: 'Teste WhatsApp - {empresa}. Ola {nome}, esta mensagem confirma que a integracao WhatsApp esta ativa.',
-      whatsappInvoiceReadyTemplate: 'Ola {nome}, a sua fatura {fatura} de {mes} no valor de {valor} CVE ja esta pronta. Vencimento: {vencimento}. {empresa}',
+      whatsappInvoiceReadyTemplate: 'Ola {nome}, a sua fatura {fatura} de {mes} no valor de {valor} CVE ja esta pronta. Vencimento: {vencimento}. {empresa} {link}',
       whatsappReceiptTemplate: 'Ola {nome}, confirmamos o recebimento de {valor} CVE referente a {mes}. O seu recibo {recibo} foi emitido. Obrigado, {empresa}.',
-      whatsappOverdueTemplate: 'Ola {nome}, a sua fatura {fatura} de {mes}, no valor de {valor} CVE, esta em atraso desde {vencimento}. Por favor regularize para evitar constrangimentos. {empresa}',
+      whatsappOverdueTemplate: 'Ola {nome}, a sua fatura {fatura} de {mes}, no valor de {valor} CVE, esta em atraso desde {vencimento}. Por favor regularize para evitar constrangimentos. {empresa} {link}',
       whatsappSuspensionNoticeDays: 15,
       ultraMsgInstanceId: '',
       ultraMsgToken: ''

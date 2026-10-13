@@ -265,6 +265,54 @@ describe('GET /api/reports/portfolio', () => {
 });
 
 describe('competência e caixa lado a lado', () => {
+  test.each([
+    { query: '', cashCve: 2300, paidCve: 2500, payments: 4 },
+    { query: '&dateFrom=2026-02-01&dateTo=2026-02-28', cashCve: 1700, paidCve: 1900, payments: 3 }
+  ])('a caixa das avulsas soma os recibos das faturas selecionadas ($query)', async ({ query, cashCve, paidCve, payments }) => {
+    const clientId = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status) VALUES ('C102', 'Avulsas', 'active')
+    `).run().lastInsertRowid as number;
+    const planId = db.prepare(`
+      INSERT INTO internet_plans (name, monthly_price_cve, active) VALUES ('Base', 800, 1)
+    `).run().lastInsertRowid as number;
+    const serviceId = db.prepare(`
+      INSERT INTO services (client_id, plan_id, status, monthly_value_cve)
+      VALUES (?, ?, 'active', 800)
+    `).run(clientId, planId).lastInsertRowid as number;
+    const insertPayment = db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const linked = insertPayment.run(clientId, serviceId, 'AVULSA-101', 2000, '2026-02-10', 'pending').lastInsertRowid;
+    const unlinked = insertPayment.run(clientId, null, 'AVULSA-102', 700, '2026-02-15', 'paid').lastInsertRowid;
+    const outsideRange = insertPayment.run(clientId, serviceId, 'AVULSA-103', 600, '2026-01-20', 'paid').lastInsertRowid;
+    const cancelled = insertPayment.run(clientId, null, 'AVULSA-104', 500, '2026-02-20', 'cancelled').lastInsertRowid;
+    const monthly = insertPayment.run(clientId, serviceId, '2026-02', 800, '2026-02-28', 'paid').lastInsertRowid;
+    const insertReceipt = db.prepare(`
+      INSERT INTO payment_receipts (payment_id, amount_cve, payment_date, payment_method, source, receipt_number, receipt_date, voided_at)
+      VALUES (?, ?, ?, 'numerario', ?, ?, ?, ?)
+    `);
+    insertReceipt.run(linked, 400, '2026-01-25', 'cash', 'RC-AV-1', '2026-01-25', null);
+    insertReceipt.run(linked, 600, '2026-03-05', 'cash', 'RC-AV-2', '2026-03-05', null);
+    insertReceipt.run(linked, 200, '2026-03-05', 'credit', 'RC-AV-3', '2026-03-05', null);
+    insertReceipt.run(linked, 900, '2026-02-05', 'cash', 'RC-AV-4', '2026-02-05', '2026-02-06');
+    insertReceipt.run(unlinked, 700, '2026-02-15', 'cash', 'RC-AV-5', '2026-02-15', null);
+    insertReceipt.run(outsideRange, 600, '2026-04-01', 'cash', 'RC-AV-6', '2026-04-01', null);
+    insertReceipt.run(cancelled, 500, '2026-02-20', 'cash', 'RC-AV-7', '2026-02-20', '2026-02-21');
+    insertReceipt.run(monthly, 800, '2026-02-28', 'cash', 'RC-AV-8', '2026-02-28', null);
+
+    const response = await app.inject({ method: 'GET', url: `/api/reports/summary?view=revenue${query}` });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as ReportSummary;
+    expect(body.revenueByMonth.find((row) => row.referenceMonth === 'AVULSA-')).toEqual({
+      referenceMonth: 'AVULSA-', cashCve, paidCve, pendingCve: 800, payments
+    });
+    // Monthly cash still includes receipts from any invoice received in February.
+    expect(body.revenueByMonth.find((row) => row.referenceMonth === '2026-02')).toMatchObject({ cashCve: 1500 });
+    expect(body.metrics.paidAmountCve).toBe(3100);
+    expect(body.pagination.total).toBe(2);
+  });
+
   /**
    * As duas colunas respondem a perguntas diferentes e não podem colapsar numa.
    * Uma fatura de janeiro cobrada em março conta para janeiro na competência e

@@ -1,5 +1,6 @@
 import { getSqliteDatabase } from '../db/database';
 import { balanceSqlExpr } from './payments';
+import { openStripeLinkSql } from './stripe-payments';
 import {
   fallbackWhatsappOverdueTemplate,
   fallbackWhatsappReminderTemplate,
@@ -62,6 +63,7 @@ type OverdueCandidate = {
   invoiceNumber: string | null;
   daysOverdue: number;
   whatsappOptOut: number;
+  paymentLink: string | null;
 };
 
 export type OverdueNoticesRun =
@@ -153,6 +155,8 @@ export async function runOverdueNoticesIfDue(
       py.due_date AS dueDate,
       py.reference_month AS referenceMonth,
       py.invoice_number AS invoiceNumber,
+      -- So as faturas que ja tem link de pagamento levam-no (ADR 0016).
+      ${openStripeLinkSql('py')} AS paymentLink,
       CAST(julianday('now') - julianday(py.due_date) AS INTEGER) AS daysOverdue
     FROM payments py
     JOIN clients c ON c.id = py.client_id
@@ -201,7 +205,8 @@ export async function runOverdueNoticesIfDue(
         referenceMonth: row.referenceMonth,
         invoiceNumber: row.invoiceNumber,
         daysOverdue: row.daysOverdue,
-        suspensionDays
+        suspensionDays,
+        paymentLink: row.paymentLink
       },
       companyName
     );

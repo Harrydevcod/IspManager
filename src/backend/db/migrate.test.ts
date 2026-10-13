@@ -653,3 +653,67 @@ describe('runMigrations', () => {
     db.close();
   });
 });
+
+describe('0081 fatura manual', () => {
+  const indexesOf = (db: Database.Database) =>
+    (db.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type = 'index' AND tbl_name IN ('payments', 'payment_lines') AND name NOT LIKE 'sqlite_%'
+      ORDER BY name
+    `).all() as Array<{ name: string }>).map((row) => row.name);
+
+  test('reconstrói payments e payment_lines sem perder linhas, filhos nem índices', () => {
+    const db = freshDb();
+    runMigrations(db, migrations.filter((migration) => migration.version < 81));
+
+    const clientId = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-81', 'Cliente 81', 'active')
+    `).run().lastInsertRowid;
+    const serviceId = db.prepare(`
+      INSERT INTO services (client_id, monthly_value_cve, due_day, status) VALUES (?, 2500, 10, 'active')
+    `).run(clientId).lastInsertRowid;
+    const paymentId = db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status, invoice_number, invoice_date)
+      VALUES (?, ?, '2026-09', 2500, '2026-10-01', 'pending', 'FT-2026-00001', '2026-09-01')
+    `).run(clientId, serviceId).lastInsertRowid;
+    db.prepare(`INSERT INTO payment_lines (payment_id, kind, description, amount_cve) VALUES (?, 'internet', 'Internet', 2500)`).run(paymentId);
+    db.prepare(`
+      INSERT INTO payment_receipts (payment_id, amount_cve, payment_date, payment_method, receipt_number, receipt_date)
+      VALUES (?, 1000, '2026-09-15', 'numerario', 'RC-2026-00001', '2026-09-15')
+    `).run(paymentId);
+    db.prepare(`INSERT INTO stripe_payment_links (payment_id, amount_cve, status) VALUES (?, 1500, 'open')`).run(paymentId);
+    const indexesBefore = indexesOf(db);
+
+    db.pragma('foreign_keys = ON');
+    expect(() => runMigrations(db, migrations)).not.toThrow();
+
+    expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    expect(indexesOf(db)).toEqual(indexesBefore);
+    expect(db.prepare('SELECT id, service_id AS serviceId, invoice_number AS invoiceNumber FROM payments').all())
+      .toEqual([{ id: paymentId, serviceId, invoiceNumber: 'FT-2026-00001' }]);
+    expect(db.prepare('SELECT kind FROM payment_lines WHERE payment_id = ?').all(paymentId)).toEqual([{ kind: 'internet' }]);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM payment_receipts WHERE payment_id = ?').get(paymentId)).toEqual({ n: 1 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM stripe_payment_links WHERE payment_id = ?').get(paymentId)).toEqual({ n: 1 });
+  });
+
+  test('aceita fatura sem serviço e linha avulsa; o número de fatura continua único', () => {
+    const db = freshDb();
+    runMigrations(db);
+    db.pragma('foreign_keys = ON');
+    const clientId = db.prepare(`
+      INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-82', 'Cliente 82', 'active')
+    `).run().lastInsertRowid;
+    const insert = db.prepare(`
+      INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, invoice_number)
+      VALUES (?, NULL, ?, 500, '2026-10-30', ?)
+    `);
+
+    const paymentId = insert.run(clientId, 'AVULSA-1', 'FT-2026-00009').lastInsertRowid;
+    // Sem serviço o índice (service_id, reference_month) não compara: duas avulsas convivem.
+    expect(() => insert.run(clientId, 'AVULSA-1', 'FT-2026-00010')).not.toThrow();
+    expect(() => insert.run(clientId, 'AVULSA-2', 'FT-2026-00009')).toThrow(/UNIQUE/);
+
+    expect(() => db.prepare(`INSERT INTO payment_lines (payment_id, kind, description, amount_cve) VALUES (?, 'avulso', 'Cabo', 500)`).run(paymentId)).not.toThrow();
+    expect(() => db.prepare(`INSERT INTO payment_lines (payment_id, kind, description, amount_cve) VALUES (?, 'inventado', 'x', 1)`).run(paymentId)).toThrow(/CHECK/);
+  });
+});

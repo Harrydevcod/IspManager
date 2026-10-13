@@ -41,7 +41,8 @@ export const clients = sqliteTable('clients', {
   defaultPaymentMethod: text('default_payment_method', { enum: ['numerario', 'transferencia', 'outro'] }),
   whatsappOptOut: integer('whatsapp_opt_out', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
-  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
+  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP'),
+  stripeCustomerId: text('stripe_customer_id')
 });
 
 export const appSettings = sqliteTable('app_settings', {
@@ -105,7 +106,8 @@ export const services = sqliteTable('services', {
 export const payments = sqliteTable('payments', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   clientId: integer('client_id').notNull(),
-  serviceId: integer('service_id').notNull(),
+  // Opcional desde a 0081: uma fatura manual pode não pertencer a serviço nenhum.
+  serviceId: integer('service_id'),
   referenceMonth: text('reference_month').notNull(),
   amountCve: real('amount_cve').notNull(),
   dueDate: text('due_date').notNull(),
@@ -863,4 +865,23 @@ export const planChangeItems = sqliteTable('plan_change_items', {
   routerChanged: integer('router_changed').notNull().default(0),
   sessionDroppedAt: text('session_dropped_at'),
   processedAt: text('processed_at')
+});
+
+/** Links de pagamento Stripe, um vivo por fatura (migrations 0079 e 0080, ADR 0016). */
+export const stripePaymentLinks = sqliteTable('stripe_payment_links', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  paymentId: integer('payment_id').notNull().references(() => payments.id),
+  stripeInvoiceId: text('stripe_invoice_id').unique(),
+  draftCancelKeyHash: text('draft_cancel_key_hash'),
+  url: text('url'),
+  amountCve: real('amount_cve').notNull(),
+  status: text('status').notNull().default('creating'),
+  receiptId: integer('receipt_id'),
+  note: text('note'),
+  createdAt: text('created_at').notNull().default("(datetime('now'))"),
+  updatedAt: text('updated_at').notNull().default("(datetime('now'))"),
+  paymentIntentId: text('payment_intent_id'),
+  refundId: text('refund_id'),
+  feeCve: real('fee_cve'),
+  feeExpenseId: integer('fee_expense_id')
 });

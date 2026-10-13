@@ -3,6 +3,7 @@ import { getSqliteDatabase } from '../db/database';
 import { allocateDocumentNumber } from './numbering';
 import { formatEscudos } from '../../shared/money';
 import { isAudiovisualAnnualReference } from './audiovisual';
+import { isManualInvoiceReference } from '../../shared/billing-period';
 import { documentBankAccounts } from './treasury';
 import { RENTAL_LINE_PREFIX, type BillingLine } from './billing';
 
@@ -129,6 +130,7 @@ export function formatReferenceForDocument(reference: string): string {
   if (isAudiovisualAnnualReference(reference)) {
     return `Anuidade ${reference.slice(3, 7)}`;
   }
+  if (isManualInvoiceReference(reference)) return 'Avulsa';
   const [year, month] = reference.slice(0, 7).split('-').map(Number);
   if (!year || !month || month < 1 || month > 12) return '-';
   return `${DOCUMENT_MONTH_NAMES[month - 1]}/${year}`;
@@ -185,7 +187,8 @@ const documentSelect = `
     py.notes
   FROM payments py
   JOIN clients c ON c.id = py.client_id
-  JOIN services s ON s.id = py.service_id
+  -- Uma fatura manual pode nao pertencer a servico nenhum (0081).
+  LEFT JOIN services s ON s.id = py.service_id
   LEFT JOIN internet_plans p ON p.id = s.plan_id
   WHERE py.id = ?
 `;

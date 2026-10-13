@@ -32,6 +32,7 @@ type WhatsappTemplateContext = {
   receiptNumber?: string | null;
   daysOverdue?: number;
   suspensionDays?: number;
+  paymentLink?: string | null;
 };
 
 export function renderWhatsappMessage(template: string, client: WhatsappMessageData, companyName: string, context: WhatsappTemplateContext = {}) {

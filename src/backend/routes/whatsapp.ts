@@ -9,6 +9,7 @@ import {
   renderWhatsappTemplate
 } from '../../shared/whatsapp';
 import { balanceSqlExpr, overdueSqlPredicate } from '../lib/payments';
+import { openStripeLinkSql } from '../lib/stripe-payments';
 import { enqueueWhatsapp, runWhatsappOutboxIfDue } from '../lib/whatsapp-outbox';
 import { configuredWhatsappProviderLabel, normalizeWhatsappPhone, resolveWhatsappProvider } from '../lib/whatsapp-provider';
 
@@ -44,6 +45,7 @@ type OverdueCandidate = {
   dueDate: string;
   referenceMonth: string;
   invoiceNumber: string | null;
+  paymentLink: string | null;
   daysOverdue: number;
   whatsappOptOut: number;
 };
@@ -156,6 +158,7 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
         py.due_date AS dueDate,
         py.reference_month AS referenceMonth,
         py.invoice_number AS invoiceNumber,
+        ${openStripeLinkSql('py')} AS paymentLink,
         CAST(julianday('now') - julianday(py.due_date) AS INTEGER) AS daysOverdue
       FROM payments py
       JOIN clients c ON c.id = py.client_id
@@ -237,7 +240,8 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
           referenceMonth: row.referenceMonth,
           invoiceNumber: row.invoiceNumber,
           daysOverdue: row.daysOverdue,
-          suspensionDays
+          suspensionDays,
+          paymentLink: row.paymentLink
         },
         companyName
       );

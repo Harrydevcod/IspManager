@@ -21,6 +21,9 @@ import {
   voidReceipt
 } from '../lib/payments';
 import { loadReceivables } from '../lib/receivables';
+import { createManualInvoice, manualInvoiceSchema } from '../lib/manual-invoice';
+import { MANUAL_INVOICE_PREFIX } from '../../shared/billing-period';
+import { ensurePaymentLink, latestStripeLink, openStripeLinkSql, readStripeConfig, refundableReceiptIds, refundStripeReceipt, stripeReceiptIds } from '../lib/stripe-payments';
 import {
   changePppoePassword,
   changeServiceStatus,
@@ -445,12 +448,15 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
           WHERE r.payment_id = py.id AND r.voided_at IS NULL
         ), 0) AS receivedCve,
         ${balanceSqlExpr('py')} AS balanceCve,
+        ${openStripeLinkSql('py')} AS stripeLinkUrl,
         CASE
           WHEN py.status = 'cancelled'
             -- Espelha regenerateMonthlyPayment: só o serviço cancelado bloqueia.
             -- O suspenso regenera a fatura de aluguer que lhe foi anulada.
             AND s.status != 'cancelled'
             AND c.status != 'cancelled'
+            -- Uma fatura manual não é mensalidade: regenerar trocava-lhe as linhas.
+            AND py.reference_month NOT LIKE '${MANUAL_INVOICE_PREFIX}%'
             AND NOT EXISTS (
               SELECT 1
               FROM payments active_py
@@ -463,7 +469,8 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         END AS canRegenerate
       FROM payments py
       JOIN clients c ON c.id = py.client_id
-      JOIN services s ON s.id = py.service_id
+      -- LEFT: uma fatura manual pode não pertencer a serviço nenhum (0081).
+      LEFT JOIN services s ON s.id = py.service_id
       ORDER BY py.reference_month DESC, c.full_name
     `).all();
   });
@@ -598,6 +605,32 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     });
   });
 
+  /**
+   * Fatura manual: o que não é mensalidade, para um cliente ou para quem ainda
+   * não o é (fica registado no mesmo passo, sem serviço).
+   */
+  app.post('/api/payments/manual', billingWrite, async (request, reply) => {
+    const parsed = manualInvoiceSchema.safeParse(request.body || {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Dados da fatura invalidos' });
+    }
+
+    const userId = (request as { user?: { id?: number } }).user?.id ?? null;
+    const result = createManualInvoice(getSqliteDatabase(), parsed.data, userId);
+    if (!result.ok) {
+      return reply.status(result.status).send({ error: result.error });
+    }
+
+    recordAudit(request, {
+      action: 'create',
+      entityType: 'payment',
+      entityId: result.value.paymentId,
+      summary: `Emitiu a fatura manual ${result.value.invoiceNumber}`,
+      metadata: { ...result.value, serviceId: parsed.data.serviceId ?? null, lines: parsed.data.lines.length }
+    });
+    return reply.status(201).send(result.value);
+  });
+
   app.post('/api/payments/:id/pay', billingWrite, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     const parsed = paySchema.safeParse(request.body || {});
@@ -646,8 +679,41 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     }
     return {
       receipts: listPaymentReceipts(db, id),
-      clientCreditCve: clientCreditBalance(db, row.clientId)
+      clientCreditCve: clientCreditBalance(db, row.clientId),
+      // A ficha só oferece o Stripe quando ele está pronto a cobrar.
+      stripe: { enabled: readStripeConfig(db).ready, link: latestStripeLink(db, id), receiptIds: stripeReceiptIds(db, id), refundableReceiptIds: refundableReceiptIds(db, id) }
     };
+  });
+
+  /** O formulário de fatura só oferece o Stripe quando ele está pronto a cobrar. */
+  app.get('/api/stripe/status', { preHandler: requireRole(['admin', 'operator']) }, async () => ({
+    enabled: readStripeConfig(getSqliteDatabase()).ready
+  }));
+
+  /**
+   * Escolher o Stripe como via de pagamento de uma fatura: devolve o link para
+   * enviar ao cliente, criando-o se ainda não existir. Não regista recibo —
+   * esse nasce quando a passagem do Stripe vê o pagamento (ADR 0016).
+   */
+  app.post('/api/payments/:id/stripe-link', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Pagamento invalido' });
+    }
+
+    const result = await ensurePaymentLink(getSqliteDatabase(), id);
+    if (!result.ok) {
+      return reply.status(result.status).send({ error: result.error });
+    }
+
+    recordAudit(request, {
+      action: 'stripe_link',
+      entityType: 'payment',
+      entityId: id,
+      summary: `Pediu o link de pagamento Stripe da fatura ${id}`,
+      metadata: { stripeInvoiceId: result.value.stripeInvoiceId, amountCve: result.value.amountCve }
+    });
+    return result.value;
   });
 
   app.post('/api/payments/:id/apply-credit', billingWrite, async (request, reply) => {
@@ -697,6 +763,38 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         reopened: result.value.reopened,
         balanceCve: result.value.balanceCve
       }
+    });
+    return result.value;
+  });
+
+  /**
+   * Reembolsar um pagamento Stripe: devolve o dinheiro no Stripe e anula o
+   * recibo. É dinheiro a sair, por isso admin e a password dele outra vez — uma
+   * sessão aberta prova quem entrou, não quem está ao teclado.
+   */
+  app.post('/api/receipts/:id/stripe-refund', { preHandler: requireRole(['admin']) }, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const parsed = voidReceiptSchema.safeParse(request.body || {});
+    if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Recibo invalido' });
+    }
+    const confirmPassword = (request.body as { confirmPassword?: unknown } | null)?.confirmPassword;
+    if (!(await confirmSessionPassword(request, reply, confirmPassword))) return reply;
+
+    const userId = (request as { user?: { id?: number } }).user?.id ?? null;
+    const result = await refundStripeReceipt(getSqliteDatabase(), id, parsed.data.reason, userId);
+    if (!result.ok) {
+      return reply.status(result.status).send({ error: result.error });
+    }
+
+    recordAudit(request, {
+      action: 'stripe_refund',
+      entityType: 'receipt',
+      entityId: id,
+      summary: result.value.status === 'succeeded'
+        ? `Reembolsou no Stripe o recibo ${result.value.receiptNumber} do pagamento ${result.value.paymentId}`
+        : `Pediu reembolso Stripe do recibo ${result.value.receiptNumber} do pagamento ${result.value.paymentId}; estado ${result.value.status}`,
+      metadata: { ...result.value, reason: parsed.data.reason }
     });
     return result.value;
   });

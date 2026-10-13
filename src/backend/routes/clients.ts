@@ -6,6 +6,7 @@ import { clients } from '../db/schema';
 import { recordAudit } from '../lib/audit';
 import { buildClientsImportTemplate } from '../lib/clients-import-template';
 import { portfolioRows } from '../lib/capex';
+import { insertClient } from '../lib/client-records';
 import { loadCompanyOpexContext } from '../lib/opex';
 import { balanceSqlExpr, clientCreditBalance } from '../lib/payments';
 import { changeServiceStatus } from '../lib/services';
@@ -270,25 +271,8 @@ export async function registerClientRoutes(app: FastifyInstance) {
     }
 
     const db = getDatabase();
-    const total = await db.$count(clients);
-    const clientCode = `C${String(total + 1).padStart(4, '0')}`;
-    const now = new Date().toISOString();
-
-    const [client] = await db
-      .insert(clients)
-      .values({
-        clientCode,
-        fullName: parsed.data.fullName,
-        phone: parsed.data.phone || null,
-        nif: parsed.data.nif || null,
-        island: parsed.data.island || null,
-        zone: parsed.data.zone || null,
-        address: parsed.data.address || null,
-        status: parsed.data.status,
-        createdAt: now,
-        updatedAt: now
-      })
-      .returning();
+    const clientId = insertClient(getSqliteDatabase(), parsed.data);
+    const [client] = await db.select().from(clients).where(eq(clients.id, clientId));
 
     recordAudit(request, {
       action: 'create',

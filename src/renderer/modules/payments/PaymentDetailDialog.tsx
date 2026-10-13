@@ -1,4 +1,4 @@
-import type { FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { CheckCircle2, Download, FileText, MessageCircle, Printer, ReceiptText, RotateCcw, X } from 'lucide-react';
 import { Button, Dialog, Field, Message, Select, Textarea } from '../../components';
 import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
@@ -7,6 +7,8 @@ import { normalizeWhatsappPhone } from '../../lib/whatsapp';
 import { paymentStatusLabel, type PaymentReceipt, type PaymentRow } from '../../types';
 import { METHOD_LABELS, ReceiptsSection } from './ReceiptsSection';
 import { AccountSelect } from '../treasury/AccountSelect';
+import { isManualInvoiceReference, referenceMonthLabel } from '../../../shared/billing-period';
+import { STRIPE_LINK_LABEL, StripeLinkPanel, type StripeState } from './StripeLinkPanel';
 
 export type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
 export type PaymentActionMode = 'pay' | 'cancel' | 'whatsapp';
@@ -46,6 +48,9 @@ type PaymentDetailDialogProps = {
   cancelReason: string;
   receipts: PaymentReceipt[];
   clientCreditCve: number;
+  /** Stripe como via de pagamento; ausente ou desligado, a opção não aparece. */
+  stripe?: StripeState;
+  onStripeChanged?: () => void;
   previewDoc: { objectUrl: string | null; error: boolean };
   previewDocType: 'invoice' | 'receipt';
   whatsappMessage: string;
@@ -67,6 +72,7 @@ type PaymentDetailDialogProps = {
   onCancelReasonChange: (reason: string) => void;
   onPrintReceipt: (receipt: PaymentReceipt) => void;
   onVoidReceipt: (receipt: PaymentReceipt) => void;
+  onRefundReceipt?: (receipt: PaymentReceipt) => void;
   onApplyCredit: () => void;
   onSubmitPay: () => void;
   onSubmitCancel: () => void;
@@ -85,6 +91,8 @@ export function PaymentDetailDialog({
   cancelReason,
   receipts,
   clientCreditCve,
+  stripe,
+  onStripeChanged = () => undefined,
   previewDoc,
   previewDocType,
   whatsappMessage,
@@ -106,11 +114,16 @@ export function PaymentDetailDialog({
   onCancelReasonChange,
   onPrintReceipt,
   onVoidReceipt,
+  onRefundReceipt,
   onApplyCredit,
   onSubmitPay,
   onSubmitCancel,
   onSubmitWhatsapp
 }: PaymentDetailDialogProps) {
+  // Via de pagamento, não método de recibo: escolhê-lo troca o formulário pelo
+  // link, e o recibo (que entra como "outro") só nasce quando o Stripe confirmar.
+  const [viaStripe, setViaStripe] = useState(false);
+  const stripeLink = stripe?.link ?? null;
   return (
     <Dialog
       open
@@ -214,6 +227,30 @@ export function PaymentDetailDialog({
           {/* Pré-preenchido com o saldo: o caso comum é receber tudo, e quem
               recebe por conta escreve o valor. Aceita mais do que o saldo — o
               excesso fica como crédito do cliente. */}
+          <Select
+            label="Metodo"
+            value={viaStripe ? 'stripe' : payMethod}
+            onChange={(event) => {
+              setViaStripe(event.target.value === 'stripe');
+              if (event.target.value !== 'stripe') onPayMethodChange(event.target.value as PaymentMethod);
+            }}
+            disabled={submitting}
+          >
+            <option value="numerario">Numerario</option>
+            <option value="transferencia">Transferencia</option>
+            <option value="outro">Outro</option>
+            {stripe?.enabled && <option value="stripe">Stripe (link de pagamento)</option>}
+          </Select>
+          {viaStripe ? (
+            <StripeLinkPanel
+              paymentId={payment.id}
+              balanceCve={payment.balanceCve}
+              link={stripeLink}
+              disabled={submitting}
+              onChanged={onStripeChanged}
+              onCancel={onCloseActionForm}
+            />
+          ) : (<>
           <Field
             label="Valor recebido"
             type="number"
@@ -224,11 +261,6 @@ export function PaymentDetailDialog({
             disabled={submitting}
             required
           />
-          <Select label="Metodo" value={payMethod} onChange={(event) => onPayMethodChange(event.target.value as PaymentMethod)} disabled={submitting}>
-            <option value="numerario">Numerario</option>
-            <option value="transferencia">Transferencia</option>
-            <option value="outro">Outro</option>
-          </Select>
           <AccountSelect purpose={payMethod} value={payAccountId} onChange={onPayAccountChange} disabled={submitting} />
           <Field label="Data" type="date" value={payDate} onChange={(event) => onPayDateChange(event.target.value)} max={todayIso()} disabled={submitting} required />
           {Number(payAmount) > payment.balanceCve && (
@@ -240,6 +272,7 @@ export function PaymentDetailDialog({
             <Button type="submit" disabled={submitting || !payDate || !(Number(payAmount) > 0) || !payAccountId}>Confirmar</Button>
             <Button variant="secondary" onClick={onCloseActionForm} disabled={submitting}>Cancelar</Button>
           </div>
+          </>)}
         </form>
       )}
 
@@ -377,7 +410,7 @@ export function PaymentDetailDialog({
               <span>{docLabel}</span>
               <strong>{formatCve(payment.amountCve)}</strong>
               <small>
-                Mes {formatPtMonth(payment.referenceMonth)} - vencimento {formatPtDate(payment.dueDate)} - {paymentStatusLabel(effectivePaymentStatus(payment))}
+                {isManualInvoiceReference(payment.referenceMonth) ? 'Fatura avulsa' : `Mes ${formatPtMonth(payment.referenceMonth)}`} - vencimento {formatPtDate(payment.dueDate)} - {paymentStatusLabel(effectivePaymentStatus(payment))}
               </small>
             </div>
             {payment.status === 'cancelled' ? (
@@ -419,7 +452,7 @@ export function PaymentDetailDialog({
         );
       })()}
       <dl>
-        <div><dt>Mes</dt><dd>{formatPtMonth(payment.referenceMonth)}</dd></div>
+        <div><dt>Mes</dt><dd>{referenceMonthLabel(payment.referenceMonth, formatPtMonth)}</dd></div>
         <div><dt>Valor</dt><dd>{formatCve(payment.amountCve)}</dd></div>
         <div><dt>Recebido</dt><dd>{formatCve(payment.receivedCve)}</dd></div>
         <div><dt>Em aberto</dt><dd>{formatCve(payment.balanceCve)}</dd></div>
@@ -428,7 +461,13 @@ export function PaymentDetailDialog({
         <div><dt>Metodo</dt><dd>{payment.paymentMethod ? (METHOD_LABELS[payment.paymentMethod] || payment.paymentMethod) : '-'}</dd></div>
         <div><dt>Data pagamento</dt><dd>{formatPtDate(payment.paymentDate)}</dd></div>
         <div><dt>Estado</dt><dd>{paymentStatusLabel(effectivePaymentStatus(payment))}</dd></div>
+        {stripeLink && <div><dt>Stripe</dt><dd>{STRIPE_LINK_LABEL[stripeLink.status]}</dd></div>}
       </dl>
+      {stripeLink?.status === 'review' && (
+        <Message tone="error">
+          {stripeLink.note || 'O Stripe recebeu um pagamento que não coube nesta fatura.'} Confirme no painel do Stripe e decida: reembolsar ou registar como crédito do cliente.
+        </Message>
+      )}
       {payment.status !== 'cancelled' && (
         <ReceiptsSection
           receipts={receipts}
@@ -437,6 +476,9 @@ export function PaymentDetailDialog({
           submitting={submitting}
           onPrintReceipt={onPrintReceipt}
           onVoidReceipt={onVoidReceipt}
+          stripeReceiptIds={stripe?.receiptIds}
+          refundableReceiptIds={stripe?.refundableReceiptIds}
+          onRefundReceipt={onRefundReceipt}
           onApplyCredit={onApplyCredit}
         />
       )}

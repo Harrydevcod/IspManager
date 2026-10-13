@@ -376,6 +376,45 @@ describe('credenciais nas definicoes', () => {
     expect(invalid.statusCode).toBe(400);
   });
 
+  test('o Stripe só se liga com chave e conta de destino, e a chave nunca sai', async () => {
+    const { createAccount } = await import('../lib/treasury');
+    const account = createAccount(db, { kind: 'banco', name: 'Banco do Stripe' });
+    if (!account.ok) throw new Error(account.error);
+
+    const noKey = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, stripeEnabled: true, stripeTreasuryAccountId: account.value.id }
+    });
+    expect(noKey.statusCode).toBe(400);
+
+    const noAccount = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, stripeEnabled: true, stripeSecretKey: 'rk_test_secreto' }
+    });
+    expect(noAccount.statusCode).toBe(400);
+    // Uma gravação recusada não deixa a chave para trás.
+    expect(stored('stripeSecretKey')).toBe('');
+
+    const saved = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, stripeEnabled: true, stripeSecretKey: 'rk_test_secreto', stripeTreasuryAccountId: account.value.id }
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({ stripeSecretKey: '', stripeSecretKeyConfigured: true });
+
+    const read = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(read.json()).toMatchObject({
+      stripeEnabled: true,
+      stripeSecretKey: '',
+      stripeSecretKeyConfigured: true,
+      stripeTreasuryAccountId: account.value.id
+    });
+    expect(stored('stripeSecretKey')).toBe('rk_test_secreto');
+  });
+
   test('o token da UltraMsg tem o mesmo tratamento da senha do router', async () => {
     const saved = await app.inject({
       method: 'PUT',
