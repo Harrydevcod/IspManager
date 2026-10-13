@@ -21,6 +21,7 @@ import { registerExpenseTemplateRoutes } from './routes/expense-templates';
 import { runRecurringExpensesIfDue } from './lib/recurring-expenses';
 import { registerFinanceRoutes } from './routes/finance';
 import { registerPlanRoutes } from './routes/plans';
+import { registerProposalRoutes } from './routes/proposals';
 import { registerReportRoutes } from './routes/reports';
 import { registerSettingsRoutes } from './routes/settings';
 import { registerTechnicalRoutes } from './routes/technical';
@@ -186,6 +187,7 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
   await registerDashboardRoutes(app);
   await registerClientRoutes(app);
   await registerPlanRoutes(app);
+  await registerProposalRoutes(app);
   await registerInvestmentRoutes(app);
   await registerExpenseRoutes(app);
   await registerTreasuryRoutes(app);
