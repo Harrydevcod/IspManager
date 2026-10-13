@@ -278,7 +278,9 @@ describe('planActions', () => {
 
 function memoryDb() {
   const db = new Database(':memory:');
-  runMigrations(db);
+    runMigrations(db);
+    // Fixture owns IDs from 1; system-client behaviour is tested separately.
+    db.exec('DELETE FROM clients');
   db.prepare(`INSERT INTO clients (id, client_code, full_name, phone) VALUES (1, 'CL-0001', 'Joao Silva', '9110001')`).run();
   db.prepare(`
     INSERT INTO internet_plans (id, name, download_speed, upload_speed, download_mbps, upload_mbps, router_profile)

@@ -685,7 +685,7 @@ describe('0081 fatura manual', () => {
     const indexesBefore = indexesOf(db);
 
     db.pragma('foreign_keys = ON');
-    expect(() => runMigrations(db, migrations)).not.toThrow();
+    expect(() => runMigrations(db, migrations.filter((migration) => migration.version <= 81))).not.toThrow();
 
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     expect(indexesOf(db)).toEqual(indexesBefore);

@@ -160,7 +160,8 @@ export async function runOverdueNoticesIfDue(
       CAST(julianday('now') - julianday(py.due_date) AS INTEGER) AS daysOverdue
     FROM payments py
     JOIN clients c ON c.id = py.client_id
-    WHERE (py.status = 'overdue'
+    WHERE c.system_kind IS NULL AND py.document_type = 'invoice'
+      AND (py.status = 'overdue'
            OR (py.status = 'pending' AND py.due_date <= date('now', '+' || ? || ' days')))
     ORDER BY py.due_date ASC
   `).all(reminderWindow) as OverdueCandidate[];

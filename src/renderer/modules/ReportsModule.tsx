@@ -1,6 +1,6 @@
 import { Activity, AlertTriangle, Banknote, Cable, CheckCircle2, CopyX, Download, MessageCircle, Package, UserCog, UsersRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Button, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, ModuleHeaderActions, SkeletonList } from '../components';
+import { Button, EmptyState, ErrorRetry, Field, FilterBar, Message, MetricCard, ModuleHeaderActions, Select, SkeletonList } from '../components';
 import { authFetch } from '../lib/auth';
 import { downloadCsv } from '../lib/csv';
 import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
@@ -23,6 +23,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
   const [issue, setIssue] = useState<DataQualityIncompleteFlag | null>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [documentType, setDocumentType] = useState<'all' | 'invoice' | 'sale_ticket'>('all');
   const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
@@ -42,6 +43,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
       pageSize: String(PAGE_SIZE)
     });
     if (view !== 'stock') {
+      if (documentType !== 'all') params.set('documentType', documentType);
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
     }
@@ -60,7 +62,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Erro ao carregar relatorios');
       });
-  }, [view, dateFrom, dateTo, page, reloadTick]);
+  }, [view, dateFrom, dateTo, documentType, page, reloadTick]);
 
   useEffect(() => {
     if (view !== 'incomplete' && view !== 'duplicates') return;
@@ -122,8 +124,8 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
     let rows: Array<Array<string | number>>;
     if (view === 'revenue') {
       rows = [
-        ['Mes', 'Pago CVE', 'Pendente CVE', 'Caixa CVE', 'Cobrancas'],
-        ...summary!.revenueByMonth.map((row) => [referenceMonthLabel(row.referenceMonth, formatPtMonth), row.paidCve, row.pendingCve, row.cashCve, row.payments])
+        ['Mes', 'Documento', 'Pago CVE', 'Pendente CVE', 'Caixa CVE', 'Cobrancas'],
+        ...summary!.revenueByMonth.map((row) => [referenceMonthLabel(row.referenceMonth, formatPtMonth), row.documentType === 'sale_ticket' ? 'Talão de Venda' : 'Fatura', row.paidCve, row.pendingCve, row.cashCve, row.payments])
       ];
     } else if (view === 'overdue') {
       rows = [
@@ -222,6 +224,9 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
 
       {view !== 'incomplete' && view !== 'duplicates' && view !== 'operations' && (
         <FilterBar className="reports-filter-bar">
+          <Select label="Documento" value={documentType} disabled={view === 'stock'} onChange={(event) => { setDocumentType(event.target.value as typeof documentType); setPage(1); }}>
+            <option value="all">Todos os documentos</option><option value="invoice">Faturas</option><option value="sale_ticket">Talões de venda</option>
+          </Select>
           <Field
             label="De"
             type="date"
@@ -281,10 +286,10 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
       <div className="module-table">
         {!error && ((view === 'incomplete' || view === 'duplicates') ? !dq : !summary) && <SkeletonList rows={5} />}
         {view === 'revenue' && summary?.revenueByMonth.map((row) => (
-          <div className="module-row report-row is-revenue" key={row.referenceMonth}>
+          <div className="module-row report-row is-revenue" key={`${row.documentType || 'invoice'}:${row.referenceMonth}`}>
             <span>
               <strong>{referenceMonthLabel(row.referenceMonth, formatPtMonth)}</strong>
-              <small>{row.payments} cobrancas</small>
+              <small>{row.documentType === 'sale_ticket' ? 'Talões de venda' : 'Faturas'} · {row.payments} documentos</small>
             </span>
             <small>Pago: {formatCve(row.paidCve)}</small>
             <small>Pendente: {formatCve(row.pendingCve)}</small>

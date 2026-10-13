@@ -122,6 +122,19 @@ export type DeviceIdentity = Pick<DeviceInput, 'serialNumber' | 'assetTag' | 'ip
 
 export type IdentityIssue = { status: number; error: string };
 
+export function normalizeSerialNumber(value: string | null | undefined): string | null {
+  return cleanValue(value)?.toUpperCase() ?? null;
+}
+
+/** Uma unidade vendida so pode voltar a ser registada depois da anulacao. */
+export function checkSoldSerialIdentity(db: Database.Database, serialNumber: string | null | undefined): IdentityIssue | null {
+  const normalized = normalizeSerialNumber(serialNumber);
+  if (!normalized) return null;
+  const sold = db.prepare('SELECT id FROM sale_ticket_serials WHERE normalized_serial = ? AND released_at IS NULL')
+    .get(normalized);
+  return sold ? { status: 409, error: 'Serial pertence a equipamento vendido num talao de venda ativo' } : null;
+}
+
 /**
  * Formato do IP + unicidade de serial/asset tag/IP entre atribuicoes ATIVAS
  * (`end_date IS NULL`). Ponto unico partilhado pelos quatro caminhos de escrita:
@@ -137,6 +150,9 @@ export function checkDeviceIdentity(
   device: DeviceIdentity,
   excludeAssignmentId?: number | null
 ): IdentityIssue | null {
+  const soldSerial = checkSoldSerialIdentity(db, device.serialNumber);
+  if (soldSerial) return soldSerial;
+
   const ipAddress = cleanValue(device.ipAddress);
   if (ipAddress && !isIpv4(ipAddress)) {
     return { status: 400, error: IP_FORMAT_ERROR };
@@ -148,12 +164,15 @@ export function checkDeviceIdentity(
   }
 
   for (const field of IDENTITY_FIELDS) {
-    const value = field.key === 'macAddress' ? macAddress : cleanValue(device[field.key]);
+    const value = field.key === 'macAddress' ? macAddress
+      : field.key === 'serialNumber' ? normalizeSerialNumber(device.serialNumber)
+      : cleanValue(device[field.key]);
     if (!value) {
       continue;
     }
     // ponytail: scan sem indice em ip_address; se a tabela crescer, CREATE INDEX (nao-unico).
-    const sql = `SELECT id FROM service_device_assignments WHERE ${field.column} = ? AND end_date IS NULL`
+    const column = field.key === 'serialNumber' ? 'upper(trim(serial_number))' : field.column;
+    const sql = `SELECT id FROM service_device_assignments WHERE ${column} = ? AND end_date IS NULL`
       + (excludeAssignmentId ? ' AND id != ?' : '');
     const duplicate = excludeAssignmentId
       ? db.prepare(sql).get(value, excludeAssignmentId)
@@ -232,6 +251,7 @@ export function preflightItems(db: Database.Database, items: ServiceItemInput[])
         // lote passavam por dois equipamentos diferentes.
         const value = field.key === 'macAddress'
           ? normalizeMacAddress(item[field.key])
+          : field.key === 'serialNumber' ? normalizeSerialNumber(item.serialNumber)
           : cleanValue(item[field.key]);
         if (!value) {
           continue;
@@ -268,6 +288,8 @@ export function installDeviceWithinTx(
   params: { serviceId: number; clientName: string; device: DeviceInput; userId: number | null; skipEvent?: boolean }
 ): InstallResult {
   const { serviceId, clientName, device, userId } = params;
+  const identityIssue = checkDeviceIdentity(db, device);
+  if (identityIssue) throw new Error(`device_identity:${identityIssue.status}:${identityIssue.error}`);
 
   const freshCatalog = loadCatalogIdentity(db, device.catalogId);
   if (!freshCatalog) {
@@ -494,6 +516,10 @@ export function insertInstallCostsWithinTx(
 
 /** Maps an error thrown by {@link installDeviceWithinTx} to a reply, or null if unrelated. */
 export function mapInstallError(error: unknown): { status: number; error: string } | null {
+  if (error instanceof Error && error.message.startsWith('device_identity:')) {
+    const [, status, ...message] = error.message.split(':');
+    return { status: Number(status), error: message.join(':') };
+  }
   if (error instanceof Error && error.message.startsWith('stock_insufficient:')) {
     return { status: 400, error: `Stock insuficiente. Disponivel: ${error.message.split(':')[1]}` };
   }

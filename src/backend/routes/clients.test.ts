@@ -532,3 +532,21 @@ describe('rateio de antena partilhada', () => {
     expect(a[0].totalCostCve + b[0].totalCostCve).toBe(3000);
   });
 });
+
+
+describe('reserved system client API', () => {
+  test('rejects edits and state changes and bulk imports cannot overwrite it', async () => {
+    const id = Number(db.prepare("INSERT INTO clients (client_code, full_name, system_kind) VALUES ('INDIF', 'Cliente Indiferenciado', 'indifferentiated')").run().lastInsertRowid);
+    for (const status of ['active', 'suspended', 'cancelled']) {
+      const response = await app.inject({ method: 'PUT', url: '/api/clients/' + id,
+        payload: { fullName: 'Substituido', phone: '9999999', nif: '123456789', status } });
+      expect(response.statusCode).toBe(409);
+    }
+    const imported = await app.inject({ method: 'POST', url: '/api/clients/bulk',
+      payload: { rows: [{ clientCode: 'INDIF', fullName: 'Substituido', status: 'cancelled' }] } });
+    expect(imported.statusCode).toBe(200);
+    expect(imported.json().summary).toMatchObject({ inserted: 0, skipped: 1 });
+    expect(db.prepare('SELECT full_name AS name, status, phone, nif FROM clients WHERE id = ?').get(id))
+      .toEqual({ name: 'Cliente Indiferenciado', status: 'active', phone: null, nif: null });
+  });
+});

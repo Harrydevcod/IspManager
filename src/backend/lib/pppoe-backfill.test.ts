@@ -87,6 +87,8 @@ describe('na base de dados', () => {
   beforeEach(() => {
     db = new Database(':memory:');
     runMigrations(db);
+    // Fixture owns IDs from 1; system-client behaviour is tested separately.
+    db.exec('DELETE FROM clients');
     db.prepare(`
       INSERT INTO internet_plans (id, name, download_speed, upload_speed, download_mbps, upload_mbps, router_profile)
       VALUES (1, 'Base 10', '10 Mbps', '2 Mbps', 10, 2, 'plano-10M')

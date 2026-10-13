@@ -70,10 +70,10 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
 
     const summary = db.prepare(`
       SELECT
-        (SELECT count(*) FROM clients) AS totalClients,
-        (SELECT count(*) FROM clients WHERE status = 'active') AS activeClients,
-        (SELECT count(*) FROM clients WHERE status = 'suspended') AS suspendedClients,
-        (SELECT count(*) FROM clients WHERE status = 'cancelled') AS cancelledClients,
+        (SELECT count(*) FROM clients WHERE system_kind IS NULL) AS totalClients,
+        (SELECT count(*) FROM clients WHERE system_kind IS NULL AND status = 'active') AS activeClients,
+        (SELECT count(*) FROM clients WHERE system_kind IS NULL AND status = 'suspended') AS suspendedClients,
+        (SELECT count(*) FROM clients WHERE system_kind IS NULL AND status = 'cancelled') AS cancelledClients,
         (SELECT count(*) FROM payments WHERE ${overdueSqlPredicate()}) AS overduePayments,
         (SELECT count(*) FROM payments WHERE status = 'pending') AS pendingPayments,
         (SELECT count(*) FROM equipment_catalog WHERE active = 1 AND stock_total <= 3) AS lowStockModels,
@@ -123,8 +123,11 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     `).get({ currentMonth, previousMonth: previousMonthKey() }) as DashboardMetricRow;
 
     const months = currentYearMonths();
+    // TV não tem competência mensal: a venda pertence ao mês da emissão.
+    const revenueMonthSql = `CASE WHEN document_type = 'sale_ticket'
+      THEN substr(invoice_date, 1, 7) ELSE reference_month END`;
     const revenueRows = db.prepare(`
-      SELECT reference_month AS referenceMonth,
+      SELECT ${revenueMonthSql} AS referenceMonth,
              -- Recebido e por receber da competência, agora que uma fatura pode
              -- estar nos dois lados ao mesmo tempo.
              COALESCE(SUM(CASE WHEN status <> 'cancelled'
@@ -132,9 +135,9 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
              COALESCE(SUM(CASE WHEN status IN ('pending','overdue')
                THEN ${balanceSqlExpr('payments')} ELSE 0 END), 0) AS pendingCve
       FROM payments
-      WHERE reference_month >= @from AND reference_month <= @to
-      GROUP BY reference_month
-      ORDER BY reference_month ASC
+      WHERE ${revenueMonthSql} >= @from AND ${revenueMonthSql} <= @to
+      GROUP BY referenceMonth
+      ORDER BY referenceMonth ASC
     `).all({ from: months[0], to: months[11] }) as Array<Pick<RevenuePoint, 'referenceMonth' | 'paidCve' | 'pendingCve'>>;
     const investmentRows = db.prepare(`
       SELECT reference_month AS referenceMonth,

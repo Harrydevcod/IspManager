@@ -1,3 +1,4 @@
+import { isSystemClient, SYSTEM_CLIENT_ERROR } from '../lib/system-client';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
@@ -120,6 +121,9 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
     if (!payment) {
       return reply.status(404).send({ error: 'Pagamento nao encontrado' });
     }
+    if (isSystemClient(getSqliteDatabase(), payment.clientId)) {
+      return reply.status(409).send({ error: SYSTEM_CLIENT_ERROR });
+    }
     const to = normalizeWhatsappPhone(payment.phone || '');
     if (!to) {
       return reply.status(400).send({ error: 'Cliente sem telefone WhatsApp valido' });
@@ -162,7 +166,7 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
         CAST(julianday('now') - julianday(py.due_date) AS INTEGER) AS daysOverdue
       FROM payments py
       JOIN clients c ON c.id = py.client_id
-      WHERE ${overdueSqlPredicate('py')}
+      WHERE c.system_kind IS NULL AND py.document_type = 'invoice' AND ${overdueSqlPredicate('py')}
       ORDER BY py.due_date ASC
     `).all() as OverdueCandidate[];
 

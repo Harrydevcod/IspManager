@@ -28,7 +28,7 @@ export const PAYMENT_COLUMNS: DataTableColumn<PaymentRow>[] = [
   { header: 'Cliente', sortValue: (p) => p.clientName, cell: (p) => <strong title={p.clientName}>{p.clientName}</strong> },
   // 'INSTALACAO' não é um mês e mostra "-": ordena como vazio, no fim.
   { header: 'Referência', sortValue: (p) => (/^\d{4}-\d{2}$/.test(p.referenceMonth) ? p.referenceMonth : null), defaultDirection: 'desc', cell: (p) => <span>{referenceMonthLabel(p.referenceMonth, formatPtMonth)}</span> },
-  { header: 'Fatura', sortValue: (p) => p.invoiceNumber, cell: (p) => <span>{p.invoiceNumber || '—'}</span> },
+  { header: 'Fatura', sortValue: (p) => p.invoiceNumber, cell: (p) => <span title={p.documentType === 'sale_ticket' ? 'Talão de venda' : 'Fatura'}>{p.invoiceNumber || '—'}{p.documentType === 'sale_ticket' && <Badge tone="info">TV</Badge>}</span> },
   {
     header: 'Vencimento',
     sortValue: (p) => p.dueDate,
@@ -133,6 +133,7 @@ export function PaymentsList({
       actionsWidth="64px"
       columns={PAYMENT_COLUMNS}
       actions={(p) => {
+        if (p.documentType === 'sale_ticket') return <RowActionsMenu groups={[{ label: 'Talão de venda', items: [{ label: 'Abrir talão de venda', icon: <ReceiptText size={15} aria-hidden />, onClick: () => onPreview(p) }] }]} />;
         if (p.status === 'cancelled') return null;
         const hasPhone = Boolean(normalizeWhatsappPhone(p.clientPhone));
         // O aviso segue o estado efetivo; as ações de gestão ("Marcar atraso",

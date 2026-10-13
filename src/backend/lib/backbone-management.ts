@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { normalizeMacAddress } from '../../shared/mac';
 import { BACKBONE_UPLINK_TYPES_SQL } from '../../shared/topology';
 import { PLACEMENT_CTE } from './topology-read-model';
+import { checkSoldSerialIdentity } from './serviceInstall';
 import type {
   AssignmentBackboneInput,
   AssignmentListQuery,
@@ -477,6 +478,8 @@ export function createBackbone(
   // A unidade e as suas alimentações entram juntas: um backbone gravado sem as
   // ligações apareceria por instantes pendurado na Internet.
   const create = db.transaction(() => {
+    const soldSerial = checkSoldSerialIdentity(db, normalized.serialNumber);
+    if (soldSerial) throw new BackboneConflictError(soldSerial.error);
     const holder = stockHolder(normalized.status, normalized.catalogId);
     if (holder !== null) {
       debitStock(db, holder, normalized.name, actorId);
@@ -521,6 +524,8 @@ export function updateBackbone(
     if (normalized.expectedUpdatedAt && normalized.expectedUpdatedAt !== existing.updatedAt) {
       throw new BackboneConflictError('O backbone foi alterado por outra pessoa');
     }
+    const soldSerial = checkSoldSerialIdentity(db, normalized.serialNumber);
+    if (soldSerial) throw new BackboneConflictError(soldSerial.error);
     ensureUpstreams(db, id, normalized.upstreamDeviceIds);
     if (normalized.status === 'retired') {
       const activeLink = db.prepare(`

@@ -86,8 +86,8 @@ const settingsSchema = z.object({
   audiovisualAnnualCve: z.coerce.number().min(0).max(10_000_000).optional().default(5000),
   installationFeeCve: z.coerce.number().min(0).max(10_000_000).optional().default(0),
   currencyCode: z.string().trim().min(1).max(8),
-  invoicePrefix: z.string().trim().min(1).max(8),
-  receiptPrefix: z.string().trim().min(1).max(8),
+  invoicePrefix: z.string().trim().min(1).max(8).refine((value) => value.toUpperCase() !== 'TV', 'TV é reservado aos Talões de Venda'),
+  receiptPrefix: z.string().trim().min(1).max(8).refine((value) => value.toUpperCase() !== 'TV', 'TV é reservado aos Talões de Venda'),
   ivaRate: z.coerce.number().min(0).max(100),
   fiscalRegime: z.enum(['normal', 'rempe']),
   showIva: z.coerce.boolean(),
@@ -347,20 +347,20 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     };
 
     const countEmitted = (column: 'invoice_number' | 'receipt_number'): number => {
-      const row = db.prepare(`SELECT COUNT(*) AS n FROM payments WHERE ${column} IS NOT NULL`).get() as { n: number };
+      const row = db.prepare(`SELECT COUNT(*) AS n FROM payments WHERE ${column} IS NOT NULL ${column === 'invoice_number' ? "AND document_type='invoice'" : ''}`).get() as { n: number };
       return row.n;
     };
 
     const currentInvoicePrefix = readCurrent('invoicePrefix');
     const currentReceiptPrefix = readCurrent('receiptPrefix');
 
-    if (parsed.data.invoicePrefix !== currentInvoicePrefix && countEmitted('invoice_number') > 0) {
+    if (parsed.data.invoicePrefix !== currentInvoicePrefix && currentInvoicePrefix.toUpperCase() !== 'TV' && countEmitted('invoice_number') > 0) {
       return reply.status(400).send({
         error: 'Prefixo de fatura nao pode ser alterado depois de emitida a primeira fatura'
       });
     }
 
-    if (parsed.data.receiptPrefix !== currentReceiptPrefix && countEmitted('receipt_number') > 0) {
+    if (parsed.data.receiptPrefix !== currentReceiptPrefix && currentReceiptPrefix.toUpperCase() !== 'TV' && countEmitted('receipt_number') > 0) {
       return reply.status(400).send({
         error: 'Prefixo de recibo nao pode ser alterado depois de emitido o primeiro recibo'
       });

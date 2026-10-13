@@ -91,7 +91,9 @@ const serviceRow = (id = 1) => db.prepare('SELECT plan_id AS planId, status, ppp
 
 beforeEach(() => {
   db = new Database(':memory:');
-  runMigrations(db);
+    runMigrations(db);
+    // Fixture owns IDs from 1; system-client behaviour is tested separately.
+    db.exec('DELETE FROM clients');
   db.prepare(`INSERT INTO internet_plans (id, name, router_profile) VALUES (1, 'Base 10', 'plano-10M'), (2, 'Mais 20', 'plano-20M')`).run();
   db.prepare(`INSERT INTO users (id, username, password_hash, role, full_name) VALUES (7, 'ana', 'x', 'admin', 'Ana')`).run();
 });

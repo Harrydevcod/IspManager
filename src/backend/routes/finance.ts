@@ -36,6 +36,7 @@ import {
 import { readPppoeSecret } from '../lib/secrets';
 import { serviceTransferSchema, transferService } from '../lib/serviceTransfer';
 import { confirmSessionPassword, requireAuth, requireRole } from './auth';
+import { registerSaleTicketRoutes } from './sale-tickets';
 
 const monthSchema = z.object({
   referenceMonth: z.string().regex(/^\d{4}-\d{2}$/)
@@ -80,6 +81,7 @@ const pppoeRevealSchema = z.object({
 }).strict();
 
 export async function registerFinanceRoutes(app: FastifyInstance) {
+  await registerSaleTicketRoutes(app);
   const billingWrite = { preHandler: requireRole(['admin', 'operator']) };
 
   app.get('/api/services', { preHandler: requireAuth() }, async () => {
@@ -439,6 +441,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         py.payment_date AS paymentDate,
         py.payment_method AS paymentMethod,
         py.status,
+        py.document_type AS documentType,
         py.invoice_number AS invoiceNumber,
         py.invoice_date AS invoiceDate,
         py.receipt_number AS receiptNumber,

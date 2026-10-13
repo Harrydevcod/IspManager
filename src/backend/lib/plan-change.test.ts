@@ -96,7 +96,9 @@ async function change(
 
 beforeEach(() => {
   db = new Database(':memory:');
-  runMigrations(db);
+    runMigrations(db);
+    // Fixture owns IDs from 1; system-client behaviour is tested separately.
+    db.exec('DELETE FROM clients');
   db.prepare(`
     INSERT INTO internet_plans (id, name, monthly_price_cve, router_profile)
     VALUES (1, 'Base 10', 2500, 'plano-10M'), (2, 'Mais 20', 3500, 'plano-20M')

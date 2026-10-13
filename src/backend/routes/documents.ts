@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { PaymentDocumentError, filenamePart, renderPaymentDocumentPdf, renderReceiptPdf } from '../lib/documents';
 import { requireRole } from './auth';
+import { renderSaleTicketPdf } from '../lib/sale-ticket-documents';
 
 function dispositionFromQuery(query: unknown): 'inline' | 'attachment' {
   if (query && typeof query === 'object' && 'inline' in (query as Record<string, unknown>)) {
@@ -12,6 +13,22 @@ function dispositionFromQuery(query: unknown): 'inline' | 'attachment' {
 
 export async function registerDocumentRoutes(app: FastifyInstance) {
   const canIssueDocuments = { preHandler: requireRole(['admin', 'operator']) };
+
+  app.get('/api/payments/:id/sale-ticket.pdf', canIssueDocuments, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const format = (request.query as { format?: unknown }).format ?? 'a4';
+    if (format !== 'a4' && format !== '80mm') return reply.status(400).send({ error: 'Formato inválido: use a4 ou 80mm' });
+    try {
+      const { buffer, filename } = await renderSaleTicketPdf(id, format);
+      return reply.header('Content-Type', 'application/pdf')
+        .header('Cache-Control', 'no-store')
+        .header('Content-Disposition', `${dispositionFromQuery(request.query)}; filename="${filenamePart(filename, 'documento.pdf')}"; filename*=UTF-8''${encodeURIComponent(filename)}`)
+        .send(buffer);
+    } catch (error) {
+      if (error instanceof PaymentDocumentError) return reply.status(error.statusCode).send({ error: error.message });
+      throw error;
+    }
+  });
 
   app.get('/api/payments/:id/invoice.pdf', canIssueDocuments, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);

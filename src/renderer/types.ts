@@ -40,6 +40,7 @@ export type SectionId =
 
 export type Client = {
   id: number;
+  systemKind?: 'indifferentiated' | null;
   clientCode: string;
   fullName: string;
   phone: string | null;
@@ -98,6 +99,7 @@ export type AudiovisualConfig = {
 
 export type PaymentRow = {
   id: number;
+  documentType?: 'invoice' | 'sale_ticket';
   /** Nulo numa fatura manual sem serviço. */
   serviceId?: number | null;
   /** Data de emissão, como vem da lista. */
@@ -726,6 +728,7 @@ export type ReportsSummary = {
   };
   revenueByMonth: Array<{
     referenceMonth: string;
+    documentType?: 'invoice' | 'sale_ticket';
     /** Competência: quanto do que foi faturado para este mês já está liquidado. */
     paidCve: number;
     pendingCve: number;

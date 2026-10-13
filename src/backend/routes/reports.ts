@@ -32,6 +32,7 @@ const dismissDuplicateSchema = z.object({
 });
 
 const querySchema = z.object({
+  documentType: z.enum(['invoice', 'sale_ticket']).optional(),
   view: z.enum(['revenue', 'overdue', 'stock']).default('revenue'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -98,10 +99,14 @@ export async function registerReportRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Filtros invalidos' });
     }
 
-    const { view, page, pageSize, dateFrom, dateTo } = parsed.data;
+    const { view, page, pageSize, dateFrom, dateTo, documentType } = parsed.data;
     const offset = (page - 1) * pageSize;
     const paymentWhere: string[] = [];
     const params: Record<string, unknown> = { limit: pageSize, offset };
+    if (documentType) {
+      paymentWhere.push('document_type = @documentType');
+      params.documentType = documentType;
+    }
     if (dateFrom) {
       paymentWhere.push('due_date >= @dateFrom');
       params.dateFrom = dateFrom;
@@ -119,7 +124,7 @@ export async function registerReportRoutes(app: FastifyInstance) {
 
     const metrics = db.prepare(`
       SELECT
-        (SELECT count(*) FROM clients) AS totalClients,
+        (SELECT count(*) FROM clients WHERE system_kind IS NULL) AS totalClients,
         (SELECT count(*) FROM services WHERE status = 'active') AS activeServices,
         (SELECT count(*) FROM payments WHERE ${overdueSqlPredicate()}) AS overduePayments,
         -- Divida e saldo: quem ja entregou metade so deve a outra metade.
@@ -150,17 +155,19 @@ export async function registerReportRoutes(app: FastifyInstance) {
      */
     // Cada fatura manual tem a sua chave (`AVULSA-<id>`): sem isto a tabela
     // ganhava uma linha por fatura. Juntam-se numa só competência, "Avulsas".
-    const revenueKeySql = `CASE WHEN reference_month LIKE '${MANUAL_INVOICE_PREFIX}%' THEN '${MANUAL_INVOICE_PREFIX}' ELSE reference_month END`;
+    const revenueKeySql = `CASE WHEN document_type='sale_ticket' THEN substr(invoice_date,1,7)
+      WHEN reference_month LIKE '${MANUAL_INVOICE_PREFIX}%' THEN '${MANUAL_INVOICE_PREFIX}' ELSE reference_month END`;
     const revenueByMonth = db.prepare(`
       SELECT
         ${revenueKeySql} AS referenceMonth,
+        document_type AS documentType,
         coalesce(sum(case when status <> 'cancelled'
           then amount_cve - ${balanceSqlExpr('payments')} else 0 end), 0) AS paidCve,
         coalesce(sum(case when status in ('pending','overdue')
           then ${balanceSqlExpr('payments')} else 0 end), 0) AS pendingCve,
         count(*) AS payments,
         -- Avulsas nao tem mes: soma-se a caixa de cada fatura selecionada.
-        CASE WHEN reference_month LIKE '${MANUAL_INVOICE_PREFIX}%'
+        CASE WHEN document_type='sale_ticket' OR reference_month LIKE '${MANUAL_INVOICE_PREFIX}%'
           THEN coalesce(sum((
             SELECT sum(r.amount_cve) FROM payment_receipts r
             WHERE r.payment_id = payments.id AND ${cashReceiptFilterSql('r')}
@@ -168,13 +175,15 @@ export async function registerReportRoutes(app: FastifyInstance) {
           ELSE (
             SELECT coalesce(sum(r.amount_cve), 0)
             FROM payment_receipts r
+            JOIN payments cash_py ON cash_py.id=r.payment_id
             WHERE ${cashReceiptFilterSql('r')}
+              AND cash_py.document_type=payments.document_type
               AND substr(r.payment_date, 1, 7) = payments.reference_month
           )
         END AS cashCve
       FROM payments
       ${paymentWhereSql}
-      GROUP BY ${revenueKeySql}
+      GROUP BY ${revenueKeySql}, document_type
       ORDER BY referenceMonth DESC
       LIMIT @limit
       OFFSET @offset
@@ -186,7 +195,7 @@ export async function registerReportRoutes(app: FastifyInstance) {
         SELECT 1
         FROM payments
         ${paymentWhereSql}
-        GROUP BY ${revenueKeySql}
+        GROUP BY ${revenueKeySql}, document_type
       )
     `).get(params) as { total: number };
 
@@ -279,7 +288,7 @@ export async function registerReportRoutes(app: FastifyInstance) {
         c.zone,
         c.status,
         EXISTS(SELECT 1 FROM services s WHERE s.client_id = c.id AND s.status = 'active') AS hasActiveService
-      FROM clients c
+      FROM clients c WHERE c.system_kind IS NULL
     `).all() as DqClient[];
 
     const withFlags = rows.map((row) => ({ row, flags: computeIncompleteFlags(row) }));

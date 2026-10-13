@@ -23,6 +23,12 @@ function selectPayment(db: Database, id: number): PaymentRecord | undefined {
   return db.prepare('SELECT * FROM payments WHERE id = ?').get(id) as PaymentRecord | undefined;
 }
 
+function isSaleTicket(db: Database, id: number): boolean {
+  return Boolean(db.prepare("SELECT 1 FROM payments WHERE id=? AND document_type='sale_ticket'").get(id));
+}
+
+const saleTicketLocked = { ok: false as const, status: 409, error: 'Talão de Venda: use o fluxo próprio de emissão e anulação.' };
+
 // ---------------------------------------------------------------------------
 // Reversão de cobrança mensal
 //
@@ -140,6 +146,7 @@ export function revertPayment(db: Database, id: number): PaymentOpResult<{
   invoiceNumber: string | null;
   clientId: number;
 }> {
+  if (isSaleTicket(db, id)) return saleTicketLocked;
   const payment = db.prepare(`
     SELECT id, status, reference_month AS referenceMonth, invoice_number AS invoiceNumber, client_id AS clientId
     FROM payments WHERE id = ?
@@ -202,6 +209,7 @@ export function regeneratePayment(db: Database, id: number): PaymentOpResult<{
   amountCve: number;
   dueDate: string;
 }> {
+  if (isSaleTicket(db, id)) return saleTicketLocked;
   const payment = db.prepare(`
     SELECT
       py.id,
@@ -414,12 +422,13 @@ type PaymentHead = {
   invoiceDate: string | null;
   invoiceNumber: string | null;
   referenceMonth: string;
+  documentType: 'invoice' | 'sale_ticket';
 };
 
 const paymentHeadSelect = `
   SELECT id, client_id AS clientId, service_id AS serviceId, status, amount_cve AS amountCve,
          invoice_date AS invoiceDate, invoice_number AS invoiceNumber,
-         reference_month AS referenceMonth
+         reference_month AS referenceMonth, document_type AS documentType
   FROM payments WHERE id = ?
 `;
 
@@ -446,7 +455,7 @@ function writeReceipt(
     userId?: number | null;
   }
 ): ReceiptRecord {
-  const receiptNumber = allocateDocumentNumber('receipt');
+  const receiptNumber = allocateDocumentNumber('receipt', db);
   const info = db.prepare(`
     INSERT INTO payment_receipts (
       payment_id, amount_cve, payment_date, payment_method, source,
@@ -490,6 +499,25 @@ export type PayResult = {
   settled: boolean;
 };
 
+/** Internal sale settlement; caller must own the document/stock transaction. */
+export function receiveSaleTicketWithinTx(
+  db: Database,
+  id: number,
+  input: { paymentMethod: PaymentMethod; paymentDate: string; accountId: number; userId: number | null }
+): PaymentOpResult<ReceiptRecord> {
+  if (!db.inTransaction) throw new Error('Sale settlement requires a transaction');
+  const head = loadHead(db, id);
+  if (!head || head.documentType !== 'sale_ticket' || head.status !== 'pending' || receivedTotal(db, id) !== 0) return saleTicketLocked;
+  const destination = resolveReceiptAccount(db, input.paymentMethod, input.accountId);
+  if (!destination.ok) return destination;
+  const receipt = writeReceipt(db, head, { ...input, amountCve: head.amountCve, source: 'cash' });
+  recordReceiptMovement(db, {
+    receiptId: receipt.id, accountId: destination.value.id, amountCve: head.amountCve,
+    movementDate: input.paymentDate, description: `Talão ${head.invoiceNumber} · Cliente Indiferenciado`, userId: input.userId
+  });
+  return { ok: true, value: receipt };
+}
+
 /**
  * Regista dinheiro recebido por conta de uma fatura.
  *
@@ -514,6 +542,7 @@ export function payPayment(
   }
 ): PaymentOpResult<PayResult> {
   const head = loadHead(db, id);
+  if (head?.documentType === 'sale_ticket') return saleTicketLocked;
   if (!head) {
     return { ok: false, status: 404, error: 'Pagamento nao encontrado' };
   }
@@ -608,7 +637,8 @@ export function applyClientCreditToPayment(
   userId?: number | null
 ): ReceiptRecord | null {
   const head = loadHead(db, paymentId);
-  if (!head || head.status === 'cancelled' || head.status === 'paid') return null;
+  if (!head || head.documentType === 'sale_ticket' || head.status === 'cancelled' || head.status === 'paid') return null;
+  if (db.prepare("SELECT 1 FROM clients WHERE id=? AND system_kind IS NOT NULL").get(head.clientId)) return null;
 
   const balance = roundEscudos(head.amountCve - receivedTotal(db, paymentId));
   const credit = clientCreditBalance(db, head.clientId);
@@ -660,6 +690,7 @@ export function voidReceipt(
   if (receipt.voidedAt) {
     return { ok: false, status: 400, error: 'Recibo ja esta anulado' };
   }
+  if (isSaleTicket(db, receipt.paymentId)) return saleTicketLocked;
 
   // Dinheiro cobrado por cartão só sai da tesouraria depois de o fluxo Stripe
   // confirmar o reembolso. A rota genérica nunca fornece esta confirmação.
@@ -787,6 +818,7 @@ export function cancelPayment(db: Database, id: number, rawReason: string | null
   /** Recebido que passou a credito do cliente (0 quando nada tinha entrado). */
   creditedCve: number;
 }> {
+  if (isSaleTicket(db, id)) return saleTicketLocked;
   const payment = db.prepare(`
     SELECT id, client_id AS clientId, status, notes, amount_cve AS amountCve,
            invoice_number AS invoiceNumber, receipt_number AS receiptNumber,

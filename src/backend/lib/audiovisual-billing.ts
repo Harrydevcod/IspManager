@@ -55,6 +55,7 @@ export function runAudiovisualAnnualIfDue(now: Date = new Date(), onlyServiceId?
     JOIN clients c ON c.id = s.client_id
     WHERE s.status = 'active'
       AND c.status != 'cancelled'
+      AND c.system_kind IS NULL
       AND s.audiovisual_mode = 'annual'
   `;
   if (onlyServiceId) {

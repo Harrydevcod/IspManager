@@ -1,3 +1,4 @@
+import { isSystemClient, SYSTEM_CLIENT_ERROR } from '../lib/system-client';
 import type { FastifyInstance } from 'fastify';
 import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
@@ -178,6 +179,7 @@ export async function registerSmsRoutes(app: FastifyInstance) {
       fullName: string; clientCode: string | null; phone: string | null; paymentLink: string | null;
     } | undefined;
     if (!payment) return reply.status(404).send({ error: 'Pagamento nao encontrado' });
+    if (isSystemClient(getSqliteDatabase(), payment.clientId)) return reply.status(409).send({ error: SYSTEM_CLIENT_ERROR });
     const toPhone = normalizeSmsPhone(payment.phone || '');
     if (!toPhone) return reply.status(400).send({ error: 'Cliente sem telefone SMS valido' });
     if (parsed.data.eventType === 'receipt_confirmed' && payment.status !== 'paid') {

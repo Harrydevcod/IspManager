@@ -42,7 +42,8 @@ export const clients = sqliteTable('clients', {
   whatsappOptOut: integer('whatsapp_opt_out', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP'),
-  stripeCustomerId: text('stripe_customer_id')
+  stripeCustomerId: text('stripe_customer_id'),
+  systemKind: text('system_kind', { enum: ['indifferentiated'] })
 });
 
 export const appSettings = sqliteTable('app_settings', {
@@ -106,6 +107,10 @@ export const services = sqliteTable('services', {
 export const payments = sqliteTable('payments', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   clientId: integer('client_id').notNull(),
+  documentType: text('document_type', { enum: ['invoice', 'sale_ticket'] }).notNull().default('invoice'),
+  saleRequestKey: text('sale_request_key'),
+  saleRequestHash: text('sale_request_hash'),
+  cancellationReason: text('cancellation_reason'),
   // Opcional desde a 0081: uma fatura manual pode não pertencer a serviço nenhum.
   serviceId: integer('service_id'),
   referenceMonth: text('reference_month').notNull(),
@@ -131,6 +136,21 @@ export const paymentLines = sqliteTable('payment_lines', {
   amountCve: real('amount_cve').notNull().default(0),
   sortOrder: integer('sort_order').notNull().default(0),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
+export const saleTicketLines = sqliteTable('sale_ticket_lines', {
+  paymentLineId: integer('payment_line_id').primaryKey(),
+  catalogId: integer('catalog_id'),
+  quantity: integer('quantity').notNull(),
+  unitPriceCve: real('unit_price_cve').notNull()
+});
+
+export const saleTicketSerials = sqliteTable('sale_ticket_serials', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  paymentLineId: integer('payment_line_id').notNull(),
+  serialNumber: text('serial_number').notNull(),
+  normalizedSerial: text('normalized_serial').notNull(),
+  releasedAt: text('released_at')
 });
 
 export const paymentReceipts = sqliteTable('payment_receipts', {
@@ -185,6 +205,7 @@ export const equipmentCatalog = sqliteTable('equipment_catalog', {
 export const stockMovements = sqliteTable('stock_movements', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   catalogId: integer('catalog_id').notNull(),
+  saleTicketLineId: integer('sale_ticket_line_id'),
   type: text('type').notNull(),
   quantity: integer('quantity').notNull(),
   unitCostCve: real('unit_cost_cve').notNull().default(0),

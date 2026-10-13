@@ -11,6 +11,7 @@ import {
 } from './serviceInstall';
 import { insertInstallationFeeIfDue, loadInstallationFeeCve } from './billing';
 import { ownedSharedAssignments } from './deviceShares';
+import { isSystemClient, SYSTEM_CLIENT_ERROR } from './system-client';
 import { canStoreSecrets, readPppoeSecret, sealPppoeSecret } from './secrets';
 
 const serviceItemSchema = z.object({
@@ -137,6 +138,9 @@ export function createService(db: Database, data: ServiceInput, userId: number |
   installationFee: ReturnType<typeof insertInstallationFeeIfDue>;
   installedItems: number;
 }> {
+  if (isSystemClient(db, data.clientId)) {
+    return { ok: false, status: 409, error: SYSTEM_CLIENT_ERROR };
+  }
   const validationError = validateServicePayload(data);
   if (validationError) {
     return { ok: false, status: 400, error: validationError };
@@ -282,9 +286,12 @@ export function changeServiceStatus(
   next: ServiceStatus,
   options: { reason?: string | null; actorId?: number | null; source?: 'manual' | 'nonpayment' | null } = {}
 ): ServiceOpResult<ServiceStatusChange> {
-  const row = db.prepare('SELECT status FROM services WHERE id = ?').get(id) as { status: ServiceStatus } | undefined;
+  const row = db.prepare('SELECT status, client_id AS clientId FROM services WHERE id = ?').get(id) as { status: ServiceStatus; clientId: number } | undefined;
   if (!row) {
     return { ok: false, status: 404, error: 'Servico nao encontrado' };
+  }
+  if (isSystemClient(db, row.clientId)) {
+    return { ok: false, status: 409, error: SYSTEM_CLIENT_ERROR };
   }
   if (row.status === next) {
     return { ok: true, value: { changed: false, previous: row.status, next } };
@@ -312,6 +319,9 @@ export function changeServiceStatus(
 }
 
 export function updateService(db: Database, id: number, data: ServiceInput): ServiceOpResult<void> {
+  if (isSystemClient(db, data.clientId)) {
+    return { ok: false, status: 409, error: SYSTEM_CLIENT_ERROR };
+  }
   const validationError = validateServicePayload(data);
   if (validationError) {
     return { ok: false, status: 400, error: validationError };

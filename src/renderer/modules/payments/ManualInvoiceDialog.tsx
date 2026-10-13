@@ -183,7 +183,7 @@ export function ManualInvoiceDialog({ open, onClose, onCreated }: ManualInvoiceD
               <span className="field-label">Cliente</span>
               <Combobox
                 ariaLabel="Cliente"
-                options={clients}
+                options={clients.filter((client) => !client.systemKind)}
                 value={clientId}
                 onChange={(next) => { setClientId(next === null ? null : Number(next)); setServiceId(''); setWithStripe(false); }}
                 rowKey={(client) => client.id}

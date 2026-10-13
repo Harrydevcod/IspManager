@@ -1,3 +1,4 @@
+import { isSystemClient } from './system-client';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import { allocateDocumentNumber } from './numbering';
 // Import mútuo com ./payments (que importa daqui os construtores de linhas).
@@ -200,6 +201,7 @@ export function computeMonthlyBilling(db: DatabaseType, referenceMonth: string):
       -- que um serviço tenha ficado 'active'. O cancelamento do cliente não
       -- propaga automaticamente para os serviços, por isso filtramos aqui.
       AND c.status != 'cancelled'
+      AND c.system_kind IS NULL
     ORDER BY c.full_name
   `).all() as Array<{
     serviceId: number;
@@ -326,7 +328,7 @@ export function insertInstallationFeeIfDue(
   db: DatabaseType,
   params: { serviceId: number; clientId: number; amountCve: number }
 ): { paymentId: number } | null {
-  if (params.amountCve <= 0) return null;
+  if (params.amountCve <= 0 || isSystemClient(db, params.clientId)) return null;
 
   const exists = db.prepare(`
     SELECT 1 FROM payments WHERE service_id = ? AND reference_month = ? AND status != 'cancelled'
