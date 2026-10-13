@@ -122,16 +122,28 @@ export function ProposalsModule({
   useEffect(() => {
     if (!permitted) return;
     let alive = true;
-    Promise.all([
+    Promise.allSettled([
       request<Client[]>("/clients"),
       request<PlanRow[]>("/plans"),
-      request<StockCatalogRow[]>("/equipment-catalog"),
+      request<{ rows: StockCatalogRow[] }>("/stock/summary"),
     ])
       .then(([c, p, s]) => {
         if (alive) {
-          setClients(c.filter((v) => !v.systemKind));
-          setPlans(p.filter((v) => v.active));
-          setProducts(s.filter((v) => v.active));
+          if (c.status === "fulfilled")
+            setClients(c.value.filter((v) => !v.systemKind));
+          if (p.status === "fulfilled")
+            setPlans(p.value.filter((v) => v.active));
+          if (s.status === "fulfilled")
+            setProducts(s.value.rows.filter((v) => v.active));
+          const unavailable = [
+            c.status === "rejected" ? "clientes" : "",
+            p.status === "rejected" ? "planos" : "",
+            s.status === "rejected" ? "produtos" : "",
+          ].filter(Boolean);
+          if (unavailable.length)
+            setError(
+              `Não foi possível carregar ${unavailable.join(", ")}. Pode continuar com os restantes dados ou acrescentar linhas livres.`,
+            );
         }
       })
       .catch((e) => {

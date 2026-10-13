@@ -45,7 +45,7 @@ beforeEach(() => {
           installationFeeCve: 0,
         },
       ]);
-    if (url.endsWith("/equipment-catalog")) return json([]);
+    if (url.endsWith("/stock/summary")) return json({ rows: [] });
     return json({ items: [], total: 0, page: 1, pageSize: 25 });
   });
 });
@@ -88,6 +88,14 @@ describe("commercial proposal workspace", () => {
   it("composes free installation and monthly plan, excluding system recipients, and retains edits after conflict", async () => {
     await render();
     await click("Nova proposta");
+    expect(
+      mocks.fetch.mock.calls.some(([url]) => url.endsWith("/stock/summary")),
+    ).toBe(true);
+    expect(
+      mocks.fetch.mock.calls.some(([url]) =>
+        url.endsWith("/equipment-catalog"),
+      ),
+    ).toBe(false);
     expect(host.textContent).not.toContain("Indiferenciado");
     await select("Cliente existente ou interessado", "1");
     await select("Acrescentar plano", "1");
@@ -109,6 +117,24 @@ describe("commercial proposal workspace", () => {
     expect(host.querySelector('[role="alert"]')?.textContent).toContain(
       "Stale version",
     );
+    const values = [...host.querySelectorAll("input")].map((i) => i.value);
+    expect(values).toContain("Maria");
+    expect(values).toContain("Fibra 100");
+  });
+  it("retains clients and plans when products cannot load", async () => {
+    const original = mocks.fetch.getMockImplementation()!;
+    mocks.fetch.mockImplementation(async (url: string, init?: RequestInit) =>
+      url.endsWith("/stock/summary")
+        ? json({ error: "Unavailable" }, 503)
+        : original(url, init),
+    );
+    await render();
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+      "produtos",
+    );
+    await click("Nova proposta");
+    await select("Cliente existente ou interessado", "1");
+    await select("Acrescentar plano", "1");
     const values = [...host.querySelectorAll("input")].map((i) => i.value);
     expect(values).toContain("Maria");
     expect(values).toContain("Fibra 100");
