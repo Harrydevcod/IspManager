@@ -121,11 +121,27 @@ export function productLine(
 export function proposalTotals(lines: ProposalLineInput[]) {
   return lines.reduce(
     (totals, line) => {
-      totals[line.period] += Math.round(line.quantity * line.unitPriceCentavos);
+      totals[line.period] += lineTotalCentavos(line);
       return totals;
     },
     { once: 0, monthly: 0 },
   );
+}
+/** Quantities use thousandths; half centavo rounds up just as on the server. */
+export function lineTotalCentavos(
+  line: Pick<ProposalLineInput, "quantity" | "unitPriceCentavos">,
+): number {
+  const quantityMillis = Math.round(line.quantity * 1000);
+  if (
+    !Number.isSafeInteger(quantityMillis) ||
+    quantityMillis < 0 ||
+    !Number.isSafeInteger(line.unitPriceCentavos) ||
+    line.unitPriceCentavos < 0
+  )
+    return 0;
+  const rounded =
+    (BigInt(quantityMillis) * BigInt(line.unitPriceCentavos) + 500n) / 1000n;
+  return rounded <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(rounded) : 0;
 }
 export function validateDraft(draft: ProposalDraftInput): string | null {
   if (!draft.recipient.name.trim()) return "Preencha o nome do destinatário.";

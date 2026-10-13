@@ -21,6 +21,7 @@ import {
   type ProposalList,
 } from "../../../shared/proposals";
 import {
+  lineTotalCentavos,
   actionPayload,
   draftFromProposal,
   newDraft,
@@ -656,13 +657,7 @@ export function ProposalsModule({
                           }
                         />
                         <div className="proposal-line-tools">
-                          <strong>
-                            {money(
-                              Math.round(
-                                line.quantity * line.unitPriceCentavos,
-                              ),
-                            )}
-                          </strong>
+                          <strong>{money(lineTotalCentavos(line))}</strong>
                           <Button
                             type="button"
                             variant="ghost"

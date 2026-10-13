@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   actionPayload,
+  lineTotalCentavos,
   draftFromProposal,
   newDraft,
   planLines,
@@ -11,6 +12,18 @@ import {
 import type { Proposal } from "../../../shared/proposals";
 
 describe("proposal composition", () => {
+  it("rounds half centavo exactly, independent of floating point multiplication", () => {
+    const line = {
+      kind: "free" as const,
+      description: "Cabo",
+      period: "once" as const,
+      quantity: 0.145,
+      unitPriceCentavos: 100,
+    };
+    expect(lineTotalCentavos(line)).toBe(15);
+    expect(proposalTotals([line, line])).toEqual({ once: 30, monthly: 0 });
+    expect(lineTotalCentavos({ ...line, quantity: Number.NaN })).toBe(0);
+  });
   it("sends only permitted action fields and an ISO delivery date", () => {
     const data = {
       deliveredAt: "2026-10-13",
@@ -33,6 +46,7 @@ describe("proposal composition", () => {
     expect(delivery).toMatchObject({ channel: "WhatsApp", note: "Confirmado" });
     expect(
       "deliveredAt" in delivery &&
+        typeof delivery.deliveredAt === "string" &&
         Number.isFinite(Date.parse(delivery.deliveredAt)),
     ).toBe(true);
   });
