@@ -1,0 +1,54 @@
+import { describe, expect, test } from 'vitest';
+import { inflateSync } from 'node:zlib';
+import type { Proposal, ProposalCompany } from '../../shared/proposals';
+import { buildProposalPdf } from './proposal-documents';
+
+export const company: ProposalCompany = { companyName: 'ISPM ORIGINAL', nif: '123456789', phone: '555123', email: 'info@example.cv', address: 'Praia', island: 'Santiago', currencyCode: 'CVE', ivaRate: 15, fiscalRegime: 'normal', showIva: true, legalNotes: 'Oferta comercial.' };
+export function fixture(): Proposal {
+  return { id: 1, number: 'PR-2026-00001', title: 'Internet para casa', recipientName: 'Maria Original', recipient: { name: 'Maria Original', nif: '', phone: '', email: '', address: 'Praia' }, clientId: null, status: 'issued', version: 2, validUntil: '2026-11-12', issuedAt: '2026-10-13T12:00:00Z', createdAt: '2026-10-13', onceTotalCentavos: 100000, monthlyTotalCentavos: 250000, previousId: null, conditions: 'Instalação mediante agendamento.', lines: [{ id: 1, sortOrder: 0, kind: 'installation', description: 'Instalação oferecida', period: 'once', quantity: 1, unitPriceCentavos: 0, totalCentavos: 0 }, { id: 2, sortOrder: 1, kind: 'product', description: 'Router vendido', period: 'once', quantity: 1, unitPriceCentavos: 100000, totalCentavos: 100000 }, { id: 3, sortOrder: 2, kind: 'plan', description: 'Plano mensal original', period: 'monthly', quantity: 1, unitPriceCentavos: 250000, totalCentavos: 250000 }], snapshot: { company, onceTax: { subtotalCentavos: 86957, ivaCentavos: 13043, totalCentavos: 100000, ivaRate: 15, isExempt: false, exemptReason: '' }, monthlyTax: { subtotalCentavos: 217391, ivaCentavos: 32609, totalCentavos: 250000, ivaRate: 15, isExempt: false, exemptReason: '' } }, createdBy: 1, decisionAt: null, acceptedBy: null, decisionNote: null, cancellationReason: null, deliveries: [], chain: [], allowedActions: [] };
+}
+// PDFKit encodes standard-font strings as WinAnsi hex inside deflated streams.
+function content(pdf: Buffer): string {
+  const raw = pdf.toString('latin1');
+  return [...raw.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)].map((match) => {
+    let stream: string;
+    try { stream = inflateSync(Buffer.from(match[1], 'latin1')).toString('latin1'); } catch { return ''; }
+    return [...stream.matchAll(/<([\da-f]+)>/gi)].map((hex) => Buffer.from(hex[1], 'hex').toString('latin1')).join('');
+  }).join('\n');
+}
+describe('proposal PDF', () => {
+  test('A4, frozen content, distinct periods, fiscal presentation and no QR image', async () => {
+    const pdf = await buildProposalPdf(fixture(), { ...company, companyName: 'CHANGED COMPANY' });
+    const text = content(pdf);
+    expect(pdf.toString('latin1')).toContain('/MediaBox [0 0 595.28 841.89]');
+    expect((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length).toBe(1);
+    for (const value of ['ISPM ORIGINAL', 'Maria Original', 'PR-2026-00001', 'Custos únicos', 'Mensalidades', 'Instalação oferecida', '1.000$00', '2.500$00', 'IVA incluído', 'não constitui fatura']) expect(text).toContain(value);
+    expect(text).not.toContain('CHANGED COMPANY');
+    expect(text).not.toContain('3.500$00');
+    expect(pdf.toString('latin1')).not.toContain('/Subtype /Image');
+  });
+  test('draft without final number and issued documents without snapshot are rejected', async () => {
+    const draft = { ...fixture(), number: null, status: 'draft' as const, snapshot: null };
+    expect(content(await buildProposalPdf(draft, company))).toContain('RASCUNHO');
+    await expect(buildProposalPdf({ ...fixture(), snapshot: null }, company)).rejects.toThrow('snapshot');
+  });
+  test('long strings, many lines and conditions paginate; replacement remains clear', async () => {
+    const proposal = fixture();
+    proposal.status = 'superseded';
+    proposal.chain = [{ ...proposal, id: 2, number: 'PR-2026-00002', previousId: 1 }];
+    proposal.lines = Array.from({ length: 100 }, (_, i) => ({ ...proposal.lines[0], id: i + 1, sortOrder: i, description: `Oferta ${i} ${'ABCDEFGHIJ'.repeat(35)}` }));
+    proposal.conditions = 'Condições comerciais extensas. '.repeat(300);
+    const pdf = await buildProposalPdf(proposal);
+    const text = content(pdf);
+    expect((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length).toBeGreaterThan(5);
+    expect(text).toContain('Oferta 99');
+    expect(text).toContain('SUBSTITUÍDA');
+    expect(text).toContain('PR-2026-00002');
+    expect(text).toContain('Página');
+  });
+  test('cancelled pending revision is not presented as an issued replacement', async () => {
+    const proposal = fixture();
+    proposal.chain = [{ ...proposal, id: 2, previousId: 1, number: null, status: 'cancelled' }];
+    expect(content(await buildProposalPdf(proposal))).not.toContain('Substituída por');
+  });
+});
