@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
 
@@ -11,6 +12,7 @@ let dataDir: string;
 let closeDatabaseForTests: () => void;
 
 const TABLES_TO_CLEAR = [
+  'treasury_movements',
   'service_events',
   'service_device_assignments',
   'client_credits',
@@ -20,6 +22,7 @@ const TABLES_TO_CLEAR = [
   'expenses',
   'investment_items',
   'investments',
+  'treasury_accounts',
   'stock_movements',
   'services',
   'internet_plans',
@@ -87,6 +90,45 @@ function seedPaidPayment(
 }
 
 describe('GET /api/dashboard/summary', () => {
+  test.each(['currentMonth', 'previousYear'] as const)(
+    'agrupa TV pelo mês de emissão e retira o anulado do gráfico: %s',
+    async (period) => {
+      const { createSaleTicket, cancelSaleTicket } = await import('../lib/sale-tickets');
+      const { createAccount } = await import('../lib/treasury');
+      db.prepare(`INSERT INTO clients (client_code, full_name, status, system_kind)
+        VALUES ('INDIF', 'Cliente Indiferenciado', 'active', 'indifferentiated')`).run();
+      const account = createAccount(db, { kind: 'caixa', name: 'Caixa TV', openingDate: '2020-01-01' });
+      if (!account.ok) throw new Error(account.error);
+      const now = new Date();
+      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const issuedOn = period === 'currentMonth' ? `${currentMonth}-01` : `${now.getFullYear() - 1}-12-01`;
+      const ticket = createSaleTicket(db, {
+        requestKey: randomUUID(), issuedOn, paymentMethod: 'numerario', accountId: account.value.id,
+        lines: [{ description: 'Venda livre', quantity: 1, unitPriceCve: 1250.25 }]
+      }, null);
+      if (!ticket.ok) throw new Error(ticket.error);
+
+      const response = await app.inject({ method: 'GET', url: '/api/dashboard/summary' });
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.paidTotalCve).toBe(1250.25);
+      expect(body.paidMonthCve).toBe(period === 'currentMonth' ? 1250.25 : 0);
+      expect(body.totalClients).toBe(0);
+      expect(body.revenueByMonth).toHaveLength(12);
+      const point = body.revenueByMonth.find((row: { referenceMonth: string }) => row.referenceMonth === currentMonth);
+      expect(point).toMatchObject({ paidCve: period === 'currentMonth' ? 1250.25 : 0, pendingCve: 0 });
+      expect(body.revenueByMonth.reduce((sum: number, row: { paidCve: number }) => sum + row.paidCve, 0))
+        .toBe(period === 'currentMonth' ? 1250.25 : 0);
+
+      expect(cancelSaleTicket(db, ticket.value.paymentId, 'Devolução integral da venda', true, null).ok).toBe(true);
+      const cancelled = (await app.inject({ method: 'GET', url: '/api/dashboard/summary' })).json();
+      expect(cancelled.paidTotalCve).toBe(0);
+      expect(cancelled.paidMonthCve).toBe(0);
+      expect(cancelled.revenueByMonth.every((row: { paidCve: number; pendingCve: number }) =>
+        row.paidCve === 0 && row.pendingCve === 0)).toBe(true);
+    }
+  );
+
   test('returns sane zero state with empty database', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/dashboard/summary' });
     expect(response.statusCode).toBe(200);
