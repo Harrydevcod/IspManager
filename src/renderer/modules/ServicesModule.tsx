@@ -1302,7 +1302,7 @@ export function ServicesModule({
             <span className="field-label">Cliente</span>
             <Combobox
               ariaLabel="Cliente"
-              options={clients}
+              options={clients.filter((client) => !client.systemKind)}
               value={form.clientId ? Number(form.clientId) : null}
               onChange={(next) => updateForm('clientId', next == null ? '' : String(next))}
               rowKey={(client) => client.id}

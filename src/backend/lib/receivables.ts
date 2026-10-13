@@ -101,7 +101,7 @@ export function loadReceivables(db: Database): ReceivablesReport {
       CASE WHEN ${overdueSqlPredicate('p')} THEN 1 ELSE 0 END AS isOverdue
     FROM payments p
     JOIN clients c ON c.id = p.client_id
-    WHERE p.status <> 'cancelled' AND ${balanceSqlExpr('p')} > 0.005
+    WHERE c.system_kind IS NULL AND p.status <> 'cancelled' AND ${balanceSqlExpr('p')} > 0.005
     ORDER BY p.due_date, c.full_name
   `).all() as Array<{
     paymentId: number;

@@ -9,6 +9,7 @@ type DataTableAlign = 'start' | 'center' | 'end';
 
 export type DataTableSelection = {
   isSelected: (key: string | number) => boolean;
+  canSelect?: (key: string | number) => boolean;
   onToggleRow: (key: string | number) => void;
   headerState: SelectAllState;
   onToggleAll: () => void;
@@ -198,11 +199,11 @@ export function DataTable<T>({
         >
           {selection && (
             <div className="data-table-cell data-table-check-cell" role="cell">
-              <SelectCheckbox
+              {(selection.canSelect?.(key) ?? true) && <SelectCheckbox
                 checked={isRowSelected}
                 onChange={() => selection.onToggleRow(key)}
                 label="Selecionar linha"
-              />
+              />}
             </div>
           )}
           {columns.map((column) => (

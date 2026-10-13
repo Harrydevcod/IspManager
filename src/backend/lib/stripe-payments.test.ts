@@ -757,3 +757,17 @@ describe('link nos avisos', () => {
     expect(linkFor(withLink.paymentId)).toBeNull();
   });
 });
+
+
+describe('reserved identity and sale documents', () => {
+  test.each(['system-client', 'sale-ticket'])('refuses Stripe for %s without local attempts or remote calls', async (kind) => {
+    const { clientId, paymentId } = seed('RESERVED');
+    if (kind === 'system-client') db.prepare("UPDATE clients SET system_kind = 'indifferentiated' WHERE id = ?").run(clientId);
+    else db.prepare("UPDATE payments SET document_type = 'sale_ticket' WHERE id = ?").run(paymentId);
+    const stripe = fakeStripe();
+    expect(await stripePayments.ensurePaymentLink(db, paymentId, stripe.transport)).toMatchObject({ ok: false, status: 409 });
+    expect(stripe.calls.createCustomer).toBe(0);
+    expect(stripe.calls.createInvoice).toBe(0);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM stripe_payment_links').get()).toEqual({ n: 0 });
+  });
+});

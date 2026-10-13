@@ -110,6 +110,7 @@ describe('cofre de ponta a ponta', () => {
     // 1. Uma base de uma versão anterior: credenciais guardadas em claro.
     useDataDir('ispm-vault-e2e-a-');
     const legacy = getSqliteDatabase();
+    legacy.exec('DELETE FROM clients'); // Recreate the legacy fixture's client ID 1.
     legacy.prepare(`INSERT INTO clients (id, client_code, full_name, status) VALUES (1, 'C001', 'Sandra', 'active')`).run();
     legacy.prepare(`
       INSERT INTO internet_plans (id, name, download_speed, upload_speed, download_mbps, upload_mbps, router_profile)

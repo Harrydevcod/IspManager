@@ -1,0 +1,15 @@
+.dialog-body .client-form.sale-ticket-form { padding: var(--space-6); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sale-ticket-form .service-items-group { grid-template-columns: minmax(0, 1fr); }
+.sale-ticket-form .field, .sale-ticket-form input, .sale-ticket-form textarea { min-width: 0; width: 100%; }
+.sale-ticket-recipient, .sale-ticket-hint, .sale-ticket-form > .module-message, .sale-ticket-form > .service-items-builder, .sale-ticket-form > .field:has(textarea) { grid-column: 1 / -1; }
+.sale-ticket-recipient { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
+.sale-ticket-recipient strong { display: block; margin-top: 4px; }
+.sale-ticket-hint { color: var(--muted); font-size: 13px; margin: 0; }
+.sale-ticket-line { display: grid; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+.sale-ticket-line-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sale-ticket-line-pricing { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.sale-ticket-detail-lines { display: grid; gap: 16px; margin: 20px 0; }
+.sale-ticket-detail-line { padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.sale-ticket-detail-line small { display: block; color: var(--muted); margin-top: 6px; overflow-wrap: anywhere; }
+.sale-ticket-detail-line-heading { display: flex; justify-content: space-between; gap: 16px; }
+@media (max-width: 580px) { .dialog-body .client-form.sale-ticket-form { padding: var(--space-4); grid-template-columns: minmax(0, 1fr); } .sale-ticket-recipient { align-items: flex-start; flex-direction: column; } }

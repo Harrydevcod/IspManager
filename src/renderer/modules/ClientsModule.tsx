@@ -34,7 +34,7 @@ const DEFAULT_CLIENT_SORT: SortState<string> = { key: 'Nome', direction: 'asc' }
 // cortar a página) com as mesmas colunas que a tabela desenha.
 const CLIENT_COLUMNS: DataTableColumn<Client>[] = [
   { header: 'Código', sortValue: (client) => client.clientCode, cell: (client) => <span className="entity-code">{client.clientCode}</span> },
-  { header: 'Nome', sortValue: (client) => client.fullName, cell: (client) => <strong>{client.fullName}</strong> },
+  { header: 'Nome', sortValue: (client) => client.fullName, cell: (client) => <span><strong>{client.fullName}</strong>{client.systemKind === 'indifferentiated' && <Badge tone="info">Sistema</Badge>}</span> },
   { header: 'Telefone', sortValue: (client) => client.phone, cell: (client) => <span>{client.phone || '—'}</span> },
   { header: 'Ilha', sortValue: (client) => client.island, cell: (client) => <span>{client.island || '-'}</span> },
   { header: 'Zona', sortValue: (client) => client.zone, cell: (client) => <span>{client.zone || '-'}</span> },
@@ -237,6 +237,7 @@ export function ClientsModule({
   }
 
   function editClient(client: Client) {
+    if (client.systemKind) return;
     setEditingClient(client);
     setSelectedClient(null);
     setForm({
@@ -350,10 +351,11 @@ export function ClientsModule({
   }, [search, statusFilter, sortState, clientPageSize]);
 
   // Seleção em massa restrita ao filtro atual.
-  const visibleIds = useMemo(() => visibleClients.map((client) => client.id), [visibleClients]);
+  const visibleIds = useMemo(() => visibleClients.filter((client) => !client.systemKind).map((client) => client.id), [visibleClients]);
   useEffect(() => { selection.retain(visibleIds); }, [visibleIds, selection]);
-  const pageIds = useMemo(() => pagedClients.rows.map((client) => client.id), [pagedClients]);
+  const pageIds = useMemo(() => pagedClients.rows.filter((client) => !client.systemKind).map((client) => client.id), [pagedClients]);
   const tableSelection = {
+    canSelect: (key: string | number) => visibleIds.includes(Number(key)),
     isSelected: (key: string | number) => selection.isSelected(Number(key)),
     onToggleRow: (key: string | number) => selection.toggle(Number(key)),
     headerState: selection.visibleState(pageIds),
@@ -361,7 +363,7 @@ export function ClientsModule({
   };
 
   function selectedClientRows() {
-    return visibleClients.filter((client) => selection.isSelected(client.id));
+    return visibleClients.filter((client) => !client.systemKind && selection.isSelected(client.id));
   }
 
   async function runBulkNotify() {
@@ -502,7 +504,7 @@ export function ClientsModule({
         <Dialog
           open
           size="xl"
-          eyebrow={selectedClient.clientCode}
+          eyebrow={selectedClient.systemKind ? 'Cliente de sistema · Talões de venda' : selectedClient.clientCode}
           title={selectedClient.fullName}
           onClose={() => setSelectedClient(null)}
           actions={
@@ -520,6 +522,7 @@ export function ClientsModule({
                 variant="secondary"
                 size="sm"
                 leadingIcon={<Cable size={16} aria-hidden />}
+                disabled={Boolean(selectedClient.systemKind)}
                 onClick={() => onOpenServicesForClient?.(selectedClient.id)}
               >
                 Instalar equipamento
@@ -532,7 +535,7 @@ export function ClientsModule({
               >
                 Novo pedido
               </Button>
-              {canManageClients && (
+              {canManageClients && !selectedClient.systemKind && (
                 <Button
                   variant="secondary"
                   size="sm"
@@ -542,7 +545,7 @@ export function ClientsModule({
                   Receber servico
                 </Button>
               )}
-              {canManageClients && (
+              {canManageClients && !selectedClient.systemKind && (
                 <Button variant="secondary" size="sm" leadingIcon={<Pencil size={16} aria-hidden />} onClick={() => editClient(selectedClient)}>
                   Editar
                 </Button>
@@ -712,7 +715,7 @@ export function ClientsModule({
               const canWhatsapp = !!normalizeWhatsappPhone(client.phone);
               return (
                 <>
-                  {canManageClients && (
+                  {canManageClients && !client.systemKind && (
                     <Button
                       variant="icon"
                       size="sm"

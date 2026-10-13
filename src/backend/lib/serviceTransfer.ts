@@ -1,3 +1,4 @@
+import { isSystemClient, SYSTEM_CLIENT_ERROR } from './system-client';
 import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
 import { ownedSharedAssignments } from './deviceShares';
@@ -81,6 +82,9 @@ export function transferService(
     .get(service.clientId) as ClientRow | undefined;
   const toClient = db.prepare('SELECT id, full_name AS fullName, client_code AS clientCode, status FROM clients WHERE id = ?')
     .get(data.toClientId) as ClientRow | undefined;
+  if (isSystemClient(db, data.toClientId) || isSystemClient(db, service.clientId)) {
+    return { ok: false, status: 409, error: SYSTEM_CLIENT_ERROR };
+  }
   if (!toClient) {
     return { ok: false, status: 404, error: 'Cliente de destino nao encontrado' };
   }

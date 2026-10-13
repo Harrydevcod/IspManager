@@ -422,17 +422,17 @@ function loadCustomers(db: Database.Database, from: string, previousFrom: string
   const mrr = loadMrr(db);
   const totals = db.prepare(`
     SELECT
-      (SELECT COUNT(*) FROM clients WHERE status = 'active') AS active,
-      (SELECT COUNT(*) FROM clients WHERE status = 'suspended') AS suspended,
-      (SELECT COUNT(*) FROM clients WHERE status = 'cancelled') AS cancelled,
+      (SELECT COUNT(*) FROM clients WHERE system_kind IS NULL AND status = 'active') AS active,
+      (SELECT COUNT(*) FROM clients WHERE system_kind IS NULL AND status = 'suspended') AS suspended,
+      (SELECT COUNT(*) FROM clients WHERE system_kind IS NULL AND status = 'cancelled') AS cancelled,
       -- Mesmo recorte do MRR: serviço ativo de cliente não cancelado. É o
       -- denominador do ARPU, tem de contar só o que está no numerador.
       (SELECT COUNT(*) FROM services s JOIN clients c ON c.id = s.client_id
         WHERE s.status = 'active' AND c.status != 'cancelled') AS activeServices,
-      (SELECT COUNT(*) FROM clients WHERE date(created_at) >= @from) AS newClients,
-      (SELECT COUNT(*) FROM clients WHERE date(created_at) >= @previousFrom AND date(created_at) < @from) AS newClientsPrevious,
+      (SELECT COUNT(*) FROM clients WHERE system_kind IS NULL AND date(created_at) >= @from) AS newClients,
+      (SELECT COUNT(*) FROM clients WHERE system_kind IS NULL AND date(created_at) >= @previousFrom AND date(created_at) < @from) AS newClientsPrevious,
       (SELECT COUNT(*) FROM services WHERE date(COALESCE(activation_date, created_at)) >= @from) AS activations,
-      (SELECT COUNT(*) FROM clients WHERE status = 'cancelled' AND date(updated_at) >= @from) AS cancellations,
+      (SELECT COUNT(*) FROM clients WHERE system_kind IS NULL AND status = 'cancelled' AND date(updated_at) >= @from) AS cancellations,
       (SELECT COUNT(*) FROM work_orders WHERE date(created_at) >= @from) AS workOrdersCreated,
       (SELECT COUNT(*) FROM work_orders WHERE completed_at IS NOT NULL AND date(completed_at) >= @from) AS workOrdersCompleted,
       (SELECT COUNT(*) FROM work_orders WHERE status NOT IN ('concluida','cancelada')) AS openWorkOrders,
@@ -444,7 +444,7 @@ function loadCustomers(db: Database.Database, from: string, previousFrom: string
 
   const zoneRows = db.prepare(`
     SELECT COALESCE(NULLIF(TRIM(zone), ''), '(sem zona)') AS zone, COUNT(*) AS clients
-    FROM clients WHERE status = 'active'
+    FROM clients WHERE system_kind IS NULL AND status = 'active'
     GROUP BY 1 ORDER BY clients DESC, zone COLLATE NOCASE
   `).all() as Array<{ zone: string; clients: number }>;
   const activeClients = num(totals.active);
@@ -1134,7 +1134,7 @@ function loadCompliance(db: Database.Database, settings: Settings): OperationsCo
       COUNT(*) AS clientsTotal,
       COUNT(CASE WHEN NULLIF(TRIM(COALESCE(nif, '')), '') IS NOT NULL THEN 1 END) AS clientsWithNif,
       COUNT(CASE WHEN NULLIF(TRIM(COALESCE(phone, '')), '') IS NOT NULL THEN 1 END) AS clientsWithPhone
-    FROM clients WHERE status <> 'cancelled'
+    FROM clients WHERE system_kind IS NULL AND status <> 'cancelled'
   `).get() as Record<string, number>;
 
   const companyNifPresent = Boolean((settings.nif ?? '').trim());

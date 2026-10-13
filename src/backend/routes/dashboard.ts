@@ -70,10 +70,10 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
 
     const summary = db.prepare(`
       SELECT
-        (SELECT count(*) FROM clients) AS totalClients,
-        (SELECT count(*) FROM clients WHERE status = 'active') AS activeClients,
-        (SELECT count(*) FROM clients WHERE status = 'suspended') AS suspendedClients,
-        (SELECT count(*) FROM clients WHERE status = 'cancelled') AS cancelledClients,
+        (SELECT count(*) FROM clients WHERE system_kind IS NULL) AS totalClients,
+        (SELECT count(*) FROM clients WHERE system_kind IS NULL AND status = 'active') AS activeClients,
+        (SELECT count(*) FROM clients WHERE system_kind IS NULL AND status = 'suspended') AS suspendedClients,
+        (SELECT count(*) FROM clients WHERE system_kind IS NULL AND status = 'cancelled') AS cancelledClients,
         (SELECT count(*) FROM payments WHERE ${overdueSqlPredicate()}) AS overduePayments,
         (SELECT count(*) FROM payments WHERE status = 'pending') AS pendingPayments,
         (SELECT count(*) FROM equipment_catalog WHERE active = 1 AND stock_total <= 3) AS lowStockModels,

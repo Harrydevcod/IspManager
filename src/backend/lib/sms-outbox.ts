@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import { getSqliteDatabase } from '../db/database';
+import { isSystemClient, SYSTEM_CLIENT_ERROR } from './system-client';
 import { readSecret } from './secrets';
 import { createSmsSignature } from './sms-signing';
 import type { SmsEventType } from '../../shared/sms';
@@ -53,6 +54,14 @@ export function smsDispatchIntervalMs(): number {
 }
 
 export function enqueueSmsNotification(input: EnqueueSmsInput): number {
+  const db = getSqliteDatabase();
+  const paymentClient = input.paymentId
+    ? db.prepare('SELECT client_id AS clientId FROM payments WHERE id = ?').get(input.paymentId) as { clientId: number } | undefined
+    : undefined;
+  if ((input.clientId && isSystemClient(db, input.clientId))
+    || (paymentClient && isSystemClient(db, paymentClient.clientId))) {
+    throw new Error(SYSTEM_CLIENT_ERROR);
+  }
   const info = getSqliteDatabase().prepare(`
     INSERT INTO sms_outbox (client_id, payment_id, service_id, event_type, to_phone, body)
     VALUES (@clientId, @paymentId, @serviceId, @eventType, @toPhone, @body)

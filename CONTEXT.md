@@ -24,6 +24,20 @@ ISPM is a desktop application for day-to-day ISP operations in Cabo Verde.
 - A manual invoice linked to a `Servico` follows the same debt suspension rules as monthly billing.
 - A manual invoice without a `Servico` never suspends Internet access.
 - Manual invoices are numbered on issue; they are cancelled rather than deleted or regenerated.
+- A `Talão de Venda` (`TV`) records an anonymous sale for the reserved
+  `Cliente Indiferenciado`, without a customer NIF or subscription.
+- `VD` means venda a dinheiro; it is not a separate document type.
+- Every TV is fully received at issue by cash, transfer, or another local method.
+- TV lines may combine free descriptions and catalog products; serialized units
+  require distinct serial numbers and cannot already be sold or installed.
+- TV issuance commits numbering, receipt, treasury, stock, and audit together.
+- TV cancellation is total, requires administrator password confirmation and
+  product return, and reverses treasury and stock exactly once.
+- TV documents keep their number, lines, serials, and cancelled history, with
+  A4 and 80 mm PDFs; generic invoice and receipt actions cannot alter them.
+- The system client cannot be edited, removed, suspended, or assigned services,
+  debt, credit, Stripe collection, or automatic messages. Commercial customer
+  metrics exclude it; sales and cash reports include its TV receipts once.
 
 ## Operational rules
 

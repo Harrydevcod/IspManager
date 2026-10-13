@@ -305,7 +305,7 @@ describe('competência e caixa lado a lado', () => {
     expect(response.statusCode).toBe(200);
     const body = response.json() as ReportSummary;
     expect(body.revenueByMonth.find((row) => row.referenceMonth === 'AVULSA-')).toEqual({
-      referenceMonth: 'AVULSA-', cashCve, paidCve, pendingCve: 800, payments
+      referenceMonth: 'AVULSA-', documentType: 'invoice', cashCve, paidCve, pendingCve: 800, payments
     });
     // Monthly cash still includes receipts from any invoice received in February.
     expect(body.revenueByMonth.find((row) => row.referenceMonth === '2026-02')).toMatchObject({ cashCve: 1500 });

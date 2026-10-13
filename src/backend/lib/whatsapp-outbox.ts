@@ -1,5 +1,6 @@
 // src/backend/lib/whatsapp-outbox.ts
 import { getSqliteDatabase } from '../db/database';
+import { isSystemClient, SYSTEM_CLIENT_ERROR } from './system-client';
 import { renderPaymentDocumentPdf } from './documents';
 import {
   configuredWhatsappProviderLabel,
@@ -44,6 +45,13 @@ function notConfigured(): string {
 
 export function enqueueWhatsapp(entry: WhatsappOutboxEntry): number {
   const db = getSqliteDatabase();
+  const documentClient = entry.docPaymentId
+    ? db.prepare('SELECT client_id AS clientId FROM payments WHERE id = ?').get(entry.docPaymentId) as { clientId: number } | undefined
+    : undefined;
+  if ((entry.clientId && isSystemClient(db, entry.clientId))
+    || (documentClient && isSystemClient(db, documentClient.clientId))) {
+    throw new Error(SYSTEM_CLIENT_ERROR);
+  }
   // A coluna `provider` fica com o valor por omissão: quem a decide é o envio,
   // porque é o fornecedor ativo nesse momento que fica dono da mensagem.
   const info = db.prepare(`

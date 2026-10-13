@@ -1,3 +1,4 @@
+import { isSystemClient, SYSTEM_CLIENT_ERROR } from './system-client';
 /**
  * Stripe como mais uma via de pagamento de uma fatura do ISPM (ADR 0016).
  *
@@ -234,6 +235,9 @@ async function createPaymentLink(db: Database.Database, paymentId: number, trans
 
   const payable = loadPayable(db, paymentId);
   if (!payable) return { ok: false, status: 404, error: 'Pagamento nao encontrado' };
+  if (isSystemClient(db, payable.clientId)) return { ok: false, status: 409, error: SYSTEM_CLIENT_ERROR };
+  const document = db.prepare('SELECT document_type AS documentType FROM payments WHERE id = ?').get(paymentId) as { documentType: string };
+  if (document.documentType === 'sale_ticket') return { ok: false, status: 409, error: 'Taloes de venda nao admitem cobranca Stripe' };
   if (payable.balanceCve <= 0) return { ok: false, status: 400, error: 'Esta fatura ja nao tem saldo a cobrar' };
 
   let live = db.prepare(`${linkSelect} WHERE payment_id = ? AND status IN ('creating', 'open')`).get(paymentId) as StripeLink | undefined;

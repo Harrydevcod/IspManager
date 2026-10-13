@@ -1,12 +1,14 @@
 import { getSqliteDatabase } from '../db/database';
+import type { Database } from 'better-sqlite3';
 
 const DEFAULT_INVOICE_PREFIX = 'FT';
 const DEFAULT_RECEIPT_PREFIX = 'RC';
 
-export type DocumentKind = 'invoice' | 'receipt';
+export type DocumentKind = 'invoice' | 'receipt' | 'sale_ticket';
 
-export function readDocumentPrefix(kind: DocumentKind): string {
-  const db = getSqliteDatabase();
+export function readDocumentPrefix(kind: DocumentKind, database?: Database): string {
+  if (kind === 'sale_ticket') return 'TV';
+  const db = database ?? getSqliteDatabase();
   const key = kind === 'invoice' ? 'invoicePrefix' : 'receiptPrefix';
   const fallback = kind === 'invoice' ? DEFAULT_INVOICE_PREFIX : DEFAULT_RECEIPT_PREFIX;
   const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string } | undefined;
@@ -29,15 +31,16 @@ export function readDocumentPrefix(kind: DocumentKind): string {
  * NEVER reuse a number once allocated — that is the whole point. A gap from a
  * crashed emission is acceptable; a duplicate is not.
  */
-export function allocateDocumentNumber(kind: DocumentKind): string {
-  const db = getSqliteDatabase();
-  const series = readDocumentPrefix(kind);
-  const year = new Date().getFullYear();
+export function allocateDocumentNumber(kind: DocumentKind, database?: Database, documentYear?: number): string {
+  const db = database ?? getSqliteDatabase();
+  const series = readDocumentPrefix(kind, db);
+  const year = documentYear ?? new Date().getFullYear();
+  if (!Number.isInteger(year) || year < 1 || year > 9999) throw new Error('Invalid document year');
   const row = db.prepare(`
     INSERT INTO document_sequences (series, year, last_number)
     VALUES (?, ?, 1)
     ON CONFLICT(series, year) DO UPDATE SET last_number = last_number + 1
     RETURNING last_number
   `).get(series, year) as { last_number: number };
-  return `${series}-${year}-${String(row.last_number).padStart(5, '0')}`;
+  return `${series}-${String(year).padStart(4, '0')}-${String(row.last_number).padStart(5, '0')}`;
 }

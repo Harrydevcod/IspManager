@@ -5,6 +5,8 @@ import { formatCve, formatPtMonth } from '../lib/format';
 import { authFetch } from '../lib/auth';
 import type { StripeState } from './payments/StripeLinkPanel';
 import { ManualInvoiceDialog } from './payments/ManualInvoiceDialog';
+import { SaleTicketDialog } from './payments/SaleTicketDialog';
+import { SaleTicketDetailDialog } from './payments/SaleTicketDetailDialog';
 import { downloadAuthenticated, printAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
 import { paginateRows, sortByColumns, type SortState } from '../lib/listView';
 import { runBulk, summarizeBulk } from '../lib/bulkRun';
@@ -90,6 +92,7 @@ export function PaymentsModule({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [referenceMonth, setReferenceMonth] = useState(defaultRefMonth);
+  const [documentTypeFilter, setDocumentTypeFilter] = useState<'all' | 'invoice' | 'sale_ticket'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | PaymentRow['status']>(
     DEFAULT_PAYMENT_STATUS_FILTER
   );
@@ -108,6 +111,7 @@ export function PaymentsModule({
   const [voidTarget, setVoidTarget] = useState<PaymentReceipt | null>(null);
   const [voidReason, setVoidReason] = useState('');
   const [manualInvoiceOpen, setManualInvoiceOpen] = useState(false);
+  const [saleTicketOpen, setSaleTicketOpen] = useState(false);
   /** O diálogo de anular em modo reembolso Stripe; a password só existe aqui. */
   const [refundPassword, setRefundPassword] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -737,7 +741,7 @@ export function PaymentsModule({
 
   // --- Ações em massa (selecionadas na lista) -----------------------------
   function selectedPaymentRows() {
-    return visiblePayments.filter((payment) => selection.isSelected(payment.id));
+    return visiblePayments.filter((payment) => payment.documentType !== 'sale_ticket' && selection.isSelected(payment.id));
   }
 
   async function runBulkNotify() {
@@ -894,7 +898,7 @@ export function PaymentsModule({
   const periodPayments = useMemo(() => payments.filter((payment) => {
       // Uma fatura manual não tem mês de competência: mostra-se no mês em que foi emitida.
       const monthMatches = showAllMonths || payment.referenceMonth === referenceMonth
-        || (isManualInvoiceReference(payment.referenceMonth) && (payment.invoiceDate || '').startsWith(referenceMonth));
+        || ((isManualInvoiceReference(payment.referenceMonth) || payment.documentType === 'sale_ticket') && (payment.invoiceDate || '').startsWith(referenceMonth));
       const searchMatches = !normalizedSearch
         || payment.clientName.toLowerCase().includes(normalizedSearch)
         || (payment.invoiceNumber || '').toLowerCase().includes(normalizedSearch)
@@ -902,8 +906,9 @@ export function PaymentsModule({
         || (payment.clientNif || '').toLowerCase().includes(normalizedSearch)
         || (payment.clientPhone || '').toLowerCase().includes(normalizedSearch)
         || (payment.clientCode || '').toLowerCase().includes(normalizedSearch);
-      return monthMatches && searchMatches;
-    }), [payments, normalizedSearch, referenceMonth, showAllMonths]);
+      const typeMatches = documentTypeFilter === 'all' || (payment.documentType || 'invoice') === documentTypeFilter;
+      return monthMatches && searchMatches && typeMatches;
+    }), [payments, normalizedSearch, referenceMonth, showAllMonths, documentTypeFilter]);
   // "Parcial" cai debaixo de Pendente: continua a ser dinheiro por receber, e
   // quem filtra por Pendente esta a montar a lista de quem tem de pagar. Sem
   // isto, uma fatura desaparecia do ecra assim que recebesse o primeiro tostao
@@ -929,20 +934,21 @@ export function PaymentsModule({
 
   useEffect(() => {
     setPaymentPage(1);
-  }, [normalizedSearch, referenceMonth, showAllMonths, statusFilter, sortState, paymentPageSize]);
+  }, [normalizedSearch, referenceMonth, showAllMonths, statusFilter, documentTypeFilter, sortState, paymentPageSize]);
 
   // Mantém a seleção em massa restrita ao que está visível no filtro atual.
-  const visibleIds = useMemo(() => visiblePayments.map((payment) => payment.id), [visiblePayments]);
+  const visibleIds = useMemo(() => visiblePayments.filter((payment) => payment.documentType !== 'sale_ticket').map((payment) => payment.id), [visiblePayments]);
   useEffect(() => { selection.retain(visibleIds); }, [visibleIds, selection]);
-  const pageIds = useMemo(() => pagedPayments.rows.map((payment) => payment.id), [pagedPayments]);
+  const pageIds = useMemo(() => pagedPayments.rows.filter((payment) => payment.documentType !== 'sale_ticket').map((payment) => payment.id), [pagedPayments]);
   const tableSelection = {
+    canSelect: (key: string | number) => visibleIds.includes(Number(key)),
     isSelected: (key: string | number) => selection.isSelected(Number(key)),
     onToggleRow: (key: string | number) => selection.toggle(Number(key)),
     headerState: selection.visibleState(pageIds),
     onToggleAll: () => selection.toggleVisible(pageIds)
   };
 
-  const openPaymentId = selectedPayment?.id ?? null;
+  const openPaymentId = selectedPayment?.documentType === 'sale_ticket' ? null : selectedPayment?.id ?? null;
   useEffect(() => {
     if (openPaymentId === null) {
       setReceipts([]);
@@ -986,7 +992,7 @@ export function PaymentsModule({
   // Pago → o documento é o recibo emitido; pendente/atraso → a fatura.
   const previewDocType: 'invoice' | 'receipt' = selectedPayment?.status === 'paid' ? 'receipt' : 'invoice';
   const previewDoc = useAuthenticatedObjectUrl(
-    selectedPayment && selectedPayment.status !== 'cancelled'
+    selectedPayment && selectedPayment.documentType !== 'sale_ticket' && selectedPayment.status !== 'cancelled'
       ? documentEndpoint(selectedPayment.id, previewDocType, true)
       : null
   );
@@ -1025,6 +1031,9 @@ export function PaymentsModule({
             <>
               <Button variant="secondary" leadingIcon={<FilePlus2 size={16} aria-hidden />} onClick={() => setManualInvoiceOpen(true)}>
                 Nova fatura
+              </Button>
+              <Button variant="secondary" leadingIcon={<FilePlus2 size={16} aria-hidden />} onClick={() => setSaleTicketOpen(true)}>
+                Novo talão de venda
               </Button>
               <Button variant="secondary" leadingIcon={<Send size={16} aria-hidden />} onClick={() => void openOverduePreview()} disabled={notifyLoading}>
                 {notifyLoading ? 'A consultar...' : 'Notificar atrasados'}
@@ -1066,6 +1075,9 @@ export function PaymentsModule({
           onChange={(event) => setSearch(event.target.value)}
           className="payments-search"
         />
+        <Select label="Documento" value={documentTypeFilter} onChange={(event) => setDocumentTypeFilter(event.target.value as typeof documentTypeFilter)}>
+          <option value="all">Todos os documentos</option><option value="invoice">Faturas</option><option value="sale_ticket">Talões de venda</option>
+        </Select>
         <Select label="Estado" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | PaymentRow['status'])}>
           <option value="all">Todos</option>
           <option value="pending">Pendente</option>
@@ -1078,6 +1090,7 @@ export function PaymentsModule({
         </Button>
         <Button variant="secondary" onClick={() => {
           setStatusFilter(DEFAULT_PAYMENT_STATUS_FILTER);
+          setDocumentTypeFilter('all');
           setReferenceMonth(defaultRefMonth);
           setShowAllMonths(false);
           setSearch('');
@@ -1106,7 +1119,7 @@ export function PaymentsModule({
         />
       )}
 
-      {selectedPayment && (
+      {selectedPayment && selectedPayment.documentType !== 'sale_ticket' && (
         <PaymentDetailDialog
           payment={selectedPayment}
           submitting={submitting}
@@ -1169,6 +1182,16 @@ export function PaymentsModule({
           });
         }}
       />
+
+      <SaleTicketDialog open={saleTicketOpen} onClose={() => setSaleTicketOpen(false)} onCreated={(paymentId) => {
+        setSaleTicketOpen(false); setStatusFilter('paid'); setShowAllMonths(true); setDocumentTypeFilter('sale_ticket');
+        toast('Talão de venda emitido e pago.', 'success');
+        void loadPayments().then((rows) => { const created = rows.find((row) => row.id === paymentId); if (created) previewPaymentDocument(created); });
+      }} />
+      {selectedPayment?.documentType === 'sale_ticket' && <SaleTicketDetailDialog key={selectedPayment.id} payment={selectedPayment} onClose={() => setSelectedPayment(null)} onCancelled={() => {
+        toast('Talão de venda anulado.', 'success');
+        void loadPayments().then((rows) => setSelectedPayment((current) => rows.find((row) => row.id === current?.id) || current));
+      }} />}
 
       <VoidReceiptDialog
         receipt={voidTarget}

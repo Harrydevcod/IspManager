@@ -156,6 +156,7 @@ function activeControlledCount(db: Database.Database): number {
     JOIN clients c ON c.id = s.client_id
     WHERE s.status = 'active'
       AND c.status <> 'cancelled'
+      AND c.system_kind IS NULL
       AND s.pppoe_username IS NOT NULL
       AND TRIM(s.pppoe_username) <> ''
   `).get() as { n: number };
@@ -181,6 +182,7 @@ function rawCandidates(db: Database.Database, graceDays: number): SuspensionCand
     WHERE s.status = 'active'
       AND p.client_id = s.client_id
       AND c.status <> 'cancelled'
+      AND c.system_kind IS NULL
       AND s.pppoe_username IS NOT NULL
       AND TRIM(s.pppoe_username) <> ''
       AND ${suspendableInvoiceSql}

@@ -205,7 +205,8 @@ export function portfolioRows(clientIds?: number[], ctx?: CompanyOpexContext): P
   const db = getSqliteDatabase();
   const opexCtx = ctx ?? loadCompanyOpexContext();
   const ids = clientIds?.length ? clientIds : undefined;
-  const scope = ids ? `WHERE c.id IN (${ids.map(() => '?').join(',')})` : '';
+  const scope = `WHERE c.system_kind IS NULL`
+    + (ids ? ` AND c.id IN (${ids.map(() => '?').join(',')})` : '');
   const args = ids ?? [];
 
   const clients = db.prepare(`
@@ -310,7 +311,7 @@ export function portfolioRows(clientIds?: number[], ctx?: CompanyOpexContext): P
   const zoneActive: Record<string, number> = {};
   const zoneRows = db.prepare(`
     SELECT zone, COUNT(*) AS n FROM clients
-    WHERE status = 'active' AND zone IS NOT NULL GROUP BY zone
+    WHERE system_kind IS NULL AND status = 'active' AND zone IS NOT NULL GROUP BY zone
   `).all() as Array<{ zone: string; n: number }>;
   for (const r of zoneRows) zoneActive[r.zone] = Number(r.n) || 0;
 

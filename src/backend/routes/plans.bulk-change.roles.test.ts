@@ -28,6 +28,7 @@ beforeAll(async () => {
   closeDatabaseForTests = database.closeDatabaseForTests;
 
   const db = database.getSqliteDatabase();
+  db.exec('DELETE FROM clients'); // This fixture owns client IDs 1 and 2.
   db.prepare(`INSERT INTO internet_plans (id, name, monthly_price_cve, router_profile, active) VALUES (1, 'Base 10', 2500, 'plano-10M', 1), (2, 'Mais 20', 3500, 'plano-20M', 1)`).run();
   db.prepare(`INSERT INTO clients (id, client_code, full_name) VALUES (1, 'C0001', 'Joao Silva'), (2, 'C0002', 'Ana Lopes')`).run();
   db.prepare(`INSERT INTO services (id, client_id, plan_id, monthly_value_cve, status, pppoe_username) VALUES (1, 1, 1, 2500, 'active', 'skn001'), (2, 2, 1, 2500, 'active', 'skn002')`).run();

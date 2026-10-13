@@ -22,6 +22,7 @@ import { dueDateFromIssue, todayIso } from './billing';
 import { allocateDocumentNumber } from './numbering';
 import { applyClientCreditToPayment } from './payments';
 import { insertClient } from './client-records';
+import { isSystemClient, SYSTEM_CLIENT_ERROR } from './system-client';
 
 const isoDate = z.string().date();
 
@@ -69,6 +70,9 @@ export function createManualInvoice(db: Database, input: ManualInvoiceInput, use
 
   if (input.clientId && !db.prepare('SELECT 1 FROM clients WHERE id = ?').get(input.clientId)) {
     return { ok: false, status: 404, error: 'Cliente nao encontrado' };
+  }
+  if (input.clientId && isSystemClient(db, input.clientId)) {
+    return { ok: false, status: 409, error: SYSTEM_CLIENT_ERROR };
   }
   if (newClient) {
     // NIF e telefone são únicos na ficha: quem já existe escolhe-se, não se duplica.

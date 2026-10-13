@@ -10,6 +10,7 @@ import { insertClient } from '../lib/client-records';
 import { loadCompanyOpexContext } from '../lib/opex';
 import { balanceSqlExpr, clientCreditBalance } from '../lib/payments';
 import { changeServiceStatus } from '../lib/services';
+import { isSystemClient, SYSTEM_CLIENT_ERROR } from '../lib/system-client';
 import { requireAuth, requireRole } from './auth';
 
 function addMonthsIso(isoDate: string, months: number): string {
@@ -64,6 +65,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
       island: string | null; zone: string | null; status: string;
     } | undefined;
     if (!client) return reply.status(404).send({ error: 'Cliente nao encontrado' });
+    if (isSystemClient(db, id)) return reply.status(409).send({ error: SYSTEM_CLIENT_ERROR });
 
     const investmentRows = db.prepare(`
       SELECT id, name, type, investment_date AS investmentDate, reference_month AS referenceMonth,
@@ -195,7 +197,7 @@ export async function registerClientRoutes(app: FastifyInstance) {
     const directClientOpexCve = opexCtx.directByClient[client.id] || 0;
     const directZoneOpexCve = client.zone ? (opexCtx.directByZone[client.zone] || 0) : 0;
     const zoneActiveCount = client.zone
-      ? (db.prepare(`SELECT COUNT(*) AS n FROM clients WHERE zone = ? AND status = 'active'`).get(client.zone) as { n: number }).n
+      ? (db.prepare(`SELECT COUNT(*) AS n FROM clients WHERE zone = ? AND status = 'active' AND system_kind IS NULL`).get(client.zone) as { n: number }).n
       : 0;
     const directZonePerClientCve = zoneActiveCount > 0 ? directZoneOpexCve / zoneActiveCount : 0;
     const directInvestmentOpexCve = investmentRows
@@ -292,6 +294,9 @@ export async function registerClientRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Dados de cliente invalidos' });
     }
 
+    if (isSystemClient(getSqliteDatabase(), id)) {
+      return reply.status(409).send({ error: SYSTEM_CLIENT_ERROR });
+    }
     const db = getDatabase();
     const now = new Date().toISOString();
 

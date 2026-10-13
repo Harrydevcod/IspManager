@@ -83,7 +83,7 @@ export function TransferServiceDialog({ service, toClient, onClose, onDone }: Tr
   }, [services, toClient]);
 
   const clientOptions = useMemo(
-    () => clients.filter((row) => row.id !== (chosenService?.clientId ?? -1)),
+    () => clients.filter((row) => !row.systemKind && row.id !== (chosenService?.clientId ?? -1)),
     [clients, chosenService]
   );
 

@@ -233,7 +233,7 @@ const COMPANY_KEYS = [
   'legalNotes'
 ] as const;
 
-function loadCompany(): CompanyInfo {
+export function loadCompany(): CompanyInfo {
   const db = getSqliteDatabase();
   const placeholders = COMPANY_KEYS.map(() => '?').join(',');
   const rows = db
@@ -366,7 +366,7 @@ type Totals = {
   exemptReason: string;
 };
 
-const PALETTE = {
+export const PALETTE = {
   ink: '#1a1714',
   inkSoft: '#2b2620',
   muted: '#6b6258',
@@ -381,7 +381,7 @@ const PALETTE = {
   danger: '#c64a3f'
 };
 
-function computeTotals(amountCve: number, company: CompanyInfo): Totals {
+export function computeTotals(amountCve: number, company: CompanyInfo): Totals {
   const total = Number(amountCve) || 0;
   if (!company.showIva) {
     return { subtotal: total, iva: 0, total, ivaRate: 0, isExempt: true, exemptReason: '' };
@@ -846,6 +846,9 @@ export async function renderReceiptPdf(receiptId: number): Promise<{ buffer: Buf
   if (!invoice) {
     throw new PaymentDocumentError(404, 'Pagamento nao encontrado');
   }
+  if (db.prepare("SELECT 1 FROM payments WHERE id=? AND document_type='sale_ticket'").get(receipt.paymentId)) {
+    throw new PaymentDocumentError(409, 'Talão de Venda: use o PDF próprio do talão.');
+  }
 
   const balance = db.prepare(`
     SELECT amount_cve - COALESCE((
@@ -921,6 +924,9 @@ export async function renderPaymentDocumentPdf(id: number, kind: DocumentKind): 
   let row = db.prepare(documentSelect).get(id) as PaymentDocumentRow | undefined;
   if (!row) {
     throw new PaymentDocumentError(404, 'Pagamento nao encontrado');
+  }
+  if (db.prepare("SELECT 1 FROM payments WHERE id=? AND document_type='sale_ticket'").get(id)) {
+    throw new PaymentDocumentError(409, 'Talão de Venda: use o PDF próprio do talão.');
   }
   if (row.status === 'cancelled') {
     throw new PaymentDocumentError(400, kind === 'invoice' ? 'Pagamento anulado nao pode gerar fatura' : 'Pagamento anulado nao pode gerar recibo');
