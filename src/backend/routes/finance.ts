@@ -23,7 +23,7 @@ import {
 import { loadReceivables } from '../lib/receivables';
 import { createManualInvoice, manualInvoiceSchema } from '../lib/manual-invoice';
 import { MANUAL_INVOICE_PREFIX } from '../../shared/billing-period';
-import { ensurePaymentLink, latestStripeLink, openStripeLinkSql, readStripeConfig, refundableReceiptIds, refundStripeReceipt } from '../lib/stripe-payments';
+import { ensurePaymentLink, latestStripeLink, openStripeLinkSql, readStripeConfig, refundableReceiptIds, refundStripeReceipt, stripeReceiptIds } from '../lib/stripe-payments';
 import {
   changePppoePassword,
   changeServiceStatus,
@@ -681,7 +681,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       receipts: listPaymentReceipts(db, id),
       clientCreditCve: clientCreditBalance(db, row.clientId),
       // A ficha só oferece o Stripe quando ele está pronto a cobrar.
-      stripe: { enabled: readStripeConfig(db).ready, link: latestStripeLink(db, id), refundableReceiptIds: refundableReceiptIds(db, id) }
+      stripe: { enabled: readStripeConfig(db).ready, link: latestStripeLink(db, id), receiptIds: stripeReceiptIds(db, id), refundableReceiptIds: refundableReceiptIds(db, id) }
     };
   });
 
@@ -791,7 +791,9 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       action: 'stripe_refund',
       entityType: 'receipt',
       entityId: id,
-      summary: `Reembolsou no Stripe o recibo ${result.value.receiptNumber} do pagamento ${result.value.paymentId}`,
+      summary: result.value.status === 'succeeded'
+        ? `Reembolsou no Stripe o recibo ${result.value.receiptNumber} do pagamento ${result.value.paymentId}`
+        : `Pediu reembolso Stripe do recibo ${result.value.receiptNumber} do pagamento ${result.value.paymentId}; estado ${result.value.status}`,
       metadata: { ...result.value, reason: parsed.data.reason }
     });
     return result.value;

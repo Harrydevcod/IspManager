@@ -194,3 +194,39 @@ test('se a prova não pode ser gravada, o rascunho não é eliminado', async () 
   })).rejects.toThrow('Database write failed');
   expect(deleted).toBe(false);
 });
+
+
+test('idempotencia de Customer separa credenciais e permanece estavel na mesma chave', async () => {
+  const keys: string[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+    keys.push(options.headers['Idempotency-Key']);
+    return json({ id: 'cus_1' });
+  }));
+  const customer = { name: 'Cliente', metadata: { ispmClientId: '1' } };
+  await createStripeTransport('sk_test_a').createCustomer(customer, 'ispm-customer-1');
+  await createStripeTransport('sk_live_a').createCustomer(customer, 'ispm-customer-1');
+  await createStripeTransport('sk_test_b').createCustomer(customer, 'ispm-customer-1');
+  await createStripeTransport('sk_test_a').createCustomer(customer, 'ispm-customer-1');
+  expect(new Set(keys.slice(0, 3)).size).toBe(3);
+  expect(keys[0]).toBe(keys[3]);
+  expect(keys.every((key) => !key.includes('sk_'))).toBe(true);
+});
+
+
+test.each([
+  { body: { id: 'cus_saved' }, status: 200, want: { ok: true, value: { id: 'cus_saved' } } },
+  { body: { id: 'cus_saved', deleted: true }, status: 200, want: { ok: true, value: null } },
+  { body: { error: { code: 'resource_missing' } }, status: 404, want: { ok: true, value: null } },
+  { body: { error: { code: 'permission_denied' } }, status: 404, want: { ok: false } },
+  { body: { id: 'cus_other' }, status: 200, want: { ok: false } },
+  { body: null, status: 200, want: { ok: false } },
+  { body: { id: 'cus_saved', deleted: 'true' }, status: 200, want: { ok: false } }
+])('verificacao de Customer preserva ausencia confirmada e recusa resposta $body', async ({ body, status, want }) => {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(body), { status })));
+  expect(await createStripeTransport('sk_test_a').getCustomer('cus_saved')).toMatchObject(want);
+});
+
+test('falha de rede ao verificar Customer nao confirma ausencia', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Connection lost'); }));
+  expect(await createStripeTransport('sk_test_a').getCustomer('cus_saved')).toMatchObject({ ok: false });
+});

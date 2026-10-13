@@ -102,6 +102,7 @@ function fakeStripe() {
   const offline = { ok: false as const, reason: 'Nao foi possivel contactar o Stripe' };
 
   const transport: StripeTransport = {
+    async getCustomer(id) { return down ? offline : { ok: true, value: { id } }; },
     async createCustomer(_input, key) {
       calls.createCustomer += 1;
       return down ? offline : { ok: true, value: { id: `cus_${key}` } };
@@ -173,6 +174,107 @@ async function openLink(stripe: ReturnType<typeof fakeStripe>, paymentId: number
 }
 
 describe('link de pagamento', () => {
+  test.each(['sk_test_account_b', 'sk_live_account_a', 'rk_test_ispm'])('substitui Customer ausente com a chave atual %s sem reutilizar o antigo', async (key) => {
+    const { clientId, paymentId } = seed('56');
+    db.prepare('UPDATE clients SET stripe_customer_id = ? WHERE id = ?').run('cus_old', clientId);
+    secrets.writeSecret(db, 'stripeSecretKey', key);
+    let invoiceCustomer: string | null = null;
+    let customerKey: string | undefined;
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      const endpoint = new URL(String(url)).pathname;
+      const json = (value: unknown) => new Response(JSON.stringify(value));
+      if (endpoint === '/v1/customers/cus_old') return key === 'rk_test_ispm'
+        ? json({ id: 'cus_old', deleted: true })
+        : new Response(JSON.stringify({ error: { code: 'resource_missing' } }), { status: 404 });
+      if (endpoint === '/v1/customers') {
+        customerKey = options.headers['Idempotency-Key'];
+        // A chave original ainda pode estar em cache no Stripe.
+        return json({ id: customerKey === `ispm-customer-${clientId}` ? 'cus_old' : 'cus_current' });
+      }
+      if (endpoint === '/v1/invoices') {
+        invoiceCustomer = new URLSearchParams(options.body).get('customer');
+        return invoiceCustomer === 'cus_current' ? json({ id: 'in_current', status: 'draft' })
+          : new Response(JSON.stringify({ error: { code: 'resource_missing' } }), { status: 400 });
+      }
+      if (endpoint === '/v1/invoiceitems') return json({ id: 'ii_current' });
+      if (endpoint === '/v1/invoices/in_current/finalize') return json({ id: 'in_current', status: 'open', hosted_invoice_url: 'https://invoice.stripe.com/i/current' });
+      throw new Error(`Unexpected request: ${endpoint}`);
+    }));
+    expect(await stripePayments.ensurePaymentLink(db, paymentId)).toMatchObject({ ok: true, value: { status: 'open' } });
+    expect(invoiceCustomer).toBe('cus_current');
+    expect(customerKey).not.toBe(`ispm-customer-${clientId}`);
+    expect(db.prepare('SELECT stripe_customer_id AS id FROM clients WHERE id = ?').get(clientId)).toEqual({ id: 'cus_current' });
+    expect(receiptsOf(paymentId)).toEqual([]);
+    expect(treasury.accountBalance(db, accountId)).toBe(0);
+  });
+
+  test('Customer verificado sobrevive a rotacao de chave da mesma conta', async () => {
+    const { clientId, paymentId } = seed('58');
+    db.prepare('UPDATE clients SET stripe_customer_id = ? WHERE id = ?').run('cus_saved', clientId);
+    secrets.writeSecret(db, 'stripeSecretKey', 'sk_test_rotated');
+    const endpoints: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      const endpoint = new URL(String(url)).pathname;
+      endpoints.push(endpoint);
+      const json = (body: unknown) => new Response(JSON.stringify(body));
+      if (endpoint === '/v1/customers/cus_saved') return json({ id: 'cus_saved' });
+      if (endpoint === '/v1/invoices') {
+        expect(new URLSearchParams(options.body).get('customer')).toBe('cus_saved');
+        return json({ id: 'in_saved', status: 'draft' });
+      }
+      if (endpoint === '/v1/invoiceitems') return json({ id: 'ii_saved' });
+      if (endpoint === '/v1/invoices/in_saved/finalize') return json({ id: 'in_saved', status: 'open', hosted_invoice_url: 'https://invoice.stripe.com/i/saved' });
+      throw new Error(`Unexpected request: ${endpoint}`);
+    }));
+    expect(await stripePayments.ensurePaymentLink(db, paymentId)).toMatchObject({ ok: true });
+    expect(endpoints[0]).toBe('/v1/customers/cus_saved');
+    expect(endpoints).not.toContain('/v1/customers');
+    expect(db.prepare('SELECT stripe_customer_id AS id FROM clients WHERE id = ?').get(clientId)).toEqual({ id: 'cus_saved' });
+  });
+
+  test('resposta de substituicao perdida repete a chave sem criar outro Customer', async () => {
+    const { clientId, paymentId } = seed('59');
+    db.prepare('UPDATE clients SET stripe_customer_id = ? WHERE id = ?').run('cus_old', clientId);
+    const creations = new Map<string, string>();
+    let loseResponse = true;
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      const endpoint = new URL(String(url)).pathname;
+      const json = (body: unknown) => new Response(JSON.stringify(body));
+      if (endpoint === '/v1/customers/cus_old') return json({ id: 'cus_old', deleted: true });
+      if (endpoint === '/v1/customers') {
+        const key = options.headers['Idempotency-Key'];
+        if (!creations.has(key)) creations.set(key, `cus_new_${creations.size}`);
+        if (loseResponse) { loseResponse = false; throw new TypeError('Response lost after creation'); }
+        return json({ id: creations.get(key) });
+      }
+      if (endpoint === '/v1/invoices') {
+        expect(new URLSearchParams(options.body).get('customer')).toBe('cus_new_0');
+        return json({ id: 'in_new', status: 'draft' });
+      }
+      if (endpoint === '/v1/invoiceitems') return json({ id: 'ii_new' });
+      if (endpoint === '/v1/invoices/in_new/finalize') return json({ id: 'in_new', status: 'open', hosted_invoice_url: 'https://invoice.stripe.com/i/new' });
+      throw new Error(`Unexpected request: ${endpoint}`);
+    }));
+    expect(await stripePayments.ensurePaymentLink(db, paymentId)).toMatchObject({ ok: false, status: 502 });
+    expect(db.prepare('SELECT stripe_customer_id AS id FROM clients WHERE id = ?').get(clientId)).toEqual({ id: 'cus_old' });
+    expect(await stripePayments.ensurePaymentLink(db, paymentId)).toMatchObject({ ok: true });
+    expect(creations.size).toBe(1);
+    expect(linksOf(paymentId)).toEqual([{ status: 'open', amountCve: 2500 }]);
+  });
+
+  test.each([401, 403, 429, 500])('falha %s ao verificar Customer preserva identidade e nao cria objetos', async (httpStatus) => {
+    const { clientId, paymentId } = seed('57');
+    db.prepare('UPDATE clients SET stripe_customer_id = ? WHERE id = ?').run('cus_saved', clientId);
+    const fetcher = vi.fn(async (_url, options) => {
+      return new Response(JSON.stringify({ error: { message: 'Unavailable' } }), { status: httpStatus });
+    });
+    vi.stubGlobal('fetch', fetcher);
+    expect(await stripePayments.ensurePaymentLink(db, paymentId)).toMatchObject({ ok: false, status: 502 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0][1].method).toBe('GET');
+    expect(db.prepare('SELECT stripe_customer_id AS id FROM clients WHERE id = ?').get(clientId)).toEqual({ id: 'cus_saved' });
+  });
+
   test.each([null, '', '   ', 'email-invalido'])('email %s recusa antes de criar objetos; preencher a ficha permite repetir', async (email) => {
     const stripe = fakeStripe();
     const { clientId, paymentId } = seed('55');
@@ -234,6 +336,7 @@ describe('link de pagamento', () => {
     vi.stubGlobal('fetch', vi.fn(async (url, options) => {
       const endpoint = new URL(String(url)).pathname;
       const jsonResponse = (value: unknown) => new Response(JSON.stringify(value));
+      if (endpoint === '/v1/customers/cus_saved') return jsonResponse({ id: 'cus_saved' });
       if (endpoint === '/v1/invoices/in_interrupted' && options.method === 'GET' && draftExists) {
         return jsonResponse({ id: 'in_interrupted', status: 'draft', amount_paid: 0 });
       }
@@ -297,7 +400,7 @@ describe('link de pagamento', () => {
     expect(invoice.amountDue).toBe(250000);
     expect(invoice.metadata).toMatchObject({ ispmPaymentId: String(paymentId), pppoeUsername: 'skn1', invoiceNumber: 'FT-2026-0001' });
     const stored = db.prepare('SELECT stripe_customer_id AS id FROM clients WHERE id = ?').get(clientId) as { id: string };
-    expect(stored.id).toBe(`cus_ispm-customer-${clientId}`);
+    expect(stored.id).toBe(`cus_ispm-customer-${clientId}-new`);
   });
 
   test('pedir outra vez devolve o mesmo link e não volta ao Stripe', async () => {

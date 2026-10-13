@@ -35,6 +35,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   db.exec(`
+    DELETE FROM stripe_payment_links;
     DELETE FROM client_credits;
     DELETE FROM treasury_movements;
     DELETE FROM payment_receipts;
@@ -189,6 +190,26 @@ describe('POST /api/payments/:id/apply-credit', () => {
 });
 
 describe('POST /api/receipts/:id/void', () => {
+  test.each(['paid', 'refund_pending', 'review'])('recusa anulação local de recibo Stripe em %s sem estornar dinheiro', async (status) => {
+    const { paymentId } = seed();
+    const receiptId = (await pay(paymentId, { paymentMethod: 'numerario' })).json().receipt.id;
+    db.prepare(`INSERT INTO stripe_payment_links (payment_id,amount_cve,status,receipt_id,refund_id)
+      VALUES (?,50000,?,?,?)`).run(paymentId, status, receiptId, status === 'paid' ? null : 're_pending_fixture');
+    const movementsBefore = db.prepare('SELECT * FROM treasury_movements ORDER BY id').all();
+    const response = await app.inject({
+      method: 'POST', url: `/api/receipts/${receiptId}/void`,
+      payload: { reason: 'Tentativa de anular sem devolver o dinheiro', confirmedStripeRefundId: 're_pending_fixture' }
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toMatch(/Stripe.*[Rr]eembols/);
+    expect(db.prepare('SELECT voided_at FROM payment_receipts WHERE id=?').get(receiptId)).toEqual({ voided_at: null });
+    expect(db.prepare('SELECT status FROM payments WHERE id=?').get(paymentId)).toEqual({ status: 'paid' });
+    expect(db.prepare('SELECT * FROM treasury_movements ORDER BY id').all()).toEqual(movementsBefore);
+    expect(db.prepare('SELECT * FROM client_credits').all()).toEqual([]);
+    const stripeInfo = (await app.inject({ method: 'GET', url: `/api/payments/${paymentId}/receipts` })).json().stripe;
+    expect(stripeInfo.receiptIds).toEqual([receiptId]);
+  });
+
   test('anula com motivo e reabre a fatura', async () => {
     const { paymentId } = seed();
     const receiptId = (await pay(paymentId, { paymentMethod: 'numerario' })).json().receipt.id;

@@ -8,7 +8,7 @@ export type StripeLinkInfo = {
   id: number;
   url: string | null;
   amountCve: number;
-  status: 'creating' | 'open' | 'paid' | 'void' | 'review' | 'refunded';
+  status: 'creating' | 'open' | 'paid' | 'void' | 'review' | 'refunded' | 'refund_pending';
   note: string | null;
 };
 
@@ -16,6 +16,8 @@ export type StripeLinkInfo = {
 export type StripeState = {
   enabled: boolean;
   link: StripeLinkInfo | null;
+  /** Origem Stripe não muda enquanto um reembolso está pendente ou em revisão. */
+  receiptIds?: number[];
   /** Recibos que entraram por Stripe e ainda se podem reembolsar. */
   refundableReceiptIds?: number[];
 };
@@ -26,7 +28,8 @@ export const STRIPE_LINK_LABEL: Record<StripeLinkInfo['status'], string> = {
   paid: 'Pago por Stripe',
   void: 'Link anulado',
   review: 'Pagamento por rever',
-  refunded: 'Reembolsado'
+  refunded: 'Reembolsado',
+  refund_pending: 'Reembolso à espera de confirmação'
 };
 
 type StripeLinkPanelProps = {

@@ -641,7 +641,13 @@ export function applyClientCreditToPayment(
  * o lancamento de conta corrente que dele nasceu e revertido pelo simetrico,
  * para o razao continuar a somar certo.
  */
-export function voidReceipt(db: Database, id: number, rawReason: string | null | undefined, userId?: number | null): PaymentOpResult<{
+export function voidReceipt(
+  db: Database,
+  id: number,
+  rawReason: string | null | undefined,
+  userId?: number | null,
+  options?: { confirmedStripeRefundId: string }
+): PaymentOpResult<{
   receipt: ReceiptRecord;
   paymentId: number;
   reopened: boolean;
@@ -653,6 +659,14 @@ export function voidReceipt(db: Database, id: number, rawReason: string | null |
   }
   if (receipt.voidedAt) {
     return { ok: false, status: 400, error: 'Recibo ja esta anulado' };
+  }
+
+  // Dinheiro cobrado por cartão só sai da tesouraria depois de o fluxo Stripe
+  // confirmar o reembolso. A rota genérica nunca fornece esta confirmação.
+  const stripe = db.prepare('SELECT refund_id AS refundId FROM stripe_payment_links WHERE receipt_id = ?')
+    .get(id) as { refundId: string | null } | undefined;
+  if (stripe && (!options?.confirmedStripeRefundId || stripe.refundId !== options.confirmedStripeRefundId)) {
+    return { ok: false, status: 409, error: 'Recibo Stripe: use Reembolsar para devolver o dinheiro antes de anular.' };
   }
 
   const reason = rawReason?.trim() || '';

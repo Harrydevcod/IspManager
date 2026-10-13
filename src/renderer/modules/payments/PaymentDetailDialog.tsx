@@ -476,6 +476,7 @@ export function PaymentDetailDialog({
           submitting={submitting}
           onPrintReceipt={onPrintReceipt}
           onVoidReceipt={onVoidReceipt}
+          stripeReceiptIds={stripe?.receiptIds}
           refundableReceiptIds={stripe?.refundableReceiptIds}
           onRefundReceipt={onRefundReceipt}
           onApplyCredit={onApplyCredit}

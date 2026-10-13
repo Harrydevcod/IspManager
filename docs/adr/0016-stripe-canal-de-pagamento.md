@@ -30,6 +30,11 @@ Não fatura, não corta e não fala com o router.
   a página dela não expira em 24 h como uma Checkout Session. O Customer nasce na primeira fatura do
   cliente e o id fica em `clients.stripe_customer_id`. O metadata leva o id do cliente, da fatura, do
   serviço e o utilizador PPPoE.
+  Antes de reutilizar o Customer, consulta-o com a chave atual. Apenas uma
+  ausência ou eliminação confirmada permite criar outro; falhas de autenticação
+  ou de rede não alteram a identidade guardada. A chave de idempotência da
+  criação inclui um hash da credencial e a identidade substituída, evitando
+  reutilizar respostas de outra conta, modo de teste ou cliente eliminado.
 - **Sondagem em vez de webhook.** De 5 em 5 minutos o ISPM lê o estado de cada link vivo
   (`GET /v1/invoices/:id`). Lê-se o estado e não `/v1/events`: é idempotente, não tem cursor e não
   tem o teto de 30 dias dos eventos, por isso um PC desligado um mês recupera sozinho.
@@ -62,9 +67,13 @@ Não fatura, não corta e não fala com o router.
   Vem nos modelos por omissão do WhatsApp; no SMS funciona mas não vem, porque o URL da página do
   Stripe é longo e custa vários segmentos.
 - **Reembolso por botão, total, no ISPM.** Primeiro o Stripe (`POST /v1/refunds`), depois a base:
-  só com o reembolso aceite se anula o recibo (`voidReceipt`), o que estorna a tesouraria e reabre
+  só com o reembolso em `succeeded` se anula o recibo (`voidReceipt`), o que estorna a tesouraria e reabre
   a fatura. Tudo o que a anulação recusaria é verificado antes de pedir o reembolso, porque um
   reembolso não se desfaz. Admin e a password outra vez.
+  A anulação genérica recusa recibos Stripe no domínio de pagamentos, incluindo
+  os que têm reembolso pendente ou em revisão. A interface não oferece Anular.
+  Enquanto o Stripe não confirma a conclusão, o recibo e a tesouraria mantêm-se
+  válidos e a mensagem indica que o reembolso está à espera de confirmação.
 - **A comissão é despesa.** Apurada pela transação de saldo do pagamento e convertida para a moeda
   das faturas pelo câmbio da própria cobrança. Entra em `outros`, fornecedor Stripe, paga pela conta
   de destino: o saldo dela na Tesouraria fica o líquido, como no extrato do Stripe. Num reembolso a
@@ -76,8 +85,9 @@ para `outros` pela mesma razão: as categorias de despesa têm CHECK lançado.
 
 ## O que fica de fora
 
-- Reembolsos parciais, disputas e reembolsos feitos no painel do Stripe: esses continuam a pedir
-  que o recibo seja anulado à mão.
+- Reembolsos parciais, disputas e reembolsos feitos no painel do Stripe: exigem
+  reconciliação assistida fora do fluxo automático; a anulação genérica não é
+  um caminho para estornar localmente uma cobrança Stripe.
 - Uma comissão que o Stripe não tenha apurado ao fim de 7 dias fica sem despesa.
 - Cobrança automática por cartão guardado.
 - Resolver um link `review` dentro do ISPM: vê-se na ficha, resolve-se no painel do Stripe.

@@ -154,6 +154,13 @@ export function refundableReceiptIds(db: Database.Database, paymentId: number): 
   return rows.map((row) => row.id);
 }
 
+/** Todos os recibos ligados ao Stripe, incluindo os que exigem revisao. */
+export function stripeReceiptIds(db: Database.Database, paymentId: number): number[] {
+  const rows = db.prepare(`SELECT receipt_id AS id FROM stripe_payment_links
+    WHERE payment_id = ? AND receipt_id IS NOT NULL`).all(paymentId) as Array<{ id: number }>;
+  return rows.map((row) => row.id);
+}
+
 /** O link mais recente de uma fatura, para a ficha dela. */
 export function latestStripeLink(db: Database.Database, paymentId: number): StripeLink | null {
   return (db.prepare(`${linkSelect} WHERE payment_id = ? ORDER BY id DESC LIMIT 1`).get(paymentId) as StripeLink | undefined) ?? null;
@@ -184,14 +191,20 @@ async function ensureCustomer(db: Database.Database, transport: StripeTransport,
     FROM clients WHERE id = ?
   `).get(clientId) as { name: string; email: string | null; phone: string | null; code: string; stripeCustomerId: string | null } | undefined;
   if (!client) return { ok: false, status: 404, error: 'Cliente nao encontrado' };
-  if (client.stripeCustomerId) return { ok: true, value: client.stripeCustomerId };
+  if (client.stripeCustomerId) {
+    const existing = await transport.getCustomer(client.stripeCustomerId);
+    if (!existing.ok) return { ok: false, status: 502, error: existing.reason };
+    if (existing.value) return { ok: true, value: existing.value.id };
+  }
 
+  // Uma eliminacao nao pode repetir a criacao original ainda em cache.
+  // O transporte inclui tambem a credencial atual na chave de idempotencia.
   const created = await transport.createCustomer({
     name: client.name,
     email: client.email?.trim() || null,
     phone: client.phone,
     metadata: { ispmClientId: String(clientId), ispmClientCode: client.code, ...(pppoeUsername ? { pppoeUsername } : {}) }
-  }, `ispm-customer-${clientId}`);
+  }, `ispm-customer-${clientId}-${client.stripeCustomerId || 'new'}`);
   if (!created.ok) return { ok: false, status: 502, error: created.reason };
 
   db.prepare(`UPDATE clients SET stripe_customer_id = ?, updated_at = datetime('now') WHERE id = ?`).run(created.value.id, clientId);
@@ -554,11 +567,11 @@ function applyRefundOutcome(db: Database.Database, linkId: number, receiptId: nu
       setLinkStatus(db, linkId, 'review', `Reembolso ${refund.id} ${refund.status}: ${reason}`);
       systemAudit(db, 'stripe_refund_needs_review', paymentId, `Reembolso ${refund.id} ${refund.status}; recibo ${receipt.receiptNumber} continua valido`);
     } else {
-      const voided = voidReceipt(db, receiptId, `Reembolso Stripe ${refund.id}: ${reason}`, userId);
+      const voided = voidReceipt(db, receiptId, `Reembolso Stripe ${refund.id}: ${reason}`, userId, { confirmedStripeRefundId: refund.id });
       if (!voided.ok) {
         setLinkStatus(db, linkId, 'review', `Reembolsado no Stripe (${refund.id}) mas o recibo nao foi anulado: ${voided.error}`);
         systemAudit(db, 'stripe_refund_needs_review', paymentId, `Reembolso ${refund.id} feito, recibo ${receipt.receiptNumber} por anular`);
-        return { ok: false, status: 500, error: `Reembolso feito no Stripe, mas o recibo nao foi anulado: ${voided.error}. Anule-o a mao.` };
+        return { ok: false, status: 500, error: `Reembolso feito no Stripe, mas o recibo nao foi anulado: ${voided.error}. Requer revisao do reembolso e do recibo.` };
       }
       setLinkStatus(db, linkId, 'refunded');
       systemAudit(db, 'stripe_refund_completed', paymentId, `Reembolso ${refund.id} concluido; recibo ${receipt.receiptNumber} anulado`);

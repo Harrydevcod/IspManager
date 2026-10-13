@@ -206,7 +206,8 @@ export function PaymentsModule({
   }, []);
 
   useEffect(() => {
-    setSelectedPayment(null);
+    // Alargar o periodo conserva a ficha, incluindo a fatura acabada de emitir.
+    setSelectedPayment((current) => showAllMonths ? current : null);
     closeActionForm();
   }, [referenceMonth, showAllMonths]);
 
@@ -560,20 +561,34 @@ export function PaymentsModule({
         body: JSON.stringify(refunding ? { reason: voidReason, confirmPassword: refundPassword } : { reason: voidReason })
       });
       const fallback = refunding ? 'Nao foi possivel reembolsar.' : 'Nao foi possivel anular o recibo.';
-      const body = await response.json().catch(() => ({ error: fallback })) as { error?: string; reopened?: boolean };
+      const body = await response.json().catch(() => ({ error: fallback })) as { error?: string; reopened?: boolean; status?: string };
       if (!response.ok) {
         toast(body.error || fallback, 'error');
         return;
       }
-      toast(refunding
-        ? 'Reembolsado no Stripe e recibo anulado. A fatura voltou a ficar em aberto.'
-        : body.reopened ? 'Recibo anulado. A fatura voltou a ficar em aberto.' : 'Recibo anulado.', 'success');
+      if (!refunding) {
+        toast(body.reopened ? 'Recibo anulado. A fatura voltou a ficar em aberto.' : 'Recibo anulado.', 'success');
+      } else if (body.status === 'succeeded') {
+        toast('Reembolsado no Stripe e recibo anulado. A fatura voltou a ficar em aberto.', 'success');
+      } else if (body.status === 'pending') {
+        toast('Reembolso solicitado. Aguarda confirmação do Stripe; o recibo continua válido.', 'info');
+      } else if (body.status === 'requires_action') {
+        toast('Reembolso exige uma ação no Stripe. Consulte o Stripe; o recibo continua válido.', 'info');
+      } else if (body.status === 'failed' || body.status === 'canceled') {
+        toast(`O reembolso ${body.status === 'failed' ? 'falhou' : 'foi cancelado'} no Stripe. O recibo continua válido; consulte o Stripe.`, 'error');
+      } else {
+        toast('Não foi possível confirmar o estado do reembolso. Consulte o Stripe antes de tentar novamente.', 'error');
+      }
       setVoidTarget(null);
       setVoidReason('');
       setRefundPassword(null);
       const refreshedPayments = await loadPayments();
       setSelectedPayment((current) => refreshedPayments.find((item) => item.id === (current?.id || paymentId)) || current);
       await loadReceipts(paymentId);
+    } catch {
+      toast(refundPassword !== null
+        ? 'Falha de rede ao reembolsar. Consulte o Stripe antes de tentar novamente.'
+        : 'Falha de rede ao anular o recibo.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -1142,9 +1157,9 @@ export function PaymentsModule({
       <ManualInvoiceDialog
         open={manualInvoiceOpen}
         onClose={() => setManualInvoiceOpen(false)}
-        onCreated={(paymentId) => {
+        onCreated={(paymentId, stripeWarning) => {
           setManualInvoiceOpen(false);
-          toast('Fatura emitida.', 'success');
+          toast(stripeWarning || 'Fatura emitida.', stripeWarning ? 'error' : 'success');
           // Uma avulsa não tem mês: sem mostrar todos os meses ficava escondida
           // pelo filtro, acabada de nascer.
           setShowAllMonths(true);

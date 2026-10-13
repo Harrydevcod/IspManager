@@ -17,6 +17,8 @@ type ReceiptsSectionProps = {
   submitting: boolean;
   onPrintReceipt: (receipt: PaymentReceipt) => void;
   onVoidReceipt: (receipt: PaymentReceipt) => void;
+  /** Todos os recibos Stripe, incluindo reembolsos pendentes ou em revisão. */
+  stripeReceiptIds?: number[];
   /** Recibos pagos por Stripe: ganham "Reembolsar", que devolve o dinheiro e anula. */
   refundableReceiptIds?: number[];
   onRefundReceipt?: (receipt: PaymentReceipt) => void;
@@ -36,6 +38,7 @@ export function ReceiptsSection({
   submitting,
   onPrintReceipt,
   onVoidReceipt,
+  stripeReceiptIds = [],
   refundableReceiptIds = [],
   onRefundReceipt,
   onApplyCredit
@@ -91,16 +94,18 @@ export function ReceiptsSection({
                       >
                         Recibo
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        leadingIcon={<Undo2 size={16} aria-hidden />}
-                        onClick={() => onVoidReceipt(receipt)}
-                        disabled={submitting}
-                        title="Anular este recebimento (exige motivo)"
-                      >
-                        Anular
-                      </Button>
+                      {!stripeReceiptIds.includes(receipt.id) && !refundableReceiptIds.includes(receipt.id) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          leadingIcon={<Undo2 size={16} aria-hidden />}
+                          onClick={() => onVoidReceipt(receipt)}
+                          disabled={submitting}
+                          title="Anular este recebimento (exige motivo)"
+                        >
+                          Anular
+                        </Button>
+                      )}
                       {onRefundReceipt && refundableReceiptIds.includes(receipt.id) && (
                         <Button
                           variant="ghost"

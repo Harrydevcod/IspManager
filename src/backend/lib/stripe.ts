@@ -46,6 +46,8 @@ export type StripeRefund = {
 };
 
 export type StripeTransport = {
+  /** Nulo apenas quando a conta atual confirma ausencia ou eliminacao. */
+  getCustomer(id: string): Promise<StripeResult<{ id: string } | null>>;
   createCustomer(
     input: { name: string; email?: string | null; phone?: string | null; metadata: Record<string, string> },
     idempotencyKey: string
@@ -138,12 +140,23 @@ export function createStripeTransport(secretKey: string): StripeTransport {
   }
 
   return {
+    async getCustomer(id) {
+      const result = await call('GET', `/customers/${encodeURIComponent(id)}`);
+      if (isMissing(result)) return { ok: true, value: null };
+      if (!result.ok) return result;
+      const customer = result.value as { id?: unknown; deleted?: unknown } | null;
+      if (customer?.id !== id || (customer.deleted !== undefined && typeof customer.deleted !== 'boolean')) {
+        return { ok: false, reason: 'Stripe devolveu um cliente sem identidade valida', details: result.value };
+      }
+      return { ok: true, value: customer.deleted === true ? null : { id } };
+    },
+
     async createCustomer(input, idempotencyKey) {
       const created = await call('POST', '/customers', withMetadata({
         name: input.name,
         ...(input.email ? { email: input.email } : {}),
         ...(input.phone ? { phone: input.phone } : {})
-      }, input.metadata), idempotencyKey);
+      }, input.metadata), `ispm-customer-${createHash('sha256').update(`${keyHash}:${idempotencyKey}`).digest('hex')}`);
       if (!created.ok) return created;
       const id = (created.value as { id?: unknown } | null)?.id;
       return typeof id === 'string' && id ? { ok: true, value: { id } } : { ok: false, reason: 'Stripe nao devolveu o id do cliente', details: created.value };

@@ -15,7 +15,7 @@ type ManualInvoiceDialogProps = {
   open: boolean;
   onClose: () => void;
   /** A fatura existe: a lista recarrega e a ficha dela abre. */
-  onCreated: (paymentId: number) => void;
+  onCreated: (paymentId: number, stripeWarning?: string) => void;
 };
 
 function todayIso() {
@@ -84,6 +84,7 @@ export function ManualInvoiceDialog({ open, onClose, onCreated }: ManualInvoiceD
   const linesValid = lines.every((line) => line.description.trim() && Number(line.amount) > 0);
   const nifValid = !recipient.nif || NIF_PATTERN.test(recipient.nif);
   const recipientValid = isNewRecipient ? Boolean(recipient.fullName.trim()) && nifValid : clientId !== null;
+  const canUseStripe = !isNewRecipient && Boolean(clients.find((client) => client.id === clientId)?.email?.trim());
   const canSubmit = recipientValid && linesValid && Boolean(invoiceDate) && !submitting;
 
   function updateLine(index: number, patch: Partial<Line>) {
@@ -116,10 +117,19 @@ export function ManualInvoiceDialog({ open, onClose, onCreated }: ManualInvoiceD
       }
       // Fatura primeiro, link depois: se o Stripe falhar a fatura já existe e o
       // link pede-se na ficha dela, que abre a seguir.
-      if (withStripe) {
-        await authFetch(`${API}/payments/${body.paymentId}/stripe-link`, { method: 'POST' }).catch(() => undefined);
+      let stripeWarning: string | undefined;
+      if (withStripe && canUseStripe) {
+        try {
+          const linkResponse = await authFetch(`${API}/payments/${body.paymentId}/stripe-link`, { method: 'POST' });
+          if (!linkResponse.ok) {
+            const linkBody = await linkResponse.json().catch(() => ({})) as { error?: string };
+            stripeWarning = `Fatura emitida, mas o link Stripe não foi criado. ${linkBody.error || 'Não foi possível contactar o Stripe.'} Tente gerar o link na ficha da fatura.`;
+          }
+        } catch {
+          stripeWarning = 'Fatura emitida, mas houve uma falha de rede ao criar o link Stripe. Tente gerar o link na ficha da fatura.';
+        }
       }
-      onCreated(body.paymentId);
+      onCreated(body.paymentId, stripeWarning);
     } catch {
       setError('Falha de rede ao emitir a fatura.');
     } finally {
@@ -151,7 +161,8 @@ export function ManualInvoiceDialog({ open, onClose, onCreated }: ManualInvoiceD
           title="Destinatário novo"
           description="Para quem ainda não é cliente. Fica registado em Clientes, sem serviço, e da próxima vez já aparece na lista."
           checked={isNewRecipient}
-          onChange={(event) => { setIsNewRecipient(event.target.checked); setServiceId(''); }}
+          disabled={submitting}
+          onChange={(event) => { setIsNewRecipient(event.target.checked); setServiceId(''); setWithStripe(false); }}
         />
 
         {isNewRecipient ? (
@@ -174,7 +185,7 @@ export function ManualInvoiceDialog({ open, onClose, onCreated }: ManualInvoiceD
                 ariaLabel="Cliente"
                 options={clients}
                 value={clientId}
-                onChange={(next) => { setClientId(next === null ? null : Number(next)); setServiceId(''); }}
+                onChange={(next) => { setClientId(next === null ? null : Number(next)); setServiceId(''); setWithStripe(false); }}
                 rowKey={(client) => client.id}
                 rowCode={(client) => client.clientCode}
                 rowLabel={(client) => client.fullName}
@@ -241,8 +252,11 @@ export function ManualInvoiceDialog({ open, onClose, onCreated }: ManualInvoiceD
         {stripeReady && (
           <Toggle
             title="Gerar link de pagamento Stripe"
-            description="A fatura fica com um link para o cliente pagar por cartão. Pode sempre ser paga em numerário ou transferência."
+            description={canUseStripe
+              ? 'A fatura fica com um link para o cliente pagar por cartão. Pode sempre ser paga em numerário ou transferência.'
+              : 'O Stripe exige um email. Registe o email em Clientes e gere o link na ficha da fatura depois de a emitir.'}
             checked={withStripe}
+            disabled={submitting || !canUseStripe}
             onChange={(event) => setWithStripe(event.target.checked)}
           />
         )}

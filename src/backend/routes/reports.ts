@@ -159,12 +159,19 @@ export async function registerReportRoutes(app: FastifyInstance) {
         coalesce(sum(case when status in ('pending','overdue')
           then ${balanceSqlExpr('payments')} else 0 end), 0) AS pendingCve,
         count(*) AS payments,
-        (
-          SELECT coalesce(sum(r.amount_cve), 0)
-          FROM payment_receipts r
-          WHERE ${cashReceiptFilterSql('r')}
-            AND substr(r.payment_date, 1, 7) = payments.reference_month
-        ) AS cashCve
+        -- Avulsas nao tem mes: soma-se a caixa de cada fatura selecionada.
+        CASE WHEN reference_month LIKE '${MANUAL_INVOICE_PREFIX}%'
+          THEN coalesce(sum((
+            SELECT sum(r.amount_cve) FROM payment_receipts r
+            WHERE r.payment_id = payments.id AND ${cashReceiptFilterSql('r')}
+          )), 0)
+          ELSE (
+            SELECT coalesce(sum(r.amount_cve), 0)
+            FROM payment_receipts r
+            WHERE ${cashReceiptFilterSql('r')}
+              AND substr(r.payment_date, 1, 7) = payments.reference_month
+          )
+        END AS cashCve
       FROM payments
       ${paymentWhereSql}
       GROUP BY ${revenueKeySql}
