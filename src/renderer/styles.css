@@ -3131,6 +3131,37 @@ h2 {
   grid-template-columns: minmax(0, 1fr) 140px 140px 140px;
 }
 
+.report-row:not(.dq-group) > span {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.report-row.dq-group {
+  grid-template-columns: minmax(140px, 0.5fr) minmax(0, 1.5fr) auto;
+}
+
+.report-row .dq-group-clients {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.dq-group-clients button {
+  max-width: 100%;
+  min-width: 0;
+  height: auto;
+  white-space: normal;
+}
+
+.dq-group-clients .btn-content {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 /* Numeric/money columns right-align with tabular figures so digits line up
    across rows — same treatment as client/service/stock/plan rows. */
 .report-row > small {
