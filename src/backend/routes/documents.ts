@@ -11,6 +11,13 @@ function dispositionFromQuery(query: unknown): 'inline' | 'attachment' {
   return 'attachment';
 }
 
+function documentDisposition(filename: string, query: unknown): string {
+  // HTTP headers need an ASCII fallback; filename* keeps the UTF-8 name.
+  const fallback = filenamePart(filename, 'documento.pdf').replace(/[^\x20-\x7e]/g, '_');
+  const encoded = encodeURIComponent(filename).replace(/['()*]/g, character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `${dispositionFromQuery(query)}; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
+
 export async function registerDocumentRoutes(app: FastifyInstance) {
   const canIssueDocuments = { preHandler: requireRole(['admin', 'operator']) };
 
@@ -22,7 +29,7 @@ export async function registerDocumentRoutes(app: FastifyInstance) {
       const { buffer, filename } = await renderSaleTicketPdf(id, format);
       return reply.header('Content-Type', 'application/pdf')
         .header('Cache-Control', 'no-store')
-        .header('Content-Disposition', `${dispositionFromQuery(request.query)}; filename="${filenamePart(filename, 'documento.pdf')}"; filename*=UTF-8''${encodeURIComponent(filename)}`)
+        .header('Content-Disposition', documentDisposition(filename, request.query))
         .send(buffer);
     } catch (error) {
       if (error instanceof PaymentDocumentError) return reply.status(error.statusCode).send({ error: error.message });
@@ -34,10 +41,9 @@ export async function registerDocumentRoutes(app: FastifyInstance) {
     const id = Number((request.params as { id: string }).id);
     try {
       const { buffer, filename } = await renderPaymentDocumentPdf(id, 'invoice');
-      const disposition = dispositionFromQuery(request.query);
       return reply
         .header('Content-Type', 'application/pdf')
-        .header('Content-Disposition', `${disposition}; filename="${filenamePart(filename, 'documento.pdf')}"; filename*=UTF-8''${encodeURIComponent(filename)}`)
+        .header('Content-Disposition', documentDisposition(filename, request.query))
         .send(buffer);
     } catch (err) {
       if (err instanceof PaymentDocumentError) return reply.status(err.statusCode).send({ error: err.message });
@@ -49,10 +55,9 @@ export async function registerDocumentRoutes(app: FastifyInstance) {
     const id = Number((request.params as { id: string }).id);
     try {
       const { buffer, filename } = await renderPaymentDocumentPdf(id, 'receipt');
-      const disposition = dispositionFromQuery(request.query);
       return reply
         .header('Content-Type', 'application/pdf')
-        .header('Content-Disposition', `${disposition}; filename="${filenamePart(filename, 'documento.pdf')}"; filename*=UTF-8''${encodeURIComponent(filename)}`)
+        .header('Content-Disposition', documentDisposition(filename, request.query))
         .send(buffer);
     } catch (err) {
       if (err instanceof PaymentDocumentError) return reply.status(err.statusCode).send({ error: err.message });
@@ -66,10 +71,9 @@ export async function registerDocumentRoutes(app: FastifyInstance) {
     const id = Number((request.params as { id: string }).id);
     try {
       const { buffer, filename } = await renderReceiptPdf(id);
-      const disposition = dispositionFromQuery(request.query);
       return reply
         .header('Content-Type', 'application/pdf')
-        .header('Content-Disposition', `${disposition}; filename="${filenamePart(filename, 'documento.pdf')}"; filename*=UTF-8''${encodeURIComponent(filename)}`)
+        .header('Content-Disposition', documentDisposition(filename, request.query))
         .send(buffer);
     } catch (err) {
       if (err instanceof PaymentDocumentError) return reply.status(err.statusCode).send({ error: err.message });

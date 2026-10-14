@@ -1377,6 +1377,19 @@ h2 {
   white-space: nowrap;
 }
 
+.payments-filter-bar {
+  flex-wrap: wrap;
+}
+
+.payments-filter-bar > .field {
+  flex-shrink: 0;
+  max-width: 100%;
+}
+
+.payments-filter-bar > .payments-search {
+  flex: 1 0 220px;
+}
+
 /* Serviços tem quatro filtros: os nomes compridos dos pontos de acesso não podem empurrar a barra. */
 .services-filter-bar select {
   max-width: 168px;

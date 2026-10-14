@@ -6,6 +6,10 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+- **Correções do smoke visual.** Os filtros de Pagamentos e os controlos da
+  Topologia adaptam-se à largura da janela sem sobreposição. Faturas e recibos
+  com travessões ou outros caracteres Unicode no nome do destinatário deixam
+  de falhar ao abrir ou guardar o PDF.
 - **Propostas comerciais.** Ofertas para clientes ou interessados, com instalação,
   venda e aluguer de equipamento e mensalidades em totais separados. A emissão
   atribui número PR e preserva os preços e condições. Inclui PDF A4, registo
