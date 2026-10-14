@@ -172,12 +172,19 @@
   grid-column: 1 / -1;
   justify-content: flex-end;
 }
+.proposal-line > .field {
+  display: grid;
+  grid-row: span 2;
+  grid-template-rows: subgrid;
+  row-gap: 6px;
+}
 .proposal-line-tools strong {
   margin-right: auto;
   font-variant-numeric: tabular-nums;
   font-size: 13px;
 }
 .proposal-summary {
+  min-width: 0;
   position: sticky;
   top: 24px;
   padding: 26px;
@@ -265,7 +272,7 @@
     gap: 24px;
   }
   .proposal-line {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (max-width: 760px) {
@@ -284,7 +291,16 @@
   }
   .proposal-summary-actions {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .proposal-summary-actions .btn {
+    min-width: 0;
+    height: auto;
+    min-height: 40px;
+    white-space: normal;
+  }
+  .proposal-summary-actions .btn-content {
+    white-space: normal;
   }
   .proposal-list-row {
     grid-template-columns: 1fr;
@@ -292,6 +308,7 @@
   }
   .proposal-header {
     align-items: start;
+    flex-wrap: wrap;
   }
   .proposal-filters,
   .proposal-fields {
