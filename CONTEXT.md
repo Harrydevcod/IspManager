@@ -9,6 +9,8 @@ ISPM is a desktop application for day-to-day ISP operations in Cabo Verde.
 - `Servicos` - customer subscriptions tied to plans.
 - `Pagamentos` - billing records, overdue tracking, receipts, and invoices.
 - `Documentos de cobranca` - invoice and receipt PDFs generated from payments.
+- `Propostas` - commercial offers with separate one-time and monthly totals,
+  offered to clients or interested recipients without creating operational records.
 - `Stock` - equipment catalog and inventory movements.
 - `Relatorios` - revenue, overdue debt, stock value, and operational summaries.
 - `Configuracoes` - company profile, billing defaults, document prefixes, and WhatsApp settings.
@@ -17,6 +19,14 @@ ISPM is a desktop application for day-to-day ISP operations in Cabo Verde.
 ## Domain relationships
 
 - One `Cliente` can have multiple `Servicos`.
+- A `Proposta` may link to a `Cliente` or store its recipient independently.
+- Proposals have their own PR series and tables, outside `Pagamentos`.
+- Issuing freezes the offered terms and company/VAT presentation; acceptance is
+  recorded manually and does not create billing, services, or stock movements.
+- Draft revisions link to the previous offer; issuing replaces it atomically.
+- Accepted proposals require a new independent offer for later changes.
+- Proposal expiration is derived from validity; reads never write state.
+- Proposal PDFs separate one-time costs from monthly charges and are not invoices.
 - Each `Servico` belongs to exactly one `Cliente`.
 - Each `Servico` is associated with one `Plano` at a time.
 - Each `Pagamento` belongs to one `Cliente` and optionally one `Servico`.

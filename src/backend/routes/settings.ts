@@ -86,8 +86,8 @@ const settingsSchema = z.object({
   audiovisualAnnualCve: z.coerce.number().min(0).max(10_000_000).optional().default(5000),
   installationFeeCve: z.coerce.number().min(0).max(10_000_000).optional().default(0),
   currencyCode: z.string().trim().min(1).max(8),
-  invoicePrefix: z.string().trim().min(1).max(8).refine((value) => value.toUpperCase() !== 'TV', 'TV é reservado aos Talões de Venda'),
-  receiptPrefix: z.string().trim().min(1).max(8).refine((value) => value.toUpperCase() !== 'TV', 'TV é reservado aos Talões de Venda'),
+  invoicePrefix: z.string().trim().min(1).max(8).refine((value) => !['TV', 'PR'].includes(value.toUpperCase()), 'TV e PR são reservados aos Talões de Venda e Propostas'),
+  receiptPrefix: z.string().trim().min(1).max(8).refine((value) => !['TV', 'PR'].includes(value.toUpperCase()), 'TV e PR são reservados aos Talões de Venda e Propostas'),
   ivaRate: z.coerce.number().min(0).max(100),
   fiscalRegime: z.enum(['normal', 'rempe']),
   showIva: z.coerce.boolean(),
@@ -354,13 +354,13 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     const currentInvoicePrefix = readCurrent('invoicePrefix');
     const currentReceiptPrefix = readCurrent('receiptPrefix');
 
-    if (parsed.data.invoicePrefix !== currentInvoicePrefix && currentInvoicePrefix.toUpperCase() !== 'TV' && countEmitted('invoice_number') > 0) {
+    if (parsed.data.invoicePrefix !== currentInvoicePrefix && !['TV', 'PR'].includes(currentInvoicePrefix.toUpperCase()) && countEmitted('invoice_number') > 0) {
       return reply.status(400).send({
         error: 'Prefixo de fatura nao pode ser alterado depois de emitida a primeira fatura'
       });
     }
 
-    if (parsed.data.receiptPrefix !== currentReceiptPrefix && currentReceiptPrefix.toUpperCase() !== 'TV' && countEmitted('receipt_number') > 0) {
+    if (parsed.data.receiptPrefix !== currentReceiptPrefix && !['TV', 'PR'].includes(currentReceiptPrefix.toUpperCase()) && countEmitted('receipt_number') > 0) {
       return reply.status(400).send({
         error: 'Prefixo de recibo nao pode ser alterado depois de emitido o primeiro recibo'
       });

@@ -1,4 +1,54 @@
 import { integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
+
+export const proposals = sqliteTable('proposals', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  number: text('number').unique(),
+  clientId: integer('client_id').references(() => clients.id, { onDelete: 'set null' }),
+  recipientJson: text('recipient_json').notNull(),
+  title: text('title').notNull(),
+  validUntil: text('valid_until').notNull(),
+  conditions: text('conditions').notNull(),
+  status: text('status', { enum: ['draft', 'issued', 'accepted', 'refused', 'cancelled', 'superseded'] }).notNull().default('draft'),
+  version: integer('version').notNull().default(1),
+  onceTotalCentavos: integer('once_total_centavos').notNull(),
+  monthlyTotalCentavos: integer('monthly_total_centavos').notNull(),
+  snapshotJson: text('snapshot_json'),
+  previousId: integer('previous_id').references((): AnySQLiteColumn => proposals.id),
+  chainId: integer('chain_id').references((): AnySQLiteColumn => proposals.id),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
+  issuedAt: text('issued_at'),
+  decisionAt: text('decision_at'),
+  acceptedBy: text('accepted_by'),
+  decisionNote: text('decision_note'),
+  cancellationReason: text('cancellation_reason')
+});
+export const proposalLines = sqliteTable('proposal_lines', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  proposalId: integer('proposal_id').notNull().references(() => proposals.id),
+  sortOrder: integer('sort_order').notNull(),
+  kind: text('kind', { enum: ['plan', 'installation', 'product', 'free'] }).notNull(),
+  description: text('description').notNull(),
+  period: text('period', { enum: ['once', 'monthly'] }).notNull(),
+  quantity: real('quantity').notNull(),
+  unitPriceCentavos: integer('unit_price_centavos').notNull(),
+  totalCentavos: integer('total_centavos').notNull(),
+  planId: integer('plan_id').references(() => internetPlans.id, { onDelete: 'set null' }),
+  catalogId: integer('catalog_id').references(() => equipmentCatalog.id, { onDelete: 'set null' })
+});
+export const proposalDeliveries = sqliteTable('proposal_deliveries', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  proposalId: integer('proposal_id').notNull().references(() => proposals.id),
+  deliveredAt: text('delivered_at').notNull(),
+  channel: text('channel').notNull(),
+  note: text('note').notNull(),
+  actorUserId: integer('actor_user_id').references(() => users.id, { onDelete: 'set null' })
+});
+export const proposalSequences = sqliteTable('proposal_sequences', {
+  year: integer('year').primaryKey(),
+  lastNumber: integer('last_number').notNull()
+});
 
 /**
  * Single source of truth for the database shape.

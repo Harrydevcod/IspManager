@@ -64,6 +64,13 @@ describe('readDocumentPrefix', () => {
 });
 
 describe('allocateDocumentNumber', () => {
+  test.each(['invoice', 'receipt'] as const)('reserves PR against legacy %s prefixes without consuming a number', (kind) => {
+    const db = freshDb();
+    setPrefix(db, kind === 'invoice' ? 'invoicePrefix' : 'receiptPrefix', ' pr ');
+    expect(() => allocateDocumentNumber(kind)).toThrow(/PR.*reservado/);
+    expect(db.prepare('SELECT * FROM document_sequences').all()).toEqual([]);
+  });
+
   test('allocates a contiguous, gap-free sequence per series', () => {
     freshDb();
     const year = new Date().getFullYear();

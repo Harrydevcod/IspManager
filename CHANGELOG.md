@@ -6,6 +6,11 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+- **Propostas comerciais.** Ofertas para clientes ou interessados, com instalação,
+  venda e aluguer de equipamento e mensalidades em totais separados. A emissão
+  atribui número PR e preserva os preços e condições. Inclui PDF A4, registo
+  manual de entrega e aceitação e revisões ligadas à oferta anterior, sem criar
+  serviços, faturas ou movimentos de stock.
 - **Fatura manual.** Em Pagamentos, **Nova fatura** permite faturar uma
   deslocação, material ou outro valor avulso a um cliente existente ou a um
   destinatário novo. O novo destinatário fica registado em Clientes, sem

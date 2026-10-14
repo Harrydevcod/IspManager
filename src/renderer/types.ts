@@ -24,6 +24,7 @@ export type HealthState = 'checking' | 'online' | 'offline';
 export type SectionId =
   | 'dashboard'
   | 'clients'
+  | 'proposals'
   | 'plans'
   | 'services'
   | 'topology'

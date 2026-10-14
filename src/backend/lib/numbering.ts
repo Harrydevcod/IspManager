@@ -34,6 +34,11 @@ export function readDocumentPrefix(kind: DocumentKind, database?: Database): str
 export function allocateDocumentNumber(kind: DocumentKind, database?: Database, documentYear?: number): string {
   const db = database ?? getSqliteDatabase();
   const series = readDocumentPrefix(kind, db);
+  // Legacy settings remain readable; new fiscal documents cannot use the
+  // commercial-offer series. Never renumber existing invoices or receipts.
+  if (series.toUpperCase() === 'PR') {
+    throw Object.assign(new Error('PR é reservado às Propostas. Altere o prefixo da fatura ou recibo nas Configurações antes de emitir.'), { statusCode: 409 });
+  }
   const year = documentYear ?? new Date().getFullYear();
   if (!Number.isInteger(year) || year < 1 || year > 9999) throw new Error('Invalid document year');
   const row = db.prepare(`
