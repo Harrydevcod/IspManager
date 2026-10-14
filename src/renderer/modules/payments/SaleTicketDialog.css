@@ -13,3 +13,7 @@
 .sale-ticket-detail-line small { display: block; color: var(--muted); margin-top: 6px; overflow-wrap: anywhere; }
 .sale-ticket-detail-line-heading { display: flex; justify-content: space-between; gap: 16px; }
 @media (max-width: 580px) { .dialog-body .client-form.sale-ticket-form { padding: var(--space-4); grid-template-columns: minmax(0, 1fr); } .sale-ticket-recipient { align-items: flex-start; flex-direction: column; } }
+.dialog-body .client-form.sale-ticket-detail {
+  grid-template-columns: minmax(0, 1fr);
+  padding: var(--space-6);
+}

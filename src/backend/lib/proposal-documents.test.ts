@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { inflateSync } from 'node:zlib';
 import type { Proposal, ProposalCompany } from '../../shared/proposals';
 import { buildProposalPdf } from './proposal-documents';
+import { inspectPdfLayout } from './pdf.testing';
 
 export const company: ProposalCompany = { companyName: 'ISPM ORIGINAL', nif: '123456789', phone: '555123', email: 'info@example.cv', address: 'Praia', island: 'Santiago', currencyCode: 'CVE', ivaRate: 15, fiscalRegime: 'normal', showIva: true, legalNotes: 'Oferta comercial.' };
 export function fixture(): Proposal {
@@ -17,6 +18,38 @@ function content(pdf: Buffer): string {
   }).join('\n');
 }
 describe('proposal PDF', () => {
+  test.each(['a4', 'a5'] as const)('%s aligns issuer and recipient side by side', async (format) => {
+    const pdf = await buildProposalPdf(fixture(), undefined, format);
+    const layout = inspectPdfLayout(pdf);
+    const issuer = layout.text[0].find(text => text.value === 'EMITENTE')!;
+    const client = layout.text[0].find(text => text.value === 'CLIENTE')!;
+    expect(issuer).toBeDefined();
+    expect(client).toBeDefined();
+    expect(client.x).toBeGreaterThan(issuer.x + 100);
+    expect(client.y).toBeCloseTo(issuer.y, 2);
+    expect(layout.pages[0]).toEqual(format === 'a5' ? [0, 0, 419.53, 595.28] : [0, 0, 595.28, 841.89]);
+  });
+  test('short A5 proposal fits on one page and preserves both price periods', async () => {
+    const pdf = await buildProposalPdf(fixture(), undefined, 'a5');
+    expect(inspectPdfLayout(pdf).pages).toHaveLength(1);
+    for (const value of ['Maria Original', '1.000$00', '2.500$00', 'Instalação mediante agendamento.', 'Oferta comercial.']) expect(content(pdf)).toContain(value);
+  });
+  test.each(['a4', 'a5'] as const)('%s preserves long party details and oversized rows within every page', async (format) => {
+    const proposal = fixture();
+    proposal.snapshot!.company = { ...company, address: 'Morada extensa '.repeat(25) + 'FIM-EMITENTE' };
+    proposal.recipient.address = 'Morada do destinatário '.repeat(25) + 'FIM-CLIENTE';
+    proposal.lines[0].description = 'Descrição '.repeat(400) + 'FIM-ARTIGO';
+    const pdf = await buildProposalPdf(proposal, undefined, format);
+    const layout = inspectPdfLayout(pdf);
+    for (const value of ['FIM-EMITENTE', 'FIM-CLIENTE', 'FIM-ARTIGO']) expect(content(pdf)).toContain(value);
+    expect(layout.pages.length).toBeGreaterThan(1);
+    layout.text.forEach((texts, i) => texts.forEach(text => {
+      expect(text.x).toBeGreaterThanOrEqual(20);
+      expect(text.x).toBeLessThan(layout.pages[i][2] - 20);
+      expect(text.y).toBeGreaterThan(20);
+      expect(text.y).toBeLessThan(layout.pages[i][3] - 20);
+    }));
+  });
   test('A4, frozen content, distinct periods, fiscal presentation and no QR image', async () => {
     const pdf = await buildProposalPdf(fixture(), { ...company, companyName: 'CHANGED COMPANY' });
     const text = content(pdf);

@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({ db: null as Database.Database | null }));
 vi.mock('../db/database', () => ({ getSqliteDatabase: () => state.db }));
 
 import { renderSaleTicketPdf, type SaleTicketFormat } from './sale-ticket-documents';
+import { inspectPdfLayout } from './pdf.testing';
 
 const db = new Database(':memory:');
 state.db = db;
@@ -55,7 +56,7 @@ function inspectPdf(buffer: Buffer) {
 }
 
 describe('talão de venda PDF', () => {
-  test.each(['a4', '80mm'] as const)('gera %s com número TV, venda, séries, pagamento e IVA incluído', async (format) => {
+  test.each(['a4', 'a5', '80mm'] as const)('gera %s com número TV, venda, séries, pagamento e IVA incluído', async (format) => {
     const changes = db.prepare('SELECT total_changes() AS changes').get();
     const result = await renderSaleTicketPdf(1, format);
     const pdf = inspectPdf(result.buffer);
@@ -69,10 +70,24 @@ describe('talão de venda PDF', () => {
     expect(pdf.text).not.toContain('RC-');
     expect(pdf.raw).not.toContain('/Subtype /Image'); // QR setting cannot fabricate a fiscal TV QR.
     expect(pdf.pages).toHaveLength(1);
-    expect(pdf.pages[0][2]).toBeCloseTo(format === 'a4' ? 595.28 : 80 * 72 / 25.4, 4);
-    expect(pdf.pages[0][3]).toBe(format === 'a4' ? 841.89 : pdf.pages[0][3]);
+    expect(pdf.pages[0][2]).toBeCloseTo(format === 'a4' ? 595.28 : format === 'a5' ? 419.53 : 80 * 72 / 25.4, 4);
+    if (format !== '80mm') expect(pdf.pages[0][3]).toBe(format === 'a4' ? 841.89 : 595.28);
     if (format === '80mm') expect(pdf.pages[0][3]).toBeLessThan(600);
     expect(db.prepare('SELECT total_changes() AS changes').get()).toEqual(changes);
+  });
+
+  test.each(['a4', 'a5'] as const)('%s aligns parties and repeats table headers on long sales', async (format) => {
+    const add = db.prepare('INSERT INTO payment_lines VALUES (?,1,?,100,?)');
+    const detail = db.prepare('INSERT INTO sale_ticket_lines VALUES (?,NULL,1,100)');
+    for (let index = 2; index <= 90; index++) { add.run(index, `Artigo ${index}`, index); detail.run(index); }
+    const layout = inspectPdfLayout((await renderSaleTicketPdf(1, format)).buffer);
+    const issuer = layout.text[0].find(text => text.value === 'EMITENTE')!;
+    const client = layout.text[0].find(text => text.value === 'CLIENTE')!;
+    expect(client.x).toBeGreaterThan(issuer.x + 100);
+    expect(client.y).toBeCloseTo(issuer.y, 2);
+    for (const texts of layout.text.filter(texts => texts.some(text => /^Artigo/.test(text.value)))) {
+      expect(texts.some(text => text.value === 'DESCRIÇÃO')).toBe(true);
+    }
   });
 
   test('anulado mantém número e séries libertadas e assinala o estado', async () => {
@@ -85,7 +100,7 @@ describe('talão de venda PDF', () => {
     expect(pdf.text).not.toContain('PAGO');
   });
 
-  test.each(['a4', '80mm'] as const)('%s pagina descrições e séries longas sem cortar conteúdo', async (format) => {
+  test.each(['a4', 'a5', '80mm'] as const)('%s pagina descrições e séries longas sem cortar conteúdo', async (format) => {
     const description = 'Descrição extensa de equipamento para instalação ' + 'ABCDEFGHIJ'.repeat(110) + ' FIM-DESCRICAO';
     db.prepare('UPDATE payment_lines SET description = ?').run(description);
     const insertLine = db.prepare('INSERT INTO payment_lines VALUES (?, 1, ?, 10, ?)');
@@ -104,8 +119,8 @@ describe('talão de venda PDF', () => {
     expect(pdf.text.match(/TALÃO DE VENDA/g)?.length).toBe(pdf.pages.length);
     expect(pdf.text).toContain(`${pdf.pages.length}/${pdf.pages.length}`);
     for (const page of pdf.pages) {
-      expect(page[2]).toBeCloseTo(format === 'a4' ? 595.28 : 80 * 72 / 25.4, 4);
-      expect(page[3]).toBeLessThanOrEqual(format === 'a4' ? 842 : 1440);
+      expect(page[2]).toBeCloseTo(format === 'a4' ? 595.28 : format === 'a5' ? 419.53 : 80 * 72 / 25.4, 4);
+      expect(page[3]).toBeLessThanOrEqual(format === 'a4' ? 842 : format === 'a5' ? 596 : 1440);
     }
     // PDFKit flips the text matrix back to PDF coordinates; every baseline
     // must stay inside the page, including repeated headers and footers.
@@ -152,7 +167,7 @@ describe('talão de venda PDF', () => {
   });
 
   test('rejeita formato inválido antes de consultar a base', async () => {
-    await expect(renderSaleTicketPdf(1, 'a5' as SaleTicketFormat)).rejects.toMatchObject({ statusCode: 400 });
+    await expect(renderSaleTicketPdf(1, 'a3' as SaleTicketFormat)).rejects.toMatchObject({ statusCode: 400 });
   });
 
   test('pagamento ausente ou fatura não é talão', async () => {

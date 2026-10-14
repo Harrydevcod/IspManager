@@ -44,7 +44,7 @@ ISPM is a desktop application for day-to-day ISP operations in Cabo Verde.
 - TV cancellation is total, requires administrator password confirmation and
   product return, and reverses treasury and stock exactly once.
 - TV documents keep their number, lines, serials, and cancelled history, with
-  A4 and 80 mm PDFs; generic invoice and receipt actions cannot alter them.
+  A4, A5 and 80 mm PDFs; generic invoice and receipt actions cannot alter them.
 - The system client cannot be edited, removed, suspended, or assigned services,
   debt, credit, Stripe collection, or automatic messages. Commercial customer
   metrics exclude it; sales and cash reports include its TV receipts once.

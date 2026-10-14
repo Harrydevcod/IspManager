@@ -88,6 +88,7 @@ export function ProposalsModule({
   const [products, setProducts] = useState<StockCatalogRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pdfFormat, setPdfFormat] = useState<"a5" | "a4">("a5");
   const [action, setAction] = useState<ProposalAction | null>(null);
   const [reason, setReason] = useState("");
   const [actor, setActor] = useState("");
@@ -255,8 +256,8 @@ export function ProposalsModule({
     setBusy(true);
     try {
       await downloadAuthenticated(
-        `${API}/proposals/${proposal.id}/proposal.pdf`,
-        `${proposal.number ?? "Rascunho"}-proposta.pdf`,
+        `${API}/proposals/${proposal.id}/proposal.pdf?format=${pdfFormat}`,
+        `${proposal.number ?? "Rascunho"}-proposta-${pdfFormat}.pdf`,
       );
     } catch (e) {
       setError((e as Error).message);
@@ -889,6 +890,10 @@ export function ProposalsModule({
               mensalidade depende das condições acordadas.
             </p>
             <div className="proposal-summary-actions">
+              <Select label="Formato do PDF" value={pdfFormat} disabled={busy} onChange={(event) => setPdfFormat(event.target.value as "a5" | "a4")}>
+                <option value="a5">A5</option>
+                <option value="a4">A4</option>
+              </Select>
               {draft && (
                 <Button form="proposal-draft" type="submit" disabled={busy}>
                   Guardar rascunho

@@ -24,7 +24,7 @@ export async function registerDocumentRoutes(app: FastifyInstance) {
   app.get('/api/payments/:id/sale-ticket.pdf', canIssueDocuments, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     const format = (request.query as { format?: unknown }).format ?? 'a4';
-    if (format !== 'a4' && format !== '80mm') return reply.status(400).send({ error: 'Formato inválido: use a4 ou 80mm' });
+    if (format !== 'a4' && format !== 'a5' && format !== '80mm') return reply.status(400).send({ error: 'Formato inválido: use a4, a5 ou 80mm' });
     try {
       const { buffer, filename } = await renderSaleTicketPdf(id, format);
       return reply.header('Content-Type', 'application/pdf')

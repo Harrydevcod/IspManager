@@ -21,7 +21,10 @@ history; its receipt is voided, treasury is reversed, stock is returned, and
 serial reservations are released atomically. Generic payment and document
 routes reject TV operations to preserve those invariants.
 
-The customer receives the TV in A4 or 80 mm format. The internal receipt is a
+The customer receives the TV in A5, A4 or 80 mm format. A5 is initially selected
+in the UI; requests without a format keep A4 for API compatibility. A4 and A5
+align the issuer and customer side by side and repeat table headers on
+continuation pages. The internal receipt is a
 ledger entry, not an additional customer invoice. TV follows the configured
 currency and VAT presentation; this decision does not assert fiscal equivalence
 between TV and Fatura. Partial returns and Stripe settlement are out of scope.

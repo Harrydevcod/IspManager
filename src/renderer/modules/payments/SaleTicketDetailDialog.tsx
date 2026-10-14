@@ -21,7 +21,7 @@ export function SaleTicketDetailDialog({ payment, onClose, onCancelled }: {
   const { hasRole } = useAuth();
   const [ticket, setTicket] = useState<SaleTicket | null>(null);
   const [loadError, setLoadError] = useState('');
-  const [format, setFormat] = useState<'a4' | '80mm'>('a4');
+  const [format, setFormat] = useState<'a4' | 'a5' | '80mm'>('a5');
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [password, setPassword] = useState('');
@@ -87,7 +87,7 @@ export function SaleTicketDetailDialog({ payment, onClose, onCancelled }: {
       <Button variant="secondary" leadingIcon={<Download size={15} aria-hidden />} disabled={!ticket || documentBusy} onClick={() => void documentAction('download')}>Guardar PDF</Button>
       <Button leadingIcon={<Printer size={15} aria-hidden />} disabled={!ticket || documentBusy} onClick={() => void documentAction('print')}>Imprimir</Button>
     </>}>
-      {loadError ? <ErrorRetry message={loadError} onRetry={() => void load()} /> : !ticket ? <p>A carregar talão...</p> : <>
+      {loadError ? <ErrorRetry message={loadError} onRetry={() => void load()} /> : !ticket ? <p>A carregar talão...</p> : <div className="client-form sale-ticket-detail">
         <div className="sale-ticket-recipient"><div><span className="field-label">Destinatário</span><strong>{ticket.clientName}</strong></div><Badge tone={cancelled ? 'neutral' : 'success'}>{cancelled ? 'Anulado' : 'Pago'}</Badge></div>
         <div className="client-detail"><dl><div><dt>Emissão</dt><dd>{formatPtDate(ticket.issuedOn)}</dd></div><div><dt>Pagamento</dt><dd>{METHOD_LABELS[ticket.paymentMethod] || ticket.paymentMethod}</dd></div><div><dt>Total</dt><dd>{formatCve(ticket.amountCve)}</dd></div></dl></div>
         {cancelled && <Message>Documento anulado. O histórico e o PDF permanecem disponíveis.</Message>}
@@ -98,9 +98,9 @@ export function SaleTicketDetailDialog({ payment, onClose, onCancelled }: {
           {line.serialNumbers?.length > 0 && <small>Séries: {line.serialNumbers.join(', ')}</small>}
         </div>)}</div>
         {ticket.notes && <p>{ticket.notes}</p>}
-        <Select label="Formato do PDF" value={format} disabled={documentBusy} onChange={(event) => setFormat(event.target.value as 'a4' | '80mm')}><option value="a4">A4</option><option value="80mm">Talão 80 mm</option></Select>
-        {preview.error ? <Message tone="error">Não foi possível carregar a pré-visualização. Pode tentar guardar ou imprimir o PDF.</Message> : preview.objectUrl ? <iframe className="pdf-preview-frame" src={preview.objectUrl} title={`Talão de venda ${ticket.documentNumber}`} /> : <p>A carregar PDF...</p>}
-      </>}
+        <Select label="Formato do PDF" value={format} disabled={documentBusy} onChange={(event) => setFormat(event.target.value as 'a4' | 'a5' | '80mm')}><option value="a5">A5</option><option value="a4">A4</option><option value="80mm">Talão 80 mm</option></Select>
+        {preview.error ? <Message tone="error">Não foi possível carregar a pré-visualização. Pode tentar guardar ou imprimir o PDF.</Message> : preview.objectUrl ? <iframe className="pdf-dialog-frame" src={`${preview.objectUrl}#toolbar=0`} title={`Talão de venda ${ticket.documentNumber}`} /> : <p>A carregar PDF...</p>}
+      </div>}
     </Dialog>
     <Dialog open={cancelOpen} onClose={closeCancellation} title="Anular talão de venda" eyebrow={ticket?.documentNumber} size="md" closeOnBackdrop={!submitting} actions={<>
       <Button variant="secondary" disabled={submitting} onClick={closeCancellation}>Voltar</Button>

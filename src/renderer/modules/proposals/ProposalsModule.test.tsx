@@ -4,6 +4,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProposalsModule } from "./ProposalsModule";
 import { sectionIdsForRole } from "../../App";
+import { downloadAuthenticated } from "../../lib/download";
+vi.mock("../../lib/download", () => ({ downloadAuthenticated: vi.fn(async () => ({ saved: true })) }));
 
 const mocks = vi.hoisted(() => ({ role: "operator", fetch: vi.fn() }));
 vi.mock("../../lib/auth", () => ({
@@ -24,6 +26,7 @@ const json = (body: unknown, status = 200) =>
 beforeEach(() => {
   mocks.role = "operator";
   mocks.fetch.mockReset();
+  vi.mocked(downloadAuthenticated).mockClear();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   host = document.createElement("div");
   document.body.append(host);
@@ -76,6 +79,24 @@ async function select(label: string, value: string) {
   });
 }
 describe("commercial proposal workspace", () => {
+  it("downloads a saved draft in A5 initially and follows the A4 selection", async () => {
+    const original = mocks.fetch.getMockImplementation()!;
+    mocks.fetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST' || init?.method === 'PATCH') return json({ ...JSON.parse(String(init.body)), id: 15, version: 1, status: 'draft', number: null, deliveries: [], chain: [], allowedActions: ['issue'] });
+      return original(url, init);
+    });
+    await render();
+    await click('Nova proposta');
+    await select('Cliente existente ou interessado', '1');
+    await select('Acrescentar plano', '1');
+    const format = [...host.querySelectorAll('label')].find(label => label.textContent?.startsWith('Formato do PDF'))?.querySelector('select');
+    expect(format?.value).toBe('a5');
+    await click('Pré-visualizar PDF · RASCUNHO');
+    expect(downloadAuthenticated).toHaveBeenLastCalledWith('http://127.0.0.1:3001/api/proposals/15/proposal.pdf?format=a5', 'Rascunho-proposta-a5.pdf');
+    await select('Formato do PDF', 'a4');
+    await click('Pré-visualizar PDF · RASCUNHO');
+    expect(downloadAuthenticated).toHaveBeenLastCalledWith('http://127.0.0.1:3001/api/proposals/15/proposal.pdf?format=a4', 'Rascunho-proposta-a4.pdf');
+  });
   it("denies technicians in the module and navigation without fetching offers", async () => {
     mocks.role = "technician";
     await render();

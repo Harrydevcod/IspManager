@@ -58,9 +58,11 @@ export async function registerProposalRoutes(app: FastifyInstance) {
         });
     }
     app.get('/api/proposals/:id/proposal.pdf', access, async (request, reply) => {
+        const format = (request.query as { format?: unknown }).format ?? 'a4';
+        if (format !== 'a4' && format !== 'a5') return reply.status(400).send({ error: 'Formato inválido: use a4 ou a5' });
         try {
             getProposal(id(request),request.user?.role);
-            const pdf = await renderProposalPdf(id(request));
+            const pdf = await renderProposalPdf(id(request), format);
             return reply.type('application/pdf').header('Content-Disposition',`attachment; filename="${pdf.filename}"`).send(pdf.buffer);
         } catch (error) { return handle(reply,error); }
     });

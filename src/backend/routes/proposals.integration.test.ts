@@ -70,6 +70,21 @@ const commercialTables = ['clients', 'internet_plans', 'services', 'payments', '
   'payment_receipts', 'equipment_catalog', 'stock_movements', 'treasury_movements'];
 const businessRows = () => Object.fromEntries(commercialTables.map(table => [table, db.prepare(`SELECT * FROM ${table}`).all()]));
 
+test('proposal PDF chooses real A4/A5 dimensions, defaults to A4 and rejects invalid formats without writes', async () => {
+  const proposal = await create();
+  const before = db.prepare('SELECT total_changes() AS n').get();
+  for (const [query, box] of [['', '595.28 841.89'], ['?format=a4', '595.28 841.89'], ['?format=a5', '419.53 595.28']]) {
+    const pdf = await app.inject({ url: `/api/proposals/${proposal.id}/proposal.pdf${query}`, headers: headers('operator') });
+    expect(pdf.statusCode, pdf.body).toBe(200);
+    expect(pdf.rawPayload.toString('latin1')).toContain(`/MediaBox [0 0 ${box}]`);
+  }
+  for (const query of ['?format=a3', '?format=', '?format=a4&format=a5']) {
+    const response = await app.inject({ url: `/api/proposals/${proposal.id}/proposal.pdf${query}`, headers: headers() });
+    expect(response.statusCode).toBe(400);
+  }
+  expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(before);
+});
+
 test('UI-shaped draft, edit, issue, delivery, revision and acceptance leave business ledgers unchanged', async () => {
   const before = businessRows();
   let proposal = await create();

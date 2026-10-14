@@ -11,6 +11,7 @@ test('anulação recarrega o PDF real do preview e descarta o documento pago', a
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   let status = 'paid'; let objectId = 0;
   const documents: string[] = [];
+  const urls: string[] = [];
   const revoked: string[] = [];
   const NativeUrl = URL;
   vi.stubGlobal('URL', class extends NativeUrl {
@@ -18,7 +19,7 @@ test('anulação recarrega o PDF real do preview e descarta o documento pago', a
     static revokeObjectURL(value: string) { revoked.push(value); }
   });
   vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
-    if (input.includes('/sale-ticket.pdf')) { documents.push(status); return new Response(status, { headers: { 'Content-Type': 'application/pdf' } }); }
+    if (input.includes('/sale-ticket.pdf')) { urls.push(input); documents.push(status); return new Response(status, { headers: { 'Content-Type': 'application/pdf' } }); }
     if (init?.method === 'POST') { status = 'cancelled'; return new Response(JSON.stringify({ status })); }
     return new Response(JSON.stringify({ paymentId: 1, documentNumber: 'TV-2026-00001', amountCve: 100, clientName: 'Cliente Indiferenciado',
       status, issuedOn: '2026-10-13', paymentMethod: 'numerario', accountId: 1, lines: [] }));
@@ -35,14 +36,20 @@ test('anulação recarrega o PDF real do preview e descarta o documento pago', a
   }
   try {
     await act(async () => root.render(<SaleTicketDetailDialog payment={payment} onClose={() => {}} onCancelled={() => {}} />));
-    const original = document.querySelector('iframe')!.getAttribute('src');
+    const original = document.querySelector('iframe')!.getAttribute('src')!.split('#')[0];
     expect(documents).toEqual(['paid']);
+    expect(urls[0]).toContain('format=a5');
+    const select = document.querySelector('select')!;
+    await act(async () => { select.value = 'a4'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+    expect(urls.at(-1)).toContain('format=a4');
+    expect(revoked).toContain(original);
     await act(async () => [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Anular talão'))!.click());
     await fill('Motivo da anulação', 'Venda emitida por engano'); await fill('A sua palavra-passe de administrador', 'password-teste');
     await act(async () => document.querySelector<HTMLInputElement>('.field-toggle input')!.click());
     await act(async () => document.getElementById('cancel-sale-ticket-form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
     expect(document.body.textContent).toContain('Documento anulado');
-    expect(documents).toEqual(['paid', 'cancelled']);
+    expect(documents).toEqual(['paid', 'paid', 'cancelled']);
+    expect(urls.at(-1)).toContain('format=a4');
     expect(document.querySelector('iframe')!.getAttribute('src')).not.toBe(original);
     expect(revoked).toContain(original);
   } finally {

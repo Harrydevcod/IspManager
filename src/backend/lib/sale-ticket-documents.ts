@@ -4,7 +4,7 @@ import { computeTotals, filenamePart, formatDate, loadCompany, PALETTE, PaymentD
 
 const PDFDocument = require('pdfkit');
 
-export type SaleTicketFormat = 'a4' | '80mm';
+export type SaleTicketFormat = 'a4' | 'a5' | '80mm';
 
 type Ticket = {
   id: number;
@@ -28,7 +28,7 @@ type TicketLine = {
 };
 
 type Cell = { text: string; x: number; width: number; align?: 'left' | 'right' };
-type Row = { height: number; cells?: Cell[]; size?: number; bold?: boolean; color?: string; rule?: boolean; keepNext?: boolean };
+type Row = { height: number; cells?: Cell[]; size?: number; bold?: boolean; color?: string; rule?: boolean; keepNext?: boolean; tableHeader?: boolean; item?: boolean };
 
 const METHODS: Record<string, string> = {
   numerario: 'Numerário', cash: 'Numerário', transferencia: 'Transferência',
@@ -38,7 +38,7 @@ const METHODS: Record<string, string> = {
 /** A read never allocates a number or emits another fiscal document. */
 export async function renderSaleTicketPdf(paymentId: number, format: SaleTicketFormat): Promise<{ buffer: Buffer; filename: string }> {
   if (!Number.isSafeInteger(paymentId) || paymentId <= 0) throw new PaymentDocumentError(400, 'Talão de venda inválido');
-  if (format !== 'a4' && format !== '80mm') throw new PaymentDocumentError(400, 'Formato inválido: use a4 ou 80mm');
+  if (format !== 'a4' && format !== 'a5' && format !== '80mm') throw new PaymentDocumentError(400, 'Formato inválido: use a4, a5 ou 80mm');
 
   const db = getSqliteDatabase();
   const ticket = db.prepare(`
@@ -81,11 +81,16 @@ function buildPdf(ticket: Ticket, lines: TicketLine[], accounts: string[], forma
   const company = loadCompany();
   const totals = computeTotals(ticket.amountCve, company);
   const thermal = format === '80mm';
-  const width = thermal ? 80 * 72 / 25.4 : 595.28;
-  const margin = thermal ? 12 : 48;
+  const a5 = format === 'a5';
+  const width = thermal ? 80 * 72 / 25.4 : a5 ? 419.53 : 595.28;
+  const margin = thermal ? 12 : a5 ? 28 : 48;
   const contentWidth = width - 2 * margin;
-  const fontSize = thermal ? 9 : 10;
-  const lineHeight = thermal ? 12 : 15;
+  const fontSize = thermal || a5 ? 9 : 10;
+  const lineHeight = thermal ? 12 : a5 ? 13 : 15;
+  const descWidth = contentWidth * 0.49;
+  const qtyX = margin + contentWidth * 0.51;
+  const unitX = margin + contentWidth * 0.61;
+  const amountX = margin + contentWidth * 0.81;
   const rows: Row[] = [];
   const doc = new PDFDocument({ autoFirstPage: false, bufferPages: true, margin: 0, info: {
     Title: `Talão de venda ${ticket.number}`, Author: company.companyName, Subject: 'Talão de venda'
@@ -122,35 +127,58 @@ function buildPdf(ticket: Ticket, lines: TicketLine[], accounts: string[], forma
   const rule = (gap = 12) => rows.push({ height: gap, rule: true });
   const label = (value: string) => text(value, { size: thermal ? 7 : 8, bold: true, color: PALETTE.accent, gap: 4 });
 
-  label('EMITENTE');
-  text(company.companyName || 'ISPM', { size: thermal ? 13 : 20, bold: true, gap: 3 });
-  for (const value of [company.nif && `NIF ${company.nif}`, company.address, company.island, company.phone]) {
-    if (value) text(value, { size: thermal ? 8 : 9, color: PALETTE.muted });
+  if (thermal) {
+    label('EMITENTE');
+    text(company.companyName || 'ISPM', { size: 13, bold: true, gap: 3 });
+    for (const value of [company.nif && `NIF ${company.nif}`, company.address, company.island, company.phone]) {
+      if (value) text(value, { size: 8, color: PALETTE.muted });
+    }
+    rule();
+    label('CLIENTE');
+    text('Cliente Indiferenciado', { bold: true, gap: 10 });
+  } else {
+    const rightWidth = contentWidth * 0.42;
+    const rightX = width - margin - rightWidth;
+    const leftWidth = contentWidth - rightWidth - 20;
+    rows.push({ height: 15, size: 8, bold: true, color: PALETTE.accent, cells: [
+      { text: 'EMITENTE', x: margin, width: leftWidth }, { text: 'CLIENTE', x: rightX, width: rightWidth }
+    ] });
+    const leftNames = wrap(company.companyName || 'ISPM', leftWidth, 11, true);
+    const rightNames = wrap('Cliente Indiferenciado', rightWidth, 11, true);
+    for (let i = 0; i < Math.max(leftNames.length, rightNames.length); i++) {
+      rows.push({ height: 15, size: 11, bold: true, cells: [
+        ...(leftNames[i] ? [{ text: leftNames[i], x: margin, width: leftWidth }] : []),
+        ...(rightNames[i] ? [{ text: rightNames[i], x: rightX, width: rightWidth }] : [])
+      ] });
+    }
+    for (const value of [company.nif && `NIF ${company.nif}`, company.address, company.island, company.phone]) {
+      if (value) for (const part of wrap(value, leftWidth, 9)) rows.push({ height: 12, size: 9, color: PALETTE.muted, cells: [{ text: part, x: margin, width: leftWidth }] });
+    }
+    rule(16);
   }
-  rule();
-  label('CLIENTE');
-  text('Cliente Indiferenciado', { bold: true, gap: 10 });
 
+  let tableHeader: Row | undefined;
   if (!thermal) {
-    rows.push({ height: 21, size: 8, bold: true, color: PALETTE.muted, cells: [
-      { text: 'DESCRIÇÃO', x: margin, width: 245 },
-      { text: 'QTD.', x: margin + 251, width: 33, align: 'right' },
-      { text: 'UNITÁRIO', x: margin + 291, width: 89, align: 'right' },
-      { text: 'VALOR', x: margin + 387, width: contentWidth - 387, align: 'right' }
-    ], rule: true });
+    tableHeader = { height: 23, size: 8, bold: true, color: PALETTE.muted, cells: [
+      { text: 'DESCRIÇÃO', x: margin, width: descWidth },
+      { text: 'QTD.', x: qtyX, width: contentWidth * 0.08, align: 'right' },
+      { text: 'UNITÁRIO', x: unitX, width: contentWidth * 0.18, align: 'right' },
+      { text: 'VALOR', x: amountX, width: contentWidth * 0.19, align: 'right' }
+    ], rule: true, keepNext: true, tableHeader: true };
+    rows.push(tableHeader);
   } else label('ARTIGOS');
 
   for (const line of lines) {
-    const descriptionWidth = thermal ? contentWidth : 245;
+    const descriptionWidth = thermal ? contentWidth : descWidth;
     const descriptionLines = wrap(line.description, descriptionWidth, fontSize, true);
     descriptionLines.forEach((part, index) => {
       const cells: Cell[] = [{ text: part, x: margin, width: descriptionWidth }];
       if (!thermal && index === 0) cells.push(
-        { text: String(line.quantity), x: margin + 251, width: 33, align: 'right' },
-        { text: formatEscudos(line.unitPriceCve), x: margin + 291, width: 89, align: 'right' },
-        { text: formatEscudos(line.amountCve), x: margin + 387, width: contentWidth - 387, align: 'right' }
+        { text: String(line.quantity), x: qtyX, width: contentWidth * 0.08, align: 'right' },
+        { text: formatEscudos(line.unitPriceCve), x: unitX, width: contentWidth * 0.18, align: 'right' },
+        { text: formatEscudos(line.amountCve), x: amountX, width: contentWidth * 0.19, align: 'right' }
       );
-      rows.push({ height: lineHeight, cells, bold: true, size: fontSize, keepNext: index === descriptionLines.length - 1 && thermal });
+      rows.push({ height: lineHeight, cells, bold: true, size: fontSize, item: true, keepNext: index === descriptionLines.length - 1 && thermal });
     });
     if (thermal) rows.push({ height: 15, size: 8, cells: [
       { text: `${line.quantity} x ${formatEscudos(line.unitPriceCve)}`, x: margin, width: contentWidth * 0.57 },
@@ -159,7 +187,7 @@ function buildPdf(ticket: Ticket, lines: TicketLine[], accounts: string[], forma
     for (const serial of line.serials) {
       for (const part of wrap(`S/N: ${serial}`, descriptionWidth, thermal ? 7.5 : 8)) {
         rows.push({ height: thermal ? 10 : 12, size: thermal ? 7.5 : 8, color: PALETTE.muted,
-          cells: [{ text: part, x: margin, width: descriptionWidth }] });
+          cells: [{ text: part, x: margin, width: descriptionWidth }], item: true });
       }
     }
     rows.push({ height: thermal ? 9 : 14 });
@@ -187,11 +215,11 @@ function buildPdf(ticket: Ticket, lines: TicketLine[], accounts: string[], forma
   }
   if (thermal && company.email) { rule(); text(company.email, { size: 8, color: PALETTE.muted }); }
 
-  const headingHeight = thermal ? 64 : 87;
+  const headingHeight = thermal ? 64 : a5 ? 66 : 87;
   const footerHeight = thermal ? 24 : 38;
   const height = thermal
     ? Math.min(1440, Math.max(280, Math.ceil(headingHeight + rows.reduce((sum, row) => sum + row.height, 0) + 2 * margin + footerHeight)))
-    : 841.89;
+    : a5 ? 595.28 : 841.89;
   const pageRows: Row[][] = [[]];
   const available = height - 2 * margin - footerHeight - headingHeight;
   let used = 0;
@@ -199,6 +227,10 @@ function buildPdf(ticket: Ticket, lines: TicketLine[], accounts: string[], forma
     const required = row.height + (row.keepNext ? rows[index + 1]?.height ?? 0 : 0);
     if (used + required > available && pageRows[pageRows.length - 1].length) {
       pageRows.push([]); used = 0;
+      // A spacer can cause the page break immediately before the next item.
+      if ((row.item || (!row.cells && rows[index + 1]?.item)) && tableHeader) {
+        pageRows[pageRows.length - 1].push(tableHeader); used += tableHeader.height;
+      }
     }
     pageRows[pageRows.length - 1].push(row); used += row.height;
   });
@@ -216,9 +248,9 @@ function buildPdf(ticket: Ticket, lines: TicketLine[], accounts: string[], forma
     doc.addPage({ size: [width, pageHeight], margin: 0 });
     page += 1;
     write({ text: 'TALÃO DE VENDA', x: margin, width: contentWidth }, margin, thermal ? 9 : 11, true, PALETTE.ink);
-    write({ text: ticket.number!, x: margin, width: contentWidth }, margin + (thermal ? 15 : 24), thermal ? 13 : 24, true, PALETTE.accent);
+    write({ text: ticket.number!, x: margin, width: contentWidth }, margin + (thermal ? 15 : a5 ? 19 : 24), thermal ? 13 : a5 ? 19 : 24, true, PALETTE.accent);
     write({ text: `Emitido em ${formatDate(ticket.date)}  |  ${ticket.status === 'cancelled' ? 'ANULADO' : 'PAGO'}`, x: margin, width: contentWidth },
-      margin + (thermal ? 33 : 57), thermal ? 8 : 9, false, ticket.status === 'cancelled' ? PALETTE.danger : PALETTE.muted);
+      margin + (thermal ? 33 : a5 ? 44 : 57), thermal ? 8 : 9, false, ticket.status === 'cancelled' ? PALETTE.danger : PALETTE.muted);
     y = margin + headingHeight;
   };
 

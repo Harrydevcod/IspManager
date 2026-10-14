@@ -45,10 +45,16 @@ snapshot, supersession, and mandatory audit share a SQLite transaction. An
 audit failure rolls back the whole operation. Delivery logs record manual
 sharing, with date, channel, and note; no automatic message is sent.
 
-The A4 PDF follows the ISPM document palette, clearly says **Proposta comercial
+The A4/A5 PDF follows the ISPM document palette, clearly says **Proposta comercial
 — não constitui fatura**, and never prints a fiscal QR code. Draft, cancelled,
 and replaced states are visible without changing the original commercial
 content. The revision chain identifies the related offer numbers.
+
+The UI initially selects A5; its A4/A5 selector applies to draft previews and
+issued PDF downloads. Requests without a format keep A4 for compatibility.
+Both portrait formats align issuer and recipient side by side, preserve
+separate one-time and monthly totals, and paginate long content with repeated
+table headers.
 
 ## Research behind the decision
 
