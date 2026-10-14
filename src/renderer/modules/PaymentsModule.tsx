@@ -1065,7 +1065,7 @@ export function PaymentsModule({
       {/* Message primitive — renders p.module-message, byte-identical to original */}
       {message && <Message>{message}</Message>}
 
-      <FilterBar>
+      <FilterBar className="payments-filter-bar">
         <Field
           type="search"
           label="Pesquisar"

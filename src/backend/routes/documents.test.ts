@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import type { AddressInfo } from 'node:net';
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
 import { formatBankAccountsForDocument, formatDate, formatReferenceForDocument } from '../lib/documents';
@@ -24,6 +25,7 @@ beforeAll(async () => {
   await app.ready();
   db = database.getSqliteDatabase();
   closeDatabaseForTests = database.closeDatabaseForTests;
+  await app.listen({ host: '127.0.0.1', port: 0 });
 });
 
 beforeEach(() => {
@@ -67,6 +69,19 @@ function seedPayment(status: 'pending' | 'paid' | 'overdue' | 'cancelled' = 'pai
 }
 
 describe('GET /api/payments/:id/invoice.pdf', () => {
+  test.each(['invoice', 'receipt'])('serves %s over HTTP for a Unicode recipient with a safe download header', async (kind) => {
+    const id = seedPayment('paid');
+    db.prepare('UPDATE clients SET full_name=?').run('João — cliente de teste');
+    const address = app.server.address() as AddressInfo;
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/payments/${id}/${kind}.pdf?inline=1`);
+    expect(response.status).toBe(200);
+    const header = response.headers.get('content-disposition')!;
+    expect(header).toMatch(/^[\x20-\x7e]+$/);
+    expect(header).toMatch(/^inline;/);
+    expect(decodeURIComponent(header.split("filename*=UTF-8''")[1])).toContain('Joao — cliente de teste');
+    expect(Buffer.from(await response.arrayBuffer()).subarray(0, 4).toString()).toBe('%PDF');
+  });
+
   test('formats document dates with pt-PT day/month/year order', () => {
     expect(formatDate('2026-05-10')).toBe('10-05-2026');
     expect(formatDate('2026-05-10 14:30:00')).toBe('10-05-2026');

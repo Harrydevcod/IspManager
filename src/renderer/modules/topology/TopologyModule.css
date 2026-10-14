@@ -43,6 +43,7 @@
   position: relative;
   z-index: 2;
   display: flex;
+  flex-wrap: wrap;
   align-items: end;
   gap: var(--space-1);
   min-height: 3.15rem;
@@ -201,7 +202,7 @@
     padding-inline: var(--space-1-5);
   }
 
-  .topology-tabs-list { flex: 1; }
+  .topology-tabs-list { flex: 1 0 100%; }
 
   .topology-tabs [role='tab'] {
     flex: 1;
