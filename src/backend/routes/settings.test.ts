@@ -81,6 +81,35 @@ afterAll(async () => {
 });
 
 describe('settings SMS validation', () => {
+  test.each([
+    ['invoicePrefix', 'invoice_number', 'invoice', 'FT'],
+    ['receiptPrefix', 'receipt_number', 'receipt', 'RC']
+  ] as const)('recovers legacy PR in %s without rewriting history or reopening prefix changes', async (key, column, kind, replacement) => {
+    const { allocateDocumentNumber } = await import('../lib/numbering');
+    const clientId = Number(db.prepare("INSERT INTO clients(client_code,full_name) VALUES (?, 'Legacy recipient')").run(`LEGACY-${key}`).lastInsertRowid);
+    const paymentId = Number(db.prepare(`INSERT INTO payments(client_id,reference_month,amount_cve,due_date,${column}) VALUES (?, '2026-10', 1000, '2026-10-31', 'PR-2026-00009')`).run(clientId).lastInsertRowid);
+    try {
+      db.prepare('INSERT INTO app_settings(key,value) VALUES (?,?)').run(key, ' pr ');
+      db.prepare('INSERT OR REPLACE INTO document_sequences(series,year,last_number) VALUES (?,2026,41)').run(replacement);
+      db.prepare("INSERT OR REPLACE INTO document_sequences(series,year,last_number) VALUES ('PR',2026,9)").run();
+      const historical = db.prepare('SELECT * FROM payments WHERE id=?').get(paymentId);
+      expect(() => allocateDocumentNumber(kind, db, 2026)).toThrow(/PR.*reservado/);
+
+      const corrected = await app.inject({ method: 'PUT', url: '/api/settings', payload: validSettings });
+      expect(corrected.statusCode, corrected.body).toBe(200);
+      expect(allocateDocumentNumber(kind, db, 2026)).toBe(`${replacement}-2026-00042`);
+      expect(db.prepare('SELECT * FROM payments WHERE id=?').get(paymentId)).toEqual(historical);
+      expect(db.prepare("SELECT last_number FROM document_sequences WHERE series='PR' AND year=2026").get()).toEqual({ last_number: 9 });
+
+      const changeAgain = await app.inject({ method: 'PUT', url: '/api/settings', payload: { ...validSettings, [key]: 'OTHER' } });
+      expect(changeAgain.statusCode).toBe(400);
+      expect(db.prepare('SELECT value FROM app_settings WHERE key=?').get(key)).toEqual({ value: replacement });
+    } finally {
+      db.prepare('DELETE FROM payments WHERE id=?').run(paymentId);
+      db.prepare('DELETE FROM clients WHERE id=?').run(clientId);
+    }
+  });
+
   test.each(['invoicePrefix', 'receiptPrefix'])('reserves PR for proposals in %s', async (key) => {
     const response = await app.inject({ method: 'PUT', url: '/api/settings',
       payload: { ...validSettings, [key]: 'pr' } });

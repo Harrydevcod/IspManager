@@ -37,7 +37,7 @@ export function newDraft(
   return {
     clientId: client?.id ?? null,
     title: "Proposta comercial",
-    validUntil: valid.toISOString().slice(0, 10),
+    validUntil: `${valid.getFullYear()}-${String(valid.getMonth() + 1).padStart(2, "0")}-${String(valid.getDate()).padStart(2, "0")}`,
     conditions: "",
     recipient: {
       name: client?.fullName ?? "",
