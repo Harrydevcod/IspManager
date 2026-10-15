@@ -12,7 +12,7 @@ const migration: Migration = {
       code TEXT NOT NULL UNIQUE COLLATE NOCASE CHECK(length(trim(code)) BETWEEN 1 AND 20),
       name TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 200),
       kind TEXT NOT NULL CHECK(kind IN ('product','service')),
-      unit_price_cve REAL NOT NULL DEFAULT 0 CHECK(unit_price_cve >= 0),
+      unit_price_centavos INTEGER NOT NULL DEFAULT 0 CHECK(unit_price_centavos >= 0),
       -- Garantia, estado do produto…: sai nas observações do documento.
       document_note TEXT,
       active INTEGER NOT NULL DEFAULT 1,
@@ -26,6 +26,8 @@ const migration: Migration = {
     ALTER TABLE payment_lines ADD COLUMN item_code TEXT;
     ALTER TABLE payment_lines ADD COLUMN item_note TEXT;
     ALTER TABLE payment_lines ADD COLUMN quantity REAL NOT NULL DEFAULT 1 CHECK(quantity > 0);
+    -- Preço unitário escrito: o PDF não o reconstrói de valor ÷ quantidade. Nulo nas linhas antigas.
+    ALTER TABLE payment_lines ADD COLUMN unit_price_centavos INTEGER CHECK(unit_price_centavos > 0);
     ALTER TABLE proposal_lines ADD COLUMN article_id INTEGER REFERENCES articles(id);
     ALTER TABLE proposal_lines ADD COLUMN item_code TEXT;
     ALTER TABLE proposal_lines ADD COLUMN item_note TEXT;

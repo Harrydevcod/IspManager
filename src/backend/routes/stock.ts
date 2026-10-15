@@ -541,7 +541,7 @@ export async function registerStockRoutes(app: FastifyInstance) {
   }).strict();
 
   app.get('/api/articles', { preHandler: requireAuth() }, async () => getSqliteDatabase().prepare(`
-    SELECT id, code, name, kind, unit_price_cve AS unitPriceCve, document_note AS documentNote, active, created_at AS createdAt
+    SELECT id, code, name, kind, unit_price_centavos / 100.0 AS unitPriceCve, document_note AS documentNote, active, created_at AS createdAt
     FROM articles ORDER BY active DESC, code
   `).all());
 
@@ -563,12 +563,12 @@ export async function registerStockRoutes(app: FastifyInstance) {
 
     if (id === null) {
       const code = data.code || nextCode(db, 'articles', ARTICLE_PREFIX[data.kind]);
-      const newId = Number(db.prepare('INSERT INTO articles(code, name, kind, unit_price_cve, document_note, active) VALUES (?, ?, ?, ?, ?, ?)')
+      const newId = Number(db.prepare('INSERT INTO articles(code, name, kind, unit_price_centavos, document_note, active) VALUES (?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), ?, ?)')
         .run(code, data.name, data.kind, data.unitPriceCve, data.documentNote || null, data.active ? 1 : 0).lastInsertRowid);
       recordAudit(request, { action: 'create', entityType: 'article', entityId: newId, summary: `Criou o artigo ${code} ${data.name}` });
       return reply.status(201).send({ id: newId, code });
     }
-    const result = db.prepare(`UPDATE articles SET code = COALESCE(?, code), name = ?, kind = ?, unit_price_cve = ?, document_note = ?, active = ?,
+    const result = db.prepare(`UPDATE articles SET code = COALESCE(?, code), name = ?, kind = ?, unit_price_centavos = CAST(ROUND(? * 100) AS INTEGER), document_note = ?, active = ?,
       updated_at = datetime('now') WHERE id = ?`).run(data.code || null, data.name, data.kind, data.unitPriceCve, data.documentNote || null, data.active ? 1 : 0, id);
     if (result.changes === 0) return reply.status(404).send({ error: 'Artigo não encontrado' });
     recordAudit(request, { action: 'update', entityType: 'article', entityId: id, summary: `Atualizou o artigo ${data.name}` });

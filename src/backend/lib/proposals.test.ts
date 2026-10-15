@@ -39,9 +39,9 @@ describe('propostas independentes', () => {
     });
     test('linhas de artigos e serviços guardam o artigo; referência inexistente ou misturada é recusada', () => {
         const db=database.getSqliteDatabase();
-        const insert=db.prepare('INSERT INTO articles(code,name,kind,unit_price_cve) VALUES (?,?,?,?)');
-        const serviceId=Number(insert.run('SRV9001','Deslocação técnica','service',500).lastInsertRowid);
-        const productId=Number(insert.run('ART9001','Cabo UTP','product',50).lastInsertRowid);
+        const insert=db.prepare('INSERT INTO articles(code,name,kind,unit_price_centavos) VALUES (?,?,?,?)');
+        const serviceId=Number(insert.run('SRV9001','Deslocação técnica','service',50000).lastInsertRowid);
+        const productId=Number(insert.run('ART9001','Cabo UTP','product',5000).lastInsertRowid);
         const p=api.createProposal({...draft,lines:[
             {kind:'free',description:'Deslocação técnica',period:'once',quantity:1,unitPriceCentavos:50000,articleId:serviceId},
             {kind:'product',description:'Cabo UTP',period:'once',quantity:10,unitPriceCentavos:5000,articleId:productId}

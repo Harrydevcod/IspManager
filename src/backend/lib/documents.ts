@@ -35,6 +35,8 @@ type DocumentLine = {
   /** Garantia, estado…: gravada à emissão, sai nas observações. */
   itemNote?: string | null;
   quantity?: number;
+  /** Preço unitário escrito à emissão; nulo nas linhas antigas (o PDF divide valor ÷ quantidade). */
+  unitPriceCve?: number | null;
   /** Produto (artigo `product` ou equipamento do stock): a política de produtos aplica-se. */
   isProduct?: number | boolean | null;
 };
@@ -626,7 +628,8 @@ function buildDocument(
     sublines: Array<Subline>,
     quiet = false,
     code: string | null = null,
-    quantity = 1
+    quantity = 1,
+    unitPrice: number | null = null
   ) => {
     const titleSize = quiet ? 9 : 10;
     const titleFont = quiet ? 'Helvetica' : 'Helvetica-Bold';
@@ -637,7 +640,7 @@ function buildDocument(
       .text(fitText(doc, description, descColW), descX, y, { width: descColW, lineBreak: false });
     doc.fillColor(titleColor).fontSize(9).font('Helvetica')
       .text(formatQuantity(quantity), qtyX, y + 1, { width: qtyColW, align: 'right', lineBreak: false })
-      .text(formatCve(amount / quantity), unitX, y + 1, { width: unitColW, align: 'right', lineBreak: false });
+      .text(formatCve(unitPrice ?? amount / quantity), unitX, y + 1, { width: unitColW, align: 'right', lineBreak: false });
     if (!totals.isExempt) {
       doc.fillColor(titleColor).fontSize(9).font('Helvetica')
         .text(`${totals.ivaRate}%`, ivaX, y + 1, { width: ivaColW, align: 'right', lineBreak: false });
@@ -711,7 +714,7 @@ function buildDocument(
       }
       // A mensalidade e a instalação não guardam código: são do plano do serviço.
       const code = line.itemCode ?? (line.kind === 'internet' || line.kind === 'instalacao' ? row.planCode : null);
-      renderItem(title, line.amountCve, sublines, line.kind === 'aluguer' || (line.kind === 'audiovisual' && supplementary), code, line.quantity ?? 1);
+      renderItem(title, line.amountCve, sublines, line.kind === 'aluguer' || (line.kind === 'audiovisual' && supplementary), code, line.quantity ?? 1, line.unitPriceCve ?? null);
     }
   } else {
     renderItem('Servico de Internet', totals.total, [planLine], false, row.planCode);
@@ -951,7 +954,7 @@ export async function renderReceiptPdf(receiptId: number, archive = false): Prom
   // recibo — por isso o documento leva uma linha unica pelo valor entregue.
   const invoiceLines = db.prepare(`
     SELECT l.kind, l.description, l.amount_cve AS amountCve, l.item_code AS itemCode, l.item_note AS itemNote,
-           l.quantity, (a.kind = 'product' OR t.catalog_id IS NOT NULL) AS isProduct
+           l.quantity, l.unit_price_centavos / 100.0 AS unitPriceCve, (a.kind = 'product' OR t.catalog_id IS NOT NULL) AS isProduct
     FROM payment_lines l
     LEFT JOIN articles a ON a.id = l.article_id
     LEFT JOIN sale_ticket_lines t ON t.payment_line_id = l.id
@@ -1045,7 +1048,7 @@ export async function renderPaymentDocumentPdf(id: number, kind: DocumentKind, a
   }
   const lines = db.prepare(`
     SELECT l.kind, l.description, l.amount_cve AS amountCve, l.item_code AS itemCode, l.item_note AS itemNote,
-           l.quantity, (a.kind = 'product' OR t.catalog_id IS NOT NULL) AS isProduct
+           l.quantity, l.unit_price_centavos / 100.0 AS unitPriceCve, (a.kind = 'product' OR t.catalog_id IS NOT NULL) AS isProduct
     FROM payment_lines l
     LEFT JOIN articles a ON a.id = l.article_id
     LEFT JOIN sale_ticket_lines t ON t.payment_line_id = l.id

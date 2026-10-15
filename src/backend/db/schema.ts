@@ -198,7 +198,8 @@ export const paymentLines = sqliteTable('payment_lines', {
   articleId: integer('article_id'),
   itemCode: text('item_code'),
   itemNote: text('item_note'),
-  quantity: real('quantity').notNull().default(1)
+  quantity: real('quantity').notNull().default(1),
+  unitPriceCentavos: integer('unit_price_centavos')
 });
 
 export const saleTicketLines = sqliteTable('sale_ticket_lines', {
@@ -978,7 +979,7 @@ export const articles = sqliteTable('articles', {
   code: text('code').notNull().unique(),
   name: text('name').notNull(),
   kind: text('kind', { enum: ['product', 'service'] }).notNull(),
-  unitPriceCve: real('unit_price_cve').notNull().default(0),
+  unitPriceCentavos: integer('unit_price_centavos').notNull().default(0),
   documentNote: text('document_note'),
   active: integer('active', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at').notNull().default("(datetime('now'))"),

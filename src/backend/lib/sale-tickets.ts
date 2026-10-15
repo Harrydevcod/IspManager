@@ -127,8 +127,8 @@ export function createSaleTicket(db: Database, raw: unknown, userId: number | nu
         // A linha livre fica no catálogo de artigos: da próxima vez já tem código e escolhe-se.
         const articleId = line.catalog ? null : line.article?.id ?? resolveFreeLineArticle(db, line.description, line.unitPriceCve, 'product');
         const ref = line.catalog ? lineRef(db, 'equipment_catalog', line.catalog.id) : lineRef(db, 'articles', articleId);
-        const lineId = Number(db.prepare(`INSERT INTO payment_lines(payment_id,kind,description,amount_cve,sort_order,article_id,item_code,item_note,quantity)
-          VALUES (?,'avulso',?,?,?,?,?,?,?)`).run(paymentId, line.description, line.totalCve, index, articleId, ref.code, ref.note, line.quantity).lastInsertRowid);
+        const lineId = Number(db.prepare(`INSERT INTO payment_lines(payment_id,kind,description,amount_cve,sort_order,article_id,item_code,item_note,quantity,unit_price_centavos)
+          VALUES (?,'avulso',?,?,?,?,?,?,?,?)`).run(paymentId, line.description, line.totalCve, index, articleId, ref.code, ref.note, line.quantity, escudosToCentavos(line.unitPriceCve)).lastInsertRowid);
         db.prepare('INSERT INTO sale_ticket_lines(payment_line_id,catalog_id,quantity,unit_price_cve) VALUES (?,?,?,?)')
           .run(lineId, line.catalog?.id ?? null, line.quantity, line.unitPriceCve);
         if (line.catalog) {

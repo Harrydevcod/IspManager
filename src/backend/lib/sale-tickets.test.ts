@@ -226,7 +226,7 @@ test('falha de reposição na anulação reverte o estorno e conserva a venda e 
 test('linha livre cria um artigo com código e a mesma descrição reutiliza-o', () => {
   mustEmit({ lines: [{ description: 'Cabo  RJ45', quantity: 1, unitPriceCve: 150 }] });
   mustEmit({ lines: [{ description: 'cabo rj45', quantity: 2, unitPriceCve: 150 }] });
-  expect(db.prepare('SELECT code,name,kind,unit_price_cve AS price FROM articles').all()).toEqual([{ code: 'ART0001', name: 'Cabo RJ45', kind: 'product', price: 150 }]);
+  expect(db.prepare('SELECT code,name,kind,unit_price_centavos AS price FROM articles').all()).toEqual([{ code: 'ART0001', name: 'Cabo RJ45', kind: 'product', price: 15000 }]);
   expect(db.prepare('SELECT DISTINCT article_id AS id FROM payment_lines').all()).toEqual([{ id: expect.any(Number) }]);
 });
 test('linha de artigo escolhido usa o nome dele; produto do stock não cria artigo', () => {

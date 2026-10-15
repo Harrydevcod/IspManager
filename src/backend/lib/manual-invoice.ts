@@ -148,8 +148,8 @@ export function createManualInvoice(db: Database, input: ManualInvoiceInput, use
       .run(`${MANUAL_INVOICE_PREFIX}${paymentId}`, invoiceNumber, paymentId);
 
     const insertLine = db.prepare(`
-      INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order, article_id, item_code, item_note, quantity)
-      VALUES (?, 'avulso', ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order, article_id, item_code, item_note, quantity, unit_price_centavos)
+      VALUES (?, 'avulso', ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     // Cada linha fica ligada a um artigo; a linha livre cria-o (serviço) ou reutiliza o do mesmo nome.
     input.lines.forEach((line, index) => {
@@ -157,7 +157,8 @@ export function createManualInvoice(db: Database, input: ManualInvoiceInput, use
       const unitCve = line.unitPriceCve ?? lineCve;
       const articleId = line.articleId ?? resolveFreeLineArticle(db, line.description, unitCve, 'service');
       const ref = lineRef(db, 'articles', articleId);
-      insertLine.run(paymentId, line.description, lineCve, index, articleId, ref.code, ref.note, line.unitPriceCve === undefined ? 1 : line.quantity ?? 1);
+      const quantity = line.unitPriceCve === undefined ? 1 : line.quantity ?? 1;
+      insertLine.run(paymentId, line.description, lineCve, index, articleId, ref.code, ref.note, quantity, escudosToCentavos(unitCve));
     });
 
     // Crédito que o cliente já tenha abate aqui, como na geração mensal.

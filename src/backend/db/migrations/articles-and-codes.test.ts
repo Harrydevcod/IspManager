@@ -23,7 +23,8 @@ test('0086 dá código ao equipamento e aos planos existentes e muda o Cliente I
   expect(columns('proposal_lines')).toEqual(expect.arrayContaining(['article_id', 'item_code']));
   expect(columns('payment_lines')).toEqual(expect.arrayContaining(['item_code', 'item_note', 'quantity']));
   expect(columns('proposal_lines')).toContain('item_note');
-  expect(columns('articles')).toContain('document_note');
+  expect(columns('articles')).toEqual(expect.arrayContaining(['document_note', 'unit_price_centavos']));
+  expect(columns('payment_lines')).toContain('unit_price_centavos');
   expect(columns('equipment_catalog')).toContain('document_note');
 });
 
@@ -39,9 +40,19 @@ test('0086 não rouba o código VD a um cliente real', () => {
 test('artigos: código único sem distinguir maiúsculas e nome único entre ativos', () => {
   db = new Database(':memory:'); runMigrations(db);
   const insert = db.prepare('INSERT INTO articles(code,name,kind,active) VALUES (?,?,?,?)');
+  expect(() => db.prepare("INSERT INTO articles(code,name,kind,unit_price_centavos) VALUES ('N1','Neg','service',-1)").run()).toThrow(/CHECK/);
   insert.run('SRV0001', 'Deslocação técnica', 'service', 1);
   expect(() => insert.run('srv0001', 'Outro', 'service', 1)).toThrow(/UNIQUE/);
   expect(() => insert.run('SRV0002', 'deslocação técnica', 'service', 1)).toThrow(/UNIQUE/);
   insert.run('SRV0003', 'Deslocação técnica', 'service', 0);
   expect(() => insert.run('X1', 'Y', 'bundle', 1)).toThrow(/CHECK/);
+});
+
+test('nextCode parte do maior número do prefixo, não da contagem', async () => {
+  const { nextCode } = await import('../../lib/articles');
+  db = new Database(':memory:'); runMigrations(db);
+  const insert = db.prepare("INSERT INTO articles(code,name,kind) VALUES (?,?,'product')");
+  insert.run('ART0001', 'A'); insert.run('ART0100', 'B'); insert.run('ARTX', 'C');
+  expect(nextCode(db, 'articles', 'ART')).toBe('ART0101');
+  expect(nextCode(db, 'articles', 'SRV')).toBe('SRV0001');
 });

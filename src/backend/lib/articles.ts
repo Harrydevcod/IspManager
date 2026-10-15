@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
+import { escudosToCentavos } from '../../shared/money';
 
 /** Tabelas com código de artigo. Lista fechada: o nome entra no SQL. */
 type CodedTable = 'articles' | 'equipment_catalog' | 'internet_plans';
@@ -16,9 +17,11 @@ export function codeTaken(db: Database, table: CodedTable, code: string, exceptI
 
 /** Próximo código livre do prefixo (ART0001, EQP0001…), como o `nextClientCode`. */
 export function nextCode(db: Database, table: CodedTable, prefix: string): string {
-  // Conta só os do mesmo prefixo: o primeiro serviço é SRV0001 mesmo havendo produtos.
-  const { total } = db.prepare(`SELECT COUNT(*) AS total FROM ${table} WHERE code LIKE ? || '%'`).get(prefix) as { total: number };
-  for (let n = total + 1; ; n += 1) {
+  // Parte do maior número do mesmo prefixo: com ART0100 escrito à mão, o seguinte é ART0101.
+  // O primeiro serviço é SRV0001 mesmo havendo produtos. Sufixos não numéricos contam 0.
+  const { top } = db.prepare(`SELECT COALESCE(MAX(CAST(substr(code, length(?) + 1) AS INTEGER)), 0) AS top
+    FROM ${table} WHERE code LIKE ? || '%'`).get(prefix, prefix) as { top: number };
+  for (let n = top + 1; ; n += 1) {
     const code = `${prefix}${String(n).padStart(4, '0')}`;
     if (!codeTaken(db, table, code)) return code;
   }
@@ -28,16 +31,23 @@ export function nextCode(db: Database, table: CodedTable, prefix: string): strin
 const nameKey = (name: string) => name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('pt');
 
 /**
- * A linha livre de um documento passa a ser um artigo: reutiliza o ativo com o mesmo nome
- * ou cria um com código novo. Corre dentro da transação de quem emite o documento.
+ * A linha livre de um documento passa a ser um artigo: reutiliza o ativo com o mesmo nome e tipo
+ * ou cria um com código novo. O preço da linha manda no documento; o do artigo não muda.
+ * Corre dentro da transação de quem emite o documento.
  */
 export function resolveFreeLineArticle(db: Database, description: string, unitPriceCve: number, kind: ArticleKind): number {
   const key = nameKey(description);
-  const actives = db.prepare('SELECT id, name FROM articles WHERE active = 1').all() as Array<{ id: number; name: string }>;
-  const existing = actives.find((row) => nameKey(row.name) === key);
+  const actives = db.prepare('SELECT id, name, kind FROM articles WHERE active = 1').all() as Array<{ id: number; name: string; kind: ArticleKind }>;
+  const existing = actives.find((row) => nameKey(row.name) === key && row.kind === kind);
   if (existing) return existing.id;
-  return Number(db.prepare('INSERT INTO articles(code, name, kind, unit_price_cve) VALUES (?, ?, ?, ?)')
-    .run(nextCode(db, 'articles', ARTICLE_PREFIX[kind]), description.trim().replace(/\s+/g, ' '), kind, unitPriceCve).lastInsertRowid);
+  // ponytail: o mesmo nome noutro tipo leva sufixo, porque o nome é único entre ativos.
+  const name = description.trim().replace(/\s+/g, ' ');
+  const taken = actives.some((row) => nameKey(row.name) === key);
+  const finalName = taken ? `${name} (${kind === 'product' ? 'produto' : 'serviço'})`.slice(0, 200) : name;
+  const clash = actives.find((row) => nameKey(row.name) === nameKey(finalName));
+  if (clash) return clash.id;
+  return Number(db.prepare('INSERT INTO articles(code, name, kind, unit_price_centavos) VALUES (?, ?, ?, ?)')
+    .run(nextCode(db, 'articles', ARTICLE_PREFIX[kind]), finalName, kind, escudosToCentavos(unitPriceCve)).lastInsertRowid);
 }
 
 /** Artigo ativo escolhido no documento; null se não existir ou estiver desativado. */
