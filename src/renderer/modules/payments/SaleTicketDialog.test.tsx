@@ -186,3 +186,22 @@ test('sale-ticket rows expose their own detail action without generic invoice or
   await click(document.querySelector<HTMLButtonElement>('.row-actions-trigger') || document.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!);
   expect(document.body.textContent).toContain('Abrir talão de venda'); expect(document.body.textContent).not.toContain('Fatura PDF'); expect(document.body.textContent).not.toContain('Recibo PDF');
 });
+
+test('a pesquisa encontra artigos e stock pelo código', async () => {
+  const base = vi.mocked(fetch).getMockImplementation()!;
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith('/articles')) return json([
+      { id: 7, code: 'ART0003', name: 'Cabo UTP', kind: 'product', unitPriceCve: 100, active: 1 },
+      { id: 8, code: 'SRV0001', name: 'Deslocação', kind: 'service', unitPriceCve: 500, active: 1 }
+    ]);
+    if (url.endsWith('/stock/summary')) return json({ rows: [{ id: 1, code: 'EQP0002', active: 1, brand: 'MikroTik', model: 'Router', isSerialized: 0, sellingPriceCve: 2500, stockTotal: 5 }] });
+    return base(input, init);
+  }));
+  await mount(<SaleTicketDialog open onClose={() => {}} onCreated={() => {}} />);
+  const options = () => [...(control('Artigo 1') as HTMLSelectElement).options].map((option) => option.value);
+  await fill('Pesquisar produtos', 'art0003');
+  expect(options()).toEqual(['', 'a:7']);
+  await fill('Pesquisar produtos', 'EQP0002');
+  expect(options()).toEqual(['', '1']);
+});

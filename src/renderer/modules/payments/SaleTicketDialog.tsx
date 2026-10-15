@@ -21,6 +21,9 @@ export function SaleTicketDialog({ open, onClose, onCreated }: {
   const [catalog, setCatalog] = useState<StockCatalogRow[]>([]);
   const [catalogError, setCatalogError] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
+  // A pesquisa filtra artigos e stock pelo código (ART0003, EQP0002) ou pelo nome.
+  const matches = (...fields: Array<string | null | undefined>) =>
+    fields.filter(Boolean).join(' ').toLocaleLowerCase('pt').includes(catalogSearch.trim().toLocaleLowerCase('pt'));
   const [articles, setArticles] = useState<ArticleRow[]>([]);
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [method, setMethod] = useState<PaymentMethod>('numerario');
@@ -122,7 +125,7 @@ export function SaleTicketDialog({ open, onClose, onCreated }: {
       {catalogError && <Message tone="error">Não foi possível carregar o catálogo. Pode emitir linhas livres.</Message>}
       <div className="service-items-builder"><div className="service-items-group">
         <p className="service-items-group-title">Artigos e serviços</p>
-        <Field label="Pesquisar produtos" type="search" placeholder="Marca ou modelo" value={catalogSearch} disabled={locked} onChange={(event) => setCatalogSearch(event.target.value)} />
+        <Field label="Pesquisar produtos" type="search" placeholder="Código, nome, marca ou modelo" value={catalogSearch} disabled={locked} onChange={(event) => setCatalogSearch(event.target.value)} />
         {lines.map((line, index) => <div className="sale-ticket-line" key={line.key}>
           <div className="sale-ticket-line-heading"><strong>Linha {index + 1}</strong><Button variant="ghost" size="sm" leadingIcon={<Trash2 size={15} aria-hidden />} disabled={locked || lines.length === 1} onClick={() => setLines((current) => current.filter((row) => row.key !== line.key))}>Remover</Button></div>
           <Select label={`Artigo ${index + 1}`} value={line.articleId ? `a:${line.articleId}` : line.catalogId} disabled={locked} onChange={(event) => {
@@ -134,7 +137,7 @@ export function SaleTicketDialog({ open, onClose, onCreated }: {
             }
             const item = catalog.find((row) => row.id === Number(value));
             updateLine(line.key, { catalogId: value, articleId: '', description: '', serials: '', price: item ? String(item.sellingPriceCve || '') : '' });
-          }}><option value="">Linha livre</option>{articles.length > 0 && <optgroup label="Artigos e serviços">{articles.map((row) => <option key={`a${row.id}`} value={`a:${row.id}`}>{row.code} · {row.name}</option>)}</optgroup>}<optgroup label="Stock">{catalog.filter((item) => String(item.id) === line.catalogId || [item.brand, item.model].filter(Boolean).join(' ').toLocaleLowerCase('pt').includes(catalogSearch.trim().toLocaleLowerCase('pt'))).map((item) => <option key={item.id} value={item.id}>{item.code ? `${item.code} · ` : ''}{[item.brand, item.model].filter(Boolean).join(' ')} · {item.stockTotal} em stock</option>)}</optgroup></Select>
+          }}><option value="">Linha livre</option>{articles.length > 0 && <optgroup label="Artigos e serviços">{articles.filter((row) => String(row.id) === String(line.articleId) || matches(row.code, row.name)).map((row) => <option key={`a${row.id}`} value={`a:${row.id}`}>{row.code} · {row.name}</option>)}</optgroup>}<optgroup label="Stock">{catalog.filter((item) => String(item.id) === line.catalogId || matches(item.code, item.brand, item.model)).map((item) => <option key={item.id} value={item.id}>{item.code ? `${item.code} · ` : ''}{[item.brand, item.model].filter(Boolean).join(' ')} · {item.stockTotal} em stock</option>)}</optgroup></Select>
           {!line.catalogId && !line.articleId && <Field label={`Descrição ${index + 1}`} required maxLength={200} value={line.description} disabled={locked} onChange={(event) => updateLine(line.key, { description: event.target.value })} />}
           <div className="sale-ticket-line-pricing"><Field label={`Quantidade ${index + 1}`} type="number" required min={1} step={1} value={line.quantity} disabled={locked} onChange={(event) => updateLine(line.key, { quantity: event.target.value })} />
           <Field label={`Preço unitário CVE ${index + 1}`} type="number" required min="0.01" step="0.01" value={line.price} disabled={locked} onChange={(event) => updateLine(line.key, { price: event.target.value })} /></div>
