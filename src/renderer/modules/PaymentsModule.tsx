@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CalendarPlus, FilePlus2, RotateCcw, Send } from 'lucide-react';
+import { AlertTriangle, CalendarPlus, RotateCcw, Send } from 'lucide-react';
 import { BulkActionBar, Button, ColumnPicker, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { formatCve, formatPtMonth } from '../lib/format';
 import { authFetch } from '../lib/auth';
 import type { StripeState } from './payments/StripeLinkPanel';
-import { ManualInvoiceDialog } from './payments/ManualInvoiceDialog';
-import { SaleTicketDialog } from './payments/SaleTicketDialog';
 import { SaleTicketDetailDialog } from './payments/SaleTicketDetailDialog';
 import { downloadAuthenticated, printAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
 import { paginateRows, sortByColumns, type SortState } from '../lib/listView';
@@ -77,10 +75,12 @@ function markReminderSent(paymentId: number) {
 // ---------------------------------------------------------------------------
 
 export function PaymentsModule({
+  focusPaymentId, onPaymentFocusHandled,
   focusStatus,
   focusMonth,
   onFocusHandled
 }: {
+  focusPaymentId?: number | null; onPaymentFocusHandled?: () => void;
   focusStatus?: 'overdue' | 'pending' | null;
   focusMonth?: string | null;
   onFocusHandled?: () => void;
@@ -110,8 +110,6 @@ export function PaymentsModule({
   const [stripe, setStripe] = useState<StripeState>({ enabled: false, link: null });
   const [voidTarget, setVoidTarget] = useState<PaymentReceipt | null>(null);
   const [voidReason, setVoidReason] = useState('');
-  const [manualInvoiceOpen, setManualInvoiceOpen] = useState(false);
-  const [saleTicketOpen, setSaleTicketOpen] = useState(false);
   /** O diálogo de anular em modo reembolso Stripe; a password só existe aqui. */
   const [refundPassword, setRefundPassword] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -182,6 +180,14 @@ export function PaymentsModule({
   useEffect(() => {
     void loadPayments();
   }, [loadPayments]);
+  useEffect(() => {
+    if (!focusPaymentId || loading) return;
+    const payment = payments.find(row => row.id === focusPaymentId);
+    if (payment) {setShowAllMonths(true); setStatusFilter('all'); setSelectedPayment(payment); closeActionForm();}
+    else setMessage('Não foi possível abrir o documento no Financeiro.');
+    onPaymentFocusHandled?.();
+  }, [focusPaymentId,loading,payments,onPaymentFocusHandled]);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -1029,12 +1035,6 @@ export function PaymentsModule({
           }
           secondary={
             <>
-              <Button variant="secondary" leadingIcon={<FilePlus2 size={16} aria-hidden />} onClick={() => setManualInvoiceOpen(true)}>
-                Nova fatura
-              </Button>
-              <Button variant="secondary" leadingIcon={<FilePlus2 size={16} aria-hidden />} onClick={() => setSaleTicketOpen(true)}>
-                Novo talão de venda
-              </Button>
               <Button variant="secondary" leadingIcon={<Send size={16} aria-hidden />} onClick={() => void openOverduePreview()} disabled={notifyLoading}>
                 {notifyLoading ? 'A consultar...' : 'Notificar atrasados'}
               </Button>
@@ -1167,27 +1167,6 @@ export function PaymentsModule({
         />
       )}
 
-      <ManualInvoiceDialog
-        open={manualInvoiceOpen}
-        onClose={() => setManualInvoiceOpen(false)}
-        onCreated={(paymentId, stripeWarning) => {
-          setManualInvoiceOpen(false);
-          toast(stripeWarning || 'Fatura emitida.', stripeWarning ? 'error' : 'success');
-          // Uma avulsa não tem mês: sem mostrar todos os meses ficava escondida
-          // pelo filtro, acabada de nascer.
-          setShowAllMonths(true);
-          void loadPayments().then((rows) => {
-            const created = rows.find((item) => item.id === paymentId);
-            if (created) previewPaymentDocument(created);
-          });
-        }}
-      />
-
-      <SaleTicketDialog open={saleTicketOpen} onClose={() => setSaleTicketOpen(false)} onCreated={(paymentId) => {
-        setSaleTicketOpen(false); setStatusFilter('paid'); setShowAllMonths(true); setDocumentTypeFilter('sale_ticket');
-        toast('Talão de venda emitido e pago.', 'success');
-        void loadPayments().then((rows) => { const created = rows.find((row) => row.id === paymentId); if (created) previewPaymentDocument(created); });
-      }} />
       {selectedPayment?.documentType === 'sale_ticket' && <SaleTicketDetailDialog key={selectedPayment.id} payment={selectedPayment} onClose={() => setSelectedPayment(null)} onCancelled={() => {
         toast('Talão de venda anulado.', 'success');
         void loadPayments().then((rows) => setSelectedPayment((current) => rows.find((row) => row.id === current?.id) || current));

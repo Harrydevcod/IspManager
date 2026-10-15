@@ -82,18 +82,22 @@ afterAll(async () => {
 
 describe('settings SMS validation', () => {
   test.each([
-    ['invoicePrefix', 'invoice_number', 'invoice', 'FT'],
-    ['receiptPrefix', 'receipt_number', 'receipt', 'RC']
-  ] as const)('recovers legacy PR in %s without rewriting history or reopening prefix changes', async (key, column, kind, replacement) => {
+    ['invoicePrefix', 'invoice_number', 'invoice', 'FT', 'PR'],
+    ['invoicePrefix', 'invoice_number', 'invoice', 'FT', 'OR'],
+    ['invoicePrefix', 'invoice_number', 'invoice', 'FT', 'PF'],
+    ['receiptPrefix', 'receipt_number', 'receipt', 'RC', 'PR'],
+    ['receiptPrefix', 'receipt_number', 'receipt', 'RC', 'OR'],
+    ['receiptPrefix', 'receipt_number', 'receipt', 'RC', 'PF']
+  ] as const)('recovers legacy PR in %s without rewriting history or reopening prefix changes', async (key, column, kind, replacement, prefix) => {
     const { allocateDocumentNumber } = await import('../lib/numbering');
     const clientId = Number(db.prepare("INSERT INTO clients(client_code,full_name) VALUES (?, 'Legacy recipient')").run(`LEGACY-${key}`).lastInsertRowid);
-    const paymentId = Number(db.prepare(`INSERT INTO payments(client_id,reference_month,amount_cve,due_date,${column}) VALUES (?, '2026-10', 1000, '2026-10-31', 'PR-2026-00009')`).run(clientId).lastInsertRowid);
+    const paymentId = Number(db.prepare(`INSERT INTO payments(client_id,reference_month,amount_cve,due_date,${column}) VALUES (?, '2026-10', 1000, '2026-10-31', ?)`).run(clientId,`${prefix}-2026-00009`).lastInsertRowid);
     try {
-      db.prepare('INSERT INTO app_settings(key,value) VALUES (?,?)').run(key, ' pr ');
+      db.prepare('INSERT INTO app_settings(key,value) VALUES (?,?)').run(key,` ${prefix.toLowerCase()} `);
       db.prepare('INSERT OR REPLACE INTO document_sequences(series,year,last_number) VALUES (?,2026,41)').run(replacement);
       db.prepare("INSERT OR REPLACE INTO document_sequences(series,year,last_number) VALUES ('PR',2026,9)").run();
       const historical = db.prepare('SELECT * FROM payments WHERE id=?').get(paymentId);
-      expect(() => allocateDocumentNumber(kind, db, 2026)).toThrow(/PR.*reservado/);
+      expect(() => allocateDocumentNumber(kind, db, 2026)).toThrow(/reservados/);
 
       const corrected = await app.inject({ method: 'PUT', url: '/api/settings', payload: validSettings });
       expect(corrected.statusCode, corrected.body).toBe(200);

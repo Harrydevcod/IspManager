@@ -102,9 +102,9 @@ describe("commercial proposal workspace", () => {
     await render();
     expect(host.textContent).toContain("Sem acesso");
     expect(mocks.fetch).not.toHaveBeenCalled();
-    expect(sectionIdsForRole("technician")).not.toContain("proposals");
-    expect(sectionIdsForRole("operator")).toContain("proposals");
-    expect(sectionIdsForRole("admin")).toContain("proposals");
+    expect(sectionIdsForRole("technician")).not.toContain("documents");
+    expect(sectionIdsForRole("operator")).toContain("documents");
+    expect(sectionIdsForRole("admin")).toContain("documents");
   });
   it("composes free installation and monthly plan, excluding system recipients, and retains edits after conflict", async () => {
     await render();
@@ -160,4 +160,14 @@ describe("commercial proposal workspace", () => {
     expect(values).toContain("Maria");
     expect(values).toContain("Fibra 100");
   });
+});
+
+it('selects proforma and requires payment instructions', async () => {
+  await render(); await click('Nova proposta');
+  await select('Tipo de documento','proforma');
+  expect(host.textContent).toContain('Montante a pagar antecipadamente');
+  expect(host.textContent).toContain('O que este pagamento cobre');
+  expect(host.textContent).toContain('Condições de pagamento');
+  await click('Guardar rascunho');
+  expect(mocks.fetch.mock.calls.some(([,init]) => init?.method === 'POST')).toBe(false);
 });

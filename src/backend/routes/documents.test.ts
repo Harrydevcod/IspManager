@@ -306,3 +306,26 @@ describe('GET /api/payments/:id/receipt.pdf', () => {
     expect(String(response.headers['content-disposition'])).toContain(`filename*=UTF-8''${encodeURIComponent(`Recibo - Ana Lima - ${after.receipt_number}.pdf`)}`);
   });
 });
+
+test('archive PDF rejects unissued invoices without consuming numbers and prints numbered cancellations',async()=>{
+  const id=seedPayment('cancelled');
+  const before=db.prepare('SELECT * FROM document_sequences').all();
+  expect((await app.inject({url:`/api/payments/${id}/invoice.pdf?archive=1`})).statusCode).toBe(409);
+  expect(db.prepare('SELECT * FROM document_sequences').all()).toEqual(before);
+  db.prepare("UPDATE payments SET invoice_number='FT-ARCHIVE-VOID',invoice_date='2026-10-14' WHERE id=?").run(id);
+  const historical=db.prepare('SELECT * FROM payments WHERE id=?').get(id);
+  const pdf=await app.inject({url:`/api/payments/${id}/invoice.pdf?archive=1`});
+  expect(pdf.statusCode).toBe(200);
+  const {inspectPdfLayout}=await import('../lib/pdf.testing');
+  expect(inspectPdfLayout(pdf.rawPayload).text.flat().map(item=>item.value).join('')).toContain('ANULADA');
+  expect(db.prepare('SELECT * FROM payments WHERE id=?').get(id)).toEqual(historical);
+});
+test('archive PDF prints voided partial receipt as cancelled without changing it',async()=>{
+  const id=seedPayment('paid');
+  const receipt=Number(db.prepare("INSERT INTO payment_receipts(payment_id,amount_cve,payment_date,payment_method,receipt_number,receipt_date,voided_at) VALUES (?,100,'2026-10-14','numerario','RC-VOIDED','2026-10-14','2026-10-14')").run(id).lastInsertRowid);
+  const original=db.prepare('SELECT * FROM payment_receipts WHERE id=?').get(receipt);
+  const pdf=await app.inject({url:`/api/receipts/${receipt}/receipt.pdf?archive=1`});expect(pdf.statusCode).toBe(200);
+  const {inspectPdfLayout}=await import('../lib/pdf.testing');
+  expect(inspectPdfLayout(pdf.rawPayload).text.flat().map(item=>item.value).join('')).toContain('ANULADO');
+  expect(db.prepare('SELECT * FROM payment_receipts WHERE id=?').get(receipt)).toEqual(original);
+});

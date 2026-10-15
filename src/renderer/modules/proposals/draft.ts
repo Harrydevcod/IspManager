@@ -35,6 +35,8 @@ export function newDraft(
   const valid = new Date(now);
   valid.setDate(valid.getDate() + 30);
   return {
+    documentType: "proposal",
+    paymentRequest: null,
     clientId: client?.id ?? null,
     title: "Proposta comercial",
     validUntil: `${valid.getFullYear()}-${String(valid.getMonth() + 1).padStart(2, "0")}-${String(valid.getDate()).padStart(2, "0")}`,
@@ -51,6 +53,10 @@ export function newDraft(
 }
 export function draftFromProposal(proposal: Proposal): ProposalDraftInput {
   return {
+    documentType: proposal.documentType,
+    paymentRequest: proposal.paymentRequest
+      ? { ...proposal.paymentRequest }
+      : null,
     clientId: proposal.clientId,
     recipient: { ...proposal.recipient },
     title: proposal.title,
@@ -143,7 +149,39 @@ export function lineTotalCentavos(
     (BigInt(quantityMillis) * BigInt(line.unitPriceCentavos) + 500n) / 1000n;
   return rounded <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(rounded) : 0;
 }
+/** Parse decimal CVE text without floating-point rounding. */
+export function parsePaymentAmount(value: string): number | null {
+  const match = /^(\d{1,10})(?:[.,](\d{1,2}))?$/.exec(value.trim());
+  if (!match) return null;
+  const amount =
+    Number(match[1]) * 100 + Number((match[2] ?? "").padEnd(2, "0"));
+  return Number.isSafeInteger(amount) && amount > 0 && amount <= 100000000000
+    ? amount
+    : null;
+}
 export function validateDraft(draft: ProposalDraftInput): string | null {
+  if (draft.documentType === "proforma") {
+    const request = draft.paymentRequest;
+    if (
+      !request ||
+      !Number.isSafeInteger(request.amountCentavos) ||
+      request.amountCentavos <= 0 ||
+      request.amountCentavos > 100000000000
+    )
+      return "Preencha um montante antecipado positivo, com até duas casas decimais.";
+    if (!request.description.trim() || !request.conditions.trim())
+      return "Preencha o que o pagamento cobre e as condições de pagamento.";
+    if (request.description.length > 12000 || request.conditions.length > 12000)
+      return "As instruções de pagamento admitem até 12 000 caracteres por campo.";
+    if (request.dueDate) {
+      const date = new Date(`${request.dueDate}T12:00:00Z`);
+      if (
+        !Number.isFinite(date.getTime()) ||
+        date.toISOString().slice(0, 10) !== request.dueDate
+      )
+        return "Data limite de pagamento inválida.";
+    }
+  }
   if (!draft.recipient.name.trim()) return "Preencha o nome do destinatário.";
   if (!draft.title.trim() || !draft.validUntil)
     return "Preencha o título e a validade.";

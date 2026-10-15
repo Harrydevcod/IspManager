@@ -22,6 +22,7 @@ export async function registerProposalRoutes(app: FastifyInstance) {
     const access = { preHandler: requireRole(['admin', 'operator']) };
     app.get('/api/proposals', access, async (request, reply) => {
         const parsed = z.object({
+            documentType: z.enum(['proposal','quotation','proforma']).optional(),
             page: z.coerce.number().int().positive().optional(),
             pageSize: z.coerce.number().int().min(1).max(100).optional(),
             search: z.string().max(250).optional(),

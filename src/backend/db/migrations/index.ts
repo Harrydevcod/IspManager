@@ -80,6 +80,7 @@ import m0081 from './0081_manual_invoices';
 import m0082 from './0082_stripe_draft_cancellation';
 import m0083 from './0083_sale_tickets';
 import m0084 from './0084_proposals';
+import m0085 from './0085_informative_documents';
 
 /**
  * The migration chain, in the order new migrations are appended.
@@ -92,5 +93,5 @@ import m0084 from './0084_proposals';
 // 0021 (money_centavos) ficou por usar — o runner ordena por versão e tolera o gap.
 export const migrations: Migration[] = [m0001, m0002, m0003, m0004, m0005, m0006, m0007, m0008, m0009, m0010, m0011, m0012, m0013, m0014, m0015, m0016, m0017, m0018, m0019, m0020, m0022, m0023, m0024, m0025, m0026, m0027, m0028, m0029, m0030, m0033, m0034, m0035, m0036, m0037, m0038, m0039, m0040, m0041, m0042, m0043, m0044, m0045, m0046, m0047, m0048, m0049, m0050, m0051, m0052, m0053, m0054, m0055, m0056, m0057, m0058, m0059, m0060, m0061, m0062, m0063, m0064, m0065, m0066, m0067, m0068, m0069, m0070, m0071, m0072, m0073, m0074, m0075, m0076, m0077, m0078, m0079, m0080, m0081, m0082, m0083];
 
-migrations.push(m0084);
+migrations.push(m0084, m0085);
 export type { Migration } from './types';

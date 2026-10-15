@@ -1,6 +1,6 @@
 .proposals-workspace {
-  max-width: 1460px;
-  margin: 0 auto;
+  width: 100%;
+  min-width: 0;
 }
 .proposals-workspace .field input,
 .proposals-workspace .field select,

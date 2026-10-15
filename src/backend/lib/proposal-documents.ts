@@ -1,5 +1,5 @@
 import { formatCentavos } from '../../shared/money';
-import { PROPOSAL_STATUS_LABELS, type Proposal, type ProposalCompany, type ProposalTax } from '../../shared/proposals';
+import { INFORMATIVE_TYPE_LABELS, PROPOSAL_STATUS_LABELS, type Proposal, type ProposalCompany, type ProposalTax, type DocumentBankAccount } from '../../shared/proposals';
 import { computeTotals, loadCompany, PALETTE, PaymentDocumentError } from './documents';
 
 const PDFDocument = require('pdfkit');
@@ -9,10 +9,10 @@ export type ProposalFormat = 'a4' | 'a5';
 export async function renderProposalPdf(id: number, format: ProposalFormat = 'a4'): Promise<{ buffer: Buffer; filename: string }> {
   const { getProposal } = await import('./proposals');
   const proposal = getProposal(id);
-  return { buffer: await buildProposalPdf(proposal, proposal.status === 'draft' ? loadCompany() : undefined, format), filename: `${proposal.number || `proposta-rascunho-${id}`}.pdf` };
+  return { buffer: await buildProposalPdf(proposal, proposal.status === 'draft' ? loadCompany() : undefined, format), filename: `${proposal.number || `${proposal.documentType ?? "proposal"}-rascunho-${id}`}.pdf` };
 }
 
-export function buildProposalPdf(proposal: Proposal, previewCompany?: ProposalCompany, format: ProposalFormat = 'a4'): Promise<Buffer> {
+export function buildProposalPdf(proposal: Proposal, previewCompany?: ProposalCompany & {bankAccounts?: DocumentBankAccount[]}, format: ProposalFormat = 'a4'): Promise<Buffer> {
   if (format !== 'a4' && format !== 'a5') return Promise.reject(new PaymentDocumentError(400, 'Formato inválido: use a4 ou a5'));
   const a5 = format === 'a5';
   const M = a5 ? 28 : 44;
@@ -26,10 +26,14 @@ export function buildProposalPdf(proposal: Proposal, previewCompany?: ProposalCo
   const amountX = M + CW * 0.81;
   const rowLineHeight = a5 ? 12 : 14;
   if (proposal.status !== 'draft' && !proposal.snapshot) return Promise.reject(new Error('Issued proposal requires a frozen snapshot'));
-  const company = proposal.snapshot?.company ?? previewCompany;
+  const company = proposal.status === 'draft' ? previewCompany ?? proposal.snapshot?.company : proposal.snapshot?.company;
+  const label = INFORMATIVE_TYPE_LABELS[proposal.documentType ?? 'proposal'];
+  const disclaimer = `${label}${proposal.documentType === 'proforma' ? ' — não constitui fatura fiscal' : ' - não constitui fatura'}`;
+  const payment = proposal.status === 'draft' ? proposal.paymentRequest : proposal.snapshot?.paymentRequest;
+  const bankAccounts = proposal.status === 'draft' ? previewCompany?.bankAccounts ?? [] : proposal.snapshot?.bankAccounts ?? [];
   if (!company) return Promise.reject(new Error('Draft proposal requires company preview settings'));
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: [W, H], margins: { top: M, left: M, right: M, bottom: 20 }, bufferPages: true, autoFirstPage: false, info: { Title: proposal.title, Author: company.companyName, Subject: 'Proposta comercial - não constitui fatura' } });
+    const doc = new PDFDocument({ size: [W, H], margins: { top: M, left: M, right: M, bottom: 20 }, bufferPages: true, autoFirstPage: false, info: { Title: proposal.title, Author: company.companyName, Subject: disclaimer } });
     const chunks: Buffer[] = [];
     doc.on('data', (chunk: Buffer) => chunks.push(chunk));
     doc.on('error', reject);
@@ -66,7 +70,7 @@ export function buildProposalPdf(proposal: Proposal, previewCompany?: ProposalCo
     const page = () => {
       doc.addPage();
       doc.rect(0, 0, W, H).fill(PALETTE.paper);
-      single('ISPM / PROPOSTA COMERCIAL', M, M, CW - 145, 8, true, 'left', PALETTE.accent);
+      single(`ISPM / ${label.toLocaleUpperCase('pt')}`,  M, M, CW - 145, 8, true, 'left', PALETTE.accent);
       single(number, W - M - 145, M, 145, 8, true, 'right');
       doc.moveTo(M, M + 20).lineTo(W - M, M + 20).strokeColor(PALETTE.hairline).lineWidth(0.6).stroke();
       y = M + 32;
@@ -119,8 +123,7 @@ export function buildProposalPdf(proposal: Proposal, previewCompany?: ProposalCo
       y += rowHeight;
     }
     y += a5 ? 6 : 13;
-    paragraph(proposal.title, a5 ? 18 : 24, true);
-    paragraph('Proposta comercial - não constitui fatura', 8, true, PALETTE.accent); y += a5 ? 4 : 12;
+    paragraph(disclaimer, 8, true, PALETTE.accent); y += a5 ? 4 : 12;
     paragraph(`Emissão: ${date(proposal.issuedAt)}   |   Validade: ${date(proposal.validUntil)}   |   Moeda: ${company.currencyCode}`, 8);
     paragraph(`Estado: ${PROPOSAL_STATUS_LABELS[proposal.status]}`, 8);
     const previous = proposal.chain.find((p) => p.id === proposal.previousId);
@@ -164,13 +167,27 @@ export function buildProposalPdf(proposal: Proposal, previewCompany?: ProposalCo
       single(period === 'once' ? 'Total de custos únicos' : 'Total mensal', M, y, CW - totalWidth - 12, a5 ? 10 : 11, true);
       single(money(total), W - M - totalWidth, y - 3, totalWidth, a5 ? 14 : 17, true, 'right', PALETTE.accent); y += a5 ? 22 : 31;
     }
+    if (proposal.documentType === 'proforma' && payment) {
+      heading('Pedido de pagamento antecipado', 70);
+      paragraph(`${formatCentavos(payment.amountCentavos)} CVE`, a5 ? 14 : 17, true, PALETTE.accent);
+      heading('O que este pagamento cobre'); paragraph(payment.description);
+      heading('Condições de pagamento'); paragraph(payment.conditions);
+      if (payment.dueDate) { y += 8; paragraph(`Data limite de pagamento: ${date(payment.dueDate)}`, 9, true); }
+      if (bankAccounts.length) {
+        heading('Contas bancárias');
+        for (const account of bankAccounts) {
+          paragraph([account.bankName, account.accountName, account.accountNumber, account.reference].filter(Boolean).join(' · '), 9);
+          y += 4;
+        }
+      }
+    }
     if (proposal.conditions) { heading('Condições comerciais'); paragraph(proposal.conditions); }
     if (company.legalNotes) { heading('Informação comercial', a5 ? 12 : 26); paragraph(company.legalNotes, 8, false, PALETTE.muted); }
     const range = doc.bufferedPageRange();
     for (let i = range.start; i < range.start + range.count; i++) {
       doc.switchToPage(i);
       doc.moveTo(M, H - 47).lineTo(W - M, H - 47).strokeColor(PALETTE.hairline).lineWidth(0.5).stroke();
-      single('Proposta comercial - não constitui fatura', M, H - 35, CW - 90, 7, false, 'left', PALETTE.muted);
+      single(disclaimer, M, H - 35, CW - 90, 7, false, 'left', PALETTE.muted);
       single(`Página ${i + 1} / ${range.count}`, W - M - 90, H - 35, 90, 7, false, 'right', PALETTE.muted);
     }
     doc.end();

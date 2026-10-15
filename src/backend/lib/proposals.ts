@@ -4,7 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { recordAuditStrict } from './audit';
 import { loadCompany, computeTotals } from './documents';
 import type { UserRole } from './auth';
-import type { Proposal, ProposalAction, ProposalDraftInput, ProposalLine, ProposalList, ProposalSnapshot, ProposalStatus, ProposalSummary, ProposalTax } from '../../shared/proposals';
+import type { Proposal, ProposalAction, ProposalDraftInput, ProposalLine, ProposalList, ProposalSnapshot, ProposalStatus, ProposalSummary, ProposalTax, InformativeDocumentType, PaymentRequest } from '../../shared/proposals';
 export class ProposalError extends Error {
     constructor(message: string, public statusCode = 400) { super(message); }
 }
@@ -32,7 +32,14 @@ const lineSchema = z.object({
         context.addIssue({ code: 'custom', message: 'Referência incompatível' });
     }
 });
+const paymentRequestSchema = z.object({
+    amountCentavos: z.number().int().positive().max(100000000000),
+    description: text(12000).min(1), conditions: text(12000).min(1),
+    dueDate: date.nullable().optional().default(null)
+}).strict();
 export const proposalDraftSchema = z.object({
+    documentType: z.enum(['proposal', 'quotation', 'proforma']).optional(),
+    paymentRequest: paymentRequestSchema.nullable().optional(),
     clientId: z.number().int().positive().nullable(),
     recipient: z.object({ name: text(250).min(1), nif: text(30), phone: text(80), email: z.union([z.literal(''), text(254).email()]), address: text(1000) }).strict(),
     title: text(250).min(1),
@@ -41,6 +48,8 @@ export const proposalDraftSchema = z.object({
     lines: z.array(lineSchema).min(1).max(100)
 }).strict();
 type Row = {
+    document_type: InformativeDocumentType;
+    payment_request_json: string | null;
     id: number;
     number: string | null;
     client_id: number | null;
@@ -81,6 +90,7 @@ function status(proposal: Row): ProposalStatus {
 }
 function summary(proposal: Row): ProposalSummary {
     return {
+        documentType: proposal.document_type,
         id: proposal.id, number: proposal.number, clientId: proposal.client_id,
         recipientName: JSON.parse(proposal.recipient_json).name, title: proposal.title,
         validUntil: proposal.valid_until, status: status(proposal), version: proposal.version,
@@ -112,7 +122,7 @@ export function getProposal(id: number, role: UserRole = 'admin'): Proposal {
         FROM proposal_deliveries WHERE proposal_id=? ORDER BY id`).all(id) as Proposal['deliveries'];
     const chain = (db.prepare('SELECT * FROM proposals WHERE chain_id=? ORDER BY id').all(proposal.chain_id ?? id) as Row[]).map(summary);
     return {
-        ...summary(proposal), recipient: JSON.parse(proposal.recipient_json), conditions: proposal.conditions,
+        ...summary(proposal), paymentRequest: proposal.payment_request_json ? JSON.parse(proposal.payment_request_json) : null, recipient: JSON.parse(proposal.recipient_json), conditions: proposal.conditions,
         snapshot: proposal.snapshot_json ? JSON.parse(proposal.snapshot_json) : null, createdBy: proposal.created_by,
         decisionAt: proposal.decision_at, acceptedBy: proposal.accepted_by, decisionNote: proposal.decision_note,
         cancellationReason: proposal.cancellation_reason, lines, deliveries, chain, allowedActions: actions(proposal, role)
@@ -121,7 +131,10 @@ export function getProposal(id: number, role: UserRole = 'admin'): Proposal {
 function validate(input: ProposalDraftInput) {
     const parsed = proposalDraftSchema.safeParse(input);
     if (!parsed.success) throw new ProposalError('Dados de proposta inválidos');
-    const data = parsed.data;
+    const documentType = parsed.data.documentType ?? 'proposal';
+    const paymentRequest = documentType === 'proforma' ? parsed.data.paymentRequest ?? null : null;
+    if (documentType === 'proforma' && !paymentRequest) throw new ProposalError('Preencha o pedido de pagamento da proforma');
+    const data = { ...parsed.data, documentType, paymentRequest };
     const db = getSqliteDatabase();
     if (data.clientId) {
         const client = db.prepare('SELECT system_kind FROM clients WHERE id=?').get(data.clientId) as {system_kind: string | null} | undefined;
@@ -161,9 +174,9 @@ function insertDraft(input: ProposalDraftInput, request?: FastifyRequest, previo
     const {data, lines, once, monthly} = validate(input);
     const db = getSqliteDatabase();
     const id = Number(db.prepare(`INSERT INTO proposals(client_id,recipient_json,title,valid_until,conditions,
-        once_total_centavos,monthly_total_centavos,created_by,previous_id,chain_id) VALUES(?,?,?,?,?,?,?,?,?,?)`)
+        once_total_centavos,monthly_total_centavos,created_by,previous_id,chain_id,document_type,payment_request_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
         .run(data.clientId,JSON.stringify(data.recipient),data.title,data.validUntil,data.conditions,once,monthly,
-            request?.user?.id ?? null,previous?.id ?? null,previous?.chain_id ?? null).lastInsertRowid);
+            request?.user?.id ?? null,previous?.id ?? null,previous?.chain_id ?? null,data.documentType,data.paymentRequest ? JSON.stringify(data.paymentRequest) : null).lastInsertRowid);
     if (!previous) db.prepare('UPDATE proposals SET chain_id=? WHERE id=?').run(id,id);
     saveLines(id,lines);
     audit(id,previous ? 'revise' : 'create',request);
@@ -186,10 +199,13 @@ export function updateProposal(id: number, input: ProposalDraftInput, version: n
         const proposal = row(id);
         checkVersion(proposal,version);
         if (proposal.status !== 'draft') throw new ProposalError('A proposta emitida é imutável',409);
-        const {data,lines,once,monthly} = validate(input);
+        const documentType = input.documentType ?? proposal.document_type;
+        if (proposal.previous_id && documentType !== proposal.document_type) throw new ProposalError('O tipo de uma revisão é imutável',409);
+        const {data,lines,once,monthly} = validate({...input, documentType,
+            paymentRequest: input.paymentRequest === undefined ? (proposal.payment_request_json ? JSON.parse(proposal.payment_request_json) : null) : input.paymentRequest});
         getSqliteDatabase().prepare(`UPDATE proposals SET client_id=?,recipient_json=?,title=?,valid_until=?,conditions=?,
-            once_total_centavos=?,monthly_total_centavos=?,version=version+1 WHERE id=?`)
-            .run(data.clientId,JSON.stringify(data.recipient),data.title,data.validUntil,data.conditions,once,monthly,id);
+            once_total_centavos=?,monthly_total_centavos=?,document_type=?,payment_request_json=?,version=version+1 WHERE id=?`)
+            .run(data.clientId,JSON.stringify(data.recipient),data.title,data.validUntil,data.conditions,once,monthly,data.documentType,data.paymentRequest ? JSON.stringify(data.paymentRequest) : null,id);
         saveLines(id,lines);
         audit(id,'update',request);
     }).immediate();
@@ -204,6 +220,8 @@ function snapshot(proposal: Row): ProposalSnapshot {
             ivaRate:totals.ivaRate,isExempt:totals.isExempt,exemptReason:totals.exemptReason};
     };
     return {
+        paymentRequest: proposal.payment_request_json ? JSON.parse(proposal.payment_request_json) as PaymentRequest : null,
+        bankAccounts: company.bankAccounts,
         company: {companyName:company.companyName,nif:company.nif,phone:company.phone,email:company.email,
             address:company.address,island:company.island,currencyCode:company.currencyCode,ivaRate:company.ivaRate,
             fiscalRegime:company.fiscalRegime,showIva:company.showIva,legalNotes:company.legalNotes},
@@ -233,17 +251,21 @@ function issueProposal(proposal: Row, request?: FastifyRequest) {
         db.prepare("UPDATE proposals SET status='superseded',version=version+1 WHERE id=?").run(previous.id);
         audit(previous.id,'supersede',request);
     }
+    // Revalidate stored payment instructions before allocating a number.
+    validate({documentType: proposal.document_type, paymentRequest: proposal.payment_request_json ? JSON.parse(proposal.payment_request_json) : null, clientId: null, recipient: JSON.parse(proposal.recipient_json), title: proposal.title, validUntil: proposal.valid_until, conditions: proposal.conditions, lines: getProposal(proposal.id).lines.map(({kind,description,period,quantity,unitPriceCentavos,planId,catalogId}) => ({kind,description,period,quantity,unitPriceCentavos,planId,catalogId}))});
     const year = new Date().getFullYear();
-    const sequence = db.prepare(`INSERT INTO proposal_sequences(year,last_number) VALUES(?,1)
+    const series = {proposal: ['PR','proposal_sequences'], quotation: ['OR','quotation_sequences'], proforma: ['PF','proforma_sequences']}[proposal.document_type];
+    const sequence = db.prepare(`INSERT INTO ${series[1]}(year,last_number) VALUES(?,1)
         ON CONFLICT(year) DO UPDATE SET last_number=last_number+1 RETURNING last_number`).get(year) as {last_number:number};
     db.prepare("UPDATE proposals SET number=?,status='issued',issued_at=?,snapshot_json=?,version=version+1 WHERE id=?")
-        .run(`PR-${year}-${String(sequence.last_number).padStart(5,'0')}`,new Date().toISOString(),JSON.stringify(snapshot(proposal)),proposal.id);
+        .run(`${series[0]}-${year}-${String(sequence.last_number).padStart(5,'0')}`,new Date().toISOString(),JSON.stringify(snapshot(proposal)),proposal.id);
 }
 function reviseProposal(proposal: Row, role: UserRole, request?: FastifyRequest) {
     const current = getProposal(proposal.id,role);
     const validity = new Date();
     validity.setDate(validity.getDate()+30);
     return insertDraft({
+        documentType:proposal.document_type,paymentRequest:current.paymentRequest,
         clientId:proposal.client_id,recipient:current.recipient,title:proposal.title,conditions:proposal.conditions,
         validUntil:formatLocalDate(validity),
         lines:current.lines.map(({kind,description,period,quantity,unitPriceCentavos,planId,catalogId}) =>
@@ -305,6 +327,7 @@ export function listProposals(query: {
     search?: string;
     status?: ProposalStatus;
     clientId?: number;
+    documentType?: InformativeDocumentType;
 } = {}, role: UserRole = 'admin'): ProposalList {
     authorize(role);
     const page = query.page ?? 1;
@@ -314,6 +337,7 @@ export function listProposals(query: {
     }
     const where: string[] = [];
     const values: (string | number)[] = [];
+    if (query.documentType) { where.push("document_type=?"); values.push(query.documentType); }
     if (query.search) {
         where.push("(number LIKE ? ESCAPE '\\' OR json_extract(recipient_json,'$.name') LIKE ? ESCAPE '\\')");
         const search = `%${query.search.replace(/[\\%_]/g, '\\$&')}%`;

@@ -9,8 +9,7 @@ ISPM is a desktop application for day-to-day ISP operations in Cabo Verde.
 - `Servicos` - customer subscriptions tied to plans.
 - `Pagamentos` - billing records, overdue tracking, receipts, and invoices.
 - `Documentos de cobranca` - invoice and receipt PDFs generated from payments.
-- `Propostas` - commercial offers with separate one-time and monthly totals,
-  offered to clients or interested recipients without creating operational records.
+- `Documentos` - informative proposals, quotations and proformas, plus an archive of existing invoices, receipts and sale tickets. Manual fiscal issuance lives here; collections and receipts remain in Financeiro.
 - `Stock` - equipment catalog and inventory movements.
 - `Relatorios` - revenue, overdue debt, stock value, and operational summaries.
 - `Configuracoes` - company profile, billing defaults, document prefixes, and WhatsApp settings.
@@ -20,7 +19,10 @@ ISPM is a desktop application for day-to-day ISP operations in Cabo Verde.
 
 - One `Cliente` can have multiple `Servicos`.
 - A `Proposta` may link to a `Cliente` or store its recipient independently.
-- Proposals have their own PR series and tables, outside `Pagamentos`.
+- Informative documents reuse proposal tables outside `Pagamentos`, with independent annual PR (proposal), OR (quotation) and PF (proforma) series.
+- Proformas require a manually entered CVE advance request, separate from one-time and monthly offer totals; issuing freezes its instructions and printable treasury bank accounts.
+- Acceptance of an informative offer never records payment or creates operational records.
+- Documentos centralizes manual invoice/sale-ticket creation and document consultation. Fiscal archive reads never issue documents; partial receipts appear individually, excluding internal sale-ticket receipts.
 - Issuing freezes the offered terms and company/VAT presentation; acceptance is
   recorded manually and does not create billing, services, or stock movements.
 - Draft revisions link to the previous offer; issuing replaces it atomically.

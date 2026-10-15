@@ -1,5 +1,5 @@
 import { AlertTriangle, Banknote, Receipt, TrendingUp, Wallet } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '../components';
 import { ExpensesModule } from './ExpensesModule';
 import { InvestmentsModule } from './InvestmentsModule';
@@ -26,17 +26,21 @@ const TABS: { id: FinanceTab; label: string; icon: typeof TrendingUp }[] = [
  * through `paymentsFocus`, consumed by PaymentsModule on mount.
  */
 export function FinanceModule({
+  paymentFocusId, onPaymentFocusHandled,
   paymentsFocus,
   paymentsMonth,
   onPaymentsFocusHandled,
   onOpenClient
 }: {
+  paymentFocusId?: number | null; onPaymentFocusHandled?: () => void;
   paymentsFocus?: 'overdue' | 'pending' | null;
   paymentsMonth?: string | null;
   onPaymentsFocusHandled?: () => void;
   onOpenClient?: (clientId: number) => void;
 } = {}) {
   const [tab, setTab] = useState<FinanceTab>('pagamentos');
+  // A focused document must open the billing workspace even if another tab was selected.
+  useEffect(() => {if(paymentFocusId) setTab('pagamentos');},[paymentFocusId]);
 
   return (
     <div className="finance-shell">
@@ -60,7 +64,7 @@ export function FinanceModule({
       </div>
 
       {tab === 'pagamentos' && (
-        <PaymentsModule focusStatus={paymentsFocus} focusMonth={paymentsMonth} onFocusHandled={onPaymentsFocusHandled} />
+        <PaymentsModule focusPaymentId={paymentFocusId} onPaymentFocusHandled={onPaymentFocusHandled} focusStatus={paymentsFocus} focusMonth={paymentsMonth} onFocusHandled={onPaymentsFocusHandled} />
       )}
       {tab === 'pendentes' && <ReceivablesModule onOpenClient={onOpenClient} />}
       {tab === 'lucro' && <ProfitModule />}

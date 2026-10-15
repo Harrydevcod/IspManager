@@ -16,7 +16,7 @@ type SaleTicket = {
 };
 
 export function SaleTicketDetailDialog({ payment, onClose, onCancelled }: {
-  payment: PaymentRow; onClose: () => void; onCancelled: () => void;
+  payment: Pick<PaymentRow, 'id' | 'status' | 'invoiceNumber'>; onClose: () => void; onCancelled: () => void;
 }) {
   const { hasRole } = useAuth();
   const [ticket, setTicket] = useState<SaleTicket | null>(null);
