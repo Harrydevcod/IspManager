@@ -585,7 +585,7 @@ export function ProposalsModule({
                       });
                     }}
                   >
-                    <option value="">Interessado — sem cadastro</option>
+                    <option value="">Interessado — sem registo</option>
                     {clients.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.fullName} · {c.clientCode}

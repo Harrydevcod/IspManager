@@ -743,8 +743,8 @@ export function StockModule({
                 icon={stockTab === 'material' ? Cable : Boxes}
                 title={stockTab === 'material' ? 'Nenhum material encontrado' : 'Nenhum equipamento encontrado'}
                 description={stockTab === 'material'
-                  ? 'Ajusta os filtros ou cadastra um novo material (cabo, conector…) no catálogo.'
-                  : 'Ajusta os filtros ou cadastra um novo equipamento no catálogo.'}
+                  ? 'Ajusta os filtros ou regista um novo material (cabo, conector…) no catálogo.'
+                  : 'Ajusta os filtros ou regista um novo equipamento no catálogo.'}
               />
             }
           />

@@ -264,7 +264,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
         </section>
       ) : (
         <section className="metric-grid compact" aria-label="Resumo de relatorios">
-          <MetricCard icon={UsersRound} label="Clientes" value={metrics ? String(metrics.totalClients) : '...'} trend="cadastros na base" />
+          <MetricCard icon={UsersRound} label="Clientes" value={metrics ? String(metrics.totalClients) : '...'} trend="registados na base" />
           <MetricCard icon={Cable} label="Servicos ativos" value={metrics ? String(metrics.activeServices) : '...'} trend="contratos em operacao" />
           {/* Na aba Stock o quarto cartão dá lugar ao valor do armazém — era
               calculado desde sempre e nunca chegava ao ecrã. */}
@@ -398,7 +398,7 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
           <EmptyState
             icon={Cable}
             title="Ainda sem equipamentos"
-            description="Quando cadastrares equipamentos no Stock, aparecem aqui resumidos por tipo."
+            description="Quando registares equipamentos no Stock, aparecem aqui resumidos por tipo."
           />
         )}
         {((view === 'incomplete' && dq) || (view !== 'incomplete' && view !== 'duplicates' && summary)) && (view === 'incomplete' ? (dq!.pagination.total) : total) > PAGE_SIZE && (
