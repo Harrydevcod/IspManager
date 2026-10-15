@@ -228,6 +228,7 @@ export type SmsMonthlyReport = {
 
 export type PlanRow = {
   id: number;
+  code?: string | null;
   name: string;
   downloadSpeed: string;
   uploadSpeed: string;
@@ -248,6 +249,8 @@ export type PlanRow = {
 
 export type StockCatalogRow = {
   id: number;
+  code?: string | null;
+  documentNote?: string | null;
   category: 'equipamento' | 'material';
   type: string;
   brand: string | null;
@@ -965,4 +968,15 @@ export type WorkOrderBoard = {
     open: number;
     byStatus: Record<WorkOrderStatus, number>;
   };
+};
+
+/** Artigo ou serviço vendido em talões e faturas manuais (migração 0086). */
+export type ArticleRow = {
+  id: number;
+  code: string;
+  name: string;
+  documentNote?: string | null;
+  kind: 'product' | 'service';
+  unitPriceCve: number;
+  active: boolean | 0 | 1;
 };

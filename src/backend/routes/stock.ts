@@ -1,7 +1,8 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
+import { ARTICLE_PREFIX, codeField, codeTaken, nextCode } from '../lib/articles';
 import { SHARED_WITH_NAMES_SQL } from '../lib/deviceShares';
 import { requireAuth, requireRole } from './auth';
 
@@ -22,7 +23,10 @@ const catalogSchema = z.object({
   rentalFeeCve: z.coerce.number().min(0).default(0),
   stockTotal: z.coerce.number().int().min(0).default(0),
   usefulLifeMonths: z.coerce.number().int().min(1).max(600).default(60),
-  active: z.coerce.boolean().default(true)
+  active: z.coerce.boolean().default(true),
+  code: codeField,
+  /** Garantia, estado…: sai nas observações dos documentos que o vendem. */
+  documentNote: z.string().trim().max(300).optional().nullable()
 }).strict();
 
 /** Nomes dos campos como o operador os vê no formulário, não como o JSON os chama. */
@@ -43,7 +47,8 @@ const CATALOG_FIELD_LABELS: Record<string, string> = {
   sellingPriceCve: 'Preco de venda',
   rentalFeeCve: 'Aluguer mensal',
   stockTotal: 'Stock',
-  active: 'Estado'
+  active: 'Estado',
+  code: 'Codigo'
 };
 
 /**
@@ -179,6 +184,8 @@ export async function registerStockRoutes(app: FastifyInstance) {
     const rows = db.prepare(`
       SELECT
         id,
+        code,
+        document_note AS documentNote,
         category,
         type,
         brand,
@@ -238,14 +245,17 @@ export async function registerStockRoutes(app: FastifyInstance) {
     }
 
     const db = getSqliteDatabase();
+    if (parsed.data.code && codeTaken(db, 'equipment_catalog', parsed.data.code)) {
+      return reply.status(409).send({ error: `Codigo: ${parsed.data.code} ja esta a ser usado` });
+    }
     const result = db.prepare(`
       INSERT INTO equipment_catalog (
         category, type, brand, model, description, supplier, unit_of_measure, is_serialized,
         purchase_price_cve, shipping_cost_cve, customs_duty_cve, other_costs_cve,
-        selling_price_cve, rental_fee_cve, stock_total, useful_life_months, active,
+        selling_price_cve, rental_fee_cve, stock_total, useful_life_months, active, code, document_note,
         created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     `).run(
       parsed.data.category,
       parsed.data.type,
@@ -263,7 +273,9 @@ export async function registerStockRoutes(app: FastifyInstance) {
       parsed.data.rentalFeeCve,
       parsed.data.stockTotal,
       parsed.data.usefulLifeMonths,
-      parsed.data.active ? 1 : 0
+      parsed.data.active ? 1 : 0,
+      parsed.data.code || nextCode(db, 'equipment_catalog', 'EQP'),
+      parsed.data.documentNote || null
     );
 
     // Stock inicial e uma compra, e uma compra deixa rasto. Sem o movimento, o
@@ -300,6 +312,9 @@ export async function registerStockRoutes(app: FastifyInstance) {
     if (!before) {
       return reply.status(404).send({ error: 'Modelo nao encontrado' });
     }
+    if (parsed.data.code && codeTaken(db, 'equipment_catalog', parsed.data.code, id)) {
+      return reply.status(409).send({ error: `Codigo: ${parsed.data.code} ja esta a ser usado` });
+    }
     // Subir o stock e comprar. Descer e corrigir uma contagem, e essa nao custa nada.
     if (parsed.data.stockTotal > Number(before.stockTotal || 0) && landedCostOf(parsed.data) <= 0) {
       return reply.status(400).send({
@@ -325,6 +340,8 @@ export async function registerStockRoutes(app: FastifyInstance) {
           stock_total = ?,
           useful_life_months = ?,
           active = ?,
+          code = COALESCE(?, code),
+          document_note = ?,
           updated_at = datetime('now')
       WHERE id = ?
     `).run(
@@ -345,6 +362,8 @@ export async function registerStockRoutes(app: FastifyInstance) {
       parsed.data.stockTotal,
       parsed.data.usefulLifeMonths,
       parsed.data.active ? 1 : 0,
+      parsed.data.code || null,
+      parsed.data.documentNote || null,
       id
     );
 
@@ -508,5 +527,58 @@ export async function registerStockRoutes(app: FastifyInstance) {
       metadata: { catalogId: parsed.data.catalogId, type: parsed.data.type, quantity: parsed.data.quantity }
     });
     return reply.status(201).send({ ok: true });
+  });
+
+  // ------------------------------------------------- artigos e serviços
+
+  const articleSchema = z.object({
+    code: codeField,
+    name: z.string().trim().min(1).max(200),
+    kind: z.enum(['product', 'service']),
+    unitPriceCve: z.coerce.number().min(0).default(0),
+    documentNote: z.string().trim().max(300).optional().nullable(),
+    active: z.coerce.boolean().default(true)
+  }).strict();
+
+  app.get('/api/articles', { preHandler: requireAuth() }, async () => getSqliteDatabase().prepare(`
+    SELECT id, code, name, kind, unit_price_centavos / 100.0 AS unitPriceCve, document_note AS documentNote, active, created_at AS createdAt
+    FROM articles ORDER BY active DESC, code
+  `).all());
+
+  /** Grava o artigo; 409 com o motivo quando o código ou o nome já existem. */
+  function saveArticle(request: FastifyRequest, reply: FastifyReply, id: number | null) {
+    const parsed = articleSchema.safeParse(request.body);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return reply.status(400).send({ error: `${String(issue.path[0] ?? 'Artigo')}: ${issue.message}` });
+    }
+    const data = parsed.data;
+    const db = getSqliteDatabase();
+    if (data.code && codeTaken(db, 'articles', data.code, id ?? undefined)) {
+      return reply.status(409).send({ error: `Código: ${data.code} já está a ser usado` });
+    }
+    const clash = data.active && (db.prepare('SELECT id, name FROM articles WHERE active = 1 AND id <> ?').all(id ?? 0) as Array<{ name: string }>)
+      .some((row) => row.name.trim().toLocaleLowerCase('pt') === data.name.toLocaleLowerCase('pt'));
+    if (clash) return reply.status(409).send({ error: `Já existe um artigo ativo chamado ${data.name}` });
+
+    if (id === null) {
+      const code = data.code || nextCode(db, 'articles', ARTICLE_PREFIX[data.kind]);
+      const newId = Number(db.prepare('INSERT INTO articles(code, name, kind, unit_price_centavos, document_note, active) VALUES (?, ?, ?, CAST(ROUND(? * 100) AS INTEGER), ?, ?)')
+        .run(code, data.name, data.kind, data.unitPriceCve, data.documentNote || null, data.active ? 1 : 0).lastInsertRowid);
+      recordAudit(request, { action: 'create', entityType: 'article', entityId: newId, summary: `Criou o artigo ${code} ${data.name}` });
+      return reply.status(201).send({ id: newId, code });
+    }
+    const result = db.prepare(`UPDATE articles SET code = COALESCE(?, code), name = ?, kind = ?, unit_price_centavos = CAST(ROUND(? * 100) AS INTEGER), document_note = ?, active = ?,
+      updated_at = datetime('now') WHERE id = ?`).run(data.code || null, data.name, data.kind, data.unitPriceCve, data.documentNote || null, data.active ? 1 : 0, id);
+    if (result.changes === 0) return reply.status(404).send({ error: 'Artigo não encontrado' });
+    recordAudit(request, { action: 'update', entityType: 'article', entityId: id, summary: `Atualizou o artigo ${data.name}` });
+    return { ok: true };
+  }
+
+  app.post('/api/articles', canWriteStock, async (request, reply) => saveArticle(request, reply, null));
+  app.put('/api/articles/:id', canWriteStock, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) return reply.status(400).send({ error: 'Artigo inválido' });
+    return saveArticle(request, reply, id);
   });
 }

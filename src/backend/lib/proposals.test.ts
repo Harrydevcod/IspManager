@@ -37,6 +37,24 @@ describe('propostas independentes', () => {
         const old=api.getProposal(p.id);
         expect(()=>api.actOnProposal(p.id,'accept',{version:old.version,acceptedBy:'Maria'})).toThrow();
     });
+    test('linhas de artigos e serviços guardam o artigo; referência inexistente ou misturada é recusada', () => {
+        const db=database.getSqliteDatabase();
+        const insert=db.prepare('INSERT INTO articles(code,name,kind,unit_price_centavos) VALUES (?,?,?,?)');
+        const serviceId=Number(insert.run('SRV9001','Deslocação técnica','service',50000).lastInsertRowid);
+        const productId=Number(insert.run('ART9001','Cabo UTP','product',5000).lastInsertRowid);
+        const p=api.createProposal({...draft,lines:[
+            {kind:'free',description:'Deslocação técnica',period:'once',quantity:1,unitPriceCentavos:50000,articleId:serviceId},
+            {kind:'product',description:'Cabo UTP',period:'once',quantity:10,unitPriceCentavos:5000,articleId:productId}
+        ]});
+        expect(api.getProposal(p.id).lines.map(line=>line.articleId)).toEqual([serviceId,productId]);
+        db.prepare("UPDATE articles SET code='MUDOU' WHERE id=?").run(serviceId);
+        expect(api.getProposal(p.id).lines.map(line=>line.itemCode)).toEqual(['SRV9001','ART9001']);
+        const line={kind:'free' as const,description:'X',period:'once' as const,quantity:1,unitPriceCentavos:100};
+        expect(()=>api.createProposal({...draft,lines:[{...line,articleId:999999}]})).toThrow(/Artigo inexistente/);
+        expect(()=>api.createProposal({...draft,lines:[{...line,kind:'plan',period:'monthly',articleId:serviceId}]})).toThrow();
+        const catalogId=Number(db.prepare("INSERT INTO equipment_catalog(brand,model,type) VALUES ('X','Y','router')").run().lastInsertRowid);
+        expect(()=>api.createProposal({...draft,lines:[{...line,kind:'product',catalogId,articleId:productId}]})).toThrow();
+    });
     test('100 linhas permitidas, 101 recusadas e arredondamento de meios centavos por linha', () => {
         const line={kind:'free' as const,description:'Linha',period:'once' as const,quantity:0.5,unitPriceCentavos:1};
         const p=api.createProposal({...draft,lines:Array.from({length:100},()=>({...line}))});

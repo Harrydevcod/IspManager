@@ -3,15 +3,15 @@ import {
   ArrowLeft,
   ArrowDown,
   ArrowUp,
+  FilePlus2,
   FileText,
-  Plus,
   Trash2,
 } from "lucide-react";
 import { Button, Field, Select, Textarea, useConfirm } from "../../components";
 import { authFetch, useAuth } from "../../lib/auth";
 import { downloadAuthenticated } from "../../lib/download";
 import { formatCve, formatPtDate } from "../../lib/format";
-import type { Client, PlanRow, StockCatalogRow } from "../../types";
+import type { ArticleRow, Client, PlanRow, StockCatalogRow } from "../../types";
 import {
   INFORMATIVE_TYPE_LABELS,
   type InformativeDocumentType,
@@ -29,11 +29,19 @@ import {
   newDraft,
   planLines,
   productLine,
+  articleLine,
   proposalTotals,
   validateDraft,
   parsePaymentAmount,
 } from "./draft";
 import "./ProposalsModule.css";
+
+/** Um botão por tipo: o operador vê logo que há orçamento e proforma, não só proposta. */
+const NEW_DOCUMENT_BUTTONS: Array<[InformativeDocumentType, string]> = [
+  ["proposal", "Nova proposta"],
+  ["quotation", "Novo orçamento"],
+  ["proforma", "Nova proforma"],
+];
 
 const API = "http://127.0.0.1:3001/api";
 const actionLabels: Record<ProposalAction, string> = {
@@ -89,6 +97,7 @@ export function ProposalsModule({
   const [clients, setClients] = useState<Client[]>([]);
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [products, setProducts] = useState<StockCatalogRow[]>([]);
+  const [articles, setArticles] = useState<ArticleRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pdfFormat, setPdfFormat] = useState<"a5" | "a4">("a5");
@@ -132,8 +141,9 @@ export function ProposalsModule({
       request<Client[]>("/clients"),
       request<PlanRow[]>("/plans"),
       request<{ rows: StockCatalogRow[] }>("/stock/summary"),
+      request<ArticleRow[]>("/articles"),
     ])
-      .then(([c, p, s]) => {
+      .then(([c, p, s, a]) => {
         if (alive) {
           if (c.status === "fulfilled")
             setClients(c.value.filter((v) => !v.systemKind));
@@ -141,10 +151,13 @@ export function ProposalsModule({
             setPlans(p.value.filter((v) => v.active));
           if (s.status === "fulfilled")
             setProducts(s.value.rows.filter((v) => v.active));
+          if (a.status === "fulfilled")
+            setArticles(a.value.filter((v) => v.active));
           const unavailable = [
             c.status === "rejected" ? "clientes" : "",
             p.status === "rejected" ? "planos" : "",
             s.status === "rejected" ? "produtos" : "",
+            a.status === "rejected" ? "artigos" : "",
           ].filter(Boolean);
           if (unavailable.length)
             setError(
@@ -414,16 +427,22 @@ export function ProposalsModule({
               Informativos
             </Button>
           ) : (
-            <Button
-              onClick={() => {
-                setPaymentAmount("");
-                setDraft(newDraft());
-                setError(null);
-              }}
-              leadingIcon={<Plus size={16} />}
-            >
-              Nova proposta
-            </Button>
+            <>
+              {NEW_DOCUMENT_BUTTONS.map(([type, label], index) => (
+                <Button
+                  key={type}
+                  variant={index === 0 ? "primary" : "secondary"}
+                  onClick={() => {
+                    setPaymentAmount("");
+                    setDraft(newDraft(undefined, new Date(), type));
+                    setError(null);
+                  }}
+                  leadingIcon={<FilePlus2 size={16} aria-hidden />}
+                >
+                  {label}
+                </Button>
+              ))}
+            </>
           )}
         </div>
       </header>
@@ -676,7 +695,7 @@ export function ProposalsModule({
                       ))}
                     </Select>
                     <Select
-                      label="Modalidade do produto"
+                      label="Modalidade do equipamento"
                       value={productPeriod}
                       onChange={(e) =>
                         setProductPeriod(e.target.value as "once" | "monthly")
@@ -686,22 +705,42 @@ export function ProposalsModule({
                       <option value="monthly">Aluguer mensal</option>
                     </Select>
                     <Select
-                      label="Acrescentar produto"
+                      label="Acrescentar artigo"
                       value=""
                       onChange={(e) => {
+                        const value = e.target.value;
+                        if (value.startsWith("a:")) {
+                          const article = articles.find(
+                            (row) => row.id === Number(value.slice(2)),
+                          );
+                          if (article) append([articleLine(article)]);
+                          return;
+                        }
                         const product = products.find(
-                          (p) => p.id === Number(e.target.value),
+                          (p) => p.id === Number(value),
                         );
                         if (product)
                           append([productLine(product, productPeriod)]);
                       }}
                     >
-                      <option value="">Produto do catálogo</option>
-                      {products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.brand} {p.model}
-                        </option>
-                      ))}
+                      <option value="">Do catálogo…</option>
+                      {articles.length > 0 && (
+                        <optgroup label="Artigos e serviços">
+                          {articles.map((row) => (
+                            <option key={`a${row.id}`} value={`a:${row.id}`}>
+                              {row.code} · {row.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label="Stock">
+                        {products.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.code ? `${p.code} · ` : ""}
+                            {[p.brand, p.model].filter(Boolean).join(" ")}
+                          </option>
+                        ))}
+                      </optgroup>
                     </Select>
                     <Button
                       type="button"

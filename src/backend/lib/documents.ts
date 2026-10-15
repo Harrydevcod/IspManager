@@ -30,6 +30,15 @@ type DocumentLine = {
   kind: BillingLine['kind'];
   description: string;
   amountCve: number;
+  /** Código gravado na linha à emissão (ART…, SRV…, EQP…); as mensalidades não o têm. */
+  itemCode?: string | null;
+  /** Garantia, estado…: gravada à emissão, sai nas observações. */
+  itemNote?: string | null;
+  quantity?: number;
+  /** Preço unitário escrito à emissão; nulo nas linhas antigas (o PDF divide valor ÷ quantidade). */
+  unitPriceCve?: number | null;
+  /** Produto (artigo `product` ou equipamento do stock): a política de produtos aplica-se. */
+  isProduct?: number | boolean | null;
 };
 
 /**
@@ -146,6 +155,7 @@ type PaymentDocumentRow = {
   clientAddress: string | null;
   clientIsland: string | null;
   planName: string | null;
+  planCode: string | null;
   downloadSpeed: string | null;
   uploadSpeed: string | null;
   referenceMonth: string;
@@ -159,11 +169,14 @@ type PaymentDocumentRow = {
   receiptNumber: string | null;
   receiptDate: string | null;
   notes: string | null;
+  /** Só uma fatura com serviço pode levar ao corte por dívida. */
+  serviceId: number | null;
 };
 
 const documentSelect = `
   SELECT
     py.id,
+    py.service_id AS serviceId,
     c.full_name AS clientName,
     c.client_code AS clientCode,
     c.nif AS clientNif,
@@ -172,6 +185,7 @@ const documentSelect = `
     c.address AS clientAddress,
     c.island AS clientIsland,
     p.name AS planName,
+    p.code AS planCode,
     p.download_speed AS downloadSpeed,
     p.upload_speed AS uploadSpeed,
     py.reference_month AS referenceMonth,
@@ -208,6 +222,8 @@ type CompanyInfo = {
   printQrCode: boolean;
   printRentalLines: boolean;
   legalNotes: string;
+  /** Devoluções, trocas…: só nos documentos que vendem produtos. */
+  productPolicy: string;
 };
 
 type BankAccountInfo = {
@@ -230,7 +246,8 @@ const COMPANY_KEYS = [
   'showIva',
   'printQrCode',
   'printRentalLines',
-  'legalNotes'
+  'legalNotes',
+  'productPolicy'
 ] as const;
 
 export function loadCompany(): CompanyInfo {
@@ -253,7 +270,8 @@ export function loadCompany(): CompanyInfo {
     showIva: false,
     printQrCode: false,
     printRentalLines: false,
-    legalNotes: ''
+    legalNotes: '',
+    productPolicy: ''
   };
   for (const row of rows) {
     if (row.key === 'ivaRate') {
@@ -285,6 +303,32 @@ export function formatBankAccountsForDocument(accounts: BankAccountInfo[]): stri
 // always rendered in escudos — this is a CV-only system.
 function formatCve(value: number) {
   return formatEscudos(value);
+}
+
+/**
+ * Garantias e condições dos produtos para as observações: a nota de cada artigo
+ * (uma vez por código) e a política geral, esta só quando há produtos à venda.
+ */
+export function productNotes(
+  lines: Array<{ itemCode?: string | null; description: string; itemNote?: string | null; isProduct?: number | boolean | null }>,
+  company: { productPolicy?: string | null }
+): string[] {
+  const seen = new Set<string>();
+  const notes: string[] = [];
+  for (const line of lines) {
+    const note = line.itemNote?.trim();
+    const key = line.itemCode || line.description;
+    if (!note || seen.has(key)) continue;
+    seen.add(key);
+    notes.push(`${line.itemCode ? `${line.itemCode} ` : ''}${line.description}: ${note}`);
+  }
+  if (company.productPolicy?.trim() && lines.some((line) => Boolean(line.isProduct))) notes.push(company.productPolicy.trim());
+  return notes;
+}
+
+/** Quantidade com vírgula decimal e sem zeros a mais: 1, 2,5, 0,125. */
+export function formatQuantity(value: number) {
+  return String(Number(value.toFixed(3))).replace('.', ',');
 }
 
 // O estado vive na base em ingles; o documento vai para o cliente e le-se em
@@ -340,7 +384,10 @@ function hasDocumentNumber(value: string | null) {
   return !!value?.trim() && value.trim().toUpperCase() !== 'PENDING';
 }
 
-function fitText(doc: any, value: string, width: number) {
+function fitText(doc: any, value: string, available: number) {
+  // 1pt de folga: o PDFKit parte a linha (mesmo com lineBreak: false) quando o
+  // texto excede a largura por uma fração, e a segunda linha cai em cima da seguinte.
+  const width = available - 1;
   const text = String(value || '-').replace(/\s+/g, ' ').trim() || '-';
   if (doc.widthOfString(text) <= width) {
     return text;
@@ -542,14 +589,25 @@ function buildDocument(
   y += stripH + 26;
 
   // === 4) ITEMS TABLE
-  const ivaColW = totals.isExempt ? 0 : 80;
-  const valueColW = 110;
-  const descColW = CW - valueColW - ivaColW - (totals.isExempt ? 0 : 8);
+  // Cód. · Descrição · Qtd. · P. unit. · IVA · Valor, a caber em A5 (CW ≈ 363pt).
+  const codeColW = 50;
+  const qtyColW = 26;
+  const unitColW = 62;
+  const ivaColW = totals.isExempt ? 0 : 32;
+  const valueColW = 68;
+  const descX = M + codeColW;
+  const qtyX = W - M - valueColW - ivaColW - unitColW - qtyColW;
+  const unitX = qtyX + qtyColW;
+  const ivaX = unitX + unitColW;
+  const descColW = qtyX - descX - 6;
 
   doc.fillColor(PALETTE.muted).fontSize(7).font('Helvetica-Bold')
-    .text('DESCRICAO', M, y, { width: descColW, lineBreak: false, characterSpacing: 1.2 });
+    .text('COD.', M, y, { width: codeColW, lineBreak: false, characterSpacing: 1.2 });
+  doc.text('DESCRICAO', descX, y, { width: descColW, lineBreak: false, characterSpacing: 1.2 });
+  doc.text('QTD.', qtyX, y, { width: qtyColW, align: 'right', lineBreak: false, characterSpacing: 1.2 });
+  doc.text('P. UNIT.', unitX, y, { width: unitColW, align: 'right', lineBreak: false, characterSpacing: 1.2 });
   if (!totals.isExempt) {
-    doc.text('IVA', M + descColW + 4, y, { width: ivaColW, align: 'right', lineBreak: false, characterSpacing: 1.2 });
+    doc.text('IVA', ivaX, y, { width: ivaColW, align: 'right', lineBreak: false, characterSpacing: 1.2 });
   }
   doc.text('VALOR', W - M - valueColW, y, { width: valueColW, align: 'right', lineBreak: false, characterSpacing: 1.2 });
   y += 12;
@@ -568,16 +626,24 @@ function buildDocument(
     description: string,
     amount: number,
     sublines: Array<Subline>,
-    quiet = false
+    quiet = false,
+    code: string | null = null,
+    quantity = 1,
+    unitPrice: number | null = null
   ) => {
-    const titleSize = quiet ? 10 : 12;
+    const titleSize = quiet ? 9 : 10;
     const titleFont = quiet ? 'Helvetica' : 'Helvetica-Bold';
     const titleColor = quiet ? PALETTE.muted : PALETTE.ink;
+    doc.fillColor(PALETTE.muted).fontSize(8).font('Helvetica')
+      .text(fitText(doc, code || '-', codeColW - 4), M, y + 1.5, { width: codeColW - 4, lineBreak: false });
     doc.fillColor(titleColor).fontSize(titleSize).font(titleFont)
-      .text(fitText(doc, description, descColW), M, y, { width: descColW, lineBreak: false });
+      .text(fitText(doc, description, descColW), descX, y, { width: descColW, lineBreak: false });
+    doc.fillColor(titleColor).fontSize(9).font('Helvetica')
+      .text(formatQuantity(quantity), qtyX, y + 1, { width: qtyColW, align: 'right', lineBreak: false })
+      .text(formatCve(unitPrice ?? amount / quantity), unitX, y + 1, { width: unitColW, align: 'right', lineBreak: false });
     if (!totals.isExempt) {
-      doc.fillColor(titleColor).fontSize(10).font('Helvetica')
-        .text(`${totals.ivaRate}%`, M + descColW + 4, y + 2, { width: ivaColW, align: 'right', lineBreak: false });
+      doc.fillColor(titleColor).fontSize(9).font('Helvetica')
+        .text(`${totals.ivaRate}%`, ivaX, y + 1, { width: ivaColW, align: 'right', lineBreak: false });
     }
     doc.fillColor(titleColor).fontSize(titleSize).font(titleFont)
       .text(formatCve(amount), W - M - valueColW, y, { width: valueColW, align: 'right', lineBreak: false });
@@ -591,8 +657,8 @@ function buildDocument(
       const detail = typeof subline === 'object';
       const text = detail ? subline.text : subline;
       const note = detail || text === RENTAL_INCLUDED_NOTE;
-      const x = detail ? M + 10 * (subline.indent ?? 1) : M;
-      const width = descColW - (x - M);
+      const x = detail ? descX + 10 * (subline.indent ?? 1) : descX;
+      const width = descColW - (x - descX);
       doc.fillColor(note ? PALETTE.light : PALETTE.muted).fontSize(note ? 7.5 : 8.5).font('Helvetica')
         .text(fitText(doc, text, width), x, y, { width, lineBreak: false });
       if (detail && subline.amountCve !== undefined) {
@@ -646,13 +712,15 @@ function buildDocument(
         if (title !== line.description) sublines.push(line.description);
         sublines.push(audiovisualSubline);
       }
-      renderItem(title, line.amountCve, sublines, line.kind === 'aluguer' || (line.kind === 'audiovisual' && supplementary));
+      // A mensalidade e a instalação não guardam código: são do plano do serviço.
+      const code = line.itemCode ?? (line.kind === 'internet' || line.kind === 'instalacao' ? row.planCode : null);
+      renderItem(title, line.amountCve, sublines, line.kind === 'aluguer' || (line.kind === 'audiovisual' && supplementary), code, line.quantity ?? 1, line.unitPriceCve ?? null);
     }
   } else {
-    renderItem('Servico de Internet', totals.total, [planLine]);
+    renderItem('Servico de Internet', totals.total, [planLine], false, row.planCode);
   }
   doc.fillColor(PALETTE.light).fontSize(8.5).font('Helvetica')
-    .text(`Periodo de referencia ${formatReferenceForDocument(row.referenceMonth)}`, M, y, { width: descColW, lineBreak: false });
+    .text(`Periodo de referencia ${formatReferenceForDocument(row.referenceMonth)}`, M, y, { width: CW, lineBreak: false });
   y += 22;
 
   // === 5) FISCAL BREAKDOWN — Subtotal · IVA · Total (right-aligned mini table)
@@ -706,15 +774,19 @@ function buildDocument(
   // === 7) OBSERVATIONS
   const observations: string[] = [];
   if (!isReceipt) {
-    // Aviso fiscal de suspensão — presente apenas em faturas (não em recibos).
-    observations.push(
-      'Após a data limite de pagamento indicada, o serviço poderá ser suspenso por falta de regularização.'
-    );
+    // Aviso de suspensão só onde a dívida pode cortar: fatura ligada a um serviço
+    // (a mesma regra do corte automático). Uma venda de artigos não suspende nada.
+    if (row.serviceId != null) {
+      observations.push(
+        'Após a data limite de pagamento indicada, o serviço poderá ser suspenso por falta de regularização.'
+      );
+    }
     const bankAccountsNote = formatBankAccountsForDocument(company.bankAccounts);
     if (bankAccountsNote) {
       observations.push(bankAccountsNote);
     }
   }
+  observations.push(...productNotes(lines, company));
   if (isReceipt && row.paymentMethod) {
     observations.push(`Metodo de pagamento: ${row.paymentMethod}`);
   }
@@ -881,10 +953,13 @@ export async function renderReceiptPdf(receiptId: number, archive = false): Prom
   // que se esta a receber. Num parcial nao descrevem — somariam mais do que o
   // recibo — por isso o documento leva uma linha unica pelo valor entregue.
   const invoiceLines = db.prepare(`
-    SELECT kind, description, amount_cve AS amountCve
-    FROM payment_lines
-    WHERE payment_id = ?
-    ORDER BY sort_order, id
+    SELECT l.kind, l.description, l.amount_cve AS amountCve, l.item_code AS itemCode, l.item_note AS itemNote,
+           l.quantity, l.unit_price_centavos / 100.0 AS unitPriceCve, (a.kind = 'product' OR t.catalog_id IS NOT NULL) AS isProduct
+    FROM payment_lines l
+    LEFT JOIN articles a ON a.id = l.article_id
+    LEFT JOIN sale_ticket_lines t ON t.payment_line_id = l.id
+    WHERE l.payment_id = ?
+    ORDER BY l.sort_order, l.id
   `).all(receipt.paymentId) as DocumentLine[];
   const linesTotal = invoiceLines.reduce((sum, line) => sum + Number(line.amountCve || 0), 0);
   const coversInvoice = Math.abs(linesTotal - receipt.amountCve) < 0.005;
@@ -972,10 +1047,13 @@ export async function renderPaymentDocumentPdf(id: number, kind: DocumentKind, a
     row = db.prepare(documentSelect).get(id) as PaymentDocumentRow;
   }
   const lines = db.prepare(`
-    SELECT kind, description, amount_cve AS amountCve
-    FROM payment_lines
-    WHERE payment_id = ?
-    ORDER BY sort_order, id
+    SELECT l.kind, l.description, l.amount_cve AS amountCve, l.item_code AS itemCode, l.item_note AS itemNote,
+           l.quantity, l.unit_price_centavos / 100.0 AS unitPriceCve, (a.kind = 'product' OR t.catalog_id IS NOT NULL) AS isProduct
+    FROM payment_lines l
+    LEFT JOIN articles a ON a.id = l.article_id
+    LEFT JOIN sale_ticket_lines t ON t.payment_line_id = l.id
+    WHERE l.payment_id = ?
+    ORDER BY l.sort_order, l.id
   `).all(id) as DocumentLine[];
   const buffer = await pdfBuffer(row, kind, lines);
   return { buffer, filename: documentFilename(kind, row) };

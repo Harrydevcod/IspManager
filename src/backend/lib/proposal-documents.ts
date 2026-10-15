@@ -1,6 +1,6 @@
 import { formatCentavos } from '../../shared/money';
 import { INFORMATIVE_TYPE_LABELS, PROPOSAL_STATUS_LABELS, type Proposal, type ProposalCompany, type ProposalTax, type DocumentBankAccount } from '../../shared/proposals';
-import { computeTotals, loadCompany, PALETTE, PaymentDocumentError } from './documents';
+import { computeTotals, loadCompany, PALETTE, PaymentDocumentError, productNotes } from './documents';
 
 const PDFDocument = require('pdfkit');
 export type ProposalFormat = 'a4' | 'a5';
@@ -20,7 +20,10 @@ export function buildProposalPdf(proposal: Proposal, previewCompany?: ProposalCo
   const H = a5 ? 595.28 : 841.89;
   const BOTTOM = H - (a5 ? 55 : 65);
   const CW = W - M * 2;
-  const descWidth = CW * 0.48;
+  // Cód. · Descrição · Qtd. · Preço unit. · Valor.
+  const codeWidth = CW * 0.13 - 6;
+  const descX = M + CW * 0.14;
+  const descWidth = CW * 0.35;
   const qtyX = M + CW * 0.51;
   const unitX = M + CW * 0.61;
   const amountX = M + CW * 0.81;
@@ -88,13 +91,14 @@ export function buildProposalPdf(proposal: Proposal, previewCompany?: ProposalCo
     const heading = (value: string, keep = 26) => { ensure(keep + (a5 ? 22 : 28)); y += a5 ? 4 : 12; paragraph(value, a5 ? 10 : 13, true); y += a5 ? 4 : 8; };
     const tableHeader = () => {
       doc.rect(M, y, CW, 23).fill(PALETTE.paperTint2);
-      single('Descrição', M + 6, y + 7, descWidth, 8, true);
+      single('Cód.', M + 6, y + 7, codeWidth, 8, true);
+      single('Descrição', descX, y + 7, descWidth, 8, true);
       single('Qtd.', qtyX, y + 7, CW * 0.08, 8, true, 'right');
       single('Preço unit.', unitX, y + 7, CW * 0.18, 8, true, 'right');
       single('Valor', amountX, y + 7, CW * 0.19 - 6, 8, true, 'right'); y += a5 ? 24 : 30;
     };
     const taxPreview = (total: number): ProposalTax => {
-      const result = computeTotals(total / 100, { ...company, bankAccounts: [], printQrCode: false, printRentalLines: false });
+      const result = computeTotals(total / 100, { ...company, bankAccounts: [], printQrCode: false, printRentalLines: false, productPolicy: '' });
       const subtotal = Math.round(result.subtotal * 100);
       return { subtotalCentavos: subtotal, ivaCentavos: total - subtotal, totalCentavos: total, ivaRate: result.ivaRate, isExempt: result.isExempt, exemptReason: result.exemptReason };
     };
@@ -145,8 +149,9 @@ export function buildProposalPdf(proposal: Proposal, previewCompany?: ProposalCo
         for (let index = 0; index < wrapped.length;) {
           if (y + 24 > BOTTOM) { page(); paragraph(`${period === 'once' ? 'Custos únicos' : 'Mensalidades'} (continuação)`, 11, true); y += 8; tableHeader(); }
           const count = Math.min(wrapped.length - index, Math.floor((BOTTOM - y - 10) / rowLineHeight));
-          for (let offset = 0; offset < count; offset++) single(wrapped[index + offset], M + 6, y + offset * rowLineHeight, descWidth, a5 ? 8.5 : 9);
+          for (let offset = 0; offset < count; offset++) single(wrapped[index + offset], descX, y + offset * rowLineHeight, descWidth, a5 ? 8.5 : 9);
           if (first) {
+            single(line.itemCode || '-', M + 6, y, codeWidth, a5 ? 7.5 : 8, false, 'left', PALETTE.muted);
             single(String(line.quantity).replace('.', ','), qtyX, y, CW * 0.08, 9, false, 'right');
             single(money(line.unitPriceCentavos), unitX, y, CW * 0.18, 9, false, 'right');
             single(money(line.totalCentavos), amountX, y, CW * 0.19 - 6, 9, true, 'right'); first = false;
@@ -181,6 +186,8 @@ export function buildProposalPdf(proposal: Proposal, previewCompany?: ProposalCo
         }
       }
     }
+    const productText = productNotes(proposal.lines.map((line) => ({ ...line, isProduct: line.kind === 'product' })), company);
+    if (productText.length) { heading('Garantias e condições dos produtos'); for (const note of productText) paragraph(note, 9); }
     if (proposal.conditions) { heading('Condições comerciais'); paragraph(proposal.conditions); }
     if (company.legalNotes) { heading('Informação comercial', a5 ? 12 : 26); paragraph(company.legalNotes, 8, false, PALETTE.muted); }
     const range = doc.bufferedPageRange();

@@ -6,6 +6,7 @@ import {
   newDraft,
   planLines,
   productLine,
+  articleLine,
   proposalTotals,
   validateDraft,
 } from "./draft";
@@ -84,11 +85,13 @@ describe("proposal composition", () => {
           unitPriceCentavos: 100,
           planId: null,
           catalogId: null,
+          articleId: 7,
         },
       ],
     };
     const draft = draftFromProposal(proposal);
     expect(Object.keys(draft.lines[0]).sort()).toEqual([
+      "articleId",
       "catalogId",
       "description",
       "kind",
@@ -169,4 +172,11 @@ describe('proforma request', () => {
     draft.paymentRequest = {amountCentavos:3000000, description:'Doze mensalidades', conditions:'Transferência', dueDate:null};
     expect(validateDraft(draft)).toBeNull();
   });
+});
+
+test("articleLine: serviço entra como linha livre ligada ao artigo, produto como produto", () => {
+  expect(articleLine({ id: 7, name: "Deslocação", kind: "service", unitPriceCve: 500 })).toEqual({
+    kind: "free", description: "Deslocação", period: "once", quantity: 1, unitPriceCentavos: 50000, articleId: 7,
+  });
+  expect(articleLine({ id: 8, name: "Cabo", kind: "product", unitPriceCve: 0.5 }).kind).toBe("product");
 });

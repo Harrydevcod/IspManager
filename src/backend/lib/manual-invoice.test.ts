@@ -43,6 +43,7 @@ beforeEach(() => {
   db.prepare('DELETE FROM treasury_movements').run();
   db.prepare('DELETE FROM payment_receipts').run();
   db.prepare('DELETE FROM payment_lines').run();
+  db.prepare('DELETE FROM articles').run();
   db.prepare('DELETE FROM payments').run();
   db.prepare('DELETE FROM service_events').run();
   db.prepare('DELETE FROM services').run();
@@ -261,4 +262,87 @@ describe('é uma dívida como as outras', () => {
 
     expect(preview.candidates.map((row) => row.paymentId)).toEqual([onService.paymentId]);
   });
+});
+
+test('linhas livres viram serviços com código; o artigo escolhido liga-se sem duplicar', () => {
+  const { clientId } = seedClient('C0101', { withService: false });
+  const first = create({ clientId });
+  if (!first.ok) throw new Error(first.error);
+  expect(db.prepare('SELECT code,name,kind FROM articles ORDER BY id').all()).toEqual([
+    { code: 'SRV0001', name: 'Deslocação técnica', kind: 'service' },
+    { code: 'SRV0002', name: 'Cabo de rede 20 m', kind: 'service' }
+  ]);
+  const { id } = db.prepare("SELECT id FROM articles WHERE code='SRV0001'").get() as { id: number };
+  const second = create({ clientId, lines: [{ description: 'Deslocação técnica', amountCve: 1500, articleId: id }] });
+  if (!second.ok) throw new Error(second.error);
+  expect(db.prepare('SELECT article_id AS id FROM payment_lines WHERE payment_id=?').all(second.value.paymentId)).toEqual([{ id }]);
+  expect(db.prepare('SELECT COUNT(*) AS n FROM articles').get()).toEqual({ n: 2 });
+  expect(create({ clientId, lines: [{ description: 'X', amountCve: 1, articleId: 999999 }] })).toMatchObject({ ok: false, status: 409 });
+});
+
+test('quantidade × preço unitário: a linha grava código e quantidade e o PDF mostra-os', async () => {
+  const { clientId } = seedClient('C0102', { withService: false });
+  const result = create({ clientId, lines: [{ description: 'Cabo UTP (metro)', quantity: 2.5, unitPriceCve: 100 }] });
+  if (!result.ok) throw new Error(result.error);
+  const line = db.prepare('SELECT amount_cve AS amount, quantity, item_code AS code FROM payment_lines WHERE payment_id=?').get(result.value.paymentId) as { amount: number; quantity: number; code: string };
+  expect(line).toMatchObject({ amount: 250, quantity: 2.5 });
+  expect(line.code).toMatch(/^SRV\d{4}$/);
+  // O código fica na linha: editá-lo no catálogo não muda a fatura já emitida.
+  db.prepare("UPDATE articles SET code='MUDOU' WHERE code=?").run(line.code);
+  const { inspectPdfLayout } = await import('./pdf.testing');
+  const text = inspectPdfLayout((await documents.renderPaymentDocumentPdf(result.value.paymentId, 'invoice')).buffer).text.flat().map((t) => t.value);
+  for (const value of [line.code, '2,5', '100$00', '250$00', 'QTD.', 'COD.']) expect(text).toContain(value);
+  expect(text).not.toContain('MUDOU');
+  expect(create({ clientId, lines: [{ description: 'X', quantity: 0, unitPriceCve: 1 }] })).toMatchObject({ ok: false });
+});
+
+test('preço unitário fica gravado: 3 × 333$33 imprime 333$33 e não o valor ÷ quantidade', async () => {
+  const { clientId } = seedClient('C0104', { withService: false });
+  const result = mustCreate({ clientId, lines: [{ description: 'Conector RJ45', quantity: 3, unitPriceCve: 333.33 }] });
+  expect(db.prepare('SELECT unit_price_centavos AS unit, amount_cve AS amount FROM payment_lines WHERE payment_id=?').get(result.paymentId))
+    .toEqual({ unit: 33333, amount: 999.99 });
+  const { inspectPdfLayout } = await import('./pdf.testing');
+  const text = inspectPdfLayout((await documents.renderPaymentDocumentPdf(result.paymentId, 'invoice')).buffer).text.flat().map((t) => t.value);
+  expect(text).toContain('333$33');
+  expect(text).toContain('999$99');
+});
+
+test('linha livre de serviço não reutiliza um produto com o mesmo nome', () => {
+  const { clientId } = seedClient('C0105', { withService: false });
+  db.prepare("INSERT INTO articles(code,name,kind,unit_price_centavos) VALUES ('ART0100','Instalação','product',10000)").run();
+  const result = mustCreate({ clientId, lines: [{ description: 'Instalação', quantity: 1, unitPriceCve: 500 }] });
+  const line = db.prepare('SELECT a.code, a.name, a.kind, a.unit_price_centavos AS price FROM payment_lines l JOIN articles a ON a.id = l.article_id WHERE l.payment_id=?')
+    .get(result.paymentId);
+  expect(line).toEqual({ code: expect.stringMatching(/^SRV\d{4}$/), name: 'Instalação (serviço)', kind: 'service', price: 50000 });
+  // A segunda vez reutiliza o serviço já criado.
+  const again = mustCreate({ clientId, lines: [{ description: 'Instalação', quantity: 1, unitPriceCve: 500 }] });
+  expect(db.prepare('SELECT article_id AS id FROM payment_lines WHERE payment_id=?').get(again.paymentId))
+    .toEqual(db.prepare('SELECT article_id AS id FROM payment_lines WHERE payment_id=?').get(result.paymentId));
+});
+
+test('observações: aviso de suspensão só com serviço; nota do artigo e política só com produtos', async () => {
+  const { inspectPdfLayout } = await import('./pdf.testing');
+  const pdfText = async (paymentId: number) => inspectPdfLayout((await documents.renderPaymentDocumentPdf(paymentId, 'invoice')).buffer)
+    .text.flat().map((t) => t.value).join('\n');
+  db.prepare("INSERT OR REPLACE INTO app_settings(key, value) VALUES ('productPolicy', 'Trocas em 7 dias.')").run();
+  try {
+    const product = Number(db.prepare("INSERT INTO articles(code,name,kind,unit_price_centavos,document_note) VALUES ('ART0001','Router','product',10000,'Garantia 12 meses')").run().lastInsertRowid);
+    db.prepare("INSERT INTO articles(code,name,kind,unit_price_centavos,document_note) VALUES ('SRV0001','Visita','service',5000,NULL)").run();
+    const { clientId, serviceId } = seedClient('C0103');
+
+    const sale = mustCreate({ clientId, lines: [{ description: 'Router', quantity: 1, unitPriceCve: 100, articleId: product }] });
+    db.prepare("UPDATE articles SET document_note='Mudou' WHERE id=?").run(product);
+    const saleText = await pdfText(sale.paymentId);
+    expect(saleText).not.toContain('Após a data limite');
+    expect(saleText).toContain('ART0001 Router: Garantia 12 meses');
+    expect(saleText).toContain('Trocas em 7 dias.');
+    expect(saleText).not.toContain('Mudou');
+
+    const visit = mustCreate({ clientId, serviceId, lines: [{ description: 'Visita', quantity: 1, unitPriceCve: 50 }] });
+    const visitText = await pdfText(visit.paymentId);
+    expect(visitText).toContain('Após a data limite');
+    expect(visitText).not.toContain('Trocas em 7 dias.');
+  } finally {
+    db.prepare("DELETE FROM app_settings WHERE key='productPolicy'").run();
+  }
 });

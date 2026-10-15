@@ -81,6 +81,15 @@ export function BillingTab({ form, onUpdate, onToggle }: BillingTabProps) {
         onChange={(event) => onUpdate('legalNotes', event.target.value)}
         placeholder="Texto opcional que aparece no rodapé de cada fatura/recibo (ex: termos, IBAN, agradecimento)"
       />
+      <Textarea
+        label="Política de produtos"
+        rows={3}
+        maxLength={1000}
+        value={form.productPolicy}
+        onChange={(event) => onUpdate('productPolicy', event.target.value)}
+        placeholder="Devoluções, trocas, garantia geral…"
+        hint="Só sai nos documentos que vendem produtos. A garantia de cada artigo vai na nota do próprio artigo."
+      />
       <Toggle
         title="Mostrar linha de IVA nos documentos"
         description="Quando desligado, fatura/recibo mostram apenas o total (serviço informal). Liga quando estiveres com contabilidade organizada."

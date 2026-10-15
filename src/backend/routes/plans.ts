@@ -13,6 +13,7 @@ import {
 import { createTransport, describeRouterFailure, isRouterConfigured, listActive, listProfiles, listSecrets, readRouterConfig, type RouterTransport } from '../lib/routeros';
 import { defaultProfileName } from '../lib/plan-profiles';
 import { requireAuth, requireRole } from './auth';
+import { codeField, codeTaken, nextCode } from '../lib/articles';
 
 const planSchema = z.object({
   name: z.string().trim().min(1),
@@ -30,7 +31,8 @@ const planSchema = z.object({
   // aponta para ele o secret de cada servico do plano. Vazio = o nome estavel
   // ispm-plano-<id>; um nome do operador fica como esta (ADR 0011).
   routerProfile: z.string().trim().max(64).regex(/^[\w .-]*$/).optional().nullable(),
-  active: z.coerce.boolean().default(true)
+  active: z.coerce.boolean().default(true),
+  code: codeField
 });
 
 const bulkPreviewSchema = z.object({
@@ -78,6 +80,7 @@ export async function registerPlanRoutes(app: FastifyInstance) {
     return db.prepare(`
       SELECT
         id,
+        code,
         name,
         download_speed AS downloadSpeed,
         upload_speed AS uploadSpeed,
@@ -107,6 +110,7 @@ export async function registerPlanRoutes(app: FastifyInstance) {
     const plan = db.prepare(`
       SELECT
         id,
+        code,
         name,
         download_speed AS downloadSpeed,
         upload_speed AS uploadSpeed,
@@ -136,13 +140,16 @@ export async function registerPlanRoutes(app: FastifyInstance) {
     }
 
     const db = getSqliteDatabase();
+    if (parsed.data.code && codeTaken(db, 'internet_plans', parsed.data.code)) {
+      return reply.status(409).send({ error: `Codigo: ${parsed.data.code} ja esta a ser usado` });
+    }
     const id = db.transaction(() => {
       const result = db.prepare(`
         INSERT INTO internet_plans (
           name, download_speed, upload_speed, connection_type, monthly_price_cve,
-          installation_fee_cve, description, active, download_mbps, upload_mbps, router_profile, created_at, updated_at
+          installation_fee_cve, description, active, download_mbps, upload_mbps, router_profile, code, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
       `).run(
         parsed.data.name,
         parsed.data.downloadSpeed,
@@ -154,7 +161,8 @@ export async function registerPlanRoutes(app: FastifyInstance) {
         parsed.data.active ? 1 : 0,
         parsed.data.downloadMbps ?? null,
         parsed.data.uploadMbps ?? null,
-        parsed.data.routerProfile || null
+        parsed.data.routerProfile || null,
+        parsed.data.code || nextCode(db, 'internet_plans', 'PLN')
       );
       const planId = Number(result.lastInsertRowid);
       // O nome estável depende do id, que só existe depois do INSERT.
@@ -177,6 +185,9 @@ export async function registerPlanRoutes(app: FastifyInstance) {
     }
 
     const db = getSqliteDatabase();
+    if (parsed.data.code && codeTaken(db, 'internet_plans', parsed.data.code, id)) {
+      return reply.status(409).send({ error: `Codigo: ${parsed.data.code} ja esta a ser usado` });
+    }
     const result = db.prepare(`
       UPDATE internet_plans
       SET name = ?,
@@ -190,6 +201,7 @@ export async function registerPlanRoutes(app: FastifyInstance) {
           download_mbps = ?,
           upload_mbps = ?,
           router_profile = ?,
+          code = COALESCE(?, code),
           updated_at = datetime('now')
       WHERE id = ?
     `).run(
@@ -204,6 +216,7 @@ export async function registerPlanRoutes(app: FastifyInstance) {
       parsed.data.downloadMbps ?? null,
       parsed.data.uploadMbps ?? null,
       parsed.data.routerProfile || defaultProfileName(id),
+      parsed.data.code || null,
       id
     );
 

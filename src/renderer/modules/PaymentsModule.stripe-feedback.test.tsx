@@ -42,6 +42,16 @@ const button = (text: string) => {
 };
 const toggle = () => document.querySelectorAll<HTMLInputElement>('.field-toggle input')[1];
 async function click(node: HTMLElement) { await act(async () => node.click()); }
+/** Sob carga, os pedidos encadeados demoram mais do que um ciclo de act: espera pelo estado, não por ciclos. */
+async function waitFor<T>(read: () => T | null | undefined, timeoutMs = 3000): Promise<T> {
+  const until = Date.now() + timeoutMs;
+  for (;;) {
+    const value = read();
+    if (value) return value;
+    if (Date.now() > until) throw new Error('waitFor: o estado esperado não apareceu');
+    await act(async () => { await new Promise((done) => setTimeout(done, 10)); });
+  }
+}
 async function fill(selector: string, value: string) {
   const node = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)!;
   const prototype = node instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -51,10 +61,11 @@ async function fill(selector: string, value: string) {
   });
 }
 async function prepareManual() {
-  await click(document.querySelector<HTMLButtonElement>('[aria-label="Cliente"]')!);
-  await act(async () => document.querySelector('[role="option"]')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+  await click(await waitFor(() => document.querySelector<HTMLButtonElement>('[aria-label="Cliente"]')));
+  const option = await waitFor(() => document.querySelector('[role="option"]'));
+  await act(async () => option.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
   await fill('.manual-invoice-line input:not([type="number"])', 'Instalacao');
-  await fill('input[type="number"]', '2500');
+  await fill('.manual-invoice-line input[type="number"][min="0.01"]', '2500');
   await click(toggle());
 }
 async function issue() {
@@ -176,8 +187,7 @@ test('manual invoice link failure is visible in Documents after issued invoice d
   await click(button('Nova fatura'));
   await prepareManual();
   await issue();
-  expect(document.querySelector('#manual-invoice-form')).toBeNull();
+  await waitFor(() => !document.querySelector('#manual-invoice-form') && document.querySelector('.fiscal-detail'));
   expect(document.querySelector('[role="alert"]')?.textContent).toMatch(/Fatura emitida.*link.*Stripe indisponivel.*ficha/i);
-  expect(document.querySelector('.fiscal-detail')).not.toBeNull();
   expect(document.body.textContent).toContain('FT41');
 });

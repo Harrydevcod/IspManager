@@ -3031,7 +3031,7 @@ h2 {
 
 /* Linha de uma fatura manual: descrição larga, valor estreito, remover ao lado. */
 .manual-invoice-line {
-  grid-template-columns: minmax(0, 1fr) 160px auto;
+  grid-template-columns: minmax(0, 1fr) 88px 140px auto;
   align-items: start;
 }
 

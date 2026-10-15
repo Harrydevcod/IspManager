@@ -3,7 +3,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { Badge, Button, Dialog, Field, Message, Select, Textarea } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { formatCve } from '../../lib/format';
-import type { StockCatalogRow, StockSummary } from '../../types';
+import type { ArticleRow, StockCatalogRow, StockSummary } from '../../types';
 import { AccountSelect } from '../treasury/AccountSelect';
 import type { PaymentMethod } from './PaymentDetailDialog';
 import './SaleTicketDialog.css';
@@ -11,8 +11,8 @@ import { centavosToEscudos, escudosToCentavos } from '../../../shared/money';
 
 const API = 'http://127.0.0.1:3001/api';
 const today = () => new Date().toISOString().slice(0, 10);
-type Line = { key: string; catalogId: string; description: string; quantity: string; price: string; serials: string };
-const emptyLine = (): Line => ({ key: crypto.randomUUID(), catalogId: '', description: '', quantity: '1', price: '', serials: '' });
+type Line = { key: string; catalogId: string; articleId: string; description: string; quantity: string; price: string; serials: string };
+const emptyLine = (): Line => ({ key: crypto.randomUUID(), catalogId: '', articleId: '', description: '', quantity: '1', price: '', serials: '' });
 const serialNumbers = (line: Line) => line.serials.split(/\r?\n/).map((serial) => serial.trim()).filter(Boolean);
 
 export function SaleTicketDialog({ open, onClose, onCreated }: {
@@ -21,6 +21,10 @@ export function SaleTicketDialog({ open, onClose, onCreated }: {
   const [catalog, setCatalog] = useState<StockCatalogRow[]>([]);
   const [catalogError, setCatalogError] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
+  // A pesquisa filtra artigos e stock pelo código (ART0003, EQP0002) ou pelo nome.
+  const matches = (...fields: Array<string | null | undefined>) =>
+    fields.filter(Boolean).join(' ').toLocaleLowerCase('pt').includes(catalogSearch.trim().toLocaleLowerCase('pt'));
+  const [articles, setArticles] = useState<ArticleRow[]>([]);
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [method, setMethod] = useState<PaymentMethod>('numerario');
   const [accountId, setAccountId] = useState('');
@@ -43,6 +47,11 @@ export function SaleTicketDialog({ open, onClose, onCreated }: {
       const summary = await response.json() as StockSummary;
       if (alive) setCatalog(summary.rows.filter((item) => item.active));
     }).catch(() => { if (alive) setCatalogError(true); });
+    // Sem artigos o talão continua a emitir: a linha livre cria-os.
+    setArticles([]);
+    authFetch(`${API}/articles`).then(async (response) => {
+      if (response.ok && alive) setArticles((await response.json() as ArticleRow[]).filter((row) => row.active));
+    }).catch(() => undefined);
     return () => { alive = false; };
   }, [open]);
 
@@ -54,7 +63,7 @@ export function SaleTicketDialog({ open, onClose, onCreated }: {
     const quantity = Number(line.quantity);
     if (!Number.isSafeInteger(quantity) || quantity <= 0 || quantity > 1000000) return 'A quantidade deve ser um inteiro entre 1 e 1 000 000.';
     if (!Number.isFinite(Number(line.price)) || Number(line.price) <= 0) return 'Indique um preço unitário positivo.';
-    if (!line.catalogId && !line.description.trim()) return 'Indique a descrição desta linha.';
+    if (!line.catalogId && !line.articleId && !line.description.trim()) return 'Indique a descrição desta linha.';
     const item = catalog.find((row) => row.id === Number(line.catalogId));
     if (line.catalogId && !item) return 'Escolha um artigo ativo do catálogo.';
     if (item && (requestedStock.get(item.id) || 0) > item.stockTotal) return `Stock disponível: ${item.stockTotal}. A quantidade total deste produto excede o stock.`;
@@ -84,7 +93,7 @@ export function SaleTicketDialog({ open, onClose, onCreated }: {
     if (!request.current) {
       const key = crypto.randomUUID();
       request.current = { key, body: JSON.stringify({ requestKey: key, lines: lines.map((line) => ({
-        ...(line.catalogId ? { catalogId: Number(line.catalogId) } : { description: line.description.trim() }),
+        ...(line.catalogId ? { catalogId: Number(line.catalogId) } : line.articleId ? { articleId: Number(line.articleId) } : { description: line.description.trim() }),
         quantity: Number(line.quantity), unitPriceCve: Number(line.price),
         ...(catalog.find((row) => row.id === Number(line.catalogId))?.isSerialized ? { serialNumbers: serialNumbers(line) } : {})
       })), paymentMethod: method, accountId: Number(accountId), issuedOn, notes: notes.trim() || undefined }) };
@@ -111,19 +120,25 @@ export function SaleTicketDialog({ open, onClose, onCreated }: {
   </>}>
     <form id="sale-ticket-form" className="client-form sale-ticket-form" onSubmit={submit}>
       <div className="sale-ticket-recipient"><div><span className="field-label">Destinatário</span><strong>Cliente Indiferenciado</strong></div><Badge tone="success">Pago na emissão</Badge></div>
-      <p className="sale-ticket-hint">Venda avulsa com pagamento integral. Os artigos do catálogo são retirados do stock ao emitir.</p>
+      <p className="sale-ticket-hint">Venda avulsa com pagamento integral. Os produtos do stock saem do armazém ao emitir; cada linha livre fica guardada com código em Stock → Artigos e serviços.</p>
       {error && <Message tone="error">{error}</Message>}
       {catalogError && <Message tone="error">Não foi possível carregar o catálogo. Pode emitir linhas livres.</Message>}
       <div className="service-items-builder"><div className="service-items-group">
         <p className="service-items-group-title">Artigos e serviços</p>
-        <Field label="Pesquisar produtos" type="search" placeholder="Marca ou modelo" value={catalogSearch} disabled={locked} onChange={(event) => setCatalogSearch(event.target.value)} />
+        <Field label="Pesquisar produtos" type="search" placeholder="Código, nome, marca ou modelo" value={catalogSearch} disabled={locked} onChange={(event) => setCatalogSearch(event.target.value)} />
         {lines.map((line, index) => <div className="sale-ticket-line" key={line.key}>
           <div className="sale-ticket-line-heading"><strong>Linha {index + 1}</strong><Button variant="ghost" size="sm" leadingIcon={<Trash2 size={15} aria-hidden />} disabled={locked || lines.length === 1} onClick={() => setLines((current) => current.filter((row) => row.key !== line.key))}>Remover</Button></div>
-          <Select label={`Artigo ${index + 1}`} value={line.catalogId} disabled={locked} onChange={(event) => {
-            const item = catalog.find((row) => row.id === Number(event.target.value));
-            updateLine(line.key, { catalogId: event.target.value, description: '', serials: '', price: item ? String(item.sellingPriceCve || '') : '' });
-          }}><option value="">Linha livre</option>{catalog.filter((item) => String(item.id) === line.catalogId || [item.brand, item.model].filter(Boolean).join(' ').toLocaleLowerCase('pt').includes(catalogSearch.trim().toLocaleLowerCase('pt'))).map((item) => <option key={item.id} value={item.id}>{[item.brand, item.model].filter(Boolean).join(' ')} · {item.stockTotal} em stock</option>)}</Select>
-          {!line.catalogId && <Field label={`Descrição ${index + 1}`} required maxLength={200} value={line.description} disabled={locked} onChange={(event) => updateLine(line.key, { description: event.target.value })} />}
+          <Select label={`Artigo ${index + 1}`} value={line.articleId ? `a:${line.articleId}` : line.catalogId} disabled={locked} onChange={(event) => {
+            const value = event.target.value;
+            if (value.startsWith('a:')) {
+              const article = articles.find((row) => row.id === Number(value.slice(2)));
+              updateLine(line.key, { catalogId: '', articleId: value.slice(2), description: '', serials: '', price: article?.unitPriceCve ? String(article.unitPriceCve) : '' });
+              return;
+            }
+            const item = catalog.find((row) => row.id === Number(value));
+            updateLine(line.key, { catalogId: value, articleId: '', description: '', serials: '', price: item ? String(item.sellingPriceCve || '') : '' });
+          }}><option value="">Linha livre</option>{articles.length > 0 && <optgroup label="Artigos e serviços">{articles.filter((row) => String(row.id) === String(line.articleId) || matches(row.code, row.name)).map((row) => <option key={`a${row.id}`} value={`a:${row.id}`}>{row.code} · {row.name}</option>)}</optgroup>}<optgroup label="Stock">{catalog.filter((item) => String(item.id) === line.catalogId || matches(item.code, item.brand, item.model)).map((item) => <option key={item.id} value={item.id}>{item.code ? `${item.code} · ` : ''}{[item.brand, item.model].filter(Boolean).join(' ')} · {item.stockTotal} em stock</option>)}</optgroup></Select>
+          {!line.catalogId && !line.articleId && <Field label={`Descrição ${index + 1}`} required maxLength={200} value={line.description} disabled={locked} onChange={(event) => updateLine(line.key, { description: event.target.value })} />}
           <div className="sale-ticket-line-pricing"><Field label={`Quantidade ${index + 1}`} type="number" required min={1} step={1} value={line.quantity} disabled={locked} onChange={(event) => updateLine(line.key, { quantity: event.target.value })} />
           <Field label={`Preço unitário CVE ${index + 1}`} type="number" required min="0.01" step="0.01" value={line.price} disabled={locked} onChange={(event) => updateLine(line.key, { price: event.target.value })} /></div>
           {Boolean(catalog.find((row) => row.id === Number(line.catalogId))?.isSerialized) && <Textarea label={`Números de série ${index + 1}`} required rows={3} value={line.serials} disabled={locked} hint="Um número de série por unidade, um por linha." onChange={(event) => updateLine(line.key, { serials: event.target.value })} />}

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { FastifyRequest } from 'fastify';
 import { getSqliteDatabase } from '../db/database';
 import { recordAuditStrict } from './audit';
+import { lineRef } from './articles';
 import { loadCompany, computeTotals } from './documents';
 import type { UserRole } from './auth';
 import type { Proposal, ProposalAction, ProposalDraftInput, ProposalLine, ProposalList, ProposalSnapshot, ProposalStatus, ProposalSummary, ProposalTax, InformativeDocumentType, PaymentRequest } from '../../shared/proposals';
@@ -20,7 +21,8 @@ const lineSchema = z.object({
     quantity: z.number().positive().max(1000000).refine(value => Math.abs(value * 1000 - Math.round(value * 1000)) < 1e-7),
     unitPriceCentavos: z.number().int().min(0).max(100000000000),
     planId: z.number().int().positive().nullable().optional(),
-    catalogId: z.number().int().positive().nullable().optional()
+    catalogId: z.number().int().positive().nullable().optional(),
+    articleId: z.number().int().positive().nullable().optional()
 }).strict().superRefine((line, context) => {
     if ((line.kind === 'plan' || line.kind === 'installation') && !Number.isInteger(line.quantity)) {
         context.addIssue({ code: 'custom', message: 'Quantidade de planos deve ser inteira' });
@@ -28,7 +30,8 @@ const lineSchema = z.object({
     if ((line.kind === 'plan' && line.period !== 'monthly') || (line.kind === 'installation' && line.period !== 'once')) {
         context.addIssue({ code: 'custom', message: 'Periodicidade incompatível' });
     }
-    if ((line.planId && line.kind !== 'plan' && line.kind !== 'installation') || (line.catalogId && line.kind !== 'product')) {
+    if ((line.planId && line.kind !== 'plan' && line.kind !== 'installation') || (line.catalogId && line.kind !== 'product')
+        || (line.articleId && ((line.kind !== 'product' && line.kind !== 'free') || line.catalogId || line.planId))) {
         context.addIssue({ code: 'custom', message: 'Referência incompatível' });
     }
 });
@@ -116,7 +119,7 @@ export function getProposal(id: number, role: UserRole = 'admin'): Proposal {
     const proposal = row(id);
     const db = getSqliteDatabase();
     const lines = db.prepare(`SELECT id,sort_order sortOrder,kind,description,period,quantity,
-        unit_price_centavos unitPriceCentavos,total_centavos totalCentavos,plan_id planId,catalog_id catalogId
+        unit_price_centavos unitPriceCentavos,total_centavos totalCentavos,plan_id planId,catalog_id catalogId,article_id articleId,item_code itemCode,item_note itemNote
         FROM proposal_lines WHERE proposal_id=? ORDER BY sort_order`).all(id) as ProposalLine[];
     const deliveries = db.prepare(`SELECT id,delivered_at deliveredAt,channel,note,actor_user_id actorUserId
         FROM proposal_deliveries WHERE proposal_id=? ORDER BY id`).all(id) as Proposal['deliveries'];
@@ -145,6 +148,8 @@ function validate(input: ProposalDraftInput) {
     const lines = data.lines.map(line => {
         if (line.planId && !db.prepare('SELECT id FROM internet_plans WHERE id=?').get(line.planId)) throw new ProposalError('Plano inexistente');
         if (line.catalogId && !db.prepare('SELECT id FROM equipment_catalog WHERE id=?').get(line.catalogId)) throw new ProposalError('Produto inexistente');
+        // Existir chega, como no catálogo: rever uma proposta antiga não pode falhar por um artigo entretanto desativado.
+        if (line.articleId && !db.prepare('SELECT id FROM articles WHERE id=?').get(line.articleId)) throw new ProposalError('Artigo inexistente');
         // Integer thousandths avoid floating-point half-cent errors; round each line, then aggregate.
         const totalCentavos = Number((BigInt(line.unitPriceCentavos) * BigInt(Math.round(line.quantity * 1000)) + 500n) / 1000n);
         if (!Number.isSafeInteger(totalCentavos)) throw new ProposalError('Valor demasiado elevado');
@@ -161,9 +166,13 @@ function saveLines(id: number, lines: ReturnType<typeof validate>['lines']) {
     const db = getSqliteDatabase();
     db.prepare('DELETE FROM proposal_lines WHERE proposal_id=?').run(id);
     const insert = db.prepare(`INSERT INTO proposal_lines(proposal_id,sort_order,kind,description,period,quantity,
-        unit_price_centavos,total_centavos,plan_id,catalog_id) VALUES(?,?,?,?,?,?,?,?,?,?)`);
-    lines.forEach((line, index) => insert.run(id,index,line.kind,line.description,line.period,line.quantity,
-        line.unitPriceCentavos,line.totalCentavos,line.planId ?? null,line.catalogId ?? null));
+        unit_price_centavos,total_centavos,plan_id,catalog_id,article_id,item_code,item_note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    lines.forEach((line, index) => {
+        // Código e nota ficam na linha: editá-los depois no catálogo não muda uma proposta já feita.
+        const ref = line.articleId ? lineRef(db,'articles',line.articleId) : line.catalogId ? lineRef(db,'equipment_catalog',line.catalogId) : lineRef(db,'internet_plans',line.planId);
+        insert.run(id,index,line.kind,line.description,line.period,line.quantity,
+            line.unitPriceCentavos,line.totalCentavos,line.planId ?? null,line.catalogId ?? null,line.articleId ?? null,ref.code,ref.note);
+    });
 }
 function audit(id: number, action: string, request?: FastifyRequest) {
     recordAuditStrict(getSqliteDatabase(), request ?? ({} as FastifyRequest), {
@@ -224,7 +233,7 @@ function snapshot(proposal: Row): ProposalSnapshot {
         bankAccounts: company.bankAccounts,
         company: {companyName:company.companyName,nif:company.nif,phone:company.phone,email:company.email,
             address:company.address,island:company.island,currencyCode:company.currencyCode,ivaRate:company.ivaRate,
-            fiscalRegime:company.fiscalRegime,showIva:company.showIva,legalNotes:company.legalNotes},
+            fiscalRegime:company.fiscalRegime,showIva:company.showIva,legalNotes:company.legalNotes,productPolicy:company.productPolicy},
         onceTax:tax(proposal.once_total_centavos),monthlyTax:tax(proposal.monthly_total_centavos)
     };
 }
@@ -252,7 +261,7 @@ function issueProposal(proposal: Row, request?: FastifyRequest) {
         audit(previous.id,'supersede',request);
     }
     // Revalidate stored payment instructions before allocating a number.
-    validate({documentType: proposal.document_type, paymentRequest: proposal.payment_request_json ? JSON.parse(proposal.payment_request_json) : null, clientId: null, recipient: JSON.parse(proposal.recipient_json), title: proposal.title, validUntil: proposal.valid_until, conditions: proposal.conditions, lines: getProposal(proposal.id).lines.map(({kind,description,period,quantity,unitPriceCentavos,planId,catalogId}) => ({kind,description,period,quantity,unitPriceCentavos,planId,catalogId}))});
+    validate({documentType: proposal.document_type, paymentRequest: proposal.payment_request_json ? JSON.parse(proposal.payment_request_json) : null, clientId: null, recipient: JSON.parse(proposal.recipient_json), title: proposal.title, validUntil: proposal.valid_until, conditions: proposal.conditions, lines: getProposal(proposal.id).lines.map(({kind,description,period,quantity,unitPriceCentavos,planId,catalogId,articleId}) => ({kind,description,period,quantity,unitPriceCentavos,planId,catalogId,articleId}))});
     const year = new Date().getFullYear();
     const series = {proposal: ['PR','proposal_sequences'], quotation: ['OR','quotation_sequences'], proforma: ['PF','proforma_sequences']}[proposal.document_type];
     const sequence = db.prepare(`INSERT INTO ${series[1]}(year,last_number) VALUES(?,1)
@@ -268,8 +277,8 @@ function reviseProposal(proposal: Row, role: UserRole, request?: FastifyRequest)
         documentType:proposal.document_type,paymentRequest:current.paymentRequest,
         clientId:proposal.client_id,recipient:current.recipient,title:proposal.title,conditions:proposal.conditions,
         validUntil:formatLocalDate(validity),
-        lines:current.lines.map(({kind,description,period,quantity,unitPriceCentavos,planId,catalogId}) =>
-            ({kind,description,period,quantity,unitPriceCentavos,planId,catalogId}))
+        lines:current.lines.map(({kind,description,period,quantity,unitPriceCentavos,planId,catalogId,articleId}) =>
+            ({kind,description,period,quantity,unitPriceCentavos,planId,catalogId,articleId}))
     },request,proposal);
 }
 function deliverProposal(proposal: Row, input: ProposalActionInput, request?: FastifyRequest) {

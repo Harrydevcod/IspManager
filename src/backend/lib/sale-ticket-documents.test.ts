@@ -13,7 +13,8 @@ state.db = db;
 db.exec(`
   CREATE TABLE payments (id INTEGER PRIMARY KEY, document_type TEXT, invoice_number TEXT,
     invoice_date TEXT, amount_cve REAL, status TEXT, payment_method TEXT, payment_date TEXT, notes TEXT);
-  CREATE TABLE payment_lines (id INTEGER PRIMARY KEY, payment_id INTEGER, description TEXT, amount_cve REAL, sort_order INTEGER);
+  CREATE TABLE payment_lines (id INTEGER PRIMARY KEY, payment_id INTEGER, description TEXT, amount_cve REAL, sort_order INTEGER, item_code TEXT, item_note TEXT, article_id INTEGER);
+  CREATE TABLE articles (id INTEGER PRIMARY KEY, kind TEXT);
   CREATE TABLE sale_ticket_lines (payment_line_id INTEGER PRIMARY KEY, catalog_id INTEGER, quantity INTEGER, unit_price_cve REAL);
   CREATE TABLE sale_ticket_serials (id INTEGER PRIMARY KEY, payment_line_id INTEGER, serial_number TEXT, normalized_serial TEXT, released_at TEXT);
   CREATE TABLE payment_receipts (id INTEGER PRIMARY KEY, payment_id INTEGER, account_id INTEGER);
@@ -27,7 +28,7 @@ beforeEach(() => {
   db.exec(`DELETE FROM sale_ticket_serials; DELETE FROM sale_ticket_lines; DELETE FROM payment_lines;
     DELETE FROM payment_receipts; DELETE FROM payments; DELETE FROM treasury_accounts; DELETE FROM app_settings;
     INSERT INTO payments VALUES (1, 'sale_ticket', 'TV-2026-00001', '2026-10-13', 3450, 'paid', 'numerario', '2026-10-13', 'Garantia de 24 meses');
-    INSERT INTO payment_lines VALUES (1, 1, 'Router de acesso', 3450, 0);
+    INSERT INTO payment_lines(id,payment_id,description,amount_cve,sort_order,item_code) VALUES (1, 1, 'Router de acesso', 3450, 0, 'EQP0007');
     INSERT INTO sale_ticket_lines VALUES (1, NULL, 3, 1150);
     INSERT INTO sale_ticket_serials VALUES (1, 1, 'SN-ALPHA-001', 'SNALPHA001', NULL);
     INSERT INTO treasury_accounts VALUES (1, 'Caixa principal', 'caixa', NULL, NULL, NULL, NULL, NULL, 1, 0, 0);
@@ -63,7 +64,7 @@ describe('talão de venda PDF', () => {
     expect(result.buffer.subarray(0, 5).toString()).toBe('%PDF-');
     expect(result.filename).toBe(`Talão de venda - TV-2026-00001 - ${format}.pdf`);
     for (const value of ['TV-2026-00001', 'Cliente Indiferenciado', 'Router de acesso', 'SN-ALPHA-001',
-      '200000001', 'Caixa principal', 'Garantia de 24 meses', '3.450$00', '3.000$00', '450$00', 'IVA 15%', 'PAGO']) {
+      '200000001', 'Caixa principal', 'Garantia de 24 meses', '3.450$00', '3.000$00', '450$00', 'IVA 15%', 'PAGO', 'EQP0007']) {
       expect(pdf.text).toContain(value);
     }
     expect(pdf.text).not.toContain('FT-');
@@ -77,7 +78,7 @@ describe('talão de venda PDF', () => {
   });
 
   test.each(['a4', 'a5'] as const)('%s aligns parties and repeats table headers on long sales', async (format) => {
-    const add = db.prepare('INSERT INTO payment_lines VALUES (?,1,?,100,?)');
+    const add = db.prepare('INSERT INTO payment_lines(id,payment_id,description,amount_cve,sort_order) VALUES (?,1,?,100,?)');
     const detail = db.prepare('INSERT INTO sale_ticket_lines VALUES (?,NULL,1,100)');
     for (let index = 2; index <= 90; index++) { add.run(index, `Artigo ${index}`, index); detail.run(index); }
     const layout = inspectPdfLayout((await renderSaleTicketPdf(1, format)).buffer);
@@ -103,7 +104,7 @@ describe('talão de venda PDF', () => {
   test.each(['a4', 'a5', '80mm'] as const)('%s pagina descrições e séries longas sem cortar conteúdo', async (format) => {
     const description = 'Descrição extensa de equipamento para instalação ' + 'ABCDEFGHIJ'.repeat(110) + ' FIM-DESCRICAO';
     db.prepare('UPDATE payment_lines SET description = ?').run(description);
-    const insertLine = db.prepare('INSERT INTO payment_lines VALUES (?, 1, ?, 10, ?)');
+    const insertLine = db.prepare('INSERT INTO payment_lines(id,payment_id,description,amount_cve,sort_order) VALUES (?, 1, ?, 10, ?)');
     const insertSale = db.prepare('INSERT INTO sale_ticket_lines VALUES (?, NULL, 1, 10)');
     for (let index = 2; index <= 90; index += 1) {
       insertLine.run(index, `Item-${index} equipamento vendido`, index);
@@ -142,7 +143,7 @@ describe('talão de venda PDF', () => {
   });
 
   test('80mm adapta a altura da última página ao conteúdo para evitar papel em branco', async () => {
-    const add = db.prepare('INSERT INTO payment_lines VALUES (?,1,?,100,?)');
+    const add = db.prepare('INSERT INTO payment_lines(id,payment_id,description,amount_cve,sort_order) VALUES (?,1,?,100,?)');
     const detail = db.prepare('INSERT INTO sale_ticket_lines VALUES (?,NULL,1,100)');
     for (let index=2; index<=20; index++) {
       add.run(index, `Artigo ${index}: ` + 'Descrição detalhada do produto fornecido ao comprador. '.repeat(3), index);
@@ -187,4 +188,14 @@ describe('talão de venda PDF', () => {
     await expect(renderSaleTicketPdf(1, 'a4')).rejects.toMatchObject({ statusCode: 409 });
     expect(db.prepare('SELECT total_changes() AS changes').get()).toEqual(changes);
   });
+});
+
+test('nota do artigo e política de produtos saem nas observações do talão', async () => {
+  db.exec(`INSERT INTO articles VALUES (9, 'product');
+    UPDATE payment_lines SET item_note = 'Recondicionado', article_id = 9 WHERE id = 1;
+    INSERT INTO app_settings VALUES ('productPolicy', 'Trocas em 7 dias.');`);
+  const pdf = inspectPdf((await renderSaleTicketPdf(1, 'a4')).buffer);
+  expect(pdf.text).toContain('EQP0007 Router de acesso: Recondicionado');
+  expect(pdf.text).toContain('Trocas em 7 dias.');
+  db.exec("DELETE FROM articles; DELETE FROM app_settings WHERE key = 'productPolicy';");
 });

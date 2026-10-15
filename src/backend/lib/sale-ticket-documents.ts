@@ -1,6 +1,6 @@
 import { getSqliteDatabase } from '../db/database';
 import { formatEscudos } from '../../shared/money';
-import { computeTotals, filenamePart, formatDate, loadCompany, PALETTE, PaymentDocumentError } from './documents';
+import { computeTotals, filenamePart, formatDate, formatQuantity, loadCompany, PALETTE, PaymentDocumentError, productNotes } from './documents';
 
 const PDFDocument = require('pdfkit');
 
@@ -20,6 +20,9 @@ type Ticket = {
 
 type TicketLine = {
   id: number;
+  itemCode: string | null;
+  itemNote: string | null;
+  isProduct: number;
   description: string;
   amountCve: number;
   quantity: number;
@@ -54,9 +57,11 @@ export async function renderSaleTicketPdf(paymentId: number, format: SaleTicketF
   }
 
   const lines = db.prepare(`
-    SELECT l.id, l.description, l.amount_cve AS amountCve,
+    SELECT l.id, l.item_code AS itemCode, l.item_note AS itemNote, l.description, l.amount_cve AS amountCve,
+           (a.kind = 'product' OR t.catalog_id IS NOT NULL) AS isProduct,
            t.quantity, t.unit_price_cve AS unitPriceCve
     FROM payment_lines l JOIN sale_ticket_lines t ON t.payment_line_id = l.id
+    LEFT JOIN articles a ON a.id = l.article_id
     WHERE l.payment_id = ? ORDER BY l.sort_order, l.id
   `).all(paymentId) as Omit<TicketLine, 'serials'>[];
   // Released serials remain part of the original, cancelled document.
@@ -87,7 +92,10 @@ function buildPdf(ticket: Ticket, lines: TicketLine[], accounts: string[], forma
   const contentWidth = width - 2 * margin;
   const fontSize = thermal || a5 ? 9 : 10;
   const lineHeight = thermal ? 12 : a5 ? 13 : 15;
-  const descWidth = contentWidth * 0.49;
+  // Cód. · Descrição · Qtd. · Unitário · Valor; em 80 mm o código vai à frente da descrição.
+  const codeWidth = contentWidth * 0.13;
+  const descX = margin + contentWidth * 0.14;
+  const descWidth = contentWidth * 0.35;
   const qtyX = margin + contentWidth * 0.51;
   const unitX = margin + contentWidth * 0.61;
   const amountX = margin + contentWidth * 0.81;
@@ -160,7 +168,8 @@ function buildPdf(ticket: Ticket, lines: TicketLine[], accounts: string[], forma
   let tableHeader: Row | undefined;
   if (!thermal) {
     tableHeader = { height: 23, size: 8, bold: true, color: PALETTE.muted, cells: [
-      { text: 'DESCRIÇÃO', x: margin, width: descWidth },
+      { text: 'CÓD.', x: margin, width: codeWidth },
+      { text: 'DESCRIÇÃO', x: descX, width: descWidth },
       { text: 'QTD.', x: qtyX, width: contentWidth * 0.08, align: 'right' },
       { text: 'UNITÁRIO', x: unitX, width: contentWidth * 0.18, align: 'right' },
       { text: 'VALOR', x: amountX, width: contentWidth * 0.19, align: 'right' }
@@ -170,24 +179,27 @@ function buildPdf(ticket: Ticket, lines: TicketLine[], accounts: string[], forma
 
   for (const line of lines) {
     const descriptionWidth = thermal ? contentWidth : descWidth;
-    const descriptionLines = wrap(line.description, descriptionWidth, fontSize, true);
+    const descriptionX = thermal ? margin : descX;
+    const label = thermal && line.itemCode ? `${line.itemCode} · ${line.description}` : line.description;
+    const descriptionLines = wrap(label, descriptionWidth, fontSize, true);
     descriptionLines.forEach((part, index) => {
-      const cells: Cell[] = [{ text: part, x: margin, width: descriptionWidth }];
+      const cells: Cell[] = [{ text: part, x: descriptionX, width: descriptionWidth }];
       if (!thermal && index === 0) cells.push(
-        { text: String(line.quantity), x: qtyX, width: contentWidth * 0.08, align: 'right' },
+        { text: line.itemCode || '-', x: margin, width: codeWidth },
+        { text: formatQuantity(line.quantity), x: qtyX, width: contentWidth * 0.08, align: 'right' },
         { text: formatEscudos(line.unitPriceCve), x: unitX, width: contentWidth * 0.18, align: 'right' },
         { text: formatEscudos(line.amountCve), x: amountX, width: contentWidth * 0.19, align: 'right' }
       );
       rows.push({ height: lineHeight, cells, bold: true, size: fontSize, item: true, keepNext: index === descriptionLines.length - 1 && thermal });
     });
     if (thermal) rows.push({ height: 15, size: 8, cells: [
-      { text: `${line.quantity} x ${formatEscudos(line.unitPriceCve)}`, x: margin, width: contentWidth * 0.57 },
+      { text: `${formatQuantity(line.quantity)} x ${formatEscudos(line.unitPriceCve)}`, x: margin, width: contentWidth * 0.57 },
       { text: formatEscudos(line.amountCve), x: margin + contentWidth * 0.59, width: contentWidth * 0.41, align: 'right' }
     ] });
     for (const serial of line.serials) {
       for (const part of wrap(`S/N: ${serial}`, descriptionWidth, thermal ? 7.5 : 8)) {
         rows.push({ height: thermal ? 10 : 12, size: thermal ? 7.5 : 8, color: PALETTE.muted,
-          cells: [{ text: part, x: margin, width: descriptionWidth }], item: true });
+          cells: [{ text: part, x: descriptionX, width: descriptionWidth }], item: true });
       }
     }
     rows.push({ height: thermal ? 9 : 14 });
@@ -210,7 +222,7 @@ function buildPdf(ticket: Ticket, lines: TicketLine[], accounts: string[], forma
   if (ticket.paymentMethod) text(`Método de pagamento: ${METHODS[ticket.paymentMethod] ?? ticket.paymentMethod}`);
   if (ticket.paymentDate) text(`Pagamento em ${formatDate(ticket.paymentDate)}`);
   for (const account of accounts) text(`Conta: ${account}`, { size: thermal ? 8 : 9, color: PALETTE.muted });
-  for (const note of [ticket.notes?.trim(), company.legalNotes?.trim()]) {
+  for (const note of [...productNotes(lines, company), ticket.notes?.trim(), company.legalNotes?.trim()]) {
     if (note) { rule(); text(note, { size: thermal ? 8 : 9, color: PALETTE.muted }); }
   }
   if (thermal && company.email) { rule(); text(company.email, { size: 8, color: PALETTE.muted }); }

@@ -37,7 +37,10 @@ export const proposalLines = sqliteTable('proposal_lines', {
   unitPriceCentavos: integer('unit_price_centavos').notNull(),
   totalCentavos: integer('total_centavos').notNull(),
   planId: integer('plan_id').references(() => internetPlans.id, { onDelete: 'set null' }),
-  catalogId: integer('catalog_id').references(() => equipmentCatalog.id, { onDelete: 'set null' })
+  catalogId: integer('catalog_id').references(() => equipmentCatalog.id, { onDelete: 'set null' }),
+  articleId: integer('article_id'),
+  itemCode: text('item_code'),
+  itemNote: text('item_note')
 });
 export const proposalDeliveries = sqliteTable('proposal_deliveries', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -134,7 +137,8 @@ export const internetPlans = sqliteTable('internet_plans', {
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP'),
   downloadMbps: integer('download_mbps'),
   uploadMbps: integer('upload_mbps'),
-  routerProfile: text('router_profile')
+  routerProfile: text('router_profile'),
+  code: text('code')
 });
 
 export const services = sqliteTable('services', {
@@ -190,7 +194,12 @@ export const paymentLines = sqliteTable('payment_lines', {
   description: text('description').notNull(),
   amountCve: real('amount_cve').notNull().default(0),
   sortOrder: integer('sort_order').notNull().default(0),
-  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
+  articleId: integer('article_id'),
+  itemCode: text('item_code'),
+  itemNote: text('item_note'),
+  quantity: real('quantity').notNull().default(1),
+  unitPriceCentavos: integer('unit_price_centavos')
 });
 
 export const saleTicketLines = sqliteTable('sale_ticket_lines', {
@@ -254,7 +263,9 @@ export const equipmentCatalog = sqliteTable('equipment_catalog', {
   usefulLifeMonths: integer('useful_life_months').notNull().default(60),
   active: integer('active', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
-  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
+  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP'),
+  code: text('code'),
+  documentNote: text('document_note')
 });
 
 export const stockMovements = sqliteTable('stock_movements', {
@@ -960,4 +971,17 @@ export const stripePaymentLinks = sqliteTable('stripe_payment_links', {
   refundId: text('refund_id'),
   feeCve: real('fee_cve'),
   feeExpenseId: integer('fee_expense_id')
+});
+
+/** Artigos e serviços vendidos em talões e faturas manuais (migração 0086). */
+export const articles = sqliteTable('articles', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  code: text('code').notNull().unique(),
+  name: text('name').notNull(),
+  kind: text('kind', { enum: ['product', 'service'] }).notNull(),
+  unitPriceCentavos: integer('unit_price_centavos').notNull().default(0),
+  documentNote: text('document_note'),
+  active: integer('active', { mode: 'boolean' }).notNull().default(true),
+  createdAt: text('created_at').notNull().default("(datetime('now'))"),
+  updatedAt: text('updated_at').notNull().default("(datetime('now'))")
 });
