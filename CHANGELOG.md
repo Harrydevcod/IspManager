@@ -6,6 +6,24 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.32](https://github.com/Harrydevcod/IspManager/releases/tag/v2.32.0) — 2026-10-15
+
+- **Artigos e serviços com código.** Novo catálogo de artigos (ART…) e
+  serviços (SRV…), com código automático e editável. O equipamento do stock
+  ganha código EQP… e os planos PLN…. A linha livre do talão e da fatura
+  manual entra no catálogo com código próprio. Nos Informativos escolhem-se
+  artigos, serviços ou equipamento do stock.
+- **PDFs com código e quantidade.** Faturas, talões e Informativos imprimem
+  as colunas Cód., Qtd. e P. unit. A fatura manual passa a ter quantidade ×
+  preço unitário.
+- **Observações certas.** O aviso de suspensão só sai nas faturas ligadas a
+  um serviço. Cada artigo e equipamento pode levar uma "Nota no documento"
+  (garantia, estado do produto) e a nova "Política de produtos" das
+  Configurações sai só em documentos com produtos.
+- **Cliente Indiferenciado** passa ao código VD e aparece primeiro na lista.
+- **Documentos.** O seletor Informativos/Fiscais fica por baixo do título, e
+  há botões diretos para proposta, orçamento e proforma.
+
 ## [2.31](https://github.com/Harrydevcod/IspManager/releases/tag/v2.31.0) — 2026-10-15
 
 - **Documentos.** Novo módulo com duas abas. **Informativos** reúne Propostas
