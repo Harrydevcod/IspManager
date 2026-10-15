@@ -22,7 +22,7 @@ import { ReportsModule } from './modules/ReportsModule';
 import { SettingsModule } from './modules/SettingsModule';
 import RouterModule from './modules/router/RouterModule';
 import { ClientsModule } from './modules/ClientsModule';
-import { ProposalsModule } from './modules/proposals/ProposalsModule';
+import { DocumentsModule } from './modules/documents/DocumentsModule';
 import { UsersModule } from './modules/UsersModule';
 import { AuditModule } from './modules/AuditModule';
 import type { Client, DashboardSummary, HealthState, SectionId } from './types';
@@ -39,7 +39,7 @@ type SidebarItem = {
 const sections: SidebarItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: Gauge },
   { id: 'clients', label: 'Clientes', icon: UsersRound },
-  { id: 'proposals', label: 'Propostas', icon: FileText, roles: ['admin', 'operator'] },
+  { id: 'documents', label: 'Documentos', icon: FileText, roles: ['admin', 'operator'] },
   { id: 'plans', label: 'Planos', icon: Wifi },
   { id: 'services', label: 'Serviços', icon: Cable },
   { id: 'topology', label: 'Topologia', icon: Network },
@@ -135,6 +135,7 @@ function AppShell() {
    */
   const [focusAssignmentId, setFocusAssignmentId] = useState<number | null>(null);
   const [paymentsFocus, setPaymentsFocus] = useState<'overdue' | 'pending' | null>(null);
+  const [paymentFocusId, setPaymentFocusId] = useState<number | null>(null);
   const [paymentsMonth, setPaymentsMonth] = useState<string | null>(null);
   const [stockLowFocus, setStockLowFocus] = useState(false);
   const [stockCatalogFocus, setStockCatalogFocus] = useState<number | null>(null);
@@ -438,7 +439,7 @@ function AppShell() {
             <ClientsModule
               focusClientId={focusClientId}
               onFocusHandled={() => setFocusClientId(null)}
-              onCreateProposal={(client) => { setProposalClient(client); setSection('proposals'); }}
+              onCreateProposal={(client) => { setProposalClient(client); setSection('documents'); }}
               onOpenServicesForClient={(id) => {
                 setFocusServiceClientId(id);
                 setSection('services');
@@ -446,7 +447,7 @@ function AppShell() {
             />
           )}
           {section === 'plans' && <PlansModule />}
-          {section === 'proposals' && <ProposalsModule initialClient={proposalClient} onInitialClientHandled={() => setProposalClient(null)} />}
+          {section === 'documents' && <DocumentsModule initialClient={proposalClient} onInitialClientHandled={() => setProposalClient(null)} onOpenPayment={id => {setPaymentFocusId(id);setSection('finance');}} />}
           {section === 'services' && (
             <ServicesModule
               focusClientId={focusServiceClientId}
@@ -483,6 +484,8 @@ function AppShell() {
           {section === 'router' && <RouterModule />}
           {section === 'finance' && (
             <FinanceModule
+              paymentFocusId={paymentFocusId}
+              onPaymentFocusHandled={() => setPaymentFocusId(null)}
               paymentsFocus={paymentsFocus}
               paymentsMonth={paymentsMonth}
               onPaymentsFocusHandled={() => { setPaymentsFocus(null); setPaymentsMonth(null); }}

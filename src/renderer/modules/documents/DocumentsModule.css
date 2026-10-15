@@ -1,0 +1,151 @@
+.documents-shell {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+.documents-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+}
+.documents-navigation .eyebrow {
+  margin: 0;
+}
+.fiscal-workspace {
+  display: grid;
+  gap: 22px;
+}
+.fiscal-filters {
+  display: grid;
+  grid-template-columns: minmax(200px, 2fr) repeat(
+      3,
+      minmax(120px, 1fr)
+    ) repeat(2, minmax(135px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+.fiscal-list {
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+ .fiscal-row.btn {
+  display: block;
+  height: auto;
+  padding: 20px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  width: 100%;
+  white-space: normal;
+  text-align: left;
+  color: var(--text);
+}
+.fiscal-row > .btn-content {
+  display: grid;
+  grid-template-columns: minmax(0,2fr) minmax(120px,1fr) auto;
+  justify-content: stretch;
+  width: 100%;
+  gap: 24px;
+  text-align: left;
+}
+.fiscal-row .btn-content > div { display: grid; gap: 6px; min-width: 0; }
+.fiscal-row .btn-content > div > span { color: var(--text-2); font-size: 12px; }
+.fiscal-row strong { overflow-wrap: anywhere; color: var(--text); }
+.fiscal-row .btn-content > strong { text-align: right; font-variant-numeric: tabular-nums; }
+.fiscal-pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: flex-end;
+}
+.fiscal-pagination > span {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+.fiscal-detail {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: 28px;
+}
+.fiscal-detail aside {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+.fiscal-detail aside h3,
+.fiscal-detail aside h4,
+.fiscal-detail aside p {
+  margin: 0;
+}
+.fiscal-amount {
+  font-size: 28px;
+  letter-spacing: -1px;
+}
+.fiscal-preview iframe {
+  width: 100%;
+  min-height: 700px;
+  border: 0;
+}
+.proposal-payment-request {
+  margin-top: 22px;
+  padding: 20px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  gap: 16px;
+}
+.proposal-payment-request p {
+  color: var(--muted);
+}
+@media (max-width: 1200px) {
+  .fiscal-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .fiscal-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fiscal-detail {
+    grid-template-columns: 1fr;
+  }
+  .fiscal-row > .btn-content {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+  }
+  .fiscal-row .btn-content > strong {
+    grid-column: 2;
+  }
+  .documents-navigation {
+    flex-wrap: wrap;
+  }
+}
+
+.fiscal-workspace .field input,
+.fiscal-workspace .field select {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 0 var(--space-3);
+  font: inherit;
+  font-size: 13px;
+}
+.fiscal-workspace .field input:focus-visible,
+.fiscal-workspace .field select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.documents-navigation .segmented-tabs { margin: 0; }
+.documents-navigation .segmented-tab > .btn-content { display: inline-flex; }
+.documents-shell .proposal-filters { grid-template-columns: minmax(140px,1fr) minmax(180px,2fr) minmax(140px,1fr); }
+@media (max-width: 760px) { .documents-shell .proposal-filters { grid-template-columns: 1fr; } }

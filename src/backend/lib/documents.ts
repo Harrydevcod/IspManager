@@ -337,7 +337,7 @@ function documentFilename(kind: DocumentKind, row: PaymentDocumentRow) {
 }
 
 function hasDocumentNumber(value: string | null) {
-  return !!value && value !== 'PENDING';
+  return !!value?.trim() && value.trim().toUpperCase() !== 'PENDING';
 }
 
 function fitText(doc: any, value: string, width: number) {
@@ -690,7 +690,7 @@ function buildDocument(
   doc.fillColor(PALETTE.light).fontSize(7.5).font('Helvetica')
     .text(`Moeda ${currency}`, M + 2, y + 30, { width: 120, lineBreak: false });
 
-  const statusLabel = isReceipt ? 'PAGO' : documentStatusLabel(row.status);
+  const statusLabel = isReceipt ? (row.status === 'cancelled' ? 'ANULADO' : 'PAGO') : documentStatusLabel(row.status);
   const statusColor = isReceipt
     ? PALETTE.success
     : row.status === 'overdue'
@@ -819,7 +819,7 @@ async function pdfBuffer(row: PaymentDocumentRow, kind: DocumentKind, lines: Doc
  * Reaproveita o desenho da fatura sobrepondo os valores do recibo na linha —
  * o layout, o QR e os totais ja sabem trabalhar com um `PaymentDocumentRow`.
  */
-export async function renderReceiptPdf(receiptId: number): Promise<{ buffer: Buffer; filename: string }> {
+export async function renderReceiptPdf(receiptId: number, archive = false): Promise<{ buffer: Buffer; filename: string }> {
   if (!Number.isInteger(receiptId) || receiptId <= 0) {
     throw new PaymentDocumentError(400, 'Recibo invalido');
   }
@@ -838,7 +838,7 @@ export async function renderReceiptPdf(receiptId: number): Promise<{ buffer: Buf
   if (!receipt) {
     throw new PaymentDocumentError(404, 'Recibo nao encontrado');
   }
-  if (receipt.voidedAt) {
+  if (receipt.voidedAt && !archive) {
     throw new PaymentDocumentError(400, 'Recibo anulado nao pode ser impresso');
   }
 
@@ -867,7 +867,7 @@ export async function renderReceiptPdf(receiptId: number): Promise<{ buffer: Buf
     receiptNumber: receipt.receiptNumber,
     receiptDate: receipt.receiptDate,
     // O recibo prova um pagamento, mesmo que a fatura ainda tenha saldo.
-    status: 'paid',
+    status: archive && (receipt.voidedAt || invoice.status === 'cancelled') ? 'cancelled' : 'paid',
     notes: [
       invoice.notes?.trim(),
       receipt.source === 'credit' ? 'Liquidado por conta corrente.' : null,
@@ -916,7 +916,7 @@ export class PaymentDocumentError extends Error {
  * HTTP routes and the WhatsApp outbox worker. Throws PaymentDocumentError with
  * the HTTP status the routes should surface.
  */
-export async function renderPaymentDocumentPdf(id: number, kind: DocumentKind): Promise<{ buffer: Buffer; filename: string }> {
+export async function renderPaymentDocumentPdf(id: number, kind: DocumentKind, archive = false): Promise<{ buffer: Buffer; filename: string }> {
   if (!Number.isInteger(id) || id <= 0) {
     throw new PaymentDocumentError(400, 'Pagamento invalido');
   }
@@ -928,7 +928,8 @@ export async function renderPaymentDocumentPdf(id: number, kind: DocumentKind): 
   if (db.prepare("SELECT 1 FROM payments WHERE id=? AND document_type='sale_ticket'").get(id)) {
     throw new PaymentDocumentError(409, 'Talão de Venda: use o PDF próprio do talão.');
   }
-  if (row.status === 'cancelled') {
+  if (archive && kind === 'invoice' && !hasDocumentNumber(row.invoiceNumber)) throw new PaymentDocumentError(409, 'Documento não emitido');
+  if (row.status === 'cancelled' && !archive) {
     throw new PaymentDocumentError(400, kind === 'invoice' ? 'Pagamento anulado nao pode gerar fatura' : 'Pagamento anulado nao pode gerar recibo');
   }
   if (kind === 'receipt') {
@@ -941,9 +942,10 @@ export async function renderPaymentDocumentPdf(id: number, kind: DocumentKind): 
       ORDER BY payment_date DESC, id DESC LIMIT 1
     `).get(id) as { id: number } | undefined;
     if (latest) {
-      return renderReceiptPdf(latest.id);
+      return renderReceiptPdf(latest.id, archive);
     }
-    if (row.status !== 'paid') {
+    if (archive && !hasDocumentNumber(row.receiptNumber)) throw new PaymentDocumentError(409, 'Documento não emitido');
+    if (row.status !== 'paid' && !(archive && row.status === 'cancelled')) {
       throw new PaymentDocumentError(400, 'So e possivel gerar recibo depois do pagamento');
     }
   }

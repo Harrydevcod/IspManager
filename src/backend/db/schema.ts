@@ -2,6 +2,8 @@ import { integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 
 export const proposals = sqliteTable('proposals', {
+  documentType: text('document_type', { enum: ['proposal','quotation','proforma'] }).notNull().default('proposal'),
+  paymentRequestJson: text('payment_request_json'),
   id: integer('id').primaryKey({ autoIncrement: true }),
   number: text('number').unique(),
   clientId: integer('client_id').references(() => clients.id, { onDelete: 'set null' }),
@@ -49,6 +51,9 @@ export const proposalSequences = sqliteTable('proposal_sequences', {
   year: integer('year').primaryKey(),
   lastNumber: integer('last_number').notNull()
 });
+
+export const quotationSequences = sqliteTable('quotation_sequences', { year: integer('year').primaryKey(), lastNumber: integer('last_number').notNull() });
+export const proformaSequences = sqliteTable('proforma_sequences', { year: integer('year').primaryKey(), lastNumber: integer('last_number').notNull() });
 
 /**
  * Single source of truth for the database shape.

@@ -22,3 +22,15 @@ test('upgrade83 preserva faturas, TV, linhas, recebimentos e sequências fiscais
     runMigrations(db);runMigrations(db);expect(tables.map(t=>db.prepare(`SELECT * FROM ${t}`).all())).toEqual(before);
     expect(db.prepare('SELECT * FROM proposal_sequences').all()).toEqual([]);expect(db.pragma('integrity_check')).toEqual([{integrity_check:'ok'}]);expect(db.pragma('foreign_key_check')).toEqual([]);
 });
+
+test('upgrade84 keeps issued proposal content and historical PR sequence unchanged',()=>{
+  db=new Database(':memory:');runMigrations(db,migrations.filter(m=>m.version<=84));
+  db.prepare("INSERT INTO proposals(number,recipient_json,title,valid_until,conditions,status,once_total_centavos,monthly_total_centavos,snapshot_json) VALUES ('PR-2026-00042','{}','Oferta','2099-01-01','Termos','issued',100,200,'{}')").run();
+  db.prepare('INSERT INTO proposal_sequences VALUES (2026,42)').run();
+  const before=db.prepare('SELECT * FROM proposals').get() as Record<string,unknown>;
+  runMigrations(db);runMigrations(db);
+  expect(db.prepare('SELECT * FROM proposals').get()).toEqual({...before,document_type:'proposal',payment_request_json:null});
+  expect(db.prepare('SELECT * FROM proposal_sequences').all()).toEqual([{year:2026,last_number:42}]);
+  expect(db.prepare('SELECT * FROM quotation_sequences').all()).toEqual([]);
+  expect(db.prepare('SELECT * FROM proforma_sequences').all()).toEqual([]);
+});

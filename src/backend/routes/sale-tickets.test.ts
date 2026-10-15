@@ -109,7 +109,7 @@ test('anulação exige administrador, password correta e devolução antes de al
   expect(db.prepare('SELECT count(*) AS n FROM treasury_movements').get()).toEqual({ n: 2 });
   expect(db.prepare("SELECT count(*) AS n FROM audit_logs WHERE action='cancel'").get()).toEqual({ n: 1 });
 });
-test.each(['a4', '80mm'])('PDF %s está disponível, incluindo depois da anulação', async (format) => {
+test.each(['a4', 'a5', '80mm'])('PDF %s está disponível, incluindo depois da anulação', async (format) => {
   const sale = await ticket();
   for (const annul of [false, true]) {
     if (annul) expect((await cancel(sale.paymentId)).statusCode).toBe(200);
@@ -117,7 +117,15 @@ test.each(['a4', '80mm'])('PDF %s está disponível, incluindo depois da anulaç
     expect(pdf.statusCode).toBe(200); expect(pdf.headers['content-type']).toBe('application/pdf');
     expect(String(pdf.headers['content-disposition'])).toContain('inline');
     expect(pdf.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
+    if (format !== '80mm') expect(pdf.rawPayload.toString('latin1')).toContain(format === 'a5' ? '/MediaBox [0 0 419.53 595.28]' : '/MediaBox [0 0 595.28 841.89]');
   }
+});
+
+test('PDF sem formato mantém A4 por compatibilidade', async () => {
+  const sale = await ticket();
+  const pdf = await app.inject({ url: `/api/payments/${sale.paymentId}/sale-ticket.pdf`, headers: headers() });
+  expect(pdf.statusCode).toBe(200);
+  expect(pdf.rawPayload.toString('latin1')).toContain('/MediaBox [0 0 595.28 841.89]');
 });
 test('rotas genéricas recusam reabrir, anular, regenerar, Stripe ou emitir FT/RC do TV', async () => {
   const sale = await ticket();
@@ -172,7 +180,7 @@ test('rejeita IDs, formato e corpo inválidos sem efeitos', async () => {
   expect((await app.inject({ method: 'POST', url: '/api/payments/sale-tickets', headers: headers(), payload: {} })).statusCode).toBe(400);
   expect((await app.inject({ url: '/api/payments/abc/sale-ticket', headers: headers() })).statusCode).toBe(400);
   expect((await app.inject({ url: '/api/payments/999999/sale-ticket', headers: headers() })).statusCode).toBe(404);
-  expect((await app.inject({ url: '/api/payments/1/sale-ticket.pdf?format=a5', headers: headers() })).statusCode).toBe(400);
+  expect((await app.inject({ url: '/api/payments/1/sale-ticket.pdf?format=a3', headers: headers() })).statusCode).toBe(400);
 });
 
 test('relatórios contam TV e FT uma vez e filtram o tipo sem misturar caixa', async () => {

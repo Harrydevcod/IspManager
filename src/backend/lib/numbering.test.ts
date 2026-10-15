@@ -115,3 +115,10 @@ describe('allocateDocumentNumber', () => {
     expect(allocateDocumentNumber('invoice')).toBe(`FT-${year}-00042`);
   });
 });
+
+test.each(['OR','PF'])('reserved %s blocks both fiscal series without allocating', prefix => {
+  const db=freshDb();setPrefix(db,'invoicePrefix',` ${prefix.toLowerCase()} `);setPrefix(db,'receiptPrefix',prefix);
+  expect(()=>allocateDocumentNumber('invoice')).toThrow(/reservados/);
+  expect(()=>allocateDocumentNumber('receipt')).toThrow(/reservados/);
+  expect(db.prepare('SELECT * FROM document_sequences').all()).toEqual([]);
+});

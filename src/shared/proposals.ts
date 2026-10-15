@@ -1,4 +1,8 @@
 /** Commercial offers are independent of billing and inventory. Money is in centavos. */
+export const INFORMATIVE_TYPE_LABELS = { proposal: 'Proposta comercial', quotation: 'Orçamento', proforma: 'Fatura proforma' } as const;
+export type InformativeDocumentType = keyof typeof INFORMATIVE_TYPE_LABELS;
+export type PaymentRequest = { amountCentavos: number; description: string; conditions: string; dueDate?: string | null };
+export type DocumentBankAccount = { bankName: string; accountName: string; accountNumber: string; reference: string };
 export const PROPOSAL_STATUS_LABELS = {
   draft: 'Rascunho', issued: 'Emitida', accepted: 'Aceite', refused: 'Recusada',
   expired: 'Expirada', cancelled: 'Cancelada', superseded: 'Substituída'
@@ -14,6 +18,7 @@ export type ProposalLineInput = {
   quantity: number; unitPriceCentavos: number; planId?: number | null; catalogId?: number | null;
 };
 export type ProposalDraftInput = {
+  documentType?: InformativeDocumentType; paymentRequest?: PaymentRequest | null;
   clientId: number | null; recipient: ProposalRecipient; title: string;
   validUntil: string; conditions: string; lines: ProposalLineInput[];
 };
@@ -28,6 +33,7 @@ export type ProposalTax = {
   ivaRate: number; isExempt: boolean; exemptReason: string;
 };
 export type ProposalSnapshot = {
+  paymentRequest?: PaymentRequest | null; bankAccounts?: DocumentBankAccount[];
   company: ProposalCompany; onceTax: ProposalTax; monthlyTax: ProposalTax;
 };
 export type ProposalAction = 'issue' | 'deliver' | 'accept' | 'refuse' | 'cancel' | 'revise';
@@ -35,12 +41,14 @@ export type ProposalDelivery = {
   id: number; deliveredAt: string; channel: string; note: string; actorUserId: number | null;
 };
 export type ProposalSummary = {
+  documentType: InformativeDocumentType;
   id: number; number: string | null; title: string; recipientName: string;
   clientId: number | null; status: ProposalStatus; version: number;
   validUntil: string; issuedAt: string | null; createdAt: string;
   onceTotalCentavos: number; monthlyTotalCentavos: number; previousId: number | null;
 };
 export type Proposal = ProposalSummary & {
+  paymentRequest: PaymentRequest | null;
   recipient: ProposalRecipient; conditions: string; lines: ProposalLine[];
   snapshot: ProposalSnapshot | null; createdBy: number | null;
   decisionAt: string | null; acceptedBy: string | null; decisionNote: string | null;

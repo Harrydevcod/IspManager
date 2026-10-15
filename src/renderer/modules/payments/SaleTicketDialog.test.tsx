@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { SaleTicketDialog } from './SaleTicketDialog';
 import { SaleTicketDetailDialog } from './SaleTicketDetailDialog';
 import { PaymentsList } from './PaymentsList';
-import { downloadAuthenticated } from '../../lib/download';
+import { downloadAuthenticated, printAuthenticated } from '../../lib/download';
 import type { PaymentRow } from '../../types';
 
 let admin = true;
@@ -154,6 +154,16 @@ test('cancellation requires administrator password, reason and product-return co
   await submit('cancel-sale-ticket-form'); expect(requests[1]).toEqual({ reason: 'Venda duplicada', confirmPassword: 'correct', productsReturned: true });
   expect(done).toHaveBeenCalledOnce(); expect(document.body.textContent).toContain('Documento anulado');
   expect(document.querySelector('input[type="password"]')).toBeNull();
+});
+
+test('A5 is initially selected and PDF download and print follow A4/A5 selection', async () => {
+  await mount(<SaleTicketDetailDialog payment={ticketPayment} onClose={() => {}} onCancelled={() => {}} />);
+  expect(control('Formato do PDF').value).toBe('a5');
+  await click(button('Guardar PDF'));
+  expect(downloadAuthenticated).toHaveBeenLastCalledWith('http://127.0.0.1:3001/api/payments/45/sale-ticket.pdf?format=a5', 'TV/45-a5.pdf');
+  await fill('Formato do PDF', 'a4');
+  await click(button('Imprimir'));
+  expect(printAuthenticated).toHaveBeenLastCalledWith('http://127.0.0.1:3001/api/payments/45/sale-ticket.pdf?format=a4');
 });
 
 test('operators cannot cancel; authenticated download selects the 80mm endpoint', async () => {

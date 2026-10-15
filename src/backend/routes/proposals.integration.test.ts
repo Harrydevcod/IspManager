@@ -70,6 +70,21 @@ const commercialTables = ['clients', 'internet_plans', 'services', 'payments', '
   'payment_receipts', 'equipment_catalog', 'stock_movements', 'treasury_movements'];
 const businessRows = () => Object.fromEntries(commercialTables.map(table => [table, db.prepare(`SELECT * FROM ${table}`).all()]));
 
+test('proposal PDF chooses real A4/A5 dimensions, defaults to A4 and rejects invalid formats without writes', async () => {
+  const proposal = await create();
+  const before = db.prepare('SELECT total_changes() AS n').get();
+  for (const [query, box] of [['', '595.28 841.89'], ['?format=a4', '595.28 841.89'], ['?format=a5', '419.53 595.28']]) {
+    const pdf = await app.inject({ url: `/api/proposals/${proposal.id}/proposal.pdf${query}`, headers: headers('operator') });
+    expect(pdf.statusCode, pdf.body).toBe(200);
+    expect(pdf.rawPayload.toString('latin1')).toContain(`/MediaBox [0 0 ${box}]`);
+  }
+  for (const query of ['?format=a3', '?format=', '?format=a4&format=a5']) {
+    const response = await app.inject({ url: `/api/proposals/${proposal.id}/proposal.pdf${query}`, headers: headers() });
+    expect(response.statusCode).toBe(400);
+  }
+  expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(before);
+});
+
 test('UI-shaped draft, edit, issue, delivery, revision and acceptance leave business ledgers unchanged', async () => {
   const before = businessRows();
   let proposal = await create();
@@ -154,4 +169,45 @@ test('stale edits conflict while concurrent issue retries recover the same numbe
   const [first, retry] = await Promise.all([action(current, 'issue'), action(current, 'issue')]);
   expect(first.statusCode).toBe(200); expect(retry.statusCode).toBe(200);
   expect(retry.json().number).toBe(first.json().number);
+});
+
+test('fiscal archive lists emitted origins, partial receipts and excludes internal TV receipts', async () => {
+  const clientId = Number(db.prepare("INSERT INTO clients(client_code,full_name) VALUES ('ARCHIVE','Arquivo')").run().lastInsertRowid);
+  const invoice = Number(db.prepare("INSERT INTO payments(client_id,reference_month,amount_cve,due_date,invoice_number,invoice_date,status) VALUES (?,'2026-10',100,'2026-10-31','FT-ARCHIVE','2026-10-14','pending')").run(clientId).lastInsertRowid);
+  const tv = Number(db.prepare("INSERT INTO payments(client_id,reference_month,amount_cve,due_date,invoice_number,invoice_date,status,document_type) VALUES (?,'TV',100,'2026-10-14','TV-ARCHIVE','2026-10-14','paid','sale_ticket')").run(clientId).lastInsertRowid);
+  for (const [payment, number, amount] of [[invoice,'RC-ARCHIVE-1',40],[invoice,'RC-ARCHIVE-2',60],[tv,'RC-TV-INTERNAL',100]] as const)
+    db.prepare("INSERT INTO payment_receipts(payment_id,amount_cve,payment_date,payment_method,receipt_number,receipt_date) VALUES (?,?,'2026-10-14','numerario',?,'2026-10-14')").run(payment,amount,number);
+  const response = await app.inject({url:'/api/documents/fiscal?clientId='+clientId, headers:headers()});
+  expect(response.statusCode).toBe(200);
+  expect(response.json().total).toBe(4);
+  expect(response.json().items.map((d: {number:string}) => d.number)).not.toContain('RC-TV-INTERNAL');
+  expect((await app.inject({url:'/api/documents/fiscal',headers:headers('technician')})).statusCode).toBe(403);
+  expect((await app.inject({url:'/api/documents/fiscal?pageSize=101',headers:headers()})).statusCode).toBe(400);
+});
+
+test.each(['quotation','proforma'] as const)('%s contract handles legacy updates and concurrent issue retries',async documentType=>{
+  const paymentRequest=documentType==='proforma'?{amountCentavos:4200000,description:'Doze meses',conditions:'Transferência',dueDate:null}:null;
+  const created=await app.inject({method:'POST',url:'/api/proposals',headers:headers(),payload:{...input(),documentType,paymentRequest}});
+  expect(created.statusCode,created.body).toBe(201);
+  const p=created.json<Proposal>();
+  const saved=await app.inject({method:'PATCH',url:`/api/proposals/${p.id}`,headers:headers(),payload:{...input(),version:p.version}});
+  expect(saved.statusCode,saved.body).toBe(200);expect(saved.json().documentType).toBe(documentType);expect(saved.json().paymentRequest).toEqual(paymentRequest);
+  const [issued,retry]=await Promise.all([action(saved.json(),'issue'),action(saved.json(),'issue')]);
+  expect(issued.statusCode).toBe(200);expect(retry.statusCode).toBe(200);expect(issued.json().number).toBe(retry.json().number);
+  const first=apiCounts();
+  await app.inject({url:`/api/proposals/${p.id}/proposal.pdf?format=a5`,headers:headers()});
+  expect(apiCounts()).toEqual(first);
+});
+function apiCounts(){return ['payments','payment_receipts','stock_movements','treasury_movements'].map(table=>db.prepare(`SELECT COUNT(*) n FROM ${table}`).get());}
+
+test('fiscal archive excludes legacy PENDING placeholders',async()=>{
+  const clientId=Number(db.prepare("INSERT INTO clients(client_code,full_name) VALUES ('UNISSUED','Sem emissão')").run().lastInsertRowid);
+  db.prepare("INSERT INTO payments(client_id,reference_month,amount_cve,due_date,invoice_number,receipt_number) VALUES (?,'2026-10',100,'2026-10-31','PENDING','PENDING')").run(clientId);
+  const response=await app.inject({url:`/api/documents/fiscal?clientId=${clientId}`,headers:headers()});
+  expect(response.statusCode).toBe(200);expect(response.json().total).toBe(0);
+});
+
+test('proforma request accepts omitted optional payment deadline',async()=>{
+  const response=await app.inject({method:'POST',url:'/api/proposals',headers:headers(),payload:{...input(),documentType:'proforma',paymentRequest:{amountCentavos:1200000,description:'Quatro meses',conditions:'Transferência'}}});
+  expect(response.statusCode,response.body).toBe(201);expect(response.json().paymentRequest.dueDate).toBeNull();
 });

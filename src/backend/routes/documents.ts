@@ -1,7 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { PaymentDocumentError, filenamePart, renderPaymentDocumentPdf, renderReceiptPdf } from '../lib/documents';
+import { fiscalQuerySchema, listFiscalDocuments } from '../lib/fiscal-documents';
 import { requireRole } from './auth';
 import { renderSaleTicketPdf } from '../lib/sale-ticket-documents';
+
+function archivalQuery(query: unknown): boolean {
+  return !!query && typeof query === 'object' && 'archive' in query && (query as {archive:unknown}).archive === '1';
+}
 
 function dispositionFromQuery(query: unknown): 'inline' | 'attachment' {
   if (query && typeof query === 'object' && 'inline' in (query as Record<string, unknown>)) {
@@ -21,10 +26,16 @@ function documentDisposition(filename: string, query: unknown): string {
 export async function registerDocumentRoutes(app: FastifyInstance) {
   const canIssueDocuments = { preHandler: requireRole(['admin', 'operator']) };
 
+  app.get('/api/documents/fiscal', canIssueDocuments, async (request, reply) => {
+    const parsed = fiscalQuerySchema.safeParse(request.query);
+    if (!parsed.success) return reply.status(400).send({error:'Filtros inválidos'});
+    return listFiscalDocuments(parsed.data);
+  });
+
   app.get('/api/payments/:id/sale-ticket.pdf', canIssueDocuments, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     const format = (request.query as { format?: unknown }).format ?? 'a4';
-    if (format !== 'a4' && format !== '80mm') return reply.status(400).send({ error: 'Formato inválido: use a4 ou 80mm' });
+    if (format !== 'a4' && format !== 'a5' && format !== '80mm') return reply.status(400).send({ error: 'Formato inválido: use a4, a5 ou 80mm' });
     try {
       const { buffer, filename } = await renderSaleTicketPdf(id, format);
       return reply.header('Content-Type', 'application/pdf')
@@ -40,7 +51,7 @@ export async function registerDocumentRoutes(app: FastifyInstance) {
   app.get('/api/payments/:id/invoice.pdf', canIssueDocuments, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     try {
-      const { buffer, filename } = await renderPaymentDocumentPdf(id, 'invoice');
+      const { buffer, filename } = await renderPaymentDocumentPdf(id, 'invoice', archivalQuery(request.query));
       return reply
         .header('Content-Type', 'application/pdf')
         .header('Content-Disposition', documentDisposition(filename, request.query))
@@ -54,7 +65,7 @@ export async function registerDocumentRoutes(app: FastifyInstance) {
   app.get('/api/payments/:id/receipt.pdf', canIssueDocuments, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     try {
-      const { buffer, filename } = await renderPaymentDocumentPdf(id, 'receipt');
+      const { buffer, filename } = await renderPaymentDocumentPdf(id, 'receipt', archivalQuery(request.query));
       return reply
         .header('Content-Type', 'application/pdf')
         .header('Content-Disposition', documentDisposition(filename, request.query))
@@ -70,7 +81,7 @@ export async function registerDocumentRoutes(app: FastifyInstance) {
   app.get('/api/receipts/:id/receipt.pdf', canIssueDocuments, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     try {
-      const { buffer, filename } = await renderReceiptPdf(id);
+      const { buffer, filename } = await renderReceiptPdf(id, archivalQuery(request.query));
       return reply
         .header('Content-Type', 'application/pdf')
         .header('Content-Disposition', documentDisposition(filename, request.query))

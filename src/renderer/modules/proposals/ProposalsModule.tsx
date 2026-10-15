@@ -13,6 +13,8 @@ import { downloadAuthenticated } from "../../lib/download";
 import { formatCve, formatPtDate } from "../../lib/format";
 import type { Client, PlanRow, StockCatalogRow } from "../../types";
 import {
+  INFORMATIVE_TYPE_LABELS,
+  type InformativeDocumentType,
   PROPOSAL_STATUS_LABELS,
   type Proposal,
   type ProposalAction,
@@ -29,6 +31,7 @@ import {
   productLine,
   proposalTotals,
   validateDraft,
+  parsePaymentAmount,
 } from "./draft";
 import "./ProposalsModule.css";
 
@@ -88,6 +91,7 @@ export function ProposalsModule({
   const [products, setProducts] = useState<StockCatalogRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pdfFormat, setPdfFormat] = useState<"a5" | "a4">("a5");
   const [action, setAction] = useState<ProposalAction | null>(null);
   const [reason, setReason] = useState("");
   const [actor, setActor] = useState("");
@@ -95,6 +99,8 @@ export function ProposalsModule({
   const [deliveredAt, setDeliveredAt] = useState(
     new Date().toISOString().slice(0, 10),
   );
+  const [documentTypeFilter, setDocumentTypeFilter] = useState("");
+  const [paymentAmount, setPaymentAmount] = useState("");
   const [productPeriod, setProductPeriod] = useState<"once" | "monthly">(
     "once",
   );
@@ -104,13 +110,13 @@ export function ProposalsModule({
     const requestId = ++listRequest.current;
     try {
       const result = await request<ProposalList>(
-        `/proposals?${new URLSearchParams({ search, ...(status ? { status } : {}), page: String(page), pageSize: "25" })}`,
+        `/proposals?${new URLSearchParams({ search, ...(status ? { status } : {}), ...(documentTypeFilter ? { documentType: documentTypeFilter } : {}), page: String(page), pageSize: "25" })}`,
       );
       if (requestId === listRequest.current) setList(result);
     } catch (e) {
       if (requestId === listRequest.current) setError((e as Error).message);
     }
-  }, [search, status, page, permitted]);
+  }, [search, status, documentTypeFilter, page, permitted]);
   useEffect(() => {
     const pendingRequests = listRequest;
     const timer = setTimeout(() => void refresh(), 200);
@@ -166,6 +172,11 @@ export function ProposalsModule({
     try {
       const proposal = await request<Proposal>(`/proposals/${id}`);
       setSelected(proposal);
+      setPaymentAmount(
+        proposal.paymentRequest
+          ? String(proposal.paymentRequest.amountCentavos / 100)
+          : "",
+      );
       setDraft(
         proposal.status === "draft" ? draftFromProposal(proposal) : null,
       );
@@ -207,9 +218,9 @@ export function ProposalsModule({
       if (!proposal) return;
       if (
         !(await confirm({
-          title: "Emitir proposta comercial?",
+          title: `Emitir ${INFORMATIVE_TYPE_LABELS[proposal.documentType ?? "proposal"].toLocaleLowerCase("pt")}?`,
           message: `${proposal.recipient.name} · Custos únicos ${formatCve(proposal.onceTotalCentavos / 100)} · Mensalidade ${formatCve(proposal.monthlyTotalCentavos / 100)}. O destinatário, os preços e as condições ficam congelados após a emissão.`,
-          confirmLabel: "Emitir proposta",
+          confirmLabel: `Emitir ${INFORMATIVE_TYPE_LABELS[proposal.documentType ?? "proposal"].toLocaleLowerCase("pt")}`,
         }))
       )
         return;
@@ -240,6 +251,11 @@ export function ProposalsModule({
         body,
       );
       setSelected(result);
+      setPaymentAmount(
+        result.paymentRequest
+          ? String(result.paymentRequest.amountCentavos / 100)
+          : "",
+      );
       setDraft(result.status === "draft" ? draftFromProposal(result) : null);
       setAction(null);
       void refresh();
@@ -255,8 +271,8 @@ export function ProposalsModule({
     setBusy(true);
     try {
       await downloadAuthenticated(
-        `${API}/proposals/${proposal.id}/proposal.pdf`,
-        `${proposal.number ?? "Rascunho"}-proposta.pdf`,
+        `${API}/proposals/${proposal.id}/proposal.pdf?format=${pdfFormat}`,
+        `${proposal.number ?? "Rascunho"}-${({ proposal: "proposta", quotation: "orcamento", proforma: "proforma" } as const)[proposal.documentType ?? "proposal"]}-${pdfFormat}.pdf`,
       );
     } catch (e) {
       setError((e as Error).message);
@@ -306,8 +322,59 @@ export function ProposalsModule({
     [lines[index], lines[index + delta]] = [lines[index + delta], lines[index]];
     setDraft({ ...draft, lines });
   }
+  async function changeType(documentType: InformativeDocumentType) {
+    if (!draft || selected?.previousId) return;
+    const request = draft.paymentRequest;
+    if (
+      draft.documentType === "proforma" &&
+      documentType !== "proforma" &&
+      request &&
+      (paymentAmount ||
+        request.description ||
+        request.conditions ||
+        request.dueDate)
+    ) {
+      if (
+        !(await confirm({
+          title: "Limpar pedido de pagamento?",
+          message:
+            "Ao alterar o tipo, o montante e as instruções de pagamento serão removidos.",
+          confirmLabel: "Alterar e limpar",
+        }))
+      )
+        return;
+    }
+    setPaymentAmount("");
+    setDraft({
+      ...draft,
+      documentType,
+      title:
+        draft.title ===
+        INFORMATIVE_TYPE_LABELS[draft.documentType ?? "proposal"]
+          ? INFORMATIVE_TYPE_LABELS[documentType]
+          : draft.title,
+      paymentRequest:
+        documentType === "proforma"
+          ? {
+              amountCentavos: 0,
+              description: "",
+              conditions: "",
+              dueDate: null,
+            }
+          : null,
+    });
+  }
   if (!permitted)
     return <p role="alert">Sem acesso às propostas comerciais.</p>;
+  const documentType =
+    draft?.documentType ?? selected?.documentType ?? "proposal";
+  const typeLabel = INFORMATIVE_TYPE_LABELS[documentType];
+  const displayAction = (action: ProposalAction) =>
+    action === "issue"
+      ? `Emitir ${typeLabel.toLocaleLowerCase("pt")}`
+      : action === "cancel"
+        ? `Cancelar ${typeLabel.toLocaleLowerCase("pt")}`
+        : actionLabels[action];
   const totals = draft
     ? proposalTotals(draft.lines)
     : {
@@ -322,12 +389,19 @@ export function ProposalsModule({
         }).format(centavos / 100)
       : formatCve(centavos / 100);
   return (
-    <section className="proposals-workspace" aria-label="Propostas comerciais">
+    <section
+      className="proposals-workspace"
+      aria-label="Documentos informativos"
+    >
       <header className="proposal-header">
         <div>
           <span className="proposal-eyebrow">COMERCIAL</span>
-          <h2>{selected?.number ?? (draft ? "Nova proposta" : "Propostas")}</h2>
-          <p>Proposta comercial — não constitui fatura</p>
+          <h2>{selected?.number ?? (draft ? typeLabel : "Informativos")}</h2>
+          <p>
+            {draft || selected
+              ? `${typeLabel} — não constitui fatura${documentType === "proforma" ? " fiscal" : ""}`
+              : "Propostas, orçamentos e proformas"}
+          </p>
         </div>
         <div className="proposal-actions">
           {draft || selected ? (
@@ -337,11 +411,12 @@ export function ProposalsModule({
               disabled={busy}
               leadingIcon={<ArrowLeft size={16} />}
             >
-              Propostas
+              Informativos
             </Button>
           ) : (
             <Button
               onClick={() => {
+                setPaymentAmount("");
                 setDraft(newDraft());
                 setError(null);
               }}
@@ -370,6 +445,21 @@ export function ProposalsModule({
       {!draft && !selected && (
         <>
           <div className="proposal-filters">
+            <Select
+              label="Tipo de documento"
+              value={documentTypeFilter}
+              onChange={(event) => {
+                setDocumentTypeFilter(event.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">Todos os tipos</option>
+              {Object.entries(INFORMATIVE_TYPE_LABELS).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </Select>
             <Field
               label="Pesquisar número ou destinatário"
               type="search"
@@ -421,7 +511,10 @@ export function ProposalsModule({
                       {p.number ?? "RASCUNHO"}
                     </span>
                     <strong>{p.recipientName}</strong>
-                    <span>{p.title}</span>
+                    <span>
+                      {INFORMATIVE_TYPE_LABELS[p.documentType ?? "proposal"]} ·{" "}
+                      {p.title}
+                    </span>
                   </div>
                   <div>
                     <span>{PROPOSAL_STATUS_LABELS[p.status]}</span>
@@ -492,12 +585,30 @@ export function ProposalsModule({
                       });
                     }}
                   >
-                    <option value="">Interessado — sem cadastro</option>
+                    <option value="">Interessado — sem registo</option>
                     {clients.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.fullName} · {c.clientCode}
                       </option>
                     ))}
+                  </Select>
+                  <Select
+                    label="Tipo de documento"
+                    value={draft.documentType ?? "proposal"}
+                    disabled={!!selected?.previousId}
+                    onChange={(event) =>
+                      void changeType(
+                        event.target.value as InformativeDocumentType,
+                      )
+                    }
+                  >
+                    {Object.entries(INFORMATIVE_TYPE_LABELS).map(
+                      ([key, label]) => (
+                        <option key={key} value={key}>
+                          {label}
+                        </option>
+                      ),
+                    )}
                   </Select>
                   <div className="proposal-fields">
                     {(
@@ -707,6 +818,79 @@ export function ProposalsModule({
                       </div>
                     ))}
                   </div>
+                  {draft.documentType === "proforma" &&
+                    draft.paymentRequest && (
+                      <section className="proposal-payment-request">
+                        <h3>Pedido de pagamento antecipado</h3>
+                        <p>
+                          Indique o período e os serviços abrangidos. Este
+                          pedido não confirma recebimento.
+                        </p>
+                        <Field
+                          label="Montante a pagar antecipadamente (CVE)"
+                          required
+                          inputMode="decimal"
+                          value={paymentAmount}
+                          onChange={(event) => {
+                            setPaymentAmount(event.target.value);
+                            setDraft({
+                              ...draft,
+                              paymentRequest: {
+                                ...draft.paymentRequest!,
+                                amountCentavos:
+                                  parsePaymentAmount(event.target.value) ?? 0,
+                              },
+                            });
+                          }}
+                        />
+                        <Textarea
+                          label="O que este pagamento cobre"
+                          required
+                          maxLength={12000}
+                          rows={3}
+                          value={draft.paymentRequest.description}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              paymentRequest: {
+                                ...draft.paymentRequest!,
+                                description: event.target.value,
+                              },
+                            })
+                          }
+                        />
+                        <Textarea
+                          label="Condições de pagamento"
+                          required
+                          maxLength={12000}
+                          rows={4}
+                          value={draft.paymentRequest.conditions}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              paymentRequest: {
+                                ...draft.paymentRequest!,
+                                conditions: event.target.value,
+                              },
+                            })
+                          }
+                        />
+                        <Field
+                          label="Data limite de pagamento (opcional)"
+                          type="date"
+                          value={draft.paymentRequest.dueDate ?? ""}
+                          onChange={(event) =>
+                            setDraft({
+                              ...draft,
+                              paymentRequest: {
+                                ...draft.paymentRequest!,
+                                dueDate: event.target.value || null,
+                              },
+                            })
+                          }
+                        />
+                      </section>
+                    )}
                   <Textarea
                     label="Condições comerciais"
                     rows={5}
@@ -762,6 +946,32 @@ export function ProposalsModule({
                         ))}
                     </section>
                   ))}
+                  {selected.documentType === "proforma" &&
+                    selected.paymentRequest && (
+                      <section className="proposal-payment-request">
+                        <h3>Pedido de pagamento antecipado</h3>
+                        <strong>
+                          {formatCve(
+                            selected.paymentRequest.amountCentavos / 100,
+                          )}{" "}
+                          CVE
+                        </strong>
+                        <h4>O que este pagamento cobre</h4>
+                        <p className="proposal-conditions">
+                          {selected.paymentRequest.description}
+                        </p>
+                        <h4>Condições de pagamento</h4>
+                        <p className="proposal-conditions">
+                          {selected.paymentRequest.conditions}
+                        </p>
+                        {selected.paymentRequest.dueDate && (
+                          <p>
+                            Data limite:{" "}
+                            {formatPtDate(selected.paymentRequest.dueDate)}
+                          </p>
+                        )}
+                      </section>
+                    )}
                   <h3>Condições comerciais</h3>
                   <p className="proposal-conditions">
                     {selected.conditions || "Sem condições adicionais."}
@@ -821,7 +1031,7 @@ export function ProposalsModule({
                   void mutate(action, selected);
                 }}
               >
-                <h3>{actionLabels[action]}</h3>
+                <h3>{displayAction(action)}</h3>
                 {action === "deliver" && (
                   <>
                     <Field
@@ -874,8 +1084,10 @@ export function ProposalsModule({
             )}
           </main>
           <aside className="proposal-summary">
-            <span className="proposal-eyebrow">OFERTA COMERCIAL</span>
-            <h3>{draft ? "Resumo do rascunho" : "Valores da proposta"}</h3>
+            <span className="proposal-eyebrow">
+              {typeLabel.toLocaleUpperCase("pt")}
+            </span>
+            <h3>{draft ? "Resumo do rascunho" : "Valores da oferta"}</h3>
             <div>
               <span>Total de custos únicos</span>
               <strong>{money(totals.once)}</strong>
@@ -889,6 +1101,17 @@ export function ProposalsModule({
               mensalidade depende das condições acordadas.
             </p>
             <div className="proposal-summary-actions">
+              <Select
+                label="Formato do PDF"
+                value={pdfFormat}
+                disabled={busy}
+                onChange={(event) =>
+                  setPdfFormat(event.target.value as "a5" | "a4")
+                }
+              >
+                <option value="a5">A5</option>
+                <option value="a4">A4</option>
+              </Select>
               {draft && (
                 <Button form="proposal-draft" type="submit" disabled={busy}>
                   Guardar rascunho
@@ -911,7 +1134,7 @@ export function ProposalsModule({
                   disabled={busy}
                   onClick={() => void perform(a)}
                 >
-                  {actionLabels[a]}
+                  {displayAction(a)}
                 </Button>
               ))}
             </div>

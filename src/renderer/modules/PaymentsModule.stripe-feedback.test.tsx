@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ConfirmProvider, ToastProvider } from '../components';
 import { PaymentsModule } from './PaymentsModule';
+import { FiscalDocuments } from './documents/FiscalDocuments';
 import { ManualInvoiceDialog } from './payments/ManualInvoiceDialog';
 import type { PaymentRow, PaymentReceipt } from '../types';
 
@@ -80,6 +81,7 @@ beforeEach(() => {
     if (url.endsWith('/clients')) return json([{ id: 1, clientCode: 'C1', fullName: 'Cliente teste', email: clientEmail }]);
     if (url.endsWith('/stripe/status')) return json({ enabled: true });
     if (url.endsWith('/receipts')) return json({ receipts: [receipt], clientCreditCve: 0, stripe: { enabled: true, link: null, refundableReceiptIds: [7] } });
+    if (url.includes('/documents/fiscal')) return json({items:[{source:'payment',sourceId:41,paymentId:41,documentType:'invoice',number:'FT41',date:'2026-10-14',clientId:1,clientName:'Cliente teste',amountCve:2500,status:'pending'}],total:1,page:1,pageSize:25});
     if (url.endsWith('/payments')) return json([payment]);
     return json([]);
   }));
@@ -168,13 +170,14 @@ test('delayed refund cannot be submitted twice and does not announce completion 
   expect(document.querySelector('.toast-info')?.textContent).toMatch(/aguarda.*confirma/i);
 });
 
-test('manual invoice link failure is visible after issued invoice detail opens', async () => {
+test('manual invoice link failure is visible in Documents after issued invoice detail opens', async () => {
   stripeResponse = async () => json({ error: 'Stripe indisponivel' }, 502);
-  await mount(<PaymentsModule />);
+  await mount(<FiscalDocuments active onOpenPayment={vi.fn()} />);
   await click(button('Nova fatura'));
   await prepareManual();
   await issue();
   expect(document.querySelector('#manual-invoice-form')).toBeNull();
-  expect(document.querySelector('.toast-error')?.textContent).toMatch(/Fatura emitida.*link.*Stripe indisponivel.*ficha/i);
-  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('FT41');
+  expect(document.querySelector('[role="alert"]')?.textContent).toMatch(/Fatura emitida.*link.*Stripe indisponivel.*ficha/i);
+  expect(document.querySelector('.fiscal-detail')).not.toBeNull();
+  expect(document.body.textContent).toContain('FT41');
 });

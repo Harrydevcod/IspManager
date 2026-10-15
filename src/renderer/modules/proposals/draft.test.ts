@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import {
   actionPayload,
   lineTotalCentavos,
@@ -52,7 +52,7 @@ describe("proposal composition", () => {
   });
   it("projects stored and revised drafts into editable DTOs without database fields", () => {
     const proposal: Proposal = {
-      ...newDraft(),
+      ...newDraft(), documentType: "proposal", paymentRequest: null,
       id: 1,
       number: null,
       recipientName: "Maria",
@@ -100,7 +100,7 @@ describe("proposal composition", () => {
     draft.lines[0].description = "Preço acordado";
     expect(proposal.lines[0].description).toBe("Equipamento");
     expect(
-      JSON.stringify({ ...draft, version: proposal.version }),
+      JSON.stringify({ ...draft, documentType: "proposal", paymentRequest: null, version: proposal.version }),
     ).not.toContain("sortOrder");
   });
   it("keeps installation separate from the monthly plan, including free installation", () => {
@@ -150,6 +150,23 @@ describe("proposal composition", () => {
     ];
     expect(validateDraft(draft)).toContain("inteira");
     draft.lines[0].kind = "free";
+    expect(validateDraft(draft)).toBeNull();
+  });
+});
+
+describe('proforma request', () => {
+  test('parses CVE exactly and rejects rounding or scientific notation', async () => {
+    const {parsePaymentAmount} = await import('./draft');
+    expect(parsePaymentAmount('1234,56')).toBe(123456);
+    expect(parsePaymentAmount('0.01')).toBe(1);
+    for (const value of ['1.001','1e3','-1','0','', '1000000000.01']) expect(parsePaymentAmount(value)).toBeNull();
+  });
+  test('requires complete instructions and allows multiple months', () => {
+    const draft = newDraft(); draft.recipient.name = 'Maria';
+    draft.lines = [{kind:'free', description:'Internet', period:'monthly', quantity:1, unitPriceCentavos:250000}];
+    draft.documentType = 'proforma';
+    expect(validateDraft(draft)).not.toBeNull();
+    draft.paymentRequest = {amountCentavos:3000000, description:'Doze mensalidades', conditions:'Transferência', dueDate:null};
     expect(validateDraft(draft)).toBeNull();
   });
 });

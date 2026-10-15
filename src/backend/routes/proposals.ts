@@ -22,6 +22,7 @@ export async function registerProposalRoutes(app: FastifyInstance) {
     const access = { preHandler: requireRole(['admin', 'operator']) };
     app.get('/api/proposals', access, async (request, reply) => {
         const parsed = z.object({
+            documentType: z.enum(['proposal','quotation','proforma']).optional(),
             page: z.coerce.number().int().positive().optional(),
             pageSize: z.coerce.number().int().min(1).max(100).optional(),
             search: z.string().max(250).optional(),
@@ -58,9 +59,11 @@ export async function registerProposalRoutes(app: FastifyInstance) {
         });
     }
     app.get('/api/proposals/:id/proposal.pdf', access, async (request, reply) => {
+        const format = (request.query as { format?: unknown }).format ?? 'a4';
+        if (format !== 'a4' && format !== 'a5') return reply.status(400).send({ error: 'Formato inválido: use a4 ou a5' });
         try {
             getProposal(id(request),request.user?.role);
-            const pdf = await renderProposalPdf(id(request));
+            const pdf = await renderProposalPdf(id(request), format);
             return reply.type('application/pdf').header('Content-Disposition',`attachment; filename="${pdf.filename}"`).send(pdf.buffer);
         } catch (error) { return handle(reply,error); }
     });

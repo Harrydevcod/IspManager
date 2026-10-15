@@ -168,3 +168,79 @@ describe('propostas independentes', () => {
         expect(() => api.getProposal(p.id, 'technician')).toThrow();
     });
 });
+
+
+describe('documentos informativos', () => {
+    const paymentRequest = { amountCentavos: 3000000, description: 'Instalação e doze mensalidades', conditions: 'Transferência banc?ria', dueDate: null };
+    test('legacy inputs, independent series, inherited revisions and immutable type', () => {
+        expect(api.createProposal(draft).documentType).toBe('proposal');
+        const numbers: string[] = [];
+        for (const documentType of ['quotation', 'proforma'] as const) {
+            const p = api.createProposal({...draft, documentType, paymentRequest: documentType === 'proforma' ? paymentRequest : null});
+            const oldInput = api.updateProposal(p.id, {...draft, title: 'Legacy update'}, p.version);
+            expect(oldInput.documentType).toBe(documentType);
+            expect(oldInput.paymentRequest).toEqual(documentType === 'proforma' ? paymentRequest : null);
+            const issued = api.actOnProposal(p.id, 'issue', {version: oldInput.version});
+            numbers.push(issued.number!);
+            const rev = api.actOnProposal(p.id, 'revise', {version: issued.version});
+            expect(rev.documentType).toBe(documentType);
+            expect(() => api.updateProposal(rev.id, {...draft, documentType:'proposal'}, rev.version)).toThrow();
+            expect(() => api.updateProposal(p.id, {...draft, documentType:'proposal'}, issued.version)).toThrow();
+        }
+        expect(numbers[0]).toMatch(/^OR-\d{4}-00001$/);
+        expect(numbers[1]).toMatch(/^PF-\d{4}-00001$/);
+        expect(api.listProposals({documentType:'proforma'}).items.every(p => p.documentType === 'proforma')).toBe(true);
+    });
+    test('payment validation and switching clears request', () => {
+        for (const amountCentavos of [0, -1, 1.5, 100000000001, Infinity])
+            expect(() => api.createProposal({...draft, documentType:'proforma', paymentRequest:{...paymentRequest, amountCentavos}})).toThrow();
+        for (const patch of [{description:' '}, {conditions:' '}, {dueDate:'2026-02-30'}])
+            expect(() => api.createProposal({...draft, documentType:'proforma', paymentRequest:{...paymentRequest, ...patch}})).toThrow();
+        expect(() => api.createProposal({...draft, documentType:'proforma'})).toThrow();
+        const p = api.createProposal({...draft, documentType:'proforma', paymentRequest});
+        expect(p.paymentRequest?.amountCentavos).toBe(3000000);
+        expect(api.updateProposal(p.id, {...draft, documentType:'quotation'}, p.version).paymentRequest).toBeNull();
+    });
+    test('snapshots freeze request, numbering rolls back on audit failure, no financial side effects', () => {
+        const db = database.getSqliteDatabase();
+        const counts = () => ['payments','payment_receipts','services','clients'].map(table => db.prepare(`SELECT COUNT(*) n FROM ${table}`).get());
+        const before = counts();
+        const p = api.createProposal({...draft, documentType:'proforma', paymentRequest});
+        db.exec("CREATE TRIGGER proforma_audit_failure BEFORE INSERT ON audit_logs WHEN NEW.entity_type='proposal' BEGIN SELECT RAISE(ABORT,'audit failed'); END");
+        const sequence = db.prepare('SELECT * FROM proforma_sequences').all();
+        try { expect(() => api.actOnProposal(p.id,'issue',{version:p.version})).toThrow('audit failed'); }
+        finally { db.exec('DROP TRIGGER proforma_audit_failure'); }
+        expect(db.prepare('SELECT * FROM proforma_sequences').all()).toEqual(sequence);
+        const issued = api.actOnProposal(p.id,'issue',{version:p.version});
+        expect(issued.snapshot?.paymentRequest).toEqual(paymentRequest);
+        expect(Array.isArray(issued.snapshot?.bankAccounts)).toBe(true);
+        api.actOnProposal(p.id,'accept',{version:issued.version,acceptedBy:'Maria'});
+        expect(counts()).toEqual(before);
+    });
+});
+
+test('issued proforma PDFs keep printed treasury account after settings changes', async () => {
+  const db=database.getSqliteDatabase();
+  const bank=Number(db.prepare("INSERT INTO treasury_accounts(kind,name,bank_name,account_number,opening_date,show_on_documents) VALUES ('banco','Original','Banco congelado','CONTA ORIGINAL','2026-01-01',1)").run().lastInsertRowid);
+  const p=api.createProposal({...draft,documentType:'proforma',paymentRequest:{amountCentavos:3000000,description:'Doze meses',conditions:'Transferência',dueDate:null}});
+  const issued=api.actOnProposal(p.id,'issue',{version:p.version});
+  expect(issued.snapshot?.bankAccounts?.some(account=>account.accountNumber==='CONTA ORIGINAL')).toBe(true);
+  db.prepare("UPDATE treasury_accounts SET bank_name='Banco alterado',account_number='CONTA ALTERADA',show_on_documents=0 WHERE id=?").run(bank);
+  const {renderProposalPdf}=await import('./proposal-documents'); const {inspectPdfLayout}=await import('./pdf.testing');
+  for(const format of ['a4','a5'] as const){
+    const text=inspectPdfLayout((await renderProposalPdf(p.id,format)).buffer).text.flat().map(item=>item.value).join(' ');
+    expect(text).toContain('CONTA ORIGINAL'); expect(text).not.toContain('CONTA ALTERADA');
+  }
+});
+test('each informative series resets independently in the next issue year',()=>{
+  vi.useFakeTimers();
+  try {
+    for(const year of [2088,2089]) {
+      vi.setSystemTime(new Date(`${year}-01-02T12:00:00Z`));
+      for(const documentType of ['proposal','quotation','proforma'] as const){
+        const p=api.createProposal({...draft,documentType,paymentRequest:documentType==='proforma'?{amountCentavos:100,description:'Um mês',conditions:'Transferência',dueDate:null}:null});
+        expect(api.actOnProposal(p.id,'issue',{version:p.version}).number).toBe(`${{proposal:'PR',quotation:'OR',proforma:'PF'}[documentType]}-${year}-00001`);
+      }
+    }
+  } finally {vi.useRealTimers();}
+});
