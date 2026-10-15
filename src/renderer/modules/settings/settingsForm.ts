@@ -29,6 +29,7 @@ export type SettingsFormState = {
   printQrCode: boolean;
   printRentalLines: boolean;
   legalNotes: string;
+  productPolicy: string;
   whatsappTemplate: string;
   whatsappTestTemplate: string;
   whatsappInvoiceReadyTemplate: string;

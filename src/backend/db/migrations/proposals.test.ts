@@ -19,7 +19,7 @@ test('upgrade83 preserva faturas, TV, linhas, recebimentos e sequências fiscais
     }
     db.prepare("INSERT INTO document_sequences(series,year,last_number) VALUES ('PR',2026,42)").run();
     const tables=['payments','payment_lines','payment_receipts','document_sequences'];const before=tables.map(t=>db.prepare(`SELECT * FROM ${t}`).all());
-    runMigrations(db);runMigrations(db);expect(tables.map(t=>db.prepare(`SELECT * FROM ${t}`).all())).toEqual(before);
+    runMigrations(db);runMigrations(db);expect(tables.map(t=>db.prepare(`SELECT * FROM ${t}`).all())).toEqual(before.map((rows,i)=>tables[i]==='payment_lines'?rows.map(row=>({...(row as object),article_id:null,item_code:null,item_note:null,quantity:1})):rows));
     expect(db.prepare('SELECT * FROM proposal_sequences').all()).toEqual([]);expect(db.pragma('integrity_check')).toEqual([{integrity_check:'ok'}]);expect(db.pragma('foreign_key_check')).toEqual([]);
 });
 

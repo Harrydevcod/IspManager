@@ -28,6 +28,7 @@ const tables = tsxFiles(MODULES_DIR)
 describe('colunas ordenáveis', () => {
   test('encontra as listas conhecidas', () => {
     expect(tables.map((t) => t.file).sort()).toEqual([
+      'ArticlesPanel.tsx',
       'ClientsModule.tsx',
       'ExpensesModule.tsx',
       'InvestmentsModule.tsx',

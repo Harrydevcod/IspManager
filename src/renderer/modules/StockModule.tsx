@@ -1,18 +1,21 @@
-import { Activity, Antenna, ArrowDownUp, Banknote, Boxes, Cable, Gauge, HardDrive, Network, Pencil, Plus, Radio, Router, Users, Wifi } from 'lucide-react';
+import { Activity, Antenna, ArrowDownUp, Banknote, Boxes, Cable, Gauge, HardDrive, Network, Pencil, Plus, Radio, Router, Tags, Users, Wifi } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { EQUIPMENT_TYPES_BY_CATEGORY, labelForType } from '../../shared/equipment';
-import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, useToast } from '../components';
+import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, Textarea, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
 import { paginateRows, sortByColumns, type SortState } from '../lib/listView';
 import type { DataTableColumn } from '../components/DataTable';
 import { stockLevelTone } from '../lib/status';
 import type { CatalogAssignments, StockCatalogRow, StockMovement, StockSummary } from '../types';
+import { ArticlesPanel } from './ArticlesPanel';
 import './StockModule.css';
 
 type StockFormState = {
+  code: string;
+  documentNote: string;
   category: 'equipamento' | 'material';
   type: StockCatalogRow['type'];
   brand: string;
@@ -53,6 +56,11 @@ const DEFAULT_STOCK_SORT: SortState<string> = { key: itemHeader('equipamento'), 
 /** Fora do componente: a lista é paginada e ordena-se antes de cortar a página. */
 function buildStockColumns(tab: StockTab): DataTableColumn<StockCatalogRow>[] {
   return [
+    {
+      header: 'Código',
+      sortValue: (item) => item.code,
+      cell: (item) => <span className="entity-code">{item.code || '—'}</span>
+    },
     {
       header: itemHeader(tab),
       sortValue: (item) => (item.brand ? `${item.brand} ${item.model}` : item.model),
@@ -112,6 +120,8 @@ const DEFAULT_STOCK_PAGE_SIZE = 25;
 
 function emptyCatalogForm(): StockFormState {
   return {
+    code: '',
+    documentNote: '',
     category: 'equipamento',
     type: 'router',
     brand: '',
@@ -182,6 +192,8 @@ export function StockModule({
   const [editingCatalog, setEditingCatalog] = useState<StockCatalogRow | null>(null);
   const [search, setSearch] = useState('');
   const [stockTab, setStockTab] = useState<StockTab>('equipamento');
+  const [showArticles, setShowArticles] = useState(false);
+  const [articleCreateRequest, setArticleCreateRequest] = useState(0);
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out'>('all');
   const [catalogForm, setCatalogForm] = useState<StockFormState>(emptyCatalogForm());
@@ -267,6 +279,8 @@ export function StockModule({
     setEditingCatalog(catalog);
     setWritingNewType(false);
     setCatalogForm({
+      code: catalog.code || '',
+      documentNote: catalog.documentNote || '',
       category: catalog.category,
       type: catalog.type,
       brand: catalog.brand || '',
@@ -437,6 +451,7 @@ export function StockModule({
   );
 
   function switchStockTab(tab: StockTab) {
+    setShowArticles(false);
     setStockTab(tab);
     setTypeFilter('all');
     // A 1.ª coluna muda de nome com a aba; quem ordenava por ela continua a ordenar.
@@ -501,13 +516,25 @@ export function StockModule({
     );
   }
 
+  // Vazio = o servidor dá o próximo (EQP0001…); o operador pode escrever o seu.
+  const codeField = (
+    <Field label="Código" maxLength={20} pattern="[A-Za-z0-9._\-]*" placeholder={editingCatalog ? '' : 'Automático'}
+      value={catalogForm.code} onChange={(event) => updateCatalogForm('code', event.target.value)} />
+  );
+  // Garantia, estado…: gravada na linha do documento que o vende e impressa nas observações.
+  const documentNoteField = (
+    <Textarea label="Nota no documento" rows={2} maxLength={300} value={catalogForm.documentNote}
+      placeholder="Garantia 12 meses" hint="Aparece nas observações dos documentos que vendem este artigo."
+      onChange={(event) => updateCatalogForm('documentNote', event.target.value)} />
+  );
+
   return (
     <section className="module-panel">
       <div className="module-header">
         <div>
           <p className="eyebrow">Modulo</p>
           <h2>Stock</h2>
-          {totals && (
+          {totals && !showArticles && (
             <p className="stock-header-subtitle">
               <strong>{totals.models}</strong> {stockTab === 'material' ? 'referencias' : 'modelos'} · <strong>{totals.available}</strong> unidades
               {totals.lowStock > 0 && <> · <strong>{totals.lowStock}</strong> em stock baixo</>}
@@ -518,8 +545,8 @@ export function StockModule({
           <ModuleHeaderActions
             ariaLabel="Ações de stock"
             primary={
-              <Button leadingIcon={<Plus size={16} aria-hidden />} onClick={openCreateCatalog}>
-                {stockTab === 'material' ? 'Novo material' : 'Novo equipamento'}
+              <Button leadingIcon={<Plus size={16} aria-hidden />} onClick={showArticles ? () => setArticleCreateRequest((n) => n + 1) : openCreateCatalog}>
+                {showArticles ? 'Novo artigo' : stockTab === 'material' ? 'Novo material' : 'Novo equipamento'}
               </Button>
             }
           />
@@ -530,8 +557,8 @@ export function StockModule({
         <Button
           variant="ghost"
           role="tab"
-          aria-selected={stockTab === 'equipamento'}
-          className={`segmented-tab${stockTab === 'equipamento' ? ' is-active' : ''}`}
+          aria-selected={!showArticles && stockTab === 'equipamento'}
+          className={`segmented-tab${!showArticles && stockTab === 'equipamento' ? ' is-active' : ''}`}
           onClick={() => switchStockTab('equipamento')}
         >
           <Boxes size={14} aria-hidden />
@@ -541,16 +568,27 @@ export function StockModule({
         <Button
           variant="ghost"
           role="tab"
-          aria-selected={stockTab === 'material'}
-          className={`segmented-tab${stockTab === 'material' ? ' is-active' : ''}`}
+          aria-selected={!showArticles && stockTab === 'material'}
+          className={`segmented-tab${!showArticles && stockTab === 'material' ? ' is-active' : ''}`}
           onClick={() => switchStockTab('material')}
         >
           <Cable size={14} aria-hidden />
           <span>Materiais</span>
           <span className="segmented-tab-count">{tabCounts.material}</span>
         </Button>
+        <Button
+          variant="ghost"
+          role="tab"
+          aria-selected={showArticles}
+          className={`segmented-tab${showArticles ? ' is-active' : ''}`}
+          onClick={() => { setShowArticles(true); setSelectedCatalog(null); }}
+        >
+          <Tags size={14} aria-hidden />
+          <span>Artigos e serviços</span>
+        </Button>
       </nav>
 
+      {showArticles ? <ArticlesPanel canManage={canManageStock} createRequest={articleCreateRequest} /> : <>
       {loadError && !summary && <ErrorRetry message={loadError} onRetry={() => { void loadStock(); }} />}
 
       <div className="stock-filter-sticky">
@@ -713,7 +751,7 @@ export function StockModule({
             sort={sortState}
             onSortChange={setSortState}
             onRowClick={selectCatalog}
-            gridTemplateColumns="minmax(260px, 1.4fr) 112px 112px 132px"
+            gridTemplateColumns="84px minmax(200px, 1.4fr) 112px 104px 120px"
             actionsWidth="92px"
             columns={stockColumns}
             actions={canManageStock ? (item) => (
@@ -760,6 +798,7 @@ export function StockModule({
           />
         </>
       )}
+      </>}
 
       <Dialog
         open={showCatalogForm}
@@ -785,6 +824,7 @@ export function StockModule({
         <form id="catalog-form" className="client-form" onSubmit={saveCatalog}>
           {catalogForm.category === 'material' ? (
             <>
+              {codeField}
               {renderTypeField()}
               <Field label="Designacao" required value={catalogForm.model} onChange={(event) => updateCatalogForm('model', event.target.value)} placeholder="Ex.: Cabo UTP Cat6" />
               <Select label="Unidade de medida" value={catalogForm.unitOfMeasure} onChange={(event) => updateCatalogForm('unitOfMeasure', event.target.value)}>
@@ -800,6 +840,7 @@ export function StockModule({
             </>
           ) : (
             <>
+              {codeField}
               {renderTypeField()}
               <Field label="Marca" value={catalogForm.brand} onChange={(event) => updateCatalogForm('brand', event.target.value)} />
               <Field label="Modelo" required value={catalogForm.model} onChange={(event) => updateCatalogForm('model', event.target.value)} />
@@ -815,6 +856,7 @@ export function StockModule({
               </Select>
             </>
           )}
+          {documentNoteField}
         </form>
       </Dialog>
 

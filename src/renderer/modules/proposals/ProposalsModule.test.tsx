@@ -49,6 +49,11 @@ beforeEach(() => {
         },
       ]);
     if (url.endsWith("/stock/summary")) return json({ rows: [] });
+    if (url.endsWith("/articles"))
+      return json([
+        { id: 7, code: "SRV0001", name: "Deslocação técnica", kind: "service", unitPriceCve: 500, active: 1 },
+        { id: 8, code: "ART0001", name: "Cabo antigo", kind: "product", unitPriceCve: 50, active: 0 },
+      ]);
     return json({ items: [], total: 0, page: 1, pageSize: 25 });
   });
 });
@@ -170,4 +175,27 @@ it('selects proforma and requires payment instructions', async () => {
   expect(host.textContent).toContain('Condições de pagamento');
   await click('Guardar rascunho');
   expect(mocks.fetch.mock.calls.some(([,init]) => init?.method === 'POST')).toBe(false);
+});
+
+it('abre o orçamento diretamente pelo botão da lista', async () => {
+  await render(); await click('Novo orçamento');
+  expect([...host.querySelectorAll('select')].some((s) => s.value === 'quotation')).toBe(true);
+});
+
+it('abre a proforma diretamente, já com o pedido de pagamento', async () => {
+  await render(); await click('Nova proforma');
+  expect(host.textContent).toContain('Montante a pagar antecipadamente');
+});
+
+it('acrescenta um serviço do catálogo de artigos e envia o articleId', async () => {
+  await render(); await click('Nova proposta');
+  await select('Cliente existente ou interessado', '1');
+  const picker = [...host.querySelectorAll('label')].find((l) => l.textContent?.startsWith('Acrescentar artigo'))!.querySelector('select')!;
+  expect([...picker.querySelectorAll('option')].map((o) => o.textContent)).toContain('SRV0001 · Deslocação técnica');
+  expect(picker.textContent).not.toContain('Cabo antigo');
+  await select('Acrescentar artigo', 'a:7');
+  expect([...host.querySelectorAll('input')].map((i) => i.value)).toContain('Deslocação técnica');
+  await click('Guardar rascunho');
+  const call = mocks.fetch.mock.calls.find(([, init]) => init?.method === 'POST');
+  expect(JSON.parse(call![1].body).lines).toEqual([expect.objectContaining({ kind: 'free', articleId: 7, unitPriceCentavos: 50000, period: 'once' })]);
 });

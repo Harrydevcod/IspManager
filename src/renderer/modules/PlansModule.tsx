@@ -13,6 +13,7 @@ import { routerSyncBadge } from './plans/routerSync';
 import './PlansModule.css';
 
 type PlanFormState = {
+  code: string;
   name: string;
   downloadSpeed: string;
   uploadSpeed: string;
@@ -28,6 +29,7 @@ type PlanFormState = {
 
 function emptyPlanForm(): PlanFormState {
   return {
+    code: '',
     name: '',
     downloadSpeed: '',
     uploadSpeed: '',
@@ -116,6 +118,7 @@ export function PlansModule() {
   function editPlan(plan: PlanRow) {
     setEditingPlan(plan);
     setForm({
+      code: plan.code ?? '',
       name: plan.name,
       downloadSpeed: plan.downloadSpeed,
       uploadSpeed: plan.uploadSpeed,
@@ -267,10 +270,11 @@ export function PlansModule() {
           rowKey={(plan) => plan.id}
           stickyHeader
           onRowClick={canManagePlans ? editPlan : undefined}
-          gridTemplateColumns="minmax(140px, 1.5fr) 90px 125px 100px 100px 90px"
+          gridTemplateColumns="76px minmax(104px, 1.5fr) 84px 112px 96px 92px 80px"
           actionsWidth="88px"
           defaultSort={{ key: 'Nome', direction: 'asc' }}
           columns={[
+            { header: 'Código', sortValue: (plan) => plan.code, cell: (plan) => <span className="entity-code">{plan.code || '—'}</span> },
             { header: 'Nome', sortValue: (plan) => plan.name, cell: (plan) => <strong>{plan.name}</strong> },
             {
               header: 'Tipo',
@@ -357,6 +361,7 @@ export function PlansModule() {
         }
       >
         <form id="plan-form" className="client-form" onSubmit={savePlan}>
+          <Field label="Código" maxLength={20} placeholder={editingPlan ? '' : 'Automático'} value={form.code} onChange={(event) => updateForm('code', event.target.value)} />
           <Field label="Nome" required value={form.name} onChange={(event) => updateForm('name', event.target.value)} />
           <Select label="Tipo" value={form.connectionType} onChange={(event) => updateForm('connectionType', event.target.value)}>
             <option value="fibra">Fibra</option>

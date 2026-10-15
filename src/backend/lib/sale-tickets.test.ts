@@ -24,7 +24,7 @@ beforeAll(async () => {
   treasury = await import('./treasury');
 });
 beforeEach(() => {
-  db.exec('DELETE FROM stock_movements; DELETE FROM sale_ticket_serials; DELETE FROM sale_ticket_lines; DELETE FROM treasury_movements; DELETE FROM payment_receipts; DELETE FROM payment_lines; DELETE FROM payments; DELETE FROM equipment_catalog; DELETE FROM treasury_accounts;');
+  db.exec('DELETE FROM stock_movements; DELETE FROM sale_ticket_serials; DELETE FROM sale_ticket_lines; DELETE FROM treasury_movements; DELETE FROM payment_receipts; DELETE FROM payment_lines; DELETE FROM articles; DELETE FROM payments; DELETE FROM equipment_catalog; DELETE FROM treasury_accounts;');
   const account = treasury.createAccount(db, { kind: 'caixa', name: 'TV caixa', openingDate: '2020-01-01' });
   if (!account.ok) throw new Error(account.error);
   accountId = account.value.id;
@@ -221,4 +221,27 @@ test('falha de reposição na anulação reverte o estorno e conserva a venda e 
     expect(db.prepare('SELECT voided_at FROM payment_receipts').get()).toEqual({ voided_at: null });
     expect(db.prepare('SELECT stock_total AS n FROM equipment_catalog WHERE id=?').get(catalogId)).toEqual({ n: 4 });
   } finally { db.exec('DROP TRIGGER fail_tv_return'); }
+});
+
+test('linha livre cria um artigo com código e a mesma descrição reutiliza-o', () => {
+  mustEmit({ lines: [{ description: 'Cabo  RJ45', quantity: 1, unitPriceCve: 150 }] });
+  mustEmit({ lines: [{ description: 'cabo rj45', quantity: 2, unitPriceCve: 150 }] });
+  expect(db.prepare('SELECT code,name,kind,unit_price_cve AS price FROM articles').all()).toEqual([{ code: 'ART0001', name: 'Cabo RJ45', kind: 'product', price: 150 }]);
+  expect(db.prepare('SELECT DISTINCT article_id AS id FROM payment_lines').all()).toEqual([{ id: expect.any(Number) }]);
+});
+test('linha de artigo escolhido usa o nome dele; produto do stock não cria artigo', () => {
+  const articleId = Number(db.prepare("INSERT INTO articles(code,name,kind) VALUES ('SRV0009','Configuração','service')").run().lastInsertRowid);
+  const catalogId = catalog();
+  const ticket = mustEmit({ lines: [{ articleId, quantity: 1, unitPriceCve: 300 }, { catalogId, quantity: 1, unitPriceCve: 900 }] });
+  expect(db.prepare('SELECT description,article_id AS articleId FROM payment_lines WHERE payment_id=? ORDER BY sort_order').all(ticket.paymentId))
+    .toEqual([{ description: 'Configuração', articleId }, { description: 'Modelo', articleId: null }]);
+  db.prepare('UPDATE articles SET active=0 WHERE id=?').run(articleId);
+  expect(emit({ lines: [{ articleId, quantity: 1, unitPriceCve: 300 }] })).toMatchObject({ ok: false, status: 409 });
+});
+
+test('cada prefixo conta à parte: o primeiro serviço é SRV0001 mesmo depois de um produto', async () => {
+  mustEmit({ lines: [{ description: 'Conector', quantity: 1, unitPriceCve: 50 }] });
+  const { resolveFreeLineArticle } = await import('./articles');
+  resolveFreeLineArticle(db, 'Instalação', 1000, 'service');
+  expect(db.prepare('SELECT code FROM articles ORDER BY id').all()).toEqual([{ code: 'ART0001' }, { code: 'SRV0001' }]);
 });

@@ -15,18 +15,18 @@ export type ProposalRecipient = {
 };
 export type ProposalLineInput = {
   kind: ProposalLineKind; description: string; period: ProposalPeriod;
-  quantity: number; unitPriceCentavos: number; planId?: number | null; catalogId?: number | null;
+  quantity: number; unitPriceCentavos: number; planId?: number | null; catalogId?: number | null; articleId?: number | null;
 };
 export type ProposalDraftInput = {
   documentType?: InformativeDocumentType; paymentRequest?: PaymentRequest | null;
   clientId: number | null; recipient: ProposalRecipient; title: string;
   validUntil: string; conditions: string; lines: ProposalLineInput[];
 };
-export type ProposalLine = ProposalLineInput & { id: number; sortOrder: number; totalCentavos: number };
+export type ProposalLine = ProposalLineInput & { id: number; sortOrder: number; totalCentavos: number; itemCode?: string | null; itemNote?: string | null };
 export type ProposalCompany = {
   companyName: string; nif: string; phone: string; email: string; address: string;
   island: string; currencyCode: string; ivaRate: number; fiscalRegime: 'normal' | 'rempe';
-  showIva: boolean; legalNotes: string;
+  showIva: boolean; legalNotes: string; productPolicy?: string;
 };
 export type ProposalTax = {
   subtotalCentavos: number; ivaCentavos: number; totalCentavos: number;

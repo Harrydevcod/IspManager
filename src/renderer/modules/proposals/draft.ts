@@ -1,10 +1,12 @@
-import type {
-  ProposalAction,
-  Proposal,
-  ProposalDraftInput,
-  ProposalLineInput,
+import {
+  INFORMATIVE_TYPE_LABELS,
+  type InformativeDocumentType,
+  type ProposalAction,
+  type Proposal,
+  type ProposalDraftInput,
+  type ProposalLineInput,
 } from "../../../shared/proposals";
-import type { Client, PlanRow, StockCatalogRow } from "../../types";
+import type { ArticleRow, Client, PlanRow, StockCatalogRow } from "../../types";
 
 export function actionPayload(
   target: ProposalAction,
@@ -31,14 +33,17 @@ export function newDraft(
     "id" | "fullName" | "phone" | "email" | "nif" | "address"
   >,
   now = new Date(),
+  documentType: InformativeDocumentType = "proposal",
 ): ProposalDraftInput {
   const valid = new Date(now);
   valid.setDate(valid.getDate() + 30);
   return {
-    documentType: "proposal",
-    paymentRequest: null,
+    documentType,
+    paymentRequest: documentType === "proforma"
+      ? { amountCentavos: 0, description: "", conditions: "", dueDate: null }
+      : null,
     clientId: client?.id ?? null,
-    title: "Proposta comercial",
+    title: INFORMATIVE_TYPE_LABELS[documentType],
     validUntil: `${valid.getFullYear()}-${String(valid.getMonth() + 1).padStart(2, "0")}-${String(valid.getDate()).padStart(2, "0")}`,
     conditions: "",
     recipient: {
@@ -71,6 +76,7 @@ export function draftFromProposal(proposal: Proposal): ProposalDraftInput {
         unitPriceCentavos,
         planId,
         catalogId,
+        articleId,
       }) => ({
         kind,
         description,
@@ -79,6 +85,7 @@ export function draftFromProposal(proposal: Proposal): ProposalDraftInput {
         unitPriceCentavos,
         planId,
         catalogId,
+        articleId,
       }),
     ),
   };
@@ -122,6 +129,19 @@ export function productLine(
         100,
     ),
     catalogId: product.id,
+  };
+}
+/** Artigo ou serviço do catálogo: custo único; a periodicidade muda-se na linha. */
+export function articleLine(
+  article: Pick<ArticleRow, "id" | "name" | "kind" | "unitPriceCve">,
+): ProposalLineInput {
+  return {
+    kind: article.kind === "product" ? "product" : "free",
+    description: article.name,
+    period: "once",
+    quantity: 1,
+    unitPriceCentavos: Math.round(article.unitPriceCve * 100),
+    articleId: article.id,
   };
 }
 export function proposalTotals(lines: ProposalLineInput[]) {

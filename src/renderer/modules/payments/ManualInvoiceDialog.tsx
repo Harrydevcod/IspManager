@@ -3,13 +3,14 @@ import { Plus, Trash2 } from 'lucide-react';
 import { Button, Combobox, Dialog, Field, Message, Select, Textarea, Toggle } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { formatCve } from '../../lib/format';
-import type { Client, ServiceRow } from '../../types';
+import type { ArticleRow, Client, ServiceRow } from '../../types';
 
 const API = 'http://127.0.0.1:3001/api';
 const MAX_LINES = 20;
 const NIF_PATTERN = /^[12]\d{8}$/;
 
-type Line = { description: string; amount: string };
+/** `amount` é o preço unitário; o valor da linha é quantidade × preço. */
+type Line = { description: string; quantity: string; amount: string };
 
 type ManualInvoiceDialogProps = {
   open: boolean;
@@ -22,7 +23,8 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
-const emptyLine = (): Line => ({ description: '', amount: '' });
+const emptyLine = (): Line => ({ description: '', quantity: '1', amount: '' });
+const lineTotal = (line: Line) => (Number(line.quantity) > 0 && Number(line.amount) > 0 ? Math.round(Number(line.quantity) * Number(line.amount) * 100) / 100 : 0);
 
 /**
  * Fatura manual: o que não é mensalidade. O destinatário é um cliente da lista
@@ -31,6 +33,7 @@ const emptyLine = (): Line => ({ description: '', amount: '' });
 export function ManualInvoiceDialog({ open, onClose, onCreated }: ManualInvoiceDialogProps) {
   const [clients, setClients] = useState<Client[]>([]);
   const [services, setServices] = useState<ServiceRow[]>([]);
+  const [articles, setArticles] = useState<ArticleRow[]>([]);
   const [stripeReady, setStripeReady] = useState(false);
 
   const [isNewRecipient, setIsNewRecipient] = useState(false);
@@ -71,6 +74,7 @@ export function ManualInvoiceDialog({ open, onClose, onCreated }: ManualInvoiceD
     };
     void load<Client[]>('/clients', setClients);
     void load<ServiceRow[]>('/services', setServices);
+    void load<ArticleRow[]>('/articles', (rows) => setArticles(rows.filter((row) => row.active)));
     void load<{ enabled: boolean }>('/stripe/status', (status) => setStripeReady(Boolean(status.enabled)));
     return () => { alive = false; };
   }, [open]);
@@ -80,8 +84,8 @@ export function ManualInvoiceDialog({ open, onClose, onCreated }: ManualInvoiceD
     [services, clientId]
   );
 
-  const total = lines.reduce((sum, line) => sum + (Number(line.amount) > 0 ? Number(line.amount) : 0), 0);
-  const linesValid = lines.every((line) => line.description.trim() && Number(line.amount) > 0);
+  const total = lines.reduce((sum, line) => sum + lineTotal(line), 0);
+  const linesValid = lines.every((line) => line.description.trim() && lineTotal(line) > 0);
   const nifValid = !recipient.nif || NIF_PATTERN.test(recipient.nif);
   const recipientValid = isNewRecipient ? Boolean(recipient.fullName.trim()) && nifValid : clientId !== null;
   const canUseStripe = !isNewRecipient && Boolean(clients.find((client) => client.id === clientId)?.email?.trim());
@@ -89,6 +93,15 @@ export function ManualInvoiceDialog({ open, onClose, onCreated }: ManualInvoiceD
 
   function updateLine(index: number, patch: Partial<Line>) {
     setLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+  }
+
+  // Escolher um artigo da lista traz o preço dele. O servidor liga a linha ao artigo
+  // com o mesmo nome; um nome novo fica guardado como serviço com código.
+  function pickDescription(index: number, description: string) {
+    const article = articles.find((row) => row.name.toLocaleLowerCase('pt') === description.trim().toLocaleLowerCase('pt'));
+    updateLine(index, article && !lines[index].amount && article.unitPriceCve > 0
+      ? { description, amount: String(article.unitPriceCve) }
+      : { description });
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -104,7 +117,7 @@ export function ManualInvoiceDialog({ open, onClose, onCreated }: ManualInvoiceD
           ...(isNewRecipient
             ? { newClient: { fullName: recipient.fullName, nif: recipient.nif || null, phone: recipient.phone || null, address: recipient.address || null } }
             : { clientId, serviceId: serviceId ? Number(serviceId) : null }),
-          lines: lines.map((line) => ({ description: line.description, amountCve: Number(line.amount) })),
+          lines: lines.map((line) => ({ description: line.description, quantity: Number(line.quantity), unitPriceCve: Number(line.amount) })),
           invoiceDate,
           dueDate: dueDate || null,
           notes: notes || null
@@ -214,11 +227,16 @@ export function ManualInvoiceDialog({ open, onClose, onCreated }: ManualInvoiceD
         <div className="service-items-builder">
           <div className="service-items-group">
             <p className="service-items-group-title">Linhas da fatura</p>
+            <datalist id="manual-invoice-articles">
+              {articles.map((row) => <option key={row.id} value={row.name}>{row.code}</option>)}
+            </datalist>
             {lines.map((line, index) => (
               <div key={index} className="service-item-draft manual-invoice-line">
-                <Field label="Descrição" required maxLength={200} value={line.description}
-                  placeholder="Deslocação técnica" onChange={(event) => updateLine(index, { description: event.target.value })} disabled={submitting} />
-                <Field label="Valor CVE" required type="number" min="0.01" step="0.01" value={line.amount}
+                <Field label="Descrição" required maxLength={200} value={line.description} list="manual-invoice-articles"
+                  placeholder="Deslocação técnica" onChange={(event) => pickDescription(index, event.target.value)} disabled={submitting} />
+                <Field label="Qtd." required type="number" min="0.001" step="0.001" value={line.quantity}
+                  onChange={(event) => updateLine(index, { quantity: event.target.value })} disabled={submitting} />
+                <Field label="Preço unit. CVE" required type="number" min="0.01" step="0.01" value={line.amount}
                   onChange={(event) => updateLine(index, { amount: event.target.value })} disabled={submitting} />
                 <Button
                   variant="ghost"

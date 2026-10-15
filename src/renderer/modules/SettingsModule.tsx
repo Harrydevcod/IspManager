@@ -111,6 +111,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     printQrCode: false,
     printRentalLines: false,
     legalNotes: '',
+    productPolicy: '',
     whatsappTemplate: fallbackWhatsappTemplate,
     whatsappTestTemplate: fallbackWhatsappTestTemplate,
     whatsappInvoiceReadyTemplate: fallbackWhatsappInvoiceReadyTemplate,

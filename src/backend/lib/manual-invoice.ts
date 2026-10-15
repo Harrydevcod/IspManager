@@ -23,6 +23,7 @@ import { allocateDocumentNumber } from './numbering';
 import { applyClientCreditToPayment } from './payments';
 import { insertClient } from './client-records';
 import { isSystemClient, SYSTEM_CLIENT_ERROR } from './system-client';
+import { activeArticle, lineRef, resolveFreeLineArticle } from './articles';
 
 const isoDate = z.string().date();
 
@@ -38,14 +39,20 @@ export const manualInvoiceSchema = z.object({
   serviceId: z.coerce.number().int().positive().optional().nullable(),
   lines: z.array(z.object({
     description: z.string().trim().min(1).max(200),
-    amountCve: z.coerce.number().finite().min(0.01)
-  })).min(1).max(20),
+    // Quantidade × preço unitário; `amountCve` sozinho continua a valer (quantidade 1).
+    quantity: z.coerce.number().positive().max(1000000)
+      .refine((value) => Math.abs(value * 1000 - Math.round(value * 1000)) < 1e-7, 'ate tres casas decimais').optional().default(1),
+    unitPriceCve: z.coerce.number().finite().min(0.01).optional(),
+    amountCve: z.coerce.number().finite().min(0.01).optional(),
+    articleId: z.coerce.number().int().positive().optional().nullable()
+  }).refine((line) => line.unitPriceCve !== undefined || line.amountCve !== undefined, 'indique o preco')).min(1).max(20),
   invoiceDate: isoDate.optional().nullable(),
   dueDate: isoDate.optional().nullable(),
   notes: z.string().trim().max(500).optional().nullable()
 });
 
-export type ManualInvoiceInput = z.infer<typeof manualInvoiceSchema>;
+// Entrada antes do parse: quem chama diretamente pode omitir a quantidade (vale 1).
+export type ManualInvoiceInput = z.input<typeof manualInvoiceSchema>;
 
 export type ManualInvoiceResult = {
   paymentId: number;
@@ -107,13 +114,19 @@ export function createManualInvoice(db: Database, input: ManualInvoiceInput, use
   if (errors.length) return { ok: false, status: 400, error: errors.join(' ') };
   if (dueDate < invoiceDate) return { ok: false, status: 400, error: 'O vencimento nao pode ser anterior a emissao' };
 
-  const lineCentavos = input.lines.map((line) => escudosToCentavos(line.amountCve));
+  // Milésimos de quantidade × centavos: inteiros, arredondados por linha como nas propostas.
+  const lineCentavos = input.lines.map((line) => line.unitPriceCve === undefined
+    ? escudosToCentavos(line.amountCve!)
+    : Math.round(escudosToCentavos(line.unitPriceCve) * Math.round((line.quantity ?? 1) * 1000) / 1000));
   const totalCentavos = lineCentavos.reduce((sum, amount) => sum + amount, 0);
   if (lineCentavos.some((amount) => !Number.isSafeInteger(amount) || amount <= 0)
     || !Number.isSafeInteger(totalCentavos) || totalCentavos <= 0) {
     return { ok: false, status: 400, error: 'Os valores da fatura devem ser positivos e representaveis em centavos' };
   }
   const amountCve = centavosToEscudos(totalCentavos);
+  if (input.lines.some((line) => line.articleId && !activeArticle(db, line.articleId))) {
+    return { ok: false, status: 409, error: 'Artigo indisponivel' };
+  }
 
   const value = db.transaction((): ManualInvoiceResult => {
     const clientId = newClient
@@ -135,10 +148,17 @@ export function createManualInvoice(db: Database, input: ManualInvoiceInput, use
       .run(`${MANUAL_INVOICE_PREFIX}${paymentId}`, invoiceNumber, paymentId);
 
     const insertLine = db.prepare(`
-      INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order)
-      VALUES (?, 'avulso', ?, ?, ?)
+      INSERT INTO payment_lines (payment_id, kind, description, amount_cve, sort_order, article_id, item_code, item_note, quantity)
+      VALUES (?, 'avulso', ?, ?, ?, ?, ?, ?, ?)
     `);
-    input.lines.forEach((line, index) => insertLine.run(paymentId, line.description, centavosToEscudos(lineCentavos[index]), index));
+    // Cada linha fica ligada a um artigo; a linha livre cria-o (serviço) ou reutiliza o do mesmo nome.
+    input.lines.forEach((line, index) => {
+      const lineCve = centavosToEscudos(lineCentavos[index]);
+      const unitCve = line.unitPriceCve ?? lineCve;
+      const articleId = line.articleId ?? resolveFreeLineArticle(db, line.description, unitCve, 'service');
+      const ref = lineRef(db, 'articles', articleId);
+      insertLine.run(paymentId, line.description, lineCve, index, articleId, ref.code, ref.note, line.unitPriceCve === undefined ? 1 : line.quantity ?? 1);
+    });
 
     // Crédito que o cliente já tenha abate aqui, como na geração mensal.
     applyClientCreditToPayment(db, paymentId, userId);

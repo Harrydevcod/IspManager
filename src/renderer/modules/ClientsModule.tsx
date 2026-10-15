@@ -34,10 +34,10 @@ const DEFAULT_CLIENT_SORT: SortState<string> = { key: 'Nome', direction: 'asc' }
 // cortar a página) com as mesmas colunas que a tabela desenha.
 const CLIENT_COLUMNS: DataTableColumn<Client>[] = [
   { header: 'Código', sortValue: (client) => client.clientCode, cell: (client) => <span className="entity-code">{client.clientCode}</span> },
-  { header: 'Nome', sortValue: (client) => client.fullName, cell: (client) => <span><strong>{client.fullName}</strong>{client.systemKind === 'indifferentiated' && <Badge tone="info">Sistema</Badge>}</span> },
+  { header: 'Nome', sortValue: (client) => client.fullName, cell: (client) => <span title={client.systemKind === 'indifferentiated' ? 'Cliente do sistema para vendas a dinheiro (talões de venda)' : undefined}><strong>{client.fullName}</strong></span> },
   { header: 'Telefone', sortValue: (client) => client.phone, cell: (client) => <span>{client.phone || '—'}</span> },
-  { header: 'Ilha', sortValue: (client) => client.island, cell: (client) => <span>{client.island || '-'}</span> },
-  { header: 'Zona', sortValue: (client) => client.zone, cell: (client) => <span>{client.zone || '-'}</span> },
+  { header: 'Ilha', sortValue: (client) => client.island, cell: (client) => <span>{client.island || '—'}</span> },
+  { header: 'Zona', sortValue: (client) => client.zone, cell: (client) => <span>{client.zone || '—'}</span> },
   {
     header: 'Estado',
     align: 'center',
@@ -340,7 +340,9 @@ export function ClientsModule({
     return matchesSearch && matchesStatus;
   }), [clients, search, statusFilter]);
   const visibleClients = useMemo(
-    () => sortByColumns(filteredClients, sortState, CLIENT_COLUMNS, DEFAULT_CLIENT_SORT.key),
+    // O Cliente Indiferenciado (VD) abre sempre a lista, seja qual for a ordenação.
+    () => sortByColumns(filteredClients, sortState, CLIENT_COLUMNS, DEFAULT_CLIENT_SORT.key)
+      .sort((a, b) => Number(b.systemKind === 'indifferentiated') - Number(a.systemKind === 'indifferentiated')),
     [filteredClients, sortState]
   );
   const pagedClients = useMemo(

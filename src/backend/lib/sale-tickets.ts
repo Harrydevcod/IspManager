@@ -8,12 +8,14 @@ import { todayIso } from './billing';
 import { allocateDocumentNumber } from './numbering';
 import { receiveSaleTicketWithinTx, type PaymentOpResult } from './payments';
 import { resolveReceiptAccount, reverseReceiptMovements } from './treasury';
+import { activeArticle, lineRef, resolveFreeLineArticle } from './articles';
 
 export const saleTicketSchema = z.object({
   requestKey: z.string().uuid(),
   lines: z.array(z.object({
     description: z.string().trim().min(1).max(200).optional(),
     catalogId: z.number().int().positive().optional(),
+    articleId: z.number().int().positive().optional(),
     quantity: z.number().int().positive().max(1000000),
     unitPriceCve: z.number().finite().min(0.01),
     serialNumbers: z.array(z.string().trim().min(1).max(120)).max(1000).optional()
@@ -90,7 +92,10 @@ export function createSaleTicket(db: Database, raw: unknown, userId: number | nu
         totalCentavos += total;
         const catalog = line.catalogId ? catalogQuery.get(line.catalogId) as Catalog | undefined : undefined;
         if (line.catalogId && (!catalog || !catalog.active)) throw new SaleError(409, 'Produto indisponível no catálogo.');
-        const description = line.description || (catalog ? [catalog.brand, catalog.model].filter(Boolean).join(' ') : '');
+        if (line.catalogId && line.articleId) throw new SaleError(400, 'Uma linha é de um produto do stock ou de um artigo, não dos dois.');
+        const article = line.articleId ? activeArticle(db, line.articleId) : null;
+        if (line.articleId && !article) throw new SaleError(409, 'Artigo indisponível.');
+        const description = line.description || article?.name || (catalog ? [catalog.brand, catalog.model].filter(Boolean).join(' ') : '');
         if (!description) throw new SaleError(400, 'Uma linha livre exige descrição.');
         const serialNumbers = line.serialNumbers || [];
         if (catalog?.isSerialized) {
@@ -110,7 +115,7 @@ export function createSaleTicket(db: Database, raw: unknown, userId: number | nu
           if (quantity > catalog.stockTotal) throw new SaleError(409, `Stock insuficiente para ${catalog.model}. Disponível: ${catalog.stockTotal}.`);
           requestedStock.set(catalog.id, quantity);
         }
-        return { ...line, description, catalog, serialNumbers, unitPriceCve: centavosToEscudos(unitCentavos), totalCve: centavosToEscudos(total) };
+        return { ...line, description, catalog, article, serialNumbers, unitPriceCve: centavosToEscudos(unitCentavos), totalCve: centavosToEscudos(total) };
       });
       const amountCve = centavosToEscudos(totalCentavos);
       const documentNumber = allocateDocumentNumber('sale_ticket', db, Number(issuedOn.slice(0, 4)));
@@ -119,8 +124,11 @@ export function createSaleTicket(db: Database, raw: unknown, userId: number | nu
         .run(client.id, `${MANUAL_INVOICE_PREFIX}NOVA`, amountCve, issuedOn, documentNumber, issuedOn, input.notes || null, requestKey, requestHash).lastInsertRowid);
       db.prepare('UPDATE payments SET reference_month=? WHERE id=?').run(`${MANUAL_INVOICE_PREFIX}${paymentId}`, paymentId);
       for (const [index, line] of lines.entries()) {
-        const lineId = Number(db.prepare("INSERT INTO payment_lines(payment_id,kind,description,amount_cve,sort_order) VALUES (?,'avulso',?,?,?)")
-          .run(paymentId, line.description, line.totalCve, index).lastInsertRowid);
+        // A linha livre fica no catálogo de artigos: da próxima vez já tem código e escolhe-se.
+        const articleId = line.catalog ? null : line.article?.id ?? resolveFreeLineArticle(db, line.description, line.unitPriceCve, 'product');
+        const ref = line.catalog ? lineRef(db, 'equipment_catalog', line.catalog.id) : lineRef(db, 'articles', articleId);
+        const lineId = Number(db.prepare(`INSERT INTO payment_lines(payment_id,kind,description,amount_cve,sort_order,article_id,item_code,item_note,quantity)
+          VALUES (?,'avulso',?,?,?,?,?,?,?)`).run(paymentId, line.description, line.totalCve, index, articleId, ref.code, ref.note, line.quantity).lastInsertRowid);
         db.prepare('INSERT INTO sale_ticket_lines(payment_line_id,catalog_id,quantity,unit_price_cve) VALUES (?,?,?,?)')
           .run(lineId, line.catalog?.id ?? null, line.quantity, line.unitPriceCve);
         if (line.catalog) {

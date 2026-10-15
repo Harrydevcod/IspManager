@@ -28,7 +28,7 @@ test('upgrade preserva FT, linhas e recebimentos e evita colisão de código/nom
   expect(db.prepare('SELECT invoice_number,document_type FROM payments').all()).toEqual([{ invoice_number: 'FT-2026-00001', document_type: 'invoice' }]);
   expect(db.prepare('SELECT description FROM payment_lines').all()).toEqual([{ description: 'Linha existente' }]);
   expect(db.prepare("SELECT id,client_code,nif FROM clients WHERE system_kind='indifferentiated'").all())
-    .toEqual([{ id: expect.any(Number), client_code: 'INDIF-1', nif: null }]);
+    .toEqual([{ id: expect.any(Number), client_code: 'VD', nif: null }]);
   expect(db.prepare('SELECT system_kind FROM clients WHERE id=?').get(clientId)).toEqual({ system_kind: null });
   expect(db.pragma('integrity_check')).toEqual([{ integrity_check: 'ok' }]);
   expect(db.pragma('foreign_key_check')).toEqual([]);

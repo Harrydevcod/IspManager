@@ -54,7 +54,7 @@ async function prepareManual() {
   await click(document.querySelector<HTMLButtonElement>('[aria-label="Cliente"]')!);
   await act(async () => document.querySelector('[role="option"]')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
   await fill('.manual-invoice-line input:not([type="number"])', 'Instalacao');
-  await fill('input[type="number"]', '2500');
+  await fill('.manual-invoice-line input[type="number"][min="0.01"]', '2500');
   await click(toggle());
 }
 async function issue() {

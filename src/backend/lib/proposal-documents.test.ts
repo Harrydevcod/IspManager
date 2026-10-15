@@ -6,7 +6,7 @@ import { inspectPdfLayout } from './pdf.testing';
 
 export const company: ProposalCompany = { companyName: 'ISPM ORIGINAL', nif: '123456789', phone: '555123', email: 'info@example.cv', address: 'Praia', island: 'Santiago', currencyCode: 'CVE', ivaRate: 15, fiscalRegime: 'normal', showIva: true, legalNotes: 'Oferta comercial.' };
 export function fixture(): Proposal {
-  return { documentType: 'proposal', paymentRequest: null, id: 1, number: 'PR-2026-00001', title: 'Internet para casa', recipientName: 'Maria Original', recipient: { name: 'Maria Original', nif: '', phone: '', email: '', address: 'Praia' }, clientId: null, status: 'issued', version: 2, validUntil: '2026-11-12', issuedAt: '2026-10-13T12:00:00Z', createdAt: '2026-10-13', onceTotalCentavos: 100000, monthlyTotalCentavos: 250000, previousId: null, conditions: 'Instalação mediante agendamento.', lines: [{ id: 1, sortOrder: 0, kind: 'installation', description: 'Instalação oferecida', period: 'once', quantity: 1, unitPriceCentavos: 0, totalCentavos: 0 }, { id: 2, sortOrder: 1, kind: 'product', description: 'Router vendido', period: 'once', quantity: 1, unitPriceCentavos: 100000, totalCentavos: 100000 }, { id: 3, sortOrder: 2, kind: 'plan', description: 'Plano mensal original', period: 'monthly', quantity: 1, unitPriceCentavos: 250000, totalCentavos: 250000 }], snapshot: { company, onceTax: { subtotalCentavos: 86957, ivaCentavos: 13043, totalCentavos: 100000, ivaRate: 15, isExempt: false, exemptReason: '' }, monthlyTax: { subtotalCentavos: 217391, ivaCentavos: 32609, totalCentavos: 250000, ivaRate: 15, isExempt: false, exemptReason: '' } }, createdBy: 1, decisionAt: null, acceptedBy: null, decisionNote: null, cancellationReason: null, deliveries: [], chain: [], allowedActions: [] };
+  return { documentType: 'proposal', paymentRequest: null, id: 1, number: 'PR-2026-00001', title: 'Internet para casa', recipientName: 'Maria Original', recipient: { name: 'Maria Original', nif: '', phone: '', email: '', address: 'Praia' }, clientId: null, status: 'issued', version: 2, validUntil: '2026-11-12', issuedAt: '2026-10-13T12:00:00Z', createdAt: '2026-10-13', onceTotalCentavos: 100000, monthlyTotalCentavos: 250000, previousId: null, conditions: 'Instalação mediante agendamento.', lines: [{ id: 1, sortOrder: 0, kind: 'installation', description: 'Instalação oferecida', period: 'once', quantity: 1, unitPriceCentavos: 0, totalCentavos: 0 }, { id: 2, sortOrder: 1, kind: 'product', description: 'Router vendido', itemCode: 'EQP0003', period: 'once', quantity: 1, unitPriceCentavos: 100000, totalCentavos: 100000 }, { id: 3, sortOrder: 2, kind: 'plan', description: 'Plano mensal original', period: 'monthly', quantity: 1, unitPriceCentavos: 250000, totalCentavos: 250000 }], snapshot: { company, onceTax: { subtotalCentavos: 86957, ivaCentavos: 13043, totalCentavos: 100000, ivaRate: 15, isExempt: false, exemptReason: '' }, monthlyTax: { subtotalCentavos: 217391, ivaCentavos: 32609, totalCentavos: 250000, ivaRate: 15, isExempt: false, exemptReason: '' } }, createdBy: 1, decisionAt: null, acceptedBy: null, decisionNote: null, cancellationReason: null, deliveries: [], chain: [], allowedActions: [] };
 }
 // PDFKit encodes standard-font strings as WinAnsi hex inside deflated streams.
 function content(pdf: Buffer): string {
@@ -70,7 +70,7 @@ describe('proposal PDF', () => {
     const text = content(pdf);
     expect(pdf.toString('latin1')).toContain('/MediaBox [0 0 595.28 841.89]');
     expect((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length).toBe(1);
-    for (const value of ['ISPM ORIGINAL', 'Maria Original', 'PR-2026-00001', 'Custos únicos', 'Mensalidades', 'Instalação oferecida', '1.000$00', '2.500$00', 'IVA incluído', 'não constitui fatura']) expect(text).toContain(value);
+    for (const value of ['ISPM ORIGINAL', 'Maria Original', 'PR-2026-00001', 'Custos únicos', 'Mensalidades', 'Instalação oferecida', '1.000$00', '2.500$00', 'IVA incluído', 'não constitui fatura', 'Cód.', 'EQP0003']) expect(text).toContain(value);
     expect(text).not.toContain('CHANGED COMPANY');
     expect(text).not.toContain('3.500$00');
     expect(pdf.toString('latin1')).not.toContain('/Subtype /Image');
@@ -112,4 +112,17 @@ test.each(['a4','a5'] as const)('%s proforma paginates frozen instructions separ
   expect(text).toContain('Doze mensalidades'); expect(text).toContain('Banco original');
   expect(text).not.toContain('Banco alterado'); expect(text).not.toContain('Data limite');
   expect(inspectPdfLayout(pdf).pages.length).toBeGreaterThan(1);
+});
+
+test('nota do artigo e política congelada saem em "Garantias e condições dos produtos"', async () => {
+  const p = fixture();
+  p.lines[1].itemNote = 'Garantia 12 meses';
+  p.snapshot!.company = { ...company, productPolicy: 'Trocas em 7 dias.' };
+  const text = content(await buildProposalPdf(p, { ...company, productPolicy: 'Política nova' }));
+  for (const value of ['Garantias e condições dos produtos', 'EQP0003 Router vendido: Garantia 12 meses', 'Trocas em 7 dias.']) expect(text).toContain(value);
+  expect(text).not.toContain('Política nova');
+  const services = fixture();
+  services.lines = services.lines.filter((line) => line.kind !== 'product');
+  services.snapshot!.company = { ...company, productPolicy: 'Trocas em 7 dias.' };
+  expect(content(await buildProposalPdf(services))).not.toContain('Trocas em 7 dias.');
 });
