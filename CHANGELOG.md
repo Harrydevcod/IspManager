@@ -6,6 +6,19 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.31](https://github.com/Harrydevcod/IspManager/releases/tag/v2.31.0) — 2026-10-15
+
+- **Documentos.** Novo módulo com duas abas. **Informativos** reúne Propostas
+  (PR), Orçamentos (OR) e Proformas (PF), cada um com série anual própria; a
+  proforma leva um pedido de adiantamento. Nenhum cria dívida nem mexe na
+  tesouraria. **Fiscais** consulta as faturas, recibos e talões já emitidos,
+  com filtros por tipo, estado e datas, e abre o PDF, incluindo os anulados,
+  sem atribuir número novo. Os PDFs saem em A4 ou A5, com emitente e cliente
+  lado a lado.
+- **Talão de Venda.** Venda ao Cliente Indiferenciado sem NIF, paga no ato:
+  linhas livres ou produtos do stock com seriais, recebimento na tesouraria e
+  PDF A4 ou 80 mm. A anulação exige administrador, password e motivo, estorna
+  o valor e repõe o stock.
 - **Correções do smoke visual.** Os filtros de Pagamentos e os controlos da
   Topologia adaptam-se à largura da janela sem sobreposição. Faturas e recibos
   com travessões ou outros caracteres Unicode no nome do destinatário deixam
@@ -32,6 +45,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 - **Formulários alinhados.** Descrições e mensagens de erro abaixo dos campos
   deixam de deslocar os controlos das colunas vizinhas. Os seletores de cliente
   usam a mesma altura dos restantes campos.
+- **Português de Portugal.** Os últimos "cadastro" da interface passam a
+  "registo".
 
 ## [2.30](https://github.com/Harrydevcod/IspManager/releases/tag/v2.30.0) — 2026-10-10
 
