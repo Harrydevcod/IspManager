@@ -6,6 +6,19 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.33](https://github.com/Harrydevcod/IspManager/releases/tag/v2.33.0) — 2026-10-16
+
+- **Total do período no consumo das WAN.** O cartão "Consumo diário das WAN"
+  mostra no topo a utilização total do período, com duas casas como na conta
+  Starlink, e o total de cada WAN na legenda. Escolhe-se entre o ciclo
+  Starlink (começa a 19; muda-se de 1 a 28) e o mês civil; as barras seguem
+  o período, com os dias por vir vazios.
+- **Reinício do router sem perder a contagem.** Depois de uma atualização, o
+  router corria o contador antes de montar o cartão SD e apagava o total do
+  dia e o histórico (13/10 ficou ~60 GB abaixo da Starlink). Agora, nos
+  primeiros 10 minutos sem o cartão, não grava nada e soma desde o arranque
+  quando o cartão aparece. Os contadores no router atualizam-se sozinhos.
+
 ## [2.32](https://github.com/Harrydevcod/IspManager/releases/tag/v2.32.0) — 2026-10-15
 
 - **Artigos e serviços com código.** Novo catálogo de artigos (ART…) e
