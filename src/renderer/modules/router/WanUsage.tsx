@@ -1,6 +1,6 @@
 import { ChartColumn, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
-import { Button } from '../../components';
+import { Button, Select } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { formatDataVolume, ROUTER_API, type RouterWanUsage } from './router-api';
 
@@ -78,10 +78,11 @@ function History({ data: all, period, onPeriod, onAnchor }: HistoryProps) {
                 <span aria-hidden>·</span>
                 <span>começa a dia</span>
                 <span className="router-usage-day-select">
-                  <select aria-label="Dia de início do ciclo Starlink" value={anchor} disabled={saving}
+                  {/* Sem `label`, o Select do sistema dá só o controlo: o nome vem do aria-label e a frase à volta. */}
+                  <Select aria-label="Dia de início do ciclo Starlink" value={anchor} disabled={saving}
                     onChange={(event) => void chooseAnchor(Number(event.target.value))}>
                     {Array.from({ length: 28 }, (_, index) => <option key={index} value={index + 1}>{index + 1}</option>)}
-                  </select>
+                  </Select>
                   <ChevronDown size={12} aria-hidden />
                 </span>
               </>
