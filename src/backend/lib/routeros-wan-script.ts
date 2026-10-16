@@ -23,7 +23,7 @@ import { loadUsageState, storeUsageState } from './routeros-usage-store';
  * a hoje o que falta.
  */
 export const WAN_USAGE_NAME = 'ispm-wan-usage';
-export const WAN_USAGE_VERSION = 'ispm-wan-usage v7';
+export const WAN_USAGE_VERSION = 'ispm-wan-usage v8';
 export const WAN_USAGE_DATA_NAME = 'ispm-wan-usage-data';
 
 export const wanUsageScript = (disk: string | null) => String.raw`# ${WAN_USAGE_VERSION}

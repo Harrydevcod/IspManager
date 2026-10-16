@@ -23,7 +23,7 @@ import { loadUsageState, storeUsageState } from './routeros-usage-store';
  * o total do mês fica certo. Criar baldes diários no router se esse detalhe importar.
  */
 export const CLIENT_USAGE_NAME = 'ispm-client-usage';
-export const CLIENT_USAGE_VERSION = 'ispm-client-usage v3';
+export const CLIENT_USAGE_VERSION = 'ispm-client-usage v4';
 export const CLIENT_USAGE_DATA_NAME = 'ispm-client-usage-data';
 
 export const clientUsageScript = (disk: string | null) => String.raw`# ${CLIENT_USAGE_VERSION}
