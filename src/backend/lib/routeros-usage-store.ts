@@ -15,6 +15,12 @@
  *
  * O script de dados, quando existe, é sempre o mais recente: só existe enquanto o ficheiro não
  * serve, e sai assim que uma gravação no ficheiro corre bem. Por isso lê-se primeiro.
+ *
+ * Por isso também nunca se cria logo a seguir ao arranque. Medido no hEX S a 2026-10-13 (reinício
+ * da atualização): a corrida de arranque, aos 16 s, ainda não via o `sd1`, gravou um estado vazio
+ * no script de dados, e a corrida seguinte passou-o por cima do ficheiro, levando os totais do
+ * dia e o histórico. Com disco previsto, nos primeiros 10 minutos ligado sem ele não se grava
+ * nada: a corrida seguinte lê o ficheiro, vê o reinício pelo tempo ligado e soma desde o arranque.
  */
 
 // O `/file get` e o `/file set` servem até 60 kB; acima de metade disso fica no script.
@@ -31,6 +37,7 @@ export function loadUsageState(name: string, dataName: string, disk: string | nu
     ? `\n:if ([:len [/file find where name="${disk}" type="disk"]] > 0) do={ :set dataFile "${usageDataFile(disk, name)}" }`
     : '';
   return String.raw`:local dataName "${dataName}"
+:local diskWanted ${disk ? 'true' : 'false'}
 :local dataFile ""${mounted}
 :local text ""
 :local dataIds [/system script find where name=$dataName]
@@ -56,7 +63,9 @@ export function storeUsageState(label: string): string {
   :if ([:len $dataIds] > 0) do={ /system script remove $dataIds }
 } else={
   :if ([:len $dataIds] = 0) do={
-    /system script add name=$dataName policy=read comment="${label}" source=$output
+    :if (!$diskWanted || ([/system resource get uptime] >= [:totime "00:10:00"])) do={
+      /system script add name=$dataName policy=read comment="${label}" source=$output
+    }
   } else={
     /system script set $dataIds source=$output
   }
