@@ -434,6 +434,24 @@ describe('Router de gestão', () => {
     expect(panel.textContent).not.toContain('192.168.1.110');
   });
 
+  test('sem router, o consumo das WAN já guardado continua à vista, sem botão de instalar', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const original = fetchMock.getMockImplementation()!;
+    // Router fora de alcance; o acumulado vem da base e responde na mesma.
+    fetchMock.mockImplementation(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/api/network/router/') && !url.endsWith('/router/wan/usage')) {
+        return json({ available: false, reason: 'Integração MikroTik desligada ou por configurar' });
+      }
+      return original(input);
+    });
+    const container = await mount();
+    expect(container.querySelector('.empty-state-title')?.textContent).toBe('Router de gestão do ISP indisponível');
+    expect(container.querySelector('.router-usage-summary')?.textContent).toContain(formatDataVolume(5_480_000_000_000, true));
+    expect(container.querySelector('.router-usage')?.textContent).toContain('Sem ligação ao router');
+    expect([...container.querySelectorAll('button')].some((button) => button.textContent === 'Contar no router')).toBe(false);
+  });
+
   test('router por configurar é um estado vazio que leva à configuração, não um erro', async () => {
     routerAvailable = false;
     const container = await mount();

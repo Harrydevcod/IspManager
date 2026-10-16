@@ -79,11 +79,11 @@ function LiveGate<T>({ live, onRetry, onConfigure, presence, children }: {
   return children(live.data);
 }
 
-function Overview({ data, onOpen }: { data: RouterOverview & { dryRun: boolean }; onOpen: (tab: RouterTab) => void }) {
+type UsageLive = { data: RouterWanUsage | null; error: string | null; reload: () => void };
+
+function Overview({ data, usage, onOpen }: { data: RouterOverview & { dryRun: boolean }; usage: UsageLive; onOpen: (tab: RouterTab) => void }) {
   const { system } = data;
   const usedMemory = system.totalMemory !== null && system.freeMemory !== null ? system.totalMemory - system.freeMemory : null;
-  // Uma só leitura do acumulado: os cartões ao vivo e o histórico partilham-na.
-  const usage = useLive<RouterWanUsage>(`${ROUTER_API}/wan/usage`, true, 60_000);
   return (
     <>
       <WanTraffic usage={usage.data} />
@@ -161,6 +161,9 @@ export default function RouterModule() {
   const logView = pickedLogView ?? (offNetwork ? 'stored' : 'live');
 
   const overview = useLive<Live<RouterOverview>>(`${ROUTER_API}/overview`, tab === 'overview');
+  // O acumulado vem da base, não do router: lê-se fora da rede também. Uma só leitura para os
+  // cartões ao vivo e para o histórico.
+  const usage = useLive<RouterWanUsage>(`${ROUTER_API}/wan/usage`, tab === 'overview', 60_000);
   const sessions = useLive<Live<{ sessions: RouterSession[] }>>(`${ROUTER_API}/sessions`, tab === 'sessions');
   const reconciliation = useLive<Live<ReconciliationData>>(`${ROUTER_API}/reconciliation`, tab === 'reconciliation');
   const interfaces = useLive<Live<{ interfaces: RouterInterface[] }>>(`${ROUTER_API}/interfaces`, tab === 'interfaces');
@@ -242,9 +245,13 @@ export default function RouterModule() {
 
       <div id={tab === 'config' ? undefined : `router-panel-${tab}`} role="tabpanel" aria-labelledby={`router-tab-${tab}`} hidden={tab === 'config'}>
         {tab === 'overview' && (
-          <LiveGate live={overview} onRetry={overview.reload} onConfigure={openConfig} presence={presence.data}>
-            {(data) => <Overview data={data} onOpen={selectTab} />}
-          </LiveGate>
+          <>
+            <LiveGate live={overview} onRetry={overview.reload} onConfigure={openConfig} presence={presence.data}>
+              {(data) => <Overview data={data} usage={usage} onOpen={selectTab} />}
+            </LiveGate>
+            {/* Sem router (fora da rede, desligado), o consumo já guardado continua à vista. */}
+            {overview.data && !overview.data.available && usage.data?.since && <WanUsage live={usage} offline />}
+          </>
         )}
         {tab === 'sessions' && (
           <LiveGate live={sessions} onRetry={sessions.reload} onConfigure={openConfig} presence={presence.data}>
