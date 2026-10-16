@@ -53,7 +53,7 @@ import {
 import { crossReference, type ObservedHost } from '../lib/network-inventory';
 import { buildProposals, dismissalKey, findOrphans, type ProposalKind } from '../lib/discovery-reconcile';
 import { runJob } from '../lib/jobRuns';
-import { collectWanUsage, loadWanUsage } from '../lib/wan-usage';
+import { collectWanUsage, loadWanUsage, saveStarlinkCycleDay } from '../lib/wan-usage';
 import { installUsageCounter } from '../lib/usage-counter';
 import { collectClientUsage, loadClientUsage } from '../lib/client-usage';
 import { backupRouterConfig, listSnapshots, loadSnapshot } from '../lib/router-config-backup';
@@ -590,6 +590,15 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
 
   app.get('/api/network/router/wan/usage', adminOnly, async () => loadWanUsage(getSqliteDatabase()));
   app.get('/api/network/router/clients/usage', adminOnly, async () => loadClientUsage(getSqliteDatabase()));
+
+  // O dia em que começa o ciclo da conta Starlink: é o período do total no cartão do consumo.
+  app.put('/api/network/router/wan/usage/cycle', adminOnly, async (request, reply) => {
+    const parsed = z.object({ day: z.coerce.number().int().min(1).max(28) }).safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Indique um dia entre 1 e 28' });
+    saveStarlinkCycleDay(getSqliteDatabase(), parsed.data.day);
+    recordAudit(request, { action: 'update', entityType: 'settings', summary: 'Mudou o início do ciclo Starlink', metadata: { day: parsed.data.day } });
+    return loadWanUsage(getSqliteDatabase());
+  });
 
   app.post('/api/network/router/wan/usage/counter', adminOnly, async (request, reply) => {
     const db = getSqliteDatabase();

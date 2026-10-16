@@ -141,7 +141,22 @@ describe('GET /api/network/router/wan/usage', () => {
     const response = await app.inject('/api/network/router/wan/usage');
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ since: null, today: [], month: [] });
-    expect(response.json().days).toHaveLength(30);
+    const { cycle, month } = response.json().periods;
+    const first = cycle.start < month.start ? cycle.start : month.start;
+    const last = cycle.end > month.end ? cycle.end : month.end;
+    expect(response.json().days).toHaveLength(Math.round((Date.parse(last) - Date.parse(first)) / 86_400_000) + 1);
+  });
+
+  test('muda o dia de início do ciclo Starlink, só entre 1 e 28', async () => {
+    for (const day of [0, 29, 'x']) {
+      expect((await app.inject({ method: 'PUT', url: '/api/network/router/wan/usage/cycle', payload: { day } })).statusCode).toBe(400);
+    }
+    const response = await app.inject({ method: 'PUT', url: '/api/network/router/wan/usage/cycle', payload: { day: 5 } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().periods.cycle.anchor).toBe(5);
+    expect(response.json().periods.cycle.start.slice(8)).toBe('05');
+    db.prepare("DELETE FROM audit_logs WHERE entity_type = 'settings'").run();
+    db.prepare("DELETE FROM app_settings WHERE key = 'starlinkCycleDay'").run();
   });
 });
 

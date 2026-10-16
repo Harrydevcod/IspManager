@@ -220,20 +220,29 @@ export type RouterWanUsage = {
   exactSince: string | null;
   today: WanUsageRow[];
   month: WanUsageRow[];
+  /** Totais por WAN do ciclo da conta Starlink e do mês civil que contêm hoje (até hoje). */
+  periods?: {
+    cycle: { start: string; end: string; anchor: number; total: WanUsageRow[] };
+    month: { start: string; end: string; total: WanUsageRow[] };
+  };
+  /** Cobre o ciclo e o mês, com os dias por vir a zero. */
   /** source 'starlink': copiado da conta Starlink, só o total (fica em rx). */
   days: Array<{ day: string; perInterface: Array<{ interface: string; rxBytes: number; txBytes: number; source: 'counted' | 'starlink' }> }>;
 };
 
 const DATA_UNITS = ['B', 'kB', 'MB', 'GB', 'TB'];
 
-export function formatDataVolume(bytes: number): string {
+const precise = new Intl.NumberFormat('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** `precise`: duas casas, como o total da conta Starlink ("4,48 TB"), para se comparar. */
+export function formatDataVolume(bytes: number, precise2 = false): string {
   let value = bytes;
   let unit = 0;
   while (value >= 1000 && unit < DATA_UNITS.length - 1) {
     value /= 1000;
     unit += 1;
   }
-  return `${decimal.format(value)} ${DATA_UNITS[unit]}`;
+  return `${(precise2 && unit > 0 ? precise : decimal).format(value)} ${DATA_UNITS[unit]}`;
 }
 
 const BIT_UNITS = ['bit/s', 'kbit/s', 'Mbit/s', 'Gbit/s'];
