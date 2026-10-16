@@ -53,6 +53,7 @@ function json(body: unknown) {
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
   routerAvailable = true;
   wanReads = 0;
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -73,6 +74,16 @@ beforeEach(() => {
         { interface: 'WAN1-STARLINK', rxBytes: 5_000_000_000, txBytes: 200_000_000 },
         { interface: 'WAN2-STARLINK', rxBytes: 3_000_000_000, txBytes: 100_000_000 }
       ],
+      periods: {
+        cycle: { start: '2026-09-19', end: '2026-10-18', anchor: 19, total: [
+          { interface: 'WAN1-STARLINK', rxBytes: 4_000_000_000_000, txBytes: 480_000_000_000 },
+          { interface: 'WAN2-STARLINK', rxBytes: 900_000_000_000, txBytes: 100_000_000_000 }
+        ] },
+        month: { start: '2026-10-01', end: '2026-10-31', total: [
+          { interface: 'WAN1-STARLINK', rxBytes: 5_000_000_000, txBytes: 200_000_000 },
+          { interface: 'WAN2-STARLINK', rxBytes: 3_000_000_000, txBytes: 100_000_000 }
+        ] }
+      },
       days: []
     });
     if (url.endsWith('/router/wan')) {
@@ -203,6 +214,36 @@ describe('Router de gestão', () => {
     expect(lastDay?.querySelector('.router-usage-total')?.classList.contains('is-key')).toBe(true);
     expect(lastDay?.querySelector('.router-usage-total')?.classList.contains('is-end')).toBe(true);
     expect(history?.querySelector('.router-usage-day:first-child i')?.classList.contains('is-second')).toBe(true);
+  });
+
+  test('o histórico mostra o total do ciclo Starlink ou do mês, por WAN e somado, e muda o início do ciclo', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).endsWith('/router/wan/usage/cycle')) return json({});
+      const response = await original(input);
+      if (!String(input).endsWith('/router/wan/usage')) return response;
+      return json({ ...await response.json(), days: [{ day: '2026-09-19', perInterface: [{ interface: 'WAN1-STARLINK', rxBytes: 1, txBytes: 0, source: 'counted' }] }] });
+    });
+    const container = await mount();
+    const summary = () => container.querySelector('.router-usage-summary');
+    expect(summary()?.textContent).toContain('Utilização total no ciclo');
+    expect(summary()?.textContent).toContain(formatDataVolume(5_480_000_000_000, true));
+    expect(summary()?.textContent).toContain('19-09 → 18-10');
+    expect(container.querySelector('.router-usage-legend')?.textContent).toContain(formatDataVolume(4_480_000_000_000, true));
+    expect(container.querySelectorAll('.router-usage-history .router-usage-day')).toHaveLength(1);
+    const select = container.querySelector<HTMLSelectElement>('.router-usage-cycle select')!;
+    expect(select.value).toBe('19');
+    await act(async () => { select.value = '5'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+    const put = fetchMock.mock.calls.find(([input]) => String(input).endsWith('/router/wan/usage/cycle'));
+    expect(JSON.parse(String((put?.[1] as RequestInit).body))).toEqual({ day: 5 });
+    // Mês: outro total, outras barras (o dia 19-09 fica de fora) e sem o dia do ciclo.
+    await click([...container.querySelectorAll('button')].find((item) => item.textContent === 'Mês'));
+    expect(summary()?.textContent).toContain('Utilização total no mês');
+    expect(summary()?.textContent).toContain(formatDataVolume(8_300_000_000, true));
+    expect(summary()?.textContent).toContain('01-10 → 31-10');
+    expect(container.querySelectorAll('.router-usage-history .router-usage-day')).toHaveLength(0);
+    expect(container.querySelector('.router-usage-cycle')).toBeNull();
   });
 
   test('dias anteriores à contagem no router ficam esbatidos e não ditam a escala', async () => {

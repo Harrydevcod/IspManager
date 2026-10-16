@@ -277,6 +277,14 @@
 .router-usage-actions .router-usage-since { overflow-wrap: anywhere; }
 
 .router-usage-history { display: grid; gap: var(--space-3); min-width: 0; }
+.router-usage-summary { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-3); }
+.router-usage-summary-figure { display: grid; gap: var(--space-1); }
+.router-usage-summary-label { color: var(--text-2); font-size: var(--fs-sm); }
+.router-usage-summary-figure strong { font-size: var(--fs-2xl); font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--text); line-height: 1.1; }
+.router-usage-summary-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); }
+.router-usage-summary-controls .segmented-tabs { margin: 0; }
+.router-usage-legend b { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; margin-left: var(--space-1); }
+.router-usage-cycle select { width: auto; }
 .router-usage-chart { display: grid; gap: var(--space-2); padding-top: var(--space-5); }
 .router-usage-bars { display: grid; gap: 3px; align-items: end; height: 120px; min-width: 0; }
 .router-usage-day { position: relative; height: 100%; display: flex; flex-direction: column-reverse; transition: filter 150ms ease-out; }

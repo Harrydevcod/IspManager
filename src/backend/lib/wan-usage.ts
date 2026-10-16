@@ -180,6 +180,28 @@ export async function collectWanUsage(db: Database.Database, transport: RouterTr
   return { source: 'fallback' as const, ...await recordWanUsage(db, transport) };
 }
 
+/** Dia do mês em que começa o ciclo da conta Starlink (1..28; 19 na conta do ISP). */
+export const DEFAULT_STARLINK_CYCLE_DAY = 19;
+
+export function starlinkCycleDay(db: Database.Database): number {
+  const value = Number((db.prepare("SELECT value FROM app_settings WHERE key = 'starlinkCycleDay'").get() as { value: string } | undefined)?.value);
+  return Number.isInteger(value) && value >= 1 && value <= 28 ? value : DEFAULT_STARLINK_CYCLE_DAY;
+}
+
+export function saveStarlinkCycleDay(db: Database.Database, day: number) {
+  db.prepare(`INSERT INTO app_settings (key, value, updated_at) VALUES ('starlinkCycleDay', ?, datetime('now'))
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).run(String(day));
+}
+
+/** O ciclo de faturação que contém `today`: do dia `anchor` até à véspera do mesmo dia no mês seguinte. */
+export function cycleBounds(today: string, anchor: number): { start: string; end: string } {
+  const [year, month, day] = today.split('-').map(Number);
+  const startMonth = day >= anchor ? month - 1 : month - 2; // 0-based para Date.UTC
+  const start = new Date(Date.UTC(year, startMonth, anchor));
+  const end = new Date(Date.UTC(year, startMonth + 1, anchor - 1));
+  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+}
+
 export function loadWanUsage(db: Database.Database, today = utcDay()) {
   const since = (db.prepare('SELECT MIN(seen_at) AS since FROM wan_counter_state').get() as { since: string | null }).since;
   const routerImportedAt = (db.prepare("SELECT value FROM app_settings WHERE key = 'wanUsageRouterImportedAt'").get() as { value: string } | undefined)?.value ?? null;
@@ -192,9 +214,20 @@ export function loadWanUsage(db: Database.Database, today = utcDay()) {
   const monthRows = db.prepare(`SELECT interface, SUM(rx_bytes) AS rxBytes, SUM(tx_bytes) AS txBytes
     FROM wan_traffic_daily WHERE day >= ? AND day <= ? GROUP BY interface ORDER BY interface`)
     .all(`${today.slice(0, 7)}-01`, today) as UsageRow[];
-  const start = new Date(`${today}T00:00:00Z`);
-  start.setUTCDate(start.getUTCDate() - 29);
-  const startDay = start.toISOString().slice(0, 10);
+  // Dois períodos para o total: o ciclo da conta Starlink (o número da fatura) e o mês civil.
+  // `days` cobre os dois, com os dias por vir a zero; a interface mostra o que estiver escolhido.
+  const sumBetween = db.prepare(`SELECT interface, SUM(rx_bytes) AS rxBytes, SUM(tx_bytes) AS txBytes
+    FROM wan_traffic_daily WHERE day >= ? AND day <= ? GROUP BY interface ORDER BY interface`);
+  const anchor = starlinkCycleDay(db);
+  const cycle = cycleBounds(today, anchor);
+  const monthEnd = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).toISOString().slice(0, 10);
+  const month = { start: `${today.slice(0, 7)}-01`, end: monthEnd };
+  const periods = {
+    cycle: { ...cycle, anchor, total: sumBetween.all(cycle.start, today) as UsageRow[] },
+    month: { ...month, total: monthRows }
+  };
+  const startDay = cycle.start < month.start ? cycle.start : month.start;
+  const endDay = cycle.end > month.end ? cycle.end : month.end;
   const history = db.prepare(`SELECT day, interface, rx_bytes AS rxBytes, tx_bytes AS txBytes, source
     FROM wan_traffic_daily WHERE day >= ? AND day <= ? ORDER BY day, interface`)
     .all(startDay, today) as Array<{ day: string; interface: string; rxBytes: number; txBytes: number; source: WanUsageSource }>;
@@ -204,7 +237,8 @@ export function loadWanUsage(db: Database.Database, today = utcDay()) {
     if (!byDay.has(row.day)) byDay.set(row.day, new Map());
     byDay.get(row.day)!.set(row.interface, { rxBytes: row.rxBytes, txBytes: row.txBytes, source: row.source });
   }
-  const days = Array.from({ length: 30 }, (_, offset) => {
+  const length = Math.round((Date.parse(`${endDay}T00:00:00Z`) - Date.parse(`${startDay}T00:00:00Z`)) / 86_400_000) + 1;
+  const days = Array.from({ length }, (_, offset) => {
     const date = new Date(`${startDay}T00:00:00Z`);
     date.setUTCDate(date.getUTCDate() + offset);
     const day = date.toISOString().slice(0, 10);
@@ -213,5 +247,5 @@ export function loadWanUsage(db: Database.Database, today = utcDay()) {
       return { interface: name, rxBytes: row?.rxBytes ?? 0, txBytes: row?.txBytes ?? 0, source: row?.source ?? 'counted' };
     }) };
   });
-  return { since: since ?? (history[0]?.day ?? null), routerImportedAt, exactSince, today: dayRows, month: monthRows, days };
+  return { since: since ?? (history[0]?.day ?? null), routerImportedAt, exactSince, today: dayRows, month: monthRows, periods, days };
 }

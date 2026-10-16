@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
-import { collectWanUsage, counterDelta, importRouterUsage, importStarlinkUsage, loadWanUsage, parseWanUsageFile, recordWanUsage } from './wan-usage';
+import { collectWanUsage, counterDelta, cycleBounds, importRouterUsage, importStarlinkUsage, loadWanUsage, parseWanUsageFile, recordWanUsage, saveStarlinkCycleDay } from './wan-usage';
 import type { RouterRequest, RouterTransport } from './routeros';
 
 let db: Database.Database;
@@ -62,7 +62,7 @@ describe('ficheiro do contador no router', () => {
       { day: '2026-09-24', rx: 10, tx: 2 }, { day: '2026-09-25', rx: 100, tx: 20 }
     ]);
     expect(loadWanUsage(db, '2026-09-25').routerImportedAt).toBeTruthy();
-    expect(loadWanUsage(db, '2026-09-25').days.at(-1)?.perInterface[0]).toEqual({ interface: 'WAN1', rxBytes: 100, txBytes: 20, source: 'counted' });
+    expect(loadWanUsage(db, '2026-09-25').days.find((day) => day.day === '2026-09-25')?.perInterface[0]).toEqual({ interface: 'WAN1', rxBytes: 100, txBytes: 20, source: 'counted' });
   });
 
   test('dia da conta Starlink: só o total, e o router não lhe toca; dias contados seguem com MAX', () => {
@@ -74,7 +74,7 @@ describe('ficheiro do contador no router', () => {
       { day: '2026-09-30', interface: 'WAN1', rxBytes: 0, txBytes: 0 }
     ]);
     importRouterUsage(db, [{ day: '2026-09-30', interface: 'WAN1', rxBytes: 5, txBytes: 3 }]);
-    const days = loadWanUsage(db, '2026-09-30').days.slice(-2).map((day) => day.perInterface[0]);
+    const days = loadWanUsage(db, '2026-09-30').days.filter((day) => day.day >= '2026-09-29' && day.day <= '2026-09-30').map((day) => day.perInterface[0]);
     expect(days).toEqual([
       { interface: 'WAN1', rxBytes: 115, txBytes: 0, source: 'starlink' },
       { interface: 'WAN1', rxBytes: 10, txBytes: 3, source: 'counted' }
@@ -163,9 +163,29 @@ describe('tráfego acumulado das WAN', () => {
       { interface: 'WAN2-STARLINK', rxBytes: 20, txBytes: 0 }
     ]);
     expect(result.month.map((row) => row.rxBytes)).toEqual([20, 40]);
-    expect(result.days).toHaveLength(30);
-    expect(result.days[0].day).toBe('2026-08-28');
-    expect(result.days[0].perInterface.map((row) => row.rxBytes)).toEqual([0, 0]);
-    expect(result.days.at(-1)?.perInterface.map((row) => row.rxBytes)).toEqual([10, 20]);
+    // Ciclo Starlink (dia 19): de 19-09 a 18-10, com os dias por vir a zero.
+    expect(result.periods.cycle).toMatchObject({ start: '2026-09-19', end: '2026-10-18', anchor: 19 });
+    expect(result.periods.month).toMatchObject({ start: '2026-09-01', end: '2026-09-30' });
+    // Os dias cobrem o mês e o ciclo: de 01-09 a 18-10.
+    expect(result.days).toHaveLength(48);
+    expect(result.days[0].day).toBe('2026-09-01');
+    expect(result.days[0].perInterface.map((row) => row.rxBytes)).toEqual([10, 20]);
+    expect(result.days[1].perInterface.map((row) => row.rxBytes)).toEqual([0, 0]);
+    expect(result.days.find((day) => day.day === '2026-09-26')?.perInterface.map((row) => row.rxBytes)).toEqual([10, 20]);
+    expect(result.days.at(-1)?.perInterface.map((row) => row.rxBytes)).toEqual([0, 0]);
+    // O total do ciclo não leva o dia 01-09, que é do ciclo anterior.
+    expect(result.periods.cycle.total.map((row) => row.rxBytes)).toEqual([10, 20]);
+    expect(result.periods.month.total.map((row) => row.rxBytes)).toEqual([20, 40]);
+    saveStarlinkCycleDay(db, 1);
+    expect(loadWanUsage(db, '2026-09-26').periods.cycle.total.map((row) => row.rxBytes)).toEqual([20, 40]);
+  });
+
+  test('cycleBounds: ciclo que contém o dia, com passagem de ano e fevereiro', () => {
+    expect(cycleBounds('2026-10-16', 19)).toEqual({ start: '2026-09-19', end: '2026-10-18' });
+    expect(cycleBounds('2026-10-18', 19)).toEqual({ start: '2026-09-19', end: '2026-10-18' });
+    expect(cycleBounds('2026-10-19', 19)).toEqual({ start: '2026-10-19', end: '2026-11-18' });
+    expect(cycleBounds('2027-01-05', 19)).toEqual({ start: '2026-12-19', end: '2027-01-18' });
+    expect(cycleBounds('2027-02-20', 28)).toEqual({ start: '2027-01-28', end: '2027-02-27' });
+    expect(cycleBounds('2027-03-01', 1)).toEqual({ start: '2027-03-01', end: '2027-03-31' });
   });
 });
