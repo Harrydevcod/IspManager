@@ -6,6 +6,15 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.35](https://github.com/Harrydevcod/IspManager/releases/tag/v2.35.0) — 2026-10-16
+
+- **Fora da rede, o Router de gestão responde logo.** Cada ecrã do router
+  (visão geral, sessões, reconciliação, interfaces, registo, perfis) já não
+  tenta ligar ao router quando a app sabe que está fora da rede de gestão:
+  o estado no topo diz de imediato "Sem ligação ao router", em vez de ficar
+  em "A sincronizar…" à espera dos 10 s do tempo limite. Numa rede alheia, as
+  credenciais do router deixam de ser enviadas a outro aparelho.
+
 ## [2.34](https://github.com/Harrydevcod/IspManager/releases/tag/v2.34.0) — 2026-10-16
 
 - **Período e início do ciclo junto ao total.** No cartão "Consumo diário das
