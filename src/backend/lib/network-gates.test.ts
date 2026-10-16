@@ -49,3 +49,11 @@ test('trabalhos de rede fora do local saltam sem escrever dados nem auditoria', 
     expect(counts()).toEqual(before);
   }
 });
+
+test('fora da rede as leituras ao vivo respondem logo, sem tentar o router', async () => {
+  const { readRouterLive } = await import('./router-live');
+  const read = vi.fn();
+  const result = await readRouterLive(db, read);
+  expect(result).toEqual({ available: false, reason: 'Fora da rede de gestão: O router de gestão do ISP não respondeu.' });
+  expect(read).not.toHaveBeenCalled();
+});

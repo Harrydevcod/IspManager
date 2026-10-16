@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-network';
 import { createTransport, describeRouterFailure, isRouterConfigured, listInterfaceListMembers, listInterfaces, monitorTraffic, readRouterConfig, type RouterConfig, type RouterTransport } from './routeros';
 
 export async function readRouterLive<T extends object>(db: Database.Database, read: (transport: RouterTransport, config: RouterConfig) => Promise<T>) {
@@ -6,6 +7,10 @@ export async function readRouterLive<T extends object>(db: Database.Database, re
   if (!config.enabled || !isRouterConfigured(config)) {
     return { available: false as const, reason: 'Integração MikroTik desligada ou por configurar' };
   }
+  // Fora da rede já se sabe a resposta: tentar outra vez só prende o ecrã nos 10 s do timeout
+  // (e numa rede alheia mandaria as credenciais a outro aparelho).
+  const presence = await detectAdminNetwork(db);
+  if (isOffNetwork(presence)) return { available: false as const, reason: offNetworkReason(presence) };
   try {
     return { available: true as const, dryRun: config.dryRun, ...(await read(createTransport(config), config)) };
   } catch (err) {

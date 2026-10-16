@@ -9,9 +9,13 @@ export type AdminNetworkPresence = {
 
 const CACHE_MS = 60_000;
 let cached: { key: string; expiresAt: number; value: Promise<AdminNetworkPresence> } | null = null;
+// A última resposta já conhecida: fora da rede a verificação leva os 10 s do timeout, e quem
+// pergunta depois de a cache expirar recebe-a logo enquanto a nova corre por trás.
+let settled: { key: string; value: AdminNetworkPresence } | null = null;
 
 export function resetAdminNetworkCacheForTests(): void {
   cached = null;
+  settled = null;
 }
 
 export function offNetworkReason(presence: AdminNetworkPresence): string {
@@ -26,7 +30,8 @@ export function detectAdminNetwork(db: Database.Database): Promise<AdminNetworkP
   const config = readRouterConfig(db);
   const key = `${config.enabled}|${config.host}|${config.port}|${config.user}|${Boolean(config.password)}|${config.tlsCert}`;
   const now = Date.now();
-  if (cached?.key === key && cached.expiresAt > now) return cached.value;
+  const known = settled?.key === key ? Promise.resolve(settled.value) : null;
+  if (cached?.key === key && cached.expiresAt > now) return known ?? cached.value;
 
   const value = (async (): Promise<AdminNetworkPresence> => {
     const checkedAt = new Date().toISOString();
@@ -53,5 +58,6 @@ export function detectAdminNetwork(db: Database.Database): Promise<AdminNetworkP
     }
   })();
   cached = { key, expiresAt: now + CACHE_MS, value };
-  return value;
+  void value.then((presence) => { if (cached?.value === value) settled = { key, value: presence }; });
+  return known ?? value;
 }
