@@ -65,4 +65,21 @@ describe('detectAdminNetwork', () => {
     fetchCertificate.mockResolvedValue({ fingerprint: 'OTHER' });
     expect((await detectAdminNetwork(db)).state).toBe('onsite');
   });
+
+  test('com a cache expirada responde já com a última verificação e refaz por trás', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    fetchCertificate.mockRejectedValue(new RouterError('timeout', 0, undefined, 'ETIMEDOUT'));
+    expect((await detectAdminNetwork(db)).state).toBe('offsite');
+    // De volta à rede, mas a nova verificação ainda não acabou.
+    let finish!: (value: { fingerprint: string }) => void;
+    fetchCertificate.mockReturnValue(new Promise((done) => { finish = done; }));
+    now.mockReturnValue(1_000_000 + 61_000);
+    expect((await detectAdminNetwork(db)).state).toBe('offsite');
+    expect(fetchCertificate).toHaveBeenCalledTimes(2);
+    finish({ fingerprint: 'MATCH' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect((await detectAdminNetwork(db)).state).toBe('onsite');
+    expect(fetchCertificate).toHaveBeenCalledTimes(2);
+    now.mockRestore();
+  });
 });

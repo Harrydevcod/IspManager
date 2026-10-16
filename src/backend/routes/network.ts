@@ -419,6 +419,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     if (!config.enabled || !isRouterConfigured(config)) {
       return { available: false, reason: 'Integração MikroTik desligada ou por configurar', baseProfile, profiles: [] };
     }
+    const presence = await detectAdminNetwork(db);
+    if (isOffNetwork(presence)) return { available: false, reason: offNetworkReason(presence), baseProfile, profiles: [] };
     try {
       const profiles = await listProfiles(createTransport(config));
       return {
