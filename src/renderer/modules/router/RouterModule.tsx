@@ -212,7 +212,8 @@ export default function RouterModule() {
             <SyncStatus
               syncing={current.syncing}
               syncedAt={current.syncedAt}
-              error={current.error}
+              // A API respondeu, mas a dizer que o router não está lá: não é "Sincronizado".
+              error={current.error ?? ((current.data as { available?: boolean } | null)?.available === false ? 'Router indisponível' : null)}
               onSync={() => { current.reload(); if (tab === 'profiles') plans.reload(); }}
             />
           ) : undefined}
