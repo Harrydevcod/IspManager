@@ -267,7 +267,12 @@ describe('Router de gestão', () => {
     await act(async () => answer(new Response(JSON.stringify({ error: 'Indique um dia entre 1 e 28' }), { status: 400 })));
     expect(select().value).toBe('19');
     expect(select().disabled).toBe(false);
-    expect(container.querySelector('.router-usage [role="alert"]')?.textContent).toContain('Indique um dia entre 1 e 28');
+    // O erro aparece junto à caixa do dia, não no topo do cartão.
+    expect(container.querySelector('.router-usage-summary [role="alert"]')?.textContent).toContain('Indique um dia entre 1 e 28');
+  });
+
+  test('uma WAN sem consumo lê-se "0 GB", na unidade das outras', () => {
+    expect(formatDataVolume(0, true)).toBe('0 GB');
   });
 
   test('dias anteriores à contagem no router ficam esbatidos e não ditam a escala', async () => {
@@ -473,6 +478,9 @@ describe('Router de gestão', () => {
     expect(container.querySelector('.empty-state-title')?.textContent).toBe('Router de gestão do ISP indisponível');
     expect(container.querySelector('.router-usage-summary')?.textContent).toContain(formatDataVolume(5_480_000_000_000, true));
     expect(container.querySelector('.router-usage')?.textContent).toContain('Sem ligação ao router');
+    // A leitura correu, mas o router não estava lá: o estado não pode dizer "Sincronizado".
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 800)); });
+    expect(container.querySelector('.router-sync')?.textContent).toBe('Sem ligação ao router');
     expect([...container.querySelectorAll('button')].some((button) => button.textContent === 'Contar no router')).toBe(false);
   });
 

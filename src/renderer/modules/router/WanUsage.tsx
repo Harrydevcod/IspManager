@@ -26,9 +26,9 @@ function storedPeriod(): Period {
   try { return window.localStorage.getItem(PERIOD_KEY) === 'month' ? 'month' : 'cycle'; } catch { return 'cycle'; }
 }
 
-type HistoryProps = { data: RouterWanUsage; period: Period; onPeriod: (period: Period) => void; onAnchor: (day: number) => Promise<boolean> };
+type HistoryProps = { data: RouterWanUsage; period: Period; onPeriod: (period: Period) => void; onAnchor: (day: number) => Promise<boolean>; anchorError: string | null };
 
-function History({ data: all, period, onPeriod, onAnchor }: HistoryProps) {
+function History({ data: all, period, onPeriod, onAnchor, anchorError }: HistoryProps) {
   const range = all.periods?.[period];
   // As barras só do período escolhido; o ciclo e o mês vêm na mesma resposta.
   const data = range ? { ...all, days: all.days.filter((day) => day.day >= range.start && day.day <= range.end) } : all;
@@ -88,6 +88,8 @@ function History({ data: all, period, onPeriod, onAnchor }: HistoryProps) {
               </>
             )}
           </p>
+          {/* O erro do dia fica junto à caixa que o causou. */}
+          {period === 'cycle' && anchorError && <p role="alert" className="field-error router-usage-anchor-error">{anchorError}</p>}
         </div>
       )}
       <div className="router-usage-chart" role="img" aria-label={`Consumo diário das WAN${range ? ` de ${span.replace(' → ', ' a ')}` : ''}`}>
@@ -126,6 +128,7 @@ function History({ data: all, period, onPeriod, onAnchor }: HistoryProps) {
 export function WanUsage({ live, offline = false }: { live: { data: RouterWanUsage | null; error: string | null; reload: () => void }; offline?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [cycleError, setCycleError] = useState<string | null>(null);
   const data = live.data;
   // Só conta como ativo se o último import do ficheiro do router for recente; senão o job voltou ao fallback.
   const counting = !!data?.routerImportedAt && Date.now() - Date.parse(data.routerImportedAt) < 10 * 60_000;
@@ -140,7 +143,7 @@ export function WanUsage({ live, offline = false }: { live: { data: RouterWanUsa
     try { window.localStorage.setItem(PERIOD_KEY, next); } catch { /* só a preferência deste ecrã */ }
   };
   const changeCycle = async (day: number) => {
-    setActionError(null);
+    setCycleError(null);
     try {
       const response = await authFetch(`${ROUTER_API}/wan/usage/cycle`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ day })
@@ -149,7 +152,7 @@ export function WanUsage({ live, offline = false }: { live: { data: RouterWanUsa
       live.reload();
       return true;
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Não foi possível mudar o ciclo.');
+      setCycleError(error instanceof Error ? error.message : 'Não foi possível mudar o ciclo.');
       return false;
     }
   };
@@ -186,7 +189,7 @@ export function WanUsage({ live, offline = false }: { live: { data: RouterWanUsa
       {!data ? <p className="router-muted">{live.error ?? 'A ler os registos…'}</p> : !since ? (
         <p className="router-muted">Ainda sem registos</p>
       ) : (
-        <History data={data} period={period} onPeriod={choosePeriod} onAnchor={changeCycle} />
+        <History data={data} period={period} onPeriod={choosePeriod} onAnchor={changeCycle} anchorError={cycleError} />
       )}
     </section>
   );

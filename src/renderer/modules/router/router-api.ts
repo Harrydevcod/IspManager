@@ -236,6 +236,8 @@ const precise = new Intl.NumberFormat('pt-PT', { minimumFractionDigits: 2, maxim
 
 /** `precise`: duas casas, como o total da conta Starlink ("4,48 TB"), para se comparar. */
 export function formatDataVolume(bytes: number, precise2 = false): string {
+  // Nada gasto lê-se na unidade dos vizinhos ("0 GB" ao lado de "202,74 GB"), não "0 B".
+  if (bytes === 0) return '0 GB';
   let value = bytes;
   let unit = 0;
   while (value >= 1000 && unit < DATA_UNITS.length - 1) {
