@@ -18,6 +18,9 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
   dia e o histórico (13/10 ficou ~60 GB abaixo da Starlink). Agora, nos
   primeiros 10 minutos sem o cartão, não grava nada e soma desde o arranque
   quando o cartão aparece. Os contadores no router atualizam-se sozinhos.
+- **Consumo fora da rede de gestão.** Sem ligação ao router, a Visão geral
+  continua a mostrar o consumo já registado (total do período e barras), com
+  a hora dos últimos dados.
 
 ## [2.32](https://github.com/Harrydevcod/IspManager/releases/tag/v2.32.0) — 2026-10-15
 

@@ -4,6 +4,11 @@ import { Button, Select } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { formatDataVolume, ROUTER_API, type RouterWanUsage } from './router-api';
 
+const importedLabel = (iso: string) => {
+  const at = new Date(iso);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${pad(at.getDate())}-${pad(at.getMonth() + 1)}-${at.getFullYear()} às ${pad(at.getHours())}:${pad(at.getMinutes())}`;
+};
 const dateLabel = (day: string) => `${day.slice(8, 10)}-${day.slice(5, 7)}-${day.slice(0, 4)}`;
 const shortDate = (day: string) => `${day.slice(8, 10)}-${day.slice(5, 7)}`;
 // A Starlink cobra o total (↓+↑): as barras mostram o mesmo número que a conta.
@@ -100,7 +105,7 @@ function History({ data: all, period, onPeriod, onAnchor }: HistoryProps) {
 }
 
 /** O histórico diário; hoje e o mês de cada WAN estão nos cartões ao vivo. */
-export function WanUsage({ live }: { live: { data: RouterWanUsage | null; error: string | null; reload: () => void } }) {
+export function WanUsage({ live, offline = false }: { live: { data: RouterWanUsage | null; error: string | null; reload: () => void }; offline?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const data = live.data;
@@ -149,7 +154,9 @@ export function WanUsage({ live }: { live: { data: RouterWanUsage | null; error:
       <div className="router-wan-header">
         <h3><ChartColumn size={16} aria-hidden /> Consumo diário das WAN</h3>
         <div className="router-usage-actions">
-          {counting
+          {offline
+            ? <span className="router-muted">Sem ligação ao router · {data?.routerImportedAt ? `dados até ${importedLabel(data.routerImportedAt)}` : 'dados guardados'}</span>
+            : counting
             ? <span className="router-muted">A contar no router</span>
             : <Button variant="secondary" onClick={install} disabled={busy}>{busy ? 'A instalar…' : 'Contar no router'}</Button>}
           {startLabel && <span className="router-muted router-usage-since">↓+↑ por dia UTC, como a Starlink · a contar desde {startLabel}</span>}
