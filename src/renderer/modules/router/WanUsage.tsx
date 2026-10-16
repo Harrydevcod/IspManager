@@ -1,6 +1,6 @@
-import { ChartColumn } from 'lucide-react';
+import { ChartColumn, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
-import { Button, Select } from '../../components';
+import { Button } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { formatDataVolume, ROUTER_API, type RouterWanUsage } from './router-api';
 
@@ -26,7 +26,7 @@ function storedPeriod(): Period {
   try { return window.localStorage.getItem(PERIOD_KEY) === 'month' ? 'month' : 'cycle'; } catch { return 'cycle'; }
 }
 
-type HistoryProps = { data: RouterWanUsage; period: Period; onPeriod: (period: Period) => void; onAnchor: (day: string) => void };
+type HistoryProps = { data: RouterWanUsage; period: Period; onPeriod: (period: Period) => void; onAnchor: (day: number) => Promise<boolean> };
 
 function History({ data: all, period, onPeriod, onAnchor }: HistoryProps) {
   const range = all.periods?.[period];
@@ -46,17 +46,23 @@ function History({ data: all, period, onPeriod, onAnchor }: HistoryProps) {
   const sum = range?.total.reduce((total, row) => total + volume(row), 0) ?? 0;
   const span = range ? `${shortDate(range.start)} → ${shortDate(range.end)}` : '';
   const current = PERIODS.find((item) => item.id === period)!;
+  // O dia escolhido vê-se logo; enquanto grava a caixa fica parada, e se falhar volta ao que estava.
+  const [pendingAnchor, setPendingAnchor] = useState<number | null>(null);
+  const savedAnchor = all.periods?.cycle.anchor;
+  const anchor = pendingAnchor ?? savedAnchor;
+  const saving = pendingAnchor !== null && pendingAnchor !== savedAnchor;
+  const chooseAnchor = async (day: number) => {
+    setPendingAnchor(day);
+    if (!await onAnchor(day)) setPendingAnchor(null);
+  };
   return (
     <div className="router-usage-history">
       {range && (
         <div className="router-usage-summary">
+          <span className="router-usage-summary-label">{current.title}</span>
           <div className="router-usage-summary-figure">
-            <span className="router-usage-summary-label">{current.title}</span>
             <strong>{formatDataVolume(sum, true)}</strong>
-            <span className="router-muted">{span}</span>
-          </div>
-          <div className="router-usage-summary-controls">
-            <div className="segmented-tabs" role="group" aria-label="Período do total">
+            <div className="segmented-tabs router-usage-periods" role="group" aria-label="Período do total">
               {PERIODS.map((item) => (
                 <Button key={item.id} variant="ghost" aria-pressed={period === item.id}
                   className={`segmented-tab${period === item.id ? ' is-active' : ''}`} onClick={() => onPeriod(item.id)}>
@@ -64,12 +70,23 @@ function History({ data: all, period, onPeriod, onAnchor }: HistoryProps) {
                 </Button>
               ))}
             </div>
-            {period === 'cycle' && all.periods && (
-              <Select label="Ciclo começa a" className="router-usage-cycle" value={String(all.periods.cycle.anchor)} onChange={(event) => onAnchor(event.target.value)}>
-                {Array.from({ length: 28 }, (_, index) => <option key={index} value={index + 1}>{index + 1}</option>)}
-              </Select>
-            )}
           </div>
+          <p className="router-usage-summary-meta">
+            <span>{span}</span>
+            {period === 'cycle' && anchor !== undefined && (
+              <>
+                <span aria-hidden>·</span>
+                <span>começa a dia</span>
+                <span className="router-usage-day-select">
+                  <select aria-label="Dia de início do ciclo Starlink" value={anchor} disabled={saving}
+                    onChange={(event) => void chooseAnchor(Number(event.target.value))}>
+                    {Array.from({ length: 28 }, (_, index) => <option key={index} value={index + 1}>{index + 1}</option>)}
+                  </select>
+                  <ChevronDown size={12} aria-hidden />
+                </span>
+              </>
+            )}
+          </p>
         </div>
       )}
       <div className="router-usage-chart" role="img" aria-label={`Consumo diário das WAN${range ? ` de ${span.replace(' → ', ' a ')}` : ''}`}>
@@ -121,16 +138,18 @@ export function WanUsage({ live, offline = false }: { live: { data: RouterWanUsa
     setPeriod(next);
     try { window.localStorage.setItem(PERIOD_KEY, next); } catch { /* só a preferência deste ecrã */ }
   };
-  const changeCycle = async (day: string) => {
+  const changeCycle = async (day: number) => {
     setActionError(null);
     try {
       const response = await authFetch(`${ROUTER_API}/wan/usage/cycle`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ day: Number(day) })
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ day })
       });
-      if (!response.ok) throw new Error(((await response.json()) as { error?: string }).error ?? 'Não foi possível mudar o ciclo.');
+      if (!response.ok) throw new Error(((await response.json().catch(() => ({}))) as { error?: string }).error ?? 'Não foi possível mudar o ciclo.');
       live.reload();
+      return true;
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Não foi possível mudar o ciclo.');
+      return false;
     }
   };
   const install = async () => {
@@ -166,7 +185,7 @@ export function WanUsage({ live, offline = false }: { live: { data: RouterWanUsa
       {!data ? <p className="router-muted">{live.error ?? 'A ler os registos…'}</p> : !since ? (
         <p className="router-muted">Ainda sem registos</p>
       ) : (
-        <History data={data} period={period} onPeriod={choosePeriod} onAnchor={(day) => void changeCycle(day)} />
+        <History data={data} period={period} onPeriod={choosePeriod} onAnchor={changeCycle} />
       )}
     </section>
   );

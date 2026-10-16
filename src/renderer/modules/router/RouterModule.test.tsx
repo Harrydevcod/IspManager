@@ -232,7 +232,10 @@ describe('Router de gestão', () => {
     expect(summary()?.textContent).toContain('19-09 → 18-10');
     expect(container.querySelector('.router-usage-legend')?.textContent).toContain(formatDataVolume(4_480_000_000_000, true));
     expect(container.querySelectorAll('.router-usage-history .router-usage-day')).toHaveLength(1);
-    const select = container.querySelector<HTMLSelectElement>('.router-usage-cycle select')!;
+    const select = container.querySelector<HTMLSelectElement>('select[aria-label="Dia de início do ciclo Starlink"]')!;
+    // O período e o início do ciclo vivem junto ao total.
+    expect(summary()?.querySelector('.router-usage-periods')).not.toBeNull();
+    expect(summary()?.contains(select)).toBe(true);
     expect(select.value).toBe('19');
     await act(async () => { select.value = '5'; select.dispatchEvent(new Event('change', { bubbles: true })); });
     const put = fetchMock.mock.calls.find(([input]) => String(input).endsWith('/router/wan/usage/cycle'));
@@ -243,7 +246,28 @@ describe('Router de gestão', () => {
     expect(summary()?.textContent).toContain(formatDataVolume(8_300_000_000, true));
     expect(summary()?.textContent).toContain('01-10 → 31-10');
     expect(container.querySelectorAll('.router-usage-history .router-usage-day')).toHaveLength(0);
-    expect(container.querySelector('.router-usage-cycle')).toBeNull();
+    expect(container.querySelector('select[aria-label="Dia de início do ciclo Starlink"]')).toBeNull();
+  });
+
+  test('o dia do ciclo vê-se logo, fica parado enquanto grava e volta atrás se a gravação falhar', async () => {
+    const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const original = fetchMock.getMockImplementation()!;
+    let answer!: (response: Response) => void;
+    fetchMock.mockImplementation(async (input: string | URL | Request) => {
+      if (String(input).endsWith('/router/wan/usage/cycle')) return new Promise<Response>((done) => { answer = done; });
+      const response = await original(input);
+      if (!String(input).endsWith('/router/wan/usage')) return response;
+      return json({ ...await response.json(), days: [{ day: '2026-09-19', perInterface: [{ interface: 'WAN1-STARLINK', rxBytes: 1, txBytes: 0, source: 'counted' }] }] });
+    });
+    const container = await mount();
+    const select = () => container.querySelector<HTMLSelectElement>('select[aria-label="Dia de início do ciclo Starlink"]')!;
+    await act(async () => { select().value = '5'; select().dispatchEvent(new Event('change', { bubbles: true })); });
+    expect(select().value).toBe('5');
+    expect(select().disabled).toBe(true);
+    await act(async () => answer(new Response(JSON.stringify({ error: 'Indique um dia entre 1 e 28' }), { status: 400 })));
+    expect(select().value).toBe('19');
+    expect(select().disabled).toBe(false);
+    expect(container.querySelector('.router-usage [role="alert"]')?.textContent).toContain('Indique um dia entre 1 e 28');
   });
 
   test('dias anteriores à contagem no router ficam esbatidos e não ditam a escala', async () => {
