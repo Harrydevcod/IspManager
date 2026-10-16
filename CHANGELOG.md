@@ -6,6 +6,19 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.34](https://github.com/Harrydevcod/IspManager/releases/tag/v2.34.0) — 2026-10-16
+
+- **Período e início do ciclo junto ao total.** No cartão "Consumo diário das
+  WAN", o seletor Ciclo Starlink | Mês fica ao lado do número, e o dia de
+  início do ciclo lê-se na mesma frase das datas ("19-09 → 18-10 · começa a
+  dia 19"). A caixa do dia foi redesenhada: mostra logo o dia escolhido, fica
+  parada enquanto grava e volta atrás se a gravação falhar, com o erro a
+  vermelho junto a ela.
+- **"0 GB" em vez de "0 B".** Uma WAN sem consumo no período lê-se na mesma
+  unidade das outras.
+- **O estado do router deixa de dizer "Sincronizado" quando o router está
+  indisponível.** Passa a dizer "Sem ligação ao router".
+
 ## [2.33](https://github.com/Harrydevcod/IspManager/releases/tag/v2.33.0) — 2026-10-16
 
 - **Total do período no consumo das WAN.** O cartão "Consumo diário das WAN"
