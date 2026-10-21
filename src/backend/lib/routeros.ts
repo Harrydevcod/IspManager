@@ -1195,6 +1195,14 @@ export function rosQuote(value: string): string {
   return `"${value.replace(/[\u0000-\u001f\u007f]/g, '').replace(/[\\"$]/g, (char) => `\\${char}`)}"`;
 }
 
+/**
+ * Marca que o operador põe no comentário de um secret ou perfil do próprio ISP (o acesso do
+ * dono, sem limite): não é de cliente nenhum e é sem limite de propósito. Não começa por
+ * `ispm:` de propósito, para não se confundir com os secrets que o ISPM gere.
+ */
+export const INTERNAL_PREFIX = 'ispm-interno';
+export const isInternalSecret = (secret: Pick<RouterSecret, 'comment'>) => secret.comment?.startsWith(INTERNAL_PREFIX) ?? false;
+
 /** O `.id` do RouterOS (`*1D`) é seguro de colar tal como vem; outra coisa qualquer não. */
 const safeId = (id: string) => (/^\*[0-9A-F]+$/i.test(id) ? id : null);
 
@@ -1257,7 +1265,7 @@ export function auditPppAccess(
   const limited = new Map(profiles.map((profile) => [profile.name, Boolean(profile.rateLimit)]));
   // Sem perfil é o `default`, que no RouterOS não traz limite nenhum.
   const unlimited = [...new Set(secrets
-    .filter((secret) => !secret.disabled && !exempt.includes(secret.profile ?? 'default') && limited.get(secret.profile ?? 'default') === false)
+    .filter((secret) => !secret.disabled && !isInternalSecret(secret) && !exempt.includes(secret.profile ?? 'default') && limited.get(secret.profile ?? 'default') === false)
     .map((secret) => secret.profile ?? 'default'))];
   if (unlimited.length > 0) {
     findings.push({

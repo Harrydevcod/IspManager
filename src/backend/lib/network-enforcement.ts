@@ -7,6 +7,7 @@ import { readBaseProfileName, readSuspendedProfileName, syncPlanProfiles, type P
 import {
   createSecret,
   createTransport,
+  isInternalSecret,
   isRouterConfigured,
   listActive,
   listProfiles,
@@ -290,7 +291,8 @@ export function buildSessionRows(desired: DesiredService[], secrets: RouterSecre
     const session = sessions.get(secret.name);
     rows.push({
       serviceId: null,
-      clientName: null,
+      // O acesso do próprio ISP diz de quem é, em vez de parecer um esquecido.
+      clientName: isInternalSecret(secret) ? 'Interno (ISP)' : null,
       login: secret.name,
       state: 'sem_servico',
       online: Boolean(session),
@@ -494,6 +496,8 @@ export function planActions(
   // se perde configuração de propósito.
   if (options.reportOrphans !== false) for (const secret of secrets) {
     if (usedSecretIds.has(secret.id)) continue;
+    // Acesso do próprio ISP, marcado pelo operador: é de propósito, não se aponta.
+    if (isInternalSecret(secret)) continue;
     // Feito à mão no router (o `admin` do WinBox em 19/10/2026): nem nosso nem de serviço nenhum.
     if (!secret.comment?.startsWith(COMMENT_PREFIX)) {
       divergences.push({

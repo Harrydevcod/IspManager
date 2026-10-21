@@ -881,6 +881,14 @@ describe('blindagem para lá dos serviços', () => {
     expect(findings[0].command).toBe('/ppp secret disable [find name="admin"]');
   });
 
+  test('um perfil sem limite usado só pelo acesso interno do ISP não é apontado; com um cliente nele, é', () => {
+    const internal = { id: '*7', name: 'gestao-arydson', profile: 'ULTRA', disabled: false, comment: 'ispm-interno: router do Arydson' };
+    const client = { id: '*8', name: 'skn030', profile: 'ULTRA', disabled: false, comment: 'ispm:30 Ana' };
+    const profiles = [{ name: 'ULTRA', rateLimit: null }];
+    expect(auditPppAccess([], [internal], profiles)).toEqual([]);
+    expect(auditPppAccess([], [internal, client], profiles).map((finding) => finding.services)).toEqual([['ULTRA']]);
+  });
+
   test('nomes vindos do router não injetam comandos no que o operador cola no terminal', () => {
     const evil = 'x"]; /system reset-configuration; :put "';
     const [secretFinding] = auditPppAccess([{ id: '*1D', name: evil, profile: null, disabled: false, comment: null }], [], []);

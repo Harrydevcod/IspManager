@@ -152,6 +152,16 @@ describe('planActions', () => {
     expect(plan.divergences).toEqual([expect.objectContaining({ kind: 'foreign_secret', serviceId: null, username: 'admin' })]);
   });
 
+  test('o acesso do próprio ISP, marcado ispm-interno, não é estranho nem órfão; sem a marca continua a ser', () => {
+    const plan = planActions([], [
+      secret({ id: '*7', name: 'gestao-arydson', profile: 'ULTRA', comment: 'ispm-interno: router do Arydson' }),
+      secret({ id: '*8', name: 'admin', profile: 'ULTRA', comment: null })
+    ]);
+    expect(plan.divergences).toEqual([expect.objectContaining({ kind: 'foreign_secret', username: 'admin' })]);
+    expect(buildSessionRows([], [secret({ id: '*7', name: 'gestao-arydson', comment: 'ispm-interno' })], [])[0])
+      .toMatchObject({ clientName: 'Interno (ISP)', state: 'sem_servico' });
+  });
+
   test('secret alheio que casa com um serviço pelo nome não é estranho', () => {
     const plan = planActions([service()], [secret({ comment: null })]);
     expect(plan.divergences.filter((item) => item.kind === 'foreign_secret')).toEqual([]);
