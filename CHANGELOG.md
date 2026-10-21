@@ -17,9 +17,10 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 - **PPPoE criados fora do ISPM.** Um utilizador PPPoE sem serviço e sem a
   marca do ISPM passa a ser uma divergência, e a Visão geral do router aponta-o
   com o comando para o desligar. O ISPM continua sem lhe tocar. O acesso do
-  próprio ISP marca-se com `ispm-interno` no comentário (do secret): não é
-  apontado, o perfil sem limite que só ele usa também não, e nas Sessões
-  aparece como "Interno (ISP)".
+  próprio ISP marca-se com `ispm-interno` no comentário (do secret): deixa de
+  contar como divergência e o perfil sem limite que só ele usa deixa de ser
+  aviso, mas continua sempre à vista na Visão geral, como informação e com o
+  comando para o desligar. Nas Sessões aparece como "Interno (ISP)".
 - **Auditoria do router alargada.** O diagnóstico e a Visão geral avisam,
   com o comando a correr, quando: o DNS do router está aberto à WAN, uma bridge
   está sem DHCP snooping, o WinBox por MAC aceita todas as portas, ou um perfil
