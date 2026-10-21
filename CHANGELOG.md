@@ -6,6 +6,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.36](https://github.com/Harrydevcod/IspManager/releases/tag/v2.36.0) — 2026-10-21
+
 ### Adicionado
 - **Relatórios de erro (Sentry), desligados por omissão.** Em Configurações → Automatismos há um interruptor "Enviar relatórios de erro". A mudança vale ao reiniciar. Quando está ligado, uma falha da app (processo principal, servidor ou ecrã) envia a stack, a versão e o sistema operativo. Não sai nenhum dado de cliente:
   - e-mails e números longos (NIF, telefones, contas) são apagados das mensagens;
