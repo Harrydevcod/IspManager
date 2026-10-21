@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { scrubBreadcrumb, scrubEvent, scrubText, stripQuery } from './error-reports';
+import { keepIntegration, scrubBreadcrumb, scrubEvent, scrubText, stripQuery } from './error-reports';
 
 describe('relatórios de erro: nada de clientes sai', () => {
   it('tira e-mails, NIF, telefones e números de conta do texto', () => {
@@ -15,8 +15,18 @@ describe('relatórios de erro: nada de clientes sai', () => {
     expect(stripQuery('file:///app/index.html#/clientes/7')).toBe('file:///app/index.html');
   });
 
+  it('larga as integrações que levam memória, ecrã, consola ou variáveis', () => {
+    for (const name of ['SentryMinidump', 'ElectronMinidump', 'Screenshots', 'Console', 'LocalVariables']) {
+      expect(keepIntegration(name)).toBe(false);
+    }
+    for (const name of ['OnUncaughtException', 'ElectronBreadcrumbs', 'LinkedErrors', 'Breadcrumbs']) {
+      expect(keepIntegration(name)).toBe(true);
+    }
+  });
+
   it('larga o texto escrito e limpa os URLs dos breadcrumbs', () => {
     expect(scrubBreadcrumb({ category: 'ui.input', message: 'Maria' })).toBeNull();
+    expect(scrubBreadcrumb({ category: 'console', message: 'cliente Maria' })).toBeNull();
     expect(scrubBreadcrumb({ category: 'ui.click', message: 'button "Maria Silva"' })).toEqual({ category: 'ui.click', data: undefined });
     expect(
       scrubBreadcrumb({

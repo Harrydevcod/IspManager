@@ -2,7 +2,7 @@ import { app, ipcMain } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as Sentry from '@sentry/electron/main';
-import { DATA_COLLECTION, DROPPED_INTEGRATIONS, SENTRY_DSN, scrubBreadcrumb, scrubEvent } from '../shared/error-reports';
+import { DATA_COLLECTION, SENTRY_DSN, keepIntegration, scrubBreadcrumb, scrubEvent } from '../shared/error-reports';
 
 /**
  * A escolha vive num ficheiro do perfil e não na base: o init da Sentry tem de
@@ -37,7 +37,7 @@ export function initErrorReports(release: string): boolean {
     release: `ispm@${release}`,
     environment: app.isPackaged ? 'production' : 'development',
     dataCollection: DATA_COLLECTION,
-    integrations: (defaults) => defaults.filter((integration) => !DROPPED_INTEGRATIONS.has(integration.name)),
+    integrations: (defaults) => defaults.filter((integration) => keepIntegration(integration.name)),
     beforeBreadcrumb: (crumb) => scrubBreadcrumb(crumb),
     beforeSend: (event) => scrubEvent(event),
     beforeSendTransaction: (event) => scrubEvent(event)
@@ -49,13 +49,20 @@ export function errorReportsActive(): boolean {
   return activeThisSession;
 }
 
+function isAppFrame(url: string | undefined): boolean {
+  if (!url) return false;
+  return url.startsWith('file://') || (!app.isPackaged && url.startsWith('http://127.0.0.1:5173/'));
+}
+
 export function registerErrorReportsIpc(): void {
   ipcMain.handle('error-reports:get', () => ({
     available: Boolean(SENTRY_DSN),
     enabled: readErrorReportsEnabled(),
     active: activeThisSession
   }));
-  ipcMain.handle('error-reports:set', (_event, enabled: unknown) => {
+  ipcMain.handle('error-reports:set', (event, enabled: unknown) => {
+    // Só a janela da própria app decide; nunca uma página aberta noutro frame.
+    if (!isAppFrame(event.senderFrame?.url)) return false;
     if (typeof enabled !== 'boolean') return false;
     writeErrorReportsEnabled(enabled);
     return true;

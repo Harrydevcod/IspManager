@@ -14,12 +14,17 @@ export const ERROR_REPORTS_ARG = '--ispm-error-reports';
 
 /**
  * Integrações por omissão do SDK que levam dados para fora:
- * - ElectronMinidump: o dump nativo leva memória do processo (clientes, faturas);
+ * - minidumps (SentryMinidump, ElectronMinidump): o dump nativo leva memória do processo;
  * - Screenshots: capturas do ecrã;
  * - Console: os console.* da app mencionam clientes e endereços;
  * - LocalVariables: valores das variáveis em cada frame.
+ * Por padrão e não por nome exato: o SDK já mudou estes nomes entre versões.
  */
-export const DROPPED_INTEGRATIONS = new Set(['ElectronMinidump', 'Screenshots', 'Console', 'LocalVariables']);
+const DROPPED_INTEGRATION = /minidump|screenshot|^console$|localvariables/i;
+
+export function keepIntegration(name: string): boolean {
+  return !DROPPED_INTEGRATION.test(name);
+}
 
 const EMAIL = /[\w.+-]+@[\w-]+(\.[\w-]+)+/g;
 // NIF (9 dígitos), telefones (7+), contas e NIB: qualquer número longo.
@@ -56,6 +61,8 @@ type Crumb = { category?: string; message?: string; data?: Record<string, unknow
 export function scrubBreadcrumb<T extends Crumb>(crumb: T): T | null {
   // O texto escrito ou clicado na interface é dado de cliente.
   if (crumb.category === 'ui.input') return null;
+  // console.* do renderer chegam como breadcrumbs mesmo sem a integração Console do main.
+  if (crumb.category === 'console') return null;
   if (crumb.category === 'ui.click') delete crumb.message;
   if (crumb.message) crumb.message = scrubText(crumb.message);
   crumb.data = scrubData(crumb.data);

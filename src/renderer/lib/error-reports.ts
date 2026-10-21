@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/electron/renderer';
-import { DATA_COLLECTION, scrubBreadcrumb, scrubEvent } from '../../shared/error-reports';
+import { DATA_COLLECTION, keepIntegration, scrubBreadcrumb, scrubEvent } from '../../shared/error-reports';
 
 /**
  * Só arranca se o main arrancou (o preload diz-nos pelo argumento da janela).
@@ -10,6 +10,7 @@ export const errorReportsActive = window.ispm?.errorReportsActive === true;
 if (errorReportsActive) {
   Sentry.init({
     dataCollection: DATA_COLLECTION,
+    integrations: (defaults) => defaults.filter((integration) => keepIntegration(integration.name)),
     beforeBreadcrumb: (crumb) => scrubBreadcrumb(crumb),
     beforeSend: (event) => scrubEvent(event)
   });

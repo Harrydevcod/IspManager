@@ -923,7 +923,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
       {activeTab === 'jobs' && (
         <>
           <JobHealthPanel />
-          <ErrorReportsPanel />
+          {/* Consentimento de envio para fora: decisão de administrador, como o Cofre. */}
+          {(auth.isAuthBypassed || auth.hasRole('admin')) && <ErrorReportsPanel />}
         </>
       )}
 
