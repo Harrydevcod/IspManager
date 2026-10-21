@@ -30,14 +30,72 @@ export type NetworkHealth = {
   clients: HealthOutage[];
   downNow: HealthDown[];
   findings: HealthFinding[];
+  /** As antenas caem juntas a um ritmo certo: a próxima hora prevista, para lá estar. */
+  dropPattern: DropPattern | null;
   diary: DiaryEntry[];
 };
 
 // Do mais grave para o menos: é a ordem em que o painel os mostra.
-const SEVERITY: FindingKind[] = ['laco_rede', 'ip_duplicado', 'antena_em_baixo', 'dhcp_intruso', 'pppoe_queda', 'dhcp_ciclo', 'login_falhado'];
+const SEVERITY: FindingKind[] = [
+  'laco_rede', 'ip_duplicado', 'antena_em_baixo', 'config_externa', 'dhcp_intruso', 'router_reiniciou', 'porta_oscila',
+  'pppoe_queda', 'dhcp_ciclo', 'login_falhado'
+];
 const MAC_KINDS: FindingKind[] = ['laco_rede', 'ip_duplicado', 'dhcp_intruso', 'dhcp_ciclo'];
 // Os dois que deitam a rede abaixo: um dia depois ainda pintam o cartão de crítico.
 const CRITICAL_KINDS: FindingKind[] = ['laco_rede', 'ip_duplicado'];
+const WARN_KINDS: FindingKind[] = [...CRITICAL_KINDS, 'antena_em_baixo', 'dhcp_intruso', 'config_externa', 'router_reiniciou', 'porta_oscila'];
+// Uma porta que cai uma vez é alguém a mudar um cabo; cinco é um cabo ou uma ficha a falhar.
+export const PORT_FLAP_THRESHOLD = 5;
+
+export type DropPattern = { periodMinutes: number; lastAt: string; nextAt: string };
+
+// Medido em 14–21/10/2026: o ritmo foi de 120 min, com a fase a escorregar uns minutos.
+const PATTERN_SLACK_MS = 3 * 60_000;
+const PATTERN_MIN_MS = 30 * 60_000;
+const PATTERN_MAX_MS = 6 * 3_600_000;
+const parseLocal = (at: string) => new Date(at.replace(' ', 'T')).getTime();
+
+/**
+ * Um ritmo nas quedas em bloco: um episódio recente com pelo menos três dos quatro anteriores
+ * à mesma distância (com 3 min de folga). `episodes` são horas locais, por ordem. Pura.
+ *
+ * ponytail: só procura a partir dos três últimos episódios, e um episódio que falhe a hora
+ * não parte o ritmo; um detetor de periodicidade a sério se isto der falsos positivos.
+ */
+export function findDropPattern(episodes: string[]): { periodMinutes: number; lastAt: string } | null {
+  const times = episodes.map(parseLocal);
+  const near = (target: number) => times.some((time) => Math.abs(time - target) <= PATTERN_SLACK_MS);
+  for (let anchor = times.length - 1; anchor >= Math.max(0, times.length - 3); anchor--) {
+    for (let before = anchor - 1; before >= 0; before--) {
+      const period = times[anchor] - times[before];
+      if (period < PATTERN_MIN_MS) continue;
+      if (period > PATTERN_MAX_MS) break;
+      const hits = [1, 2, 3, 4].filter((step) => near(times[anchor] - step * period)).length;
+      if (hits >= 3) return { periodMinutes: Math.round(period / 60_000), lastAt: episodes[anchor] };
+    }
+  }
+  return null;
+}
+
+/** Os minutos em que pelo menos duas vigias do router caíram juntas, nas últimas 30 h. */
+function dropEpisodes(db: Database.Database, now: Date): string[] {
+  return (db.prepare(`
+    SELECT MIN(at) AS at FROM router_log_lines
+    WHERE topics LIKE 'netwatch%' AND message LIKE 'event down [%' AND at >= ?
+    GROUP BY substr(at, 1, 16) HAVING COUNT(DISTINCT message) >= 2 ORDER BY 1
+  `).all(localSql(new Date(now.getTime() - 30 * 3_600_000))) as Array<{ at: string }>).map((row) => row.at);
+}
+
+function dropPattern(db: Database.Database, now: Date): DropPattern | null {
+  const found = findDropPattern(dropEpisodes(db, now));
+  if (!found) return null;
+  const period = found.periodMinutes * 60_000;
+  const last = parseLocal(found.lastAt);
+  // Um ritmo que já falhou duas vezes acabou.
+  if (now.getTime() - last > 2 * period + PATTERN_SLACK_MS) return null;
+  const next = last + Math.max(1, Math.ceil((now.getTime() - last) / period)) * period;
+  return { ...found, nextAt: localSql(new Date(next)) };
+}
 
 const pad = (value: number) => String(value).padStart(2, '0');
 const utcSql = (date: Date) => date.toISOString().slice(0, 19).replace('T', ' ');
@@ -114,6 +172,7 @@ export function loadNetworkHealth(db: Database.Database, hours = 72, now = new D
     FROM router_log_findings WHERE last_at >= ? GROUP BY kind, subject
   `).all(localSql(new Date(now.getTime() - hours * 3_600_000))) as Array<Omit<HealthFinding, 'deviceName' | 'clientName' | 'vendor'>>)
     .filter((row) => row.kind !== 'dhcp_ciclo' || row.count >= DHCP_CHURN_THRESHOLD)
+    .filter((row) => row.kind !== 'porta_oscila' || row.count >= PORT_FLAP_THRESHOLD)
     .map((row): HealthFinding => {
       const name = (statement: Database.Statement) => (statement.get(row.subject) as { name: string } | undefined)?.name ?? null;
       if (MAC_KINDS.includes(row.kind)) return { ...row, deviceName: null, ...aboutMac(row.subject) };
@@ -126,7 +185,7 @@ export function loadNetworkHealth(db: Database.Database, hours = 72, now = new D
   const dayAgo = localSql(new Date(now.getTime() - 24 * 3_600_000));
   const tone: HealthTone = downNow.some((row) => row.kind === 'backbone') || findings.some((row) => CRITICAL_KINDS.includes(row.kind) && row.lastAt >= dayAgo)
     ? 'danger'
-    : antennas.length > 0 || findings.some((row) => [...CRITICAL_KINDS, 'antena_em_baixo', 'dhcp_intruso'].includes(row.kind)) ? 'warn' : 'ok';
+    : antennas.length > 0 || findings.some((row) => WARN_KINDS.includes(row.kind)) ? 'warn' : 'ok';
 
   return {
     hours,
@@ -139,6 +198,7 @@ export function loadNetworkHealth(db: Database.Database, hours = 72, now = new D
     clients,
     downNow,
     findings,
+    dropPattern: dropPattern(db, now),
     diary: listDiary(db).slice(0, 6)
   };
 }

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
-import { createDiaryEntry, listDiary, loadNetworkHealth, updateDiaryEntry } from './network-health';
+import { createDiaryEntry, findDropPattern, listDiary, loadNetworkHealth, updateDiaryEntry } from './network-health';
 
 let db: Database.Database;
 let dataDir: string;
@@ -153,5 +153,23 @@ describe('diário de ocorrências', () => {
     expect(listDiary(db).map((row) => row.status)).toEqual(['aberta', 'resolvida']);
     expect(updateDiaryEntry(db, 999_999, { status: 'resolvida' })).toBeNull();
     expect(loadNetworkHealth(db, 72, NOW).diary).toHaveLength(2);
+  });
+});
+
+describe('ritmo das quedas em bloco', () => {
+  const at = (day: string, ...times: string[]) => times.map((time) => `2026-10-${day} ${time}:01`);
+
+  test('15/10/2026: de 2 em 2 h, mesmo com um episódio fora de hora pelo meio', () => {
+    expect(findDropPattern([...at('15', '03:40', '05:40', '07:40', '09:40', '11:40', '13:40', '15:40', '16:05', '17:40')]))
+      .toEqual({ periodMinutes: 120, lastAt: '2026-10-15 17:40:01' });
+  });
+
+  test('21/10/2026: a fase escorrega e um episódio falta, mas o ritmo vê-se', () => {
+    expect(findDropPattern([...at('20', '19:58', '20:12'), ...at('21', '00:12', '02:12', '04:12', '06:29')]))
+      .toEqual({ periodMinutes: 120, lastAt: '2026-10-21 04:12:01' });
+  });
+
+  test('quedas soltas não fazem ritmo', () => {
+    expect(findDropPattern(at('17', '02:10', '04:10', '17:15', '22:04'))).toBeNull();
   });
 });

@@ -3,7 +3,11 @@ import { afterEach, describe, expect, test } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import {
+  auditPppAccess,
+  auditRouterHardening,
   auditRouterServices,
+  readRouterHardening,
+  rosQuote,
   createTransport,
   createProfile,
   ensureWanUsageCounter,
@@ -30,6 +34,8 @@ import {
   listLog,
   summarizeLog,
   DHCP_CHURN_THRESHOLD,
+  type RouterFirewallRule,
+  type RouterHardening,
   type RouterRequest,
   type RouterService,
   listArp,
@@ -808,5 +814,91 @@ describe('leituras do módulo Router de gestão', () => {
       { mac: '90:6A:94:F7:DE:11', address: '192.168.2.97', hostname: 'NOMI-IPC-S7X-10M0WED-ECE2', count: DHCP_CHURN_THRESHOLD }
     ]);
     expect(summarizeLog([])).toEqual({ loginFailures: [], rogueDhcp: [], pppoeDrops: [], dhcpChurn: [] });
+  });
+});
+
+describe('blindagem para lá dos serviços', () => {
+  const rule = (partial: Partial<RouterFirewallRule>): RouterFirewallRule => ({
+    action: 'drop', protocol: null, dstPort: null, inInterface: null, inInterfaceList: null, connectionState: null, disabled: false, ...partial
+  });
+  const closed: RouterHardening = {
+    dnsRemote: true,
+    inputRules: [rule({ connectionState: 'invalid' }), rule({ inInterfaceList: '!LAN' })],
+    bridges: [{ name: 'bridge-LAN', dhcpSnooping: true }],
+    macWinboxList: 'LAN'
+  };
+
+  test('router fechado: nada a dizer', () => {
+    expect(auditRouterHardening(closed)).toEqual([]);
+    expect(auditRouterHardening({ ...closed, inputRules: [rule({ inInterfaceList: 'WAN', protocol: 'udp', dstPort: '22,53-54' })] })).toEqual([]);
+  });
+
+  test('DNS aberto à WAN, bridge sem snooping e WinBox por MAC em todas as portas', () => {
+    const findings = auditRouterHardening({
+      dnsRemote: true,
+      // Um drop sem interface fecha a LAN também e não conta; um drop só a inválidas não fecha nada.
+      inputRules: [rule({ connectionState: 'invalid' }), rule({ protocol: 'udp', dstPort: '53' }), rule({ inInterfaceList: 'WAN', disabled: true })],
+      bridges: [{ name: 'bridge-LAN', dhcpSnooping: false }],
+      macWinboxList: 'all'
+    });
+    expect(findings.map((finding) => [finding.services, finding.severity])).toEqual([
+      [['dns'], 'grave'], [['bridge-LAN'], 'aviso'], [['mac-winbox'], 'aviso']
+    ]);
+    expect(findings[0].command).toContain('dst-port=53');
+  });
+
+  test('o que não se conseguiu ler não acusa nada', () => {
+    expect(auditRouterHardening({ dnsRemote: null, inputRules: null, bridges: null, macWinboxList: null })).toEqual([]);
+    expect(auditRouterHardening({ ...closed, inputRules: null })).toEqual([]);
+  });
+
+  test('lê o DNS, a cadeia de entrada, as bridges e o WinBox por MAC só com GETs', async () => {
+    const asked: string[] = [];
+    const state = await readRouterHardening(async ({ method, path }) => {
+      asked.push(`${method} ${path.split('?')[0]}`);
+      if (path.startsWith('/ip/dns')) return { 'allow-remote-requests': 'true' };
+      if (path.startsWith('/ip/firewall')) return [{ action: 'drop', 'in-interface-list': 'WAN', disabled: 'false' }];
+      if (path.startsWith('/interface/bridge')) return [{ name: 'bridge-LAN', 'dhcp-snooping': 'true' }, { name: 'velha', disabled: 'true' }];
+      throw new Error('sem permissão');
+    });
+    expect(asked.every((line) => line.startsWith('GET '))).toBe(true);
+    expect(state).toEqual({
+      dnsRemote: true,
+      inputRules: [rule({ inInterfaceList: 'WAN' })],
+      bridges: [{ name: 'bridge-LAN', dhcpSnooping: true }],
+      macWinboxList: null
+    });
+  });
+
+  test('PPPoE fora do ISPM e perfis sem limite em uso (19/10/2026)', () => {
+    const secret = (name: string, profile: string | null, disabled = false) => ({ id: `*${name}`, name, profile, disabled, comment: null });
+    const secrets = [secret('admin', 'ULTRA'), secret('skn001', 'ispm-plano-1'), secret('velho', 'default', true), secret('skn009', 'SUSPENSO')];
+    const findings = auditPppAccess([secrets[0]], secrets, [
+      { name: 'ULTRA', rateLimit: null }, { name: 'ispm-plano-1', rateLimit: '10M/40M' }, { name: 'default', rateLimit: null }, { name: 'SUSPENSO', rateLimit: null }
+    ], ['SUSPENSO']);
+    expect(findings.map((finding) => finding.services)).toEqual([['admin'], ['ULTRA']]);
+    // O `.id` destes secrets de teste não tem o feitio do RouterOS: cai no nome, entre aspas.
+    expect(findings[0].command).toBe('/ppp secret disable [find name="admin"]');
+  });
+
+  test('um perfil sem limite usado só pelo acesso interno do ISP não é apontado; com um cliente nele, é', () => {
+    const internal = { id: '*7', name: 'gestao-arydson', profile: 'ULTRA', disabled: false, comment: 'ispm-interno: router do Arydson' };
+    const client = { id: '*8', name: 'skn030', profile: 'ULTRA', disabled: false, comment: 'ispm:30 Ana' };
+    const profiles = [{ name: 'ULTRA', rateLimit: null }];
+    // A marca não esconde: o acesso interno fica à vista como informação, com o comando para o desligar.
+    expect(auditPppAccess([], [internal], profiles)).toEqual([expect.objectContaining({
+      services: ['gestao-arydson'], severity: 'info', command: '/ppp secret disable *7'
+    })]);
+    expect(auditPppAccess([], [internal, client], profiles).map((finding) => [finding.services, finding.severity]))
+      .toEqual([[['gestao-arydson'], 'info'], [['ULTRA'], 'aviso']]);
+  });
+
+  test('nomes vindos do router não injetam comandos no que o operador cola no terminal', () => {
+    const evil = 'x"]; /system reset-configuration; :put "';
+    const [secretFinding] = auditPppAccess([{ id: '*1D', name: evil, profile: null, disabled: false, comment: null }], [], []);
+    expect(secretFinding.command).toBe('/ppp secret disable *1D');
+    const [bridgeFinding] = auditRouterHardening({ dnsRemote: null, inputRules: null, bridges: [{ name: `br"; /system reboot\n$x`, dhcpSnooping: false }], macWinboxList: null });
+    expect(bridgeFinding.command).toBe('/interface bridge set [find name="br\\"; /system reboot\\$x"] dhcp-snooping=yes');
+    expect(rosQuote('a\\b')).toBe('"a\\\\b"');
   });
 });

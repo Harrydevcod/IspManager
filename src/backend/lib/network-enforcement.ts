@@ -7,6 +7,7 @@ import { readBaseProfileName, readSuspendedProfileName, syncPlanProfiles, type P
 import {
   createSecret,
   createTransport,
+  isInternalSecret,
   isRouterConfigured,
   listActive,
   listProfiles,
@@ -123,7 +124,7 @@ export type Divergence = {
    * `username_taken`: o nome do serviço existe no router mas é de outro
    * serviço; também sem ação, até alguém corrigir o utilizador de um dos dois.
    */
-  kind: 'missing_secret' | 'state' | 'profile' | 'password' | 'username' | 'orphan_secret'
+  kind: 'missing_secret' | 'state' | 'profile' | 'password' | 'username' | 'orphan_secret' | 'foreign_secret'
     | 'state_drift' | 'profile_drift' | 'secret_removed' | 'username_taken';
   detail: string;
 };
@@ -290,7 +291,8 @@ export function buildSessionRows(desired: DesiredService[], secrets: RouterSecre
     const session = sessions.get(secret.name);
     rows.push({
       serviceId: null,
-      clientName: null,
+      // O acesso do próprio ISP diz de quem é, em vez de parecer um esquecido.
+      clientName: isInternalSecret(secret) ? 'Interno (ISP)' : null,
       login: secret.name,
       state: 'sem_servico',
       online: Boolean(session),
@@ -494,7 +496,18 @@ export function planActions(
   // se perde configuração de propósito.
   if (options.reportOrphans !== false) for (const secret of secrets) {
     if (usedSecretIds.has(secret.id)) continue;
-    if (!secret.comment?.startsWith(COMMENT_PREFIX)) continue;
+    // Acesso do próprio ISP, marcado pelo operador: é de propósito, não se aponta.
+    if (isInternalSecret(secret)) continue;
+    // Feito à mão no router (o `admin` do WinBox em 19/10/2026): nem nosso nem de serviço nenhum.
+    if (!secret.comment?.startsWith(COMMENT_PREFIX)) {
+      divergences.push({
+        serviceId: null,
+        username: secret.name,
+        kind: 'foreign_secret',
+        detail: 'Utilizador criado fora do ISPM e sem serviço correspondente'
+      });
+      continue;
+    }
     const anchor = secretAnchor(secret.comment);
     divergences.push({
       serviceId: anchor && 'serviceId' in anchor ? anchor.serviceId : null,

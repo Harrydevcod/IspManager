@@ -145,9 +145,26 @@ describe('planActions', () => {
     expect(plan.divergences[0]).toMatchObject({ kind: 'orphan_secret', serviceId: 9 });
   });
 
-  test('secret alheio (sem a nossa marca) é ignorado por completo', () => {
-    const plan = planActions([], [secret({ id: '*5', name: 'router-do-vizinho', comment: null })]);
-    expect(plan.divergences).toEqual([]);
+  test('secret alheio (sem a nossa marca nem serviço) é reportado e nunca tocado', () => {
+    // O `admin` criado no WinBox em 19/10/2026 ficou ligado sem ninguém dar por ele.
+    const plan = planActions([], [secret({ id: '*5', name: 'admin', comment: null })]);
+    expect(plan.actions).toEqual([]);
+    expect(plan.divergences).toEqual([expect.objectContaining({ kind: 'foreign_secret', serviceId: null, username: 'admin' })]);
+  });
+
+  test('o acesso do próprio ISP, marcado ispm-interno, não é estranho nem órfão; sem a marca continua a ser', () => {
+    const plan = planActions([], [
+      secret({ id: '*7', name: 'gestao-arydson', profile: 'ULTRA', comment: 'ispm-interno: router do Arydson' }),
+      secret({ id: '*8', name: 'admin', profile: 'ULTRA', comment: null })
+    ]);
+    expect(plan.divergences).toEqual([expect.objectContaining({ kind: 'foreign_secret', username: 'admin' })]);
+    expect(buildSessionRows([], [secret({ id: '*7', name: 'gestao-arydson', comment: 'ispm-interno' })], [])[0])
+      .toMatchObject({ clientName: 'Interno (ISP)', state: 'sem_servico' });
+  });
+
+  test('secret alheio que casa com um serviço pelo nome não é estranho', () => {
+    const plan = planActions([service()], [secret({ comment: null })]);
+    expect(plan.divergences.filter((item) => item.kind === 'foreign_secret')).toEqual([]);
   });
 
   test('comentário do formato anterior (#<id>) perde o sufixo, sem divergência', () => {

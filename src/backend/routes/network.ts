@@ -24,7 +24,10 @@ import {
   summarizeLog,
   listServices,
   readSystem,
+  auditPppAccess,
+  auditRouterHardening,
   auditRouterServices,
+  readRouterHardening,
   listProfiles,
   listSecrets,
   removeActive,
@@ -57,7 +60,7 @@ import { collectWanUsage, loadWanUsage, saveStarlinkCycleDay } from '../lib/wan-
 import { installUsageCounter } from '../lib/usage-counter';
 import { collectClientUsage, loadClientUsage } from '../lib/client-usage';
 import { backupRouterConfig, listSnapshots, loadSnapshot } from '../lib/router-config-backup';
-import { applyPlanProfile, readBaseProfileName } from '../lib/plan-profiles';
+import { applyPlanProfile, readBaseProfileName, readSuspendedProfileName } from '../lib/plan-profiles';
 import { recordAudit } from '../lib/audit';
 import { canStoreSecrets } from '../lib/secrets';
 import { readPppoePrefix } from '../lib/services';
@@ -451,17 +454,20 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
 
   app.get('/api/network/router/overview', adminOnly, async () => readLive(async (transport, config) => {
     const db = getSqliteDatabase();
-    const [system, secrets, active, services] = await Promise.all([
+    const [system, secrets, active, services, profiles, hardening] = await Promise.all([
       readSystem(transport),
       listSecrets(transport),
       listActive(transport),
-      listServices(transport)
+      listServices(transport),
+      listProfiles(transport).catch(() => null),
+      readRouterHardening(transport)
     ]);
     const state = loadNetworkEnforcementState(db);
     // Os secrets órfãos não têm serviço onde a divergência se grave; contam-se
     // aqui ao vivo, para a Visão geral dizer o mesmo número que a reconciliação.
-    const orphans = planActions(loadDesiredServices(db), secrets).divergences
-      .filter((divergence) => divergence.kind === 'orphan_secret').length;
+    const unclaimed = planActions(loadDesiredServices(db), secrets).divergences
+      .filter((divergence) => divergence.kind === 'orphan_secret' || divergence.kind === 'foreign_secret');
+    const foreignNames = new Set(unclaimed.filter((divergence) => divergence.kind === 'foreign_secret').map((divergence) => divergence.username));
     const lastEnforcement = db.prepare(`
       SELECT status, ran_at AS ranAt FROM job_runs
       WHERE job LIKE 'network_enforcement%' ORDER BY id DESC LIMIT 1
@@ -472,8 +478,12 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       secrets: secrets.length,
       disabledSecrets: secrets.filter((secret) => secret.disabled).length,
       activeSessions: active.length,
-      divergences: state.divergences + orphans,
-      findings: auditRouterServices(services),
+      divergences: state.divergences + unclaimed.length,
+      findings: [
+        ...auditRouterServices(services),
+        ...auditRouterHardening(hardening),
+        ...(profiles ? auditPppAccess(secrets.filter((secret) => foreignNames.has(secret.name)), secrets, profiles, [readSuspendedProfileName(db)]) : [])
+      ],
       lastEnforcement
     };
   }));

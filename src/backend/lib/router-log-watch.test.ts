@@ -79,6 +79,32 @@ describe('achados do registo do router', () => {
     ]);
   });
 
+  test('alterações fora do ISPM, portas a cair e arranques com o relógio parado (registo de 19–20/10)', () => {
+    const found = collectFindings([
+      entry('*1', '2026-10-19 23:19:18', 'system,info', 'ppp secret <admin> added by mac-msg(winbox):harrytec@5C:80:B6:E8:74:DE (*1D = /ppp secret add name=admin profile=PLANO-40-10 service=pppoe)'),
+      entry('*2', '2026-10-19 23:26:28', 'system,info', 'ppp profile <ULTRA> added by mac-msg(winbox):harrytec@5C:80:B6:E8:74:DE (*5 = /ppp profile add name=ULTRA)'),
+      entry('*3', '2026-10-19 23:28:25', 'system,info', 'ppp profile <ULTRA> changed by mac-msg(winbox):harrytec@5C:80:B6:E8:74:DE (/ppp profile set *5 rate-limit="")'),
+      entry('*4', '2026-10-16 23:37:01', 'system,info', 'changed script settings by api:ispm-api@::/action:2119 (/system script set ispm-client-usage)'),
+      entry('*5', '2026-10-16 23:37:02', 'system,info', 'ppp secret <skn001> changed by api:ispm-api@::/action:2120 (/ppp secret set *3 disabled=yes)'),
+      entry('*6', '2026-10-20 07:03:46', 'interface,info', 'LAN3 link down'),
+      entry('*7', '2026-10-20 07:03:47', 'interface,info', 'LAN3 link up (speed 100M, full duplex)'),
+      entry('*8', '2026-10-20 07:04:02', 'interface,info', 'LAN3 link down'),
+      entry('*9', '2026-10-19 17:58:56', 'system,clock,critical,info', 'ntp change time Oct/19/2026 07:42:26 => Oct/19/2026 17:58:56'),
+      entry('*a', '2026-10-19 18:00:00', 'system,clock,info', 'ntp change time Oct/19/2026 18:00:00 => Oct/19/2026 18:00:02'),
+      entry('*b', '2026-10-19 18:01:00', 'system,info,critical', 'router rebooted')
+    ], { addresses: ['192.168.1.1'], macs: [] }, NOW);
+    expect(found.map(({ day, kind, subject, label, count }) => ({ day, kind, subject, label, count }))).toEqual(expect.arrayContaining([
+      { day: '2026-10-19', kind: 'config_externa', subject: 'ppp secret <admin> added', label: 'harrytec · winbox', count: 1 },
+      { day: '2026-10-19', kind: 'config_externa', subject: 'ppp profile <ULTRA> added', label: 'harrytec · winbox', count: 1 },
+      { day: '2026-10-19', kind: 'config_externa', subject: 'ppp profile <ULTRA> changed', label: 'harrytec · winbox', count: 1 },
+      { day: '2026-10-20', kind: 'porta_oscila', subject: 'LAN3', label: '', count: 2 },
+      { day: '2026-10-19', kind: 'router_reiniciou', subject: 'relogio', label: 'Relógio acertado em 617 min', count: 1 },
+      { day: '2026-10-19', kind: 'router_reiniciou', subject: 'reinicio', label: 'O router reiniciou', count: 1 }
+    ]));
+    // O ISPM pela API e o salto de 2 s do NTP não contam.
+    expect(found).toHaveLength(6);
+  });
+
   test('um DHCP intruso com o endereço do próprio router é um endereço duplicado', () => {
     const found = collectFindings([
       entry('*1', '2026-10-07 10:29:23', 'bridge,warning', ROGUE('192.168.1.1', 'bc:07:1d:5e:42:9e')),
@@ -133,6 +159,19 @@ describe('vigia do registo do router', () => {
       day: '2026-10-07', kind: 'antena_em_baixo', subject: '192.168.1.251', label: '',
       count: 3, firstAt: '2026-10-07 10:29:34', lastAt: '2026-10-07 10:38:04'
     }]);
+  });
+
+  test('as linhas guardadas antes da 0087 contam uma vez para os achados novos, e só para esses', async () => {
+    const keep = db.prepare('INSERT INTO router_log_lines (at, topics, message) VALUES (?, ?, ?)');
+    keep.run('2026-10-19 23:19:18', 'system,info', 'ppp secret <admin> added by mac-msg(winbox):harrytec@5C:80:B6:E8:74:DE (*1D = /ppp secret add name=admin)');
+    keep.run('2026-10-19 23:20:00', 'netwatch,info', DOWN('192.168.1.251'));
+    const later = new Date('2026-10-21T09:00:00');
+    await watchRouterLog(db, router(log([1, '2026-10-21 08:00:00', 'interface,info', 'LAN3 link down'])), later);
+    await watchRouterLog(db, router(log([1, '2026-10-21 08:00:00', 'interface,info', 'LAN3 link down'])), later);
+    expect(findings()).toMatchObject([
+      { day: '2026-10-19', kind: 'config_externa', subject: 'ppp secret <admin> added', count: 1 },
+      { day: '2026-10-21', kind: 'porta_oscila', subject: 'LAN3', count: 1 }
+    ]);
   });
 
   test('o endereço duplicado grava-se com os endereços que o router diz ter', async () => {

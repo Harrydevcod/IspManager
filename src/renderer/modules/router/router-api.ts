@@ -5,7 +5,7 @@ export const ROUTER_API = 'http://127.0.0.1:3001/api/network/router';
 /** Router desligado ou em baixo é um estado do ecrã: o servidor responde sempre 200. */
 export type Live<T> = ({ available: true; dryRun: boolean } & T) | { available: false; reason: string };
 
-export type RouterFinding = { services: string[]; severity: 'grave' | 'aviso'; detail: string; command: string };
+export type RouterFinding = { services: string[]; severity: 'grave' | 'aviso' | 'info'; detail: string; command: string };
 
 export type RouterOverview = {
   host: string;

@@ -14,6 +14,29 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
   - também ficam de fora os dumps de memória nativos, as capturas de ecrã e a consola.
 
   O interruptor só aparece quando a versão instalada traz o DSN do projeto.
+- **Ritmo das quedas em bloco.** Quando as antenas do backbone caem juntas a
+  intervalos certos, o cartão "Saúde da rede" diz o ritmo e a próxima hora
+  prevista ("Quedas em bloco a cada 2 h · próxima por volta das 08:12"), para
+  se estar junto das antenas na hora.
+- **Três achados novos do registo do router** (migração 0087): alterações
+  feitas fora do ISPM pelo WinBox, SSH ou terminal (quem, por onde e o quê),
+  portas a cair e a voltar, e arranques do router com o relógio parado. Os
+  dias já guardados contam-se uma vez, por isso o que já aconteceu aparece logo.
+- **PPPoE criados fora do ISPM.** Um utilizador PPPoE sem serviço e sem a
+  marca do ISPM passa a ser uma divergência, e a Visão geral do router aponta-o
+  com o comando para o desligar. O ISPM continua sem lhe tocar. O acesso do
+  próprio ISP marca-se com `ispm-interno` no comentário (do secret): deixa de
+  contar como divergência e o perfil sem limite que só ele usa deixa de ser
+  aviso, mas continua sempre à vista na Visão geral, como informação e com o
+  comando para o desligar. Nas Sessões aparece como "Interno (ISP)".
+- **Auditoria do router alargada.** O diagnóstico e a Visão geral avisam,
+  com o comando a correr, quando: o DNS do router está aberto à WAN, uma bridge
+  está sem DHCP snooping, o WinBox por MAC aceita todas as portas, ou um perfil
+  PPP sem limite de velocidade está em uso. Só leitura.
+- **A sonda já não acusa a rede toda fora da rede de gestão.** Com o router
+  por confirmar (por configurar ou com o cofre trancado), o backbone todo
+  calado passa a querer dizer que o PC está noutra rede, mesmo que algum
+  endereço responda por coincidência numa rede de casa.
 
 ## [2.35](https://github.com/Harrydevcod/IspManager/releases/tag/v2.35.0) — 2026-10-16
 
