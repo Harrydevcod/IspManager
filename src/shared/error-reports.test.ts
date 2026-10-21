@@ -8,6 +8,15 @@ describe('relatórios de erro: nada de clientes sai', () => {
     );
     expect(scrubText('HTTP 500 em 3 tentativas')).toBe('HTTP 500 em 3 tentativas');
     expect(scrubText('connect ECONNREFUSED 192.168.2.1:443')).toBe('connect ECONNREFUSED 192.168.2.1:443');
+    // Medido no smoke de 2026-10-21: a data do título saía como [número].
+    expect(scrubText('fatura de 2026-10-21')).toBe('fatura de 2026-10-21');
+  });
+
+  it('tira o nome da conta do Windows dos caminhos', () => {
+    expect(scrubText("ENOENT: open 'C:\\Users\\Maria Silva\\AppData\\ISPM\\x.yml'")).toBe(
+      "ENOENT: open 'C:\\Users\\[utilizador]\\AppData\\ISPM\\x.yml'"
+    );
+    expect(scrubText('em c:/users/arydson/Downloads/ispm')).toBe('em c:/users/[utilizador]/Downloads/ispm');
   });
 
   it('corta query e fragmento dos URLs', () => {

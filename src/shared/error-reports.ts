@@ -7,7 +7,7 @@ import type { DataCollection } from '@sentry/core';
  *
  * O DSN não é segredo (vai em todos os instaladores). Vazio = nunca arranca.
  */
-export const SENTRY_DSN = '';
+export const SENTRY_DSN = 'https://0c2261f9dbcec729deec394479c3e67f@o4512294055313408.ingest.us.sentry.io/4512295462830080';
 
 /** Argumento que o main passa ao renderer, lido pelo preload. */
 export const ERROR_REPORTS_ARG = '--ispm-error-reports';
@@ -27,13 +27,20 @@ export function keepIntegration(name: string): boolean {
 }
 
 const EMAIL = /[\w.+-]+@[\w-]+(\.[\w-]+)+/g;
-// NIF (9 dígitos), telefones (7+), contas e NIB: qualquer número longo.
-// O ponto não separa, para os endereços IP (192.168.2.1) ficarem: são o diagnóstico.
-const LONG_NUMBER = /\d[\d\s-]{5,}\d/g;
+// NIF (9 dígitos), telefones (7+), contas e NIB: qualquer número longo, com
+// espaços pelo meio. Ponto e hífen não separam, para os IP (192.168.2.1) e as
+// datas (2026-10-21) ficarem: são o diagnóstico, não dados de clientes.
+const LONG_NUMBER = /\d[\d ]{5,}\d/g;
+// O nome da conta do Windows aparece nos caminhos e pode ser o nome de uma pessoa.
+// Até à barra seguinte, com espaços: "C:\Users\Maria Silva\…".
+const WINDOWS_USER_DIR = /([A-Za-z]:[\\/]+Users[\\/]+)[^\\/'"\r\n]+/gi;
 
-/** Tira e-mails e números longos de um texto livre (mensagem de erro, breadcrumb). */
+/** Tira e-mails, números longos e o utilizador do Windows de um texto livre. */
 export function scrubText(text: string): string {
-  return text.replace(EMAIL, '[email]').replace(LONG_NUMBER, '[número]');
+  return text
+    .replace(WINDOWS_USER_DIR, '$1[utilizador]')
+    .replace(EMAIL, '[email]')
+    .replace(LONG_NUMBER, '[número]');
 }
 
 /** URL sem query nem fragmento: `/api/clients?search=Maria` → `/api/clients`. */
