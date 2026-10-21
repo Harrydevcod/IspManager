@@ -9,11 +9,15 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 ### Adicionado
 - **Relatórios de erro (Sentry), desligados por omissão.** Em Configurações → Automatismos há um interruptor "Enviar relatórios de erro". A mudança vale ao reiniciar. Quando está ligado, uma falha da app (processo principal, servidor ou ecrã) envia a stack, a versão e o sistema operativo. Não sai nenhum dado de cliente:
   - e-mails e números longos (NIF, telefones, contas) são apagados das mensagens;
+  - o nome da conta do Windows sai dos caminhos (`C:\Users\[utilizador]\…`);
   - os URLs perdem a query e o fragmento;
   - o pedido, o utilizador, o nome do PC, as variáveis locais e o texto escrito na interface ficam de fora;
   - também ficam de fora os dumps de memória nativos, as capturas de ecrã e a consola.
 
-  O interruptor só aparece quando a versão instalada traz o DSN do projeto.
+  As datas e os endereços IP ficam, porque servem para o diagnóstico.
+
+### Alterado
+- **electron-builder 25 → 26.** A 25 juntava ao pacote cada dependência repetida só debaixo do primeiro pai que encontrava. Com o Sentry, a app instalada nem arrancava ("Cannot find module '@sentry/browser-utils'"). A 26 empacota o `node_modules` tal como está.
 - **Ritmo das quedas em bloco.** Quando as antenas do backbone caem juntas a
   intervalos certos, o cartão "Saúde da rede" diz o ritmo e a próxima hora
   prevista ("Quedas em bloco a cada 2 h · próxima por volta das 08:12"), para

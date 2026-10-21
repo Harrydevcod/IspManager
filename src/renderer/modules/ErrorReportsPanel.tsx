@@ -36,7 +36,7 @@ export function ErrorReportsPanel() {
       <header className="backups-head">
         <div>
           <h3>Relatórios de erro</h3>
-          <p className="backups-dir">
+          <p className="license-reason">
             Quando a app falha, envia ao programador a stack do erro, a versão e o sistema operativo. Nunca vão
             clientes, faturas, NIF, telefones, e-mails, endereços nem o conteúdo dos pedidos.
           </p>
