@@ -1185,6 +1185,19 @@ function closesDns(rule: RouterFirewallRule): boolean {
   });
 }
 
+/**
+ * Um nome lido do router como literal do RouterOS, para os comandos que o operador cola no
+ * terminal. Os nomes vêm de quem tem WinBox: sem isto, um secret chamado `x"]; /system reset-configuration`
+ * corria no terminal de quem o colasse. Aspas, `\` e `$` escapados; carateres de controlo fora.
+ */
+export function rosQuote(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  return `"${value.replace(/[\u0000-\u001f\u007f]/g, '').replace(/[\\"$]/g, (char) => `\\${char}`)}"`;
+}
+
+/** O `.id` do RouterOS (`*1D`) é seguro de colar tal como vem; outra coisa qualquer não. */
+const safeId = (id: string) => (/^\*[0-9A-F]+$/i.test(id) ? id : null);
+
 /** O que está aberto para lá dos serviços: DNS para a Internet, DHCP sem vigia, WinBox por MAC a toda a rede. Pura. */
 export function auditRouterHardening(state: RouterHardening): RouterServiceFinding[] {
   const findings: RouterServiceFinding[] = [];
@@ -1205,7 +1218,7 @@ export function auditRouterHardening(state: RouterHardening): RouterServiceFindi
       services: unguarded,
       severity: 'aviso',
       detail: `${unguarded.join(', ')} — sem DHCP snooping: um router de cliente ligado ao contrário entrega endereços à rede toda.`,
-      command: unguarded.map((name) => `/interface bridge set ${name} dhcp-snooping=yes`).join('\n')
+      command: unguarded.map((name) => `/interface bridge set [find name=${rosQuote(name)}] dhcp-snooping=yes`).join('\n')
     });
   }
   if (state.macWinboxList === 'all') {
@@ -1237,7 +1250,8 @@ export function auditPppAccess(
       services: names,
       severity: 'aviso',
       detail: `${names.join(', ')} — acesso${names.length > 1 ? 's' : ''} PPPoE criado${names.length > 1 ? 's' : ''} fora do ISPM e sem serviço. Se não for de nenhum cliente, desligue-o.`,
-      command: names.map((name) => `/ppp secret disable [find name="${name}"]`).join('\n')
+      // Pelo `.id`, não pelo nome: o nome é de quem o criou no router.
+      command: foreign.map((secret) => safeId(secret.id) ? `/ppp secret disable ${secret.id}` : `/ppp secret disable [find name=${rosQuote(secret.name)}]`).join('\n')
     });
   }
   const limited = new Map(profiles.map((profile) => [profile.name, Boolean(profile.rateLimit)]));
@@ -1250,7 +1264,7 @@ export function auditPppAccess(
       services: unlimited,
       severity: 'aviso',
       detail: `${unlimited.join(', ')} — perfil PPP sem limite de velocidade em uso por um acesso ligado: esse cliente leva a Starlink toda.`,
-      command: unlimited.map((name) => `/ppp secret print where profile="${name}" disabled=no`).join('\n')
+      command: unlimited.map((name) => `/ppp secret print where profile=${rosQuote(name)} disabled=no`).join('\n')
     });
   }
   return findings;

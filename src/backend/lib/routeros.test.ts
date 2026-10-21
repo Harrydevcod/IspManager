@@ -7,6 +7,7 @@ import {
   auditRouterHardening,
   auditRouterServices,
   readRouterHardening,
+  rosQuote,
   createTransport,
   createProfile,
   ensureWanUsageCounter,
@@ -876,6 +877,16 @@ describe('blindagem para lá dos serviços', () => {
       { name: 'ULTRA', rateLimit: null }, { name: 'ispm-plano-1', rateLimit: '10M/40M' }, { name: 'default', rateLimit: null }, { name: 'SUSPENSO', rateLimit: null }
     ], ['SUSPENSO']);
     expect(findings.map((finding) => finding.services)).toEqual([['admin'], ['ULTRA']]);
+    // O `.id` destes secrets de teste não tem o feitio do RouterOS: cai no nome, entre aspas.
     expect(findings[0].command).toBe('/ppp secret disable [find name="admin"]');
+  });
+
+  test('nomes vindos do router não injetam comandos no que o operador cola no terminal', () => {
+    const evil = 'x"]; /system reset-configuration; :put "';
+    const [secretFinding] = auditPppAccess([{ id: '*1D', name: evil, profile: null, disabled: false, comment: null }], [], []);
+    expect(secretFinding.command).toBe('/ppp secret disable *1D');
+    const [bridgeFinding] = auditRouterHardening({ dnsRemote: null, inputRules: null, bridges: [{ name: `br"; /system reboot\n$x`, dhcpSnooping: false }], macWinboxList: null });
+    expect(bridgeFinding.command).toBe('/interface bridge set [find name="br\\"; /system reboot\\$x"] dhcp-snooping=yes');
+    expect(rosQuote('a\\b')).toBe('"a\\\\b"');
   });
 });
