@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeftRight, Cable, Cpu, Gauge, Layers, MemoryStick, Router, ScrollText, Settings2, ShieldAlert, Timer, Waypoints, X, ChartNoAxesCombined, History } from 'lucide-react';
+import { AlertTriangle, ArrowLeftRight, Info, Cable, Cpu, Gauge, Layers, MemoryStick, Router, ScrollText, Settings2, ShieldAlert, Timer, Waypoints, X, ChartNoAxesCombined, History } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { Badge, Button, EmptyState, ErrorRetry, MetricCard, MetricGrid, ModuleHeaderActions, SkeletonList } from '../../components';
@@ -129,10 +129,12 @@ function Overview({ data, usage, onOpen }: { data: RouterOverview & { dryRun: bo
         ) : (
           <ol className="settings-router-steps">
             {data.findings.map((finding) => (
-              <li key={finding.services.join(',')} data-status={finding.severity === 'grave' ? 'fail' : 'warn'}>
+              <li key={finding.services.join(',')} data-status={finding.severity === 'grave' ? 'fail' : finding.severity === 'info' ? 'ok' : 'warn'}>
                 {finding.severity === 'grave'
                   ? <X size={14} aria-hidden className="settings-router-step-icon" />
-                  : <AlertTriangle size={14} aria-hidden className="settings-router-step-icon" />}
+                  : finding.severity === 'info'
+                    ? <Info size={14} aria-hidden className="settings-router-step-icon" />
+                    : <AlertTriangle size={14} aria-hidden className="settings-router-step-icon" />}
                 <div>
                   <strong>{finding.services.join(', ')}</strong>
                   <p>{finding.detail}</p>

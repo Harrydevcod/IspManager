@@ -885,8 +885,12 @@ describe('blindagem para lá dos serviços', () => {
     const internal = { id: '*7', name: 'gestao-arydson', profile: 'ULTRA', disabled: false, comment: 'ispm-interno: router do Arydson' };
     const client = { id: '*8', name: 'skn030', profile: 'ULTRA', disabled: false, comment: 'ispm:30 Ana' };
     const profiles = [{ name: 'ULTRA', rateLimit: null }];
-    expect(auditPppAccess([], [internal], profiles)).toEqual([]);
-    expect(auditPppAccess([], [internal, client], profiles).map((finding) => finding.services)).toEqual([['ULTRA']]);
+    // A marca não esconde: o acesso interno fica à vista como informação, com o comando para o desligar.
+    expect(auditPppAccess([], [internal], profiles)).toEqual([expect.objectContaining({
+      services: ['gestao-arydson'], severity: 'info', command: '/ppp secret disable *7'
+    })]);
+    expect(auditPppAccess([], [internal, client], profiles).map((finding) => [finding.services, finding.severity]))
+      .toEqual([[['gestao-arydson'], 'info'], [['ULTRA'], 'aviso']]);
   });
 
   test('nomes vindos do router não injetam comandos no que o operador cola no terminal', () => {

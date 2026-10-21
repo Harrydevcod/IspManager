@@ -797,7 +797,8 @@ async function fillHardeningStep(step: RouterCheck, transport: RouterTransport):
     return;
   }
 
-  const findings = [...auditRouterServices(services), ...auditRouterHardening(await readRouterHardening(transport))];
+  const findings = [...auditRouterServices(services), ...auditRouterHardening(await readRouterHardening(transport))]
+    .filter((finding) => finding.severity !== 'info');
   step.ms = Date.now() - startedAt;
   if (findings.length === 0) {
     step.status = 'ok';
@@ -1021,7 +1022,8 @@ export async function listServices(transport: RouterTransport): Promise<RouterSe
 export type RouterServiceFinding = {
   /** Serviços envolvidos, pelos nomes do RouterOS. */
   services: string[];
-  severity: 'grave' | 'aviso';
+  /** `info`: não é problema, mas tem de continuar à vista (o acesso interno do ISP). */
+  severity: 'grave' | 'aviso' | 'info';
   detail: string;
   /** Comando do RouterOS que resolve. */
   command: string;
@@ -1260,6 +1262,17 @@ export function auditPppAccess(
       detail: `${names.join(', ')} — acesso${names.length > 1 ? 's' : ''} PPPoE criado${names.length > 1 ? 's' : ''} fora do ISPM e sem serviço. Se não for de nenhum cliente, desligue-o.`,
       // Pelo `.id`, não pelo nome: o nome é de quem o criou no router.
       command: foreign.map((secret) => safeId(secret.id) ? `/ppp secret disable ${secret.id}` : `/ppp secret disable [find name=${rosQuote(secret.name)}]`).join('\n')
+    });
+  }
+  // A marca vem do comentário, e quem tem WinBox escreve-a onde quiser: o acesso marcado
+  // não se esconde, fica à vista como informação, para o dono reconhecer o que é seu.
+  const internal = secrets.filter((secret) => isInternalSecret(secret) && !secret.disabled);
+  if (internal.length > 0) {
+    findings.push({
+      services: internal.map((secret) => secret.name),
+      severity: 'info',
+      detail: `${internal.map((secret) => secret.name).join(', ')} — acesso${internal.length > 1 ? 's' : ''} interno${internal.length > 1 ? 's' : ''} do ISP (marca ispm-interno): fora da Reconciliação e sem limite de propósito. Se não reconhecer algum, desligue-o.`,
+      command: internal.map((secret) => safeId(secret.id) ? `/ppp secret disable ${secret.id}` : `/ppp secret disable [find name=${rosQuote(secret.name)}]`).join('\n')
     });
   }
   const limited = new Map(profiles.map((profile) => [profile.name, Boolean(profile.rateLimit)]));
