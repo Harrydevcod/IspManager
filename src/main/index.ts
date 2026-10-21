@@ -4,6 +4,8 @@ import path from 'node:path';
 import { autoUpdater } from 'electron-updater';
 import { startBackend } from '../backend/server';
 import { createLocalProtection } from '../backend/lib/local-protection';
+import { ERROR_REPORTS_ARG } from '../shared/error-reports';
+import { errorReportsActive, initErrorReports, registerErrorReportsIpc } from './error-reports';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
 
@@ -44,6 +46,9 @@ function appVersion(): string {
     return app.getVersion();
   }
 }
+
+// Antes da janela e do backend, para apanhar também os erros do arranque.
+initErrorReports(appVersion());
 
 async function showAboutDialog() {
   const options = {
@@ -303,7 +308,9 @@ async function createWindow() {
         ? path.join(__dirname, '..', '..', 'dist', 'main', 'preload.js')
         : path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // O renderer só liga a Sentry se o main a ligou (ver preload).
+      additionalArguments: errorReportsActive() ? [ERROR_REPORTS_ARG] : []
     }
   });
 
@@ -328,6 +335,8 @@ app.whenReady().then(async () => {
   if (!isDevelopment) {
     await startBackend({ localProtection: createLocalProtection(safeStorage) });
   }
+
+  registerErrorReportsIpc();
 
   ipcMain.handle('app:relaunch', () => {
     app.relaunch();
