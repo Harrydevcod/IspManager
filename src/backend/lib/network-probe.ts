@@ -197,6 +197,18 @@ export type ProbeRunSummary = {
   transitions: number;
 };
 
+/**
+ * Sem saber se está na rede de gestão (router por configurar, cofre trancado), o backbone todo
+ * calado — router incluído — é o PC noutra rede, não a rede abaixo. Só olhar para "nenhum
+ * responde" falhava numa rede de casa também em 192.168.1.x, onde um ou outro endereço de
+ * cliente responde por coincidência (21/10/2026: 25 equipamentos "em baixo", o router também).
+ */
+export function looksOffNetwork(targets: ProbeTarget[], results: PingResult[]): boolean {
+  const backbone = results.filter((_, index) => targets[index].kind === 'backbone');
+  if (backbone.length >= 2) return backbone.every((result) => !result.ok);
+  return targets.length >= 2 && results.every((result) => !result.ok);
+}
+
 /** Sonda todos os alvos uma vez e persiste estado + transições. */
 export async function runNetworkProbe(
   db: Database.Database,
@@ -212,8 +224,8 @@ export async function runNetworkProbe(
   const previousRows = loadProbeStates(db);
   const previousByKey = new Map(previousRows.map((row) => [`${row.targetKind}:${row.targetId}`, row]));
   const results = await mapWithLimit(targets, MAX_CONCURRENCY, (target) => ping(target.ipAddress, timeoutMs));
-  if (options.presenceUnknown && targets.length >= 2 && results.every((result) => !result.ok)) {
-    return { skipped: true, reason: 'nenhum equipamento responde — o PC parece estar sem rede', checked: targets.length, up: 0, down: 0, transitions: 0 };
+  if (options.presenceUnknown && looksOffNetwork(targets, results)) {
+    return { skipped: true, reason: 'nenhum equipamento do backbone responde — o PC parece estar fora da rede de gestão', checked: targets.length, up: 0, down: 0, transitions: 0 };
   }
 
   const now = sqlNow();

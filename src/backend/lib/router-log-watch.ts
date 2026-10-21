@@ -8,7 +8,10 @@ import {
   type RouterLogEntry, type RouterTransport
 } from './routeros';
 
-export const FINDING_KINDS = ['antena_em_baixo', 'ip_duplicado', 'laco_rede', 'dhcp_intruso', 'dhcp_ciclo', 'pppoe_queda', 'login_falhado'] as const;
+export const FINDING_KINDS = [
+  'antena_em_baixo', 'ip_duplicado', 'laco_rede', 'dhcp_intruso', 'dhcp_ciclo', 'pppoe_queda', 'login_falhado',
+  'config_externa', 'porta_oscila', 'router_reiniciou'
+] as const;
 export type FindingKind = typeof FINDING_KINDS[number];
 
 /** O que o router diz de si próprio: é contra isto que se lê um DHCP numa porta não confiável. */
@@ -20,6 +23,15 @@ export type Finding = {
 
 // A linha do próprio netwatch, não a do script que o operador lhe pendurou: essa muda de texto.
 const NETWATCH_DOWN = /^event down \[ type: \w+, host: (\S+) \]/;
+// `ppp secret <admin> added by mac-msg(winbox):harrytec@5C:80:… (*1D = /ppp secret add …)`.
+const CONFIG_CHANGE = /^(.+?) (changed|added|removed) by ([\w-]+)(?:\(([\w-]+)\))?:([^@/\s]+)/;
+// Quem não é gente: o ISPM (e outros programas) pela API, e os agendamentos do próprio router.
+const MACHINE_CHANNELS = new Set(['api', 'rest-api', 'scheduler', 'script']);
+const LINK_DOWN = /^(\S+) link down$/;
+const ROUTER_REBOOTED = /^router rebooted\b/;
+const CLOCK_CHANGE = /^ntp change time (\w{3})\/(\d{2})\/(\d{4}) (\d{2}:\d{2}:\d{2}) => (\w{3})\/(\d{2})\/(\d{4}) (\d{2}:\d{2}:\d{2})$/;
+// Um acerto maior do que isto não é deriva: é um arranque com o relógio parado (o hEX S não tem pilha).
+const CLOCK_JUMP_MS = 10 * 60_000;
 
 const idNumber = (id: string) => Number.parseInt(id.replace(/^\*/, ''), 16) || 0;
 const pad = (value: number) => String(value).padStart(2, '0');
@@ -31,6 +43,9 @@ export const LOG_RETENTION_DAYS = 90;
 const LINES_RECOVERED = 'routerLogLinesRecovered';
 // Marca de que as linhas guardadas antes de se encurtarem as gravações dos contadores já foram limpas.
 const LINES_COMPACTED = 'routerLogLinesCompacted';
+// Marca de que os achados que nasceram na 0087 já foram contados nas linhas guardadas antes dela.
+const KINDS_0087_COUNTED = 'routerLogKinds0087Counted';
+const KINDS_0087: FindingKind[] = ['config_externa', 'porta_oscila', 'router_reiniciou'];
 
 /** A hora completa de uma linha: o RouterOS pode escrever só a hora nas de hoje. */
 const entryTime = (entry: RouterLogEntry, now: Date) => /^\d{4}-\d{2}-\d{2} /.test(entry.time) ? entry.time : `${localDay(now)} ${entry.time}`;
@@ -53,6 +68,10 @@ export type JournalCursor = { time: string; seen: number };
 // data ISO que o /log devolve.
 const JOURNAL_LINE = /^([A-Za-z]{3})\/(\d{2})\/(\d{4}) (\d{2}:\d{2}:\d{2}) (\S+) (.*)$/;
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+/** `['Oct', '19', '2026', '07:42:26']` em milissegundos; só serve para subtrair. */
+const clockMs = ([month, day, year, time]: string[]) =>
+  Date.parse(`${year}-${pad(MONTHS.indexOf(month.toLowerCase()) + 1)}-${day}T${time}Z`);
 
 /** As linhas do diário em disco, pela ordem do texto e com a hora no formato do /log. Pura. */
 export function parseJournal(text: string): RouterLogEntry[] {
@@ -115,6 +134,15 @@ export function collectFindings(entries: RouterLogEntry[], router: RouterIdentit
     } else if ((match = PPPOE_DROP.exec(message))) add(at, 'pppoe_queda', match[1], match[2]);
     else if ((match = DHCP_RELEASE.exec(message))) add(at, 'dhcp_ciclo', match[2].toUpperCase(), [match[3], match[1]].filter(Boolean).join(' · '));
     else if ((match = LOGIN_FAILURE.exec(message))) add(at, 'login_falhado', `${match[2]} ${match[3]}`, match[1]);
+    else if ((match = CONFIG_CHANGE.exec(message))) {
+      const channel = match[4] ?? match[3];
+      if (!MACHINE_CHANNELS.has(channel)) add(at, 'config_externa', `${match[1]} ${match[2]}`, `${match[5]} · ${channel}`);
+    } else if ((match = LINK_DOWN.exec(message))) add(at, 'porta_oscila', match[1], '');
+    else if (ROUTER_REBOOTED.test(message)) add(at, 'router_reiniciou', 'reinicio', 'O router reiniciou');
+    else if ((match = CLOCK_CHANGE.exec(message))) {
+      const jump = clockMs(match.slice(5, 9)) - clockMs(match.slice(1, 5));
+      if (Math.abs(jump) > CLOCK_JUMP_MS) add(at, 'router_reiniciou', 'relogio', `Relógio acertado em ${Math.round(jump / 60_000)} min`);
+    }
   }
   return [...found.values()];
 }
@@ -204,6 +232,11 @@ export async function watchRouterLog(db: Database.Database, transport: RouterTra
   const { fresh, key, cursor, recovered } = await readFresh(db, transport);
   const router = fresh.length > 0 ? await readRouterIdentity(transport) : null;
   const findings = router ? collectFindings(fresh, router, now) : [];
+  // As linhas já guardadas antes de a vigia saber destes três tipos: contam-se uma vez, só eles
+  // (os outros já estão somados). O router não entra aqui: nenhum dos três depende dele.
+  const backfill = readSetting(db, KINDS_0087_COUNTED) === null
+    ? collectFindings(loadStoredLines(db), { addresses: [], macs: [] }, now).filter((finding) => KINDS_0087.includes(finding.kind))
+    : null;
   const MERGE = `ON CONFLICT(day, kind, subject) DO UPDATE SET count = count + excluded.count, label = excluded.label,
       first_at = min(first_at, excluded.first_at), last_at = max(last_at, excluded.last_at)`;
   const upsert = db.prepare(`INSERT INTO router_log_findings (day, kind, subject, label, count, first_at, last_at)
@@ -232,11 +265,21 @@ export async function watchRouterLog(db: Database.Database, transport: RouterTra
       moveToLoop.run(mac);
       dropDuplicate.run(mac);
     }
+    if (backfill) {
+      for (const finding of backfill) upsert.run(finding);
+      setSetting.run(KINDS_0087_COUNTED, now.toISOString());
+    }
     for (const finding of findings) upsert.run(finding);
     if (cursor !== null) setSetting.run(key, cursor);
     setSetting.run('routerLogReadAt', now.toISOString());
   })();
   return { lines: fresh.length, findings: findings.length, ...(recovered !== null && { recovered: recovered.length }) };
+}
+
+function loadStoredLines(db: Database.Database): RouterLogEntry[] {
+  const rows = db.prepare('SELECT id, at, topics, message FROM router_log_lines ORDER BY id')
+    .all() as Array<{ id: number; at: string; topics: string; message: string }>;
+  return rows.map((row) => ({ id: `*${row.id.toString(16)}`, time: row.at, topics: row.topics, message: row.message }));
 }
 
 /** Os dias que têm linhas guardadas, do mais recente para o mais antigo. */

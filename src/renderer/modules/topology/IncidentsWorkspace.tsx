@@ -5,7 +5,7 @@ import { useAuth } from '../../lib/auth';
 import { formatPtDateTime } from '../../lib/format';
 import { useLive } from '../router/useLive';
 import { NetworkDiaryDialog } from './NetworkDiaryDialog';
-import { findingTone, findingWho, formatLocalStamp, KIND_LABEL, NETWORK_API, networkRequest, type DiaryEntry, type HealthFinding, type NetworkHealth } from './network-health';
+import { findingLabel, findingSubject, findingTone, findingWho, formatLocalStamp, KIND_LABEL, NETWORK_API, networkRequest, type DiaryEntry, type HealthFinding, type NetworkHealth } from './network-health';
 
 export type IncidentClient = { clientId: number; clientCode: string; clientName: string; zone: string | null };
 
@@ -67,9 +67,9 @@ const clientColumns: DataTableColumn<IncidentClient>[] = [
 const findingColumns: DataTableColumn<HealthFinding>[] = [
   // Sem negrito: o negrito corta com reticências, e "Endereço do router duplicado" tem de se ler inteiro.
   { header: 'Tipo', sortValue: (row) => KIND_LABEL[row.kind], cell: (row) => <span className="incidents-kind" data-tone={findingTone(row.kind)}>{KIND_LABEL[row.kind]}</span> },
-  { header: 'Endereço', sortValue: (row) => row.subject, className: 'incidents-num', cell: (row) => row.subject },
+  { header: 'Endereço', sortValue: (row) => findingSubject(row), className: 'incidents-num', cell: (row) => findingSubject(row) },
   { header: 'Pertence a', sortValue: (row) => findingWho(row), cell: (row) => findingWho(row) },
-  { header: 'Detalhe', sortValue: (row) => row.label, cell: (row) => row.label || '—' },
+  { header: 'Detalhe', sortValue: (row) => findingLabel(row), cell: (row) => findingLabel(row) },
   { header: 'Vezes', sortValue: (row) => row.count, defaultDirection: 'desc', align: 'end', cell: (row) => row.count },
   { header: 'Desde', sortValue: (row) => row.firstAt, defaultDirection: 'desc', cell: (row) => formatLocalStamp(row.firstAt, false) },
   { header: 'Última vez', sortValue: (row) => row.lastAt, defaultDirection: 'desc', cell: (row) => formatLocalStamp(row.lastAt, false) }

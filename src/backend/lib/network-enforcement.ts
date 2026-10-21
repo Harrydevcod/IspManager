@@ -123,7 +123,7 @@ export type Divergence = {
    * `username_taken`: o nome do serviço existe no router mas é de outro
    * serviço; também sem ação, até alguém corrigir o utilizador de um dos dois.
    */
-  kind: 'missing_secret' | 'state' | 'profile' | 'password' | 'username' | 'orphan_secret'
+  kind: 'missing_secret' | 'state' | 'profile' | 'password' | 'username' | 'orphan_secret' | 'foreign_secret'
     | 'state_drift' | 'profile_drift' | 'secret_removed' | 'username_taken';
   detail: string;
 };
@@ -494,7 +494,16 @@ export function planActions(
   // se perde configuração de propósito.
   if (options.reportOrphans !== false) for (const secret of secrets) {
     if (usedSecretIds.has(secret.id)) continue;
-    if (!secret.comment?.startsWith(COMMENT_PREFIX)) continue;
+    // Feito à mão no router (o `admin` do WinBox em 19/10/2026): nem nosso nem de serviço nenhum.
+    if (!secret.comment?.startsWith(COMMENT_PREFIX)) {
+      divergences.push({
+        serviceId: null,
+        username: secret.name,
+        kind: 'foreign_secret',
+        detail: 'Utilizador criado fora do ISPM e sem serviço correspondente'
+      });
+      continue;
+    }
     const anchor = secretAnchor(secret.comment);
     divergences.push({
       serviceId: anchor && 'serviceId' in anchor ? anchor.serviceId : null,

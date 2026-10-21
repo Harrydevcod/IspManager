@@ -130,6 +130,26 @@ describe('decideProbeTransition', () => {
   });
 });
 
+describe('looksOffNetwork', () => {
+  const target = (kind: 'backbone' | 'assignment', id: number) => ({ kind, id, name: `${kind} ${id}`, ipAddress: `192.168.1.${id}` });
+
+  test('21/10/2026: backbone todo calado mas um "cliente" responde numa rede de casa → fora da rede', () => {
+    const targets = [target('backbone', 1), target('backbone', 122), target('assignment', 220), target('assignment', 145)];
+    expect(probe.looksOffNetwork(targets, [DOWN, DOWN, UP, DOWN])).toBe(true);
+  });
+
+  test('uma antena do backbone a responder é a rede de gestão, mesmo com o resto em baixo', () => {
+    const targets = [target('backbone', 1), target('backbone', 122), target('assignment', 145)];
+    expect(probe.looksOffNetwork(targets, [UP, DOWN, DOWN])).toBe(false);
+  });
+
+  test('com menos de dois no backbone, vale a regra antiga: ninguém responde', () => {
+    const targets = [target('backbone', 1), target('assignment', 145)];
+    expect(probe.looksOffNetwork(targets, [DOWN, UP])).toBe(false);
+    expect(probe.looksOffNetwork(targets, [DOWN, DOWN])).toBe(true);
+  });
+});
+
 describe('runNetworkProbe', () => {
   test('sem presença confirmada, falha de todos os alvos não grava estado nem transições', async () => {
     seedBackbone('Torre A', '10.0.0.1');

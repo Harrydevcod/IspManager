@@ -89,6 +89,7 @@ const DIVERGENCE_LABEL: Record<string, string> = {
   password: 'Password PPPoE pendente',
   username: 'Nome PPPoE diferente no router',
   orphan_secret: 'Utilizador sem serviço',
+  foreign_secret: 'Utilizador criado fora do ISPM',
   profile_drift: 'Perfil alterado no router, à espera de decisão',
   state_drift: 'Estado alterado no router, à espera de decisão',
   secret_removed: 'Utilizador apagado no router, à espera de decisão',

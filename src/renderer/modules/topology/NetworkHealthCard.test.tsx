@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { AuthProvider } from '../../lib/auth';
 import { NetworkHealthCard } from './NetworkHealthCard';
-import { antennaDrops, findingWho, formatLocalStamp, healthSituations, type HealthFinding, type NetworkHealth } from './network-health';
+import { antennaDrops, findingLabel, findingSubject, findingWho, formatLocalStamp, formatPeriod, healthSituations, type HealthFinding, type NetworkHealth } from './network-health';
 
 const finding = (row: Partial<HealthFinding> & Pick<HealthFinding, 'kind' | 'subject' | 'count'>): HealthFinding => ({
   label: '', firstAt: '2026-10-07 10:29:23', lastAt: '2026-10-07 13:16:00', deviceName: null, clientName: null, vendor: null, ...row
@@ -13,7 +13,7 @@ const finding = (row: Partial<HealthFinding> & Pick<HealthFinding, 'kind' | 'sub
 
 const calm: NetworkHealth = {
   hours: 72, tone: 'ok', probeEnabled: true, lastProbeAt: '2026-10-07 22:15:06', lastRouterReadAt: '2026-10-07T22:14:00.000Z', routerJournal: false,
-  antennas: [], clients: [], downNow: [], findings: [], diary: []
+  antennas: [], clients: [], downNow: [], findings: [], dropPattern: null, diary: []
 };
 
 const conflict: NetworkHealth = {
@@ -130,6 +130,33 @@ test('um laço na rede diz a porta e o que procurar, em vez do MAC do próprio r
     detail: 'O router ouviu a própria resposta DHCP em LAN1 · procure um cabo em anel', count: 1
   }]);
   expect(findingWho(loop)).toBe('O próprio router');
+});
+
+test('o ritmo das quedas vem antes delas e diz a próxima hora', () => {
+  const rows = healthSituations({ ...conflict, dropPattern: { periodMinutes: 120, lastAt: '2026-10-21 04:12:01', nextAt: '2026-10-21 08:12:01' } });
+  expect(rows[1]).toEqual({
+    key: 'pattern', tone: 'warn', title: 'Quedas em bloco a cada 2 h', detail: 'Próxima por volta das 08:12 · última às 04:12', count: null
+  });
+  expect(formatPeriod(90)).toBe('1 h 30');
+});
+
+test('alterações fora do ISPM e portas a cair dizem o quê, quem e o que procurar', () => {
+  const rows = healthSituations({
+    ...calm,
+    findings: [
+      finding({ kind: 'config_externa', subject: 'ppp secret <admin> added', label: 'harrytec · winbox', count: 1 }),
+      finding({ kind: 'porta_oscila', subject: 'LAN3', count: 7 })
+    ]
+  });
+  expect(rows.map(({ tone, title, detail }) => ({ tone, title, detail }))).toEqual([
+    { tone: 'warn', title: 'Alteração feita fora do ISPM', detail: 'Criou o acesso PPPoE admin · harrytec por WinBox' },
+    { tone: 'warn', title: 'Porta a cair e a voltar', detail: 'LAN3 perdeu a ligação · cabo, ficha ou aparelho a reiniciar' }
+  ]);
+  // Na tabela dos Incidentes, cada coisa na sua coluna e em português.
+  const change = finding({ kind: 'config_externa', subject: 'ppp profile <ULTRA> changed', label: 'harrytec · winbox', count: 4 });
+  expect([findingSubject(change), findingWho(change), findingLabel(change)]).toEqual(['Perfil PPP ULTRA', 'harrytec (WinBox)', 'Alterou']);
+  const clock = finding({ kind: 'router_reiniciou', subject: 'relogio', label: 'Relógio acertado em 617 min', count: 1 });
+  expect([findingSubject(clock), findingWho(clock), findingLabel(clock)]).toEqual(['Relógio', 'O próprio router', 'Relógio acertado em 617 min']);
 });
 
 test('as horas locais do router e do diário não passam pelo fuso', () => {

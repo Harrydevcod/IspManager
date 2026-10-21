@@ -1,6 +1,7 @@
 import { authFetch } from '../../lib/auth';
 
-export type FindingKind = 'antena_em_baixo' | 'ip_duplicado' | 'laco_rede' | 'dhcp_intruso' | 'dhcp_ciclo' | 'pppoe_queda' | 'login_falhado';
+export type FindingKind = 'antena_em_baixo' | 'ip_duplicado' | 'laco_rede' | 'dhcp_intruso' | 'dhcp_ciclo' | 'pppoe_queda' | 'login_falhado'
+  | 'config_externa' | 'porta_oscila' | 'router_reiniciou';
 export type HealthTone = 'ok' | 'warn' | 'danger';
 export type HealthOutage = { id: number; name: string; ipAddress: string; downs: number; downSeconds: number; longestSeconds: number };
 export type HealthDown = { kind: 'backbone' | 'assignment'; id: number; name: string; ipAddress: string; since: string };
@@ -23,6 +24,7 @@ export type NetworkHealth = {
   clients: HealthOutage[];
   downNow: HealthDown[];
   findings: HealthFinding[];
+  dropPattern: { periodMinutes: number; lastAt: string; nextAt: string } | null;
   diary: DiaryEntry[];
 };
 
@@ -41,18 +43,42 @@ export const KIND_LABEL: Record<FindingKind, string> = {
   dhcp_intruso: 'DHCP intruso',
   pppoe_queda: 'Queda de PPPoE',
   dhcp_ciclo: 'Ciclo de DHCP',
-  login_falhado: 'Login falhado no router'
+  login_falhado: 'Login falhado no router',
+  config_externa: 'Alteração feita fora do ISPM',
+  porta_oscila: 'Porta a cair e a voltar',
+  router_reiniciou: 'Router reiniciou'
 };
+
+const WARN_KINDS: FindingKind[] = ['antena_em_baixo', 'dhcp_intruso', 'config_externa', 'porta_oscila', 'router_reiniciou'];
 
 /** A gravidade de um achado: o painel e a aba Incidentes pintam-no pela mesma escala. */
 export function findingTone(kind: FindingKind): 'danger' | 'warn' | 'neutral' {
-  return kind === 'ip_duplicado' || kind === 'laco_rede' ? 'danger' : kind === 'antena_em_baixo' || kind === 'dhcp_intruso' ? 'warn' : 'neutral';
+  return kind === 'ip_duplicado' || kind === 'laco_rede' ? 'danger' : WARN_KINDS.includes(kind) ? 'warn' : 'neutral';
 }
 
 /** A quem o achado diz respeito, do nome mais útil para o menos. */
 export function findingWho(finding: HealthFinding): string {
   if (finding.kind === 'laco_rede') return 'O próprio router';
+  if (finding.kind === 'config_externa') {
+    const change = parseConfigChange(finding);
+    if (change?.user) return `${change.user}${change.channel ? ` (${change.channel})` : ''}`;
+  }
+  if (finding.kind === 'router_reiniciou') return 'O próprio router';
   return finding.deviceName ?? finding.clientName ?? finding.vendor ?? '—';
+}
+
+/** A coluna "Endereço" da tabela: o que o router escreveu, ou o que foi mexido, já em português. */
+export function findingSubject(finding: HealthFinding): string {
+  if (finding.kind === 'config_externa') return parseConfigChange(finding)?.object ?? finding.subject;
+  if (finding.kind === 'router_reiniciou') return finding.subject === 'relogio' ? 'Relógio' : 'Arranque';
+  return finding.subject;
+}
+
+/** A coluna "Detalhe" da tabela. */
+export function findingLabel(finding: HealthFinding): string {
+  if (finding.kind === 'config_externa') return parseConfigChange(finding)?.verb ?? finding.label;
+  if (finding.kind === 'porta_oscila') return 'Cabo, ficha ou aparelho a reiniciar';
+  return finding.label || '—';
 }
 
 /**
@@ -65,7 +91,41 @@ function findingDetail(finding: HealthFinding): string {
     const port = finding.label.split(' · ')[0];
     return `O router ouviu a própria resposta DHCP${port ? ` em ${port}` : ''} · procure um cabo em anel`;
   }
+  if (finding.kind === 'config_externa') return configChange(finding);
+  if (finding.kind === 'porta_oscila') return `${finding.subject} perdeu a ligação · cabo, ficha ou aparelho a reiniciar`;
+  if (finding.kind === 'router_reiniciou') return finding.label;
   return [finding.clientName ?? finding.vendor, finding.subject, finding.label].filter(Boolean).join(' · ');
+}
+
+const CONFIG_VERBS: Record<string, string> = { added: 'Criou', changed: 'Alterou', removed: 'Removeu' };
+const CONFIG_CHANNELS: Record<string, string> = { winbox: 'WinBox', ssh: 'SSH', telnet: 'Telnet', webfig: 'WebFig', terminal: 'terminal' };
+
+/** `ppp secret <admin> added` + `harrytec · winbox` → { verb: 'Criou', object: 'Acesso PPPoE admin', user, channel: 'WinBox' }. */
+function parseConfigChange(finding: Pick<HealthFinding, 'subject' | 'label'>) {
+  const match = /^(.+?) (added|changed|removed)$/.exec(finding.subject);
+  if (!match) return null;
+  const object = match[1]
+    .replace(/^ppp secret <(.+)>$/, 'Acesso PPPoE $1')
+    .replace(/^ppp profile <(.+)>$/, 'Perfil PPP $1')
+    .replace(/^user (\S+)$/, 'Utilizador $1');
+  const [user = '', channel = ''] = finding.label.split(' · ');
+  return { verb: CONFIG_VERBS[match[2]], object, user, channel: CONFIG_CHANNELS[channel] ?? channel };
+}
+
+/** "Criou o acesso PPPoE admin · harrytec por WinBox". */
+export function configChange(finding: Pick<HealthFinding, 'subject' | 'label'>): string {
+  const change = parseConfigChange(finding);
+  if (!change) return [finding.subject, finding.label].filter(Boolean).join(' · ');
+  const object = change.object.charAt(0).toLowerCase() + change.object.slice(1);
+  return `${change.verb} o ${object}${change.user ? ` · ${change.user}${change.channel ? ` por ${change.channel}` : ''}` : ''}`;
+}
+
+/** 120 → "2 h"; 90 → "1 h 30". */
+export function formatPeriod(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return `${rest} min`;
+  return rest === 0 ? `${hours} h` : `${hours} h ${String(rest).padStart(2, '0')}`;
 }
 
 /**
@@ -92,6 +152,13 @@ export function healthSituations(health: NetworkHealth): Situation[] {
     ...health.downNow.filter((row) => row.kind === 'backbone').map((row): Situation => ({
       key: `down:${row.id}`, tone: 'danger', title: `${row.name} em baixo`, detail: row.ipAddress, count: null
     })),
+    // O ritmo vem antes das quedas soltas: diz a que horas estar junto das antenas.
+    ...(health.dropPattern ? [{
+      key: 'pattern', tone: 'warn' as const,
+      title: `Quedas em bloco a cada ${formatPeriod(health.dropPattern.periodMinutes)}`,
+      detail: `Próxima por volta das ${health.dropPattern.nextAt.slice(11, 16)} · última às ${health.dropPattern.lastAt.slice(11, 16)}`,
+      count: null
+    }] : []),
     ...health.findings.map((row): Situation => ({
       key: `${row.kind}:${row.subject}`,
       tone: findingTone(row.kind),

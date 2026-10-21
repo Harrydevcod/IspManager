@@ -797,8 +797,8 @@ async function fillHardeningStep(step: RouterCheck, transport: RouterTransport):
     return;
   }
 
+  const findings = [...auditRouterServices(services), ...auditRouterHardening(await readRouterHardening(transport))];
   step.ms = Date.now() - startedAt;
-  const findings = auditRouterServices(services);
   if (findings.length === 0) {
     step.status = 'ok';
     step.detail = 'Só está ligado o que é preciso, e limitado à rede de gestão.';
@@ -1118,6 +1118,141 @@ export function auditRouterServices(services: RouterService[]): RouterServiceFin
     });
   }
 
+  return findings;
+}
+
+export type RouterFirewallRule = {
+  action: string | null;
+  protocol: string | null;
+  dstPort: string | null;
+  inInterface: string | null;
+  inInterfaceList: string | null;
+  connectionState: string | null;
+  disabled: boolean;
+};
+
+/** O resto do que se lê para a blindagem; `null` = não foi possível ler, e esse teste não se faz. */
+export type RouterHardening = {
+  dnsRemote: boolean | null;
+  inputRules: RouterFirewallRule[] | null;
+  bridges: Array<{ name: string; dhcpSnooping: boolean }> | null;
+  macWinboxList: string | null;
+};
+
+const one = (raw: unknown) => (Array.isArray(raw) ? raw[0] : raw) as Record<string, unknown> | undefined;
+const orNull = async <T>(read: () => Promise<T>) => read().catch(() => null);
+
+/** DNS, firewall de entrada, bridges e o WinBox por MAC. Só GETs; o que falhar fica `null`. */
+export async function readRouterHardening(transport: RouterTransport): Promise<RouterHardening> {
+  const [dns, rules, bridges, macWinbox] = await Promise.all([
+    orNull(async () => one(await transport({ method: 'GET', path: '/ip/dns?.proplist=allow-remote-requests' }))),
+    orNull(async () => asArray(await transport({
+      method: 'GET',
+      path: '/ip/firewall/filter?chain=input&.proplist=action,protocol,dst-port,in-interface,in-interface-list,connection-state,disabled'
+    }))),
+    orNull(async () => asArray(await transport({ method: 'GET', path: '/interface/bridge?.proplist=name,dhcp-snooping,disabled' }))),
+    orNull(async () => one(await transport({ method: 'GET', path: '/tool/mac-server/mac-winbox?.proplist=allowed-interface-list' })))
+  ]);
+  return {
+    dnsRemote: dns ? toBool(dns['allow-remote-requests']) : null,
+    inputRules: rules && rules.map((row) => ({
+      action: str(row.action),
+      protocol: str(row.protocol),
+      dstPort: str(row['dst-port']),
+      inInterface: str(row['in-interface']),
+      inInterfaceList: str(row['in-interface-list']),
+      connectionState: str(row['connection-state']),
+      disabled: toBool(row.disabled)
+    })),
+    bridges: bridges && bridges.filter((row) => !toBool(row.disabled) && str(row.name))
+      .map((row) => ({ name: str(row.name)!, dhcpSnooping: toBool(row['dhcp-snooping']) })),
+    macWinboxList: macWinbox ? str(macWinbox['allowed-interface-list']) : null
+  };
+}
+
+/**
+ * Uma regra de entrada que fecha a porta 53 a quem vem de fora: drop/reject, ligada, presa a uma
+ * interface ou lista (a WAN, ou `!LAN`), sem estado de ligação, e sem porta ou com a 53.
+ * ponytail: não segue a ordem das regras (um accept antes do drop passa); ler a cadeia toda se doer.
+ */
+function closesDns(rule: RouterFirewallRule): boolean {
+  if (rule.disabled || !['drop', 'reject'].includes(rule.action ?? '') || rule.connectionState) return false;
+  if (!rule.inInterface && !rule.inInterfaceList) return false;
+  if (rule.protocol && !['udp', 'tcp'].includes(rule.protocol)) return false;
+  return !rule.dstPort || rule.dstPort.split(',').some((part) => {
+    const [from, to = from] = part.split('-').map(Number);
+    return from <= 53 && 53 <= to;
+  });
+}
+
+/** O que está aberto para lá dos serviços: DNS para a Internet, DHCP sem vigia, WinBox por MAC a toda a rede. Pura. */
+export function auditRouterHardening(state: RouterHardening): RouterServiceFinding[] {
+  const findings: RouterServiceFinding[] = [];
+  if (state.dnsRemote && state.inputRules && !state.inputRules.some(closesDns)) {
+    findings.push({
+      services: ['dns'],
+      severity: 'grave',
+      detail: 'dns — o router responde a pedidos DNS e nenhuma regra de entrada fecha a porta 53 a quem vem da WAN. Serve de amplificador a ataques e explica avisos de "SYN flooding on tcp port 53".',
+      command: [
+        '/ip firewall filter add chain=input in-interface-list=WAN protocol=udp dst-port=53 action=drop comment="ispm: DNS fechado à WAN" place-before=0',
+        '/ip firewall filter add chain=input in-interface-list=WAN protocol=tcp dst-port=53 action=drop comment="ispm: DNS fechado à WAN" place-before=0'
+      ].join('\n')
+    });
+  }
+  const unguarded = (state.bridges ?? []).filter((bridge) => !bridge.dhcpSnooping).map((bridge) => bridge.name);
+  if (unguarded.length > 0) {
+    findings.push({
+      services: unguarded,
+      severity: 'aviso',
+      detail: `${unguarded.join(', ')} — sem DHCP snooping: um router de cliente ligado ao contrário entrega endereços à rede toda.`,
+      command: unguarded.map((name) => `/interface bridge set ${name} dhcp-snooping=yes`).join('\n')
+    });
+  }
+  if (state.macWinboxList === 'all') {
+    findings.push({
+      services: ['mac-winbox'],
+      severity: 'aviso',
+      detail: 'mac-winbox — o WinBox por MAC aceita ligações de qualquer porta, incluindo as dos clientes.',
+      command: '/tool mac-server mac-winbox set allowed-interface-list=LAN'
+    });
+  }
+  return findings;
+}
+
+/**
+ * Acessos PPPoE que ninguém controla: criados fora do ISPM sem serviço, e perfis sem limite de
+ * velocidade em uso por um acesso ligado (o `admin`/`ULTRA` de 19/10/2026). Pura.
+ */
+export function auditPppAccess(
+  foreign: RouterSecret[],
+  secrets: RouterSecret[],
+  profiles: Array<Pick<RouterProfile, 'name' | 'rateLimit'>>,
+  /** O perfil de suspensão corta pelo endereço, não pela velocidade. */
+  exempt: string[] = []
+): RouterServiceFinding[] {
+  const findings: RouterServiceFinding[] = [];
+  const names = foreign.map((secret) => secret.name);
+  if (names.length > 0) {
+    findings.push({
+      services: names,
+      severity: 'aviso',
+      detail: `${names.join(', ')} — acesso${names.length > 1 ? 's' : ''} PPPoE criado${names.length > 1 ? 's' : ''} fora do ISPM e sem serviço. Se não for de nenhum cliente, desligue-o.`,
+      command: names.map((name) => `/ppp secret disable [find name="${name}"]`).join('\n')
+    });
+  }
+  const limited = new Map(profiles.map((profile) => [profile.name, Boolean(profile.rateLimit)]));
+  // Sem perfil é o `default`, que no RouterOS não traz limite nenhum.
+  const unlimited = [...new Set(secrets
+    .filter((secret) => !secret.disabled && !exempt.includes(secret.profile ?? 'default') && limited.get(secret.profile ?? 'default') === false)
+    .map((secret) => secret.profile ?? 'default'))];
+  if (unlimited.length > 0) {
+    findings.push({
+      services: unlimited,
+      severity: 'aviso',
+      detail: `${unlimited.join(', ')} — perfil PPP sem limite de velocidade em uso por um acesso ligado: esse cliente leva a Starlink toda.`,
+      command: unlimited.map((name) => `/ppp secret print where profile="${name}" disabled=no`).join('\n')
+    });
+  }
   return findings;
 }
 
