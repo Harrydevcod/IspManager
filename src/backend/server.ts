@@ -1,3 +1,4 @@
+import { captureException } from '@sentry/core';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { getDatabase, getSqliteDatabase, requiresRestart } from './db/database';
@@ -93,6 +94,12 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
   // licença não as permite e deixa passar leituras, autenticação e backups.
   // Inerte enquanto não houver chave pública configurada (ver ./lib/license-key).
   app.addHook('onRequest', licenseGateHook());
+
+  // Erros 5xx para a Sentry. Sem init (testes, dev, consentimento desligado) é um no-op.
+  // Só o erro: o pedido (URL, corpo, cabeçalhos) não vai.
+  app.addHook('onError', async (_request, _reply, error) => {
+    if ((error.statusCode ?? 500) >= 500) captureException(error);
+  });
 
   getDatabase();
 

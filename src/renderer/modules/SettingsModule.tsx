@@ -32,6 +32,7 @@ import { StripeTab } from './settings/StripeTab';
 import type { SettingsFormState } from './settings/settingsForm';
 import { NetworkTab, type RouterEnforcementState, type RouterTestReport } from './settings/NetworkTab';
 import { RouterLiveDialog } from './settings/RouterLiveDialog';
+import { ErrorReportsPanel } from './ErrorReportsPanel';
 import { JobHealthPanel } from './JobHealthPanel';
 import { LicensePanel } from './LicensePanel';
 import { VaultPanel } from './settings/VaultPanel';
@@ -919,7 +920,12 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
 
       {activeTab === 'backups' && <BackupsPanel />}
 
-      {activeTab === 'jobs' && <JobHealthPanel />}
+      {activeTab === 'jobs' && (
+        <>
+          <JobHealthPanel />
+          <ErrorReportsPanel />
+        </>
+      )}
 
       {activeTab === 'license' && <LicensePanel />}
       {activeTab === 'vault' && (auth.isAuthBypassed || auth.hasRole('admin')) && <VaultPanel />}
