@@ -3,6 +3,9 @@ declare global {
   interface Window {
     ispm?: {
       platform: string;
+      errorReportsActive?: boolean;
+      getErrorReports?: () => Promise<{ available: boolean; enabled: boolean; active: boolean }>;
+      setErrorReports?: (enabled: boolean) => Promise<boolean>;
       onShowReleaseNotes?: (callback: (version: string) => void) => () => void;
       relaunch?: () => Promise<void>;
       chooseBackupFile?: () => Promise<string | null>;
