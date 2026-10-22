@@ -253,7 +253,14 @@ function registerDocumentPrint() {
  */
 function initAutoUpdater() {
   autoUpdater.autoDownload = true;
+  // O instalador tem ~120 MB: pela Starlink são minutos. Sem progresso à vista, parecia parado
+  // (2.36: a descarga ia a 60% quando o utilizador desistiu e instalou à mão).
+  const progress = (value: number) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setProgressBar(value); };
+  autoUpdater.on('download-progress', (info) => progress(info.percent / 100));
+  let downloaded = false;
   autoUpdater.on('update-downloaded', async (info) => {
+    downloaded = true;
+    progress(-1);
     const options = {
       type: 'info' as const,
       buttons: ['Reiniciar e instalar agora', 'Instalar ao fechar a aplicação'],
@@ -276,9 +283,12 @@ function initAutoUpdater() {
     if (response === 0) autoUpdater.quitAndInstall();
   });
   autoUpdater.on('error', (err) => {
+    progress(-1);
     console.error('[updater]', err instanceof Error ? err.message : err);
   });
   void autoUpdater.checkForUpdates();
+  // O PC do ISPM fica dias aberto: verificar só no arranque deixava a release seguinte por ver.
+  setInterval(() => { if (!downloaded) void autoUpdater.checkForUpdates(); }, 6 * 60 * 60 * 1000).unref();
 }
 
 async function createWindow() {
