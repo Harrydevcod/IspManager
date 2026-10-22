@@ -155,6 +155,9 @@ test('alterações fora do ISPM e portas a cair dizem o quê, quem e o que procu
   // Na tabela dos Incidentes, cada coisa na sua coluna e em português.
   const change = finding({ kind: 'config_externa', subject: 'ppp profile <ULTRA> changed', label: 'harrytec · winbox', count: 4 });
   expect([findingSubject(change), findingWho(change), findingLabel(change)]).toEqual(['Perfil PPP ULTRA', 'harrytec (WinBox)', 'Alterou']);
+  // Smoke da 2.36: a regra de firewall de 21/10 aparecia como "filter rule".
+  const rule = finding({ kind: 'config_externa', subject: 'filter rule added', label: 'harrytec · winbox', count: 1 });
+  expect([findingSubject(rule), findingLabel(rule)]).toEqual(['Regra de firewall', 'Criou']);
   const clock = finding({ kind: 'router_reiniciou', subject: 'relogio', label: 'Relógio acertado em 617 min', count: 1 });
   expect([findingSubject(clock), findingWho(clock), findingLabel(clock)]).toEqual(['Relógio', 'O próprio router', 'Relógio acertado em 617 min']);
 });

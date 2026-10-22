@@ -107,7 +107,13 @@ function parseConfigChange(finding: Pick<HealthFinding, 'subject' | 'label'>) {
   const object = match[1]
     .replace(/^ppp secret <(.+)>$/, 'Acesso PPPoE $1')
     .replace(/^ppp profile <(.+)>$/, 'Perfil PPP $1')
-    .replace(/^user (\S+)$/, 'Utilizador $1');
+    .replace(/^user (\S+)$/, 'Utilizador $1')
+    // Objetos sem nome no registo do RouterOS (medido a 21/10: "filter rule added").
+    .replace(/^filter rule$/, 'Regra de firewall')
+    .replace(/^nat rule$/, 'Regra de NAT')
+    .replace(/^mangle rule$/, 'Regra de mangle')
+    .replace(/^address list entry$/, 'Entrada de lista de endereços')
+    .replace(/^pool <(.+)>$/, 'Pool $1');
   const [user = '', channel = ''] = finding.label.split(' · ');
   return { verb: CONFIG_VERBS[match[2]], object, user, channel: CONFIG_CHANNELS[channel] ?? channel };
 }
