@@ -6,6 +6,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.38](https://github.com/Harrydevcod/IspManager/releases/tag/v2.38.0) — 2026-10-26
+
 ### Adicionado
 - **Progresso da atualização dentro do ISPM.** Enquanto a versão nova descarrega, o rodapé da barra lateral mostra "A descarregar 2.38 · 45 % · 54 de 120 MB" com uma barra; no fim, "pronto a instalar" e o botão **Reiniciar e instalar** (também para quem escolheu instalar ao fechar). Com a barra lateral recolhida fica só a barra. A primeira atualização a mostrá-lo é a que vem a seguir à que o traz.
 
