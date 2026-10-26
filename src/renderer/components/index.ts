@@ -8,6 +8,7 @@ export * from './ModuleHeaderActions';
 export * from './Field';
 export * from './SecretField';
 export * from './VaultBanner';
+export * from './UpdateStatus';
 export * from './Select';
 export * from './ModeSelect';
 export * from './WanModeSelect';
