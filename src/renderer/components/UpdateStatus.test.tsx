@@ -52,7 +52,7 @@ describe('UpdateStatus', () => {
   test('a descarga mostra a versão, a percentagem e os MB, e acompanha o progresso', async () => {
     const bridge = stubBridge({ state: 'downloading', version: '2.38.0', percent: 45.7, transferred: 54_000_000, total: 120_000_000 });
     const container = await mount();
-    expect(container.textContent).toContain('A descarregar 2.38.0 · 45 % · 54 de 120 MB');
+    expect(container.textContent).toContain('A descarregar 2.38 · 45 % · 54 de 120 MB');
     expect(container.querySelector('progress')?.value).toBe(45);
 
     bridge.emit({ state: 'downloading', version: '2.38.0', percent: 90, transferred: 108_000_000, total: 120_000_000 });
@@ -63,7 +63,7 @@ describe('UpdateStatus', () => {
     const bridge = stubBridge({ state: 'idle' });
     const container = await mount();
     bridge.emit({ state: 'downloaded', version: '2.38.0' });
-    expect(container.textContent).toContain('ISPM 2.38.0 pronto a instalar');
+    expect(container.textContent).toContain('ISPM 2.38 pronto a instalar');
     act(() => container.querySelector('button')!.click());
     expect(bridge.installUpdate).toHaveBeenCalledOnce();
   });

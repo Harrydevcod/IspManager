@@ -762,6 +762,8 @@ h2 {
   gap: var(--space-1-5);
   padding: var(--space-2) var(--space-2) 0;
   justify-items: start;
+  /* O menu rola por baixo do rodapé: uma linha separa-o do aviso. */
+  border-top: 1px solid var(--border);
 }
 
 .sidebar-update p {
@@ -799,7 +801,7 @@ h2 {
   transition: width 400ms ease;
 }
 
-.sidebar-update-error {
+.sidebar-update-error p {
   color: var(--warn);
 }
 
