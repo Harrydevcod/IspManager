@@ -5,6 +5,7 @@ import { autoUpdater } from 'electron-updater';
 import { startBackend } from '../backend/server';
 import { createLocalProtection } from '../backend/lib/local-protection';
 import { ERROR_REPORTS_ARG } from '../shared/error-reports';
+import type { UpdateStatus } from '../shared/update-status';
 import { errorReportsActive, initErrorReports, registerErrorReportsIpc } from './error-reports';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
@@ -251,16 +252,48 @@ function registerDocumentPrint() {
  * electron-updater não tem `app-update.yml`. Qualquer falha (offline, sem
  * release) é registada e ignorada: nunca pode impedir o uso da app.
  */
+let updateStatus: UpdateStatus = { state: 'idle' };
+let updateSentAt = 0;
+
+/** Guarda o estado e manda-o ao ecrã; o progresso, no máximo uma vez por segundo. */
+function setUpdateStatus(next: UpdateStatus) {
+  updateStatus = next;
+  const now = Date.now();
+  if (next.state === 'downloading' && next.percent < 100 && now - updateSentAt < 1000) return;
+  updateSentAt = now;
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update:status', next);
+}
+
+/** Registado sempre (também em dev), para o ecrã nunca ficar à espera de um handler que não existe. */
+function registerUpdateStatus() {
+  ipcMain.handle('update:get-status', () => updateStatus);
+  ipcMain.handle('update:install', () => {
+    if (updateStatus.state !== 'downloaded') return false;
+    autoUpdater.quitAndInstall();
+    return true;
+  });
+}
+
 function initAutoUpdater() {
   autoUpdater.autoDownload = true;
   // O instalador tem ~120 MB: pela Starlink são minutos. Sem progresso à vista, parecia parado
-  // (2.36: a descarga ia a 60% quando o utilizador desistiu e instalou à mão).
+  // (2.36: a descarga ia a 60% quando o utilizador desistiu e instalou à mão). Mostra-se no
+  // ícone da barra de tarefas e no rodapé da barra lateral.
   const progress = (value: number) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setProgressBar(value); };
-  autoUpdater.on('download-progress', (info) => progress(info.percent / 100));
+  let version = '';
+  autoUpdater.on('update-available', (info) => {
+    version = info.version;
+    setUpdateStatus({ state: 'downloading', version, percent: 0, transferred: 0, total: 0 });
+  });
+  autoUpdater.on('download-progress', (info) => {
+    progress(info.percent / 100);
+    setUpdateStatus({ state: 'downloading', version, percent: info.percent, transferred: info.transferred, total: info.total });
+  });
   let downloaded = false;
   autoUpdater.on('update-downloaded', async (info) => {
     downloaded = true;
     progress(-1);
+    setUpdateStatus({ state: 'downloaded', version: info.version });
     const options = {
       type: 'info' as const,
       buttons: ['Reiniciar e instalar agora', 'Instalar ao fechar a aplicação'],
@@ -284,7 +317,10 @@ function initAutoUpdater() {
   });
   autoUpdater.on('error', (err) => {
     progress(-1);
-    console.error('[updater]', err instanceof Error ? err.message : err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[updater]', message);
+    // Uma falha depois de descarregada não estraga o que já está pronto a instalar.
+    if (!downloaded) setUpdateStatus({ state: 'error', message });
   });
   void autoUpdater.checkForUpdates();
   // O PC do ISPM fica dias aberto: verificar só no arranque deixava a release seguinte por ver.
@@ -404,6 +440,7 @@ app.whenReady().then(async () => {
 
   registerDocumentSave();
   registerDocumentPrint();
+  registerUpdateStatus();
 
   await createWindow();
 

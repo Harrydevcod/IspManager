@@ -1,6 +1,6 @@
 import { Activity, AlertTriangle, Boxes, Cable, ClipboardList, FileText, Gauge, Keyboard, Landmark, LifeBuoy, LogOut, Network, PanelLeftClose, PanelLeftOpen, Plus, Router, Search, Settings, ShieldCheck, TrendingUp, UserCog2, UsersRound, Wifi } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, Message, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider, VaultBanner } from './components';
+import { AuthGate, CommandPalette, ConfirmProvider, LicenseBanner, Message, ReleaseNotesDialog, ShortcutsDialog, ThemeOnboarding, ThemeToggle, ToastProvider, UpdateStatus, VaultBanner } from './components';
 import type { CommandPaletteItem } from './components';
 import { AuthProvider, authFetch, useAuth } from './lib/auth';
 import { PRESENCE_URL, presenceMessage, type NetworkPresence } from './lib/networkPresence';
@@ -385,6 +385,7 @@ function AppShell() {
         </nav>
 
         <div className="sidebar-foot">
+          <UpdateStatus />
           <div className="sidebar-system">
             <div className={`status ${health}`} role="status" aria-live="polite" title={healthLabel}>
               <Activity size={14} aria-hidden />

@@ -1,3 +1,4 @@
+import type { UpdateStatus } from '../shared/update-status';
 
 declare global {
   interface Window {
@@ -7,6 +8,9 @@ declare global {
       getErrorReports?: () => Promise<{ available: boolean; enabled: boolean; active: boolean }>;
       setErrorReports?: (enabled: boolean) => Promise<boolean>;
       onShowReleaseNotes?: (callback: (version: string) => void) => () => void;
+      getUpdateStatus?: () => Promise<UpdateStatus>;
+      onUpdateStatus?: (callback: (status: UpdateStatus) => void) => () => void;
+      installUpdate?: () => Promise<boolean>;
       relaunch?: () => Promise<void>;
       chooseBackupFile?: () => Promise<string | null>;
       chooseBackupDir?: () => Promise<string | null>;

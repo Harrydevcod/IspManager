@@ -1,5 +1,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 
+// O mesmo que `src/shared/update-status.ts`: o preload compila só com `src/main` (rootDir).
+type UpdateStatus = { state: 'idle' | 'downloading' | 'downloaded' | 'error' } & Record<string, unknown>;
+
 contextBridge.exposeInMainWorld('ispm', {
   platform: process.platform,
   // ERROR_REPORTS_ARG de src/shared/error-reports.ts; o preload em sandbox não importa módulos locais.
@@ -14,6 +17,15 @@ contextBridge.exposeInMainWorld('ispm', {
       ipcRenderer.removeListener('app:show-release-notes', listener);
     };
   },
+  getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:get-status'),
+  onUpdateStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, status: UpdateStatus) => callback(status);
+    ipcRenderer.on('update:status', listener);
+    return () => {
+      ipcRenderer.removeListener('update:status', listener);
+    };
+  },
+  installUpdate: (): Promise<boolean> => ipcRenderer.invoke('update:install'),
   relaunch: () => ipcRenderer.invoke('app:relaunch'),
   chooseBackupFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:choose-backup-file'),
   chooseBackupDir: (): Promise<string | null> => ipcRenderer.invoke('dialog:choose-backup-dir'),
