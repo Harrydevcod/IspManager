@@ -898,7 +898,8 @@ export const routerLogLines = sqliteTable('router_log_lines', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   at: text('at').notNull(),
   topics: text('topics').notNull(),
-  message: text('message').notNull()
+  message: text('message').notNull(),
+  seq: integer('seq').notNull().default(0)
 });
 
 export const networkDiary = sqliteTable('network_diary', {

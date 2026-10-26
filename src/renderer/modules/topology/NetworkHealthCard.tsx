@@ -54,6 +54,9 @@ export function NetworkHealthCard({ onOpenNetwork }: { onOpenNetwork: () => void
               Router: {health.lastRouterReadAt ? formatPtDateTime(health.lastRouterReadAt) : 'por ler'}
               {health.routerJournal && ' · registo contínuo no cartão'}
             </p>
+            {health.routerReadError && (
+              <p className="network-health-seen warn" role="status">Registo do router por ler: {health.routerReadError}</p>
+            )}
 
             <div className="dashboard-card-footer">
               <Button variant="secondary" className="dashboard-cta" leadingIcon={<RadioTower size={14} aria-hidden />} onClick={onOpenNetwork}>

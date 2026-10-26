@@ -60,3 +60,20 @@ não altera o router sozinho".
 - **Mantém-se:** posse pela marca `ispm:plano:<id>`, nunca apagar perfis, ensaio sem escritas. A passagem
   corre como `sistema`, com auditoria própria, e a gravação do operador fica auditada à parte. A velocidade
   nova só chega a uma sessão já ligada quando ela reconectar.
+
+## Revisão (2026-10-26): campos de rede vêm das Definições
+
+O perfil-base `default` do router de produção não tem endereços. A 2026-10-09 o `PLANO-20-10` saiu só com
+nome e limite, e os 24 secrets associados ficariam sem IP e fora da lista `PPPOE` da firewall. Copiar de um
+perfil-base não dá garantia nenhuma, e `interface-list` e `parent-queue` nem eram copiados.
+
+- **Os campos de rede são definições do ISPM:** `routerosPppLocalAddress`, `routerosPppRemotePool`,
+  `routerosPppInterfaceList` (omissão `PPPOE`), `routerosPppDns` (omissão: o gateway) e
+  `routerosPppParentQueue`, mais `only-one=yes`. O perfil-base só serve para os preencher ("Ler do perfil")
+  e para o serviço sem perfil no plano.
+- **Sem um deles não se cria perfil.** O plano fica `pending` com o campo em falta dito em pt-PT.
+- **Isto substitui "só no `rate-limit`".** Num perfil com a marca do próprio plano, o ISPM corrige por PATCH,
+  no mesmo `.id`, os campos de rede em falta ou diferentes. O `rate-limit` compara-se só na primeira parte
+  (`10M/20M`), para o burst posto no router ficar. Continua a nunca apagar nem recriar perfis, e a nunca
+  mexer em perfis sem a marca.
+- **Auditoria com antes e depois** em `audit_logs.metadata_json`.

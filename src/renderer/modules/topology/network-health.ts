@@ -20,6 +20,8 @@ export type NetworkHealth = {
   lastProbeAt: string | null;
   lastRouterReadAt: string | null;
   routerJournal: boolean;
+  /** Porque é que a última leitura do registo do router falhou; `null` se correu bem. */
+  routerReadError?: string | null;
   antennas: HealthOutage[];
   clients: HealthOutage[];
   downNow: HealthDown[];

@@ -5,7 +5,7 @@ import { detectAdminNetwork, isOffNetwork, offNetworkReason } from '../lib/admin
 import { createDiaryEntry, listDiary, loadNetworkHealth, loginLookup, macLookup, updateDiaryEntry } from '../lib/network-health';
 import { loadIncidents } from '../lib/network-incidents';
 import { readLog, type LogLookups } from '../lib/router-log-reading';
-import { installLogJournal, journalDisk, listLogDays, loadLogDay } from '../lib/router-log-watch';
+import { importJournalHistory, installLogJournal, journalDisk, listLogDays, loadLogDay } from '../lib/router-log-watch';
 import { loadNetworkStatus, loadProbeEvents, mapWithLimit, readProbeConfig, runNetworkProbe } from '../lib/network-probe';
 import {
   createTransport,
@@ -60,7 +60,7 @@ import { collectWanUsage, loadWanUsage, saveStarlinkCycleDay } from '../lib/wan-
 import { installUsageCounter } from '../lib/usage-counter';
 import { collectClientUsage, loadClientUsage } from '../lib/client-usage';
 import { backupRouterConfig, listSnapshots, loadSnapshot } from '../lib/router-config-backup';
-import { applyPlanProfile, readBaseProfileName, readSuspendedProfileName } from '../lib/plan-profiles';
+import { applyPlanProfile, auditMetadata, describeAction, readBaseProfileName, readSuspendedProfileName } from '../lib/plan-profiles';
 import { recordAudit } from '../lib/audit';
 import { canStoreSecrets } from '../lib/secrets';
 import { readPppoePrefix } from '../lib/services';
@@ -429,9 +429,11 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       return {
         available: true,
         baseProfile,
-        profiles: profiles.map(({ name, rateLimit, comment }) => ({
+        profiles: profiles.map(({ name, rateLimit, comment, localAddress, remoteAddress, dnsServer, interfaceList, parentQueue }) => ({
           name,
           rateLimit,
+          // Para "Ler do router" nas Definições: os campos de rede que os perfis dos planos levam.
+          network: { localAddress, remoteAddress, dnsServer, interfaceList, parentQueue },
           ownerPlanId: comment?.startsWith('ispm:plano:') ? Number(comment.slice('ispm:plano:'.length)) || null : null
         }))
       };
@@ -741,6 +743,27 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
   // O registo guardado lê-se da base: responde mesmo com o router fora de alcance.
   app.get('/api/network/router/log/days', adminOnly, async () => listLogDays(getSqliteDatabase()));
 
+  /** Relê o cartão todo para as linhas guardadas. Só leituras no router: corre também em ensaio. */
+  app.post('/api/network/router/log/import', adminOnly, async (request, reply) => {
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    if (!config.enabled || !isRouterConfigured(config)) {
+      return reply.status(400).send({ error: 'Integração MikroTik desligada ou por configurar' });
+    }
+    if (journalDisk(db) === null) return reply.status(409).send({ error: 'O registo ainda não é guardado no cartão do router.' });
+    try {
+      const result = await importJournalHistory(db, createTransport(config));
+      recordAudit(request, {
+        action: 'router_log_import', entityType: 'router',
+        summary: `Importou o cartão do router: ${result.inserted} linha(s) novas de ${result.read} lidas`, metadata: result
+      });
+      return result;
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return reply.status(502).send({ error: `${failure.title}. ${failure.detail}`, code: failure.code });
+    }
+  });
+
   app.get('/api/network/router/log/history', adminOnly, async (request, reply) => {
     const query = z.object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(request.query);
     if (!query.success) return reply.status(400).send({ error: 'Dia inválido' });
@@ -768,7 +791,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
           action: result.applied ? `router_profile_${action.kind}` : `router_profile_${action.kind}_dry_run`,
           entityType: 'plan',
           entityId: params.data.id,
-          summary: `${result.applied ? '' : 'Simulou: '}${action.kind === 'create' ? 'criou' : 'atualizou'} o perfil ${action.name} (${action.rateLimit}) no router`
+          summary: describeAction(action, !result.applied),
+          metadata: auditMetadata(action)
         });
       }
       return result;

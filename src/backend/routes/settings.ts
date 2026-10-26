@@ -143,8 +143,14 @@ const settingsSchema = z.object({
   }, z.boolean().optional().default(true)),
   routerosIntervalSeconds: z.coerce.number().int().min(30).max(3600).optional().default(120),
   routerosMaxDisablesPerRun: z.coerce.number().int().min(1).max(500).optional().default(5),
-  // Perfil PPP de onde os perfis criados para os planos copiam endereços e DNS.
+  // Perfil PPP dos serviços sem plano no router; e de onde se leem os campos de rede abaixo.
   routerosBaseProfile: z.string().trim().max(64).regex(/^[\w .-]*$/).optional().default('default'),
+  // Campos de rede dos perfis que o ISPM cria para os planos (sem eles o cliente fica sem IP).
+  routerosPppLocalAddress: z.string().trim().max(64).regex(/^[\w.:-]*$/).optional().default(''),
+  routerosPppRemotePool: z.string().trim().max(64).regex(/^[\w.:-]*$/).optional().default(''),
+  routerosPppInterfaceList: z.string().trim().max(64).regex(/^[\w.-]*$/).optional().default('PPPOE'),
+  routerosPppDns: z.string().trim().max(128).regex(/^[\w.:,-]*$/).optional().default(''),
+  routerosPppParentQueue: z.string().trim().max(64).regex(/^[\w.-]*$/).optional().default(''),
   routerosSuspendedProfile: z.string().trim().max(64).regex(/^[\w .-]*$/).optional().default('SUSPENSO'),
   routerosPppoePrefix: z.string().trim().max(16).regex(/^[a-z0-9-]*$/).optional().default(''),
   autoSuspensionEnabled: strictOptionalBoolean,
@@ -237,6 +243,11 @@ const defaultSettings = {
   routerosIntervalSeconds: 120,
   routerosMaxDisablesPerRun: 5,
   routerosBaseProfile: 'default',
+  routerosPppLocalAddress: '',
+  routerosPppRemotePool: '',
+  routerosPppInterfaceList: 'PPPOE',
+  routerosPppDns: '',
+  routerosPppParentQueue: '',
   routerosSuspendedProfile: 'SUSPENSO',
   routerosPppoePrefix: '',
   autoSuspensionEnabled: false,

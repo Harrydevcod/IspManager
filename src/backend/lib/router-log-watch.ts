@@ -46,6 +46,8 @@ const LINES_COMPACTED = 'routerLogLinesCompacted';
 // Marca de que os achados que nasceram na 0087 já foram contados nas linhas guardadas antes dela.
 const KINDS_0087_COUNTED = 'routerLogKinds0087Counted';
 const KINDS_0087: FindingKind[] = ['config_externa', 'porta_oscila', 'router_reiniciou'];
+/** A última leitura do registo que falhou, até uma voltar a correr bem. */
+export const READ_ERROR = 'routerLogReadError';
 
 /** A hora completa de uma linha: o RouterOS pode escrever só a hora nas de hoje. */
 const entryTime = (entry: RouterLogEntry, now: Date) => /^\d{4}-\d{2}-\d{2} /.test(entry.time) ? entry.time : `${localDay(now)} ${entry.time}`;
@@ -162,7 +164,8 @@ const readJournalCursor = (db: Database.Database): JournalCursor | null => {
 /** O disco onde o router escreve o diário, ou `null` enquanto a vigia lê o registo em memória. */
 export const journalDisk = (db: Database.Database) => readSetting(db, 'routerLogJournal');
 
-type Reading = { fresh: RouterLogEntry[]; key: string; cursor: string | null; recovered: RouterLogEntry[] | null };
+/** `all`: tudo o que a leitura trouxe, contado ou não; é sobre isto que se dá o `seq` às linhas. */
+type Reading = { fresh: RouterLogEntry[]; all: RouterLogEntry[]; key: string; cursor: string | null; recovered: RouterLogEntry[] | null };
 
 /**
  * Lê as linhas novas: do diário em disco se estiver instalado, senão do registo em memória.
@@ -173,8 +176,9 @@ type Reading = { fresh: RouterLogEntry[]; key: string; cursor: string | null; re
 async function readFresh(db: Database.Database, transport: RouterTransport): Promise<Reading> {
   const disk = journalDisk(db);
   if (disk === null) {
-    const { fresh, cursor } = freshEntries(await listLog(transport), readSetting(db, 'routerLogCursor'));
-    return { fresh, key: 'routerLogCursor', cursor, recovered: null };
+    const all = await listLog(transport);
+    const { fresh, cursor } = freshEntries(all, readSetting(db, 'routerLogCursor'));
+    return { fresh, all, key: 'routerLogCursor', cursor, recovered: null };
   }
   const previous = readJournalCursor(db);
   const read = async (since: string | null) => {
@@ -182,7 +186,7 @@ async function readFresh(db: Database.Database, transport: RouterTransport): Pro
     const { fresh, cursor } = freshJournalLines(entries, previous);
     const counted = new Set(fresh);
     return {
-      reading: { fresh, key: 'routerLogJournalCursor', cursor: cursor && JSON.stringify(cursor) },
+      reading: { fresh, all: entries, key: 'routerLogJournalCursor', cursor: cursor && JSON.stringify(cursor) },
       older: entries.filter((entry) => !counted.has(entry))
     };
   };
@@ -225,11 +229,29 @@ export function compactStoredLines(db: Database.Database): number {
 }
 
 /**
+ * A ordem de cada linha entre as iguais do mesmo segundo (0, 1, 2…), contada sobre tudo o que
+ * a leitura trouxe. As linhas desse segundo já guardadas vêm na mesma leitura (o ficheiro ou a
+ * memória que as tem é relido), por isso o `seq` sai igual em cada releitura e o
+ * `UNIQUE(at, topics, message, seq)` da 0088 trava os repetidos sem perder os iguais a sério.
+ */
+export function withSeq(entries: RouterLogEntry[], all: RouterLogEntry[], now: Date): Array<RouterLogEntry & { seq: number }> {
+  const seen = new Map<string, number>();
+  const seqOf = new Map<RouterLogEntry, number>();
+  for (const entry of inLogOrder(all)) {
+    const key = JSON.stringify([entryTime(entry, now), entry.topics, entry.message]);
+    const seq = seen.get(key) ?? 0;
+    seen.set(key, seq + 1);
+    seqOf.set(entry, seq);
+  }
+  return entries.map((entry) => ({ ...entry, seq: seqOf.get(entry) ?? 0 }));
+}
+
+/**
  * Lê o registo do router e soma o que é novo. Só GETs no router.
  * Uma fonte de cada vez: o upsert soma contagens, e as duas contariam a dobrar.
  */
 export async function watchRouterLog(db: Database.Database, transport: RouterTransport, now = new Date()) {
-  const { fresh, key, cursor, recovered } = await readFresh(db, transport);
+  const { fresh, all, key, cursor, recovered } = await readFresh(db, transport);
   const router = fresh.length > 0 ? await readRouterIdentity(transport) : null;
   const findings = router ? collectFindings(fresh, router, now) : [];
   // As linhas já guardadas antes de a vigia saber destes três tipos: contam-se uma vez, só eles
@@ -248,7 +270,8 @@ export async function watchRouterLog(db: Database.Database, transport: RouterTra
   const dropDuplicate = db.prepare("DELETE FROM router_log_findings WHERE kind = 'ip_duplicado' AND subject = ?");
   const setSetting = db.prepare(`INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`);
-  const keepLine = db.prepare('INSERT INTO router_log_lines (at, topics, message) VALUES (?, ?, ?)');
+  // Reler o que já está guardado não muda nada: a 0088 dá a chave pelo conteúdo.
+  const keepLine = db.prepare('INSERT OR IGNORE INTO router_log_lines (at, topics, message, seq) VALUES (?, ?, ?, ?)');
   const dropOldLines = db.prepare('DELETE FROM router_log_lines WHERE at < ?');
   db.transaction(() => {
     if (readSetting(db, LINES_COMPACTED) === null) {
@@ -256,8 +279,9 @@ export async function watchRouterLog(db: Database.Database, transport: RouterTra
       setSetting.run(LINES_COMPACTED, now.toISOString());
     }
     // Guarda-se o que aconteceu, não os totais que os contadores despejam no registo.
-    for (const entry of [...compactEntries(inLogOrder(recovered ?? [])), ...compactEntries(inLogOrder(fresh))]) {
-      keepLine.run(entryTime(entry, now), entry.topics, entry.message);
+    // O `seq` dá-se antes de encurtar: o encurtamento copia a linha e leva-o consigo.
+    for (const entry of [...compactEntries(inLogOrder(withSeq(recovered ?? [], all, now))), ...compactEntries(inLogOrder(withSeq(fresh, all, now)))]) {
+      keepLine.run(entryTime(entry, now), entry.topics, entry.message, (entry as RouterLogEntry & { seq: number }).seq);
     }
     dropOldLines.run(localDay(new Date(now.getTime() - LOG_RETENTION_DAYS * 86_400_000)));
     if (recovered !== null) setSetting.run(LINES_RECOVERED, now.toISOString());
@@ -282,10 +306,29 @@ function loadStoredLines(db: Database.Database): RouterLogEntry[] {
   return rows.map((row) => ({ id: `*${row.id.toString(16)}`, time: row.at, topics: row.topics, message: row.message }));
 }
 
-/** Os dias que têm linhas guardadas, do mais recente para o mais antigo. */
-export function listLogDays(db: Database.Database): Array<{ day: string; lines: number }> {
-  return db.prepare('SELECT substr(at, 1, 10) AS day, COUNT(*) AS lines FROM router_log_lines GROUP BY day ORDER BY day DESC')
-    .all() as Array<{ day: string; lines: number }>;
+/** Os dias que têm linhas guardadas, do mais recente para o mais antigo, com a última linha de cada. */
+export function listLogDays(db: Database.Database): Array<{ day: string; lines: number; lastAt: string }> {
+  return db.prepare('SELECT substr(at, 1, 10) AS day, COUNT(*) AS lines, MAX(at) AS lastAt FROM router_log_lines GROUP BY day ORDER BY day DESC')
+    .all() as Array<{ day: string; lines: number; lastAt: string }>;
+}
+
+/**
+ * Relê o cartão inteiro e guarda o que faltar. Só linhas: os achados já foram somados pela
+ * vigia, e somá-los outra vez contava a dobrar. Correr duas vezes não muda nada (0088).
+ */
+export async function importJournalHistory(db: Database.Database, transport: RouterTransport, now = new Date()) {
+  const disk = journalDisk(db);
+  if (disk === null) throw new Error('O registo ainda não é guardado no cartão do router.');
+  const entries = parseJournal(await readLogJournal(transport, disk, null));
+  const keepLine = db.prepare('INSERT OR IGNORE INTO router_log_lines (at, topics, message, seq) VALUES (?, ?, ?, ?)');
+  const inserted = db.transaction(() => {
+    let count = 0;
+    for (const entry of compactEntries(inLogOrder(withSeq(entries, entries, now)))) {
+      count += keepLine.run(entryTime(entry, now), entry.topics, entry.message, (entry as RouterLogEntry & { seq: number }).seq).changes;
+    }
+    return count;
+  })();
+  return { read: entries.length, inserted };
 }
 
 /** As linhas de um dia pela ordem em que o router as escreveu, no formato do registo ao vivo. */
@@ -322,5 +365,16 @@ export async function runRouterLogWatchIfDue(now = new Date()) {
   if (!config.enabled || !isRouterConfigured(config)) return { skipped: true, reason: 'Router desligado ou por configurar' };
   const presence = await detectAdminNetwork(db);
   if (isOffNetwork(presence)) return { skipped: true, reason: offNetworkReason(presence) };
-  return watchRouterLog(db, createTransport(config), now);
+  try {
+    const result = await watchRouterLog(db, createTransport(config), now);
+    db.prepare('DELETE FROM app_settings WHERE key = ?').run(READ_ERROR);
+    return result;
+  } catch (err) {
+    // Fica à vista no cartão da Saúde da rede: uma leitura que rebenta de 5 em 5 minutos
+    // não pode parecer só "lido há uma hora".
+    db.prepare(`INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
+      .run(READ_ERROR, err instanceof Error ? err.message : String(err));
+    throw err;
+  }
 }

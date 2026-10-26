@@ -5232,6 +5232,10 @@ label.field-toggle {
   color: var(--text-3);
   font-size: var(--fs-xs);
 }
+.network-health-seen.warn {
+  margin-top: var(--space-1-5);
+  color: var(--warn);
+}
 .network-health-card .dashboard-card-footer {
   /* Encosta ao fundo da coluna: a altura é a da lista ao lado. */
   margin-top: auto;
@@ -6359,6 +6363,17 @@ button.danger:disabled {
   color: var(--warn, var(--text-2));
   font-style: normal;
   font-weight: 600;
+}
+
+.settings-profile-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-profile-source .field {
+  width: 16rem;
 }
 
 .settings-router-cert p {

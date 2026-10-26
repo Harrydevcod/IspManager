@@ -26,6 +26,8 @@ export type NetworkHealth = {
   lastRouterReadAt: string | null;
   /** O router escreve o registo no cartão: o que aconteceu com o ISPM fechado não se perde. */
   routerJournal: boolean;
+  /** Porque é que a última leitura do registo do router falhou; `null` se correu bem. */
+  routerReadError: string | null;
   antennas: HealthOutage[];
   clients: HealthOutage[];
   downNow: HealthDown[];
@@ -194,6 +196,7 @@ export function loadNetworkHealth(db: Database.Database, hours = 72, now = new D
     lastProbeAt,
     lastRouterReadAt: (db.prepare("SELECT value FROM app_settings WHERE key = 'routerLogReadAt'").get() as { value: string } | undefined)?.value ?? null,
     routerJournal: db.prepare("SELECT 1 FROM app_settings WHERE key = 'routerLogJournal'").get() !== undefined,
+    routerReadError: (db.prepare("SELECT value FROM app_settings WHERE key = 'routerLogReadError'").get() as { value: string } | undefined)?.value ?? null,
     antennas,
     clients,
     downNow,

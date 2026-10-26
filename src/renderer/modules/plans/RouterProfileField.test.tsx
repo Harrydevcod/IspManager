@@ -55,7 +55,7 @@ describe('RouterProfileField', () => {
   test('nome que não existe no router: oferece criar', async () => {
     await render('plano-50M');
     expect(buttonText()).toEqual(['Criar no router']);
-    expect(container.textContent).toContain('perfil-base default');
+    expect(container.textContent).toContain('com os campos de rede das Definições');
   });
 
   test('perfil criado pelo ISPM para este plano: oferece atualizar', async () => {

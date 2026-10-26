@@ -607,9 +607,14 @@ const LOG_JOURNAL_FILE = 'ispm-log';
 // Sem `account`: cada leitura do ISPM deixa duas linhas de entrada e saída da API, e enchiam o
 // diário. Os logins falhados são `error,critical` e continuam a entrar.
 const LOG_JOURNAL_TOPICS = ['info,!account', 'warning', 'error', 'critical'];
-// 200 linhas ficam à volta de 20 kB: cada ficheiro lê-se num só bloco do `/file/read`.
+// O que o ISPM exige da ação: escrever no cartão, no ficheiro dele, sem parar quando enche.
+const LOG_JOURNAL_FIELDS = { target: 'disk', 'disk-stop-on-full': 'false' };
+// A rotação só se escolhe ao criar a ação: depois é do operador, e o ISPM lê qualquer uma
+// cujos ficheiros caibam em JOURNAL_FILE_LIMIT. 200 linhas ficam à volta de 20 kB;
 // 500 ficheiros = 100 000 linhas, cerca de 11 MB no cartão.
-const LOG_JOURNAL_FIELDS ={ target: 'disk', 'disk-lines-per-file': '200', 'disk-file-count': '500', 'disk-stop-on-full': 'false' };
+const LOG_JOURNAL_ROTATION = { 'disk-lines-per-file': '200', 'disk-file-count': '500' };
+// Medido no hEX S (7.24): o `/file get … contents` pelo `/execute` serve até cerca de 60 kB.
+export const JOURNAL_FILE_LIMIT = 60_000;
 
 /**
  * Põe o router a escrever o registo também no cartão, com rotação. As regras que escrevem
@@ -621,7 +626,7 @@ export async function ensureLogJournal(transport: RouterTransport, disk: string)
   const readAction = async () => asArray(await transport({ method: 'GET', path: `/system/logging/action?name=${LOG_JOURNAL_ACTION}&.proplist=${proplist}` }))[0];
   const action = await readAction();
   if (!action) {
-    await transport({ method: 'PUT', path: '/system/logging/action', body: { name: LOG_JOURNAL_ACTION, ...fields } });
+    await transport({ method: 'PUT', path: '/system/logging/action', body: { name: LOG_JOURNAL_ACTION, ...fields, ...LOG_JOURNAL_ROTATION } });
   } else if (Object.entries(fields).some(([key, value]) => str(action[key]) !== value)) {
     await transport({ method: 'PATCH', path: `/system/logging/action/${action['.id']}`, body: fields });
   }
@@ -644,16 +649,32 @@ export async function ensureLogJournal(transport: RouterTransport, disk: string)
   }
 }
 
+/** O número de um ficheiro do diário (`ispm-log.12.txt` → 12): o RouterOS dá 0 ao mais recente. */
+const journalIndex = (name: string) => Number(/\.(\d+)(?:\.txt)?$/.exec(name)?.[1] ?? -1);
+
 /**
  * O texto dos ficheiros do diário mexidos desde `since` (hora do router, "AAAA-MM-DD hh:mm:ss"),
- * do mais antigo para o mais recente.
+ * do mais antigo para o mais recente — pelo número do ficheiro, que a rotação mantém em ordem
+ * (a hora de modificação empata ao segundo e o nome põe `.10` antes de `.2`).
  */
 export async function readLogJournal(transport: RouterTransport, disk: string, since: string | null): Promise<string> {
   const prefix = `${disk}/${LOG_JOURNAL_FILE}.`;
   const files = asArray(await transport({ method: 'GET', path: '/file?.proplist=name,size,last-modified' }))
     .map((row) => ({ name: str(row.name) ?? '', size: num(row.size) ?? 0, modified: str(row['last-modified']) ?? '' }))
     .filter((file) => file.name.startsWith(prefix) && file.size > 0 && (since === null || !file.modified || file.modified >= since))
-    .sort((a, b) => a.modified.localeCompare(b.modified) || a.name.localeCompare(b.name));
+    .sort((a, b) => journalIndex(b.name) - journalIndex(a.name));
+  const tooBig = files.find((file) => file.size > JOURNAL_FILE_LIMIT);
+  if (tooBig) {
+    // Ler por blocos (`/file/read`) pede uma permissão que o grupo do ISPM não tem: diz-se o
+    // que mudar no router em vez de rebentar sem razão.
+    const action = asArray(await transport({ method: 'GET', path: `/system/logging/action?name=${LOG_JOURNAL_ACTION}&.proplist=disk-lines-per-file` }))[0];
+    const lines = str(action?.['disk-lines-per-file']);
+    throw new RouterError(
+      `O ficheiro ${tooBig.name} tem ${Math.round(tooBig.size / 1000)} kB e o ISPM só lê até ${JOURNAL_FILE_LIMIT / 1000} kB por ficheiro. `
+        + `Ponha disk-lines-per-file da ação ${LOG_JOURNAL_ACTION} em 200${lines ? ` (está em ${lines})` : ''}.`,
+      0, undefined, 'bad_response'
+    );
+  }
   let text = '';
   for (const file of files) {
     // Medido no hEX S (7.24): a listagem deixa de trazer o `contents` quando o ficheiro cresce,
@@ -1477,13 +1498,21 @@ export type RouterProfile = {
   remoteAddress: string | null;
   dnsServer: string | null;
   onlyOne: string | null;
+  interfaceList: string | null;
+  parentQueue: string | null;
   comment: string | null;
 };
+
+/** Os campos de um perfil que o ISPM escreve, com o nome da REST. */
+export type ProfileFields = Partial<Record<
+  'name' | 'comment' | 'rate-limit' | 'local-address' | 'remote-address' | 'dns-server' | 'only-one' | 'interface-list' | 'parent-queue',
+  string
+>>;
 
 export async function listProfiles(transport: RouterTransport): Promise<RouterProfile[]> {
   const raw = await transport({
     method: 'GET',
-    path: '/ppp/profile?.proplist=.id,name,rate-limit,local-address,remote-address,dns-server,only-one,comment'
+    path: '/ppp/profile?.proplist=.id,name,rate-limit,local-address,remote-address,dns-server,only-one,interface-list,parent-queue,comment'
   });
   return asArray(raw)
     .map((row) => ({
@@ -1494,39 +1523,23 @@ export async function listProfiles(transport: RouterTransport): Promise<RouterPr
       remoteAddress: str(row['remote-address']),
       dnsServer: str(row['dns-server']),
       onlyOne: str(row['only-one']),
+      interfaceList: str(row['interface-list']),
+      parentQueue: str(row['parent-queue']),
       comment: str(row.comment)
     }))
     .filter((profile) => profile.id && profile.name);
 }
 
-/**
- * Cria um perfil copiando do base o que faz o cliente ter rede (endereços,
- * DNS, sessão única). Campo a campo e não `copy-from`, que a REST não prova.
- */
-export async function createProfile(
-  transport: RouterTransport,
-  input: { name: string; rateLimit: string; comment: string; base: RouterProfile }
-): Promise<string> {
-  const { base } = input;
-  const raw = await transport({
-    method: 'PUT',
-    path: '/ppp/profile',
-    body: {
-      name: input.name,
-      'rate-limit': input.rateLimit,
-      comment: input.comment,
-      ...(base.localAddress ? { 'local-address': base.localAddress } : {}),
-      ...(base.remoteAddress ? { 'remote-address': base.remoteAddress } : {}),
-      ...(base.dnsServer ? { 'dns-server': base.dnsServer } : {}),
-      ...(base.onlyOne ? { 'only-one': base.onlyOne } : {})
-    }
-  });
+/** Cria um perfil com os campos dados. Devolve o `.id` que o router lhe deu. */
+export async function createProfile(transport: RouterTransport, fields: ProfileFields): Promise<string> {
+  const raw = await transport({ method: 'PUT', path: '/ppp/profile', body: fields });
   const row = (Array.isArray(raw) ? raw[0] : raw) as Record<string, unknown> | undefined;
   return str(row?.['.id']) ?? '';
 }
 
-export async function patchProfile(transport: RouterTransport, id: string, patch: { rateLimit: string }): Promise<void> {
-  await transport({ method: 'PATCH', path: `/ppp/profile/${id}`, body: { 'rate-limit': patch.rateLimit } });
+/** Muda só os campos dados, pelo `.id` lido por nome em `listProfiles`; nunca por posição. */
+export async function patchProfile(transport: RouterTransport, id: string, fields: ProfileFields): Promise<void> {
+  await transport({ method: 'PATCH', path: `/ppp/profile/${id}`, body: fields });
 }
 
 const WAN_USAGE_POLICY = 'read,write';
