@@ -1,6 +1,7 @@
 import { AlertTriangle, Check, Minus, Radar, RefreshCw, Router, ShieldCheck, X } from 'lucide-react';
 import { Button, DataTable, Field, Message, SecretField, Toggle, type DataTableColumn, type SecretDraft } from '../../components';
 import { formatCve, formatPtDate } from '../../lib/format';
+import { PlanNetworkFields } from './PlanNetworkFields';
 import type { SettingsFormState, ToggleField, UpdateField } from './settingsForm';
 
 type SuspensionCandidate = {
@@ -278,8 +279,9 @@ export function NetworkTab({
             value={form.routerosBaseProfile}
             maxLength={64}
             onChange={(event) => onUpdate('routerosBaseProfile', event.target.value)}
-            hint="Perfil PPP que já dá rede aos clientes. Os perfis que o ISPM cria para os planos copiam dele os endereços e o DNS."
+            hint="Perfil PPP que já dá rede aos clientes: é dele que «Ler do perfil» copia os campos abaixo, e é para ele que vai um serviço sem perfil no plano."
           />
+          <PlanNetworkFields form={form} onUpdate={onUpdate} />
           <Field
             label="Perfil dos suspensos"
             value={form.routerosSuspendedProfile}

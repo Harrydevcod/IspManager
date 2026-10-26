@@ -6365,6 +6365,17 @@ button.danger:disabled {
   margin: 0;
   max-width: 62ch;
   color: var(--text-3);
+.settings-profile-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-profile-source .field {
+  width: 16rem;
+}
+
   font-size: var(--fs-sm);
   font-weight: 500;
 }

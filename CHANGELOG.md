@@ -6,6 +6,15 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+### Corrigido
+- **Perfis PPP dos planos com todos os campos de rede.** Em 2026-10-09 o ISPM criou o `PLANO-20-10` só com o nome e o limite: copiava os campos de rede do perfil-base `default`, que não tem endereços, e nunca copiava `interface-list` nem `parent-queue`. Quem ligasse por PPPoE ficava sem IP e fora das regras da firewall.
+  - Em Router de gestão → Configuração há campos novos: gateway (`local-address`), pool (`remote-address`), lista de interfaces (`PPPOE` por omissão), DNS (o gateway por omissão) e fila-mãe. "Ler do perfil …" preenche-os a partir de um perfil do router: o perfil-base por omissão, ou outro escrito ao lado (por exemplo `PLANO-20-20`).
+  - Todo o perfil criado leva esses campos e `only-one=yes`. Se faltar algum nas definições, o perfil não é criado e o plano fica pendente, com a razão na coluna Router.
+  - Um perfil com a marca `ispm:plano:<id>` a que falte um campo é corrigido por PATCH no mesmo perfil (nunca apagado nem recriado). O burst acrescentado à mão no `rate-limit` fica.
+  - A auditoria guarda os valores antes e depois de cada perfil criado ou corrigido.
+  - **Depois de instalar:** preencher os campos (ou "Ler do perfil" com `PLANO-20-20`) e gravar. Até lá o plano Standart fica pendente, mas os clientes continuam ligados: o perfil existe no router.
+- **Atualização automática à vista.** A descarga da versão nova mostra o progresso no ícone da barra de tarefas, e o ISPM volta a procurar versões de 6 em 6 horas (#263).
+
 ## [2.36](https://github.com/Harrydevcod/IspManager/releases/tag/v2.36.0) — 2026-10-21
 
 ### Adicionado

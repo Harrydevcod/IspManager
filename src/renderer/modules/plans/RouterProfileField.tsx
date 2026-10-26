@@ -7,7 +7,8 @@ type ProfilesResponse = { available: boolean; reason?: string; baseProfile: stri
 type ApplyResponse = {
   dryRun: boolean;
   applied: boolean;
-  action: { kind: 'create' | 'update' | 'none'; name?: string; rateLimit?: string; detail?: string };
+  action: { kind: 'create' | 'update' | 'none' };
+  summary: string;
 };
 
 type RouterProfileFieldProps = {
@@ -47,7 +48,7 @@ export function RouterProfileField({ value, onChange, savedPlan, canWriteRouter 
   if (!router) status = 'A ler os perfis do router…';
   else if (!router.available) status = router.reason ?? 'Router indisponível.';
   else if (!name) status = 'Em branco, o ISPM dá ao plano o perfil ispm-plano-<nº> e cria-o no router ao gravar.';
-  else if (!match) status = `Ainda não existe no router. O ISPM cria-o a partir do perfil-base ${router.baseProfile} ao gravar.`;
+  else if (!match) status = `Ainda não existe no router. O ISPM cria-o ao gravar, com os campos de rede das Definições.`;
   else if (ours) status = `Existe no router · ${match.rateLimit ?? 'sem limite'} · criado pelo ISPM`;
   else status = `Existe no router · ${match.rateLimit ?? 'sem limite'} · feito no router, o ISPM não lhe mexe`;
 
@@ -67,10 +68,8 @@ export function RouterProfileField({ value, onChange, savedPlan, canWriteRouter 
         setMessage(body.error ?? 'O router recusou o pedido.');
         return;
       }
-      const { action } = body;
-      if (action.kind === 'none') setMessage(action.detail ?? 'Nada a fazer.');
-      else if (body.dryRun) setMessage(`Em ensaio: ${action.kind === 'create' ? 'criaria' : 'atualizaria'} o perfil ${action.name} com ${action.rateLimit}. Nada foi alterado no router.`);
-      else setMessage(`Perfil ${action.name} ${action.kind === 'create' ? 'criado' : 'atualizado'} no router com ${action.rateLimit}.`);
+      if (body.action.kind === 'none') setMessage(body.summary);
+      else setMessage(body.dryRun ? `Em ensaio: ${body.summary}. Nada foi alterado no router.` : `${body.summary}.`);
       await loadProfiles();
     } catch {
       setMessage('Falha de rede ao falar com o ISPM.');

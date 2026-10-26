@@ -72,6 +72,11 @@ export type SettingsFormState = {
   routerosIntervalSeconds: string;
   routerosMaxDisablesPerRun: string;
   routerosBaseProfile: string;
+  routerosPppLocalAddress: string;
+  routerosPppRemotePool: string;
+  routerosPppInterfaceList: string;
+  routerosPppDns: string;
+  routerosPppParentQueue: string;
   routerosSuspendedProfile: string;
   routerosPppoePrefix: string;
   autoSuspensionEnabled: boolean;

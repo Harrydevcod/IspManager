@@ -1477,13 +1477,21 @@ export type RouterProfile = {
   remoteAddress: string | null;
   dnsServer: string | null;
   onlyOne: string | null;
+  interfaceList: string | null;
+  parentQueue: string | null;
   comment: string | null;
 };
+
+/** Os campos de um perfil que o ISPM escreve, com o nome da REST. */
+export type ProfileFields = Partial<Record<
+  'name' | 'comment' | 'rate-limit' | 'local-address' | 'remote-address' | 'dns-server' | 'only-one' | 'interface-list' | 'parent-queue',
+  string
+>>;
 
 export async function listProfiles(transport: RouterTransport): Promise<RouterProfile[]> {
   const raw = await transport({
     method: 'GET',
-    path: '/ppp/profile?.proplist=.id,name,rate-limit,local-address,remote-address,dns-server,only-one,comment'
+    path: '/ppp/profile?.proplist=.id,name,rate-limit,local-address,remote-address,dns-server,only-one,interface-list,parent-queue,comment'
   });
   return asArray(raw)
     .map((row) => ({
@@ -1494,39 +1502,23 @@ export async function listProfiles(transport: RouterTransport): Promise<RouterPr
       remoteAddress: str(row['remote-address']),
       dnsServer: str(row['dns-server']),
       onlyOne: str(row['only-one']),
+      interfaceList: str(row['interface-list']),
+      parentQueue: str(row['parent-queue']),
       comment: str(row.comment)
     }))
     .filter((profile) => profile.id && profile.name);
 }
 
-/**
- * Cria um perfil copiando do base o que faz o cliente ter rede (endereços,
- * DNS, sessão única). Campo a campo e não `copy-from`, que a REST não prova.
- */
-export async function createProfile(
-  transport: RouterTransport,
-  input: { name: string; rateLimit: string; comment: string; base: RouterProfile }
-): Promise<string> {
-  const { base } = input;
-  const raw = await transport({
-    method: 'PUT',
-    path: '/ppp/profile',
-    body: {
-      name: input.name,
-      'rate-limit': input.rateLimit,
-      comment: input.comment,
-      ...(base.localAddress ? { 'local-address': base.localAddress } : {}),
-      ...(base.remoteAddress ? { 'remote-address': base.remoteAddress } : {}),
-      ...(base.dnsServer ? { 'dns-server': base.dnsServer } : {}),
-      ...(base.onlyOne ? { 'only-one': base.onlyOne } : {})
-    }
-  });
+/** Cria um perfil com os campos dados. Devolve o `.id` que o router lhe deu. */
+export async function createProfile(transport: RouterTransport, fields: ProfileFields): Promise<string> {
+  const raw = await transport({ method: 'PUT', path: '/ppp/profile', body: fields });
   const row = (Array.isArray(raw) ? raw[0] : raw) as Record<string, unknown> | undefined;
   return str(row?.['.id']) ?? '';
 }
 
-export async function patchProfile(transport: RouterTransport, id: string, patch: { rateLimit: string }): Promise<void> {
-  await transport({ method: 'PATCH', path: `/ppp/profile/${id}`, body: { 'rate-limit': patch.rateLimit } });
+/** Muda só os campos dados, pelo `.id` lido por nome em `listProfiles`; nunca por posição. */
+export async function patchProfile(transport: RouterTransport, id: string, fields: ProfileFields): Promise<void> {
+  await transport({ method: 'PATCH', path: `/ppp/profile/${id}`, body: fields });
 }
 
 const WAN_USAGE_POLICY = 'read,write';

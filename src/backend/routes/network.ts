@@ -60,7 +60,7 @@ import { collectWanUsage, loadWanUsage, saveStarlinkCycleDay } from '../lib/wan-
 import { installUsageCounter } from '../lib/usage-counter';
 import { collectClientUsage, loadClientUsage } from '../lib/client-usage';
 import { backupRouterConfig, listSnapshots, loadSnapshot } from '../lib/router-config-backup';
-import { applyPlanProfile, readBaseProfileName, readSuspendedProfileName } from '../lib/plan-profiles';
+import { applyPlanProfile, auditMetadata, describeAction, readBaseProfileName, readSuspendedProfileName } from '../lib/plan-profiles';
 import { recordAudit } from '../lib/audit';
 import { canStoreSecrets } from '../lib/secrets';
 import { readPppoePrefix } from '../lib/services';
@@ -429,9 +429,11 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
       return {
         available: true,
         baseProfile,
-        profiles: profiles.map(({ name, rateLimit, comment }) => ({
+        profiles: profiles.map(({ name, rateLimit, comment, localAddress, remoteAddress, dnsServer, interfaceList, parentQueue }) => ({
           name,
           rateLimit,
+          // Para "Ler do router" nas Definições: os campos de rede que os perfis dos planos levam.
+          network: { localAddress, remoteAddress, dnsServer, interfaceList, parentQueue },
           ownerPlanId: comment?.startsWith('ispm:plano:') ? Number(comment.slice('ispm:plano:'.length)) || null : null
         }))
       };
@@ -768,7 +770,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
           action: result.applied ? `router_profile_${action.kind}` : `router_profile_${action.kind}_dry_run`,
           entityType: 'plan',
           entityId: params.data.id,
-          summary: `${result.applied ? '' : 'Simulou: '}${action.kind === 'create' ? 'criou' : 'atualizou'} o perfil ${action.name} (${action.rateLimit}) no router`
+          summary: describeAction(action, !result.applied),
+          metadata: auditMetadata(action)
         });
       }
       return result;

@@ -353,43 +353,26 @@ describe('operações RouterOS', () => {
       ]
     ]);
     await expect(listProfiles(transport)).resolves.toEqual([
-      { id: '*0', name: 'default', rateLimit: null, localAddress: '10.10.0.1', remoteAddress: 'pool-clientes', dnsServer: '1.1.1.1', onlyOne: 'yes', comment: null },
-      { id: '*A', name: 'plano-20M', rateLimit: '20M/20M', localAddress: null, remoteAddress: null, dnsServer: null, onlyOne: null, comment: 'ispm:plano:1' }
+      { id: '*0', name: 'default', rateLimit: null, localAddress: '10.10.0.1', remoteAddress: 'pool-clientes', dnsServer: '1.1.1.1', onlyOne: 'yes', interfaceList: null, parentQueue: null, comment: null },
+      { id: '*A', name: 'plano-20M', rateLimit: '20M/20M', localAddress: null, remoteAddress: null, dnsServer: null, onlyOne: null, interfaceList: null, parentQueue: null, comment: 'ispm:plano:1' }
     ]);
     expect(transport.calls[0]).toEqual({
       method: 'GET',
-      path: '/ppp/profile?.proplist=.id,name,rate-limit,local-address,remote-address,dns-server,only-one,comment'
+      path: '/ppp/profile?.proplist=.id,name,rate-limit,local-address,remote-address,dns-server,only-one,interface-list,parent-queue,comment'
     });
   });
 
-  test('createProfile copia os endereços do perfil-base e junta o limite e a marca', async () => {
+  test('createProfile envia os campos dados e devolve o .id do router', async () => {
     const transport = fakeTransport([{ '.id': '*B' }]);
-    const id = await createProfile(transport, {
-      name: 'plano-20M',
-      rateLimit: '20M/20M',
-      comment: 'ispm:plano:1',
-      base: { id: '*0', name: 'default', rateLimit: null, localAddress: '10.10.0.1', remoteAddress: 'pool-clientes', dnsServer: null, onlyOne: 'yes', comment: null }
-    });
-    expect(id).toBe('*B');
-    // O que o base não tem não se envia: o RouterOS fica com a omissão dele.
-    expect(transport.calls[0]).toEqual({
-      method: 'PUT',
-      path: '/ppp/profile',
-      body: {
-        name: 'plano-20M',
-        'rate-limit': '20M/20M',
-        comment: 'ispm:plano:1',
-        'local-address': '10.10.0.1',
-        'remote-address': 'pool-clientes',
-        'only-one': 'yes'
-      }
-    });
+    const fields = { name: 'plano-20M', comment: 'ispm:plano:1', 'rate-limit': '20M/20M', 'local-address': '10.10.0.1', 'interface-list': 'PPPOE' };
+    expect(await createProfile(transport, fields)).toBe('*B');
+    expect(transport.calls[0]).toEqual({ method: 'PUT', path: '/ppp/profile', body: fields });
   });
 
-  test('patchProfile só mexe no limite', async () => {
+  test('patchProfile muda só os campos dados, pelo .id', async () => {
     const transport = fakeTransport([null]);
-    await patchProfile(transport, '*B', { rateLimit: '30M/30M' });
-    expect(transport.calls[0]).toEqual({ method: 'PATCH', path: '/ppp/profile/*B', body: { 'rate-limit': '30M/30M' } });
+    await patchProfile(transport, '*B', { 'parent-queue': 'fila-total' });
+    expect(transport.calls[0]).toEqual({ method: 'PATCH', path: '/ppp/profile/*B', body: { 'parent-queue': 'fila-total' } });
   });
 
   test('patchSecret sem nada para mudar não chega a falar com o router', async () => {
