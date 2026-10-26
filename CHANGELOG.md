@@ -6,6 +6,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.37](https://github.com/Harrydevcod/IspManager/releases/tag/v2.37.0) — 2026-10-26
+
 ### Corrigido
 - **Perfis PPP dos planos com todos os campos de rede.** Em 2026-10-09 o ISPM criou o `PLANO-20-10` só com o nome e o limite: copiava os campos de rede do perfil-base `default`, que não tem endereços, e nunca copiava `interface-list` nem `parent-queue`. Quem ligasse por PPPoE ficava sem IP e fora das regras da firewall.
   - Em Router de gestão → Configuração há campos novos: gateway (`local-address`), pool (`remote-address`), lista de interfaces (`PPPOE` por omissão), DNS (o gateway por omissão) e fila-mãe. "Ler do perfil …" preenche-os a partir de um perfil do router: o perfil-base por omissão, ou outro escrito ao lado (por exemplo `PLANO-20-20`).
