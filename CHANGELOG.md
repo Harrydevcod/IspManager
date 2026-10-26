@@ -13,6 +13,12 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
   - Um perfil com a marca `ispm:plano:<id>` a que falte um campo é corrigido por PATCH no mesmo perfil (nunca apagado nem recriado). O burst acrescentado à mão no `rate-limit` fica.
   - A auditoria guarda os valores antes e depois de cada perfil criado ou corrigido.
   - **Depois de instalar:** preencher os campos (ou "Ler do perfil" com `PLANO-20-20`) e gravar. Até lá o plano Standart fica pendente, mas os clientes continuam ligados: o perfil existe no router.
+- **Registo do router no cartão: independente da rotação e sem linhas a dobrar.** O consumo nunca dependeu destes ficheiros (vem dos contadores `ispm-*-usage.txt`); o que dependia era o Registo e a Saúde da rede.
+  - O ISPM só escolhe a rotação (200 linhas × 500 ficheiros) quando cria a ação `ispmdiario`. Carregar outra vez em "Guardar o registo no cartão" já não desfaz a que o operador mudou no router.
+  - Os ficheiros leem-se pela ordem do número (`.12` antes de `.2`), não pelo nome.
+  - Cada linha guarda-se uma vez, pelo conteúdo (migração 0088: `UNIQUE` sobre hora, tópicos, mensagem e a ordem entre as iguais do mesmo segundo). Reler o cartão não muda nada.
+  - **Importar o cartão todo**, na aba Registo → Guardado, relê os ficheiros e guarda o que faltar. A mesma aba diz a última linha guardada e os dias sem linhas.
+  - O ISPM lê cada ficheiro até cerca de 60 kB. Com mais linhas por ficheiro (por exemplo 5000), a leitura diz o que mudar no router, no trabalho e no cartão da Saúde da rede, em vez de falhar sem razão. **Manter 200 linhas por ficheiro.**
 - **Atualização automática à vista.** A descarga da versão nova mostra o progresso no ícone da barra de tarefas, e o ISPM volta a procurar versões de 6 em 6 horas (#263).
 
 ## [2.36](https://github.com/Harrydevcod/IspManager/releases/tag/v2.36.0) — 2026-10-21

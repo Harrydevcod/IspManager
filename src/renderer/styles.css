@@ -5232,6 +5232,10 @@ label.field-toggle {
   color: var(--text-3);
   font-size: var(--fs-xs);
 }
+.network-health-seen.warn {
+  margin-top: var(--space-1-5);
+  color: var(--warn);
+}
 .network-health-card .dashboard-card-footer {
   /* Encosta ao fundo da coluna: a altura é a da lista ao lado. */
   margin-top: auto;
@@ -6361,10 +6365,6 @@ button.danger:disabled {
   font-weight: 600;
 }
 
-.settings-router-cert p {
-  margin: 0;
-  max-width: 62ch;
-  color: var(--text-3);
 .settings-profile-source {
   display: flex;
   flex-wrap: wrap;
@@ -6376,6 +6376,10 @@ button.danger:disabled {
   width: 16rem;
 }
 
+.settings-router-cert p {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--text-3);
   font-size: var(--fs-sm);
   font-weight: 500;
 }

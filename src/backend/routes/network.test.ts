@@ -98,7 +98,7 @@ describe('registo do router guardado', () => {
     insert.run('2026-10-07 23:59:59', 'dhcp,info', 'ontem');
     insert.run('2026-10-08 20:06:54', 'bridge,warning', 'laço');
     insert.run('2026-10-08 20:07:07', 'netwatch,info', 'queda');
-    expect((await app.inject('/api/network/router/log/days')).json()).toEqual([{ day: '2026-10-08', lines: 2 }, { day: '2026-10-07', lines: 1 }]);
+    expect((await app.inject('/api/network/router/log/days')).json()).toMatchObject([{ day: '2026-10-08', lines: 2 }, { day: '2026-10-07', lines: 1 }]);
     const history = (await app.inject('/api/network/router/log/history?day=2026-10-08')).json();
     expect(history.day).toBe('2026-10-08');
     expect(history.entries.map((row: { time: string; topics: string; message: string }) => [row.time, row.topics, row.message])).toEqual([

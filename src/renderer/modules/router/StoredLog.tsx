@@ -1,14 +1,40 @@
-import { Download, ScrollText } from 'lucide-react';
+import { Download, HardDriveDownload, ScrollText } from 'lucide-react';
 import { useState } from 'react';
 import { Button, DataTable, EmptyState, ErrorRetry, Field, FilterBar, Select, SkeletonList, Toggle } from '../../components';
+import { authFetch } from '../../lib/auth';
 import { ROUTER_API, visibleLogEntries, type RouterLogEntry } from './router-api';
 import { LOG_COLUMNS } from './RouterTables';
 import { useLive } from './useLive';
 
-type LogDay = { day: string; lines: number };
+type LogDay = { day: string; lines: number; lastAt?: string };
 type LogHistory = { day: string; entries: RouterLogEntry[] };
 
 const formatDay = (day: string) => `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}`;
+
+/** Os dias sem nenhuma linha entre o mais antigo e o mais recente guardados, por ordem. Pura. */
+export function missingDays(days: Array<{ day: string }>): string[] {
+  if (days.length === 0) return [];
+  const have = new Set(days.map((item) => item.day));
+  const sorted = [...have].sort();
+  const missing: string[] = [];
+  // Ao meio-dia UTC: somar 24 h nunca salta nem repete um dia.
+  for (let at = Date.parse(`${sorted[0]}T12:00:00Z`); ; at += 86_400_000) {
+    const day = new Date(at).toISOString().slice(0, 10);
+    if (day >= sorted[sorted.length - 1]) break;
+    if (!have.has(day)) missing.push(day);
+  }
+  return missing;
+}
+
+function coverage(list: LogDay[]): string {
+  const last = list[0]?.lastAt;
+  const gaps = missingDays(list);
+  const lastText = last ? `Última linha guardada: ${formatDay(last.slice(0, 10))} ${last.slice(11, 16)}` : '';
+  const gapText = gaps.length === 0
+    ? `sem dias em falta desde ${formatDay(list[list.length - 1].day)}`
+    : `sem linhas em ${gaps.slice(0, 6).map((day) => day.slice(8, 10) + '/' + day.slice(5, 7)).join(', ')}${gaps.length > 6 ? ` e mais ${gaps.length - 6}` : ''}`;
+  return [lastText, gapText].filter(Boolean).join(' · ');
+}
 
 /** O dia inteiro, uma linha por registo, no feitio do ficheiro que o router escreve. */
 function download(history: LogHistory) {
@@ -35,6 +61,26 @@ export function StoredLog() {
   const list = Array.isArray(days.data) ? days.data : null;
   const day = picked ?? list?.[0]?.day ?? null;
   const history = useLive<LogHistory>(`${ROUTER_API}/log/history?day=${day ?? ''}`, day !== null, 60_000);
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+
+  // Relê o cartão do router todo: o que já estava guardado não entra duas vezes.
+  const importCard = async () => {
+    setImporting(true);
+    setImportMessage(null);
+    try {
+      const response = await authFetch(`${ROUTER_API}/log/import`, { method: 'POST' });
+      const body = await response.json() as { read?: number; inserted?: number; error?: string };
+      if (!response.ok) throw new Error(body.error ?? 'Não foi possível ler o cartão do router.');
+      setImportMessage(`Lidas ${(body.read ?? 0).toLocaleString('pt-PT')} linhas do cartão · ${(body.inserted ?? 0).toLocaleString('pt-PT')} novas guardadas.`);
+      days.reload();
+      history.reload();
+    } catch (error) {
+      setImportMessage(error instanceof Error ? error.message : 'Não foi possível ler o cartão do router.');
+    } finally {
+      setImporting(false);
+    }
+  };
 
   if (days.error && !list) return <ErrorRetry message="Não foi possível ler o registo guardado." onRetry={days.reload} />;
   if (!list) return <SkeletonList rows={6} />;
@@ -70,6 +116,13 @@ export function StoredLog() {
           Exportar .txt
         </Button>
       </FilterBar>
+      <div className="router-usage-actions">
+        <span className="router-muted">{coverage(list)}</span>
+        <Button variant="secondary" leadingIcon={<HardDriveDownload size={14} aria-hidden />} onClick={() => void importCard()} disabled={importing}>
+          {importing ? 'A ler o cartão…' : 'Importar o cartão todo'}
+        </Button>
+      </div>
+      {importMessage && <p role="status" className="router-muted">{importMessage}</p>}
       {history.error && !loaded ? <ErrorRetry message="Não foi possível ler as linhas deste dia." onRetry={history.reload} />
         : !loaded ? <SkeletonList rows={6} />
           : (

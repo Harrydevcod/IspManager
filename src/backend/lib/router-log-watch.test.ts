@@ -5,9 +5,10 @@ import path from 'node:path';
 import type Database from 'better-sqlite3';
 import * as adminNetwork from './admin-network';
 import {
-  collectFindings, compactStoredLines, freshEntries, freshJournalLines, installLogJournal, listLogDays, loadLogDay, parseJournal, runRouterLogWatchIfDue, watchRouterLog
+  collectFindings, compactStoredLines, freshEntries, freshJournalLines, importJournalHistory, installLogJournal, listLogDays, loadLogDay, parseJournal,
+  runRouterLogWatchIfDue, watchRouterLog
 } from './router-log-watch';
-import type { RouterLogEntry, RouterTransport } from './routeros';
+import { ensureLogJournal, type RouterLogEntry, type RouterRequest, type RouterTransport } from './routeros';
 import { writeSecret } from './secrets';
 
 let db: Database.Database;
@@ -265,7 +266,7 @@ describe('vigia do registo do router', () => {
     );
     await watchRouterLog(db, router(rows), NOW);
     await watchRouterLog(db, router(rows), NOW);
-    expect(listLogDays(db)).toEqual([{ day: '2026-10-07', lines: 2 }, { day: '2026-10-06', lines: 1 }]);
+    expect(listLogDays(db)).toMatchObject([{ day: '2026-10-07', lines: 2 }, { day: '2026-10-06', lines: 1 }]);
     expect(loadLogDay(db, '2026-10-06').map(({ time, topics, message }) => ({ time, topics, message }))).toEqual([
       { time: '2026-10-06 23:59:00', topics: 'netwatch,info', message: DOWN('192.168.1.110') }
     ]);
@@ -279,7 +280,7 @@ describe('vigia do registo do router', () => {
     insert.run('2026-07-08 23:59:59');
     insert.run('2026-07-09 00:00:00');
     await watchRouterLog(db, router(log([1, '2026-10-07 10:00:00', 'system,info', 'nova'])), NOW);
-    expect(listLogDays(db)).toEqual([{ day: '2026-10-07', lines: 1 }, { day: '2026-07-09', lines: 1 }]);
+    expect(listLogDays(db)).toMatchObject([{ day: '2026-10-07', lines: 1 }, { day: '2026-07-09', lines: 1 }]);
   });
 
   const COUNTER = (name: string, body: string) =>
@@ -350,7 +351,7 @@ describe('vigia do registo do router', () => {
 
     // Feito uma vez: a passagem seguinte não volta a ler o cartão todo nem repete linhas.
     expect(await watchRouterLog(db, card(files), NOW)).toEqual({ lines: 0, findings: 0 });
-    expect(listLogDays(db)).toEqual([{ day: '2026-10-08', lines: 3 }]);
+    expect(listLogDays(db)).toEqual([{ day: '2026-10-08', lines: 3, lastAt: '2026-10-08 20:07:07' }]);
   });
 
   test('se o cartão não se deixar ler todo, a vigia segue com o que é novo e não insiste', async () => {
@@ -381,5 +382,136 @@ describe('vigia do registo do router', () => {
     vi.spyOn(adminNetwork, 'detectAdminNetwork').mockResolvedValue({ state: 'offsite' } as adminNetwork.AdminNetworkPresence);
     expect(await runRouterLogWatchIfDue()).toMatchObject({ skipped: true });
     expect(findings()).toEqual([]);
+  });
+});
+
+/**
+ * Um cartão que roda como o RouterOS: o ficheiro `.0` é o que está a ser escrito, os mais
+ * antigos sobem de número, e só ficam `count` ficheiros.
+ */
+function rotated(lines: string[], perFile: number, count: number): Record<string, string> {
+  const chunks: string[][] = [];
+  for (let at = 0; at < lines.length; at += perFile) chunks.push(lines.slice(at, at + perFile));
+  return Object.fromEntries(chunks.reverse().slice(0, count).map((chunk, index) => [`sd1/ispm-log.${index}.txt`, `${chunk.join('\n')}\n`]));
+}
+
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const stamp = (line: string) => {
+  const [, month, day, year, time] = /^(\w{3})\/(\d{2})\/(\d{4}) (\S+)/.exec(line)!;
+  return `${year}-${String(MONTH_NAMES.indexOf(month) + 1).padStart(2, '0')}-${day} ${time}`;
+};
+
+/** O router com o cartão de `state.files`, que o teste pode rodar entre leituras. */
+function rotatingCard(state: { files: Record<string, string> }, linesPerFile = '200'): RouterTransport {
+  return async ({ path: requested, body }) => {
+    if (requested === '/execute') return { ret: state.files[/get "([^"]+)" contents/.exec((body as { script: string }).script)![1]] };
+    if (requested.startsWith('/interface')) return [{ name: 'bridge-LAN', 'mac-address': ROUTER_MAC }];
+    if (requested.startsWith('/system/logging/action')) return [{ 'disk-lines-per-file': linesPerFile }];
+    if (requested.startsWith('/file?.proplist')) {
+      return Object.entries(state.files).map(([name, text]) => ({
+        name, size: String(text.length), 'last-modified': stamp(text.trimEnd().split('\n').at(-1)!)
+      }));
+    }
+    return [];
+  };
+}
+
+/** Linhas a cada 10 s, com linhas iguais no mesmo segundo (o router escreve-as assim). */
+function journalLines(total = 600, from = Date.parse('2026-10-08T08:00:00Z')) {
+  const lines: string[] = [];
+  for (let index = 0; lines.length < total; index += 1) {
+    const at = new Date(from + index * 10_000).toISOString();
+    const line = `Oct/${at.slice(8, 10)}/${at.slice(0, 4)} ${at.slice(11, 19)} netwatch,info ${DOWN(`192.168.1.${100 + (index % 5)}`)}`;
+    lines.push(line);
+    if (index % 7 === 0 && lines.length < total) lines.push(line);
+  }
+  return lines;
+}
+
+const storedLines = () => db.prepare('SELECT at, topics, message, seq FROM router_log_lines ORDER BY at, message, seq').all();
+const downCount = () => (db.prepare("SELECT COALESCE(SUM(count), 0) AS n FROM router_log_findings WHERE kind = 'antena_em_baixo'").get() as { n: number }).n;
+
+describe('diário em disco independente da rotação', () => {
+  const LATER = new Date('2026-10-09T12:00:00');
+  const useJournal = (cursor: object | null = null) => {
+    const setting = db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)');
+    setting.run('routerLogJournal', 'sd1');
+    setting.run('routerLogLinesRecovered', LATER.toISOString());
+    if (cursor) setting.run('routerLogJournalCursor', JSON.stringify(cursor));
+  };
+
+  test('a mesma história em ficheiros de 2 linhas × 500 ou de 50 × 20 dá as mesmas linhas', async () => {
+    const lines = journalLines();
+    useJournal();
+    await importJournalHistory(db, rotatingCard({ files: rotated(lines, 2, 500) }), LATER);
+    const small = storedLines();
+    expect(small).toHaveLength(lines.length);
+
+    db.prepare('DELETE FROM router_log_lines').run();
+    await importJournalHistory(db, rotatingCard({ files: rotated(lines, 50, 20) }), LATER);
+    expect(storedLines()).toEqual(small);
+  });
+
+  test('uma rotação entre duas leituras: nenhuma linha a dobrar e nenhuma perdida', async () => {
+    const lines = journalLines();
+    useJournal({ time: '2026-10-08 07:59:59', seen: 0 });
+    const state = { files: rotated(lines.slice(0, 333), 20, 500) };
+    const transport = rotatingCard(state);
+    await watchRouterLog(db, transport, LATER);
+    // O router escreve mais e roda: o `.0` de há pouco passa a `.1`, `.2`…
+    state.files = rotated(lines, 20, 500);
+    await watchRouterLog(db, transport, LATER);
+
+    expect(storedLines()).toHaveLength(lines.length);
+    expect(downCount()).toBe(lines.length);
+  });
+
+  test('importar o cartão duas vezes (ou depois da vigia) não muda os totais', async () => {
+    const lines = journalLines();
+    const files = rotated(lines, 20, 500);
+    useJournal({ time: '2026-10-08 07:59:59', seen: 0 });
+    await watchRouterLog(db, rotatingCard({ files }), LATER);
+    const counted = downCount();
+
+    expect(await importJournalHistory(db, rotatingCard({ files }), LATER)).toEqual({ read: lines.length, inserted: 0 });
+    expect(await importJournalHistory(db, rotatingCard({ files }), LATER)).toEqual({ read: lines.length, inserted: 0 });
+    expect(storedLines()).toHaveLength(lines.length);
+    // Importar guarda linhas, não soma achados.
+    expect(downCount()).toBe(counted);
+  });
+
+  test('um ficheiro maior do que o ISPM consegue ler dá um erro que diz o que mudar no router', async () => {
+    useJournal({ time: '2026-10-08 07:59:59', seen: 0 });
+    const big = rotated(journalLines(5000), 5000, 20);
+    await expect(watchRouterLog(db, rotatingCard({ files: big }, '5000'), LATER))
+      .rejects.toThrow(/ispm-log\.0\.txt tem \d+ kB.*disk-lines-per-file.*em 200 \(está em 5000\)/);
+    expect(storedLines()).toEqual([]);
+  });
+
+  test('o ISPM só escolhe a rotação ao criar a ação: a que o operador mudou fica', async () => {
+    const calls: RouterRequest[] = [];
+    const existing = {
+      '.id': '*9', name: 'ispmdiario', target: 'disk', 'disk-file-name': 'sd1/ispm-log',
+      'disk-lines-per-file': '1000', 'disk-file-count': '100', 'disk-stop-on-full': 'false'
+    };
+    const rules = ['info,!account', 'warning', 'error', 'critical'].map((topics, index) => ({ '.id': `*${index}`, topics, action: 'ispmdiario' }));
+    const configured: RouterTransport = async (request) => {
+      calls.push(request);
+      if (request.path.startsWith('/system/logging/action')) return [existing];
+      if (request.path.startsWith('/system/logging?')) return rules;
+      return null;
+    };
+    await ensureLogJournal(configured, 'sd1');
+    expect(calls.filter((call) => call.method !== 'GET')).toEqual([]);
+
+    calls.length = 0;
+    const blank: RouterTransport = async (request) => {
+      calls.push(request);
+      if (request.path.startsWith('/system/logging/action')) return calls.some((call) => call.method === 'PUT') ? [existing] : [];
+      return [];
+    };
+    await ensureLogJournal(blank, 'sd1');
+    expect(calls.find((call) => call.method === 'PUT' && call.path === '/system/logging/action')?.body)
+      .toMatchObject({ name: 'ispmdiario', 'disk-lines-per-file': '200', 'disk-file-count': '500', 'disk-file-name': 'sd1/ispm-log' });
   });
 });
