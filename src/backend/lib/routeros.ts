@@ -1604,8 +1604,8 @@ export async function ensureRouterScript(transport: RouterTransport, { name, com
   }
 
   // O router aceita o PUT e pode guardar o script vazio ou inválido sem dar erro:
-  // só a releitura prova que o contador vai correr.
-  const saved = asArray(await transport({ method: 'GET', path: `/system/script?name=${name}&.proplist=source,invalid` }))[0];
+  // só a releitura prova que o script vai correr.
+  const saved = asArray(await transport({ method: 'GET', path: `/system/script?name=${encodeURIComponent(name)}&.proplist=source,invalid` }))[0];
   if (!saved || typeof saved.source !== 'string' || saved.source.length === 0) {
     throw new RouterError(`O router guardou o script ${label} sem texto`, 0, undefined, 'bad_response');
   }
@@ -1619,7 +1619,7 @@ export async function ensureRouterScript(transport: RouterTransport, { name, com
   // disco cada gravação é uma linha longa no registo e uma escrita na flash: fica de hora a hora.
   // As 23:59:50 mantêm uma corrida às hh:59:50, a que fecha o dia no contador das WAN.
   // A data de início fica no passado. Medido no CHR 7.24.2: sem ela o router põe a de hoje e a
-  // primeira corrida só vem às 23:59:50 — o contador ficava parado o resto do dia da instalação.
+  // primeira corrida só vem às 23:59:50 — o script ficava parado o resto do dia da instalação.
   const expected: Array<Record<string, string>> = [
     { name, 'on-event': name, 'start-date': '2020-01-01', 'start-time': '23:59:50', interval, policy: WAN_USAGE_POLICY },
     { name: `${name}-startup`, 'on-event': name, 'start-time': 'startup', interval: '0s', policy: WAN_USAGE_POLICY }

@@ -151,6 +151,11 @@ const settingsSchema = z.object({
   routerosPppInterfaceList: z.string().trim().max(64).regex(/^[\w.-]*$/).optional().default('PPPOE'),
   routerosPppDns: z.string().trim().max(128).regex(/^[\w.:,-]*$/).optional().default(''),
   routerosPppParentQueue: z.string().trim().max(64).regex(/^[\w.-]*$/).optional().default(''),
+  // IPTV via VPN (ADR 0021). Só os nomes das duas listas: o túnel, a tabela e a marca
+  // descobrem-se no router a partir da lista de origens (T7). Trocar de VPN ou de WAN
+  // é só no router.
+  iptvVpnSplitList: z.string().trim().max(64).regex(/^[\w.-]+$/).optional().default('IPTV-SPLIT'),
+  iptvVpnServersList: z.string().trim().max(64).regex(/^[\w.-]+$/).optional().default('IPTV-SERVERS'),
   routerosSuspendedProfile: z.string().trim().max(64).regex(/^[\w .-]*$/).optional().default('SUSPENSO'),
   routerosPppoePrefix: z.string().trim().max(16).regex(/^[a-z0-9-]*$/).optional().default(''),
   autoSuspensionEnabled: strictOptionalBoolean,
@@ -248,6 +253,8 @@ const defaultSettings = {
   routerosPppInterfaceList: 'PPPOE',
   routerosPppDns: '',
   routerosPppParentQueue: '',
+  iptvVpnSplitList: 'IPTV-SPLIT',
+  iptvVpnServersList: 'IPTV-SERVERS',
   routerosSuspendedProfile: 'SUSPENSO',
   routerosPppoePrefix: '',
   autoSuspensionEnabled: false,
