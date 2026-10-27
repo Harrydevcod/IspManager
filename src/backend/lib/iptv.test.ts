@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import type { RouterRequest, RouterTransport } from './routeros';
-import { loadIptvTargets, syncIptv } from './iptv';
+import { HOST, loadIptvTargets, syncIptv } from './iptv';
 
 function seed() {
   const db = new Database(':memory:');
@@ -55,7 +55,7 @@ describe('IPTV via VPN', () => {
     const result = await syncIptv(db, { transport, dryRun: true });
     expect(result).toMatchObject({
       active: [{ serviceId: 1, via: null }, { serviceId: 2, via: 'pppoe', address: '10.20.0.9' }],
-      staleManual: [{ address: '192.168.2.226', comment: 'Cliente-Gemada TP-Link' }]
+      unownedManual: [{ address: '192.168.2.226', comment: 'Cliente-Gemada TP-Link' }]
     });
   });
 
@@ -81,9 +81,11 @@ describe('IPTV via VPN', () => {
     const writes = calls.filter((c) => c.path.startsWith('/ip/firewall/address-list') && c.method !== 'GET');
     expect(writes).toEqual([
       { method: 'PUT', path: '/ip/firewall/address-list', body: { list: 'IPTV-SERVERS', address: '1.2.3.4', comment: 'ispm-iptv-srv:1 Dino' } },
-      { method: 'PUT', path: '/ip/firewall/address-list', body: { list: 'IPTV-SERVERS', address: 'line.dino.ws', comment: 'ispm-iptv-srv:1 Dino' } },
       { method: 'DELETE', path: '/ip/firewall/address-list/*B' }
     ]);
+    expect(await syncIptv(seed(), { transport: router([{ '.id': '*A', address: 'Line.Dino.ws', comment: 'manual', dynamic: 'false' }]).transport, dryRun: true }))
+      .toMatchObject({ serversCovered: [{ address: 'line.dino.ws', comment: 'manual' }] });
+    expect(JSON.parse((db.prepare("SELECT metadata_json AS m FROM audit_logs WHERE action = 'iptv_vpn_servers'").get() as { m: string }).m)).toEqual({ added: ['1.2.3.4'], removed: ['9.9.9.9'] });
     // A entrada manual *A nunca é tocada.
     expect(writes.some((c) => c.path.endsWith('*A'))).toBe(false);
   });
@@ -99,6 +101,51 @@ describe('IPTV via VPN', () => {
     const result = await syncIptv(seed(), { transport, dryRun: true });
     expect(result).toMatchObject({ manualConflicts: [{ address: '192.168.2.226', comment: 'Cliente-Gemada TP-Link' }] });
     expect(calls.some((c) => c.path.includes('*M') && c.method !== 'GET')).toBe(false);
+  });
+
+  test('lease estática em waiting não torna a entrada manual sem dono', async () => {
+    const transport: RouterTransport = async (request) => {
+      if (request.path.startsWith('/ip/firewall/address-list?list=IPTV-SPLIT')) return [{ '.id': '*M', address: '192.168.2.50', comment: 'TV', dynamic: 'false' }];
+      if (request.path.startsWith('/ip/dhcp-server/lease')) return [{ address: '192.168.2.50', 'mac-address': 'AA:AA:AA:AA:AA:01', status: 'waiting' }];
+      return [];
+    };
+    expect(await syncIptv(seed(), { transport, dryRun: true })).toMatchObject({ unownedManual: [], foreignManual: [] });
+  });
+
+  test('entrada manual cujo endereço passou para outro MAC é reportada como alheia', async () => {
+    const transport: RouterTransport = async (request) => {
+      if (request.path.startsWith('/ip/firewall/address-list?list=IPTV-SPLIT')) return [{ '.id': '*M', address: '192.168.2.226', comment: 'velho', dynamic: 'false' }];
+      if (request.path.startsWith('/ip/dhcp-server/lease')) return [{ address: '192.168.2.226', 'mac-address': 'aa:bb:cc:dd:ee:ff', status: 'bound' }];
+      return [];
+    };
+    expect(await syncIptv(seed(), { transport, dryRun: true })).toMatchObject({ foreignManual: [{ address: '192.168.2.226', comment: 'velho', holder: 'AA:BB:CC:DD:EE:FF' }] });
+  });
+
+  test('dois fornecedores com o mesmo host: só o primeiro fica com a entrada', async () => {
+    const db = seed();
+    db.prepare("INSERT INTO iptv_providers (id, name, hosts) VALUES (2, 'Outro', 'LINE.dino.ws')").run();
+    const { transport, calls } = router();
+    await syncIptv(db, { transport, dryRun: false });
+    const adds = calls.filter((c) => c.method === 'PUT' && c.path === '/ip/firewall/address-list').map((c) => (c.body as { address: string }).address);
+    expect(adds.sort()).toEqual(['1.2.3.4', 'line.dino.ws']);
+  });
+
+  test('IPv4 com octeto acima de 255 é ignorado', async () => {
+    const db = seed();
+    db.prepare("UPDATE iptv_providers SET hosts = '999.1.1.1\n8.8.8.8/24'").run();
+    expect(HOST.test('999.1.1.1')).toBe(false);
+    expect(HOST.test('8.8.8.8/33')).toBe(false);
+    const { transport, calls } = router();
+    await syncIptv(db, { transport, dryRun: false });
+    const adds = calls.filter((c) => c.method === 'PUT' && c.path === '/ip/firewall/address-list').map((c) => (c.body as { address: string }).address);
+    expect(adds).toEqual(['8.8.8.8/24']);
+  });
+
+  test('valor aplicado corrompido conta como nunca aplicado', async () => {
+    const db = seed();
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('iptvVpnApplied', '{x')").run();
+    const { transport } = router();
+    expect(await syncIptv(db, { transport, dryRun: true })).toMatchObject({ before: null });
   });
 
   test('utilizador renomeado no router fica de fora, com a razão', () => {
