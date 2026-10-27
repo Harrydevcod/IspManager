@@ -33,6 +33,8 @@ import {
   type ReturnCondition
 } from '../lib/serviceReturn';
 import { insertEquipmentPurchase } from '../lib/billing';
+import { assignmentIptvServices, serviceHasIptv } from '../lib/iptv';
+import { requestNetworkSync } from '../lib/network-sync';
 import { requireAuth, requireRole } from './auth';
 
 /** Dia do facto: o equipamento instala-se hoje e regista-se amanha. */
@@ -207,6 +209,26 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
   const canWriteTechnical = { preHandler: requireRole(['admin', 'operator', 'technician']) };
   // Vender equipamento e emitir a cobrança é ato comercial, não trabalho de campo.
   const canManageBilling = { preHandler: requireRole(['admin', 'operator']) };
+
+  // IPTV via VPN: o MAC que o router segue vem do equipamento, por isso qualquer escrita bem
+  // sucedida em atribuições (instalar, corrigir, terminar, trocar, devolver, partilhar) de um
+  // serviço marcado aplica-se logo. Um só ponto, para nenhuma rota nova o esquecer.
+  app.addHook('onResponse', async (request, reply) => {
+    if (request.method === 'GET' || reply.statusCode >= 400) return;
+    const route = request.routeOptions.url ?? '';
+    const id = Number((request.params as { id?: string } | undefined)?.id);
+    const db = getSqliteDatabase();
+    let marked = false;
+    if (/^\/api\/services\/:id\/(items|returns)$/.test(route)) {
+      marked = serviceHasIptv(db, id);
+    } else if (route === '/api/service-device-assignments') {
+      const items = (request.body as { items?: Array<{ id?: number }> } | undefined)?.items ?? [];
+      marked = items.some((item) => assignmentIptvServices(db, Number(item.id)).length > 0);
+    } else if (route.startsWith('/api/service-device-assignments/:id')) {
+      marked = assignmentIptvServices(db, id).length > 0;
+    }
+    if (marked) requestNetworkSync();
+  });
 
   app.get('/api/services/:id/technical-history', { preHandler: requireAuth() }, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);

@@ -37,6 +37,34 @@ export function readIptvConfig(db: Database.Database): IptvConfig {
 
 const USERNAME = /^[\w.@-]{1,64}$/;
 
+/** Equipamento activo de um serviço (próprio ou partilhado), a consulta única de quem decide a origem. */
+const activeDevicesQuery = (db: Database.Database) => db.prepare(`
+  SELECT e.type AS type, a.operation_mode AS operationMode, a.mac_address AS macAddress
+  FROM assignment_services s
+  JOIN service_device_assignments a ON a.id = s.assignment_id AND a.end_date IS NULL
+  JOIN equipment_catalog e ON e.id = a.catalog_id
+  WHERE s.service_id = ? ORDER BY a.id
+`);
+
+/** O MAC da antena (cpe/antena) activa do serviço, para a validação do WDS. */
+export function loadAntennaMacs(db: Database.Database, serviceIds: number[]): Map<number, string | null> {
+  const devices = activeDevicesQuery(db);
+  return new Map(serviceIds.map((id) => {
+    const antenna = (devices.all(id) as IptvDevice[]).find((d) => ['cpe', 'antena'].includes((d.type ?? '').trim().toLowerCase()));
+    return [id, antenna?.macAddress ?? null];
+  }));
+}
+
+export const serviceHasIptv = (db: Database.Database, serviceId: number): boolean =>
+  db.prepare('SELECT 1 FROM services WHERE id = ? AND iptv_vpn = 1').get(serviceId) !== undefined;
+
+/** Serviços marcados que usam esta atribuição (dono e partilhas). */
+export const assignmentIptvServices = (db: Database.Database, assignmentId: number): number[] =>
+  (db.prepare(`
+    SELECT s.id FROM assignment_services x JOIN services s ON s.id = x.service_id
+    WHERE x.assignment_id = ? AND s.iptv_vpn = 1
+  `).all(assignmentId) as Array<{ id: number }>).map((r) => r.id);
+
 /** Serviços activos com a marca, e o identificador que o script segue para cada um. */
 export function loadIptvTargets(db: Database.Database): IptvTarget[] {
   const services = db.prepare(`
@@ -44,13 +72,7 @@ export function loadIptvTargets(db: Database.Database): IptvTarget[] {
     FROM services s LEFT JOIN service_network_state n ON n.service_id = s.id
     WHERE s.iptv_vpn = 1 AND s.status = 'active' ORDER BY s.id
   `).all() as Array<{ id: number; pppoeUsername: string | null; divergence: string | null }>;
-  const devices = db.prepare(`
-    SELECT e.type AS type, a.operation_mode AS operationMode, a.mac_address AS macAddress
-    FROM assignment_services s
-    JOIN service_device_assignments a ON a.id = s.assignment_id AND a.end_date IS NULL
-    JOIN equipment_catalog e ON e.id = a.catalog_id
-    WHERE s.service_id = ? ORDER BY a.id
-  `);
+  const devices = activeDevicesQuery(db);
   return services.map((service) => {
     // Um nome mudado no Winbox é uma divergência do ADR 0014: não se adivinha qual vale.
     if (service.pppoeUsername && service.divergence?.includes('username')) {

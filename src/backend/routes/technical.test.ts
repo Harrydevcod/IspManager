@@ -1,9 +1,15 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { requestNetworkSync } from '../lib/network-sync';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
+
+vi.mock('../lib/network-sync', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/network-sync')>()),
+  requestNetworkSync: vi.fn()
+}));
 
 let app: FastifyInstance;
 let db: Database.Database;
@@ -1217,6 +1223,30 @@ describe('device identity (IP fixo)', () => {
 
     expect(response.statusCode).toBe(409);
   });
+  test('escritas em atribuicoes de um servico com IPTV via VPN pedem a passagem; sem a marca, nao', async () => {
+    const { catalog, service } = seedBaseService();
+    const serviceId = Number(service.lastInsertRowid);
+    const sync = vi.mocked(requestNetworkSync);
+    const { assignmentId } = await install(serviceId, catalog.lastInsertRowid, { serialNumber: 'SN-IPTV', macAddress: 'AA:BB:CC:DD:EE:01' });
+    const patch = () => app.inject({
+      method: 'PATCH', url: `/api/service-device-assignments/${assignmentId}`, payload: { macAddress: 'AA:BB:CC:DD:EE:02' }
+    });
+
+    sync.mockClear();
+    expect((await patch()).statusCode).toBe(200);
+    expect(sync).not.toHaveBeenCalled();
+
+    db.prepare('UPDATE services SET iptv_vpn = 1 WHERE id = ?').run(serviceId);
+    expect((await patch()).statusCode).toBe(200);
+    expect(sync).toHaveBeenCalledTimes(1);
+
+    const ended = await app.inject({ method: 'POST', url: `/api/service-device-assignments/${assignmentId}/return`, payload: {} });
+    expect(ended.statusCode).toBeLessThan(300);
+    expect(sync).toHaveBeenCalledTimes(2);
+
+    await install(serviceId, catalog.lastInsertRowid, { serialNumber: 'SN-IPTV-2' });
+    expect(sync).toHaveBeenCalledTimes(3);
+  });
 });
 
 describe('antena partilhada', () => {
@@ -1753,4 +1783,5 @@ describe('datas do ciclo de equipamento', () => {
     expect(fecho.statusCode).toBe(400);
     expect((fecho.json() as { error: string }).error).toContain('use a devolucao');
   });
+
 });
