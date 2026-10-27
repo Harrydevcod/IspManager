@@ -102,6 +102,14 @@ describe('evaluateIptvInfra', () => {
     expect(find(evaluateIptvInfra(config, { ...healthy, routes }), 'killswitch')?.state).toBe('missing');
   });
 
+  // Medido no CHR 7.24.2: a REST marca a rota blackhole com a chave presente e vazia.
+  test('blackhole como a REST a devolve ("blackhole": "") conta como rota de recurso', () => {
+    const routes = healthy.routes.map((route) => route.blackhole ? { ...route, blackhole: '' } : route);
+    const checks = evaluateIptvInfra(config, { ...healthy, routes });
+    expect(find(checks, 'killswitch')?.state).toBe('ok');
+    expect(find(checks, 'tunnel')?.state).toBe('ok');
+  });
+
   test('uma blackhole por omissão desactivada não protege o tráfego', () => {
     const routes = healthy.routes.map((route) => route.blackhole ? { ...route, disabled: 'true' } : route);
     expect(find(evaluateIptvInfra(config, { ...healthy, routes }), 'killswitch')?.state).toBe('disabled');

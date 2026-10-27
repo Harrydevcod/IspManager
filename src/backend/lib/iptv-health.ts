@@ -17,6 +17,9 @@ const TUNNEL_TYPES = new Set([
   'ipip', 'ipipv6', 'gre', 'gre6', 'eoip', 'eoipv6', 'l2tp-ether', 'vxlan'
 ]);
 const isDefault = (route: Row) => route['dst-address'] === '0.0.0.0/0';
+// A REST do 7.24 marca a blackhole com a chave presente e vazia (`"blackhole": ""`, medido no CHR);
+// uma rota normal nem traz a chave.
+const isBlackhole = (route: Row) => 'blackhole' in route && route.blackhole !== 'false' && route.blackhole !== false;
 
 function state(rows: Row[]): CheckState {
   return rows.length === 0 ? 'missing' : rows.some(on) ? 'ok' : 'disabled';
@@ -80,7 +83,7 @@ export function evaluateIptvInfra(config: IptvConfig, reads: IptvInfraReads): Ip
 
   const names = new Set(reads.interfaces.filter((row) => TUNNEL_TYPES.has(String(row.type))).map((row) => String(row.name)));
   const tableRoutes = reads.routes.filter((r) => table && r['routing-table'] === table);
-  const tunnelRoutes = tableRoutes.filter((r) => isDefault(r) && !yes(r.blackhole) && on(r));
+  const tunnelRoutes = tableRoutes.filter((r) => isDefault(r) && !isBlackhole(r) && on(r));
   const tunnels = [...new Set(tunnelRoutes.map((r) => routeInterface(r, names)).filter((n): n is string => Boolean(n)))];
   const activeTunnels = [...new Set(tunnelRoutes.filter((r) => yes(r.active)).map((r) => routeInterface(r, names)).filter((n): n is string => Boolean(n)))];
   const statuses = activeTunnels.map((name) => tunnelAlive(name, reads));
@@ -99,7 +102,7 @@ export function evaluateIptvInfra(config: IptvConfig, reads: IptvInfraReads): Ip
     { key: 'mark', label: 'Marca das ligações IPTV', state: state(marking) },
     order,
     tunnel,
-    { key: 'killswitch', label: 'Rota de recurso (blackhole)', state: state(tableRoutes.filter((r) => isDefault(r) && yes(r.blackhole))) },
+    { key: 'killswitch', label: 'Rota de recurso (blackhole)', state: state(tableRoutes.filter((r) => isDefault(r) && isBlackhole(r))) },
     { key: 'filter', label: 'Filtro de saída pelo túnel', state: state(reads.filter.filter((r) => r.action === 'accept' && ofList(r) && outTunnel(r))) },
     { key: 'nat', label: 'NAT do túnel', state: state(reads.nat.filter((r) => (r.action === 'masquerade' || r.action === 'src-nat') && outTunnel(r))) }
   ];
