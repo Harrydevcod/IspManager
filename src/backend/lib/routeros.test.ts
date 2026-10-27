@@ -15,6 +15,7 @@ import {
   ensureRouterScript,
   listAddressList,
   removeAddressListEntry,
+  patchAddressListEntry,
   createSecret,
   describeRouterFailure,
   listProfiles,
@@ -273,6 +274,14 @@ describe('operações RouterOS', () => {
     expect(transport.calls).toHaveLength(0);
     await removeAddressListEntry(transport, '*A');
     expect(transport.calls).toEqual([{ method: 'DELETE', path: '/ip/firewall/address-list/*A' }]);
+  });
+
+  test('patchAddressListEntry recusa um .id inválido e muda só o comentário', async () => {
+    const transport = fakeTransport();
+    await expect(patchAddressListEntry(transport, '1', { comment: 'x' })).rejects.toThrow('inválido');
+    expect(transport.calls).toHaveLength(0);
+    await patchAddressListEntry(transport, '*A', { comment: 'novo' });
+    expect(transport.calls).toEqual([{ method: 'PATCH', path: '/ip/firewall/address-list/*A', body: { comment: 'novo' } }]);
   });
 
   // Medido no router real: o PUT foi aceite e o script ficou vazio e INVALID, sem erro.

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import type { RouterRequest, RouterTransport } from './routeros';
-import { HOST, loadIptvTargets, syncIptv } from './iptv';
+import { canonicalHost, HOST, loadIptvTargets, syncIptv } from './iptv';
 
 function seed() {
   const db = new Database(':memory:');
@@ -85,7 +85,7 @@ describe('IPTV via VPN', () => {
     ]);
     expect(await syncIptv(seed(), { transport: router([{ '.id': '*A', address: 'Line.Dino.ws', comment: 'manual', dynamic: 'false' }]).transport, dryRun: true }))
       .toMatchObject({ serversCovered: [{ address: 'line.dino.ws', comment: 'manual' }] });
-    expect(JSON.parse((db.prepare("SELECT metadata_json AS m FROM audit_logs WHERE action = 'iptv_vpn_servers'").get() as { m: string }).m)).toEqual({ added: ['1.2.3.4'], removed: ['9.9.9.9'] });
+    expect(JSON.parse((db.prepare("SELECT metadata_json AS m FROM audit_logs WHERE action = 'iptv_vpn_servers'").get() as { m: string }).m)).toEqual({ added: ['1.2.3.4'], removed: ['9.9.9.9'], renamed: [] });
     // A entrada manual *A nunca é tocada.
     expect(writes.some((c) => c.path.endsWith('*A'))).toBe(false);
   });
@@ -138,7 +138,75 @@ describe('IPTV via VPN', () => {
     const { transport, calls } = router();
     await syncIptv(db, { transport, dryRun: false });
     const adds = calls.filter((c) => c.method === 'PUT' && c.path === '/ip/firewall/address-list').map((c) => (c.body as { address: string }).address);
-    expect(adds).toEqual(['8.8.8.8/24']);
+    expect(adds).toEqual(['8.8.8.0/24']);
+  });
+
+  test('forma canónica: /32 sem prefixo, bits de host a zero, /0, domínio em minúsculas', () => {
+    expect(canonicalHost('8.8.8.8/32')).toBe('8.8.8.8');
+    expect(canonicalHost('8.8.8.8/24')).toBe('8.8.8.0/24');
+    expect(canonicalHost('8.8.8.8/0')).toBe('0.0.0.0/0');
+    expect(canonicalHost('1.2.3.4')).toBe('1.2.3.4');
+    expect(canonicalHost('Line.Dino.WS')).toBe('line.dino.ws');
+    expect(canonicalHost('999.1.1.1')).toBeNull();
+    expect(canonicalHost('8.8.8.8/33')).toBeNull();
+    expect(canonicalHost('a/b.com')).toBeNull();
+  });
+
+  test('o router guarda 8.8.8.0/24: a entrada canónica não é recriada', async () => {
+    const db = seed();
+    db.prepare("UPDATE iptv_providers SET hosts = '8.8.8.8/24'").run();
+    const { transport, calls } = router([{ '.id': '*D', address: '8.8.8.0/24', comment: 'ispm-iptv-srv:1 Dino', dynamic: 'false' }]);
+    await syncIptv(db, { transport, dryRun: false });
+    expect(calls.filter((c) => c.path.startsWith('/ip/firewall/address-list') && c.method !== 'GET')).toEqual([]);
+  });
+
+  test('fornecedor renomeado: PATCH do comentário, sem apagar nem recriar', async () => {
+    const db = seed();
+    db.prepare("UPDATE iptv_providers SET name = 'Novo', hosts = 'line.dino.ws'").run();
+    const { transport, calls } = router([{ '.id': '*C', address: 'line.dino.ws', comment: 'ispm-iptv-srv:1 Velho', dynamic: 'false' }]);
+    await syncIptv(db, { transport, dryRun: false });
+    expect(calls.filter((c) => c.path.startsWith('/ip/firewall/address-list') && c.method !== 'GET')).toEqual([
+      { method: 'PATCH', path: '/ip/firewall/address-list/*C', body: { comment: 'ispm-iptv-srv:1 Novo' } }
+    ]);
+    expect(JSON.parse((db.prepare("SELECT metadata_json AS m FROM audit_logs WHERE action = 'iptv_vpn_servers'").get() as { m: string }).m))
+      .toMatchObject({ added: [], removed: [], renamed: ['line.dino.ws'] });
+  });
+
+  test('host que passa do fornecedor 1 para o 2: PATCH com o comentário do 2', async () => {
+    const db = seed();
+    db.prepare("UPDATE iptv_providers SET hosts = '1.2.3.4'").run();
+    db.prepare("INSERT INTO iptv_providers (id, name, hosts) VALUES (2, 'Outro', 'line.dino.ws')").run();
+    const { transport, calls } = router([
+      { '.id': '*C', address: 'line.dino.ws', comment: 'ispm-iptv-srv:1 Dino', dynamic: 'false' },
+      { '.id': '*E', address: '1.2.3.4', comment: 'ispm-iptv-srv:1 Dino', dynamic: 'false' }
+    ]);
+    await syncIptv(db, { transport, dryRun: false });
+    expect(calls.filter((c) => c.path.startsWith('/ip/firewall/address-list') && c.method !== 'GET')).toEqual([
+      { method: 'PATCH', path: '/ip/firewall/address-list/*C', body: { comment: 'ispm-iptv-srv:2 Outro' } }
+    ]);
+  });
+
+  test('uma escrita que falha a meio: o registo dos servidores guarda o que ficou escrito e o erro propaga', async () => {
+    const db = seed();
+    db.prepare("UPDATE iptv_providers SET hosts = '1.2.3.4\n5.6.7.8'").run();
+    let puts = 0;
+    const transport: RouterTransport = async (request) => {
+      if (request.method === 'PUT' && request.path === '/ip/firewall/address-list' && ++puts === 2) throw new Error('router caiu');
+      return [];
+    };
+    await expect(syncIptv(db, { transport, dryRun: false })).rejects.toThrow('router caiu');
+    expect(JSON.parse((db.prepare("SELECT metadata_json AS m FROM audit_logs WHERE action = 'iptv_vpn_servers'").get() as { m: string }).m))
+      .toMatchObject({ added: ['1.2.3.4'] });
+  });
+
+  test('lease bound sem MAC cai para a sessão PPPoE do mesmo endereço', async () => {
+    const transport: RouterTransport = async (request) => {
+      if (request.path.startsWith('/ip/firewall/address-list?list=IPTV-SPLIT')) return [{ '.id': '*M', address: '10.20.0.77', comment: 'x', dynamic: 'false' }];
+      if (request.path.startsWith('/ip/dhcp-server/lease')) return [{ address: '10.20.0.77', status: 'bound' }];
+      if (request.path.startsWith('/ppp/active')) return [{ '.id': '*9', name: 'skn077', address: '10.20.0.77' }];
+      return [];
+    };
+    expect(await syncIptv(seed(), { transport, dryRun: true })).toMatchObject({ foreignManual: [{ address: '10.20.0.77', holder: 'skn077' }] });
   });
 
   test('valor aplicado corrompido conta como nunca aplicado', async () => {

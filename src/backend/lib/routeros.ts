@@ -1461,6 +1461,12 @@ export async function removeAddressListEntry(transport: RouterTransport, id: str
   await transport({ method: 'DELETE', path: `/ip/firewall/address-list/${safe}` });
 }
 
+export async function patchAddressListEntry(transport: RouterTransport, id: string, fields: { comment: string }): Promise<void> {
+  const safe = safeId(id);
+  if (!safe) throw new RouterError(`Identificador inválido: ${id}`, 0, undefined, 'bad_response');
+  await transport({ method: 'PATCH', path: `/ip/firewall/address-list/${safe}`, body: fields });
+}
+
 export type RouterRow = Record<string, unknown>;
 // Leituras da infraestrutura da VPN: o ISPM só lê estas tabelas, não as escreve. Nenhuma sabe
 // que tipo de VPN ou que WAN existem: lêem tudo e a T7 descobre o túnel a partir da lista de origens.
