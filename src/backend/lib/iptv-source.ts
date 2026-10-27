@@ -1,3 +1,5 @@
+import { EQUIPMENT_TYPES } from '../../shared/equipment';
+import { isKnownOperationMode } from '../../shared/operation';
 import { isMacAddress, normalizeMacAddress } from '../../shared/mac';
 
 /** Um equipamento activo do serviço, como a regra o precisa de ver. */
@@ -15,8 +17,8 @@ const NAT_MODES = new Set(['router', 'wisp']);
 const ANTENNA_LAYER2 = new Set(['cliente', 'ponte', 'ap', 'repetidor', 'mesh']);
 const ROUTER_LAYER2 = new Set(['ap', 'ponte', 'repetidor', 'mesh']);
 const ANTENNA_TYPES = new Set(['cpe', 'antena']);
-/** Rede e material passivo: nunca são o aparelho IPTV. Tudo o resto (`outro`, `tv`, `box`) pode ser. */
-const NOT_APPLIANCE = new Set(['cpe', 'antena', 'router', 'ap', 'repetidor', 'switch', 'cabo', 'conector', 'ficha', 'suporte']);
+/** Tudo o que o catálogo conhece, menos `outro`: nunca é o aparelho IPTV. O texto livre (`tv`, `box`) pode ser. */
+const NOT_APPLIANCE = new Set<string>(EQUIPMENT_TYPES.filter((t) => t !== 'outro'));
 
 const kind = (device: IptvDevice) => (device.type ?? '').trim().toLowerCase();
 const modeOf = (device: IptvDevice) => (device.operationMode ?? '').trim().toLowerCase();
@@ -52,7 +54,9 @@ function legacySource(devices: IptvDevice[]): Exclude<IptvSource, { kind: 'pppoe
       const found = mac(antenna);
       return found ? { kind: 'mac', mac: found, via: 'antena' } : { kind: 'missing', reason: 'Falta o MAC da antena' };
     }
-    if (!ANTENNA_LAYER2.has(mode)) return { kind: 'missing', reason: `Modo da antena desconhecido: ${mode}` };
+    if (!ANTENNA_LAYER2.has(mode)) {
+      return { kind: 'missing', reason: isKnownOperationMode(mode) ? `Modo ${mode} sem regra para a antena` : `Modo da antena desconhecido: ${mode}` };
+    }
   }
 
   if (router) {
@@ -62,7 +66,9 @@ function legacySource(devices: IptvDevice[]): Exclude<IptvSource, { kind: 'pppoe
       const found = mac(router);
       return found ? { kind: 'mac', mac: found, via: 'router' } : { kind: 'missing', reason: 'Falta o MAC do router do cliente' };
     }
-    if (!ROUTER_LAYER2.has(mode)) return { kind: 'missing', reason: `Modo do router do cliente desconhecido: ${mode}` };
+    if (!ROUTER_LAYER2.has(mode)) {
+      return { kind: 'missing', reason: isKnownOperationMode(mode) ? `Modo ${mode} sem regra para o router do cliente` : `Modo do router do cliente desconhecido: ${mode}` };
+    }
   }
 
   const found = mac(devices.find((device) => !NOT_APPLIANCE.has(kind(device)) && mac(device)));

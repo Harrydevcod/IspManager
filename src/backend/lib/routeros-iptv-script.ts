@@ -39,6 +39,6 @@ export function iptvSplitScript({ list, users, macs }: { list: string; users: st
   :local ad [:tostr [/ip firewall address-list get $e address]]
   :if (($want->$ad) = [/ip firewall address-list get $e comment]) do={ :set ($keep->$ad) true } else={ /ip firewall address-list remove $e } }
 :foreach ad,c in=$want do={ :if ([:typeof ($keep->$ad)] = "nothing") do={
-  :if ([:len [/ip firewall address-list find where list=${L} address=$ad]] = 0) do={ /ip firewall address-list add list=${L} address=$ad comment=$c dynamic=yes } } }
+  :if ([:len [/ip firewall address-list find where list=${L} address=$ad]] = 0) do={ :do { /ip firewall address-list add list=${L} address=$ad comment=$c dynamic=yes } on-error={} } } }
 `;
 }

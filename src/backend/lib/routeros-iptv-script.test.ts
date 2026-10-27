@@ -20,7 +20,7 @@ describe('iptvSplitScript', () => {
     expect(source).toContain(':local ad [:tostr [/ip firewall address-list get $e address]]');
     expect(source).toContain('!= ""');
     expect(source).not.toContain(':log');
-    expect(source).not.toContain('on-error');
+    expect(source).toContain('on-error={}');
   });
   test('nunca usa números de linha', () => {
     expect(iptvSplitScript(input)).not.toMatch(/\b(remove|set|disable|enable) \d+\b/);

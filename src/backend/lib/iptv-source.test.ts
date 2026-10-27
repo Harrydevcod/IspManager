@@ -62,6 +62,10 @@ describe('iptvSource', () => {
     expect(iptvSource({ pppoeUsername: null }, [cpe('cliente'), router('xpto')]))
       .toEqual({ kind: 'missing', reason: 'Modo do router do cliente desconhecido: xpto' });
   });
+  test('modo do catálogo sem regra para o papel', () => {
+    expect(iptvSource({ pppoeUsername: null }, [cpe('cliente'), router('cliente')]))
+      .toEqual({ kind: 'missing', reason: 'Modo cliente sem regra para o router do cliente' });
+  });
   test('modo em maiúsculas', () => {
     expect(iptvSource({ pppoeUsername: null }, [cpe(' ROUTER ')])).toEqual({ kind: 'mac', mac: 'AA:BB:CC:00:00:01', via: 'antena' });
   });
