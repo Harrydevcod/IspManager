@@ -493,3 +493,27 @@
 .recon-summary .is-bad b {
   color: var(--danger);
 }
+
+/* IPTV via VPN: secções empilhadas; o cabeçalho dos fornecedores leva a ação à direita. */
+.iptv-panel {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.iptv-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.iptv-diff {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-2);
+}
