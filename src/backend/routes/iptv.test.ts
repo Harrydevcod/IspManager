@@ -1,9 +1,11 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
+import * as adminNetwork from '../lib/admin-network';
+import * as routeros from '../lib/routeros';
 
 vi.mock('../lib/network-sync', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/network-sync')>()),
@@ -36,6 +38,7 @@ beforeAll(async () => {
 beforeEach(() => {
   requestNetworkSync.mockClear();
   db.exec(`
+    DROP TRIGGER IF EXISTS reject_iptv_audit;
     DELETE FROM audit_logs;
     DELETE FROM job_runs;
     DELETE FROM services;
@@ -65,7 +68,45 @@ function seedService(): number {
 const createProvider = (hosts: string, name = 'Fornecedor A') =>
   app.inject({ method: 'POST', url: '/api/iptv/providers', payload: { name, hosts } });
 
+function rejectAudit(): void {
+  db.exec(`CREATE TRIGGER reject_iptv_audit BEFORE INSERT ON audit_logs
+    BEGIN SELECT RAISE(ABORT, 'Auditoria indisponível'); END;`);
+}
+
 describe('iptv routes', () => {
+  test('falha na auditoria da marca reverte o serviço e não pede a passagem', async () => {
+    const serviceId = seedService();
+    const before = db.prepare('SELECT * FROM services WHERE id = ?').get(serviceId);
+    rejectAudit();
+    const response = await app.inject({ method: 'PUT', url: `/api/services/${serviceId}/iptv`, payload: { iptvVpn: true, iptvProviderId: null } });
+    expect(response.statusCode).toBe(500);
+    expect(db.prepare('SELECT * FROM services WHERE id = ?').get(serviceId)).toEqual(before);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM audit_logs').get()).toEqual({ n: 0 });
+    expect(requestNetworkSync).not.toHaveBeenCalled();
+  });
+
+  test('falha na auditoria da criação reverte o fornecedor e não pede a passagem', async () => {
+    rejectAudit();
+    const response = await createProvider('iptv.example.com');
+    expect(response.statusCode).toBe(500);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM iptv_providers').get()).toEqual({ n: 0 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM audit_logs').get()).toEqual({ n: 0 });
+    expect(requestNetworkSync).not.toHaveBeenCalled();
+  });
+
+  test('falha na auditoria da alteração reverte o fornecedor e não pede a passagem', async () => {
+    const provider = (await createProvider('iptv.example.com')).json() as { id: number };
+    const before = db.prepare('SELECT * FROM iptv_providers WHERE id = ?').get(provider.id);
+    const audits = db.prepare('SELECT COUNT(*) AS n FROM audit_logs').get();
+    requestNetworkSync.mockClear();
+    rejectAudit();
+    const response = await app.inject({ method: 'PUT', url: `/api/iptv/providers/${provider.id}`, payload: { name: 'Nome alterado', hosts: 'new.example.com', active: false } });
+    expect(response.statusCode).toBe(500);
+    expect(db.prepare('SELECT * FROM iptv_providers WHERE id = ?').get(provider.id)).toEqual(before);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM audit_logs').get()).toEqual(audits);
+    expect(requestNetworkSync).not.toHaveBeenCalled();
+  });
+
   test('PUT marca o serviço, audita antes e depois e pede a passagem', async () => {
     const serviceId = seedService();
     const response = await app.inject({ method: 'PUT', url: `/api/services/${serviceId}/iptv`, payload: { iptvVpn: true, iptvProviderId: null } });
@@ -124,5 +165,50 @@ describe('iptv routes', () => {
   test('validate e infra dão 409 com o router desligado', async () => {
     expect((await app.inject({ method: 'GET', url: '/api/iptv/validate' })).statusCode).toBe(409);
     expect((await app.inject({ method: 'GET', url: '/api/iptv/infra' })).statusCode).toBe(409);
+  });
+
+  test('PUT de fornecedor: 404 se não existe; parcial mantém o que não vem', async () => {
+    const missing = await app.inject({ method: 'PUT', url: '/api/iptv/providers/99999', payload: { name: 'X' } });
+    expect(missing.statusCode).toBe(404);
+    const provider = (await createProvider('line.dino.ws', 'Fornecedor A')).json() as { id: number };
+    const renamed = await app.inject({ method: 'PUT', url: `/api/iptv/providers/${provider.id}`, payload: { name: 'Fornecedor B' } });
+    expect(renamed.statusCode).toBe(200);
+    expect(renamed.json()).toMatchObject({ name: 'Fornecedor B', hosts: 'line.dino.ws', active: 1 });
+  });
+
+  test('desmarcar ignora o fornecedor e grava null', async () => {
+    const serviceId = seedService();
+    const response = await app.inject({ method: 'PUT', url: `/api/services/${serviceId}/iptv`, payload: { iptvVpn: false, iptvProviderId: 777 } });
+    expect(response.statusCode).toBe(200);
+    expect(db.prepare('SELECT iptv_vpn AS v, iptv_provider_id AS p FROM services WHERE id = ?').get(serviceId)).toEqual({ v: 0, p: null });
+  });
+
+  test('status usa a corrida mais recente, manual ou periódica', async () => {
+    const run = db.prepare("INSERT INTO job_runs (job, status, summary_json) VALUES (?, 'ok', ?)");
+    run.run('network_enforcement', JSON.stringify({ iptv: { status: 'idle' } }));
+    run.run('network_enforcement_manual', JSON.stringify({ iptv: { status: 'applied' } }));
+    const body = (await app.inject({ method: 'GET', url: '/api/iptv/status' })).json() as { last: { status: string } };
+    expect(body.last.status).toBe('applied');
+  });
+
+  describe('router configurado', () => {
+    const config = { enabled: true, host: '192.0.2.1', port: 443, user: 'u', password: 'p', dryRun: true, intervalSeconds: 60, tlsCert: '', maxDisablesPerRun: 5 };
+    afterEach(() => vi.restoreAllMocks());
+
+    test('fora da rede de gestão dá 409 com o motivo', async () => {
+      vi.spyOn(routeros, 'readRouterConfig').mockReturnValue(config);
+      vi.spyOn(adminNetwork, 'detectAdminNetwork').mockResolvedValue({ state: 'offsite', checkedAt: new Date().toISOString(), detail: 'O router não respondeu.' });
+      const response = await app.inject({ method: 'GET', url: '/api/iptv/infra' });
+      expect(response.statusCode).toBe(409);
+      expect((response.json() as { error: string }).error).toContain('Fora da rede de gestão');
+    });
+
+    test('leitura que rebenta dá 502', async () => {
+      vi.spyOn(routeros, 'readRouterConfig').mockReturnValue(config);
+      vi.spyOn(adminNetwork, 'detectAdminNetwork').mockResolvedValue({ state: 'onsite', checkedAt: new Date().toISOString(), detail: '' });
+      vi.spyOn(routeros, 'createTransport').mockReturnValue((() => Promise.reject(new Error('connect ECONNREFUSED'))) as unknown as routeros.RouterTransport);
+      const response = await app.inject({ method: 'GET', url: '/api/iptv/infra' });
+      expect(response.statusCode).toBe(502);
+    });
   });
 });

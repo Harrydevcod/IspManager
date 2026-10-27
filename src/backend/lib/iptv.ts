@@ -1,7 +1,7 @@
 import { isIPv4 } from 'node:net';
 import type Database from 'better-sqlite3';
 import { recordSystemAuditEntry } from './audit';
-import { iptvSource, type IptvDevice, type IptvSource } from './iptv-source';
+import { ANTENNA_TYPES, iptvSource, type IptvDevice, type IptvSource } from './iptv-source';
 import { IPTV_SCRIPT_NAME, iptvScriptMark, iptvSplitScript } from './routeros-iptv-script';
 import {
   addAddressListEntry, ensureRouterScript, listActive, listAddressList, listDhcpLeases, patchAddressListEntry, removeAddressListEntry, type RouterTransport
@@ -18,9 +18,9 @@ export type IptvSyncResult =
       manualConflicts: Array<{ address: string; comment: string | null }>;
       unownedManual: Array<{ address: string; comment: string | null }>;
       foreignManual: Array<{ address: string; comment: string | null; holder: string }>;
-      serversCovered: Array<{ address: string; comment: string | null }>;
+      serversCovered: Array<{ address: string; comment: string | null; disabled: boolean }>;
       before: { mark: string; users: string[]; macs: string[] } | null;
-      servers: { added: number; removed: number; renamed: number } };
+      servers: { added: number; removed: number; renamed: number; reactivated: number } };
 
 const SERVER_PREFIX = 'ispm-iptv-srv:';
 const APPLIED_KEY = 'iptvVpnApplied';
@@ -50,20 +50,10 @@ const activeDevicesQuery = (db: Database.Database) => db.prepare(`
 export function loadAntennaMacs(db: Database.Database, serviceIds: number[]): Map<number, string | null> {
   const devices = activeDevicesQuery(db);
   return new Map(serviceIds.map((id) => {
-    const antenna = (devices.all(id) as IptvDevice[]).find((d) => ['cpe', 'antena'].includes((d.type ?? '').trim().toLowerCase()));
+    const antenna = (devices.all(id) as IptvDevice[]).find((d) => ANTENNA_TYPES.has((d.type ?? '').trim().toLowerCase()));
     return [id, antenna?.macAddress ?? null];
   }));
 }
-
-export const serviceHasIptv = (db: Database.Database, serviceId: number): boolean =>
-  db.prepare('SELECT 1 FROM services WHERE id = ? AND iptv_vpn = 1').get(serviceId) !== undefined;
-
-/** Serviços marcados que usam esta atribuição (dono e partilhas). */
-export const assignmentIptvServices = (db: Database.Database, assignmentId: number): number[] =>
-  (db.prepare(`
-    SELECT s.id FROM assignment_services x JOIN services s ON s.id = x.service_id
-    WHERE x.assignment_id = ? AND s.iptv_vpn = 1
-  `).all(assignmentId) as Array<{ id: number }>).map((r) => r.id);
 
 /** Serviços activos com a marca, e o identificador que o script segue para cada um. */
 export function loadIptvTargets(db: Database.Database): IptvTarget[] {
@@ -152,12 +142,16 @@ export async function syncIptv(db: Database.Database, { transport, dryRun }: { t
   // O RouterOS recusa um segundo `add` com a mesma lista e endereço: um endereço que uma
   // entrada de outra origem (manual) já cobre não se acrescenta, só se reporta.
   const foreign = new Map(all.filter((e) => !e.comment?.startsWith(SERVER_PREFIX)).map((e) => [canon(e.address), e]));
-  const serversCovered = servers.filter((s) => foreign.has(s.address)).map((s) => ({ address: s.address, comment: foreign.get(s.address)!.comment }));
+  const serversCovered = servers.filter((s) => foreign.has(s.address)).map((s) => ({ address: s.address, comment: foreign.get(s.address)!.comment, disabled: foreign.get(s.address)!.disabled }));
   // Uma entrada do ISPM com o endereço certo mas outro comentário (fornecedor renomeado, ou
   // host que mudou de fornecedor) muda de comentário no mesmo .id: nunca há janela sem entrada.
-  const toRename = servers.flatMap((s) => {
+  const toUpdate = servers.flatMap((s) => {
     const entry = ours.get(s.address);
-    return entry && entry.comment !== s.comment && !foreign.has(s.address) ? [{ id: entry.id, address: s.address, comment: s.comment }] : [];
+    if (!entry || foreign.has(s.address)) return [];
+    const renamed = entry.comment !== s.comment;
+    if (!renamed && !entry.disabled) return [];
+    return [{ id: entry.id, address: s.address, renamed, reactivated: entry.disabled,
+      fields: { ...(renamed ? { comment: s.comment } : {}), ...(entry.disabled ? { disabled: false } : {}) } }];
   });
   const toAdd = servers.filter((s) => !ours.has(s.address) && !foreign.has(s.address));
   // O que o router vê agora: por onde entra cada cliente marcado (PPPoE ou legacy) e o
@@ -197,30 +191,31 @@ export async function syncIptv(db: Database.Database, { transport, dryRun }: { t
   let before: { mark: string; users: string[]; macs: string[] } | null = null;
   try { before = previous ? JSON.parse(previous) : null; } catch { /* valor corrompido: conta como nunca aplicado */ }
   const summary = { users: [...new Set(users)].sort(), macs: [...new Set(macs)].sort(), missing, mark, active, manualConflicts, unownedManual, foreignManual, serversCovered, before,
-    servers: { added: toAdd.length, removed: toRemove.length, renamed: toRename.length } };
+    servers: { added: toAdd.length, removed: toRemove.length, renamed: toUpdate.filter((e) => e.renamed).length, reactivated: toUpdate.filter((e) => e.reactivated).length } };
   if (dryRun) return { status: 'dry_run', ...summary };
 
   // Acrescentar antes de retirar: a meio de uma falha, um fornecedor nunca fica sem entrada.
   // Auditado mesmo que uma escrita a meio falhe: regista o que chegou a ser escrito, e o erro propaga.
-  const written = { added: [] as string[], removed: [] as string[], renamed: [] as string[] };
+  const written = { added: [] as string[], removed: [] as string[], renamed: [] as string[], reactivated: [] as string[] };
   try {
     for (const entry of toAdd) {
       await addAddressListEntry(transport, { list: config.serversList, ...entry });
       written.added.push(entry.address);
     }
-    for (const entry of toRename) {
-      await patchAddressListEntry(transport, entry.id, { comment: entry.comment });
-      written.renamed.push(entry.address);
+    for (const entry of toUpdate) {
+      await patchAddressListEntry(transport, entry.id, entry.fields);
+      if (entry.renamed) written.renamed.push(entry.address);
+      if (entry.reactivated) written.reactivated.push(entry.address);
     }
     for (const entry of toRemove) {
       await removeAddressListEntry(transport, entry.id);
       written.removed.push(entry.address);
     }
   } finally {
-    if (written.added.length || written.removed.length || written.renamed.length) {
+    if (written.added.length || written.removed.length || written.renamed.length || written.reactivated.length) {
       recordSystemAuditEntry(db, {
         action: 'iptv_vpn_servers', entityType: 'router',
-        summary: `IPTV via VPN: servidores +${written.added.length} -${written.removed.length} ~${written.renamed.length}`,
+        summary: `IPTV via VPN: servidores +${written.added.length} -${written.removed.length} ~${written.renamed.length}, ${written.reactivated.length} reactivados`,
         metadata: written
       });
     }

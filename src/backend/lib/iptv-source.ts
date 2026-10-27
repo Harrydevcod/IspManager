@@ -16,7 +16,7 @@ export type IptvSource =
 const NAT_MODES = new Set(['router', 'wisp']);
 const ANTENNA_LAYER2 = new Set(['cliente', 'ponte', 'ap', 'repetidor', 'mesh']);
 const ROUTER_LAYER2 = new Set(['ap', 'ponte', 'repetidor', 'mesh']);
-const ANTENNA_TYPES = new Set(['cpe', 'antena']);
+export const ANTENNA_TYPES = new Set(['cpe', 'antena']);
 /** Tudo o que o catálogo conhece, menos `outro`: nunca é o aparelho IPTV. O texto livre (`tv`, `box`) pode ser. */
 const NOT_APPLIANCE = new Set<string>(EQUIPMENT_TYPES.filter((t) => t !== 'outro'));
 

@@ -32,6 +32,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   db.exec(`
+    DELETE FROM audit_logs;
     DELETE FROM whatsapp_notices;
     DELETE FROM backbone_assignment_links;
     DELETE FROM backbone_devices;
@@ -1288,6 +1289,40 @@ describe('antena partilhada', () => {
     return (db.prepare('SELECT stock_total AS n FROM equipment_catalog WHERE id = ?').get(catalogId) as { n: number }).n;
   }
 
+  test.each(['retirar partilha', 'trocar unidade', 'mudar titular'] as const)(
+    'IPTV pede a passagem ao %s mesmo quando o vínculo marcado desaparece', async (action) => {
+      const { antenna, service, service2 } = seedTwoServices();
+      const assignmentId = await installAntenna(service.lastInsertRowid, antenna.lastInsertRowid);
+      expect((await share(assignmentId, service2.lastInsertRowid)).statusCode).toBe(201);
+      const markedService = action === 'mudar titular' ? service : service2;
+      db.prepare('UPDATE services SET iptv_vpn = 1 WHERE id = ?').run(markedService.lastInsertRowid);
+      const sync = vi.mocked(requestNetworkSync);
+      sync.mockClear();
+
+      const response = action === 'retirar partilha'
+        ? await app.inject({ method: 'DELETE', url: `/api/service-device-assignments/${assignmentId}/shares/${service2.lastInsertRowid}` })
+        : action === 'trocar unidade'
+          ? await app.inject({ method: 'POST', url: `/api/service-device-assignments/${assignmentId}/replace`, payload: { catalogId: antenna.lastInsertRowid } })
+          : await app.inject({ method: 'POST', url: `/api/service-device-assignments/${assignmentId}/owner`, payload: { serviceId: Number(service2.lastInsertRowid), keepPreviousAsShare: false } });
+
+      expect(response.statusCode).toBeLessThan(300);
+      expect(sync).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test('IPTV numa nova partilha pede a passagem; uma mutação recusada não pede', async () => {
+    const { antenna, service, service2 } = seedTwoServices();
+    const assignmentId = await installAntenna(service.lastInsertRowid, antenna.lastInsertRowid);
+    db.prepare('UPDATE services SET iptv_vpn = 1 WHERE id = ?').run(service2.lastInsertRowid);
+    const sync = vi.mocked(requestNetworkSync);
+    sync.mockClear();
+    expect((await share(assignmentId, service2.lastInsertRowid)).statusCode).toBe(201);
+    expect(sync).toHaveBeenCalledTimes(1);
+    sync.mockClear();
+    expect((await share(assignmentId, service2.lastInsertRowid)).statusCode).toBe(409);
+    expect(sync).not.toHaveBeenCalled();
+  });
+
   test('sharing never moves stock', async () => {
     const { antenna, service, service2 } = seedTwoServices();
     const assignmentId = await installAntenna(service.lastInsertRowid, antenna.lastInsertRowid, { ipAddress: '192.168.1.10' });
@@ -1449,6 +1484,23 @@ describe('antena partilhada', () => {
     const body = history.json() as { assignments: Array<{ id: number; ipAddress: string }> };
     expect(body.assignments).toHaveLength(1);
     expect(body.assignments[0]).toMatchObject({ id: replacementId, ipAddress: '192.168.1.11' });
+  });
+
+  test('replace de uma unidade partilhada pede a passagem se o marcado e o vizinho, nao o titular', async () => {
+    const { antenna, service, service2 } = seedTwoServices();
+    const assignmentId = await installAntenna(service.lastInsertRowid, antenna.lastInsertRowid);
+    await share(assignmentId, service2.lastInsertRowid);
+    db.prepare('UPDATE services SET iptv_vpn = 1 WHERE id = ?').run(service2.lastInsertRowid);
+    vi.mocked(requestNetworkSync).mockClear();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/service-device-assignments/${assignmentId}/replace`,
+      payload: { catalogId: antenna.lastInsertRowid }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(requestNetworkSync).toHaveBeenCalledTimes(1);
   });
 
   test('the bulk IP list shows a shared antenna once, naming who else it serves', async () => {

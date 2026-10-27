@@ -33,7 +33,6 @@ import {
   type ReturnCondition
 } from '../lib/serviceReturn';
 import { insertEquipmentPurchase } from '../lib/billing';
-import { assignmentIptvServices, serviceHasIptv } from '../lib/iptv';
 import { requestNetworkSync } from '../lib/network-sync';
 import { requireAuth, requireRole } from './auth';
 
@@ -211,23 +210,19 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
   const canManageBilling = { preHandler: requireRole(['admin', 'operator']) };
 
   // IPTV via VPN: o MAC que o router segue vem do equipamento, por isso qualquer escrita bem
-  // sucedida em atribuições (instalar, corrigir, terminar, trocar, devolver, partilhar) de um
-  // serviço marcado aplica-se logo. Um só ponto, para nenhuma rota nova o esquecer.
+  // sucedida em atribuições (instalar, corrigir, terminar, trocar, devolver, partilhar, passar
+  // o titular) pede a passagem se houver algum serviço activo marcado. Não se olha para o
+  // estado depois da escrita (trocas com partilhas, partilha retirada ou titular promovido
+  // mudam quem usa a unidade) e uma passagem a mais é inofensiva: o gatilho junta pedidos e
+  // a passagem é idempotente. O hook é global (`registerTechnicalRoutes` não é um plugin
+  // encapsulado), por isso filtra pelo caminho da rota antes de tocar na base.
   app.addHook('onResponse', async (request, reply) => {
-    if (request.method === 'GET' || reply.statusCode >= 400) return;
+    if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method) || reply.statusCode < 200 || reply.statusCode >= 300) return;
     const route = request.routeOptions.url ?? '';
-    const id = Number((request.params as { id?: string } | undefined)?.id);
-    const db = getSqliteDatabase();
-    let marked = false;
-    if (/^\/api\/services\/:id\/(items|returns)$/.test(route)) {
-      marked = serviceHasIptv(db, id);
-    } else if (route === '/api/service-device-assignments') {
-      const items = (request.body as { items?: Array<{ id?: number }> } | undefined)?.items ?? [];
-      marked = items.some((item) => assignmentIptvServices(db, Number(item.id)).length > 0);
-    } else if (route.startsWith('/api/service-device-assignments/:id')) {
-      marked = assignmentIptvServices(db, id).length > 0;
-    }
-    if (marked) requestNetworkSync();
+    const touchesAssignments = /^\/api\/services\/:id\/(items|returns)$/.test(route)
+      || /^\/api\/service-device-assignments(?:\/|$)/.test(route);
+    if (!touchesAssignments) return;
+    if (getSqliteDatabase().prepare("SELECT 1 FROM services WHERE iptv_vpn = 1 AND status = 'active' LIMIT 1").get()) requestNetworkSync();
   });
 
   app.get('/api/services/:id/technical-history', { preHandler: requireAuth() }, async (request, reply) => {
