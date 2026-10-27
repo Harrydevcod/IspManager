@@ -164,7 +164,8 @@ describe('IPTV via VPN', () => {
     const db = seed();
     db.prepare("UPDATE iptv_providers SET name = 'Novo', hosts = 'line.dino.ws'").run();
     const { transport, calls } = router([{ '.id': '*C', address: 'line.dino.ws', comment: 'ispm-iptv-srv:1 Velho', dynamic: 'false' }]);
-    await syncIptv(db, { transport, dryRun: false });
+    const result = await syncIptv(db, { transport, dryRun: false });
+    expect(result).toMatchObject({ servers: { added: 0, removed: 0, renamed: 1 } });
     expect(calls.filter((c) => c.path.startsWith('/ip/firewall/address-list') && c.method !== 'GET')).toEqual([
       { method: 'PATCH', path: '/ip/firewall/address-list/*C', body: { comment: 'ispm-iptv-srv:1 Novo' } }
     ]);

@@ -20,7 +20,7 @@ export type IptvSyncResult =
       foreignManual: Array<{ address: string; comment: string | null; holder: string }>;
       serversCovered: Array<{ address: string; comment: string | null }>;
       before: { mark: string; users: string[]; macs: string[] } | null;
-      servers: { added: number; removed: number } };
+      servers: { added: number; removed: number; renamed: number } };
 
 const SERVER_PREFIX = 'ispm-iptv-srv:';
 const APPLIED_KEY = 'iptvVpnApplied';
@@ -175,7 +175,7 @@ export async function syncIptv(db: Database.Database, { transport, dryRun }: { t
   let before: { mark: string; users: string[]; macs: string[] } | null = null;
   try { before = previous ? JSON.parse(previous) : null; } catch { /* valor corrompido: conta como nunca aplicado */ }
   const summary = { users: [...new Set(users)].sort(), macs: [...new Set(macs)].sort(), missing, mark, active, manualConflicts, unownedManual, foreignManual, serversCovered, before,
-    servers: { added: toAdd.length, removed: toRemove.length + toRename.length } };
+    servers: { added: toAdd.length, removed: toRemove.length, renamed: toRename.length } };
   if (dryRun) return { status: 'dry_run', ...summary };
 
   // Acrescentar antes de retirar: a meio de uma falha, um fornecedor nunca fica sem entrada.
