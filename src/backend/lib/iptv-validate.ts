@@ -1,28 +1,48 @@
 import type { IptvSource } from './iptv-source';
-import { normalizeMacAddress } from '../../shared/mac';
+import { isMacAddress, normalizeMacAddress } from '../../shared/mac';
+import type { RouterActive, RouterArpEntry, RouterDhcpLease } from './routeros';
 
-type Lease = { address: string; macAddress: string | null };
-type Arp = { address: string; macAddress: string | null };
-export type IptvValidation = { state: 'ok'; address: string | null } | { state: 'warning'; reason: string } | { state: 'not_found' } | { state: 'missing'; reason: string };
+type Lease = Pick<RouterDhcpLease, 'address' | 'macAddress'>;
+type Arp = Pick<RouterArpEntry, 'address' | 'macAddress'>;
+type Session = Pick<RouterActive, 'name' | 'address'>;
+export type IptvValidation =
+  | { state: 'ok'; address: string | null; via?: 'pppoe' | 'legacy' }
+  | { state: 'warning'; reason: string }
+  | { state: 'not_found' }
+  | { state: 'missing'; reason: string };
 
+const canon = (value: string | null | undefined) => {
+  const mac = normalizeMacAddress(value);
+  return mac && isMacAddress(mac) ? mac : null;
+};
 const same = (a: string | null | undefined, b: string | null | undefined) => {
-  const left = normalizeMacAddress(a);
-  return left !== null && left === normalizeMacAddress(b);
+  const left = canon(a);
+  return left !== null && left === canon(b);
 };
 
 /**
- * Prova a origem escolhida contra o que o router vê (leases e ARP). Pura: as leituras vêm de fora.
+ * Prova a origem escolhida contra o que o router vê (sessões, leases e ARP). Pura: as leituras vêm de fora.
  * Uma lease conta em qualquer estado (`waiting` também): aqui só interessa que o MAC existe na rede.
+ * PPPoE prova-se pela sessão; sem ela, pelo MAC legacy; sem nenhum dos dois o cliente está desligado
+ * (`not_found`) e nunca se avisa de WDS.
  */
-export function validateIptvSource(target: IptvSource, seen: { antennaMac: string | null; leases: Lease[]; arp: Arp[] }): IptvValidation {
+export function validateIptvSource(target: IptvSource, seen: { antennaMac: string | null; sessions: Session[]; leases: Lease[]; arp: Arp[] }): IptvValidation {
   if (target.kind === 'missing') return { state: 'missing', reason: target.reason };
-  // Em migração valida-se o MAC legacy que ainda conta; sem ele, o PPPoE não tem MAC a provar.
-  if (target.kind === 'pppoe' && !target.legacy) return { state: 'ok', address: null };
-  const source = target.kind === 'pppoe' ? { kind: 'mac' as const, ...(target.legacy as NonNullable<typeof target.legacy>) } : target;
-  const hit = seen.leases.find((l) => same(l.macAddress, source.mac)) ?? seen.arp.find((a) => same(a.macAddress, source.mac));
+  const rows = [...seen.leases, ...seen.arp];
+  if (target.kind === 'pppoe') {
+    const session = seen.sessions.find((s) => s.name === target.username);
+    if (session) return { state: 'ok', address: session.address, via: 'pppoe' };
+    const legacy = target.legacy;
+    const hit = legacy && rows.find((row) => same(row.macAddress, legacy.mac));
+    return hit ? { state: 'ok', address: hit.address, via: 'legacy' } : { state: 'not_found' };
+  }
+  const hit = rows.find((row) => same(row.macAddress, target.mac));
   if (hit) return { state: 'ok', address: hit.address };
-  const antennaSeen = source.via !== 'antena' && [...seen.leases, ...seen.arp].some((row) => same(row.macAddress, seen.antennaMac));
-  return antennaSeen ? { state: 'warning', reason: 'O router vê o MAC da antena: WDS desligado ou modo mal registado' } : { state: 'not_found' };
+  // MAC-NAT: a antena aparece em vários endereços (um por aparelho atrás dela). Num só, é o IP de gestão e é normal.
+  const antennaAddresses = new Set(rows.filter((row) => same(row.macAddress, seen.antennaMac)).map((row) => row.address));
+  return target.via !== 'antena' && antennaAddresses.size >= 2
+    ? { state: 'warning', reason: 'O router vê o MAC da antena: WDS desligado ou modo mal registado' }
+    : { state: 'not_found' };
 }
 
 const toRange = (cidr: string): [number, number] | null => {

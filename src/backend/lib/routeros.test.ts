@@ -275,7 +275,7 @@ describe('operações RouterOS', () => {
       { address: '10.0.0.1/8', network: '10.0.0.0', disabled: 'true' }
     ]]);
     expect(await listIpAddresses(transport)).toEqual([{ address: '192.168.1.1/24', disabled: false }, { address: '10.0.0.1/8', disabled: true }]);
-    expect(transport.calls[0].path).toBe('/ip/address?.proplist=address,network,disabled');
+    expect(transport.calls[0].path).toBe('/ip/address?.proplist=address,disabled');
   });
 
   test('removeAddressListEntry recusa um .id inválido e aceita o do RouterOS', async () => {

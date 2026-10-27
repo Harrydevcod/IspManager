@@ -1453,7 +1453,7 @@ export async function listAddressList(transport: RouterTransport, list: string):
 
 /** Endereços de interface do router (`192.168.1.1/24`: o da interface, não o da rede). Inclui desactivados; quem compara gamas filtra-os. */
 export async function listIpAddresses(transport: RouterTransport): Promise<Array<{ address: string; disabled: boolean }>> {
-  const raw = await transport({ method: 'GET', path: '/ip/address?.proplist=address,network,disabled' });
+  const raw = await transport({ method: 'GET', path: '/ip/address?.proplist=address,disabled' });
   return asArray(raw)
     .map((row) => ({ address: str(row.address) ?? '', disabled: toBool(row.disabled) }))
     .filter((entry) => entry.address);
