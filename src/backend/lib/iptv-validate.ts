@@ -6,7 +6,7 @@ type Lease = Pick<RouterDhcpLease, 'address' | 'macAddress'>;
 type Arp = Pick<RouterArpEntry, 'address' | 'macAddress'>;
 type Session = Pick<RouterActive, 'name' | 'address'>;
 export type IptvValidation =
-  | { state: 'ok'; address: string | null; via?: 'pppoe' | 'legacy' }
+  | { state: 'ok'; address: string | null; via: 'pppoe' | 'legacy' }
   | { state: 'warning'; reason: string }
   | { state: 'not_found' }
   | { state: 'missing'; reason: string };
@@ -37,7 +37,7 @@ export function validateIptvSource(target: IptvSource, seen: { antennaMac: strin
     return hit ? { state: 'ok', address: hit.address, via: 'legacy' } : { state: 'not_found' };
   }
   const hit = rows.find((row) => same(row.macAddress, target.mac));
-  if (hit) return { state: 'ok', address: hit.address };
+  if (hit) return { state: 'ok', address: hit.address, via: 'legacy' };
   // MAC-NAT: a antena aparece em vários endereços (um por aparelho atrás dela). Num só, é o IP de gestão e é normal.
   const antennaAddresses = new Set(rows.filter((row) => same(row.macAddress, seen.antennaMac)).map((row) => row.address));
   return target.via !== 'antena' && antennaAddresses.size >= 2
