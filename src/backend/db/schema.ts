@@ -174,7 +174,7 @@ export const services = sqliteTable('services', {
   pppoePasswordSyncPending: integer('pppoe_password_sync_pending', { mode: 'boolean' }).notNull().default(false),
   /** IPTV via VPN (0089, ADR 0021): técnica, não fatura. */
   iptvVpn: integer('iptv_vpn', { mode: 'boolean' }).notNull().default(false),
-  iptvProviderId: integer('iptv_provider_id').references((): AnySQLiteColumn => iptvProviders.id)
+  iptvProviderId: integer('iptv_provider_id').references(() => iptvProviders.id, { onDelete: 'set null' })
 });
 
 export const payments = sqliteTable('payments', {

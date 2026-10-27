@@ -42,6 +42,34 @@ describe('iptvSource', () => {
     expect(iptvSource({ pppoeUsername: null }, [cpe('wisp', 'xx')])).toEqual({ kind: 'missing', reason: 'Falta o MAC da antena' });
   });
   test('sem antena nem router', () => {
-    expect(iptvSource({ pppoeUsername: null }, [])).toEqual({ kind: 'missing', reason: 'Sem antena registada no serviço' });
+    expect(iptvSource({ pppoeUsername: null }, [])).toEqual({ kind: 'missing', reason: 'Sem antena nem router registados no serviço' });
+  });
+  test('sem antena, com router em router: MAC do router', () => {
+    expect(iptvSource({ pppoeUsername: null }, [router('router')])).toEqual({ kind: 'mac', mac: 'AA:BB:CC:00:00:02', via: 'router' });
+  });
+  test('ap com MAC antes da TV é ignorado', () => {
+    const ap: IptvDevice = { type: 'ap', operationMode: null, macAddress: 'AA:BB:CC:00:00:09' };
+    expect(iptvSource({ pppoeUsername: null }, [cpe('cliente'), router('ap'), ap, tv()]))
+      .toEqual({ kind: 'mac', mac: 'AA:BB:CC:00:00:03', via: 'aparelho' });
+  });
+  test.each(['repetidor', 'mesh'])('router em %s: aparelho', (mode) => {
+    expect(iptvSource({ pppoeUsername: null }, [cpe('cliente'), router(mode), tv()]))
+      .toEqual({ kind: 'mac', mac: 'AA:BB:CC:00:00:03', via: 'aparelho' });
+  });
+  test('modo desconhecido nunca se adivinha', () => {
+    expect(iptvSource({ pppoeUsername: null }, [cpe('xpto'), router('router')]))
+      .toEqual({ kind: 'missing', reason: 'Modo da antena desconhecido: xpto' });
+    expect(iptvSource({ pppoeUsername: null }, [cpe('cliente'), router('xpto')]))
+      .toEqual({ kind: 'missing', reason: 'Modo do router do cliente desconhecido: xpto' });
+  });
+  test('modo em maiúsculas', () => {
+    expect(iptvSource({ pppoeUsername: null }, [cpe(' ROUTER ')])).toEqual({ kind: 'mac', mac: 'AA:BB:CC:00:00:01', via: 'antena' });
+  });
+  test('falta o MAC do router do cliente', () => {
+    expect(iptvSource({ pppoeUsername: null }, [cpe('cliente'), router('router', null)]))
+      .toEqual({ kind: 'missing', reason: 'Falta o MAC do router do cliente' });
+  });
+  test('pppoe com MAC legacy inválido: legacy null', () => {
+    expect(iptvSource({ pppoeUsername: 'skn014' }, [cpe('wisp', 'xx')])).toEqual({ kind: 'pppoe', username: 'skn014', legacy: null });
   });
 });

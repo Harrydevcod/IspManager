@@ -13,6 +13,15 @@ describe('iptvSplitScript', () => {
     expect(source).toContain('dynamic=yes');
     expect(source).toContain('comment~"^ispm-iptv:"');
   });
+  test('chaves em string, sem endereços vazios e sem ruído no registo', () => {
+    const source = iptvSplitScript(input);
+    expect(source).toContain('[:tostr [/ppp active get $a address]]');
+    expect(source).toContain('[:tostr [/ip dhcp-server lease get $l address]]');
+    expect(source).toContain(':local ad [:tostr [/ip firewall address-list get $e address]]');
+    expect(source).toContain('!= ""');
+    expect(source).not.toContain(':log');
+    expect(source).not.toContain('on-error');
+  });
   test('nunca usa números de linha', () => {
     expect(iptvSplitScript(input)).not.toMatch(/\b(remove|set|disable|enable) \d+\b/);
     expect(iptvSplitScript(input)).not.toMatch(/numbers=/);

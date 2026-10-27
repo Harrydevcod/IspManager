@@ -10,12 +10,16 @@ export type IptvSource =
   | ({ kind: 'mac' } & IptvLegacy)
   | { kind: 'missing'; reason: string };
 
-/** Modos em que a antena faz NAT: o gateway só vê o MAC dela. */
-const NAT_ANTENNA = new Set(['router', 'wisp']);
-const LAYER2_ROUTER = new Set(['ap', 'ponte']);
+/** Modos em que o equipamento faz NAT: o gateway só vê o MAC dele. */
+const NAT_MODES = new Set(['router', 'wisp']);
+const ANTENNA_LAYER2 = new Set(['cliente', 'ponte', 'ap', 'repetidor', 'mesh']);
+const ROUTER_LAYER2 = new Set(['ap', 'ponte', 'repetidor', 'mesh']);
 const ANTENNA_TYPES = new Set(['cpe', 'antena']);
+/** Rede e material passivo: nunca são o aparelho IPTV. Tudo o resto (`outro`, `tv`, `box`) pode ser. */
+const NOT_APPLIANCE = new Set(['cpe', 'antena', 'router', 'ap', 'repetidor', 'switch', 'cabo', 'conector', 'ficha', 'suporte']);
 
 const kind = (device: IptvDevice) => (device.type ?? '').trim().toLowerCase();
+const modeOf = (device: IptvDevice) => (device.operationMode ?? '').trim().toLowerCase();
 const mac = (device: IptvDevice | undefined) => {
   const value = normalizeMacAddress(device?.macAddress);
   return value && isMacAddress(value) ? value : null;
@@ -38,21 +42,29 @@ export function iptvSource(service: { pppoeUsername: string | null }, devices: I
 
 function legacySource(devices: IptvDevice[]): Exclude<IptvSource, { kind: 'pppoe' }> {
   const antenna = devices.find((device) => ANTENNA_TYPES.has(kind(device)));
-  if (!antenna) return { kind: 'missing', reason: 'Sem antena registada no serviço' };
-  if (!antenna.operationMode) return { kind: 'missing', reason: 'Modo da antena por classificar' };
-  if (NAT_ANTENNA.has(antenna.operationMode)) {
-    const found = mac(antenna);
-    return found ? { kind: 'mac', mac: found, via: 'antena' } : { kind: 'missing', reason: 'Falta o MAC da antena' };
-  }
-
   const router = devices.find((device) => kind(device) === 'router');
-  if (router && !router.operationMode) return { kind: 'missing', reason: 'Modo do router do cliente por classificar' };
-  if (router && !LAYER2_ROUTER.has(router.operationMode as string)) {
-    const found = mac(router);
-    return found ? { kind: 'mac', mac: found, via: 'router' } : { kind: 'missing', reason: 'Falta o MAC do router do cliente' };
+  if (!antenna && !router) return { kind: 'missing', reason: 'Sem antena nem router registados no serviço' };
+
+  if (antenna) {
+    const mode = modeOf(antenna);
+    if (!mode) return { kind: 'missing', reason: 'Modo da antena por classificar' };
+    if (NAT_MODES.has(mode)) {
+      const found = mac(antenna);
+      return found ? { kind: 'mac', mac: found, via: 'antena' } : { kind: 'missing', reason: 'Falta o MAC da antena' };
+    }
+    if (!ANTENNA_LAYER2.has(mode)) return { kind: 'missing', reason: `Modo da antena desconhecido: ${mode}` };
   }
 
-  const appliance = devices.find((device) => !ANTENNA_TYPES.has(kind(device)) && kind(device) !== 'router' && mac(device));
-  const found = mac(appliance);
+  if (router) {
+    const mode = modeOf(router);
+    if (!mode) return { kind: 'missing', reason: 'Modo do router do cliente por classificar' };
+    if (NAT_MODES.has(mode)) {
+      const found = mac(router);
+      return found ? { kind: 'mac', mac: found, via: 'router' } : { kind: 'missing', reason: 'Falta o MAC do router do cliente' };
+    }
+    if (!ROUTER_LAYER2.has(mode)) return { kind: 'missing', reason: `Modo do router do cliente desconhecido: ${mode}` };
+  }
+
+  const found = mac(devices.find((device) => !NOT_APPLIANCE.has(kind(device)) && mac(device)));
   return found ? { kind: 'mac', mac: found, via: 'aparelho' } : { kind: 'missing', reason: 'Falta o MAC do aparelho IPTV (TV ou box)' };
 }
