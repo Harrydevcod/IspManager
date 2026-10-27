@@ -1451,6 +1451,14 @@ export async function listAddressList(transport: RouterTransport, list: string):
     .filter((entry) => entry.id && entry.address);
 }
 
+/** Endereços de interface do router (`192.168.1.1/24`: o da interface, não o da rede). Inclui desactivados; quem compara gamas filtra-os. */
+export async function listIpAddresses(transport: RouterTransport): Promise<Array<{ address: string; disabled: boolean }>> {
+  const raw = await transport({ method: 'GET', path: '/ip/address?.proplist=address,network,disabled' });
+  return asArray(raw)
+    .map((row) => ({ address: str(row.address) ?? '', disabled: toBool(row.disabled) }))
+    .filter((entry) => entry.address);
+}
+
 export async function addAddressListEntry(transport: RouterTransport, entry: { list: string; address: string; comment: string }): Promise<void> {
   await transport({ method: 'PUT', path: '/ip/firewall/address-list', body: entry });
 }

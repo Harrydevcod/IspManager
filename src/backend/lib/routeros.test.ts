@@ -14,6 +14,7 @@ import {
   ensureClientUsageCounter,
   ensureRouterScript,
   listAddressList,
+  listIpAddresses,
   removeAddressListEntry,
   patchAddressListEntry,
   createSecret,
@@ -266,6 +267,15 @@ describe('operações RouterOS', () => {
     ]]);
     expect(await listAddressList(transport, 'IPTV-SERVERS')).toEqual([{ id: '*A', address: 'line.dino.ws', comment: 'manual', disabled: false }]);
     expect(transport.calls[0].path).toBe('/ip/firewall/address-list?list=IPTV-SERVERS&.proplist=.id,address,comment,dynamic,disabled');
+  });
+
+  test('lê os endereços de interface do router, com o estado', async () => {
+    const transport = fakeTransport([[
+      { address: '192.168.1.1/24', network: '192.168.1.0', disabled: 'false' },
+      { address: '10.0.0.1/8', network: '10.0.0.0', disabled: 'true' }
+    ]]);
+    expect(await listIpAddresses(transport)).toEqual([{ address: '192.168.1.1/24', disabled: false }, { address: '10.0.0.1/8', disabled: true }]);
+    expect(transport.calls[0].path).toBe('/ip/address?.proplist=address,network,disabled');
   });
 
   test('removeAddressListEntry recusa um .id inválido e aceita o do RouterOS', async () => {
