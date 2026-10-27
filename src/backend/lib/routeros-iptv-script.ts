@@ -22,7 +22,7 @@ export function iptvSplitScript({ list, users, macs }: { list: string; users: st
   if (!LIST.test(list)) throw new Error('Nome de lista inválido');
   for (const user of users) if (!USERNAME.test(user)) throw new Error(`Utilizador PPPoE inválido: ${user}`);
   for (const mac of macs) if (!isMacAddress(mac)) throw new Error(`MAC inválido: ${mac}`);
-  const array = (values: string[]) => `{${[...new Set(values)].sort().map(rosQuote).join(';')}}`;
+  const array = (values: string[]) => values.length ? `{${[...new Set(values)].sort().map(rosQuote).join(';')}}` : '({})';
   const L = rosQuote(list);
   return String.raw`# ${IPTV_SCRIPT_VERSION}
 :local users ${array(users)}

@@ -15,6 +15,7 @@ import {
   ensureRouterScript,
   listAddressList,
   listIpAddresses,
+  readRoutes,
   removeAddressListEntry,
   patchAddressListEntry,
   createSecret,
@@ -260,6 +261,24 @@ describe('operações RouterOS', () => {
     expect(calls.map((call) => call.method)).toEqual(['GET', 'GET', 'GET']);
   });
 
+  test('reativa os schedulers próprios desativados e preserva os manuais', async () => {
+    const fields = { 'on-event': 'ispm-iptv', interval: '1m', policy: 'read,write', 'start-date': '2020-01-01', 'start-time': '23:59:50' };
+    const transport = fakeTransport([
+      [{ '.id': '*1', name: 'ispm-iptv', comment: 'v1' }],
+      [{ source: '# valid', invalid: 'false' }],
+      [
+        { '.id': '*2', name: 'ispm-iptv', ...fields, disabled: 'true' },
+        { '.id': '*3', name: 'ispm-iptv-startup', ...fields, interval: '0s', 'start-time': 'startup', disabled: 'true' },
+        { '.id': '*4', name: 'manual', disabled: 'true' }
+      ], null, null
+    ]);
+    await ensureRouterScript(transport, { name: 'ispm-iptv', comment: 'v1', source: '# valid', interval: '1m' });
+    const patches = transport.calls.filter((call) => call.method === 'PATCH');
+    expect(patches.map((call) => call.path)).toEqual(['/system/scheduler/*2', '/system/scheduler/*3']);
+    expect(patches.every((call) => (call.body as Record<string, unknown>).disabled === 'false')).toBe(true);
+    expect(transport.calls.find((call) => call.path.startsWith('/system/scheduler?'))?.path).toContain('disabled');
+  });
+
   test('lê só as entradas estáticas de uma lista, pelo nome', async () => {
     const transport = fakeTransport([[
       { '.id': '*A', address: 'line.dino.ws', comment: 'manual', dynamic: 'false', disabled: 'false' },
@@ -278,6 +297,13 @@ describe('operações RouterOS', () => {
     expect(transport.calls[0].path).toBe('/ip/address?.proplist=address,disabled');
   });
 
+  test('lê os destinos das rotas para distinguir a saída por omissão das gamas específicas', async () => {
+    const rows = [{ 'routing-table': 'tv', 'dst-address': '0.0.0.0/0', gateway: 'tun-a' }];
+    const transport = fakeTransport([rows]);
+    expect(await readRoutes(transport)).toEqual(rows);
+    expect(transport.calls[0]).toEqual({ method: 'GET', path: '/ip/route?.proplist=routing-table,dst-address,gateway,immediate-gw,blackhole,disabled,active,distance' });
+  });
+
   test('removeAddressListEntry recusa um .id inválido e aceita o do RouterOS', async () => {
     const transport = fakeTransport();
     await expect(removeAddressListEntry(transport, '1')).rejects.toThrow('inválido');
@@ -292,6 +318,14 @@ describe('operações RouterOS', () => {
     expect(transport.calls).toHaveLength(0);
     await patchAddressListEntry(transport, '*A', { comment: 'novo' });
     expect(transport.calls).toEqual([{ method: 'PATCH', path: '/ip/firewall/address-list/*A', body: { comment: 'novo' } }]);
+  });
+
+  test('patchAddressListEntry reactiva pelo .id, sem exigir mudança de comentário', async () => {
+    const transport = fakeTransport();
+    await expect(patchAddressListEntry(transport, '1', { disabled: false })).rejects.toThrow('inválido');
+    expect(transport.calls).toHaveLength(0);
+    await patchAddressListEntry(transport, '*A', { disabled: false });
+    expect(transport.calls).toEqual([{ method: 'PATCH', path: '/ip/firewall/address-list/*A', body: { disabled: 'no' } }]);
   });
 
   // Medido no router real: o PUT foi aceite e o script ficou vazio e INVALID, sem erro.
@@ -314,7 +348,7 @@ describe('operações RouterOS', () => {
       [{ source: '# ispm-wan-usage v6', invalid: 'false' }],
       [
         { '.id': '*2', name: 'ispm-wan-usage', 'on-event': 'outro', 'start-time': '01:00:00', interval: '10m', policy: 'read' },
-        { '.id': '*3', name: 'ispm-wan-usage-startup', 'on-event': 'ispm-wan-usage', 'start-time': 'startup', interval: '0s', policy: 'read,write' }
+        { '.id': '*3', name: 'ispm-wan-usage-startup', 'on-event': 'ispm-wan-usage', 'start-time': 'startup', interval: '0s', policy: 'read,write', disabled: 'false' }
       ], null
     ]);
     await ensureWanUsageCounter(transport);

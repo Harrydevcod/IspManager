@@ -4,6 +4,11 @@ import { IPTV_SCRIPT_VERSION, iptvScriptMark, iptvSplitScript } from './routeros
 const input = { list: 'IPTV-SPLIT', users: ['skn017', 'skn014'], macs: ['BC:07:1D:5E:54:E7'] };
 
 describe('iptvSplitScript', () => {
+  test('listas vazias usam a expressão de array vazio aceite pelo RouterOS', () => {
+    const source = iptvSplitScript({ list: 'IPTV-SPLIT', users: [], macs: [] });
+    expect(source).toContain(':local users ({})');
+    expect(source).toContain(':local macs ({})');
+  });
   test('embute utilizadores e MAC ordenados, entre aspas do RouterOS', () => {
     const source = iptvSplitScript(input);
     expect(source.split('\n')[0]).toBe(`# ${IPTV_SCRIPT_VERSION}`);

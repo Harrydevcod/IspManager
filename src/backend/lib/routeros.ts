@@ -1469,10 +1469,14 @@ export async function removeAddressListEntry(transport: RouterTransport, id: str
   await transport({ method: 'DELETE', path: `/ip/firewall/address-list/${safe}` });
 }
 
-export async function patchAddressListEntry(transport: RouterTransport, id: string, fields: { comment: string }): Promise<void> {
+export async function patchAddressListEntry(transport: RouterTransport, id: string, fields: { comment?: string; disabled?: boolean }): Promise<void> {
   const safe = safeId(id);
   if (!safe) throw new RouterError(`Identificador inválido: ${id}`, 0, undefined, 'bad_response');
-  await transport({ method: 'PATCH', path: `/ip/firewall/address-list/${safe}`, body: fields });
+  // Como em `patchSecret`: o RouterOS recebe os booleanos como texto.
+  const body: Record<string, string> = {};
+  if (fields.comment !== undefined) body.comment = fields.comment;
+  if (fields.disabled !== undefined) body.disabled = fields.disabled ? 'yes' : 'no';
+  await transport({ method: 'PATCH', path: `/ip/firewall/address-list/${safe}`, body });
 }
 
 export type RouterRow = Record<string, unknown>;
@@ -1480,7 +1484,7 @@ export type RouterRow = Record<string, unknown>;
 // que tipo de VPN ou que WAN existem: lêem tudo e a T7 descobre o túnel a partir da lista de origens.
 export const readInterfaces = (t: RouterTransport) => t({ method: 'GET', path: '/interface?.proplist=name,type,running,disabled' }).then(asArray);
 export const readWireguardPeers = (t: RouterTransport) => t({ method: 'GET', path: '/interface/wireguard/peers?.proplist=interface,last-handshake,disabled' }).then(asArray);
-export const readRoutes = (t: RouterTransport) => t({ method: 'GET', path: '/ip/route?.proplist=routing-table,gateway,immediate-gw,blackhole,disabled,active,distance' }).then(asArray);
+export const readRoutes = (t: RouterTransport) => t({ method: 'GET', path: '/ip/route?.proplist=routing-table,dst-address,gateway,immediate-gw,blackhole,disabled,active,distance' }).then(asArray);
 export const readMangle = (t: RouterTransport) => t({ method: 'GET', path: '/ip/firewall/mangle?chain=prerouting&.proplist=action,new-routing-mark,new-connection-mark,connection-mark,src-address-list,passthrough,disabled,bytes,packets' }).then(asArray);
 export const readForwardFilter = (t: RouterTransport) => t({ method: 'GET', path: '/ip/firewall/filter?chain=forward&.proplist=action,src-address-list,out-interface,out-interface-list,disabled' }).then(asArray);
 export const readSrcnat = (t: RouterTransport) => t({ method: 'GET', path: '/ip/firewall/nat?chain=srcnat&.proplist=action,out-interface,out-interface-list,disabled' }).then(asArray);
@@ -1627,7 +1631,7 @@ export async function ensureRouterScript(transport: RouterTransport, { name, com
     throw new RouterError(`O router marcou o script ${label} como inválido`, 0, undefined, 'bad_response');
   }
 
-  const schedulers = asArray(await transport({ method: 'GET', path: '/system/scheduler?.proplist=.id,name,on-event,start-date,start-time,interval,policy' }));
+  const schedulers = asArray(await transport({ method: 'GET', path: '/system/scheduler?.proplist=.id,name,on-event,start-date,start-time,interval,policy,disabled' }));
   // Com disco a gravação vai para um ficheiro e não deixa linha no registo: corre-se de 5 em 5
   // minutos, que é o que um corte de luz leva (os contadores vivem na memória do router). Sem
   // disco cada gravação é uma linha longa no registo e uma escrita na flash: fica de hora a hora.
@@ -1635,8 +1639,8 @@ export async function ensureRouterScript(transport: RouterTransport, { name, com
   // A data de início fica no passado. Medido no CHR 7.24.2: sem ela o router põe a de hoje e a
   // primeira corrida só vem às 23:59:50 — o script ficava parado o resto do dia da instalação.
   const expected: Array<Record<string, string>> = [
-    { name, 'on-event': name, 'start-date': '2020-01-01', 'start-time': '23:59:50', interval, policy: WAN_USAGE_POLICY },
-    { name: `${name}-startup`, 'on-event': name, 'start-time': 'startup', interval: '0s', policy: WAN_USAGE_POLICY }
+    { name, 'on-event': name, 'start-date': '2020-01-01', 'start-time': '23:59:50', interval, policy: WAN_USAGE_POLICY, disabled: 'false' },
+    { name: `${name}-startup`, 'on-event': name, 'start-time': 'startup', interval: '0s', policy: WAN_USAGE_POLICY, disabled: 'false' }
   ];
   for (const fields of expected) {
     const existing = schedulers.find((row) => row.name === fields.name);

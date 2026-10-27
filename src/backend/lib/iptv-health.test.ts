@@ -8,9 +8,9 @@ const healthy = {
   interfaces: [{ name: 'tun-a', type: 'wg', running: 'true', disabled: off }, { name: 'wan-x', type: 'ether', running: 'true', disabled: off }],
   peers: [{ interface: 'tun-a', 'last-handshake': '42s', disabled: off }],
   routes: [
-    { 'routing-table': 'tabela-tv', gateway: 'tun-a', active: 'true', disabled: off, distance: '1' },
-    { 'routing-table': 'tabela-tv', blackhole: 'true', distance: '250', disabled: off },
-    { 'routing-table': 'main', gateway: '192.168.100.1', 'immediate-gw': '192.168.100.1%wan-x', active: 'true', disabled: off }
+    { 'routing-table': 'tabela-tv', 'dst-address': '0.0.0.0/0', gateway: 'tun-a', active: 'true', disabled: off, distance: '1' },
+    { 'routing-table': 'tabela-tv', 'dst-address': '0.0.0.0/0', blackhole: 'true', distance: '250', disabled: off },
+    { 'routing-table': 'main', 'dst-address': '0.0.0.0/0', gateway: '192.168.100.1', 'immediate-gw': '192.168.100.1%wan-x', active: 'true', disabled: off }
   ],
   mangle: [
     { action: 'mark-connection', 'new-connection-mark': 'marca-tv', 'src-address-list': 'IPTV-SPLIT', disabled: off },
@@ -45,7 +45,7 @@ describe('evaluateIptvInfra', () => {
       ...healthy,
       interfaces: [...healthy.interfaces, { name: 'tun-b', type: 'wg', running: 'true', disabled: off }],
       peers: [...healthy.peers, { interface: 'tun-b', 'last-handshake': '10m', disabled: off }],
-      routes: [...healthy.routes, { 'routing-table': 'tabela-tv', gateway: 'tun-b', active: 'false', disabled: off, distance: '2' }]
+      routes: [...healthy.routes, { 'routing-table': 'tabela-tv', 'dst-address': '0.0.0.0/0', gateway: 'tun-b', active: 'false', disabled: off, distance: '2' }]
     };
     expect(find(evaluateIptvInfra(config, failover), 'tunnel')?.state).toBe('ok');
   });
@@ -80,7 +80,7 @@ describe('evaluateIptvInfra', () => {
     const down = {
       ...healthy,
       interfaces: [{ name: 'tun-a', type: 'ovpn-out', running: 'false', disabled: off }],
-      routes: [{ 'routing-table': 'tabela-tv', gateway: '10.0.0.1%tun-a', active: 'false', disabled: off, distance: '1' }, healthy.routes[1]]
+      routes: [{ 'routing-table': 'tabela-tv', 'dst-address': '0.0.0.0/0', gateway: '10.0.0.1%tun-a', active: 'false', disabled: off, distance: '1' }, healthy.routes[1]]
     };
     const checks = evaluateIptvInfra(config, down);
     expect(find(checks, 'tunnel')?.state).toBe('stale');
@@ -95,5 +95,46 @@ describe('evaluateIptvInfra', () => {
   test('o handshake mais recente entre os peers activos é o que conta', () => {
     const two = { ...healthy, peers: [{ interface: 'tun-a', 'last-handshake': '10m', disabled: off }, { interface: 'tun-a', 'last-handshake': '5s300ms', disabled: off }] };
     expect(find(evaluateIptvInfra(config, two), 'tunnel')?.state).toBe('ok');
+  });
+
+  test('uma blackhole de outra gama não protege a saída por omissão', () => {
+    const routes = healthy.routes.map((route) => route.blackhole ? { ...route, 'dst-address': '192.0.2.0/24' } : route);
+    expect(find(evaluateIptvInfra(config, { ...healthy, routes }), 'killswitch')?.state).toBe('missing');
+  });
+
+  test('uma blackhole por omissão desactivada não protege o tráfego', () => {
+    const routes = healthy.routes.map((route) => route.blackhole ? { ...route, disabled: 'true' } : route);
+    expect(find(evaluateIptvInfra(config, { ...healthy, routes }), 'killswitch')?.state).toBe('disabled');
+  });
+
+  test('uma rota específica pelo túnel não prova uma saída VPN por omissão', () => {
+    const routes = healthy.routes.map((route) => route.gateway === 'tun-a' ? { ...route, 'dst-address': '192.0.2.0/24' } : route);
+    expect(find(evaluateIptvInfra(config, { ...healthy, routes }), 'tunnel')?.state).toBe('missing');
+  });
+
+  test.each(['ether', 'bridge', 'vlan', 'bonding', 'pppoe-out', 'pppoe-in', 'unknown'])('%s não é uma interface VPN reconhecida', (type) => {
+    const reads = { ...healthy, interfaces: [{ name: 'tun-a', type, running: 'true', disabled: off }] };
+    const checks = evaluateIptvInfra(config, reads);
+    expect(find(checks, 'tunnel')?.state).toBe('missing');
+    expect(find(checks, 'filter')?.state).toBe('missing');
+    expect(find(checks, 'nat')?.state).toBe('missing');
+  });
+
+  test.each(['ovpn-out', 'l2tp-out', 'sstp-out', 'pptp-out', 'ipip', 'gre', 'eoip'])('%s activo é descoberto sem depender do fornecedor', (type) => {
+    const reads = { ...healthy, interfaces: [{ name: 'tun-a', type, running: 'true', disabled: off }], peers: [] };
+    expect(find(evaluateIptvInfra(config, reads), 'tunnel')?.state).toBe('ok');
+  });
+
+  test('entre duas rotas activas basta uma com túnel vivo, e aponta a degradada', () => {
+    const reads = {
+      ...healthy,
+      interfaces: [...healthy.interfaces, { name: 'tun-b', type: 'ovpn-out', running: 'true', disabled: off }],
+      peers: [{ interface: 'tun-a', 'last-handshake': '10m', disabled: off }],
+      routes: [...healthy.routes, { 'routing-table': 'tabela-tv', 'dst-address': '0.0.0.0/0', gateway: 'tun-b', active: 'true', disabled: off, distance: '1' }]
+    };
+    const tunnel = find(evaluateIptvInfra(config, reads), 'tunnel');
+    expect(tunnel?.state).toBe('ok');
+    expect(tunnel?.detail).toContain('tun-b');
+    expect(tunnel?.detail).toContain('tun-a');
   });
 });

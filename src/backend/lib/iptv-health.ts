@@ -10,6 +10,13 @@ export type IptvInfraReads = { interfaces: Row[]; peers: Row[]; routes: Row[]; m
 const yes = (value: unknown) => value === true || value === 'true' || value === 'yes';
 const on = (row: Row) => !yes(row.disabled);
 const HANDSHAKE_LIMIT_S = 180;
+// Tipos de túnel do RouterOS. Uma interface física, bridge ou PPPoE não prova uma VPN;
+// um tipo novo tem de ser reconhecido antes de se apresentar como saudável.
+const TUNNEL_TYPES = new Set([
+  'wg', 'ovpn-out', 'ovpn-in', 'l2tp-out', 'l2tp-in', 'sstp-out', 'sstp-in', 'pptp-out', 'pptp-in',
+  'ipip', 'ipipv6', 'gre', 'gre6', 'eoip', 'eoipv6', 'l2tp-ether', 'vxlan'
+]);
+const isDefault = (route: Row) => route['dst-address'] === '0.0.0.0/0';
 
 function state(rows: Row[]): CheckState {
   return rows.length === 0 ? 'missing' : rows.some(on) ? 'ok' : 'disabled';
@@ -71,16 +78,19 @@ export function evaluateIptvInfra(config: IptvConfig, reads: IptvInfraReads): Ip
       detail: before.length ? `${before.length} regra(s) de marcação antes da do IPTV` : 'O encaminhamento do IPTV deixa passar para as regras seguintes' }
     : { key: 'order', label: 'Ordem das regras', state: 'ok' };
 
-  const names = new Set(reads.interfaces.map((row) => String(row.name)));
+  const names = new Set(reads.interfaces.filter((row) => TUNNEL_TYPES.has(String(row.type))).map((row) => String(row.name)));
   const tableRoutes = reads.routes.filter((r) => table && r['routing-table'] === table);
-  const tunnelRoutes = tableRoutes.filter((r) => !yes(r.blackhole) && on(r));
+  const tunnelRoutes = tableRoutes.filter((r) => isDefault(r) && !yes(r.blackhole) && on(r));
   const tunnels = [...new Set(tunnelRoutes.map((r) => routeInterface(r, names)).filter((n): n is string => Boolean(n)))];
-  const activeTunnel = tunnelRoutes.filter((r) => yes(r.active)).map((r) => routeInterface(r, names)).find(Boolean) ?? null;
-  const status = activeTunnel ? tunnelAlive(activeTunnel, reads) : null;
+  const activeTunnels = [...new Set(tunnelRoutes.filter((r) => yes(r.active)).map((r) => routeInterface(r, names)).filter((n): n is string => Boolean(n)))];
+  const statuses = activeTunnels.map((name) => tunnelAlive(name, reads));
+  const status = statuses.find((s) => s.alive) ?? statuses[0];
+  const degraded = statuses.filter((s) => !s.alive).map((s) => s.detail);
   const tunnel: IptvCheck = !table || tunnels.length === 0
-    ? { key: 'tunnel', label: 'Túnel VPN', state: 'missing', detail: table ? `Sem rota da tabela ${table} por um túnel` : 'Sem regra de encaminhamento da lista' }
+    ? { key: 'tunnel', label: 'Túnel VPN', state: 'missing', detail: table ? `Sem rota por omissão da tabela ${table} por um túnel reconhecido` : 'Sem regra de encaminhamento da lista' }
     : !status ? { key: 'tunnel', label: 'Túnel VPN', state: 'stale', detail: `Nenhuma rota da tabela ${table} activa` }
-    : { key: 'tunnel', label: 'Túnel VPN', state: status.alive ? 'ok' : 'stale', detail: status.detail };
+    : { key: 'tunnel', label: 'Túnel VPN', state: status.alive ? 'ok' : 'stale',
+      detail: status.alive && degraded.length ? `${status.detail}; rota(s) degradada(s): ${degraded.join('; ')}` : status.detail };
 
   const lists = new Set(reads.listMembers.filter((m) => on(m) && tunnels.includes(String(m.interface))).map((m) => String(m.list)));
   const outTunnel = (r: Row) => tunnels.includes(String(r['out-interface'] ?? '')) || lists.has(String(r['out-interface-list'] ?? ''));
@@ -89,7 +99,7 @@ export function evaluateIptvInfra(config: IptvConfig, reads: IptvInfraReads): Ip
     { key: 'mark', label: 'Marca das ligações IPTV', state: state(marking) },
     order,
     tunnel,
-    { key: 'killswitch', label: 'Rota de recurso (blackhole)', state: state(tableRoutes.filter((r) => yes(r.blackhole))) },
+    { key: 'killswitch', label: 'Rota de recurso (blackhole)', state: state(tableRoutes.filter((r) => isDefault(r) && yes(r.blackhole))) },
     { key: 'filter', label: 'Filtro de saída pelo túnel', state: state(reads.filter.filter((r) => r.action === 'accept' && ofList(r) && outTunnel(r))) },
     { key: 'nat', label: 'NAT do túnel', state: state(reads.nat.filter((r) => (r.action === 'masquerade' || r.action === 'src-nat') && outTunnel(r))) }
   ];

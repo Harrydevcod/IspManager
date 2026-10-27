@@ -84,8 +84,8 @@ describe('IPTV via VPN', () => {
       { method: 'DELETE', path: '/ip/firewall/address-list/*B' }
     ]);
     expect(await syncIptv(seed(), { transport: router([{ '.id': '*A', address: 'Line.Dino.ws', comment: 'manual', dynamic: 'false' }]).transport, dryRun: true }))
-      .toMatchObject({ serversCovered: [{ address: 'line.dino.ws', comment: 'manual' }] });
-    expect(JSON.parse((db.prepare("SELECT metadata_json AS m FROM audit_logs WHERE action = 'iptv_vpn_servers'").get() as { m: string }).m)).toEqual({ added: ['1.2.3.4'], removed: ['9.9.9.9'], renamed: [] });
+      .toMatchObject({ serversCovered: [{ address: 'line.dino.ws', comment: 'manual', disabled: false }] });
+    expect(JSON.parse((db.prepare("SELECT metadata_json AS m FROM audit_logs WHERE action = 'iptv_vpn_servers'").get() as { m: string }).m)).toEqual({ added: ['1.2.3.4'], removed: ['9.9.9.9'], renamed: [], reactivated: [] });
     // A entrada manual *A nunca é tocada.
     expect(writes.some((c) => c.path.endsWith('*A'))).toBe(false);
   });
@@ -185,6 +185,54 @@ describe('IPTV via VPN', () => {
     expect(calls.filter((c) => c.path.startsWith('/ip/firewall/address-list') && c.method !== 'GET')).toEqual([
       { method: 'PATCH', path: '/ip/firewall/address-list/*C', body: { comment: 'ispm-iptv-srv:2 Outro' } }
     ]);
+  });
+
+  test.each(['Dino', 'Velho'])('entrada própria desactivada (%s): ensaio prevê a reactivação; efectivo aplica e audita por .id', async (name) => {
+    const db = seed();
+    db.prepare("UPDATE iptv_providers SET hosts = 'line.dino.ws'").run();
+    const { transport, calls } = router([
+      { '.id': '*C', address: 'line.dino.ws', comment: `ispm-iptv-srv:1 ${name}`, dynamic: 'false', disabled: 'true' }
+    ]);
+    const changes = { added: 0, removed: 0, renamed: name === 'Dino' ? 0 : 1, reactivated: 1 };
+    expect(await syncIptv(db, { transport, dryRun: true })).toMatchObject({ status: 'dry_run', servers: changes });
+    expect(calls.filter((c) => c.method !== 'GET')).toEqual([]);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'iptv_vpn_servers'").get()).toEqual({ n: 0 });
+
+    expect(await syncIptv(db, { transport, dryRun: false })).toMatchObject({ status: 'applied', servers: changes });
+    expect(calls.filter((c) => c.path.startsWith('/ip/firewall/address-list') && c.method !== 'GET')).toEqual([
+      { method: 'PATCH', path: '/ip/firewall/address-list/*C', body: { ...(name === 'Dino' ? {} : { comment: 'ispm-iptv-srv:1 Dino' }), disabled: 'no' } }
+    ]);
+    expect(JSON.parse((db.prepare("SELECT metadata_json AS m FROM audit_logs WHERE action = 'iptv_vpn_servers'").get() as { m: string }).m))
+      .toEqual({ added: [], removed: [], renamed: name === 'Dino' ? [] : ['line.dino.ws'], reactivated: ['line.dino.ws'] });
+  });
+
+  test('entrada manual desactivada nunca é reactivada pelo ISPM', async () => {
+    const db = seed();
+    db.prepare("UPDATE iptv_providers SET hosts = 'line.dino.ws'").run();
+    const { transport, calls } = router([
+      { '.id': '*M', address: 'line.dino.ws', comment: 'manual', dynamic: 'false', disabled: 'true' }
+    ]);
+    expect(await syncIptv(db, { transport, dryRun: false })).toMatchObject({
+      servers: { added: 0, removed: 0, renamed: 0, reactivated: 0 },
+      serversCovered: [{ address: 'line.dino.ws', comment: 'manual', disabled: true }]
+    });
+    expect(calls.filter((c) => c.path.startsWith('/ip/firewall/address-list') && c.method !== 'GET')).toEqual([]);
+  });
+
+  test('reactivação interrompida audita só as entradas que chegaram a ser reactivadas', async () => {
+    const db = seed();
+    const recorded = router([
+      { '.id': '*A', address: '1.2.3.4', comment: 'ispm-iptv-srv:1 Dino', dynamic: 'false', disabled: 'true' },
+      { '.id': '*B', address: 'line.dino.ws', comment: 'ispm-iptv-srv:1 Dino', dynamic: 'false', disabled: 'true' }
+    ]);
+    const transport: RouterTransport = async (request) => {
+      if (request.method === 'PATCH' && request.path.endsWith('/*B')) throw new Error('router caiu');
+      return recorded.transport(request);
+    };
+    await expect(syncIptv(db, { transport, dryRun: false })).rejects.toThrow('router caiu');
+    expect(JSON.parse((db.prepare("SELECT metadata_json AS m FROM audit_logs WHERE action = 'iptv_vpn_servers'").get() as { m: string }).m))
+      .toEqual({ added: [], removed: [], renamed: [], reactivated: ['1.2.3.4'] });
+    expect(db.prepare("SELECT value FROM app_settings WHERE key = 'iptvVpnApplied'").get()).toBeUndefined();
   });
 
   test('uma escrita que falha a meio: o registo dos servidores guarda o que ficou escrito e o erro propaga', async () => {
