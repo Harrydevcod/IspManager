@@ -6,6 +6,7 @@ import { Badge, Button, Dialog, EmptyState, Message } from '../../components';
 import { formatCve, formatPtDate, formatPtDateTime } from '../../lib/format';
 import { statusLabel, statusTone } from '../../lib/status';
 import { CreatePppoeButton, RevealPppoePassword } from './PppoeCredentials';
+import { IptvSection } from './IptvSection';
 import type { DeviceAssignment, ManualServiceEventType, ServiceEvent, ServiceEventType, ServiceRow, TechnicalHistory } from '../../types';
 
 /** Os tipos que o operador escolhe no formulário de evento. */
@@ -110,6 +111,8 @@ type ServiceDetailDialogProps = {
   onChangePassword: () => void;
   /** O serviço ganhou utilizador PPPoE: recarregar. */
   onPppoeCreated: () => void;
+  /** A marca IPTV via VPN mudou: recarregar. */
+  onIptvChanged: () => void;
 };
 
 export function ServiceDetailDialog({
@@ -142,7 +145,8 @@ export function ServiceDetailDialog({
   onReactivate,
   onChangePlan,
   onChangePassword,
-  onPppoeCreated
+  onPppoeCreated,
+  onIptvChanged
 }: ServiceDetailDialogProps) {
   // Fonte fresca após uma edição; enquanto o histórico carrega usa o valor da lista.
   const activeIps = technicalHistory
@@ -373,6 +377,9 @@ export function ServiceDetailDialog({
         )}
       </section>
 
+      {/* Depois da PPPoE e antes do equipamento: a origem que o router segue sai dos dois. */}
+      <IptvSection service={service} canManage={canManage} onChanged={onIptvChanged} />
+
       <section className="technical-section">
         <header className="technical-section-head">
           <div>
@@ -449,6 +456,7 @@ export function ServiceDetailDialog({
                     {assignment.operationMode && (
                       <div><dt>Operação</dt><dd>{labelForOperationMode(assignment.operationMode)}</dd></div>
                     )}
+                    {assignment.lanCidr && <div><dt>Gama LAN</dt><dd>{assignment.lanCidr}</dd></div>}
                     {assignment.assetTag && <div><dt>Tag</dt><dd>{assignment.assetTag}</dd></div>}
                     <div><dt>Inicio</dt><dd>{formatPtDate(assignment.startDate)}</dd></div>
                     {assignment.endDate && <div><dt>Fim</dt><dd>{formatPtDate(assignment.endDate)}</dd></div>}

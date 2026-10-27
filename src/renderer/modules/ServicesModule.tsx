@@ -13,6 +13,7 @@ import type { AudiovisualConfig, Client, DeviceAssignment, ManualServiceEventTyp
 import { BulkIpDialog, type ActiveAssignment } from './services/BulkIpDialog';
 import { BulkPlanChangeDialog } from './services/BulkPlanChangeDialog';
 import { findReplaceTarget } from './services/findReplaceTarget';
+import { LanCidrField } from './services/IptvSection';
 import { IpField } from './services/IpField';
 import { MANUAL_EVENT_TYPES, RETURN_CONDITION_LABELS, ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
 import { PurchaseDeviceDialog } from './services/PurchaseDeviceDialog';
@@ -613,6 +614,7 @@ export function ServicesModule({
               macAddress: draft.macAddress || null,
               wanMode: draft.wanMode || null,
               operationMode: draft.operationMode || null,
+              lanCidr: draft.lanCidr || null,
               notes: draft.notes || null,
               ownership: draft.ownership,
               installedOn: draft.installedOn || null
@@ -861,6 +863,7 @@ export function ServicesModule({
           macAddress: replaceDraft.macAddress || null,
           wanMode: replaceDraft.wanMode || null,
           operationMode: replaceDraft.operationMode || null,
+          lanCidr: replaceDraft.lanCidr || null,
           notes: replaceDraft.notes || null,
           ownership: replaceDraft.ownership,
           returnCondition: replaceCondition,
@@ -895,6 +898,7 @@ export function ServicesModule({
       macAddress: assignment.macAddress || '',
       wanMode: assignment.wanMode || '',
       operationMode: assignment.operationMode || '',
+      lanCidr: assignment.lanCidr || '',
       notes: assignment.notes || '',
       installedOn: (assignment.startDate || '').slice(0, 10)
     });
@@ -923,6 +927,7 @@ export function ServicesModule({
           macAddress: editDraft.macAddress || null,
           wanMode: editDraft.wanMode || null,
           operationMode: editDraft.operationMode || null,
+          lanCidr: editDraft.lanCidr || null,
           notes: editDraft.notes || null,
           // Só do ISP tem aluguer; do cliente o servidor recusa e faz bem.
           ...(editTarget.ownership === 'isp' ? { rentalFeeCve: Number(editRental) || 0 } : {})
@@ -1190,6 +1195,7 @@ export function ServicesModule({
           onChangePlan={() => setPlanChangeIds([selectedService.id])}
           onChangePassword={() => openPasswordChange(selectedService)}
           onPppoeCreated={() => void loadServices()}
+          onIptvChanged={() => void loadServices()}
         />
       )}
 
@@ -1608,6 +1614,11 @@ export function ServicesModule({
             value={replaceDraft.operationMode}
             onChange={(operationMode) => setReplaceDraft((current) => ({ ...current, operationMode }))}
           />
+          <LanCidrField
+            catalogType={catalogList.find((item) => String(item.id) === replaceDraft.catalogId)?.type}
+            value={replaceDraft.lanCidr}
+            onChange={(lanCidr) => setReplaceDraft((current) => ({ ...current, lanCidr }))}
+          />
           <IpField
             value={replaceDraft.ipAddress}
             prefix={ipPrefix}
@@ -1686,6 +1697,11 @@ export function ServicesModule({
             catalogType={editTarget?.catalogType}
             value={editDraft.operationMode}
             onChange={(operationMode) => setEditDraft((current) => ({ ...current, operationMode }))}
+          />
+          <LanCidrField
+            catalogType={editTarget?.catalogType}
+            value={editDraft.lanCidr}
+            onChange={(lanCidr) => setEditDraft((current) => ({ ...current, lanCidr }))}
           />
           <IpField
             value={editDraft.ipAddress}

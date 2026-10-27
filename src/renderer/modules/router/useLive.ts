@@ -28,11 +28,17 @@ export function useLive<T>(url: string, active: boolean, intervalMs = POLL_MS) {
       setSyncing(true);
       authFetch(url)
         .then(async (response) => {
-          if (!response.ok) throw new Error(String(response.status));
+          // Um 409 "fora da rede de gestão" traz a razão em pt-PT: é ela que o ecrã mostra.
+          if (!response.ok) {
+            const failure = await response.json().catch(() => null) as { error?: unknown } | null;
+            throw new Error(typeof failure?.error === 'string' ? failure.error : '');
+          }
           const body = await response.json() as T;
           if (alive) { setData(body); setError(null); setSyncedAt(Date.now()); }
         })
-        .catch(() => { if (alive) setError('Não foi possível ler o router.'); })
+        .catch((failure: unknown) => {
+          if (alive) setError((failure instanceof Error && failure.message) || 'Não foi possível ler o router.');
+        })
         .finally(() => { inFlight = false; if (alive) setSyncing(false); });
     };
     read();

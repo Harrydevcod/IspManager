@@ -87,6 +87,9 @@ export type ServiceRow = {
   pppoePasswordConfigured?: boolean;
   /** Password alterada localmente e ainda não confirmada no MikroTik. */
   pppoePasswordPending?: number | null;
+  /** IPTV via VPN (ADR 0021): marca técnica, não fatura. */
+  iptvVpn?: boolean;
+  iptvProviderId?: number | null;
   /** Realidade lida do router (ADR 0007); null enquanto nunca foi lido. */
   routerOnline: number | null;
   routerEnabled: number | null;
@@ -828,6 +831,8 @@ export type DeviceAssignment = {
   wanMode: string | null;
   /** Que papel desempenha: predefinidos em shared/operation.ts, livre aceite. */
   operationMode: string | null;
+  /** Gama da LAN de um router de cliente (0089). */
+  lanCidr?: string | null;
   technicianName: string | null;
   notes: string | null;
   startDate: string;
