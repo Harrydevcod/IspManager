@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { uptimeSeconds } from '../../shared/duration';
 import { recordAuditStrict } from './audit';
 import { loadDesiredServices, matchSecrets } from './network-enforcement';
 import { readSuspendedProfileName } from './plan-profiles';
@@ -529,19 +530,7 @@ export function recoverInterruptedPlanChanges(db: Database.Database): number {
 // ------------------------------------------------------- sessões agendadas
 
 const DROP_GRACE_MS = 60 * 60_000;
-const UPTIME_UNIT: Record<string, number> = { w: 604_800, d: 86_400, h: 3600, m: 60, s: 1 };
-
-/** "1w2d3h4m5s" em segundos; null se o router escrever outra coisa. */
-export function uptimeSeconds(uptime: string | null): number | null {
-  if (!uptime) return null;
-  let total = 0;
-  let matched = false;
-  for (const [, amount, unit] of uptime.matchAll(/(\d+)([wdhms])/g)) {
-    total += Number(amount) * UPTIME_UNIT[unit];
-    matched = true;
-  }
-  return matched ? total : null;
-}
+export { uptimeSeconds };
 
 export function hasDueSessionDrops(db: Database.Database, now = new Date()): boolean {
   return Boolean(db.prepare(`

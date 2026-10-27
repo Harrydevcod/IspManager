@@ -68,4 +68,32 @@ describe('evaluateIptvInfra', () => {
     expect(find(checks, 'nat')?.state).toBe('disabled');
     expect(find(checks, 'filter')?.state).toBe('missing');
   });
+  test('split cujo encaminhamento só traz a marca de ligação, sem lista de origens', () => {
+    const mangle = healthy.mangle.map((r) => {
+      if (r.action !== 'mark-routing') return r;
+      const { 'src-address-list': _omit, ...rest } = r;
+      return rest;
+    });
+    expect(evaluateIptvInfra(config, { ...healthy, mangle }).every((check) => check.state === 'ok')).toBe(true);
+  });
+  test('rota inactiva com %interface no gateway e túnel em baixo: stale, não missing', () => {
+    const down = {
+      ...healthy,
+      interfaces: [{ name: 'tun-a', type: 'ovpn-out', running: 'false', disabled: off }],
+      routes: [{ 'routing-table': 'tabela-tv', gateway: '10.0.0.1%tun-a', active: 'false', disabled: off, distance: '1' }, healthy.routes[1]]
+    };
+    const checks = evaluateIptvInfra(config, down);
+    expect(find(checks, 'tunnel')?.state).toBe('stale');
+    expect(find(checks, 'filter')?.state).toBe('ok');
+    expect(find(checks, 'nat')?.state).toBe('ok');
+  });
+  test('regra da lista desactivada no topo não conta para a ordem', () => {
+    const pcc = { action: 'mark-routing', 'new-routing-mark': 'to_WAN3', passthrough: 'false', disabled: off };
+    const off1 = { ...healthy.mangle[0], disabled: 'true' };
+    expect(find(evaluateIptvInfra(config, { ...healthy, mangle: [off1, pcc, ...healthy.mangle] }), 'order')?.state).toBe('misordered');
+  });
+  test('o handshake mais recente entre os peers activos é o que conta', () => {
+    const two = { ...healthy, peers: [{ interface: 'tun-a', 'last-handshake': '10m', disabled: off }, { interface: 'tun-a', 'last-handshake': '5s300ms', disabled: off }] };
+    expect(find(evaluateIptvInfra(config, two), 'tunnel')?.state).toBe('ok');
+  });
 });

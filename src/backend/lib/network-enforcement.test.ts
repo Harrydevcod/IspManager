@@ -1050,4 +1050,14 @@ describe('runRouterPass', () => {
     expect(result.applied).toBe(1);
     expect(base.calls).toContainEqual(expect.objectContaining({ method: 'PUT', path: '/ppp/secret' }));
   });
+
+  test('uma excepção nos perfis dos planos não impede os secrets', async () => {
+    // Sem a tabela de estado, syncPlanProfiles lança (a falha do GET dos perfis ele próprio absorve).
+    const db = marked();
+    db.exec('DROP TABLE plan_router_sync');
+    const { transport, calls } = recordingTransport([]);
+    const result = await runRouterPass(db, { transport, config });
+    expect(result.planProfiles).toMatchObject({ error: expect.stringContaining('plan_router_sync') });
+    expect(calls).toContainEqual(expect.objectContaining({ method: 'PUT', path: '/ppp/secret' }));
+  });
 });

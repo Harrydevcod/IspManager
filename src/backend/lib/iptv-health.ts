@@ -1,9 +1,10 @@
-import { uptimeSeconds } from './plan-change';
+import { uptimeSeconds } from '../../shared/duration';
 import type { IptvConfig } from './iptv';
 
 type Row = Record<string, unknown>;
 type CheckState = 'ok' | 'missing' | 'disabled' | 'stale' | 'misordered';
 export type IptvCheck = { key: 'routing' | 'mark' | 'order' | 'tunnel' | 'killswitch' | 'filter' | 'nat'; label: string; state: CheckState; detail?: string };
+/** `mangle` já vem só com a chain prerouting, pela ordem do router (`readMangle`). */
 export type IptvInfraReads = { interfaces: Row[]; peers: Row[]; routes: Row[]; mangle: Row[]; filter: Row[]; nat: Row[]; listMembers: Row[] };
 
 const yes = (value: unknown) => value === true || value === 'true' || value === 'yes';
@@ -16,10 +17,12 @@ function state(rows: Row[]): CheckState {
 
 /** A interface de saída de uma rota: o próprio gateway, ou o que vem depois de `%` em `immediate-gw`. */
 const routeInterface = (route: Row, names: Set<string>) => {
-  const gateway = String(route.gateway ?? '');
-  if (names.has(gateway)) return gateway;
-  const via = /%(.+)$/.exec(String(route['immediate-gw'] ?? ''))?.[1];
-  return via && names.has(via) ? via : null;
+  const candidates = [String(route.gateway ?? ''), String(route['immediate-gw'] ?? '')];
+  for (const value of candidates) {
+    const name = value.includes('%') ? value.slice(value.lastIndexOf('%') + 1) : value;
+    if (names.has(name)) return name;
+  }
+  return null;
 };
 
 /** Um túnel está vivo se a interface corre; num WireGuard, também com handshake recente. */
@@ -27,10 +30,15 @@ function tunnelAlive(name: string, reads: IptvInfraReads): { alive: boolean; det
   const iface = reads.interfaces.find((row) => row.name === name);
   if (!iface || !on(iface) || !yes(iface.running)) return { alive: false, detail: `${name}: desligado` };
   if (iface.type !== 'wg') return { alive: true, detail: `${name} (${String(iface.type)}): a correr` };
-  const peer = reads.peers.find((row) => row.interface === name && on(row));
-  const seconds = uptimeSeconds(typeof peer?.['last-handshake'] === 'string' ? peer['last-handshake'] : null);
-  return seconds !== null && seconds <= HANDSHAKE_LIMIT_S
-    ? { alive: true, detail: `${name}: último handshake há ${String(peer?.['last-handshake'])}` }
+  // Vários peers: conta o handshake mais recente.
+  const ages = reads.peers.filter((row) => row.interface === name && on(row)).flatMap((row) => {
+    const text = typeof row['last-handshake'] === 'string' ? row['last-handshake'] : null;
+    const seconds = uptimeSeconds(text);
+    return seconds === null ? [] : [{ seconds, text }];
+  });
+  const latest = ages.sort((a, b) => a.seconds - b.seconds)[0];
+  return latest && latest.seconds <= HANDSHAKE_LIMIT_S
+    ? { alive: true, detail: `${name}: último handshake há ${latest.text}` }
     : { alive: false, detail: `${name}: sem handshake há mais de 3 minutos` };
 }
 
@@ -46,13 +54,16 @@ function tunnelAlive(name: string, reads: IptvInfraReads): { alive: boolean; det
 export function evaluateIptvInfra(config: IptvConfig, reads: IptvInfraReads): IptvCheck[] {
   const prerouting = reads.mangle;
   const ofList = (row: Row) => row['src-address-list'] === config.splitList;
-  const routing = prerouting.filter((r) => r.action === 'mark-routing' && ofList(r));
   const marking = prerouting.filter((r) => r.action === 'mark-connection' && ofList(r));
+  // O encaminhamento da lista: ou traz a lista, ou segue a marca de ligação que a lista pôs.
+  const marks = new Set(marking.filter(on).map((r) => String(r['new-connection-mark'] ?? '')).filter(Boolean));
+  const ofSplit = (r: Row) => ofList(r) || marks.has(String(r['connection-mark'] ?? ''));
+  const routing = prerouting.filter((r) => r.action === 'mark-routing' && ofSplit(r));
   const table = String(routing.find(on)?.['new-routing-mark'] ?? '');
 
   // Ordem: a primeira regra da lista tem de vir antes de qualquer outra marcação, e a de
   // encaminhamento tem de parar ali (passthrough=no), para nenhum balanceamento a desfazer.
-  const first = prerouting.findIndex(ofList);
+  const first = prerouting.findIndex((r) => on(r) && (ofList(r) || (r.action === 'mark-routing' && ofSplit(r))));
   const before = first < 0 ? [] : prerouting.slice(0, first).filter((r) => on(r) && (r.action === 'mark-connection' || r.action === 'mark-routing'));
   const passes = routing.some((r) => on(r) && !(r.passthrough === 'false' || r.passthrough === false || r.passthrough === 'no'));
   const order: IptvCheck = first < 0 ? { key: 'order', label: 'Ordem das regras', state: 'missing' }
