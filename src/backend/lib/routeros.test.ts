@@ -12,6 +12,9 @@ import {
   createProfile,
   ensureWanUsageCounter,
   ensureClientUsageCounter,
+  ensureRouterScript,
+  listAddressList,
+  removeAddressListEntry,
   createSecret,
   describeRouterFailure,
   listProfiles,
@@ -234,6 +237,42 @@ describe('operações RouterOS', () => {
     await ensureClientUsageCounter(transport);
     expect((scripts[0].source as string)).toContain('ispm-client-usage v4');
     expect(schedulers.map((row) => row.name)).toEqual(['ispm-client-usage', 'ispm-client-usage-startup']);
+  });
+
+  test('instala um script genérico com o intervalo pedido e não repete escritas', async () => {
+    const calls: RouterRequest[] = [];
+    const scripts: Record<string, unknown>[] = [];
+    const schedulers: Record<string, unknown>[] = [];
+    const transport: RouterTransport = async (request) => {
+      calls.push(request);
+      if (request.method === 'GET') return request.path.startsWith('/system/script?') ? scripts : schedulers;
+      const body = request.body as Record<string, unknown>;
+      if (request.method === 'PUT' && request.path === '/system/script') scripts.push({ '.id': '*1', ...body });
+      if (request.method === 'PUT' && request.path === '/system/scheduler') schedulers.push({ '.id': `*${schedulers.length + 2}`, ...body });
+      return null;
+    };
+    await ensureRouterScript(transport, { name: 'ispm-iptv', comment: 'ispm-iptv v1 #abcd1234', source: '# ispm-iptv v1\n', interval: '1m' });
+    expect(schedulers.map((row) => [row.name, row.interval])).toEqual([['ispm-iptv', '1m'], ['ispm-iptv-startup', '0s']]);
+    calls.length = 0;
+    await ensureRouterScript(transport, { name: 'ispm-iptv', comment: 'ispm-iptv v1 #abcd1234', source: '# ispm-iptv v1\n', interval: '1m' });
+    expect(calls.map((call) => call.method)).toEqual(['GET', 'GET', 'GET']);
+  });
+
+  test('lê só as entradas estáticas de uma lista, pelo nome', async () => {
+    const transport = fakeTransport([[
+      { '.id': '*A', address: 'line.dino.ws', comment: 'manual', dynamic: 'false', disabled: 'false' },
+      { '.id': '*B', address: '1.2.3.4', comment: 'manual', dynamic: 'true', disabled: 'false' }
+    ]]);
+    expect(await listAddressList(transport, 'IPTV-SERVERS')).toEqual([{ id: '*A', address: 'line.dino.ws', comment: 'manual', disabled: false }]);
+    expect(transport.calls[0].path).toBe('/ip/firewall/address-list?list=IPTV-SERVERS&.proplist=.id,address,comment,dynamic,disabled');
+  });
+
+  test('removeAddressListEntry recusa um .id inválido e aceita o do RouterOS', async () => {
+    const transport = fakeTransport();
+    await expect(removeAddressListEntry(transport, '1')).rejects.toThrow('inválido');
+    expect(transport.calls).toHaveLength(0);
+    await removeAddressListEntry(transport, '*A');
+    expect(transport.calls).toEqual([{ method: 'DELETE', path: '/ip/firewall/address-list/*A' }]);
   });
 
   // Medido no router real: o PUT foi aceite e o script ficou vazio e INVALID, sem erro.

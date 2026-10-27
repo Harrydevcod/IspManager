@@ -1440,6 +1440,39 @@ export async function listDhcpLeases(transport: RouterTransport): Promise<Router
     .filter((lease) => lease.address);
 }
 
+export type RouterListEntry = { id: string; address: string; comment: string | null; disabled: boolean };
+
+/** Entradas estáticas de uma address-list. As dinâmicas (DNS resolvido, scripts) ficam de fora. */
+export async function listAddressList(transport: RouterTransport, list: string): Promise<RouterListEntry[]> {
+  const raw = await transport({ method: 'GET', path: `/ip/firewall/address-list?list=${encodeURIComponent(list)}&.proplist=.id,address,comment,dynamic,disabled` });
+  return asArray(raw)
+    .filter((row) => !toBool(row.dynamic))
+    .map((row) => ({ id: str(row['.id']) ?? '', address: str(row.address) ?? '', comment: str(row.comment), disabled: toBool(row.disabled) }))
+    .filter((entry) => entry.id && entry.address);
+}
+
+export async function addAddressListEntry(transport: RouterTransport, entry: { list: string; address: string; comment: string }): Promise<void> {
+  await transport({ method: 'PUT', path: '/ip/firewall/address-list', body: entry });
+}
+
+export async function removeAddressListEntry(transport: RouterTransport, id: string): Promise<void> {
+  const safe = safeId(id);
+  if (!safe) throw new RouterError(`Identificador inválido: ${id}`, 0, undefined, 'bad_response');
+  await transport({ method: 'DELETE', path: `/ip/firewall/address-list/${safe}` });
+}
+
+export type RouterRow = Record<string, unknown>;
+// Leituras da infraestrutura da VPN: o ISPM só lê estas tabelas, não as escreve. Nenhuma sabe
+// que tipo de VPN ou que WAN existem: lêem tudo e a T7 descobre o túnel a partir da lista de origens.
+export const readInterfaces = (t: RouterTransport) => t({ method: 'GET', path: '/interface?.proplist=name,type,running,disabled' }).then(asArray);
+export const readWireguardPeers = (t: RouterTransport) => t({ method: 'GET', path: '/interface/wireguard/peers?.proplist=interface,last-handshake,disabled' }).then(asArray);
+export const readRoutes = (t: RouterTransport) => t({ method: 'GET', path: '/ip/route?.proplist=routing-table,gateway,immediate-gw,blackhole,disabled,active,distance' }).then(asArray);
+export const readMangle = (t: RouterTransport) => t({ method: 'GET', path: '/ip/firewall/mangle?chain=prerouting&.proplist=action,new-routing-mark,new-connection-mark,connection-mark,src-address-list,passthrough,disabled,bytes,packets' }).then(asArray);
+export const readForwardFilter = (t: RouterTransport) => t({ method: 'GET', path: '/ip/firewall/filter?chain=forward&.proplist=action,src-address-list,out-interface,out-interface-list,disabled' }).then(asArray);
+export const readSrcnat = (t: RouterTransport) => t({ method: 'GET', path: '/ip/firewall/nat?chain=srcnat&.proplist=action,out-interface,out-interface-list,disabled' }).then(asArray);
+// Ao contrário de `listInterfaceListMembers` (os nomes de uma só lista), devolve as linhas de todas as listas.
+export const readInterfaceListMembers = (t: RouterTransport) => t({ method: 'GET', path: '/interface/list/member?.proplist=list,interface,disabled' }).then(asArray);
+
 export type NewSecret = {
   name: string;
   password: string;
@@ -1550,21 +1583,23 @@ const WAN_USAGE_POLICY = 'read,write';
  */
 export const usageCounterMark = (version: string, disk: string | null) => (disk ? `${version} @${disk}` : version);
 
-/** Instala ou reconcilia os três objetos. PUT/PATCH não são repetidos pelo transporte. */
-async function ensureUsageCounter(transport: RouterTransport, { name, version: baseVersion, disk, build }: {
-  name: string; version: string; disk: string | null; build: (disk: string | null) => string;
+/**
+ * Instala ou reconcilia um script do ISPM e os dois agendamentos (o periódico e o de
+ * arranque). O dono é o nome; o comentário diz a versão, e só um comentário diferente
+ * reescreve o script. PUT/PATCH não são repetidos pelo transporte.
+ */
+export async function ensureRouterScript(transport: RouterTransport, { name, comment, source, interval, label = name }: {
+  name: string; comment: string; source: string; interval: string; label?: string;
 }): Promise<void> {
-  const version = usageCounterMark(baseVersion, disk);
-  const source = build(disk);
   const scripts = asArray(await transport({ method: 'GET', path: '/system/script?.proplist=.id,name,comment' }));
   const script = scripts.find((row) => row.name === name);
   if (!script) {
     await transport({ method: 'PUT', path: '/system/script', body: {
-      name, comment: version, source, policy: WAN_USAGE_POLICY
+      name, comment, source, policy: WAN_USAGE_POLICY
     } });
-  } else if (script.comment !== version) {
+  } else if (script.comment !== comment) {
     await transport({ method: 'PATCH', path: `/system/script/${script['.id']}`, body: {
-      comment: version, source, policy: WAN_USAGE_POLICY
+      comment, source, policy: WAN_USAGE_POLICY
     } });
   }
 
@@ -1572,10 +1607,10 @@ async function ensureUsageCounter(transport: RouterTransport, { name, version: b
   // só a releitura prova que o contador vai correr.
   const saved = asArray(await transport({ method: 'GET', path: `/system/script?name=${name}&.proplist=source,invalid` }))[0];
   if (!saved || typeof saved.source !== 'string' || saved.source.length === 0) {
-    throw new RouterError('O router guardou o script do contador sem texto', 0, undefined, 'bad_response');
+    throw new RouterError(`O router guardou o script ${label} sem texto`, 0, undefined, 'bad_response');
   }
   if (toBool(saved.invalid)) {
-    throw new RouterError('O router marcou o script do contador como inválido', 0, undefined, 'bad_response');
+    throw new RouterError(`O router marcou o script ${label} como inválido`, 0, undefined, 'bad_response');
   }
 
   const schedulers = asArray(await transport({ method: 'GET', path: '/system/scheduler?.proplist=.id,name,on-event,start-date,start-time,interval,policy' }));
@@ -1586,7 +1621,7 @@ async function ensureUsageCounter(transport: RouterTransport, { name, version: b
   // A data de início fica no passado. Medido no CHR 7.24.2: sem ela o router põe a de hoje e a
   // primeira corrida só vem às 23:59:50 — o contador ficava parado o resto do dia da instalação.
   const expected: Array<Record<string, string>> = [
-    { name, 'on-event': name, 'start-date': '2020-01-01', 'start-time': '23:59:50', interval: disk ? '5m' : '1h', policy: WAN_USAGE_POLICY },
+    { name, 'on-event': name, 'start-date': '2020-01-01', 'start-time': '23:59:50', interval, policy: WAN_USAGE_POLICY },
     { name: `${name}-startup`, 'on-event': name, 'start-time': 'startup', interval: '0s', policy: WAN_USAGE_POLICY }
   ];
   for (const fields of expected) {
@@ -1597,6 +1632,13 @@ async function ensureUsageCounter(transport: RouterTransport, { name, version: b
       await transport({ method: 'PATCH', path: `/system/scheduler/${existing['.id']}`, body: fields });
     }
   }
+}
+
+/** Instala ou reconcilia os três objetos de um contador. */
+async function ensureUsageCounter(transport: RouterTransport, { name, version: baseVersion, disk, build }: {
+  name: string; version: string; disk: string | null; build: (disk: string | null) => string;
+}): Promise<void> {
+  return ensureRouterScript(transport, { name, comment: usageCounterMark(baseVersion, disk), source: build(disk), interval: disk ? '5m' : '1h', label: 'do contador' });
 }
 
 /** `disk` é o disco amovível onde o contador guarda o estado; `null` deixa-o no script de dados. */
