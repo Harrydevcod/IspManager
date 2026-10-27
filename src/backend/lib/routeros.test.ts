@@ -12,6 +12,12 @@ import {
   createProfile,
   ensureWanUsageCounter,
   ensureClientUsageCounter,
+  ensureRouterScript,
+  listAddressList,
+  listIpAddresses,
+  readRoutes,
+  removeAddressListEntry,
+  patchAddressListEntry,
   createSecret,
   describeRouterFailure,
   listProfiles,
@@ -236,6 +242,92 @@ describe('operações RouterOS', () => {
     expect(schedulers.map((row) => row.name)).toEqual(['ispm-client-usage', 'ispm-client-usage-startup']);
   });
 
+  test('instala um script genérico com o intervalo pedido e não repete escritas', async () => {
+    const calls: RouterRequest[] = [];
+    const scripts: Record<string, unknown>[] = [];
+    const schedulers: Record<string, unknown>[] = [];
+    const transport: RouterTransport = async (request) => {
+      calls.push(request);
+      if (request.method === 'GET') return request.path.startsWith('/system/script?') ? scripts : schedulers;
+      const body = request.body as Record<string, unknown>;
+      if (request.method === 'PUT' && request.path === '/system/script') scripts.push({ '.id': '*1', ...body });
+      if (request.method === 'PUT' && request.path === '/system/scheduler') schedulers.push({ '.id': `*${schedulers.length + 2}`, ...body });
+      return null;
+    };
+    await ensureRouterScript(transport, { name: 'ispm-iptv', comment: 'ispm-iptv v1 #abcd1234', source: '# ispm-iptv v1\n', interval: '1m' });
+    expect(schedulers.map((row) => [row.name, row.interval])).toEqual([['ispm-iptv', '1m'], ['ispm-iptv-startup', '0s']]);
+    calls.length = 0;
+    await ensureRouterScript(transport, { name: 'ispm-iptv', comment: 'ispm-iptv v1 #abcd1234', source: '# ispm-iptv v1\n', interval: '1m' });
+    expect(calls.map((call) => call.method)).toEqual(['GET', 'GET', 'GET']);
+  });
+
+  test('reativa os schedulers próprios desativados e preserva os manuais', async () => {
+    const fields = { 'on-event': 'ispm-iptv', interval: '1m', policy: 'read,write', 'start-date': '2020-01-01', 'start-time': '23:59:50' };
+    const transport = fakeTransport([
+      [{ '.id': '*1', name: 'ispm-iptv', comment: 'v1' }],
+      [{ source: '# valid', invalid: 'false' }],
+      [
+        { '.id': '*2', name: 'ispm-iptv', ...fields, disabled: 'true' },
+        { '.id': '*3', name: 'ispm-iptv-startup', ...fields, interval: '0s', 'start-time': 'startup', disabled: 'true' },
+        { '.id': '*4', name: 'manual', disabled: 'true' }
+      ], null, null
+    ]);
+    await ensureRouterScript(transport, { name: 'ispm-iptv', comment: 'v1', source: '# valid', interval: '1m' });
+    const patches = transport.calls.filter((call) => call.method === 'PATCH');
+    expect(patches.map((call) => call.path)).toEqual(['/system/scheduler/*2', '/system/scheduler/*3']);
+    expect(patches.every((call) => (call.body as Record<string, unknown>).disabled === 'false')).toBe(true);
+    expect(transport.calls.find((call) => call.path.startsWith('/system/scheduler?'))?.path).toContain('disabled');
+  });
+
+  test('lê só as entradas estáticas de uma lista, pelo nome', async () => {
+    const transport = fakeTransport([[
+      { '.id': '*A', address: 'line.dino.ws', comment: 'manual', dynamic: 'false', disabled: 'false' },
+      { '.id': '*B', address: '1.2.3.4', comment: 'manual', dynamic: 'true', disabled: 'false' }
+    ]]);
+    expect(await listAddressList(transport, 'IPTV-SERVERS')).toEqual([{ id: '*A', address: 'line.dino.ws', comment: 'manual', disabled: false }]);
+    expect(transport.calls[0].path).toBe('/ip/firewall/address-list?list=IPTV-SERVERS&.proplist=.id,address,comment,dynamic,disabled');
+  });
+
+  test('lê os endereços de interface do router, com o estado', async () => {
+    const transport = fakeTransport([[
+      { address: '192.168.1.1/24', network: '192.168.1.0', disabled: 'false' },
+      { address: '10.0.0.1/8', network: '10.0.0.0', disabled: 'true' }
+    ]]);
+    expect(await listIpAddresses(transport)).toEqual([{ address: '192.168.1.1/24', disabled: false }, { address: '10.0.0.1/8', disabled: true }]);
+    expect(transport.calls[0].path).toBe('/ip/address?.proplist=address,disabled');
+  });
+
+  test('lê os destinos das rotas para distinguir a saída por omissão das gamas específicas', async () => {
+    const rows = [{ 'routing-table': 'tv', 'dst-address': '0.0.0.0/0', gateway: 'tun-a' }];
+    const transport = fakeTransport([rows]);
+    expect(await readRoutes(transport)).toEqual(rows);
+    expect(transport.calls[0]).toEqual({ method: 'GET', path: '/ip/route?.proplist=routing-table,dst-address,gateway,immediate-gw,blackhole,disabled,active,distance' });
+  });
+
+  test('removeAddressListEntry recusa um .id inválido e aceita o do RouterOS', async () => {
+    const transport = fakeTransport();
+    await expect(removeAddressListEntry(transport, '1')).rejects.toThrow('inválido');
+    expect(transport.calls).toHaveLength(0);
+    await removeAddressListEntry(transport, '*A');
+    expect(transport.calls).toEqual([{ method: 'DELETE', path: '/ip/firewall/address-list/*A' }]);
+  });
+
+  test('patchAddressListEntry recusa um .id inválido e muda só o comentário', async () => {
+    const transport = fakeTransport();
+    await expect(patchAddressListEntry(transport, '1', { comment: 'x' })).rejects.toThrow('inválido');
+    expect(transport.calls).toHaveLength(0);
+    await patchAddressListEntry(transport, '*A', { comment: 'novo' });
+    expect(transport.calls).toEqual([{ method: 'PATCH', path: '/ip/firewall/address-list/*A', body: { comment: 'novo' } }]);
+  });
+
+  test('patchAddressListEntry reactiva pelo .id, sem exigir mudança de comentário', async () => {
+    const transport = fakeTransport();
+    await expect(patchAddressListEntry(transport, '1', { disabled: false })).rejects.toThrow('inválido');
+    expect(transport.calls).toHaveLength(0);
+    await patchAddressListEntry(transport, '*A', { disabled: false });
+    expect(transport.calls).toEqual([{ method: 'PATCH', path: '/ip/firewall/address-list/*A', body: { disabled: 'no' } }]);
+  });
+
   // Medido no router real: o PUT foi aceite e o script ficou vazio e INVALID, sem erro.
   test('recusa a instalação quando o router guarda o script vazio ou inválido', async () => {
     const empty = fakeTransport([[], null, [{ source: '', invalid: 'true' }]]);
@@ -256,7 +348,7 @@ describe('operações RouterOS', () => {
       [{ source: '# ispm-wan-usage v6', invalid: 'false' }],
       [
         { '.id': '*2', name: 'ispm-wan-usage', 'on-event': 'outro', 'start-time': '01:00:00', interval: '10m', policy: 'read' },
-        { '.id': '*3', name: 'ispm-wan-usage-startup', 'on-event': 'ispm-wan-usage', 'start-time': 'startup', interval: '0s', policy: 'read,write' }
+        { '.id': '*3', name: 'ispm-wan-usage-startup', 'on-event': 'ispm-wan-usage', 'start-time': 'startup', interval: '0s', policy: 'read,write', disabled: 'false' }
       ], null
     ]);
     await ensureWanUsageCounter(transport);

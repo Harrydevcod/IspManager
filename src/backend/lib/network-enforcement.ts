@@ -3,6 +3,7 @@ import { getSqliteDatabase } from '../db/database';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-network';
 import { readPppoeSecret } from './secrets';
 import { isMacAddress, normalizeMacAddress } from '../../shared/mac';
+import { syncIptv, type IptvSyncResult } from './iptv';
 import { readBaseProfileName, readSuspendedProfileName, syncPlanProfiles, type PlanSyncSummary } from './plan-profiles';
 import {
   createSecret,
@@ -15,6 +16,7 @@ import {
   patchSecret,
   readRouterConfig,
   removeActive,
+  type RouterConfig,
   type RouterActive,
   type RouterSecret,
   type RouterTransport
@@ -551,6 +553,8 @@ export type EnforcementSummary = {
   actions: PlannedAction[];
   /** Passagem dos perfis dos planos, feita antes da dos secrets. */
   planProfiles?: PlanSyncSummary | { error: string };
+  /** Passo IPTV via VPN, feito depois dos secrets (ADR 0021). */
+  iptv?: IptvSyncResult | { error: string };
 };
 
 function callerMac(raw: string | null | undefined): string | null {
@@ -1001,7 +1005,14 @@ export async function runNetworkEnforcementIfDue(): Promise<EnforcementSummary> 
   if (isOffNetwork(presence)) {
     return { skipped: true, reason: offNetworkReason(presence), dryRun: config.dryRun, services: 0, online: 0, planned: 0, applied: 0, failed: 0, divergences: 0, actions: [] };
   }
-  const transport = createTransport(config);
+  return runRouterPass(db, { transport: createTransport(config), config });
+}
+
+/** A passagem do router depois das guardas: perfis, secrets e IPTV, por esta ordem. */
+export async function runRouterPass(
+  db: Database.Database,
+  { transport, config }: { transport: RouterTransport; config: Pick<RouterConfig, 'dryRun' | 'maxDisablesPerRun'> }
+): Promise<EnforcementSummary> {
   // Perfis antes dos secrets: um secret nunca aponta para um perfil que ainda
   // não existe. Uma falha aqui não trava cortes nem reposições — os serviços do
   // plano em falta ficam pendentes na passagem dos secrets.
@@ -1016,7 +1027,15 @@ export async function runNetworkEnforcementIfDue(): Promise<EnforcementSummary> 
     dryRun: config.dryRun,
     maxDisables: config.maxDisablesPerRun
   });
-  return { ...summary, planProfiles };
+  // IPTV depois dos secrets: um utilizador novo já existe quando o script o procurar.
+  // Uma falha aqui não desfaz cortes nem reposições já feitos.
+  let iptv: IptvSyncResult | { error: string };
+  try {
+    iptv = await syncIptv(db, { transport, dryRun: config.dryRun });
+  } catch (err) {
+    iptv = { error: err instanceof Error ? err.message : String(err) };
+  }
+  return { ...summary, planProfiles, iptv };
 }
 
 // ------------------------------------------------------------------ leitura

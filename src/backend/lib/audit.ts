@@ -13,7 +13,7 @@ export type AuditEntry = {
   metadata?: unknown;
 };
 
-function insertAudit(db: Database.Database, request: AuditRequest, entry: AuditEntry): void {
+function insertAudit(db: Database.Database, request: Pick<AuditRequest, 'user'>, entry: AuditEntry): void {
   const actor = request.user;
   db.prepare(`
     INSERT INTO audit_logs (
@@ -48,4 +48,16 @@ export function recordAudit(request: AuditRequest, entry: AuditEntry): void {
  */
 export function recordAuditStrict(db: Database.Database, request: AuditRequest, entry: AuditEntry): void {
   insertAudit(db, request, entry);
+}
+
+/**
+ * Auditoria de uma tarefa do sistema (sem utilizador), com antes e depois nos metadados.
+ * Não rebenta: o que já aconteceu no router não se desfaz por falhar o registo.
+ */
+export function recordSystemAuditEntry(db: Database.Database, entry: AuditEntry): void {
+  try {
+    insertAudit(db, { user: { username: 'sistema' } as AuthenticatedUser }, entry);
+  } catch {
+    // Idem.
+  }
 }

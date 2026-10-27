@@ -7,6 +7,7 @@ import {
   loadDesiredServices,
   planActions,
   runNetworkEnforcement,
+  runRouterPass,
   type DesiredService
 } from './network-enforcement';
 import type { RouterRequest, RouterSecret, RouterTransport } from './routeros';
@@ -1013,5 +1014,50 @@ describe('pedido explícito do operador', () => {
     const { transport, calls } = recordingTransport([secret({ profile: 'default' })]);
     await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5, serviceIds: [1], reportOrphans: false, overrideDrift: true });
     expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'plano-10M' } });
+  });
+});
+
+describe('runRouterPass', () => {
+  const config = { dryRun: false, maxDisablesPerRun: 5 };
+  const marked = () => {
+    const db = memoryDb();
+    addService(db, 1, 'active', 'joao-1');
+    db.prepare('UPDATE services SET iptv_vpn = 1 WHERE id = 1').run();
+    return db;
+  };
+
+  test('o script do IPTV vem depois das escritas nos secrets', async () => {
+    const base = recordingTransport([]);
+    const calls = base.calls;
+    // A leitura de confirmação do script devolve um texto qualquer; o resto cai no transporte base.
+    const transport = (async (req: RouterRequest) =>
+      req.method === 'GET' && req.path.startsWith('/system/script?name=') ? [{ source: '# x', invalid: 'false' }] : base.transport(req)) as RouterTransport;
+    const result = await runRouterPass(marked(), { transport, config });
+    expect(result.iptv).toMatchObject({ status: 'applied', users: ['joao-1'] });
+    const writes = calls.filter((c) => c.method === 'PUT').map((c) => c.path);
+    expect(writes.indexOf('/ppp/secret')).toBeGreaterThanOrEqual(0);
+    expect(writes.indexOf('/system/script')).toBeGreaterThan(writes.lastIndexOf('/ppp/secret'));
+  });
+
+  test('uma falha do IPTV não afecta o resultado dos secrets', async () => {
+    const base = recordingTransport([]);
+    const transport = (async (req: RouterRequest) => {
+      if (req.path.startsWith('/system/script') || req.path.startsWith('/ip/firewall/address-list')) throw new Error('router sem resposta');
+      return base.transport(req);
+    }) as RouterTransport;
+    const result = await runRouterPass(marked(), { transport, config });
+    expect(result.iptv).toEqual({ error: 'router sem resposta' });
+    expect(result.applied).toBe(1);
+    expect(base.calls).toContainEqual(expect.objectContaining({ method: 'PUT', path: '/ppp/secret' }));
+  });
+
+  test('uma excepção nos perfis dos planos não impede os secrets', async () => {
+    // Sem a tabela de estado, syncPlanProfiles lança (a falha do GET dos perfis ele próprio absorve).
+    const db = marked();
+    db.exec('DROP TABLE plan_router_sync');
+    const { transport, calls } = recordingTransport([]);
+    const result = await runRouterPass(db, { transport, config });
+    expect(result.planProfiles).toMatchObject({ error: expect.stringContaining('plan_router_sync') });
+    expect(calls).toContainEqual(expect.objectContaining({ method: 'PUT', path: '/ppp/secret' }));
   });
 });

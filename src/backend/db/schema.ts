@@ -141,6 +141,17 @@ export const internetPlans = sqliteTable('internet_plans', {
   code: text('code')
 });
 
+export const iptvProviders = sqliteTable('iptv_providers', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  /** Domínios ou IPs, um por linha. */
+  hosts: text('hosts').notNull().default(''),
+  notes: text('notes'),
+  active: integer('active', { mode: 'boolean' }).notNull().default(true),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
+  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
 export const services = sqliteTable('services', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   clientId: integer('client_id').notNull(),
@@ -160,7 +171,10 @@ export const services = sqliteTable('services', {
   pppoePassword: text('pppoe_password'),
   suspensionSource: text('suspension_source'),
   suspendedAt: text('suspended_at'),
-  pppoePasswordSyncPending: integer('pppoe_password_sync_pending', { mode: 'boolean' }).notNull().default(false)
+  pppoePasswordSyncPending: integer('pppoe_password_sync_pending', { mode: 'boolean' }).notNull().default(false),
+  /** IPTV via VPN (0089, ADR 0021): técnica, não fatura. */
+  iptvVpn: integer('iptv_vpn', { mode: 'boolean' }).notNull().default(false),
+  iptvProviderId: integer('iptv_provider_id').references(() => iptvProviders.id, { onDelete: 'set null' })
 });
 
 export const payments = sqliteTable('payments', {
@@ -296,6 +310,8 @@ export const serviceDeviceAssignments = sqliteTable('service_device_assignments'
   wanMode: text('wan_mode'),
   /** Que papel desempenha: predefinidos em shared/operation.ts, texto livre. NULL = por classificar (migracao 0057). */
   operationMode: text('operation_mode'),
+  /** Gama da LAN de um router de cliente (0089), para o aviso de colisão com as gamas do ISP. */
+  lanCidr: text('lan_cidr'),
   technicianId: integer('technician_id'),
   notes: text('notes'),
   startDate: text('start_date').notNull().default("date('now')"),
