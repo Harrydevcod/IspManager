@@ -160,3 +160,19 @@ export function describeRange(input: string): { hint: string; error?: undefined 
     return { error: err instanceof Error ? err.message : 'Intervalo inválido' };
   }
 }
+
+export const LAN_CIDR_ERROR = 'Gama LAN invalida. Use o formato rede/prefixo, ex.: 192.168.0.0/24';
+
+/**
+ * Uma gama `a.b.c.d/n` em início/fim inteiros e na forma canónica (o endereço de
+ * rede): `192.168.1.1/24` dá `192.168.1.0/24`. Nulo se não for uma gama IPv4.
+ */
+export function parseCidr(value: string): { start: number; end: number; canonical: string } | null {
+  const match = /^([\d.]+)\/(\d{1,2})$/.exec(value.trim());
+  const ip = match ? ipToInt(match[1]) : null;
+  const prefix = match ? Number(match[2]) : NaN;
+  if (ip === null || !(prefix >= 0 && prefix <= 32)) return null;
+  const size = 2 ** (32 - prefix);
+  const start = ip - (ip % size);
+  return { start, end: start + size - 1, canonical: `${intToIp(start)}/${prefix}` };
+}

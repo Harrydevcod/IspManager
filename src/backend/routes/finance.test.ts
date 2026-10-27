@@ -325,6 +325,13 @@ describe('whatsapp routes', () => {
 });
 
 describe('finance routes', () => {
+  test('a lista de serviços traz a marca IPTV via VPN', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-TV','Tv','active')`).run();
+    db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status, iptv_vpn) VALUES (?, 1000, 10, 'active', 1)`).run(client.lastInsertRowid);
+    const rows = (await app.inject({ method: 'GET', url: '/api/services' })).json<Array<{ clientCode: string; iptvVpn: boolean; iptvProviderId: number | null }>>();
+    expect(rows.find((row) => row.clientCode === 'CLT-TV')).toMatchObject({ iptvVpn: true, iptvProviderId: null });
+  });
+
   test('rejects invalid service payloads', async () => {
     const response = await app.inject({
       method: 'POST',

@@ -1,5 +1,6 @@
 import type { IptvSource } from './iptv-source';
 import { isMacAddress, normalizeMacAddress } from '../../shared/mac';
+import { parseCidr } from '../../shared/ip-range';
 import type { RouterActive, RouterArpEntry, RouterDhcpLease } from './routeros';
 
 type Lease = Pick<RouterDhcpLease, 'address' | 'macAddress'>;
@@ -45,21 +46,12 @@ export function validateIptvSource(target: IptvSource, seen: { antennaMac: strin
     : { state: 'not_found' };
 }
 
-const toRange = (cidr: string): [number, number] | null => {
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(cidr.trim());
-  if (!m || m.slice(1, 5).some((o) => Number(o) > 255) || Number(m[5]) > 32) return null;
-  const ip = m.slice(1, 5).reduce((acc, o) => acc * 256 + Number(o), 0);
-  const size = 2 ** (32 - Number(m[5]));
-  const start = ip - (ip % size);
-  return [start, start + size - 1];
-};
-
 /**
  * A primeira gama do router que se sobrepõe à LAN do cliente, ou null. As gamas vêm de
  * `/ip/address` (endereço de interface, `192.168.1.1/24`); quem chama já tirou as desactivadas.
  */
 export function cidrOverlaps(lan: string, routerAddresses: string[]): string | null {
-  const a = toRange(lan);
+  const a = parseCidr(lan);
   if (!a) return null;
-  return routerAddresses.find((cidr) => { const b = toRange(cidr); return b !== null && a[0] <= b[1] && b[0] <= a[1]; }) ?? null;
+  return routerAddresses.find((cidr) => { const b = parseCidr(cidr); return b !== null && a.start <= b.end && b.start <= a.end; }) ?? null;
 }
