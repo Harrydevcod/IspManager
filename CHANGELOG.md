@@ -6,6 +6,34 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.40](https://github.com/Harrydevcod/IspManager/releases/tag/v2.40.0) — 2026-10-28
+
+### Adicionado
+- **Fichas de migração PPPoE** (Serviços → "Fichas PPPoE", só administradores). Um PDF com uma ficha por cliente, duas por folha A4, para o técnico migrar de DHCP para PPPoE no terreno.
+  - Cada ficha leva o utilizador e a senha numa letra em que 0 e O não se confundem, e onde os escrever: o equipamento que faz NAT. Quando o modo não está classificado, diz "Confirmar no local".
+  - Leva também os passos a seguir, linhas de observações e espaço para a data, a hora, o técnico e a assinatura.
+  - Por omissão só entram os serviços que nunca ligaram por PPPoE.
+  - As senhas saem em claro, por isso pede a password outra vez, regista a geração na auditoria (sem as senhas) e recomenda imprimir em vez de guardar.
+
+### Alterado
+- **Os valores do router escolhem-se, já não se escrevem.** Os campos que nomeiam algo do router vêm do próprio router:
+  - os perfis PPP, a pool, a lista de interfaces e a fila-mãe;
+  - o gateway e o DNS dos perfis;
+  - as listas do IPTV;
+  - o perfil do plano.
+
+  O comportamento é este:
+  - **Várias opções:** escolhe-se de uma lista.
+  - **Uma só:** vem preenchida.
+  - **Valor que já não existe no router:** aparece marcado.
+  - **Fora da rede de gestão:** fica o valor gravado, só para ler, com o motivo num aviso.
+
+  O perfil do plano escolhe-se do router, ou fica o perfil próprio do ISPM (`ispm-plano-<nº>`).
+- Os erros ao guardar ou imprimir um documento mostram a mensagem do ISPM, em vez do código HTTP.
+
+### Corrigido
+- **Fornecedores de IPTV:** o botão de editar saía pela borda da tabela.
+
 ## [2.39](https://github.com/Harrydevcod/IspManager/releases/tag/v2.39.0) — 2026-10-28
 
 ### Adicionado
