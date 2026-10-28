@@ -32,6 +32,10 @@ export type IptvSyncResult =
     };
 export type IptvStatus = { targets: IptvTarget[]; last: IptvSyncResult | null };
 
+/** Um túnel do router, com o nome que lá tem. Só informa: a VPN configura-se no router. */
+export type IptvTunnel = { name: string; type: string; alive: boolean; detail: string; inUse: boolean; ready: boolean; reasons: string[] };
+export type IptvTunnels = { tunnels: IptvTunnel[] };
+
 export type IptvValidation =
   | { state: 'ok'; address: string | null; via: 'pppoe' | 'legacy' }
   | { state: 'warning'; reason: string }

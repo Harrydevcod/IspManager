@@ -1,7 +1,11 @@
 import { AlertTriangle, Check, ListChecks, Network, ShieldCheck, Tv, X } from 'lucide-react';
 import { Badge, DataTable, EmptyState, ErrorRetry, Message, SkeletonList, type DataTableColumn } from '../../components';
-import { CHECK_STATUS, describeSource, type IptvActive, type IptvCheck, type IptvProvider, type IptvStatus, type IptvSyncResult, type IptvTarget } from '../iptv/iptv-api';
+import {
+  CHECK_STATUS, describeSource, type IptvActive, type IptvCheck, type IptvProvider, type IptvStatus, type IptvSyncResult, type IptvTarget,
+  type IptvTunnels as IptvTunnelsData
+} from '../iptv/iptv-api';
 import { IptvProviders } from './IptvProviders';
+import { IptvTunnels } from './IptvTunnels';
 import type { ServiceRow } from '../../types';
 
 type Live<T> = { data: T | null; error: string | null; reload: () => void };
@@ -141,9 +145,10 @@ function LastPass({ last }: { last: IptvSyncResult | null }) {
   );
 }
 
-export function IptvPanel({ status, infra, providers, services, isAdmin }: {
+export function IptvPanel({ status, infra, tunnels, providers, services, isAdmin }: {
   status: Live<IptvStatus>;
   infra: Live<IptvCheck[]> | null;
+  tunnels?: Live<IptvTunnelsData> | null;
   providers: Live<IptvProvider[]>;
   services: ServiceRow[];
   isAdmin: boolean;
@@ -163,6 +168,7 @@ export function IptvPanel({ status, infra, providers, services, isAdmin }: {
   return (
     <div className="iptv-panel">
       {infra && <Infrastructure infra={infra} />}
+      {tunnels && <IptvTunnels tunnels={tunnels} />}
       {status.error && <Message tone="error">{status.error}</Message>}
       <LastPass last={last} />
       <Clients rows={rows} lastRan={Boolean(ran)} />

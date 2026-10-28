@@ -52,17 +52,18 @@ const update: InjectOptions = { method: 'PUT', url: '/api/iptv/providers/1', pay
 const reads: InjectOptions[] = [{ url: '/api/iptv/providers' }, { url: '/api/iptv/status' }];
 const validate: InjectOptions = { url: '/api/iptv/validate' };
 const infra: InjectOptions = { url: '/api/iptv/infra' };
+const tunnels: InjectOptions = { url: '/api/iptv/tunnels' };
 const requestAs = (role: UserRole, options: InjectOptions) => app.inject({ ...options, headers: { authorization: `Bearer ${tokens[role]}` } });
 
 test('todas as rotas IPTV exigem autenticação', async () => {
-  for (const options of [mark, create, update, ...reads, validate, infra]) {
+  for (const options of [mark, create, update, ...reads, validate, infra, tunnels]) {
     expect([options.url, (await app.inject(options)).statusCode]).toEqual([options.url, 401]);
   }
 });
 
 test('o técnico lê o estado e fornecedores, mas não altera marcas nem consulta o router', async () => {
   for (const options of reads) expect((await requestAs('technician', options)).statusCode).toBe(200);
-  for (const options of [mark, create, update, validate, infra]) {
+  for (const options of [mark, create, update, validate, infra, tunnels]) {
     expect([options.url, (await requestAs('technician', options)).statusCode]).toEqual([options.url, 403]);
   }
 });
@@ -71,7 +72,7 @@ test('o operador marca serviços e valida a origem; fornecedores e infraestrutur
   expect((await requestAs('operator', mark)).statusCode).toBe(200);
   // Sem router configurado, o 409 prova que a autorização deixou chegar à guarda de rede.
   expect((await requestAs('operator', validate)).statusCode).toBe(409);
-  for (const options of [create, update, infra]) expect((await requestAs('operator', options)).statusCode).toBe(403);
+  for (const options of [create, update, infra, tunnels]) expect((await requestAs('operator', options)).statusCode).toBe(403);
 });
 
 test('o administrador gere fornecedores e passa a guarda de permissões da infraestrutura', async () => {
@@ -79,6 +80,7 @@ test('o administrador gere fornecedores e passa a guarda de permissões da infra
   expect((await requestAs('admin', update)).statusCode).toBe(200);
   expect((await requestAs('admin', mark)).statusCode).toBe(200);
   expect((await requestAs('admin', infra)).statusCode).toBe(409);
+  expect((await requestAs('admin', tunnels)).statusCode).toBe(409);
 });
 
 test('o estado autenticado nunca inclui a senha PPPoE do serviço', async () => {

@@ -10,11 +10,12 @@ export type IptvInfraReads = { interfaces: Row[]; peers: Row[]; routes: Row[]; m
 const yes = (value: unknown) => value === true || value === 'true' || value === 'yes';
 const on = (row: Row) => !yes(row.disabled);
 const HANDSHAKE_LIMIT_S = 180;
-// Tipos de túnel do RouterOS. Uma interface física, bridge ou PPPoE não prova uma VPN;
-// um tipo novo tem de ser reconhecido antes de se apresentar como saudável.
+// Tipos de túnel como o /interface do RouterOS os devolve, medidos no CHR 7.24.2: o GRE é
+// `gre-tunnel` e o IPIP `ipip-tunnel` (não `gre`/`ipip`), e o EoIPv6 vem truncado em `eoipv6-`.
+// Uma interface física, bridge ou PPPoE não prova uma VPN; um tipo novo mede-se antes de entrar.
 const TUNNEL_TYPES = new Set([
   'wg', 'ovpn-out', 'ovpn-in', 'l2tp-out', 'l2tp-in', 'sstp-out', 'sstp-in', 'pptp-out', 'pptp-in',
-  'ipip', 'ipipv6', 'gre', 'gre6', 'eoip', 'eoipv6', 'l2tp-ether', 'vxlan'
+  'ipip-tunnel', 'ipipv6-tunnel', 'gre-tunnel', 'gre6-tunnel', 'eoip', 'eoipv6-', 'l2tp-ether', 'vxlan'
 ]);
 const isDefault = (route: Row) => route['dst-address'] === '0.0.0.0/0';
 // A REST do 7.24 marca a blackhole com a chave presente e vazia (`"blackhole": ""`, medido no CHR);
@@ -61,15 +62,68 @@ function tunnelAlive(name: string, reads: IptvInfraReads): { alive: boolean; det
  * de balanceamento, de nenhuma WAN, vem antes da do IPTV. Trocar de VPN ou de WAN é só
  * no router.
  */
-export function evaluateIptvInfra(config: IptvConfig, reads: IptvInfraReads): IptvCheck[] {
-  const prerouting = reads.mangle;
+/** A tabela do IPTV, pela regra de mangle que encaminha a lista de origens (ou a marca que ela pôs). */
+function discoverTable(config: IptvConfig, prerouting: Row[]) {
   const ofList = (row: Row) => row['src-address-list'] === config.splitList;
   const marking = prerouting.filter((r) => r.action === 'mark-connection' && ofList(r));
   // O encaminhamento da lista: ou traz a lista, ou segue a marca de ligação que a lista pôs.
   const marks = new Set(marking.filter(on).map((r) => String(r['new-connection-mark'] ?? '')).filter(Boolean));
   const ofSplit = (r: Row) => ofList(r) || marks.has(String(r['connection-mark'] ?? ''));
   const routing = prerouting.filter((r) => r.action === 'mark-routing' && ofSplit(r));
-  const table = String(routing.find(on)?.['new-routing-mark'] ?? '');
+  return { ofList, ofSplit, marking, routing, table: String(routing.find(on)?.['new-routing-mark'] ?? '') };
+}
+
+const tunnelNames = (reads: IptvInfraReads) => new Set(reads.interfaces.filter((row) => TUNNEL_TYPES.has(String(row.type))).map((row) => String(row.name)));
+
+/** Sai por estes túneis: directamente ou por uma interface-list a que pertencem. */
+function outThrough(tunnels: string[], reads: IptvInfraReads) {
+  const lists = new Set(reads.listMembers.filter((m) => on(m) && tunnels.includes(String(m.interface))).map((m) => String(m.list)));
+  return (r: Row) => tunnels.includes(String(r['out-interface'] ?? '')) || lists.has(String(r['out-interface-list'] ?? ''));
+}
+
+const coveredBy = (config: IptvConfig, reads: IptvInfraReads, tunnels: string[]) => {
+  const out = outThrough(tunnels, reads);
+  return {
+    filter: reads.filter.filter((r) => r.action === 'accept' && r['src-address-list'] === config.splitList && out(r)),
+    nat: reads.nat.filter((r) => (r.action === 'masquerade' || r.action === 'src-nat') && out(r))
+  };
+};
+
+/** O túnel por onde sai o IPTV: o da rota por omissão da tabela do IPTV, sem blackhole, ligada, de menor distance. */
+export function currentTunnel(config: IptvConfig, reads: IptvInfraReads): string | null {
+  const { table } = discoverTable(config, reads.mangle);
+  if (!table) return null;
+  const route = reads.routes
+    .filter((r) => r['routing-table'] === table && isDefault(r) && !isBlackhole(r) && on(r))
+    .sort((a, b) => (Number(a.distance ?? 1) || 1) - (Number(b.distance ?? 1) || 1))[0];
+  return route ? routeInterface(route, tunnelNames(reads)) : null;
+}
+
+export type IptvTunnel = { name: string; type: string; alive: boolean; detail: string; inUse: boolean; ready: boolean; reasons: string[] };
+
+/**
+ * Os túneis que o router tem, com o nome que lá têm, e o que falta a cada um para levar o
+ * IPTV. Só informa: a VPN, de qualquer fornecedor, configura-se no router (ADR 0021).
+ */
+export function listIptvTunnels(config: IptvConfig, reads: IptvInfraReads): IptvTunnel[] {
+  const names = tunnelNames(reads);
+  const current = currentTunnel(config, reads);
+  return reads.interfaces.filter((row) => names.has(String(row.name))).map((row) => {
+    const name = String(row.name);
+    const status = tunnelAlive(name, reads);
+    const covered = coveredBy(config, reads, [name]);
+    const reasons = [
+      ...(status.alive ? [] : [status.detail]),
+      ...(covered.nat.some(on) ? [] : ['Sem NAT pelo túnel']),
+      ...(covered.filter.some(on) ? [] : ['Sem filtro de saída da lista pelo túnel'])
+    ];
+    return { name, type: String(row.type), alive: status.alive, detail: status.detail, inUse: name === current, ready: reasons.length === 0, reasons };
+  });
+}
+
+export function evaluateIptvInfra(config: IptvConfig, reads: IptvInfraReads): IptvCheck[] {
+  const prerouting = reads.mangle;
+  const { ofList, ofSplit, marking, routing, table } = discoverTable(config, prerouting);
 
   // Ordem: a primeira regra da lista tem de vir antes de qualquer outra marcação, e a de
   // encaminhamento tem de parar ali (passthrough=no), para nenhum balanceamento a desfazer.
@@ -81,7 +135,7 @@ export function evaluateIptvInfra(config: IptvConfig, reads: IptvInfraReads): Ip
       detail: before.length ? `${before.length} regra(s) de marcação antes da do IPTV` : 'O encaminhamento do IPTV deixa passar para as regras seguintes' }
     : { key: 'order', label: 'Ordem das regras', state: 'ok' };
 
-  const names = new Set(reads.interfaces.filter((row) => TUNNEL_TYPES.has(String(row.type))).map((row) => String(row.name)));
+  const names = tunnelNames(reads);
   const tableRoutes = reads.routes.filter((r) => table && r['routing-table'] === table);
   const tunnelRoutes = tableRoutes.filter((r) => isDefault(r) && !isBlackhole(r) && on(r));
   const tunnels = [...new Set(tunnelRoutes.map((r) => routeInterface(r, names)).filter((n): n is string => Boolean(n)))];
@@ -95,15 +149,14 @@ export function evaluateIptvInfra(config: IptvConfig, reads: IptvInfraReads): Ip
     : { key: 'tunnel', label: 'Túnel VPN', state: status.alive ? 'ok' : 'stale',
       detail: status.alive && degraded.length ? `${status.detail}; rota(s) degradada(s): ${degraded.join('; ')}` : status.detail };
 
-  const lists = new Set(reads.listMembers.filter((m) => on(m) && tunnels.includes(String(m.interface))).map((m) => String(m.list)));
-  const outTunnel = (r: Row) => tunnels.includes(String(r['out-interface'] ?? '')) || lists.has(String(r['out-interface-list'] ?? ''));
+  const covered = coveredBy(config, reads, tunnels);
   return [
     { key: 'routing', label: 'Encaminhamento da lista para a VPN', state: state(routing), detail: table ? `Tabela ${table}` : undefined },
     { key: 'mark', label: 'Marca das ligações IPTV', state: state(marking) },
     order,
     tunnel,
     { key: 'killswitch', label: 'Rota de recurso (blackhole)', state: state(tableRoutes.filter((r) => isDefault(r) && isBlackhole(r))) },
-    { key: 'filter', label: 'Filtro de saída pelo túnel', state: state(reads.filter.filter((r) => r.action === 'accept' && ofList(r) && outTunnel(r))) },
-    { key: 'nat', label: 'NAT do túnel', state: state(reads.nat.filter((r) => (r.action === 'masquerade' || r.action === 'src-nat') && outTunnel(r))) }
+    { key: 'filter', label: 'Filtro de saída pelo túnel', state: state(covered.filter) },
+    { key: 'nat', label: 'NAT do túnel', state: state(covered.nat) }
   ];
 }

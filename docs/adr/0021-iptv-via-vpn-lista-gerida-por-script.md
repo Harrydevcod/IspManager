@@ -84,6 +84,11 @@ Há três coisas que não podem ficar presas a nada de hoje:
   - Um túnel conta como vivo se a interface está a correr. Num WireGuard, também tem de ter handshake
     nos últimos 3 minutos.
   - Trocar de fornecedor de VPN, ou de tipo de túnel, é só no router, sem mexer no ISPM.
+  - O separador lista os túneis do router com o nome e o tipo que lá têm, o que está em uso e o que
+    falta a cada um para levar o IPTV. Só informa. Neutro quer dizer que qualquer VPN serve, e não
+    que se esconde o nome que ela tem no router.
+  - Os tipos de túnel são os que o `/interface` devolve, medidos no CHR 7.24.2: `gre-tunnel`,
+    `ipip-tunnel` e outros, e não `gre` nem `ipip`.
   - Criar a infraestrutura fica para uma fase futura. Exigirá guardar a chave do túnel no cofre de
     credenciais (ADR 0012).
 

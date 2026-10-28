@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { evaluateIptvInfra } from './iptv-health';
+import { currentTunnel, evaluateIptvInfra, listIptvTunnels } from './iptv-health';
 
 const config = { splitList: 'IPTV-SPLIT', serversList: 'IPTV-SERVERS' };
 const off = 'false';
@@ -128,7 +128,8 @@ describe('evaluateIptvInfra', () => {
     expect(find(checks, 'nat')?.state).toBe('missing');
   });
 
-  test.each(['ovpn-out', 'l2tp-out', 'sstp-out', 'pptp-out', 'ipip', 'gre', 'eoip'])('%s activo é descoberto sem depender do fornecedor', (type) => {
+  // Os `type` que o /interface do RouterOS 7.24.2 devolve, medidos no CHR (o GRE é `gre-tunnel`, não `gre`).
+  test.each(['ovpn-out', 'l2tp-out', 'sstp-out', 'pptp-out', 'ipip-tunnel', 'ipipv6-tunnel', 'gre-tunnel', 'gre6-tunnel', 'eoip', 'eoipv6-', 'vxlan'])('%s activo é descoberto sem depender do fornecedor', (type) => {
     const reads = { ...healthy, interfaces: [{ name: 'tun-a', type, running: 'true', disabled: off }], peers: [] };
     expect(find(evaluateIptvInfra(config, reads), 'tunnel')?.state).toBe('ok');
   });
@@ -144,5 +145,41 @@ describe('evaluateIptvInfra', () => {
     expect(tunnel?.state).toBe('ok');
     expect(tunnel?.detail).toContain('tun-b');
     expect(tunnel?.detail).toContain('tun-a');
+  });
+});
+
+describe('túneis do router, só para informar', () => {
+  // Um segundo túnel, de outro tipo, com rota de recurso; a blackhole fica de fora de tudo.
+  const two = {
+    ...healthy,
+    interfaces: [...healthy.interfaces, { name: 'tun-b', type: 'ovpn-out', running: 'true', disabled: off }, { name: 'tun-c', type: 'wg', running: 'true', disabled: off }],
+    routes: [{ '.id': '*1', ...healthy.routes[0] }, { '.id': '*2', ...healthy.routes[1] }, healthy.routes[2],
+      { '.id': '*3', 'routing-table': 'tabela-tv', 'dst-address': '0.0.0.0/0', gateway: 'tun-b', active: 'false', disabled: off, distance: '5' }],
+    listMembers: [...healthy.listMembers, { list: 'TUNEIS', interface: 'tun-b', disabled: off }],
+    filter: [...healthy.filter, { action: 'accept', 'src-address-list': 'IPTV-SPLIT', 'out-interface-list': 'TUNEIS', disabled: off }]
+  };
+  const byName = (name: string) => listIptvTunnels(config, two).find((t) => t.name === name);
+
+  test('lista só os túneis, com o que está em uso e o que está pronto', () => {
+    expect(listIptvTunnels(config, two).map((t) => t.name)).toEqual(['tun-a', 'tun-b', 'tun-c']);
+    expect(byName('tun-a')).toMatchObject({ type: 'wg', inUse: true, ready: true, reasons: [] });
+    expect(byName('tun-b')).toMatchObject({ type: 'ovpn-out', inUse: false, ready: true });
+  });
+  test('sem NAT nem filtro pelo túnel, ou WireGuard sem handshake, não está pronto e diz porquê', () => {
+    expect(byName('tun-c')).toMatchObject({ ready: false });
+    expect(byName('tun-c')?.reasons).toEqual(expect.arrayContaining(['Sem NAT pelo túnel', 'Sem filtro de saída da lista pelo túnel']));
+    expect(byName('tun-c')?.reasons.some((r) => r.includes('handshake'))).toBe(true);
+  });
+  test('desligado não está pronto', () => {
+    const down = { ...two, interfaces: two.interfaces.map((i) => (i.name === 'tun-b' ? { ...i, running: 'false' } : i)) };
+    expect(listIptvTunnels(config, down).find((t) => t.name === 'tun-b')).toMatchObject({ ready: false, reasons: ['tun-b: desligado'] });
+  });
+  test('o túnel em uso é o da rota por omissão da tabela, sem blackhole, de menor distance', () => {
+    expect(currentTunnel(config, two)).toBe('tun-a');
+    const swapped = { ...two, routes: two.routes.map((r: Record<string, unknown>) => (r.gateway === 'tun-a' ? { ...r, distance: '9' } : r)) };
+    expect(currentTunnel(config, swapped)).toBe('tun-b');
+  });
+  test('sem regra de encaminhamento da lista não há túnel em uso', () => {
+    expect(currentTunnel(config, { ...two, mangle: [] })).toBeNull();
   });
 });

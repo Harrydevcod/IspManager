@@ -5,7 +5,7 @@ import { Badge, Button, EmptyState, ErrorRetry, MetricCard, MetricGrid, ModuleHe
 import { formatPtDateTime } from '../../lib/format';
 import type { PlanRow, ServiceRow } from '../../types';
 import { useAuth } from '../../lib/auth';
-import { IPTV_API, type IptvCheck, type IptvProvider, type IptvStatus } from '../iptv/iptv-api';
+import { IPTV_API, type IptvCheck, type IptvProvider, type IptvStatus, type IptvTunnels } from '../iptv/iptv-api';
 import { IptvPanel } from './IptvPanel';
 import { SettingsModule } from '../SettingsModule';
 import {
@@ -184,6 +184,7 @@ export default function RouterModule() {
   const isAdmin = auth.isAuthBypassed || auth.hasRole('admin');
   const iptvStatus = useLive<IptvStatus>(`${IPTV_API}/status`, tab === 'iptv');
   const iptvInfra = useLive<IptvCheck[]>(`${IPTV_API}/infra`, tab === 'iptv' && isAdmin, 60_000);
+  const iptvTunnels = useLive<IptvTunnels>(`${IPTV_API}/tunnels`, tab === 'iptv' && isAdmin, 60_000);
   const iptvProviders = useLive<IptvProvider[]>(`${IPTV_API}/providers`, tab === 'iptv', 120_000);
   const iptvServices = useLive<ServiceRow[]>('http://127.0.0.1:3001/api/services', tab === 'iptv', 120_000);
   const current = { overview, sessions, reconciliation, interfaces, profiles, consumption, iptv: iptvStatus, backups, log, config: null }[tab];
@@ -230,7 +231,7 @@ export default function RouterModule() {
               onSync={() => {
                 current.reload();
                 if (tab === 'profiles') plans.reload();
-                if (tab === 'iptv') { iptvInfra.reload(); iptvProviders.reload(); }
+                if (tab === 'iptv') { iptvInfra.reload(); iptvTunnels.reload(); iptvProviders.reload(); }
               }}
             />
           ) : undefined}
@@ -316,6 +317,7 @@ export default function RouterModule() {
           <IptvPanel
             status={iptvStatus}
             infra={isAdmin ? iptvInfra : null}
+            tunnels={isAdmin ? iptvTunnels : null}
             providers={iptvProviders}
             services={iptvServices.data ?? []}
             isAdmin={isAdmin}

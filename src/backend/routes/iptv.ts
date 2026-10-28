@@ -4,7 +4,7 @@ import { getSqliteDatabase } from '../db/database';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from '../lib/admin-network';
 import { recordAuditStrict } from '../lib/audit';
 import { canonicalHost, loadAntennaMacs, loadIptvTargets, readIptvConfig } from '../lib/iptv';
-import { evaluateIptvInfra } from '../lib/iptv-health';
+import { evaluateIptvInfra, listIptvTunnels, type IptvInfraReads } from '../lib/iptv-health';
 import { cidrOverlaps, validateIptvSource } from '../lib/iptv-validate';
 import { requestNetworkSync, runExclusive } from '../lib/network-sync';
 import {
@@ -192,10 +192,22 @@ export async function registerIptvRoutes(app: FastifyInstance) {
 
   app.get('/api/iptv/infra', adminOnly, async (_request, reply) => {
     const config = readIptvConfig(getSqliteDatabase());
-    const reads = await withRouter(reply, async (t) => ({
-      interfaces: await readInterfaces(t), peers: await readWireguardPeers(t), routes: await readRoutes(t), mangle: await readMangle(t),
-      filter: await readForwardFilter(t), nat: await readSrcnat(t), listMembers: await readInterfaceListMembers(t)
-    }));
+    const reads = await withRouter(reply, readIptvInfra);
     return reads ? evaluateIptvInfra(config, reads) : reply;
   });
+
+  // Os túneis que o router tem, com o nome que lá têm: só para informar. A VPN configura-se no router.
+  app.get('/api/iptv/tunnels', adminOnly, async (_request, reply) => {
+    const config = readIptvConfig(getSqliteDatabase());
+    const reads = await withRouter(reply, readIptvInfra);
+    return reads ? { tunnels: listIptvTunnels(config, reads) } : reply;
+  });
+}
+
+/** As leituras da infraestrutura da VPN, as mesmas para o /infra e o /tunnels. */
+async function readIptvInfra(t: RouterTransport): Promise<IptvInfraReads> {
+  return {
+    interfaces: await readInterfaces(t), peers: await readWireguardPeers(t), routes: await readRoutes(t), mangle: await readMangle(t),
+    filter: await readForwardFilter(t), nat: await readSrcnat(t), listMembers: await readInterfaceListMembers(t)
+  };
 }
