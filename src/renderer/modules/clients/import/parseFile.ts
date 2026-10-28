@@ -1,14 +1,17 @@
 import Papa from 'papaparse';
-import readXlsxFile from 'read-excel-file/browser';
+import { readSheet } from 'read-excel-file/browser';
 import type { ColumnMapping, ExistingHints, ParsedRow, PreviewRow, TargetField } from './types';
-import { EMPTY_MAPPING, TARGET_HINTS } from './types';
+import { TARGET_HINTS } from './types';
 import { canonicalIsland } from '../../../lib/islands';
 
 /** Auto-detect mapping from column headers to target fields, using TARGET_HINTS regex matrix. */
-export function detectMapping(headers: string[]): ColumnMapping {
-  const map: ColumnMapping = { ...EMPTY_MAPPING };
-  for (const target of Object.keys(TARGET_HINTS) as TargetField[]) {
-    const hints = TARGET_HINTS[target];
+export function detectMapping(headers: string[]): ColumnMapping;
+export function detectMapping<K extends string>(headers: string[], hints: Record<K, readonly RegExp[]>): Record<K, string>;
+export function detectMapping(headers: string[], targetHints: Record<string, readonly RegExp[]> = TARGET_HINTS): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const target of Object.keys(targetHints)) {
+    map[target] = '';
+    const hints = targetHints[target];
     const found = headers.find((header) => {
       const normalized = header.trim();
       return hints.some((rx) => rx.test(normalized));
@@ -75,15 +78,15 @@ export function buildPreview(
   });
 }
 
-/** Parse a user-picked file. Routes to readXlsxFile for .xlsx/.xls; Papa.parse for CSV. */
+/** Parse a user-picked file. Reads the first Excel sheet; Papa.parse for CSV. */
 export async function parseFile(file: File): Promise<{ headers: string[]; rows: ParsedRow[] }> {
   const name = file.name.toLowerCase();
   if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
-    const sheet = (await readXlsxFile(file)) as unknown as unknown[][];
+    const sheet = await readSheet(file);
     if (sheet.length === 0) return { headers: [], rows: [] };
-    const headerRow = sheet[0] as unknown[];
+    const headerRow = sheet[0];
     const headers = headerRow.map((value) => String(value ?? '').trim());
-    const rows: ParsedRow[] = (sheet.slice(1) as unknown[][])
+    const rows: ParsedRow[] = sheet.slice(1)
       .filter((row) => row.some((cell) => cell !== null && cell !== ''))
       .map((row) => {
         const out: ParsedRow = {};

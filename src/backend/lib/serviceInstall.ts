@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { factMoment } from '../../shared/assignment-dates';
 import { MAC_FORMAT_ERROR, isMacAddress, normalizeMacAddress } from '../../shared/mac';
+import { LAN_CIDR_ERROR, parseCidr } from '../../shared/ip-range';
 
 /**
  * Shared equipment-installation logic, used both by the standalone device-assignment
@@ -27,6 +28,8 @@ export type DeviceInput = {
    * texto livre aceite. Nulo = por classificar. Etiqueta pura — nao decide nada.
    */
   operationMode?: string | null;
+  /** Gama da LAN de um router de cliente (0089): só para o aviso de colisão com as gamas do ISP. */
+  lanCidr?: string | null;
   technicianId?: number | null;
   notes?: string | null;
   /**
@@ -118,7 +121,13 @@ const IDENTITY_FIELDS = [
   { key: 'macAddress', column: 'mac_address', label: 'MAC' }
 ] as const;
 
-export type DeviceIdentity = Pick<DeviceInput, 'serialNumber' | 'assetTag' | 'ipAddress' | 'macAddress'>;
+export type DeviceIdentity = Pick<DeviceInput, 'serialNumber' | 'assetTag' | 'ipAddress' | 'macAddress' | 'lanCidr'>;
+
+/** A gama LAN gravada: canónica (endereço de rede), ou nula se vier vazia. */
+export function lanCidrValue(value: string | null | undefined): string | null {
+  const clean = cleanValue(value);
+  return clean ? parseCidr(clean)?.canonical ?? clean : null;
+}
 
 export type IdentityIssue = { status: number; error: string };
 
@@ -161,6 +170,11 @@ export function checkDeviceIdentity(
   const macAddress = normalizeMacAddress(device.macAddress);
   if (macAddress && !isMacAddress(macAddress)) {
     return { status: 400, error: MAC_FORMAT_ERROR };
+  }
+
+  const lanCidr = cleanValue(device.lanCidr);
+  if (lanCidr && !parseCidr(lanCidr)) {
+    return { status: 400, error: LAN_CIDR_ERROR };
   }
 
   for (const field of IDENTITY_FIELDS) {
@@ -322,10 +336,10 @@ export function installDeviceWithinTx(
   const assignment = db.prepare(`
     INSERT INTO service_device_assignments (
       service_id, catalog_id, serial_number, asset_tag, ip_address, mac_address,
-      wan_mode, operation_mode, technician_id, notes, start_date, end_date, ownership,
+      wan_mode, operation_mode, lan_cidr, technician_id, notes, start_date, end_date, ownership,
       owned_since, rental_fee_cve, created_by, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, datetime('now'), datetime('now'))
   `).run(
     serviceId,
     device.catalogId,
@@ -335,6 +349,7 @@ export function installDeviceWithinTx(
     macAddress,
     cleanValue(device.wanMode),
     cleanValue(device.operationMode),
+    lanCidrValue(device.lanCidr),
     technicianId,
     notes,
     moment.day,

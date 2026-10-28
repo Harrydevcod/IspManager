@@ -108,6 +108,9 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         -- Só a presença: a senha nunca sai na lista, para papel nenhum.
         (s.pppoe_password IS NOT NULL AND s.pppoe_password <> '') AS pppoePasswordConfigured,
         s.pppoe_password_sync_pending AS pppoePasswordPending,
+        -- IPTV via VPN (ADR 0021): marca técnica, não fatura.
+        s.iptv_vpn AS iptvVpn,
+        s.iptv_provider_id AS iptvProviderId,
         -- Realidade lida do router (ADR 0007): a lista mostra quem está mesmo
         -- online, sem ir buscá-lo serviço a serviço.
         n.online AS routerOnline,
@@ -145,7 +148,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       ORDER BY c.full_name
     `).all() as Array<Record<string, unknown>>;
 
-    return rows.map((row) => ({ ...row, pppoePasswordConfigured: row.pppoePasswordConfigured === 1 }));
+    return rows.map((row) => ({ ...row, pppoePasswordConfigured: row.pppoePasswordConfigured === 1, iptvVpn: row.iptvVpn === 1 }));
   });
 
   // Config do produto audiovisual para o formulário de serviços (qualquer

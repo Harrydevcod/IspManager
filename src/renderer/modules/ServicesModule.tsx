@@ -1,4 +1,4 @@
-import { ArrowRightLeft, Network, Pencil, Plus, Wrench } from 'lucide-react';
+import { ArrowRightLeft, Network, Pencil, Plus, Upload, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Badge, BulkActionBar, Button, Combobox, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, SecretField, Select, SkeletonList, Textarea, Toggle, WanModeSelect, OperationModeSelect, useConfirm, useToast, type SecretDraft } from '../components';
@@ -11,8 +11,10 @@ import { suggestIpPrefix } from '../lib/ip';
 import { statusLabel, statusTone } from '../lib/status';
 import type { AudiovisualConfig, Client, DeviceAssignment, ManualServiceEventType, PlanRow, ReturnCondition, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
 import { BulkIpDialog, type ActiveAssignment } from './services/BulkIpDialog';
+import { EquipmentImportDialog } from './services/EquipmentImportDialog';
 import { BulkPlanChangeDialog } from './services/BulkPlanChangeDialog';
 import { findReplaceTarget } from './services/findReplaceTarget';
+import { LanCidrField } from './services/IptvSection';
 import { IpField } from './services/IpField';
 import { MANUAL_EVENT_TYPES, RETURN_CONDITION_LABELS, ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
 import { PurchaseDeviceDialog } from './services/PurchaseDeviceDialog';
@@ -156,6 +158,7 @@ export function ServicesModule({
   const [editRental, setEditRental] = useState('0');
   const [submitting, setSubmitting] = useState(false);
   const [showBulkIp, setShowBulkIp] = useState(false);
+  const [showEquipmentImport, setShowEquipmentImport] = useState(false);
   const [deviceMode, setDeviceMode] = useState<'install' | 'share'>('install');
   const [shareableDevices, setShareableDevices] = useState<ActiveAssignment[]>([]);
   const [shareChoice, setShareChoice] = useState('');
@@ -613,6 +616,7 @@ export function ServicesModule({
               macAddress: draft.macAddress || null,
               wanMode: draft.wanMode || null,
               operationMode: draft.operationMode || null,
+              lanCidr: draft.lanCidr || null,
               notes: draft.notes || null,
               ownership: draft.ownership,
               installedOn: draft.installedOn || null
@@ -861,6 +865,7 @@ export function ServicesModule({
           macAddress: replaceDraft.macAddress || null,
           wanMode: replaceDraft.wanMode || null,
           operationMode: replaceDraft.operationMode || null,
+          lanCidr: replaceDraft.lanCidr || null,
           notes: replaceDraft.notes || null,
           ownership: replaceDraft.ownership,
           returnCondition: replaceCondition,
@@ -895,6 +900,7 @@ export function ServicesModule({
       macAddress: assignment.macAddress || '',
       wanMode: assignment.wanMode || '',
       operationMode: assignment.operationMode || '',
+      lanCidr: assignment.lanCidr || '',
       notes: assignment.notes || '',
       installedOn: (assignment.startDate || '').slice(0, 10)
     });
@@ -923,6 +929,7 @@ export function ServicesModule({
           macAddress: editDraft.macAddress || null,
           wanMode: editDraft.wanMode || null,
           operationMode: editDraft.operationMode || null,
+          lanCidr: editDraft.lanCidr || null,
           notes: editDraft.notes || null,
           // Só do ISP tem aluguer; do cliente o servidor recusa e faz bem.
           ...(editTarget.ownership === 'isp' ? { rentalFeeCve: Number(editRental) || 0 } : {})
@@ -1089,9 +1096,14 @@ export function ServicesModule({
           <ModuleHeaderActions
             ariaLabel="Ações de serviços"
             secondary={canRecordTechnical ? (
+              <>
+              <Button variant="secondary" leadingIcon={<Upload size={16} aria-hidden />} onClick={() => setShowEquipmentImport(true)}>
+                Importar equipamentos
+              </Button>
               <Button variant="secondary" leadingIcon={<Network size={16} aria-hidden />} onClick={() => setShowBulkIp(true)}>
                 Identificar equipamentos
               </Button>
+              </>
             ) : undefined}
             primary={canManageServices ? (
               <Button leadingIcon={<Plus size={16} aria-hidden />} onClick={openCreate}>
@@ -1102,6 +1114,7 @@ export function ServicesModule({
         )}
       </div>
 
+      {showEquipmentImport && <EquipmentImportDialog onClose={() => setShowEquipmentImport(false)} onSaved={() => { void loadServices(); }} />}
       {showBulkIp && (
         <BulkIpDialog
           onClose={() => setShowBulkIp(false)}
@@ -1190,6 +1203,7 @@ export function ServicesModule({
           onChangePlan={() => setPlanChangeIds([selectedService.id])}
           onChangePassword={() => openPasswordChange(selectedService)}
           onPppoeCreated={() => void loadServices()}
+          onIptvChanged={() => void loadServices()}
         />
       )}
 
@@ -1608,6 +1622,11 @@ export function ServicesModule({
             value={replaceDraft.operationMode}
             onChange={(operationMode) => setReplaceDraft((current) => ({ ...current, operationMode }))}
           />
+          <LanCidrField
+            catalogType={catalogList.find((item) => String(item.id) === replaceDraft.catalogId)?.type}
+            value={replaceDraft.lanCidr}
+            onChange={(lanCidr) => setReplaceDraft((current) => ({ ...current, lanCidr }))}
+          />
           <IpField
             value={replaceDraft.ipAddress}
             prefix={ipPrefix}
@@ -1686,6 +1705,11 @@ export function ServicesModule({
             catalogType={editTarget?.catalogType}
             value={editDraft.operationMode}
             onChange={(operationMode) => setEditDraft((current) => ({ ...current, operationMode }))}
+          />
+          <LanCidrField
+            catalogType={editTarget?.catalogType}
+            value={editDraft.lanCidr}
+            onChange={(lanCidr) => setEditDraft((current) => ({ ...current, lanCidr }))}
           />
           <IpField
             value={editDraft.ipAddress}

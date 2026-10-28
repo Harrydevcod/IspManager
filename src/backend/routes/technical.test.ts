@@ -673,6 +673,38 @@ describe('device identity (IP fixo)', () => {
     expect(await read()).toMatchObject({ wanMode: null });
   });
 
+  test('a gama LAN grava-se canónica na instalação, na correcção e no lote', async () => {
+    const { catalog, service } = seedBaseService();
+    const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, { lanCidr: '192.168.1.1/24' });
+    const read = async () => (await app.inject({ method: 'GET', url: '/api/service-device-assignments' }))
+      .json<Array<{ id: number; lanCidr: string | null; clientCode: string | null }>>().find((row) => row.id === assignmentId);
+    expect(await read()).toMatchObject({ lanCidr: '192.168.1.0/24' });
+
+    const bad = await app.inject({ method: 'PATCH', url: `/api/service-device-assignments/${assignmentId}`, payload: { lanCidr: '192.168.1.0' } });
+    expect(bad.statusCode).toBe(400);
+    await app.inject({ method: 'PATCH', url: `/api/service-device-assignments/${assignmentId}`, payload: { lanCidr: '10.0.5.9/16' } });
+    expect(await read()).toMatchObject({ lanCidr: '10.0.0.0/16' });
+
+    const bulk = await app.inject({ method: 'PATCH', url: '/api/service-device-assignments', payload: { items: [{ id: assignmentId, lanCidr: '' }] } });
+    expect(bulk.json()).toEqual({ updated: 1 });
+    expect(await read()).toMatchObject({ lanCidr: null });
+    expect((await install(service.lastInsertRowid, catalog.lastInsertRowid, { lanCidr: 'lixo' })).response.statusCode).toBe(400);
+  });
+
+  test('o lote recusa modos desconhecidos com o número da linha, sem escrever nada', async () => {
+    const { catalog, service } = seedBaseService();
+    const { assignmentId } = await install(service.lastInsertRowid, catalog.lastInsertRowid, { operationMode: 'router' });
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/service-device-assignments',
+      payload: { items: [{ id: assignmentId, wanMode: 'PPPoE' }, { id: assignmentId, operationMode: 'roteador' }] }
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toBe('Linha 2: modo de operação desconhecido (roteador)');
+    const row = db.prepare('SELECT wan_mode AS wanMode FROM service_device_assignments WHERE id = ?').get(assignmentId);
+    expect(row).toEqual({ wanMode: null });
+  });
+
   /**
    * Os dois eixos sao independentes: mudar o papel nao pode mexer na ligacao, e
    * vice-versa. Sao dois campos na mesma ficha e a dois cliques um do outro.

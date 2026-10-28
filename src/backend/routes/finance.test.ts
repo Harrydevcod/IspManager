@@ -325,6 +325,33 @@ describe('whatsapp routes', () => {
 });
 
 describe('finance routes', () => {
+  test('a lista de serviços traz a marca IPTV via VPN', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-TV','Tv','active')`).run();
+    db.prepare(`INSERT INTO services (client_id, monthly_value_cve, due_day, status, iptv_vpn) VALUES (?, 1000, 10, 'active', 1)`).run(client.lastInsertRowid);
+    const rows = (await app.inject({ method: 'GET', url: '/api/services' })).json<Array<{ clientCode: string; iptvVpn: boolean; iptvProviderId: number | null }>>();
+    expect(rows.find((row) => row.clientCode === 'CLT-TV')).toMatchObject({ iptvVpn: true, iptvProviderId: null });
+  });
+
+  test('criar o serviço com equipamento guarda os modos e a gama LAN', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-MODES','Modos','active')`).run();
+    const router = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_cve, is_serialized, stock_total, active)
+      VALUES ('equipamento','router','TP-Link','WR850N', 2000, 1, 5, 1)
+    `).run();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: {
+        clientId: client.lastInsertRowid, monthlyValueCve: 3000, dueDay: 10,
+        items: [{ catalogId: router.lastInsertRowid, wanMode: 'dhcp', operationMode: 'router', lanCidr: '192.168.0.1/24' }]
+      }
+    });
+    expect(created.statusCode).toBe(201);
+    const row = db.prepare(`SELECT wan_mode AS wanMode, operation_mode AS operationMode, lan_cidr AS lanCidr
+      FROM service_device_assignments WHERE catalog_id = ?`).get(router.lastInsertRowid);
+    expect(row).toEqual({ wanMode: 'dhcp', operationMode: 'router', lanCidr: '192.168.0.0/24' });
+  });
+
   test('rejects invalid service payloads', async () => {
     const response = await app.inject({
       method: 'POST',

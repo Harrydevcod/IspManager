@@ -1,9 +1,12 @@
-import { AlertTriangle, ArrowLeftRight, Info, Cable, Cpu, Gauge, Layers, MemoryStick, Router, ScrollText, Settings2, ShieldAlert, Timer, Waypoints, X, ChartNoAxesCombined, History } from 'lucide-react';
+import { AlertTriangle, ArrowLeftRight, Info, Cable, Cpu, Gauge, Layers, MemoryStick, Router, ScrollText, Settings2, ShieldAlert, Timer, Waypoints, X, ChartNoAxesCombined, History, Tv } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { Badge, Button, EmptyState, ErrorRetry, MetricCard, MetricGrid, ModuleHeaderActions, SkeletonList } from '../../components';
 import { formatPtDateTime } from '../../lib/format';
-import type { PlanRow } from '../../types';
+import type { PlanRow, ServiceRow } from '../../types';
+import { useAuth } from '../../lib/auth';
+import { IPTV_API, type IptvCheck, type IptvProvider, type IptvStatus } from '../iptv/iptv-api';
+import { IptvPanel } from './IptvPanel';
 import { SettingsModule } from '../SettingsModule';
 import {
   formatBytes,
@@ -30,7 +33,7 @@ import { ClientUsage, type ClientUsageRow } from './ClientUsage';
 import { ConfigBackups, type ConfigSnapshots } from './ConfigBackups';
 import './RouterModule.css';
 
-type RouterTab = 'overview' | 'sessions' | 'reconciliation' | 'profiles' | 'interfaces' | 'consumption' | 'backups' | 'log' | 'config';
+type RouterTab = 'overview' | 'sessions' | 'reconciliation' | 'profiles' | 'interfaces' | 'consumption' | 'iptv' | 'backups' | 'log' | 'config';
 
 const TABS: ReadonlyArray<{ id: RouterTab; label: string; icon: typeof Router }> = [
   { id: 'overview', label: 'Visão geral', icon: Gauge },
@@ -39,6 +42,7 @@ const TABS: ReadonlyArray<{ id: RouterTab; label: string; icon: typeof Router }>
   { id: 'profiles', label: 'Perfis PPP', icon: Layers },
   { id: 'interfaces', label: 'Interfaces', icon: Waypoints },
   { id: 'consumption', label: 'Consumo', icon: ChartNoAxesCombined },
+  { id: 'iptv', label: 'IPTV via VPN', icon: Tv },
   { id: 'backups', label: 'Cópias', icon: History },
   { id: 'log', label: 'Registo', icon: ScrollText },
   { id: 'config', label: 'Configuração', icon: Settings2 }
@@ -175,7 +179,14 @@ export default function RouterModule() {
   const plans = useLive<PlanRow[]>('http://127.0.0.1:3001/api/plans', tab === 'profiles');
 
   const backups = useLive<ConfigSnapshots>(`${ROUTER_API}/config/snapshots`, tab === 'backups', 60_000);
-  const current = { overview, sessions, reconciliation, interfaces, profiles, consumption, backups, log, config: null }[tab];
+  // IPTV via VPN: o estado vem da base (lê-se fora da rede); a infraestrutura lê o router, só para o admin.
+  const auth = useAuth();
+  const isAdmin = auth.isAuthBypassed || auth.hasRole('admin');
+  const iptvStatus = useLive<IptvStatus>(`${IPTV_API}/status`, tab === 'iptv');
+  const iptvInfra = useLive<IptvCheck[]>(`${IPTV_API}/infra`, tab === 'iptv' && isAdmin, 60_000);
+  const iptvProviders = useLive<IptvProvider[]>(`${IPTV_API}/providers`, tab === 'iptv', 120_000);
+  const iptvServices = useLive<ServiceRow[]>('http://127.0.0.1:3001/api/services', tab === 'iptv', 120_000);
+  const current = { overview, sessions, reconciliation, interfaces, profiles, consumption, iptv: iptvStatus, backups, log, config: null }[tab];
 
   const selectTab = useCallback((next: RouterTab, moveFocus = false) => {
     if (next === 'config') setConfigVisited(true);
@@ -216,13 +227,17 @@ export default function RouterModule() {
               syncedAt={current.syncedAt}
               // A API respondeu, mas a dizer que o router não está lá: não é "Sincronizado".
               error={current.error ?? ((current.data as { available?: boolean } | null)?.available === false ? 'Router indisponível' : null)}
-              onSync={() => { current.reload(); if (tab === 'profiles') plans.reload(); }}
+              onSync={() => {
+                current.reload();
+                if (tab === 'profiles') plans.reload();
+                if (tab === 'iptv') { iptvInfra.reload(); iptvProviders.reload(); }
+              }}
             />
           ) : undefined}
         />
       </div>
 
-      <nav ref={tabListRef} className="segmented-tabs" role="tablist" aria-label="Router de gestão do ISP">
+      <nav ref={tabListRef} className="segmented-tabs router-tabs" role="tablist" aria-label="Router de gestão do ISP">
         {TABS.map((item) => {
           const Icon = item.icon;
           const selected = tab === item.id;
@@ -296,6 +311,15 @@ export default function RouterModule() {
         {tab === 'backups' && (
           backups.error && !backups.data ? <ErrorRetry message={backups.error} onRetry={backups.reload} />
             : backups.data ? <ConfigBackups data={backups.data} onChanged={backups.reload} /> : <SkeletonList rows={5} />
+        )}
+        {tab === 'iptv' && (
+          <IptvPanel
+            status={iptvStatus}
+            infra={isAdmin ? iptvInfra : null}
+            providers={iptvProviders}
+            services={iptvServices.data ?? []}
+            isAdmin={isAdmin}
+          />
         )}
         {tab === 'consumption' && (
           consumption.error && !consumption.data ? <ErrorRetry message={consumption.error} onRetry={consumption.reload} />

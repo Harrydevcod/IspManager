@@ -296,6 +296,22 @@ export function NetworkTab({
             onChange={(event) => onUpdate('routerosPppoePrefix', event.target.value)}
             hint="Com «skn», o cliente C0002 fica skn002. Vazio: o utilizador sai do nome do cliente."
           />
+          <Field
+            label="Lista de origens do IPTV"
+            value={form.iptvVpnSplitList}
+            maxLength={64}
+            placeholder="IPTV-SPLIT"
+            onChange={(event) => onUpdate('iptvVpnSplitList', event.target.value)}
+            hint="A address-list onde o ISPM põe os clientes com IPTV via VPN. O túnel, a tabela e a marca descobrem-se no router a partir dela."
+          />
+          <Field
+            label="Lista de servidores do IPTV"
+            value={form.iptvVpnServersList}
+            maxLength={64}
+            placeholder="IPTV-SERVERS"
+            onChange={(event) => onUpdate('iptvVpnServersList', event.target.value)}
+            hint="A address-list com os servidores dos fornecedores de IPTV registados no ISPM."
+          />
           <Toggle
             title="Suspensão automática por falta de pagamento"
             description="Depois da tolerância, suspende apenas o serviço em dívida. O ensaio protege também esta automação: enquanto estiver ligado, só mostra quem seria suspenso."

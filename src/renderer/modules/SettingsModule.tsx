@@ -156,6 +156,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     routerosPppParentQueue: '',
     routerosSuspendedProfile: 'SUSPENSO',
     routerosPppoePrefix: '',
+    iptvVpnSplitList: 'IPTV-SPLIT',
+    iptvVpnServersList: 'IPTV-SERVERS',
     autoSuspensionEnabled: false,
     autoSuspensionGraceDays: '15',
     autoSuspensionIntervalMinutes: '60',

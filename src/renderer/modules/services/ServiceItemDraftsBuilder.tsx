@@ -5,6 +5,7 @@ import { formatCve } from '../../lib/format';
 import { todayIso } from '../../../shared/assignment-dates';
 import type { StockCatalogRow } from '../../types';
 import { IpField } from './IpField';
+import { LanCidrField } from './IptvSection';
 
 export type ItemDraft = {
   category: 'equipamento' | 'material';
@@ -18,6 +19,8 @@ export type ItemDraft = {
   wanMode: string;
   /** Que papel desempenha. Vazio = por classificar. */
   operationMode: string;
+  /** Gama da LAN de um router de cliente. Vazio = por registar. */
+  lanCidr: string;
   notes: string;
   /** 'cliente' = trazido pelo cliente; não entra no aluguer da mensalidade. */
   ownership: 'isp' | 'cliente';
@@ -30,7 +33,7 @@ export function emptyItemDraft(category: 'equipamento' | 'material' = 'equipamen
   // não se escolhe por engano é o que não gera receita por engano.
   return {
     category, catalogId: '', quantity: '1', serialNumber: '', assetTag: '',
-    ipAddress: '', macAddress: '', wanMode: '', operationMode: '', notes: '', ownership: 'isp',
+    ipAddress: '', macAddress: '', wanMode: '', operationMode: '', lanCidr: '', notes: '', ownership: 'isp',
     installedOn: todayIso()
   };
 }
@@ -115,6 +118,7 @@ export function ServiceItemDraftsBuilder({ drafts, catalog, onChange, ipPrefix }
                     value={draft.operationMode}
                     onChange={(operationMode) => update(index, { operationMode })}
                   />
+                  <LanCidrField catalogType={selectedItem?.type} value={draft.lanCidr} onChange={(lanCidr) => update(index, { lanCidr })} />
                   {/* Com modo registado é o modo que obriga; sem ele, o tipo de catálogo. */}
                   <IpField
                     value={draft.ipAddress}

@@ -2,6 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { factMoment, validateAssignmentDates } from '../../shared/assignment-dates';
 import { MAC_FORMAT_ERROR, isMacAddress, normalizeMacAddress } from '../../shared/mac';
+import { LAN_CIDR_ERROR, parseCidr } from '../../shared/ip-range';
+import { isKnownOperationMode } from '../../shared/operation';
+import { isKnownWanMode } from '../../shared/wan';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit, recordAuditStrict } from '../lib/audit';
 import {
@@ -17,6 +20,7 @@ import {
   deviceOwnership,
   insertInstallCostsWithinTx,
   isIpv4,
+  lanCidrValue,
   installDeviceWithinTx,
   installItemsWithinTx,
   loadCatalogIdentity,
@@ -49,6 +53,8 @@ const deviceAssignmentSchema = z.object({
   wanMode: z.string().trim().max(40).optional().nullable(),
   /** Que papel desempenha. Predefinidos em shared/operation.ts; texto livre aceite. */
   operationMode: z.string().trim().max(40).optional().nullable(),
+  /** Gama da LAN de um router de cliente (0089), ex.: 192.168.0.0/24. */
+  lanCidr: z.string().trim().max(43).optional().nullable(),
   technicianId: z.coerce.number().int().positive().optional().nullable(),
   notes: z.string().trim().optional().nullable(),
   /** 'cliente' = equipamento que o cliente trouxe; não gera renda. */
@@ -68,6 +74,7 @@ const batchItemsSchema = z.object({
     macAddress: z.string().trim().optional().nullable(),
     wanMode: z.string().trim().max(40).optional().nullable(),
     operationMode: z.string().trim().max(40).optional().nullable(),
+    lanCidr: z.string().trim().max(43).optional().nullable(),
     technicianId: z.coerce.number().int().positive().optional().nullable(),
     notes: z.string().trim().optional().nullable(),
     ownership: z.enum(['isp', 'cliente']).optional().nullable(),
@@ -96,6 +103,8 @@ const deviceIdentitySchema = z.object({
   wanMode: z.string().trim().max(40).optional().nullable(),
   /** Que papel desempenha. Predefinidos em shared/operation.ts; texto livre aceite. */
   operationMode: z.string().trim().max(40).optional().nullable(),
+  /** Gama da LAN de um router de cliente (0089). */
+  lanCidr: z.string().trim().max(43).optional().nullable(),
   notes: z.string().trim().optional().nullable(),
   /**
    * A renda vale a partir da proxima fatura e nao reescreve as passadas — cada
@@ -127,7 +136,8 @@ const bulkIdentitySchema = z.object({
     ipAddress: z.string().trim().optional().nullable(),
     macAddress: z.string().trim().optional().nullable(),
     wanMode: z.string().trim().max(40).optional().nullable(),
-    operationMode: z.string().trim().max(40).optional().nullable()
+    operationMode: z.string().trim().max(40).optional().nullable(),
+    lanCidr: z.string().trim().max(43).optional().nullable()
   })).min(1).max(1000)
 });
 
@@ -251,6 +261,7 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         a.mac_address AS macAddress,
         a.wan_mode AS wanMode,
         a.operation_mode AS operationMode,
+        a.lan_cidr AS lanCidr,
         a.technician_id AS technicianId,
         tu.full_name AS technicianName,
         a.notes,
@@ -440,6 +451,7 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         a.id,
         a.service_id AS serviceId,
         c.id AS clientId,
+        c.client_code AS clientCode,
         c.full_name AS clientName,
         e.brand,
         e.model,
@@ -449,6 +461,7 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         a.mac_address AS macAddress,
         a.wan_mode AS wanMode,
         a.operation_mode AS operationMode,
+        a.lan_cidr AS lanCidr,
         ${SHARED_WITH_NAMES_SQL} AS sharedWithNames
       FROM service_device_assignments a
       JOIN services s ON s.id = a.service_id
@@ -472,23 +485,24 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
 
     type Identity = {
       ipAddress: string | null; macAddress: string | null;
-      wanMode: string | null; operationMode: string | null;
+      wanMode: string | null; operationMode: string | null; lanCidr: string | null;
     };
     const db = getSqliteDatabase();
     const active = new Map((db.prepare(`
       SELECT id, ip_address AS ipAddress, mac_address AS macAddress, wan_mode AS wanMode,
-             operation_mode AS operationMode
+             operation_mode AS operationMode, lan_cidr AS lanCidr
       FROM service_device_assignments
       WHERE end_date IS NULL
     `).all() as Array<{ id: number } & Identity>).map((row) => [row.id, {
       ipAddress: row.ipAddress,
       macAddress: row.macAddress,
       wanMode: row.wanMode,
-      operationMode: row.operationMode
+      operationMode: row.operationMode,
+      lanCidr: row.lanCidr
     }]));
 
     const changes: Array<{ id: number } & Identity> = [];
-    for (const item of parsed.data.items) {
+    for (const [index, item] of parsed.data.items.entries()) {
       const current = active.get(item.id);
       if (!current) {
         return reply.status(404).send({ error: `Equipamento ${item.id} nao encontrado ou ja removido` });
@@ -508,15 +522,28 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       const operationMode = item.operationMode === undefined
         ? current.operationMode
         : cleanValue(item.operationMode);
+      // O lote vem de uma importação: um modo que não é nenhum dos conhecidos é
+      // gralha, não um modo novo. Os outros caminhos continuam a aceitar texto livre.
+      if (item.wanMode !== undefined && wanMode && !isKnownWanMode(wanMode)) {
+        return reply.status(400).send({ error: `Linha ${index + 1}: modo WAN desconhecido (${wanMode})` });
+      }
+      if (item.operationMode !== undefined && operationMode && !isKnownOperationMode(operationMode)) {
+        return reply.status(400).send({ error: `Linha ${index + 1}: modo de operação desconhecido (${operationMode})` });
+      }
+      const lanCidr = item.lanCidr === undefined ? current.lanCidr : lanCidrValue(item.lanCidr);
+      if (item.lanCidr !== undefined && lanCidr && !parseCidr(lanCidr)) {
+        return reply.status(400).send({ error: `Linha ${index + 1}: ${LAN_CIDR_ERROR}` });
+      }
       if (
         ipAddress !== current.ipAddress
         || macAddress !== current.macAddress
         || wanMode !== current.wanMode
         || operationMode !== current.operationMode
+        || lanCidr !== current.lanCidr
       ) {
-        changes.push({ id: item.id, ipAddress, macAddress, wanMode, operationMode });
+        changes.push({ id: item.id, ipAddress, macAddress, wanMode, operationMode, lanCidr });
       }
-      active.set(item.id, { ipAddress, macAddress, wanMode, operationMode });
+      active.set(item.id, { ipAddress, macAddress, wanMode, operationMode, lanCidr });
     }
 
     // Estado final, nao linha a linha: trocar dois IPs entre equipamentos passa,
@@ -539,13 +566,13 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
     db.transaction(() => {
       const update = db.prepare(`
         UPDATE service_device_assignments
-        SET ip_address = ?, mac_address = ?, wan_mode = ?, operation_mode = ?,
+        SET ip_address = ?, mac_address = ?, wan_mode = ?, operation_mode = ?, lan_cidr = ?,
             updated_at = datetime('now')
         WHERE id = ? AND end_date IS NULL
       `);
       for (const change of changes) {
         update.run(
-          change.ipAddress, change.macAddress, change.wanMode, change.operationMode, change.id
+          change.ipAddress, change.macAddress, change.wanMode, change.operationMode, change.lanCidr, change.id
         );
       }
     })();
@@ -768,6 +795,7 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         mac_address AS macAddress,
         wan_mode AS wanMode,
         operation_mode AS operationMode,
+        lan_cidr AS lanCidr,
         notes,
         ownership,
         rental_fee_cve AS rentalFeeCve
@@ -777,7 +805,7 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       id: number; serviceId: number; endDate: string | null;
       serialNumber: string | null; assetTag: string | null;
       ipAddress: string | null; macAddress: string | null;
-      wanMode: string | null; operationMode: string | null; notes: string | null;
+      wanMode: string | null; operationMode: string | null; lanCidr: string | null; notes: string | null;
       ownership: string; rentalFeeCve: number;
     } | undefined;
 
@@ -798,6 +826,7 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       macAddress: normalizeMacAddress(merge(parsed.data.macAddress, current.macAddress)),
       wanMode: merge(parsed.data.wanMode, current.wanMode),
       operationMode: merge(parsed.data.operationMode, current.operationMode),
+      lanCidr: parsed.data.lanCidr === undefined ? current.lanCidr : lanCidrValue(parsed.data.lanCidr),
       notes: merge(parsed.data.notes, current.notes),
       rentalFeeCve: parsed.data.rentalFeeCve == null ? current.rentalFeeCve : Math.round(parsed.data.rentalFeeCve)
     };
@@ -816,7 +845,8 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
       serialNumber: changed(next.serialNumber, current.serialNumber),
       assetTag: changed(next.assetTag, current.assetTag),
       ipAddress: changed(next.ipAddress, current.ipAddress),
-      macAddress: changed(next.macAddress, current.macAddress)
+      macAddress: changed(next.macAddress, current.macAddress),
+      lanCidr: changed(next.lanCidr, current.lanCidr)
     }, assignmentId);
     if (conflict) {
       return reply.status(conflict.status).send({ error: conflict.error });
@@ -830,13 +860,14 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
           mac_address = ?,
           wan_mode = ?,
           operation_mode = ?,
+          lan_cidr = ?,
           notes = ?,
           rental_fee_cve = ?,
           updated_at = datetime('now')
       WHERE id = ?
     `).run(
       next.serialNumber, next.assetTag, next.ipAddress, next.macAddress, next.wanMode,
-      next.operationMode, next.notes, next.rentalFeeCve, assignmentId
+      next.operationMode, next.lanCidr, next.notes, next.rentalFeeCve, assignmentId
     );
 
     recordAudit(request, {
@@ -857,6 +888,8 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
         previousWanMode: current.wanMode,
         operationMode: next.operationMode,
         previousOperationMode: current.operationMode,
+        lanCidr: next.lanCidr,
+        previousLanCidr: current.lanCidr,
         // O aluguer entra no que o cliente paga: quem o mudou fica escrito.
         rentalFeeCve: next.rentalFeeCve,
         previousRentalFeeCve: current.rentalFeeCve
@@ -907,7 +940,7 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
     const macAddress = normalizeMacAddress(parsed.data.macAddress);
     const notes = cleanValue(parsed.data.notes);
 
-    const conflict = checkDeviceIdentity(db, { serialNumber, assetTag, ipAddress, macAddress }, assignmentId);
+    const conflict = checkDeviceIdentity(db, { serialNumber, assetTag, ipAddress, macAddress, lanCidr: parsed.data.lanCidr }, assignmentId);
     if (conflict) {
       return reply.status(conflict.status).send({ error: conflict.error });
     }
@@ -958,6 +991,7 @@ export async function registerTechnicalRoutes(app: FastifyInstance) {
           macAddress,
           wanMode: parsed.data.wanMode,
           operationMode: parsed.data.operationMode,
+          lanCidr: parsed.data.lanCidr,
           technicianId: parsed.data.technicianId || null,
           notes,
           ownership: parsed.data.ownership ?? null,

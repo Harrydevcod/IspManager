@@ -1,5 +1,5 @@
 import { Download, Upload } from 'lucide-react';
-import { useRef, useState, type DragEvent } from 'react';
+import { useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { Button } from '../../../components';
 
 type ImportDropzoneProps = {
@@ -8,6 +8,11 @@ type ImportDropzoneProps = {
   downloadingTemplate: boolean;
   onPick: (file: File) => void;
   onDownloadTemplate: () => void;
+  templateLabel?: string;
+  templateHint?: string;
+  help?: ReactNode;
+  accept?: string;
+  acceptLabel?: string;
 };
 
 /** First step of the import flow: drag-and-drop area, file picker, template download, help. */
@@ -16,7 +21,12 @@ export function ImportDropzone({
   parseError,
   downloadingTemplate,
   onPick,
-  onDownloadTemplate
+  onDownloadTemplate,
+  templateLabel = 'Descarregar template Excel',
+  templateHint = 'Cabeçalhos prontos + 2 linhas de exemplo + folha de instruções.',
+  help,
+  accept = '.csv,.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  acceptLabel = '.csv .xlsx .xls'
 }: ImportDropzoneProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragHover, setDragHover] = useState(false);
@@ -25,7 +35,7 @@ export function ImportDropzone({
     event.preventDefault();
     setDragHover(false);
     const next = event.dataTransfer.files?.[0];
-    if (next) onPick(next);
+    if (next && !parsing) onPick(next);
   }
 
   function onDragOver(event: DragEvent<HTMLDivElement>) {
@@ -40,11 +50,11 @@ export function ImportDropzone({
         onDrop={onDrop}
         onDragOver={onDragOver}
         onDragLeave={() => setDragHover(false)}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => { if (!parsing) fileInputRef.current?.click(); }}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
-            fileInputRef.current?.click();
+            if (!parsing) fileInputRef.current?.click();
           }
         }}
         role="button"
@@ -55,17 +65,19 @@ export function ImportDropzone({
           {parsing ? 'A ler ficheiro...' : 'Largar CSV ou Excel aqui'}
         </p>
         <p className="import-dropzone-hint">
-          ou <strong>clica para escolher</strong> &middot; aceita .csv .xlsx .xls
+          ou <strong>clica para escolher</strong> &middot; aceita {acceptLabel}
         </p>
         {/* eslint-disable-next-line no-restricted-syntax -- hidden file input is the canonical picker pattern; Field primitive doesn't model type=file */}
         <input
           ref={fileInputRef}
           type="file"
-          accept=".csv,.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          accept={accept}
           hidden
+          disabled={parsing}
           onChange={(event) => {
             const next = event.target.files?.[0];
             if (next) onPick(next);
+            event.target.value = '';
           }}
         />
       </div>
@@ -79,21 +91,21 @@ export function ImportDropzone({
           leadingIcon={<Download size={14} aria-hidden />}
           onClick={onDownloadTemplate}
         >
-          {downloadingTemplate ? 'A preparar...' : 'Descarregar template Excel'}
+          {downloadingTemplate ? 'A preparar...' : templateLabel}
         </Button>
         <span className="import-template-hint">
-          Cabeçalhos prontos + 2 linhas de exemplo + folha de instruções.
+          {templateHint}
         </span>
       </div>
       <details className="import-help">
         <summary>O que deve conter o ficheiro</summary>
-        <p>
+        {help ?? <p>
           Primeira linha = cabeçalhos. Colunas reconhecidas automaticamente:
           {' '}
           <em>código, NIF, nome, telefone, email, morada, ilha, zona</em>.
           Podes mapear manualmente no próximo passo. Linhas duplicadas (por código,
           NIF ou telefone) são ignoradas — o import é seguro de repetir.
-        </p>
+        </p>}
       </details>
     </div>
   );

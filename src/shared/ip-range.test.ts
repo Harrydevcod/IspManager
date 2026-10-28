@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   chunk,
+  parseCidr,
   describeRange,
   expandRange,
   intToIp,
@@ -165,5 +166,15 @@ describe('isPrivateIpv4', () => {
   test('o que não é endereço não é rede local', () => {
     expect(isPrivateIpv4('nao-e-um-ip')).toBe(false);
     expect(isPrivateIpv4('192.168.1.999')).toBe(false);
+  });
+});
+
+describe('parseCidr', () => {
+  test('canoniza para o endereço de rede', () => {
+    expect(parseCidr(' 192.168.1.1/24 ')).toEqual({ start: 0xc0a80100, end: 0xc0a801ff, canonical: '192.168.1.0/24' });
+    expect(parseCidr('10.0.0.5/32')?.canonical).toBe('10.0.0.5/32');
+  });
+  test.each(['192.168.1.0', '192.168.1.0/33', '256.1.1.1/24', 'lixo', '192.168.1/24'])('recusa %s', (value) => {
+    expect(parseCidr(value)).toBeNull();
   });
 });

@@ -79,6 +79,8 @@ export type SettingsFormState = {
   routerosPppParentQueue: string;
   routerosSuspendedProfile: string;
   routerosPppoePrefix: string;
+  iptvVpnSplitList: string;
+  iptvVpnServersList: string;
   autoSuspensionEnabled: boolean;
   autoSuspensionGraceDays: string;
   autoSuspensionIntervalMinutes: string;
