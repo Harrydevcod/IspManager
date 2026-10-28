@@ -1,5 +1,5 @@
-import { useEffect, useId, useState } from 'react';
-import { Button, Field } from '../../components';
+import { useEffect, useState } from 'react';
+import { Button, Select } from '../../components';
 import { authFetch } from '../../lib/auth';
 
 type RouterProfileOption = { name: string; rateLimit: string | null; ownerPlanId: number | null };
@@ -20,11 +20,11 @@ type RouterProfileFieldProps = {
 };
 
 /**
- * Perfil PPP do plano (ADR 0011). A lista vem do router; pode escolher-se um
- * perfil existente ou escrever um nome novo e pedir ao ISPM que o crie.
+ * Perfil PPP do plano (ADR 0011). Escolhe-se um perfil que existe no router, ou deixa-se
+ * o ISPM criar o seu (`ispm-plano-<nº>`). Nunca se escreve um nome à mão: um nome do
+ * router escolhe-se do que lá existe.
  */
 export function RouterProfileField({ value, onChange, savedPlan, canWriteRouter }: RouterProfileFieldProps) {
-  const listId = `router-profiles-${useId()}`;
   const [router, setRouter] = useState<ProfilesResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -80,20 +80,19 @@ export function RouterProfileField({ value, onChange, savedPlan, canWriteRouter 
 
   return (
     <div className="wide-field router-profile-field">
-      <Field
+      <Select
         label="Perfil PPP no router"
         value={value}
-        maxLength={64}
-        list={listId}
-        placeholder="ex.: plano-20M"
+        disabled={!router?.available}
         onChange={(event) => onChange(event.target.value)}
         hint={status}
-      />
-      <datalist id={listId}>
+      >
+        <option value="">Perfil próprio do ISPM (ispm-plano-&lt;nº&gt;)</option>
+        {name && !match && <option value={value}>{router?.available ? `${value} (por criar no router)` : value}</option>}
         {router?.profiles.map((profile) => (
-          <option key={profile.name} value={profile.name}>{profile.rateLimit ?? 'sem limite'}</option>
+          <option key={profile.name} value={profile.name}>{profile.name} · {profile.rateLimit ?? 'sem limite'}</option>
         ))}
-      </datalist>
+      </Select>
       {showAction && (
         <div className="router-profile-actions">
           <Button type="button" variant="secondary" disabled={!saved || busy} onClick={() => void apply()}>

@@ -1,5 +1,5 @@
 import { AlertTriangle, Check, Minus, Radar, RefreshCw, Router, ShieldCheck, X } from 'lucide-react';
-import { Button, DataTable, Field, Message, SecretField, Toggle, type DataTableColumn, type SecretDraft } from '../../components';
+import { Button, DataTable, Field, Message, RouterChoice, SecretField, Toggle, useRouterOptions, type DataTableColumn, type SecretDraft } from '../../components';
 import { formatCve, formatPtDate } from '../../lib/format';
 import { PlanNetworkFields } from './PlanNetworkFields';
 import type { SettingsFormState, ToggleField, UpdateField } from './settingsForm';
@@ -150,6 +150,8 @@ export function NetworkTab({
   onAutoSuspendNow
 }: NetworkTabProps) {
   const divergent = (routerState?.services ?? []).filter((row) => row.divergence || row.lastError);
+  // O que se nomeia no router escolhe-se do que lá existe (nunca texto livre).
+  const { options: routerOptions, reload: reloadRouterOptions } = useRouterOptions(part === 'router');
   if (part === 'probe') return (
     <>
       <Toggle
@@ -274,20 +276,25 @@ export function NetworkTab({
             onChange={(event) => onUpdate('routerosMaxDisablesPerRun', event.target.value)}
             hint="Trava da reconciliação: se uma passagem quiser cortar mais, não corta nenhum."
           />
-          <Field
+          <RouterChoice
             label="Perfil-base dos planos"
             value={form.routerosBaseProfile}
-            maxLength={64}
-            onChange={(event) => onUpdate('routerosBaseProfile', event.target.value)}
+            onChange={(value) => onUpdate('routerosBaseProfile', value)}
+            options={routerOptions}
+            list="profiles"
+            noun="perfis PPP"
             hint="Perfil PPP que já dá rede aos clientes: é dele que «Ler do perfil» copia os campos abaixo, e é para ele que vai um serviço sem perfil no plano."
           />
-          <PlanNetworkFields form={form} onUpdate={onUpdate} />
-          <Field
+          <PlanNetworkFields form={form} onUpdate={onUpdate} options={routerOptions} onReload={reloadRouterOptions} />
+          <RouterChoice
             label="Perfil dos suspensos"
             value={form.routerosSuspendedProfile}
-            maxLength={64}
-            onChange={(event) => onUpdate('routerosSuspendedProfile', event.target.value)}
-            hint="Perfil PPP para onde vai o cliente suspenso (velocidade mínima). Vazio: o secret é desativado."
+            onChange={(value) => onUpdate('routerosSuspendedProfile', value)}
+            options={routerOptions}
+            list="profiles"
+            noun="perfis PPP"
+            emptyLabel="Nenhum: o secret é desativado"
+            hint="Perfil PPP para onde vai o cliente suspenso (velocidade mínima)."
           />
           <Field
             label="Prefixo dos utilizadores PPPoE"
@@ -296,20 +303,22 @@ export function NetworkTab({
             onChange={(event) => onUpdate('routerosPppoePrefix', event.target.value)}
             hint="Com «skn», o cliente C0002 fica skn002. Vazio: o utilizador sai do nome do cliente."
           />
-          <Field
+          <RouterChoice
             label="Lista de origens do IPTV"
             value={form.iptvVpnSplitList}
-            maxLength={64}
-            placeholder="IPTV-SPLIT"
-            onChange={(event) => onUpdate('iptvVpnSplitList', event.target.value)}
+            onChange={(value) => onUpdate('iptvVpnSplitList', value)}
+            options={routerOptions}
+            list="addressLists"
+            noun="address-lists"
             hint="A address-list onde o ISPM põe os clientes com IPTV via VPN. O túnel, a tabela e a marca descobrem-se no router a partir dela."
           />
-          <Field
+          <RouterChoice
             label="Lista de servidores do IPTV"
             value={form.iptvVpnServersList}
-            maxLength={64}
-            placeholder="IPTV-SERVERS"
-            onChange={(event) => onUpdate('iptvVpnServersList', event.target.value)}
+            onChange={(value) => onUpdate('iptvVpnServersList', value)}
+            options={routerOptions}
+            list="addressLists"
+            noun="address-lists"
             hint="A address-list com os servidores dos fornecedores de IPTV registados no ISPM."
           />
           <Toggle

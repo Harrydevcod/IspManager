@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Field } from '../../components';
+import { Button, RouterChoice, type RouterOptions } from '../../components';
 import { authFetch } from '../../lib/auth';
 import type { SettingsFormState, UpdateField } from './settingsForm';
 
@@ -17,13 +17,15 @@ type ProfilesResponse = { available: boolean; reason?: string; profiles: Array<{
  * cliente liga-se sem IP e fora das regras da firewall. "Ler do perfil" copia-os de um perfil do router
  * (por omissão o perfil-base) para o formulário; só ficam valendo depois de gravar.
  */
-export function PlanNetworkFields({ form, onUpdate }: { form: SettingsFormState; onUpdate: UpdateField }) {
+export function PlanNetworkFields({ form, onUpdate, options, onReload }: {
+  form: SettingsFormState; onUpdate: UpdateField; options: RouterOptions; onReload: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [source, setSource] = useState('');
-  // Por omissão o perfil-base, mas o `default` do RouterOS não tem endereços: o operador escreve
-  // o nome de um perfil que já dá rede aos clientes.
-  const base = source.trim() || form.routerosBaseProfile?.trim() || 'default';
+  // Por omissão o perfil-base, mas o `default` do RouterOS não tem endereços: o operador escolhe
+  // um perfil que já dá rede aos clientes.
+  const base = source || form.routerosBaseProfile?.trim() || 'default';
 
   async function readFromRouter() {
     setBusy(true);
@@ -65,26 +67,25 @@ export function PlanNetworkFields({ form, onUpdate }: { form: SettingsFormState;
           o perfil não é criado e o plano fica pendente.
         </p>
         <div className="settings-profile-source">
-          <Field label="Perfil de onde ler" hideLabel value={source} maxLength={64} placeholder={base}
-            onChange={(event) => setSource(event.target.value)} />
-          <Button variant="secondary" onClick={() => void readFromRouter()} disabled={busy}>
+          <RouterChoice label="Perfil de onde ler" value={base} onChange={setSource} options={options} list="profiles" noun="perfis PPP" />
+          <Button variant="secondary" onClick={() => void readFromRouter()} disabled={busy || options.status !== 'ready'}>
             {busy ? 'A ler…' : `Ler do perfil ${base}`}
           </Button>
+          <Button variant="ghost" onClick={onReload} disabled={options.status === 'loading'}>Ler de novo</Button>
         </div>
         {message && <p role="status">{message}</p>}
       </div>
-      <Field label="Gateway PPPoE (local-address)" value={form.routerosPppLocalAddress} maxLength={64}
-        placeholder="10.0.0.1" onChange={(event) => onUpdate('routerosPppLocalAddress', event.target.value)} />
-      <Field label="Pool de endereços (remote-address)" value={form.routerosPppRemotePool} maxLength={64}
-        placeholder="pool-pppoe" onChange={(event) => onUpdate('routerosPppRemotePool', event.target.value)} />
-      <Field label="Lista de interfaces (interface-list)" value={form.routerosPppInterfaceList} maxLength={64}
-        onChange={(event) => onUpdate('routerosPppInterfaceList', event.target.value)}
+      <RouterChoice label="Gateway PPPoE (local-address)" value={form.routerosPppLocalAddress} options={options}
+        list="localAddresses" noun="endereços" onChange={(value) => onUpdate('routerosPppLocalAddress', value)} />
+      <RouterChoice label="Pool de endereços (remote-address)" value={form.routerosPppRemotePool} options={options}
+        list="pools" noun="pools" onChange={(value) => onUpdate('routerosPppRemotePool', value)} />
+      <RouterChoice label="Lista de interfaces (interface-list)" value={form.routerosPppInterfaceList} options={options}
+        list="interfaceLists" noun="interface-lists" onChange={(value) => onUpdate('routerosPppInterfaceList', value)}
         hint="A lista que as regras da firewall dos clientes usam." />
-      <Field label="DNS (dns-server)" value={form.routerosPppDns} maxLength={128}
-        placeholder={form.routerosPppLocalAddress || undefined}
-        onChange={(event) => onUpdate('routerosPppDns', event.target.value)} hint="Em branco: o gateway." />
-      <Field label="Fila-mãe (parent-queue)" value={form.routerosPppParentQueue} maxLength={64}
-        placeholder="fila-total" onChange={(event) => onUpdate('routerosPppParentQueue', event.target.value)} />
+      <RouterChoice label="DNS (dns-server)" value={form.routerosPppDns} options={options} list="dnsServers" noun="endereços"
+        emptyLabel="O gateway" onChange={(value) => onUpdate('routerosPppDns', value)} />
+      <RouterChoice label="Fila-mãe (parent-queue)" value={form.routerosPppParentQueue} options={options}
+        list="queues" noun="filas" onChange={(value) => onUpdate('routerosPppParentQueue', value)} />
     </>
   );
 }

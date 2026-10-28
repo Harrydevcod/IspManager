@@ -46,10 +46,22 @@ async function render(value: string, routerProfile: string | null = value) {
 const buttonText = () => [...container.querySelectorAll('button')].map((b) => b.textContent);
 
 describe('RouterProfileField', () => {
-  test('mostra os perfis do router como sugestões', async () => {
+  test('escolhe-se dos perfis do router, ou o perfil próprio do ISPM; nunca texto livre', async () => {
     await render('');
-    const options = [...container.querySelectorAll('datalist option')].map((o) => o.getAttribute('value'));
-    expect(options).toEqual(['default', 'plano-20M', 'feito-no-winbox']);
+    const options = [...container.querySelectorAll('select option')].map((o) => o.getAttribute('value'));
+    expect(options).toEqual(['', 'default', 'plano-20M', 'feito-no-winbox']);
+    expect(container.querySelector('input')).toBeNull();
+  });
+
+  test('router indisponível: fica o valor gravado, só para ler', async () => {
+    vi.mocked(authFetch).mockResolvedValue(new Response(JSON.stringify({ available: false, reason: 'Fora da rede de gestão', baseProfile: 'default', profiles: [] })));
+    await act(async () => {
+      root.render(<RouterProfileField value="plano-20M" onChange={() => {}} savedPlan={{ id: 1, routerProfile: 'plano-20M' }} canWriteRouter />);
+    });
+    const select = container.querySelector('select')!;
+    expect(select.disabled).toBe(true);
+    expect(select.value).toBe('plano-20M');
+    expect(container.textContent).toContain('Fora da rede de gestão');
   });
 
   test('nome que não existe no router: oferece criar', async () => {

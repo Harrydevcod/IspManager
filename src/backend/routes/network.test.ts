@@ -844,3 +844,53 @@ describe('POST /api/network/pppoe/backfill', () => {
     }
   });
 });
+
+describe('opções do router para os formulários', () => {
+  const configureRouter = () => {
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('routerosEnabled', 'true'), ('routerosHost', '127.0.0.1'), ('routerosUser', 'ispm')").run();
+    writeSecret(db, 'routerosPassword', 'segredo');
+  };
+
+  test('lista, ordenado e sem repetidos, o que cada campo nomeia no router; só lê', async () => {
+    configureRouter();
+    vi.spyOn(adminNetwork, 'detectAdminNetwork').mockResolvedValue({ state: 'onsite', checkedAt: new Date().toISOString(), detail: '' });
+    const calls: Array<{ method: string; path: string }> = [];
+    const tables: Record<string, unknown[]> = {
+      '/ppp/profile': [{ '.id': '*1', name: 'pppoe', 'local-address': '10.20.0.1', 'dns-server': '10.20.0.1' }, { '.id': '*2', name: 'default' }],
+      '/ip/address': [{ address: '192.168.2.1/24', disabled: 'false' }, { address: '10.9.9.1/30', disabled: 'true' }],
+      '/ip/pool': [{ name: 'pool-PPPOE' }, { name: 'dhcp' }],
+      '/interface/list': [{ name: 'WAN' }, { name: 'PPPOE' }],
+      '/queue/simple': [{ name: 'TOTAL' }],
+      '/queue/tree': [{ name: 'TOTAL' }, { name: 'download' }],
+      '/ip/firewall/address-list': [{ list: 'IPTV-SPLIT' }, { list: 'IPTV-SPLIT' }, { list: 'IPTV-SERVERS' }]
+    };
+    vi.spyOn(routeros, 'createTransport').mockReturnValue((async (request: { method: string; path: string }) => {
+      calls.push(request);
+      return tables[request.path.split('?')[0]] ?? [];
+    }) as unknown as routeros.RouterTransport);
+
+    const response = await app.inject('/api/network/router/options');
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      available: true,
+      profiles: ['default', 'pppoe'],
+      localAddresses: ['10.20.0.1', '192.168.2.1'],
+      dnsServers: ['10.20.0.1', '192.168.2.1'],
+      pools: ['dhcp', 'pool-PPPOE'],
+      interfaceLists: ['PPPOE', 'WAN'],
+      queues: ['download', 'TOTAL'],
+      addressLists: ['IPTV-SERVERS', 'IPTV-SPLIT']
+    });
+    expect(calls.every((c) => c.method === 'GET')).toBe(true);
+  });
+
+  test('fora da rede responde 200 com a razão, sem falar com o router', async () => {
+    configureRouter();
+    vi.spyOn(adminNetwork, 'detectAdminNetwork').mockResolvedValue({ state: 'offsite', checkedAt: new Date().toISOString(), detail: 'O router não respondeu.' });
+    const transport = vi.spyOn(routeros, 'createTransport');
+    const response = await app.inject('/api/network/router/options');
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ available: false, reason: expect.stringContaining('Fora da rede de gestão') });
+    expect(transport).not.toHaveBeenCalled();
+  });
+});

@@ -28,6 +28,8 @@ import {
   auditRouterHardening,
   auditRouterServices,
   readRouterHardening,
+  listDistinct,
+  listIpAddresses,
   listProfiles,
   listSecrets,
   removeActive,
@@ -437,6 +439,46 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     } catch (err) {
       const failure = describeRouterFailure(err);
       return { available: false, reason: `${failure.title}. ${failure.detail}`, baseProfile, profiles: [] };
+    }
+  });
+
+  /**
+   * O que os formulários oferecem para escolher em vez de texto livre: tudo o que um campo
+   * do ISPM nomeia no router. Só leitura; router em baixo não é erro do formulário.
+   */
+  app.get('/api/network/router/options', networkWrite, async () => {
+    const db = getSqliteDatabase();
+    const config = readRouterConfig(db);
+    if (!config.enabled || !isRouterConfigured(config)) return { available: false, reason: 'Integração MikroTik desligada ou por configurar' };
+    const presence = await detectAdminNetwork(db);
+    if (isOffNetwork(presence)) return { available: false, reason: offNetworkReason(presence) };
+    try {
+      const transport = createTransport(config);
+      const [profiles, addresses, pools, interfaceLists, simpleQueues, treeQueues, addressLists] = await Promise.all([
+        listProfiles(transport),
+        listIpAddresses(transport),
+        listDistinct(transport, '/ip/pool', 'name'),
+        listDistinct(transport, '/interface/list', 'name'),
+        listDistinct(transport, '/queue/simple', 'name'),
+        listDistinct(transport, '/queue/tree', 'name'),
+        listDistinct(transport, '/ip/firewall/address-list', 'list')
+      ]);
+      const sorted = (values: Array<string | null>) => [...new Set(values.filter((v): v is string => !!v))].sort((a, b) => a.localeCompare(b));
+      const routerIps = addresses.filter((a) => !a.disabled).map((a) => a.address.split('/')[0]);
+      return {
+        available: true,
+        profiles: sorted(profiles.map((p) => p.name)),
+        // O gateway e o DNS dos perfis que já dão rede, mais os IPs do próprio router.
+        localAddresses: sorted([...profiles.map((p) => p.localAddress), ...routerIps]),
+        dnsServers: sorted([...profiles.map((p) => p.dnsServer), ...routerIps]),
+        pools,
+        interfaceLists,
+        queues: sorted([...simpleQueues, ...treeQueues]),
+        addressLists
+      };
+    } catch (err) {
+      const failure = describeRouterFailure(err);
+      return { available: false, reason: `${failure.title}. ${failure.detail}` };
     }
   });
 

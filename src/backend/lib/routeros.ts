@@ -1581,6 +1581,17 @@ export async function listProfiles(transport: RouterTransport): Promise<RouterPr
     .filter((profile) => profile.id && profile.name);
 }
 
+/**
+ * Os valores distintos de um campo de uma tabela do router, ordenados: nomes de pools,
+ * interface-lists, filas, address-lists. É o que os formulários do ISPM oferecem para
+ * escolher, em vez de texto livre. Só leitura.
+ */
+export async function listDistinct(transport: RouterTransport, table: string, field: string): Promise<string[]> {
+  const raw = await transport({ method: 'GET', path: `${table}?.proplist=${field}` });
+  const values = asArray(raw).flatMap((row) => str(row[field]) ?? []);
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+
 /** Cria um perfil com os campos dados. Devolve o `.id` que o router lhe deu. */
 export async function createProfile(transport: RouterTransport, fields: ProfileFields): Promise<string> {
   const raw = await transport({ method: 'PUT', path: '/ppp/profile', body: fields });
