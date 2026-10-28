@@ -6,6 +6,30 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.39](https://github.com/Harrydevcod/IspManager/releases/tag/v2.39.0) — 2026-10-28
+
+### Adicionado
+- **IPTV via VPN** (ADR 0021, migração 0089). Alguns clientes vêem IPTV de fornecedores que só funcionam a partir de outro país. O IPTV desses clientes passa a sair pelo túnel VPN do router, e o resto do tráfego continua pelas WAN. A marca não fatura.
+  - **Na ficha do serviço:** o interruptor "IPTV via VPN" e o fornecedor de IPTV (opcional). Mostra também a origem que o router segue, isto é, o utilizador PPPoE e, até o cliente migrar, o MAC da antena ou do router. "Validar no router" diz se o router está a ver o cliente.
+  - **No router:** um script do ISPM (`ispm-iptv`) mantém a lista de origens (`IPTV-SPLIT`) a partir das sessões e das leases. A lista fica certa em menos de um minuto, mesmo com o ISPM fechado. O ISPM só toca nas suas entradas; as que foram postas à mão aparecem, mas é o operador que as remove.
+  - **Router de gestão → IPTV via VPN:**
+    - a infraestrutura (encaminhamento, marca, ordem das regras, túnel, rota de recurso, filtro e NAT);
+    - os túneis que o router tem, com o nome que lá têm, e o que falta a cada um;
+    - a última passagem, com o que mudaria em ensaio;
+    - por onde entra cada cliente marcado, e as entradas manuais;
+    - os fornecedores de IPTV, cujos hosts o ISPM mantém na lista `IPTV-SERVERS`.
+  - **Qualquer VPN serve.** A VPN configura-se no router, e o ISPM só a lê. Trocar de VPN ou de WAN faz-se só no router.
+  - **Definições → Rede:** os nomes das duas listas.
+- **Importar equipamentos.** Em Serviços há um modelo CSV com as atribuições activas: MAC, IP, modo WAN, modo de operação e gama LAN. Depois de preenchido, importa-se de volta. A pré-visualização mostra, linha a linha, o que muda e o que é recusado.
+- **Gama LAN** (`192.168.0.0/24`) em cada equipamento. A validação no router avisa quando colide com um endereço do router.
+
+### Corrigido
+- **Criar um serviço já com equipamento perdia dois campos (#270).** O router que o cliente trouxe ficava como alugado, com renda e a sair do stock, e a instalação ficava com o dia do registo.
+- **"Reconciliar agora" saltava os perfis dos planos e o IPTV (#271).** Passa a correr a mesma passagem que a automática.
+- **Origem por migrar sem aviso (#271).** Um cliente PPPoE que ainda entra por DHCP, e cuja antena não tem modo classificado, aparecia como pronto. Passa a mostrar porquê lhe falta o MAC.
+- **VPN por GRE ou IPIP não era descoberta (#272).** O RouterOS chama a estes tipos `gre-tunnel` e `ipip-tunnel`, medidos no 7.24.2.
+- **Textos:** "MAC da antena" (dizia "do antena") e "Serviço" (dizia "Servico"). Os botões dos Equipamentos já não ficam cortados num ecrã estreito.
+
 ## [2.38](https://github.com/Harrydevcod/IspManager/releases/tag/v2.38.0) — 2026-10-26
 
 ### Adicionado
