@@ -9,6 +9,13 @@
   font-size: var(--fs-sm);
 }
 
+@media (max-width: 640px) {
+  .router-tabs.segmented-tabs { flex-wrap: nowrap; overflow-x: auto; }
+  .router-tabs .segmented-tab { flex-shrink: 0; }
+  .router-tabs .segmented-tab .btn-content { display: inline-flex; }
+  .router-tabs .segmented-tab .btn-content > span { display: inline; }
+}
+
 .router-mono {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: var(--fs-sm);

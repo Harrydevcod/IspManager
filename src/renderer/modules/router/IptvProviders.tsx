@@ -91,8 +91,8 @@ export function IptvProviders({ providers, canEdit, onChanged }: { providers: Ip
   const columns: DataTableColumn<IptvProvider>[] = [
     { header: 'Nome', cell: (row) => <strong>{row.name}</strong>, sortValue: (row) => row.name },
     { header: 'Servidores', cell: (row) => hostCount(row.hosts), align: 'end', sortValue: (row) => hostCount(row.hosts) },
-    { header: 'Estado', cell: (row) => <Badge tone={row.active === 1 ? 'success' : 'neutral'}>{row.active === 1 ? 'Ativo' : 'Desativado'}</Badge> },
-    { header: 'Notas', cell: (row) => row.notes || <span className="router-muted">—</span> }
+    { header: 'Estado', sortValue: (row) => row.active === 1 ? 'Ativo' : 'Desativado', cell: (row) => <Badge tone={row.active === 1 ? 'success' : 'neutral'}>{row.active === 1 ? 'Ativo' : 'Desativado'}</Badge> },
+    { header: 'Notas', sortValue: (row) => row.notes ?? '', cell: (row) => row.notes || <span className="router-muted">—</span> }
   ];
 
   return (

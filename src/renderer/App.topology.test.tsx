@@ -132,6 +132,7 @@ beforeEach(() => {
       return json({ setupRequired: false, authBypassed: true });
     }
     if (url.endsWith('/api/dashboard/summary')) return json(dashboard);
+    if (url.endsWith('/api/iptv/providers')) return json([]);
     if (url.endsWith('/api/topology')) return json(snapshot);
     if (url.endsWith('/api/topology/backbones/10/clients')) {
       return json(branchWithTwoServices);

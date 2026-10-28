@@ -42,6 +42,63 @@ async function render(row: ServiceRow, onChanged = vi.fn()) {
 }
 
 describe('IptvSection', () => {
+  test.each([200, 409])('ignora a validação pendente do equipamento anterior (HTTP %s)', async (status) => {
+    let finish!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => { finish = resolve; });
+    serve({
+      '/api/iptv/providers': () => json([]),
+      '/api/iptv/status': () => json({ targets: [{ serviceId: 7, source: { kind: 'mac', mac: 'AA:BB:CC:DD:EE:02', via: 'router' } }], last: null }),
+      '/api/iptv/validate': () => pending
+    });
+    const row = service({});
+    await act(async () => { root.render(<IptvSection service={row} canManage assignments={[]} onChanged={() => {}} />); });
+    const button = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Validar no router')!;
+    await act(async () => { button.click(); });
+    await act(async () => { root.render(<IptvSection service={row} canManage assignments={[]} onChanged={() => {}} />); });
+    await act(async () => {
+      finish(new Response(JSON.stringify(status === 200 ? {
+        services: [{ serviceId: 7, validation: { state: 'ok', via: 'legacy', address: '10.0.0.4' } }],
+        lanCollisions: [{ assignmentId: 12, serviceId: 7, lanCidr: '192.168.1.0/24', collidesWith: '192.168.1.1/24' }]
+      } : { error: 'Erro da validação anterior' }), { status }));
+    });
+    expect(container.textContent).not.toContain('Visto no router');
+    expect(container.textContent).not.toContain('192.168.1.0/24');
+    expect(container.textContent).not.toContain('Erro da validação anterior');
+    expect(button.disabled).toBe(false);
+  });
+  test('recarregar equipamento atualiza a origem e retira a validação anterior', async () => {
+    let mac = 'AA:BB:CC:DD:EE:01';
+    serve({
+      '/api/iptv/providers': () => json([]),
+      '/api/iptv/status': () => json({ targets: [{ serviceId: 7, source: { kind: 'mac', mac, via: 'router' } }], last: null }),
+      '/api/iptv/validate': () => json({ services: [{ serviceId: 7, validation: { state: 'ok', via: 'legacy', address: '10.0.0.4' } }], lanCollisions: [] })
+    });
+    const row = service({});
+    await act(async () => { root.render(<IptvSection service={row} canManage assignments={[]} onChanged={() => {}} />); });
+    const button = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Validar no router')!;
+    await act(async () => { button.click(); });
+    expect(container.textContent).toContain('Visto no router');
+    mac = 'AA:BB:CC:DD:EE:02';
+    await act(async () => { root.render(<IptvSection service={row} canManage assignments={[]} onChanged={() => {}} />); });
+    expect(container.textContent).toContain('AA:BB:CC:DD:EE:02');
+    expect(container.textContent).not.toContain('Visto no router');
+  });
+  test('a validação avisa de colisões LAN apenas deste serviço', async () => {
+    serve({
+      '/api/iptv/providers': () => json([]),
+      '/api/iptv/status': () => json({ targets: [{ serviceId: 7, source: { kind: 'pppoe', username: 'skn014', legacy: null } }], last: null }),
+      '/api/iptv/validate': () => json({ services: [{ serviceId: 7, validation: { state: 'ok', via: 'pppoe', address: '10.0.0.4' } }], lanCollisions: [
+        { assignmentId: 12, serviceId: 7, lanCidr: '192.168.1.0/24', collidesWith: '192.168.1.1/24' },
+        { assignmentId: 13, serviceId: 8, lanCidr: '10.99.0.0/24', collidesWith: '10.99.0.1/24' }
+      ] })
+    });
+    await render(service({}));
+    const button = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Validar no router')!;
+    await act(async () => { button.click(); });
+    expect(container.textContent).toContain('192.168.1.0/24');
+    expect(container.textContent).toContain('192.168.1.1/24');
+    expect(container.textContent).not.toContain('10.99.0.0/24');
+  });
   test('mostra a origem em falta com a razão, sem ler o router', async () => {
     serve({
       '/api/iptv/providers': () => json([]),

@@ -13,7 +13,7 @@ function Infrastructure({ infra }: { infra: Live<IptvCheck[]> }) {
   return (
     <section className="router-findings" aria-label="Infraestrutura no router">
       <h3><ShieldCheck size={16} aria-hidden /> Infraestrutura no router</h3>
-      {infra.error && !infra.data ? <Message tone="neutral">{infra.error}</Message>
+      {infra.error ? <Message tone="neutral">{infra.error}</Message>
         : !infra.data ? <SkeletonList rows={3} />
         : (
           <ol className="settings-router-steps">
@@ -40,15 +40,17 @@ function Infrastructure({ infra }: { infra: Live<IptvCheck[]> }) {
   );
 }
 
-type ClientRow = IptvTarget & { clientName: string; active: IptvActive | null };
+type ClientRow = IptvTarget & { clientName: string; active: IptvActive | null; reason: string | null };
 
 const ENTRY: Record<'pppoe' | 'legacy', string> = { pppoe: 'PPPoE', legacy: 'Legacy (DHCP)' };
 
 function Clients({ rows, lastRan }: { rows: ClientRow[]; lastRan: boolean }) {
   const columns: DataTableColumn<ClientRow>[] = [
     { header: 'Cliente', cell: (row) => <strong>{row.clientName}</strong>, sortValue: (row) => row.clientName },
+    { header: 'Serviço', cell: (row) => `#${row.serviceId}`, sortValue: (row) => row.serviceId },
     {
       header: 'Origem',
+      sortValue: (row) => describeSource(row.source).text,
       cell: (row) => {
         const source = describeSource(row.source);
         return source.tone === 'warn' ? <Badge tone="warn">{source.text}</Badge> : source.text;
@@ -61,7 +63,8 @@ function Clients({ rows, lastRan }: { rows: ClientRow[]; lastRan: boolean }) {
         : <Badge tone="neutral">Desligado</Badge>,
       sortValue: (row) => row.active?.via ?? ''
     },
-    { header: 'Endereço', cell: (row) => (row.active?.via ? <code>{row.active.address}</code> : <span className="router-muted">—</span>) }
+    { header: 'Endereço', sortValue: (row) => row.active?.via ? row.active.address : '', cell: (row) => (row.active?.via ? <code>{row.active.address}</code> : <span className="router-muted">—</span>) },
+    { header: 'Atenção', sortValue: (row) => row.reason ?? '', cell: (row) => row.reason ? <Badge tone="warn">{row.reason}</Badge> : <span className="router-muted">—</span> }
   ];
   return (
     <section className="router-findings" aria-label="Clientes com IPTV via VPN">
@@ -70,7 +73,7 @@ function Clients({ rows, lastRan }: { rows: ClientRow[]; lastRan: boolean }) {
         rows={rows}
         rowKey={(row) => row.serviceId}
         columns={columns}
-        gridTemplateColumns="minmax(10rem, 1.2fr) minmax(14rem, 2fr) 9rem 9rem"
+        gridTemplateColumns="minmax(7rem, 1fr) 4rem minmax(10rem, 1.5fr) 7rem 8rem minmax(8rem, 1fr)"
         empty={<EmptyState size="sm" icon={Tv} title="Nenhum serviço com IPTV via VPN" description="Marque o serviço na ficha dele, em Serviços." />}
       />
     </section>
@@ -88,9 +91,9 @@ function ManualEntries({ last }: { last: Extract<IptvSyncResult, { status: 'appl
   ];
   if (rows.length === 0) return null;
   const columns: DataTableColumn<ManualRow>[] = [
-    { header: 'Endereço', cell: (row) => <code>{row.address}</code> },
-    { header: 'Comentário', cell: (row) => row.comment || <span className="router-muted">—</span> },
-    { header: 'Situação', cell: (row) => <Badge tone={row.tone}>{row.kind}</Badge> }
+    { header: 'Endereço', sortValue: (row) => row.address, cell: (row) => <code>{row.address}</code> },
+    { header: 'Comentário', sortValue: (row) => row.comment ?? '', cell: (row) => row.comment || <span className="router-muted">—</span> },
+    { header: 'Situação', sortValue: (row) => row.kind, cell: (row) => <Badge tone={row.tone}>{row.kind}</Badge> }
   ];
   return (
     <section className="router-findings" aria-label="Entradas manuais na lista de origens">
@@ -110,7 +113,7 @@ const diff = (before: string[], after: string[]) => ({
 function LastPass({ last }: { last: IptvSyncResult | null }) {
   if (!last) return <Message tone="neutral">O router ainda não fez nenhuma passagem com o IPTV.</Message>;
   if ('error' in last) return <Message tone="error">A última passagem falhou: {last.error}</Message>;
-  if (last.status === 'idle') return null;
+  if (last.status === 'idle') return <Message tone="neutral">IPTV sem alterações na última passagem.</Message>;
   const users = diff(last.before?.users ?? [], last.users);
   const macs = diff(last.before?.macs ?? [], last.macs);
   const changes = [
@@ -153,16 +156,20 @@ export function IptvPanel({ status, infra, providers, services, isAdmin }: {
   const rows: ClientRow[] = targets.map((t) => ({
     ...t,
     clientName: names.get(t.serviceId) ?? `Serviço ${t.serviceId}`,
-    active: ran?.active.find((a) => a.serviceId === t.serviceId) ?? null
+    active: ran?.active.find((a) => a.serviceId === t.serviceId) ?? null,
+    reason: ran?.missing.find((item) => item.serviceId === t.serviceId)?.reason ?? null
   }));
 
   return (
     <div className="iptv-panel">
       {infra && <Infrastructure infra={infra} />}
+      {status.error && <Message tone="error">{status.error}</Message>}
       <LastPass last={last} />
       <Clients rows={rows} lastRan={Boolean(ran)} />
       {ran && <ManualEntries last={ran} />}
-      <IptvProviders providers={providers.data ?? []} canEdit={isAdmin} onChanged={() => { providers.reload(); status.reload(); }} />
+      {providers.error ? <ErrorRetry message={providers.error} onRetry={providers.reload} />
+        : !providers.data ? <SkeletonList rows={3} />
+        : <IptvProviders providers={providers.data} canEdit={isAdmin} onChanged={() => { providers.reload(); status.reload(); }} />}
     </div>
   );
 }

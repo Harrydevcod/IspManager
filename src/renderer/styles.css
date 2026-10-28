@@ -1388,6 +1388,7 @@ h2 {
 .payment-action-form textarea,
 .client-form input,
 .client-form select,
+.iptv-controls select,
 .client-form textarea,
 .bulk-ip-row input,
 .bulk-ip-filters input,
@@ -1411,6 +1412,7 @@ h2 {
 .payment-action-form textarea:focus-visible,
 .client-form input:focus-visible,
 .client-form select:focus-visible,
+.iptv-controls select:focus-visible,
 .client-form textarea:focus-visible,
 .bulk-ip-row input:focus-visible,
 .bulk-ip-filters input:focus-visible,
@@ -4173,6 +4175,7 @@ label.field-toggle {
 }
 
 .dialog {
+  min-width: 0;
   width: 100%;
   max-width: 520px;
   background: var(--surface);
@@ -4854,9 +4857,21 @@ label.field-toggle {
 }
 
 .iptv-controls .field {
-  min-width: 14rem;
+  flex: 1 1 14rem;
+  min-width: 0;
   max-width: 20rem;
 }
+
+.iptv-controls > .field-toggle { flex: 1 1 18rem; min-width: 0; }
+.iptv-controls .field-toggle > span { min-width: 0; }
+.iptv-controls select { width: 100%; }
+.service-detail > dl,
+.service-detail .technical-item-meta {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+}
+.service-detail dl > div { min-width: 0; }
+.service-detail dd { overflow-wrap: anywhere; }
+.service-detail .technical-item-actions { flex-wrap: wrap; }
 
 .technical-event {
   padding: var(--space-3);
@@ -6266,6 +6281,17 @@ button.danger:disabled {
 
 .settings-form {
   animation: settings-fade 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.settings-form .field,
+.settings-form input {
+  min-width: 0;
+}
+
+.settings-form input { width: 100%; }
+
+@media (max-width: 640px) {
+  .settings-form { grid-template-columns: minmax(0, 1fr); }
 }
 
 .settings-form .whatsapp-template-field {

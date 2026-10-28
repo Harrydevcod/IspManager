@@ -237,7 +237,7 @@ export default function RouterModule() {
         />
       </div>
 
-      <nav ref={tabListRef} className="segmented-tabs" role="tablist" aria-label="Router de gestão do ISP">
+      <nav ref={tabListRef} className="segmented-tabs router-tabs" role="tablist" aria-label="Router de gestão do ISP">
         {TABS.map((item) => {
           const Icon = item.icon;
           const selected = tab === item.id;

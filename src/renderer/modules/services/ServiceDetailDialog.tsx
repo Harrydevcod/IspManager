@@ -206,7 +206,7 @@ export function ServiceDetailDialog({
           : undefined
       }
     >
-      <div className="client-detail">
+      <div className="client-detail service-detail">
       <dl>
         <div><dt>Plano</dt><dd>{service.planName || '-'}</dd></div>
         <div><dt>IP</dt><dd className="detail-ip">{activeIps || '-'}</dd></div>
@@ -378,7 +378,7 @@ export function ServiceDetailDialog({
       </section>
 
       {/* Depois da PPPoE e antes do equipamento: a origem que o router segue sai dos dois. */}
-      <IptvSection service={service} canManage={canManage} onChanged={onIptvChanged} />
+      <IptvSection service={service} canManage={canManage} onChanged={onIptvChanged} assignments={technicalHistory?.assignments} />
 
       <section className="technical-section">
         <header className="technical-section-head">

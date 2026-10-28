@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScanSearch, Tv } from 'lucide-react';
 import { parseCidr } from '../../../shared/ip-range';
 import { Badge, Button, Field, Message, Select, Toggle } from '../../components';
@@ -6,7 +6,7 @@ import {
   IPTV_API, describeSource, describeValidation, iptvRequest,
   type IptvProvider, type IptvStatus, type IptvTarget, type IptvValidateResult, type IptvValidation
 } from '../iptv/iptv-api';
-import type { ServiceRow } from '../../types';
+import type { DeviceAssignment, ServiceRow } from '../../types';
 
 /**
  * A gama LAN de um router de cliente (0089). Só o router tem uma LAN que possa colidir
@@ -32,19 +32,22 @@ type IptvSectionProps = {
   canManage: boolean;
   /** A marca mudou: recarregar a lista de serviços. */
   onChanged: () => void;
+  assignments?: readonly DeviceAssignment[];
 };
 
 /**
  * IPTV via VPN na ficha do serviço (ADR 0021). A origem vem da base, sem tocar no
  * router; só "Validar no router" o lê, e só a pedido.
  */
-export function IptvSection({ service, canManage, onChanged }: IptvSectionProps) {
+export function IptvSection({ service, canManage, onChanged, assignments }: IptvSectionProps) {
   const marked = Boolean(service.iptvVpn);
   const [providers, setProviders] = useState<IptvProvider[]>([]);
   const [target, setTarget] = useState<IptvTarget | null>(null);
   const [validation, setValidation] = useState<IptvValidation | null>(null);
+  const [collisions, setCollisions] = useState<IptvValidateResult['lanCollisions']>([]);
   const [busy, setBusy] = useState<'save' | 'validate' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const validationRevision = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -56,13 +59,18 @@ export function IptvSection({ service, canManage, onChanged }: IptvSectionProps)
 
   useEffect(() => {
     let alive = true;
+    validationRevision.current += 1;
+    setBusy((current) => current === 'validate' ? null : current);
     setValidation(null);
+    setCollisions([]);
+    setError(null);
+    setTarget(null);
     if (!marked) { setTarget(null); return; }
     iptvRequest<IptvStatus>(`${IPTV_API}/status`)
       .then((status) => { if (alive) setTarget(status.targets.find((row) => row.serviceId === service.id) ?? null); })
       .catch((failure: Error) => { if (alive) setError(failure.message); });
-    return () => { alive = false; };
-  }, [marked, service.id, service.iptvProviderId, service.status]);
+    return () => { alive = false; validationRevision.current += 1; };
+  }, [marked, service.id, service.iptvProviderId, service.status, service.pppoeUsername, assignments]);
 
   const save = async (iptvVpn: boolean, iptvProviderId: number | null) => {
     setBusy('save');
@@ -78,15 +86,20 @@ export function IptvSection({ service, canManage, onChanged }: IptvSectionProps)
   };
 
   const validate = async () => {
+    const revision = ++validationRevision.current;
     setBusy('validate');
     setError(null);
+    setValidation(null);
+    setCollisions([]);
     try {
       const result = await iptvRequest<IptvValidateResult>(`${IPTV_API}/validate`);
+      if (revision !== validationRevision.current) return;
       setValidation(result.services.find((row) => row.serviceId === service.id)?.validation ?? null);
+      setCollisions(result.lanCollisions.filter((row) => row.serviceId === service.id));
     } catch (failure) {
-      setError((failure as Error).message);
+      if (revision === validationRevision.current) setError((failure as Error).message);
     } finally {
-      setBusy(null);
+      if (revision === validationRevision.current) setBusy(null);
     }
   };
 
@@ -147,6 +160,7 @@ export function IptvSection({ service, canManage, onChanged }: IptvSectionProps)
         </dl>
       )}
 
+      {collisions.map((collision) => <Message key={`${collision.assignmentId}-${collision.collidesWith}`} tone="warn">A gama LAN {collision.lanCidr} do equipamento {collision.assignmentId} colide com a gama do ISP {collision.collidesWith}. Altere a gama LAN do cliente.</Message>)}
       {error && <Message tone="error">{error}</Message>}
 
       {marked && canManage && service.status === 'active' && (

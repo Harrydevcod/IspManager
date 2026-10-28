@@ -90,10 +90,10 @@ export function EquipmentImportDialog({ onClose, onSaved }: { onClose: () => voi
   }
 
   const columns: DataTableColumn<EquipmentPreview>[] = [
-    { header: 'Linha', cell: (row) => <span>{row.line}</span> },
-    { header: 'Equipamento', cell: (row) => <div className="equipment-import-device"><strong>{row.equipment?.clientName ?? 'Não identificado'}</strong><span>{row.equipment?.clientCode ?? '—'} · ID {row.id ?? 'inválido'}</span><span>{row.equipment?.model ?? 'Atribuição desconhecida'}</span></div> },
-    { header: 'Alterações', cell: (row) => row.changes.length ? <dl className="equipment-import-changes">{row.changes.map((change) => <div key={change.field}><dt>{EQUIPMENT_LABELS[change.field]}</dt><dd><span>{change.before ?? 'Vazio'}</span><span aria-label="passa a"> → </span><strong>{change.after ?? 'Vazio'}</strong></dd></div>)}</dl> : 'Sem alterações' },
-    { header: 'Validação', cell: (row) => row.errors.length ? <div className="equipment-import-errors"><Badge tone="danger">Recusada</Badge>{row.errors.map((message) => <span key={message}>{message}</span>)}</div> : <Badge tone={row.patch ? 'success' : 'neutral'}>{row.patch ? 'Pronta' : 'Sem alterações'}</Badge> }
+    { header: 'Linha', sortValue: (row) => row.line, cell: (row) => <span>{row.line}</span> },
+    { header: 'Equipamento', sortValue: (row) => row.equipment?.clientName ?? '', cell: (row) => <div className="equipment-import-device"><strong>{row.equipment?.clientName ?? 'Não identificado'}</strong><span>{row.equipment?.clientCode ?? '—'} · ID {row.id ?? 'inválido'}</span><span>{row.equipment?.model ?? 'Atribuição desconhecida'}</span></div> },
+    { header: 'Alterações', sortValue: (row) => row.changes.map((change) => EQUIPMENT_LABELS[change.field] + ': ' + (change.after ?? '')).join('; '), cell: (row) => row.changes.length ? <dl className="equipment-import-changes">{row.changes.map((change) => <div key={change.field}><dt>{EQUIPMENT_LABELS[change.field]}</dt><dd><span>{change.before ?? 'Vazio'}</span><span aria-label="passa a"> → </span><strong>{change.after ?? 'Vazio'}</strong></dd></div>)}</dl> : 'Sem alterações' },
+    { header: 'Validação', sortValue: (row) => row.errors.length ? 'Recusada: ' + row.errors.join('; ') : row.patch ? 'Pronta' : 'Sem alterações', cell: (row) => row.errors.length ? <div className="equipment-import-errors"><Badge tone="danger">Recusada</Badge>{row.errors.map((message) => <span key={message}>{message}</span>)}</div> : <Badge tone={row.patch ? 'success' : 'neutral'}>{row.patch ? 'Pronta' : 'Sem alterações'}</Badge> }
   ];
 
   return <Dialog open size="xl" eyebrow="Inventário instalado" title="Importar equipamentos" onClose={busy ? () => undefined : onClose} closeOnBackdrop={!busy}
