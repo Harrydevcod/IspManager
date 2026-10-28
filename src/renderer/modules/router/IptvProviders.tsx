@@ -110,9 +110,10 @@ export function IptvProviders({ providers, canEdit, onChanged }: { providers: Ip
         rowKey={(row) => row.id}
         columns={columns}
         gridTemplateColumns="minmax(10rem, 1.2fr) 7rem 8rem minmax(10rem, 2fr)"
+        actionsWidth="56px"
         actions={canEdit ? (row) => (
-          <Button variant="ghost" size="sm" aria-label={`Editar ${row.name}`} leadingIcon={<Pencil size={14} aria-hidden />} onClick={() => { setEditing(row); setOpen(true); }}>
-            Editar
+          <Button variant="icon" size="sm" title="Editar" aria-label={`Editar ${row.name}`} onClick={() => { setEditing(row); setOpen(true); }}>
+            <Pencil size={16} aria-hidden />
           </Button>
         ) : undefined}
         empty={<EmptyState size="sm" icon={Tv} title="Sem fornecedores" description="Registe um fornecedor para o ISPM manter os servidores dele na lista do router." />}
