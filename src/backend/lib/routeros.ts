@@ -1586,8 +1586,8 @@ export async function listProfiles(transport: RouterTransport): Promise<RouterPr
  * interface-lists, filas, address-lists. É o que os formulários do ISPM oferecem para
  * escolher, em vez de texto livre. Só leitura.
  */
-export async function listDistinct(transport: RouterTransport, table: string, field: string): Promise<string[]> {
-  const raw = await transport({ method: 'GET', path: `${table}?.proplist=${field}` });
+export async function listDistinct(transport: RouterTransport, table: string, field: string, filter = ''): Promise<string[]> {
+  const raw = await transport({ method: 'GET', path: `${table}?${filter ? `${filter}&` : ''}.proplist=${field}` });
   const values = asArray(raw).flatMap((row) => str(row[field]) ?? []);
   return [...new Set(values)].sort((a, b) => a.localeCompare(b));
 }
