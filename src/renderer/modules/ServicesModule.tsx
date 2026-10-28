@@ -1,4 +1,4 @@
-import { ArrowRightLeft, Network, Pencil, Plus, Upload, Wrench } from 'lucide-react';
+import { ArrowRightLeft, KeyRound, Network, Pencil, Plus, Upload, Wrench } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Badge, BulkActionBar, Button, Combobox, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, SecretField, Select, SkeletonList, Textarea, Toggle, WanModeSelect, OperationModeSelect, useConfirm, useToast, type SecretDraft } from '../components';
@@ -12,6 +12,7 @@ import { statusLabel, statusTone } from '../lib/status';
 import type { AudiovisualConfig, Client, DeviceAssignment, ManualServiceEventType, PlanRow, ReturnCondition, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
 import { BulkIpDialog, type ActiveAssignment } from './services/BulkIpDialog';
 import { EquipmentImportDialog } from './services/EquipmentImportDialog';
+import { PppoeMigrationCardsDialog } from './services/PppoeCredentials';
 import { BulkPlanChangeDialog } from './services/BulkPlanChangeDialog';
 import { findReplaceTarget } from './services/findReplaceTarget';
 import { LanCidrField } from './services/IptvSection';
@@ -96,6 +97,7 @@ export function ServicesModule({
   const auth = useAuth();
   const canManageServices = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
   const canRecordTechnical = auth.isAuthBypassed || auth.hasRole('admin', 'operator', 'technician');
+  const canRevealPppoe = auth.isAuthBypassed || auth.hasRole('admin');
   const [services, setServices] = useState<ServiceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -159,6 +161,7 @@ export function ServicesModule({
   const [submitting, setSubmitting] = useState(false);
   const [showBulkIp, setShowBulkIp] = useState(false);
   const [showEquipmentImport, setShowEquipmentImport] = useState(false);
+  const [showMigrationCards, setShowMigrationCards] = useState(false);
   const [deviceMode, setDeviceMode] = useState<'install' | 'share'>('install');
   const [shareableDevices, setShareableDevices] = useState<ActiveAssignment[]>([]);
   const [shareChoice, setShareChoice] = useState('');
@@ -1103,6 +1106,11 @@ export function ServicesModule({
               <Button variant="secondary" leadingIcon={<Network size={16} aria-hidden />} onClick={() => setShowBulkIp(true)}>
                 Identificar equipamentos
               </Button>
+              {canRevealPppoe && (
+                <Button variant="secondary" leadingIcon={<KeyRound size={16} aria-hidden />} onClick={() => setShowMigrationCards(true)}>
+                  Fichas PPPoE
+                </Button>
+              )}
               </>
             ) : undefined}
             primary={canManageServices ? (
@@ -1114,6 +1122,7 @@ export function ServicesModule({
         )}
       </div>
 
+      {showMigrationCards && <PppoeMigrationCardsDialog onClose={() => setShowMigrationCards(false)} />}
       {showEquipmentImport && <EquipmentImportDialog onClose={() => setShowEquipmentImport(false)} onSaved={() => { void loadServices(); }} />}
       {showBulkIp && (
         <BulkIpDialog

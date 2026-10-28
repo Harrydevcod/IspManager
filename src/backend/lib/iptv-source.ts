@@ -14,7 +14,7 @@ export type IptvSource =
   | { kind: 'missing'; reason: string };
 
 /** Modos em que o equipamento faz NAT: o gateway só vê o MAC dele. */
-const NAT_MODES = new Set(['router', 'wisp']);
+export const NAT_MODES = new Set(['router', 'wisp']);
 const ANTENNA_LAYER2 = new Set(['cliente', 'ponte', 'ap', 'repetidor', 'mesh']);
 const ROUTER_LAYER2 = new Set(['ap', 'ponte', 'repetidor', 'mesh']);
 export const ANTENNA_TYPES = new Set(['cpe', 'antena']);
