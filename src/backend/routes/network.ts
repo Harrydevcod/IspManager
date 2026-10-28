@@ -39,7 +39,7 @@ import {
 } from '../lib/routeros';
 import { readRouterLive, readWanInterfaces } from '../lib/router-live';
 import { identifyModel } from '../lib/device-model';
-import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecrets, planActions, runNetworkEnforcement, secretAnchor } from '../lib/network-enforcement';
+import { buildSessionRows, loadDesiredServices, loadNetworkEnforcementState, matchSecrets, planActions, runNetworkEnforcement, runRouterPass, secretAnchor } from '../lib/network-enforcement';
 import { loadAutoSuspensionPreview, runAutomaticSuspension } from '../lib/auto-suspension';
 import {
   loadPppoeCallers,
@@ -281,11 +281,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
     if (isOffNetwork(presence)) return reply.status(409).send({ error: offNetworkReason(presence) });
     try {
       // Na fila das escritas no router: nunca a meio de um lote ou da passagem periódica.
-      return await runExclusive(() => runJob('network_enforcement_manual', () => runNetworkEnforcement(db, {
-        transport: createTransport(config),
-        dryRun: config.dryRun,
-        maxDisables: config.maxDisablesPerRun
-      })));
+      // A mesma passagem do relógio (perfis, secrets, IPTV): o /api/iptv/status lê a última das duas.
+      return await runExclusive(() => runJob('network_enforcement_manual', () => runRouterPass(db, { transport: createTransport(config), config })));
     } catch (err) {
       // Mesma tradução do teste: `connect ECONNREFUSED` não diz a ninguém que
       // o que falta é ligar o www-ssl.

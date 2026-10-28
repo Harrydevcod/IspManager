@@ -185,7 +185,7 @@ export function ServiceDetailDialog({
     <Dialog
       open
       size="xl"
-      eyebrow="Servico"
+      eyebrow="Serviço"
       title={service.clientName}
       onClose={onClose}
       actions={

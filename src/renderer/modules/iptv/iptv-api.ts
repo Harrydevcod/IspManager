@@ -72,13 +72,14 @@ export async function iptvRequest<T>(url: string, init?: { method: 'PUT' | 'POST
 
 type Tone = 'success' | 'danger' | 'warn' | 'neutral' | 'info';
 
-const VIA_LEGACY: Record<IptvLegacy['via'], string> = { antena: 'antena', router: 'router do cliente', aparelho: 'aparelho IPTV' };
+// Com o artigo: "da antena", "do router".
+const VIA_LEGACY: Record<IptvLegacy['via'], string> = { antena: 'da antena', router: 'do router do cliente', aparelho: 'do aparelho IPTV' };
 
 /** A origem que o script segue, numa frase: o que o operador confere no router. */
 export function describeSource(source: IptvSource): { text: string; tone: Tone } {
   if (source.kind === 'missing') return { text: source.reason, tone: 'warn' };
-  if (source.kind === 'mac') return { text: `MAC do ${VIA_LEGACY[source.via]} ${source.mac}`, tone: 'neutral' };
-  const legacy = source.legacy ? `, e o MAC do ${VIA_LEGACY[source.legacy.via]} ${source.legacy.mac} até migrar` : '';
+  if (source.kind === 'mac') return { text: `MAC ${VIA_LEGACY[source.via]} ${source.mac}`, tone: 'neutral' };
+  const legacy = source.legacy ? `, e o MAC ${VIA_LEGACY[source.legacy.via]} ${source.legacy.mac} até migrar` : '';
   return { text: `PPPoE ${source.username}${legacy}`, tone: 'neutral' };
 }
 
