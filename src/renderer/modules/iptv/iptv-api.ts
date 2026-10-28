@@ -7,7 +7,7 @@ export const IPTV_API = 'http://127.0.0.1:3001/api/iptv';
 
 export type IptvLegacy = { mac: string; via: 'antena' | 'router' | 'aparelho' };
 export type IptvSource =
-  | { kind: 'pppoe'; username: string; legacy: IptvLegacy | null }
+  | { kind: 'pppoe'; username: string; legacy: IptvLegacy | null; legacyGap?: string }
   | ({ kind: 'mac' } & IptvLegacy)
   | { kind: 'missing'; reason: string };
 export type IptvTarget = { serviceId: number; source: IptvSource };
@@ -79,6 +79,7 @@ const VIA_LEGACY: Record<IptvLegacy['via'], string> = { antena: 'da antena', rou
 export function describeSource(source: IptvSource): { text: string; tone: Tone } {
   if (source.kind === 'missing') return { text: source.reason, tone: 'warn' };
   if (source.kind === 'mac') return { text: `MAC ${VIA_LEGACY[source.via]} ${source.mac}`, tone: 'neutral' };
+  if (!source.legacy && source.legacyGap) return { text: `PPPoE ${source.username} · sem MAC até migrar: ${source.legacyGap}`, tone: 'warn' };
   const legacy = source.legacy ? `, e o MAC ${VIA_LEGACY[source.legacy.via]} ${source.legacy.mac} até migrar` : '';
   return { text: `PPPoE ${source.username}${legacy}`, tone: 'neutral' };
 }

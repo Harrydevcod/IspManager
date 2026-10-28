@@ -32,7 +32,7 @@ describe('IPTV via VPN', () => {
   test('alvos: utilizador PPPoE ou MAC pela regra, só serviços activos e marcados', () => {
     const targets = loadIptvTargets(seed());
     expect(targets.map((t) => [t.serviceId, t.source])).toEqual([
-      [1, { kind: 'pppoe', username: 'skn014', legacy: null }],
+      [1, { kind: 'pppoe', username: 'skn014', legacy: null, legacyGap: 'Sem antena nem router registados no serviço' }],
       [2, { kind: 'mac', mac: 'BC:07:1D:5E:54:E7', via: 'router' }]
     ]);
   });

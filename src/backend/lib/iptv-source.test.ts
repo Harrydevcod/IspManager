@@ -12,8 +12,10 @@ describe('iptvSource', () => {
     expect(iptvSource({ pppoeUsername: 'skn014' }, [cpe('cliente'), router('router')]))
       .toEqual({ kind: 'pppoe', username: 'skn014', legacy: { mac: 'AA:BB:CC:00:00:02', via: 'router' } });
   });
-  test('PPPoE sem MAC legacy calculável continua válido, só por PPPoE', () => {
-    expect(iptvSource({ pppoeUsername: 'skn014' }, [cpe(null)])).toEqual({ kind: 'pppoe', username: 'skn014', legacy: null });
+  test('PPPoE sem MAC legacy calculável continua válido, só por PPPoE, e diz porquê', () => {
+    // Visto no ensaio em produção: antena sem modo e cliente ainda por migrar ficava sem aviso nenhum.
+    expect(iptvSource({ pppoeUsername: 'skn014' }, [cpe(null)]))
+      .toEqual({ kind: 'pppoe', username: 'skn014', legacy: null, legacyGap: 'Modo da antena por classificar' });
   });
   test.each(['router', 'wisp'])('antena em %s faz NAT: MAC da antena', (mode) => {
     expect(iptvSource({ pppoeUsername: null }, [cpe(mode), router('router')]))
@@ -74,6 +76,6 @@ describe('iptvSource', () => {
       .toEqual({ kind: 'missing', reason: 'Falta o MAC do router do cliente' });
   });
   test('pppoe com MAC legacy inválido: legacy null', () => {
-    expect(iptvSource({ pppoeUsername: 'skn014' }, [cpe('wisp', 'xx')])).toEqual({ kind: 'pppoe', username: 'skn014', legacy: null });
+    expect(iptvSource({ pppoeUsername: 'skn014' }, [cpe('wisp', 'xx')])).toEqual({ kind: 'pppoe', username: 'skn014', legacy: null, legacyGap: 'Falta o MAC da antena' });
   });
 });
