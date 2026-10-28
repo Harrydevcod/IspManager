@@ -1299,8 +1299,8 @@ export function ServicesModule({
       <Dialog
         open={showForm}
         onClose={closeForm}
-        eyebrow={editingService ? 'Editar servico' : 'Novo servico'}
-        title={editingService ? editingService.clientName : 'Servico'}
+        eyebrow={editingService ? 'Editar serviço' : 'Novo serviço'}
+        title={editingService ? editingService.clientName : 'Serviço'}
         size="md"
         actions={
           <>

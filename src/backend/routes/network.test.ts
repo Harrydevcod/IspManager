@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as adminNetwork from '../lib/admin-network';
+import * as routeros from '../lib/routeros';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -271,6 +272,24 @@ describe('presença da rede de gestão', () => {
       } finally {
         db.prepare("DELETE FROM services WHERE pppoe_username = 'rui'").run();
         db.prepare("DELETE FROM clients WHERE client_code = 'C9002'").run();
+      }
+    });
+
+    test('"Reconciliar agora" corre a passagem inteira, com o IPTV, e o resultado chega ao estado do IPTV', async () => {
+      configureRouter();
+      vi.spyOn(adminNetwork, 'detectAdminNetwork').mockResolvedValue({ state: 'onsite', checkedAt: new Date().toISOString(), detail: '' });
+      vi.spyOn(routeros, 'createTransport').mockReturnValue((async () => []) as unknown as routeros.RouterTransport);
+      db.prepare("INSERT INTO clients (client_code, full_name) VALUES ('C9003', 'Eva Lima')").run();
+      db.prepare("INSERT INTO services (client_id, pppoe_username, status, iptv_vpn) VALUES ((SELECT id FROM clients WHERE client_code = 'C9003'), 'eva', 'active', 1)").run();
+      try {
+        const response = await app.inject({ method: 'POST', url: '/api/network/enforce' });
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toMatchObject({ dryRun: true, iptv: { status: 'dry_run', users: ['eva'] }, planProfiles: expect.any(Object) });
+        expect((await app.inject('/api/iptv/status')).json().last).toMatchObject({ status: 'dry_run', users: ['eva'] });
+      } finally {
+        db.prepare("DELETE FROM service_network_state WHERE service_id IN (SELECT id FROM services WHERE pppoe_username = 'eva')").run();
+        db.prepare("DELETE FROM services WHERE pppoe_username = 'eva'").run();
+        db.prepare("DELETE FROM clients WHERE client_code = 'C9003'").run();
       }
     });
 

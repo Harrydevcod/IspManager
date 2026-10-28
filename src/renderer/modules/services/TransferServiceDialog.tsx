@@ -124,7 +124,7 @@ export function TransferServiceDialog({ service, toClient, onClose, onDone }: Tr
     <Dialog
       open
       size="md"
-      eyebrow="Servico"
+      eyebrow="Serviço"
       title="Transferir titular"
       onClose={onClose}
       actions={

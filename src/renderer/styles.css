@@ -4626,6 +4626,7 @@ label.field-toggle {
 }
 .technical-section-head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-end;
   gap: var(--space-3);

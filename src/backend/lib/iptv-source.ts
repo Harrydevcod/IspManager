@@ -8,7 +8,8 @@ export type IptvDevice = { type: string | null; operationMode: string | null; ma
 export type IptvLegacy = { mac: string; via: 'antena' | 'router' | 'aparelho' };
 export type IptvSource =
   /** `legacy` é o MAC que o cliente ainda usa enquanto não migra; o script segue os dois. */
-  | { kind: 'pppoe'; username: string; legacy: IptvLegacy | null }
+  /** `legacyGap`: porque não há MAC legacy. Sem ele, um cliente por migrar fica sem IPTV pelo túnel. */
+  | { kind: 'pppoe'; username: string; legacy: IptvLegacy | null; legacyGap?: string }
   | ({ kind: 'mac' } & IptvLegacy)
   | { kind: 'missing'; reason: string };
 
@@ -38,7 +39,11 @@ const mac = (device: IptvDevice | undefined) => {
 export function iptvSource(service: { pppoeUsername: string | null }, devices: IptvDevice[]): IptvSource {
   const legacy = legacySource(devices);
   const username = service.pppoeUsername?.trim();
-  if (username) return { kind: 'pppoe', username, legacy: legacy.kind === 'mac' ? { mac: legacy.mac, via: legacy.via } : null };
+  if (username) {
+    return legacy.kind === 'mac'
+      ? { kind: 'pppoe', username, legacy: { mac: legacy.mac, via: legacy.via } }
+      : { kind: 'pppoe', username, legacy: null, legacyGap: legacy.reason };
+  }
   return legacy;
 }
 
