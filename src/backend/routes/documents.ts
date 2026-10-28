@@ -1,8 +1,17 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { getSqliteDatabase } from '../db/database';
+import { recordAudit } from '../lib/audit';
 import { PaymentDocumentError, filenamePart, renderPaymentDocumentPdf, renderReceiptPdf } from '../lib/documents';
 import { fiscalQuerySchema, listFiscalDocuments } from '../lib/fiscal-documents';
-import { requireRole } from './auth';
+import { loadMigrationCards, renderMigrationCardsPdf } from '../lib/pppoe-migration-cards';
+import { confirmSessionPassword, requireRole } from './auth';
 import { renderSaleTicketPdf } from '../lib/sale-ticket-documents';
+
+const migrationCardsSchema = z.object({
+  password: z.string().min(1).max(200).optional(),
+  scope: z.enum(['pending', 'all']).default('pending')
+}).strict();
 
 function archivalQuery(query: unknown): boolean {
   return !!query && typeof query === 'object' && 'archive' in query && (query as {archive:unknown}).archive === '1';
@@ -30,6 +39,29 @@ export async function registerDocumentRoutes(app: FastifyInstance) {
     const parsed = fiscalQuerySchema.safeParse(request.query);
     if (!parsed.success) return reply.status(400).send({error:'Filtros inválidos'});
     return listFiscalDocuments(parsed.data);
+  });
+
+  // Fichas do técnico para a migração DHCP → PPPoE, com as senhas em claro. Mesmo
+  // travão da revelação de uma senha (admin e a password outra vez), em lote.
+  app.post('/api/services/pppoe-migration-cards.pdf', { preHandler: requireRole(['admin']) }, async (request, reply) => {
+    const parsed = migrationCardsSchema.safeParse(request.body ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: 'Pedido inválido' });
+    if (!(await confirmSessionPassword(request, reply, parsed.data.password))) return reply;
+
+    const { cards, withoutPassword } = loadMigrationCards(getSqliteDatabase(), parsed.data.scope);
+    const buffer = await renderMigrationCardsPdf(cards);
+    recordAudit(request, {
+      action: 'reveal_pppoe_password_batch',
+      entityType: 'service',
+      summary: `Gerou ${cards.length} fichas de migração PPPoE (${parsed.data.scope === 'pending' ? 'por migrar' : 'todas'})`,
+      metadata: { serviceIds: cards.map((c) => c.serviceId), withoutPassword }
+    });
+    return reply.header('Content-Type', 'application/pdf')
+      .header('Cache-Control', 'no-store')
+      .header('X-Cards-Count', String(cards.length))
+      .header('X-Cards-Without-Password', String(withoutPassword.length))
+      .header('Content-Disposition', 'attachment; filename="fichas-migracao-pppoe.pdf"')
+      .send(buffer);
   });
 
   app.get('/api/payments/:id/sale-ticket.pdf', canIssueDocuments, async (request, reply) => {

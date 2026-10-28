@@ -31,6 +31,12 @@ export function filenameFromContentDisposition(value: string | null): string | n
 export type DownloadResult = { saved: boolean; path?: string; canceled?: boolean; error?: string; filename?: string };
 export type PrintResult = { printed: boolean; canceled?: boolean; error?: string };
 
+/** A mensagem `{ error }` do backend, ou o estado HTTP quando não vem nenhuma. */
+async function responseError(response: Response): Promise<string> {
+  const body = await response.clone().json().catch(() => null) as { error?: unknown } | null;
+  return typeof body?.error === 'string' ? body.error : `HTTP ${response.status}`;
+}
+
 /**
  * Fetches `url` with the auth header and saves the bytes to disk.
  *
@@ -39,9 +45,9 @@ export type PrintResult = { printed: boolean; canceled?: boolean; error?: string
  * com o utilizador a escolher o destino. Fora do Electron (web/sem preload) cai
  * no `blob:` + `<a download>` habitual.
  */
-export async function downloadAuthenticated(url: string, fallbackName: string): Promise<DownloadResult> {
-  const response = await authFetch(url);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+export async function downloadAuthenticated(url: string, fallbackName: string, init?: RequestInit): Promise<DownloadResult> {
+  const response = await authFetch(url, init);
+  if (!response.ok) throw new Error(await responseError(response));
   const blob = await response.blob();
   const filename = filenameFromContentDisposition(response.headers.get('content-disposition')) ?? fallbackName;
 
@@ -70,9 +76,9 @@ export async function downloadAuthenticated(url: string, fallbackName: string): 
 }
 
 /** Fetches `url` with auth and prints it without exposing the token in a URL. */
-export async function printAuthenticated(url: string): Promise<PrintResult> {
-  const response = await authFetch(url);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+export async function printAuthenticated(url: string, init?: RequestInit): Promise<PrintResult> {
+  const response = await authFetch(url, init);
+  if (!response.ok) throw new Error(await responseError(response));
   const blob = await response.blob();
 
   const print = window.ispm?.printDocument;

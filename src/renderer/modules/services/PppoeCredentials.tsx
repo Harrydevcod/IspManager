@@ -1,7 +1,8 @@
 import { Eye, Plus } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
-import { Button, Dialog, Field, Message, useToast } from '../../components';
+import { Button, Dialog, Field, Message, Select, useToast } from '../../components';
 import { authFetch } from '../../lib/auth';
+import { downloadAuthenticated, printAuthenticated } from '../../lib/download';
 
 const API = 'http://127.0.0.1:3001/api/services';
 
@@ -174,5 +175,82 @@ export function RevealPppoePassword({ serviceId }: { serviceId: number }) {
         )}
       </Dialog>
     </>
+  );
+}
+
+/**
+ * Fichas do técnico para migrar os clientes de DHCP para PPPoE: utilizador, senha e
+ * onde os escrever. O PDF leva as senhas em claro, por isso é o mesmo travão da
+ * revelação (admin e a password outra vez) e imprimir não deixa ficheiro.
+ */
+export function PppoeMigrationCardsDialog({ onClose }: { onClose: () => void }) {
+  const { toast } = useToast();
+  const [scope, setScope] = useState<'pending' | 'all'>('pending');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<'print' | 'save' | null>(null);
+
+  async function run(kind: 'print' | 'save') {
+    if (!password) {
+      setError('Confirme a sua password para gerar as fichas.');
+      return;
+    }
+    setBusy(kind);
+    const init = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password, scope }) };
+    // A password nunca fica em memória depois de enviada.
+    setPassword('');
+    try {
+      const url = `${API}/pppoe-migration-cards.pdf`;
+      if (kind === 'print') {
+        const result = await printAuthenticated(url, init);
+        if (result.canceled) return;
+      } else {
+        const result = await downloadAuthenticated(url, 'fichas-migracao-pppoe.pdf', init);
+        if (result.canceled) return;
+      }
+      toast(kind === 'print' ? 'Fichas enviadas para a impressora.' : 'Fichas guardadas. Apague o ficheiro depois da migração.', 'success');
+      onClose();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Não foi possível gerar as fichas.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={() => { if (!busy) onClose(); }}
+      eyebrow="PPPoE"
+      title="Fichas de migração PPPoE"
+      size="sm"
+      closeOnBackdrop={!busy}
+      actions={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={!!busy}>Cancelar</Button>
+          <Button variant="secondary" onClick={() => void run('save')} loading={busy === 'save'} disabled={!!busy}>Guardar PDF</Button>
+          <Button onClick={() => void run('print')} loading={busy === 'print'} disabled={!!busy}>Imprimir</Button>
+        </>
+      }
+    >
+      <form className="client-form" onSubmit={(event) => { event.preventDefault(); void run('print'); }}>
+        <Message tone="warn">
+          As fichas levam as senhas em claro. Prefira imprimir; um PDF guardado apaga-se depois da migração.
+        </Message>
+        <Select label="Serviços" value={scope} onChange={(event) => setScope(event.target.value as 'pending' | 'all')}>
+          <option value="pending">Por migrar (nunca ligados por PPPoE)</option>
+          <option value="all">Todos os activos com PPPoE</option>
+        </Select>
+        <Field
+          label="A sua password"
+          type="password"
+          autoComplete="current-password"
+          hint="Só administradores. A geração fica registada na auditoria."
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          error={error ?? undefined}
+        />
+      </form>
+    </Dialog>
   );
 }
