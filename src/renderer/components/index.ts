@@ -10,6 +10,7 @@ export * from './SecretField';
 export * from './VaultBanner';
 export * from './UpdateStatus';
 export * from './Select';
+export * from './RouterChoice';
 export * from './ModeSelect';
 export * from './WanModeSelect';
 export * from './OperationModeSelect';
