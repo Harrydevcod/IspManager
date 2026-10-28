@@ -352,6 +352,46 @@ describe('finance routes', () => {
     expect(row).toEqual({ wanMode: 'dhcp', operationMode: 'router', lanCidr: '192.168.0.0/24' });
   });
 
+  test('criar o serviço com o router do cliente não o aluga nem tira do stock, e guarda o dia da instalação', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-OWN','Dono','active')`).run();
+    const router = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_cve, rental_fee_cve, is_serialized, stock_total, active)
+      VALUES ('equipamento','router','TP-Link','C6', 4000, 250, 1, 3, 1)
+    `).run();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: {
+        clientId: client.lastInsertRowid, monthlyValueCve: 2500, dueDay: 10, activationDate: '2026-10-01',
+        items: [{ catalogId: router.lastInsertRowid, ownership: 'cliente', installedOn: '2026-10-03' }]
+      }
+    });
+    expect(created.statusCode).toBe(201);
+    const row = db.prepare(`SELECT ownership, rental_fee_cve AS rentalFeeCve, start_date AS startDate, owned_since AS ownedSince
+      FROM service_device_assignments WHERE catalog_id = ?`).get(router.lastInsertRowid);
+    expect(row).toEqual({ ownership: 'cliente', rentalFeeCve: 0, startDate: '2026-10-03', ownedSince: '2026-10-03' });
+    const stock = db.prepare('SELECT stock_total AS n FROM equipment_catalog WHERE id = ?').get(router.lastInsertRowid);
+    expect(stock).toEqual({ n: 3 });
+  });
+
+  test('criar o serviço recusa uma instalação anterior à activação, sem criar nada', async () => {
+    const client = db.prepare(`INSERT INTO clients (client_code, full_name, status) VALUES ('CLT-EARLY','Cedo','active')`).run();
+    const router = db.prepare(`
+      INSERT INTO equipment_catalog (category, type, brand, model, purchase_price_cve, is_serialized, stock_total, active)
+      VALUES ('equipamento','router','TP-Link','C7', 4000, 1, 3, 1)
+    `).run();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/services',
+      payload: {
+        clientId: client.lastInsertRowid, monthlyValueCve: 2500, dueDay: 10, activationDate: '2026-10-10',
+        items: [{ catalogId: router.lastInsertRowid, installedOn: '2026-10-01' }]
+      }
+    });
+    expect(created.statusCode).toBe(400);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM services WHERE client_id = ?').get(client.lastInsertRowid)).toEqual({ n: 0 });
+  });
+
   test('rejects invalid service payloads', async () => {
     const response = await app.inject({
       method: 'POST',

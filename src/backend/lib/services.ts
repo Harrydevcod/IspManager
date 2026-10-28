@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
+import { validateAssignmentDates } from '../../shared/assignment-dates';
 import {
   insertInstallCostsWithinTx,
   installItemsWithinTx,
@@ -21,11 +22,15 @@ const serviceItemSchema = z.object({
   assetTag: z.string().trim().optional().nullable(),
   ipAddress: z.string().trim().optional().nullable(),
   macAddress: z.string().trim().optional().nullable(),
-  // Os mesmos campos de POST /items: sem eles o zod deitava fora os modos e a gama
-  // LAN de quem cria o serviço já com o equipamento.
+  // Os mesmos campos de POST /items: sem eles o zod deitava fora os modos, a gama
+  // LAN, a propriedade e o dia da instalação de quem cria o serviço já com o
+  // equipamento. Sem `ownership`, o router que o cliente trouxe nascia alugado e
+  // entrava na mensalidade.
   wanMode: z.string().trim().max(40).optional().nullable(),
   operationMode: z.string().trim().max(40).optional().nullable(),
   lanCidr: z.string().trim().max(43).optional().nullable(),
+  ownership: z.enum(['isp', 'cliente']).optional().nullable(),
+  installedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data invalida').optional().nullable(),
   technicianId: z.coerce.number().int().positive().optional().nullable(),
   notes: z.string().trim().optional().nullable()
 });
@@ -174,6 +179,11 @@ export function createService(db: Database, data: ServiceInput, userId: number |
     : loadInstallationFeeCve(db);
 
   const items = (data.items ?? []) as ServiceItemInput[];
+  // A mesma regra de POST /items: nada se instala antes de o serviço existir.
+  for (const item of items) {
+    const bad = validateAssignmentDates({ startDate: item.installedOn, activationDate: data.activationDate || null }).errors[0];
+    if (bad) return { ok: false, status: 400, error: bad };
+  }
   if (items.length > 0) {
     const preflight = preflightItems(db, items);
     if (!preflight.ok) {
