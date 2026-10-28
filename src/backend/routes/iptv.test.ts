@@ -210,5 +210,44 @@ describe('iptv routes', () => {
       const response = await app.inject({ method: 'GET', url: '/api/iptv/infra' });
       expect(response.statusCode).toBe(502);
     });
+
+    describe('túneis do router (só leitura)', () => {
+      const off = 'false';
+      const reads: Record<string, unknown[]> = {
+        '/interface?': [{ name: 'tun-a', type: 'wg', running: 'true', disabled: off }, { name: 'tun-b', type: 'ovpn-out', running: 'true', disabled: off }, { name: 'tun-c', type: 'gre-tunnel', running: 'true', disabled: off }],
+        '/interface/wireguard/peers': [{ interface: 'tun-a', 'last-handshake': '30s', disabled: off }],
+        '/ip/route': [{ '.id': '*1', 'routing-table': 'tv', 'dst-address': '0.0.0.0/0', gateway: 'tun-a', active: 'true', disabled: off, distance: '1' }],
+        '/ip/firewall/mangle': [{ action: 'mark-routing', 'new-routing-mark': 'tv', 'src-address-list': 'IPTV-SPLIT', passthrough: 'false', disabled: off }],
+        '/ip/firewall/filter': [{ action: 'accept', 'src-address-list': 'IPTV-SPLIT', 'out-interface-list': 'TUNEIS', disabled: off }],
+        '/ip/firewall/nat': [{ action: 'masquerade', 'out-interface-list': 'TUNEIS', disabled: off }],
+        '/interface/list/member': [{ list: 'TUNEIS', interface: 'tun-a', disabled: off }, { list: 'TUNEIS', interface: 'tun-b', disabled: off }]
+      };
+      const writes: unknown[] = [];
+      const onsite = () => {
+        writes.length = 0;
+        vi.spyOn(routeros, 'readRouterConfig').mockReturnValue(config);
+        vi.spyOn(adminNetwork, 'detectAdminNetwork').mockResolvedValue({ state: 'onsite', checkedAt: new Date().toISOString(), detail: '' });
+        vi.spyOn(routeros, 'createTransport').mockReturnValue((async (request: routeros.RouterRequest) => {
+          if (request.method !== 'GET') { writes.push(request); return null; }
+          const key = Object.keys(reads).sort((a, b) => b.length - a.length).find((k) => request.path.startsWith(k));
+          return key ? reads[key] : [];
+        }) as routeros.RouterTransport);
+      };
+      test('lista os túneis do router com o nome que lá têm, o que está em uso e o que lhes falta, sem escrever nada', async () => {
+        onsite();
+        const response = await app.inject({ method: 'GET', url: '/api/iptv/tunnels' });
+        expect(response.statusCode).toBe(200);
+        const body = response.json() as { tunnels: Array<{ name: string; inUse: boolean; ready: boolean; reasons: string[] }> };
+        expect(body.tunnels.map((t) => [t.name, t.inUse, t.ready])).toEqual([['tun-a', true, true], ['tun-b', false, true], ['tun-c', false, false]]);
+        expect(body.tunnels[2].reasons).toEqual(['Sem NAT pelo túnel', 'Sem filtro de saída da lista pelo túnel']);
+        expect(writes).toEqual([]);
+      });
+
+      test('fora da rede de gestão dá 409', async () => {
+        vi.spyOn(routeros, 'readRouterConfig').mockReturnValue(config);
+        vi.spyOn(adminNetwork, 'detectAdminNetwork').mockResolvedValue({ state: 'offsite', checkedAt: new Date().toISOString(), detail: 'O router não respondeu.' });
+        expect((await app.inject({ method: 'GET', url: '/api/iptv/tunnels' })).statusCode).toBe(409);
+      });
+    });
   });
 });

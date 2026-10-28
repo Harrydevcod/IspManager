@@ -43,6 +43,7 @@ describe('colunas ordenáveis', () => {
       'router/ConfigBackups.tsx',
       'router/IptvPanel.tsx',
       'router/IptvProviders.tsx',
+      'router/IptvTunnels.tsx',
       'router/Reconciliation.tsx',
       'router/RouterTables.tsx',
       'services/BulkPlanChangeDialog.tsx',
