@@ -3,7 +3,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { RouterChoice, type RouterOptionLists, type RouterOptions } from './RouterChoice';
+import { RouterChoice, RouterOptionsNotice, type RouterOptionLists, type RouterOptions } from './RouterChoice';
 
 vi.mock('../lib/auth', () => ({ authFetch: vi.fn() }));
 
@@ -69,11 +69,14 @@ describe('RouterChoice', () => {
     expect(container.textContent).toContain('Não há pools no router');
   });
 
-  test('router indisponível: fica o valor gravado, só para ler, com a razão', () => {
+  test('router indisponível: fica o valor gravado, só para ler; o motivo vai num aviso único', () => {
     render('pool-a', { status: 'unavailable', reason: 'Fora da rede de gestão.' });
     expect(select().disabled).toBe(true);
     expect(select().value).toBe('pool-a');
-    expect(container.textContent).toContain('Fora da rede de gestão.');
+    expect(container.textContent).toContain('Sem ligação ao router: fica o valor gravado.');
+    expect(container.textContent).not.toContain('Fora da rede de gestão.');
     expect(container.querySelector('input')).toBeNull();
+    act(() => { root.render(<RouterOptionsNotice options={{ status: 'unavailable', reason: 'Fora da rede de gestão.' }} />); });
+    expect(container.textContent).toContain('Fora da rede de gestão.');
   });
 });

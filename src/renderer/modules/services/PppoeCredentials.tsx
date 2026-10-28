@@ -237,11 +237,13 @@ export function PppoeMigrationCardsDialog({ onClose }: { onClose: () => void }) 
         <Message tone="warn">
           As fichas levam as senhas em claro. Prefira imprimir; um PDF guardado apaga-se depois da migração.
         </Message>
-        <Select label="Serviços" value={scope} onChange={(event) => setScope(event.target.value as 'pending' | 'all')}>
-          <option value="pending">Por migrar (nunca ligados por PPPoE)</option>
-          <option value="all">Todos os activos com PPPoE</option>
+        <Select wide label="Serviços" value={scope} onChange={(event) => setScope(event.target.value as 'pending' | 'all')}
+          hint={scope === 'pending' ? 'Os que nunca ligaram por PPPoE.' : 'Todos os activos com PPPoE.'}>
+          <option value="pending">Por migrar</option>
+          <option value="all">Todos</option>
         </Select>
         <Field
+          wide
           label="A sua password"
           type="password"
           autoComplete="current-password"

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { authFetch } from '../lib/auth';
+import { Message } from './Message';
 import { Select } from './Select';
 
 export type RouterOptionLists = {
@@ -55,7 +56,8 @@ type RouterChoiceProps = {
 
 /**
  * Um valor que existe no router escolhe-se, nunca se escreve: várias opções dão uma lista,
- * uma só vem preenchida, e sem router fica o valor gravado, só para ler.
+ * uma só vem preenchida, e sem router fica o valor gravado, só para ler. O motivo mostra-o
+ * quem tem vários destes campos, uma vez só (`RouterOptionsNotice`).
  */
 export function RouterChoice({ label, value, onChange, options, list, noun, emptyLabel, hint }: RouterChoiceProps) {
   const values = options.status === 'ready' ? options[list] : [];
@@ -68,7 +70,7 @@ export function RouterChoice({ label, value, onChange, options, list, noun, empt
   if (options.status !== 'ready') {
     return (
       <Select label={label} value={value} disabled
-        hint={options.status === 'loading' ? 'A ler do router…' : `${options.reason} O valor gravado mantém-se.`}>
+        hint={options.status === 'loading' ? 'A ler do router…' : 'Sem ligação ao router: fica o valor gravado.'}>
         <option value={value}>{value || emptyLabel || '—'}</option>
       </Select>
     );
@@ -86,4 +88,10 @@ export function RouterChoice({ label, value, onChange, options, list, noun, empt
       {values.map((option) => <option key={option} value={option}>{option}</option>)}
     </Select>
   );
+}
+
+/** O motivo de os campos do router estarem só para leitura, uma vez por ecrã. */
+export function RouterOptionsNotice({ options }: { options: RouterOptions }) {
+  if (options.status !== 'unavailable') return null;
+  return <Message tone="warn">{options.reason} Os campos que vêm do router ficam só para leitura até o ISPM o alcançar.</Message>;
 }

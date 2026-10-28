@@ -1,5 +1,5 @@
 import { AlertTriangle, Check, Minus, Radar, RefreshCw, Router, ShieldCheck, X } from 'lucide-react';
-import { Button, DataTable, Field, Message, RouterChoice, SecretField, Toggle, useRouterOptions, type DataTableColumn, type SecretDraft } from '../../components';
+import { Button, DataTable, Field, Message, RouterChoice, RouterOptionsNotice, SecretField, Toggle, useRouterOptions, type DataTableColumn, type SecretDraft } from '../../components';
 import { formatCve, formatPtDate } from '../../lib/format';
 import { PlanNetworkFields } from './PlanNetworkFields';
 import type { SettingsFormState, ToggleField, UpdateField } from './settingsForm';
@@ -276,6 +276,7 @@ export function NetworkTab({
             onChange={(event) => onUpdate('routerosMaxDisablesPerRun', event.target.value)}
             hint="Trava da reconciliação: se uma passagem quiser cortar mais, não corta nenhum."
           />
+          <RouterOptionsNotice options={routerOptions} />
           <RouterChoice
             label="Perfil-base dos planos"
             value={form.routerosBaseProfile}

@@ -458,7 +458,8 @@ export async function registerNetworkRoutes(app: FastifyInstance) {
         listProfiles(transport),
         listIpAddresses(transport),
         listDistinct(transport, '/ip/pool', 'name'),
-        listDistinct(transport, '/interface/list', 'name'),
+        // As de fábrica (all, none, dynamic, static) não são listas de clientes.
+        listDistinct(transport, '/interface/list', 'name', 'builtin=no'),
         listDistinct(transport, '/queue/simple', 'name'),
         listDistinct(transport, '/queue/tree', 'name'),
         listDistinct(transport, '/ip/firewall/address-list', 'list')
