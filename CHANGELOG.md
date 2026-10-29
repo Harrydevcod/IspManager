@@ -6,6 +6,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+## [2.41](https://github.com/Harrydevcod/IspManager/releases/tag/v2.41.0) — 2026-10-29
+
 ### Adicionado
 - **Catálogo de equipamentos na Topologia.** "Novo equipamento" abre agora um painel ao lado do mapa, em vez de ir logo para o formulário. O painel também abre com a tecla `D` ou com um duplo clique no fundo do mapa.
   - Cada modelo tem um desenho próprio, conforme o tipo: router, switch, CPE, prato, setorial, ponto de acesso, Starlink.
