@@ -159,10 +159,12 @@ function NodeSelectControl({
 }: Pick<TopologyNodeContentProps, 'node' | 'branchCount' | 'routerDeviceId' | 'onSelect'>) {
   const wanMode = nodeWanMode(node);
   const operationMode = nodeOperationMode(node);
+  // Sem `nodrag`: o cartão ocupa o nó inteiro, e é por ele que se arrasta (0090).
+  // O React Flow só conta como arrasto o que passa do limiar, por isso o clique continua a escolher.
   return (
     <Button
       variant="ghost"
-      className="topology-node-select nodrag nopan"
+      className="topology-node-select nopan"
       data-topology-select
       aria-label={`Selecionar ${node.label}`}
       onClick={onSelect}

@@ -1076,3 +1076,47 @@ describe('estado vivo e o endereço a que pertence', () => {
     db.prepare('DELETE FROM network_probe_state').run();
   });
 });
+
+describe('posições do mapa', () => {
+  const put = (payload: Record<string, unknown>) => app.inject({ method: 'PUT', url: '/api/topology/positions', payload });
+  const get = (direction: string) => app.inject({ method: 'GET', url: `/api/topology/positions?direction=${direction}` });
+
+  beforeEach(() => { db.prepare('DELETE FROM topology_positions').run(); });
+
+  test('guarda por direção, atualiza no lugar e null devolve o nó ao desenho automático', async () => {
+    expect((await put({ direction: 'TB', positions: [
+      { nodeKey: 'backbone:3', x: 10, y: 20 },
+      { nodeKey: 'root:isp', x: 0, y: -40.5 }
+    ] })).statusCode).toBe(200);
+    await put({ direction: 'LR', positions: [{ nodeKey: 'backbone:3', x: 900, y: 1 }] });
+    await put({ direction: 'TB', positions: [{ nodeKey: 'backbone:3', x: 11, y: 22 }] });
+
+    expect((await get('TB')).json().positions).toEqual(expect.arrayContaining([
+      { nodeKey: 'backbone:3', x: 11, y: 22 },
+      { nodeKey: 'root:isp', x: 0, y: -40.5 }
+    ]));
+    expect((await get('LR')).json().positions).toEqual([{ nodeKey: 'backbone:3', x: 900, y: 1 }]);
+
+    await put({ direction: 'TB', positions: [{ nodeKey: 'root:isp', x: null, y: null }] });
+    expect((await get('TB')).json().positions).toEqual([{ nodeKey: 'backbone:3', x: 11, y: 22 }]);
+  });
+
+  test('recusa chaves e coordenadas que não são de um nó', async () => {
+    expect((await put({ direction: 'TB', positions: [{ nodeKey: "x'; DROP", x: 1, y: 1 }] })).statusCode).toBe(400);
+    expect((await put({ direction: 'TB', positions: [{ nodeKey: 'backbone:1', x: 1, y: null }] })).statusCode).toBe(400);
+    expect((await put({ direction: 'XX', positions: [{ nodeKey: 'backbone:1', x: 1, y: 1 }] })).statusCode).toBe(400);
+    expect((await get('XX')).statusCode).toBe(400);
+  });
+
+  test('Reorganizar apaga só a direção pedida e fica na auditoria', async () => {
+    await put({ direction: 'TB', positions: [{ nodeKey: 'backbone:3', x: 1, y: 2 }, { nodeKey: 'backbone:4', x: 3, y: 4 }] });
+    await put({ direction: 'LR', positions: [{ nodeKey: 'backbone:3', x: 5, y: 6 }] });
+
+    const response = await app.inject({ method: 'DELETE', url: '/api/topology/positions?direction=TB' });
+    expect(response.json()).toEqual({ removed: 2 });
+    expect((await get('TB')).json().positions).toEqual([]);
+    expect((await get('LR')).json().positions).toHaveLength(1);
+    const audit = db.prepare("SELECT metadata_json AS metadata FROM audit_logs WHERE action = 'topology.layout.reset' ORDER BY id DESC").get() as { metadata: string };
+    expect(JSON.parse(audit.metadata)).toEqual({ direction: 'TB', removed: 2 });
+  });
+});
