@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { BackboneDeviceSummary, BackboneWriteInput } from '../../../shared/backbone';
+import type { EquipmentPreset } from '../../../shared/equipment-presets';
 import { useToast } from '../../components';
 import { useAuth } from '../../lib/auth';
 import { createBackboneApi, type BackboneCatalogOption } from './backbone-api';
 import { connectBackboneUpstream, disconnectBackboneUpstream } from './backbone-linking';
+import type { BackbonePrefill } from './BackboneWorkspace';
 
 /** O suficiente para o campo "Alimentado por" desta rede sem paginar. */
 const UPSTREAM_PAGE_SIZE = 100;
@@ -24,6 +26,9 @@ export function useMapAuthoring(onMutation: () => void) {
   const canManage = auth.isAuthBypassed || auth.hasRole('admin', 'operator');
 
   const [editorOpen, setEditorOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  // O que a paleta escolheu: o modelo e, se foi largado em cima de um, o montante.
+  const [prefill, setPrefill] = useState<BackbonePrefill | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [catalogs, setCatalogs] = useState<BackboneCatalogOption[]>([]);
@@ -55,17 +60,41 @@ export function useMapAuthoring(onMutation: () => void) {
     }
   }, [api]);
 
-  // Só quando o diálogo abre: no arranque do mapa estes pedidos não servem nada.
+  // Só quando a paleta ou o diálogo abrem: no arranque do mapa estes pedidos não servem nada.
+  useEffect(() => {
+    if (paletteOpen) void loadCatalogs();
+  }, [paletteOpen, loadCatalogs]);
   useEffect(() => {
     if (!editorOpen) return;
     void loadCatalogs();
     void loadUpstreamOptions();
   }, [editorOpen, loadCatalogs, loadUpstreamOptions]);
 
-  const openEditor = useCallback(() => {
+  const openEditor = useCallback((seed: BackbonePrefill | null = null) => {
     setError(null);
+    setPrefill(seed);
     setEditorOpen(true);
   }, []);
+
+  /** Um cartão da paleta escolhido: o formulário de sempre, já com o modelo (e o montante). */
+  const pickCatalog = useCallback((catalogId: number, upstreamDeviceId: number | null = null) => {
+    setPaletteOpen(false);
+    openEditor({ catalogId, upstreamDeviceIds: upstreamDeviceId ? [upstreamDeviceId] : [] });
+  }, [openEditor]);
+
+  const togglePalette = useCallback(() => setPaletteOpen((open) => !open), []);
+
+  const createCatalog = useCallback(async (input: EquipmentPreset) => {
+    try {
+      await api.createCatalog(input);
+      toast(`${[input.brand, input.model].filter(Boolean).join(' ')} adicionado ao catálogo`, 'success');
+      await loadCatalogs();
+      return true;
+    } catch (createError) {
+      toast(message(createError), 'error');
+      return false;
+    }
+  }, [api, loadCatalogs, toast]);
 
   const createDevice = useCallback(async (input: BackboneWriteInput) => {
     setPending(true);
@@ -105,6 +134,8 @@ export function useMapAuthoring(onMutation: () => void) {
   return {
     canManage,
     editorOpen,
+    paletteOpen,
+    prefill,
     pending,
     error,
     catalogs,
@@ -112,6 +143,11 @@ export function useMapAuthoring(onMutation: () => void) {
     catalogError,
     upstreamOptions,
     openEditor,
+    openPalette: () => setPaletteOpen(true),
+    closePalette: () => setPaletteOpen(false),
+    togglePalette,
+    pickCatalog,
+    createCatalog,
     closeEditor: () => setEditorOpen(false),
     retryCatalogs: () => { void loadCatalogs(); },
     createDevice,

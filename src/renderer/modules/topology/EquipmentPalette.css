@@ -1,0 +1,170 @@
+/* Paleta de equipamentos: um painel sobre o lado direito do canvas, por cima do
+   mapa e abaixo dos diálogos. Fica dentro do `.topology-canvas-shell`, por isso o
+   arrasto de um cartão até ao mapa nunca sai da mesma caixa. */
+.equipment-palette {
+  position: absolute;
+  inset: var(--space-2) var(--space-2) var(--space-2) auto;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  width: min(20rem, calc(100% - var(--space-4)));
+  border: 1px solid var(--topology-line);
+  border-radius: var(--r2);
+  background: var(--topology-surface);
+  box-shadow: var(--shadow-2);
+  animation: equipment-palette-in var(--motion-fast) ease-out;
+}
+
+@keyframes equipment-palette-in {
+  from { opacity: 0; transform: translateX(var(--space-2)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .equipment-palette { animation: none; }
+}
+
+.equipment-palette-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2-5) var(--space-3) var(--space-1-5);
+}
+
+.equipment-palette-head h2 {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.equipment-palette-search {
+  margin: 0 var(--space-3);
+}
+
+.equipment-palette-search input { width: 100%; }
+
+.equipment-palette-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+  padding: var(--space-2-5) var(--space-3) var(--space-2);
+}
+
+.equipment-palette-types button {
+  padding: var(--space-1) var(--space-2-5);
+  border: 1px solid var(--topology-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--topology-muted);
+  font-size: var(--fs-xs);
+}
+
+.equipment-palette-types button[aria-pressed='true'] {
+  border-color: var(--topology-accent);
+  background: color-mix(in oklch, var(--topology-accent) 16%, transparent);
+  color: var(--text);
+}
+
+.equipment-palette-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--space-2) var(--space-2);
+}
+
+.equipment-palette-body section + section { margin-top: var(--space-2); }
+
+.equipment-palette-body h3 {
+  margin: var(--space-2) var(--space-1) var(--space-1-5);
+  color: var(--topology-muted);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.equipment-palette-note {
+  margin: var(--space-2) var(--space-1);
+  color: var(--topology-muted);
+  font-size: var(--fs-xs);
+}
+
+.equipment-palette .equipment-card {
+  justify-content: flex-start;
+  height: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--r1);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: grab;
+}
+
+button.equipment-card:hover,
+button.equipment-card:focus-visible {
+  border-color: var(--topology-line);
+  background: var(--topology-raised);
+  outline: none;
+}
+
+button.equipment-card:active { cursor: grabbing; }
+
+.equipment-card .device-art {
+  flex: none;
+  padding: var(--space-1);
+  border-radius: var(--r1);
+  background: color-mix(in oklch, var(--topology-accent) 10%, var(--topology-raised));
+  color: var(--topology-accent);
+}
+
+.equipment-card-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 0.1rem;
+}
+
+.equipment-card-text strong,
+.equipment-card-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.equipment-card-text strong { font-size: var(--fs-sm); font-weight: 550; }
+.equipment-card-text small { color: var(--topology-muted); font-size: var(--fs-xs); }
+
+/* O stock e as unidades na rede só aparecem quando o cartão tem atenção: é a
+   pré-visualização antes de escolher, sem tirar espaço à lista. */
+.equipment-card-meta { display: none; }
+button.equipment-card:hover .equipment-card-meta,
+button.equipment-card:focus-visible .equipment-card-meta { display: block; }
+
+.equipment-card[data-stock='empty'] .equipment-card-meta {
+  display: block;
+  color: var(--warn);
+}
+
+.equipment-card-preset { cursor: default; }
+.equipment-card-preset .device-art { color: var(--topology-muted); }
+
+.equipment-palette-foot {
+  padding: var(--space-2) var(--space-3) var(--space-2-5);
+  border-top: 1px solid var(--topology-line);
+}
+
+.equipment-palette-custom {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.equipment-palette-custom-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}

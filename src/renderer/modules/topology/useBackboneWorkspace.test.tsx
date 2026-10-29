@@ -44,6 +44,7 @@ function api(overrides: Partial<BackboneApi> = {}): BackboneApi {
     listCatalogs: vi.fn(async () => [
       { id: 3, brand: 'Ubiquiti', model: 'Rocket', type: 'antena' }
     ]),
+    createCatalog: vi.fn(async () => ({ id: 4 })),
     listBackbones: vi.fn(async () => page([backbone])),
     listAssignments: vi.fn(async () => page([assignment])),
     getBackbone: vi.fn(async () => detail),

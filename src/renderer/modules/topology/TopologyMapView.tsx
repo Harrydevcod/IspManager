@@ -17,6 +17,7 @@ import { createBackboneApi } from './backbone-api';
 import { useTopologyLive } from './useTopologyLive';
 import { Button, EmptyState } from '../../components';
 import { BackboneEditorDialog } from './BackboneDialogs';
+import { EquipmentPalette } from './EquipmentPalette';
 import { TopologyCanvas, type TopologyCanvasHandle } from './TopologyCanvas';
 import { TopologyInspector } from './TopologyInspector';
 import type { TopologyCanvasNode } from './TopologyNodes';
@@ -348,6 +349,22 @@ function useCanvasEffects(
   }, [active, setSelectedNode]);
 }
 
+/** `D` abre e fecha a paleta de equipamentos, fora dos campos de texto. */
+function usePaletteShortcut(enabled: boolean, toggle: () => void) {
+  useEffect(() => {
+    if (!enabled) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'd' || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      event.preventDefault();
+      toggle();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [enabled, toggle]);
+}
+
 /**
  * O mapa não pode mostrar uma fotografia velha da rede. Recarrega-se quando a
  * outra aba avisa que mexeu em alguma coisa (`revision`) e quando volta a ficar
@@ -574,7 +591,20 @@ function TopologyStage({
             minimapVisible={minimapVisible}
             connectable={authoring.canManage}
             onConnectNodes={authoring.connectNodes}
+            onPaneDoubleClick={authoring.canManage ? authoring.openPalette : undefined}
+            onDropCatalog={authoring.canManage ? authoring.pickCatalog : undefined}
           />
+          {authoring.canManage && authoring.paletteOpen && (
+            <EquipmentPalette
+              catalogs={authoring.catalogs}
+              loading={authoring.catalogLoading}
+              error={authoring.catalogError}
+              onRetry={authoring.retryCatalogs}
+              onPick={(catalogId) => authoring.pickCatalog(catalogId)}
+              onCreateCatalog={authoring.createCatalog}
+              onClose={authoring.closePalette}
+            />
+          )}
           {/* Os controlos saem daqui por portal para a tira das abas: em cima do
               canvas tapavam a raiz do grafo, que é onde o dagre começa a desenhar.
               O estado deles continua neste componente — o portal move o DOM. */}
@@ -675,6 +705,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
     props.focusBackboneDeviceId,
     props.onFocusHandled
   );
+  usePaletteShortcut(props.active && authoring.canManage, authoring.togglePalette);
   useCanvasEffects(
     canvasRef,
     nodes,
@@ -740,7 +771,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
         focusedBackboneId={workspace.focusedBackboneId}
         onFocusBackbone={workspace.focusBackbone}
         canManage={authoring.canManage}
-        onCreateDevice={authoring.openEditor}
+        onCreateDevice={authoring.togglePalette}
         onQueryChange={workspace.setQuery}
         onResultSelect={(result) => { void workspace.selectSearchResult(result); }}
         onFiltersChange={workspace.setFilters}
@@ -772,6 +803,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
         <BackboneEditorDialog
           open={authoring.editorOpen}
           backbone={null}
+          prefill={authoring.prefill}
           pending={authoring.pending}
           error={authoring.error}
           catalogs={authoring.catalogs}
