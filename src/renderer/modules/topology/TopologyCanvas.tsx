@@ -47,6 +47,8 @@ type TopologyCanvasProps = {
   onNodesChange?: (changes: NodeChange<TopologyCanvasNode>[]) => void;
   onNodeDragStart?: (nodes: TopologyCanvasNode[]) => void;
   onNodeDragStop?: (nodes: TopologyCanvasNode[]) => void;
+  /** Clicar numa ligação — abre as propriedades dela. */
+  onEdgeClick?: (edgeId: string) => void;
 };
 
 function acceptsCatalog(event: DragEvent<HTMLElement>): boolean {
@@ -134,7 +136,8 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
     draggable = false,
     onNodesChange,
     onNodeDragStart,
-    onNodeDragStop
+    onNodeDragStop,
+    onEdgeClick
   }, ref) {
     useCanvasControls(ref, nodes);
 
@@ -173,6 +176,7 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
           onNodesChange={onNodesChange}
           onNodeDragStart={(_event, _node, dragged) => onNodeDragStart?.(dragged)}
           onNodeDragStop={(_event, _node, dragged) => onNodeDragStop?.(dragged)}
+          onEdgeClick={onEdgeClick && ((_event, edge) => onEdgeClick(edge.id))}
           nodesConnectable={connectable}
           isValidConnection={(connection) => isValidBackboneConnection(
             connection.source,
@@ -224,6 +228,8 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
             <span><i data-tone="live-up" /> Responde</span>
             <span><i data-tone="live-down" /> Não responde</span>
             <span><b /> Ligação definida</span>
+            <span><b data-medium="fibra" /> Fibra</span>
+            <span><b data-medium="radio" /> Rádio</span>
             <small>As linhas são administrativas. O ponto no canto é a última leitura da sonda; sem ponto, ninguém mediu.</small>
           </div>
         )}

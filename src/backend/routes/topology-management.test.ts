@@ -12,6 +12,8 @@ let closeDatabaseForTests: () => void;
 
 const TABLES_TO_CLEAR = [
   'backbone_assignment_links',
+  // Antes das unidades: as ligações apontam para elas com FK RESTRICT.
+  'backbone_links',
   'backbone_devices',
   'service_device_shares',
   'service_device_assignments',
@@ -276,5 +278,67 @@ describe('topology management routes', () => {
     expect((await app.inject({
       method: 'DELETE', url: `/api/topology/assignments/${assignmentId}/backbone`, payload: { reason: null }
     })).statusCode).toBe(404);
+  });
+});
+
+describe('propriedades das ligações (0091)', () => {
+  async function chain() {
+    const catalogId = insertCatalog('Rocket Prism 5AC', 10);
+    const create = async (name: string, upstreamDeviceIds: number[]) => (await app.inject({
+      method: 'POST', url: '/api/topology/backbones',
+      payload: { ...validBackbone(catalogId, name), serialNumber: null, assetTag: null, ipAddress: null, macAddress: null, upstreamDeviceIds }
+    })).json() as { id: number; updatedAt: string };
+    const top = await create('Torre', []);
+    const other = await create('Outra torre', []);
+    const leaf = await create('Repetidor', [top.id]);
+    return { catalogId, top, other, leaf };
+  }
+  const describeLink = (deviceId: number, upstreamDeviceId: number, payload: Record<string, unknown>) => app.inject({
+    method: 'PUT', url: `/api/topology/links/${deviceId}/${upstreamDeviceId}`, payload
+  });
+  const fullLink = {
+    medium: 'ptp', fromPort: 'wlan1', toPort: ' ', frequencyMhz: 5800, capacityMbps: 450, notes: 'Prato a 3 km'
+  };
+
+  test('descreve a ligação, aparece no mapa e fica na auditoria', async () => {
+    const { top, leaf } = await chain();
+    const response = await describeLink(leaf.id, top.id, fullLink);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ ...fullLink, toPort: null });
+
+    const snapshot = (await app.inject({ method: 'GET', url: '/api/topology' })).json() as {
+      edges: Array<{ id: string; link?: unknown }>;
+    };
+    expect(snapshot.edges.find((edge) => edge.id === `core-link:backbone:${top.id}:backbone:${leaf.id}`)?.link)
+      .toEqual({ ...fullLink, toPort: null });
+    // A raiz é lógica: as ligações a partir dela não têm propriedades.
+    expect(snapshot.edges.find((edge) => edge.id === `core-link:root:isp:backbone:${top.id}`)?.link).toBeUndefined();
+
+    const audit = db.prepare("SELECT entity_id AS entityId FROM audit_logs WHERE action = 'topology.link.update'").get() as { entityId: string };
+    expect(audit.entityId).toBe(`${leaf.id}:${top.id}`);
+  });
+
+  test('recusa o que não é uma ligação existente ou um meio conhecido', async () => {
+    const { top, other, leaf } = await chain();
+    expect((await describeLink(leaf.id, other.id, fullLink)).statusCode).toBe(404);
+    expect((await describeLink(leaf.id, top.id, { ...fullLink, medium: 'satelite' })).statusCode).toBe(400);
+    expect((await describeLink(leaf.id, top.id, { ...fullLink, frequencyMhz: -1 })).statusCode).toBe(400);
+  });
+
+  test('mudar as alimentações não apaga as propriedades das ligações que ficam', async () => {
+    const { catalogId, top, other, leaf } = await chain();
+    await describeLink(leaf.id, top.id, fullLink);
+    const detail = (await app.inject({ method: 'GET', url: `/api/topology/backbones/${leaf.id}` })).json() as { updatedAt: string };
+    const update = await app.inject({
+      method: 'PUT', url: `/api/topology/backbones/${leaf.id}`,
+      payload: {
+        ...validBackbone(catalogId, 'Repetidor'), serialNumber: null, assetTag: null, ipAddress: null, macAddress: null,
+        upstreamDeviceIds: [top.id, other.id], expectedUpdatedAt: detail.updatedAt
+      }
+    });
+    expect(update.statusCode).toBe(200);
+    const rows = db.prepare('SELECT upstream_device_id AS up, medium FROM backbone_links WHERE device_id = ? ORDER BY up')
+      .all(leaf.id) as Array<{ up: number; medium: string | null }>;
+    expect(rows).toEqual([{ up: top.id, medium: 'ptp' }, { up: other.id, medium: null }]);
   });
 });

@@ -7,6 +7,7 @@ import type {
   BackboneListQuery,
   BackboneWriteInput
 } from '../../../shared/backbone';
+import type { TopologyLinkProperties } from '../../../shared/topology';
 import { authFetch } from '../../lib/auth';
 
 const API_BASE = 'http://127.0.0.1:3001';
@@ -109,6 +110,10 @@ export function createBackboneApi(fetcher: BackboneFetcher = authFetch) {
     ),
     updateBackbone: (id: number, input: BackboneWriteInput) => jsonMutation<BackboneDeviceDetail>(
       fetcher, `${API_BASE}/api/topology/backbones/${id}`, 'PUT', input
+    ),
+    /** Descreve uma ligação que já existe (0091): meio, portas, frequência, capacidade. */
+    updateLink: (deviceId: number, upstreamDeviceId: number, link: TopologyLinkProperties) => jsonMutation<TopologyLinkProperties>(
+      fetcher, `${API_BASE}/api/topology/links/${deviceId}/${upstreamDeviceId}`, 'PUT', link
     ),
     linkAssignment: (assignmentId: number, backboneDeviceId: number, reason: string | null) => jsonMutation<BackboneAssignmentSummary>(
       fetcher, `${API_BASE}/api/topology/assignments/${assignmentId}/backbone`, 'PUT', { backboneDeviceId, reason }

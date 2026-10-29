@@ -8,6 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type {
   TopologyBackboneBranch,
+  TopologyCoreLinkEdge,
+  TopologyEdge,
   TopologyNode,
   TopologySnapshot
 } from '../../../shared/topology';
@@ -18,6 +20,7 @@ import { useTopologyLive } from './useTopologyLive';
 import { Button, EmptyState, useConfirm, useToast } from '../../components';
 import { BackboneEditorDialog } from './BackboneDialogs';
 import { EquipmentPalette } from './EquipmentPalette';
+import { LinkDialog, type LinkEnd } from './LinkDialog';
 import { TopologyCanvas, type TopologyCanvasHandle } from './TopologyCanvas';
 import { TopologyInspector } from './TopologyInspector';
 import type { TopologyCanvasNode } from './TopologyNodes';
@@ -32,6 +35,7 @@ import {
   type TopologyGraph
 } from './topology-graph';
 import { layoutTopologyGraph, type TopologyDirection } from './topology-layout';
+import { linkStroke, linkSummary } from './link-format';
 import { useMapAuthoring } from './useMapAuthoring';
 import { placeNodes, useMapLayout } from './useMapLayout';
 import { useTopologyWorkspace } from './useTopologyWorkspace';
@@ -109,8 +113,14 @@ function decorateNodes(graph: TopologyGraph, state: NodeDecorators, live: Topolo
  * A linha até ao cliente não é um cabo — é titularidade. Tracejada, para não se
  * confundir com as ligações físicas que o resto do mapa desenha (ADR 0005).
  */
-function edgeStroke(kind: string | undefined) {
-  if (kind === 'core-link') return { stroke: 'var(--accent-2)', strokeWidth: 1.8 };
+/** `backbone:7` → 7. Só se chama com ids de backbone (o diálogo filtra a raiz). */
+function linkDeviceId(nodeId: string): number {
+  return Number(nodeId.slice('backbone:'.length));
+}
+
+function edgeStroke(topology: TopologyEdge | undefined) {
+  if (topology?.kind === 'core-link') return linkStroke(topology.link?.medium);
+  const kind = topology?.kind;
   if (kind === 'ownership') {
     return { stroke: 'var(--border-2)', strokeWidth: 1, strokeDasharray: '3 4' };
   }
@@ -129,12 +139,15 @@ export function decorateEdges(graph: TopologyGraph, labelsVisible: boolean, live
       type: 'smoothstep',
       // A montante do router é uma WAN; a jusante é uma porta da LAN (o switch).
       label: iface ? (iface.running ? (iface.downBps === null ? backbone?.routerInterface : `↓ ${formatBitrate(iface.downBps)}`) : edge.target === routerId ? 'WAN caída' : 'Porta caída')
-        : labelsVisible && edge.data ? topologyRelationshipLabel(edge.data.topology.relationship) : undefined,
+        : labelsVisible && edge.data
+          ? (edge.data.topology.kind === 'core-link' && linkSummary(edge.data.topology.link))
+            || topologyRelationshipLabel(edge.data.topology.relationship)
+          : undefined,
       labelStyle: { fill: iface && !iface.running ? 'var(--danger)' : 'var(--topology-ink)', fontSize: 11, fontWeight: 650 },
       labelBgStyle: { fill: 'var(--surface)', fillOpacity: 0.96 },
       labelBgPadding: [6, 3] as [number, number],
       labelBgBorderRadius: 3,
-      style: iface && !iface.running ? { stroke: 'var(--danger)', strokeWidth: 1.8, strokeDasharray: '5 4' } : edgeStroke(edge.data?.topology.kind)
+      style: iface && !iface.running ? { stroke: 'var(--danger)', strokeWidth: 1.8, strokeDasharray: '5 4' } : edgeStroke(edge.data?.topology)
     };
   });
 }
@@ -549,6 +562,8 @@ function TopologyStage({
   onCloseInspector,
   authoring,
   layout,
+  onEditLink,
+  onDisconnectUpstream,
   canvasRef,
   live,
   onApplyProposal,
@@ -568,6 +583,8 @@ function TopologyStage({
   onCloseInspector: () => void;
   authoring: MapAuthoring;
   layout: ReturnType<typeof useMapLayout>;
+  onEditLink: (edgeId: string) => void;
+  onDisconnectUpstream: (deviceId: number, upstreamDeviceId: number) => void;
   canvasRef: React.RefObject<TopologyCanvasHandle | null>;
   live: TopologyLive | null;
   onApplyProposal: (deviceId: number, routerInterface: string) => Promise<void>;
@@ -600,6 +617,7 @@ function TopologyStage({
             onNodesChange={layout.onNodesChange}
             onNodeDragStart={layout.onDragStart}
             onNodeDragStop={layout.onDragStop}
+            onEdgeClick={authoring.canManage ? onEditLink : undefined}
           />
           {authoring.canManage && authoring.paletteOpen && (
             <EquipmentPalette
@@ -636,7 +654,7 @@ function TopologyStage({
             onOpenClient={props.onOpenClient}
             onOpenService={props.onOpenService}
             onOpenStock={props.onOpenStock}
-            onDisconnectUpstream={authoring.canManage ? authoring.disconnectUpstream : undefined}
+            onDisconnectUpstream={authoring.canManage ? onDisconnectUpstream : undefined}
             focusedBackboneId={workspace.focusedBackboneId}
             onFocusBackbone={workspace.focusBackbone}
           />
@@ -700,6 +718,21 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
     authoring.canManage,
     useCallback((message: string) => toast(message, 'error'), [toast])
   );
+  const [editingLinkId, setEditingLinkId] = useState<string | null>(null);
+  // Tirar uma alimentação parte o ramo a jusante: pergunta-se sempre, do inspetor ou do diálogo.
+  const { disconnectUpstream } = authoring;
+  const confirmDisconnect = useCallback((deviceId: number, upstreamDeviceId: number) => {
+    void confirm({
+      title: 'Remover esta ligação?',
+      message: 'O equipamento deixa de ser alimentado por este. Se não tiver outra alimentação, passa a pender da Internet. O registo dos equipamentos não muda.',
+      confirmLabel: 'Remover ligação',
+      tone: 'danger'
+    }).then((ok) => {
+      if (!ok) return;
+      disconnectUpstream(deviceId, upstreamDeviceId);
+      setEditingLinkId(null);
+    });
+  }, [confirm, disconnectUpstream]);
   const rendered = useRenderedGraph(
     workspace.snapshot,
     workspace,
@@ -747,6 +780,18 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
       />
     );
   }
+  // Só backbone→backbone tem propriedades: a raiz é lógica.
+  const editingLink = workspace.snapshot.edges.find((edge): edge is TopologyCoreLinkEdge => (
+    edge.id === editingLinkId && edge.kind === 'core-link' && edge.source !== 'root:isp'
+  ));
+  const linkEnd = (nodeId: string): LinkEnd => {
+    const backbone = workspace.snapshot?.backbones.find((item) => item.id === nodeId);
+    const isRouter = backbone !== undefined && backbone.backboneDeviceId === live?.routerDeviceId;
+    return {
+      name: backbone?.label ?? nodeId,
+      interfaces: isRouter && live?.available ? live.interfaces.map((item) => item.name) : null
+    };
+  };
   const tools: CanvasToolsProps = {
     labelsVisible,
     legendVisible,
@@ -828,12 +873,32 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
         }}
         authoring={authoring}
         layout={layout}
+        onEditLink={(edgeId) => {
+          if (edgeId.startsWith('core-link:backbone:')) setEditingLinkId(edgeId);
+        }}
+        onDisconnectUpstream={confirmDisconnect}
         canvasRef={canvasRef}
         live={live}
         onApplyProposal={onApplyProposal}
         proposalPending={proposalPending}
         proposalError={proposalError}
       />
+      {authoring.canManage && editingLink && (
+        <LinkDialog
+          open
+          upstream={linkEnd(editingLink.source)}
+          device={linkEnd(editingLink.target)}
+          link={editingLink.link}
+          pending={authoring.linkPending}
+          error={authoring.linkError}
+          onSave={(link) => {
+            void authoring.saveLink(linkDeviceId(editingLink.target), linkDeviceId(editingLink.source), link)
+              .then((ok) => { if (ok) setEditingLinkId(null); });
+          }}
+          onRemove={() => confirmDisconnect(linkDeviceId(editingLink.target), linkDeviceId(editingLink.source))}
+          onClose={() => { authoring.clearLinkError(); setEditingLinkId(null); }}
+        />
+      )}
       {authoring.canManage && (
         <BackboneEditorDialog
           open={authoring.editorOpen}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { BackboneDeviceSummary, BackboneWriteInput } from '../../../shared/backbone';
 import type { EquipmentPreset } from '../../../shared/equipment-presets';
+import type { TopologyLinkProperties } from '../../../shared/topology';
 import { useToast } from '../../components';
 import { useAuth } from '../../lib/auth';
 import { createBackboneApi, type BackboneCatalogOption } from './backbone-api';
@@ -122,6 +123,25 @@ export function useMapAuthoring(onMutation: () => void) {
       .catch((connectError) => toast(message(connectError), 'error'));
   }, [api, onMutation, toast]);
 
+  const [linkPending, setLinkPending] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+
+  const saveLink = useCallback(async (deviceId: number, upstreamDeviceId: number, link: TopologyLinkProperties) => {
+    setLinkPending(true);
+    setLinkError(null);
+    try {
+      await api.updateLink(deviceId, upstreamDeviceId, link);
+      toast('Ligação guardada', 'success');
+      onMutation();
+      return true;
+    } catch (saveError) {
+      setLinkError(message(saveError));
+      return false;
+    } finally {
+      setLinkPending(false);
+    }
+  }, [api, onMutation, toast]);
+
   const disconnectUpstream = useCallback((deviceId: number, upstreamDeviceId: number) => {
     void disconnectBackboneUpstream(api, deviceId, upstreamDeviceId)
       .then(() => {
@@ -152,6 +172,10 @@ export function useMapAuthoring(onMutation: () => void) {
     retryCatalogs: () => { void loadCatalogs(); },
     createDevice,
     connectNodes,
-    disconnectUpstream
+    disconnectUpstream,
+    linkPending,
+    linkError,
+    clearLinkError: () => setLinkError(null),
+    saveLink
   };
 }

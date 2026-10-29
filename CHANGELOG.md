@@ -20,6 +20,15 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
   - Ctrl+Z e Ctrl+Y desfazem e refazem os movimentos.
   - "Reorganizar" pede confirmação e devolve o mapa ao desenho automático, sem mexer em equipamentos nem em ligações.
   - Os equipamentos que ninguém arrumou continuam a ser desenhados automaticamente.
+- **Ligações com tipo.** Clicar numa ligação entre dois equipamentos da rede abre a ficha dela.
+  - O meio: Ethernet, fibra, rádio PtP, rádio PtMP ou WAN.
+  - A porta em cada ponta. Quando uma das pontas é o router de gestão e ele está ao alcance, a porta escolhe-se da lista dele.
+  - Num rádio, a frequência. Também a capacidade e notas.
+  - O traço no mapa mostra o meio (fibra grossa, rádio tracejado, PtMP em pontos) e a etiqueta resume-o. A legenda explica os traços.
+  - As ligações que já existiam ficam "por classificar".
+  - Mudar as alimentações de um equipamento já não apaga o que se escreveu nas ligações que ficam.
+  - Remover uma ligação, no inspetor ou na ficha, pede sempre confirmação.
+  - Sinal e SNR não se escrevem: aparecem quando houver monitorização das próprias antenas.
 
 ## [2.40](https://github.com/Harrydevcod/IspManager/releases/tag/v2.40.0) — 2026-10-28
 
