@@ -124,20 +124,22 @@ export function LinkDialog({ open, upstream, device, link, pending, error, onSav
             <span>{validation || error}</span>
           </div>
         )}
-        <Select label="Meio" value={form.medium} onChange={(event) => update('medium', event.target.value as LinkMedium | '')}>
-          <option value="">Por classificar</option>
-          {LINK_MEDIA.map((medium) => <option key={medium} value={medium}>{LINK_MEDIUM_LABELS[medium]}</option>)}
-        </Select>
+        <div className="link-editor-pair">
+          <Select label="Meio" value={form.medium} onChange={(event) => update('medium', event.target.value as LinkMedium | '')}>
+            <option value="">Por classificar</option>
+            {LINK_MEDIA.map((medium) => <option key={medium} value={medium}>{LINK_MEDIUM_LABELS[medium]}</option>)}
+          </Select>
+          <Field label="Capacidade (Mbps)" inputMode="numeric" value={form.capacityMbps} placeholder="450" onChange={(event) => update('capacityMbps', event.target.value)} />
+        </div>
         <div className="link-editor-pair">
           <PortField label={`Porta em ${upstream.name}`} end={upstream} value={form.fromPort} onChange={(value) => update('fromPort', value)} />
           <PortField label={`Porta em ${device.name}`} end={device} value={form.toPort} onChange={(value) => update('toPort', value)} />
         </div>
-        <div className="link-editor-pair">
-          {isRadio(form.medium || null) && (
+        {isRadio(form.medium || null) && (
+          <div className="link-editor-pair">
             <Field label="Frequência (MHz)" inputMode="numeric" value={form.frequencyMhz} placeholder="5800" onChange={(event) => update('frequencyMhz', event.target.value)} />
-          )}
-          <Field label="Capacidade (Mbps)" inputMode="numeric" value={form.capacityMbps} placeholder="450" onChange={(event) => update('capacityMbps', event.target.value)} />
-        </div>
+          </div>
+        )}
         <Textarea label="Notas" value={form.notes} maxLength={500} rows={2} onChange={(event) => update('notes', event.target.value)} />
         <p className="link-editor-hint">
           Sinal e SNR não se escrevem aqui: só aparecem quando houver monitorização das próprias antenas.

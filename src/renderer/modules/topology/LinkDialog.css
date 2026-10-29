@@ -3,11 +3,19 @@
   gap: var(--space-4);
 }
 
-/* Duas colunas de campos curtos (portas, números); numa janela estreita, uma. */
+/* Duas colunas fixas: um campo sozinho fica a meia largura, nunca a toda.
+   Numa janela estreita, uma. */
 .link-editor-pair {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Um rótulo longo (nome do equipamento) parte em duas linhas: os campos
+     alinham-se pelo fundo, não pelo rótulo. */
+  align-items: end;
   gap: var(--space-3) var(--space-4);
+}
+
+@media (max-width: 40rem) {
+  .link-editor-pair { grid-template-columns: minmax(0, 1fr); }
 }
 
 .link-editor-hint {

@@ -3953,6 +3953,30 @@ h2 {
   min-height: 40px;
 }
 
+/* Estilo base dos controlos de <Field>/<Select>/<Textarea>. Sem ele, um campo
+   num sítio que nenhum módulo pinta (a ficha da ligação, a pesquisa da paleta)
+   saía com o cinzento do browser. `:where` deixa-o a especificidade zero: as
+   regras de cada módulo continuam a ganhar. */
+:where(.field) :where(input:not([type='checkbox'], [type='radio']), select, textarea),
+:where(.topology-scope) :where(select) {
+  min-height: 2.5rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+:where(.field) :where(textarea) {
+  padding: var(--space-3);
+}
+
+:where(.field) :where(input, select, textarea):focus-visible,
+:where(.topology-scope) :where(select):focus-visible {
+  outline: 2px solid var(--action-focus);
+  outline-offset: 1px;
+}
+
 :is(.payment-action-form, .expense-template-form) > .field {
   align-self: start;
 }
