@@ -49,6 +49,8 @@ type TopologyCanvasProps = {
   onNodeDragStop?: (nodes: TopologyCanvasNode[]) => void;
   /** Clicar numa ligação — abre as propriedades dela. */
   onEdgeClick?: (edgeId: string) => void;
+  /** Botão direito num nó ou numa ligação, com o ponto do ecrã onde abrir o menu. */
+  onContextMenu?: (target: { nodeId: string } | { edgeId: string }, point: { x: number; y: number }) => void;
 };
 
 function acceptsCatalog(event: DragEvent<HTMLElement>): boolean {
@@ -137,7 +139,8 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
     onNodesChange,
     onNodeDragStart,
     onNodeDragStop,
-    onEdgeClick
+    onEdgeClick,
+    onContextMenu
   }, ref) {
     useCanvasControls(ref, nodes);
 
@@ -173,10 +176,21 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
           edges={edges}
           nodeTypes={topologyNodeTypes}
           nodesDraggable={draggable}
+          // Um clique com tremido de 1–3 px (trackpad, rato velho) não pode
+          // arrumar o nó à mão e gravar uma posição: só conta a partir de 4 px.
+          nodeDragThreshold={4}
           onNodesChange={onNodesChange}
           onNodeDragStart={(_event, _node, dragged) => onNodeDragStart?.(dragged)}
           onNodeDragStop={(_event, _node, dragged) => onNodeDragStop?.(dragged)}
           onEdgeClick={onEdgeClick && ((_event, edge) => onEdgeClick(edge.id))}
+          onNodeContextMenu={onContextMenu && ((event, node) => {
+            event.preventDefault();
+            onContextMenu({ nodeId: node.id }, { x: event.clientX, y: event.clientY });
+          })}
+          onEdgeContextMenu={onContextMenu && ((event, edge) => {
+            event.preventDefault();
+            onContextMenu({ edgeId: edge.id }, { x: event.clientX, y: event.clientY });
+          })}
           nodesConnectable={connectable}
           isValidConnection={(connection) => isValidBackboneConnection(
             connection.source,

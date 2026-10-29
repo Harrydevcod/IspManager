@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { Handle, Position } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
-import type { KeyboardEvent } from 'react';
+import { memo, type KeyboardEvent } from 'react';
 import type { TopologyNode } from '../../../shared/topology';
 import type { TopologyPortCheck } from '../../../shared/topology';
 import { isKnownWanMode, shortLabelForWanMode } from '../../../shared/wan';
@@ -277,7 +277,11 @@ function NodeHandles({ kind, source, target, connectable }: {
   );
 }
 
-function TopologyNodeRenderer({
+/*
+ * `memo`: arrastar um nó, abrir um ramo ou mexer na pesquisa re-renderizava os
+ * 500 nós. Com o `data` estável (ver `useRenderedGraph`), só muda quem mudou.
+ */
+const TopologyNodeRenderer = memo(function TopologyNodeRenderer({
   data,
   selected,
   isConnectable,
@@ -300,7 +304,7 @@ function TopologyNodeRenderer({
       />
     </>
   );
-}
+});
 
 export const topologyNodeTypes = {
   'logical-root': TopologyNodeRenderer,

@@ -702,6 +702,12 @@
   gap: var(--space-6);
 }
 
+/* O global `.dialog-lg .dialog-body` é 0 (pré-visualização de PDF a toda a
+   largura): sem isto os campos colavam à borda do diálogo. */
+.dialog:has(.backbone-editor-form) .dialog-body {
+  padding: var(--space-6);
+}
+
 .backbone-dialog-section {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

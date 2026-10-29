@@ -1051,3 +1051,77 @@ test('closes the inspector with Escape while preserving the graph', async () => 
   expect(container.textContent).toContain('Seleciona um nó');
   expect(container.textContent).toContain('Ubiquiti Rocket Prism');
 });
+
+test('o botão direito num backbone edita, duplica e retira sem sair do mapa', async () => {
+  const detail = {
+    id: 10, catalogId: 9, catalogBrand: 'Ubiquiti', catalogModel: 'Rocket Prism', catalogType: 'antena',
+    name: 'Ubiquiti Rocket Prism', status: 'active', serialNumber: 'SN-ROCKET', assetTag: null,
+    ipAddress: '10.0.0.10', macAddress: null, routerInterface: null, wanMode: null, operationMode: null,
+    island: null, zone: null, provisional: false, upstreams: [], downstreamCount: 0,
+    linkedAssignmentCount: 0, createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-29T00:00:00.000Z',
+    notes: null, assignments: [], downstream: []
+  };
+  const writes: Array<Record<string, unknown>> = [];
+  const base = globalThis.fetch;
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (!url.endsWith('/api/topology/backbones/10')) return base(input, init);
+    if (init?.method === 'PUT') writes.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+    return json(detail);
+  }));
+  // Sem ConfirmProvider no teste, o `useConfirm` cai no `window.confirm`.
+  vi.stubGlobal('confirm', vi.fn(() => true));
+  const container = await mountMap();
+  const settle = () => act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 20)); });
+  const node = container.querySelector('.react-flow__node[data-id="backbone:10"]');
+  if (!node) throw new Error('backbone node not found');
+  const openMenu = async () => {
+    await act(async () => {
+      node.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 90 }));
+      await Promise.resolve();
+    });
+  };
+  const items = () => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+  const pick = async (label: string) => {
+    const item = items().find((candidate) => candidate.textContent === label);
+    if (!item) throw new Error(`menu item not found: ${label}`);
+    await act(async () => { item.click(); await Promise.resolve(); });
+    await settle();
+  };
+  const cancelDialog = async () => {
+    const cancel = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+      .find((candidate) => candidate.textContent?.trim() === 'Cancelar');
+    await act(async () => { cancel?.click(); await Promise.resolve(); });
+  };
+
+  await openMenu();
+  expect(items().map((item) => item.textContent)).toEqual(['Editar', 'Duplicar', 'Ver só este backbone', 'Retirar']);
+  // O botão direito também escolhe o nó: o inspetor mostra-o com as mesmas ações.
+  expect(container.querySelector('[aria-label="Gerir equipamento"]')?.textContent).toBe('EditarDuplicarRetirar');
+
+  await pick('Editar');
+  expect(items()).toHaveLength(0);
+  const editor = document.querySelector('[role="dialog"]');
+  expect(editor?.textContent).toContain('Editar Ubiquiti Rocket Prism');
+  expect([...editor!.querySelectorAll('input')].map((input) => input.value)).toContain('SN-ROCKET');
+  await cancelDialog();
+
+  // A cópia é outra unidade física: o modelo fica, série e nome não.
+  await openMenu();
+  await pick('Duplicar');
+  const copy = document.querySelector('[role="dialog"]');
+  expect(copy?.textContent).toContain('Novo backbone');
+  const values = [...copy!.querySelectorAll('input')].map((input) => input.value);
+  expect(values).not.toContain('SN-ROCKET');
+  expect(values).not.toContain('Ubiquiti Rocket Prism');
+  await cancelDialog();
+  expect(writes).toHaveLength(0);
+
+  await openMenu();
+  await pick('Retirar');
+  expect(window.confirm).toHaveBeenCalledWith('Retirar Ubiquiti Rocket Prism?');
+  expect(writes).toEqual([expect.objectContaining({
+    status: 'retired', name: 'Ubiquiti Rocket Prism', serialNumber: 'SN-ROCKET',
+    expectedUpdatedAt: '2026-10-29T00:00:00.000Z'
+  })]);
+});

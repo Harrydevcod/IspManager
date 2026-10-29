@@ -40,6 +40,8 @@ test('shows a detected router port proposal and an application error', async () 
     onClose={() => undefined} onOpenClient={() => undefined} onOpenService={() => undefined}
     onOpenStock={() => undefined} focusedBackboneId={null} onFocusBackbone={() => undefined}
   />));
+  // Sem `manage` (quem só pode ler) não há Editar, Duplicar nem Retirar.
+  expect(container.querySelector('[aria-label="Gerir equipamento"]')).toBeNull();
   expect(container.textContent).toContain('Visto na porta ether3 · registo diz ether4');
   expect(container.querySelector('[role="alert"]')?.textContent).toContain('alterado por outra pessoa');
   const apply = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Aplicar'));

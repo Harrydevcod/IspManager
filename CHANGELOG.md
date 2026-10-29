@@ -29,6 +29,19 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
   - Mudar as alimentações de um equipamento já não apaga o que se escreveu nas ligações que ficam.
   - Remover uma ligação, no inspetor ou na ficha, pede sempre confirmação.
   - Sinal e SNR não se escrevem: aparecem quando houver monitorização das próprias antenas.
+- **Gerir equipamentos no próprio mapa.** O inspetor de um equipamento da rede tem agora Editar, Duplicar e Retirar. O botão direito num equipamento ou numa ligação abre um menu com as mesmas ações.
+  - Editar abre o formulário da aba Backbone. É também aí que se troca de modelo.
+  - Duplicar prepara outra unidade do mesmo modelo, alimentada pelo mesmo sítio. Nome, série, IP e MAC ficam em branco.
+  - Retirar pede confirmação e não apaga nada: a unidade passa a Retirado e volta ao stock. Se ainda alimentar equipamentos, o ISPM recusa e diz o que falta.
+  - No menu de uma ligação: abrir a ficha dela ou removê-la, com confirmação.
+
+### Melhorado
+- **Mapa mais leve.** Escrever na pesquisa, abrir o inspetor ou arrastar um equipamento já não volta a desenhar todos os equipamentos, só os que mudaram. Testado com 500.
+- Um clique com um tremido pequeno do rato já não conta como arrastar o equipamento.
+
+### Corrigido
+- Os botões de confirmar dos diálogos apareciam todos cinzentos. "Remover", "Retirar" e semelhantes voltam a aparecer em vermelho, e "Confirmar" em azul.
+- O formulário de equipamento backbone tinha os campos colados à margem do diálogo.
 
 ## [2.40](https://github.com/Harrydevcod/IspManager/releases/tag/v2.40.0) — 2026-10-28
 
