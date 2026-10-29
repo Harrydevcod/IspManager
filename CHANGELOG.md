@@ -42,6 +42,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 ### Corrigido
 - Os botões de confirmar dos diálogos apareciam todos cinzentos. "Remover", "Retirar" e semelhantes voltam a aparecer em vermelho, e "Confirmar" em azul.
 - O formulário de equipamento backbone tinha os campos colados à margem do diálogo.
+- A ficha da ligação, a pesquisa de equipamentos e o seletor "Rede completa" tinham caixas cinzentas sem o estilo da app.
+- Numa janela estreita, o mapa da topologia ficava quase sem altura.
 
 ## [2.40](https://github.com/Harrydevcod/IspManager/releases/tag/v2.40.0) — 2026-10-28
 
