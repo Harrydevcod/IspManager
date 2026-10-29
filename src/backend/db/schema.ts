@@ -366,7 +366,15 @@ export const backboneLinks = sqliteTable('backbone_links', {
   deviceId: integer('device_id').notNull(),
   upstreamDeviceId: integer('upstream_device_id').notNull(),
   createdBy: integer('created_by'),
-  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
+  // O que é a ligação (0091). Tudo opcional: sem nada, "por classificar".
+  medium: text('medium'),
+  fromPort: text('from_port'),
+  toPort: text('to_port'),
+  frequencyMhz: integer('frequency_mhz'),
+  capacityMbps: integer('capacity_mbps'),
+  notes: text('notes'),
+  updatedAt: text('updated_at')
 });
 
 export const backboneAssignmentLinks = sqliteTable('backbone_assignment_links', {

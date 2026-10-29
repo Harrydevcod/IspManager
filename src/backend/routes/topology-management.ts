@@ -15,6 +15,7 @@ import {
   updateBackbone
 } from '../lib/backbone-management';
 import { requireAuth, requireRole } from './auth';
+import { LINK_MEDIA, type TopologyLinkProperties } from '../../shared/topology';
 
 const idSchema = z.union([
   z.number().int().positive().safe(),
@@ -25,6 +26,15 @@ const pageSizeSchema = z.coerce.number().int().min(1).max(100).default(25);
 const optionalText = (max: number) => z.string().trim().max(max).nullable().optional().transform((value) => value ?? null);
 
 const backboneParamsSchema = z.object({ id: idSchema });
+const linkParamsSchema = z.object({ deviceId: idSchema, upstreamDeviceId: idSchema });
+const linkWriteSchema = z.object({
+  medium: z.enum(LINK_MEDIA).nullable(),
+  fromPort: z.string().trim().max(40).nullable().transform((value) => value || null),
+  toPort: z.string().trim().max(40).nullable().transform((value) => value || null),
+  frequencyMhz: z.number().int().min(1).max(100_000).nullable(),
+  capacityMbps: z.number().int().min(1).max(1_000_000).nullable(),
+  notes: z.string().trim().max(500).nullable().transform((value) => value || null)
+}).strict();
 const assignmentParamsSchema = z.object({ id: idSchema });
 const backboneListSchema = z.object({
   query: z.string().trim().max(120).optional(),
@@ -169,6 +179,39 @@ export async function registerTopologyManagementRoutes(app: FastifyInstance) {
     } catch (error) {
       return repositoryError(reply, error);
     }
+  });
+
+  // Descrever uma ligação que já existe. Criar e tirar ligações continua a ser pelo
+  // PUT da backbone (alimentações), que valida ciclos; aqui só mudam as propriedades.
+  app.put('/api/topology/links/:deviceId/:upstreamDeviceId', canManage, async (request, reply) => {
+    const params = linkParamsSchema.safeParse(request.params);
+    const body = linkWriteSchema.safeParse(request.body);
+    if (!params.success || !body.success) return reply.status(400).send({ error: 'Dados da ligacao invalidos' });
+    const { deviceId, upstreamDeviceId } = params.data;
+    const db = getSqliteDatabase();
+    const select = db.prepare(`
+      SELECT medium, from_port AS fromPort, to_port AS toPort, frequency_mhz AS frequencyMhz,
+        capacity_mbps AS capacityMbps, notes
+      FROM backbone_links WHERE device_id = ? AND upstream_device_id = ?
+    `);
+    const previous = select.get(deviceId, upstreamDeviceId) as TopologyLinkProperties | undefined;
+    if (!previous) return reply.status(404).send({ error: 'Ligacao nao encontrada' });
+    const next = body.data;
+    db.transaction(() => {
+      db.prepare(`
+        UPDATE backbone_links SET medium = ?, from_port = ?, to_port = ?, frequency_mhz = ?,
+          capacity_mbps = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE device_id = ? AND upstream_device_id = ?
+      `).run(next.medium, next.fromPort, next.toPort, next.frequencyMhz, next.capacityMbps, next.notes,
+        deviceId, upstreamDeviceId);
+      recordAuditStrict(db, request, {
+        action: 'topology.link.update',
+        entityType: 'backbone_link',
+        entityId: `${deviceId}:${upstreamDeviceId}`,
+        metadata: { deviceId, upstreamDeviceId, previous, next }
+      });
+    })();
+    return reply.send(select.get(deviceId, upstreamDeviceId));
   });
 
   app.get('/api/topology/assignments', readOnly, async (request, reply) => {

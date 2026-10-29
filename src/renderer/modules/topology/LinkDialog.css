@@ -1,0 +1,17 @@
+.link-editor-form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+/* Duas colunas de campos curtos (portas, números); numa janela estreita, uma. */
+.link-editor-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+
+.link-editor-hint {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}

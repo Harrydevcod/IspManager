@@ -151,6 +151,27 @@ export type TopologyNode =
   | TopologyClientDeviceNode
   | TopologyClientNode;
 
+/** O meio de uma ligação entre backbones (0091). */
+export const LINK_MEDIA = ['ethernet', 'fibra', 'ptp', 'ptmp', 'wan'] as const;
+export type LinkMedium = typeof LINK_MEDIA[number];
+export const LINK_MEDIUM_LABELS: Record<LinkMedium, string> = {
+  ethernet: 'Ethernet',
+  fibra: 'Fibra',
+  ptp: 'Rádio PtP',
+  ptmp: 'Rádio PtMP',
+  wan: 'WAN'
+};
+
+/** O que se sabe de uma ligação entre backbones. Tudo opcional: sem nada, "por classificar". */
+export type TopologyLinkProperties = {
+  medium: LinkMedium | null;
+  fromPort: string | null;
+  toPort: string | null;
+  frequencyMhz: number | null;
+  capacityMbps: number | null;
+  notes: string | null;
+};
+
 /** Raiz→backbone ou backbone→backbone: a espinha dorsal, seja qual for a profundidade. */
 export type TopologyCoreLinkEdge = {
   id: `core-link:${'root:isp' | `backbone:${number}`}:backbone:${number}`;
@@ -158,6 +179,8 @@ export type TopologyCoreLinkEdge = {
   source: 'root:isp' | `backbone:${number}`;
   target: `backbone:${number}`;
   relationship: TopologyRelationship;
+  /** Só entre duas backbones: a raiz é lógica e não tem cabo nem rádio. */
+  link?: TopologyLinkProperties;
 };
 
 /** Backbone→equipamento, ou equipamento→equipamento dentro da casa do cliente. */

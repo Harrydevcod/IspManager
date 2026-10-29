@@ -11,6 +11,7 @@ import type {
   TopologyClientLinkEdge,
   TopologyClientNode,
   TopologyCoreLinkEdge,
+  TopologyLinkProperties,
   TopologyIssueCode,
   TopologyOwnershipEdge,
   TopologyServiceAssociation,
@@ -575,15 +576,38 @@ function topologyStats(
   };
 }
 
+/** As propriedades de cada ligação backbone→backbone (0091), por `jusante:montante`. */
+function loadLinkProperties(db: Database.Database): Map<string, TopologyLinkProperties> {
+  const rows = db.prepare(`
+    SELECT device_id AS deviceId, upstream_device_id AS upstreamDeviceId, medium,
+      from_port AS fromPort, to_port AS toPort, frequency_mhz AS frequencyMhz,
+      capacity_mbps AS capacityMbps, notes
+    FROM backbone_links
+  `).all() as Array<TopologyLinkProperties & { deviceId: number; upstreamDeviceId: number }>;
+  // Uma ligação por descrever não leva nada: o mapa mostra-a como "por classificar".
+  return new Map(rows
+    .filter(({ deviceId: _device, upstreamDeviceId: _upstream, ...link }) => Object.values(link).some((value) => value !== null))
+    .map(({ deviceId, upstreamDeviceId, ...link }) => [`${deviceId}:${upstreamDeviceId}`, link]));
+}
+
 /** Uma aresta por alimentação: num router multi-WAN convergem várias. */
-function coreLinks(backbone: TopologyBackboneNode): TopologyCoreLinkEdge[] {
-  return backbone.parentIds.map((parentId) => ({
-    id: `core-link:${parentId}:backbone:${backbone.backboneDeviceId}`,
-    kind: 'core-link',
-    source: parentId,
-    target: backbone.id,
-    relationship: 'defined_link'
-  }));
+function coreLinks(
+  backbone: TopologyBackboneNode,
+  properties: ReadonlyMap<string, TopologyLinkProperties> = new Map()
+): TopologyCoreLinkEdge[] {
+  return backbone.parentIds.map((parentId) => {
+    const link = parentId === 'root:isp'
+      ? undefined
+      : properties.get(`${backbone.backboneDeviceId}:${parentId.slice('backbone:'.length)}`);
+    return {
+      id: `core-link:${parentId}:backbone:${backbone.backboneDeviceId}`,
+      kind: 'core-link',
+      source: parentId,
+      target: backbone.id,
+      relationship: 'defined_link',
+      ...(link ? { link } : {})
+    };
+  });
 }
 
 /**
@@ -634,6 +658,7 @@ export function loadTopologySnapshot(
   now = new Date()
 ): TopologySnapshot {
   const uplinks = loadVisibleUplinks(db);
+  const linkProperties = loadLinkProperties(db);
   const backbones = loadBackboneRows(db)
     .map((row) => backboneNode(row, uplinks.get(row.backboneDeviceId) ?? []));
   return {
@@ -647,7 +672,7 @@ export function loadTopologySnapshot(
       issueCodes: []
     },
     backbones,
-    edges: backbones.flatMap(coreLinks),
+    edges: backbones.flatMap((backbone) => coreLinks(backbone, linkProperties)),
     stats: topologyStats(db, backbones)
   };
 }
