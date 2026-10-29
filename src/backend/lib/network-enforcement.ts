@@ -4,10 +4,12 @@ import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-netw
 import { readPppoeSecret } from './secrets';
 import { isMacAddress, normalizeMacAddress } from '../../shared/mac';
 import { syncIptv, type IptvSyncResult } from './iptv';
+import { DROP_CAPTURE_SCRIPT_NAME, DROP_CAPTURE_SCRIPT_VERSION, dropCaptureScript } from './routeros-drop-capture-script';
 import { readBaseProfileName, readSuspendedProfileName, syncPlanProfiles, type PlanSyncSummary } from './plan-profiles';
 import {
   createSecret,
   createTransport,
+  ensureRouterScript,
   isInternalSecret,
   isRouterConfigured,
   listActive,
@@ -555,6 +557,8 @@ export type EnforcementSummary = {
   planProfiles?: PlanSyncSummary | { error: string };
   /** Passo IPTV via VPN, feito depois dos secrets (ADR 0021). */
   iptv?: IptvSyncResult | { error: string };
+  /** O script que retrata as quedas em bloco; não corre em ensaio. */
+  dropCapture?: 'installed' | 'dry_run' | { error: string };
 };
 
 function callerMac(raw: string | null | undefined): string | null {
@@ -1035,7 +1039,19 @@ export async function runRouterPass(
   } catch (err) {
     iptv = { error: err instanceof Error ? err.message : String(err) };
   }
-  return { ...summary, planProfiles, iptv };
+  // Por último e à parte: o retrato das quedas não pode travar nada do que vem antes.
+  let dropCapture: EnforcementSummary['dropCapture'] = 'dry_run';
+  if (!config.dryRun) {
+    try {
+      await ensureRouterScript(transport, {
+        name: DROP_CAPTURE_SCRIPT_NAME, comment: DROP_CAPTURE_SCRIPT_VERSION, source: dropCaptureScript(), interval: '10s'
+      });
+      dropCapture = 'installed';
+    } catch (err) {
+      dropCapture = { error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  return { ...summary, planProfiles, iptv, dropCapture };
 }
 
 // ------------------------------------------------------------------ leitura

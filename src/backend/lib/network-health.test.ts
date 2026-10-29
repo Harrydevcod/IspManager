@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
-import { createDiaryEntry, findDropPattern, listDiary, loadNetworkHealth, updateDiaryEntry } from './network-health';
+import { createDiaryEntry, findDropPattern, listDiary, loadNetworkHealth, parseCaptureLine, updateDiaryEntry } from './network-health';
 
 let db: Database.Database;
 let dataDir: string;
@@ -25,7 +25,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  for (const table of ['network_diary', 'router_log_findings', 'network_probe_events', 'network_probe_state', 'network_discovery_hosts',
+  for (const table of ['network_diary', 'router_log_findings', 'router_log_lines', 'network_probe_events', 'network_probe_state', 'network_discovery_hosts',
     'service_device_assignments', 'backbone_devices', 'services', 'clients', 'app_settings']) {
     db.prepare(`DELETE FROM ${table}`).run();
   }
@@ -171,5 +171,38 @@ describe('ritmo das quedas em bloco', () => {
 
   test('quedas soltas não fazem ritmo', () => {
     expect(findDropPattern(at('17', '02:10', '04:10', '17:15', '22:04'))).toBeNull();
+  });
+});
+
+describe('retrato das quedas em bloco', () => {
+  const line = (at: string, message: string, topics = 'script,warning') =>
+    db.prepare('INSERT INTO router_log_lines (at, topics, message, seq) VALUES (?, ?, ?, 0)').run(at, topics, message);
+
+  test('lê a linha do ispm-queda e recusa as outras', () => {
+    expect(parseCaptureLine('ispm-queda: 192.168.1.110 mac=9c:47:82:5e:69:71 arp=reachable porta=LAN1'))
+      .toEqual({ host: '192.168.1.110', mac: '9C:47:82:5E:69:71', arp: 'reachable', port: 'LAN1' });
+    expect(parseCaptureLine('ispm-queda: 192.168.1.122 mac=- arp=- porta=-')).toMatchObject({ mac: '-', port: '-' });
+    expect(parseCaptureLine('ispm-queda: fim')).toBeNull();
+    expect(parseCaptureLine('ANTENA EM BAIXO: TL-S5 Cruz')).toBeNull();
+  });
+
+  test('mostra só a última corrida, com o nome do equipamento, e ignora o fim', () => {
+    antenna('CPE710 Espia', '192.168.1.110');
+    line('2026-10-07 11:03:20', 'ispm-queda: 192.168.1.110 mac=AA:AA:AA:AA:AA:01 arp=reachable porta=LAN1');
+    line('2026-10-07 13:03:20', 'ispm-queda: 192.168.1.110 mac=AA:AA:AA:AA:AA:01 arp=failed porta=LAN1');
+    line('2026-10-07 13:03:20', 'ispm-queda: 192.168.1.122 mac=- arp=- porta=-');
+    line('2026-10-07 13:12:46', 'ispm-queda: fim', 'script,info');
+    expect(loadNetworkHealth(db, 72, NOW).dropCapture).toEqual({
+      at: '2026-10-07 13:03:20',
+      hosts: [
+        { host: '192.168.1.110', deviceName: 'CPE710 Espia', mac: 'AA:AA:AA:AA:AA:01', arp: 'failed', port: 'LAN1' },
+        { host: '192.168.1.122', deviceName: null, mac: '-', arp: '-', port: '-' }
+      ]
+    });
+  });
+
+  test('sem corridas nas últimas 30 h não há retrato', () => {
+    line('2026-10-05 13:03:20', 'ispm-queda: 192.168.1.110 mac=AA:AA:AA:AA:AA:01 arp=failed porta=LAN1');
+    expect(loadNetworkHealth(db, 72, NOW).dropCapture).toBeNull();
   });
 });

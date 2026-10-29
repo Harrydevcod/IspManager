@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { readProbeConfig } from './network-probe';
 import { DHCP_CHURN_THRESHOLD } from './routeros';
+import { DROP_CAPTURE_PREFIX } from './routeros-drop-capture-script';
 import type { FindingKind } from './router-log-watch';
 
 export type HealthTone = 'ok' | 'warn' | 'danger';
@@ -34,8 +35,21 @@ export type NetworkHealth = {
   findings: HealthFinding[];
   /** As antenas caem juntas a um ritmo certo: a próxima hora prevista, para lá estar. */
   dropPattern: DropPattern | null;
+  /** O retrato que o script `ispm-queda` tirou no início da última queda em bloco. */
+  dropCapture: DropCapture | null;
   diary: DiaryEntry[];
 };
+
+export type DropCaptureHost = { host: string; deviceName: string | null; mac: string; arp: string; port: string };
+export type DropCapture = { at: string; hosts: DropCaptureHost[] };
+
+const CAPTURE_LINE = new RegExp(`^${DROP_CAPTURE_PREFIX} (\\S+) mac=(\\S*) arp=(\\S*) porta=(\\S*)$`);
+
+/** Uma linha do `ispm-queda`, ou `null` se não for uma (o "fim", ou texto de outra versão). Pura. */
+export function parseCaptureLine(message: string): Omit<DropCaptureHost, 'deviceName'> | null {
+  const match = CAPTURE_LINE.exec(message.trim());
+  return match ? { host: match[1], mac: match[2].toUpperCase(), arp: match[3], port: match[4] } : null;
+}
 
 // Do mais grave para o menos: é a ordem em que o painel os mostra.
 const SEVERITY: FindingKind[] = [
@@ -86,6 +100,20 @@ function dropEpisodes(db: Database.Database, now: Date): string[] {
     WHERE topics LIKE 'netwatch%' AND message LIKE 'event down [%' AND at >= ?
     GROUP BY substr(at, 1, 16) HAVING COUNT(DISTINCT message) >= 2 ORDER BY 1
   `).all(localSql(new Date(now.getTime() - 30 * 3_600_000))) as Array<{ at: string }>).map((row) => row.at);
+}
+
+/** As linhas da última corrida do `ispm-queda` nas últimas 30 h: todas no mesmo segundo. */
+function lastDropCapture(db: Database.Database, now: Date, deviceName: (ip: string) => string | null): DropCapture | null {
+  const rows = db.prepare(`
+    SELECT at, message FROM router_log_lines
+    WHERE at = (SELECT MAX(at) FROM router_log_lines WHERE message LIKE ? AND message NOT LIKE ? AND at >= ?)
+      AND message LIKE ? ORDER BY id
+  `).all(`${DROP_CAPTURE_PREFIX} %`, `${DROP_CAPTURE_PREFIX} fim%`, localSql(new Date(now.getTime() - 30 * 3_600_000)), `${DROP_CAPTURE_PREFIX} %`) as Array<{ at: string; message: string }>;
+  const hosts = rows.flatMap((row) => {
+    const parsed = parseCaptureLine(row.message);
+    return parsed ? [{ ...parsed, deviceName: deviceName(parsed.host) }] : [];
+  });
+  return hosts.length > 0 ? { at: rows[0].at, hosts } : null;
 }
 
 function dropPattern(db: Database.Database, now: Date): DropPattern | null {
@@ -202,6 +230,7 @@ export function loadNetworkHealth(db: Database.Database, hours = 72, now = new D
     downNow,
     findings,
     dropPattern: dropPattern(db, now),
+    dropCapture: lastDropCapture(db, now, (ip) => (deviceOfIp.get(ip) as { name: string } | undefined)?.name ?? null),
     diary: listDiary(db).slice(0, 6)
   };
 }

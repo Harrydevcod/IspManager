@@ -27,8 +27,24 @@ export type NetworkHealth = {
   downNow: HealthDown[];
   findings: HealthFinding[];
   dropPattern: { periodMinutes: number; lastAt: string; nextAt: string } | null;
+  /** O retrato que o router tirou no início da última queda em bloco (script `ispm-queda`). */
+  dropCapture?: DropCapture | null;
   diary: DiaryEntry[];
 };
+export type DropCapture = { at: string; hosts: Array<{ host: string; deviceName: string | null; mac: string; arp: string; port: string }> };
+
+// Os estados do ARP do RouterOS 7 que querem dizer que a antena deixou de responder.
+const ARP_LOST = new Set(['failed', 'incomplete']);
+
+/** "CPE710 Espia LAN1 · TL-S5 Cruz sem ARP": onde o router via cada antena quando ela caiu. */
+export function captureDetail(capture: DropCapture): string {
+  return capture.hosts.map((row) => {
+    const name = row.deviceName ?? row.host;
+    if (row.mac === '-' || row.mac === '') return `${name} sem ARP`;
+    const where = row.port === '-' ? 'fora da bridge' : row.port;
+    return `${name} ${where}${ARP_LOST.has(row.arp) ? ' (ARP falhou)' : ''} ${row.mac}`;
+  }).join(' · ');
+}
 
 export const NETWORK_API = 'http://127.0.0.1:3001/api/network';
 
@@ -165,6 +181,12 @@ export function healthSituations(health: NetworkHealth): Situation[] {
       key: 'pattern', tone: 'warn' as const,
       title: `Quedas em bloco a cada ${formatPeriod(health.dropPattern.periodMinutes)}`,
       detail: `Próxima por volta das ${health.dropPattern.nextAt.slice(11, 16)} · última às ${health.dropPattern.lastAt.slice(11, 16)}`,
+      count: null
+    }] : []),
+    ...(health.dropCapture ? [{
+      key: 'capture', tone: 'neutral' as const,
+      title: `Retrato da queda das ${health.dropCapture.at.slice(11, 16)}`,
+      detail: captureDetail(health.dropCapture),
       count: null
     }] : []),
     ...health.findings.map((row): Situation => ({

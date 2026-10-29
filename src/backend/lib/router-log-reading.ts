@@ -90,14 +90,19 @@ function weighCounters(entries: RouterLogEntry[]) {
   return { continued, orphans, shorten };
 }
 
+// O detect-internet a correr nas sessões PPPoE: 250 linhas de um só cliente em três semanas
+// (registo de 07–29/10/2026) e nada que se possa fazer com elas. O das WAN fica: diz quando a
+// saída perde a internet.
+const SESSION_DETECT = /^<pppoe-[^>]+> detect \w+$/;
+
 /**
  * As linhas sem o peso dos contadores, para guardar: os fragmentos de uma gravação ficam numa
- * linha só, sem os números, e os fragmentos órfãos saem. A ordem de entrada mantém-se. Pura e
- * idempotente.
+ * linha só, sem os números, os fragmentos órfãos saem, e o detect-internet das sessões PPPoE
+ * também. A ordem de entrada mantém-se. Pura e idempotente.
  */
 export function compactEntries(entries: RouterLogEntry[]): RouterLogEntry[] {
   const { continued, orphans, shorten } = weighCounters(entries);
-  return entries.filter((entry) => !continued.has(entry) && !orphans.has(entry)).map(shorten);
+  return entries.filter((entry) => !continued.has(entry) && !orphans.has(entry) && !SESSION_DETECT.test(entry.message.trim())).map(shorten);
 }
 
 type Reading = { text: string; kind: LogKind; machine?: boolean };

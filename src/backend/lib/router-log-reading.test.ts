@@ -77,6 +77,15 @@ describe('gravações dos contadores', () => {
     expect(read[1].message).toBe('add file by api:ispm-api@::/script:ispm-wan-usage (*0 = /file add contents=… name=sd1/ispm-wan-usage.txt)');
   });
 
+  test('o detect-internet das sessões PPPoE não se guarda; o das WAN fica', () => {
+    const kept = compactEntries([
+      entry(1, '<pppoe-skn014> detect INTERNET', 'interface,info'),
+      entry(2, '<pppoe-admin> detect UNKNOWN', 'interface,info'),
+      entry(3, 'WAN1-STARLINK detect INTERNET', 'interface,info')
+    ]);
+    expect(kept.map((row) => row.id)).toEqual(['*3']);
+  });
+
   test('compactar é idempotente', () => {
     const once = compactEntries([entry(9, CLIENT), entry(10, WAN_HEAD), entry(11, WAN_TAIL)]);
     expect(compactEntries(once)).toEqual(once);
