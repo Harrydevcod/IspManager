@@ -21,8 +21,12 @@ import './BackboneWorkspace.css';
 
 /** Valores que a Descoberta traz da rede para o formulário de registo. */
 export type BackbonePrefill = {
-  ipAddress: string;
-  macAddress: string | null;
+  ipAddress?: string;
+  macAddress?: string | null;
+  /** O modelo escolhido na paleta da Topologia. Ganha ao `model` adivinhado. */
+  catalogId?: number;
+  /** O montante onde a paleta largou o cartão. */
+  upstreamDeviceIds?: number[];
   /** O nome que o aparelho anuncia, quando anuncia algum. */
   name?: string | null;
   /** O modelo que a rede respondeu — serve para escolher o item do catálogo. */

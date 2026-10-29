@@ -26,7 +26,7 @@ describe('backbone management API', () => {
     }));
 
     await expect(api.listCatalogs()).resolves.toEqual([
-      { id: 7, brand: 'Ubiquiti', model: 'Rocket', type: 'antena' }
+      { id: 7, brand: 'Ubiquiti', model: 'Rocket', type: 'antena', stockTotal: 0, backboneCount: 0 }
     ]);
   });
 

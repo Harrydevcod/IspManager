@@ -186,6 +186,17 @@ async function mountMap(topologyApi = api()): Promise<HTMLElement> {
   return mountWith(<MapHarness topologyApi={topologyApi} />);
 }
 
+/** O catálogo chega depois de a paleta abrir. */
+async function waitForCard(container: HTMLElement, model: string): Promise<HTMLButtonElement> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const card = [...container.querySelectorAll<HTMLButtonElement>('.equipment-card')]
+      .find((candidate) => candidate.querySelector('strong')?.textContent === model);
+    if (card) return card;
+    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 10)); });
+  }
+  throw new Error(`Palette card not found: ${model}`);
+}
+
 function button(container: HTMLElement, name: string): HTMLButtonElement {
   const result = [...container.querySelectorAll('button')]
     .find((candidate) => candidate.getAttribute('aria-label') === name);
@@ -222,7 +233,10 @@ beforeEach(() => {
     if (url.endsWith('/api/auth/status')) {
       return json({ setupRequired: false, authBypassed: true });
     }
-    if (url.endsWith('/api/stock/summary')) return json({ rows: [] });
+    if (url.endsWith('/api/stock/summary')) return json({ rows: [{
+      id: 9, category: 'equipamento', active: 1, brand: 'MikroTik', model: 'RB760iGS hEX S',
+      type: 'router', stockTotal: 2, backboneCount: 1
+    }] });
     return json({ page: 1, pageSize: 100, total: 0, totalPages: 0, items: [] });
   }));
   vi.stubGlobal('matchMedia', vi.fn(() => ({
@@ -641,10 +655,48 @@ describe('TopologyModule branch interaction', () => {
       await Promise.resolve();
     });
 
+    // O botão abre a paleta; o cartão leva ao formulário de sempre, com o modelo escolhido.
+    const palette = container.querySelector('[aria-label="Catálogo de equipamentos"]');
+    expect(palette).not.toBeNull();
+    const card = await waitForCard(container, 'RB760iGS hEX S');
+    expect(card.textContent).toContain('1 na rede · 2 em stock');
+    // Já está no catálogo ("RB760iGS hEX S" contém "hEX S"): a referência não volta a ser oferecida.
+    expect(container.querySelector('[aria-label="Adicionar MikroTik hEX S ao catálogo"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Adicionar MikroTik hAP ac lite ao catálogo"]')).not.toBeNull();
+
+    await act(async () => {
+      card.click();
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('[aria-label="Catálogo de equipamentos"]')).toBeNull();
     const dialog = document.querySelector('[role="dialog"]');
     expect(dialog).not.toBeNull();
     expect(dialog?.textContent).toContain('Novo backbone');
     expect(dialog?.textContent).toContain('Alimentado por');
+    expect(dialog?.textContent).toContain('RB760iGS hEX S');
+  });
+
+  test('a card dropped on a backbone opens the form with that backbone upstream', async () => {
+    const container = await mountMap();
+    const create = [...container.querySelectorAll('button')]
+      .find((candidate) => candidate.textContent?.trim() === 'Novo equipamento');
+    await act(async () => { create?.click(); await Promise.resolve(); });
+    await waitForCard(container, 'RB760iGS hEX S');
+
+    const canvas = container.querySelector('.topology-canvas');
+    const node = container.querySelector('.react-flow__node[data-id^="backbone:"]');
+    if (!canvas || !node) throw new Error('canvas or backbone node not found');
+    const data = new Map<string, string>([['application/x-ispm-catalog', '9']]);
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', {
+      value: { types: [...data.keys()], getData: (key: string) => data.get(key) ?? '' }
+    });
+    await act(async () => { node.dispatchEvent(drop); await Promise.resolve(); });
+
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain('RB760iGS hEX S');
+    expect(drop.defaultPrevented).toBe(true);
   });
 
   test('refits the view when opening every branch pushes the graph off screen', async () => {

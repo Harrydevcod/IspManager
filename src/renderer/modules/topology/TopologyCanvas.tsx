@@ -13,8 +13,9 @@ import {
   useImperativeHandle,
   useRef
 } from 'react';
-import type { ForwardedRef } from 'react';
-import { isValidBackboneConnection } from './backbone-linking';
+import type { DragEvent, ForwardedRef, MouseEvent } from 'react';
+import { isValidBackboneConnection, parseBackboneNodeId } from './backbone-linking';
+import { CATALOG_DRAG_TYPE } from './EquipmentPalette';
 import type { TopologyFlowEdge } from './topology-graph';
 import {
   topologyNodeTypes,
@@ -36,7 +37,15 @@ type TopologyCanvasProps = {
   /** Permite arrastar uma ligação entre unidades de backbone. */
   connectable?: boolean;
   onConnectNodes?: (sourceNodeId: string, targetNodeId: string) => void;
+  /** Duplo clique no fundo — abre a paleta, como "pesquisa rápida". */
+  onPaneDoubleClick?: () => void;
+  /** Um cartão da paleta largado no mapa; em cima de uma backbone, ela é o montante. */
+  onDropCatalog?: (catalogId: number, upstreamDeviceId: number | null) => void;
 };
+
+function acceptsCatalog(event: DragEvent<HTMLElement>): boolean {
+  return event.dataTransfer.types.includes(CATALOG_DRAG_TYPE);
+}
 
 /**
  * Espelho de `--motion-slow` (280ms) em JS.
@@ -113,7 +122,9 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
     legendVisible,
     minimapVisible,
     connectable = false,
-    onConnectNodes
+    onConnectNodes,
+    onPaneDoubleClick,
+    onDropCatalog
   }, ref) {
     useCanvasControls(ref, nodes);
 
@@ -121,7 +132,26 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
     // pela maioria das tecnologias de apoio, e o mapa ficava sem nome nenhum.
     // A secção com nome é uma região, que se anuncia e se navega.
     return (
-      <section className="topology-canvas" aria-label="Mapa físico da rede">
+      <section
+        className="topology-canvas"
+        aria-label="Mapa físico da rede"
+        onDoubleClick={onPaneDoubleClick && ((event: MouseEvent<HTMLElement>) => {
+          if ((event.target as Element).closest('.react-flow__pane')) onPaneDoubleClick();
+        })}
+        onDragOver={onDropCatalog && ((event) => {
+          if (!acceptsCatalog(event)) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+        })}
+        onDrop={onDropCatalog && ((event) => {
+          if (!acceptsCatalog(event)) return;
+          event.preventDefault();
+          const catalogId = Number(event.dataTransfer.getData(CATALOG_DRAG_TYPE));
+          if (!Number.isInteger(catalogId) || catalogId <= 0) return;
+          const nodeId = (event.target as Element).closest('.react-flow__node')?.getAttribute('data-id') ?? '';
+          onDropCatalog(catalogId, parseBackboneNodeId(nodeId));
+        })}
+      >
         {/* Sem `panOnScroll`: com ele o React Flow desloca a vista com a roda e
             manda o zoom para trás de Ctrl. Aqui a roda aproxima e o arrasto
             desloca, como em qualquer mapa. */}
@@ -148,6 +178,7 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
           panOnDrag
           zoomOnScroll
           zoomOnPinch
+          zoomOnDoubleClick={!onPaneDoubleClick}
           fitView={false}
           proOptions={{ hideAttribution: true }}
         >

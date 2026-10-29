@@ -6,6 +6,14 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+### Adicionado
+- **Catálogo de equipamentos na Topologia.** "Novo equipamento" abre agora um painel ao lado do mapa, em vez de ir logo para o formulário. O painel também abre com a tecla `D` ou com um duplo clique no fundo do mapa.
+  - Cada modelo tem um desenho próprio, conforme o tipo: router, switch, CPE, prato, setorial, ponto de acesso, Starlink.
+  - Pesquisa-se por marca, modelo ou tipo, e há filtros por tipo e uma secção "Mais usados".
+  - Ao passar o rato, o cartão diz quantas unidades estão na rede e quantas em stock. Um modelo sem stock avisa sempre, porque registar uma backbone desconta do stock.
+  - Clicar num cartão abre o formulário de sempre já com o modelo. Largar o cartão em cima de um equipamento do mapa preenche também o "Alimentado por".
+  - Há modelos de referência MikroTik, TP-Link, Ubiquiti e Starlink, e um "Modelo próprio". Só entram no catálogo quando se carrega em adicionar, sem stock nem custo, que continuam a lançar-se no Stock.
+
 ## [2.40](https://github.com/Harrydevcod/IspManager/releases/tag/v2.40.0) — 2026-10-28
 
 ### Adicionado

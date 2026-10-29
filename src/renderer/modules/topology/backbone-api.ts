@@ -18,6 +18,10 @@ export type BackboneCatalogOption = {
   brand: string | null;
   model: string;
   type: string;
+  /** Unidades em armazém. Só a lista do stock o traz; o diálogo não precisa. */
+  stockTotal?: number;
+  /** Unidades instaladas na rede — é o que ordena os "mais usados" da paleta. */
+  backboneCount?: number;
 };
 
 type StockCatalogWireRow = BackboneCatalogOption & {
@@ -80,11 +84,17 @@ function jsonMutation<T>(
 
 export function createBackboneApi(fetcher: BackboneFetcher = authFetch) {
   return {
-    listCatalogs: () => fetcher(`${API_BASE}/api/stock/summary`)
+    listCatalogs: (): Promise<BackboneCatalogOption[]> => fetcher(`${API_BASE}/api/stock/summary`)
       .then(readJson<{ rows: StockCatalogWireRow[] }>)
       .then(({ rows }) => rows
         .filter((row) => row.category === 'equipamento' && (row.active === true || row.active === 1))
-        .map(({ id, brand, model, type }) => ({ id, brand, model, type }))),
+        .map(({ id, brand, model, type, stockTotal, backboneCount }) => ({
+          id, brand, model, type, stockTotal: stockTotal ?? 0, backboneCount: backboneCount ?? 0
+        }))),
+    /** Cria só a linha do catálogo: sem stock nem custo, que se lançam no Stock. */
+    createCatalog: (input: { brand: string; model: string; type: string }) => jsonMutation<{ id: number }>(
+      fetcher, `${API_BASE}/api/equipment-catalog`, 'POST', { category: 'equipamento', ...input }
+    ),
     listBackbones: (query: BackboneListQuery) => fetcher(
       listUrl('/api/topology/backbones', query)
     ).then(readJson<BackbonePage<BackboneDeviceSummary>>),
