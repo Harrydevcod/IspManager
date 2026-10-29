@@ -900,6 +900,16 @@ export const supportTicketEntries = sqliteTable('support_ticket_entries', {
   createdAt: text('created_at').notNull().default("(datetime('now'))")
 });
 
+// Onde o operador arrumou cada nó do mapa (migration 0090). Sem linha, manda o dagre.
+export const topologyPositions = sqliteTable('topology_positions', {
+  direction: text('direction').notNull(),
+  nodeKey: text('node_key').notNull(),
+  x: real('x').notNull(),
+  y: real('y').notNull(),
+  updatedBy: integer('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
+}, (table) => [primaryKey({ columns: [table.direction, table.nodeKey] })]);
+
 export const routerLogFindings = sqliteTable('router_log_findings', {
   day: text('day').notNull(),
   kind: text('kind').notNull(),

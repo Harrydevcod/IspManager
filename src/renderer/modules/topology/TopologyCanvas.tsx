@@ -1,5 +1,6 @@
 import {
   Background,
+  type NodeChange,
   BackgroundVariant,
   MiniMap,
   ReactFlow,
@@ -41,6 +42,11 @@ type TopologyCanvasProps = {
   onPaneDoubleClick?: () => void;
   /** Um cartão da paleta largado no mapa; em cima de uma backbone, ela é o montante. */
   onDropCatalog?: (catalogId: number, upstreamDeviceId: number | null) => void;
+  /** Mover nós à mão (e em grupo, com Shift + caixa). Sem isto o mapa é só leitura. */
+  draggable?: boolean;
+  onNodesChange?: (changes: NodeChange<TopologyCanvasNode>[]) => void;
+  onNodeDragStart?: (nodes: TopologyCanvasNode[]) => void;
+  onNodeDragStop?: (nodes: TopologyCanvasNode[]) => void;
 };
 
 function acceptsCatalog(event: DragEvent<HTMLElement>): boolean {
@@ -124,7 +130,11 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
     connectable = false,
     onConnectNodes,
     onPaneDoubleClick,
-    onDropCatalog
+    onDropCatalog,
+    draggable = false,
+    onNodesChange,
+    onNodeDragStart,
+    onNodeDragStop
   }, ref) {
     useCanvasControls(ref, nodes);
 
@@ -159,7 +169,10 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
           nodes={nodes}
           edges={edges}
           nodeTypes={topologyNodeTypes}
-          nodesDraggable={false}
+          nodesDraggable={draggable}
+          onNodesChange={onNodesChange}
+          onNodeDragStart={(_event, _node, dragged) => onNodeDragStart?.(dragged)}
+          onNodeDragStop={(_event, _node, dragged) => onNodeDragStop?.(dragged)}
           nodesConnectable={connectable}
           isValidConnection={(connection) => isValidBackboneConnection(
             connection.source,
@@ -172,7 +185,8 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
           nodesFocusable={false}
           edgesFocusable={false}
           deleteKeyCode={null}
-          selectionKeyCode={null}
+          selectionKeyCode={draggable ? 'Shift' : null}
+          multiSelectionKeyCode={draggable ? 'Shift' : null}
           minZoom={0.25}
           maxZoom={2.5}
           panOnDrag

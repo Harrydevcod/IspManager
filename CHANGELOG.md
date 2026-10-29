@@ -13,6 +13,13 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
   - Ao passar o rato, o cartão diz quantas unidades estão na rede e quantas em stock. Um modelo sem stock avisa sempre, porque registar uma backbone desconta do stock.
   - Clicar num cartão abre o formulário de sempre já com o modelo. Largar o cartão em cima de um equipamento do mapa preenche também o "Alimentado por".
   - Há modelos de referência MikroTik, TP-Link, Ubiquiti e Starlink, e um "Modelo próprio". Só entram no catálogo quando se carrega em adicionar, sem stock nem custo, que continuam a lançar-se no Stock.
+- **Arrumar o mapa à mão.** Quem gere o mapa pode arrastar os equipamentos para onde quiser.
+  - A posição grava-se sozinha e mantém-se depois de atualizar a página ou reabrir a app.
+  - Cada desenho, de cima para baixo e da esquerda para a direita, guarda a sua própria arrumação.
+  - Shift + caixa escolhe vários equipamentos para os mover juntos.
+  - Ctrl+Z e Ctrl+Y desfazem e refazem os movimentos.
+  - "Reorganizar" pede confirmação e devolve o mapa ao desenho automático, sem mexer em equipamentos nem em ligações.
+  - Os equipamentos que ninguém arrumou continuam a ser desenhados automaticamente.
 
 ## [2.40](https://github.com/Harrydevcod/IspManager/releases/tag/v2.40.0) — 2026-10-28
 

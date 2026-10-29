@@ -15,7 +15,7 @@ import type { TopologyLive } from '../../../shared/topology';
 import { formatBitrate } from '../router/router-api';
 import { createBackboneApi } from './backbone-api';
 import { useTopologyLive } from './useTopologyLive';
-import { Button, EmptyState } from '../../components';
+import { Button, EmptyState, useConfirm, useToast } from '../../components';
 import { BackboneEditorDialog } from './BackboneDialogs';
 import { EquipmentPalette } from './EquipmentPalette';
 import { TopologyCanvas, type TopologyCanvasHandle } from './TopologyCanvas';
@@ -33,6 +33,7 @@ import {
 } from './topology-graph';
 import { layoutTopologyGraph, type TopologyDirection } from './topology-layout';
 import { useMapAuthoring } from './useMapAuthoring';
+import { placeNodes, useMapLayout } from './useMapLayout';
 import { useTopologyWorkspace } from './useTopologyWorkspace';
 import type { TopologyModuleProps } from './TopologyModule';
 
@@ -355,8 +356,8 @@ function usePaletteShortcut(enabled: boolean, toggle: () => void) {
     if (!enabled) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() !== 'd' || event.ctrlKey || event.metaKey || event.altKey) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
       event.preventDefault();
       toggle();
     };
@@ -547,6 +548,7 @@ function TopologyStage({
   toolsSlot,
   onCloseInspector,
   authoring,
+  layout,
   canvasRef,
   live,
   onApplyProposal,
@@ -565,6 +567,7 @@ function TopologyStage({
   toolsSlot: HTMLElement | null;
   onCloseInspector: () => void;
   authoring: MapAuthoring;
+  layout: ReturnType<typeof useMapLayout>;
   canvasRef: React.RefObject<TopologyCanvasHandle | null>;
   live: TopologyLive | null;
   onApplyProposal: (deviceId: number, routerInterface: string) => Promise<void>;
@@ -593,6 +596,10 @@ function TopologyStage({
             onConnectNodes={authoring.connectNodes}
             onPaneDoubleClick={authoring.canManage ? authoring.openPalette : undefined}
             onDropCatalog={authoring.canManage ? authoring.pickCatalog : undefined}
+            draggable={authoring.canManage}
+            onNodesChange={layout.onNodesChange}
+            onNodeDragStart={layout.onDragStart}
+            onNodeDragStop={layout.onDragStop}
           />
           {authoring.canManage && authoring.paletteOpen && (
             <EquipmentPalette
@@ -685,12 +692,25 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
   // O mapa abre inteiro: o inspetor só aparece quando houver nó selecionado.
   const [inspectorVisible, setInspectorVisible] = useState(false);
   const [direction, setDirection] = useState<TopologyDirection>('TB');
-  const { nodes, edges } = useRenderedGraph(
+  const { toast } = useToast();
+  const confirm = useConfirm();
+  const layout = useMapLayout(
+    direction,
+    props.active,
+    authoring.canManage,
+    useCallback((message: string) => toast(message, 'error'), [toast])
+  );
+  const rendered = useRenderedGraph(
     workspace.snapshot,
     workspace,
     labelsVisible,
     direction,
     live
+  );
+  const { edges } = rendered;
+  const nodes = useMemo(
+    () => placeNodes(rendered.nodes, layout.overrides, layout.boxSelection),
+    [rendered.nodes, layout.overrides, layout.boxSelection]
   );
   useRefitOnShapeChange(canvasRef, direction, nodes.length);
   // Escolher um nó com o painel recolhido volta a abri-lo — senão o clique
@@ -745,7 +765,21 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
     onToggleAllBranches: workspace.toggleAllBranches,
     onZoomIn: () => canvasRef.current?.zoomIn(),
     onZoomOut: () => canvasRef.current?.zoomOut(),
-    onFit: () => canvasRef.current?.fit()
+    onFit: () => canvasRef.current?.fit(),
+    layout: authoring.canManage ? {
+      arranged: layout.arranged,
+      canUndo: layout.canUndo,
+      canRedo: layout.canRedo,
+      onUndo: layout.undo,
+      onRedo: layout.redo,
+      onReset: () => {
+        void confirm({
+          title: 'Reorganizar o mapa?',
+          message: 'As posições que arrumou à mão neste desenho são apagadas e o mapa volta ao desenho automático. Os equipamentos e as ligações não mudam.',
+          confirmLabel: 'Reorganizar'
+        }).then((ok) => { if (ok) void layout.reset(); });
+      }
+    } : undefined
   };
   return (
     <section className="topology-module" aria-label="Topologia de rede">
@@ -793,6 +827,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
           workspace.setSelectedNode(null);
         }}
         authoring={authoring}
+        layout={layout}
         canvasRef={canvasRef}
         live={live}
         onApplyProposal={onApplyProposal}
