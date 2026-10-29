@@ -478,3 +478,17 @@
 }
 
 .topology-inspector-router h4 { font-family: var(--font-display); }
+
+/* Gerir a unidade: logo por baixo dos crachás, antes dos detalhes. Retirar fica
+   à direita e sem caixa — é a ação que não se quer carregar por engano. */
+.topology-inspector-manage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.topology-inspector-manage .topology-inspector-retire {
+  margin-left: auto;
+  color: var(--danger);
+}
