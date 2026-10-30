@@ -126,6 +126,7 @@
      Local intra-component stacking (sticky <thead>) stays at literal 1. */
   --z-base: 1;
   --z-sticky: 40;     /* sidebar, in-shell popovers */
+  --z-popover: 60;    /* menus abertos num ponto: acima dos painéis da shell (inspetor 50) */
   --z-dialog: 100;    /* modal scrim */
   --z-palette: 105;   /* command palette (above dialog) */
   --z-toast: 110;     /* always above modals */
@@ -1952,7 +1953,7 @@ h2 {
 .row-actions-menu-panel.is-context {
   position: fixed;
   right: auto;
-  z-index: var(--z-sticky);
+  z-index: var(--z-popover);
 }
 
 .row-actions-menu-panel.is-up {

@@ -12,6 +12,9 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
   - As ligações entre backbones entram no Tab, com o nome das duas pontas, e ficam destacadas quando têm o foco. Enter abre a ficha da ligação e Shift+F10 o menu dela.
   - Nos menus de ações, as setas, Home e End andam pelos itens, e Escape fecha e devolve o foco a quem abriu o menu.
 
+### Corrigido
+- Em ecrã estreito, o menu de um equipamento abria por baixo do inspetor e ficava escondido. Passa a abrir por cima.
+
 ## [2.43](https://github.com/Harrydevcod/IspManager/releases/tag/v2.43.0) — 2026-10-30
 
 ### Alterado
