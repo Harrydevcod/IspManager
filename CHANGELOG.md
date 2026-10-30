@@ -6,6 +6,9 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+### Corrigido
+- No inspetor da Topologia, o botão Retirar partia para uma linha sozinha, encostado à direita. As três ações ficam agora na mesma linha; num inspetor estreito, Retirar mostra só o ícone.
+
 ## [2.42](https://github.com/Harrydevcod/IspManager/releases/tag/v2.42.0) — 2026-10-30
 
 ### Adicionado
