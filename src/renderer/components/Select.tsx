@@ -17,9 +17,12 @@ export function Select({ label, error, hint, wide, hideLabel, id, className, chi
   const hintId = hint ? `${selectId}-hint` : undefined;
   const describedBy = error ? errorId : hintId;
 
+  // `select-control` dá o estilo base a qualquer Select, com ou sem rótulo. Sem rótulo não há
+  // `.field` à volta, por isso a classe do chamador vem para o próprio select.
   const select = (
     <select
       id={selectId}
+      className={label || !className ? 'select-control' : `select-control ${className}`}
       aria-invalid={error ? true : undefined}
       aria-describedby={describedBy}
       {...rest}
