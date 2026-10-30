@@ -695,6 +695,8 @@
   gap: var(--space-4);
   align-self: stretch;
   min-height: 0;
+  /* O segmento das vistas encostava à faixa das abas (0px): lia-se como parte dela. */
+  padding-top: var(--space-3);
 }
 
 /* Uma só linha antes do primeiro dado: vistas à esquerda, contexto e ação à direita. */

@@ -13,6 +13,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ### Corrigido
 - Os menus abertos num ponto (botão direito, Vista) já não ficam por baixo de outros elementos do ecrã.
+- **O mapa enquadra-se acima da legenda e do mini-mapa.** A 1225 px, a legenda tapava a última fila de equipamentos (4 nós). Ao abrir o mapa, ou no Ajustar, o fundo reserva a altura do que lá estiver.
+- Nos Incidentes, o segmento Quedas, Router e Diário já não encosta à faixa das abas.
 
 ## [2.44](https://github.com/Harrydevcod/IspManager/releases/tag/v2.44.0) — 2026-10-30
 
