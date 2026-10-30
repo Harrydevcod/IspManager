@@ -140,6 +140,19 @@ test('o ritmo das quedas vem antes delas e diz a próxima hora', () => {
   expect(formatPeriod(90)).toBe('1 h 30');
 });
 
+test('o retrato da última queda diz onde o router via cada antena', () => {
+  const rows = healthSituations({ ...calm, dropCapture: { at: '2026-10-29 07:03:18', hosts: [
+    { host: '192.168.1.110', deviceName: 'CPE710 Espia', mac: 'AA:AA:AA:AA:AA:01', arp: 'reachable', port: 'LAN1' },
+    { host: '192.168.1.140', deviceName: 'CPE710 Cruz', mac: 'AA:AA:AA:AA:AA:02', arp: 'failed', port: '-' },
+    { host: '192.168.1.122', deviceName: null, mac: '-', arp: '-', port: '-' }
+  ] } });
+  expect(rows).toEqual([{
+    key: 'capture', tone: 'neutral', title: 'Retrato da queda das 07:03',
+    detail: 'CPE710 Espia LAN1 AA:AA:AA:AA:AA:01 · CPE710 Cruz fora da bridge (ARP falhou) AA:AA:AA:AA:AA:02 · 192.168.1.122 sem ARP',
+    count: null
+  }]);
+});
+
 test('alterações fora do ISPM e portas a cair dizem o quê, quem e o que procurar', () => {
   const rows = healthSituations({
     ...calm,

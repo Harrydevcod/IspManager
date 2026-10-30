@@ -1051,6 +1051,33 @@ describe('runRouterPass', () => {
     expect(base.calls).toContainEqual(expect.objectContaining({ method: 'PUT', path: '/ppp/secret' }));
   });
 
+  test('instala o ispm-queda no fim, de 10 em 10 s, e nunca em ensaio', async () => {
+    const base = recordingTransport([]);
+    const transport = (async (req: RouterRequest) =>
+      req.method === 'GET' && req.path.startsWith('/system/script?name=') ? [{ source: '# x', invalid: 'false' }] : base.transport(req)) as RouterTransport;
+    const result = await runRouterPass(marked(), { transport, config });
+    expect(result.dropCapture).toBe('installed');
+    const scripts = base.calls.filter((c) => c.method === 'PUT' && c.path === '/system/script').map((c) => (c.body as { name: string }).name);
+    expect(scripts.at(-1)).toBe('ispm-queda');
+    expect(base.calls).toContainEqual(expect.objectContaining({ method: 'PUT', path: '/system/scheduler', body: expect.objectContaining({ name: 'ispm-queda', interval: '10s' }) }));
+
+    const dry = recordingTransport([]);
+    expect((await runRouterPass(marked(), { transport: dry.transport, config: { ...config, dryRun: true } })).dropCapture).toBe('dry_run');
+    expect(dry.calls.some((c) => c.method !== 'GET' && JSON.stringify(c.body ?? '').includes('ispm-queda'))).toBe(false);
+  });
+
+  test('uma falha do ispm-queda não afecta o resto da passagem', async () => {
+    const base = recordingTransport([]);
+    const transport = (async (req: RouterRequest) => {
+      if (req.method === 'PUT' && (req.body as { name?: string } | undefined)?.name === 'ispm-queda') throw new Error('router sem resposta');
+      return req.method === 'GET' && req.path.startsWith('/system/script?name=') ? [{ source: '# x', invalid: 'false' }] : base.transport(req);
+    }) as RouterTransport;
+    const result = await runRouterPass(marked(), { transport, config });
+    expect(result.dropCapture).toEqual({ error: 'router sem resposta' });
+    expect(result.iptv).toMatchObject({ status: 'applied' });
+    expect(result.applied).toBe(1);
+  });
+
   test('uma excepção nos perfis dos planos não impede os secrets', async () => {
     // Sem a tabela de estado, syncPlanProfiles lança (a falha do GET dos perfis ele próprio absorve).
     const db = marked();
