@@ -125,6 +125,24 @@ test('a vista Diário lista as ocorrências e abre a edição ao clicar na linha
   await act(async () => root.unmount());
 });
 
+test('as vistas são abas a sério: o painel tem nome e as setas mudam de vista', async () => {
+  const { host, root } = await mount(body);
+  const quedas = [...host.querySelectorAll<HTMLElement>('[role="tab"]')].find((node) => node.textContent === 'Quedas')!;
+  const panel = host.querySelector('[role="tabpanel"]')!;
+  expect(quedas.getAttribute('aria-controls')).toBe(panel.id);
+  expect(panel.getAttribute('aria-labelledby')).toBe(quedas.id);
+  quedas.focus();
+  stubFetch({
+    hours: 168, tone: 'ok', probeEnabled: true, lastProbeAt: null, lastRouterReadAt: null, routerJournal: false,
+    antennas: [], clients: [], downNow: [], diary: [], findings: []
+  });
+  await act(async () => { quedas.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); });
+  await settle();
+  expect((document.activeElement as HTMLElement).textContent).toBe('Router');
+  expect(document.activeElement?.getAttribute('aria-selected')).toBe('true');
+  await act(async () => root.unmount());
+});
+
 test('formatDuration', () => {
   expect(formatDuration(null)).toBe('Desconhecida');
   expect(formatDuration(20)).toBe('1 min');

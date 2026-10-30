@@ -26,6 +26,7 @@ export * from './ColumnPicker';
 export * from './PaginationControls';
 export * from './BulkActionBar';
 export * from './RowActionsMenu';
+export * from './TabList';
 export * from './Combobox';
 export * from './Dialog';
 export * from './ConfirmDialog';

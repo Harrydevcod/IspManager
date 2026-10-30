@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { HardDrive, NotebookPen, Plus, Radar, ScrollText, ShieldCheck } from 'lucide-react';
-import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Message, SkeletonList, type DataTableColumn } from '../../components';
+import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Message, SkeletonList, TabList, type DataTableColumn } from '../../components';
 import { useAuth } from '../../lib/auth';
 import { formatPtDateTime } from '../../lib/format';
 import { useLive } from '../router/useLive';
@@ -261,19 +261,11 @@ function DiaryView({ active, tabs }: ViewProps) {
 export function IncidentsWorkspace({ active }: { active: boolean }) {
   const [view, setView] = useState<View>('outages');
 
-  const tabs = (
-    <nav className="segmented-tabs" role="tablist" aria-label="Vistas dos incidentes">
-      {VIEWS.map((item) => (
-        <Button key={item.id} variant="ghost" role="tab" aria-selected={view === item.id}
-          className={`segmented-tab${view === item.id ? ' is-active' : ''}`} onClick={() => setView(item.id)}>
-          {item.label}
-        </Button>
-      ))}
-    </nav>
-  );
+  const tabs = <TabList segmented idPrefix="incidents" label="Vistas dos incidentes" tabs={VIEWS} value={view} onChange={setView} />;
 
   return (
-    <section className="incidents-workspace" aria-label="Incidentes do backbone">
+    // A secção é o próprio painel: uma caixa a mais partia a coluna flex da vista.
+    <section className="incidents-workspace" role="tabpanel" id={`incidents-panel-${view}`} aria-labelledby={`incidents-tab-${view}`}>
       {/* Só a vista à mostra faz pedidos. */}
       {view === 'outages' && <OutagesView active={active} tabs={tabs} />}
       {view === 'router' && <RouterFindingsView active={active} tabs={tabs} />}
