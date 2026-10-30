@@ -493,7 +493,6 @@
 
 .topology-inspector-manage .topology-inspector-retire {
   justify-self: end;
-  color: var(--danger);
 }
 
 /* Os três rótulos pedem 292px (medido). Abaixo disso Retirar fica só com o ícone; o rótulo continua para leitores de ecrã. */
