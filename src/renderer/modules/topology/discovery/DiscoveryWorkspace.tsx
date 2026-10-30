@@ -177,7 +177,7 @@ function DeviceCell({ row }: { row: DiscoveryRow }) {
       <span
         className="discovery-device-meta"
         title={row.modelMismatch
-          ? `O equipamento na rede responde "${row.probedModel}" — provavelmente foi trocado no terreno sem atualizar o registo`
+          ? `O equipamento na rede responde "${row.probedModel}": provavelmente foi trocado no terreno sem atualizar o registo`
           : MODEL_SOURCE_LABEL[source]}
       >
         {/* Dizer que não bate sem dizer com o quê é metade de um aviso. */}
@@ -444,7 +444,7 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone, onOpenService, 
 
       {report && discovery.includeRouter && report.routerConfigured && !report.routerEnriched ? (
         <Message tone="neutral">
-          O router de gestão não respondeu — a lista mostra só o que a máquina local conseguiu ver.
+          O router de gestão não respondeu; a lista mostra só o que a máquina local conseguiu ver.
         </Message>
       ) : null}
 

@@ -18,6 +18,11 @@
   .link-editor-pair { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* Remover é de risco: fica à esquerda, longe de Guardar, que é o gesto de sempre. */
+.dialog-actions > .link-editor-remove {
+  margin-inline-end: auto;
+}
+
 .link-editor-hint {
   margin: 0;
   color: var(--text-3);

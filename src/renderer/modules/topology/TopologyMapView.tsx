@@ -531,7 +531,7 @@ function TopologyStatsBar({
         <StatAction
           label="Sem ligação"
           value={snapshot.stats.unmappedAssignmentCount}
-          hint="Equipamento instalado sem dizer de que backbone pende. Abre a aba Backbone para definir a ligação."
+          hint="Equipamento instalado sem dizer de que backbone pende. Abra a aba Backbone para definir a ligação."
           onClick={onOpenBackbone}
         />
         <span
@@ -546,7 +546,7 @@ function TopologyStatsBar({
           value={snapshot.stats.attentionCount}
           pressed={attentionFiltered}
           hint={attentionFiltered
-            ? 'A mostrar só os nós com atenção. Clica para voltar a ver tudo.'
+            ? 'A mostrar só os nós com atenção. Clique para voltar a ver tudo.'
             : 'Filtra o mapa pelos nós que precisam de atenção.'}
           onClick={onToggleAttention}
         />

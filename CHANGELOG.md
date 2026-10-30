@@ -6,6 +6,11 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+### Alterado
+- Na ficha de uma ligação da Topologia, "Remover ligação" passa para a esquerda do rodapé, longe de Guardar, com o mesmo botão das outras ações de risco.
+- O módulo Topologia trata sempre o utilizador por você ("Selecione um nó", "Tente novamente") e deixa de usar travessões nos textos.
+- A lista de Backbone vazia usa o mesmo estado vazio do resto da app.
+
 ### Corrigido
 - No inspetor da Topologia, o botão Retirar partia para uma linha sozinha, encostado à direita. Agora tem o mesmo formato do Editar e do Duplicar e fica logo a seguir, com o mesmo espaço; num inspetor estreito mostra só o ícone.
 - Os seletores sem rótulo (o filtro "Todos os estados" do Backbone, o "Rede completa" do mapa, o estado na devolução de equipamento) apareciam com a borda branca e o fundo do browser. Passam a ter o estilo base da app, como os outros campos.

@@ -381,7 +381,7 @@ describe('TopologyModule tab shell', () => {
     expect(topologyApi.fetchSnapshot).toHaveBeenCalledTimes(2);
     expect(topologyApi.fetchBranch).toHaveBeenCalledTimes(2);
     expect(container.textContent).toContain('CPE 100');
-    expect(container.textContent).not.toContain('Seleciona um nó');
+    expect(container.textContent).not.toContain('Selecione um nó');
   });
 
   test('refetches when the map becomes visible again, to catch work done elsewhere', async () => {
@@ -1048,7 +1048,7 @@ test('closes the inspector with Escape while preserving the graph', async () => 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
   });
 
-  expect(container.textContent).toContain('Seleciona um nó');
+  expect(container.textContent).toContain('Selecione um nó');
   expect(container.textContent).toContain('Ubiquiti Rocket Prism');
 });
 

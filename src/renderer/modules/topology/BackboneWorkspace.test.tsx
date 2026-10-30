@@ -308,6 +308,14 @@ describe('Backbone workspace', () => {
     expect(container.querySelector('.backbone-list')?.textContent).toContain('10.0.0.10');
   });
 
+  test('a lista vazia usa o estado vazio do sistema', async () => {
+    const container = await renderWorkspace('admin', { listBackbones: vi.fn(async () => page([])) });
+    await waitFor(() => container.textContent?.includes('Nenhum backbone registado') ?? false);
+
+    const empty = container.querySelector('.backbone-list .empty-state');
+    expect(empty?.textContent).toContain('Registe a primeira unidade física para começar.');
+  });
+
   test('keeps list and detail visible for technicians without exposing mutation actions', async () => {
     const container = await renderWorkspace('technician');
 
@@ -386,12 +394,12 @@ describe('Backbone workspace', () => {
 
     await click(container.querySelector('[role="option"]'));
     await waitFor(() => container.textContent?.includes(
-      'Retirado — não aparece na topologia ativa'
+      'Retirado: não aparece na topologia ativa'
     ) ?? false);
 
     expect(button('Ver na Topologia')).toBeUndefined();
     expect(container.querySelector('[role="status"]')?.textContent)
-      .toContain('Retirado — não aparece na topologia ativa');
+      .toContain('Retirado: não aparece na topologia ativa');
     expect(onViewTopology).not.toHaveBeenCalled();
   });
 

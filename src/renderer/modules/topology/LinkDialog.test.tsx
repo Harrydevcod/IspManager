@@ -65,6 +65,14 @@ describe('LinkDialog', () => {
     document.querySelector<HTMLFormElement>('#link-editor-form')!.requestSubmit();
   });
 
+  test('remover fica à parte, à esquerda, no botão das ações de risco', () => {
+    mount();
+    const buttons = [...document.querySelectorAll('.dialog-actions > button')];
+    expect(buttons.map((button) => button.textContent)).toEqual(['Remover ligação', 'Cancelar', 'Guardar']);
+    expect(buttons[0].className).toContain('btn-critical');
+    expect(buttons[0].className).toContain('link-editor-remove');
+  });
+
   test('um rádio pede a frequência e grava só números inteiros', () => {
     const onSave = mount();
     expect(field('Frequência')).toBeUndefined();

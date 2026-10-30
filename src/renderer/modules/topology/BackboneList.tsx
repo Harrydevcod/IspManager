@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight, RadioTower, Search } from 'lucide-react';
 import type { KeyboardEvent } from 'react';
 import type { BackboneDeviceSummary, BackbonePage, BackboneStatus } from '../../../shared/backbone';
-import { Badge, Button, Field, Select } from '../../components';
+import { Badge, Button, EmptyState, Field, Select } from '../../components';
 
 const STATUS_LABEL: Record<BackboneStatus, string> = {
   active: 'Ativo',
@@ -111,13 +111,14 @@ export function BackboneList({
             <Button variant="secondary" size="sm" onClick={onRetry}>Tentar novamente</Button>
           </div>
         ) : page.items.length === 0 ? (
-          <div className="backbone-list-state">
-            <RadioTower size={20} aria-hidden />
-            <strong>{query || status ? 'Nenhum resultado' : 'Nenhum backbone registado'}</strong>
-            <span>{query || status
+          <EmptyState
+            icon={RadioTower}
+            size="sm"
+            title={query || status ? 'Nenhum resultado' : 'Nenhum backbone registado'}
+            description={query || status
               ? 'Ajuste a pesquisa ou o estado.'
-              : 'Registe a primeira unidade física para começar.'}</span>
-          </div>
+              : 'Registe a primeira unidade física para começar.'}
+          />
         ) : (
           <div role="listbox" aria-label="Lista de backbones" aria-busy={loading || undefined}>
             {page.items.map((backbone, index) => (
