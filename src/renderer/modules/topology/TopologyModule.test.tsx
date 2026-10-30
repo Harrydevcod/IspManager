@@ -1052,6 +1052,31 @@ test('closes the inspector with Escape while preserving the graph', async () => 
   expect(container.textContent).toContain('Ubiquiti Rocket Prism');
 });
 
+test('Shift+F10 e a tecla Menu abrem no nó focado o mesmo menu do botão direito', async () => {
+  const container = await mountMap();
+  const select = container.querySelector<HTMLButtonElement>('.react-flow__node[data-id="backbone:10"] button[aria-label^="Selecionar"]');
+  if (!select) throw new Error('node select button not found');
+  const items = () => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].map((item) => item.textContent);
+  const press = async (init: KeyboardEventInit) => {
+    await act(async () => {
+      select.focus();
+      select.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+      await Promise.resolve();
+    });
+  };
+
+  await press({ key: 'F10', shiftKey: true });
+  expect(items()).toEqual(['Editar', 'Duplicar', 'Ver só este backbone', 'Retirar']);
+  // O foco entra no menu: quem usa teclado continua a partir do primeiro item.
+  expect(document.activeElement?.textContent).toBe('Editar');
+  await act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+  expect(items()).toHaveLength(0);
+  expect(document.activeElement).toBe(select);
+
+  await press({ key: 'ContextMenu' });
+  expect(items()).toContain('Retirar');
+});
+
 test('o botão direito num backbone edita, duplica e retira sem sair do mapa', async () => {
   const detail = {
     id: 10, catalogId: 9, catalogBrand: 'Ubiquiti', catalogModel: 'Rocket Prism', catalogType: 'antena',

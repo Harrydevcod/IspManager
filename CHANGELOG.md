@@ -6,6 +6,12 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+### Adicionado
+- **O mapa da Topologia usa-se com teclado.**
+  - Shift+F10 ou a tecla Menu num equipamento com foco abrem o mesmo menu do botão direito, colado ao equipamento.
+  - As ligações entre backbones entram no Tab, com o nome das duas pontas, e ficam destacadas quando têm o foco. Enter abre a ficha da ligação e Shift+F10 o menu dela.
+  - Nos menus de ações, as setas, Home e End andam pelos itens, e Escape fecha e devolve o foco a quem abriu o menu.
+
 ## [2.43](https://github.com/Harrydevcod/IspManager/releases/tag/v2.43.0) — 2026-10-30
 
 ### Alterado

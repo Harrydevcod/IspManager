@@ -56,6 +56,22 @@ function toFlowEdge(edge: TopologyEdge): TopologyFlowEdge {
   };
 }
 
+/**
+ * As ligações que se editam (backbone → backbone) entram no Tab com o nome das duas pontas;
+ * as outras ficam fora, para o Tab não atravessar cada cliente. Devolve o mesmo objeto
+ * quando nada muda, para o React Flow não voltar a desenhar a ligação.
+ */
+export function keyboardLinks(
+  edges: TopologyFlowEdge[],
+  labelOf: (nodeId: string) => string
+): TopologyFlowEdge[] {
+  // Um nome que já acaba em ponto ("Router de Gestão.") não pode ler-se com dois.
+  const name = (nodeId: string) => labelOf(nodeId).replace(/[\s.]+$/, '');
+  return edges.map((edge) => edge.id.startsWith('core-link:backbone:')
+    ? { ...edge, focusable: true, ariaLabel: `Ligação ${name(edge.source)} para ${name(edge.target)}. Enter abre a ficha.` }
+    : edge);
+}
+
 function mergeBranch(
   branch: TopologyBackboneBranch,
   nodes: Map<string, TopologyFlowNode>,

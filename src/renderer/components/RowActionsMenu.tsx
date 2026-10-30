@@ -1,5 +1,5 @@
 import { MoreHorizontal } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { Button } from './Button';
 
 export type RowActionItem = {
@@ -52,7 +52,9 @@ export function RowActionsMenu({ groups, title = 'Mais ações' }: RowActionsMen
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
     }
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key !== 'Escape') return;
+      setOpen(false);
+      rootRef.current?.querySelector<HTMLElement>('[aria-haspopup="menu"]')?.focus();
     }
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
@@ -82,12 +84,28 @@ export function RowActionsMenu({ groups, title = 'Mais ações' }: RowActionsMen
           role="menu"
           ref={panelRef}
           style={placement ? { maxHeight: placement.maxHeight } : undefined}
+          onKeyDown={moveFocusInMenu}
         >
           <MenuGroups groups={visibleGroups} onPick={() => setOpen(false)} />
         </div>
       )}
     </div>
   );
+}
+
+/** Setas, Home e End andam pelos itens ativos do menu, dando a volta nas pontas. */
+function moveFocusInMenu(event: ReactKeyboardEvent<HTMLDivElement>) {
+  const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)')];
+  if (items.length === 0) return;
+  const current = items.indexOf(document.activeElement as HTMLElement);
+  const next = event.key === 'ArrowDown' ? (current + 1) % items.length
+    : event.key === 'ArrowUp' ? (current - 1 + items.length) % items.length
+      : event.key === 'Home' ? 0
+        : event.key === 'End' ? items.length - 1
+          : -1;
+  if (next === -1) return;
+  event.preventDefault();
+  items[next].focus();
 }
 
 function MenuGroups({ groups, onPick }: { groups: RowActionGroup[]; onPick: () => void }) {
@@ -116,6 +134,8 @@ function MenuGroups({ groups, onPick }: { groups: RowActionGroup[]; onPick: () =
 export function ContextMenu({ x, y, groups, onClose }: RowActionsMenuProps & { x: number; y: number; onClose: () => void }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [point, setPoint] = useState({ x, y });
+  // Quem abriu o menu pelo teclado (Shift+F10, tecla Menu) volta para onde estava ao sair com Escape.
+  const openerRef = useRef<HTMLElement | null>(document.activeElement instanceof HTMLElement ? document.activeElement : null);
 
   // Não sai do ecrã: perto da borda abre para o lado de dentro.
   useLayoutEffect(() => {
@@ -133,7 +153,12 @@ export function ContextMenu({ x, y, groups, onClose }: RowActionsMenuProps & { x
     const onPointerDown = (event: MouseEvent) => {
       if (!panelRef.current?.contains(event.target as Node)) onClose();
     };
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const opener = openerRef.current;
+      onClose();
+      if (opener?.isConnected) opener.focus();
+    };
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
     window.addEventListener('wheel', onClose, { passive: true });
@@ -155,6 +180,7 @@ export function ContextMenu({ x, y, groups, onClose }: RowActionsMenuProps & { x
       ref={panelRef}
       style={{ left: point.x, top: point.y }}
       onContextMenu={(event) => event.preventDefault()}
+      onKeyDown={moveFocusInMenu}
     >
       <MenuGroups groups={visibleGroups} onPick={onClose} />
     </div>

@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'vitest';
+import type { TopologyCoreLinkEdge } from '../../../shared/topology';
 import { branchOne, branchTwo, snapshot } from './topologyTestFixtures';
 import {
   composeTopologyGraph,
+  keyboardLinks,
+  type TopologyFlowEdge,
   scopeGraphToBackbone,
   topologyRelationshipLabel,
   toggleBackboneExpansion
@@ -103,5 +106,29 @@ describe('topology graph composition', () => {
 
     expect(graph.nodes.find((node) => node.id === 'backbone:10')?.data.topology)
       .toMatchObject({ label: 'Refreshed backbone' });
+  });
+});
+
+describe("ligações ao teclado", () => {
+  const edge = (
+    id: TopologyCoreLinkEdge["id"],
+    source: TopologyCoreLinkEdge["source"],
+    target: TopologyCoreLinkEdge["target"]
+  ): TopologyFlowEdge => ({
+    id, source, target, type: "core-link",
+    data: { topology: { id, kind: "core-link" as const, source, target, relationship: "defined_link" as const } }
+  });
+  const labels = new Map([["backbone:10", "Torre Norte"], ["backbone:20", "Antena Sul"], ["backbone:30", "Router de Gestão."]]);
+
+  test("só as ligações editáveis recebem foco, com o nome das duas pontas", () => {
+    const fromRoot = edge("core-link:root:isp:backbone:10", "root:isp", "backbone:10");
+    const between = edge("core-link:backbone:10:backbone:20", "backbone:10", "backbone:20");
+    const [root, link] = keyboardLinks([fromRoot, between], (id) => labels.get(id) ?? id);
+
+    expect(root).toBe(fromRoot);
+    expect(link).toMatchObject({ focusable: true, ariaLabel: "Ligação Torre Norte para Antena Sul. Enter abre a ficha." });
+
+    const [dotted] = keyboardLinks([edge("core-link:backbone:30:backbone:10", "backbone:30", "backbone:10")], (id) => labels.get(id) ?? id);
+    expect(dotted.ariaLabel).toBe("Ligação Router de Gestão para Torre Norte. Enter abre a ficha.");
   });
 });
