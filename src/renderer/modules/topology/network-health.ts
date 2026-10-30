@@ -36,14 +36,22 @@ export type DropCapture = { at: string; hosts: Array<{ host: string; deviceName:
 // Os estados do ARP do RouterOS 7 que querem dizer que a antena deixou de responder.
 const ARP_LOST = new Set(['failed', 'incomplete']);
 
-/** "CPE710 Espia LAN1 · TL-S5 Cruz sem ARP": onde o router via cada antena quando ela caiu. */
-export function captureDetail(capture: DropCapture): string {
-  return capture.hosts.map((row) => {
-    const name = row.deviceName ?? row.host;
-    if (row.mac === '-' || row.mac === '') return `${name} sem ARP`;
-    const where = row.port === '-' ? 'fora da bridge' : row.port;
-    return `${name} ${where}${ARP_LOST.has(row.arp) ? ' (ARP falhou)' : ''} ${row.mac}`;
-  }).join(' · ');
+type CaptureHost = DropCapture['hosts'][number];
+const withoutArp = (row: CaptureHost) => row.mac === '-' || row.mac === '';
+
+/** "TL-S5 Cruz · LAN1 · ARP falhou · F8:CE:…": onde o router via uma antena quando ela caiu. */
+function captureLine(row: CaptureHost): string {
+  const name = row.deviceName ?? row.host;
+  if (withoutArp(row)) return `${name} · sem ARP`;
+  const where = row.port === '-' ? 'fora da bridge' : row.port;
+  return [name, where, ...(ARP_LOST.has(row.arp) ? ['ARP falhou'] : []), row.mac].join(' · ');
+}
+
+/** "4 antenas · 2 sem resposta no ARP": o que o retrato diz de relance. */
+function captureSummary(capture: DropCapture): string {
+  const lost = capture.hosts.filter((row) => withoutArp(row) || ARP_LOST.has(row.arp)).length;
+  const total = `${capture.hosts.length} ${capture.hosts.length === 1 ? 'antena' : 'antenas'}`;
+  return lost === 0 ? `${total} · todas com ARP` : `${total} · ${lost} sem resposta no ARP`;
 }
 
 export const NETWORK_API = 'http://127.0.0.1:3001/api/network';
@@ -163,7 +171,8 @@ export function formatLocalStamp(value: string, withYear = true): string {
   return `${match[3]}/${match[2]}${withYear ? `/${match[1]}` : ''} ${match[4]}:${match[5]}`;
 }
 
-export type Situation = { key: string; tone: 'danger' | 'warn' | 'neutral'; title: string; detail: string; count: number | null };
+/** `lines`: o que não cabe numa frase sem perder o fim, uma linha cada (o retrato da queda). */
+export type Situation = { key: string; tone: 'danger' | 'warn' | 'neutral'; title: string; detail: string; lines?: string[]; count: number | null };
 
 /**
  * O que o painel mostra primeiro: o backbone em baixo agora, depois os achados do router pela
@@ -186,7 +195,8 @@ export function healthSituations(health: NetworkHealth): Situation[] {
     ...(health.dropCapture ? [{
       key: 'capture', tone: 'neutral' as const,
       title: `Retrato da queda das ${health.dropCapture.at.slice(11, 16)}`,
-      detail: captureDetail(health.dropCapture),
+      detail: captureSummary(health.dropCapture),
+      lines: health.dropCapture.hosts.map(captureLine),
       count: null
     }] : []),
     ...health.findings.map((row): Situation => ({

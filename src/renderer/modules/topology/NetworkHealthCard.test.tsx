@@ -146,11 +146,27 @@ test('o retrato da última queda diz onde o router via cada antena', () => {
     { host: '192.168.1.140', deviceName: 'CPE710 Cruz', mac: 'AA:AA:AA:AA:AA:02', arp: 'failed', port: '-' },
     { host: '192.168.1.122', deviceName: null, mac: '-', arp: '-', port: '-' }
   ] } });
+  // Uma linha por antena: numa frase só, o fim (as que perderam o ARP) ficava cortado.
   expect(rows).toEqual([{
     key: 'capture', tone: 'neutral', title: 'Retrato da queda das 07:03',
-    detail: 'CPE710 Espia LAN1 AA:AA:AA:AA:AA:01 · CPE710 Cruz fora da bridge (ARP falhou) AA:AA:AA:AA:AA:02 · 192.168.1.122 sem ARP',
+    detail: '3 antenas · 2 sem resposta no ARP',
+    lines: [
+      'CPE710 Espia · LAN1 · AA:AA:AA:AA:AA:01',
+      'CPE710 Cruz · fora da bridge · ARP falhou · AA:AA:AA:AA:AA:02',
+      '192.168.1.122 · sem ARP'
+    ],
     count: null
   }]);
+});
+
+test('o retrato mostra cada antena numa linha própria, sem cortar nenhuma', async () => {
+  const { host, root } = await mount({ ...calm, tone: 'warn', dropCapture: { at: '2026-10-30 06:28:01', hosts: [
+    { host: '192.168.1.122', deviceName: 'TL-S5 Cruz', mac: 'F8:CE:21:60:3C:7C', arp: 'failed', port: 'LAN1' },
+    { host: '192.168.1.251', deviceName: 'TL-S5 Espia', mac: '-', arp: '-', port: '-' }
+  ] } });
+  const lines = [...host.querySelectorAll('.dashboard-list-lines > span')].map((node) => node.textContent);
+  expect(lines).toEqual(['TL-S5 Cruz · LAN1 · ARP falhou · F8:CE:21:60:3C:7C', 'TL-S5 Espia · sem ARP']);
+  await act(async () => root.unmount());
 });
 
 test('alterações fora do ISPM e portas a cair dizem o quê, quem e o que procurar', () => {

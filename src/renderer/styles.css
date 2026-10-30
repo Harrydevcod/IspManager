@@ -5674,6 +5674,16 @@ label.field-toggle {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Uma linha por item, e as linhas partem em vez de cortar: aqui o fim é o que interessa. */
+.dashboard-list-lines {
+  display: grid;
+  gap: var(--space-0-5);
+  margin-top: var(--space-0-5);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
 .dashboard-list-amount {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
