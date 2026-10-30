@@ -3958,6 +3958,7 @@ h2 {
    saía com o cinzento do browser. `:where` deixa-o a especificidade zero: as
    regras de cada módulo continuam a ganhar. */
 :where(.field) :where(input:not([type='checkbox'], [type='radio']), select, textarea),
+:where(.select-control),
 :where(.topology-scope) :where(select) {
   min-height: 2.5rem;
   padding: 0 var(--space-3);
@@ -3972,6 +3973,7 @@ h2 {
 }
 
 :where(.field) :where(input, select, textarea):focus-visible,
+:where(.select-control):focus-visible,
 :where(.topology-scope) :where(select):focus-visible {
   outline: 2px solid var(--action-focus);
   outline-offset: 1px;

@@ -6,6 +6,9 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+### Corrigido
+- Os seletores sem rótulo (o filtro "Todos os estados" do Backbone, o "Rede completa" do mapa, o estado na devolução de equipamento) apareciam com a borda branca e o fundo do browser. Passam a ter o estilo base da app, como os outros campos.
+
 ## [2.42](https://github.com/Harrydevcod/IspManager/releases/tag/v2.42.0) — 2026-10-30
 
 ### Adicionado
