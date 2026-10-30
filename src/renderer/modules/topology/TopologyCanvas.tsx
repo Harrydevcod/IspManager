@@ -15,7 +15,7 @@ import {
   useMemo,
   useRef
 } from 'react';
-import type { DragEvent, ForwardedRef, KeyboardEvent, MouseEvent } from 'react';
+import type { DragEvent, ForwardedRef, KeyboardEvent, MouseEvent, RefObject } from 'react';
 import { isValidBackboneConnection, parseBackboneNodeId } from './backbone-linking';
 import { CATALOG_DRAG_TYPE } from './EquipmentPalette';
 import { keyboardLinks, type TopologyFlowEdge } from './topology-graph';
@@ -101,15 +101,28 @@ function anchorBelow(element: Element): { x: number; y: number } {
   return { x: rect.left + Math.min(24, rect.width / 2), y: rect.bottom + 4 };
 }
 
+/**
+ * A legenda e o mini-mapa pousam no fundo do mapa: enquadrar sem contar com eles deixava
+ * a última fila de equipamentos por baixo da legenda (4 nós a 1225 px). O fundo reserva a
+ * altura do que lá estiver; sem nada medido (escondidos, jsdom) fica a margem de sempre.
+ */
+export function fitPadding(section: HTMLElement | null, base: number) {
+  const bottom = section?.getBoundingClientRect().bottom ?? 0;
+  const covered = Math.max(0, ...[...(section?.querySelectorAll('.topology-legend, .topology-minimap') ?? [])]
+    .map((element) => bottom - element.getBoundingClientRect().top));
+  return covered > 0 ? { x: base, top: base, bottom: `${Math.round(covered + 12)}px` as const } : base;
+}
+
 function useCanvasControls(
   ref: ForwardedRef<TopologyCanvasHandle>,
-  nodes: TopologyCanvasNode[]
+  nodes: TopologyCanvasNode[],
+  sectionRef: RefObject<HTMLElement | null>
 ) {
   const flow = useReactFlow<TopologyCanvasNode, TopologyFlowEdge>();
   const nodesInitialized = useNodesInitialized();
   const fittedCount = useRef(0);
   useImperativeHandle(ref, () => ({
-    fit: () => void flow.fitView({ padding: 0.18, duration: motionDuration() }),
+    fit: () => void flow.fitView({ padding: fitPadding(sectionRef.current, 0.18), duration: motionDuration() }),
     zoomIn: () => void flow.zoomIn({ duration: motionDuration() }),
     zoomOut: () => void flow.zoomOut({ duration: motionDuration() }),
     centerNode: (nodeId) => {
@@ -141,8 +154,8 @@ function useCanvasControls(
     // Sem animação: o mapa acabou de aparecer, não há de onde animar — e a
     // transição do `setViewport` corre em `requestAnimationFrame`, que não corre
     // com a janela em segundo plano. Assim o enquadramento aplica-se sempre.
-    void flow.fitView({ padding: 0.2, duration: 0 });
-  }, [flow, nodes.length, nodesInitialized]);
+    void flow.fitView({ padding: fitPadding(sectionRef.current, 0.2), duration: 0 });
+  }, [flow, nodes.length, nodesInitialized, sectionRef]);
 }
 
 const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps>(
@@ -162,7 +175,8 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
     onEdgeClick,
     onContextMenu
   }, ref) {
-    useCanvasControls(ref, nodes);
+    const sectionRef = useRef<HTMLElement>(null);
+    useCanvasControls(ref, nodes, sectionRef);
 
     // As ligações editáveis entram no Tab com o nome das pontas. A chave junta só ids e nomes:
     // arrastar um nó muda as posições a cada frame e não pode voltar a criar as ligações.
@@ -199,6 +213,7 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
     // A secção com nome é uma região, que se anuncia e se navega.
     return (
       <section
+        ref={sectionRef}
         className="topology-canvas"
         aria-label="Mapa físico da rede"
         onKeyDown={onCanvasKeyDown}
