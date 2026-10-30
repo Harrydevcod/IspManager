@@ -194,7 +194,7 @@ export function ExpensesModule() {
   const submitTemplate = async (event: FormEvent) => {
     event.preventDefault();
     const amount = Number(templateForm.amountCve.replace(',', '.'));
-    if (!templateForm.name.trim()) { toast('Indica um nome'); return; }
+    if (!templateForm.name.trim()) { toast('Indique um nome'); return; }
     if (!Number.isFinite(amount) || amount < 0) { toast('Valor invalido'); return; }
     setTemplateSaving(true);
     try {
@@ -325,7 +325,7 @@ export function ExpensesModule() {
     event.preventDefault();
     const amount = parseMoney(form.amountCve);
     if (!form.description.trim()) {
-      toast('Indica uma descricao para a despesa');
+      toast('Indique uma descrição para a despesa');
       return;
     }
     if (!Number.isFinite(amount) || amount < 0) {

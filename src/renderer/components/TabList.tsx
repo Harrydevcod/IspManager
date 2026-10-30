@@ -13,13 +13,15 @@ type TabListProps<T extends string> = {
   className?: string;
   /** O aspeto de segmento (`segmented-tabs`), para vistas dentro de uma aba. */
   segmented?: boolean;
+  /** A classe de cada aba, a que se junta `is-active` na escolhida. Por omissão, `segmented-tab` no aspeto de segmento. */
+  tabClassName?: string;
 };
 
 /**
  * Abas com o comportamento do padrão WAI-ARIA: só a escolhida entra no Tab, as setas
  * dão a volta nas pontas, Home e End vão aos extremos, e escolher pelo teclado leva o foco.
  */
-export function TabList<T extends string>({ idPrefix, label, tabs, value, onChange, className, segmented }: TabListProps<T>) {
+export function TabList<T extends string>({ idPrefix, label, tabs, value, onChange, className, segmented, tabClassName }: TabListProps<T>) {
   function onKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
     const current = tabs.findIndex((tab) => tab.id === value);
     const next = event.key === 'ArrowRight' ? (current + 1) % tabs.length
@@ -36,6 +38,7 @@ export function TabList<T extends string>({ idPrefix, label, tabs, value, onChan
   }
 
   const listClass = [segmented && 'segmented-tabs', className].filter(Boolean).join(' ') || undefined;
+  const tabClass = tabClassName ?? (segmented ? 'segmented-tab' : undefined);
   return (
     <div className={listClass} role="tablist" aria-label={label}>
       {tabs.map((tab) => {
@@ -49,7 +52,7 @@ export function TabList<T extends string>({ idPrefix, label, tabs, value, onChan
             aria-selected={selected}
             aria-controls={`${idPrefix}-panel-${tab.id}`}
             tabIndex={selected ? 0 : -1}
-            className={segmented ? `segmented-tab${selected ? ' is-active' : ''}` : undefined}
+            className={tabClass && `${tabClass}${selected ? ' is-active' : ''}`}
             onClick={() => onChange(tab.id)}
             onKeyDown={onKeyDown}
           >

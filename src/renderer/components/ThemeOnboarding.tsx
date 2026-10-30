@@ -30,7 +30,7 @@ export function ThemeOnboarding() {
       onClose={() => choose('system')}
     >
       <p className="theme-onboarding-lead">
-        O Windows está em modo {detected === 'dark' ? 'escuro' : 'claro'}. Como preferes o ISPM?
+        O Windows está em modo {detected === 'dark' ? 'escuro' : 'claro'}. Como prefere o ISPM?
       </p>
       <div className="theme-onboarding-options">
         <Button

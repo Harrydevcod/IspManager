@@ -1,6 +1,6 @@
 import { AlertTriangle, Banknote, Receipt, TrendingUp, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Button } from '../components';
+import { TabList } from '../components';
 import { ExpensesModule } from './ExpensesModule';
 import { InvestmentsModule } from './InvestmentsModule';
 import { PaymentsModule } from './PaymentsModule';
@@ -10,13 +10,13 @@ import './FinanceModule.css';
 
 type FinanceTab = 'pagamentos' | 'pendentes' | 'lucro' | 'investimentos' | 'despesas';
 
-const TABS: { id: FinanceTab; label: string; icon: typeof TrendingUp }[] = [
+const TABS = [
   { id: 'pagamentos', label: 'Pagamentos', icon: Banknote },
   { id: 'pendentes', label: 'Pendentes', icon: AlertTriangle },
   { id: 'lucro', label: 'Lucro', icon: TrendingUp },
   { id: 'investimentos', label: 'Investimentos', icon: Wallet },
   { id: 'despesas', label: 'Despesas', icon: Receipt }
-];
+].map(({ id, label, icon: Icon }) => ({ id: id as FinanceTab, label: <><Icon size={14} aria-hidden /><span>{label}</span></> }));
 
 /**
  * Financeiro shell: groups Pagamentos (PaymentsModule), Lucro (ProfitModule), Investimentos
@@ -46,22 +46,10 @@ export function FinanceModule({
     <div className="finance-shell">
       <div className="finance-tabs-row">
         <p className="eyebrow">Financeiro</p>
-        <nav className="segmented-tabs" role="tablist" aria-label="Área financeira">
-          {TABS.map(({ id, label, icon: Icon }) => (
-            <Button
-              key={id}
-              variant="ghost"
-              role="tab"
-              aria-selected={tab === id}
-              className={`segmented-tab${tab === id ? ' is-active' : ''}`}
-              onClick={() => setTab(id)}
-            >
-              <Icon size={14} aria-hidden />
-              <span>{label}</span>
-            </Button>
-          ))}
-        </nav>
+        <TabList segmented idPrefix="finance" label="Área financeira" tabs={TABS} value={tab} onChange={setTab} />
       </div>
+
+      <div className="tab-panel" role="tabpanel" id={`finance-panel-${tab}`} aria-labelledby={`finance-tab-${tab}`}>
 
       {tab === 'pagamentos' && (
         <PaymentsModule focusPaymentId={paymentFocusId} onPaymentFocusHandled={onPaymentFocusHandled} focusStatus={paymentsFocus} focusMonth={paymentsMonth} onFocusHandled={onPaymentsFocusHandled} />
@@ -70,6 +58,7 @@ export function FinanceModule({
       {tab === 'lucro' && <ProfitModule />}
       {tab === 'investimentos' && <InvestmentsModule />}
       {tab === 'despesas' && <ExpensesModule />}
+      </div>
     </div>
   );
 }

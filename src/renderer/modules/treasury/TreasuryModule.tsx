@@ -14,6 +14,7 @@ import {
   Select,
   SkeletonList,
   useToast,
+  TabList,
   type DataTableColumn
 } from '../../components';
 import { authFetch, useAuth } from '../../lib/auth';
@@ -319,17 +320,19 @@ export function TreasuryModule() {
         </MetricGrid>
       )}
 
-      <nav className="segmented-tabs" role="tablist" aria-label="Tesouraria">
-        <Button variant="ghost" role="tab" aria-selected={tab === 'contas'} className={`segmented-tab${tab === 'contas' ? ' is-active' : ''}`} onClick={() => setTab('contas')}>
-          <Landmark size={14} aria-hidden />
-          <span>Contas</span>
-          <span className="segmented-tab-count">{accounts.length}</span>
-        </Button>
-        <Button variant="ghost" role="tab" aria-selected={tab === 'movimentos'} className={`segmented-tab${tab === 'movimentos' ? ' is-active' : ''}`} onClick={() => setTab('movimentos')}>
-          <List size={14} aria-hidden />
-          <span>Movimentos</span>
-        </Button>
-      </nav>
+      <TabList
+        segmented
+        idPrefix="treasury"
+        label="Tesouraria"
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: 'contas', label: <><Landmark size={14} aria-hidden /><span>Contas</span><span className="segmented-tab-count">{accounts.length}</span></> },
+          { id: 'movimentos', label: <><List size={14} aria-hidden /><span>Movimentos</span></> },
+        ]}
+      />
+
+      <div className="tab-panel" role="tabpanel" id={`treasury-panel-${tab}`} aria-labelledby={`treasury-tab-${tab}`}>
 
       {tab === 'contas' && (
         loading && !summary ? <SkeletonList rows={4} /> : (
@@ -407,6 +410,7 @@ export function TreasuryModule() {
           )}
         </>
       )}
+      </div>
 
       {accountDialog && (
         <AccountDialog

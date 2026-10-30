@@ -2,7 +2,7 @@ import { Activity, Banknote, Building2, CreditCard, DatabaseBackup, KeyRound, Me
 import QRCode from 'qrcode';
 import type { FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { Button, Message, type SecretDraft } from '../components';
+import { Button, Message, TabList, type SecretDraft } from '../components';
 import { authFetch } from '../lib/auth';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
@@ -765,26 +765,20 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
         </div>
       </div>
 
-      <nav className="settings-tabs" role="tablist" aria-label="Configurações por tópico">
-        {TABS.filter((tab) => tab.id !== 'vault' || auth.isAuthBypassed || auth.hasRole('admin')).map((tab) => {
-          const Icon = tab.icon;
-          const active = activeTab === tab.id;
-          return (
-            <Button
-              key={tab.id}
-              variant="ghost"
-              role="tab"
-              aria-selected={active}
-              className={`settings-tab${active ? ' is-active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              <Icon size={14} aria-hidden />
-              <span>{tab.label}</span>
-            </Button>
-          );
-        })}
-      </nav>
+      <TabList
+        className="settings-tabs"
+        tabClassName="settings-tab"
+        idPrefix="settings"
+        label="Configurações por tópico"
+        value={activeTab}
+        onChange={setActiveTab}
+        tabs={TABS.filter((tab) => tab.id !== 'vault' || auth.isAuthBypassed || auth.hasRole('admin'))
+          .map(({ id, label, icon: Icon }) => ({ id, label: <><Icon size={14} aria-hidden /><span>{label}</span></> }))}
+      />
       </>)}
+
+      {/* Dentro do Router o ecrã é um só tópico, sem abas: aí não há painel de abas. */}
+      <div className="tab-panel" {...(scope === 'all' && { role: 'tabpanel', id: `settings-panel-${activeTab}`, 'aria-labelledby': `settings-tab-${activeTab}` })}>
 
       {secretsLost.length > 0 && (
         <Message tone="error">
@@ -937,6 +931,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
 
       {activeTab === 'license' && <LicensePanel />}
       {activeTab === 'vault' && (auth.isAuthBypassed || auth.hasRole('admin')) && <VaultPanel />}
+      </div>
     </section>
   );
 }

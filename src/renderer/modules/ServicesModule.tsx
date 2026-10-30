@@ -547,7 +547,7 @@ export function ServicesModule({
   async function submitShare(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedService || !shareChoice) {
-      toast('Escolhe o equipamento a ligar.', 'error');
+      toast('Escolha o equipamento a ligar.', 'error');
       return;
     }
     setSubmitting(true);
