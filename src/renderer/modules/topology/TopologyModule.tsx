@@ -1,8 +1,7 @@
 import './TopologyModule.css';
 
-import { lazy, Suspense, useCallback, useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
-import { Button } from '../../components';
+import { lazy, Suspense, useCallback, useState } from 'react';
+import { TabList } from '../../components';
 import { BackboneWorkspace, type BackbonePrefill } from './BackboneWorkspace';
 import { DiscoveryWorkspace } from './discovery/DiscoveryWorkspace';
 import { IncidentsWorkspace } from './IncidentsWorkspace';
@@ -52,30 +51,11 @@ export default function TopologyModule(props: TopologyModuleProps) {
   // Os controlos do mapa entram aqui por portal: pertencem ao mapa, mas o sítio
   // onde não tapam o grafo é a tira das abas, que é deste componente.
   const [toolsSlot, setToolsSlot] = useState<HTMLDivElement | null>(null);
-  const tabListRef = useRef<HTMLDivElement>(null);
-
-  const selectTab = useCallback((tab: TopologyTab, moveFocus = false) => {
+  const selectTab = useCallback((tab: TopologyTab) => {
     if (tab === 'topology') setMapVisited(true);
     if (tab === 'discovery') setDiscoveryVisited(true);
     setActiveTab(tab);
-    if (moveFocus) {
-      queueMicrotask(() => {
-        tabListRef.current
-          ?.querySelector<HTMLButtonElement>(`#topology-tab-${tab}`)
-          ?.focus();
-      });
-    }
   }, []);
-
-  // Navegação por índice com envolvência nas pontas: com três abas, um
-  // alternador binário deixava a terceira inalcançável pelo teclado.
-  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-    event.preventDefault();
-    const current = tabs.findIndex((tab) => tab.id === activeTab);
-    const step = event.key === 'ArrowRight' ? 1 : tabs.length - 1;
-    selectTab(tabs[(current + step) % tabs.length].id, true);
-  }
 
   // Vem da Descoberta: abre o formulário de backbone na aba ao lado, já com o
   // endereço e o MAC que foram encontrados na rede.
@@ -107,31 +87,14 @@ export default function TopologyModule(props: TopologyModuleProps) {
   return (
     <section className="topology-shell" aria-label="Infraestrutura de backbone e topologia">
       <div className="topology-tabs">
-        <div
-          ref={tabListRef}
+        <TabList
           className="topology-tabs-list"
-          role="tablist"
-          aria-label="Vistas de infraestrutura"
-        >
-          {tabs.map((tab) => {
-            const selected = activeTab === tab.id;
-            return (
-              <Button
-                key={tab.id}
-                id={`topology-tab-${tab.id}`}
-                variant="ghost"
-                role="tab"
-                aria-selected={selected}
-                aria-controls={`topology-panel-${tab.id}`}
-                tabIndex={selected ? 0 : -1}
-                onClick={() => selectTab(tab.id)}
-                onKeyDown={handleTabKeyDown}
-              >
-                {tab.label}
-              </Button>
-            );
-          })}
-        </div>
+          idPrefix="topology"
+          label="Vistas de infraestrutura"
+          tabs={tabs}
+          value={activeTab}
+          onChange={selectTab}
+        />
         {/* Só na aba do mapa: na aba Backbone o slot não existe e os controlos
             saem da tira sem ninguém ter de os esconder. */}
         {activeTab === 'topology' && (

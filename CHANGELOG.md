@@ -9,6 +9,7 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 ### Alterado
 - **A barra do mapa tem um menu Vista.** Etiquetas, legenda, mini-mapa, inspetor e a direção do desenho passam de cinco ícones soltos para um menu com nome e visto em cada opção. A barra fica com nove controlos em vez de treze.
 - **O botão Filtros diz quantos filtros estão ativos.** Com o menu fechado, já não fica escondido que o mapa está recortado.
+- **As vistas dos Incidentes (Quedas, Router, Diário) são abas a sério.** As setas mudam de vista e levam o foco, como já acontecia nas abas da Topologia, e o leitor de ecrã anuncia o painel de cada uma. Home e End vão à primeira e à última aba, aqui e nas abas da Topologia.
 
 ### Corrigido
 - Os menus abertos num ponto (botão direito, Vista) já não ficam por baixo de outros elementos do ecrã.
