@@ -9,7 +9,7 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 ### Adicionado
 - **Retrato das quedas em bloco.** O ISPM instala no router o script `ispm-queda`, que corre de 10 em 10 segundos.
   - Quando duas ou mais vigias do netwatch caem juntas, o script escreve no registo, para cada antena caída, o MAC que o router tem para ela, o estado do ARP e a porta da bridge onde a vê. Quando todas voltam, escreve o fim.
-  - Na Saúde da rede aparece "Retrato da queda das hh:mm", com o que o router via no início da última queda.
+  - Na Saúde da rede aparece "Retrato da queda das hh:mm", com o que o router via no início da última queda: quantas antenas perderam a resposta no ARP e, numa linha por antena, a porta, o estado do ARP e o MAC.
   - Não toca no netwatch do operador e não corre em modo de ensaio.
 
 ### Alterado

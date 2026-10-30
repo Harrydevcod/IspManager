@@ -78,6 +78,11 @@ export function NetworkHealthCard({ onOpenNetwork }: { onOpenNetwork: () => void
                   <div className="dashboard-list-meta">
                     <strong>{situation.title}</strong>
                     <small>{situation.detail}</small>
+                    {situation.lines && (
+                      <div className="dashboard-list-lines">
+                        {situation.lines.map((line) => <span key={line}>{line}</span>)}
+                      </div>
+                    )}
                   </div>
                   {situation.count !== null && (
                     <Badge tone={situation.tone === 'neutral' ? 'neutral' : situation.tone === 'warn' ? 'warn' : 'danger'}>{situation.count}×</Badge>
