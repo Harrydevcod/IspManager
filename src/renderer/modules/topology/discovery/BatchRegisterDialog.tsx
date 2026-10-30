@@ -129,7 +129,7 @@ export function BatchRegisterDialog({ open, rows, onClose, onRegistered }: Batch
     >
       {candidates.length === 0 ? (
         <Message tone="neutral">
-          Nenhum desconhecido respondeu um modelo. Sem modelo não há como saber que equipamento é —
+          Nenhum desconhecido respondeu um modelo. Sem modelo não há como saber que equipamento é,
           e o que não diz o que é raramente é nosso.
         </Message>
       ) : (

@@ -121,7 +121,7 @@ export function BackboneDetail({
       <div className="backbone-detail-actions">
         {backbone.status === 'retired' ? (
           <p className="backbone-detail-note" role="status">
-            Retirado — não aparece na topologia ativa
+            Retirado: não aparece na topologia ativa
           </p>
         ) : (
           <Button

@@ -128,7 +128,7 @@ function SearchResults({
   return (
     <div className="topology-search-results">
       {state === 'loading' && <p role="status">A pesquisar na rede…</p>}
-      {state === 'error' && <p role="alert">A pesquisa falhou. Tenta novamente.</p>}
+      {state === 'error' && <p role="alert">A pesquisa falhou. Tente novamente.</p>}
       {state === 'idle' && results.length === 0 && <p>Sem resultados.</p>}
       <div id={SEARCH_LISTBOX_ID} role="listbox" aria-label="Resultados da topologia">
       {results.map((result, index) => (

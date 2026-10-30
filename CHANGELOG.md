@@ -6,6 +6,11 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ## Não lançado
 
+### Alterado
+- Na ficha de uma ligação da Topologia, "Remover ligação" passa para a esquerda do rodapé, longe de Guardar, com o mesmo botão das outras ações de risco.
+- O módulo Topologia trata sempre o utilizador por você ("Selecione um nó", "Tente novamente") e deixa de usar travessões nos textos.
+- A lista de Backbone vazia usa o mesmo estado vazio do resto da app.
+
 ## [2.42](https://github.com/Harrydevcod/IspManager/releases/tag/v2.42.0) — 2026-10-30
 
 ### Adicionado

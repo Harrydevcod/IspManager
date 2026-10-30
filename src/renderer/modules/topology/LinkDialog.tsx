@@ -109,7 +109,7 @@ export function LinkDialog({ open, upstream, device, link, pending, error, onSav
       closeOnBackdrop={!pending}
       actions={(
         <>
-          <Button variant="danger" leadingIcon={<Unlink size={15} aria-hidden />} onClick={onRemove} disabled={pending}>
+          <Button variant="critical" className="link-editor-remove" leadingIcon={<Unlink size={15} aria-hidden />} onClick={onRemove} disabled={pending}>
             Remover ligação
           </Button>
           <Button variant="secondary" onClick={onClose} disabled={pending}>Cancelar</Button>

@@ -274,7 +274,7 @@ export function BackboneEditorDialog({
                 ))}
               </ul>
             ) : (
-              <p className="backbone-uplink-empty">Internet (origem) — cabeça da cadeia</p>
+              <p className="backbone-uplink-empty">Internet (origem), cabeça da cadeia</p>
             )}
             <Combobox
               ariaLabel="Adicionar alimentação"
@@ -297,7 +297,7 @@ export function BackboneEditorDialog({
             />
             <small className="backbone-form-note">
               De quem esta unidade recebe sinal. Sem nenhuma, é a cabeça da cadeia e recebe
-              da Internet. Várias significam agregação — por exemplo duas Starlink no mesmo
+              da Internet. Várias significam agregação, por exemplo duas Starlink no mesmo
               router multi-WAN.
             </small>
           </div>

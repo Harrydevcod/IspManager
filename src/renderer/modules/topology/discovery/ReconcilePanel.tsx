@@ -35,7 +35,7 @@ const GROUPS: Group[] = [
   {
     kind: 'ip_mudou',
     title: 'Endereço diferente',
-    hint: 'O mesmo aparelho — foi reconhecido pelo MAC — está noutro endereço. Acontece com quem apanha IP por DHCP e foi desligado.',
+    hint: 'O mesmo aparelho (reconhecido pelo MAC) está noutro endereço. Acontece com quem apanha IP por DHCP e foi desligado.',
     applies: true
   },
   {
@@ -47,7 +47,7 @@ const GROUPS: Group[] = [
   {
     kind: 'modelo_diferente',
     title: 'Modelo diferente do registado',
-    hint: 'O aparelho na rede não é o que está registado. Trocar o item do catálogo é mexer no stock — por isso a troca regista-se no serviço, e o botão leva-o lá.',
+    hint: 'O aparelho na rede não é o que está registado. Trocar o item do catálogo é mexer no stock, por isso a troca regista-se no serviço, e o botão leva-o lá.',
     applies: false
   },
   {
@@ -263,7 +263,7 @@ function OrphanGroup({ orphans }: { orphans: Orphan[] }) {
       <div className="reconcile-group-head">
         <strong>Sem identidade na rede</strong>
         <span className="reconcile-hint">
-          Registado sem endereço nem MAC. Os candidatos são os desconhecidos do mesmo fabricante —
+          Registado sem endereço nem MAC. Os candidatos são os desconhecidos do mesmo fabricante:
           uma lista para escolher, não uma resposta.
         </span>
       </div>
