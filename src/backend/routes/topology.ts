@@ -3,11 +3,12 @@ import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { loadBackboneBranch, loadTopologySnapshot } from '../lib/topology-read-model';
 import { searchTopology } from '../lib/topology-search';
-import { requireAuth } from './auth';
+import { requireAuth, requireRole } from './auth';
+import { recordAuditStrict } from '../lib/audit';
 import { readRouterConfig } from '../lib/routeros';
 import { readRouterLive } from '../lib/router-live';
 import { readTopologyLive } from '../lib/topology-live';
-import type { TopologyLive } from '../../shared/topology';
+import type { TopologyLive, TopologyPosition } from '../../shared/topology';
 
 const backboneParamsSchema = z.object({
   id: z.coerce.number().int().positive()
@@ -20,6 +21,21 @@ const searchQuerySchema = z.object({
   attention: z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
   island: z.string().trim().min(1).max(120).optional(),
   zone: z.string().trim().min(1).max(120).optional()
+}).strict();
+
+const directionSchema = z.enum(['TB', 'LR']);
+// O id do nó no grafo (`backbone:3`, `root:isp`, `client:5@9`…): texto curto e sem espaços.
+const nodeKeySchema = z.string().regex(/^[a-z-]+:[\w:@.-]{1,100}$/);
+const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
+
+const positionsWriteSchema = z.object({
+  direction: directionSchema,
+  // `x`/`y` a null devolve o nó ao desenho automático (é assim que o desfazer apaga).
+  positions: z.array(z.object({
+    nodeKey: nodeKeySchema,
+    x: coordinate.nullable(),
+    y: coordinate.nullable()
+  }).strict().refine((item) => (item.x === null) === (item.y === null))).min(1).max(1000)
 }).strict();
 
 export async function registerTopologyRoutes(app: FastifyInstance) {
@@ -47,6 +63,57 @@ export async function registerTopologyRoutes(app: FastifyInstance) {
     })();
     livePending = { db, key, promise };
     try { return await promise; } finally { if (livePending?.promise === promise) livePending = null; }
+  });
+
+  const canManage = { preHandler: requireRole(['admin', 'operator']) };
+
+  app.get('/api/topology/positions', readOnly, async (request, reply) => {
+    const direction = directionSchema.safeParse((request.query as { direction?: unknown }).direction);
+    if (!direction.success) return reply.status(400).send({ error: 'Direcao invalida' });
+    const rows = getSqliteDatabase().prepare(
+      'SELECT node_key AS nodeKey, x, y FROM topology_positions WHERE direction = ?'
+    ).all(direction.data) as TopologyPosition[];
+    return { direction: direction.data, positions: rows };
+  });
+
+  // ponytail: arrumar o mapa é cosmético — não vai à auditoria a cada arrasto, só o
+  // "Reorganizar", que apaga tudo de uma vez.
+  app.put('/api/topology/positions', canManage, async (request, reply) => {
+    const parsed = positionsWriteSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Posicoes invalidas' });
+    const db = getSqliteDatabase();
+    const upsert = db.prepare(`
+      INSERT INTO topology_positions (direction, node_key, x, y, updated_by, updated_at)
+      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT (direction, node_key) DO UPDATE SET
+        x = excluded.x, y = excluded.y, updated_by = excluded.updated_by, updated_at = excluded.updated_at
+    `);
+    const remove = db.prepare('DELETE FROM topology_positions WHERE direction = ? AND node_key = ?');
+    const { direction, positions } = parsed.data;
+    db.transaction(() => {
+      for (const item of positions) {
+        if (item.x === null || item.y === null) remove.run(direction, item.nodeKey);
+        else upsert.run(direction, item.nodeKey, item.x, item.y, request.user?.id ?? null);
+      }
+    })();
+    return { saved: positions.length };
+  });
+
+  app.delete('/api/topology/positions', canManage, async (request, reply) => {
+    const direction = directionSchema.safeParse((request.query as { direction?: unknown }).direction);
+    if (!direction.success) return reply.status(400).send({ error: 'Direcao invalida' });
+    const db = getSqliteDatabase();
+    const removed = db.transaction(() => {
+      const result = db.prepare('DELETE FROM topology_positions WHERE direction = ?').run(direction.data);
+      recordAuditStrict(db, request, {
+        action: 'topology.layout.reset',
+        entityType: 'topology_layout',
+        summary: `Reorganizou o mapa (${direction.data}): ${result.changes} ${result.changes === 1 ? 'posicao apagada' : 'posicoes apagadas'}`,
+        metadata: { direction: direction.data, removed: result.changes }
+      });
+      return result.changes;
+    })();
+    return { removed };
   });
 
   app.get('/api/topology', readOnly, async () => {

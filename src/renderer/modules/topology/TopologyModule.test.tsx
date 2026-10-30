@@ -186,6 +186,17 @@ async function mountMap(topologyApi = api()): Promise<HTMLElement> {
   return mountWith(<MapHarness topologyApi={topologyApi} />);
 }
 
+/** O catálogo chega depois de a paleta abrir. */
+async function waitForCard(container: HTMLElement, model: string): Promise<HTMLButtonElement> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const card = [...container.querySelectorAll<HTMLButtonElement>('.equipment-card')]
+      .find((candidate) => candidate.querySelector('strong')?.textContent === model);
+    if (card) return card;
+    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 10)); });
+  }
+  throw new Error(`Palette card not found: ${model}`);
+}
+
 function button(container: HTMLElement, name: string): HTMLButtonElement {
   const result = [...container.querySelectorAll('button')]
     .find((candidate) => candidate.getAttribute('aria-label') === name);
@@ -222,7 +233,10 @@ beforeEach(() => {
     if (url.endsWith('/api/auth/status')) {
       return json({ setupRequired: false, authBypassed: true });
     }
-    if (url.endsWith('/api/stock/summary')) return json({ rows: [] });
+    if (url.endsWith('/api/stock/summary')) return json({ rows: [{
+      id: 9, category: 'equipamento', active: 1, brand: 'MikroTik', model: 'RB760iGS hEX S',
+      type: 'router', stockTotal: 2, backboneCount: 1
+    }] });
     return json({ page: 1, pageSize: 100, total: 0, totalPages: 0, items: [] });
   }));
   vi.stubGlobal('matchMedia', vi.fn(() => ({
@@ -641,10 +655,48 @@ describe('TopologyModule branch interaction', () => {
       await Promise.resolve();
     });
 
+    // O botão abre a paleta; o cartão leva ao formulário de sempre, com o modelo escolhido.
+    const palette = container.querySelector('[aria-label="Catálogo de equipamentos"]');
+    expect(palette).not.toBeNull();
+    const card = await waitForCard(container, 'RB760iGS hEX S');
+    expect(card.textContent).toContain('1 na rede · 2 em stock');
+    // Já está no catálogo ("RB760iGS hEX S" contém "hEX S"): a referência não volta a ser oferecida.
+    expect(container.querySelector('[aria-label="Adicionar MikroTik hEX S ao catálogo"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Adicionar MikroTik hAP ac lite ao catálogo"]')).not.toBeNull();
+
+    await act(async () => {
+      card.click();
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('[aria-label="Catálogo de equipamentos"]')).toBeNull();
     const dialog = document.querySelector('[role="dialog"]');
     expect(dialog).not.toBeNull();
     expect(dialog?.textContent).toContain('Novo backbone');
     expect(dialog?.textContent).toContain('Alimentado por');
+    expect(dialog?.textContent).toContain('RB760iGS hEX S');
+  });
+
+  test('a card dropped on a backbone opens the form with that backbone upstream', async () => {
+    const container = await mountMap();
+    const create = [...container.querySelectorAll('button')]
+      .find((candidate) => candidate.textContent?.trim() === 'Novo equipamento');
+    await act(async () => { create?.click(); await Promise.resolve(); });
+    await waitForCard(container, 'RB760iGS hEX S');
+
+    const canvas = container.querySelector('.topology-canvas');
+    const node = container.querySelector('.react-flow__node[data-id^="backbone:"]');
+    if (!canvas || !node) throw new Error('canvas or backbone node not found');
+    const data = new Map<string, string>([['application/x-ispm-catalog', '9']]);
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', {
+      value: { types: [...data.keys()], getData: (key: string) => data.get(key) ?? '' }
+    });
+    await act(async () => { node.dispatchEvent(drop); await Promise.resolve(); });
+
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain('RB760iGS hEX S');
+    expect(drop.defaultPrevented).toBe(true);
   });
 
   test('refits the view when opening every branch pushes the graph off screen', async () => {
@@ -998,4 +1050,78 @@ test('closes the inspector with Escape while preserving the graph', async () => 
 
   expect(container.textContent).toContain('Seleciona um nó');
   expect(container.textContent).toContain('Ubiquiti Rocket Prism');
+});
+
+test('o botão direito num backbone edita, duplica e retira sem sair do mapa', async () => {
+  const detail = {
+    id: 10, catalogId: 9, catalogBrand: 'Ubiquiti', catalogModel: 'Rocket Prism', catalogType: 'antena',
+    name: 'Ubiquiti Rocket Prism', status: 'active', serialNumber: 'SN-ROCKET', assetTag: null,
+    ipAddress: '10.0.0.10', macAddress: null, routerInterface: null, wanMode: null, operationMode: null,
+    island: null, zone: null, provisional: false, upstreams: [], downstreamCount: 0,
+    linkedAssignmentCount: 0, createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-29T00:00:00.000Z',
+    notes: null, assignments: [], downstream: []
+  };
+  const writes: Array<Record<string, unknown>> = [];
+  const base = globalThis.fetch;
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (!url.endsWith('/api/topology/backbones/10')) return base(input, init);
+    if (init?.method === 'PUT') writes.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+    return json(detail);
+  }));
+  // Sem ConfirmProvider no teste, o `useConfirm` cai no `window.confirm`.
+  vi.stubGlobal('confirm', vi.fn(() => true));
+  const container = await mountMap();
+  const settle = () => act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 20)); });
+  const node = container.querySelector('.react-flow__node[data-id="backbone:10"]');
+  if (!node) throw new Error('backbone node not found');
+  const openMenu = async () => {
+    await act(async () => {
+      node.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 90 }));
+      await Promise.resolve();
+    });
+  };
+  const items = () => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+  const pick = async (label: string) => {
+    const item = items().find((candidate) => candidate.textContent === label);
+    if (!item) throw new Error(`menu item not found: ${label}`);
+    await act(async () => { item.click(); await Promise.resolve(); });
+    await settle();
+  };
+  const cancelDialog = async () => {
+    const cancel = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+      .find((candidate) => candidate.textContent?.trim() === 'Cancelar');
+    await act(async () => { cancel?.click(); await Promise.resolve(); });
+  };
+
+  await openMenu();
+  expect(items().map((item) => item.textContent)).toEqual(['Editar', 'Duplicar', 'Ver só este backbone', 'Retirar']);
+  // O botão direito também escolhe o nó: o inspetor mostra-o com as mesmas ações.
+  expect(container.querySelector('[aria-label="Gerir equipamento"]')?.textContent).toBe('EditarDuplicarRetirar');
+
+  await pick('Editar');
+  expect(items()).toHaveLength(0);
+  const editor = document.querySelector('[role="dialog"]');
+  expect(editor?.textContent).toContain('Editar Ubiquiti Rocket Prism');
+  expect([...editor!.querySelectorAll('input')].map((input) => input.value)).toContain('SN-ROCKET');
+  await cancelDialog();
+
+  // A cópia é outra unidade física: o modelo fica, série e nome não.
+  await openMenu();
+  await pick('Duplicar');
+  const copy = document.querySelector('[role="dialog"]');
+  expect(copy?.textContent).toContain('Novo backbone');
+  const values = [...copy!.querySelectorAll('input')].map((input) => input.value);
+  expect(values).not.toContain('SN-ROCKET');
+  expect(values).not.toContain('Ubiquiti Rocket Prism');
+  await cancelDialog();
+  expect(writes).toHaveLength(0);
+
+  await openMenu();
+  await pick('Retirar');
+  expect(window.confirm).toHaveBeenCalledWith('Retirar Ubiquiti Rocket Prism?');
+  expect(writes).toEqual([expect.objectContaining({
+    status: 'retired', name: 'Ubiquiti Rocket Prism', serialNumber: 'SN-ROCKET',
+    expectedUpdatedAt: '2026-10-29T00:00:00.000Z'
+  })]);
 });

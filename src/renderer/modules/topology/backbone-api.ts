@@ -7,6 +7,7 @@ import type {
   BackboneListQuery,
   BackboneWriteInput
 } from '../../../shared/backbone';
+import type { TopologyLinkProperties } from '../../../shared/topology';
 import { authFetch } from '../../lib/auth';
 
 const API_BASE = 'http://127.0.0.1:3001';
@@ -18,6 +19,10 @@ export type BackboneCatalogOption = {
   brand: string | null;
   model: string;
   type: string;
+  /** Unidades em armazém. Só a lista do stock o traz; o diálogo não precisa. */
+  stockTotal?: number;
+  /** Unidades instaladas na rede — é o que ordena os "mais usados" da paleta. */
+  backboneCount?: number;
 };
 
 type StockCatalogWireRow = BackboneCatalogOption & {
@@ -80,11 +85,17 @@ function jsonMutation<T>(
 
 export function createBackboneApi(fetcher: BackboneFetcher = authFetch) {
   return {
-    listCatalogs: () => fetcher(`${API_BASE}/api/stock/summary`)
+    listCatalogs: (): Promise<BackboneCatalogOption[]> => fetcher(`${API_BASE}/api/stock/summary`)
       .then(readJson<{ rows: StockCatalogWireRow[] }>)
       .then(({ rows }) => rows
         .filter((row) => row.category === 'equipamento' && (row.active === true || row.active === 1))
-        .map(({ id, brand, model, type }) => ({ id, brand, model, type }))),
+        .map(({ id, brand, model, type, stockTotal, backboneCount }) => ({
+          id, brand, model, type, stockTotal: stockTotal ?? 0, backboneCount: backboneCount ?? 0
+        }))),
+    /** Cria só a linha do catálogo: sem stock nem custo, que se lançam no Stock. */
+    createCatalog: (input: { brand: string; model: string; type: string }) => jsonMutation<{ id: number }>(
+      fetcher, `${API_BASE}/api/equipment-catalog`, 'POST', { category: 'equipamento', ...input }
+    ),
     listBackbones: (query: BackboneListQuery) => fetcher(
       listUrl('/api/topology/backbones', query)
     ).then(readJson<BackbonePage<BackboneDeviceSummary>>),
@@ -99,6 +110,10 @@ export function createBackboneApi(fetcher: BackboneFetcher = authFetch) {
     ),
     updateBackbone: (id: number, input: BackboneWriteInput) => jsonMutation<BackboneDeviceDetail>(
       fetcher, `${API_BASE}/api/topology/backbones/${id}`, 'PUT', input
+    ),
+    /** Descreve uma ligação que já existe (0091): meio, portas, frequência, capacidade. */
+    updateLink: (deviceId: number, upstreamDeviceId: number, link: TopologyLinkProperties) => jsonMutation<TopologyLinkProperties>(
+      fetcher, `${API_BASE}/api/topology/links/${deviceId}/${upstreamDeviceId}`, 'PUT', link
     ),
     linkAssignment: (assignmentId: number, backboneDeviceId: number, reason: string | null) => jsonMutation<BackboneAssignmentSummary>(
       fetcher, `${API_BASE}/api/topology/assignments/${assignmentId}/backbone`, 'PUT', { backboneDeviceId, reason }

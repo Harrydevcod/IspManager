@@ -145,6 +145,8 @@ function api(overrides: Partial<BackboneApi> = {}): BackboneApi {
     listCatalogs: vi.fn(async () => [
       { id: 3, brand: 'Ubiquiti', model: 'Rocket Prism 5AC', type: 'antena' }
     ]),
+    createCatalog: vi.fn(async () => ({ id: 4 })),
+    updateLink: vi.fn(async (_device, _upstream, link) => link),
     listBackbones: vi.fn(async () => page([backbone])),
     listAssignments: vi.fn(async (query) => page(
       query.mapping === 'unlinked' ? [unlinkedAssignment] : [linkedAssignment, unlinkedAssignment]

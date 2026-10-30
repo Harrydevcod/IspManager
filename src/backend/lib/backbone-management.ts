@@ -116,11 +116,18 @@ function replaceUpstreams(
   upstreamDeviceIds: number[],
   actorId: number | null
 ): void {
-  db.prepare('DELETE FROM backbone_links WHERE device_id = ?').run(deviceId);
+  // Só tira as que saíram e só põe as novas: apagar tudo e voltar a inserir
+  // deitava fora o meio, as portas e a frequência das ligações que ficam (0091).
+  const keep = new Set(upstreamDeviceIds);
+  const current = db.prepare('SELECT upstream_device_id AS id FROM backbone_links WHERE device_id = ?')
+    .all(deviceId) as Array<{ id: number }>;
+  const remove = db.prepare('DELETE FROM backbone_links WHERE device_id = ? AND upstream_device_id = ?');
+  for (const { id } of current) if (!keep.has(id)) remove.run(deviceId, id);
+  const existing = new Set(current.map((row) => row.id));
   const insert = db.prepare(`
     INSERT INTO backbone_links (device_id, upstream_device_id, created_by) VALUES (?, ?, ?)
   `);
-  for (const upstreamId of upstreamDeviceIds) insert.run(deviceId, upstreamId, actorId);
+  for (const upstreamId of keep) if (!existing.has(upstreamId)) insert.run(deviceId, upstreamId, actorId);
 }
 
 function assignmentFromRow(row: AssignmentRow): BackboneAssignmentSummary {

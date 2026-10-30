@@ -1949,6 +1949,12 @@ h2 {
 }
 
 /* Abre para cima quando não há espaço em baixo (linhas no fundo da lista). */
+.row-actions-menu-panel.is-context {
+  position: fixed;
+  right: auto;
+  z-index: var(--z-sticky);
+}
+
 .row-actions-menu-panel.is-up {
   top: auto;
   bottom: calc(100% + 6px);
@@ -1975,7 +1981,7 @@ h2 {
 }
 
 /* Override the 36px icon-button sizing that .data-table-actions button imposes. */
-.data-table-actions .row-actions-menu-item {
+:is(.data-table-actions, .row-actions-menu-panel.is-context) .row-actions-menu-item {
   width: 100%;
   min-height: 34px;
   display: flex;
@@ -1992,21 +1998,21 @@ h2 {
   transition: background 120ms ease, color 120ms ease;
 }
 
-.data-table-actions .row-actions-menu-item:hover:not(:disabled) {
+:is(.data-table-actions, .row-actions-menu-panel.is-context) .row-actions-menu-item:hover:not(:disabled) {
   background: var(--surface-3);
   color: var(--text);
 }
 
-.data-table-actions .row-actions-menu-item.is-danger {
+:is(.data-table-actions, .row-actions-menu-panel.is-context) .row-actions-menu-item.is-danger {
   color: var(--danger);
 }
 
-.data-table-actions .row-actions-menu-item.is-danger:hover:not(:disabled) {
+:is(.data-table-actions, .row-actions-menu-panel.is-context) .row-actions-menu-item.is-danger:hover:not(:disabled) {
   background: var(--danger-bg);
   color: var(--danger);
 }
 
-.data-table-actions .row-actions-menu-item:disabled {
+:is(.data-table-actions, .row-actions-menu-panel.is-context) .row-actions-menu-item:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -3947,6 +3953,30 @@ h2 {
   min-height: 40px;
 }
 
+/* Estilo base dos controlos de <Field>/<Select>/<Textarea>. Sem ele, um campo
+   num sítio que nenhum módulo pinta (a ficha da ligação, a pesquisa da paleta)
+   saía com o cinzento do browser. `:where` deixa-o a especificidade zero: as
+   regras de cada módulo continuam a ganhar. */
+:where(.field) :where(input:not([type='checkbox'], [type='radio']), select, textarea),
+:where(.topology-scope) :where(select) {
+  min-height: 2.5rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+:where(.field) :where(textarea) {
+  padding: var(--space-3);
+}
+
+:where(.field) :where(input, select, textarea):focus-visible,
+:where(.topology-scope) :where(select):focus-visible {
+  outline: 2px solid var(--action-focus);
+  outline-offset: 1px;
+}
+
 :is(.payment-action-form, .expense-template-form) > .field {
   align-self: start;
 }
@@ -4295,7 +4325,9 @@ label.field-toggle {
 
 /* Dialog action buttons: same shape as form-actions, with accent variant
    for the submit/primary action (matches .form-actions button:last-child). */
-.dialog-actions button {
+/* Só os botões soltos: um <Button> traz a sua variante (.btn-danger, .btn-primary)
+   e esta regra, mais específica, pintava-os todos de cinzento. */
+.dialog-actions button:not(.btn) {
   align-items: center;
   display: inline-flex;
   gap: var(--space-2);
@@ -4310,23 +4342,23 @@ label.field-toggle {
   border: 1px solid var(--border);
   transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
 }
-.dialog-actions button:hover {
+.dialog-actions button:not(.btn):hover {
   border-color: var(--border-2);
   color: var(--text);
 }
-.dialog-actions button.primary,
-.dialog-actions button[type="submit"] {
+.dialog-actions button:not(.btn).primary,
+.dialog-actions button:not(.btn)[type="submit"] {
   background: var(--accent);
   color: var(--on-accent);
   border-color: var(--accent);
   font-weight: 650;
 }
-.dialog-actions button.primary:hover,
-.dialog-actions button[type="submit"]:hover {
+.dialog-actions button:not(.btn).primary:hover,
+.dialog-actions button:not(.btn)[type="submit"]:hover {
   background: var(--accent-2);
   border-color: var(--accent-2);
 }
-.dialog-actions button:disabled {
+.dialog-actions button:not(.btn):disabled {
   cursor: wait;
   opacity: 0.6;
 }

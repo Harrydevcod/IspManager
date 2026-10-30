@@ -389,6 +389,17 @@
   background: var(--topology-accent-deep);
 }
 
+/* Espelham o traço do mapa (link-format.ts): fibra grossa, rádio tracejado. */
+.topology-legend b[data-medium='fibra'] {
+  height: 3px;
+  background: var(--accent);
+}
+
+.topology-legend b[data-medium='radio'] {
+  height: 2px;
+  background: repeating-linear-gradient(90deg, var(--accent-2) 0 5px, transparent 5px 8px);
+}
+
 .topology-legend small {
   flex-basis: 100%;
   color: var(--topology-muted);

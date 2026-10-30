@@ -74,8 +74,8 @@ function editorState(
   // O prefill só entra quando não há registo a editar.
   const seed = backbone ? null : prefill;
   return {
-    catalogId: backbone?.catalogId ?? guessCatalog(catalogs, seed?.model),
-    upstreamDeviceIds: backbone?.upstreams.map((unit) => unit.id) ?? [],
+    catalogId: backbone?.catalogId ?? seed?.catalogId ?? guessCatalog(catalogs, seed?.model),
+    upstreamDeviceIds: backbone?.upstreams.map((unit) => unit.id) ?? seed?.upstreamDeviceIds ?? [],
     name: backbone?.name ?? seed?.name ?? '',
     status: backbone?.status ?? 'active',
     serialNumber: backbone?.serialNumber ?? '',

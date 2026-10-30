@@ -1,9 +1,9 @@
 import {
+  Archive,
   ArrowUpRight,
-  Box,
+  Copy,
   Focus,
-  Network,
-  RadioTower,
+  Pencil,
   X
 } from 'lucide-react';
 import { labelForType, requiresStaticIp } from '../../../shared/equipment';
@@ -36,8 +36,16 @@ export type TopologyInspectorProps = {
   onOpenStock: (catalogId: number) => void;
   /** Ausente para quem não pode gerir: as alimentações ficam só de leitura. */
   onDisconnectUpstream?: (deviceId: number, upstreamDeviceId: number) => void;
+  /** Ausentes para quem não pode gerir. Trocar de modelo faz-se em Editar. */
+  manage?: BackboneManageActions;
   focusedBackboneId: number | null;
   onFocusBackbone: (backboneDeviceId: number | null) => void;
+};
+
+export type BackboneManageActions = {
+  onEdit: (deviceId: number) => void;
+  onDuplicate: (deviceId: number) => void;
+  onRetire: (deviceId: number) => void;
 };
 
 const ISSUE_LABELS: Record<TopologyIssueCode, string> = {
@@ -164,6 +172,7 @@ function BackboneDetails({
   branch,
   onOpenStock,
   onDisconnectUpstream,
+  manage,
   focused,
   onFocusBackbone
 }: {
@@ -172,11 +181,25 @@ function BackboneDetails({
   branch?: TopologyBackboneBranch;
   onOpenStock: (catalogId: number) => void;
   onDisconnectUpstream?: (deviceId: number, upstreamDeviceId: number) => void;
+  manage?: BackboneManageActions;
   focused: boolean;
   onFocusBackbone: (backboneDeviceId: number | null) => void;
 }) {
   return (
     <>
+      {manage && (
+        <div className="topology-inspector-manage" role="group" aria-label="Gerir equipamento">
+          <Button variant="secondary" size="sm" leadingIcon={<Pencil size={14} aria-hidden />} onClick={() => manage.onEdit(node.backboneDeviceId)}>
+            Editar
+          </Button>
+          <Button variant="secondary" size="sm" leadingIcon={<Copy size={14} aria-hidden />} onClick={() => manage.onDuplicate(node.backboneDeviceId)}>
+            Duplicar
+          </Button>
+          <Button variant="ghost" size="sm" className="topology-inspector-retire" leadingIcon={<Archive size={14} aria-hidden />} onClick={() => manage.onRetire(node.backboneDeviceId)}>
+            Retirar
+          </Button>
+        </div>
+      )}
       <dl className="topology-inspector-details">
         <Detail label="Unidade física" value={`#${node.backboneDeviceId}`} />
         <UpstreamList node={node} snapshot={snapshot} onDisconnect={onDisconnectUpstream} />
@@ -404,6 +427,7 @@ export function TopologyInspector(props: TopologyInspectorProps) {
               branch={branch}
               onOpenStock={onOpenStock}
               onDisconnectUpstream={props.onDisconnectUpstream}
+              manage={props.manage}
               focused={props.focusedBackboneId === node.backboneDeviceId}
               onFocusBackbone={props.onFocusBackbone}
             />

@@ -15,6 +15,47 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 ### Alterado
 - **O registo guardado deixa de levar o `detect-internet` das sessões PPPoE.** Num só cliente eram 250 linhas em três semanas. O das WAN continua a ser guardado.
 
+## [2.41](https://github.com/Harrydevcod/IspManager/releases/tag/v2.41.0) — 2026-10-29
+
+### Adicionado
+- **Catálogo de equipamentos na Topologia.** "Novo equipamento" abre agora um painel ao lado do mapa, em vez de ir logo para o formulário. O painel também abre com a tecla `D` ou com um duplo clique no fundo do mapa.
+  - Cada modelo tem um desenho próprio, conforme o tipo: router, switch, CPE, prato, setorial, ponto de acesso, Starlink.
+  - Pesquisa-se por marca, modelo ou tipo, e há filtros por tipo e uma secção "Mais usados".
+  - Ao passar o rato, o cartão diz quantas unidades estão na rede e quantas em stock. Um modelo sem stock avisa sempre, porque registar uma backbone desconta do stock.
+  - Clicar num cartão abre o formulário de sempre já com o modelo. Largar o cartão em cima de um equipamento do mapa preenche também o "Alimentado por".
+  - Há modelos de referência MikroTik, TP-Link, Ubiquiti e Starlink, e um "Modelo próprio". Só entram no catálogo quando se carrega em adicionar, sem stock nem custo, que continuam a lançar-se no Stock.
+- **Arrumar o mapa à mão.** Quem gere o mapa pode arrastar os equipamentos para onde quiser.
+  - A posição grava-se sozinha e mantém-se depois de atualizar a página ou reabrir a app.
+  - Cada desenho, de cima para baixo e da esquerda para a direita, guarda a sua própria arrumação.
+  - Shift + caixa escolhe vários equipamentos para os mover juntos.
+  - Ctrl+Z e Ctrl+Y desfazem e refazem os movimentos.
+  - "Reorganizar" pede confirmação e devolve o mapa ao desenho automático, sem mexer em equipamentos nem em ligações.
+  - Os equipamentos que ninguém arrumou continuam a ser desenhados automaticamente.
+- **Ligações com tipo.** Clicar numa ligação entre dois equipamentos da rede abre a ficha dela.
+  - O meio: Ethernet, fibra, rádio PtP, rádio PtMP ou WAN.
+  - A porta em cada ponta. Quando uma das pontas é o router de gestão e ele está ao alcance, a porta escolhe-se da lista dele.
+  - Num rádio, a frequência. Também a capacidade e notas.
+  - O traço no mapa mostra o meio (fibra grossa, rádio tracejado, PtMP em pontos) e a etiqueta resume-o. A legenda explica os traços.
+  - As ligações que já existiam ficam "por classificar".
+  - Mudar as alimentações de um equipamento já não apaga o que se escreveu nas ligações que ficam.
+  - Remover uma ligação, no inspetor ou na ficha, pede sempre confirmação.
+  - Sinal e SNR não se escrevem: aparecem quando houver monitorização das próprias antenas.
+- **Gerir equipamentos no próprio mapa.** O inspetor de um equipamento da rede tem agora Editar, Duplicar e Retirar. O botão direito num equipamento ou numa ligação abre um menu com as mesmas ações.
+  - Editar abre o formulário da aba Backbone. É também aí que se troca de modelo.
+  - Duplicar prepara outra unidade do mesmo modelo, alimentada pelo mesmo sítio. Nome, série, IP e MAC ficam em branco.
+  - Retirar pede confirmação e não apaga nada: a unidade passa a Retirado e volta ao stock. Se ainda alimentar equipamentos, o ISPM recusa e diz o que falta.
+  - No menu de uma ligação: abrir a ficha dela ou removê-la, com confirmação.
+
+### Melhorado
+- **Mapa mais leve.** Escrever na pesquisa, abrir o inspetor ou arrastar um equipamento já não volta a desenhar todos os equipamentos, só os que mudaram. Testado com 500.
+- Um clique com um tremido pequeno do rato já não conta como arrastar o equipamento.
+
+### Corrigido
+- Os botões de confirmar dos diálogos apareciam todos cinzentos. "Remover", "Retirar" e semelhantes voltam a aparecer em vermelho, e "Confirmar" em azul.
+- O formulário de equipamento backbone tinha os campos colados à margem do diálogo.
+- A ficha da ligação, a pesquisa de equipamentos e o seletor "Rede completa" tinham caixas cinzentas sem o estilo da app.
+- Numa janela estreita, o mapa da topologia ficava quase sem altura.
+
 ## [2.40](https://github.com/Harrydevcod/IspManager/releases/tag/v2.40.0) — 2026-10-28
 
 ### Adicionado

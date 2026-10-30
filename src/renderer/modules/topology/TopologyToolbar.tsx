@@ -5,6 +5,7 @@ import {
   EyeOff,
   Filter,
   Focus,
+  LayoutTemplate,
   ListTree,
   Map,
   Minus,
@@ -13,8 +14,10 @@ import {
   PanelRight,
   Plus,
   RadioTower,
+  Redo2,
   RotateCw,
   Search,
+  Undo2,
   X
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -53,6 +56,15 @@ export type CanvasToolsProps = {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
+  /** Arrumar à mão (0090): só aparece para quem pode gerir o mapa. */
+  layout?: {
+    arranged: boolean;
+    canUndo: boolean;
+    canRedo: boolean;
+    onUndo: () => void;
+    onRedo: () => void;
+    onReset: () => void;
+  };
 };
 
 type TopologyToolbarProps = {
@@ -449,6 +461,20 @@ export function CanvasTools(props: CanvasToolsProps) {
       >
         {vertical ? <MoveHorizontal size={15} /> : <MoveVertical size={15} />}
       </ToolButton>
+      {props.layout && (
+        <>
+          <span aria-hidden />
+          <ToolButton label="Desfazer o último movimento (Ctrl+Z)" disabled={!props.layout.canUndo} onClick={props.layout.onUndo}>
+            <Undo2 size={15} />
+          </ToolButton>
+          <ToolButton label="Refazer (Ctrl+Y)" disabled={!props.layout.canRedo} onClick={props.layout.onRedo}>
+            <Redo2 size={15} />
+          </ToolButton>
+          <ToolButton label="Reorganizar: voltar ao desenho automático" disabled={!props.layout.arranged} onClick={props.layout.onReset}>
+            <LayoutTemplate size={15} />
+          </ToolButton>
+        </>
+      )}
     </div>
   );
 }

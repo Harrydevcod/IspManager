@@ -141,6 +141,13 @@
   min-height: 22rem;
 }
 
+/* Janela estreita: contadores e ferramentas partem-se em várias linhas e
+   comiam o mapa todo (54 px a 760 px de largura). Aqui a casca cresce e a
+   página rola, para o mapa ficar com uns 20rem. */
+@media (max-width: 60rem) {
+  .content > .topology-shell { min-height: 44rem; }
+}
+
 /* A Descoberta e os Incidentes não têm scroll próprio — a tabela cresce e a página rola. */
 .content > .topology-shell:has(> #topology-panel-discovery:not([hidden])),
 .content > .topology-shell:has(> #topology-panel-incidents:not([hidden])) {

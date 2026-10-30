@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { Handle, Position } from '@xyflow/react';
 import type { Node, NodeProps } from '@xyflow/react';
-import type { KeyboardEvent } from 'react';
+import { memo, type KeyboardEvent } from 'react';
 import type { TopologyNode } from '../../../shared/topology';
 import type { TopologyPortCheck } from '../../../shared/topology';
 import { isKnownWanMode, shortLabelForWanMode } from '../../../shared/wan';
@@ -159,10 +159,12 @@ function NodeSelectControl({
 }: Pick<TopologyNodeContentProps, 'node' | 'branchCount' | 'routerDeviceId' | 'onSelect'>) {
   const wanMode = nodeWanMode(node);
   const operationMode = nodeOperationMode(node);
+  // Sem `nodrag`: o cartão ocupa o nó inteiro, e é por ele que se arrasta (0090).
+  // O React Flow só conta como arrasto o que passa do limiar, por isso o clique continua a escolher.
   return (
     <Button
       variant="ghost"
-      className="topology-node-select nodrag nopan"
+      className="topology-node-select nopan"
       data-topology-select
       aria-label={`Selecionar ${node.label}`}
       onClick={onSelect}
@@ -275,7 +277,11 @@ function NodeHandles({ kind, source, target, connectable }: {
   );
 }
 
-function TopologyNodeRenderer({
+/*
+ * `memo`: arrastar um nó, abrir um ramo ou mexer na pesquisa re-renderizava os
+ * 500 nós. Com o `data` estável (ver `useRenderedGraph`), só muda quem mudou.
+ */
+const TopologyNodeRenderer = memo(function TopologyNodeRenderer({
   data,
   selected,
   isConnectable,
@@ -298,7 +304,7 @@ function TopologyNodeRenderer({
       />
     </>
   );
-}
+});
 
 export const topologyNodeTypes = {
   'logical-root': TopologyNodeRenderer,

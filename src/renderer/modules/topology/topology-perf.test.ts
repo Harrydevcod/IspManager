@@ -21,6 +21,8 @@ import type {
 import { composeTopologyGraph } from './topology-graph';
 import { filterTopologyGraph } from './topology-filters';
 import { layoutTopologyGraph } from './topology-layout';
+import { decorateNodes } from './TopologyMapView';
+import { placeNodes } from './useMapLayout';
 
 function backbone(id: number): TopologyBackboneNode {
   return {
@@ -229,5 +231,36 @@ describe('pipeline do mapa', () => {
     const razao = tGrande / tPequeno;
     // Quadratico daria ~4x; damos margem de 8x para ruido de maquina.
     expect(razao).toBeLessThan(8);
+  });
+
+  /**
+   * 500 nós, o tamanho para que o editor foi pensado: o pipeline inteiro que
+   * corre num render — compor, filtrar, desenhar, decorar e aplicar as
+   * posições arrumadas à mão — e o arrasto, que só refaz as posições.
+   */
+  test('500 nos montam e arrastam dentro de um quadro', () => {
+    // 50 ramos x 5 = 50 + 250 + 250 + 1 = 551 nos.
+    const p = parque(50, 5);
+    const state = {
+      branches: p.branches, expanded: p.expanded, loadingBranches: new Set<number>(),
+      branchErrors: new Map<number, string>(), selectedNode: null,
+      setSelectedNode: () => undefined, toggleBranch: () => undefined, retryBranch: () => undefined
+    };
+    const render = () => decorateNodes(pipeline(p, {}), state, null);
+    render();
+
+    let nodes = render();
+    const ms = mede(() => { nodes = render(); });
+    expect(nodes.length).toBeGreaterThan(500);
+    expect(ms).toBeLessThan(2000);
+
+    // Um quadro de arrasto: só `placeNodes`, e quem não se mexeu é o mesmo objeto
+    // — é o que deixa o `memo` dos nós saltar os outros 550.
+    const overrides = new Map(nodes.slice(0, 20).map((node) => [node.id, { x: 1, y: 1 }]));
+    let placed = nodes;
+    const dragMs = mede(() => { placed = placeNodes(nodes, overrides, new Set()); });
+    expect(dragMs).toBeLessThan(50);
+    expect(placed.slice(20).every((node, index) => node === nodes[index + 20])).toBe(true);
+    expect(placed[0].data).toBe(nodes[0].data);
   });
 });

@@ -3,11 +3,13 @@ import './TopologyModule.css';
 import './TopologyCanvas.css';
 import './TopologyInspector.css';
 
-import { AlertTriangle, Network, RotateCw, X } from 'lucide-react';
+import { Archive, AlertTriangle, Copy, Focus, Network, Pencil, RotateCw, SlidersHorizontal, Unlink, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type {
   TopologyBackboneBranch,
+  TopologyCoreLinkEdge,
+  TopologyEdge,
   TopologyNode,
   TopologySnapshot
 } from '../../../shared/topology';
@@ -15,10 +17,12 @@ import type { TopologyLive } from '../../../shared/topology';
 import { formatBitrate } from '../router/router-api';
 import { createBackboneApi } from './backbone-api';
 import { useTopologyLive } from './useTopologyLive';
-import { Button, EmptyState } from '../../components';
+import { Button, ContextMenu, EmptyState, useConfirm, useToast, type RowActionGroup } from '../../components';
 import { BackboneEditorDialog } from './BackboneDialogs';
+import { EquipmentPalette } from './EquipmentPalette';
+import { LinkDialog, type LinkEnd } from './LinkDialog';
 import { TopologyCanvas, type TopologyCanvasHandle } from './TopologyCanvas';
-import { TopologyInspector } from './TopologyInspector';
+import { TopologyInspector, type BackboneManageActions } from './TopologyInspector';
 import type { TopologyCanvasNode } from './TopologyNodes';
 import { CanvasTools, TopologyToolbar, type CanvasToolsProps } from './TopologyToolbar';
 import type { TopologyApi } from './topology-api';
@@ -31,7 +35,9 @@ import {
   type TopologyGraph
 } from './topology-graph';
 import { layoutTopologyGraph, type TopologyDirection } from './topology-layout';
-import { useMapAuthoring } from './useMapAuthoring';
+import { linkStroke, linkSummary } from './link-format';
+import { useMapAuthoring, writeInputFrom } from './useMapAuthoring';
+import { placeNodes, useMapLayout } from './useMapLayout';
 import { useTopologyWorkspace } from './useTopologyWorkspace';
 import type { TopologyModuleProps } from './TopologyModule';
 
@@ -61,7 +67,7 @@ type NodeDecorators = Pick<
   | 'setSelectedNode'
 >;
 
-function decorateNodes(graph: TopologyGraph, state: NodeDecorators, live: TopologyLive | null): TopologyCanvasNode[] {
+export function decorateNodes(graph: TopologyGraph, state: NodeDecorators, live: TopologyLive | null): TopologyCanvasNode[] {
   return graph.nodes.map((node) => {
     const topology = node.data.topology;
     const backboneDeviceId = topology.kind === 'backbone'
@@ -107,8 +113,14 @@ function decorateNodes(graph: TopologyGraph, state: NodeDecorators, live: Topolo
  * A linha até ao cliente não é um cabo — é titularidade. Tracejada, para não se
  * confundir com as ligações físicas que o resto do mapa desenha (ADR 0005).
  */
-function edgeStroke(kind: string | undefined) {
-  if (kind === 'core-link') return { stroke: 'var(--accent-2)', strokeWidth: 1.8 };
+/** `backbone:7` → 7. Só se chama com ids de backbone (o diálogo filtra a raiz). */
+function linkDeviceId(nodeId: string): number {
+  return Number(nodeId.slice('backbone:'.length));
+}
+
+function edgeStroke(topology: TopologyEdge | undefined) {
+  if (topology?.kind === 'core-link') return linkStroke(topology.link?.medium);
+  const kind = topology?.kind;
   if (kind === 'ownership') {
     return { stroke: 'var(--border-2)', strokeWidth: 1, strokeDasharray: '3 4' };
   }
@@ -127,12 +139,15 @@ export function decorateEdges(graph: TopologyGraph, labelsVisible: boolean, live
       type: 'smoothstep',
       // A montante do router é uma WAN; a jusante é uma porta da LAN (o switch).
       label: iface ? (iface.running ? (iface.downBps === null ? backbone?.routerInterface : `↓ ${formatBitrate(iface.downBps)}`) : edge.target === routerId ? 'WAN caída' : 'Porta caída')
-        : labelsVisible && edge.data ? topologyRelationshipLabel(edge.data.topology.relationship) : undefined,
+        : labelsVisible && edge.data
+          ? (edge.data.topology.kind === 'core-link' && linkSummary(edge.data.topology.link))
+            || topologyRelationshipLabel(edge.data.topology.relationship)
+          : undefined,
       labelStyle: { fill: iface && !iface.running ? 'var(--danger)' : 'var(--topology-ink)', fontSize: 11, fontWeight: 650 },
       labelBgStyle: { fill: 'var(--surface)', fillOpacity: 0.96 },
       labelBgPadding: [6, 3] as [number, number],
       labelBgBorderRadius: 3,
-      style: iface && !iface.running ? { stroke: 'var(--danger)', strokeWidth: 1.8, strokeDasharray: '5 4' } : edgeStroke(edge.data?.topology.kind)
+      style: iface && !iface.running ? { stroke: 'var(--danger)', strokeWidth: 1.8, strokeDasharray: '5 4' } : edgeStroke(edge.data?.topology)
     };
   });
 }
@@ -294,10 +309,18 @@ function useRenderedGraph(
     workspace.expanded,
     workspace.filters
   ]);
-  const nodes = useMemo(
-    () => decorateNodes(graph, workspace, live),
-    [graph, workspace, live]
-  );
+  // O `workspace` é um objeto novo a cada render: como dependência, refazia os
+  // nós todos a cada tecla. Entram só os dados; as ações vão por ref, que têm
+  // de ser as últimas mas não mudam o desenho.
+  const actions = useRef(workspace);
+  actions.current = workspace;
+  const { branches, expanded, loadingBranches, branchErrors, selectedNode } = workspace;
+  const nodes = useMemo(() => decorateNodes(graph, {
+    branches, expanded, loadingBranches, branchErrors, selectedNode,
+    setSelectedNode: (node) => actions.current.setSelectedNode(node),
+    toggleBranch: (id) => actions.current.toggleBranch(id),
+    retryBranch: (id) => actions.current.retryBranch(id)
+  }, live), [graph, branches, expanded, loadingBranches, branchErrors, selectedNode, live]);
   const edges = useMemo(
     () => decorateEdges(graph, labelsVisible, live, snapshot),
     [graph, labelsVisible, live, snapshot]
@@ -346,6 +369,22 @@ function useCanvasEffects(
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [active, setSelectedNode]);
+}
+
+/** `D` abre e fecha a paleta de equipamentos, fora dos campos de texto. */
+function usePaletteShortcut(enabled: boolean, toggle: () => void) {
+  useEffect(() => {
+    if (!enabled) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'd' || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      event.preventDefault();
+      toggle();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [enabled, toggle]);
 }
 
 /**
@@ -530,6 +569,11 @@ function TopologyStage({
   toolsSlot,
   onCloseInspector,
   authoring,
+  layout,
+  onEditLink,
+  onDisconnectUpstream,
+  manage,
+  onContextMenu,
   canvasRef,
   live,
   onApplyProposal,
@@ -548,6 +592,11 @@ function TopologyStage({
   toolsSlot: HTMLElement | null;
   onCloseInspector: () => void;
   authoring: MapAuthoring;
+  layout: ReturnType<typeof useMapLayout>;
+  onEditLink: (edgeId: string) => void;
+  onDisconnectUpstream: (deviceId: number, upstreamDeviceId: number) => void;
+  manage: BackboneManageActions | undefined;
+  onContextMenu: (target: { nodeId: string } | { edgeId: string }, point: { x: number; y: number }) => void;
   canvasRef: React.RefObject<TopologyCanvasHandle | null>;
   live: TopologyLive | null;
   onApplyProposal: (deviceId: number, routerInterface: string) => Promise<void>;
@@ -574,7 +623,26 @@ function TopologyStage({
             minimapVisible={minimapVisible}
             connectable={authoring.canManage}
             onConnectNodes={authoring.connectNodes}
+            onPaneDoubleClick={authoring.canManage ? authoring.openPalette : undefined}
+            onDropCatalog={authoring.canManage ? authoring.pickCatalog : undefined}
+            draggable={authoring.canManage}
+            onNodesChange={layout.onNodesChange}
+            onNodeDragStart={layout.onDragStart}
+            onNodeDragStop={layout.onDragStop}
+            onEdgeClick={authoring.canManage ? onEditLink : undefined}
+            onContextMenu={onContextMenu}
           />
+          {authoring.canManage && authoring.paletteOpen && (
+            <EquipmentPalette
+              catalogs={authoring.catalogs}
+              loading={authoring.catalogLoading}
+              error={authoring.catalogError}
+              onRetry={authoring.retryCatalogs}
+              onPick={(catalogId) => authoring.pickCatalog(catalogId)}
+              onCreateCatalog={authoring.createCatalog}
+              onClose={authoring.closePalette}
+            />
+          )}
           {/* Os controlos saem daqui por portal para a tira das abas: em cima do
               canvas tapavam a raiz do grafo, que é onde o dagre começa a desenhar.
               O estado deles continua neste componente — o portal move o DOM. */}
@@ -599,7 +667,8 @@ function TopologyStage({
             onOpenClient={props.onOpenClient}
             onOpenService={props.onOpenService}
             onOpenStock={props.onOpenStock}
-            onDisconnectUpstream={authoring.canManage ? authoring.disconnectUpstream : undefined}
+            onDisconnectUpstream={authoring.canManage ? onDisconnectUpstream : undefined}
+            manage={manage}
             focusedBackboneId={workspace.focusedBackboneId}
             onFocusBackbone={workspace.focusBackbone}
           />
@@ -629,15 +698,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
     try {
       const api = createBackboneApi();
       const detail = await api.getBackbone(deviceId);
-      await api.updateBackbone(deviceId, {
-        catalogId: detail.catalogId, name: detail.name, status: detail.status,
-        serialNumber: detail.serialNumber, assetTag: detail.assetTag,
-        ipAddress: detail.ipAddress, macAddress: detail.macAddress,
-        wanMode: detail.wanMode, operationMode: detail.operationMode,
-        island: detail.island, zone: detail.zone, notes: detail.notes,
-        upstreamDeviceIds: detail.upstreams.map((item) => item.id),
-        routerInterface, expectedUpdatedAt: detail.updatedAt
-      });
+      await api.updateBackbone(deviceId, { ...writeInputFrom(detail), routerInterface });
       await refresh();
       topologyLive.reload();
       onMutation();
@@ -655,12 +716,58 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
   // O mapa abre inteiro: o inspetor só aparece quando houver nó selecionado.
   const [inspectorVisible, setInspectorVisible] = useState(false);
   const [direction, setDirection] = useState<TopologyDirection>('TB');
-  const { nodes, edges } = useRenderedGraph(
+  const { toast } = useToast();
+  const confirm = useConfirm();
+  const layout = useMapLayout(
+    direction,
+    props.active,
+    authoring.canManage,
+    useCallback((message: string) => toast(message, 'error'), [toast])
+  );
+  const [editingLinkId, setEditingLinkId] = useState<string | null>(null);
+  // Tirar uma alimentação parte o ramo a jusante: pergunta-se sempre, do inspetor ou do diálogo.
+  const { disconnectUpstream } = authoring;
+  const confirmDisconnect = useCallback((deviceId: number, upstreamDeviceId: number) => {
+    void confirm({
+      title: 'Remover esta ligação?',
+      message: 'O equipamento deixa de ser alimentado por este. Se não tiver outra alimentação, passa a pender da Internet. O registo dos equipamentos não muda.',
+      confirmLabel: 'Remover ligação',
+      tone: 'danger'
+    }).then((ok) => {
+      if (!ok) return;
+      disconnectUpstream(deviceId, upstreamDeviceId);
+      setEditingLinkId(null);
+    });
+  }, [confirm, disconnectUpstream]);
+  const { retire } = authoring;
+  const { setSelectedNode } = workspace;
+  const confirmRetire = useCallback((deviceId: number) => {
+    const name = workspace.snapshot?.backbones.find((item) => item.backboneDeviceId === deviceId)?.label ?? 'este equipamento';
+    void confirm({
+      title: `Retirar ${name}?`,
+      message: 'Sai do mapa e a unidade volta ao stock. Nada se apaga: o registo fica na aba Backbone como Retirado e pode voltar a ativar-se. Se ainda alimentar equipamentos, o ISPM recusa e diz o que falta.',
+      confirmLabel: 'Retirar',
+      tone: 'danger'
+    }).then(async (ok) => {
+      if (ok && await retire(deviceId)) setSelectedNode(null);
+    });
+  }, [confirm, retire, setSelectedNode, workspace.snapshot]);
+  const manage: BackboneManageActions | undefined = authoring.canManage
+    ? { onEdit: authoring.openEdit, onDuplicate: authoring.duplicate, onRetire: confirmRetire }
+    : undefined;
+  const [menu, setMenu] = useState<{ x: number; y: number; groups: RowActionGroup[] } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+  const rendered = useRenderedGraph(
     workspace.snapshot,
     workspace,
     labelsVisible,
     direction,
     live
+  );
+  const { edges } = rendered;
+  const nodes = useMemo(
+    () => placeNodes(rendered.nodes, layout.overrides, layout.boxSelection),
+    [rendered.nodes, layout.overrides, layout.boxSelection]
   );
   useRefitOnShapeChange(canvasRef, direction, nodes.length);
   // Escolher um nó com o painel recolhido volta a abri-lo — senão o clique
@@ -675,6 +782,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
     props.focusBackboneDeviceId,
     props.onFocusHandled
   );
+  usePaletteShortcut(props.active && authoring.canManage, authoring.togglePalette);
   useCanvasEffects(
     canvasRef,
     nodes,
@@ -696,6 +804,47 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
       />
     );
   }
+  // Só backbone→backbone tem propriedades: a raiz é lógica.
+  const editingLink = workspace.snapshot.edges.find((edge): edge is TopologyCoreLinkEdge => (
+    edge.id === editingLinkId && edge.kind === 'core-link' && edge.source !== 'root:isp'
+  ));
+  const linkEnd = (nodeId: string): LinkEnd => {
+    const backbone = workspace.snapshot?.backbones.find((item) => item.id === nodeId);
+    const isRouter = backbone !== undefined && backbone.backboneDeviceId === live?.routerDeviceId;
+    return {
+      name: backbone?.label ?? nodeId,
+      interfaces: isRouter && live?.available ? live.interfaces.map((item) => item.name) : null
+    };
+  };
+  /** O botão direito: as mesmas ações do inspetor e da ficha da ligação, sem lá ir. */
+  const openContextMenu = (target: { nodeId: string } | { edgeId: string }, point: { x: number; y: number }) => {
+    if ('nodeId' in target) {
+      const backbone = workspace.snapshot?.backbones.find((item) => item.id === target.nodeId);
+      if (!backbone) return;
+      const id = backbone.backboneDeviceId;
+      workspace.setSelectedNode(backbone);
+      const focused = workspace.focusedBackboneId === id;
+      setMenu({ ...point, groups: [
+        { label: backbone.label, items: manage ? [
+          { label: 'Editar', icon: <Pencil size={14} aria-hidden />, onClick: () => manage.onEdit(id) },
+          { label: 'Duplicar', icon: <Copy size={14} aria-hidden />, onClick: () => manage.onDuplicate(id) }
+        ] : [] },
+        { label: 'Vista', items: [
+          { label: focused ? 'Ver a rede completa' : 'Ver só este backbone', icon: <Focus size={14} aria-hidden />, onClick: () => workspace.focusBackbone(focused ? null : id) }
+        ] },
+        { label: 'Inventário', items: manage ? [
+          { label: 'Retirar', icon: <Archive size={14} aria-hidden />, danger: true, onClick: () => manage.onRetire(id) }
+        ] : [] }
+      ] });
+      return;
+    }
+    const edge = workspace.snapshot?.edges.find((item) => item.id === target.edgeId);
+    if (!authoring.canManage || edge?.kind !== 'core-link' || edge.source === 'root:isp') return;
+    setMenu({ ...point, groups: [{ label: 'Ligação', items: [
+      { label: 'Propriedades', icon: <SlidersHorizontal size={14} aria-hidden />, onClick: () => setEditingLinkId(edge.id) },
+      { label: 'Remover ligação', icon: <Unlink size={14} aria-hidden />, danger: true, onClick: () => confirmDisconnect(linkDeviceId(edge.target), linkDeviceId(edge.source)) }
+    ] }] });
+  };
   const tools: CanvasToolsProps = {
     labelsVisible,
     legendVisible,
@@ -714,7 +863,21 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
     onToggleAllBranches: workspace.toggleAllBranches,
     onZoomIn: () => canvasRef.current?.zoomIn(),
     onZoomOut: () => canvasRef.current?.zoomOut(),
-    onFit: () => canvasRef.current?.fit()
+    onFit: () => canvasRef.current?.fit(),
+    layout: authoring.canManage ? {
+      arranged: layout.arranged,
+      canUndo: layout.canUndo,
+      canRedo: layout.canRedo,
+      onUndo: layout.undo,
+      onRedo: layout.redo,
+      onReset: () => {
+        void confirm({
+          title: 'Reorganizar o mapa?',
+          message: 'As posições que arrumou à mão neste desenho são apagadas e o mapa volta ao desenho automático. Os equipamentos e as ligações não mudam.',
+          confirmLabel: 'Reorganizar'
+        }).then((ok) => { if (ok) void layout.reset(); });
+      }
+    } : undefined
   };
   return (
     <section className="topology-module" aria-label="Topologia de rede">
@@ -740,7 +903,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
         focusedBackboneId={workspace.focusedBackboneId}
         onFocusBackbone={workspace.focusBackbone}
         canManage={authoring.canManage}
-        onCreateDevice={authoring.openEditor}
+        onCreateDevice={authoring.togglePalette}
         onQueryChange={workspace.setQuery}
         onResultSelect={(result) => { void workspace.selectSearchResult(result); }}
         onFiltersChange={workspace.setFilters}
@@ -762,16 +925,41 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
           workspace.setSelectedNode(null);
         }}
         authoring={authoring}
+        layout={layout}
+        onEditLink={(edgeId) => {
+          if (edgeId.startsWith('core-link:backbone:')) setEditingLinkId(edgeId);
+        }}
+        onDisconnectUpstream={confirmDisconnect}
+        manage={manage}
+        onContextMenu={openContextMenu}
         canvasRef={canvasRef}
         live={live}
         onApplyProposal={onApplyProposal}
         proposalPending={proposalPending}
         proposalError={proposalError}
       />
+      {authoring.canManage && editingLink && (
+        <LinkDialog
+          open
+          upstream={linkEnd(editingLink.source)}
+          device={linkEnd(editingLink.target)}
+          link={editingLink.link}
+          pending={authoring.linkPending}
+          error={authoring.linkError}
+          onSave={(link) => {
+            void authoring.saveLink(linkDeviceId(editingLink.target), linkDeviceId(editingLink.source), link)
+              .then((ok) => { if (ok) setEditingLinkId(null); });
+          }}
+          onRemove={() => confirmDisconnect(linkDeviceId(editingLink.target), linkDeviceId(editingLink.source))}
+          onClose={() => { authoring.clearLinkError(); setEditingLinkId(null); }}
+        />
+      )}
+      {menu && <ContextMenu x={menu.x} y={menu.y} groups={menu.groups} onClose={closeMenu} />}
       {authoring.canManage && (
         <BackboneEditorDialog
           open={authoring.editorOpen}
-          backbone={null}
+          backbone={authoring.editing}
+          prefill={authoring.prefill}
           pending={authoring.pending}
           error={authoring.error}
           catalogs={authoring.catalogs}
@@ -780,7 +968,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
           upstreamOptions={authoring.upstreamOptions}
           onCatalogRetry={authoring.retryCatalogs}
           onClose={authoring.closeEditor}
-          onSubmit={authoring.createDevice}
+          onSubmit={authoring.submitEditor}
         />
       )}
     </section>

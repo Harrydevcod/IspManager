@@ -366,7 +366,15 @@ export const backboneLinks = sqliteTable('backbone_links', {
   deviceId: integer('device_id').notNull(),
   upstreamDeviceId: integer('upstream_device_id').notNull(),
   createdBy: integer('created_by'),
-  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
+  // O que é a ligação (0091). Tudo opcional: sem nada, "por classificar".
+  medium: text('medium'),
+  fromPort: text('from_port'),
+  toPort: text('to_port'),
+  frequencyMhz: integer('frequency_mhz'),
+  capacityMbps: integer('capacity_mbps'),
+  notes: text('notes'),
+  updatedAt: text('updated_at')
 });
 
 export const backboneAssignmentLinks = sqliteTable('backbone_assignment_links', {
@@ -899,6 +907,16 @@ export const supportTicketEntries = sqliteTable('support_ticket_entries', {
   body: text('body').notNull(),
   createdAt: text('created_at').notNull().default("(datetime('now'))")
 });
+
+// Onde o operador arrumou cada nó do mapa (migration 0090). Sem linha, manda o dagre.
+export const topologyPositions = sqliteTable('topology_positions', {
+  direction: text('direction').notNull(),
+  nodeKey: text('node_key').notNull(),
+  x: real('x').notNull(),
+  y: real('y').notNull(),
+  updatedBy: integer('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
+}, (table) => [primaryKey({ columns: [table.direction, table.nodeKey] })]);
 
 export const routerLogFindings = sqliteTable('router_log_findings', {
   day: text('day').notNull(),
