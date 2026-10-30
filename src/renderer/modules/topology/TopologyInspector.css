@@ -1,4 +1,5 @@
 .topology-inspector {
+  container: topology-inspector / inline-size;
   min-width: 0;
   overflow-y: auto;
   padding: var(--space-5);
@@ -481,14 +482,26 @@
 
 /* Gerir a unidade: logo por baixo dos crachás, antes dos detalhes. Retirar fica
    à direita e sem caixa — é a ação que não se quer carregar por engano. */
+/* As três ações numa linha só, seguidas e com o mesmo espaço entre elas. */
 .topology-inspector-manage {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2);
   margin-top: var(--space-3);
 }
 
-.topology-inspector-manage .topology-inspector-retire {
-  margin-left: auto;
-  color: var(--danger);
+/* Os três rótulos pedem 292px (medido). Abaixo disso Retirar fica só com o ícone; o rótulo continua para leitores de ecrã. */
+@container topology-inspector (width < 18.5rem) {
+  .topology-inspector-manage .topology-inspector-retire {
+    width: 32px;
+    padding-inline: 0;
+  }
+  .topology-inspector-retire-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
 }

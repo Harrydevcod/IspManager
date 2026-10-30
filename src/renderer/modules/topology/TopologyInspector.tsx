@@ -195,8 +195,8 @@ function BackboneDetails({
           <Button variant="secondary" size="sm" leadingIcon={<Copy size={14} aria-hidden />} onClick={() => manage.onDuplicate(node.backboneDeviceId)}>
             Duplicar
           </Button>
-          <Button variant="ghost" size="sm" className="topology-inspector-retire" leadingIcon={<Archive size={14} aria-hidden />} onClick={() => manage.onRetire(node.backboneDeviceId)}>
-            Retirar
+          <Button variant="critical" size="sm" className="topology-inspector-retire" title="Retirar" leadingIcon={<Archive size={14} aria-hidden />} onClick={() => manage.onRetire(node.backboneDeviceId)}>
+            <span className="topology-inspector-retire-label">Retirar</span>
           </Button>
         </div>
       )}
