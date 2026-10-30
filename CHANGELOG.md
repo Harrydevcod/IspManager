@@ -7,6 +7,7 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 ## Não lançado
 
 ### Corrigido
+- No inspetor da Topologia, o botão Retirar partia para uma linha sozinha, encostado à direita. Agora tem o mesmo formato do Editar e do Duplicar e fica logo a seguir, com o mesmo espaço; num inspetor estreito mostra só o ícone.
 - Os seletores sem rótulo (o filtro "Todos os estados" do Backbone, o "Rede completa" do mapa, o estado na devolução de equipamento) apareciam com a borda branca e o fundo do browser. Passam a ter o estilo base da app, como os outros campos.
 
 ## [2.42](https://github.com/Harrydevcod/IspManager/releases/tag/v2.42.0) — 2026-10-30
