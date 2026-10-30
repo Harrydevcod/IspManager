@@ -1,22 +1,16 @@
 import {
   ChevronsDownUp,
   ChevronsUpDown,
-  Eye,
-  EyeOff,
   Filter,
   Focus,
   LayoutTemplate,
-  ListTree,
-  Map,
   Minus,
-  MoveHorizontal,
-  MoveVertical,
-  PanelRight,
   Plus,
   RadioTower,
   Redo2,
   RotateCw,
   Search,
+  SlidersHorizontal,
   Undo2,
   X
 } from 'lucide-react';
@@ -26,7 +20,7 @@ import type {
   TopologyBackboneNode,
   TopologySearchResult
 } from '../../../shared/topology';
-import { Button, Field, Select } from '../../components';
+import { Button, ContextMenu, Field, Select } from '../../components';
 import { CV_ISLANDS } from '../../lib/islands';
 import { WAN_MODES, WAN_MODE_LABELS } from '../../../shared/wan';
 import { OPERATION_MODES, OPERATION_MODE_LABELS } from '../../../shared/operation';
@@ -290,9 +284,14 @@ function ViewScope({ backbones, focusedBackboneId, onFocusBackbone }: Pick<
 }
 
 function Filters({ filters, onChange, onClear }: FiltersProps) {
+  // Fechado, o menu escondia que o mapa estava recortado.
+  const active = Object.values(filters).filter((value) => value !== undefined && value !== '').length;
   return (
     <details className="topology-filter-menu">
-      <summary><Filter size={14} aria-hidden /> Filtros</summary>
+      <summary aria-label={active ? `Filtros, ${active} ${active === 1 ? 'ativo' : 'ativos'}` : undefined}>
+        <Filter size={14} aria-hidden /> Filtros
+        {active > 0 && <span className="topology-filter-count" aria-hidden>{active}</span>}
+      </summary>
       <div className="topology-filter-fields">
         <StateFilter filters={filters} onChange={onChange} />
         <AttentionFilter filters={filters} onChange={onChange} />
@@ -356,8 +355,9 @@ function useRovingToolbar() {
   const ref = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
 
+  // Só os botões da própria barra: os itens do menu Vista também vivem cá dentro.
   const enabledButtons = useCallback(() => [
-    ...(ref.current?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+    ...(ref.current?.querySelectorAll<HTMLButtonElement>(':scope > button') ?? [])
   ].filter((button) => !button.disabled), []);
 
   useEffect(() => {
@@ -372,7 +372,7 @@ function useRovingToolbar() {
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     const items = enabledButtons();
-    if (items.length === 0) return;
+    if (!items.includes(event.target as HTMLButtonElement)) return;
     event.preventDefault();
     const current = items.findIndex((button) => button === document.activeElement);
     const step = event.key === 'ArrowRight' ? 1 : items.length - 1;
@@ -384,9 +384,63 @@ function useRovingToolbar() {
   return { ref, onKeyDown };
 }
 
+/**
+ * O que se mostra no mapa e como se desenha. Eram cinco ícones soltos na barra,
+ * cada um com o nome escondido no `title`; num menu ficam com nome e visto.
+ */
+function ViewMenu(props: CanvasToolsProps) {
+  const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
+  const close = useCallback(() => setAnchor(null), []);
+  const vertical = props.direction === 'TB';
+  return (
+    <>
+      <Button
+        variant="icon"
+        aria-label="Vista"
+        title="Vista"
+        aria-haspopup="menu"
+        aria-expanded={anchor !== null}
+        // Com o menu aberto, o mousedown no próprio botão fechava-o e o clique voltava a abri-lo.
+        onMouseDown={(event) => { if (anchor) event.stopPropagation(); }}
+        onClick={(event) => {
+          if (anchor) { close(); return; }
+          const rect = event.currentTarget.getBoundingClientRect();
+          setAnchor({ x: rect.left, y: rect.bottom + 4 });
+        }}
+      >
+        <SlidersHorizontal size={15} />
+      </Button>
+      {anchor && (
+        <ContextMenu
+          x={anchor.x}
+          y={anchor.y}
+          onClose={close}
+          groups={[
+            {
+              label: 'Mostrar',
+              items: [
+                { label: 'Etiquetas das ligações', checked: props.labelsVisible, onClick: props.onToggleLabels },
+                { label: 'Legenda', checked: props.legendVisible, onClick: props.onToggleLegend },
+                { label: 'Mini-mapa', checked: props.minimapVisible, onClick: props.onToggleMinimap },
+                { label: 'Inspetor', checked: props.inspectorVisible, onClick: props.onToggleInspector }
+              ]
+            },
+            {
+              label: 'Desenho',
+              items: [
+                { label: 'De cima para baixo', checked: vertical, exclusive: true, onClick: () => { if (!vertical) props.onToggleDirection(); } },
+                { label: 'Da esquerda para a direita', checked: !vertical, exclusive: true, onClick: () => { if (vertical) props.onToggleDirection(); } }
+              ]
+            }
+          ]}
+        />
+      )}
+    </>
+  );
+}
+
 export function CanvasTools(props: CanvasToolsProps) {
   const roving = useRovingToolbar();
-  const vertical = props.direction === 'TB';
   return (
     <div
       className="topology-canvas-tools"
@@ -421,46 +475,7 @@ export function CanvasTools(props: CanvasToolsProps) {
       >
         {props.allBranchesExpanded ? <ChevronsDownUp size={15} /> : <ChevronsUpDown size={15} />}
       </ToolButton>
-      <ToolButton
-        label={props.labelsVisible
-          ? 'Ocultar as etiquetas das ligações'
-          : 'Mostrar as etiquetas das ligações'}
-        pressed={props.labelsVisible}
-        onClick={props.onToggleLabels}
-      >
-        {props.labelsVisible ? <Eye size={15} /> : <EyeOff size={15} />}
-      </ToolButton>
-      <ToolButton
-        label={props.legendVisible ? 'Ocultar a legenda' : 'Mostrar a legenda'}
-        pressed={props.legendVisible}
-        onClick={props.onToggleLegend}
-      >
-        <ListTree size={15} />
-      </ToolButton>
-      <ToolButton
-        label={props.minimapVisible ? 'Ocultar o mini-mapa' : 'Mostrar o mini-mapa'}
-        pressed={props.minimapVisible}
-        onClick={props.onToggleMinimap}
-      >
-        <Map size={15} />
-      </ToolButton>
-      <ToolButton
-        label={props.inspectorVisible ? 'Ocultar o inspetor' : 'Mostrar o inspetor'}
-        pressed={props.inspectorVisible}
-        onClick={props.onToggleInspector}
-      >
-        <PanelRight size={15} />
-      </ToolButton>
-      {/* "Horizontal/vertical" é ambíguo — TB desce mas espalha os irmãos ao
-          longo da largura. O rótulo diz o desenho de destino. */}
-      <ToolButton
-        label={vertical
-          ? 'Desenhar da esquerda para a direita'
-          : 'Desenhar de cima para baixo'}
-        onClick={props.onToggleDirection}
-      >
-        {vertical ? <MoveHorizontal size={15} /> : <MoveVertical size={15} />}
-      </ToolButton>
+      <ViewMenu {...props} />
       {props.layout && (
         <>
           <span aria-hidden />
