@@ -4,6 +4,15 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## Não lançado
+
+### Alterado
+- **A barra do mapa tem um menu Vista.** Etiquetas, legenda, mini-mapa, inspetor e a direção do desenho passam de cinco ícones soltos para um menu com nome e visto em cada opção. A barra fica com nove controlos em vez de treze.
+- **O botão Filtros diz quantos filtros estão ativos.** Com o menu fechado, já não fica escondido que o mapa está recortado.
+
+### Corrigido
+- Os menus abertos num ponto (botão direito, Vista) já não ficam por baixo de outros elementos do ecrã.
+
 ## [2.44](https://github.com/Harrydevcod/IspManager/releases/tag/v2.44.0) — 2026-10-30
 
 ### Adicionado

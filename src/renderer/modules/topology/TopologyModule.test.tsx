@@ -197,6 +197,29 @@ async function waitForCard(container: HTMLElement, model: string): Promise<HTMLB
   throw new Error(`Palette card not found: ${model}`);
 }
 
+/** Abre o menu Vista e devolve o item com esse nome. */
+async function viewItem(container: HTMLElement, name: string): Promise<HTMLButtonElement> {
+  if (button(container, 'Vista').getAttribute('aria-expanded') !== 'true') {
+    await act(async () => { button(container, 'Vista').click(); });
+  }
+  const item = [...document.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]')]
+    .find((candidate) => candidate.textContent === name);
+  if (!item) throw new Error(`View option not found: ${name}`);
+  return item;
+}
+
+/** Lê o visto de uma opção e fecha o menu outra vez. */
+async function viewChecked(container: HTMLElement, name: string): Promise<string | null> {
+  const checked = (await viewItem(container, name)).getAttribute('aria-checked');
+  await act(async () => { button(container, 'Vista').click(); });
+  return checked;
+}
+
+async function pickView(container: HTMLElement, name: string): Promise<void> {
+  const item = await viewItem(container, name);
+  await act(async () => { item.click(); });
+}
+
 function button(container: HTMLElement, name: string): HTMLButtonElement {
   const result = [...container.querySelectorAll('button')]
     .find((candidate) => candidate.getAttribute('aria-label') === name);
@@ -577,22 +600,21 @@ describe('TopologyModule branch interaction', () => {
     const container = await mountMap();
     const inspector = () => container.querySelector('[aria-label="Inspetor da topologia"]');
     // O rótulo diz o próximo passo, por isso muda com o estado.
-    const toggle = (label: string) => button(container, label);
     // O mapa arranca com toda a largura — o painel só entra quando for preciso.
     expect(inspector()).toBeNull();
-    expect(toggle('Mostrar o inspetor').getAttribute('aria-pressed')).toBe('false');
+    expect(await viewChecked(container, 'Inspetor')).toBe('false');
 
     await act(async () => {
       button(container, 'Selecionar Ubiquiti Rocket Prism').click();
     });
     expect(inspector()).not.toBeNull();
-    expect(toggle('Ocultar o inspetor').getAttribute('aria-pressed')).toBe('true');
+    expect(await viewChecked(container, 'Inspetor')).toBe('true');
 
-    await act(async () => { toggle('Ocultar o inspetor').click(); });
+    await pickView(container, 'Inspetor');
     expect(inspector()).toBeNull();
 
     // O ✕ do cabeçalho fecha o painel e larga a seleção.
-    await act(async () => { toggle('Mostrar o inspetor').click(); });
+    await pickView(container, 'Inspetor');
     await act(async () => { button(container, 'Fechar inspetor').click(); });
     expect(inspector()).toBeNull();
   });
@@ -605,15 +627,15 @@ describe('TopologyModule branch interaction', () => {
     expect(minimap()).not.toBeNull();
     expect(legend()).not.toBeNull();
 
-    await act(async () => { button(container, 'Ocultar o mini-mapa').click(); });
+    await pickView(container, 'Mini-mapa');
     expect(minimap()).toBeNull();
     expect(legend()).not.toBeNull();
-    expect(button(container, 'Mostrar o mini-mapa').getAttribute('aria-pressed')).toBe('false');
+    expect(await viewChecked(container, 'Mini-mapa')).toBe('false');
 
-    await act(async () => { button(container, 'Ocultar a legenda').click(); });
+    await pickView(container, 'Legenda');
     expect(legend()).toBeNull();
 
-    await act(async () => { button(container, 'Mostrar o mini-mapa').click(); });
+    await pickView(container, 'Mini-mapa');
     expect(minimap()).not.toBeNull();
   });
 
@@ -759,16 +781,14 @@ describe('TopologyModule branch interaction', () => {
   test('turns the map between the two drawing directions', async () => {
     const container = await mountMap();
 
-    // Arranca de cima para baixo, por isso o botão oferece o outro desenho.
-    await act(async () => {
-      button(container, 'Desenhar da esquerda para a direita').click();
-    });
-    expect(button(container, 'Desenhar de cima para baixo')).toBeTruthy();
+    // Arranca de cima para baixo; o menu marca o desenho atual e escolhe o outro.
+    expect(await viewChecked(container, 'De cima para baixo')).toBe('true');
+    await pickView(container, 'Da esquerda para a direita');
+    expect(await viewChecked(container, 'Da esquerda para a direita')).toBe('true');
+    expect(await viewChecked(container, 'De cima para baixo')).toBe('false');
 
-    await act(async () => {
-      button(container, 'Desenhar de cima para baixo').click();
-    });
-    expect(button(container, 'Desenhar da esquerda para a direita')).toBeTruthy();
+    await pickView(container, 'De cima para baixo');
+    expect(await viewChecked(container, 'De cima para baixo')).toBe('true');
   });
 });
 
@@ -1005,12 +1025,41 @@ test('describes rendered relationships as defined links', async () => {
   expect(container.textContent).toContain('Ligação definida');
   expect(container.textContent).not.toContain('Linhagem de inventário');
 
-  await act(async () => {
-    button(container, 'Mostrar as etiquetas das ligações').click();
-  });
+  expect(await viewChecked(container, 'Etiquetas das ligações')).toBe('false');
+  await pickView(container, 'Etiquetas das ligações');
+  expect(await viewChecked(container, 'Etiquetas das ligações')).toBe('true');
+});
 
-  expect(button(container, 'Ocultar as etiquetas das ligações').getAttribute('aria-pressed'))
-    .toBe('true');
+test('o menu Vista abre com o foco no primeiro item e Escape devolve-o ao botão', async () => {
+  const container = await mountMap();
+  const trigger = button(container, 'Vista');
+  trigger.focus();
+  await act(async () => { trigger.click(); });
+  expect(trigger.getAttribute('aria-expanded')).toBe('true');
+  expect(document.activeElement?.textContent).toBe('Etiquetas das ligações');
+  // As setas andam no menu; a barra de ferramentas não as rouba.
+  await act(async () => {
+    document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  });
+  expect(document.activeElement?.textContent).toBe('Legenda');
+  await act(async () => {
+    document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+  expect(document.querySelector('[role="menu"]')).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+});
+
+test('o botão Filtros diz quantos filtros estão a recortar o mapa', async () => {
+  const container = await mountMap();
+  const summary = () => container.querySelector('.topology-filter-menu summary')!;
+  expect(summary().textContent).toBe(' Filtros');
+  const select = [...container.querySelectorAll<HTMLSelectElement>('.topology-filter-fields select')][0];
+  await act(async () => {
+    select.value = 'active';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  expect(summary().getAttribute('aria-label')).toBe('Filtros, 1 ativo');
+  expect(container.querySelector('.topology-filter-count')?.textContent).toBe('1');
 });
 
 test('recovers the global snapshot after an explicit retry', async () => {

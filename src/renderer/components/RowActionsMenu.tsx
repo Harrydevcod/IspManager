@@ -1,5 +1,6 @@
-import { MoreHorizontal } from 'lucide-react';
+import { Check, MoreHorizontal } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from './Button';
 
 export type RowActionItem = {
@@ -9,6 +10,10 @@ export type RowActionItem = {
   danger?: boolean;
   disabled?: boolean;
   title?: string;
+  /** Com valor, o item é uma opção que se liga e desliga (menuitemcheckbox) e mostra o visto. */
+  checked?: boolean;
+  /** Uma escolha entre várias do mesmo grupo (menuitemradio); só conta com `checked`. */
+  exclusive?: boolean;
 };
 
 export type RowActionGroup = {
@@ -93,9 +98,11 @@ export function RowActionsMenu({ groups, title = 'Mais ações' }: RowActionsMen
   );
 }
 
+const MENU_ITEMS = '[role^="menuitem"]:not(:disabled)';
+
 /** Setas, Home e End andam pelos itens ativos do menu, dando a volta nas pontas. */
 function moveFocusInMenu(event: ReactKeyboardEvent<HTMLDivElement>) {
-  const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)')];
+  const items = [...event.currentTarget.querySelectorAll<HTMLElement>(MENU_ITEMS)];
   if (items.length === 0) return;
   const current = items.indexOf(document.activeElement as HTMLElement);
   const next = event.key === 'ArrowDown' ? (current + 1) % items.length
@@ -116,13 +123,16 @@ function MenuGroups({ groups, onPick }: { groups: RowActionGroup[]; onPick: () =
         <button
           key={item.label}
           type="button"
-          role="menuitem"
+          role={item.checked === undefined ? 'menuitem' : item.exclusive ? 'menuitemradio' : 'menuitemcheckbox'}
+          aria-checked={item.checked}
           className={`row-actions-menu-item${item.danger ? ' is-danger' : ''}`}
           disabled={item.disabled}
           title={item.title}
           onClick={(event) => { event.stopPropagation(); onPick(); item.onClick(); }}
         >
-          {item.icon}
+          {item.checked === undefined
+            ? item.icon
+            : <Check size={14} aria-hidden style={item.checked ? undefined : { visibility: 'hidden' }} />}
           <span>{item.label}</span>
         </button>
       ))}
@@ -146,7 +156,7 @@ export function ContextMenu({ x, y, groups, onClose }: RowActionsMenuProps & { x
       x: Math.min(x, window.innerWidth - panel.offsetWidth - margin),
       y: Math.min(y, window.innerHeight - panel.offsetHeight - margin)
     });
-    panel.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus();
+    panel.querySelector<HTMLElement>(MENU_ITEMS)?.focus();
   }, [x, y]);
 
   useEffect(() => {
@@ -173,7 +183,9 @@ export function ContextMenu({ x, y, groups, onClose }: RowActionsMenuProps & { x
 
   const visibleGroups = groups.filter((group) => group.items.length > 0);
   if (visibleGroups.length === 0) return null;
-  return (
+  // No body: um antepassado com z-index (a tira das abas da Topologia) prendia o
+  // menu dentro do seu empilhamento, e o z-index do painel deixava de contar.
+  return createPortal(
     <div
       className="row-actions-menu-panel is-context"
       role="menu"
@@ -183,6 +195,7 @@ export function ContextMenu({ x, y, groups, onClose }: RowActionsMenuProps & { x
       onKeyDown={moveFocusInMenu}
     >
       <MenuGroups groups={visibleGroups} onPick={onClose} />
-    </div>
+    </div>,
+    document.body
   );
 }
