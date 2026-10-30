@@ -35,6 +35,17 @@
 
 .topology-canvas .react-flow__edge-path { stroke-linecap: round; }
 
+/* Uma ligação com foco de teclado ganha uma banda na cor de foco. O traço vem inline
+   (o meio decide a cor e o tracejado) e não se toca: pinta-se a faixa de clique que o
+   React Flow já desenha à volta, invisível, e que vem por atributo, não inline. */
+.topology-canvas .react-flow__edge:focus { outline: none; }
+.topology-canvas .react-flow__edge:focus-visible .react-flow__edge-interaction {
+  stroke: var(--action-focus);
+  stroke-opacity: 0.35;
+  stroke-width: 14px;
+  stroke-linecap: round;
+}
+
 .topology-canvas .react-flow__edge-textbg {
   stroke: var(--topology-line);
   stroke-width: 1px;

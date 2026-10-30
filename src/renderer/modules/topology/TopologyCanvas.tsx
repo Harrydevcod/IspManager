@@ -12,12 +12,13 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef
 } from 'react';
-import type { DragEvent, ForwardedRef, MouseEvent } from 'react';
+import type { DragEvent, ForwardedRef, KeyboardEvent, MouseEvent } from 'react';
 import { isValidBackboneConnection, parseBackboneNodeId } from './backbone-linking';
 import { CATALOG_DRAG_TYPE } from './EquipmentPalette';
-import type { TopologyFlowEdge } from './topology-graph';
+import { keyboardLinks, type TopologyFlowEdge } from './topology-graph';
 import {
   topologyNodeTypes,
   type TopologyCanvasNode
@@ -79,6 +80,25 @@ function miniMapColor(node: TopologyCanvasNode): string {
   if (node.type === 'logical-root') return 'var(--accent)';
   if (node.type === 'backbone') return 'var(--accent-2)';
   return 'var(--text-3)';
+}
+
+type MenuTarget = { nodeId: string } | { edgeId: string };
+
+/** O nó ou a ligação onde está o foco (ou o clique), com o id que o React Flow lhe deu. */
+function flowTarget(element: Element): { element: Element; target: MenuTarget } | null {
+  const node = element.closest('.react-flow__node');
+  const nodeId = node?.getAttribute('data-id');
+  if (node && nodeId) return { element: node, target: { nodeId } };
+  const edge = element.closest('.react-flow__edge');
+  const edgeId = edge?.getAttribute('data-id');
+  if (edge && edgeId) return { element: edge, target: { edgeId } };
+  return null;
+}
+
+/** Sem rato não há ponto de clique: o menu abre colado ao canto de baixo do elemento. */
+function anchorBelow(element: Element): { x: number; y: number } {
+  const rect = element.getBoundingClientRect();
+  return { x: rect.left + Math.min(24, rect.width / 2), y: rect.bottom + 4 };
 }
 
 function useCanvasControls(
@@ -144,6 +164,36 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
   }, ref) {
     useCanvasControls(ref, nodes);
 
+    // As ligações editáveis entram no Tab com o nome das pontas. A chave junta só ids e nomes:
+    // arrastar um nó muda as posições a cada frame e não pode voltar a criar as ligações.
+    const labelKey = nodes.map((node) => `${node.id}\u0000${node.data.topology.label}`).join('\u0001');
+    const flowEdges = useMemo(() => {
+      if (!onEdgeClick) return edges;
+      const labels = new Map(labelKey.split('\u0001').map((pair) => pair.split('\u0000') as [string, string]));
+      return keyboardLinks(edges, (nodeId) => labels.get(nodeId) ?? nodeId);
+    }, [edges, labelKey, onEdgeClick]);
+
+    // O teclado faz o que o rato faz: Shift+F10 ou a tecla Menu abrem o menu do nó ou da
+    // ligação com foco, e Enter (ou espaço) numa ligação abre a ficha dela.
+    const onCanvasKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+      const found = flowTarget(event.target as Element);
+      if (!found) return;
+      const menuKey = event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10');
+      if (menuKey && onContextMenu) {
+        event.preventDefault();
+        onContextMenu(found.target, anchorBelow(found.element));
+        return;
+      }
+      if ((event.key === 'Enter' || event.key === ' ') && 'edgeId' in found.target && onEdgeClick) {
+        event.preventDefault();
+        onEdgeClick(found.target.edgeId);
+      }
+    };
+    // Um `contextmenu` vindo do teclado chega sem ponto (0, 0): abre colado ao elemento.
+    const menuPoint = (event: MouseEvent) => (event.clientX === 0 && event.clientY === 0
+      ? anchorBelow(event.target as Element)
+      : { x: event.clientX, y: event.clientY });
+
     // <section> e não <div>: um `aria-label` num elemento sem role é descartado
     // pela maioria das tecnologias de apoio, e o mapa ficava sem nome nenhum.
     // A secção com nome é uma região, que se anuncia e se navega.
@@ -151,6 +201,7 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
       <section
         className="topology-canvas"
         aria-label="Mapa físico da rede"
+        onKeyDown={onCanvasKeyDown}
         onDoubleClick={onPaneDoubleClick && ((event: MouseEvent<HTMLElement>) => {
           if ((event.target as Element).closest('.react-flow__pane')) onPaneDoubleClick();
         })}
@@ -173,7 +224,7 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
             desloca, como em qualquer mapa. */}
         <ReactFlow<TopologyCanvasNode, TopologyFlowEdge>
           nodes={nodes}
-          edges={edges}
+          edges={flowEdges}
           nodeTypes={topologyNodeTypes}
           nodesDraggable={draggable}
           // Um clique com tremido de 1–3 px (trackpad, rato velho) não pode
@@ -185,11 +236,11 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
           onEdgeClick={onEdgeClick && ((_event, edge) => onEdgeClick(edge.id))}
           onNodeContextMenu={onContextMenu && ((event, node) => {
             event.preventDefault();
-            onContextMenu({ nodeId: node.id }, { x: event.clientX, y: event.clientY });
+            onContextMenu({ nodeId: node.id }, menuPoint(event));
           })}
           onEdgeContextMenu={onContextMenu && ((event, edge) => {
             event.preventDefault();
-            onContextMenu({ edgeId: edge.id }, { x: event.clientX, y: event.clientY });
+            onContextMenu({ edgeId: edge.id }, menuPoint(event));
           })}
           nodesConnectable={connectable}
           isValidConnection={(connection) => isValidBackboneConnection(
