@@ -783,8 +783,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
       {secretsLost.length > 0 && (
         <Message tone="error">
           Esta base de dados foi criada noutra máquina ou noutra conta Windows. As credenciais
-          ficam seladas na conta de quem as escreveu — por desenho, para um ficheiro copiado não
-          valer nada — e por isso estas não vieram: {secretsLost.join('; ')}. Reintroduza-as aqui
+          ficam seladas na conta de quem as escreveu (de propósito, para um ficheiro copiado não
+          valer nada), por isso estas não vieram: {secretsLost.join('; ')}. Reintroduza-as aqui
           e grave. Clientes, faturas e histórico foram restaurados na íntegra.
         </Message>
       )}
