@@ -1,10 +1,16 @@
 import { useEffect, useState } from "react";
-import { Button } from "../../components";
+import { TabList } from "../../components";
 import { useAuth } from "../../lib/auth";
 import type { Client } from "../../types";
 import { ProposalsModule } from "../proposals/ProposalsModule";
 import { FiscalDocuments } from "./FiscalDocuments";
 import "./DocumentsModule.css";
+
+const DOCUMENT_TABS = [
+  { id: "informative", label: "Informativos" },
+  { id: "fiscal", label: "Fiscais" },
+] as const;
+
 export function DocumentsModule({
   initialClient,
   onInitialClientHandled,
@@ -25,39 +31,19 @@ export function DocumentsModule({
     <section className="documents-shell" aria-label="Documentos">
       <div className="documents-navigation">
         <p className="eyebrow">Documentos</p>
-        <nav
-          className="segmented-tabs"
-          role="tablist"
-          aria-label="Categoria de documentos"
-        >
-          <Button
-            variant="ghost"
-            role="tab"
-            id="informative-tab"
-            aria-controls="informative-panel"
-            aria-selected={tab === "informative"}
-            className={`segmented-tab${tab === "informative" ? " is-active" : ""}`}
-            onClick={() => setTab("informative")}
-          >
-            Informativos
-          </Button>
-          <Button
-            variant="ghost"
-            role="tab"
-            id="fiscal-tab"
-            aria-controls="fiscal-panel"
-            aria-selected={tab === "fiscal"}
-            className={`segmented-tab${tab === "fiscal" ? " is-active" : ""}`}
-            onClick={() => setTab("fiscal")}
-          >
-            Fiscais
-          </Button>
-        </nav>
+        <TabList
+          segmented
+          idPrefix="documents"
+          label="Categoria de documentos"
+          tabs={DOCUMENT_TABS}
+          value={tab}
+          onChange={setTab}
+        />
       </div>
       <div
         role="tabpanel"
-        id="informative-panel"
-        aria-labelledby="informative-tab"
+        id="documents-panel-informative"
+        aria-labelledby="documents-tab-informative"
         hidden={tab !== "informative"}
       >
         <ProposalsModule
@@ -67,8 +53,8 @@ export function DocumentsModule({
       </div>
       <div
         role="tabpanel"
-        id="fiscal-panel"
-        aria-labelledby="fiscal-tab"
+        id="documents-panel-fiscal"
+        aria-labelledby="documents-tab-fiscal"
         hidden={tab !== "fiscal"}
       >
         <FiscalDocuments

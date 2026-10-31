@@ -1,7 +1,7 @@
 import { AlertTriangle, ArrowLeftRight, Info, Cable, Cpu, Gauge, Layers, MemoryStick, Router, ScrollText, Settings2, ShieldAlert, Timer, Waypoints, X, ChartNoAxesCombined, History, Tv } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
-import type { KeyboardEvent, ReactNode } from 'react';
-import { Badge, Button, EmptyState, ErrorRetry, MetricCard, MetricGrid, ModuleHeaderActions, SkeletonList } from '../../components';
+import { useCallback, useState } from 'react';
+import type { ReactNode } from 'react';
+import { Badge, Button, EmptyState, ErrorRetry, MetricCard, MetricGrid, ModuleHeaderActions, SkeletonList, TabList } from '../../components';
 import { formatPtDateTime } from '../../lib/format';
 import type { PlanRow, ServiceRow } from '../../types';
 import { useAuth } from '../../lib/auth';
@@ -47,6 +47,8 @@ const TABS: ReadonlyArray<{ id: RouterTab; label: string; icon: typeof Router }>
   { id: 'log', label: 'Registo', icon: ScrollText },
   { id: 'config', label: 'Configuração', icon: Settings2 }
 ];
+
+const TAB_ITEMS = TABS.map(({ id, label, icon: Icon }) => ({ id, label: <><Icon size={14} aria-hidden /><span>{label}</span></> }));
 
 type LogViewId = 'live' | 'stored';
 const LOG_VIEWS: ReadonlyArray<{ id: LogViewId; label: string }> = [
@@ -160,7 +162,6 @@ export default function RouterModule() {
   // A configuração fica montada depois da primeira visita: trocar de aba não
   // pode deitar fora um formulário por gravar.
   const [configVisited, setConfigVisited] = useState(false);
-  const tabListRef = useRef<HTMLElement>(null);
   // Fora da rede de gestão o registo ao vivo não tem o que mostrar: abre no que está guardado.
   const [pickedLogView, setLogView] = useState<LogViewId | null>(null);
   const offNetwork = presence.data?.state === 'offsite' || presence.data?.state === 'foreign';
@@ -189,18 +190,10 @@ export default function RouterModule() {
   const iptvServices = useLive<ServiceRow[]>('http://127.0.0.1:3001/api/services', tab === 'iptv', 120_000);
   const current = { overview, sessions, reconciliation, interfaces, profiles, consumption, iptv: iptvStatus, backups, log, config: null }[tab];
 
-  const selectTab = useCallback((next: RouterTab, moveFocus = false) => {
+  const selectTab = useCallback((next: RouterTab) => {
     if (next === 'config') setConfigVisited(true);
     setTab(next);
-    if (moveFocus) queueMicrotask(() => tabListRef.current?.querySelector<HTMLButtonElement>(`#router-tab-${next}`)?.focus());
   }, []);
-
-  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-    event.preventDefault();
-    const index = TABS.findIndex((item) => item.id === tab);
-    selectTab(TABS[(index + (event.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length].id, true);
-  }
 
   const openConfig = () => selectTab('config');
   const head = overview.data?.available ? overview.data : null;
@@ -238,29 +231,7 @@ export default function RouterModule() {
         />
       </div>
 
-      <nav ref={tabListRef} className="segmented-tabs router-tabs" role="tablist" aria-label="Router de gestão do ISP">
-        {TABS.map((item) => {
-          const Icon = item.icon;
-          const selected = tab === item.id;
-          return (
-            <Button
-              key={item.id}
-              id={`router-tab-${item.id}`}
-              variant="ghost"
-              role="tab"
-              aria-selected={selected}
-              aria-controls={`router-panel-${item.id}`}
-              tabIndex={selected ? 0 : -1}
-              className={`segmented-tab${selected ? ' is-active' : ''}`}
-              onClick={() => selectTab(item.id)}
-              onKeyDown={handleTabKeyDown}
-            >
-              <Icon size={14} aria-hidden />
-              <span>{item.label}</span>
-            </Button>
-          );
-        })}
-      </nav>
+      <TabList segmented className="router-tabs" idPrefix="router" label="Router de gestão do ISP" tabs={TAB_ITEMS} value={tab} onChange={selectTab} />
 
       <div id={tab === 'config' ? undefined : `router-panel-${tab}`} role="tabpanel" aria-labelledby={`router-tab-${tab}`} hidden={tab === 'config'}>
         {tab === 'overview' && (
@@ -294,19 +265,14 @@ export default function RouterModule() {
         )}
         {tab === 'log' && (
           <>
-            <nav className="segmented-tabs router-log-views" role="tablist" aria-label="Vistas do registo">
-              {LOG_VIEWS.map((item) => (
-                <Button key={item.id} variant="ghost" role="tab" aria-selected={logView === item.id}
-                  className={`segmented-tab${logView === item.id ? ' is-active' : ''}`} onClick={() => setLogView(item.id)}>
-                  {item.label}
-                </Button>
-              ))}
-            </nav>
-            {logView === 'stored' ? <StoredLog /> : (
-              <LiveGate live={log} onRetry={log.reload} onConfigure={openConfig} presence={presence.data}>
-                {(data) => <LogView log={data} />}
-              </LiveGate>
-            )}
+            <TabList segmented className="router-log-views" idPrefix="router-log" label="Vistas do registo" tabs={LOG_VIEWS} value={logView} onChange={setLogView} />
+            <div className="tab-panel" role="tabpanel" id={`router-log-panel-${logView}`} aria-labelledby={`router-log-tab-${logView}`}>
+              {logView === 'stored' ? <StoredLog /> : (
+                <LiveGate live={log} onRetry={log.reload} onConfigure={openConfig} presence={presence.data}>
+                  {(data) => <LogView log={data} />}
+                </LiveGate>
+              )}
+            </div>
           </>
         )}
         {tab === 'backups' && (

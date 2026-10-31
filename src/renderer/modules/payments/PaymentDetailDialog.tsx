@@ -342,8 +342,8 @@ export function PaymentDetailDialog({
                 required
                 minLength={minLen}
                 placeholder={wasPaid
-                  ? 'Escolhe um motivo acima ou escreve: ex. valor cobrado 5500 em vez de 4500; cliente notificado.'
-                  : 'Escolhe um motivo acima ou escreve livremente.'}
+                  ? 'Escolha um motivo acima ou escreva, por exemplo: valor cobrado 5500 em vez de 4500; cliente notificado.'
+                  : 'Escolha um motivo acima ou escreva livremente.'}
                 disabled={submitting}
               />
             </div>

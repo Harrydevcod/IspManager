@@ -60,3 +60,13 @@ test('as setas, Home e End escolhem a aba e levam o foco, dando a volta nas pont
   expect(tab('Alfa').getAttribute('aria-selected')).toBe('true');
   expect(document.activeElement).toBe(tab('Alfa'));
 });
+
+test('a classe de cada aba pode vir de fora e a escolhida leva is-active', () => {
+  const host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+  act(() => root!.render(<TabList segmented tabClassName="settings-tab" idPrefix="t" label="Vistas" tabs={TABS} value="b" onChange={() => {}} />));
+  expect(tab('Alfa').className).toContain('settings-tab');
+  expect(tab('Alfa').className).not.toContain('segmented-tab');
+  expect(tab('Beta').className).toContain('settings-tab is-active');
+});

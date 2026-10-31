@@ -193,7 +193,7 @@ function TopologyGlobalError({
       <AlertTriangle size={20} aria-hidden />
       <div>
         <h3>Não foi possível abrir a topologia</h3>
-        <p>Confirma a ligação à API local e tenta novamente.</p>
+        <p>Confirme a ligação à API local e tente novamente.</p>
         {/* O motivo real vinha do hook e era deitado fora: `globalError` só era
             lido como booleano. Uma recusa de ligação e um erro do servidor
             pediam a mesma coisa a quem está a ler o ecrã. */}

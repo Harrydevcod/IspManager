@@ -4,6 +4,14 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## Não lançado
+
+### Alterado
+- **Todas as barras de abas respondem ao teclado.** Finanças, Stock, Tesouraria, Documentos, Router (e as vistas do Registo) e Configurações usam o mesmo componente das abas da Topologia: as setas mudam de aba e levam o foco, Home e End vão à primeira e à última, e cada aba anuncia o painel que controla.
+
+### Corrigido
+- O diálogo do tema no primeiro arranque e alguns avisos (motivo da correção de um pagamento, equipamento a ligar, nome da despesa, erro do mapa) tratavam o utilizador por tu; passam a você, como o resto da aplicação.
+
 ## [2.45](https://github.com/Harrydevcod/IspManager/releases/tag/v2.45.0) — 2026-10-30
 
 ### Alterado

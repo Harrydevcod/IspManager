@@ -6267,6 +6267,9 @@ button.danger:disabled {
 
 /* Horizontal segmented tabs (shared: Settings, Stock, …) */
 .settings-tabs,
+/* O painel de uma barra de abas: semântica sem caixa, os filhos ficam na grelha ou no fluxo do pai. */
+.tab-panel { display: contents; }
+
 .segmented-tabs {
   display: flex;
   flex-wrap: wrap;

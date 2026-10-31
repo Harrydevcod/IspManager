@@ -3,7 +3,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { EQUIPMENT_TYPES_BY_CATEGORY, labelForType } from '../../shared/equipment';
-import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, Textarea, useToast } from '../components';
+import { Badge, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, TabList, Textarea, useToast } from '../components';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
 import { paginateRows, sortByColumns, type SortState } from '../lib/listView';
@@ -553,40 +553,24 @@ export function StockModule({
         )}
       </div>
 
-      <nav className="segmented-tabs" role="tablist" aria-label="Categoria de stock">
-        <Button
-          variant="ghost"
-          role="tab"
-          aria-selected={!showArticles && stockTab === 'equipamento'}
-          className={`segmented-tab${!showArticles && stockTab === 'equipamento' ? ' is-active' : ''}`}
-          onClick={() => switchStockTab('equipamento')}
-        >
-          <Boxes size={14} aria-hidden />
-          <span>Equipamentos</span>
-          <span className="segmented-tab-count">{tabCounts.equipamento}</span>
-        </Button>
-        <Button
-          variant="ghost"
-          role="tab"
-          aria-selected={!showArticles && stockTab === 'material'}
-          className={`segmented-tab${!showArticles && stockTab === 'material' ? ' is-active' : ''}`}
-          onClick={() => switchStockTab('material')}
-        >
-          <Cable size={14} aria-hidden />
-          <span>Materiais</span>
-          <span className="segmented-tab-count">{tabCounts.material}</span>
-        </Button>
-        <Button
-          variant="ghost"
-          role="tab"
-          aria-selected={showArticles}
-          className={`segmented-tab${showArticles ? ' is-active' : ''}`}
-          onClick={() => { setShowArticles(true); setSelectedCatalog(null); }}
-        >
-          <Tags size={14} aria-hidden />
-          <span>Artigos e serviços</span>
-        </Button>
-      </nav>
+      <TabList
+        segmented
+        idPrefix="stock"
+        label="Categoria de stock"
+        value={showArticles ? 'artigos' : stockTab}
+        onChange={(id) => {
+          if (id !== 'artigos') return switchStockTab(id);
+          setShowArticles(true);
+          setSelectedCatalog(null);
+        }}
+        tabs={[
+          { id: 'equipamento', label: <><Boxes size={14} aria-hidden /><span>Equipamentos</span><span className="segmented-tab-count">{tabCounts.equipamento}</span></> },
+          { id: 'material', label: <><Cable size={14} aria-hidden /><span>Materiais</span><span className="segmented-tab-count">{tabCounts.material}</span></> },
+          { id: 'artigos', label: <><Tags size={14} aria-hidden /><span>Artigos e serviços</span></> },
+        ]}
+      />
+
+      <div className="tab-panel" role="tabpanel" id={`stock-panel-${showArticles ? 'artigos' : stockTab}`} aria-labelledby={`stock-tab-${showArticles ? 'artigos' : stockTab}`}>
 
       {showArticles ? <ArticlesPanel canManage={canManageStock} createRequest={articleCreateRequest} /> : <>
       {loadError && !summary && <ErrorRetry message={loadError} onRetry={() => { void loadStock(); }} />}
@@ -799,6 +783,7 @@ export function StockModule({
         </>
       )}
       </>}
+      </div>
 
       <Dialog
         open={showCatalogForm}
