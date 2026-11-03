@@ -48,6 +48,8 @@ fun RequestCard(req: RequestUi, onApprove: () -> Unit, onReject: () -> Unit, onU
         Text("A enviar a ${req.clientName ?: req.toPhone}…", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
         TextButton(onClick = onUndo) { Text("Anular", color = AccentOrange, fontWeight = FontWeight.SemiBold) }
       }
+    } else if (req.inFlight || req.status == "approved") {
+      Text("A enviar… à espera da confirmação da rede", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
     } else {
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(

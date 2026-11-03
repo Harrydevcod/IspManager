@@ -5,9 +5,17 @@
   <uses-permission android:name="android.permission.SEND_SMS" />
   <uses-permission android:name="android.permission.CAMERA" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+  <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+  <!-- Only to list the SIMs on dual-slot phones; requested on demand. -->
+  <uses-permission android:name="android.permission.READ_PHONE_STATE" />
   <uses-feature android:name="android.hardware.camera" android:required="false" />
+  <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
   <application
+    android:name=".IspmSmsApp"
     android:allowBackup="false"
     android:label="ISPM SMS"
     android:supportsRtl="true"
@@ -15,6 +23,7 @@
     <activity
       android:name=".MainActivity"
       android:exported="true"
+      android:launchMode="singleTop"
       android:screenOrientation="portrait">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
@@ -32,5 +41,27 @@
       android:screenOrientation="portrait"
       android:stateNotNeeded="true"
       android:exported="false" />
+
+    <service
+      android:name=".CompanionService"
+      android:exported="false"
+      android:foregroundServiceType="specialUse">
+      <property
+        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+        android:value="Servidor local que recebe pedidos de SMS assinados do ISPM desktop na rede Wi-Fi" />
+    </service>
+
+    <receiver
+      android:name=".SmsResultReceiver"
+      android:exported="false" />
+
+    <receiver
+      android:name=".BootReceiver"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+      </intent-filter>
+    </receiver>
   </application>
 </manifest>

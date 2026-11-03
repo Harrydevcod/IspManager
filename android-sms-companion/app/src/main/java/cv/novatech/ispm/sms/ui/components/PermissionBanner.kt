@@ -14,7 +14,11 @@ import androidx.compose.ui.unit.dp
 import cv.novatech.ispm.sms.ui.theme.*
 
 @Composable
-fun PermissionBanner(onRequest: () -> Unit) {
+fun PermissionBanner(
+  onRequest: () -> Unit,
+  title: String = "Permitir envio de SMS",
+  action: String = "Permitir →"
+) {
   Row(
     Modifier.fillMaxWidth()
       .clip(RoundedCornerShape(12.dp)).background(Warn.copy(alpha = 0.12f))
@@ -22,7 +26,8 @@ fun PermissionBanner(onRequest: () -> Unit) {
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.SpaceBetween
   ) {
-    Text("Permitir envio de SMS", color = Warn, fontWeight = FontWeight.SemiBold)
-    Text("Permitir →", color = Warn)
+    Text(title, color = Warn, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+    Spacer(Modifier.width(8.dp))
+    Text(action, color = Warn)
   }
 }

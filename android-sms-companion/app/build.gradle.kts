@@ -12,9 +12,29 @@ android {
     applicationId = "cv.novatech.ispm.sms"
     minSdk = 26
     targetSdk = 35
-    versionCode = 1
-    versionName = "0.1.0"
+    versionCode = 2
+    versionName = "0.2.0"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+  }
+
+  // Release signing comes only from CI secrets; without them the release build stays unsigned.
+  val keystorePath: String? = System.getenv("ANDROID_KEYSTORE_PATH")
+  signingConfigs {
+    if (keystorePath != null) {
+      create("release") {
+        storeFile = file(keystorePath)
+        storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+        keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+        keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+      }
+    }
+  }
+
+  buildTypes {
+    release {
+      isMinifyEnabled = false
+      if (keystorePath != null) signingConfig = signingConfigs.getByName("release")
+    }
   }
 
   buildFeatures {
@@ -42,5 +62,7 @@ dependencies {
   implementation("com.journeyapps:zxing-android-embedded:4.3.0")
   implementation("org.nanohttpd:nanohttpd:2.3.1")
   testImplementation("junit:junit:4.13.2")
+  // Real org.json on the JVM test classpath (android.jar only ships stubs).
+  testImplementation("org.json:json:20240303")
   testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
 }

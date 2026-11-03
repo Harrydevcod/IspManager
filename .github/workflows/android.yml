@@ -17,6 +17,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
     defaults:
       run:
         working-directory: android-sms-companion
@@ -48,4 +50,27 @@ jobs:
         with:
           name: ispm-sms-companion-debug-apk
           path: android-sms-companion/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      # Signed release: only on main, only when the keystore secrets exist.
+      # One stable signature means the phone updates in place, no uninstall.
+      - name: Assemble signed release APK
+        if: github.event_name == 'push' && env.HAS_KEYSTORE == 'true'
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/ispm-sms.jks"
+          echo "$ANDROID_KEYSTORE_B64" | base64 -d > "$ANDROID_KEYSTORE_PATH"
+          gradle assembleRelease --no-daemon --stacktrace
+          rm -f "$ANDROID_KEYSTORE_PATH"
+
+      - name: Upload release APK
+        if: github.event_name == 'push' && env.HAS_KEYSTORE == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ispm-sms-companion-release-apk
+          path: android-sms-companion/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
