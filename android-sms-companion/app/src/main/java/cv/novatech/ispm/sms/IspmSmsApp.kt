@@ -6,6 +6,9 @@ import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import androidx.core.content.ContextCompat
+import cv.novatech.ispm.sms.dashboard.Dashboard
+import cv.novatech.ispm.sms.dashboard.DashboardRules
+import cv.novatech.ispm.sms.dashboard.DashboardStore
 import cv.novatech.ispm.sms.state.CompanionStateHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +23,7 @@ class IspmSmsApp : Application() {
   lateinit var pairingStore: PairingStore private set
   lateinit var requestStore: SmsRequestStore private set
   lateinit var settingsStore: SettingsStore private set
+  lateinit var dashboardStore: DashboardStore private set
   lateinit var holder: CompanionStateHolder private set
 
   override fun onCreate() {
@@ -27,6 +31,7 @@ class IspmSmsApp : Application() {
     pairingStore = PairingStore(this)
     requestStore = SmsRequestStore(this)
     settingsStore = SettingsStore(this)
+    dashboardStore = DashboardStore(this)
     holder = CompanionStateHolder(
       pairingStore = pairingStore,
       requestStore = requestStore,
@@ -43,6 +48,7 @@ class IspmSmsApp : Application() {
       fixed
     }
     holder.rearm(rearm)
+    holder.setDashboard(dashboardStore.load(), dashboardStore.receivedAt())
 
     // Re-read the LAN address whenever the default network changes (Wi-Fi swap, DHCP renew).
     getSystemService(ConnectivityManager::class.java)?.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
@@ -50,6 +56,24 @@ class IspmSmsApp : Application() {
       override fun onLost(network: Network) = holder.refresh()
     })
     holder.refresh()
+  }
+
+  /** `GET /status`: what the phone tells the desktop about itself. */
+  fun deviceStatusJson() = DeviceStatus.read(this, holder.state.value.pending.size).toJson()
+
+  /** `POST /dashboard`: keeps the snapshot and alerts on the change into red. False = rejected. */
+  fun acceptDashboard(raw: String): Boolean {
+    if (raw.length > Dashboard.MAX_BYTES) return false
+    val dashboard = Dashboard.parse(raw) ?: return false
+    val now = System.currentTimeMillis()
+    dashboardStore.save(raw, now)
+    val severity = dashboard.operation.severity
+    if (DashboardRules.shouldAlert(dashboardStore.lastSeverity(), severity)) {
+      Notifications.notifyOperationAlert(this, dashboard.operation.headline)
+    }
+    dashboardStore.setLastSeverity(severity)
+    holder.setDashboard(dashboard, now)
+    return true
   }
 
   companion object {

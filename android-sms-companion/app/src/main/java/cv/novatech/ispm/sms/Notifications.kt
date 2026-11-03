@@ -16,13 +16,20 @@ object Notifications {
   const val CHANNEL_ID = "sms_requests"
   const val SERVICE_CHANNEL_ID = "companion_service"
   const val SERVICE_NOTIF_ID = 4200
+  const val ALERT_CHANNEL_ID = "ops_alerts"
   private const val NOTIF_ID = 4201
+  private const val ALERT_NOTIF_ID = 4202
 
   fun ensureChannels(context: Context) {
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
     manager.createNotificationChannel(
       NotificationChannel(CHANNEL_ID, "Pedidos de SMS", NotificationManager.IMPORTANCE_HIGH).apply {
         description = "Avisa quando o desktop envia um novo pedido de SMS para aprovar."
+      }
+    )
+    manager.createNotificationChannel(
+      NotificationChannel(ALERT_CHANNEL_ID, "Alertas da operação", NotificationManager.IMPORTANCE_HIGH).apply {
+        description = "Avisa quando o estado da operação no desktop passa a crítico."
       }
     )
     manager.createNotificationChannel(
@@ -56,6 +63,20 @@ object Notifications {
       .setContentIntent(openApp(context))
       .build()
     manager.notify(NOTIF_ID, notification)
+  }
+
+  fun notifyOperationAlert(context: Context, headline: String) {
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+    val notification = NotificationCompat.Builder(context, ALERT_CHANNEL_ID)
+      .setSmallIcon(android.R.drawable.stat_sys_warning)
+      .setContentTitle("Operação em estado crítico")
+      .setContentText(headline)
+      .setStyle(NotificationCompat.BigTextStyle().bigText(headline))
+      .setPriority(NotificationCompat.PRIORITY_HIGH)
+      .setAutoCancel(true)
+      .setContentIntent(openApp(context))
+      .build()
+    manager.notify(ALERT_NOTIF_ID, notification)
   }
 
   private fun openApp(context: Context): PendingIntent {

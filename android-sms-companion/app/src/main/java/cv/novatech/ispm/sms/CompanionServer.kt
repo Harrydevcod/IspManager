@@ -18,10 +18,17 @@ class CompanionServer(
   private val requestStore: SmsRequestStore,
   port: Int = 8765,
   private val nonces: NonceCache = NonceCache(),
-  private val onRequestsChanged: (SmsRequest) -> Unit = {}
+  private val onRequestsChanged: (SmsRequest) -> Unit = {},
+  private val statusProvider: () -> JSONObject = { JSONObject() },
+  private val onDashboard: (String) -> Boolean = { false }
 ) : NanoHTTPD(port) {
 
   override fun serve(session: IHTTPSession): Response {
+    // Refuse oversized bodies before reading them: this check runs unauthenticated.
+    val length = session.headers["content-length"]?.toLongOrNull() ?: 0L
+    if (length > MAX_BODY_BYTES) {
+      return json(Response.Status.BAD_REQUEST, JSONObject().put("error", "pedido demasiado grande"))
+    }
     val bodyMap = HashMap<String, String>()
     try {
       session.parseBody(bodyMap)
@@ -41,6 +48,15 @@ class CompanionServer(
   }
 
   private fun route(session: IHTTPSession, body: String): Response {
+    if (session.method == Method.GET && session.uri == "/status") {
+      return json(Response.Status.OK, statusProvider())
+    }
+
+    if (session.method == Method.POST && session.uri == "/dashboard") {
+      return if (onDashboard(body)) json(Response.Status.OK, JSONObject().put("ok", true))
+      else json(Response.Status.BAD_REQUEST, JSONObject().put("error", "resumo invalido"))
+    }
+
     if (session.method == Method.POST && session.uri == "/requests") {
       val json = JSONObject(body)
       val id = json.getString("requestId")
@@ -109,6 +125,8 @@ class CompanionServer(
 
   private companion object {
     const val SKEW_MS = 5 * 60_000L
+    // The Painel snapshot is the largest payload (cap 256 KB); SMS requests are tiny.
+    const val MAX_BODY_BYTES = 300 * 1024L
   }
 
   private fun parseIso(value: String): Long? = try {

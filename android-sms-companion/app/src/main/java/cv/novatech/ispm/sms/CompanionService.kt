@@ -25,10 +25,16 @@ class CompanionService : Service() {
     val app = application as IspmSmsApp
     goForeground(app.holder.state.value.listenAddress)
 
-    server = CompanionServer(app.pairingStore, app.requestStore, onRequestsChanged = { request ->
-      app.holder.refresh()
-      Notifications.notifyNewRequest(this, request)
-    })
+    server = CompanionServer(
+      app.pairingStore,
+      app.requestStore,
+      onRequestsChanged = { request ->
+        app.holder.refresh()
+        Notifications.notifyNewRequest(this, request)
+      },
+      statusProvider = app::deviceStatusJson,
+      onDashboard = app::acceptDashboard
+    )
     val started = runCatching { server?.start() }.isSuccess
     app.holder.setServerRunning(started)
 
