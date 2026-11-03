@@ -4,6 +4,15 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.49](https://github.com/Harrydevcod/IspManager/releases/tag/v2.49.0) — 2026-11-03
+
+### Adicionado
+- **Painel na app móvel ISPM SMS.** De 5 em 5 minutos, o desktop envia ao telemóvel pareado um resumo da operação: estado e riscos, dinheiro (recebido no mês, por receber, em atraso e as faturas críticas), rede (equipamentos em baixo e ligações à Internet), clientes e trabalho, e os SMS do dia e do mês. O telemóvel avisa quando a operação passa a crítico. Tudo vai pelo canal assinado do pareamento; o PC não abre portas novas. Precisa da app 0.3.0.
+- **Estado do telemóvel em Definições → SMS.** Mostra "Online", a bateria, o sinal, a versão da app e quando foi visto, ou "Offline desde…", com avisos de bateria fraca e de app desatualizada. Se o telemóvel mudar de IP, o desktop volta a encontrá-lo sozinho em cerca de um minuto.
+- **Avisos automáticos de atraso e corte por SMS.** Uma vez por dia, cada fatura em atraso ou perto do corte gera um SMS para todos os clientes com telefone válido, como reforço do WhatsApp. Chegam ao telemóvel para aprovar. Vêm desligados; liga-se em Definições → SMS.
+- **SMS entregues.** O relatório mensal de SMS ganha o contador "entregues", com a confirmação de entrega que a app 0.2.0 ou superior envia.
+- **Interruptor geral da ligação à app móvel.** Desligado, o desktop não contacta o telemóvel de forma nenhuma: não envia SMS, não atualiza o Painel e não lê o estado. O pareamento fica guardado e os SMS em fila saem quando se voltar a ligar. **Ligar e parear pedem a password de administrador**; desligar e revogar são livres e ficam na auditoria.
+
 ## [2.48](https://github.com/Harrydevcod/IspManager/releases/tag/v2.48.0) — 2026-11-03
 
 ### Corrigido
