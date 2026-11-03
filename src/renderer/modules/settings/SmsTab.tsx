@@ -57,7 +57,7 @@ export function SmsTab({
           : `Inativo: ${smsStatus.deviceName || 'Android'} nao responde em ${smsStatus.baseUrl || 'endereco guardado'}. O IP pode ter mudado.`
         : 'Android nao pareado';
   const presence = smsVerifying ? null : describeSmsPresence(smsStatus);
-  const createPairingLabel = smsStatus?.configured && !smsStatus.active
+  const createPairingLabel = smsStatus?.configured && !smsStatus.active && smsStatus.enabled !== false
     ? 'Voltar atras e reparear'
     : smsStatus?.configured
       ? 'Gerar novo pareamento'

@@ -112,6 +112,10 @@ export async function registerSmsRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/sms/pairing/verify', adminOnly, async () => {
+    // Desligada, nem a verificação contacta o telemóvel.
+    if (getSetting('smsCompanionEnabled') !== 'true') {
+      return { reachable: false, paired: false, deviceName: getSetting('smsCompanionDeviceName') };
+    }
     const result = await verifyCompanionPairing();
     return { ...result, deviceName: getSetting('smsCompanionDeviceName') };
   });
