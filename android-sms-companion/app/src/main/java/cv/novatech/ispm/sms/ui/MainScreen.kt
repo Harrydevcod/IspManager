@@ -20,13 +20,12 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/** Pedidos: the approval queue. Banners stay here, where they block the work. */
 @Composable
-fun MainScreen(
+fun RequestsScreen(
   state: CompanionUiState,
   onRequestPermission: () -> Unit,
   onRequestBatteryExemption: () -> Unit,
-  onRequestPhoneState: () -> Unit,
-  onChooseSim: (Int?) -> Unit,
   onApprove: (String) -> Unit,
   onApproveAll: () -> Unit,
   onUndo: (String) -> Unit,
@@ -38,21 +37,9 @@ fun MainScreen(
     verticalArrangement = Arrangement.spacedBy(10.dp),
     contentPadding = PaddingValues(vertical = 16.dp)
   ) {
-    item { Text("ISPM SMS", style = MaterialTheme.typography.titleLarge) }
+    item { Text("Pedidos", style = MaterialTheme.typography.titleLarge) }
     if (!state.smsPermissionGranted) item { PermissionBanner(onRequestPermission) }
-    if (!state.batteryExempt) {
-      item {
-        PermissionBanner(
-          onRequest = onRequestBatteryExemption,
-          title = "Otimização de bateria ativa",
-          action = "Desativar →"
-        )
-      }
-    }
-    item { StatusCard(state.deviceName, state.listenAddress, state.serverRunning, state.smsPermissionGranted) }
-    if (state.dualSimCapable) {
-      item { SimPicker(state.sims, state.selectedSim, onRequestPhoneState, onChooseSim) }
-    }
+    if (!state.batteryExempt) item { BatteryBanner(onRequestBatteryExemption) }
 
     item {
       Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
@@ -71,13 +58,54 @@ fun MainScreen(
         RequestCard(r, onApprove = { onApprove(r.id) }, onReject = { onReject(r.id) }, onUndo = { onUndo(r.id) })
       }
     }
+  }
+}
 
-    if (state.history.isNotEmpty()) {
-      item { SectionLabel("Histórico · últimos 30 dias") }
-      items(state.history, key = { "h-" + it.id }) { r -> HistoryRow(r) }
+@Composable
+fun HistoryScreen(state: CompanionUiState) {
+  LazyColumn(
+    Modifier.fillMaxSize().padding(horizontal = 16.dp),
+    verticalArrangement = Arrangement.spacedBy(2.dp),
+    contentPadding = PaddingValues(vertical = 16.dp)
+  ) {
+    item { Text("Histórico", style = MaterialTheme.typography.titleLarge) }
+    item { SectionLabel("Últimos 30 dias") }
+    if (state.history.isEmpty()) {
+      item {
+        Text("Ainda nada enviado.", color = TextMuted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(4.dp))
+      }
+    }
+    items(state.history, key = { "h-" + it.id }) { r -> HistoryRow(r) }
+  }
+}
+
+/** Definições: device-level things the operator sets once. */
+@Composable
+fun SettingsScreen(
+  state: CompanionUiState,
+  onRequestPermission: () -> Unit,
+  onRequestBatteryExemption: () -> Unit,
+  onRequestPhoneState: () -> Unit,
+  onChooseSim: (Int?) -> Unit
+) {
+  LazyColumn(
+    Modifier.fillMaxSize().padding(horizontal = 16.dp),
+    verticalArrangement = Arrangement.spacedBy(10.dp),
+    contentPadding = PaddingValues(vertical = 16.dp)
+  ) {
+    item { Text("Definições", style = MaterialTheme.typography.titleLarge) }
+    item { StatusCard(state.deviceName, state.listenAddress, state.serverRunning, state.smsPermissionGranted) }
+    if (!state.smsPermissionGranted) item { PermissionBanner(onRequestPermission) }
+    if (!state.batteryExempt) item { BatteryBanner(onRequestBatteryExemption) }
+    if (state.dualSimCapable) {
+      item { SimPicker(state.sims, state.selectedSim, onRequestPhoneState, onChooseSim) }
     }
   }
 }
+
+@Composable
+private fun BatteryBanner(onRequest: () -> Unit) =
+  PermissionBanner(onRequest = onRequest, title = "Otimização de bateria ativa", action = "Desativar →")
 
 @Composable
 private fun SectionLabel(text: String) {
@@ -94,7 +122,7 @@ private fun HistoryRow(r: RequestUi) {
     r.status == "rejected" -> "rejeitado" to TextMuted
     else -> "falhou" to Danger
   }
-  Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp)) {
+  Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp)) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
       Text(
         r.clientName ?: r.toPhone, color = TextSecondary, style = MaterialTheme.typography.bodySmall,

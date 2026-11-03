@@ -12,8 +12,8 @@ android {
     applicationId = "cv.novatech.ispm.sms"
     minSdk = 26
     targetSdk = 35
-    versionCode = 2
-    versionName = "0.2.0"
+    versionCode = 3
+    versionName = "0.3.0"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
@@ -56,6 +56,8 @@ dependencies {
   implementation("androidx.activity:activity-compose:1.9.3")
   implementation("androidx.compose.ui:ui:1.7.5")
   implementation("androidx.compose.material3:material3:1.3.1")
+  // Explicit: bottom-nav icons; material3 stops re-exporting this in 1.4.
+  implementation("androidx.compose.material:material-icons-core:1.7.5")
   implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
   implementation("com.google.android.material:material:1.12.0")

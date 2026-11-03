@@ -3,6 +3,7 @@ package cv.novatech.ispm.sms.state
 import cv.novatech.ispm.sms.PairingStore
 import cv.novatech.ispm.sms.SmsRequest
 import cv.novatech.ispm.sms.SmsRequestStore
+import cv.novatech.ispm.sms.dashboard.Dashboard
 import cv.novatech.ispm.sms.net.localIpv4
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,16 +28,19 @@ class CompanionStateHolder(
   @Volatile private var serverRunning = false
   @Volatile private var permissionGranted = false
   @Volatile private var device = DeviceSnapshot()
+  @Volatile private var dashboard: Dashboard? = null
+  @Volatile private var dashboardReceivedAt: Long? = null
   private val undo = UndoController(scope, onSend = ::performSend)
 
   fun refresh() {
     val snap = PairingSnapshot(pairingStore.isPaired(), pairingStore.deviceName(), "${localIpv4()}:8765")
-    _state.value = buildUiState(snap, serverRunning, permissionGranted, requestStore.list(), undo.sendingIds, device)
+    _state.value = buildUiState(snap, serverRunning, permissionGranted, requestStore.list(), undo.sendingIds, device, dashboard, dashboardReceivedAt)
   }
 
   fun setServerRunning(value: Boolean) { serverRunning = value; refresh() }
   fun setPermissionGranted(value: Boolean) { permissionGranted = value; refresh() }
   fun setDevice(value: DeviceSnapshot) { device = value; refresh() }
+  fun setDashboard(value: Dashboard?, receivedAt: Long?) { dashboard = value; dashboardReceivedAt = receivedAt; refresh() }
   fun pair(info: PairingInfo) { pairingStore.save(info.secret, info.deviceName); refresh() }
   fun unpair() { pairingStore.clear(); refresh() }
 

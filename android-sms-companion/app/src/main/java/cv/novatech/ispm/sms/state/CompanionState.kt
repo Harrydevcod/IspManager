@@ -1,6 +1,7 @@
 package cv.novatech.ispm.sms.state
 
 import cv.novatech.ispm.sms.SmsRequest
+import cv.novatech.ispm.sms.dashboard.Dashboard
 
 const val HISTORY_LIMIT = 50
 private val TERMINAL = setOf("sent", "rejected", "failed")
@@ -37,7 +38,9 @@ data class CompanionUiState(
   val sims: List<SimOption> = emptyList(),
   val selectedSim: Int? = null,
   val pending: List<RequestUi> = emptyList(),
-  val history: List<RequestUi> = emptyList()
+  val history: List<RequestUi> = emptyList(),
+  val dashboard: Dashboard? = null,
+  val dashboardReceivedAt: Long? = null
 )
 
 /** Platform facts the holder doesn't own; refreshed by the Activity on resume. */
@@ -60,7 +63,9 @@ fun buildUiState(
   smsPermissionGranted: Boolean,
   requests: List<SmsRequest>,
   sendingIds: Set<String>,
-  device: DeviceSnapshot = DeviceSnapshot()
+  device: DeviceSnapshot = DeviceSnapshot(),
+  dashboard: Dashboard? = null,
+  dashboardReceivedAt: Long? = null
 ): CompanionUiState {
   val ui = requests.map { it.toUi(sendingIds.contains(it.id)) }
   val pending = ui.filter { it.status in OPEN }
@@ -79,6 +84,8 @@ fun buildUiState(
     sims = device.sims,
     selectedSim = device.selectedSim,
     pending = pending,
-    history = history
+    history = history,
+    dashboard = dashboard,
+    dashboardReceivedAt = dashboardReceivedAt
   )
 }

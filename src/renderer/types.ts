@@ -222,6 +222,20 @@ export type SmsStatus = {
   active: boolean;
   baseUrl: string;
   deviceName: string;
+  /** ISO da última resposta do telemóvel ao desktop; null se nunca respondeu. */
+  lastSeen?: string | null;
+  device?: SmsCompanionDevice | null;
+};
+
+/** O que a app Android diz de si (0.3.0+); campos a null quando não sabe. */
+export type SmsCompanionDevice = {
+  appVersion: string | null;
+  battery: number | null;
+  charging: boolean | null;
+  signalLevel: number | null;
+  simOperators: string[];
+  pending: number | null;
+  uptimeSec: number | null;
 };
 
 export type SmsMonthlyReport = {

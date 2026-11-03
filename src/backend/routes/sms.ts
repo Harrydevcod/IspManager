@@ -6,6 +6,7 @@ import { getSqliteDatabase } from '../db/database';
 import { canStoreSecrets, readSecret, writeSecret } from '../lib/secrets';
 import { requireRole } from './auth';
 import { discoverCompanionHosts, enqueueSmsNotification, findPairedCompanion, verifyCompanionPairing } from '../lib/sms-outbox';
+import { readCompanionPresence, requestCompanionSnapshotPush } from '../lib/companion-sync';
 import { openStripeLinkSql } from '../lib/stripe-payments';
 import { SMS_REPORT_TIMEZONE, smsReportMonthUtcRange } from '../../shared/sms-report';
 import { normalizeSmsPhone, renderSmsTemplate } from '../../shared/sms';
@@ -65,7 +66,9 @@ export async function registerSmsRoutes(app: FastifyInstance) {
       paired: verification.paired,
       active: enabled && verification.reachable && verification.paired,
       baseUrl,
-      deviceName
+      deviceName,
+      // Última vez que o telemóvel respondeu ao desktop e o que disse de si (bateria, sinal, versão).
+      ...readCompanionPresence()
     };
   });
 
@@ -135,6 +138,10 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     setSetting('smsCompanionDeviceName', parsed.data.deviceName);
     writeSecret(getSqliteDatabase(), 'smsCompanionPairingKey', secret);
     setSetting('smsCompanionPairingKeyHash', createHash('sha256').update(secret).digest('hex'));
+    // O estado guardado era do telemóvel anterior; o novo envia o seu ao responder.
+    setSetting('smsCompanionLastSeen', '');
+    setSetting('smsCompanionDeviceStatus', '');
+    requestCompanionSnapshotPush();
     const qrPayload = `ispm-sms://pair?secret=${encodeURIComponent(secret)}&device=${encodeURIComponent(parsed.data.deviceName)}`;
     return { ok: true, secret, qrPayload };
   });
@@ -143,6 +150,8 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     setSetting('smsCompanionEnabled', 'false');
     writeSecret(getSqliteDatabase(), 'smsCompanionPairingKey', '');
     setSetting('smsCompanionPairingKeyHash', '');
+    setSetting('smsCompanionLastSeen', '');
+    setSetting('smsCompanionDeviceStatus', '');
     return { ok: true };
   });
 

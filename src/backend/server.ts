@@ -43,6 +43,7 @@ import { runMonthlyBillingIfDue } from './lib/auto-billing';
 import { runAudiovisualAnnualIfDue } from './lib/audiovisual-billing';
 import { runOverdueNoticesIfDue } from './lib/notices';
 import { runSmsOverdueNoticesIfDue, smsOverdueNoticesDueToday } from './lib/sms-notices';
+import { runCompanionSyncIfDue } from './lib/companion-sync';
 import { pollWhatsappDeliveryIfDue, runWhatsappOutboxIfDue } from './lib/whatsapp-outbox';
 import { pollSmsStatusIfDue, runSmsOutboxIfDue, smsDispatchIntervalMs } from './lib/sms-outbox';
 import { registerNetworkRoutes } from './routes/network';
@@ -297,6 +298,10 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
     drainSms();
     scheduleDrain();
     setInterval(pollSms, 60_000).unref();
+    // Estado do telemóvel + resumo do Painel. Só leitura: não depende da licença.
+    const syncCompanion = () => { void runCompanionSyncIfDue().catch((err) => app.log.warn({ err }, 'companion sync failed')); };
+    syncCompanion();
+    setInterval(syncCompanion, 60_000).unref();
   }
 
   // Sonda de rede: ping periódico aos equipamentos com IP. Desligada por
