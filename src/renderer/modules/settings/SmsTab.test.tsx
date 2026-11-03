@@ -153,3 +153,18 @@ describe('SmsTab monthly delivery report', () => {
     expect(html).not.toContain('A carregar relatório…');
   });
 });
+
+describe('SmsTab connection switch', () => {
+  test('the master switch names the mobile app and says enabling asks for the admin password', () => {
+    const html = renderSmsTab();
+    expect(html).toContain('Ligação à app móvel ISPM SMS');
+    expect(html).toContain('Ligar pede a password de administrador.');
+  });
+
+  test('switched off with a saved pairing: says so instead of "não responde"', () => {
+    const html = renderSmsTab({ smsStatus: { ...smsStatus, enabled: false, reachable: false, paired: false, active: false } });
+    expect(html).toContain('Pareado: Telemóvel da loja');
+    expect(html).toContain('Ligação desligada — o pareamento está guardado');
+    expect(html).not.toContain('nao responde');
+  });
+});

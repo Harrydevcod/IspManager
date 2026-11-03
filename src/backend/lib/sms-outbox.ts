@@ -328,6 +328,8 @@ export async function pollSmsStatusIfDue(
   _now: Date = new Date(),
   deps: SmsOutboxDeps = defaultDeps
 ): Promise<{ updated: number }> {
+  // Desligada = nenhum contacto com o telemóvel; as linhas retomam ao voltar a ligar.
+  if (getSetting('smsCompanionEnabled') !== 'true') return { updated: 0 };
   const db = getSqliteDatabase();
   const rows = db.prepare(`
     SELECT id, status, android_request_id AS androidRequestId

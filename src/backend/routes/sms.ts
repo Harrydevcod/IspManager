@@ -4,7 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { canStoreSecrets, readSecret, writeSecret } from '../lib/secrets';
-import { requireRole } from './auth';
+import { confirmSessionPassword, requireRole } from './auth';
 import { discoverCompanionHosts, enqueueSmsNotification, findPairedCompanion, verifyCompanionPairing } from '../lib/sms-outbox';
 import { readCompanionPresence, requestCompanionSnapshotPush } from '../lib/companion-sync';
 import { openStripeLinkSql } from '../lib/stripe-payments';
@@ -57,10 +57,12 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     const deviceName = getSetting('smsCompanionDeviceName');
     const pairingKey = readSecret(getSqliteDatabase(), 'smsCompanionPairingKey');
     const configured = Boolean(baseUrl && pairingKey);
-    const verification = configured
+    // Desligada, o desktop não contacta o telemóvel — nem para mostrar o estado.
+    const verification = configured && enabled
       ? await verifyCompanionPairing(1200)
       : { reachable: false, paired: false };
     return {
+      enabled,
       configured,
       reachable: verification.reachable,
       paired: verification.paired,
@@ -132,6 +134,9 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     if (!canStoreSecrets()) {
       return reply.status(409).send({ error: 'Cofre de credenciais trancado: nao e possivel parear nesta sessao.' });
     }
+    // Parear liga a app móvel: a mesma password que o interruptor nas Definições.
+    const confirmPassword = (request.body as { confirmPassword?: unknown } | null)?.confirmPassword;
+    if (!(await confirmSessionPassword(request, reply, confirmPassword))) return reply;
     const secret = randomBytes(32).toString('hex');
     setSetting('smsCompanionEnabled', 'true');
     setSetting('smsCompanionBaseUrl', parsed.data.baseUrl);

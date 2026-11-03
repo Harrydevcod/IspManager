@@ -402,7 +402,11 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     const storedDryRun = db.prepare(`SELECT value FROM app_settings WHERE key = 'routerosDryRun'`).get() as { value: string } | undefined;
     const wasLive = storedDryRun?.value === 'false' || storedDryRun?.value === '0';
     const goesLive = !wasLive && parsed.data.routerosDryRun === false;
-    if (goesLive) {
+    // Ligar a app móvel abre um canal que envia SMS pelo SIM e leva o resumo da
+    // operação para fora do PC: mesma exigência. Desligar continua livre.
+    const storedSmsEnabled = db.prepare(`SELECT value FROM app_settings WHERE key = 'smsCompanionEnabled'`).get() as { value: string } | undefined;
+    const smsTurnsOn = storedSmsEnabled?.value !== 'true' && parsed.data.smsCompanionEnabled === true;
+    if (goesLive || smsTurnsOn) {
       const confirmPassword = (request.body as { confirmPassword?: unknown } | null)?.confirmPassword;
       if (!(await confirmSessionPassword(request, reply, confirmPassword))) return reply;
     }
@@ -463,6 +467,14 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         autoSuspensionGraceDays: parsed.data.autoSuspensionGraceDays
       }
     });
+    if (smsTurnsOn || (storedSmsEnabled?.value === 'true' && parsed.data.smsCompanionEnabled === false)) {
+      recordAudit(request, {
+        action: 'update',
+        entityType: 'settings',
+        summary: smsTurnsOn ? 'Ligou a app movel ISPM SMS' : 'Desligou a app movel ISPM SMS',
+        metadata: { smsCompanionEnabled: parsed.data.smsCompanionEnabled }
+      });
+    }
     if (goesLive || (wasLive && parsed.data.routerosDryRun)) {
       recordAudit(request, {
         action: 'update',
