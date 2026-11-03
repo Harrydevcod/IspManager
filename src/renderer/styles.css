@@ -6600,7 +6600,7 @@ button.danger:disabled {
 
 .sms-queue {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 1px;
   margin: 0;
   background: var(--border);
@@ -6649,31 +6649,15 @@ button.danger:disabled {
     width: 100%;
   }
 
+  /* Seis contadores: duas filas de três, sem sobras. */
   .sms-queue {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-
-  .sms-queue-stat {
-    grid-column: span 2;
-  }
-
-  .sms-queue-stat:nth-last-child(-n + 2) {
-    grid-column: span 3;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @container (max-width: 22rem) {
   .sms-queue {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .sms-queue-stat,
-  .sms-queue-stat:nth-last-child(-n + 2) {
-    grid-column: auto;
-  }
-
-  .sms-queue-stat:last-child {
-    grid-column: 1 / -1;
   }
 }
 
