@@ -96,14 +96,19 @@ class CompanionServer(
     // Bound replay to a 5 minute clock skew window.
     val now = System.currentTimeMillis()
     val sentAt = parseIso(timestamp) ?: return false
-    if (abs(now - sentAt) > 5 * 60_000) return false
+    if (abs(now - sentAt) > SKEW_MS) return false
 
     val canonical = listOf(session.method.name, session.uri, timestamp, nonce, body).joinToString("\n")
     val mac = Mac.getInstance("HmacSHA256")
     mac.init(SecretKeySpec(secret.toByteArray(Charsets.UTF_8), "HmacSHA256"))
     val expected = mac.doFinal(canonical.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
     // Nonce is recorded only after the signature checks out, so garbage can't fill the cache.
-    return constantTimeEquals(expected, signature) && nonces.firstUse(nonce, now)
+    // The nonce must outlive the timestamp's acceptance window, which ends at sentAt + SKEW_MS.
+    return constantTimeEquals(expected, signature) && nonces.firstUse(nonce, now, sentAt + SKEW_MS)
+  }
+
+  private companion object {
+    const val SKEW_MS = 5 * 60_000L
   }
 
   private fun parseIso(value: String): Long? = try {

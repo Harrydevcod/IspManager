@@ -1,19 +1,20 @@
 package cv.novatech.ispm.sms
 
 /**
- * Nonces seen inside the signature's clock window. A replayed request carries a
- * valid signature and a fresh-enough timestamp, so only the nonce gives it away.
- * Entries older than the window are dropped on every check, which bounds memory
- * to the requests of the last [windowMs].
+ * Nonces of requests whose signed timestamp is still acceptable. A replayed
+ * request carries a valid signature and a fresh-enough timestamp, so only the
+ * nonce gives it away. Each nonce is kept until its own timestamp leaves the
+ * skew window (`expiresAt`), not for a fixed time after we saw it: a request
+ * stamped up to 5 min in the future stays replayable for up to 10 min.
  */
-class NonceCache(private val windowMs: Long = 5 * 60_000L) {
-  private val seen = HashMap<String, Long>()
+class NonceCache {
+  private val expiry = HashMap<String, Long>()
 
-  /** True the first time [nonce] is seen within the window; false on a replay. */
-  @Synchronized fun firstUse(nonce: String, now: Long): Boolean {
-    seen.entries.removeAll { now - it.value > windowMs }
-    if (seen.containsKey(nonce)) return false
-    seen[nonce] = now
+  /** True the first time [nonce] is seen before it expires; false on a replay. */
+  @Synchronized fun firstUse(nonce: String, now: Long, expiresAt: Long): Boolean {
+    expiry.entries.removeAll { now > it.value }
+    if (expiry.containsKey(nonce)) return false
+    expiry[nonce] = expiresAt
     return true
   }
 }
