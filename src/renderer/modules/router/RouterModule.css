@@ -14,6 +14,8 @@
   .router-tabs .segmented-tab { flex-shrink: 0; }
   .router-tabs .segmented-tab .btn-content { display: inline-flex; }
   .router-tabs .segmented-tab .btn-content > span { display: inline; }
+  /* Só texto, sem ícone: a regra global das abas estreitas esconde o texto e deixava os botões vazios. */
+  .router-usage-periods.segmented-tabs .segmented-tab span { display: inline; }
 }
 
 .router-mono {

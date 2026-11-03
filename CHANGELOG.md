@@ -8,6 +8,7 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 ### Corrigido
 - **O consumo das WAN e dos clientes sobrevive a um corte de luz no router.** A 2 de novembro, um corte a meio de uma gravação deixou o ficheiro do contador só com o que passou depois do arranque: perdeu-se o dia até ao corte (cerca de 124 GB, contra a conta Starlink) e o histórico do router. O contador passa a gravar primeiro uma cópia e só depois o ficheiro principal, cada gravação fecha com uma linha de fim, um ficheiro cortado lê-se pela cópia e um ficheiro que não se lê não é escrito por cima. O ISPM atualiza o contador no router sozinho (WAN v9, clientes v5).
+- No Router de gestão, em ecrãs estreitos, o seletor "Ciclo Starlink | Mês" do consumo das WAN aparecia com os dois botões vazios; volta a mostrar o texto.
 
 ## [2.47](https://github.com/Harrydevcod/IspManager/releases/tag/v2.47.0) — 2026-10-31
 
