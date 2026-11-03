@@ -21,41 +21,82 @@
  * no script de dados, e a corrida seguinte passou-o por cima do ficheiro, levando os totais do
  * dia e o histórico. Com disco previsto, nos primeiros 10 minutos ligado sem ele não se grava
  * nada: a corrida seguinte lê o ficheiro, vê o reinício pelo tempo ligado e soma desde o arranque.
+ *
+ * Medido no hEX S a 2026-11-02 (corte de luz às ~15:00, de volta às 18:47): o ficheiro das WAN
+ * voltou só com o que passou depois do arranque — sem o total do dia até ao corte nem os 30 dias
+ * de histórico. Um corte a meio do `/file set` deixa o ficheiro cortado, e uma leitura falhada
+ * dava estado vazio, que a corrida gravava por cima. Por isso:
+ * - grava-se a cópia (`.bak.txt`) e só depois o principal: um corte a meio deixa sempre um dos
+ *   dois inteiro;
+ * - cada gravação acaba em `# fim`; um ficheiro sem essa linha está cortado e lê-se a cópia;
+ * - um ficheiro que existe e não se lê pára a corrida sem gravar nada.
+ * Um ficheiro sem `# fim` e sem cópia é de uma versão anterior e lê-se como está.
  */
 
 // O `/file get` e o `/file set` servem até 60 kB; acima de metade disso fica no script.
 const FILE_LIMIT = 30_000;
+
+/** Última linha de cada gravação; sem ela o ficheiro ficou cortado. */
+export const USAGE_STATE_END = '# fim';
 
 /** O ficheiro de um contador no disco; `null` sem disco. */
 export function usageDataFile(disk: string | null, name: string): string | null {
   return disk ? `${disk}/${name}.txt` : null;
 }
 
+/** A cópia do ficheiro, gravada antes dele. */
+export function usageBackupFile(disk: string | null, name: string): string | null {
+  return disk ? `${disk}/${name}.bak.txt` : null;
+}
+
 /** Cabeça do script: deixa em `$text` o estado da corrida anterior. `name` é o do contador. */
 export function loadUsageState(name: string, dataName: string, disk: string | null): string {
   const mounted = disk
-    ? `\n:if ([:len [/file find where name="${disk}" type="disk"]] > 0) do={ :set dataFile "${usageDataFile(disk, name)}" }`
+    ? `\n:if ([:len [/file find where name="${disk}" type="disk"]] > 0) do={ :set dataFile "${usageDataFile(disk, name)}"; :set backFile "${usageBackupFile(disk, name)}" }`
     : '';
   return String.raw`:local dataName "${dataName}"
 :local diskWanted ${disk ? 'true' : 'false'}
-:local dataFile ""${mounted}
+:local dataFile ""
+:local backFile ""${mounted}
 :local text ""
 :local dataIds [/system script find where name=$dataName]
 :if ([:len $dataIds] > 0) do={ :set text [/system script get $dataIds source] } else={
-  :if ([:len $dataFile] > 0) do={ :do { :set text [/file get $dataFile contents] } on-error={} }
+  :if ([:len $dataFile] > 0) do={
+    :local main ""
+    :local back ""
+    :local hasMain ([:len [/file find where name=$dataFile]] > 0)
+    :local hasBack ([:len [/file find where name=$backFile]] > 0)
+    :local unreadable false
+    :if ($hasMain) do={ :do { :set main [/file get $dataFile contents] } on-error={ :set unreadable true } }
+    :if ($hasBack) do={ :do { :set back [/file get $backFile contents] } on-error={ :set unreadable true } }
+    :if ($unreadable) do={
+      :log warning "${name}: estado ilegivel no disco, corrida sem gravar"
+      :error "estado ilegivel"
+    }
+    :if ([:typeof [:find $main "${USAGE_STATE_END}"]] != "nil") do={ :set text $main } else={
+      :if ([:typeof [:find $back "${USAGE_STATE_END}"]] != "nil") do={ :set text $back } else={
+        :if (!$hasBack) do={ :set text $main }
+      }
+    }
+  }
 }`;
 }
 
+/** Grava `$output` num ficheiro, criando-o se faltar. */
+const writeFile = (variable: string) => String.raw`    :if ([:len [/file find where name=${variable}]] = 0) do={
+      /file add name=${variable} contents=$output
+    } else={
+      /file set ${variable} contents=$output
+    }`;
+
 /** Cauda do script: grava `$output`. `label` é o comentário do script de dados. */
 export function storeUsageState(label: string): string {
-  return String.raw`:local stored false
+  return String.raw`:set output ($output . "${USAGE_STATE_END}\n")
+:local stored false
 :if (([:len $dataFile] > 0) && ([:len $output] < ${FILE_LIMIT})) do={
   :do {
-    :if ([:len [/file find where name=$dataFile]] = 0) do={
-      /file add name=$dataFile contents=$output
-    } else={
-      /file set $dataFile contents=$output
-    }
+${writeFile('$backFile')}
+${writeFile('$dataFile')}
     :set stored true
   } on-error={}
 }
