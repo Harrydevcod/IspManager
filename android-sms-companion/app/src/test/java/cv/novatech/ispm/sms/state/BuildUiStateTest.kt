@@ -19,10 +19,10 @@ class BuildUiStateTest {
   }
 
   @Test fun historyIsNewestFirstAndCapped() {
-    val sent = (1..25).map { req(it.toString(), "sent") }
+    val sent = (1..60).map { req(it.toString(), "sent") }
     val s = buildUiState(pairing, true, true, sent, emptySet())
-    assertEquals(20, s.history.size)
-    assertEquals("25", s.history.first().id) // newest first
+    assertEquals(HISTORY_LIMIT, s.history.size)
+    assertEquals("60", s.history.first().id) // newest first
   }
 
   @Test fun clientNameCarriedWithPhoneFallback() {
