@@ -1,0 +1,256 @@
+import type Database from 'better-sqlite3';
+import { getSqliteDatabase } from '../db/database';
+import { balanceSqlExpr, cashReceiptFilterSql, overdueSqlPredicate } from './payments';
+
+type DashboardMetricRow = {
+  totalClients: number;
+  activeClients: number;
+  suspendedClients: number;
+  cancelledClients: number;
+  overduePayments: number;
+  pendingPayments: number;
+  lowStockModels: number;
+  activeServices: number;
+  openWorkOrders: number;
+  openTickets: number;
+  paidMonthCve: number;
+  paidPrevMonthCve: number;
+  pendingMonthCve: number;
+  pendingMonthCount: number;
+  pendingPreviousCve: number;
+  paidTotalCve: number;
+};
+
+type RevenuePoint = {
+  referenceMonth: string;
+  paidCve: number;
+  pendingCve: number;
+  expenseCve: number;
+  opexCve: number;
+};
+type InvestmentAggregate = { referenceMonth: string; expenseCve: number };
+type ExpenseAggregate = { referenceMonth: string; opexCve: number };
+type UpcomingDue = { paymentId: number; clientName: string; clientCode: string; dueDate: string; amountCve: number };
+export type CriticalOverdue = {
+  paymentId: number;
+  clientName: string;
+  clientCode: string;
+  clientPhone: string | null;
+  dueDate: string;
+  amountCve: number;
+  daysOverdue: number;
+};
+type PlanMixEntry = { connectionType: string; count: number };
+
+function currentMonthKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function previousMonthKey(): string {
+  const now = new Date();
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function currentYearMonths(): string[] {
+  const months: string[] = [];
+  const year = new Date().getFullYear();
+  for (let m = 1; m <= 12; m++) {
+    months.push(`${year}-${String(m).padStart(2, '0')}`);
+  }
+  return months;
+}
+
+/**
+ * Números do painel inicial. Partilhado pela rota `/api/dashboard/summary` e
+ * pelo resumo enviado ao telemóvel, para os dois mostrarem o mesmo.
+ */
+export function loadDashboardSummary(db: Database.Database = getSqliteDatabase()) {
+  const currentMonth = currentMonthKey();
+
+  const summary = db.prepare(`
+    SELECT
+      (SELECT count(*) FROM clients WHERE system_kind IS NULL) AS totalClients,
+      (SELECT count(*) FROM clients WHERE system_kind IS NULL AND status = 'active') AS activeClients,
+      (SELECT count(*) FROM clients WHERE system_kind IS NULL AND status = 'suspended') AS suspendedClients,
+      (SELECT count(*) FROM clients WHERE system_kind IS NULL AND status = 'cancelled') AS cancelledClients,
+      (SELECT count(*) FROM payments WHERE ${overdueSqlPredicate()}) AS overduePayments,
+      (SELECT count(*) FROM payments WHERE status = 'pending') AS pendingPayments,
+      (SELECT count(*) FROM equipment_catalog WHERE active = 1 AND stock_total <= 3) AS lowStockModels,
+      (SELECT count(*) FROM services WHERE status = 'active') AS activeServices,
+      (SELECT count(*) FROM work_orders WHERE status NOT IN ('concluida','cancelada')) AS openWorkOrders,
+      (SELECT count(*) FROM support_tickets WHERE status IN ('aberto','em_curso')) AS openTickets,
+      COALESCE((
+        -- Regime de caixa: o que ENTROU este mês, seja qual for a competência.
+        -- Com faturação pós-paga a competência corrente nem existe até dia 30,
+        -- por isso somar por reference_month mostrava 0 o mês inteiro.
+        --
+        -- A soma é dos RECIBOS, não das faturas fechadas: com recebimentos
+        -- parciais, uma fatura de 50.000 com 10.000 entregues em Julho tem de
+        -- pesar 10.000 em Julho, e não zero até ao dia em que fechar. Só
+        -- source='cash', porque o que é liquidado por conta corrente não é
+        -- dinheiro novo — entrou quando o crédito nasceu.
+        SELECT SUM(r.amount_cve) FROM payment_receipts r
+        WHERE ${cashReceiptFilterSql('r')}
+          AND substr(r.payment_date, 1, 7) = @currentMonth
+      ), 0) AS paidMonthCve,
+      COALESCE((
+        SELECT SUM(r.amount_cve) FROM payment_receipts r
+        WHERE ${cashReceiptFilterSql('r')}
+          AND substr(r.payment_date, 1, 7) = @previousMonth
+      ), 0) AS paidPrevMonthCve,
+      COALESCE((
+        -- Base de vencimento: o que VENCE este mês por receber. Com faturação
+        -- pós-paga os pendentes têm competência do mês fechado (reference_month
+        -- anterior) e vencimento no mês corrente — somar por reference_month
+        -- mostrava 0 o mês inteiro (mesmo bug da Receita do mês, v1.4.1).
+        -- Saldo, não valor da fatura: metade recebida é metade da dívida.
+        SELECT SUM(${balanceSqlExpr('payments')}) FROM payments
+        WHERE status IN ('pending','overdue') AND substr(due_date, 1, 7) = @currentMonth
+      ), 0) AS pendingMonthCve,
+      (
+        SELECT count(*) FROM payments
+        WHERE status IN ('pending','overdue') AND substr(due_date, 1, 7) = @currentMonth
+      ) AS pendingMonthCount,
+      COALESCE((
+        SELECT SUM(${balanceSqlExpr('payments')}) FROM payments
+        WHERE status IN ('pending','overdue') AND reference_month < @currentMonth
+      ), 0) AS pendingPreviousCve,
+      COALESCE((
+        SELECT SUM(r.amount_cve) FROM payment_receipts r
+        WHERE ${cashReceiptFilterSql('r')}
+      ), 0) AS paidTotalCve
+  `).get({ currentMonth, previousMonth: previousMonthKey() }) as DashboardMetricRow;
+
+  const months = currentYearMonths();
+  // TV não tem competência mensal: a venda pertence ao mês da emissão.
+  const revenueMonthSql = `CASE WHEN document_type = 'sale_ticket'
+    THEN substr(invoice_date, 1, 7) ELSE reference_month END`;
+  const revenueRows = db.prepare(`
+    SELECT ${revenueMonthSql} AS referenceMonth,
+           -- Recebido e por receber da competência, agora que uma fatura pode
+           -- estar nos dois lados ao mesmo tempo.
+           COALESCE(SUM(CASE WHEN status <> 'cancelled'
+             THEN amount_cve - ${balanceSqlExpr('payments')} ELSE 0 END), 0) AS paidCve,
+           COALESCE(SUM(CASE WHEN status IN ('pending','overdue')
+             THEN ${balanceSqlExpr('payments')} ELSE 0 END), 0) AS pendingCve
+    FROM payments
+    WHERE ${revenueMonthSql} >= @from AND ${revenueMonthSql} <= @to
+    GROUP BY referenceMonth
+    ORDER BY referenceMonth ASC
+  `).all({ from: months[0], to: months[11] }) as Array<Pick<RevenuePoint, 'referenceMonth' | 'paidCve' | 'pendingCve'>>;
+  const investmentRows = db.prepare(`
+    SELECT reference_month AS referenceMonth,
+           COALESCE(SUM(total_cost_cve), 0) AS expenseCve
+    FROM investments
+    WHERE reference_month >= @from AND reference_month <= @to
+    GROUP BY reference_month
+    ORDER BY reference_month ASC
+  `).all({ from: months[0], to: months[11] }) as InvestmentAggregate[];
+  const expenseRows = db.prepare(`
+    SELECT reference_month AS referenceMonth,
+           COALESCE(SUM(amount_cve), 0) AS opexCve
+    FROM expenses
+    WHERE reference_month >= @from AND reference_month <= @to
+    GROUP BY reference_month
+    ORDER BY reference_month ASC
+  `).all({ from: months[0], to: months[11] }) as ExpenseAggregate[];
+  const investmentByMonth = new Map(investmentRows.map((r) => [r.referenceMonth, Number(r.expenseCve) || 0]));
+  const expenseByMonth = new Map(expenseRows.map((r) => [r.referenceMonth, Number(r.opexCve) || 0]));
+  const revenueByMonth: RevenuePoint[] = months.map((month) => {
+    const found = revenueRows.find((row) => row.referenceMonth === month);
+    const expenseCve = investmentByMonth.get(month) ?? 0;
+    const opexCve = expenseByMonth.get(month) ?? 0;
+    return found
+      ? {
+          referenceMonth: month,
+          paidCve: Number(found.paidCve) || 0,
+          pendingCve: Number(found.pendingCve) || 0,
+          expenseCve,
+          opexCve
+        }
+      : { referenceMonth: month, paidCve: 0, pendingCve: 0, expenseCve, opexCve };
+  });
+
+  const upcomingDues = db.prepare(`
+    SELECT payments.id AS paymentId,
+           clients.full_name AS clientName,
+           clients.client_code AS clientCode,
+           payments.due_date AS dueDate,
+           ${balanceSqlExpr('payments')} AS amountCve
+    FROM payments
+    JOIN clients ON clients.id = payments.client_id
+    WHERE payments.status = 'pending'
+      AND payments.due_date >= date('now')
+      AND payments.due_date < date('now', '+7 days')
+    ORDER BY payments.due_date ASC
+    LIMIT 6
+  `).all() as UpcomingDue[];
+
+  const criticalOverdue = db.prepare(`
+    SELECT payments.id AS paymentId,
+           clients.full_name AS clientName,
+           clients.client_code AS clientCode,
+           clients.phone AS clientPhone,
+           payments.due_date AS dueDate,
+           ${balanceSqlExpr('payments')} AS amountCve,
+           CAST(julianday('now') - julianday(payments.due_date) AS INTEGER) AS daysOverdue
+    FROM payments
+    JOIN clients ON clients.id = payments.client_id
+    WHERE ${overdueSqlPredicate('payments')}
+      AND julianday('now') - julianday(payments.due_date) >= 30
+    ORDER BY payments.due_date ASC
+    LIMIT 5
+  `).all() as CriticalOverdue[];
+
+  const planMix = db.prepare(`
+    SELECT internet_plans.connection_type AS connectionType,
+           count(services.id) AS count
+    FROM services
+    LEFT JOIN internet_plans ON internet_plans.id = services.plan_id
+    WHERE services.status = 'active' AND internet_plans.connection_type IS NOT NULL
+    GROUP BY internet_plans.connection_type
+    ORDER BY count DESC
+  `).all() as PlanMixEntry[];
+
+  const workQueue: string[] = [];
+  if (summary.overduePayments > 0) {
+    workQueue.push(`${summary.overduePayments} cobrancas em atraso para contactar`);
+  }
+  if (summary.pendingPayments > 0) {
+    workQueue.push(`${summary.pendingPayments} cobrancas pendentes para acompanhar`);
+  }
+  if (summary.lowStockModels > 0) {
+    workQueue.push(`${summary.lowStockModels} modelos com stock baixo`);
+  }
+  if (summary.openWorkOrders > 0) {
+    workQueue.push(`${summary.openWorkOrders} OS tecnicas em aberto`);
+  }
+
+  return {
+    totalClients: summary.totalClients ?? 0,
+    activeClients: summary.activeClients ?? 0,
+    suspendedClients: summary.suspendedClients ?? 0,
+    cancelledClients: summary.cancelledClients ?? 0,
+    overduePayments: summary.overduePayments ?? 0,
+    pendingPayments: summary.pendingPayments ?? 0,
+    lowStockModels: summary.lowStockModels ?? 0,
+    activeServices: summary.activeServices ?? 0,
+    openWorkOrders: summary.openWorkOrders ?? 0,
+    openTickets: summary.openTickets ?? 0,
+    paidMonthCve: Number(summary.paidMonthCve) || 0,
+    paidPrevMonthCve: Number(summary.paidPrevMonthCve) || 0,
+    pendingMonthCve: Number(summary.pendingMonthCve) || 0,
+    pendingMonthCount: Number(summary.pendingMonthCount) || 0,
+    pendingPreviousCve: Number(summary.pendingPreviousCve) || 0,
+    paidTotalCve: Number(summary.paidTotalCve) || 0,
+    revenueByMonth,
+    upcomingDues,
+    criticalOverdue,
+    planMix,
+    workQueue
+  };
+}
+
+export type DashboardSummary = ReturnType<typeof loadDashboardSummary>;

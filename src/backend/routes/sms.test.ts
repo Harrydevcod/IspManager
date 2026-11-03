@@ -71,7 +71,9 @@ describe('SMS routes', () => {
       reachable: false,
       active: false,
       baseUrl: '',
-      deviceName: ''
+      deviceName: '',
+      lastSeen: null,
+      device: null
     });
   });
 

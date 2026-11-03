@@ -87,7 +87,7 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
   }
 }
 
-async function signedFetch(path: string, method: 'GET' | 'POST', bodyObject?: unknown, timeoutMs?: number, baseUrlOverride?: string): Promise<Response> {
+export async function signedFetch(path: string, method: 'GET' | 'POST', bodyObject?: unknown, timeoutMs?: number, baseUrlOverride?: string): Promise<Response> {
   const baseUrl = baseUrlOverride || getSetting('smsCompanionBaseUrl');
   const secret = readSecret(getSqliteDatabase(), 'smsCompanionPairingKey');
   if (!baseUrl || !secret) throw new Error('Companion SMS nao pareado');
@@ -212,7 +212,7 @@ export async function findPairedCompanion(hosts?: string[], timeoutMs = 700): Pr
 
 // Adopts the phone's new address when the saved one stops answering. Only sweeps
 // when the companion is actually down, so a healthy setup pays a single /ping.
-async function selfHealCompanionAddress(): Promise<void> {
+export async function selfHealCompanionAddress(): Promise<void> {
   const current = getSetting('smsCompanionBaseUrl');
   if (!current || !readSecret(getSqliteDatabase(), 'smsCompanionPairingKey')) return;
   const { reachable, paired } = await verifyCompanionPairing(1500);

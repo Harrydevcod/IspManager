@@ -6362,6 +6362,35 @@ button.danger:disabled {
   font-weight: 600;
 }
 
+.sms-presence {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: var(--space-2);
+  row-gap: var(--space-1);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.sms-presence-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--text-3);
+}
+
+.sms-presence[data-tone='success'] .sms-presence-dot { background: var(--success); }
+.sms-presence[data-tone='warn'] .sms-presence-dot { background: var(--warn); }
+
+.sms-presence-warning {
+  grid-column: 2;
+  color: var(--warn);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
 .settings-test-whatsapp .module-message {
   margin: 0;
 }

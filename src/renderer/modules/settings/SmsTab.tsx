@@ -2,6 +2,7 @@ import { QrCode, RotateCcw, Unlink, Wifi } from 'lucide-react';
 import { Button, Field, Textarea, Toggle } from '../../components';
 import type { SmsMonthlyReport, SmsStatus } from '../../types';
 import { templateRows, type SettingsFormState, type ToggleField, type UpdateField } from './settingsForm';
+import { describeSmsPresence } from './smsPresence';
 
 type SmsPairing = { baseUrl: string; deviceName: string };
 
@@ -53,6 +54,7 @@ export function SmsTab({
           ? `Inativo: ${smsStatus.deviceName || 'Android'} responde, mas nao aceitou este pareamento. Repareia o telemovel.`
           : `Inativo: ${smsStatus.deviceName || 'Android'} nao responde em ${smsStatus.baseUrl || 'endereco guardado'}. O IP pode ter mudado.`
         : 'Android nao pareado';
+  const presence = smsVerifying ? null : describeSmsPresence(smsStatus);
   const createPairingLabel = smsStatus?.configured && !smsStatus.active
     ? 'Voltar atras e reparear'
     : smsStatus?.configured
@@ -76,6 +78,15 @@ export function SmsTab({
       />
       <div className="settings-test-whatsapp" aria-label="Pareamento do Android SMS">
         <span>{pairingLabel}</span>
+        {presence && (
+          <div className="sms-presence" data-tone={presence.tone} role="status">
+            <span className="sms-presence-dot" aria-hidden />
+            <span>{presence.line}</span>
+            {presence.warnings.map((warning) => (
+              <small key={warning} className="sms-presence-warning">{warning}</small>
+            ))}
+          </div>
+        )}
         <Field
           label="Endereco do Android na rede local"
           value={smsPairing.baseUrl}
