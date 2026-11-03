@@ -22,7 +22,7 @@ describe('SMS report card styles', () => {
     );
     expect(declarations('.sms-queue')).toMatch(/display:\s*grid/);
     expect(declarations('.sms-queue')).toMatch(
-      /grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/
+      /grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\)/
     );
     expect(styles).toContain('@container (max-width: 32rem)');
     expect(styles).toContain('@container (max-width: 22rem)');

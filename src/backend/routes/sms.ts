@@ -8,15 +8,8 @@ import { requireRole } from './auth';
 import { discoverCompanionHosts, enqueueSmsNotification, findPairedCompanion, verifyCompanionPairing } from '../lib/sms-outbox';
 import { openStripeLinkSql } from '../lib/stripe-payments';
 import { SMS_REPORT_TIMEZONE, smsReportMonthUtcRange } from '../../shared/sms-report';
-import {
-  fallbackSmsInvoiceIssuedTemplate,
-  fallbackSmsPaymentOverdueTemplate,
-  fallbackSmsReceiptConfirmedTemplate,
-  fallbackSmsSuspensionNoticeTemplate,
-  normalizeSmsPhone,
-  renderSmsTemplate,
-  type SmsEventType
-} from '../../shared/sms';
+import { normalizeSmsPhone, renderSmsTemplate } from '../../shared/sms';
+import { smsTemplateFor } from '../lib/sms-notices';
 
 const pairingSchema = z.object({
   baseUrl: z.string().url(),
@@ -35,6 +28,7 @@ type SmsReportCounts = {
   pendingDispatch: number | null;
   pendingApproval: number | null;
   sent: number | null;
+  delivered: number | null;
   failed: number | null;
   rejected: number | null;
 };
@@ -51,16 +45,6 @@ function setSetting(key: string, value: string) {
   `).run(key, value);
 }
 
-function templateFor(eventType: SmsEventType): string {
-  const keys: Record<SmsEventType, [string, string]> = {
-    invoice_issued: ['smsInvoiceIssuedTemplate', fallbackSmsInvoiceIssuedTemplate],
-    receipt_confirmed: ['smsReceiptConfirmedTemplate', fallbackSmsReceiptConfirmedTemplate],
-    payment_overdue: ['smsPaymentOverdueTemplate', fallbackSmsPaymentOverdueTemplate],
-    suspension_notice: ['smsSuspensionNoticeTemplate', fallbackSmsSuspensionNoticeTemplate]
-  };
-  const [key, fallback] = keys[eventType];
-  return getSetting(key) || fallback;
-}
 
 export async function registerSmsRoutes(app: FastifyInstance) {
   const adminOnly = { preHandler: requireRole(['admin']) };
@@ -101,6 +85,7 @@ export async function registerSmsRoutes(app: FastifyInstance) {
         SUM(CASE WHEN status='pending_dispatch' THEN 1 ELSE 0 END) AS pendingDispatch,
         SUM(CASE WHEN status='pending_approval' THEN 1 ELSE 0 END) AS pendingApproval,
         SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) AS sent,
+        SUM(CASE WHEN status='sent' AND delivered_at IS NOT NULL THEN 1 ELSE 0 END) AS delivered,
         SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,
         SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) AS rejected
       FROM sms_outbox
@@ -114,6 +99,7 @@ export async function registerSmsRoutes(app: FastifyInstance) {
         pendingDispatch: counts.pendingDispatch ?? 0,
         pendingApproval: counts.pendingApproval ?? 0,
         sent: counts.sent ?? 0,
+        delivered: counts.delivered ?? 0,
         failed: counts.failed ?? 0,
         rejected: counts.rejected ?? 0
       }
@@ -187,7 +173,7 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     }
 
     const daysOverdue = Math.max(0, Math.floor((Date.now() - new Date(`${payment.dueDate}T00:00:00`).getTime()) / 86_400_000));
-    const body = renderSmsTemplate(templateFor(parsed.data.eventType), {
+    const body = renderSmsTemplate(smsTemplateFor(parsed.data.eventType), {
       fullName: payment.fullName,
       clientCode: payment.clientCode,
       phone: toPhone,

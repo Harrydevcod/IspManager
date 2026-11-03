@@ -117,6 +117,7 @@ describe('SMS routes', () => {
         pendingDispatch: 0,
         pendingApproval: 0,
         sent: 0,
+        delivered: 0,
         failed: 0,
         rejected: 0
       }
@@ -137,6 +138,7 @@ describe('SMS routes', () => {
       pendingDispatch: 0,
       pendingApproval: 1,
       sent: 1,
+      delivered: 0,
       failed: 1,
       rejected: 0
     });

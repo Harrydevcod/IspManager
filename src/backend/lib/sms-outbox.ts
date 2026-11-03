@@ -10,7 +10,7 @@ const DEFAULT_COMPANION_PORT = 8765;
 
 export type SmsOutboxStatus = 'pending_dispatch' | 'pending_approval' | 'approved' | 'sent' | 'failed' | 'rejected' | 'cancelled';
 export type SmsDispatchResult = { ok: true; androidRequestId: string } | { ok: false; error: string };
-export type SmsStatusResult = { status: SmsOutboxStatus; error?: string };
+export type SmsStatusResult = { status: SmsOutboxStatus; error?: string; deliveredAt?: string | null };
 
 export type SmsOutboxDeps = {
   postRequest: (entry: { id: number; requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test'; clientName: string | null }) => Promise<SmsDispatchResult>;
@@ -239,7 +239,9 @@ async function defaultFetchStatus(androidRequestId: string): Promise<SmsStatusRe
     if (!response.ok) return { status: 'failed', error: String(json.error || `Android status falhou (${response.status})`) };
     return {
       status: String(json.status || 'pending_approval') as SmsOutboxStatus,
-      error: typeof json.error === 'string' ? json.error : undefined
+      error: typeof json.error === 'string' && json.error ? json.error : undefined,
+      // Só a app 0.2.0+ envia isto; a 0.1.0 nunca confirma entrega.
+      deliveredAt: typeof json.deliveredAt === 'string' ? json.deliveredAt : null
     };
   } catch (err) {
     return { status: 'pending_approval', error: err instanceof Error ? err.message : 'Android companion offline' };
@@ -313,21 +315,45 @@ export async function runSmsOutboxIfDue(
   return { dispatched, retried };
 }
 
+// Quanto tempo depois do envio ainda vale a pena esperar pelo relatório de entrega.
+const DELIVERY_WATCH_HOURS = 48;
+
+/** ISO do telemóvel → formato `datetime('now')` do SQLite, para comparar e ordenar igual. */
+function toSqliteTime(iso: string): string | null {
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? new Date(ms).toISOString().replace('T', ' ').slice(0, 19) : null;
+}
+
 export async function pollSmsStatusIfDue(
   _now: Date = new Date(),
   deps: SmsOutboxDeps = defaultDeps
 ): Promise<{ updated: number }> {
   const db = getSqliteDatabase();
   const rows = db.prepare(`
-    SELECT id, android_request_id AS androidRequestId
+    SELECT id, status, android_request_id AS androidRequestId
     FROM sms_outbox
-    WHERE status IN ('pending_approval','approved') AND android_request_id IS NOT NULL
-  `).all() as Array<{ id: number; androidRequestId: string }>;
+    WHERE android_request_id IS NOT NULL
+      AND (status IN ('pending_approval','approved')
+           OR (status = 'sent' AND delivered_at IS NULL AND sent_at >= datetime('now', '-${DELIVERY_WATCH_HOURS} hours')))
+  `).all() as Array<{ id: number; status: SmsOutboxStatus; androidRequestId: string }>;
+
+  const markDelivered = db.prepare(`
+    UPDATE sms_outbox SET delivered_at=?, updated_at=datetime('now') WHERE id=? AND delivered_at IS NULL
+  `);
 
   let updated = 0;
   for (const row of rows) {
     const result = await deps.fetchStatus(row.androidRequestId);
     if (!['approved', 'sent', 'failed', 'rejected'].includes(result.status)) continue;
+
+    const deliveredAt = result.deliveredAt ? toSqliteTime(result.deliveredAt) : null;
+
+    // Já enviado: daqui só interessa o relatório de entrega.
+    if (row.status === 'sent') {
+      if (result.status === 'sent' && deliveredAt && markDelivered.run(deliveredAt, row.id).changes > 0) updated += 1;
+      continue;
+    }
+    if (result.status === row.status) continue;
 
     const column = result.status === 'sent'
       ? 'sent_at'
@@ -335,21 +361,12 @@ export async function pollSmsStatusIfDue(
         ? 'rejected_at'
         : result.status === 'approved'
           ? 'approved_at'
-          : null;
+          : 'failed_at';
 
-    if (column) {
-      db.prepare(`
-        UPDATE sms_outbox SET status=?, ${column}=datetime('now'), last_error=?, updated_at=datetime('now') WHERE id=?
-      `).run(result.status, result.error ?? null, row.id);
-    } else if (result.status === 'failed') {
-      db.prepare(`
-        UPDATE sms_outbox SET status='failed', failed_at=datetime('now'), last_error=?, updated_at=datetime('now') WHERE id=?
-      `).run(result.error ?? null, row.id);
-    } else {
-      db.prepare(`
-        UPDATE sms_outbox SET status=?, last_error=?, updated_at=datetime('now') WHERE id=?
-      `).run(result.status, result.error ?? null, row.id);
-    }
+    db.prepare(`
+      UPDATE sms_outbox SET status=?, ${column}=COALESCE(${column}, datetime('now')), last_error=?, updated_at=datetime('now') WHERE id=?
+    `).run(result.status, result.error ?? null, row.id);
+    if (result.status === 'sent' && deliveredAt) markDelivered.run(deliveredAt, row.id);
     updated += 1;
   }
 

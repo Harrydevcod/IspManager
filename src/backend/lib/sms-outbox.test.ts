@@ -164,6 +164,56 @@ describe('SMS outbox', () => {
     expect(row.failed_at).toBeTruthy();
   });
 
+  test('poll records the delivery report on a row already sent', async () => {
+    const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
+    db.prepare(`UPDATE sms_outbox SET status='sent', sent_at=datetime('now','-1 hours'), android_request_id='android-1' WHERE id=?`).run(id);
+    const deps = {
+      postRequest: async () => ({ ok: true as const, androidRequestId: 'android-1' }),
+      fetchStatus: vi.fn(async () => ({ status: 'sent' as const, deliveredAt: '2026-11-03T10:15:00.000Z' }))
+    };
+
+    expect((await pollSmsStatusIfDue(new Date(), deps)).updated).toBe(1);
+    const row = db.prepare('SELECT status, delivered_at FROM sms_outbox WHERE id = ?').get(id) as { status: string; delivered_at: string | null };
+    expect(row).toEqual({ status: 'sent', delivered_at: '2026-11-03 10:15:00' });
+
+    // Já entregue: deixa de ser consultado.
+    deps.fetchStatus.mockClear();
+    await pollSmsStatusIfDue(new Date(), deps);
+    expect(deps.fetchStatus).not.toHaveBeenCalled();
+  });
+
+  test('poll stops waiting for delivery after 48 hours', async () => {
+    const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
+    db.prepare(`UPDATE sms_outbox SET status='sent', sent_at=datetime('now','-49 hours'), android_request_id='android-1' WHERE id=?`).run(id);
+    const fetchStatus = vi.fn(async () => ({ status: 'sent' as const }));
+    await pollSmsStatusIfDue(new Date(), { postRequest: async () => ({ ok: true, androidRequestId: 'x' }), fetchStatus });
+    expect(fetchStatus).not.toHaveBeenCalled();
+  });
+
+  test('poll keeps the first approved_at instead of rewriting it every tick', async () => {
+    const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
+    db.prepare(`UPDATE sms_outbox SET status='pending_approval', android_request_id='android-1' WHERE id=?`).run(id);
+    const deps = { postRequest: async () => ({ ok: true as const, androidRequestId: 'x' }), fetchStatus: async () => ({ status: 'approved' as const }) };
+    await pollSmsStatusIfDue(new Date(), deps);
+    db.prepare(`UPDATE sms_outbox SET approved_at='2026-01-01 00:00:00' WHERE id=?`).run(id);
+    expect((await pollSmsStatusIfDue(new Date(), deps)).updated).toBe(0);
+    const row = db.prepare('SELECT approved_at FROM sms_outbox WHERE id = ?').get(id) as { approved_at: string };
+    expect(row.approved_at).toBe('2026-01-01 00:00:00');
+  });
+
+  test('sent and delivered in the same poll', async () => {
+    const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
+    db.prepare(`UPDATE sms_outbox SET status='approved', android_request_id='android-1' WHERE id=?`).run(id);
+    await pollSmsStatusIfDue(new Date(), {
+      postRequest: async () => ({ ok: true, androidRequestId: 'x' }),
+      fetchStatus: async () => ({ status: 'sent', deliveredAt: '2026-11-03T10:15:00Z' })
+    });
+    const row = db.prepare('SELECT status, sent_at, delivered_at FROM sms_outbox WHERE id = ?').get(id) as { status: string; sent_at: string | null; delivered_at: string | null };
+    expect(row.status).toBe('sent');
+    expect(row.sent_at).toBeTruthy();
+    expect(row.delivered_at).toBe('2026-11-03 10:15:00');
+  });
+
   test('default transport posts signed request to Android companion', async () => {
     writeSecret(db, 'smsCompanionPairingKey', 'secret');
     const calls: Array<{ url: string; init: RequestInit }> = [];

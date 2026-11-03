@@ -42,6 +42,7 @@ import { createBackup, pruneBackups, runScheduledBackupIfDue, setNormalBackupsBl
 import { runMonthlyBillingIfDue } from './lib/auto-billing';
 import { runAudiovisualAnnualIfDue } from './lib/audiovisual-billing';
 import { runOverdueNoticesIfDue } from './lib/notices';
+import { runSmsOverdueNoticesIfDue, smsOverdueNoticesDueToday } from './lib/sms-notices';
 import { pollWhatsappDeliveryIfDue, runWhatsappOutboxIfDue } from './lib/whatsapp-outbox';
 import { pollSmsStatusIfDue, runSmsOutboxIfDue, smsDispatchIntervalMs } from './lib/sms-outbox';
 import { registerNetworkRoutes } from './routes/network';
@@ -230,6 +231,23 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
       .catch((err) => {
         app.log.error({ err }, 'auto notices failed');
       });
+  }
+
+  // SMS reinforcement of the dunning funnel — opt-in via `smsAutoNoticesEnabled`.
+  // Runs at boot and re-checks hourly so a backend left running for days still
+  // fires once per calendar day (the job itself is guarded per day).
+  if (process.env.ISPM_AUTO_NOTICES !== 'off' && process.env.ISPM_SMS_OUTBOX !== 'off' && !process.env.VITEST) {
+    const smsNotices = () => {
+      if (!licenseAllowsWrites() || !smsOverdueNoticesDueToday()) return;
+      try {
+        const result = runJobSync('sms_overdue_notices', runSmsOverdueNoticesIfDue);
+        if ('ran' in result) app.log.info({ result }, 'sms auto notices executed');
+      } catch (err) {
+        app.log.error({ err }, 'sms auto notices failed');
+      }
+    };
+    smsNotices();
+    setInterval(smsNotices, 60 * 60_000).unref();
   }
 
   // WhatsApp outbox: drain the send queue and poll delivery status on intervals.
