@@ -19,16 +19,16 @@ const DEFAULT_WARNING_DAYS = 7;
 const DEFAULT_SUSPENSION_DAYS = 15;
 const DEFAULT_COOLDOWN_DAYS = 7;
 
-type NoticeType = 'reminder' | 'overdue' | 'warning' | 'suspension';
+export type NoticeType = 'reminder' | 'overdue' | 'warning' | 'suspension';
 
-type FunnelStage = { stage: NoticeType; threshold: number };
+export type FunnelStage = { stage: NoticeType; threshold: number };
 
 /**
  * Funil de cobrança configurável, por dias relativos ao vencimento (negativo =
  * antes). Reutiliza `whatsappSuspensionNoticeDays` para a etapa de suspensão.
  * Devolve as etapas ordenadas por threshold crescente.
  */
-function loadFunnel(): FunnelStage[] {
+export function loadFunnel(): FunnelStage[] {
   const reminderDays = Number(getSetting('dunningReminderDays')) || DEFAULT_REMINDER_DAYS;
   const overdueDays = Number(getSetting('dunningOverdueDays')) || DEFAULT_OVERDUE_DAYS;
   const warningDays = Number(getSetting('dunningWarningDays')) || DEFAULT_WARNING_DAYS;
@@ -43,7 +43,7 @@ function loadFunnel(): FunnelStage[] {
 }
 
 /** Etapa atual = a de maior threshold <= dias de atraso; null se ainda cedo demais. */
-function stageFor(funnel: FunnelStage[], daysOverdue: number): NoticeType | null {
+export function stageFor(funnel: FunnelStage[], daysOverdue: number): NoticeType | null {
   let current: NoticeType | null = null;
   for (const s of funnel) {
     if (s.threshold <= daysOverdue) current = s.stage;
@@ -51,7 +51,7 @@ function stageFor(funnel: FunnelStage[], daysOverdue: number): NoticeType | null
   return current;
 }
 
-type OverdueCandidate = {
+export type OverdueCandidate = {
   paymentId: number;
   clientId: number;
   clientName: string;
@@ -65,6 +65,37 @@ type OverdueCandidate = {
   whatsappOptOut: number;
   paymentLink: string | null;
 };
+
+/**
+ * Faturas em aberto já vencidas, ou a vencer dentro de [reminderWindow] dias,
+ * com o saldo em dívida. Fonte única para os avisos de WhatsApp e de SMS.
+ */
+export function loadOverdueCandidates(reminderWindow: number): OverdueCandidate[] {
+  return getSqliteDatabase().prepare(`
+    SELECT
+      py.id AS paymentId,
+      c.id AS clientId,
+      c.full_name AS clientName,
+      c.client_code AS clientCode,
+      c.phone AS phone,
+      c.whatsapp_opt_out AS whatsappOptOut,
+      -- Saldo, nao valor da fatura: o aviso automatico tem de pedir o que
+      -- falta, senao vai cobrar duas vezes a quem ja pagou por conta.
+      ${balanceSqlExpr('py')} AS amountCve,
+      py.due_date AS dueDate,
+      py.reference_month AS referenceMonth,
+      py.invoice_number AS invoiceNumber,
+      -- So as faturas que ja tem link de pagamento levam-no (ADR 0016).
+      ${openStripeLinkSql('py')} AS paymentLink,
+      CAST(julianday('now') - julianday(py.due_date) AS INTEGER) AS daysOverdue
+    FROM payments py
+    JOIN clients c ON c.id = py.client_id
+    WHERE c.system_kind IS NULL AND py.document_type = 'invoice'
+      AND (py.status = 'overdue'
+           OR (py.status = 'pending' AND py.due_date <= date('now', '+' || ? || ' days')))
+    ORDER BY py.due_date ASC
+  `).all(reminderWindow) as OverdueCandidate[];
+}
 
 export type OverdueNoticesRun =
   | { skipped: true; reason: string }
@@ -141,30 +172,7 @@ export async function runOverdueNoticesIfDue(
   // Janela de antecipação = etapa mais cedo do funil (reminder, threshold negativo).
   const reminderWindow = Math.max(0, -funnel[0].threshold);
 
-  const candidates = db.prepare(`
-    SELECT
-      py.id AS paymentId,
-      c.id AS clientId,
-      c.full_name AS clientName,
-      c.client_code AS clientCode,
-      c.phone AS phone,
-      c.whatsapp_opt_out AS whatsappOptOut,
-      -- Saldo, nao valor da fatura: o aviso automatico tem de pedir o que
-      -- falta, senao vai cobrar duas vezes a quem ja pagou por conta.
-      ${balanceSqlExpr('py')} AS amountCve,
-      py.due_date AS dueDate,
-      py.reference_month AS referenceMonth,
-      py.invoice_number AS invoiceNumber,
-      -- So as faturas que ja tem link de pagamento levam-no (ADR 0016).
-      ${openStripeLinkSql('py')} AS paymentLink,
-      CAST(julianday('now') - julianday(py.due_date) AS INTEGER) AS daysOverdue
-    FROM payments py
-    JOIN clients c ON c.id = py.client_id
-    WHERE c.system_kind IS NULL AND py.document_type = 'invoice'
-      AND (py.status = 'overdue'
-           OR (py.status = 'pending' AND py.due_date <= date('now', '+' || ? || ' days')))
-    ORDER BY py.due_date ASC
-  `).all(reminderWindow) as OverdueCandidate[];
+  const candidates = loadOverdueCandidates(reminderWindow);
 
   const recentlyNotified = db.prepare(`
     SELECT 1 FROM whatsapp_notices

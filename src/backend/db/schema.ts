@@ -628,7 +628,8 @@ export const smsOutbox = sqliteTable('sms_outbox', {
   rejectedAt: text('rejected_at'),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP'),
-  failedAt: text('failed_at')
+  failedAt: text('failed_at'),
+  deliveredAt: text('delivered_at')
 });
 
 export const smsCompanionPairing = sqliteTable('sms_companion_pairing', {

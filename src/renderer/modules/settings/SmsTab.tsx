@@ -67,6 +67,13 @@ export function SmsTab({
         checked={form.smsCompanionEnabled}
         onChange={(event) => onToggle('smsCompanionEnabled', event.target.checked)}
       />
+      <Toggle
+        title="Avisos automaticos de atraso e corte por SMS"
+        description="Uma vez por dia, cada fatura em atraso ou perto do corte gera um SMS para todos os clientes com telefone valido, alem do WhatsApp. Chegam ao telemovel para aprovar (Aprovar todos). Clientes que recusaram avisos ficam de fora."
+        checked={form.smsAutoNoticesEnabled}
+        disabled={!form.smsCompanionEnabled}
+        onChange={(event) => onToggle('smsAutoNoticesEnabled', event.target.checked)}
+      />
       <div className="settings-test-whatsapp" aria-label="Pareamento do Android SMS">
         <span>{pairingLabel}</span>
         <Field
@@ -144,6 +151,7 @@ export function SmsTab({
               { key: 'pendingDispatch', label: 'por entregar', tone: 'warn' },
               { key: 'pendingApproval', label: 'por aprovar', tone: 'neutral' },
               { key: 'sent', label: 'enviados', tone: 'success' },
+              { key: 'delivered', label: 'entregues', tone: 'success' },
               { key: 'failed', label: 'falhados', tone: 'danger' },
               { key: 'rejected', label: 'rejeitados', tone: 'danger' }
             ] as const).map(({ key, label, tone }) => (

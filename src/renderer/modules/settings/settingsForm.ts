@@ -49,6 +49,7 @@ export type SettingsFormState = {
   metaAccessToken: string;
   metaAccessTokenConfigured?: boolean;
   smsCompanionEnabled: boolean;
+  smsAutoNoticesEnabled: boolean;
   smsCompanionBaseUrl: string;
   smsDispatchIntervalSeconds: string;
   smsRetryGraceMinutes: string;

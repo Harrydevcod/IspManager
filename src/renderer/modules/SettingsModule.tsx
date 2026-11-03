@@ -128,6 +128,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     metaPhoneNumberId: '',
     metaAccessToken: '',
     smsCompanionEnabled: false,
+    smsAutoNoticesEnabled: false,
     smsCompanionBaseUrl: '',
     smsDispatchIntervalSeconds: '60',
     smsRetryGraceMinutes: '5',

@@ -231,6 +231,8 @@ export type SmsMonthlyReport = {
     pendingDispatch: number;
     pendingApproval: number;
     sent: number;
+    /** Subconjunto de `sent` com relatório de entrega (app Android 0.2.0+). */
+    delivered: number;
     failed: number;
     rejected: number;
   };

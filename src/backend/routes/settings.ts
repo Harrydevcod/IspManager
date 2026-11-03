@@ -112,6 +112,7 @@ const settingsSchema = z.object({
   // Os tokens da Meta passam bem dos 255 caracteres.
   metaAccessToken: z.string().max(1024).optional().nullable(),
   smsCompanionEnabled: strictOptionalBoolean,
+  smsAutoNoticesEnabled: strictOptionalBoolean,
   smsCompanionBaseUrl: smsCompanionBaseUrlSchema.optional().default(''),
   smsDispatchIntervalSeconds: z.coerce.number().int().min(15).max(3600).optional().default(60),
   smsRetryGraceMinutes: z.coerce.number().int().min(1).max(1440).optional().default(5),
@@ -227,6 +228,7 @@ const defaultSettings = {
   metaPhoneNumberId: '',
   metaAccessToken: '',
   smsCompanionEnabled: false,
+  smsAutoNoticesEnabled: false,
   smsCompanionBaseUrl: '',
   smsDispatchIntervalSeconds: 60,
   smsRetryGraceMinutes: 5,
@@ -333,7 +335,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         settings[row.key] = '';
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
-      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled' || row.key === 'autoSuspensionEnabled' || row.key === 'stripeEnabled') {
+      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'smsAutoNoticesEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled' || row.key === 'autoSuspensionEnabled' || row.key === 'stripeEnabled') {
         settings[row.key] = row.value === 'true' || row.value === '1';
       } else if (row.key === 'bankAccounts') {
         try {

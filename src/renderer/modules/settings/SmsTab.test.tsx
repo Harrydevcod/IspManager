@@ -37,6 +37,7 @@ const smsReport: SmsMonthlyReport = {
     pendingDispatch: 1,
     pendingApproval: 2,
     sent: 3,
+    delivered: 2,
     failed: 4,
     rejected: 5
   }
@@ -120,7 +121,7 @@ describe('SmsTab monthly delivery report', () => {
     expect(onMonthChange).toHaveBeenCalledWith('2026-08');
   });
 
-  test('renders five zero counters for an empty month', () => {
+  test('renders six zero counters for an empty month', () => {
     const html = renderSmsTab({
       smsReport: {
         ...smsReport,
@@ -128,13 +129,14 @@ describe('SmsTab monthly delivery report', () => {
           pendingDispatch: 0,
           pendingApproval: 0,
           sent: 0,
+          delivered: 0,
           failed: 0,
           rejected: 0
         }
       }
     });
 
-    expect(html.match(/sms-queue-stat-value">0<\/span>/g)).toHaveLength(5);
+    expect(html.match(/sms-queue-stat-value">0<\/span>/g)).toHaveLength(6);
   });
 
   test('hides stale totals while the selected month is loading', () => {
