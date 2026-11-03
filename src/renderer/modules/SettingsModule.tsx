@@ -592,6 +592,15 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
       setUltraSecretDraft({ editing: false });
       setMetaSecretDraft({ editing: false });
       setStripeSecretDraft({ editing: false });
+      // Desligar a app móvel corta também a verificação do pareamento em curso:
+      // desligada, o desktop não contacta o telemóvel.
+      if (lastSavedForm?.smsCompanionEnabled !== settledForm.smsCompanionEnabled) {
+        if (!settledForm.smsCompanionEnabled) {
+          stopPairingVerification();
+          setSmsQrDataUrl('');
+        }
+        void loadSmsStatus();
+      }
       setLastSavedForm(settledForm);
       setSecretsLost([]);
       setMessage({ tone: 'success', text: 'Configuracoes gravadas com sucesso.', placement: 'save' });
