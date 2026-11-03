@@ -47,6 +47,8 @@ export function SmsTab({
 }: SmsTabProps) {
   const pairingLabel = smsVerifying
     ? 'A aguardar confirmacao do telemovel...'
+    : smsStatus?.enabled === false && smsStatus.configured
+      ? `Pareado${smsStatus.deviceName ? `: ${smsStatus.deviceName}` : ''}${smsStatus.baseUrl ? ` (${smsStatus.baseUrl})` : ''}`
     : smsStatus?.active
       ? `Ativo${smsStatus.deviceName ? `: ${smsStatus.deviceName}` : ''}${smsStatus.baseUrl ? ` (${smsStatus.baseUrl})` : ''}`
       : smsStatus?.configured
@@ -64,8 +66,8 @@ export function SmsTab({
   return (
     <>
       <Toggle
-        title="Ativar SMS via Android"
-        description="O desktop enfileira os SMS e o telemovel Android pareado pede aprovacao antes de enviar pelo cartao SIM. Ideal como canal de reforco quando o cliente nao tem WhatsApp."
+        title="Ligação à app móvel ISPM SMS"
+        description="Ligada, o desktop envia os SMS ao telemóvel pareado (que pede aprovação antes de usar o cartão SIM), atualiza o Painel da app e lê o estado do telemóvel. Desligada, não o contacta de forma nenhuma: o pareamento fica guardado e os SMS em fila saem quando voltar a ligar. Ligar pede a password de administrador."
         checked={form.smsCompanionEnabled}
         onChange={(event) => onToggle('smsCompanionEnabled', event.target.checked)}
       />

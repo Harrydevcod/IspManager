@@ -216,6 +216,8 @@ export type ReceivablesReport = {
 export type SmsEventType = 'invoice_issued' | 'receipt_confirmed' | 'payment_overdue' | 'suspension_notice';
 
 export type SmsStatus = {
+  /** Interruptor geral: desligada, o desktop não contacta o telemóvel. */
+  enabled?: boolean;
   configured: boolean;
   paired: boolean;
   reachable: boolean;

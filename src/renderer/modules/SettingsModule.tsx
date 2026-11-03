@@ -32,6 +32,7 @@ import { StripeTab } from './settings/StripeTab';
 import type { SettingsFormState } from './settings/settingsForm';
 import { NetworkTab, type RouterEnforcementState, type RouterTestReport } from './settings/NetworkTab';
 import { RouterLiveDialog } from './settings/RouterLiveDialog';
+import { AdminPasswordDialog } from './settings/AdminPasswordDialog';
 import { ErrorReportsPanel } from './ErrorReportsPanel';
 import { JobHealthPanel } from './JobHealthPanel';
 import { LicensePanel } from './LicensePanel';
@@ -182,6 +183,9 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
   const [autoSuspendMessage, setAutoSuspendMessage] = useState('');
   const [liveConfirmOpen, setLiveConfirmOpen] = useState(false);
   const [liveError, setLiveError] = useState<string | null>(null);
+  // Ligar a app móvel (pelo interruptor ou ao parear) pede a password do admin.
+  const [smsPasswordFor, setSmsPasswordFor] = useState<'enable' | 'pair' | null>(null);
+  const [smsPasswordError, setSmsPasswordError] = useState<string | null>(null);
   const [smsStatus, setSmsStatus] = useState<SmsStatus | null>(null);
   const [smsReportMonth, setSmsReportMonth] = useState(currentSmsReportMonth);
   const [smsReport, setSmsReport] = useState<SmsMonthlyReport | null>(null);
@@ -323,20 +327,23 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     }
   }
 
-  async function createSmsPairing() {
+  /** Devolve `null` se pareou, ou a mensagem de erro (para o diálogo da password). */
+  async function createSmsPairing(confirmPassword: string): Promise<string | null> {
     setSmsPairingBusy(true);
     try {
       const response = await authFetch('http://127.0.0.1:3001/api/sms/pairing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(smsPairing)
+        body: JSON.stringify({ ...smsPairing, confirmPassword })
       });
       const data = (await response.json().catch(() => ({}))) as { error?: string; qrPayload?: string };
       if (!response.ok) {
-        setMessage({ tone: 'error', text: data.error || 'Nao foi possivel parear o Android SMS.', placement: 'top' });
-        return;
+        return data.error || 'Nao foi possivel parear o Android SMS.';
       }
-      setForm((current) => ({ ...current, smsCompanionEnabled: true, smsCompanionBaseUrl: smsPairing.baseUrl }));
+      // O servidor já gravou a ligação ligada: não fica como alteração por guardar.
+      const paired = (current: SettingsFormState) => ({ ...current, smsCompanionEnabled: true, smsCompanionBaseUrl: smsPairing.baseUrl });
+      setForm(paired);
+      setLastSavedForm((current) => (current ? paired(current) : current));
       setMessage({ tone: 'neutral', text: 'QR Code gerado. Le-o no telemovel — a aguardar confirmacao do pareamento...', placement: 'top' });
       if (data.qrPayload) {
         try {
@@ -348,8 +355,9 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
       }
       await loadSmsStatus();
       void startPairingVerification(smsPairing.deviceName);
+      return null;
     } catch {
-      setMessage({ tone: 'error', text: 'Falha de rede ao parear o Android SMS.', placement: 'top' });
+      return 'Falha de rede ao parear o Android SMS.';
     } finally {
       setSmsPairingBusy(false);
     }
@@ -365,6 +373,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
         return;
       }
       setForm((current) => ({ ...current, smsCompanionEnabled: false }));
+      setLastSavedForm((current) => (current ? { ...current, smsCompanionEnabled: false } : current));
       setSmsQrDataUrl('');
       setMessage({ tone: 'success', text: 'Pareamento Android revogado.', placement: 'top' });
       await loadSmsStatus();
@@ -481,7 +490,20 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
       return;
     }
 
+    if (lastSavedForm && !lastSavedForm.smsCompanionEnabled && form.smsCompanionEnabled) {
+      setSmsPasswordError(null);
+      setSmsPasswordFor('enable');
+      return;
+    }
+
     await persistSettings();
+  }
+
+  async function confirmSmsPassword(password: string) {
+    setSmsPasswordError(null);
+    const error = smsPasswordFor === 'pair' ? await createSmsPairing(password) : await persistSettings(password);
+    if (error === null) setSmsPasswordFor(null);
+    else setSmsPasswordError(error);
   }
 
   async function confirmRouterLive(password: string) {
@@ -848,7 +870,10 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
             smsDetecting={smsDetecting}
             smsQrDataUrl={smsQrDataUrl}
             onDetectPhone={() => void detectSmsPhone()}
-            onCreatePairing={() => void createSmsPairing()}
+            onCreatePairing={() => {
+              setSmsPasswordError(null);
+              setSmsPasswordFor('pair');
+            }}
             onRevokePairing={() => void revokeSmsPairing()}
           />
         )}
@@ -918,6 +943,20 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
         error={liveError}
         onConfirm={(password) => void confirmRouterLive(password)}
         onClose={() => setLiveConfirmOpen(false)}
+      />
+
+      <AdminPasswordDialog
+        open={smsPasswordFor !== null}
+        eyebrow="App móvel ISPM SMS"
+        title={smsPasswordFor === 'pair' ? 'Parear o telemóvel?' : 'Ligar a app móvel?'}
+        lead={smsPasswordFor === 'pair'
+          ? 'Parear liga a app móvel: o telemóvel passa a enviar SMS pelo cartão SIM e a receber o resumo da operação.'
+          : 'Ligada, o desktop volta a falar com o telemóvel pareado: envia os SMS em fila, atualiza o Painel e lê o estado do telemóvel.'}
+        confirmLabel={smsPasswordFor === 'pair' ? 'Gerar pareamento' : 'Ligar'}
+        busy={smsPasswordFor === 'pair' ? smsPairingBusy : saving}
+        error={smsPasswordError}
+        onConfirm={(password) => void confirmSmsPassword(password)}
+        onClose={() => setSmsPasswordFor(null)}
       />
 
       {activeTab === 'backups' && <BackupsPanel />}

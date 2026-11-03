@@ -149,6 +149,16 @@ describe('SMS outbox', () => {
     expect(row.sent_at).toBeTruthy();
   });
 
+  test('poll does not contact the phone while the connection is off', async () => {
+    const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
+    db.prepare(`UPDATE sms_outbox SET status='pending_approval', android_request_id='android-1' WHERE id=?`).run(id);
+    db.prepare(`UPDATE app_settings SET value='false' WHERE key='smsCompanionEnabled'`).run();
+    const fetchStatus = vi.fn(async () => ({ status: 'sent' as const }));
+    expect(await pollSmsStatusIfDue(new Date(), { postRequest: async () => ({ ok: true, androidRequestId: 'x' }), fetchStatus })).toEqual({ updated: 0 });
+    expect(fetchStatus).not.toHaveBeenCalled();
+    db.prepare(`UPDATE app_settings SET value='true' WHERE key='smsCompanionEnabled'`).run();
+  });
+
   test('poll updates final failed status with failure timestamp', async () => {
     const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
     db.prepare(`UPDATE sms_outbox SET status='pending_approval', android_request_id='android-1' WHERE id=?`).run(id);

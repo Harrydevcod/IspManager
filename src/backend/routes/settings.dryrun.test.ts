@@ -40,7 +40,7 @@ beforeEach(() => {
   db.prepare('DELETE FROM login_throttle').run();
   db.prepare('DELETE FROM audit_logs').run();
   db.prepare('DELETE FROM users').run();
-  db.prepare(`DELETE FROM app_settings WHERE key = 'routerosDryRun'`).run();
+  db.prepare(`DELETE FROM app_settings WHERE key IN ('routerosDryRun', 'smsCompanionEnabled')`).run();
   resetAuthSecretCache();
 });
 
@@ -155,5 +155,53 @@ describe('passar o router a modo efetivo', () => {
     const response = await save(operator, { routerosDryRun: false, confirmPassword: 'operator-pw-1' });
     expect(response.statusCode).toBe(403);
     expect(storedDryRun()).toBeUndefined();
+  });
+});
+
+function storedSmsEnabled(): string | undefined {
+  const row = db.prepare(`SELECT value FROM app_settings WHERE key = 'smsCompanionEnabled'`).get() as { value: string } | undefined;
+  return row?.value;
+}
+
+// Ligar a app móvel abre um canal que envia SMS pelo SIM e leva o resumo da
+// operação para fora do PC: a mesma exigência que o router efetivo.
+describe('ligar a app móvel ISPM SMS', () => {
+  test('sem password o admin não liga', async () => {
+    const admin = await adminToken();
+    expect((await save(admin, { smsCompanionEnabled: true })).statusCode).toBe(400);
+    expect(storedSmsEnabled()).toBeUndefined();
+  });
+
+  test('com a password errada não liga', async () => {
+    const admin = await adminToken();
+    expect((await save(admin, { smsCompanionEnabled: true, confirmPassword: 'errada' })).statusCode).toBe(403);
+    expect(storedSmsEnabled()).toBeUndefined();
+  });
+
+  test('com a password certa liga, e a auditoria regista', async () => {
+    const admin = await adminToken();
+    expect((await save(admin, { smsCompanionEnabled: true, confirmPassword: 'supersecret' })).statusCode).toBe(200);
+    expect(storedSmsEnabled()).toBe('true');
+    expect(auditSummaries()).toContain('Ligou a app movel ISPM SMS');
+  });
+
+  test('já ligada, gravar outras definições não pede password; desligar é livre', async () => {
+    const admin = await adminToken();
+    expect((await save(admin, { smsCompanionEnabled: true, confirmPassword: 'supersecret' })).statusCode).toBe(200);
+    expect((await save(admin, { smsCompanionEnabled: true, companyName: 'Outro nome' })).statusCode).toBe(200);
+    expect((await save(admin, { smsCompanionEnabled: false })).statusCode).toBe(200);
+    expect(storedSmsEnabled()).toBe('false');
+    expect(auditSummaries()).toContain('Desligou a app movel ISPM SMS');
+  });
+
+  test('parear também liga, por isso também pede a password', async () => {
+    const admin = await adminToken();
+    const headers = { authorization: `Bearer ${admin}` };
+    const payload = { baseUrl: 'http://192.168.1.50:8765', deviceName: 'Android A' };
+    expect((await app.inject({ method: 'POST', url: '/api/sms/pairing', headers, payload })).statusCode).toBe(400);
+    expect(storedSmsEnabled()).toBeUndefined();
+    const ok = await app.inject({ method: 'POST', url: '/api/sms/pairing', headers, payload: { ...payload, confirmPassword: 'supersecret' } });
+    expect(ok.statusCode).toBe(200);
+    expect(storedSmsEnabled()).toBe('true');
   });
 });

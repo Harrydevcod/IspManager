@@ -36,6 +36,11 @@ const timeFormat = new Intl.DateTimeFormat('pt-PT', { day: '2-digit', month: '2-
 export function describeSmsPresence(status: SmsStatus | null, now = Date.now()): SmsPresence | null {
   if (!status?.configured) return null;
   const seenAt = status.lastSeen ? Date.parse(status.lastSeen) : NaN;
+  // Desligada, o "visto" parou por escolha: nada de offline nem avisos.
+  if (status.enabled === false) {
+    const last = Number.isFinite(seenAt) ? ` · última resposta ${timeFormat.format(new Date(seenAt))}` : '';
+    return { tone: 'muted', line: `Ligação desligada — o pareamento está guardado${last}`, warnings: [] };
+  }
   if (!Number.isFinite(seenAt)) {
     return { tone: 'muted', line: 'Ainda sem notícias do telemóvel', warnings: [] };
   }

@@ -66,6 +66,7 @@ describe('SMS routes', () => {
     const response = await app.inject({ method: 'GET', url: '/api/sms/status' });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
+      enabled: false,
       configured: false,
       paired: false,
       reachable: false,
@@ -144,6 +145,23 @@ describe('SMS routes', () => {
       failed: 1,
       rejected: 0
     });
+  });
+
+  test('GET /api/sms/status with the connection off never contacts the phone but keeps the pairing', async () => {
+    db.prepare(`
+      INSERT INTO app_settings (key,value) VALUES
+      ('smsCompanionEnabled','false'),
+      ('smsCompanionBaseUrl','http://192.168.1.50:8765'),
+      ('smsCompanionDeviceName','Android A')
+    `).run();
+    writeSecret(db, 'smsCompanionPairingKey', 'secret');
+    const fetchMock = vi.fn(async () => new Response('{}'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await app.inject({ method: 'GET', url: '/api/sms/status' });
+
+    expect(response.json()).toMatchObject({ enabled: false, configured: true, reachable: false, active: false });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test('POST /api/sms/pairing creates a pairing payload and stores the pairing config', async () => {

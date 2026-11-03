@@ -17,6 +17,13 @@ describe('describeSmsPresence', () => {
     expect(p).toEqual({ tone: 'success', line: 'Online · bateria 82 % a carregar · sinal 3/4 · v0.3.0 · visto há 40 s', warnings: [] });
   });
 
+  test('connection switched off: neutral, no offline nor warnings', () => {
+    const p = describeSmsPresence({ ...base, enabled: false, lastSeen: '2026-11-03T11:00:00Z', device: { ...device, battery: 5, charging: false } }, now);
+    expect(p?.tone).toBe('muted');
+    expect(p?.line).toMatch(/^Ligação desligada — o pareamento está guardado · última resposta /);
+    expect(p?.warnings).toEqual([]);
+  });
+
   test('offline after three minutes of silence', () => {
     const p = describeSmsPresence({ ...base, lastSeen: '2026-11-03T11:50:00Z', device }, now);
     expect(p?.tone).toBe('warn');
