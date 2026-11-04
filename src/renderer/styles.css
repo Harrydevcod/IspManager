@@ -6322,8 +6322,9 @@ button.danger:disabled {
 }
 .segmented-tab.is-active .segmented-tab-count { color: var(--text-2); }
 @media (max-width: 640px) {
-  .settings-tab span,
-  .segmented-tab span:not(.segmented-tab-count) { display: none; }
+  /* Só o rótulo: o .btn-content do Button embrulha também o ícone. */
+  .settings-tab span:not(.btn-content),
+  .segmented-tab span:not(.segmented-tab-count, .btn-content) { display: none; }
   .settings-tab,
   .segmented-tab { padding: var(--space-2) var(--space-4); }
 }
