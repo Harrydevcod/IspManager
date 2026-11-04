@@ -4,6 +4,14 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.52](https://github.com/Harrydevcod/IspManager/releases/tag/v2.52.0) — 2026-11-04
+
+### Adicionado
+- **Email do cliente.** O formulário Novo/Editar cliente ganha o campo Email, logo abaixo do Telefone, e a ficha do cliente passa a mostrá-lo. Um email mal escrito mostra o aviso e não deixa gravar. É o email que o Stripe exige para gerar o link de pagamento, que até aqui só a importação preenchia. Editar um cliente ou mudar o estado de vários de uma vez nunca apaga um email já gravado.
+
+### Corrigido
+- **Formulário de cliente em ecrã estreito.** A coluna da direita (Telefone, NIF, Zona) saía da caixa; agora as duas colunas encolhem com o diálogo.
+
 ## [2.51](https://github.com/Harrydevcod/IspManager/releases/tag/v2.51.0) — 2026-11-04
 
 ### Corrigido
