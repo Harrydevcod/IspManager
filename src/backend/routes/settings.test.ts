@@ -455,6 +455,24 @@ describe('credenciais nas definicoes', () => {
     expect(stored('stripeSecretKey')).toBe('rk_test_secreto');
   });
 
+  test('o Vinti4 só se liga com conta de destino', async () => {
+    const { createAccount } = await import('../lib/treasury');
+    const account = createAccount(db, { kind: 'banco', name: 'Banco do Vinti4' });
+    if (!account.ok) throw new Error(account.error);
+
+    const noAccount = await app.inject({ method: 'PUT', url: '/api/settings', payload: { ...validSettings, vinti4Enabled: true } });
+    expect(noAccount.statusCode).toBe(400);
+
+    const saved = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: { ...validSettings, vinti4Enabled: true, vinti4TreasuryAccountId: account.value.id }
+    });
+    expect(saved.statusCode).toBe(200);
+    const read = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(read.json()).toMatchObject({ vinti4Enabled: true, vinti4TreasuryAccountId: account.value.id });
+  });
+
   test('o token da UltraMsg tem o mesmo tratamento da senha do router', async () => {
     const saved = await app.inject({
       method: 'PUT',

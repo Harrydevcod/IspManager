@@ -28,7 +28,7 @@ import { BillingTab } from './settings/BillingTab';
 import { CompanyTab } from './settings/CompanyTab';
 import { SmsTab } from './settings/SmsTab';
 import { WhatsappTab } from './settings/WhatsappTab';
-import { StripeTab } from './settings/StripeTab';
+import { PaymentTab } from './settings/PaymentTab';
 import type { SettingsFormState } from './settings/settingsForm';
 import { NetworkTab, type RouterEnforcementState, type RouterTestReport } from './settings/NetworkTab';
 import { RouterLiveDialog } from './settings/RouterLiveDialog';
@@ -39,12 +39,12 @@ import { LicensePanel } from './LicensePanel';
 import { VaultPanel } from './settings/VaultPanel';
 import { useAuth } from '../lib/auth';
 
-type SettingsTab = 'company' | 'billing' | 'stripe' | 'whatsapp' | 'sms' | 'network' | 'backups' | 'jobs' | 'license' | 'vault';
+type SettingsTab = 'company' | 'billing' | 'payments' | 'whatsapp' | 'sms' | 'network' | 'backups' | 'jobs' | 'license' | 'vault';
 
 const TABS: { id: SettingsTab; label: string; icon: typeof Building2 }[] = [
   { id: 'company', label: 'Empresa', icon: Building2 },
   { id: 'billing', label: 'Faturação', icon: Banknote },
-  { id: 'stripe', label: 'Stripe', icon: CreditCard },
+  { id: 'payments', label: 'Pagamento', icon: CreditCard },
   { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
   { id: 'sms', label: 'SMS', icon: Smartphone },
   { id: 'network', label: 'Rede', icon: Radar },
@@ -167,7 +167,9 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     autoSuspensionMaxPercent: '20',
     stripeEnabled: false,
     stripeSecretKey: '',
-    stripeTreasuryAccountId: ''
+    stripeTreasuryAccountId: '',
+    vinti4Enabled: false,
+    vinti4TreasuryAccountId: ''
   });
   const [probeBusy, setProbeBusy] = useState(false);
   const [probeMessage, setProbeMessage] = useState('');
@@ -391,7 +393,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
         }
-        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold' | 'routerosPort' | 'routerosIntervalSeconds' | 'routerosMaxDisablesPerRun' | 'autoSuspensionGraceDays' | 'autoSuspensionIntervalMinutes' | 'autoSuspensionMaxPerRun' | 'autoSuspensionMaxPercent' | 'stripeTreasuryAccountId'> & { stripeTreasuryAccountId: number; defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number; routerosPort: number; routerosIntervalSeconds: number; routerosMaxDisablesPerRun: number; autoSuspensionGraceDays: number; autoSuspensionIntervalMinutes: number; autoSuspensionMaxPerRun: number; autoSuspensionMaxPercent: number; secretsLost?: string[] }>;
+        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold' | 'routerosPort' | 'routerosIntervalSeconds' | 'routerosMaxDisablesPerRun' | 'autoSuspensionGraceDays' | 'autoSuspensionIntervalMinutes' | 'autoSuspensionMaxPerRun' | 'autoSuspensionMaxPercent' | 'stripeTreasuryAccountId' | 'vinti4TreasuryAccountId'> & { stripeTreasuryAccountId: number; vinti4TreasuryAccountId: number; defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number; routerosPort: number; routerosIntervalSeconds: number; routerosMaxDisablesPerRun: number; autoSuspensionGraceDays: number; autoSuspensionIntervalMinutes: number; autoSuspensionMaxPerRun: number; autoSuspensionMaxPercent: number; secretsLost?: string[] }>;
       })
       .then((settings) => {
         const loadedForm = {
@@ -416,7 +418,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
           autoSuspensionIntervalMinutes: String(settings.autoSuspensionIntervalMinutes),
           autoSuspensionMaxPerRun: String(settings.autoSuspensionMaxPerRun),
           autoSuspensionMaxPercent: String(settings.autoSuspensionMaxPercent),
-          stripeTreasuryAccountId: settings.stripeTreasuryAccountId ? String(settings.stripeTreasuryAccountId) : ''
+          stripeTreasuryAccountId: settings.stripeTreasuryAccountId ? String(settings.stripeTreasuryAccountId) : '',
+          vinti4TreasuryAccountId: settings.vinti4TreasuryAccountId ? String(settings.vinti4TreasuryAccountId) : ''
         };
         setForm(loadedForm);
         setLastSavedForm(loadedForm);
@@ -538,6 +541,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
           metaAccessToken: metaSecretDraft.editing && metaSecretDraft.value ? metaSecretDraft.value : undefined,
           stripeSecretKey: stripeSecretDraft.editing && stripeSecretDraft.value ? stripeSecretDraft.value : undefined,
           stripeTreasuryAccountId: Number(savedForm.stripeTreasuryAccountId) || 0,
+          vinti4TreasuryAccountId: Number(savedForm.vinti4TreasuryAccountId) || 0,
           defaultDueDay: Number(savedForm.defaultDueDay),
           autoBillingDay: Number(savedForm.autoBillingDay),
           audiovisualMonthlyCve: Number(savedForm.audiovisualMonthlyCve),
@@ -835,8 +839,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
           <BillingTab form={form} onUpdate={updateForm} onToggle={toggleForm} />
         )}
 
-        {activeTab === 'stripe' && (
-          <StripeTab
+        {activeTab === 'payments' && (
+          <PaymentTab
             form={form}
             onUpdate={updateForm}
             onToggle={toggleForm}

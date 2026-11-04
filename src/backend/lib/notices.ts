@@ -1,6 +1,6 @@
 import { getSqliteDatabase } from '../db/database';
 import { balanceSqlExpr } from './payments';
-import { openStripeLinkSql } from './stripe-payments';
+import { openPaymentLinkSql } from './vinti4';
 import {
   fallbackWhatsappOverdueTemplate,
   fallbackWhatsappReminderTemplate,
@@ -85,8 +85,8 @@ export function loadOverdueCandidates(reminderWindow: number): OverdueCandidate[
       py.due_date AS dueDate,
       py.reference_month AS referenceMonth,
       py.invoice_number AS invoiceNumber,
-      -- So as faturas que ja tem link de pagamento levam-no (ADR 0016).
-      ${openStripeLinkSql('py')} AS paymentLink,
+      -- So as faturas que ja tem link de pagamento levam-no (ADR 0016, 0019).
+      ${openPaymentLinkSql('py')} AS paymentLink,
       CAST(julianday('now') - julianday(py.due_date) AS INTEGER) AS daysOverdue
     FROM payments py
     JOIN clients c ON c.id = py.client_id

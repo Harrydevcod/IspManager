@@ -132,7 +132,7 @@ export type PaymentRow = {
   receivedCve: number;
   balanceCve: number;
   /** Link de pagamento Stripe ainda válido para o saldo; ausente quando não há. */
-  stripeLinkUrl?: string | null;
+  paymentLinkUrl?: string | null;
 };
 
 export type PaymentStatus = PaymentRow['status'];

@@ -21,7 +21,7 @@ eventos. Três factos do ISPM mudam esse desenho:
 O Stripe é **mais uma via de pagamento de uma fatura do ISPM**, opcional e escolhida fatura a fatura.
 Não fatura, não corta e não fala com o router.
 
-- **Ativação nas Configurações** (aba Stripe): interruptor, chave da API e conta de tesouraria de
+- **Ativação nas Configurações** (aba Stripe, hoje Pagamento, ADR 0019): interruptor, chave da API e conta de tesouraria de
   destino. Desligado por omissão; desligado, a opção não aparece e nada fala com o Stripe. Ligar exige
   chave e conta.
 - **Escolha na ficha da fatura.** No seletor de método, "Stripe" troca o formulário do recibo por um

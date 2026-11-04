@@ -18,6 +18,7 @@ let stripePayments: typeof import('./stripe-payments');
 let payments: typeof import('./payments');
 let treasury: typeof import('./treasury');
 let secrets: typeof import('./secrets');
+let vinti4: typeof import('./vinti4');
 let accountId: number;
 
 const MONTH = '2026-07';
@@ -34,6 +35,7 @@ beforeAll(async () => {
   payments = await import('./payments');
   treasury = await import('./treasury');
   secrets = await import('./secrets');
+  vinti4 = await import('./vinti4');
 });
 
 beforeEach(() => {
@@ -49,7 +51,7 @@ beforeEach(() => {
   db.prepare('DELETE FROM services').run();
   db.prepare('DELETE FROM clients').run();
   db.prepare('DELETE FROM treasury_accounts').run();
-  db.prepare(`DELETE FROM app_settings WHERE key LIKE 'stripe%'`).run();
+  db.prepare(`DELETE FROM app_settings WHERE key LIKE 'stripe%' OR key LIKE 'vinti4%'`).run();
 
   const account = treasury.createAccount(db, { kind: 'banco', name: 'Stripe', openingDate: `${MONTH}-01` });
   if (!account.ok) throw new Error(account.error);
@@ -758,6 +760,82 @@ describe('link nos avisos', () => {
   });
 });
 
+
+describe('Vinti4 EasyLink (ADR 0019)', () => {
+  const EASYLINK = 'https://easylink.vinti4.cv/pay/abc123';
+  const linkFor = (paymentId: number) =>
+    (db.prepare(`SELECT ${vinti4.openPaymentLinkSql('py')} AS url FROM payments py WHERE py.id = ?`).get(paymentId) as { url: string | null }).url;
+  function enableVinti4() {
+    setSetting('vinti4Enabled', 'true');
+    setSetting('vinti4TreasuryAccountId', String(accountId));
+  }
+
+  test('só aceita links HTTPS de domínios do SISP', () => {
+    expect(vinti4.parseEasyLinkUrl(EASYLINK)).toBe(EASYLINK);
+    expect(vinti4.parseEasyLinkUrl(' https://vinti4.cv/x ')).toBe('https://vinti4.cv/x');
+    expect(vinti4.parseEasyLinkUrl('https://pay.sisp.cv/x')).toBe('https://pay.sisp.cv/x');
+    for (const bad of ['http://easylink.vinti4.cv/x', 'https://vinti4.cv.evil.com/x', 'https://evilvinti4.cv/x',
+      'https://user:pw@vinti4.cv/x', 'https://vinti4.cv:8443/x', 'javascript:alert(1)', 'vinti4.cv/x', '']) {
+      expect(vinti4.parseEasyLinkUrl(bad)).toBeNull();
+    }
+  });
+
+  test('desligado ou sem conta, recusa guardar', () => {
+    const { paymentId } = seed('V1');
+    expect(vinti4.setVinti4Link(db, paymentId, EASYLINK)).toMatchObject({ ok: false, status: 409 });
+    setSetting('vinti4Enabled', 'true');
+    expect(vinti4.setVinti4Link(db, paymentId, EASYLINK)).toMatchObject({ ok: false, status: 409 });
+  });
+
+  test('guarda pelo saldo e segue nos avisos até o saldo mudar', () => {
+    enableVinti4();
+    const { paymentId } = seed('V2');
+    expect(vinti4.setVinti4Link(db, paymentId, 'https://evil.example/x')).toMatchObject({ ok: false, status: 400 });
+    expect(vinti4.setVinti4Link(db, paymentId, EASYLINK)).toEqual({ ok: true, value: { url: EASYLINK, amountCve: 2500, current: true } });
+    expect(linkFor(paymentId)).toBe(EASYLINK);
+
+    payments.payPayment(db, paymentId, { paymentMethod: 'outro', accountId, amountCve: 1000, paymentDate: `${MONTH}-15` });
+    expect(linkFor(paymentId)).toBeNull();
+    expect(vinti4.vinti4LinkFor(db, paymentId)).toMatchObject({ amountCve: 2500, current: false });
+
+    // Substituído pelo novo saldo, volta a seguir.
+    expect(vinti4.setVinti4Link(db, paymentId, EASYLINK)).toMatchObject({ ok: true, value: { amountCve: 1500 } });
+    expect(linkFor(paymentId)).toBe(EASYLINK);
+
+    // Liquidada: nada a cobrar, nada a enviar, e não aceita link novo.
+    payments.payPayment(db, paymentId, { paymentMethod: 'outro', accountId, amountCve: 1500, paymentDate: `${MONTH}-16` });
+    expect(linkFor(paymentId)).toBeNull();
+    expect(vinti4.setVinti4Link(db, paymentId, EASYLINK)).toMatchObject({ ok: false, status: 409 });
+  });
+
+  test('prevalece sobre o Stripe e cede-lhe o lugar quando retirado ou desligado', async () => {
+    enableVinti4();
+    const stripe = fakeStripe();
+    const { paymentId } = seed('V3');
+    const stripeLink = await openLink(stripe, paymentId);
+    expect(linkFor(paymentId)).toBe(stripeLink.url);
+
+    vinti4.setVinti4Link(db, paymentId, EASYLINK);
+    expect(linkFor(paymentId)).toBe(EASYLINK);
+
+    setSetting('vinti4Enabled', 'false');
+    expect(linkFor(paymentId)).toBe(stripeLink.url);
+    setSetting('vinti4Enabled', 'true');
+
+    expect(vinti4.clearVinti4Link(db, paymentId)).toBe(true);
+    expect(linkFor(paymentId)).toBe(stripeLink.url);
+    expect(vinti4.vinti4LinkFor(db, paymentId)).toBeNull();
+  });
+
+  test('fatura anulada não leva o link', () => {
+    enableVinti4();
+    const { paymentId } = seed('V4');
+    vinti4.setVinti4Link(db, paymentId, EASYLINK);
+    db.prepare(`UPDATE payments SET status = 'cancelled' WHERE id = ?`).run(paymentId);
+    expect(linkFor(paymentId)).toBeNull();
+    expect(vinti4.vinti4LinkFor(db, paymentId)?.current).toBe(false);
+  });
+});
 
 describe('reserved identity and sale documents', () => {
   test.each(['system-client', 'sale-ticket'])('refuses Stripe for %s without local attempts or remote calls', async (kind) => {
