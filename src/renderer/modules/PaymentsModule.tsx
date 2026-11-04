@@ -4,6 +4,7 @@ import { BulkActionBar, Button, ColumnPicker, ErrorRetry, Field, FilterBar, Mess
 import { formatCve, formatPtMonth } from '../lib/format';
 import { authFetch } from '../lib/auth';
 import type { StripeState } from './payments/StripeLinkPanel';
+import type { Vinti4State } from './payments/Vinti4LinkPanel';
 import { SaleTicketDetailDialog } from './payments/SaleTicketDetailDialog';
 import { downloadAuthenticated, printAuthenticated, useAuthenticatedObjectUrl } from '../lib/download';
 import { paginateRows, sortByColumns, type SortState } from '../lib/listView';
@@ -108,6 +109,7 @@ export function PaymentsModule({
   const [receipts, setReceipts] = useState<PaymentReceipt[]>([]);
   const [clientCreditCve, setClientCreditCve] = useState(0);
   const [stripe, setStripe] = useState<StripeState>({ enabled: false, link: null });
+  const [vinti4, setVinti4] = useState<Vinti4State>({ enabled: false, accountId: null, link: null });
   const [voidTarget, setVoidTarget] = useState<PaymentReceipt | null>(null);
   const [voidReason, setVoidReason] = useState('');
   /** O diálogo de anular em modo reembolso Stripe; a password só existe aqui. */
@@ -283,7 +285,7 @@ export function PaymentsModule({
         receiptNumber: payment.receiptNumber,
         daysOverdue,
         suspensionDays: whatsappSuspensionNoticeDays,
-        paymentLink: payment.stripeLinkUrl
+        paymentLink: payment.paymentLinkUrl
       }
     );
   }
@@ -531,10 +533,11 @@ export function PaymentsModule({
         setClientCreditCve(0);
         return;
       }
-      const body = await response.json() as { receipts: PaymentReceipt[]; clientCreditCve: number; stripe?: StripeState };
+      const body = await response.json() as { receipts: PaymentReceipt[]; clientCreditCve: number; stripe?: StripeState; vinti4?: Vinti4State };
       setReceipts(body.receipts);
       setClientCreditCve(body.clientCreditCve);
       setStripe(body.stripe ?? { enabled: false, link: null });
+      setVinti4(body.vinti4 ?? { enabled: false, accountId: null, link: null });
     } catch {
       setReceipts([]);
       setClientCreditCve(0);
@@ -1135,6 +1138,11 @@ export function PaymentsModule({
           stripe={stripe}
           onStripeChanged={() => {
             // A lista também muda: a linha passa a trazer o link para os avisos.
+            void loadReceipts(selectedPayment.id);
+            void loadPayments().then((rows) => setSelectedPayment((current) => rows.find((item) => item.id === current?.id) || current));
+          }}
+          vinti4={vinti4}
+          onVinti4Changed={() => {
             void loadReceipts(selectedPayment.id);
             void loadPayments().then((rows) => setSelectedPayment((current) => rows.find((item) => item.id === current?.id) || current));
           }}

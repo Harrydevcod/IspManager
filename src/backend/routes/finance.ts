@@ -23,7 +23,8 @@ import {
 import { loadReceivables } from '../lib/receivables';
 import { createManualInvoice, manualInvoiceSchema } from '../lib/manual-invoice';
 import { MANUAL_INVOICE_PREFIX } from '../../shared/billing-period';
-import { ensurePaymentLink, latestStripeLink, openStripeLinkSql, readStripeConfig, refundableReceiptIds, refundStripeReceipt, stripeReceiptIds } from '../lib/stripe-payments';
+import { clearVinti4Link, openPaymentLinkSql, readVinti4Config, setVinti4Link, vinti4LinkFor } from '../lib/vinti4';
+import { ensurePaymentLink, latestStripeLink, readStripeConfig, refundableReceiptIds, refundStripeReceipt, stripeReceiptIds } from '../lib/stripe-payments';
 import {
   changePppoePassword,
   changeServiceStatus,
@@ -454,7 +455,7 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
           WHERE r.payment_id = py.id AND r.voided_at IS NULL
         ), 0) AS receivedCve,
         ${balanceSqlExpr('py')} AS balanceCve,
-        ${openStripeLinkSql('py')} AS stripeLinkUrl,
+        ${openPaymentLinkSql('py')} AS paymentLinkUrl,
         CASE
           WHEN py.status = 'cancelled'
             -- Espelha regenerateMonthlyPayment: só o serviço cancelado bloqueia.
@@ -687,7 +688,8 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       receipts: listPaymentReceipts(db, id),
       clientCreditCve: clientCreditBalance(db, row.clientId),
       // A ficha só oferece o Stripe quando ele está pronto a cobrar.
-      stripe: { enabled: readStripeConfig(db).ready, link: latestStripeLink(db, id), receiptIds: stripeReceiptIds(db, id), refundableReceiptIds: refundableReceiptIds(db, id) }
+      stripe: { enabled: readStripeConfig(db).ready, link: latestStripeLink(db, id), receiptIds: stripeReceiptIds(db, id), refundableReceiptIds: refundableReceiptIds(db, id) },
+      vinti4: (() => { const config = readVinti4Config(db); return { enabled: config.ready, accountId: config.accountId, link: vinti4LinkFor(db, id) }; })()
     };
   });
 
@@ -720,6 +722,53 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       metadata: { stripeInvoiceId: result.value.stripeInvoiceId, amountCve: result.value.amountCve }
     });
     return result.value;
+  });
+
+  /**
+   * Vinti4 por EasyLink (ADR 0019): o operador cria o link no Portal do
+   * Comerciante e cola-o aqui. Fica com o saldo atual; o recibo regista-se à
+   * mão quando o portal o mostrar pago.
+   */
+  app.put('/api/payments/:id/vinti4-link', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Pagamento invalido' });
+    }
+    const parsed = z.object({ url: z.string().min(1).max(2048) }).safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Cole o link EasyLink do Vinti4' });
+    }
+
+    const result = setVinti4Link(getSqliteDatabase(), id, parsed.data.url);
+    if (!result.ok) {
+      return reply.status(result.status).send({ error: result.error });
+    }
+
+    recordAudit(request, {
+      action: 'vinti4_link',
+      entityType: 'payment',
+      entityId: id,
+      summary: `Associou um link Vinti4 de ${result.value.amountCve} à fatura ${id}`,
+      metadata: { url: result.value.url, amountCve: result.value.amountCve }
+    });
+    return result.value;
+  });
+
+  app.delete('/api/payments/:id/vinti4-link', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Pagamento invalido' });
+    }
+    if (!clearVinti4Link(getSqliteDatabase(), id)) {
+      return reply.status(404).send({ error: 'Pagamento nao encontrado' });
+    }
+    recordAudit(request, {
+      action: 'vinti4_link_removed',
+      entityType: 'payment',
+      entityId: id,
+      summary: `Retirou o link Vinti4 da fatura ${id}`
+    });
+    return { ok: true };
   });
 
   app.post('/api/payments/:id/apply-credit', billingWrite, async (request, reply) => {

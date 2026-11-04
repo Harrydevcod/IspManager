@@ -197,6 +197,9 @@ export const payments = sqliteTable('payments', {
   receiptNumber: text('receipt_number'),
   receiptDate: text('receipt_date'),
   notes: text('notes'),
+  // EasyLink do Vinti4 colado pelo operador e o valor que cobra (0094, ADR 0019).
+  vinti4LinkUrl: text('vinti4_link_url'),
+  vinti4LinkAmountCve: real('vinti4_link_amount_cve'),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
 });

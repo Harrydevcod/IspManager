@@ -93,6 +93,9 @@ export type SettingsFormState = {
   stripeSecretKeyConfigured?: boolean;
   /** Id da conta de tesouraria como texto; '' = por escolher. */
   stripeTreasuryAccountId: string;
+  vinti4Enabled: boolean;
+  /** Id da conta onde o SISP deposita, como texto; '' = por escolher. */
+  vinti4TreasuryAccountId: string;
 };
 
 export type UpdateField = (field: keyof SettingsFormState, value: string) => void;

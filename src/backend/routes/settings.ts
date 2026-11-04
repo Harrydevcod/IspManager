@@ -170,7 +170,10 @@ const settingsSchema = z.object({
   stripeEnabled: strictOptionalBoolean,
   stripeSecretKey: z.string().max(255).optional().nullable(),
   // Conta de tesouraria onde o Stripe liquida; 0 = por escolher.
-  stripeTreasuryAccountId: z.coerce.number().int().min(0).optional().default(0)
+  stripeTreasuryAccountId: z.coerce.number().int().min(0).optional().default(0),
+  // Vinti4 por EasyLink, a via principal (ADR 0019); conta onde o SISP liquida.
+  vinti4Enabled: strictOptionalBoolean,
+  vinti4TreasuryAccountId: z.coerce.number().int().min(0).optional().default(0)
 });
 
 /**
@@ -267,7 +270,9 @@ const defaultSettings = {
   backupDir: '',
   stripeEnabled: false,
   stripeSecretKey: '',
-  stripeTreasuryAccountId: 0
+  stripeTreasuryAccountId: 0,
+  vinti4Enabled: false,
+  vinti4TreasuryAccountId: 0
 };
 
 type SettingKey = keyof typeof defaultSettings;
@@ -324,6 +329,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         || row.key === 'autoSuspensionMaxPerRun'
         || row.key === 'autoSuspensionMaxPercent'
         || row.key === 'stripeTreasuryAccountId'
+        || row.key === 'vinti4TreasuryAccountId'
       ) {
         const n = Number(row.value);
         settings[row.key] = Number.isFinite(n) ? n : defaultSettings[row.key];
@@ -335,7 +341,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         settings[row.key] = '';
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
-      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'smsAutoNoticesEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled' || row.key === 'autoSuspensionEnabled' || row.key === 'stripeEnabled') {
+      } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'smsAutoNoticesEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled' || row.key === 'autoSuspensionEnabled' || row.key === 'stripeEnabled' || row.key === 'vinti4Enabled') {
         settings[row.key] = row.value === 'true' || row.value === '1';
       } else if (row.key === 'bankAccounts') {
         try {
@@ -420,6 +426,9 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       if (!getAccount(db, parsed.data.stripeTreasuryAccountId)?.active) {
         return reply.status(400).send({ error: 'Para ativar o Stripe escolha a conta de tesouraria onde o dinheiro entra.' });
       }
+    }
+    if (parsed.data.vinti4Enabled && !getAccount(db, parsed.data.vinti4TreasuryAccountId)?.active) {
+      return reply.status(400).send({ error: 'Para ativar o Vinti4 escolha a conta de tesouraria onde o SISP deposita.' });
     }
 
     const save = db.prepare(`

@@ -9,6 +9,7 @@ import { METHOD_LABELS, ReceiptsSection } from './ReceiptsSection';
 import { AccountSelect } from '../treasury/AccountSelect';
 import { isManualInvoiceReference, referenceMonthLabel } from '../../../shared/billing-period';
 import { STRIPE_LINK_LABEL, StripeLinkPanel, type StripeState } from './StripeLinkPanel';
+import { Vinti4LinkPanel, type Vinti4State } from './Vinti4LinkPanel';
 
 export type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
 export type PaymentActionMode = 'pay' | 'cancel' | 'whatsapp';
@@ -51,6 +52,9 @@ type PaymentDetailDialogProps = {
   /** Stripe como via de pagamento; ausente ou desligado, a opção não aparece. */
   stripe?: StripeState;
   onStripeChanged?: () => void;
+  /** Vinti4 por EasyLink, a via principal; ausente ou desligado, a opção não aparece. */
+  vinti4?: Vinti4State;
+  onVinti4Changed?: () => void;
   previewDoc: { objectUrl: string | null; error: boolean };
   previewDocType: 'invoice' | 'receipt';
   whatsappMessage: string;
@@ -93,6 +97,8 @@ export function PaymentDetailDialog({
   clientCreditCve,
   stripe,
   onStripeChanged = () => undefined,
+  vinti4,
+  onVinti4Changed = () => undefined,
   previewDoc,
   previewDocType,
   whatsappMessage,
@@ -123,7 +129,11 @@ export function PaymentDetailDialog({
   // Via de pagamento, não método de recibo: escolhê-lo troca o formulário pelo
   // link, e o recibo (que entra como "outro") só nasce quando o Stripe confirmar.
   const [viaStripe, setViaStripe] = useState(false);
+  // O Vinti4 não troca o formulário: junta o link, e o recibo regista-se à mão
+  // (método "outro", conta do Vinti4) quando o portal o mostrar pago.
+  const [viaVinti4, setViaVinti4] = useState(false);
   const stripeLink = stripe?.link ?? null;
+  const vinti4Link = vinti4?.link ?? null;
   return (
     <Dialog
       open
@@ -229,16 +239,24 @@ export function PaymentDetailDialog({
               excesso fica como crédito do cliente. */}
           <Select
             label="Metodo"
-            value={viaStripe ? 'stripe' : payMethod}
+            value={viaStripe ? 'stripe' : viaVinti4 ? 'vinti4' : payMethod}
             onChange={(event) => {
-              setViaStripe(event.target.value === 'stripe');
-              if (event.target.value !== 'stripe') onPayMethodChange(event.target.value as PaymentMethod);
+              const via = event.target.value;
+              setViaStripe(via === 'stripe');
+              setViaVinti4(via === 'vinti4');
+              if (via === 'vinti4') {
+                onPayMethodChange('outro');
+                if (vinti4?.accountId) onPayAccountChange(String(vinti4.accountId));
+              } else if (via !== 'stripe') {
+                onPayMethodChange(via as PaymentMethod);
+              }
             }}
             disabled={submitting}
           >
             <option value="numerario">Numerario</option>
             <option value="transferencia">Transferencia</option>
             <option value="outro">Outro</option>
+            {vinti4?.enabled && <option value="vinti4">Vinti4 (EasyLink)</option>}
             {stripe?.enabled && <option value="stripe">Stripe (link de pagamento)</option>}
           </Select>
           {viaStripe ? (
@@ -263,6 +281,15 @@ export function PaymentDetailDialog({
           />
           <AccountSelect purpose={payMethod} value={payAccountId} onChange={onPayAccountChange} disabled={submitting} />
           <Field label="Data" type="date" value={payDate} onChange={(event) => onPayDateChange(event.target.value)} max={todayIso()} disabled={submitting} required />
+          {viaVinti4 && (
+            <Vinti4LinkPanel
+              paymentId={payment.id}
+              balanceCve={payment.balanceCve}
+              link={vinti4Link}
+              disabled={submitting}
+              onChanged={onVinti4Changed}
+            />
+          )}
           {Number(payAmount) > payment.balanceCve && (
             <Message>
               {formatCve(Number(payAmount) - payment.balanceCve)} acima do saldo ficam como crédito do cliente.
@@ -461,6 +488,7 @@ export function PaymentDetailDialog({
         <div><dt>Metodo</dt><dd>{payment.paymentMethod ? (METHOD_LABELS[payment.paymentMethod] || payment.paymentMethod) : '-'}</dd></div>
         <div><dt>Data pagamento</dt><dd>{formatPtDate(payment.paymentDate)}</dd></div>
         <div><dt>Estado</dt><dd>{paymentStatusLabel(effectivePaymentStatus(payment))}</dd></div>
+        {vinti4Link && <div><dt>Vinti4</dt><dd>{vinti4Link.current ? 'Link enviado' : 'Link com valor desatualizado'}</dd></div>}
         {stripeLink && <div><dt>Stripe</dt><dd>{STRIPE_LINK_LABEL[stripeLink.status]}</dd></div>}
       </dl>
       {stripeLink?.status === 'review' && (

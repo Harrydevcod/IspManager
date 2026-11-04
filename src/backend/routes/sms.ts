@@ -7,7 +7,7 @@ import { canStoreSecrets, readSecret, writeSecret } from '../lib/secrets';
 import { confirmSessionPassword, requireRole } from './auth';
 import { discoverCompanionHosts, enqueueSmsNotification, findPairedCompanion, verifyCompanionPairing } from '../lib/sms-outbox';
 import { readCompanionPresence, requestCompanionSnapshotPush } from '../lib/companion-sync';
-import { openStripeLinkSql } from '../lib/stripe-payments';
+import { openPaymentLinkSql } from '../lib/vinti4';
 import { SMS_REPORT_TIMEZONE, smsReportMonthUtcRange } from '../../shared/sms-report';
 import { normalizeSmsPhone, renderSmsTemplate } from '../../shared/sms';
 import { smsTemplateFor } from '../lib/sms-notices';
@@ -174,7 +174,7 @@ export async function registerSmsRoutes(app: FastifyInstance) {
              py.amount_cve AS amountCve, py.due_date AS dueDate, py.invoice_number AS invoiceNumber,
              py.receipt_number AS receiptNumber, py.status, c.full_name AS fullName,
              c.client_code AS clientCode, c.phone,
-             ${openStripeLinkSql('py')} AS paymentLink
+             ${openPaymentLinkSql('py')} AS paymentLink
       FROM payments py JOIN clients c ON c.id = py.client_id
       WHERE py.id = ?
     `).get(id) as {
