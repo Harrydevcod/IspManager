@@ -20,54 +20,17 @@ const migration: Migration = {
       WHERE key = 'whatsappTemplate' AND value = 'Ola {nome}, somos da {empresa}. Entramos em contacto sobre o seu servico de internet.';
     UPDATE app_settings SET value = 'Caro cliente, esta é uma mensagem de teste da {empresa}. A ligação ao WhatsApp está a funcionar.', updated_at = datetime('now')
       WHERE key = 'whatsappTestTemplate' AND value = 'Teste WhatsApp - {empresa}. Ola {nome}, esta mensagem confirma que a integracao WhatsApp esta ativa.';
-    UPDATE app_settings SET value = 'Caro cliente,
-
-A sua fatura {fatura} de {mes} já está disponível.
-Valor: {valor}
-Vencimento: {vencimento}
-{link}
-
-Obrigado pela preferência.
-{empresa}', updated_at = datetime('now')
+    UPDATE app_settings SET value = 'Caro cliente,' || char(10) || '' || char(10) || 'A sua fatura {fatura} de {mes} já está disponível.' || char(10) || 'Valor: {valor}' || char(10) || 'Vencimento: {vencimento}' || char(10) || '{link}' || char(10) || '' || char(10) || 'Obrigado pela preferência.' || char(10) || '{empresa}', updated_at = datetime('now')
       WHERE key = 'whatsappInvoiceReadyTemplate' AND value = 'Ola {nome}, a sua fatura {fatura} de {mes} no valor de {valor} CVE ja esta pronta. Vencimento: {vencimento}. {empresa} {link}';
-    UPDATE app_settings SET value = 'Caro cliente,
-
-Confirmamos a receção do seu pagamento de {valor}, referente a {mes}. O recibo {recibo} já foi emitido.
-
-Obrigado pela confiança.
-{empresa}', updated_at = datetime('now')
+    UPDATE app_settings SET value = 'Caro cliente,' || char(10) || '' || char(10) || 'Confirmamos a receção do seu pagamento de {valor}, referente a {mes}. O recibo {recibo} já foi emitido.' || char(10) || '' || char(10) || 'Obrigado pela confiança.' || char(10) || '{empresa}', updated_at = datetime('now')
       WHERE key = 'whatsappReceiptTemplate' AND value = 'Ola {nome}, confirmamos o recebimento de {valor} CVE referente a {mes}. O seu recibo {recibo} foi emitido. Obrigado, {empresa}.';
-    UPDATE app_settings SET value = 'Caro cliente,
-
-Lembramos que a sua fatura {fatura} de {mes}, no valor de {valor}, vence a {vencimento}.
-{link}
-
-Se já efetuou o pagamento, agradecemos e pode ignorar esta mensagem.
-{empresa}', updated_at = datetime('now')
+    UPDATE app_settings SET value = 'Caro cliente,' || char(10) || '' || char(10) || 'Lembramos que a sua fatura {fatura} de {mes}, no valor de {valor}, vence a {vencimento}.' || char(10) || '{link}' || char(10) || '' || char(10) || 'Se já efetuou o pagamento, agradecemos e pode ignorar esta mensagem.' || char(10) || '{empresa}', updated_at = datetime('now')
       WHERE key = 'whatsappReminderTemplate' AND value = 'Ola {nome}, lembramos que a sua fatura {fatura} de {mes}, no valor de {valor} CVE, vence a {vencimento}. {empresa} {link}';
-    UPDATE app_settings SET value = 'Caro cliente,
-
-Ainda não registámos o pagamento da fatura {fatura} de {mes} ({valor}), com vencimento a {vencimento}. Pedimos a gentileza de regularizar assim que possível.
-{link}
-
-Se já pagou, por favor ignore esta mensagem. Para qualquer dúvida, estamos ao dispor.
-{empresa}', updated_at = datetime('now')
+    UPDATE app_settings SET value = 'Caro cliente,' || char(10) || '' || char(10) || 'Ainda não registámos o pagamento da fatura {fatura} de {mes} ({valor}), com vencimento a {vencimento}. Pedimos a gentileza de regularizar assim que possível.' || char(10) || '{link}' || char(10) || '' || char(10) || 'Se já pagou, por favor ignore esta mensagem. Para qualquer dúvida, estamos ao dispor.' || char(10) || '{empresa}', updated_at = datetime('now')
       WHERE key = 'whatsappOverdueTemplate' AND value = 'Ola {nome}, a sua fatura {fatura} de {mes}, no valor de {valor} CVE, esta em atraso desde {vencimento}. Por favor regularize para evitar constrangimentos. {empresa} {link}';
-    UPDATE app_settings SET value = 'Caro cliente,
-
-A fatura {fatura} de {mes} ({valor}) continua por regularizar há {dias_atraso}. Para manter o seu serviço sem interrupções, pedimos que efetue o pagamento com a maior brevidade.
-{link}
-
-Se precisar de combinar outra forma de pagamento, fale connosco.
-{empresa}', updated_at = datetime('now')
+    UPDATE app_settings SET value = 'Caro cliente,' || char(10) || '' || char(10) || 'A fatura {fatura} de {mes} ({valor}) continua por regularizar há {dias_atraso}. Para manter o seu serviço sem interrupções, pedimos que efetue o pagamento com a maior brevidade.' || char(10) || '{link}' || char(10) || '' || char(10) || 'Se precisar de combinar outra forma de pagamento, fale connosco.' || char(10) || '{empresa}', updated_at = datetime('now')
       WHERE key = 'whatsappWarningTemplate' AND value = 'Ola {nome}, a sua fatura {fatura} de {mes} continua por regularizar ha {dias_atraso} dia(s). Pedimos que efetue o pagamento o quanto antes para manter o servico ativo. {empresa} {link}';
-    UPDATE app_settings SET value = 'Caro cliente,
-
-A fatura {fatura} ({valor}) está em atraso há {dias_atraso}. Sem regularização, o serviço de internet será suspenso a {data_suspensao}.
-{link}
-
-Se já pagou, ignore esta mensagem. Estamos disponíveis para ajudar.
-{empresa}', updated_at = datetime('now')
+    UPDATE app_settings SET value = 'Caro cliente,' || char(10) || '' || char(10) || 'A fatura {fatura} ({valor}) está em atraso há {dias_atraso}. Sem regularização, o serviço de internet será suspenso a {data_suspensao}.' || char(10) || '{link}' || char(10) || '' || char(10) || 'Se já pagou, ignore esta mensagem. Estamos disponíveis para ajudar.' || char(10) || '{empresa}', updated_at = datetime('now')
       WHERE key = 'whatsappSuspensionTemplate' AND value = 'Ola {nome}, a sua fatura {fatura} continua em atraso ha {dias_atraso} dia(s). O servico podera ser suspenso apos {dias_suspensao} dia(s) de atraso. Regularize para evitar corte. {empresa} {link}';
     UPDATE app_settings SET value = 'Caro cliente, a sua fatura {fatura} de {mes}, no valor de {valor}, foi emitida. Vencimento: {vencimento}. Obrigado, {empresa}', updated_at = datetime('now')
       WHERE key = 'smsInvoiceIssuedTemplate' AND value = 'Ola {nome}, a sua fatura {fatura} de {mes}, no valor de {valor} CVE, foi emitida. Vencimento: {vencimento}. {empresa}';

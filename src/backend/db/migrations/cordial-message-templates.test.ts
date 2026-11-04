@@ -21,7 +21,8 @@ test('0093 troca os modelos nunca editados e só limpa os personalizados', () =>
   runMigrations(db); runMigrations(db);
 
   const value = (key: string) => (db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as { value: string }).value;
-  expect(value('whatsappOverdueTemplate')).toMatch(/^Caro cliente,/);
+  // char(10) no SQL: quebra de linha real, sem \r de um checkout CRLF.
+  expect(value('whatsappOverdueTemplate')).toMatch(/^Caro cliente,\n\n[^\r]+\{empresa\}$/);
   expect(value('smsPaymentOverdueTemplate')).toMatch(/^Caro cliente,/);
   expect(value('whatsappSuspensionTemplate')).toBe('Bom dia {nome}: deve {valor} há {dias_atraso}, corte em {dias_suspensao}.');
   expect(value('companyName')).toBe('Valor {valor} CVE');
