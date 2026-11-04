@@ -7006,3 +7006,13 @@ button.danger:disabled {
     padding-block: var(--space-3) var(--space-4);
   }
 }
+
+/* Modelo de mensagem + "Usar texto recomendado" alinhado à direita, sob o campo. */
+.settings-form .template-field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.settings-form .template-field > .btn {
+  justify-self: end;
+}

@@ -7,6 +7,7 @@
  */
 export function expandPaymentLink(template: string, url: string | null | undefined): string {
   return template
-    .replace(/([ \t]*)\{link\}/gi, (_match, space: string) => (url ? `${space}Pague online: ${url}` : ''))
+    // Sem link, a linha própria do `{link}` (modelos com várias linhas) também sai.
+    .replace(/(\r?\n?[ \t]*)\{link\}/gi, (_match, space: string) => (url ? `${space}Pague online: ${url}` : ''))
     .trimEnd();
 }

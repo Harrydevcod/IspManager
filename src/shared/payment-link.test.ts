@@ -20,9 +20,11 @@ describe('variável {link}', () => {
     const withLink = renderWhatsappTemplate(fallbackWhatsappOverdueTemplate, { ...client, paymentLink: URL }, 'ISPM');
     const without = renderWhatsappTemplate(fallbackWhatsappOverdueTemplate, client, 'ISPM');
 
-    expect(withLink.endsWith(`ISPM Pague online: ${URL}`)).toBe(true);
+    expect(withLink).toContain(`\nPague online: ${URL}\n`);
     expect(without.endsWith('ISPM')).toBe(true);
     expect(without).not.toContain('{link}');
+    // A linha própria do link sai inteira: nada de linha em branco a mais.
+    expect(without).toContain('possível.\n\nSe já pagou');
   });
 
   test('no SMS a variável funciona quando o modelo a pede', () => {

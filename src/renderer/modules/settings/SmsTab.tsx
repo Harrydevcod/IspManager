@@ -1,7 +1,14 @@
 import { QrCode, RotateCcw, Unlink, Wifi } from 'lucide-react';
-import { Button, Field, Textarea, Toggle } from '../../components';
+import { Button, Field, Toggle } from '../../components';
 import type { SmsMonthlyReport, SmsStatus } from '../../types';
-import { templateRows, type SettingsFormState, type ToggleField, type UpdateField } from './settingsForm';
+import { TemplateField } from './TemplateField';
+import {
+  fallbackSmsInvoiceIssuedTemplate,
+  fallbackSmsPaymentOverdueTemplate,
+  fallbackSmsReceiptConfirmedTemplate,
+  fallbackSmsSuspensionNoticeTemplate
+} from '../../../shared/sms';
+import { type SettingsFormState, type ToggleField, type UpdateField } from './settingsForm';
 import { describeSmsPresence } from './smsPresence';
 
 type SmsPairing = { baseUrl: string; deviceName: string };
@@ -194,33 +201,34 @@ export function SmsTab({
         value={form.smsRetryGraceMinutes}
         onChange={(event) => onUpdate('smsRetryGraceMinutes', event.target.value)}
       />
-      <Textarea
-        className="whatsapp-template-field"
-        label="SMS — emissao de fatura"
-        rows={templateRows(form.smsInvoiceIssuedTemplate)}
+      <TemplateField
+        field="smsInvoiceIssuedTemplate"
+        label="SMS — emissão de fatura"
+        hint="Sem acentos (á, ã, ç, õ): com eles cada SMS passa de 160 para 70 caracteres e custa 2 a 3 mensagens."
         value={form.smsInvoiceIssuedTemplate}
-        onChange={(event) => onUpdate('smsInvoiceIssuedTemplate', event.target.value)}
+        recommended={fallbackSmsInvoiceIssuedTemplate}
+        onUpdate={onUpdate}
       />
-      <Textarea
-        className="whatsapp-template-field"
-        label="SMS — confirmacao de recibo"
-        rows={templateRows(form.smsReceiptConfirmedTemplate)}
+      <TemplateField
+        field="smsReceiptConfirmedTemplate"
+        label="SMS — confirmação de recibo"
         value={form.smsReceiptConfirmedTemplate}
-        onChange={(event) => onUpdate('smsReceiptConfirmedTemplate', event.target.value)}
+        recommended={fallbackSmsReceiptConfirmedTemplate}
+        onUpdate={onUpdate}
       />
-      <Textarea
-        className="whatsapp-template-field"
+      <TemplateField
+        field="smsPaymentOverdueTemplate"
         label="SMS — atraso de pagamento"
-        rows={templateRows(form.smsPaymentOverdueTemplate)}
         value={form.smsPaymentOverdueTemplate}
-        onChange={(event) => onUpdate('smsPaymentOverdueTemplate', event.target.value)}
+        recommended={fallbackSmsPaymentOverdueTemplate}
+        onUpdate={onUpdate}
       />
-      <Textarea
-        className="whatsapp-template-field"
-        label="SMS — aviso de suspensao"
-        rows={templateRows(form.smsSuspensionNoticeTemplate)}
+      <TemplateField
+        field="smsSuspensionNoticeTemplate"
+        label="SMS — aviso de suspensão"
         value={form.smsSuspensionNoticeTemplate}
-        onChange={(event) => onUpdate('smsSuspensionNoticeTemplate', event.target.value)}
+        recommended={fallbackSmsSuspensionNoticeTemplate}
+        onUpdate={onUpdate}
       />
     </>
   );

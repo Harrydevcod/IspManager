@@ -101,5 +101,6 @@ export type ToggleField = (field: keyof SettingsFormState, value: boolean) => vo
 export function templateRows(value: string) {
   const explicitLines = value.split('\n').length;
   const wrappedLines = Math.ceil(value.length / 92);
-  return Math.min(4, Math.max(2, explicitLines, wrappedLines));
+  // Os modelos por omissão têm várias linhas: mostram-se inteiros, até 10.
+  return Math.min(10, Math.max(2, explicitLines, wrappedLines));
 }

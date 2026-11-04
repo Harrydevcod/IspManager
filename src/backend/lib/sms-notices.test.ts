@@ -106,7 +106,7 @@ describe('runSmsOverdueNoticesIfDue', () => {
     expect(rows.every((r) => r.status === 'pending_dispatch')).toBe(true);
     expect(rows[1].toPhone).toBe('+2389920000');
     expect(rows[1].body).toContain('FT-LATE');
-    expect(rows[1].body).toContain('3 dia(s)');
+    expect(rows[1].body).toContain('venceu a 01-11-2026');
   });
 
   test('runs once per day', () => {

@@ -1,6 +1,15 @@
-import { Button, Field, Message, SecretField, Select, Textarea, Toggle, type SecretDraft } from '../../components';
+import { Button, Field, Message, SecretField, Select, Toggle, type SecretDraft } from '../../components';
 import { normalizeWhatsappPhone } from '../../lib/whatsapp';
-import { templateRows, type SettingsFormState, type ToggleField, type UpdateField } from './settingsForm';
+import { TemplateField } from './TemplateField';
+import {
+  fallbackWhatsappInvoiceReadyTemplate,
+  fallbackWhatsappOverdueTemplate,
+  fallbackWhatsappReceiptTemplate,
+  fallbackWhatsappSuspensionTemplate,
+  fallbackWhatsappTemplate,
+  fallbackWhatsappTestTemplate
+} from '../../../shared/whatsapp';
+import { type SettingsFormState, type ToggleField, type UpdateField } from './settingsForm';
 
 type TestMessage = { tone: 'neutral' | 'success' | 'error'; text: string } | null;
 
@@ -87,12 +96,12 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
         value={form.noticeCooldownDays}
         onChange={(event) => onUpdate('noticeCooldownDays', event.target.value)}
       />
-      <Textarea
-        className="whatsapp-template-field"
+      <TemplateField
+        field="whatsappTestTemplate"
         label="Mensagem de teste"
-        rows={templateRows(form.whatsappTestTemplate)}
         value={form.whatsappTestTemplate}
-        onChange={(event) => onUpdate('whatsappTestTemplate', event.target.value)}
+        recommended={fallbackWhatsappTestTemplate}
+        onUpdate={onUpdate}
       />
       <Field
         label="Telefone para teste"
@@ -115,40 +124,41 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
           {testSending ? 'A enviar teste...' : 'Enviar teste'}
         </Button>
       </div>
-      <Textarea
-        className="whatsapp-template-field"
+      <TemplateField
+        field="whatsappTemplate"
         label="Mensagem geral WhatsApp"
-        rows={templateRows(form.whatsappTemplate)}
+        hint="Variáveis: {nome} {codigo} {empresa} {fatura} {recibo} {valor} (2.500$00) {mes} (por extenso) {vencimento} {dias_atraso} {data_suspensao} {link}."
         value={form.whatsappTemplate}
-        onChange={(event) => onUpdate('whatsappTemplate', event.target.value)}
+        recommended={fallbackWhatsappTemplate}
+        onUpdate={onUpdate}
       />
-      <Textarea
-        className="whatsapp-template-field"
-        label="Fatura do mes pronta"
-        rows={templateRows(form.whatsappInvoiceReadyTemplate)}
+      <TemplateField
+        field="whatsappInvoiceReadyTemplate"
+        label="Fatura do mês pronta"
         value={form.whatsappInvoiceReadyTemplate}
-        onChange={(event) => onUpdate('whatsappInvoiceReadyTemplate', event.target.value)}
+        recommended={fallbackWhatsappInvoiceReadyTemplate}
+        onUpdate={onUpdate}
       />
-      <Textarea
-        className="whatsapp-template-field"
-        label="Confirmacao de recebimento e recibo"
-        rows={templateRows(form.whatsappReceiptTemplate)}
+      <TemplateField
+        field="whatsappReceiptTemplate"
+        label="Confirmação de recebimento e recibo"
         value={form.whatsappReceiptTemplate}
-        onChange={(event) => onUpdate('whatsappReceiptTemplate', event.target.value)}
+        recommended={fallbackWhatsappReceiptTemplate}
+        onUpdate={onUpdate}
       />
-      <Textarea
-        className="whatsapp-template-field"
+      <TemplateField
+        field="whatsappOverdueTemplate"
         label="Fatura em atraso"
-        rows={templateRows(form.whatsappOverdueTemplate)}
         value={form.whatsappOverdueTemplate}
-        onChange={(event) => onUpdate('whatsappOverdueTemplate', event.target.value)}
+        recommended={fallbackWhatsappOverdueTemplate}
+        onUpdate={onUpdate}
       />
-      <Textarea
-        className="whatsapp-template-field"
-        label="Aviso de corte/suspensao"
-        rows={templateRows(form.whatsappSuspensionTemplate)}
+      <TemplateField
+        field="whatsappSuspensionTemplate"
+        label="Aviso de suspensão"
         value={form.whatsappSuspensionTemplate}
-        onChange={(event) => onUpdate('whatsappSuspensionTemplate', event.target.value)}
+        recommended={fallbackWhatsappSuspensionTemplate}
+        onUpdate={onUpdate}
       />
     </>
   );

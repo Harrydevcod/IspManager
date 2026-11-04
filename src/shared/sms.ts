@@ -1,12 +1,13 @@
-import { formatPtDate, formatPtMonth } from './date';
-import { expandPaymentLink } from './payment-link';
+import { renderMessageTemplate } from './message-template';
 
 export type SmsEventType = 'invoice_issued' | 'receipt_confirmed' | 'payment_overdue' | 'suspension_notice';
 
-export const fallbackSmsInvoiceIssuedTemplate = 'Ola {nome}, a sua fatura {fatura} de {mes}, no valor de {valor} CVE, foi emitida. Vencimento: {vencimento}. {empresa}';
-export const fallbackSmsReceiptConfirmedTemplate = 'Ola {nome}, confirmamos o recebimento de {valor} CVE referente a {mes}. Recibo {recibo}. Obrigado, {empresa}.';
-export const fallbackSmsPaymentOverdueTemplate = 'Ola {nome}, a fatura {fatura} esta em atraso ha {dias_atraso} dia(s). Valor: {valor} CVE. Regularize para evitar constrangimentos. {empresa}';
-export const fallbackSmsSuspensionNoticeTemplate = 'Ola {nome}, a fatura {fatura} continua em atraso. O servico podera ser suspenso apos {dias_suspensao} dia(s) de atraso. {empresa}';
+// GSM-7 de propósito: sem á/ã/ç/õ cada aviso cabe em 1 SMS (160 caracteres);
+// com eles passa a UCS-2 (70 por parte). Por isso "Caso tenha pago" e não "Se já pagou".
+export const fallbackSmsInvoiceIssuedTemplate = 'Caro cliente, a sua fatura {fatura} de {mes}, no valor de {valor}, foi emitida. Vencimento: {vencimento}. Obrigado, {empresa}';
+export const fallbackSmsReceiptConfirmedTemplate = 'Caro cliente, confirmamos o pagamento de {valor} referente a {mes}. Recibo {recibo}. Muito obrigado, {empresa}';
+export const fallbackSmsPaymentOverdueTemplate = 'Caro cliente, a fatura {fatura} de {mes} ({valor}) venceu a {vencimento}. Pedimos que regularize. Caso tenha pago, ignore. {empresa}';
+export const fallbackSmsSuspensionNoticeTemplate = 'Caro cliente, a fatura {fatura} ({valor}) continua por pagar. A internet pode ser suspensa a {data_suspensao}. Caso tenha pago, ignore. {empresa}';
 
 export type SmsTemplateData = {
   fullName: string;
@@ -35,20 +36,5 @@ export function normalizeSmsPhone(phone: string): string {
 }
 
 export function renderSmsTemplate(template: string, data: SmsTemplateData, companyName: string): string {
-  const values: Record<string, string> = {
-    nome: data.fullName || '-',
-    cliente: data.fullName || '-',
-    codigo: data.clientCode || '-',
-    telefone: data.phone || '',
-    empresa: companyName || 'ISPM',
-    valor: data.amountCve == null ? '-' : String(data.amountCve),
-    vencimento: formatPtDate(data.dueDate),
-    mes: formatPtMonth(data.referenceMonth),
-    fatura: data.invoiceNumber || '-',
-    recibo: data.receiptNumber || '-',
-    dias_atraso: data.daysOverdue == null ? '-' : String(data.daysOverdue),
-    dias_suspensao: data.suspensionDays == null ? '-' : String(data.suspensionDays)
-  };
-
-  return expandPaymentLink(template, data.paymentLink).replace(/\{([a-z_]+)\}/gi, (token, key: string) => values[key.toLowerCase()] ?? token);
+  return renderMessageTemplate(template, data, companyName, { gsm7: true });
 }

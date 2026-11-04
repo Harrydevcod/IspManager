@@ -5,6 +5,13 @@ import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
 import { readSecret, writeSecret } from '../lib/secrets';
+import {
+  fallbackWhatsappInvoiceReadyTemplate,
+  fallbackWhatsappOverdueTemplate,
+  fallbackWhatsappReceiptTemplate,
+  fallbackWhatsappTemplate,
+  fallbackWhatsappTestTemplate
+} from '../../shared/whatsapp';
 
 let app: FastifyInstance;
 let db: Database.Database;
@@ -148,11 +155,11 @@ describe('settings routes', () => {
       currencyCode: 'CVE',
       invoicePrefix: 'FT',
       receiptPrefix: 'RC',
-      whatsappTemplate: 'Ola {nome}, somos da {empresa}. Entramos em contacto sobre o seu servico de internet.',
-      whatsappTestTemplate: 'Teste WhatsApp - {empresa}. Ola {nome}, esta mensagem confirma que a integracao WhatsApp esta ativa.',
-      whatsappInvoiceReadyTemplate: 'Ola {nome}, a sua fatura {fatura} de {mes} no valor de {valor} CVE ja esta pronta. Vencimento: {vencimento}. {empresa} {link}',
-      whatsappReceiptTemplate: 'Ola {nome}, confirmamos o recebimento de {valor} CVE referente a {mes}. O seu recibo {recibo} foi emitido. Obrigado, {empresa}.',
-      whatsappOverdueTemplate: 'Ola {nome}, a sua fatura {fatura} de {mes}, no valor de {valor} CVE, esta em atraso desde {vencimento}. Por favor regularize para evitar constrangimentos. {empresa} {link}',
+      whatsappTemplate: fallbackWhatsappTemplate,
+      whatsappTestTemplate: fallbackWhatsappTestTemplate,
+      whatsappInvoiceReadyTemplate: fallbackWhatsappInvoiceReadyTemplate,
+      whatsappReceiptTemplate: fallbackWhatsappReceiptTemplate,
+      whatsappOverdueTemplate: fallbackWhatsappOverdueTemplate,
       whatsappSuspensionNoticeDays: 15,
       ultraMsgInstanceId: '',
       ultraMsgToken: ''
@@ -308,7 +315,7 @@ describe('whatsapp routes', () => {
     });
     expect(overdue.statusCode).toBe(200);
     const overdueBody = (fetchMock.mock.calls[0][1]?.body as URLSearchParams).get('body') || '';
-    expect(overdueBody).toContain('Atraso Cliente WhatsApp FT-001 2500 04-2026');
+    expect(overdueBody).toContain('Atraso Cliente WhatsApp FT-001 2.500$00 abril de 2026');
     expect(overdueBody).toMatch(/\d{2}-\d{2}-\d{4} ISP CV$/);
 
     fetchMock.mockClear();
@@ -318,7 +325,7 @@ describe('whatsapp routes', () => {
       payload: { dryRun: false, noticeType: 'suspension' }
     });
     expect(suspension.statusCode).toBe(200);
-    expect((fetchMock.mock.calls[0][1]?.body as URLSearchParams).get('body')).toContain('Corte Cliente WhatsApp 12/10 FT-001');
+    expect((fetchMock.mock.calls[0][1]?.body as URLSearchParams).get('body')).toContain('Corte Cliente WhatsApp 12 dias/10 dias FT-001');
 
     fetchMock.mockRestore();
   });
