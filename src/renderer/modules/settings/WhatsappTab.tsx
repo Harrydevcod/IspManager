@@ -118,20 +118,21 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
       <Textarea
         className="whatsapp-template-field"
         label="Mensagem geral WhatsApp"
+        hint="Variáveis: {nome} {codigo} {empresa} {fatura} {recibo} {valor} (2.500$00) {mes} (por extenso) {vencimento} {dias_atraso} {data_suspensao} {link}."
         rows={templateRows(form.whatsappTemplate)}
         value={form.whatsappTemplate}
         onChange={(event) => onUpdate('whatsappTemplate', event.target.value)}
       />
       <Textarea
         className="whatsapp-template-field"
-        label="Fatura do mes pronta"
+        label="Fatura do mês pronta"
         rows={templateRows(form.whatsappInvoiceReadyTemplate)}
         value={form.whatsappInvoiceReadyTemplate}
         onChange={(event) => onUpdate('whatsappInvoiceReadyTemplate', event.target.value)}
       />
       <Textarea
         className="whatsapp-template-field"
-        label="Confirmacao de recebimento e recibo"
+        label="Confirmação de recebimento e recibo"
         rows={templateRows(form.whatsappReceiptTemplate)}
         value={form.whatsappReceiptTemplate}
         onChange={(event) => onUpdate('whatsappReceiptTemplate', event.target.value)}
@@ -145,7 +146,7 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
       />
       <Textarea
         className="whatsapp-template-field"
-        label="Aviso de corte/suspensao"
+        label="Aviso de suspensão"
         rows={templateRows(form.whatsappSuspensionTemplate)}
         value={form.whatsappSuspensionTemplate}
         onChange={(event) => onUpdate('whatsappSuspensionTemplate', event.target.value)}

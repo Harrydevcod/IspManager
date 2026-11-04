@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   fallbackSmsInvoiceIssuedTemplate,
   fallbackSmsPaymentOverdueTemplate,
+  fallbackSmsReceiptConfirmedTemplate,
   fallbackSmsSuspensionNoticeTemplate,
   normalizeSmsPhone,
   renderSmsTemplate
@@ -45,7 +46,7 @@ describe('renderSmsTemplate', () => {
       dueDate: '2026-06-10',
       referenceMonth: '2026-06',
       invoiceNumber: 'FT-2026-001'
-    }, 'ISPM')).toBe('Ola Ana Lopes, a sua fatura FT-2026-001 de 06-2026, no valor de 4500 CVE, foi emitida. Vencimento: 10-06-2026. ISPM');
+    }, 'ISPM')).toBe('Caro cliente, a sua fatura FT-2026-001 de junho de 2026, no valor de 4.500$00, foi emitida. Vencimento: 10-06-2026. Obrigado, ISPM');
   });
 
   test('renders overdue days', () => {
@@ -58,7 +59,7 @@ describe('renderSmsTemplate', () => {
       invoiceNumber: 'FT-2026-001',
       daysOverdue: 7,
       suspensionDays: 15
-    }, 'ISPM')).toBe('Ola Ana Lopes, a fatura FT-2026-001 esta em atraso ha 7 dia(s). Valor: 4500 CVE. Regularize para evitar constrangimentos. ISPM');
+    }, 'ISPM')).toBe('Caro cliente, a fatura FT-2026-001 de junho de 2026 (4.500$00) venceu a 10-06-2026. Pedimos que regularize. Caso tenha pago, ignore. ISPM');
   });
 
   test('renders suspension threshold', () => {
@@ -66,11 +67,39 @@ describe('renderSmsTemplate', () => {
       fullName: 'Ana Lopes',
       clientCode: 'CLT-001',
       invoiceNumber: 'FT-2026-001',
+      amountCve: 4500,
+      dueDate: '2026-06-10',
       suspensionDays: 15
     }, 'ISPM');
 
-    expect(message).toBe('Ola Ana Lopes, a fatura FT-2026-001 continua em atraso. O servico podera ser suspenso apos 15 dia(s) de atraso. ISPM');
+    expect(message).toBe('Caro cliente, a fatura FT-2026-001 (4.500$00) continua por pagar. A internet pode ser suspensa a 25-06-2026. Caso tenha pago, ignore. ISPM');
     expect(message).not.toMatch(/\{[^}]+\}/);
+  });
+
+  // GSM-7 básico (3GPP TS 23.038), sem a tabela de extensão.
+  const GSM7 = new Set('@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà');
+
+  test('cada modelo por omissão cabe num só SMS GSM-7, no mês mais longo e com nomes longos', () => {
+    const data = {
+      fullName: 'Maria da Graça Lopes Fortes',
+      clientCode: 'CLT-00123',
+      amountCve: 12500,
+      dueDate: '2026-09-10',
+      referenceMonth: '2026-09',
+      invoiceNumber: 'FT-2026-00123',
+      receiptNumber: 'RC-2026-00123',
+      daysOverdue: 30,
+      suspensionDays: 15
+    };
+    for (const template of [fallbackSmsInvoiceIssuedTemplate, fallbackSmsReceiptConfirmedTemplate, fallbackSmsPaymentOverdueTemplate, fallbackSmsSuspensionNoticeTemplate]) {
+      const message = renderSmsTemplate(template, data, 'Novatech CV');
+      expect([...message].filter((char) => !GSM7.has(char))).toEqual([]);
+      expect(message.length).toBeLessThanOrEqual(160);
+    }
+  });
+
+  test('o mês sai por extenso e, no SMS, sem o ç de março', () => {
+    expect(renderSmsTemplate('{mes}', { fullName: 'A', clientCode: null, referenceMonth: '2026-03' }, 'ISPM')).toBe('marco de 2026');
   });
 
   test('does not re-process placeholders introduced by data values', () => {

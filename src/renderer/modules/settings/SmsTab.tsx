@@ -196,14 +196,15 @@ export function SmsTab({
       />
       <Textarea
         className="whatsapp-template-field"
-        label="SMS — emissao de fatura"
+        label="SMS — emissão de fatura"
+        hint="Sem acentos (á, ã, ç, õ): com eles cada SMS passa de 160 para 70 caracteres e custa 2 a 3 mensagens."
         rows={templateRows(form.smsInvoiceIssuedTemplate)}
         value={form.smsInvoiceIssuedTemplate}
         onChange={(event) => onUpdate('smsInvoiceIssuedTemplate', event.target.value)}
       />
       <Textarea
         className="whatsapp-template-field"
-        label="SMS — confirmacao de recibo"
+        label="SMS — confirmação de recibo"
         rows={templateRows(form.smsReceiptConfirmedTemplate)}
         value={form.smsReceiptConfirmedTemplate}
         onChange={(event) => onUpdate('smsReceiptConfirmedTemplate', event.target.value)}
@@ -217,7 +218,7 @@ export function SmsTab({
       />
       <Textarea
         className="whatsapp-template-field"
-        label="SMS — aviso de suspensao"
+        label="SMS — aviso de suspensão"
         rows={templateRows(form.smsSuspensionNoticeTemplate)}
         value={form.smsSuspensionNoticeTemplate}
         onChange={(event) => onUpdate('smsSuspensionNoticeTemplate', event.target.value)}
