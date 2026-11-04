@@ -19,6 +19,7 @@ import type { Client, ClientProfitability } from '../types';
 type ClientFormState = {
   fullName: string;
   phone: string;
+  email: string;
   nif: string;
   island: string;
   zone: string;
@@ -73,7 +74,7 @@ const NOTICE_TONES: Record<ClientNotice['noticeType'], 'info' | 'accent' | 'dang
 };
 
 function emptyClientForm(): ClientFormState {
-  return { fullName: '', phone: '', nif: '', island: DEFAULT_ISLAND, zone: '', address: '', status: 'active' };
+  return { fullName: '', phone: '', email: '', nif: '', island: DEFAULT_ISLAND, zone: '', address: '', status: 'active' };
 }
 
 // NIF de Cabo Verde: 9 dígitos, o primeiro identifica o tipo de contribuinte
@@ -81,6 +82,13 @@ function emptyClientForm(): ClientFormState {
 const CV_NIF_RE = /^[12]\d{8}$/;
 function cvNifError(nif: string): string | undefined {
   return nif.length > 0 && !CV_NIF_RE.test(nif) ? 'NIF inválido — 9 dígitos a começar por 1 ou 2.' : undefined;
+}
+
+// ponytail: só a forma nome@domínio.tld; o backend (zod) tem a palavra final.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function emailError(email: string): string | undefined {
+  const value = email.trim();
+  return value.length > 0 && !EMAIL_RE.test(value) ? 'Email inválido — ex.: nome@dominio.cv' : undefined;
 }
 
 export function ClientsModule({
@@ -245,6 +253,7 @@ export function ClientsModule({
     setForm({
       fullName: client.fullName,
       phone: client.phone || '',
+      email: client.email || '',
       nif: client.nif || '',
       island: client.island || '',
       zone: client.zone || '',
@@ -410,6 +419,7 @@ export function ClientsModule({
           body: JSON.stringify({
             fullName: client.fullName,
             phone: client.phone || '',
+            email: client.email || '',
             nif: client.nif || '',
             island: client.island || '',
             zone: client.zone || '',
@@ -561,6 +571,7 @@ export function ClientsModule({
             {canManageClients && !selectedClient.systemKind && onCreateProposal && <Button variant="secondary" size="sm" leadingIcon={<Plus size={16} aria-hidden />} onClick={() => onCreateProposal(selectedClient)}>Criar proposta</Button>}
           <dl>
             <div><dt>Telefone</dt><dd>{selectedClient.phone || 'Sem telefone'}</dd></div>
+            <div><dt>Email</dt><dd>{selectedClient.email || '-'}</dd></div>
             <div><dt>Ilha</dt><dd>{selectedClient.island || '-'}</dd></div>
             <div><dt>Zona</dt><dd>{selectedClient.zone || '-'}</dd></div>
             <div><dt>Morada</dt><dd>{selectedClient.address || '-'}</dd></div>
@@ -776,7 +787,7 @@ export function ClientsModule({
         actions={
           <>
             <Button variant="secondary" onClick={closeForm}>Cancelar</Button>
-            <Button type="submit" form="client-form" loading={saving} disabled={cvNifError(form.nif) !== undefined}>
+            <Button type="submit" form="client-form" loading={saving} disabled={cvNifError(form.nif) !== undefined || emailError(form.email) !== undefined}>
               {saving ? 'A gravar...' : editingClient ? 'Atualizar cliente' : 'Gravar cliente'}
             </Button>
           </>
@@ -785,6 +796,7 @@ export function ClientsModule({
         <form id="client-form" className="client-form" onSubmit={saveClient}>
           <Field label="Nome completo" required value={form.fullName} onChange={(event) => updateForm('fullName', event.target.value)} />
           <Field label="Telefone" type="tel" inputMode="tel" value={form.phone} onChange={(event) => updateForm('phone', event.target.value)} />
+          <Field label="Email" type="email" inputMode="email" autoComplete="off" value={form.email} onChange={(event) => updateForm('email', event.target.value)} placeholder="nome@dominio.cv" error={emailError(form.email)} />
           <Field label="NIF" inputMode="numeric" maxLength={9} value={form.nif} onChange={(event) => updateForm('nif', event.target.value.replace(/\D/g, '').slice(0, 9))} placeholder="9 dígitos (começa por 1 ou 2)" hint="1 = pessoa singular · 2 = pessoa coletiva" error={cvNifError(form.nif)} />
           <Select label="Ilha" value={form.island} onChange={(event) => updateForm('island', event.target.value)}>
             <option value="">—</option>
