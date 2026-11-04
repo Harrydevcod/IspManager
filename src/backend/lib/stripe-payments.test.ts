@@ -772,6 +772,9 @@ describe('Vinti4 EasyLink (ADR 0019)', () => {
 
   test('só aceita links HTTPS de domínios do SISP', () => {
     expect(vinti4.parseEasyLinkUrl(EASYLINK)).toBe(EASYLINK);
+    // Formato real, da documentação do SISP (documentation.aspx?id=1322).
+    const real = 'https://www.vinti4.cv/easylink.aspx?id=243&token=26cf438abdcbdd6b7b1c2567fa1bf13a';
+    expect(vinti4.parseEasyLinkUrl(real)).toBe(real);
     expect(vinti4.parseEasyLinkUrl(' https://vinti4.cv/x ')).toBe('https://vinti4.cv/x');
     expect(vinti4.parseEasyLinkUrl('https://pay.sisp.cv/x')).toBe('https://pay.sisp.cv/x');
     for (const bad of ['https://comerciante.vinti4.cv/', 'https://comerciante.vinti4.cv', 'http://easylink.vinti4.cv/x', 'https://vinti4.cv.evil.com/x', 'https://evilvinti4.cv/x',

@@ -2,7 +2,7 @@
 
 ## Estado
 
-Aceite e implementado. Por validar com um link real do Portal do Comerciante (host do EasyLink).
+Aceite e implementado. O formato do link vem da documentação do SISP: `https://www.vinti4.cv/easylink.aspx?id=…&token=…`.
 
 ## Contexto
 

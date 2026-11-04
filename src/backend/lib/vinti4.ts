@@ -15,8 +15,8 @@ import { openStripeLinkSql } from './stripe-payments';
 import { getAccount } from './treasury';
 import { isSystemClient, SYSTEM_CLIENT_ERROR } from './system-client';
 
-// ponytail: domínios do SISP conhecidos; o host exato do EasyLink confirma-se
-// com um link real e, se for outro, acrescenta-se aqui.
+// Domínios do SISP. O EasyLink tem a forma
+// https://www.vinti4.cv/easylink.aspx?id=…&token=… (documentação do SISP).
 const SISP_DOMAINS = ['vinti4.cv', 'vinti4net.cv', 'sisp.cv'];
 
 export type Vinti4Config = { enabled: boolean; accountId: number | null; ready: boolean };
