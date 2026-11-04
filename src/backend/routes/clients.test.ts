@@ -108,6 +108,32 @@ describe('POST /api/clients (nif field)', () => {
   });
 });
 
+describe('email do cliente', () => {
+  test('o POST grava o email e recusa um email inválido', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/clients',
+      payload: { fullName: 'Ana Lima', email: ' ana@lima.cv ' } });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().email).toBe('ana@lima.cv');
+
+    const bad = await app.inject({ method: 'POST', url: '/api/clients',
+      payload: { fullName: 'Rui', email: 'rui@' } });
+    expect(bad.statusCode).toBe(400);
+  });
+
+  test('o PUT sem o campo mantém o email; com vazio limpa-o', async () => {
+    const { id } = (await app.inject({ method: 'POST', url: '/api/clients',
+      payload: { fullName: 'Ana Lima', email: 'ana@lima.cv' } })).json();
+
+    const kept = await app.inject({ method: 'PUT', url: `/api/clients/${id}`,
+      payload: { fullName: 'Ana Lima', status: 'suspended' } });
+    expect(kept.json().email).toBe('ana@lima.cv');
+
+    const cleared = await app.inject({ method: 'PUT', url: `/api/clients/${id}`,
+      payload: { fullName: 'Ana Lima', email: '' } });
+    expect(cleared.json().email).toBeNull();
+  });
+});
+
 describe('POST /api/clients/bulk', () => {
   test('inserts new rows and auto-generates clientCode when missing', async () => {
     const response = await app.inject({

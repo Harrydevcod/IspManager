@@ -3072,6 +3072,13 @@ h2 {
   width: 100%;
 }
 
+/* Num ecrã estreito, a largura mínima automática das células e dos controlos
+   empurrava a coluna da direita para fora do diálogo. */
+.client-form > *,
+.client-form :is(input, select) {
+  min-width: 0;
+}
+
 /* Um aviso do formulário fala do formulário inteiro, não de meia linha dele:
    preso a uma coluna, ficava um bloco de texto estreito ao lado de um vazio. */
 .client-form .module-message {

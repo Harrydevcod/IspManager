@@ -2,7 +2,7 @@ import type { Database } from 'better-sqlite3';
 import type { clients } from '../db/schema';
 
 type ClientInput = Pick<typeof clients.$inferInsert,
-  'fullName' | 'phone' | 'nif' | 'island' | 'zone' | 'address' | 'status'>;
+  'fullName' | 'phone' | 'email' | 'nif' | 'island' | 'zone' | 'address' | 'status'>;
 
 /** Código disponível, incluindo bases em que houve clientes apagados. */
 function nextClientCode(db: Database): string {
@@ -19,9 +19,9 @@ export function insertClient(db: Database, data: ClientInput): number {
   return db.transaction(() => {
     const now = new Date().toISOString();
     return Number(db.prepare(`
-      INSERT INTO clients (client_code, full_name, phone, nif, island, zone, address, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(nextClientCode(db), data.fullName, data.phone || null, data.nif || null,
+      INSERT INTO clients (client_code, full_name, phone, email, nif, island, zone, address, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(nextClientCode(db), data.fullName, data.phone || null, data.email || null, data.nif || null,
       data.island || null, data.zone || null, data.address || null, data.status ?? 'active', now, now).lastInsertRowid);
   })();
 }

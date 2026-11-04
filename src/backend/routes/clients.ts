@@ -23,6 +23,7 @@ function addMonthsIso(isoDate: string, months: number): string {
 const createClientSchema = z.object({
   fullName: z.string().trim().min(1),
   phone: z.string().trim().optional().nullable(),
+  email: z.string().trim().max(254).email().optional().nullable().or(z.literal('').transform(() => null)),
   nif: z.string().trim().regex(/^[12]\d{8}$/).optional().nullable().or(z.literal('').transform(() => null)),
   island: z.string().trim().optional().nullable(),
   zone: z.string().trim().optional().nullable(),
@@ -306,6 +307,8 @@ export async function registerClientRoutes(app: FastifyInstance) {
         .set({
           fullName: parsed.data.fullName,
           phone: parsed.data.phone || null,
+          // Sem o campo no corpo, o email fica como está: não se apaga o que a importação gravou.
+          ...(parsed.data.email !== undefined && { email: parsed.data.email }),
           nif: parsed.data.nif || null,
           island: parsed.data.island || null,
           zone: parsed.data.zone || null,

@@ -9,17 +9,17 @@ beforeEach(() => { db.prepare('DELETE FROM clients').run(); });
 afterAll(() => { db.close(); });
 
 test('preserva os dados do cadastro e atribui um código de cliente', () => {
-  const id = insertClient(db, { fullName: 'Loja do Porto', phone: '9911122', nif: '250000001',
+  const id = insertClient(db, { fullName: 'Loja do Porto', phone: '9911122', email: 'loja@porto.cv', nif: '250000001',
     island: 'São Vicente', zone: 'Centro', address: 'Rua 1', status: 'suspended' });
-  expect(db.prepare(`SELECT client_code AS code, full_name AS name, phone, nif, island, zone, address, status
+  expect(db.prepare(`SELECT client_code AS code, full_name AS name, phone, email, nif, island, zone, address, status
     FROM clients WHERE id = ?`).get(id)).toEqual({ code: 'C0001', name: 'Loja do Porto', phone: '9911122',
-    nif: '250000001', island: 'São Vicente', zone: 'Centro', address: 'Rua 1', status: 'suspended' });
+    email: 'loja@porto.cv', nif: '250000001', island: 'São Vicente', zone: 'Centro', address: 'Rua 1', status: 'suspended' });
 });
 
 test('um destinatário mínimo fica ativo, sem serviço e com campos opcionais nulos', () => {
   const id = insertClient(db, { fullName: 'Destinatário' });
-  expect(db.prepare('SELECT phone, nif, island, zone, address, status FROM clients WHERE id = ?').get(id))
-    .toEqual({ phone: null, nif: null, island: null, zone: null, address: null, status: 'active' });
+  expect(db.prepare('SELECT phone, email, nif, island, zone, address, status FROM clients WHERE id = ?').get(id))
+    .toEqual({ phone: null, email: null, nif: null, island: null, zone: null, address: null, status: 'active' });
   expect(db.prepare('SELECT count(*) AS n FROM services WHERE client_id = ?').get(id)).toEqual({ n: 0 });
 });
 
