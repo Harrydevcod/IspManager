@@ -2805,6 +2805,17 @@ h2 {
 .payment-action-form--pay > .field { min-width: 0; }
 .payment-action-form--pay > .field :is(select, input) { width: 100%; min-width: 0; }
 
+/* As caixas ficam sempre na mesma linha: o rótulo é de uma linha só (cortado
+   com reticências se faltar espaço) e os campos alinham pelo fundo, por isso
+   nenhuma caixa desce em relação às vizinhas. Especificidade acima da regra
+   genérica `align-self: start` dos formulários. */
+.payment-action-form.payment-action-form--pay > .field { align-self: end; }
+.payment-action-form--pay > .field > .field-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .payment-action-form--pay > .module-message {
   grid-column: 1 / 6;
   grid-row: 2;
