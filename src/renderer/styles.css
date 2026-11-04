@@ -2791,12 +2791,19 @@ h2 {
    sem colocação explícita eles caíam para uma linha só deles, espremidos na
    primeira coluna e esticados ao alto. As ações ficam ancoradas no canto da
    primeira linha, onde estão nas outras variantes do formulário. */
-/* Resumo · valor · método · conta · data · ações. O valor entrou com os
-   parciais; a conta (caixa ou banco) com a Tesouraria e é a mais larga, porque
-   o nome da conta leva o NIB ou "(predefinida)". */
+/* Resumo · método · valor · conta · data · ações, a ordem do DOM. O método
+   tem de caber "Vinti4 (EasyLink)"; o valor é só um número; a conta (caixa ou
+   banco) é a mais larga, porque o nome leva o NIB ou "(predefinida)". A soma
+   dos mínimos (mais ações, folgas e padding) tem de caber nos ~860 px do
+   diálogo xl, senão o formulário sai dele. */
 .payment-action-form--pay {
-  grid-template-columns: minmax(130px, 1fr) minmax(100px, 0.7fr) minmax(120px, 0.8fr) minmax(180px, 1.3fr) minmax(130px, 0.9fr) auto;
+  grid-template-columns: minmax(100px, 0.9fr) minmax(150px, 1fr) minmax(110px, 0.6fr) minmax(150px, 1.3fr) minmax(130px, 0.9fr) auto;
 }
+
+/* Um controlo nunca sai da sua célula: um rótulo comprido corta-se dentro da
+   caixa em vez de tapar o campo ao lado. */
+.payment-action-form--pay > .field { min-width: 0; }
+.payment-action-form--pay > .field :is(select, input) { width: 100%; min-width: 0; }
 
 .payment-action-form--pay > .module-message {
   grid-column: 1 / 6;
