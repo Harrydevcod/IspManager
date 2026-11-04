@@ -4,6 +4,17 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.50](https://github.com/Harrydevcod/IspManager/releases/tag/v2.50.0) — 2026-11-04
+
+### Adicionado
+- **Vinti4 como via principal de pagamento online.** A aba Stripe das Definições passa a chamar-se **Pagamento**, com o Vinti4 em cima e o Stripe por baixo. Com o Vinti4 ligado, a ficha da fatura ganha o método "Vinti4 (EasyLink)": cria-se o link no Portal do Comerciante pelo saldo, cola-se na fatura e ele segue no `{link}` dos avisos de WhatsApp e SMS, à frente do Stripe. Só se aceitam links do SISP (`https`, domínio vinti4.cv ou sisp.cv). Se o saldo mudar, a ficha avisa que o link ficou desatualizado e ele deixa de seguir nos avisos. O SISP não avisa o ISPM do pagamento: quando o portal mostrar o link como Pago, regista-se o recibo na ficha, já com a conta do Vinti4.
+
+### Alterado
+- **Mensagens aos clientes mais cordiais.** Os avisos de WhatsApp e SMS abrem com "Caro cliente", dizem o mês por extenso e o valor como 2.500$00, e terminam com "se já pagou, ignore". O SMS fica sem acentos, para caber num só SMS. Os modelos nunca editados passam aos textos novos; num modelo personalizado, o botão "Usar texto recomendado" de cada campo mostra o texto novo antes de gravar.
+
+### Corrigido
+- Nas Definições, em ecrãs estreitos, as abas apareciam vazias, sem ícone; voltam a mostrar o ícone.
+
 ## [2.49](https://github.com/Harrydevcod/IspManager/releases/tag/v2.49.0) — 2026-11-03
 
 ### Adicionado
