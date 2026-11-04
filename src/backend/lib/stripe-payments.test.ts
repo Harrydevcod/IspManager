@@ -774,7 +774,7 @@ describe('Vinti4 EasyLink (ADR 0019)', () => {
     expect(vinti4.parseEasyLinkUrl(EASYLINK)).toBe(EASYLINK);
     expect(vinti4.parseEasyLinkUrl(' https://vinti4.cv/x ')).toBe('https://vinti4.cv/x');
     expect(vinti4.parseEasyLinkUrl('https://pay.sisp.cv/x')).toBe('https://pay.sisp.cv/x');
-    for (const bad of ['http://easylink.vinti4.cv/x', 'https://vinti4.cv.evil.com/x', 'https://evilvinti4.cv/x',
+    for (const bad of ['https://comerciante.vinti4.cv/', 'https://comerciante.vinti4.cv', 'http://easylink.vinti4.cv/x', 'https://vinti4.cv.evil.com/x', 'https://evilvinti4.cv/x',
       'https://user:pw@vinti4.cv/x', 'https://vinti4.cv:8443/x', 'javascript:alert(1)', 'vinti4.cv/x', '']) {
       expect(vinti4.parseEasyLinkUrl(bad)).toBeNull();
     }

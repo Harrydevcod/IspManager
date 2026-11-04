@@ -50,6 +50,9 @@ export function parseEasyLinkUrl(raw: string): string | null {
   let url: URL;
   try { url = new URL(raw.trim()); } catch { return null; }
   if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
+  // A raiz de um site (ex.: o próprio Portal do Comerciante) não é um link de
+  // pagamento: o cliente caía no login do comerciante.
+  if ((url.pathname === '/' || url.pathname === '') && !url.search) return null;
   const host = url.hostname.toLowerCase();
   return SISP_DOMAINS.some((domain) => host === domain || host.endsWith(`.${domain}`)) ? url.toString() : null;
 }
