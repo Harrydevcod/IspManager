@@ -2791,11 +2791,37 @@ h2 {
    sem colocação explícita eles caíam para uma linha só deles, espremidos na
    primeira coluna e esticados ao alto. As ações ficam ancoradas no canto da
    primeira linha, onde estão nas outras variantes do formulário. */
-/* Resumo · valor · método · conta · data · ações. O valor entrou com os
-   parciais; a conta (caixa ou banco) com a Tesouraria e é a mais larga, porque
-   o nome da conta leva o NIB ou "(predefinida)". */
+/* Resumo · método · valor · conta · data · ações, a ordem do DOM. O método
+   tem de caber "Vinti4 (EasyLink)"; o valor é só um número; a conta (caixa ou
+   banco) é a mais larga, porque o nome leva o NIB ou "(predefinida)".
+   Proporções sem mínimos fixos (minmax(0, …)): no diálogo xl dão ~110 · 150 ·
+   110 · 150 · 130 px, e quando falta espaço encolhem todas por igual. Assim a
+   coluna das ações (auto) nunca é empurrada para fora da caixa. */
 .payment-action-form--pay {
-  grid-template-columns: minmax(130px, 1fr) minmax(100px, 0.7fr) minmax(120px, 0.8fr) minmax(180px, 1.3fr) minmax(130px, 0.9fr) auto;
+  grid-template-columns: minmax(120px, 1.1fr) minmax(0, 1.5fr) minmax(0, 1.1fr) minmax(0, 1.5fr) minmax(0, 1.3fr) auto;
+}
+
+/* Um valor em dinheiro nunca se corta: o resumo tem 120 px no mínimo, que
+   levam "125.000$00"; o "Registar recebimento" e o "já recebido…" partem por
+   palavras. Mínimo fixo e não min-content: com um mínimo de conteúdo numa
+   coluna fr, o Chrome dimensiona-a pela largura máxima do texto, e o
+   "já recebido 500$00 de 2.750$00" esticava o resumo e espremia os campos. */
+.payment-action-form--pay > div:first-child strong { white-space: nowrap; }
+
+/* Um controlo nunca sai da sua célula: um rótulo comprido corta-se dentro da
+   caixa em vez de tapar o campo ao lado. */
+.payment-action-form--pay > .field { min-width: 0; }
+.payment-action-form--pay > .field :is(select, input) { width: 100%; min-width: 0; }
+
+/* As caixas ficam sempre na mesma linha: o rótulo é de uma linha só (cortado
+   com reticências se faltar espaço) e os campos alinham pelo fundo, por isso
+   nenhuma caixa desce em relação às vizinhas. Especificidade acima da regra
+   genérica `align-self: start` dos formulários. */
+.payment-action-form.payment-action-form--pay > .field { align-self: end; }
+.payment-action-form--pay > .field > .field-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .payment-action-form--pay > .module-message {
