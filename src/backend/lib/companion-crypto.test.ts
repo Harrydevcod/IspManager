@@ -45,14 +45,14 @@ describe('companion-crypto', () => {
   });
 
   test('0.5.0+: everything, sealed — no phone or address readable on the wire', () => {
-    const payload = payloadForApp(snapshot, '0.5.0', 'k') as SealedEnvelope;
+    const payload = payloadForApp(snapshot, true, 'k') as SealedEnvelope;
     expect(payload.enc).toBe('aes-256-gcm');
     expect(JSON.stringify(payload)).not.toContain('2389912233');
     expect(JSON.parse(openPayload(payload, 'k')).work.orders[0].address).toBe('Rua 1');
   });
 
   test('older app: plain as before, without the new fields that carry phones and addresses', () => {
-    const payload = payloadForApp(snapshot, '0.4.0', 'k') as Record<string, unknown>;
+    const payload = payloadForApp(snapshot, false, 'k') as Record<string, unknown>;
     const text = JSON.stringify(payload);
     expect(text).not.toContain('2389912233');
     expect(text).not.toContain('Rua 1');

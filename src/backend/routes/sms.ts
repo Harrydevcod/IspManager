@@ -6,7 +6,7 @@ import { getSqliteDatabase } from '../db/database';
 import { canStoreSecrets, readSecret, writeSecret } from '../lib/secrets';
 import { confirmSessionPassword, requireRole } from './auth';
 import { discoverCompanionHosts, enqueueSmsNotification, findPairedCompanion, verifyCompanionPairing } from '../lib/sms-outbox';
-import { readCompanionPresence, requestCompanionSnapshotPush } from '../lib/companion-sync';
+import { readCompanionPresence, requestCompanionSnapshotPush, SEALED_KEY } from '../lib/companion-sync';
 import { openPaymentLinkSql } from '../lib/vinti4';
 import { SMS_REPORT_TIMEZONE, smsReportMonthUtcRange } from '../../shared/sms-report';
 import { normalizeSmsPhone, renderSmsTemplate } from '../../shared/sms';
@@ -159,6 +159,8 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     // O estado guardado era do telemóvel anterior; o novo envia o seu ao responder.
     setSetting('smsCompanionLastSeen', '');
     setSetting('smsCompanionDeviceStatus', '');
+    // A new phone proves again that it decrypts before anything goes sealed.
+    setSetting(SEALED_KEY, '');
     requestCompanionSnapshotPush();
     const qrPayload = `ispm-sms://pair?secret=${encodeURIComponent(secret)}&device=${encodeURIComponent(parsed.data.deviceName)}`;
     return { ok: true, secret, qrPayload };
@@ -170,6 +172,7 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     setSetting('smsCompanionPairingKeyHash', '');
     setSetting('smsCompanionLastSeen', '');
     setSetting('smsCompanionDeviceStatus', '');
+    setSetting(SEALED_KEY, '');
     return { ok: true };
   });
 

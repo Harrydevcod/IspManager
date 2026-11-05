@@ -77,6 +77,23 @@ describe('runCompanionSyncIfDue', () => {
     expect(sync.readCompanionPresence()).toEqual({ lastSeen: now.toISOString(), device });
   });
 
+  test('sealing is sticky: once the pairing saw a 0.5.0 app, an older /status never brings plain text back', async () => {
+    pair();
+    setSetting('smsCompanionSnapshotMinutes', '5');
+    const t0 = Date.parse('2026-11-03T12:00:00Z');
+    const old = deps();
+    await sync.runCompanionSyncIfDue(new Date(t0), old);
+    expect(old.pushSnapshot).toHaveBeenLastCalledWith(expect.anything(), false); // 0.3.0: can't decrypt
+
+    const current = deps({ fetchStatus: vi.fn(async () => ({ reachable: true, status: { ...device, appVersion: '0.5.0' } })) });
+    await sync.runCompanionSyncIfDue(new Date(t0 + 5 * 60_000), current);
+    expect(current.pushSnapshot).toHaveBeenLastCalledWith(expect.anything(), true);
+
+    // A host posing as the phone claims 0.4.0 (the version in /status is not signed).
+    await sync.runCompanionSyncIfDue(new Date(t0 + 10 * 60_000), old);
+    expect(old.pushSnapshot).toHaveBeenLastCalledWith(expect.anything(), true);
+  });
+
   test('pushes again only after the interval', async () => {
     pair();
     setSetting('smsCompanionSnapshotMinutes', '5');

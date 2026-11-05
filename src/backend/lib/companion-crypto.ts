@@ -49,8 +49,8 @@ export function appSupportsSealed(appVersion: string | null | undefined): boolea
  * antiga (não sabe decifrar): o resumo de antes, em claro e SEM os campos novos
  * com telefones, moradas e caixa — continua a funcionar e não expõe mais do que já expunha.
  */
-export function payloadForApp(snapshot: CompanionSnapshot, appVersion: string | null | undefined, secret: string): unknown {
-  if (appSupportsSealed(appVersion)) return sealPayload(JSON.stringify(snapshot), secret);
+export function payloadForApp(snapshot: CompanionSnapshot, sealed: boolean, secret: string): unknown {
+  if (sealed) return sealPayload(JSON.stringify(snapshot), secret);
   const { work: _work, ...rest } = snapshot;
   const { debtors: _debtors, cashToday: _cash, monthlyReceipts: _months, ...money } = snapshot.money;
   return { ...rest, money };
