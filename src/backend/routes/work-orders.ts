@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { recordAudit } from '../lib/audit';
-import { createWorkOrder, WORK_ORDER_EVENT_TYPES as EVENT_TYPES, WORK_ORDER_PRIORITIES as PRIORITIES, WORK_ORDER_STATUSES as STATUSES } from '../lib/work-orders';
+import { createWorkOrder, recordWorkOrderCompletion, WORK_ORDER_EVENT_TYPES as EVENT_TYPES, WORK_ORDER_PRIORITIES as PRIORITIES, WORK_ORDER_STATUSES as STATUSES } from '../lib/work-orders';
 import { requireAuth, requireRole } from './auth';
 
 const createSchema = z.object({
@@ -247,14 +247,7 @@ export async function registerWorkOrderRoutes(app: FastifyInstance) {
     );
 
     const justCompleted = current.status !== 'concluida' && next.status === 'concluida';
-    if (justCompleted && next.serviceId && next.eventType) {
-      const noteParts: string[] = [next.title];
-      if (next.completionNotes) noteParts.push(next.completionNotes);
-      db.prepare(`
-        INSERT INTO service_events (service_id, event_type, notes)
-        VALUES (?, ?, ?)
-      `).run(next.serviceId, next.eventType, noteParts.join(' — '));
-    }
+    if (justCompleted) recordWorkOrderCompletion(db, next);
 
     const updated = db.prepare(selectOrders('WHERE w.id = ?')).get(id);
     recordAudit(request, {

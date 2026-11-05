@@ -5,6 +5,7 @@ import { Badge, BulkActionBar, Button, DataTable, Dialog, EmptyState, ErrorRetry
 import { ClientImportDialog } from './clients/import';
 import { TransferServiceDialog } from './services/TransferServiceDialog';
 import { NewTicketDialog } from './support/NewTicketDialog';
+import { SmsInbox } from './settings/SmsInbox';
 import { authFetch, useAuth } from '../lib/auth';
 import { CV_ISLANDS, DEFAULT_ISLAND, isKnownIsland } from '../lib/islands';
 import { formatCve, formatPtDate } from '../lib/format';
@@ -699,6 +700,7 @@ export function ClientsModule({
               </ul>
             </section>
           )}
+          <SmsInbox clientId={selectedClient.id} />
           </div>
         </Dialog>
       )}

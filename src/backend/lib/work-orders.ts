@@ -50,3 +50,42 @@ export function createWorkOrder(db: Database.Database, input: NewWorkOrder): num
   }
   return id;
 }
+
+/** O evento no histórico do serviço que uma OS concluída deixa (rota, criação e telemóvel). */
+export function recordWorkOrderCompletion(
+  db: Database.Database,
+  order: { serviceId: number | null; eventType: string | null; title: string; completionNotes: string | null }
+): void {
+  if (!order.serviceId || !order.eventType) return;
+  const notes = [order.title, order.completionNotes].filter(Boolean).join(' — ');
+  db.prepare('INSERT INTO service_events (service_id, event_type, notes) VALUES (?, ?, ?)').run(order.serviceId, order.eventType, notes);
+}
+
+export type CompleteWorkOrderResult = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Concluir uma OS vinda do terreno. `completedAt` é a hora do terreno (data do
+ * facto), não a da chegada ao desktop. Uma OS já concluída ou cancelada não se
+ * reabre nem se conclui duas vezes.
+ */
+export function completeWorkOrder(
+  db: Database.Database,
+  id: number,
+  input: { notes: string; completedAt: string }
+): CompleteWorkOrderResult {
+  const current = db.prepare(`
+    SELECT service_id AS serviceId, event_type AS eventType, title, status, started_at AS startedAt
+    FROM work_orders WHERE id = ?
+  `).get(id) as { serviceId: number | null; eventType: string | null; title: string; status: string; startedAt: string | null } | undefined;
+  if (!current) return { ok: false, reason: 'OS inexistente' };
+  if (current.status === 'concluida') return { ok: false, reason: 'OS já estava concluída' };
+  if (current.status === 'cancelada') return { ok: false, reason: 'OS cancelada' };
+
+  db.prepare(`
+    UPDATE work_orders
+    SET status = 'concluida', started_at = COALESCE(started_at, ?), completed_at = ?, completion_notes = ?, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(input.completedAt, input.completedAt, input.notes, id);
+  recordWorkOrderCompletion(db, { ...current, completionNotes: input.notes });
+  return { ok: true };
+}

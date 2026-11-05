@@ -11,6 +11,7 @@ import cv.novatech.ispm.sms.dashboard.DashboardRules
 import cv.novatech.ispm.sms.dashboard.DashboardStore
 import cv.novatech.ispm.sms.dashboard.FieldRules
 import cv.novatech.ispm.sms.dashboard.SealedSnapshot
+import cv.novatech.ispm.sms.events.EventStore
 import cv.novatech.ispm.sms.state.CompanionStateHolder
 import cv.novatech.ispm.sms.widget.IspmWidget
 import cv.novatech.ispm.sms.widget.WidgetRules
@@ -31,6 +32,7 @@ class IspmSmsApp : Application() {
   lateinit var requestStore: SmsRequestStore private set
   lateinit var settingsStore: SettingsStore private set
   lateinit var dashboardStore: DashboardStore private set
+  lateinit var eventStore: EventStore private set
   lateinit var holder: CompanionStateHolder private set
 
   // UI lock (LockRules). Process-wide so a rotation doesn't ask again; a new process starts locked.
@@ -43,6 +45,7 @@ class IspmSmsApp : Application() {
     requestStore = SmsRequestStore(this)
     settingsStore = SettingsStore(this)
     dashboardStore = DashboardStore(this)
+    eventStore = EventStore(this)
     holder = CompanionStateHolder(
       pairingStore = pairingStore,
       requestStore = requestStore,

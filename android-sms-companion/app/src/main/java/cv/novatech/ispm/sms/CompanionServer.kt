@@ -1,5 +1,7 @@
 package cv.novatech.ispm.sms
 
+import cv.novatech.ispm.sms.events.EventStore
+import cv.novatech.ispm.sms.events.FieldEventCodec
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
 import java.io.DataInputStream
@@ -26,7 +28,9 @@ class CompanionServer(
   /** A request signed with the current secret: the desktop is really linked. */
   private val onAuthenticated: () -> Unit = {},
   /** A signed request that failed: the desktop holds another pairing. */
-  private val onRejected: () -> Unit = {}
+  private val onRejected: () -> Unit = {},
+  /** Field events waiting for the desktop (canal de volta, 0.7.0+). */
+  private val eventStore: EventStore? = null
 ) : NanoHTTPD(port) {
 
   override fun serve(session: IHTTPSession): Response {
@@ -86,6 +90,21 @@ class CompanionServer(
       requestStore.upsert(request)
       onRequestsChanged(request)
       return json(Response.Status.OK, JSONObject().put("id", id).put("status", "pending_approval"))
+    }
+
+    if (eventStore != null && session.method == Method.GET && session.uri == "/events") {
+      return json(Response.Status.OK, FieldEventCodec.forDesktop(eventStore.pending()))
+    }
+
+    if (eventStore != null && session.method == Method.POST && session.uri == "/events/ack") {
+      eventStore.ack(FieldEventCodec.ackIds(body))
+      return json(Response.Status.OK, JSONObject().put("ok", true))
+    }
+
+    if (eventStore != null && session.method == Method.GET && session.uri.startsWith("/media/")) {
+      val file = eventStore.media(session.uri.removePrefix("/media/"))
+        ?: return json(Response.Status.NOT_FOUND, JSONObject().put("error", "foto inexistente"))
+      return newFixedLengthResponse(Response.Status.OK, "image/jpeg", file.inputStream(), file.length())
     }
 
     if (session.method == Method.GET && session.uri.startsWith("/requests/")) {

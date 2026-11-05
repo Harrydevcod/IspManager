@@ -2,6 +2,7 @@ import { ClipboardList, Pencil, Plus, Trash2, X } from 'lucide-react';
 import type { CSSProperties, DragEvent, FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Dialog, ErrorRetry, Field, ModuleHeaderActions, Select, Skeleton, Textarea, useConfirm, useToast } from '../components';
+import { WorkOrderAttachments } from './workOrders/WorkOrderAttachments';
 import { authFetch, useAuth } from '../lib/auth';
 import { formatPtDate } from '../lib/format';
 import { hasTextSelection } from '../lib/textSelection';
@@ -502,6 +503,7 @@ export function WorkOrdersModule() {
               placeholder="Detalhes adicionais (passa para o registo tecnico quando concluida)"
             />
           )}
+          {editing && <WorkOrderAttachments orderId={editing.id} />}
         </form>
       </Dialog>
     </section>

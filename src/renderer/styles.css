@@ -1448,6 +1448,95 @@ h2 {
   flex-wrap: wrap;
 }
 
+/* Recebimentos do terreno (app móvel): à espera de confirmação, acima da lista. */
+.field-receipts {
+  border: 1px solid color-mix(in oklch, var(--info) 34%, var(--border));
+  background: color-mix(in oklch, var(--info) 6%, var(--surface));
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.field-receipts-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  color: var(--info);
+}
+
+.field-receipts-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.field-receipts-head span {
+  font-size: 0.82rem;
+  color: var(--text-2);
+}
+
+.field-receipts ul {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.field-receipt {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.field-receipt-who,
+.field-receipt-amount {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.field-receipt-who span,
+.field-receipt-amount span {
+  font-size: 0.8rem;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.field-receipt-amount {
+  text-align: right;
+}
+
+.field-receipt-amount strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.field-receipt-note {
+  font-style: italic;
+}
+
+.field-receipt-actions {
+  display: flex;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .field-receipt {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .field-receipt-amount {
+    text-align: left;
+  }
+}
+
 .payments-filter-bar > .field {
   flex-shrink: 0;
   max-width: 100%;
@@ -7120,4 +7209,69 @@ button.danger:disabled {
     grid-column: 1 / -1;
     grid-row: auto;
   }
+}
+
+/* OS concluída no terreno: fotos e posição vindas da app móvel. */
+.wo-attachments {
+  display: grid;
+  gap: 8px;
+}
+
+.wo-attachments-label {
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+
+.wo-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wo-photo {
+  display: block;
+  width: 96px;
+  height: 96px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.wo-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.wo-photo-loading {
+  background: var(--surface-3);
+}
+
+.wo-location {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.wo-location:hover {
+  text-decoration: underline;
+}
+
+/* SMS recebidos dos clientes: os por ler destacam-se pela barra à esquerda. */
+.sms-inbox header {
+  align-items: center;
+}
+
+.sms-inbox li[data-unread='true'] {
+  box-shadow: inset 2px 0 0 var(--accent);
+  padding-left: 8px;
 }

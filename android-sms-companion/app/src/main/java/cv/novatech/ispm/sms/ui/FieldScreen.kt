@@ -24,6 +24,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cv.novatech.ispm.sms.dashboard.ClientRules
 import cv.novatech.ispm.sms.dashboard.Dashboard
+import cv.novatech.ispm.sms.events.FieldEvent
+import org.json.JSONObject
 import cv.novatech.ispm.sms.dashboard.DashboardRules
 import cv.novatech.ispm.sms.dashboard.FieldRules
 import cv.novatech.ispm.sms.dashboard.Freshness
@@ -36,10 +38,43 @@ import cv.novatech.ispm.sms.ui.theme.*
  * Terreno: what to do away from the desk. Who to chase for money and which jobs
  * are open, each one a tap from the phone call, the SMS, WhatsApp or the map, and
  * any client found by name, code or number, offline.
- * Read-only: nothing here changes the ISPM (that stays on the desktop).
+ * What is done here (an order closed, cash received) waits on the phone until
+ * the PC pulls it; the screen says so instead of pretending the ISPM changed.
  */
 @Composable
-fun FieldScreen(dashboard: Dashboard?, receivedAt: Long?, onOpen: (String) -> Unit) {
+fun FieldScreen(
+  dashboard: Dashboard?,
+  receivedAt: Long?,
+  onOpen: (String) -> Unit,
+  pendingEvents: List<FieldEvent> = emptyList(),
+  onFieldEvent: (kind: String, payload: JSONObject, photos: List<ByteArray>) -> Unit = { _, _, _ -> }
+) {
+  val closedOrders = remember(pendingEvents) {
+    pendingEvents.filter { it.kind == FieldEvent.WORK_ORDER_DONE }.map { it.payload.optLong("workOrderId") }.toSet()
+  }
+  val receivedFrom = remember(pendingEvents) {
+    pendingEvents.filter { it.kind == FieldEvent.RECEIPT_PROPOSAL }
+      .groupBy { it.payload.optString("clientCode") }
+      .mapValues { (_, es) -> es.sumOf { it.payload.optLong("amountCve") } }
+  }
+  var completing by remember { mutableStateOf<Dashboard.WorkOrder?>(null) }
+  var receiving by remember { mutableStateOf<Dashboard.Debtor?>(null) }
+  completing?.let { order ->
+    CompleteOrderSheet(order, onDismiss = { completing = null }) { notes, photos, location ->
+      val payload = JSONObject().put("workOrderId", order.id).put("notes", notes)
+      location?.let { (lat, lon) -> payload.put("lat", lat).put("lon", lon) }
+      onFieldEvent(FieldEvent.WORK_ORDER_DONE, payload, photos)
+      completing = null
+    }
+  }
+  receiving?.let { debtor ->
+    ReceiptSheet(debtor, onDismiss = { receiving = null }) { amount, method, note ->
+      val payload = JSONObject().put("clientCode", debtor.clientCode).put("amountCve", amount).put("method", method)
+      if (note.isNotBlank()) payload.put("note", note)
+      onFieldEvent(FieldEvent.RECEIPT_PROPOSAL, payload, emptyList())
+      receiving = null
+    }
+  }
   val now = rememberNow()
   val freshness = DashboardRules.freshness(receivedAt, now)
   var query by rememberSaveable { mutableStateOf("") }
@@ -86,10 +121,14 @@ fun FieldScreen(dashboard: Dashboard?, receivedAt: Long?, onOpen: (String) -> Un
       else -> {
         item { Eyebrow("Cobrar · ${dashboard.money.debtors.size}") }
         if (dashboard.money.debtors.isEmpty()) item { Note("Ninguém em atraso.") }
-        items(dashboard.money.debtors, key = { "d:" + it.clientCode + it.clientName }) { DebtorRow(it, onOpen) }
+        items(dashboard.money.debtors, key = { "d:" + it.clientCode + it.clientName }) {
+          DebtorRow(it, onOpen, receivedFrom[it.clientCode], onReceive = { receiving = it })
+        }
         item { Spacer(Modifier.height(6.dp)); Eyebrow("Ordens de trabalho · ${dashboard.work.orders.size}") }
         if (dashboard.work.orders.isEmpty()) item { Note("Sem OS em aberto.") }
-        items(dashboard.work.orders, key = { "o:${it.id}" }) { OrderRow(it, onOpen) }
+        items(dashboard.work.orders, key = { "o:${it.id}" }) {
+          OrderRow(it, onOpen, closed = it.id in closedOrders, onComplete = { completing = it })
+        }
         item { Spacer(Modifier.height(6.dp)); Eyebrow("Assistência · ${dashboard.work.tickets.size}") }
         if (dashboard.work.tickets.isEmpty()) item { Note("Sem pedidos abertos.") }
         items(dashboard.work.tickets, key = { "t:${it.id}" }) { TicketRow(it, onOpen) }
@@ -115,7 +154,7 @@ private fun Expandable(header: @Composable () -> Unit, actions: @Composable Colu
 }
 
 @Composable
-private fun DebtorRow(d: Dashboard.Debtor, onOpen: (String) -> Unit) = Expandable(
+private fun DebtorRow(d: Dashboard.Debtor, onOpen: (String) -> Unit, received: Long?, onReceive: () -> Unit) = Expandable(
   header = {
     Row(verticalAlignment = Alignment.CenterVertically) {
       Column(Modifier.weight(1f)) {
@@ -127,9 +166,16 @@ private fun DebtorRow(d: Dashboard.Debtor, onOpen: (String) -> Unit) = Expandabl
       }
       Text(DashboardRules.formatCve(d.amountCve), color = TextPrimary, style = MaterialTheme.typography.titleSmall)
     }
+    if (received != null) {
+      Text("Recebido ${DashboardRules.formatCve(received)} · à espera de confirmação no PC", color = Success, style = MaterialTheme.typography.bodySmall)
+    }
   },
   actions = {
     ContactActions(d.phone, onOpen)
+    if (d.clientCode.isNotBlank()) {
+      Spacer(Modifier.height(8.dp))
+      Action("Recebi em mão", Modifier.fillMaxWidth(), onReceive)
+    }
     val link = d.paymentLink
     val amount = d.paymentLinkAmountCve
     if (d.phone != null && link != null && amount != null) {
@@ -180,7 +226,7 @@ private fun ClientRow(c: Dashboard.Client, onOpen: (String) -> Unit) {
 }
 
 @Composable
-private fun OrderRow(o: Dashboard.WorkOrder, onOpen: (String) -> Unit) {
+private fun OrderRow(o: Dashboard.WorkOrder, onOpen: (String) -> Unit, closed: Boolean, onComplete: () -> Unit) {
   val place = listOfNotNull(o.zone, o.island).filter { it.isNotBlank() }.joinToString(" · ")
   val maps = FieldRules.mapsUri(o.address, o.zone, o.island)
   Expandable(
@@ -194,6 +240,7 @@ private fun OrderRow(o: Dashboard.WorkOrder, onOpen: (String) -> Unit) {
             listOfNotNull(o.clientName ?: "Rede", place.ifBlank { null }, o.assignedTo?.let { "→ $it" }).joinToString(" · "),
             color = TextMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis
           )
+          if (closed) Text("Concluída · à espera do PC", color = Success, style = MaterialTheme.typography.bodySmall)
         }
       }
     },
@@ -201,6 +248,10 @@ private fun OrderRow(o: Dashboard.WorkOrder, onOpen: (String) -> Unit) {
       o.address?.takeIf { it.isNotBlank() }?.let { Text(it, color = TextSecondary, style = MaterialTheme.typography.bodySmall) }
       Spacer(Modifier.height(8.dp))
       ContactActions(o.phone, onOpen, mapsUri = maps)
+      if (!closed) {
+        Spacer(Modifier.height(8.dp))
+        Action("Concluir OS", Modifier.fillMaxWidth(), onComplete)
+      }
     }
   )
 }

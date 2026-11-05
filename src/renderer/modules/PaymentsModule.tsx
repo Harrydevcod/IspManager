@@ -34,6 +34,7 @@ import { PdfPreviewDialog } from './payments/PdfPreviewDialog';
 import { VoidReceiptDialog } from './payments/VoidReceiptDialog';
 import { ReverseMonthlyDialog, type ReverseMonthlyPreview } from './payments/ReverseMonthlyDialog';
 import { BulkPaymentDialog, type BulkPaymentMode } from './payments/BulkPaymentDialog';
+import { FieldReceiptProposals } from './payments/FieldReceiptProposals';
 
 // ---------------------------------------------------------------------------
 // Payment-private types (local to this module)
@@ -1067,6 +1068,8 @@ export function PaymentsModule({
 
       {/* Message primitive — renders p.module-message, byte-identical to original */}
       {message && <Message>{message}</Message>}
+
+      <FieldReceiptProposals onConfirmed={() => void loadPayments()} />
 
       <FilterBar className="payments-filter-bar">
         <Field
