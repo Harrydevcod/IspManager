@@ -200,11 +200,25 @@ describe('SMS routes', () => {
     writeSecret(db, 'smsCompanionPairingKey', 'segredo');
     discovery.hosts = ['http://192.168.0.17:8765', 'http://192.168.0.30:8765'];
     discovery.paired = 'http://192.168.0.17:8765';
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); })); // the saved IP is dead
 
     const response = await app.inject({ method: 'POST', url: '/api/sms/discover' });
     expect(response.json()).toMatchObject({ baseUrl: 'http://192.168.0.17:8765', paired: true, updated: true });
     const saved = db.prepare(`SELECT value FROM app_settings WHERE key='smsCompanionBaseUrl'`).get() as { value: string };
     expect(saved.value).toBe('http://192.168.0.17:8765');
+  });
+
+  test('POST /api/sms/discover keeps a saved address that still answers with the secret', async () => {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionEnabled','true'), ('smsCompanionBaseUrl','http://192.168.1.126:8765')`).run();
+    writeSecret(db, 'smsCompanionPairingKey', 'segredo');
+    discovery.hosts = ['http://192.168.0.66:8765'];
+    discovery.paired = 'http://192.168.0.66:8765';
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 404 }))); // saved phone still verifies
+
+    const response = await app.inject({ method: 'POST', url: '/api/sms/discover' });
+    expect(response.json()).toMatchObject({ updated: false });
+    const saved = db.prepare(`SELECT value FROM app_settings WHERE key='smsCompanionBaseUrl'`).get() as { value: string };
+    expect(saved.value).toBe('http://192.168.1.126:8765');
   });
 
   test('POST /api/sms/discover never saves an address that did not prove the secret', async () => {
