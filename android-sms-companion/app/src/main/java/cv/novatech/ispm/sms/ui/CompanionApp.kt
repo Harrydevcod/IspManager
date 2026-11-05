@@ -53,7 +53,8 @@ fun CompanionApp(
   onApprove: (String) -> Unit,
   onApproveAll: () -> Unit,
   onUndo: (String) -> Unit,
-  onReject: (String) -> Unit
+  onReject: (String) -> Unit,
+  onForgetPairing: () -> Unit
 ) {
   Surface(Modifier.fillMaxSize().background(Bg)) {
     if (!state.paired) {
@@ -61,7 +62,7 @@ fun CompanionApp(
     } else {
       PairedApp(
         state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim,
-        onApprove, onApproveAll, onUndo, onReject
+        onApprove, onApproveAll, onUndo, onReject, onForgetPairing
       )
     }
   }
@@ -77,7 +78,8 @@ private fun PairedApp(
   onApprove: (String) -> Unit,
   onApproveAll: () -> Unit,
   onUndo: (String) -> Unit,
-  onReject: (String) -> Unit
+  onReject: (String) -> Unit,
+  onForgetPairing: () -> Unit
 ) {
   // Pending SMS outrank the overview: open on Pedidos when there is work waiting.
   var tab by rememberSaveable { mutableStateOf(if (state.pending.isNotEmpty()) Tab.PEDIDOS else Tab.PAINEL) }
@@ -85,9 +87,9 @@ private fun PairedApp(
     Box(Modifier.weight(1f).fillMaxWidth()) {
       when (tab) {
         Tab.PAINEL -> DashboardScreen(state.dashboard, state.dashboardReceivedAt)
-        Tab.PEDIDOS -> RequestsScreen(state, onRequestPermission, onRequestBatteryExemption, onApprove, onApproveAll, onUndo, onReject)
+        Tab.PEDIDOS -> RequestsScreen(state, onRequestPermission, onRequestBatteryExemption, onApprove, onApproveAll, onUndo, onReject, onForgetPairing)
         Tab.HISTORICO -> HistoryScreen(state)
-        Tab.DEFINICOES -> SettingsScreen(state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim)
+        Tab.DEFINICOES -> SettingsScreen(state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim, onForgetPairing)
       }
     }
     NavigationBar(containerColor = SurfaceMuted) {

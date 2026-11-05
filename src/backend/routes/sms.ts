@@ -125,11 +125,20 @@ export async function registerSmsRoutes(app: FastifyInstance) {
   // returns whichever host(s) answer on the companion port.
   app.post('/api/sms/discover', adminOnly, async () => {
     const hosts = await discoverCompanionHosts();
-    let baseUrl: string | null = readSecret(getSqliteDatabase(), 'smsCompanionPairingKey')
+    const pairedUrl = readSecret(getSqliteDatabase(), 'smsCompanionPairingKey')
       ? await findPairedCompanion(hosts)
       : null;
-    if (!baseUrl && hosts.length === 1) baseUrl = hosts[0];
-    return { candidates: hosts, baseUrl };
+    // Found by our secret (HMAC-verified): it is the paired phone, maybe at a new
+    // IP — save the address so a DHCP change never forces a re-pairing.
+    // Same rule as selfHealCompanionAddress: a saved address that still verifies
+    // is never replaced, so another host on the LAN cannot take over a healthy link.
+    // ponytail: "paired" = the host did not answer 401 to a signed /ping; a real
+    // proof needs the phone to sign its responses (protocol change in the app).
+    const savedStillPaired = pairedUrl ? (await verifyCompanionPairing(1500)).paired : false;
+    const updated = Boolean(pairedUrl && !savedStillPaired && pairedUrl !== getSetting('smsCompanionBaseUrl'));
+    if (pairedUrl && updated) setSetting('smsCompanionBaseUrl', pairedUrl);
+    const baseUrl = pairedUrl ?? (hosts.length === 1 ? hosts[0] : null);
+    return { candidates: hosts, baseUrl, paired: Boolean(pairedUrl), updated };
   });
 
   app.post('/api/sms/pairing', adminOnly, async (request, reply) => {

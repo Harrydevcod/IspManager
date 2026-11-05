@@ -106,7 +106,9 @@ describe('runSmsOverdueNoticesIfDue', () => {
     expect(rows.every((r) => r.status === 'pending_dispatch')).toBe(true);
     expect(rows[1].toPhone).toBe('+2389920000');
     expect(rows[1].body).toContain('FT-LATE');
-    expect(rows[1].body).toContain('venceu a 01-11-2026');
+    // A mesma data que o insertInvoice gravou (há 3 dias), no formato da mensagem.
+    const { lateDue } = db.prepare(`SELECT strftime('%d-%m-%Y', 'now', '-3 days') AS lateDue`).get() as { lateDue: string };
+    expect(rows[1].body).toContain(`venceu a ${lateDue}`);
   });
 
   test('runs once per day', () => {

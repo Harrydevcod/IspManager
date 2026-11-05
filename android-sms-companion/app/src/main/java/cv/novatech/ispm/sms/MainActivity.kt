@@ -69,7 +69,8 @@ class MainActivity : ComponentActivity() {
             else permissionLauncher.launch(Manifest.permission.SEND_SMS)
           },
           onUndo = { app.holder.undoApprove(it) },
-          onReject = { app.holder.reject(it) }
+          onReject = { app.holder.reject(it) },
+          onForgetPairing = { app.holder.unpair() }
         )
       }
     }

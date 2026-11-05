@@ -63,3 +63,42 @@ export function describeSmsPresence(status: SmsStatus | null, now = Date.now()):
   }
   return { tone: warnings.length ? 'warn' : 'success', line: parts.join(' · '), warnings };
 }
+
+export type SmsPairingState = 'unpaired' | 'waiting' | 'expired' | 'active' | 'mismatch' | 'unreachable' | 'off';
+
+export type SmsPairingView = {
+  state: SmsPairingState;
+  tone: 'success' | 'warn' | 'danger' | 'muted';
+  line: string;
+  /** A ação que resolve este estado; 'none' quando nada está por resolver. */
+  primary: 'pair' | 'detect' | 'none';
+  pairLabel: string;
+  /** O campo tem um endereço diferente do guardado: só passa a valer com um novo pareamento. */
+  addressChanged: boolean;
+};
+
+/**
+ * Um único estado do pareamento, visto do desktop. Pura: o SmsTab só a desenha.
+ * Nunca diz "pareado" sem o telemóvel o ter confirmado com a assinatura.
+ */
+export function describeSmsPairing(
+  status: SmsStatus | null,
+  opts: { verifying: boolean; qrShown: boolean; formBaseUrl: string }
+): SmsPairingView {
+  const name = status?.deviceName || 'Telemóvel';
+  const url = status?.baseUrl || 'endereço guardado';
+  const addressChanged = Boolean(status?.configured && opts.formBaseUrl && opts.formBaseUrl !== status.baseUrl);
+  const view = (state: SmsPairingState, tone: SmsPairingView['tone'], line: string, primary: SmsPairingView['primary'] = 'pair', pairLabel = 'Gerar novo pareamento'): SmsPairingView =>
+    ({ state, tone, line, primary, pairLabel, addressChanged });
+
+  if (opts.verifying) return view('waiting', 'muted', `À espera de que ${name} leia o QR…`);
+  if (!status?.configured) return view('unpaired', 'muted', 'Nenhum telemóvel pareado', 'pair', 'Gerar pareamento');
+  // Nada a resolver: parear de novo fica disponível, mas não chama a atenção.
+  if (status.enabled === false) return view('off', 'muted', `${name} · ligação desligada`, 'none');
+  if (status.active) return view('active', 'success', `Ativo: ${name} (${status.baseUrl})`, 'none');
+  if (opts.qrShown) return view('expired', 'warn', `${name} não confirmou o pareamento a tempo.`);
+  if (status.reachable) {
+    return view('mismatch', 'danger', `${name} responde em ${url}, mas tem outro pareamento. Gera um QR novo e, no telemóvel, usa "Esquecer e parear de novo".`, 'pair', 'Gerar novo QR');
+  }
+  return view('unreachable', 'warn', `${name} não responde em ${url}. Se o IP mudou, "Procurar telemóvel" encontra-o sem novo pareamento.`, 'detect');
+}

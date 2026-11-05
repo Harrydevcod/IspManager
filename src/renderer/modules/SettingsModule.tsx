@@ -198,6 +198,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
   const [smsQrDataUrl, setSmsQrDataUrl] = useState<string>('');
   const [smsVerifying, setSmsVerifying] = useState(false);
   const pairingPollRef = useRef<{ cancelled: boolean } | null>(null);
+  const smsSavedPairingRef = useRef({ baseUrl: '', deviceName: '' });
   const smsReportRequestRef = useRef(0);
   const hasUnsavedChanges = !lastSavedForm || JSON.stringify(form) !== JSON.stringify(lastSavedForm);
 
@@ -259,12 +260,19 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
       .then((response) => (response.ok ? (response.json() as Promise<SmsStatus>) : null))
       .then((data) => {
         setSmsStatus(data);
+        // Confirmado pelo telemóvel (por exemplo numa atualização periódica depois
+        // de o QR expirar): o QR já não serve para nada.
+        if (data?.active && !pairingPollRef.current) setSmsQrDataUrl('');
         // Hydrate the pairing form from the persisted settings so the IP and
         // device name survive reloads. Keep anything the operator is mid-typing.
+        // A field still showing the last saved value follows the server (the
+        // address can change by itself: self-heal, "Procurar telemóvel").
         if (data) {
+          const previous = smsSavedPairingRef.current;
+          smsSavedPairingRef.current = { baseUrl: data.baseUrl || '', deviceName: data.deviceName || '' };
           setSmsPairing((current) => ({
-            baseUrl: current.baseUrl || data.baseUrl || '',
-            deviceName: current.deviceName || data.deviceName || ''
+            baseUrl: !current.baseUrl || current.baseUrl === previous.baseUrl ? data.baseUrl || '' : current.baseUrl,
+            deviceName: !current.deviceName || current.deviceName === previous.deviceName ? data.deviceName || '' : current.deviceName
           }));
         }
       })
@@ -308,12 +316,23 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     setSmsDetecting(true);
     try {
       const response = await authFetch('http://127.0.0.1:3001/api/sms/discover', { method: 'POST' });
-      const data = (await response.json().catch(() => ({}))) as { baseUrl?: string | null; candidates?: string[] };
+      const data = (await response.json().catch(() => ({}))) as { baseUrl?: string | null; candidates?: string[]; paired?: boolean; updated?: boolean };
       if (!response.ok) {
         setMessage({ tone: 'error', text: 'Nao foi possivel procurar o telemovel na rede.', placement: 'top' });
         return;
       }
-      if (data.baseUrl) {
+      if (data.paired && data.baseUrl) {
+        // O servidor reconheceu o telemóvel pelo segredo e já gravou o endereço.
+        setSmsPairing((current) => ({ ...current, baseUrl: data.baseUrl as string }));
+        setMessage({
+          tone: 'success',
+          text: data.updated
+            ? `Telemóvel pareado encontrado em ${data.baseUrl}. Endereço atualizado — não é preciso parear de novo.`
+            : `Telemóvel pareado encontrado em ${data.baseUrl}.`,
+          placement: 'top'
+        });
+        await loadSmsStatus();
+      } else if (data.baseUrl) {
         setSmsPairing((current) => ({ ...current, baseUrl: data.baseUrl as string }));
         setMessage({ tone: 'success', text: `Telemovel encontrado em ${data.baseUrl}. Confirma o nome e gera o pareamento.`, placement: 'top' });
       } else if (data.candidates && data.candidates.length > 1) {
@@ -441,7 +460,15 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'sms') void loadSmsStatus();
+    if (activeTab !== 'sms') return;
+    void loadSmsStatus();
+    // O estado do telemóvel muda sem ninguém tocar no ecrã (IP, app fechada):
+    // enquanto o separador está aberto, volta a perguntar. A verificação do QR
+    // tem o seu próprio ciclo e não precisa deste.
+    const timer = window.setInterval(() => {
+      if (!pairingPollRef.current) void loadSmsStatus();
+    }, 30_000);
+    return () => window.clearInterval(timer);
   }, [activeTab]);
 
   useEffect(() => {
@@ -888,6 +915,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
               setSmsPasswordFor('pair');
             }}
             onRevokePairing={() => void revokeSmsPairing()}
+            onResumeVerification={() => void startPairingVerification(smsPairing.deviceName)}
           />
         )}
 

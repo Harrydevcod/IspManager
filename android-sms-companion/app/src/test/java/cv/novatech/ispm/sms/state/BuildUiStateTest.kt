@@ -35,4 +35,15 @@ class BuildUiStateTest {
     val s = buildUiState(pairing, true, true, listOf(req("1", "pending_approval")), sendingIds = setOf("1"))
     assertEquals(true, s.pending.first().sending)
   }
+
+  @Test fun desktopLinkFollowsTheLastSignedRequest() {
+    val now = 10 * 60_000L
+    fun link(seen: Long?, rejected: Long?) = desktopLink(CompanionUiState(lastDesktopAt = seen, lastRejectedAt = rejected), now)
+    assertEquals(DesktopLink.WAITING, link(null, null))
+    assertEquals(DesktopLink.LINKED, link(now - 60_000, null))
+    assertEquals(DesktopLink.WAITING, link(now - LINK_WINDOW_MS - 1, null)) // silent too long
+    assertEquals(DesktopLink.MISMATCH, link(now - 60_000, now - 1_000)) // rejected after the last good one
+    assertEquals(DesktopLink.LINKED, link(now - 1_000, now - 60_000)) // good one came after
+    assertEquals(DesktopLink.WAITING, link(null, now - LINK_WINDOW_MS - 1)) // old rejection fades
+  }
 }

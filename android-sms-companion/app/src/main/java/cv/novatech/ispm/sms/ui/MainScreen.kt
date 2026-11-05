@@ -13,6 +13,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cv.novatech.ispm.sms.state.CompanionUiState
+import cv.novatech.ispm.sms.state.DesktopLink
+import cv.novatech.ispm.sms.state.desktopLink
 import cv.novatech.ispm.sms.state.RequestUi
 import cv.novatech.ispm.sms.ui.components.*
 import cv.novatech.ispm.sms.ui.theme.*
@@ -29,8 +31,10 @@ fun RequestsScreen(
   onApprove: (String) -> Unit,
   onApproveAll: () -> Unit,
   onUndo: (String) -> Unit,
-  onReject: (String) -> Unit
+  onReject: (String) -> Unit,
+  onForgetPairing: () -> Unit
 ) {
+  val mismatch = desktopLink(state, rememberNow()) == DesktopLink.MISMATCH
   val approvable = state.pending.count { it.status == "pending_approval" && !it.sending }
   LazyColumn(
     Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -38,6 +42,8 @@ fun RequestsScreen(
     contentPadding = PaddingValues(vertical = 16.dp)
   ) {
     item { Text("Pedidos", style = MaterialTheme.typography.titleLarge) }
+    // The desktop holds another secret: nothing reaches this queue until a new QR is read.
+    if (mismatch) item { StatusCard(state, onForgetPairing) }
     if (!state.smsPermissionGranted) item { PermissionBanner(onRequestPermission) }
     if (!state.batteryExempt) item { BatteryBanner(onRequestBatteryExemption) }
 
@@ -86,7 +92,8 @@ fun SettingsScreen(
   onRequestPermission: () -> Unit,
   onRequestBatteryExemption: () -> Unit,
   onRequestPhoneState: () -> Unit,
-  onChooseSim: (Int?) -> Unit
+  onChooseSim: (Int?) -> Unit,
+  onForgetPairing: () -> Unit
 ) {
   LazyColumn(
     Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -94,7 +101,7 @@ fun SettingsScreen(
     contentPadding = PaddingValues(vertical = 16.dp)
   ) {
     item { Text("Definições", style = MaterialTheme.typography.titleLarge) }
-    item { StatusCard(state.deviceName, state.listenAddress, state.serverRunning, state.smsPermissionGranted) }
+    item { StatusCard(state, onForgetPairing) }
     if (!state.smsPermissionGranted) item { PermissionBanner(onRequestPermission) }
     if (!state.batteryExempt) item { BatteryBanner(onRequestBatteryExemption) }
     if (state.dualSimCapable) {
