@@ -112,6 +112,7 @@ fun SettingsScreen(
     if (!state.batteryExempt) item { BatteryBanner(onRequestBatteryExemption) }
     item { LockSetting(state.lockEnabled, state.deviceSecure, onLockEnabledChange) }
     item { CallerIdSetting() }
+    item { ForwardRepliesSetting() }
     if (state.dualSimCapable) {
       item { SimPicker(state.sims, state.selectedSim, onRequestPhoneState, onChooseSim) }
     }

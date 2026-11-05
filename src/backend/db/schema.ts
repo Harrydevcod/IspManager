@@ -1,4 +1,4 @@
-import { integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { blob, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 
 export const proposals = sqliteTable('proposals', {
@@ -633,6 +633,42 @@ export const smsOutbox = sqliteTable('sms_outbox', {
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP'),
   failedAt: text('failed_at'),
   deliveredAt: text('delivered_at')
+});
+
+// Canal de volta da app móvel (0095): eventos puxados do telemóvel, anexos de OS e SMS recebidos.
+export const companionEvents = sqliteTable('companion_events', {
+  id: text('id').primaryKey(),
+  kind: text('kind').notNull(),
+  occurredAt: text('occurred_at').notNull(),
+  receivedAt: text('received_at').notNull().default('CURRENT_TIMESTAMP'),
+  payloadJson: text('payload_json').notNull(),
+  status: text('status').notNull(),
+  reason: text('reason'),
+  decidedBy: text('decided_by'),
+  decidedAt: text('decided_at')
+});
+
+export const workOrderAttachments = sqliteTable('work_order_attachments', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  workOrderId: integer('work_order_id').notNull(),
+  kind: text('kind').notNull(),
+  mime: text('mime'),
+  data: blob('data', { mode: 'buffer' }),
+  lat: real('lat'),
+  lon: real('lon'),
+  takenAt: text('taken_at'),
+  eventId: text('event_id'),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
+});
+
+export const smsInbox = sqliteTable('sms_inbox', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  eventId: text('event_id').notNull(),
+  clientId: integer('client_id'),
+  phone: text('phone').notNull(),
+  body: text('body').notNull(),
+  receivedAt: text('received_at').notNull(),
+  readAt: text('read_at')
 });
 
 export const smsCompanionPairing = sqliteTable('sms_companion_pairing', {

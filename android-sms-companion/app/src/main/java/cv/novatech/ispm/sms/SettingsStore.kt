@@ -19,4 +19,11 @@ class SettingsStore(context: Context) {
   fun setLockEnabled(value: Boolean) {
     prefs.edit().putBoolean("lockEnabled", value).apply()
   }
+
+  /** Forward clients' SMS replies to the desktop. Off until the operator turns it on. */
+  fun forwardReplies(): Boolean = prefs.getBoolean("forwardReplies", false)
+
+  fun setForwardReplies(value: Boolean) {
+    prefs.edit().putBoolean("forwardReplies", value).apply()
+  }
 }

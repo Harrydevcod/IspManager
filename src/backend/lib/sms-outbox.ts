@@ -87,13 +87,13 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
   }
 }
 
-export async function signedFetch(path: string, method: 'GET' | 'POST', bodyObject?: unknown, timeoutMs?: number, baseUrlOverride?: string): Promise<Response> {
+export async function signedFetch(path: string, method: 'GET' | 'POST', bodyObject?: unknown, timeoutMs?: number, baseUrlOverride?: string, nonceOverride?: string): Promise<Response> {
   const baseUrl = baseUrlOverride || getSetting('smsCompanionBaseUrl');
   const secret = readSecret(getSqliteDatabase(), 'smsCompanionPairingKey');
   if (!baseUrl || !secret) throw new Error('Companion SMS nao pareado');
   const body = bodyObject ? JSON.stringify(bodyObject) : '';
   const timestamp = new Date().toISOString();
-  const nonce = randomUUID();
+  const nonce = nonceOverride ?? randomUUID();
   const signature = createSmsSignature({ secret, method, path, timestamp, nonce, body });
   return fetch(`${baseUrl}${path}`, {
     method,

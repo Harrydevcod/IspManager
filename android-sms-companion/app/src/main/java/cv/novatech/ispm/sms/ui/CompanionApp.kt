@@ -29,7 +29,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import cv.novatech.ispm.sms.events.FieldEvent
 import cv.novatech.ispm.sms.state.CompanionUiState
+import org.json.JSONObject
 import cv.novatech.ispm.sms.state.PairingInfo
 import cv.novatech.ispm.sms.ui.dashboard.DashboardScreen
 import cv.novatech.ispm.sms.ui.theme.AccentBlue
@@ -61,7 +63,9 @@ fun CompanionApp(
   onReject: (String) -> Unit,
   onForgetPairing: () -> Unit,
   onOpen: (String) -> Unit,
-  onLockEnabledChange: (Boolean) -> Unit
+  onLockEnabledChange: (Boolean) -> Unit,
+  pendingEvents: List<FieldEvent> = emptyList(),
+  onFieldEvent: (String, JSONObject, List<ByteArray>) -> Unit = { _, _, _ -> }
 ) {
   Surface(Modifier.fillMaxSize().background(Bg)) {
     if (!state.paired) {
@@ -69,7 +73,8 @@ fun CompanionApp(
     } else {
       PairedApp(
         state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim,
-        onApprove, onApproveAll, onUndo, onReject, onForgetPairing, onOpen, onLockEnabledChange
+        onApprove, onApproveAll, onUndo, onReject, onForgetPairing, onOpen, onLockEnabledChange,
+        pendingEvents, onFieldEvent
       )
     }
   }
@@ -88,7 +93,9 @@ private fun PairedApp(
   onReject: (String) -> Unit,
   onForgetPairing: () -> Unit,
   onOpen: (String) -> Unit,
-  onLockEnabledChange: (Boolean) -> Unit
+  onLockEnabledChange: (Boolean) -> Unit,
+  pendingEvents: List<FieldEvent>,
+  onFieldEvent: (String, JSONObject, List<ByteArray>) -> Unit
 ) {
   // Pending SMS outrank the overview: open on Pedidos when there is work waiting.
   var tab by rememberSaveable { mutableStateOf(if (state.pending.isNotEmpty()) Tab.PEDIDOS else Tab.PAINEL) }
@@ -96,7 +103,7 @@ private fun PairedApp(
     Box(Modifier.weight(1f).fillMaxWidth()) {
       when (tab) {
         Tab.PAINEL -> DashboardScreen(state.dashboard, state.dashboardReceivedAt)
-        Tab.TERRENO -> FieldScreen(state.dashboard, state.dashboardReceivedAt, onOpen)
+        Tab.TERRENO -> FieldScreen(state.dashboard, state.dashboardReceivedAt, onOpen, pendingEvents, onFieldEvent)
         Tab.PEDIDOS -> RequestsScreen(state, onRequestPermission, onRequestBatteryExemption, onApprove, onApproveAll, onUndo, onReject, onForgetPairing)
         Tab.HISTORICO -> HistoryScreen(state)
         Tab.DEFINICOES -> SettingsScreen(state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim, onForgetPairing, onLockEnabledChange)

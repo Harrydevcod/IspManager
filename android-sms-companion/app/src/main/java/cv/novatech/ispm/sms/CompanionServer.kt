@@ -1,5 +1,7 @@
 package cv.novatech.ispm.sms
 
+import cv.novatech.ispm.sms.events.EventStore
+import cv.novatech.ispm.sms.events.FieldEventCodec
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
 import java.io.DataInputStream
@@ -26,7 +28,9 @@ class CompanionServer(
   /** A request signed with the current secret: the desktop is really linked. */
   private val onAuthenticated: () -> Unit = {},
   /** A signed request that failed: the desktop holds another pairing. */
-  private val onRejected: () -> Unit = {}
+  private val onRejected: () -> Unit = {},
+  /** Field events waiting for the desktop (canal de volta, 0.7.0+). */
+  private val eventStore: EventStore? = null
 ) : NanoHTTPD(port) {
 
   override fun serve(session: IHTTPSession): Response {
@@ -88,6 +92,21 @@ class CompanionServer(
       return json(Response.Status.OK, JSONObject().put("id", id).put("status", "pending_approval"))
     }
 
+    if (eventStore != null && session.method == Method.GET && session.uri == "/events") {
+      return signed(session, "application/json", FieldEventCodec.forDesktop(eventStore.pending()).toString().toByteArray(Charsets.UTF_8))
+    }
+
+    if (eventStore != null && session.method == Method.POST && session.uri == "/events/ack") {
+      eventStore.ack(FieldEventCodec.ackIds(body))
+      return json(Response.Status.OK, JSONObject().put("ok", true))
+    }
+
+    if (eventStore != null && session.method == Method.GET && session.uri.startsWith("/media/")) {
+      val file = eventStore.media(session.uri.removePrefix("/media/"))
+        ?: return json(Response.Status.NOT_FOUND, JSONObject().put("error", "foto inexistente"))
+      return signed(session, "image/jpeg", file.readBytes())
+    }
+
     if (session.method == Method.GET && session.uri.startsWith("/requests/")) {
       val id = session.uri.removePrefix("/requests/")
       val row = requestStore.find(id)
@@ -104,6 +123,17 @@ class CompanionServer(
     .put("error", row.error ?: "")
     .put("sentAt", row.sentAt?.let { Instant.ofEpochMilli(it).toString() } ?: JSONObject.NULL)
     .put("deliveredAt", row.deliveredAt?.let { Instant.ofEpochMilli(it).toString() } ?: JSONObject.NULL)
+
+  /**
+   * A response the desktop writes to its database from: signed over the request's
+   * nonce and the body, so nothing else on the LAN can answer in the phone's place.
+   */
+  private fun signed(session: IHTTPSession, mime: String, bytes: ByteArray): Response {
+    val nonce = session.headers["x-ispm-nonce"].orEmpty()
+    return newFixedLengthResponse(Response.Status.OK, mime, bytes.inputStream(), bytes.size.toLong()).apply {
+      addHeader("x-ispm-response-signature", ResponseSignature.sign(pairingStore.secret(), nonce, bytes))
+    }
+  }
 
   private fun json(status: Response.Status, payload: JSONObject): Response =
     newFixedLengthResponse(status, "application/json", payload.toString())
@@ -159,4 +189,14 @@ internal fun readBody(input: InputStream, length: Long): String {
   val bytes = ByteArray(length.toInt())
   DataInputStream(input).readFully(bytes)
   return String(bytes, Charsets.UTF_8)
+}
+
+/** Same canonical form as the desktop's createResponseSignature (src/backend/lib/sms-signing.ts). */
+object ResponseSignature {
+  fun sign(secret: String, nonce: String, body: ByteArray): String {
+    val digest = java.security.MessageDigest.getInstance("SHA-256").digest(body).joinToString("") { "%02x".format(it) }
+    val mac = Mac.getInstance("HmacSHA256")
+    mac.init(SecretKeySpec(secret.toByteArray(Charsets.UTF_8), "HmacSHA256"))
+    return mac.doFinal("response\n$nonce\n$digest".toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+  }
 }

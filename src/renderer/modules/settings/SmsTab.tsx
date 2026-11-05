@@ -1,4 +1,5 @@
 import { QrCode, RotateCcw, Unlink, Wifi } from 'lucide-react';
+import { SmsInbox } from './SmsInbox';
 import { Button, Field, Toggle } from '../../components';
 import type { SmsMonthlyReport, SmsStatus } from '../../types';
 import { TemplateField } from './TemplateField';
@@ -74,6 +75,7 @@ export function SmsTab({
         disabled={!form.smsCompanionEnabled}
         onChange={(event) => onToggle('smsAutoNoticesEnabled', event.target.checked)}
       />
+      <SmsInbox />
       <div className="settings-test-whatsapp" aria-label="Pareamento do Android SMS">
         <span className="sms-pairing-state" data-tone={pairing.tone} role="status">{pairing.line}</span>
         {presence && (

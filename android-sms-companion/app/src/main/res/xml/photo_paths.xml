@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+  <!-- Camera output before compression; deleted after the photo is queued. -->
+  <cache-path name="field_photos" path="field-photos/" />
+</paths>

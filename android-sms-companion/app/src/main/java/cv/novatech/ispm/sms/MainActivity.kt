@@ -25,6 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import cv.novatech.ispm.sms.state.DeviceSnapshot
 import cv.novatech.ispm.sms.state.PairingInfo
 import cv.novatech.ispm.sms.state.SimOption
@@ -62,6 +64,7 @@ class MainActivity : FragmentActivity() {
     setContent {
       IspmTheme {
         val state by app.holder.state.collectAsStateWithLifecycle()
+        val fieldEvents by app.eventStore.events.collectAsStateWithLifecycle()
         if (locked) {
           LockScreen(onUnlock = ::authenticate)
           return@IspmTheme
@@ -93,6 +96,12 @@ class MainActivity : FragmentActivity() {
             app.settingsStore.setLockEnabled(enabled)
             refreshDevice()
             applySecureFlag()
+          },
+          pendingEvents = fieldEvents,
+          onFieldEvent = { kind, payload, photos ->
+            // Photos are written to disk: off the main thread.
+            app.scope.launch(Dispatchers.IO) { app.eventStore.add(kind, payload, photos) }
+            toast("Guardado. Segue para o PC quando ele ligar ao telemóvel.")
           }
         )
       }

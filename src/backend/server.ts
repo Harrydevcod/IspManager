@@ -44,6 +44,8 @@ import { runAudiovisualAnnualIfDue } from './lib/audiovisual-billing';
 import { runOverdueNoticesIfDue } from './lib/notices';
 import { runSmsOverdueNoticesIfDue, smsOverdueNoticesDueToday } from './lib/sms-notices';
 import { runCompanionSyncIfDue } from './lib/companion-sync';
+import { pullCompanionEventsIfDue } from './lib/companion-events';
+import { registerCompanionRoutes } from './routes/companion';
 import { pollWhatsappDeliveryIfDue, runWhatsappOutboxIfDue } from './lib/whatsapp-outbox';
 import { pollSmsStatusIfDue, runSmsOutboxIfDue, smsDispatchIntervalMs } from './lib/sms-outbox';
 import { registerNetworkRoutes } from './routes/network';
@@ -195,6 +197,7 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
   await registerUserRoutes(app);
   await registerHealthRoutes(app);
   await registerDashboardRoutes(app);
+  await registerCompanionRoutes(app);
   await registerClientRoutes(app);
   await registerPlanRoutes(app);
   await registerIptvRoutes(app);
@@ -299,7 +302,12 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
     scheduleDrain();
     setInterval(pollSms, 60_000).unref();
     // Estado do telemóvel + resumo do Painel. Só leitura: não depende da licença.
-    const syncCompanion = () => { void runCompanionSyncIfDue().catch((err) => app.log.warn({ err }, 'companion sync failed')); };
+    // Depois do estado, o canal de volta: o que o telemóvel guardou no terreno.
+    const syncCompanion = () => {
+      void runCompanionSyncIfDue()
+        .then(() => runJob('companion_events', () => pullCompanionEventsIfDue()))
+        .catch((err) => app.log.warn({ err }, 'companion sync failed'));
+    };
     syncCompanion();
     setInterval(syncCompanion, 60_000).unref();
   }
