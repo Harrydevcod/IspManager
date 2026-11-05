@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Gerado por scripts/make-icons.mjs. Editar a geometria lá, não aqui. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+  android:width="108dp" android:height="108dp"
+  android:viewportWidth="108" android:viewportHeight="108">
+  <group android:scaleX="1.184" android:scaleY="1.184"
+    android:translateX="16.689" android:translateY="18.703">
+    <path android:strokeColor="#e0b578" android:strokeAlpha="0.52" android:strokeWidth="2"
+      android:strokeLineCap="round" android:pathData="M32,21L21,30" />
+    <path android:strokeColor="#e0b578" android:strokeAlpha="0.52" android:strokeWidth="2"
+      android:strokeLineCap="round" android:pathData="M32,21L43,30" />
+    <path android:strokeColor="#e0b578" android:strokeAlpha="0.52" android:strokeWidth="2"
+      android:strokeLineCap="round" android:pathData="M19,38L14,44" />
+    <path android:strokeColor="#e0b578" android:strokeAlpha="0.52" android:strokeWidth="2"
+      android:strokeLineCap="round" android:pathData="M21,38L27,44" />
+    <path android:strokeColor="#e0b578" android:strokeAlpha="0.52" android:strokeWidth="2"
+      android:strokeLineCap="round" android:pathData="M45,38L50,44" />
+    <path android:strokeColor="#e0b578" android:strokeAlpha="1" android:strokeWidth="2.4"
+      android:pathData="M16.6,34a3.4,3.4 0 1,0 6.8,0a3.4,3.4 0 1,0 -6.8,0" />
+    <path android:strokeColor="#e0b578" android:strokeAlpha="1" android:strokeWidth="2.4"
+      android:pathData="M40.6,34a3.4,3.4 0 1,0 6.8,0a3.4,3.4 0 1,0 -6.8,0" />
+    <path android:fillColor="#e0b578" android:fillAlpha="1"
+      android:pathData="M27,15a5,5 0 1,0 10,0a5,5 0 1,0 -10,0" />
+    <path android:fillColor="#e0b578" android:fillAlpha="0.72"
+      android:pathData="M10.4,47a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0" />
+    <path android:fillColor="#e0b578" android:fillAlpha="0.72"
+      android:pathData="M25.4,47a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0" />
+    <path android:fillColor="#e0b578" android:fillAlpha="0.72"
+      android:pathData="M47.4,47a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0" />
+  </group>
+</vector>
