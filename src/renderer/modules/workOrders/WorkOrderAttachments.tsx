@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { MapPin } from 'lucide-react';
+import { Button } from '../../components';
 import { authFetch } from '../../lib/auth';
 import { useAuthenticatedObjectUrl } from '../../lib/download';
 
@@ -49,9 +50,9 @@ export function WorkOrderAttachments({ orderId }: { orderId: number }) {
         </div>
       )}
       {place && (
-        <button type="button" className="wo-location" onClick={() => void openMap(place.lat!, place.lon!)}>
-          <MapPin size={14} aria-hidden /> Ver no mapa onde foi concluída
-        </button>
+        <Button variant="ghost" size="sm" className="wo-location" leadingIcon={<MapPin size={14} aria-hidden />} onClick={() => void openMap(place.lat!, place.lon!)}>
+          Ver no mapa onde foi concluída
+        </Button>
       )}
     </div>
   );

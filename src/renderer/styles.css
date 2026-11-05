@@ -7250,20 +7250,6 @@ button.danger:disabled {
 
 .wo-location {
   justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.wo-location:hover {
-  text-decoration: underline;
 }
 
 /* SMS recebidos dos clientes: os por ler destacam-se pela barra à esquerda. */
