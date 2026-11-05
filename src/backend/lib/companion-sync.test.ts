@@ -142,7 +142,7 @@ describe('buildCompanionSnapshot', () => {
     expect(s.money.criticalOverdue.length).toBeLessThanOrEqual(5);
     expect(s.network.wans).toEqual([{ name: 'ether1', running: true, downBps: 1000, upBps: 200 }]);
     expect(s.sms.month).toEqual({ sent: 1, delivered: 1, failed: 1, pending: 1 });
-    expect(Object.keys(s).sort()).toEqual(['companyName', 'customers', 'generatedAt', 'money', 'network', 'operation', 'schemaVersion', 'sms']);
+    expect(Object.keys(s).sort()).toEqual(['companyName', 'customers', 'generatedAt', 'money', 'network', 'operation', 'schemaVersion', 'sms', 'work']);
   });
 
   test('a router error becomes wanReason, not a failed snapshot', async () => {

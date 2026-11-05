@@ -12,8 +12,8 @@ android {
     applicationId = "cv.novatech.ispm.sms"
     minSdk = 26
     targetSdk = 35
-    versionCode = 4
-    versionName = "0.4.0"
+    versionCode = 5
+    versionName = "0.5.0"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
@@ -53,6 +53,8 @@ android {
 
 dependencies {
   implementation("androidx.core:core-ktx:1.13.1")
+  // Fingerprint or the phone PIN to open the app; brings androidx.fragment (FragmentActivity).
+  implementation("androidx.biometric:biometric:1.1.0")
   implementation("androidx.activity:activity-compose:1.9.3")
   implementation("androidx.compose.ui:ui:1.7.5")
   implementation("androidx.compose.material3:material3:1.3.1")

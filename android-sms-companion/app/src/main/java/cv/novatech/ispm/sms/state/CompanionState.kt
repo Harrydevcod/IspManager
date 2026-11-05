@@ -37,6 +37,9 @@ data class CompanionUiState(
   val dualSimCapable: Boolean = false,
   val sims: List<SimOption> = emptyList(),
   val selectedSim: Int? = null,
+  val lockEnabled: Boolean = true,
+  /** The phone has a screen lock (fingerprint/PIN); without it the app lock can't work. */
+  val deviceSecure: Boolean = true,
   val pending: List<RequestUi> = emptyList(),
   val history: List<RequestUi> = emptyList(),
   val dashboard: Dashboard? = null,
@@ -65,7 +68,9 @@ data class DeviceSnapshot(
   val batteryExempt: Boolean = true,
   val dualSimCapable: Boolean = false,
   val sims: List<SimOption> = emptyList(),
-  val selectedSim: Int? = null
+  val selectedSim: Int? = null,
+  val lockEnabled: Boolean = true,
+  val deviceSecure: Boolean = true
 )
 
 private fun SmsRequest.toUi(sending: Boolean) = RequestUi(
@@ -102,6 +107,8 @@ fun buildUiState(
     dualSimCapable = device.dualSimCapable,
     sims = device.sims,
     selectedSim = device.selectedSim,
+    lockEnabled = device.lockEnabled,
+    deviceSecure = device.deviceSecure,
     pending = pending,
     history = history,
     dashboard = dashboard,

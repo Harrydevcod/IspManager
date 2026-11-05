@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
+import cv.novatech.ispm.sms.dashboard.FieldRules
+import cv.novatech.ispm.sms.dashboard.NetworkChanges
 
 /**
  * Two channels: a quiet persistent one for the foreground service, and a
@@ -19,6 +21,9 @@ object Notifications {
   const val ALERT_CHANNEL_ID = "ops_alerts"
   private const val NOTIF_ID = 4201
   private const val ALERT_NOTIF_ID = 4202
+  const val NETWORK_CHANNEL_ID = "network"
+  private const val NETWORK_SUMMARY_ID = 4203
+  private const val NETWORK_BASE_ID = 10_000
 
   fun ensureChannels(context: Context) {
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
@@ -30,6 +35,11 @@ object Notifications {
     manager.createNotificationChannel(
       NotificationChannel(ALERT_CHANNEL_ID, "Alertas da operação", NotificationManager.IMPORTANCE_HIGH).apply {
         description = "Avisa quando o estado da operação no desktop passa a crítico."
+      }
+    )
+    manager.createNotificationChannel(
+      NotificationChannel(NETWORK_CHANNEL_ID, "Quedas na rede", NotificationManager.IMPORTANCE_HIGH).apply {
+        description = "Avisa quando uma antena ou equipamento cai e quando volta."
       }
     )
     manager.createNotificationChannel(
@@ -59,11 +69,58 @@ object Notifications {
       .setContentText("$who — toca para aprovar")
       .setPriority(NotificationCompat.PRIORITY_HIGH)
       .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+      // The client's name stays off the lock screen.
+      .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
       .setAutoCancel(true)
       .setContentIntent(openApp(context))
       .build()
     manager.notify(NOTIF_ID, notification)
   }
+
+  /**
+   * One notification per device that fell or came back (the same id, so "voltou"
+   * replaces "caiu"), or a single summary when a whole area changes at once.
+   * Private on the lock screen: device and client names are not for passers-by.
+   */
+  fun notifyNetworkChanges(context: Context, changes: NetworkChanges) {
+    if (changes.count == 0) return
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+    fun build(title: String, text: String, warning: Boolean) = NotificationCompat.Builder(context, NETWORK_CHANNEL_ID)
+      .setSmallIcon(if (warning) android.R.drawable.stat_sys_warning else android.R.drawable.stat_sys_upload_done)
+      .setContentTitle(title)
+      .setContentText(text)
+      .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+      .setPriority(NotificationCompat.PRIORITY_HIGH)
+      .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+      .setPublicVersion(
+        NotificationCompat.Builder(context, NETWORK_CHANNEL_ID)
+          .setSmallIcon(android.R.drawable.stat_sys_warning)
+          .setContentTitle("Alteração na rede")
+          .build()
+      )
+      .setAutoCancel(true)
+      .setContentIntent(openApp(context))
+      .build()
+
+    if (changes.count > FieldRules.MAX_SINGLE_ALERTS) {
+      val parts = listOfNotNull(
+        changes.wentDown.size.takeIf { it > 0 }?.let { "$it em baixo" },
+        changes.restored.size.takeIf { it > 0 }?.let { "$it voltaram" }
+      )
+      val names = (changes.wentDown.map { it.name } + changes.restored.map { it.down.name }).take(6).joinToString(", ")
+      manager.notify(NETWORK_SUMMARY_ID, build("Rede: ${parts.joinToString(" · ")}", names, changes.wentDown.isNotEmpty()))
+      return
+    }
+    changes.wentDown.forEach { d ->
+      manager.notify(networkId(d), build("${d.name} caiu", "Sem resposta à sonda do ISPM.", warning = true))
+    }
+    changes.restored.forEach { r ->
+      val after = r.minutesDown?.let { m -> if (m < 60) " ao fim de $m min" else " ao fim de ${m / 60} h ${m % 60} min" } ?: ""
+      manager.notify(networkId(r.down), build("${r.down.name} voltou", "Responde de novo$after.", warning = false))
+    }
+  }
+
+  private fun networkId(d: cv.novatech.ispm.sms.dashboard.Dashboard.Down) = NETWORK_BASE_ID + (d.key.hashCode() and 0xFFFF)
 
   fun notifyOperationAlert(context: Context, headline: String) {
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return

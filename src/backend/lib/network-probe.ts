@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-network';
+import { requestCompanionSnapshotPush } from './companion-sync';
 
 export type ProbeState = 'up' | 'down';
 export type ProbeTargetKind = 'backbone' | 'assignment';
@@ -292,6 +293,8 @@ export async function runNetworkProbe(
     });
   })();
 
+  // Algo caiu ou voltou: o telemóvel sabe no próximo minuto, não daqui a 5.
+  if (summary.transitions > 0) requestCompanionSnapshotPush();
   return summary;
 }
 
