@@ -93,7 +93,7 @@ export function SmsTab({
           disabled={qrOpen}
         />
         {pairing.addressChanged && !qrOpen && (
-          <small className="sms-presence-warning">
+          <small className="sms-pairing-address-warning">
             Endereço diferente do guardado ({smsStatus?.baseUrl}). Só passa a valer com um novo pareamento.
           </small>
         )}
@@ -119,7 +119,7 @@ export function SmsTab({
             <span>{pairing.state === 'waiting'
               ? 'No telemóvel, abra a app ISPM SMS e leia este QR. Se a app já estiver pareada: Definições → "Esquecer e parear de novo".'
               : 'Ninguém leu este QR em 60 s. Continue à espera ou cancele e comece de novo.'}</span>
-            <div className="form-actions">
+            <div className="sms-pairing-actions">
               {pairing.state === 'expired' && (
                 <Button variant="primary" onClick={onResumeVerification} leadingIcon={<RotateCcw size={14} aria-hidden />}>
                   Continuar à espera
@@ -131,7 +131,7 @@ export function SmsTab({
             </div>
           </div>
         ) : (
-          <div className="form-actions">
+          <div className="sms-pairing-actions">
             <Button
               variant={pairing.primary === 'pair' ? 'primary' : 'secondary'}
               onClick={onCreatePairing}

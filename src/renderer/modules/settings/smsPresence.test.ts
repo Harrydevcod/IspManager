@@ -63,7 +63,7 @@ describe('describeSmsPairing', () => {
     expect(v.line).not.toMatch(/pareado/i);
   });
   test('active only when the phone proved the secret', () => {
-    expect(describeSmsPairing(base, opts).state).toBe('active');
+    expect(describeSmsPairing(base, opts)).toMatchObject({ state: 'active', primary: 'none' });
   });
   test('a QR left after the wait expired says so instead of "lê este QR"', () => {
     expect(describeSmsPairing(offline, { ...opts, qrShown: true }).state).toBe('expired');

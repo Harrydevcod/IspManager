@@ -70,8 +70,8 @@ export type SmsPairingView = {
   state: SmsPairingState;
   tone: 'success' | 'warn' | 'danger' | 'muted';
   line: string;
-  /** A ação que resolve este estado: parear (QR) ou procurar o telemóvel na rede. */
-  primary: 'pair' | 'detect';
+  /** A ação que resolve este estado; 'none' quando nada está por resolver. */
+  primary: 'pair' | 'detect' | 'none';
   pairLabel: string;
   /** O campo tem um endereço diferente do guardado: só passa a valer com um novo pareamento. */
   addressChanged: boolean;
@@ -93,8 +93,9 @@ export function describeSmsPairing(
 
   if (opts.verifying) return view('waiting', 'muted', `À espera de que ${name} leia o QR…`);
   if (!status?.configured) return view('unpaired', 'muted', 'Nenhum telemóvel pareado', 'pair', 'Gerar pareamento');
-  if (status.enabled === false) return view('off', 'muted', `${name} · ligação desligada`);
-  if (status.active) return view('active', 'success', `Ativo: ${name} (${status.baseUrl})`);
+  // Nada a resolver: parear de novo fica disponível, mas não chama a atenção.
+  if (status.enabled === false) return view('off', 'muted', `${name} · ligação desligada`, 'none');
+  if (status.active) return view('active', 'success', `Ativo: ${name} (${status.baseUrl})`, 'none');
   if (opts.qrShown) return view('expired', 'warn', `${name} não confirmou o pareamento a tempo.`);
   if (status.reachable) {
     return view('mismatch', 'danger', `${name} responde em ${url}, mas tem outro pareamento. Gera um QR novo e, no telemóvel, usa "Esquecer e parear de novo".`, 'pair', 'Gerar novo QR');

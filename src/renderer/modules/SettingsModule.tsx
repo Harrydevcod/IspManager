@@ -198,6 +198,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
   const [smsQrDataUrl, setSmsQrDataUrl] = useState<string>('');
   const [smsVerifying, setSmsVerifying] = useState(false);
   const pairingPollRef = useRef<{ cancelled: boolean } | null>(null);
+  const smsSavedPairingRef = useRef({ baseUrl: '', deviceName: '' });
   const smsReportRequestRef = useRef(0);
   const hasUnsavedChanges = !lastSavedForm || JSON.stringify(form) !== JSON.stringify(lastSavedForm);
 
@@ -264,10 +265,14 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
         if (data?.active && !pairingPollRef.current) setSmsQrDataUrl('');
         // Hydrate the pairing form from the persisted settings so the IP and
         // device name survive reloads. Keep anything the operator is mid-typing.
+        // A field still showing the last saved value follows the server (the
+        // address can change by itself: self-heal, "Procurar telemóvel").
         if (data) {
+          const previous = smsSavedPairingRef.current;
+          smsSavedPairingRef.current = { baseUrl: data.baseUrl || '', deviceName: data.deviceName || '' };
           setSmsPairing((current) => ({
-            baseUrl: current.baseUrl || data.baseUrl || '',
-            deviceName: current.deviceName || data.deviceName || ''
+            baseUrl: !current.baseUrl || current.baseUrl === previous.baseUrl ? data.baseUrl || '' : current.baseUrl,
+            deviceName: !current.deviceName || current.deviceName === previous.deviceName ? data.deviceName || '' : current.deviceName
           }));
         }
       })
