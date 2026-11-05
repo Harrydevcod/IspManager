@@ -11,7 +11,7 @@
  * podem divergir.
  */
 import { PNG } from 'pngjs';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -165,6 +165,71 @@ function toSvg(shapes, label) {
     + `${body}\n</svg>\n`;
 }
 
+/**
+ * Ícone adaptativo da app Android (ISPM SMS): a placa vira a camada de fundo
+ * (cor lisa) e o resto vira um VectorDrawable de 108×108 dp. O lançador recorta
+ * com a máscara que quiser (círculo, squircle, quadrado) e só garante visível o
+ * círculo central de 66 dp — por isso a marca é escalada para que o ponto mais
+ * afastado do seu centro caiba nesse círculo, e centrada pelo desenho, não pela grelha.
+ */
+const ADAPTIVE = 108;
+const SAFE_RADIUS = 33;
+
+function extent(shape) {
+  if (shape.kind === 'link') return [shape.from, shape.to].map(([x, y]) => [x, y, shape.w / 2]);
+  if (shape.kind === 'ring') return [[shape.at[0], shape.at[1], shape.r + shape.w / 2]];
+  return [[shape.at[0], shape.at[1], shape.r]];
+}
+
+function circlePath([cx, cy], r) {
+  return `M${cx - r},${cy}a${r},${r} 0 1,0 ${2 * r},0a${r},${r} 0 1,0 ${-2 * r},0`;
+}
+
+function toAndroidForeground(shapes) {
+  const glyph = shapes.filter((shape) => shape.kind !== 'plate');
+  const points = glyph.flatMap(extent);
+  const minX = Math.min(...points.map(([x, , r]) => x - r));
+  const maxX = Math.max(...points.map(([x, , r]) => x + r));
+  const minY = Math.min(...points.map(([, y, r]) => y - r));
+  const maxY = Math.max(...points.map(([, y, r]) => y + r));
+  const [cx, cy] = [(minX + maxX) / 2, (minY + maxY) / 2];
+  const reach = Math.max(...points.map(([x, y, r]) => Math.hypot(x - cx, y - cy) + r));
+  const scale = SAFE_RADIUS / reach;
+  const round = (n) => Number(n.toFixed(3));
+
+  const body = glyph.map((shape) => {
+    if (shape.kind === 'disc') {
+      return `    <path android:fillColor="${GOLD}" android:fillAlpha="${shape.alpha}"\n`
+        + `      android:pathData="${circlePath(shape.at, shape.r)}" />`;
+    }
+    if (shape.kind === 'ring') {
+      return `    <path android:strokeColor="${GOLD}" android:strokeAlpha="${shape.alpha}" android:strokeWidth="${shape.w}"\n`
+        + `      android:pathData="${circlePath(shape.at, shape.r)}" />`;
+    }
+    return `    <path android:strokeColor="${GOLD}" android:strokeAlpha="${shape.alpha}" android:strokeWidth="${shape.w}"\n`
+      + `      android:strokeLineCap="round" android:pathData="M${shape.from[0]},${shape.from[1]}L${shape.to[0]},${shape.to[1]}" />`;
+  }).join('\n');
+
+  return `<?xml version="1.0" encoding="utf-8"?>\n`
+    + `<!-- Gerado por scripts/make-icons.mjs. Editar a geometria lá, não aqui. -->\n`
+    + `<vector xmlns:android="http://schemas.android.com/apk/res/android"\n`
+    + `  android:width="${ADAPTIVE}dp" android:height="${ADAPTIVE}dp"\n`
+    + `  android:viewportWidth="${ADAPTIVE}" android:viewportHeight="${ADAPTIVE}">\n`
+    + `  <group android:scaleX="${round(scale)}" android:scaleY="${round(scale)}"\n`
+    + `    android:translateX="${round(ADAPTIVE / 2 - cx * scale)}" android:translateY="${round(ADAPTIVE / 2 - cy * scale)}">\n`
+    + `${body}\n  </group>\n</vector>\n`;
+}
+
+const ANDROID_LAUNCHER = `<?xml version="1.0" encoding="utf-8"?>
+<!-- Gerado por scripts/make-icons.mjs. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+  <background android:drawable="@color/ic_launcher_background" />
+  <foreground android:drawable="@drawable/ic_launcher_foreground" />
+  <!-- Android 13+ "ícones temáticos": a mesma forma, tingida pelo sistema. -->
+  <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
+`;
+
 function packIco(entries) {
   const header = Buffer.alloc(6);
   header.writeUInt16LE(1, 2); // 1 = ícone
@@ -203,3 +268,17 @@ write('assets/icon.ico', packIco(ICO_SIZES.map((size) => ({
 write('assets/icon-512.png', render(FULL, 512));
 write('assets/icon.png', render(FULL, 256));
 write('src/renderer/public/favicon.png', render(FULL, 256));
+
+// App Android: a mesma marca, como ícone adaptativo (minSdk 26 — não precisa de PNGs por densidade).
+const androidRes = 'android-sms-companion/app/src/main/res';
+mkdirSync(path.join(root, androidRes, 'drawable'), { recursive: true });
+mkdirSync(path.join(root, androidRes, 'mipmap-anydpi-v26'), { recursive: true });
+mkdirSync(path.join(root, androidRes, 'values'), { recursive: true });
+write(`${androidRes}/drawable/ic_launcher_foreground.xml`, toAndroidForeground(FULL));
+write(`${androidRes}/mipmap-anydpi-v26/ic_launcher.xml`, ANDROID_LAUNCHER);
+write(`${androidRes}/values/ic_launcher_background.xml`, `<?xml version="1.0" encoding="utf-8"?>
+<!-- Gerado por scripts/make-icons.mjs: a placa do ícone do desktop. -->
+<resources>
+  <color name="ic_launcher_background">${PLATE}</color>
+</resources>
+`);
