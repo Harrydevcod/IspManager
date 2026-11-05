@@ -14,8 +14,12 @@ class SmsResultReceiver : BroadcastReceiver() {
     val app = context.applicationContext as IspmSmsApp
     val now = System.currentTimeMillis()
     when (intent.action) {
-      ACTION_SENT -> app.requestStore.update(id) {
-        RequestRules.onSentResult(it, resultCode == Activity.RESULT_OK, part == total - 1, resultCode, now)
+      ACTION_SENT -> {
+        app.requestStore.update(id) {
+          RequestRules.onSentResult(it, resultCode == Activity.RESULT_OK, part == total - 1, resultCode, now)
+        }
+        // The carrier's own limit: that SIM rests an hour, the queue moves to the other one.
+        if (resultCode == RESULT_ERROR_LIMIT_EXCEEDED) app.sendLog.pauseSimOf(id, now)
       }
       ACTION_DELIVERED -> if (part == total - 1) app.requestStore.update(id) { RequestRules.onDelivered(it, now) }
     }
@@ -28,5 +32,7 @@ class SmsResultReceiver : BroadcastReceiver() {
     const val EXTRA_ID = "requestId"
     const val EXTRA_PART = "part"
     const val EXTRA_TOTAL = "total"
+    /** SmsManager.RESULT_ERROR_LIMIT_EXCEEDED. */
+    private const val RESULT_ERROR_LIMIT_EXCEEDED = 5
   }
 }

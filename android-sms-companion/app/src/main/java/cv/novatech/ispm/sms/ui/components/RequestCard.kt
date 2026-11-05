@@ -44,8 +44,14 @@ fun RequestCard(req: RequestUi, onApprove: () -> Unit, onReject: () -> Unit, onU
     }
     Spacer(Modifier.height(12.dp))
     if (req.sending) {
+      // Waiting for a SIM with room still allows "Anular": nothing has reached the radio.
+      val line = when (val until = req.waitUntil) {
+        null -> "A enviar a ${req.clientName ?: req.toPhone}…"
+        0L -> "Na fila: sai a seguir ao anterior"
+        else -> "Aguarda o ritmo do SIM · sai às ${clock.format(java.util.Date(until))}"
+      }
       Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("A enviar a ${req.clientName ?: req.toPhone}…", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+        Text(line, color = TextSecondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
         TextButton(onClick = onUndo) { Text("Anular", color = AccentOrange, fontWeight = FontWeight.SemiBold) }
       }
     } else if (req.inFlight || req.status == "approved") {
@@ -61,3 +67,5 @@ fun RequestCard(req: RequestUi, onApprove: () -> Unit, onReject: () -> Unit, onU
     }
   }
 }
+
+private val clock = java.text.SimpleDateFormat("HH:mm", java.util.Locale("pt", "PT"))

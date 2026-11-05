@@ -65,7 +65,8 @@ fun CompanionApp(
   onOpen: (String) -> Unit,
   onLockEnabledChange: (Boolean) -> Unit,
   pendingEvents: List<FieldEvent> = emptyList(),
-  onFieldEvent: (String, JSONObject, List<ByteArray>) -> Unit = { _, _, _ -> }
+  onFieldEvent: (String, JSONObject, List<ByteArray>) -> Unit = { _, _, _ -> },
+  onRejectAll: () -> Unit = {}
 ) {
   Surface(Modifier.fillMaxSize().background(Bg)) {
     if (!state.paired) {
@@ -74,7 +75,7 @@ fun CompanionApp(
       PairedApp(
         state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim,
         onApprove, onApproveAll, onUndo, onReject, onForgetPairing, onOpen, onLockEnabledChange,
-        pendingEvents, onFieldEvent
+        pendingEvents, onFieldEvent, onRejectAll
       )
     }
   }
@@ -95,7 +96,8 @@ private fun PairedApp(
   onOpen: (String) -> Unit,
   onLockEnabledChange: (Boolean) -> Unit,
   pendingEvents: List<FieldEvent>,
-  onFieldEvent: (String, JSONObject, List<ByteArray>) -> Unit
+  onFieldEvent: (String, JSONObject, List<ByteArray>) -> Unit,
+  onRejectAll: () -> Unit
 ) {
   // Pending SMS outrank the overview: open on Pedidos when there is work waiting.
   var tab by rememberSaveable { mutableStateOf(if (state.pending.isNotEmpty()) Tab.PEDIDOS else Tab.PAINEL) }
@@ -104,7 +106,7 @@ private fun PairedApp(
       when (tab) {
         Tab.PAINEL -> DashboardScreen(state.dashboard, state.dashboardReceivedAt)
         Tab.TERRENO -> FieldScreen(state.dashboard, state.dashboardReceivedAt, onOpen, pendingEvents, onFieldEvent)
-        Tab.PEDIDOS -> RequestsScreen(state, onRequestPermission, onRequestBatteryExemption, onApprove, onApproveAll, onUndo, onReject, onForgetPairing)
+        Tab.PEDIDOS -> RequestsScreen(state, onRequestPermission, onRequestBatteryExemption, onApprove, onApproveAll, onUndo, onReject, onForgetPairing, onRejectAll)
         Tab.HISTORICO -> HistoryScreen(state)
         Tab.DEFINICOES -> SettingsScreen(state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim, onForgetPairing, onLockEnabledChange)
       }

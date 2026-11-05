@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import cv.novatech.ispm.sms.send.SendBudget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import cv.novatech.ispm.sms.state.DeviceSnapshot
@@ -97,6 +98,7 @@ class MainActivity : FragmentActivity() {
             refreshDevice()
             applySecureFlag()
           },
+          onRejectAll = { app.holder.rejectAll() },
           pendingEvents = fieldEvents,
           onFieldEvent = { kind, payload, photos ->
             // Photos are written to disk: off the main thread.
@@ -197,7 +199,7 @@ class MainActivity : FragmentActivity() {
         batteryExempt = power?.isIgnoringBatteryOptimizations(packageName) ?: true,
         dualSimCapable = (subs?.activeSubscriptionInfoCountMax ?: 1) >= 2,
         sims = activeSims(subs),
-        selectedSim = app.settingsStore.subscriptionId(),
+        selectedSim = if (app.settingsStore.rotateSims()) SendBudget.ROTATE else app.settingsStore.subscriptionId(),
         lockEnabled = app.settingsStore.lockEnabled(),
         deviceSecure = deviceSecure()
       )

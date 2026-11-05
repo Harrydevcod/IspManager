@@ -66,4 +66,11 @@ class RequestRulesTest {
     assertEquals("Falha no envio (código 42)", RequestRules.sentErrorMessage(42))
     assertEquals("Rádio desligado (modo avião?)", RequestRules.sentErrorMessage(2))
   }
+
+  @Test fun rejectAllTakesOnlyUndecidedRequests() {
+    fun row(id: String, status: String) = SmsRequest(id, "+2389912233", "x", "test", status, null)
+    val rows = listOf(row("a", "pending_approval"), row("b", "pending_approval"), row("c", "approved"), row("d", "sending"), row("e", "sent"))
+    // "b" is in the undo window: "Anular" is the way out for it.
+    assertEquals(listOf("a"), RequestRules.rejectableIds(rows, sendingIds = setOf("b")))
+  }
 }

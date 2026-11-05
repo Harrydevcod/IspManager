@@ -48,7 +48,7 @@ function pair() {
 }
 
 const device: CompanionDeviceStatus = {
-  appVersion: '0.3.0', battery: 82, charging: true, signalLevel: 3, simOperators: ['CVMóvel'], pending: 0, uptimeSec: 120
+  appVersion: '0.3.0', battery: 82, charging: true, signalLevel: 3, simOperators: ['CVMóvel'], pending: 0, uptimeSec: 120, simBudgets: []
 };
 
 function deps(over: Partial<CompanionSyncDeps> = {}) {
@@ -147,9 +147,21 @@ describe('runCompanionSyncIfDue', () => {
 });
 
 describe('parseDeviceStatus', () => {
+  test('keeps well-formed SIM budgets and drops the rest', () => {
+    const status = sync.parseDeviceStatus({ simBudgets: [
+      { usedHour: 12, perHour: 30, usedDay: 40, perDay: 200, pausedUntil: '2026-11-05T15:00:00.000Z' },
+      { usedHour: 'x', perHour: 30, usedDay: 0, perDay: 200 },
+      { usedHour: 0, perHour: 30, usedDay: 0, perDay: 200, pausedUntil: 'ontem' }
+    ] });
+    expect(status.simBudgets).toEqual([
+      { usedHour: 12, perHour: 30, usedDay: 40, perDay: 200, pausedUntil: '2026-11-05T15:00:00.000Z' },
+      { usedHour: 0, perHour: 30, usedDay: 0, perDay: 200, pausedUntil: null }
+    ]);
+  });
+
   test('keeps known fields and nulls anything malformed', () => {
     expect(sync.parseDeviceStatus({ appVersion: 3, battery: '80', charging: 'yes', simOperators: ['A', 4, 'B'], pending: 2 })).toEqual({
-      appVersion: null, battery: null, charging: null, signalLevel: null, simOperators: ['A', 'B'], pending: 2, uptimeSec: null
+      appVersion: null, battery: null, charging: null, signalLevel: null, simOperators: ['A', 'B'], pending: 2, uptimeSec: null, simBudgets: []
     });
   });
 });

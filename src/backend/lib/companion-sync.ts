@@ -20,7 +20,22 @@ export type CompanionDeviceStatus = {
   simOperators: string[];
   pending: number | null;
   uptimeSec: number | null;
+  /** Ritmo de envio de cada SIM (app 0.8.0+); vazio numa app anterior. */
+  simBudgets: SimBudget[];
 };
+
+export type SimBudget = { usedHour: number; perHour: number; usedDay: number; perDay: number; pausedUntil: string | null };
+
+function parseSimBudgets(value: unknown): SimBudget[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 4).flatMap((raw) => {
+    const b = raw as Record<string, unknown>;
+    const n = [b.usedHour, b.perHour, b.usedDay, b.perDay].map(num);
+    if (n.some((v) => v === null)) return [];
+    const paused = typeof b.pausedUntil === 'string' && Number.isFinite(Date.parse(b.pausedUntil)) ? b.pausedUntil : null;
+    return [{ usedHour: n[0]!, perHour: n[1]!, usedDay: n[2]!, perDay: n[3]!, pausedUntil: paused }];
+  });
+}
 
 /** Why a push failed, in words the Settings screen can show as-is. */
 export type PushOutcome = { ok: true } | { ok: false; reason: string };
@@ -91,7 +106,8 @@ export function parseDeviceStatus(json: Record<string, unknown>): CompanionDevic
     signalLevel: num(json.signalLevel),
     simOperators: Array.isArray(json.simOperators) ? json.simOperators.filter((s): s is string => typeof s === 'string').slice(0, 4).map((s) => s.slice(0, 40)) : [],
     pending: num(json.pending),
-    uptimeSec: num(json.uptimeSec)
+    uptimeSec: num(json.uptimeSec),
+    simBudgets: parseSimBudgets(json.simBudgets)
   };
 }
 

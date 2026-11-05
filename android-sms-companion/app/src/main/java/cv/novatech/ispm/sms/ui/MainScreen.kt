@@ -7,11 +7,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -37,10 +42,25 @@ fun RequestsScreen(
   onApproveAll: () -> Unit,
   onUndo: (String) -> Unit,
   onReject: (String) -> Unit,
-  onForgetPairing: () -> Unit
+  onForgetPairing: () -> Unit,
+  onRejectAll: () -> Unit = {}
 ) {
   val mismatch = desktopLink(state, rememberNow()) == DesktopLink.MISMATCH
   val approvable = state.pending.count { it.status == "pending_approval" && !it.sending }
+  var confirmRejectAll by remember { mutableStateOf(false) }
+  // Rejecting has no undo and the PC will not resend: ask once. Approving has its 5 s "Anular".
+  if (confirmRejectAll) {
+    AlertDialog(
+      onDismissRequest = { confirmRejectAll = false },
+      containerColor = Surface,
+      title = { Text("Rejeitar $approvable pedidos?", color = TextPrimary) },
+      text = { Text("Não serão enviados e o PC fica a saber. Os pedidos já aprovados continuam.", color = TextSecondary) },
+      confirmButton = {
+        TextButton(onClick = { confirmRejectAll = false; onRejectAll() }) { Text("Rejeitar", color = Danger, fontWeight = FontWeight.SemiBold) }
+      },
+      dismissButton = { TextButton(onClick = { confirmRejectAll = false }) { Text("Cancelar", color = TextSecondary) } }
+    )
+  }
   LazyColumn(
     Modifier.fillMaxSize().padding(horizontal = 16.dp),
     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -56,8 +76,13 @@ fun RequestsScreen(
       Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
         SectionLabel("Pendentes · ${state.pending.size}")
         if (approvable >= 2) {
-          TextButton(onClick = onApproveAll) {
-            Text("Aprovar todos", color = AccentBlue, fontWeight = FontWeight.SemiBold)
+          Row {
+            TextButton(onClick = { confirmRejectAll = true }) {
+              Text("Rejeitar todos", color = Danger, fontWeight = FontWeight.SemiBold)
+            }
+            TextButton(onClick = onApproveAll) {
+              Text("Aprovar todos", color = AccentBlue, fontWeight = FontWeight.SemiBold)
+            }
           }
         }
       }
@@ -113,6 +138,7 @@ fun SettingsScreen(
     item { LockSetting(state.lockEnabled, state.deviceSecure, onLockEnabledChange) }
     item { CallerIdSetting() }
     item { ForwardRepliesSetting() }
+    item { SendPaceSetting() }
     if (state.dualSimCapable) {
       item { SimPicker(state.sims, state.selectedSim, onRequestPhoneState, onChooseSim) }
     }

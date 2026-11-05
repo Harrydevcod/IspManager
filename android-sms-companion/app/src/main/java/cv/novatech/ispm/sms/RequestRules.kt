@@ -46,6 +46,13 @@ object RequestRules {
     if (row.deliveredAt != null) row else row.copy(deliveredAt = now, updatedAt = now)
 
   /** What the desktop sees: it only knows approved/sent/failed/rejected. */
+  /**
+   * "Rejeitar todos": only what is still waiting for a decision. Approved rows
+   * (in the undo window, queued for a SIM or with the radio) have "Anular" instead.
+   */
+  fun rejectableIds(rows: List<SmsRequest>, sendingIds: Set<String>): List<String> =
+    rows.filter { it.status == "pending_approval" && it.id !in sendingIds }.map { it.id }
+
   fun desktopStatus(status: String): String = if (status == "sending") "approved" else status
 
   // SmsManager.RESULT_ERROR_* values, inlined so this stays JVM-testable.
