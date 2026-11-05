@@ -4,6 +4,16 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.53](https://github.com/Harrydevcod/IspManager/releases/tag/v2.53.0) — 2026-11-05
+
+### Adicionado
+- **Mais dados para a app móvel ISPM SMS (0.5.x).** O resumo que o ISPM envia ao telemóvel passa a levar os clientes em atraso com o telefone (para ligar, mandar SMS ou WhatsApp a partir do separador Terreno), a caixa de hoje por conta, os recebimentos dos últimos 6 meses e as ordens de trabalho e pedidos de assistência em aberto. Quando um equipamento cai ou volta, o resumo segue logo, sem esperar pelos 5 minutos, e o telemóvel avisa.
+- **Resumo cifrado.** Com a app 0.5.0 ou mais recente, o resumo viaja cifrado (AES-256-GCM, chave derivada do pareamento), porque leva telefones e moradas de clientes pela rede local. Uma app mais antiga continua a recebê-lo, sem os dados novos.
+
+### Corrigido
+- **Pareamento do telemóvel com estados verdadeiros.** As Definições → SMS só dizem "pareado" quando o telemóvel responde com o pareamento atual; um telemóvel que não responde ou que tem outro pareamento aparece como tal. Há sempre forma de cancelar um QR por ler, revogar e parear de novo, e o endereço do telemóvel acompanha o que está gravado. A procura na rede só troca o endereço quando o antigo deixou de responder.
+- **O resumo nunca chegava ao telemóvel.** Um acento no resumo (nomes de clientes, por exemplo) estragava a assinatura do pedido e a app recusava-o, ficando "À espera do desktop". O pedido passa a declarar UTF-8, e a app 0.5.3 lê-o corretamente mesmo vindo de versões anteriores do ISPM.
+
 ## [2.52](https://github.com/Harrydevcod/IspManager/releases/tag/v2.52.0) — 2026-11-04
 
 ### Adicionado
