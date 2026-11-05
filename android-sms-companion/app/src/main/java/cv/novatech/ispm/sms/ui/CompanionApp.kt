@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -21,7 +22,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -99,6 +102,10 @@ private fun PairedApp(
         Tab.DEFINICOES -> SettingsScreen(state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim, onForgetPairing, onLockEnabledChange)
       }
     }
+    // Five tabs on a narrow phone (or a large system font): a label must never wrap
+    // ("Definiçõe/s"). All labels share one size, stepped down until the widest fits.
+    var labelScale by remember { mutableFloatStateOf(1f) }
+    val labelSize = MaterialTheme.typography.labelMedium.fontSize * labelScale
     NavigationBar(containerColor = SurfaceMuted) {
       Tab.entries.forEach { t ->
         val count = if (t == Tab.PEDIDOS) state.pending.size else 0
@@ -112,7 +119,15 @@ private fun PairedApp(
               Icon(t.icon, contentDescription = t.label)
             }
           },
-          label = { Text(t.label) },
+          label = {
+            Text(
+              t.label,
+              fontSize = labelSize,
+              maxLines = 1,
+              softWrap = false,
+              onTextLayout = { if (it.didOverflowWidth && labelScale > 0.7f) labelScale -= 0.05f }
+            )
+          },
           colors = NavigationBarItemDefaults.colors(
             selectedIconColor = TextPrimary,
             selectedTextColor = TextPrimary,
