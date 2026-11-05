@@ -9,7 +9,7 @@ import {
   fallbackSmsSuspensionNoticeTemplate
 } from '../../../shared/sms';
 import { type SettingsFormState, type ToggleField, type UpdateField } from './settingsForm';
-import { describeSmsPresence } from './smsPresence';
+import { describeSmsPairing, describeSmsPresence } from './smsPresence';
 
 type SmsPairing = { baseUrl: string; deviceName: string };
 
@@ -31,6 +31,8 @@ type SmsTabProps = {
   onDetectPhone: () => void;
   onCreatePairing: () => void;
   onRevokePairing: () => void;
+  /** O QR expirou sem ser lido: volta a esperar pelo mesmo QR. */
+  onResumeVerification: () => void;
 };
 
 export function SmsTab({
@@ -50,25 +52,12 @@ export function SmsTab({
   smsQrDataUrl,
   onDetectPhone,
   onCreatePairing,
-  onRevokePairing
+  onRevokePairing,
+  onResumeVerification
 }: SmsTabProps) {
-  const pairingLabel = smsVerifying
-    ? 'A aguardar confirmacao do telemovel...'
-    : smsStatus?.enabled === false && smsStatus.configured
-      ? `Pareado${smsStatus.deviceName ? `: ${smsStatus.deviceName}` : ''}${smsStatus.baseUrl ? ` (${smsStatus.baseUrl})` : ''}`
-    : smsStatus?.active
-      ? `Ativo${smsStatus.deviceName ? `: ${smsStatus.deviceName}` : ''}${smsStatus.baseUrl ? ` (${smsStatus.baseUrl})` : ''}`
-      : smsStatus?.configured
-        ? smsStatus.reachable
-          ? `Inativo: ${smsStatus.deviceName || 'Android'} responde, mas nao aceitou este pareamento. Repareia o telemovel.`
-          : `Inativo: ${smsStatus.deviceName || 'Android'} nao responde em ${smsStatus.baseUrl || 'endereco guardado'}. O IP pode ter mudado.`
-        : 'Android nao pareado';
-  const presence = smsVerifying ? null : describeSmsPresence(smsStatus);
-  const createPairingLabel = smsStatus?.configured && !smsStatus.active && smsStatus.enabled !== false
-    ? 'Voltar atras e reparear'
-    : smsStatus?.configured
-      ? 'Gerar novo pareamento'
-      : 'Gerar pareamento';
+  const pairing = describeSmsPairing(smsStatus, { verifying: smsVerifying, qrShown: Boolean(smsQrDataUrl), formBaseUrl: smsPairing.baseUrl });
+  const presence = pairing.state === 'waiting' || pairing.state === 'expired' ? null : describeSmsPresence(smsStatus);
+  const qrOpen = pairing.state === 'waiting' || pairing.state === 'expired';
 
   return (
     <>
@@ -86,7 +75,7 @@ export function SmsTab({
         onChange={(event) => onToggle('smsAutoNoticesEnabled', event.target.checked)}
       />
       <div className="settings-test-whatsapp" aria-label="Pareamento do Android SMS">
-        <span>{pairingLabel}</span>
+        <span className="sms-pairing-state" data-tone={pairing.tone} role="status">{pairing.line}</span>
         {presence && (
           <div className="sms-presence" data-tone={presence.tone} role="status">
             <span className="sms-presence-dot" aria-hidden />
@@ -101,49 +90,67 @@ export function SmsTab({
           value={smsPairing.baseUrl}
           onChange={(event) => onPairingChange('baseUrl', event.target.value)}
           placeholder="http://192.168.1.50:8765"
+          disabled={qrOpen}
         />
+        {pairing.addressChanged && !qrOpen && (
+          <small className="sms-presence-warning">
+            Endereço diferente do guardado ({smsStatus?.baseUrl}). Só passa a valer com um novo pareamento.
+          </small>
+        )}
         <Button
-          variant="ghost"
+          variant={pairing.primary === 'detect' ? 'primary' : 'ghost'}
           onClick={onDetectPhone}
           loading={smsDetecting}
-          disabled={smsPairingBusy}
+          disabled={smsPairingBusy || qrOpen}
           leadingIcon={<Wifi size={14} aria-hidden />}
         >
-          Detetar telemovel na rede
+          Procurar telemóvel na rede
         </Button>
         <Field
           label="Nome do dispositivo"
           value={smsPairing.deviceName}
           onChange={(event) => onPairingChange('deviceName', event.target.value)}
-          placeholder="Telemovel da loja"
+          placeholder="Telemóvel da loja"
+          disabled={qrOpen}
         />
-        <div className="form-actions">
-          <Button
-            variant="secondary"
-            onClick={onCreatePairing}
-            disabled={!smsPairing.baseUrl || !smsPairing.deviceName}
-            loading={smsPairingBusy}
-            leadingIcon={<QrCode size={14} aria-hidden />}
-          >
-            {createPairingLabel}
-          </Button>
-          {smsStatus?.configured && (
-            <Button
-              variant="ghost"
-              onClick={onRevokePairing}
-              disabled={smsPairingBusy}
-              leadingIcon={smsStatus.active ? <Unlink size={14} aria-hidden /> : <RotateCcw size={14} aria-hidden />}
-            >
-              Revogar
-            </Button>
-          )}
-        </div>
-        {smsQrDataUrl && (
-          <div className="sms-pairing-qr">
+        {qrOpen ? (
+          <div className="sms-pairing-qr" data-state={pairing.state}>
             <img src={smsQrDataUrl} alt="QR Code de pareamento do Android SMS" width={220} height={220} />
-            <span>{smsVerifying
-              ? 'Lê este QR no app ISPM SMS do telemóvel — a aguardar confirmação…'
-              : 'Lê este QR no app ISPM SMS do telemóvel para parear.'}</span>
+            <span>{pairing.state === 'waiting'
+              ? 'No telemóvel, abra a app ISPM SMS e leia este QR. Se a app já estiver pareada: Definições → "Esquecer e parear de novo".'
+              : 'Ninguém leu este QR em 60 s. Continue à espera ou cancele e comece de novo.'}</span>
+            <div className="form-actions">
+              {pairing.state === 'expired' && (
+                <Button variant="primary" onClick={onResumeVerification} leadingIcon={<RotateCcw size={14} aria-hidden />}>
+                  Continuar à espera
+                </Button>
+              )}
+              <Button variant="critical" onClick={onRevokePairing} disabled={smsPairingBusy}>
+                Cancelar pareamento
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="form-actions">
+            <Button
+              variant={pairing.primary === 'pair' ? 'primary' : 'secondary'}
+              onClick={onCreatePairing}
+              disabled={!smsPairing.baseUrl || !smsPairing.deviceName}
+              loading={smsPairingBusy}
+              leadingIcon={<QrCode size={14} aria-hidden />}
+            >
+              {pairing.pairLabel}
+            </Button>
+            {smsStatus?.configured && (
+              <Button
+                variant="critical"
+                onClick={onRevokePairing}
+                disabled={smsPairingBusy}
+                leadingIcon={<Unlink size={14} aria-hidden />}
+              >
+                Revogar pareamento
+              </Button>
+            )}
           </div>
         )}
       </div>

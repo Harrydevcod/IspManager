@@ -64,6 +64,7 @@ function smsTabProps(
     onDetectPhone: vi.fn(),
     onCreatePairing: vi.fn(),
     onRevokePairing: vi.fn(),
+    onResumeVerification: vi.fn(),
     ...overrides
   };
 }
@@ -163,8 +164,31 @@ describe('SmsTab connection switch', () => {
 
   test('switched off with a saved pairing: says so instead of "não responde"', () => {
     const html = renderSmsTab({ smsStatus: { ...smsStatus, enabled: false, reachable: false, paired: false, active: false } });
-    expect(html).toContain('Pareado: Telemóvel da loja');
+    expect(html).toContain('Telemóvel da loja · ligação desligada');
     expect(html).toContain('Ligação desligada — o pareamento está guardado');
     expect(html).not.toContain('nao responde');
+  });
+});
+
+describe('SmsTab pairing', () => {
+  const offline = { ...smsStatus, reachable: false, paired: false, active: false };
+
+  test('an expired QR offers to keep waiting or cancel, never "lê este QR para parear"', () => {
+    const html = renderSmsTab({ smsStatus: offline, smsQrDataUrl: 'data:image/png;base64,AA' });
+    expect(html).toContain('Continuar à espera');
+    expect(html).toContain('Cancelar pareamento');
+    expect(html).not.toContain('Gerar novo pareamento');
+  });
+
+  test('while waiting the QR says how to leave an old pairing on the phone', () => {
+    const html = renderSmsTab({ smsStatus: offline, smsVerifying: true, smsQrDataUrl: 'data:image/png;base64,AA' });
+    expect(html).toContain('Esquecer e parear de novo');
+    expect(html).not.toContain('Continuar à espera');
+  });
+
+  test('a phone with another secret asks for a new QR', () => {
+    const html = renderSmsTab({ smsStatus: { ...offline, reachable: true } });
+    expect(html).toContain('Gerar novo QR');
+    expect(html).toContain('Revogar pareamento');
   });
 });

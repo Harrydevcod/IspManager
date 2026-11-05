@@ -20,7 +20,11 @@ class CompanionServer(
   private val nonces: NonceCache = NonceCache(),
   private val onRequestsChanged: (SmsRequest) -> Unit = {},
   private val statusProvider: () -> JSONObject = { JSONObject() },
-  private val onDashboard: (String) -> Boolean = { false }
+  private val onDashboard: (String) -> Boolean = { false },
+  /** A request signed with the current secret: the desktop is really linked. */
+  private val onAuthenticated: () -> Unit = {},
+  /** A signed request that failed: the desktop holds another pairing. */
+  private val onRejected: () -> Unit = {}
 ) : NanoHTTPD(port) {
 
   override fun serve(session: IHTTPSession): Response {
@@ -37,8 +41,10 @@ class CompanionServer(
     }
     val body = bodyMap["postData"] ?: ""
     if (!verify(session, body)) {
+      if (session.headers.containsKey("x-ispm-signature")) onRejected()
       return json(Response.Status.UNAUTHORIZED, JSONObject().put("error", "assinatura invalida"))
     }
+    onAuthenticated()
 
     return try {
       route(session, body)

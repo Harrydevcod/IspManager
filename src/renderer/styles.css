@@ -6874,6 +6874,13 @@ button.danger:disabled {
 .sms-pairing-qr { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
 .sms-pairing-qr img { border-radius: 12px; background: #fff; padding: var(--space-2); }
 .sms-pairing-qr span { font-size: 0.8rem; color: var(--text-secondary, #9aa6b8); text-align: center; }
+.sms-pairing-qr span { max-width: 36ch; }
+.sms-pairing-qr .form-actions { justify-content: center; }
+/* Estado do pareamento: a cor reforça, o texto já diz tudo. */
+.sms-pairing-state { color: var(--text-2); max-width: 60ch; }
+.sms-pairing-state[data-tone='success'] { color: var(--success); }
+.sms-pairing-state[data-tone='warn'] { color: var(--warn); }
+.sms-pairing-state[data-tone='danger'] { color: var(--danger); }
 
 /* ── Licenciamento ────────────────────────────────────────────────────────
    O aviso vive acima do cabeçalho da página e nunca tapa a aplicação: uma

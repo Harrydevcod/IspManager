@@ -30,19 +30,31 @@ class CompanionStateHolder(
   @Volatile private var device = DeviceSnapshot()
   @Volatile private var dashboard: Dashboard? = null
   @Volatile private var dashboardReceivedAt: Long? = null
+  @Volatile private var lastDesktopAt: Long? = null
+  @Volatile private var lastRejectedAt: Long? = null
   private val undo = UndoController(scope, onSend = ::performSend)
 
   fun refresh() {
     val snap = PairingSnapshot(pairingStore.isPaired(), pairingStore.deviceName(), "${localIpv4()}:8765")
-    _state.value = buildUiState(snap, serverRunning, permissionGranted, requestStore.list(), undo.sendingIds, device, dashboard, dashboardReceivedAt)
+    _state.value = buildUiState(snap, serverRunning, permissionGranted, requestStore.list(), undo.sendingIds, device, dashboard, dashboardReceivedAt, lastDesktopAt, lastRejectedAt)
   }
 
   fun setServerRunning(value: Boolean) { serverRunning = value; refresh() }
   fun setPermissionGranted(value: Boolean) { permissionGranted = value; refresh() }
   fun setDevice(value: DeviceSnapshot) { device = value; refresh() }
   fun setDashboard(value: Dashboard?, receivedAt: Long?) { dashboard = value; dashboardReceivedAt = receivedAt; refresh() }
-  fun pair(info: PairingInfo) { pairingStore.save(info.secret, info.deviceName); refresh() }
-  fun unpair() { pairingStore.clear(); refresh() }
+  fun pair(info: PairingInfo) {
+    pairingStore.save(info.secret, info.deviceName)
+    lastDesktopAt = null; lastRejectedAt = null
+    refresh()
+  }
+  fun unpair() {
+    pairingStore.clear()
+    lastDesktopAt = null; lastRejectedAt = null
+    refresh()
+  }
+  fun markDesktopSeen() { lastDesktopAt = now(); refresh() }
+  fun markDesktopRejected() { lastRejectedAt = now(); refresh() }
 
   fun approve(id: String) {
     val row = requestStore.update(id) {

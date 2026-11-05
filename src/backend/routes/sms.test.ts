@@ -6,6 +6,14 @@ import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
 import { writeSecret } from '../lib/secrets';
 
+// The LAN scan is the only thing faked: discovery tests choose who answers.
+const discovery = vi.hoisted(() => ({ hosts: [] as string[], paired: null as string | null }));
+vi.mock('../lib/sms-outbox', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/sms-outbox')>()),
+  discoverCompanionHosts: async () => discovery.hosts,
+  findPairedCompanion: async () => discovery.paired
+}));
+
 let app: FastifyInstance;
 let db: Database.Database;
 let dataDir: string;
@@ -185,6 +193,30 @@ describe('SMS routes', () => {
 
     const status = await app.inject({ method: 'GET', url: '/api/sms/status' });
     expect(status.json()).toMatchObject({ configured: true });
+  });
+
+  test('POST /api/sms/discover saves the new IP of the phone found by its secret', async () => {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionEnabled','true'), ('smsCompanionBaseUrl','http://192.168.1.126:8765')`).run();
+    writeSecret(db, 'smsCompanionPairingKey', 'segredo');
+    discovery.hosts = ['http://192.168.0.17:8765', 'http://192.168.0.30:8765'];
+    discovery.paired = 'http://192.168.0.17:8765';
+
+    const response = await app.inject({ method: 'POST', url: '/api/sms/discover' });
+    expect(response.json()).toMatchObject({ baseUrl: 'http://192.168.0.17:8765', paired: true, updated: true });
+    const saved = db.prepare(`SELECT value FROM app_settings WHERE key='smsCompanionBaseUrl'`).get() as { value: string };
+    expect(saved.value).toBe('http://192.168.0.17:8765');
+  });
+
+  test('POST /api/sms/discover never saves an address that did not prove the secret', async () => {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionBaseUrl','http://192.168.1.126:8765')`).run();
+    writeSecret(db, 'smsCompanionPairingKey', 'segredo');
+    discovery.hosts = ['http://192.168.0.30:8765'];
+    discovery.paired = null;
+
+    const response = await app.inject({ method: 'POST', url: '/api/sms/discover' });
+    expect(response.json()).toMatchObject({ baseUrl: 'http://192.168.0.30:8765', paired: false, updated: false });
+    const saved = db.prepare(`SELECT value FROM app_settings WHERE key='smsCompanionBaseUrl'`).get() as { value: string };
+    expect(saved.value).toBe('http://192.168.1.126:8765');
   });
 
   test('DELETE /api/sms/pairing revokes the companion', async () => {

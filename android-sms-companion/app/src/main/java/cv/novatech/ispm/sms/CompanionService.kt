@@ -33,7 +33,9 @@ class CompanionService : Service() {
         Notifications.notifyNewRequest(this, request)
       },
       statusProvider = app::deviceStatusJson,
-      onDashboard = app::acceptDashboard
+      onDashboard = app::acceptDashboard,
+      onAuthenticated = { app.holder.markDesktopSeen() },
+      onRejected = { app.holder.markDesktopRejected() }
     )
     val started = runCatching { server?.start() }.isSuccess
     app.holder.setServerRunning(started)
