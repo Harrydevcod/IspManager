@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 
 export type SmsSignatureInput = {
   secret: string;
@@ -53,4 +53,19 @@ export function verifySmsSignature(input: SmsSignatureVerificationInput): boolea
   if (skew > maxSkewMs) return false;
   if (!timingSafeEqualString(createSmsSignature(input), input.signature)) return false;
   return input.claimNonce ? input.claimNonce(input.nonce, input.timestamp) : true;
+}
+
+/**
+ * A resposta do telemóvel, assinada sobre o nonce do pedido e o SHA-256 do
+ * corpo. Só nas rotas cujas respostas escrevem na base (`/events`, `/media`):
+ * sem isto, quem respondesse no IP do telemóvel podia fechar OS ou criar
+ * propostas de recebimento. O nonce prende a resposta a este pedido.
+ */
+export function createResponseSignature(secret: string, nonce: string, body: Buffer): string {
+  const digest = createHash('sha256').update(body).digest('hex');
+  return createHmac('sha256', secret).update(`response\n${nonce}\n${digest}`).digest('hex');
+}
+
+export function verifyResponseSignature(secret: string, nonce: string, body: Buffer, signature: string | null): boolean {
+  return Boolean(signature) && timingSafeEqualString(createResponseSignature(secret, nonce, body), signature!);
 }

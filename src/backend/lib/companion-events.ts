@@ -5,7 +5,9 @@ import { normalizeSmsPhone } from '../../shared/sms';
 import { recordSystemAuditEntry } from './audit';
 import { requestCompanionSnapshotPush } from './companion-sync';
 import { readSecret } from './secrets';
+import { randomUUID } from 'node:crypto';
 import { signedFetch } from './sms-outbox';
+import { verifyResponseSignature } from './sms-signing';
 import { balanceSqlExpr, payPayment } from './payments';
 import { completeWorkOrder } from './work-orders';
 
@@ -19,6 +21,25 @@ import { completeWorkOrder } from './work-orders';
 
 const MAX_PHOTOS = 3;
 const MAX_PHOTO_BYTES = 1024 * 1024;
+const MAX_EVENTS_BYTES = 1024 * 1024;
+
+/**
+ * GET assinado cuja resposta também vem assinada pelo telemóvel; null quando
+ * falha, é grande demais ou a assinatura não bate (outro equipamento no IP).
+ */
+async function verifiedGet(path: string, maxBytes: number, timeoutMs: number): Promise<{ body: Buffer; type: string | null } | null> {
+  const secret = readSecret(getSqliteDatabase(), 'smsCompanionPairingKey');
+  if (!secret) return null;
+  const nonce = randomUUID();
+  const response = await signedFetch(path, 'GET', undefined, timeoutMs, undefined, nonce);
+  if (!response.ok) return null;
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > maxBytes) return null;
+  const body = Buffer.from(await response.arrayBuffer());
+  if (body.length > maxBytes) return null;
+  if (!verifyResponseSignature(secret, nonce, body, response.headers.get('x-ispm-response-signature'))) return null;
+  return { body, type: response.headers.get('content-type') };
+}
 
 const iso = z.string().min(10).max(40).refine((v) => Number.isFinite(Date.parse(v)), 'data invalida');
 
@@ -59,10 +80,10 @@ export type CompanionEventsDeps = {
 
 async function defaultFetchEvents(): Promise<CompanionEvent[] | null> {
   try {
-    const response = await signedFetch('/events', 'GET', undefined, 5000);
-    // 404: app anterior à 0.7.0, sem canal de volta. Não é erro.
-    if (!response.ok) return null;
-    const json = await response.json().catch(() => null) as { events?: unknown } | null;
+    // 404 (app anterior à 0.7.0, sem canal de volta) ou assinatura errada: nada a fazer.
+    const verified = await verifiedGet('/events', MAX_EVENTS_BYTES, 5000);
+    if (!verified) return null;
+    const json = (() => { try { return JSON.parse(verified.body.toString('utf8')) as { events?: unknown }; } catch { return null; } })();
     if (!Array.isArray(json?.events)) return null;
     return json.events.flatMap((e) => {
       const parsed = eventSchema.safeParse(e);
@@ -75,9 +96,9 @@ async function defaultFetchEvents(): Promise<CompanionEvent[] | null> {
 
 async function defaultFetchMedia(id: string): Promise<Buffer | null> {
   try {
-    const response = await signedFetch(`/media/${id}`, 'GET', undefined, 15000);
-    if (!response.ok || response.headers.get('content-type') !== 'image/jpeg') return null;
-    const bytes = Buffer.from(await response.arrayBuffer());
+    const verified = await verifiedGet(`/media/${id}`, MAX_PHOTO_BYTES, 15000);
+    if (!verified || verified.type !== 'image/jpeg') return null;
+    const bytes = verified.body;
     // JPEG começa sempre por FF D8: o que não for foto não entra na base.
     return bytes.length > 0 && bytes.length <= MAX_PHOTO_BYTES && bytes[0] === 0xff && bytes[1] === 0xd8 ? bytes : null;
   } catch {

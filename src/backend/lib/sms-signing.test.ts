@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { createSmsSignature, timingSafeEqualString, verifySmsSignature } from './sms-signing';
+import { createResponseSignature, createSmsSignature, timingSafeEqualString, verifyResponseSignature, verifySmsSignature } from './sms-signing';
 
 describe('sms signing', () => {
   test('verifies a valid signature', () => {
@@ -144,5 +144,23 @@ describe('sms signing', () => {
   test('uses constant-time comparison for equal strings', () => {
     expect(timingSafeEqualString('abc', 'abc')).toBe(true);
     expect(timingSafeEqualString('abc', 'abd')).toBe(false);
+  });
+});
+
+describe('response signature (phone → desktop, /events and /media)', () => {
+  // Same vector as android-sms-companion ResponseSignatureTest: both sides must agree.
+  const VECTOR = { secret: 'segredo-de-teste', nonce: 'nonce-1234', body: '{"events":[]}', signature: 'f9ab63dd1cc695c7658ace95303eafc636a131ebd6c5d126b2d34c8b40537eb3' };
+
+  test('matches the vector shared with the Android app', () => {
+    expect(createResponseSignature(VECTOR.secret, VECTOR.nonce, Buffer.from(VECTOR.body))).toBe(VECTOR.signature);
+  });
+
+  test('rejects a missing signature, another nonce, another body or another secret', () => {
+    const body = Buffer.from(VECTOR.body);
+    expect(verifyResponseSignature(VECTOR.secret, VECTOR.nonce, body, VECTOR.signature)).toBe(true);
+    expect(verifyResponseSignature(VECTOR.secret, VECTOR.nonce, body, null)).toBe(false);
+    expect(verifyResponseSignature(VECTOR.secret, 'outro-nonce', body, VECTOR.signature)).toBe(false);
+    expect(verifyResponseSignature(VECTOR.secret, VECTOR.nonce, Buffer.from('{"events":[{}]}'), VECTOR.signature)).toBe(false);
+    expect(verifyResponseSignature('outro-segredo', VECTOR.nonce, body, VECTOR.signature)).toBe(false);
   });
 });
