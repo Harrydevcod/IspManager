@@ -240,6 +240,8 @@ export type SmsCompanionDevice = {
   simOperators: string[];
   pending: number | null;
   uptimeSec: number | null;
+  /** Ritmo de envio de cada SIM (app 0.8.0+). */
+  simBudgets?: Array<{ usedHour: number; perHour: number; usedDay: number; perDay: number; pausedUntil: string | null }>;
 };
 
 export type SmsMonthlyReport = {

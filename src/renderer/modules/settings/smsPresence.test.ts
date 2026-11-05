@@ -21,6 +21,23 @@ describe('describeSmsPresence', () => {
     expect(refused?.warnings).toContainEqual(expect.stringMatching(/^O resumo não chegou ao telemóvel às .+: o telemóvel recusou a assinatura \(401\)\.$/));
   });
 
+  test('each SIM shows its hour budget; a carrier pause and a full day become warnings', () => {
+    const p = describeSmsPresence({ ...base, lastSeen: '2026-11-03T11:59:20Z', device: { ...device, simBudgets: [
+      { usedHour: 12, perHour: 30, usedDay: 40, perDay: 200, pausedUntil: null },
+      { usedHour: 30, perHour: 30, usedDay: 200, perDay: 200, pausedUntil: '2026-11-03T13:00:00Z' }
+    ] } }, now);
+    expect(p?.line).toContain('SIM 1 12/30 nesta hora · SIM 2 30/30 nesta hora');
+    expect(p?.warnings).toContainEqual(expect.stringMatching(/^SIM 2 em pausa até .+: a operadora recusou por excesso de envios\.$/));
+  });
+
+  test('a single SIM at its daily cap is told the rest go tomorrow', () => {
+    const p = describeSmsPresence({ ...base, lastSeen: '2026-11-03T11:59:20Z', device: { ...device, simBudgets: [
+      { usedHour: 5, perHour: 30, usedDay: 200, perDay: 200, pausedUntil: null }
+    ] } }, now);
+    expect(p?.line).toContain('SIM 5/30 nesta hora');
+    expect(p?.warnings).toContain('SIM chegou ao teto de 200 SMS hoje: os restantes saem amanhã.');
+  });
+
   test('online with battery, signal and version', () => {
     const p = describeSmsPresence({ ...base, lastSeen: '2026-11-03T11:59:20Z', device }, now);
     expect(p).toEqual({ tone: 'success', line: 'Online · bateria 82 % a carregar · sinal 3/4 · v0.3.0 · visto há 40 s', warnings: [] });

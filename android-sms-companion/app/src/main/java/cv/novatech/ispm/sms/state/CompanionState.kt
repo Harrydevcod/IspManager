@@ -20,7 +20,9 @@ data class RequestUi(
   /** Handed to the radio, waiting for the network's SENT report. */
   val inFlight: Boolean = false,
   val updatedAt: Long? = null,
-  val deliveredAt: Long? = null
+  val deliveredAt: Long? = null,
+  /** Approved but waiting for a SIM with room: 0 = behind another request, else when it can go. */
+  val waitUntil: Long? = null
 )
 
 data class SimOption(val subscriptionId: Int, val label: String)
@@ -73,10 +75,11 @@ data class DeviceSnapshot(
   val deviceSecure: Boolean = true
 )
 
-private fun SmsRequest.toUi(sending: Boolean) = RequestUi(
+private fun SmsRequest.toUi(sending: Boolean, waitUntil: Long?) = RequestUi(
   id = id, clientName = clientName, toPhone = toPhone, eventType = eventType,
   body = body, status = status, error = error, sending = sending,
-  inFlight = status == "sending", updatedAt = updatedAt, deliveredAt = deliveredAt
+  inFlight = status == "sending", updatedAt = updatedAt, deliveredAt = deliveredAt,
+  waitUntil = waitUntil.takeIf { status == "approved" }
 )
 
 fun buildUiState(
@@ -89,9 +92,10 @@ fun buildUiState(
   dashboard: Dashboard? = null,
   dashboardReceivedAt: Long? = null,
   lastDesktopAt: Long? = null,
-  lastRejectedAt: Long? = null
+  lastRejectedAt: Long? = null,
+  waiting: Map<String, Long> = emptyMap()
 ): CompanionUiState {
-  val ui = requests.map { it.toUi(sendingIds.contains(it.id)) }
+  val ui = requests.map { it.toUi(sendingIds.contains(it.id), waiting[it.id]) }
   val pending = ui.filter { it.status in OPEN }
   // Stable sort: rows without timestamps (written by 0.1.0) keep newest-first insertion order.
   val history = ui.filter { it.status in TERMINAL }.asReversed()

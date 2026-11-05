@@ -65,7 +65,19 @@ export function describeSmsPresence(status: SmsStatus | null, now = Date.now()):
     else warnings.push(`O resumo não chegou ao telemóvel às ${timeFormat.format(new Date(pushAt))}: ${push.reason ?? 'motivo desconhecido'}.`);
   }
 
-  if (d?.battery != null && d.battery < 20 && !d.charging) warnings.push('Bateria fraca e sem carregar: ligue o telemóvel à corrente.');
+  // Ritmo dos SIMs: quanto falta para o teto e qual a operadora pôs a descansar.
+  const budgets = d?.simBudgets ?? [];
+  budgets.forEach((b, i) => {
+    const label = budgets.length > 1 ? `SIM ${i + 1}` : 'SIM';
+    parts.push(`${label} ${b.usedHour}/${b.perHour} nesta hora`);
+    const paused = b.pausedUntil ? Date.parse(b.pausedUntil) : NaN;
+    if (Number.isFinite(paused) && paused > now) {
+      warnings.push(`${label} em pausa até ${timeFormat.format(new Date(paused))}: a operadora recusou por excesso de envios.`);
+    } else if (b.usedDay >= b.perDay) {
+      warnings.push(`${label} chegou ao teto de ${b.perDay} SMS hoje: os restantes saem amanhã.`);
+    }
+  });
+    if (d?.battery != null && d.battery < 20 && !d.charging) warnings.push('Bateria fraca e sem carregar: ligue o telemóvel à corrente.');
   if (!d?.appVersion || olderVersion(d.appVersion, EXPECTED_SMS_APP_VERSION)) {
     warnings.push(`A app do telemóvel está desatualizada (precisa da ${EXPECTED_SMS_APP_VERSION} para o Painel).`);
   }

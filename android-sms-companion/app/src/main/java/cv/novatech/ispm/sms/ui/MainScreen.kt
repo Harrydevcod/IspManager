@@ -113,6 +113,7 @@ fun SettingsScreen(
     item { LockSetting(state.lockEnabled, state.deviceSecure, onLockEnabledChange) }
     item { CallerIdSetting() }
     item { ForwardRepliesSetting() }
+    item { SendPaceSetting() }
     if (state.dualSimCapable) {
       item { SimPicker(state.sims, state.selectedSim, onRequestPhoneState, onChooseSim) }
     }

@@ -14,6 +14,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cv.novatech.ispm.sms.state.SimOption
+import cv.novatech.ispm.sms.send.SendBudget
 import cv.novatech.ispm.sms.ui.theme.*
 
 /** "SIM para enviar": only shown on dual-slot phones. Default = the phone's SMS SIM. */
@@ -36,6 +37,13 @@ fun SimPicker(sims: List<SimOption>, selected: Int?, onRequestPhoneState: () -> 
     }
     SimRow("Predefinido do telemóvel", selected == null) { onChoose(null) }
     sims.forEach { sim -> SimRow(sim.label, selected == sim.subscriptionId) { onChoose(sim.subscriptionId) } }
+    if (sims.size >= 2) {
+      SimRow("Automático: alternar entre os SIMs", selected == SendBudget.ROTATE) { onChoose(SendBudget.ROTATE) }
+      Text(
+        "Cada SMS sai pelo SIM com mais folga no ritmo escolhido. Se a operadora recusar por excesso, esse SIM descansa 1 h.",
+        color = TextMuted, style = MaterialTheme.typography.bodySmall
+      )
+    }
   }
 }
 

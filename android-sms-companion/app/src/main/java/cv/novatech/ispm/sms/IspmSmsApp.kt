@@ -1,6 +1,14 @@
 package cv.novatech.ispm.sms
 
+import android.annotation.SuppressLint
 import android.app.Application
+import android.telephony.SmsManager
+import android.telephony.SubscriptionManager
+import cv.novatech.ispm.sms.send.SendBudget
+import cv.novatech.ispm.sms.send.SendLogStore
+import cv.novatech.ispm.sms.send.SendScheduler
+import org.json.JSONArray
+import org.json.JSONObject
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -33,6 +41,8 @@ class IspmSmsApp : Application() {
   lateinit var settingsStore: SettingsStore private set
   lateinit var dashboardStore: DashboardStore private set
   lateinit var eventStore: EventStore private set
+  lateinit var sendLog: SendLogStore private set
+  private lateinit var scheduler: SendScheduler
   lateinit var holder: CompanionStateHolder private set
 
   // UI lock (LockRules). Process-wide so a rotation doesn't ask again; a new process starts locked.
@@ -46,11 +56,20 @@ class IspmSmsApp : Application() {
     settingsStore = SettingsStore(this)
     dashboardStore = DashboardStore(this)
     eventStore = EventStore(this)
+    sendLog = SendLogStore(this)
+    scheduler = SendScheduler(
+      store = sendLog,
+      sims = ::simsForSending,
+      limits = { settingsStore.simLimits() },
+      partsOf = { body -> runCatching { smsManager().divideMessage(body).size }.getOrDefault(1) },
+      onWait = { id, until -> holder.setWaiting(id, until) }
+    )
     holder = CompanionStateHolder(
       pairingStore = pairingStore,
       requestStore = requestStore,
       scope = scope,
-      send = { req -> SmsSender.send(this, req, settingsStore.subscriptionId()) }
+      send = { req, sim -> SmsSender.send(this, req, sim) },
+      dispatch = { req, go -> scheduler.dispatch(req.id, req.body, go) }
     )
     Notifications.ensureChannels(this)
 
@@ -80,8 +99,33 @@ class IspmSmsApp : Application() {
     }
   }
 
-  /** `GET /status`: what the phone tells the desktop about itself. */
-  fun deviceStatusJson() = DeviceStatus.read(this, holder.state.value.pending.size).toJson()
+  @Suppress("DEPRECATION")
+  private fun smsManager(): SmsManager = getSystemService(SmsManager::class.java) ?: SmsManager.getDefault()
+
+  /** The SIMs a send may use: all active ones when alternating, else the chosen one (-1 = default). */
+  @SuppressLint("MissingPermission") // SecurityException without READ_PHONE_STATE falls back to the default SIM
+  fun simsForSending(): List<Int> {
+    if (!settingsStore.rotateSims()) return listOf(settingsStore.subscriptionId() ?: SendBudget.DEFAULT_SIM)
+    val ids = runCatching { getSystemService(SubscriptionManager::class.java)?.activeSubscriptionInfoList?.map { it.subscriptionId } }.getOrNull()
+    return ids?.takeIf { it.isNotEmpty() } ?: listOf(SendBudget.DEFAULT_SIM)
+  }
+
+  /** `GET /status`: what the phone tells the desktop about itself, with each SIM's sending budget. */
+  fun deviceStatusJson(): JSONObject {
+    val now = System.currentTimeMillis()
+    val limits = settingsStore.simLimits()
+    val log = sendLog.log(now)
+    val paused = sendLog.paused(now)
+    val budgets = JSONArray().apply {
+      simsForSending().forEach { sim ->
+        val u = SendBudget.usage(log, sim, now, paused[sim])
+        put(JSONObject().put("sim", sim).put("usedHour", u.usedHour).put("perHour", limits.perHour)
+          .put("usedDay", u.usedDay).put("perDay", limits.perDay)
+          .put("pausedUntil", u.pausedUntil?.let { java.time.Instant.ofEpochMilli(it).toString() } ?: JSONObject.NULL))
+      }
+    }
+    return DeviceStatus.read(this, holder.state.value.pending.size).toJson().put("simBudgets", budgets)
+  }
 
   /** `POST /dashboard`: keeps the snapshot and alerts on the change into red. False = rejected. */
   fun acceptDashboard(raw: String): Boolean {
