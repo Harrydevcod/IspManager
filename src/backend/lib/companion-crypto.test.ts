@@ -14,7 +14,8 @@ const snapshot = {
   schemaVersion: 1,
   companyName: 'Skynet',
   money: { paidMonthCve: 1, debtors: [{ clientName: 'Ana', phone: '+2389912233' }], cashToday: { totalCve: 5 }, monthlyReceipts: [] },
-  work: { orders: [{ address: 'Rua 1' }], tickets: [] }
+  work: { orders: [{ address: 'Rua 1' }], tickets: [] },
+  clients: [{ name: 'Bruno', phone: '+2389955511' }]
 } as unknown as CompanionSnapshot;
 
 describe('companion-crypto', () => {
@@ -56,6 +57,8 @@ describe('companion-crypto', () => {
     const text = JSON.stringify(payload);
     expect(text).not.toContain('2389912233');
     expect(text).not.toContain('Rua 1');
+    expect(text).not.toContain('2389955511');
+    expect(payload).not.toHaveProperty('clients');
     expect(payload).not.toHaveProperty('work');
     expect(payload).toMatchObject({ companyName: 'Skynet', money: { paidMonthCve: 1 } });
   });

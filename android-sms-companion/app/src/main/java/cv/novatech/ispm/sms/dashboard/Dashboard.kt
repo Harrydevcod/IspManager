@@ -21,7 +21,9 @@ data class Dashboard(
   val customers: Customers,
   val sms: Sms,
   val work: Work = Work(emptyList(), emptyList()),
-  val hasFieldData: Boolean = false
+  val hasFieldData: Boolean = false,
+  /** Every client but the cancelled (ISPM 2.54+); empty from an older desktop. */
+  val clients: List<Client> = emptyList()
 ) {
   data class Item(val title: String, val detail: String, val severity: String)
   data class Operation(val severity: String, val headline: String, val risks: List<Item>, val actions: List<Item>)
@@ -31,7 +33,15 @@ data class Dashboard(
     val daysOverdue: Int,
     val clientCode: String = "",
     /** Ready to dial (+238…), null when the record has no valid number. */
-    val phone: String? = null
+    val phone: String? = null,
+    /** The link the reminders already use (valid EasyLink, else Stripe) and that invoice's balance. */
+    val paymentLink: String? = null,
+    val paymentLinkAmountCve: Long? = null
+  )
+  data class Client(
+    val code: String, val name: String, val phone: String?, val status: String,
+    val plan: String?, val zone: String?, val island: String?,
+    val overdueCve: Long, val lastPaymentAt: String?
   )
   data class AccountAmount(val name: String, val amountCve: Long)
   data class CashToday(val totalCve: Long, val byAccount: List<AccountAmount>)
@@ -104,7 +114,10 @@ data class Dashboard(
             Debtor(it.optString("clientName"), it.optLong("amountCve"), it.optInt("daysOverdue"))
           },
           debtors = money.optJSONArray("debtors").items {
-            Debtor(it.optString("clientName"), it.optLong("amountCve"), it.optInt("daysOverdue"), it.optString("clientCode"), it.optStringOrNull("phone"))
+            Debtor(
+              it.optString("clientName"), it.optLong("amountCve"), it.optInt("daysOverdue"), it.optString("clientCode"), it.optStringOrNull("phone"),
+              it.optStringOrNull("paymentLink")?.takeIf { url -> url.startsWith("https://") }, it.optLongOrNull("paymentLinkAmountCve")
+            )
           },
           cashToday = (money.optJSONObject("cashToday") ?: JSONObject()).let { c ->
             CashToday(c.optLong("totalCve"), c.optJSONArray("byAccount").items { AccountAmount(it.optString("name"), it.optLong("amountCve")) })
@@ -137,7 +150,14 @@ data class Dashboard(
             }
           )
         },
-        hasFieldData = money.has("debtors") && o.has("work")
+        hasFieldData = money.has("debtors") && o.has("work"),
+        clients = o.optJSONArray("clients").items {
+          Client(
+            it.optString("code"), it.optString("name"), it.optStringOrNull("phone"), it.optString("status", "active"),
+            it.optStringOrNull("plan"), it.optStringOrNull("zone"), it.optStringOrNull("island"),
+            it.optLong("overdueCve"), it.optStringOrNull("lastPaymentAt")
+          )
+        }
       )
     }.getOrNull()
 
@@ -225,9 +245,22 @@ object FieldRules {
     ?: runCatching { Instant.parse(value.trim().replace(' ', 'T') + "Z").toEpochMilli() }.getOrNull()
 
   fun dialUri(phone: String) = "tel:$phone"
-  fun smsUri(phone: String) = "smsto:$phone"
+  fun smsUri(phone: String, body: String? = null) = "smsto:$phone" + (body?.let { "?body=" + encode(it) } ?: "")
   /** wa.me wants the number without "+" or spaces. */
-  fun whatsappUrl(phone: String) = "https://wa.me/" + phone.filter { it.isDigit() }
+  fun whatsappUrl(phone: String, text: String? = null) =
+    "https://wa.me/" + phone.filter { it.isDigit() } + (text?.let { "?text=" + encode(it) } ?: "")
+
+  private fun encode(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
+
+  /**
+   * The payment-link message, in the reminders' tone (desktop: mensagens cordiais).
+   * The SMS goes without accents so it fits one GSM-7 message, like the desktop's.
+   */
+  fun paymentLinkMessage(amountCve: Long, link: String, forSms: Boolean): String {
+    val amount = DashboardRules.formatCve(amountCve)
+    return if (forSms) "Caro cliente, pode pagar a fatura de $amount por este link: $link . Se ja pagou, ignore."
+    else "Caro cliente, pode pagar a fatura de $amount por este link: $link\nSe já pagou, ignore esta mensagem."
+  }
 
   /** Maps search for the client's address; null when there is nothing to search. */
   fun mapsUri(address: String?, zone: String?, island: String?): String? {
@@ -235,5 +268,33 @@ object FieldRules {
     if (parts.isEmpty()) return null
     val query = (parts + "Cabo Verde").joinToString(", ")
     return "geo:0,0?q=" + URLEncoder.encode(query, "UTF-8").replace("+", "%20")
+  }
+}
+
+/** Clientes no bolso: search and caller lookup, both offline over the snapshot. */
+object ClientRules {
+  private val marks = Regex("\\p{Mn}+")
+
+  /** Lowercase, no accents: "João" matches "joao". */
+  fun fold(s: String): String = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replace(marks, "").lowercase()
+
+  /** CV numbers are 7 digits; the last 7 identify a client whatever prefix the network shows (+238, 00238, none). */
+  fun phoneKey(phone: String?): String? = phone?.filter { it.isDigit() }?.takeIf { it.length >= 7 }?.takeLast(7)
+
+  /** Name or code contain the query (accents ignored); 3+ digits also search the phone. */
+  fun search(clients: List<Dashboard.Client>, query: String, limit: Int = 50): List<Dashboard.Client> {
+    val q = fold(query.trim())
+    if (q.isEmpty()) return emptyList()
+    val digits = query.filter { it.isDigit() }
+    return clients.asSequence().filter { c ->
+      fold(c.name).contains(q) || fold(c.code).contains(q) ||
+        (digits.length >= 3 && c.phone?.filter { it.isDigit() }?.contains(digits) == true)
+    }.take(limit).toList()
+  }
+
+  /** Who is calling: the one client with this number; null when unknown or shared by several. */
+  fun byPhone(clients: List<Dashboard.Client>, incoming: String?): Dashboard.Client? {
+    val key = phoneKey(incoming) ?: return null
+    return clients.filter { phoneKey(it.phone) == key }.singleOrNull()
   }
 }

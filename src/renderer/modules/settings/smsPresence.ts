@@ -57,6 +57,14 @@ export function describeSmsPresence(status: SmsStatus | null, now = Date.now()):
   if (d?.appVersion) parts.push(`v${d.appVersion}`);
   parts.push(`visto ${ago(now - seenAt)}`);
 
+  // O envio do resumo falha calado do lado do telemóvel; aqui nunca.
+  const push = status.lastPush;
+  const pushAt = push ? Date.parse(push.at) : NaN;
+  if (push && Number.isFinite(pushAt)) {
+    if (push.ok) parts.push(`resumo entregue ${ago(now - pushAt)}`);
+    else warnings.push(`O resumo não chegou ao telemóvel às ${timeFormat.format(new Date(pushAt))}: ${push.reason ?? 'motivo desconhecido'}.`);
+  }
+
   if (d?.battery != null && d.battery < 20 && !d.charging) warnings.push('Bateria fraca e sem carregar: ligue o telemóvel à corrente.');
   if (!d?.appVersion || olderVersion(d.appVersion, EXPECTED_SMS_APP_VERSION)) {
     warnings.push(`A app do telemóvel está desatualizada (precisa da ${EXPECTED_SMS_APP_VERSION} para o Painel).`);

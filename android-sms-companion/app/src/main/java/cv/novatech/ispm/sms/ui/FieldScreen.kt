@@ -11,7 +11,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import cv.novatech.ispm.sms.dashboard.ClientRules
 import cv.novatech.ispm.sms.dashboard.Dashboard
 import cv.novatech.ispm.sms.dashboard.DashboardRules
 import cv.novatech.ispm.sms.dashboard.FieldRules
@@ -30,13 +34,16 @@ import cv.novatech.ispm.sms.ui.theme.*
 
 /**
  * Terreno: what to do away from the desk. Who to chase for money and which jobs
- * are open, each one a tap from the phone call, the SMS, WhatsApp or the map.
+ * are open, each one a tap from the phone call, the SMS, WhatsApp or the map, and
+ * any client found by name, code or number, offline.
  * Read-only: nothing here changes the ISPM (that stays on the desktop).
  */
 @Composable
 fun FieldScreen(dashboard: Dashboard?, receivedAt: Long?, onOpen: (String) -> Unit) {
   val now = rememberNow()
   val freshness = DashboardRules.freshness(receivedAt, now)
+  var query by rememberSaveable { mutableStateOf("") }
+  val found = remember(query, dashboard) { ClientRules.search(dashboard?.clients.orEmpty(), query) }
   LazyColumn(
     Modifier.fillMaxSize().padding(horizontal = 16.dp),
     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -55,8 +62,26 @@ fun FieldScreen(dashboard: Dashboard?, receivedAt: Long?, onOpen: (String) -> Un
         }
       }
     }
+    if (!dashboard?.clients.isNullOrEmpty()) {
+      item {
+        OutlinedTextField(
+          value = query, onValueChange = { query = it },
+          placeholder = { Text("Procurar cliente: nome, código ou número", color = TextMuted) },
+          singleLine = true, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth(),
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary,
+            focusedBorderColor = AccentBlue, unfocusedBorderColor = BorderC, cursorColor = AccentBlue
+          )
+        )
+      }
+    }
     when {
       dashboard == null -> item { Note("À espera do primeiro resumo do ISPM no PC.") }
+      query.isNotBlank() -> {
+        item { Eyebrow("Clientes · ${found.size}") }
+        if (found.isEmpty()) item { Note("Nenhum cliente com \"${query.trim()}\".") }
+        items(found, key = { "c:" + it.code + it.name }) { ClientRow(it, onOpen) }
+      }
       !dashboard.hasFieldData -> item { Note("Atualize o ISPM no PC para ver a cobrança e as ordens de trabalho aqui.") }
       else -> {
         item { Eyebrow("Cobrar · ${dashboard.money.debtors.size}") }
@@ -103,8 +128,56 @@ private fun DebtorRow(d: Dashboard.Debtor, onOpen: (String) -> Unit) = Expandabl
       Text(DashboardRules.formatCve(d.amountCve), color = TextPrimary, style = MaterialTheme.typography.titleSmall)
     }
   },
-  actions = { ContactActions(d.phone, onOpen) }
+  actions = {
+    ContactActions(d.phone, onOpen)
+    val link = d.paymentLink
+    val amount = d.paymentLinkAmountCve
+    if (d.phone != null && link != null && amount != null) {
+      Spacer(Modifier.height(10.dp))
+      Text("Link de pagamento · ${DashboardRules.formatCve(amount)}", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+      Spacer(Modifier.height(6.dp))
+      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Action("Enviar por WhatsApp", Modifier.weight(1f)) {
+          onOpen(FieldRules.whatsappUrl(d.phone, FieldRules.paymentLinkMessage(amount, link, forSms = false)))
+        }
+        Action("Enviar por SMS", Modifier.weight(1f)) {
+          onOpen(FieldRules.smsUri(d.phone, FieldRules.paymentLinkMessage(amount, link, forSms = true)))
+        }
+      }
+    }
+  }
 )
+
+@Composable
+private fun ClientRow(c: Dashboard.Client, onOpen: (String) -> Unit) {
+  val place = listOfNotNull(c.zone, c.island).filter { it.isNotBlank() }.joinToString(" · ")
+  val status = when (c.status) { "suspended" -> "Suspenso"; "active" -> "Ativo"; else -> c.status }
+  Expandable(
+    header = {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+          Text(c.name, color = TextPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+          Text(
+            listOf(c.code, status, place).filter { it.isNotBlank() }.joinToString(" · "),
+            color = if (c.status == "suspended") Warn else TextMuted,
+            style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis
+          )
+        }
+        if (c.overdueCve > 0) Text(DashboardRules.formatCve(c.overdueCve), color = Danger, style = MaterialTheme.typography.titleSmall)
+      }
+    },
+    actions = {
+      val facts = listOfNotNull(
+        c.plan?.let { "Plano $it" },
+        if (c.overdueCve > 0) "Deve ${DashboardRules.formatCve(c.overdueCve)} vencidos" else "Sem dívida vencida",
+        c.lastPaymentAt?.let { "Último pagamento $it" } ?: "Sem pagamentos registados"
+      )
+      facts.forEach { Text(it, color = TextSecondary, style = MaterialTheme.typography.bodySmall) }
+      Spacer(Modifier.height(8.dp))
+      ContactActions(c.phone, onOpen, mapsUri = FieldRules.mapsUri(null, c.zone, c.island))
+    }
+  )
+}
 
 @Composable
 private fun OrderRow(o: Dashboard.WorkOrder, onOpen: (String) -> Unit) {

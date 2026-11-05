@@ -12,6 +12,15 @@ describe('describeSmsPresence', () => {
     expect(describeSmsPresence(null, now)).toBeNull();
   });
 
+  test('a delivered summary shows when; a refused one becomes a warning with the reason', () => {
+    const ok = describeSmsPresence({ ...base, lastSeen: '2026-11-03T11:59:20Z', device, lastPush: { at: '2026-11-03T11:58:00Z', ok: true, reason: null } }, now);
+    expect(ok?.line).toBe('Online · bateria 82 % a carregar · sinal 3/4 · v0.3.0 · visto há 40 s · resumo entregue há 2 min');
+
+    const refused = describeSmsPresence({ ...base, lastSeen: '2026-11-03T11:59:20Z', device, lastPush: { at: '2026-11-03T11:58:00Z', ok: false, reason: 'o telemóvel recusou a assinatura (401)' } }, now);
+    expect(refused?.tone).toBe('warn');
+    expect(refused?.warnings).toContainEqual(expect.stringMatching(/^O resumo não chegou ao telemóvel às .+: o telemóvel recusou a assinatura \(401\)\.$/));
+  });
+
   test('online with battery, signal and version', () => {
     const p = describeSmsPresence({ ...base, lastSeen: '2026-11-03T11:59:20Z', device }, now);
     expect(p).toEqual({ tone: 'success', line: 'Online · bateria 82 % a carregar · sinal 3/4 · v0.3.0 · visto há 40 s', warnings: [] });

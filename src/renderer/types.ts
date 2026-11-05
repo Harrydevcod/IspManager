@@ -227,6 +227,8 @@ export type SmsStatus = {
   /** ISO da última resposta do telemóvel ao desktop; null se nunca respondeu. */
   lastSeen?: string | null;
   device?: SmsCompanionDevice | null;
+  /** Última tentativa de enviar o resumo ao telemóvel, com o motivo quando falhou. */
+  lastPush?: { at: string; ok: boolean; reason: string | null } | null;
 };
 
 /** O que a app Android diz de si (0.3.0+); campos a null quando não sabe. */

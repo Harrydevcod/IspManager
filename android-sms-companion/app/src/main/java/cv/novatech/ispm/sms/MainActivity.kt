@@ -148,8 +148,16 @@ class MainActivity : FragmentActivity() {
       "smsto" -> Intent.ACTION_SENDTO
       else -> Intent.ACTION_VIEW
     }
+    // Most SMS apps read the prefilled text from the "sms_body" extra, not from ?body=.
+    // smsto: is an opaque URI (getQueryParameter throws), so the body is split off by hand.
+    val body = if (parsed.scheme == "smsto" && "?body=" in uri) Uri.decode(uri.substringAfter("?body=")) else null
+    val intent = if (body != null) {
+      Intent(action, Uri.parse(uri.substringBefore("?body="))).putExtra("sms_body", body)
+    } else {
+      Intent(action, parsed)
+    }
     try {
-      startActivity(Intent(action, parsed))
+      startActivity(intent)
     } catch (_: ActivityNotFoundException) {
       toast(if (parsed.scheme == "geo") "Nenhuma app de mapas instalada" else "Nenhuma app para abrir isto")
     }

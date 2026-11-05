@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
+import cv.novatech.ispm.sms.dashboard.Dashboard
+import cv.novatech.ispm.sms.dashboard.DashboardRules
 import cv.novatech.ispm.sms.dashboard.FieldRules
 import cv.novatech.ispm.sms.dashboard.NetworkChanges
 
@@ -24,6 +26,8 @@ object Notifications {
   const val NETWORK_CHANNEL_ID = "network"
   private const val NETWORK_SUMMARY_ID = 4203
   private const val NETWORK_BASE_ID = 10_000
+  const val CALLER_CHANNEL_ID = "callers"
+  private const val CALLER_NOTIF_ID = 4204
 
   fun ensureChannels(context: Context) {
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
@@ -40,6 +44,12 @@ object Notifications {
     manager.createNotificationChannel(
       NotificationChannel(NETWORK_CHANNEL_ID, "Quedas na rede", NotificationManager.IMPORTANCE_HIGH).apply {
         description = "Avisa quando uma antena ou equipamento cai e quando volta."
+      }
+    )
+    manager.createNotificationChannel(
+      NotificationChannel(CALLER_CHANNEL_ID, "Quem está a ligar", NotificationManager.IMPORTANCE_HIGH).apply {
+        description = "Diz que cliente está a ligar e quanto deve, com os dados do último resumo."
+        setSound(null, null)
       }
     )
     manager.createNotificationChannel(
@@ -121,6 +131,32 @@ object Notifications {
   }
 
   private fun networkId(d: cv.novatech.ispm.sms.dashboard.Dashboard.Down) = NETWORK_BASE_ID + (d.key.hashCode() and 0xFFFF)
+
+  /** Who is calling, from the snapshot. Private on the lock screen, like every client name. */
+  fun notifyCaller(context: Context, client: Dashboard.Client) {
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+    val debt = if (client.overdueCve > 0) "deve ${DashboardRules.formatCve(client.overdueCve)} vencidos" else "sem dívida vencida"
+    val status = if (client.status == "suspended") "suspenso · " else ""
+    val text = listOfNotNull(client.code.ifBlank { null }, client.plan, status + debt).joinToString(" · ")
+    val notification = NotificationCompat.Builder(context, CALLER_CHANNEL_ID)
+      .setSmallIcon(android.R.drawable.sym_call_incoming)
+      .setContentTitle("A ligar: ${client.name}")
+      .setContentText(text)
+      .setPriority(NotificationCompat.PRIORITY_HIGH)
+      .setCategory(NotificationCompat.CATEGORY_CALL)
+      .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+      .setPublicVersion(
+        NotificationCompat.Builder(context, CALLER_CHANNEL_ID)
+          .setSmallIcon(android.R.drawable.sym_call_incoming)
+          .setContentTitle("Cliente ISPM a ligar")
+          .build()
+      )
+      .setTimeoutAfter(2 * 60_000L)
+      .setAutoCancel(true)
+      .setContentIntent(openApp(context))
+      .build()
+    manager.notify(CALLER_NOTIF_ID, notification)
+  }
 
   fun notifyOperationAlert(context: Context, headline: String) {
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return

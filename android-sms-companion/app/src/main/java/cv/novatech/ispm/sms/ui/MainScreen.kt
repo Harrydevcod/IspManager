@@ -111,6 +111,7 @@ fun SettingsScreen(
     if (!state.smsPermissionGranted) item { PermissionBanner(onRequestPermission) }
     if (!state.batteryExempt) item { BatteryBanner(onRequestBatteryExemption) }
     item { LockSetting(state.lockEnabled, state.deviceSecure, onLockEnabledChange) }
+    item { CallerIdSetting() }
     if (state.dualSimCapable) {
       item { SimPicker(state.sims, state.selectedSim, onRequestPhoneState, onChooseSim) }
     }
