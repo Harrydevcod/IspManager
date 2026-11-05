@@ -7253,8 +7253,19 @@ button.danger:disabled {
 }
 
 /* SMS recebidos dos clientes: os por ler destacam-se pela barra à esquerda. */
+/* Em Definições → SMS a caixa vive numa grelha de duas colunas: ocupa a linha inteira. */
+.sms-inbox {
+  grid-column: 1 / -1;
+}
+
 .sms-inbox header {
   align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.sms-inbox header button {
+  margin-left: auto;
 }
 
 .sms-inbox li[data-unread='true'] {

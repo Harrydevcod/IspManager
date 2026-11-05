@@ -75,7 +75,6 @@ export function SmsTab({
         disabled={!form.smsCompanionEnabled}
         onChange={(event) => onToggle('smsAutoNoticesEnabled', event.target.checked)}
       />
-      <SmsInbox />
       <div className="settings-test-whatsapp" aria-label="Pareamento do Android SMS">
         <span className="sms-pairing-state" data-tone={pairing.tone} role="status">{pairing.line}</span>
         {presence && (
@@ -156,6 +155,7 @@ export function SmsTab({
           </div>
         )}
       </div>
+      <SmsInbox />
       <section className="sms-delivery-report" aria-labelledby="sms-delivery-report-title">
         <div className="sms-delivery-report-head">
           <div>
