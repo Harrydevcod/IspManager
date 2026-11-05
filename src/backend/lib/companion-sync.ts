@@ -2,6 +2,7 @@ import { getSqliteDatabase } from '../db/database';
 import { readSecret } from './secrets';
 import { selfHealCompanionAddress, signedFetch } from './sms-outbox';
 import { buildCompanionSnapshot, type CompanionSnapshot } from './companion-snapshot';
+import { payloadForApp } from './companion-crypto';
 
 /**
  * Sincronização desktop → telemóvel, além dos SMS: o desktop pergunta pelo
@@ -23,7 +24,8 @@ export type CompanionDeviceStatus = {
 
 export type CompanionSyncDeps = {
   fetchStatus: () => Promise<{ reachable: boolean; status: CompanionDeviceStatus | null }>;
-  pushSnapshot: (snapshot: CompanionSnapshot) => Promise<boolean>;
+  /** `appVersion` is what the phone just reported: it decides whether the snapshot goes sealed. */
+  pushSnapshot: (snapshot: CompanionSnapshot, appVersion: string | null) => Promise<boolean>;
   buildSnapshot: () => Promise<CompanionSnapshot>;
   selfHeal: () => Promise<void>;
 };
@@ -94,9 +96,11 @@ async function defaultFetchStatus(): Promise<{ reachable: boolean; status: Compa
   }
 }
 
-async function defaultPushSnapshot(snapshot: CompanionSnapshot): Promise<boolean> {
+async function defaultPushSnapshot(snapshot: CompanionSnapshot, appVersion: string | null): Promise<boolean> {
+  const secret = readSecret(getSqliteDatabase(), 'smsCompanionPairingKey');
+  if (!secret) return false;
   try {
-    const response = await signedFetch('/dashboard', 'POST', snapshot, 5000);
+    const response = await signedFetch('/dashboard', 'POST', payloadForApp(snapshot, appVersion, secret), 5000);
     return response.ok;
   } catch {
     return false;
@@ -142,7 +146,7 @@ export async function runCompanionSyncIfDue(now: Date = new Date(), deps: Compan
   wasOnline = true;
   if (!due) return { online: true, pushed: false };
 
-  const pushed = await deps.pushSnapshot(await deps.buildSnapshot());
+  const pushed = await deps.pushSnapshot(await deps.buildSnapshot(), status?.appVersion ?? null);
   if (pushed) lastPushAt = now.getTime();
   return { online: true, pushed };
 }
