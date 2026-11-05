@@ -2,6 +2,8 @@ package cv.novatech.ispm.sms
 
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
+import java.io.DataInputStream
+import java.io.InputStream
 import java.time.Instant
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -33,13 +35,11 @@ class CompanionServer(
     if (length > MAX_BODY_BYTES) {
       return json(Response.Status.BAD_REQUEST, JSONObject().put("error", "pedido demasiado grande"))
     }
-    val bodyMap = HashMap<String, String>()
-    try {
-      session.parseBody(bodyMap)
+    val body = try {
+      readBody(session.inputStream, length)
     } catch (_: Exception) {
-      // GET requests and empty bodies are fine; signature still covers "".
+      return json(Response.Status.BAD_REQUEST, JSONObject().put("error", "corpo incompleto"))
     }
-    val body = bodyMap["postData"] ?: ""
     if (!verify(session, body)) {
       if (session.headers.containsKey("x-ispm-signature")) onRejected()
       return json(Response.Status.UNAUTHORIZED, JSONObject().put("error", "assinatura invalida"))
@@ -147,4 +147,16 @@ class CompanionServer(
     for (i in a.indices) diff = diff or (a[i].code xor b[i].code)
     return diff == 0
   }
+}
+
+/**
+ * The raw body as UTF-8. NanoHTTPD's parseBody decodes it as US-ASCII when the
+ * Content-Type has no charset (the desktop sends plain `application/json`), so any
+ * accent in a client name broke the HMAC and the Painel snapshot never arrived.
+ */
+internal fun readBody(input: InputStream, length: Long): String {
+  if (length <= 0) return ""
+  val bytes = ByteArray(length.toInt())
+  DataInputStream(input).readFully(bytes)
+  return String(bytes, Charsets.UTF_8)
 }

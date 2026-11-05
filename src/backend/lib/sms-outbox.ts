@@ -98,7 +98,7 @@ export async function signedFetch(path: string, method: 'GET' | 'POST', bodyObje
   return fetch(`${baseUrl}${path}`, {
     method,
     headers: {
-      'content-type': 'application/json',
+      'content-type': 'application/json; charset=utf-8',
       'x-ispm-timestamp': timestamp,
       'x-ispm-nonce': nonce,
       'x-ispm-signature': signature
