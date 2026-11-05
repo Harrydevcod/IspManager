@@ -1,6 +1,7 @@
 package cv.novatech.ispm.sms.state
 
 import cv.novatech.ispm.sms.PairingStore
+import cv.novatech.ispm.sms.RequestRules
 import cv.novatech.ispm.sms.SmsRequest
 import cv.novatech.ispm.sms.SmsRequestStore
 import cv.novatech.ispm.sms.dashboard.Dashboard
@@ -78,6 +79,12 @@ class CompanionStateHolder(
   /** Arms every pending request so the whole queue sends after the undo window. */
   fun approveAll() {
     _state.value.pending.filter { it.status == "pending_approval" }.forEach { approve(it.id) }
+  }
+
+  /** Rejects every request still waiting for a decision, in one go. */
+  fun rejectAll() {
+    RequestRules.rejectableIds(requestStore.list(), undo.sendingIds).forEach { requestStore.updateStatus(it, "rejected", "Rejeitado no Android") }
+    refresh()
   }
 
   /** Re-arms requests that were approved when the process died. */

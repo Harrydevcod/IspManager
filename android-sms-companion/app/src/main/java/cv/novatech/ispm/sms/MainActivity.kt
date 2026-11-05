@@ -98,6 +98,7 @@ class MainActivity : FragmentActivity() {
             refreshDevice()
             applySecureFlag()
           },
+          onRejectAll = { app.holder.rejectAll() },
           pendingEvents = fieldEvents,
           onFieldEvent = { kind, payload, photos ->
             // Photos are written to disk: off the main thread.
