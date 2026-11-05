@@ -17,8 +17,9 @@ class CallerIdService : CallScreeningService() {
     respondToCall(details, CallResponse.Builder().build())
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && details.callDirection != Call.Details.DIRECTION_INCOMING) return
     val number = details.handle?.schemeSpecificPart ?: return
-    val clients = (application as IspmSmsApp).dashboardStore.load()?.clients ?: return
+    val app = application as IspmSmsApp
+    val clients = app.dashboardStore.load()?.clients ?: return
     val client = ClientRules.byPhone(clients, number) ?: return
-    Notifications.notifyCaller(this, client)
+    Notifications.notifyCaller(this, client, showAmounts = !app.settingsStore.lockEnabled())
   }
 }

@@ -132,12 +132,16 @@ object Notifications {
 
   private fun networkId(d: cv.novatech.ispm.sms.dashboard.Dashboard.Down) = NETWORK_BASE_ID + (d.key.hashCode() and 0xFFFF)
 
-  /** Who is calling, from the snapshot. Private on the lock screen, like every client name. */
-  fun notifyCaller(context: Context, client: Dashboard.Client) {
+  /**
+   * Who is calling, from the snapshot. Private on the lock screen, like every client
+   * name; with the app lock on, the debt and status stay inside the app (same rule as the widget).
+   */
+  fun notifyCaller(context: Context, client: Dashboard.Client, showAmounts: Boolean) {
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
     val debt = if (client.overdueCve > 0) "deve ${DashboardRules.formatCve(client.overdueCve)} vencidos" else "sem dívida vencida"
     val status = if (client.status == "suspended") "suspenso · " else ""
-    val text = listOfNotNull(client.code.ifBlank { null }, client.plan, status + debt).joinToString(" · ")
+    val text = if (showAmounts) listOfNotNull(client.code.ifBlank { null }, client.plan, status + debt).joinToString(" · ")
+    else listOfNotNull(client.code.ifBlank { null }, "abra a app para ver a ficha").joinToString(" · ")
     val notification = NotificationCompat.Builder(context, CALLER_CHANNEL_ID)
       .setSmallIcon(android.R.drawable.sym_call_incoming)
       .setContentTitle("A ligar: ${client.name}")
