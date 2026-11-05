@@ -4,6 +4,20 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.54](https://github.com/Harrydevcod/IspManager/releases/tag/v2.54.0) — 2026-11-05
+
+Para a app móvel ISPM SMS 0.8.0. Com uma app anterior, tudo o que já existia continua a funcionar.
+
+### Adicionado
+- **Recebimentos do terreno.** O que se recebe em mão e se regista na app aparece em Pagamentos, no painel "Recebimentos do terreno". Nada entra na caixa sozinho: **Confirmar** emite o recibo na fatura em aberto mais antiga, com a data do terreno, e o excedente fica como crédito do cliente. **Rejeitar** descarta a proposta.
+- **OS concluídas no terreno.** Uma OS fechada na app chega ao ISPM com as notas, até 3 fotos e, se o técnico quiser, a posição. A ficha da OS mostra as fotos e "Ver no mapa onde foi concluída". As fotos ficam na própria base, por isso entram no backup.
+- **SMS recebidos.** As respostas dos clientes aos SMS aparecem na ficha do cliente e em Definições → SMS, com "Marcar como lidas". A app só reencaminha mensagens de números que são clientes.
+- **Clientes no telemóvel.** O resumo enviado à app leva a lista de clientes (estado, plano, zona, dívida vencida, último pagamento) e o link de pagamento Vinti4 ou Stripe de cada devedor, enquanto o valor do link for o saldo. A app usa estes dados para pesquisar clientes sem rede e para dizer quem está a ligar.
+- **Diagnóstico da ligação ao telemóvel.** Definições → SMS mostra quando o último resumo foi entregue, ou porque foi recusado, e o ritmo de cada SIM ("SIM 1 12/30 nesta hora"). Avisa também quando a operadora pôs um SIM em pausa ou quando um SIM chegou ao teto do dia.
+
+### Segurança
+- O que o ISPM lê do telemóvel e grava na base (eventos do terreno e fotos) tem de vir assinado pelo telemóvel pareado. Outro equipamento na rede local que responda no IP do telemóvel é ignorado.
+
 ## [2.53](https://github.com/Harrydevcod/IspManager/releases/tag/v2.53.0) — 2026-11-05
 
 ### Adicionado
