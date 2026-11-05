@@ -159,6 +159,7 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     // O estado guardado era do telemóvel anterior; o novo envia o seu ao responder.
     setSetting('smsCompanionLastSeen', '');
     setSetting('smsCompanionDeviceStatus', '');
+    setSetting('smsCompanionLastPush', '');
     // A new phone proves again that it decrypts before anything goes sealed.
     setSetting(SEALED_KEY, '');
     requestCompanionSnapshotPush();
@@ -172,6 +173,7 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     setSetting('smsCompanionPairingKeyHash', '');
     setSetting('smsCompanionLastSeen', '');
     setSetting('smsCompanionDeviceStatus', '');
+    setSetting('smsCompanionLastPush', '');
     setSetting(SEALED_KEY, '');
     return { ok: true };
   });

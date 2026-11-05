@@ -12,9 +12,14 @@ import cv.novatech.ispm.sms.dashboard.DashboardStore
 import cv.novatech.ispm.sms.dashboard.FieldRules
 import cv.novatech.ispm.sms.dashboard.SealedSnapshot
 import cv.novatech.ispm.sms.state.CompanionStateHolder
+import cv.novatech.ispm.sms.widget.IspmWidget
+import cv.novatech.ispm.sms.widget.WidgetRules
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 /**
  * Process-wide owner of the stores and the state holder. The HTTP server is
@@ -62,6 +67,14 @@ class IspmSmsApp : Application() {
       override fun onLost(network: Network) = holder.refresh()
     })
     holder.refresh()
+
+    // The widget follows the same state as the screens: a new summary, a request, the lock switch.
+    scope.launch {
+      holder.state
+        .map { WidgetRules.content(it.dashboard, it.pending.size, showAmounts = !it.lockEnabled) }
+        .distinctUntilChanged()
+        .collect { IspmWidget.render(this@IspmSmsApp, it) }
+    }
   }
 
   /** `GET /status`: what the phone tells the desktop about itself. */

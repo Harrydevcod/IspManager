@@ -54,7 +54,7 @@ const device: CompanionDeviceStatus = {
 function deps(over: Partial<CompanionSyncDeps> = {}) {
   return {
     fetchStatus: vi.fn(async () => ({ reachable: true, status: device })),
-    pushSnapshot: vi.fn(async (_s: CompanionSnapshot) => true),
+    pushSnapshot: vi.fn(async (_s: CompanionSnapshot) => ({ ok: true }) as const),
     buildSnapshot: vi.fn(async () => ({ schemaVersion: 1 }) as CompanionSnapshot),
     selfHeal: vi.fn(async () => undefined),
     ...over
@@ -74,7 +74,7 @@ describe('runCompanionSyncIfDue', () => {
     const now = new Date('2026-11-03T12:00:00Z');
     expect(await sync.runCompanionSyncIfDue(now, d)).toEqual({ online: true, pushed: true });
     expect(d.pushSnapshot).toHaveBeenCalledTimes(1);
-    expect(sync.readCompanionPresence()).toEqual({ lastSeen: now.toISOString(), device });
+    expect(sync.readCompanionPresence()).toEqual({ lastSeen: now.toISOString(), device, lastPush: { at: now.toISOString(), ok: true, reason: null } });
   });
 
   test('sealing is sticky: once the pairing saw a 0.5.0 app, an older /status never brings plain text back', async () => {
@@ -122,15 +122,27 @@ describe('runCompanionSyncIfDue', () => {
   test('a phone without /status (app 0.2.0) still counts as seen', async () => {
     pair();
     await sync.runCompanionSyncIfDue(new Date('2026-11-03T12:00:00Z'), deps({ fetchStatus: vi.fn(async () => ({ reachable: true, status: null })) }));
-    expect(sync.readCompanionPresence()).toEqual({ lastSeen: '2026-11-03T12:00:00.000Z', device: null });
+    expect(sync.readCompanionPresence()).toMatchObject({ lastSeen: '2026-11-03T12:00:00.000Z', device: null });
   });
 
   test('a failed push is retried on the next tick', async () => {
     pair();
-    const d = deps({ pushSnapshot: vi.fn(async () => false) });
+    const d = deps({ pushSnapshot: vi.fn(async () => ({ ok: false, reason: 'falha de rede' }) as const) });
     await sync.runCompanionSyncIfDue(new Date('2026-11-03T12:00:00Z'), d);
     await sync.runCompanionSyncIfDue(new Date('2026-11-03T12:01:00Z'), d);
     expect(d.pushSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  test('a refused push is recorded with its reason, and a later success replaces it', async () => {
+    pair();
+    const refused = deps({ pushSnapshot: vi.fn(async () => ({ ok: false, reason: sync.describePushFailure(401) }) as const) });
+    await sync.runCompanionSyncIfDue(new Date('2026-11-03T12:00:00Z'), refused);
+    expect(sync.readCompanionPresence().lastPush).toEqual({
+      at: '2026-11-03T12:00:00.000Z', ok: false, reason: 'o telemóvel recusou a assinatura (401)'
+    });
+
+    await sync.runCompanionSyncIfDue(new Date('2026-11-03T12:01:00Z'), deps());
+    expect(sync.readCompanionPresence().lastPush).toEqual({ at: '2026-11-03T12:01:00.000Z', ok: true, reason: null });
   });
 });
 
@@ -159,7 +171,7 @@ describe('buildCompanionSnapshot', () => {
     expect(s.money.criticalOverdue.length).toBeLessThanOrEqual(5);
     expect(s.network.wans).toEqual([{ name: 'ether1', running: true, downBps: 1000, upBps: 200 }]);
     expect(s.sms.month).toEqual({ sent: 1, delivered: 1, failed: 1, pending: 1 });
-    expect(Object.keys(s).sort()).toEqual(['companyName', 'customers', 'generatedAt', 'money', 'network', 'operation', 'schemaVersion', 'sms', 'work']);
+    expect(Object.keys(s).sort()).toEqual(['clients', 'companyName', 'customers', 'generatedAt', 'money', 'network', 'operation', 'schemaVersion', 'sms', 'work']);
   });
 
   test('a router error becomes wanReason, not a failed snapshot', async () => {

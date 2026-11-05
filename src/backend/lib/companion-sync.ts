@@ -22,15 +22,22 @@ export type CompanionDeviceStatus = {
   uptimeSec: number | null;
 };
 
+/** Why a push failed, in words the Settings screen can show as-is. */
+export type PushOutcome = { ok: true } | { ok: false; reason: string };
+
+/** The last push attempt, kept so a refused snapshot is never silent again. */
+export type CompanionLastPush = { at: string; ok: boolean; reason: string | null };
+
 export type CompanionSyncDeps = {
   fetchStatus: () => Promise<{ reachable: boolean; status: CompanionDeviceStatus | null }>;
-  pushSnapshot: (snapshot: CompanionSnapshot, sealed: boolean) => Promise<boolean>;
+  pushSnapshot: (snapshot: CompanionSnapshot, sealed: boolean) => Promise<PushOutcome>;
   buildSnapshot: () => Promise<CompanionSnapshot>;
   selfHeal: () => Promise<void>;
 };
 
 const LAST_SEEN_KEY = 'smsCompanionLastSeen';
 const STATUS_KEY = 'smsCompanionDeviceStatus';
+const LAST_PUSH_KEY = 'smsCompanionLastPush';
 /**
  * Once this pairing has seen an app that decrypts, the snapshot always goes
  * sealed: the version in /status is not signed, so a host posing as the phone
@@ -102,14 +109,20 @@ async function defaultFetchStatus(): Promise<{ reachable: boolean; status: Compa
   }
 }
 
-async function defaultPushSnapshot(snapshot: CompanionSnapshot, sealed: boolean): Promise<boolean> {
+export function describePushFailure(status: number): string {
+  if (status === 401) return 'o telemóvel recusou a assinatura (401)';
+  if (status === 400) return 'o telemóvel recusou o resumo (400)';
+  return `o telemóvel respondeu ${status}`;
+}
+
+async function defaultPushSnapshot(snapshot: CompanionSnapshot, sealed: boolean): Promise<PushOutcome> {
   const secret = readSecret(getSqliteDatabase(), 'smsCompanionPairingKey');
-  if (!secret) return false;
+  if (!secret) return { ok: false, reason: 'sem chave de pareamento' };
   try {
     const response = await signedFetch('/dashboard', 'POST', payloadForApp(snapshot, sealed, secret), 5000);
-    return response.ok;
-  } catch {
-    return false;
+    return response.ok ? { ok: true } : { ok: false, reason: describePushFailure(response.status) };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error && err.name === 'TimeoutError' ? 'sem resposta do telemóvel' : 'falha de rede' };
   }
 }
 
@@ -153,18 +166,31 @@ export async function runCompanionSyncIfDue(now: Date = new Date(), deps: Compan
   if (!due) return { online: true, pushed: false };
 
   if (appSupportsSealed(status?.appVersion)) setSetting(SEALED_KEY, 'true');
-  const pushed = await deps.pushSnapshot(await deps.buildSnapshot(), getSetting(SEALED_KEY) === 'true');
-  if (pushed) lastPushAt = now.getTime();
-  return { online: true, pushed };
+  const outcome = await deps.pushSnapshot(await deps.buildSnapshot(), getSetting(SEALED_KEY) === 'true');
+  const lastPush: CompanionLastPush = { at: now.toISOString(), ok: outcome.ok, reason: outcome.ok ? null : outcome.reason };
+  setSetting(LAST_PUSH_KEY, JSON.stringify(lastPush));
+  if (outcome.ok) lastPushAt = now.getTime();
+  return { online: true, pushed: outcome.ok };
 }
 
 /** O que o desktop sabe do telemóvel sem lhe perguntar (para o ecrã de Definições). */
-export function readCompanionPresence(): { lastSeen: string | null; device: CompanionDeviceStatus | null } {
+export function readCompanionPresence(): { lastSeen: string | null; device: CompanionDeviceStatus | null; lastPush: CompanionLastPush | null } {
   const lastSeen = getSetting(LAST_SEEN_KEY) || null;
   const raw = getSetting(STATUS_KEY);
   let device: CompanionDeviceStatus | null = null;
   if (raw) {
     try { device = parseDeviceStatus(JSON.parse(raw) as Record<string, unknown>); } catch { device = null; }
   }
-  return { lastSeen, device };
+  return { lastSeen, device, lastPush: parseLastPush(getSetting(LAST_PUSH_KEY)) };
+}
+
+function parseLastPush(raw: string): CompanionLastPush | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as Partial<CompanionLastPush>;
+    if (typeof v.at !== 'string' || typeof v.ok !== 'boolean') return null;
+    return { at: v.at, ok: v.ok, reason: typeof v.reason === 'string' ? v.reason : null };
+  } catch {
+    return null;
+  }
 }

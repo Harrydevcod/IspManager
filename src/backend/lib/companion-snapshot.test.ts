@@ -20,9 +20,10 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  for (const table of ['support_tickets', 'work_orders', 'payment_receipts', 'client_credits', 'payments', 'services', 'clients', 'treasury_accounts']) {
+  for (const table of ['support_tickets', 'work_orders', 'payment_receipts', 'client_credits', 'payments', 'services', 'clients', 'treasury_accounts', 'internet_plans']) {
     db.prepare(`DELETE FROM ${table}`).run();
   }
+  db.prepare(`DELETE FROM app_settings WHERE key = 'vinti4Enabled'`).run();
 });
 
 afterAll(() => {
@@ -78,6 +79,29 @@ describe('buildCompanionSnapshot — terreno', () => {
     expect(money.debtors[0].phone).toBeNull(); // número inválido não se marca
   });
 
+  test('payment link: the newest overdue invoice EasyLink while it still matches the balance', async () => {
+    db.prepare(`INSERT INTO app_settings (key, value) VALUES ('vinti4Enabled', 'true')`).run();
+    const ana = client('Ana', '9912233');
+    const old = invoice(ana, 2500, 40);
+    const recent = invoice(ana, 3000, 10);
+    const link = 'https://www.vinti4.cv/pay/abc';
+    db.prepare(`UPDATE payments SET vinti4_link_url = ?, vinti4_link_amount_cve = amount_cve WHERE id IN (?, ?)`).run(link, old, recent);
+
+    let debtor = (await snapshot()).money.debtors[0];
+    expect([debtor.paymentLink, debtor.paymentLinkAmountCve]).toEqual([link, 3000]);
+
+    // Pago em parte: o link já não é o saldo e deixa de seguir; vale o da fatura anterior.
+    receipt(recent, 500, today(), null);
+    db.prepare(`UPDATE payments SET vinti4_link_url = ? WHERE id = ?`).run('https://www.vinti4.cv/pay/old', old);
+    debtor = (await snapshot()).money.debtors[0];
+    expect([debtor.paymentLink, debtor.paymentLinkAmountCve]).toEqual(['https://www.vinti4.cv/pay/old', 2500]);
+  });
+
+  test('a debtor without any open link has none', async () => {
+    invoice(client('Rui', '9912233'), 2500, 20);
+    expect((await snapshot()).money.debtors[0]).toMatchObject({ paymentLink: null, paymentLinkAmountCve: null });
+  });
+
   test('a partly paid invoice counts only what is still owed', async () => {
     const ana = client('Ana', '9912233');
     const id = invoice(ana, 2500, 20);
@@ -119,5 +143,33 @@ describe('buildCompanionSnapshot — terreno', () => {
     expect(work.orders.map((o) => o.title)).toEqual(['Torre norte', 'Trocar antena']);
     expect(work.orders[0].clientName).toBeNull();
     expect(work.orders[1]).toMatchObject({ clientName: 'Ana', phone: '+2389912233', address: 'Rua 1', zone: 'Monte Sossego' });
+  });
+});
+
+describe('loadClients — clientes no bolso', () => {
+  test('everyone but the cancelled, by name, with plan, overdue debt and last payment', async () => {
+    const plan = db.prepare(`INSERT INTO internet_plans (name) VALUES ('Fibra 50')`).run().lastInsertRowid as number;
+    const bia = client('bia', '991 22 33', { zone: 'Monte' });
+    db.prepare(`UPDATE services SET plan_id = ? WHERE id = ?`).run(plan, bia.serviceId);
+    const paid = invoice(bia, 2500, 40);
+    receipt(paid, 2500, '2026-10-05', null);
+    invoice(bia, 2500, 10);
+    invoice(bia, 9999, -5); // ainda não venceu: não é dívida
+    client('Álvaro', null);
+    const gone = client('Zeca', '9911111');
+    db.prepare(`UPDATE clients SET status = 'cancelled' WHERE id = ?`).run(gone.clientId);
+
+    const clients = (await snapshot()).clients;
+    expect(clients.map((c) => c.name)).toEqual(['Álvaro', 'bia']);
+    expect(clients[1]).toMatchObject({ phone: '+2389912233', plan: 'Fibra 50', zone: 'Monte', overdueCve: 2500, lastPaymentAt: '2026-10-05', status: 'active' });
+    expect(clients[0]).toMatchObject({ phone: null, plan: null, overdueCve: 0, lastPaymentAt: null });
+  });
+
+  test('stops before the byte budget instead of overflowing the phone', () => {
+    for (let i = 0; i < 30; i++) client(`Cliente ${String(i).padStart(2, '0')}`, `99100${String(i).padStart(2, '0')}`);
+    const all = mod.loadClients(db);
+    const tenBytes = 2 + all.slice(0, 10).reduce((n, c) => n + Buffer.byteLength(JSON.stringify(c)) + 1, 0);
+    expect(mod.loadClients(db, tenBytes).map((c) => c.name)).toEqual(all.slice(0, 10).map((c) => c.name));
+    expect(all.length).toBe(30);
   });
 });

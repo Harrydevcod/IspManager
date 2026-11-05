@@ -44,6 +44,26 @@
       android:stateNotNeeded="true"
       android:exported="false" />
 
+    <receiver
+      android:name=".widget.IspmWidget"
+      android:label="ISPM"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/widget_ispm_info" />
+    </receiver>
+    <!-- Quem está a ligar: only names the caller, never screens a call out. -->
+    <service
+      android:name=".CallerIdService"
+      android:exported="true"
+      android:permission="android.permission.BIND_SCREENING_SERVICE">
+      <intent-filter>
+        <action android:name="android.telecom.CallScreeningService" />
+      </intent-filter>
+    </service>
     <service
       android:name=".CompanionService"
       android:exported="false"

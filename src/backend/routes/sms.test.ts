@@ -82,7 +82,8 @@ describe('SMS routes', () => {
       baseUrl: '',
       deviceName: '',
       lastSeen: null,
-      device: null
+      device: null,
+      lastPush: null
     });
   });
 

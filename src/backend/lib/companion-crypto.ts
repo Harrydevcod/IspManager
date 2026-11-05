@@ -51,7 +51,7 @@ export function appSupportsSealed(appVersion: string | null | undefined): boolea
  */
 export function payloadForApp(snapshot: CompanionSnapshot, sealed: boolean, secret: string): unknown {
   if (sealed) return sealPayload(JSON.stringify(snapshot), secret);
-  const { work: _work, ...rest } = snapshot;
+  const { work: _work, clients: _clients, ...rest } = snapshot;
   const { debtors: _debtors, cashToday: _cash, monthlyReceipts: _months, ...money } = snapshot.money;
   return { ...rest, money };
 }

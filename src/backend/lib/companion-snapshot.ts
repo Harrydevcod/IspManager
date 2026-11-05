@@ -7,6 +7,7 @@ import { readRouterLive, readWanInterfaces } from './router-live';
 import type { OperationsSeverity } from '../../shared/operations-status';
 import { normalizeSmsPhone } from '../../shared/sms';
 import { balanceSqlExpr, cashReceiptFilterSql, overdueSqlPredicate } from './payments';
+import { openPaymentLinkSql } from './vinti4';
 
 /**
  * O resumo que o desktop envia ao telemóvel pareado para o Painel da app.
@@ -35,7 +36,11 @@ export type CompanionSnapshot = {
     overduePayments: number;
     criticalOverdue: Array<{ clientName: string; amountCve: number; daysOverdue: number }>;
     /** Cobrar no terreno: clientes com dívida vencida, maior primeiro. */
-    debtors: Array<{ clientName: string; clientCode: string; phone: string | null; amountCve: number; daysOverdue: number }>;
+    debtors: Array<{
+      clientName: string; clientCode: string; phone: string | null; amountCve: number; daysOverdue: number;
+      /** O link que os avisos já usam (EasyLink válido, senão Stripe) da fatura vencida mais recente; e o valor dela. */
+      paymentLink: string | null; paymentLinkAmountCve: number | null;
+    }>;
     /** Recibos de hoje (hora de Cabo Verde), por caixa ou banco. */
     cashToday: { totalCve: number; byAccount: Array<{ name: string; amountCve: number }> };
     /** Recebido por mês, do mais antigo ao atual (6 meses). */
@@ -65,7 +70,21 @@ export type CompanionSnapshot = {
     today: SmsCounts;
     month: SmsCounts;
   };
+  /** Clientes no bolso: todos menos os cancelados, cortados por bytes (CLIENTS_BUDGET_BYTES). */
+  clients: CompanionClient[];
 };
+
+export type CompanionClient = {
+  code: string; name: string; phone: string | null; status: string;
+  plan: string | null; zone: string | null; island: string | null;
+  /** Dívida vencida, na mesma regra do Cobrar. */
+  overdueCve: number;
+  lastPaymentAt: string | null;
+};
+
+// O telemóvel aceita 300 KB por pedido e, selado, o JSON cresce ~4/3 em base64:
+// 150 KB são ~1000 clientes e deixam folga ao resto do resumo (~10 KB).
+export const CLIENTS_BUDGET_BYTES = 150 * 1024;
 
 type SmsCounts = { sent: number; delivered: number; failed: number; pending: number };
 
@@ -100,15 +119,57 @@ function loadDebtors(db: Database.Database): CompanionSnapshot['money']['debtors
   const rows = db.prepare(`
     SELECT c.full_name AS clientName, c.client_code AS clientCode, c.phone,
            SUM(${balanceSqlExpr('p')}) AS amountCve,
-           MAX(CAST(julianday('now') - julianday(p.due_date) AS INTEGER)) AS daysOverdue
+           MAX(CAST(julianday('now') - julianday(p.due_date) AS INTEGER)) AS daysOverdue,
+           (SELECT ${openPaymentLinkSql('l')} FROM payments l
+             WHERE l.client_id = c.id AND ${overdueSqlPredicate('l')} AND ${openPaymentLinkSql('l')} IS NOT NULL
+             ORDER BY l.due_date DESC, l.id DESC LIMIT 1) AS paymentLink,
+           (SELECT ${balanceSqlExpr('l')} FROM payments l
+             WHERE l.client_id = c.id AND ${overdueSqlPredicate('l')} AND ${openPaymentLinkSql('l')} IS NOT NULL
+             ORDER BY l.due_date DESC, l.id DESC LIMIT 1) AS paymentLinkAmountCve
     FROM payments p JOIN clients c ON c.id = p.client_id
     WHERE ${overdueSqlPredicate('p')}
     GROUP BY c.id
     HAVING amountCve > 0
     ORDER BY amountCve DESC
     LIMIT ${FIELD_LIMIT}
-  `).all() as Array<{ clientName: string; clientCode: string; phone: string | null; amountCve: number; daysOverdue: number }>;
-  return rows.map((r) => ({ ...r, phone: dialable(r.phone), amountCve: Number(r.amountCve) || 0 }));
+  `).all() as CompanionSnapshot['money']['debtors'];
+  return rows.map((r) => ({
+    ...r,
+    phone: dialable(r.phone),
+    amountCve: Number(r.amountCve) || 0,
+    paymentLink: r.paymentLink ?? null,
+    paymentLinkAmountCve: r.paymentLink && r.paymentLinkAmountCve != null ? Number(r.paymentLinkAmountCve) : null
+  }));
+}
+
+const ptCollator = new Intl.Collator('pt', { sensitivity: 'base' });
+
+/** Cada cliente que não está cancelado, por nome; corta quando o JSON passa o orçamento. */
+export function loadClients(db: Database.Database, budgetBytes = CLIENTS_BUDGET_BYTES): CompanionClient[] {
+  const rows = db.prepare(`
+    SELECT c.client_code AS code, c.full_name AS name, c.phone, c.status, c.zone, c.island,
+           (SELECT GROUP_CONCAT(name, ' + ') FROM (
+              SELECT DISTINCT ip.name FROM services s JOIN internet_plans ip ON ip.id = s.plan_id
+              WHERE s.client_id = c.id AND s.status != 'cancelled' ORDER BY ip.name)) AS plan,
+           COALESCE((SELECT SUM(${balanceSqlExpr('p')}) FROM payments p
+             WHERE p.client_id = c.id AND ${overdueSqlPredicate('p')}), 0) AS overdueCve,
+           (SELECT MAX(r.payment_date) FROM payment_receipts r JOIN payments p ON p.id = r.payment_id
+             WHERE p.client_id = c.id AND ${cashReceiptFilterSql('r')}) AS lastPaymentAt
+    FROM clients c
+    WHERE c.status != 'cancelled'
+  `).all() as CompanionClient[];
+  // O SQLite só ordena ASCII sem maiúsculas: "Álvaro" ia parar depois do "Z".
+  rows.sort((a, b) => ptCollator.compare(a.name, b.name));
+  const out: CompanionClient[] = [];
+  let bytes = 2;
+  for (const row of rows) {
+    const client = { ...row, phone: dialable(row.phone), overdueCve: Math.max(0, Number(row.overdueCve) || 0) };
+    bytes += Buffer.byteLength(JSON.stringify(client)) + 1;
+    // ponytail: corte simples pelo fim do alfabeto; ordenar por relevância se algum ISP passar o orçamento.
+    if (bytes > budgetBytes) break;
+    out.push(client);
+  }
+  return out;
 }
 
 function loadCashToday(db: Database.Database): CompanionSnapshot['money']['cashToday'] {
@@ -222,6 +283,7 @@ export async function buildCompanionSnapshot(
     sms: {
       today: smsCounts(db, CV_DAY_START),
       month: smsCounts(db, CV_MONTH_START)
-    }
+    },
+    clients: loadClients(db)
   };
 }
