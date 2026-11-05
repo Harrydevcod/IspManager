@@ -1,9 +1,14 @@
 package cv.novatech.ispm.sms.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -93,7 +98,8 @@ fun SettingsScreen(
   onRequestBatteryExemption: () -> Unit,
   onRequestPhoneState: () -> Unit,
   onChooseSim: (Int?) -> Unit,
-  onForgetPairing: () -> Unit
+  onForgetPairing: () -> Unit,
+  onLockEnabledChange: (Boolean) -> Unit
 ) {
   LazyColumn(
     Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -104,8 +110,38 @@ fun SettingsScreen(
     item { StatusCard(state, onForgetPairing) }
     if (!state.smsPermissionGranted) item { PermissionBanner(onRequestPermission) }
     if (!state.batteryExempt) item { BatteryBanner(onRequestBatteryExemption) }
+    item { LockSetting(state.lockEnabled, state.deviceSecure, onLockEnabledChange) }
     if (state.dualSimCapable) {
       item { SimPicker(state.sims, state.selectedSim, onRequestPhoneState, onChooseSim) }
+    }
+  }
+}
+
+@Composable
+private fun LockSetting(enabled: Boolean, deviceSecure: Boolean, onChange: (Boolean) -> Unit) {
+  Column(
+    Modifier.fillMaxWidth()
+      .clip(RoundedCornerShape(14.dp)).background(Surface)
+      .border(1.dp, BorderC, RoundedCornerShape(14.dp))
+      .padding(14.dp)
+  ) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Column(Modifier.weight(1f)) {
+        Text("Bloquear a app", color = TextPrimary, fontWeight = FontWeight.SemiBold)
+        Text(
+          "Pede a impressão digital ou o PIN ao abrir e depois de 2 min fora. Esconde os dados nas apps recentes.",
+          color = TextSecondary, style = MaterialTheme.typography.bodySmall
+        )
+      }
+      Spacer(Modifier.width(12.dp))
+      Switch(checked = enabled, onCheckedChange = onChange)
+    }
+    if (enabled && !deviceSecure) {
+      Spacer(Modifier.height(8.dp))
+      Text(
+        "O telemóvel não tem PIN nem impressão digital: defina um nas definições do Android para a app poder bloquear.",
+        color = Warn, style = MaterialTheme.typography.bodySmall
+      )
     }
   }
 }

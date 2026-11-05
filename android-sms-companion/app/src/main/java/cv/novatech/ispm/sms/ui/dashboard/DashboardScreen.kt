@@ -48,6 +48,7 @@ fun DashboardScreen(dashboard: Dashboard?, receivedAt: Long?) {
   ) {
     item { Header(dashboard.companyName, receivedAt!!, now, freshness) }
     item { OperationCard(dashboard.operation) }
+    if (dashboard.hasFieldData) item { CashTodayCard(dashboard.money) }
     item { MoneyCard(dashboard.money) }
     item { NetworkCard(dashboard.network) }
     item { CustomersCard(dashboard.customers, dashboard.sms) }
@@ -98,7 +99,7 @@ private fun severityLabel(severity: String): String = when (severity) {
 }
 
 @Composable
-private fun Card(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+internal fun Card(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
   Column(
     modifier.fillMaxWidth()
       .clip(RoundedCornerShape(16.dp)).background(Surface)
@@ -109,7 +110,7 @@ private fun Card(modifier: Modifier = Modifier, content: @Composable ColumnScope
 }
 
 @Composable
-private fun Eyebrow(text: String) {
+internal fun Eyebrow(text: String) {
   Text(text.uppercase(), color = TextMuted, style = MaterialTheme.typography.labelSmall)
 }
 
@@ -182,6 +183,59 @@ private fun MoneyCard(m: Dashboard.Money) {
   }
 }
 
+/** Today's till first (what came in, and where it is), then six months at a glance. */
+@Composable
+private fun CashTodayCard(m: Dashboard.Money) {
+  Card {
+    Eyebrow("Caixa de hoje")
+    Spacer(Modifier.height(4.dp))
+    Text(DashboardRules.formatCve(m.cashToday.totalCve), color = TextPrimary, style = MaterialTheme.typography.headlineMedium)
+    if (m.cashToday.byAccount.isEmpty()) {
+      Text("Ainda sem recebimentos hoje", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+    }
+    m.cashToday.byAccount.forEach { a ->
+      Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+        Text(a.name, color = TextSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text(DashboardRules.formatCve(a.amountCve), color = TextPrimary, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+      }
+    }
+    if (m.monthlyReceipts.isNotEmpty()) {
+      Spacer(Modifier.height(16.dp))
+      Eyebrow("Recebido por mês")
+      Spacer(Modifier.height(10.dp))
+      MonthBars(m.monthlyReceipts)
+    }
+  }
+}
+
+private val monthNames = listOf("jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez")
+
+/** Six plain bars, the current month highlighted; the value of the tallest is written above it. */
+@Composable
+private fun MonthBars(months: List<Dashboard.MonthAmount>) {
+  val max = months.maxOf { it.amountCve }.coerceAtLeast(1)
+  Row(Modifier.fillMaxWidth().height(120.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
+    months.forEachIndexed { i, m ->
+      val current = i == months.lastIndex
+      Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Bottom, horizontalAlignment = Alignment.CenterHorizontally) {
+        if (m.amountCve == max) {
+          Text(DashboardRules.formatCve(m.amountCve).removeSuffix("\$00") + "$", color = TextSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+          Spacer(Modifier.height(4.dp))
+        }
+        Box(
+          Modifier.fillMaxWidth()
+            .fillMaxHeight((m.amountCve.toFloat() / max * 0.78f).coerceAtLeast(0.02f))
+            .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+            .background(if (current) AccentBlue else SurfaceMuted)
+        )
+        Spacer(Modifier.height(6.dp))
+        val idx = m.month.substringAfter('-').toIntOrNull()?.minus(1)
+        Text(idx?.let { monthNames.getOrNull(it) } ?: m.month, color = if (current) TextPrimary else TextMuted, style = MaterialTheme.typography.labelSmall)
+      }
+    }
+  }
+}
+
 @Composable
 private fun Figure(label: String, value: String, caption: String?, color: Color, modifier: Modifier = Modifier) {
   Column(modifier) {
@@ -205,8 +259,12 @@ private fun NetworkCard(n: Dashboard.Network) {
       Figure("Em baixo agora", n.downCount.toString(), null, if (n.downCount > 0) Danger else TextPrimary, Modifier.weight(1f))
       Figure("Achados (24 h)", n.findingsCount.toString(), null, if (n.findingsCount > 0) Warn else TextPrimary, Modifier.weight(1f))
     }
-    n.downNow.forEach { d ->
+    // The list now comes whole (for the alerts); the card shows the first five.
+    n.downNow.take(5).forEach { d ->
       Text("• ${d.name}", color = TextSecondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+    }
+    if (n.downNow.size > 5) {
+      Text("e mais ${n.downNow.size - 5}", color = TextMuted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
     }
     Spacer(Modifier.height(12.dp))
     Eyebrow("Ligações à Internet")

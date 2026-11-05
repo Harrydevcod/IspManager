@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -36,6 +37,7 @@ import cv.novatech.ispm.sms.ui.theme.TextPrimary
 
 private enum class Tab(val label: String, val icon: ImageVector) {
   PAINEL("Painel", Icons.Filled.Home),
+  TERRENO("Terreno", Icons.Filled.Place),
   PEDIDOS("Pedidos", Icons.Filled.Email),
   HISTORICO("Histórico", Icons.Filled.DateRange),
   DEFINICOES("Definições", Icons.Filled.Settings)
@@ -54,7 +56,9 @@ fun CompanionApp(
   onApproveAll: () -> Unit,
   onUndo: (String) -> Unit,
   onReject: (String) -> Unit,
-  onForgetPairing: () -> Unit
+  onForgetPairing: () -> Unit,
+  onOpen: (String) -> Unit,
+  onLockEnabledChange: (Boolean) -> Unit
 ) {
   Surface(Modifier.fillMaxSize().background(Bg)) {
     if (!state.paired) {
@@ -62,7 +66,7 @@ fun CompanionApp(
     } else {
       PairedApp(
         state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim,
-        onApprove, onApproveAll, onUndo, onReject, onForgetPairing
+        onApprove, onApproveAll, onUndo, onReject, onForgetPairing, onOpen, onLockEnabledChange
       )
     }
   }
@@ -79,7 +83,9 @@ private fun PairedApp(
   onApproveAll: () -> Unit,
   onUndo: (String) -> Unit,
   onReject: (String) -> Unit,
-  onForgetPairing: () -> Unit
+  onForgetPairing: () -> Unit,
+  onOpen: (String) -> Unit,
+  onLockEnabledChange: (Boolean) -> Unit
 ) {
   // Pending SMS outrank the overview: open on Pedidos when there is work waiting.
   var tab by rememberSaveable { mutableStateOf(if (state.pending.isNotEmpty()) Tab.PEDIDOS else Tab.PAINEL) }
@@ -87,9 +93,10 @@ private fun PairedApp(
     Box(Modifier.weight(1f).fillMaxWidth()) {
       when (tab) {
         Tab.PAINEL -> DashboardScreen(state.dashboard, state.dashboardReceivedAt)
+        Tab.TERRENO -> FieldScreen(state.dashboard, state.dashboardReceivedAt, onOpen)
         Tab.PEDIDOS -> RequestsScreen(state, onRequestPermission, onRequestBatteryExemption, onApprove, onApproveAll, onUndo, onReject, onForgetPairing)
         Tab.HISTORICO -> HistoryScreen(state)
-        Tab.DEFINICOES -> SettingsScreen(state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim, onForgetPairing)
+        Tab.DEFINICOES -> SettingsScreen(state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim, onForgetPairing, onLockEnabledChange)
       }
     }
     NavigationBar(containerColor = SurfaceMuted) {

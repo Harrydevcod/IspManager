@@ -9,6 +9,8 @@ import androidx.core.content.ContextCompat
 import cv.novatech.ispm.sms.dashboard.Dashboard
 import cv.novatech.ispm.sms.dashboard.DashboardRules
 import cv.novatech.ispm.sms.dashboard.DashboardStore
+import cv.novatech.ispm.sms.dashboard.FieldRules
+import cv.novatech.ispm.sms.dashboard.SealedSnapshot
 import cv.novatech.ispm.sms.state.CompanionStateHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +27,10 @@ class IspmSmsApp : Application() {
   lateinit var settingsStore: SettingsStore private set
   lateinit var dashboardStore: DashboardStore private set
   lateinit var holder: CompanionStateHolder private set
+
+  // UI lock (LockRules). Process-wide so a rotation doesn't ask again; a new process starts locked.
+  @Volatile var unlocked = false
+  @Volatile var backgroundAt: Long? = null
 
   override fun onCreate() {
     super.onCreate()
@@ -64,9 +70,14 @@ class IspmSmsApp : Application() {
   /** `POST /dashboard`: keeps the snapshot and alerts on the change into red. False = rejected. */
   fun acceptDashboard(raw: String): Boolean {
     if (raw.length > Dashboard.MAX_BYTES) return false
-    val dashboard = Dashboard.parse(raw) ?: return false
+    // Sealed by a 2.53+ desktop; stored opened (app-private storage), like before.
+    val json = SealedSnapshot.open(raw, pairingStore.secret()) ?: return false
+    val dashboard = Dashboard.parse(json) ?: return false
     val now = System.currentTimeMillis()
-    dashboardStore.save(raw, now)
+    // Read the previous snapshot before it is overwritten: the diff is the alert.
+    val previousDown = dashboardStore.load()?.network?.downNow
+    dashboardStore.save(json, now)
+    Notifications.notifyNetworkChanges(this, FieldRules.networkChanges(previousDown, dashboard.network.downNow, now))
     val severity = dashboard.operation.severity
     if (DashboardRules.shouldAlert(dashboardStore.lastSeverity(), severity)) {
       Notifications.notifyOperationAlert(this, dashboard.operation.headline)

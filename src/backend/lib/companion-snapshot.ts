@@ -5,12 +5,16 @@ import { loadNetworkHealth } from './network-health';
 import { loadOperationsStatus } from './operations-status';
 import { readRouterLive, readWanInterfaces } from './router-live';
 import type { OperationsSeverity } from '../../shared/operations-status';
+import { normalizeSmsPhone } from '../../shared/sms';
+import { balanceSqlExpr, cashReceiptFilterSql, overdueSqlPredicate } from './payments';
 
 /**
  * O resumo que o desktop envia ao telemóvel pareado para o Painel da app.
  * Só leitura e só o que cabe num ecrã de telemóvel: listas cortadas, valores
  * em CVE inteiros (a app formata `1.500$00`). A forma é contrato com a app
- * Android — mudar um campo obriga a subir `schemaVersion`.
+ * Android — mudar um campo obriga a subir `schemaVersion`. Acrescentar um campo
+ * NÃO obriga: a app ignora o que não conhece e trata o que falta como vazio
+ * (assim a 0.4.0 continua a ler um desktop novo, e a 0.5.0 um desktop antigo).
  */
 export type CompanionSnapshot = {
   schemaVersion: 1;
@@ -30,19 +34,33 @@ export type CompanionSnapshot = {
     pendingPreviousCve: number;
     overduePayments: number;
     criticalOverdue: Array<{ clientName: string; amountCve: number; daysOverdue: number }>;
+    /** Cobrar no terreno: clientes com dívida vencida, maior primeiro. */
+    debtors: Array<{ clientName: string; clientCode: string; phone: string | null; amountCve: number; daysOverdue: number }>;
+    /** Recibos de hoje (hora de Cabo Verde), por caixa ou banco. */
+    cashToday: { totalCve: number; byAccount: Array<{ name: string; amountCve: number }> };
+    /** Recebido por mês, do mais antigo ao atual (6 meses). */
+    monthlyReceipts: Array<{ month: string; amountCve: number }>;
   };
   network: {
     tone: 'ok' | 'warn' | 'danger';
     probeEnabled: boolean;
     lastProbeAt: string | null;
     downCount: number;
-    downNow: Array<{ name: string; since: string }>;
+    /** Completa (sem corte): a app compara snapshots para avisar quedas e recuperações. */
+    downNow: Array<{ kind: 'backbone' | 'assignment'; id: number; name: string; since: string }>;
     findingsCount: number;
     /** null quando o router não foi lido (desligado, fora da rede, erro): `wanReason` diz porquê. */
     wans: Array<{ name: string; running: boolean; downBps: number | null; upBps: number | null }> | null;
     wanReason: string | null;
   };
   customers: { total: number; active: number; suspended: number; openWorkOrders: number; openTickets: number };
+  work: {
+    orders: Array<{
+      id: number; title: string; priority: string; scheduledAt: string | null; assignedTo: string | null;
+      clientName: string | null; phone: string | null; address: string | null; zone: string | null; island: string | null;
+    }>;
+    tickets: Array<{ id: number; subject: string; priority: string; openedAt: string; clientName: string; phone: string | null }>;
+  };
   sms: {
     today: SmsCounts;
     month: SmsCounts;
@@ -52,6 +70,14 @@ export type CompanionSnapshot = {
 type SmsCounts = { sent: number; delivered: number; failed: number; pending: number };
 
 const LIST_LIMIT = 5;
+// Listas de trabalho: o que se percorre no terreno num dia, não o arquivo.
+const FIELD_LIMIT = 15;
+const PRIORITY_ORDER = (col: string) => `CASE ${col} WHEN 'alta' THEN 0 WHEN 'media' THEN 1 ELSE 2 END`;
+
+/** Número pronto a marcar (+238…), ou null quando o registo não tem um válido. */
+function dialable(phone: string | null): string | null {
+  return phone ? normalizeSmsPhone(phone) || null : null;
+}
 
 // Cabo Verde é UTC-1 todo o ano: o "hoje" e o "este mês" do operador começam
 // uma hora depois da meia-noite UTC. created_at é gravado em UTC.
@@ -68,6 +94,72 @@ function smsCounts(db: Database.Database, since: string): SmsCounts {
     FROM sms_outbox WHERE created_at >= ${since}
   `).get() as Record<keyof SmsCounts, number | null>;
   return { sent: row.sent ?? 0, delivered: row.delivered ?? 0, failed: row.failed ?? 0, pending: row.pending ?? 0 };
+}
+
+function loadDebtors(db: Database.Database): CompanionSnapshot['money']['debtors'] {
+  const rows = db.prepare(`
+    SELECT c.full_name AS clientName, c.client_code AS clientCode, c.phone,
+           SUM(${balanceSqlExpr('p')}) AS amountCve,
+           MAX(CAST(julianday('now') - julianday(p.due_date) AS INTEGER)) AS daysOverdue
+    FROM payments p JOIN clients c ON c.id = p.client_id
+    WHERE ${overdueSqlPredicate('p')}
+    GROUP BY c.id
+    HAVING amountCve > 0
+    ORDER BY amountCve DESC
+    LIMIT ${FIELD_LIMIT}
+  `).all() as Array<{ clientName: string; clientCode: string; phone: string | null; amountCve: number; daysOverdue: number }>;
+  return rows.map((r) => ({ ...r, phone: dialable(r.phone), amountCve: Number(r.amountCve) || 0 }));
+}
+
+function loadCashToday(db: Database.Database): CompanionSnapshot['money']['cashToday'] {
+  const byAccount = db.prepare(`
+    SELECT COALESCE(a.name, 'Sem conta') AS name, SUM(r.amount_cve) AS amountCve
+    FROM payment_receipts r LEFT JOIN treasury_accounts a ON a.id = r.account_id
+    WHERE ${cashReceiptFilterSql('r')} AND r.payment_date = date('now', '-1 hours')
+    GROUP BY r.account_id
+    ORDER BY amountCve DESC
+  `).all() as Array<{ name: string; amountCve: number }>;
+  return {
+    totalCve: byAccount.reduce((sum, row) => sum + (Number(row.amountCve) || 0), 0),
+    byAccount: byAccount.map((row) => ({ name: row.name, amountCve: Number(row.amountCve) || 0 }))
+  };
+}
+
+function loadMonthlyReceipts(db: Database.Database): CompanionSnapshot['money']['monthlyReceipts'] {
+  const months = [5, 4, 3, 2, 1, 0].map((back) =>
+    (db.prepare(`SELECT strftime('%Y-%m', date('now', '-1 hours', 'start of month', ?)) AS m`).get(`-${back} months`) as { m: string }).m);
+  const totals = new Map((db.prepare(`
+    SELECT substr(r.payment_date, 1, 7) AS month, SUM(r.amount_cve) AS amountCve
+    FROM payment_receipts r
+    WHERE ${cashReceiptFilterSql('r')} AND substr(r.payment_date, 1, 7) >= ?
+    GROUP BY month
+  `).all(months[0]) as Array<{ month: string; amountCve: number }>).map((row) => [row.month, Number(row.amountCve) || 0]));
+  // Meses sem recibos aparecem a zero: o gráfico tem sempre seis barras.
+  return months.map((month) => ({ month, amountCve: totals.get(month) ?? 0 }));
+}
+
+function loadWork(db: Database.Database): CompanionSnapshot['work'] {
+  const orders = db.prepare(`
+    SELECT w.id, w.title, w.priority, w.scheduled_at AS scheduledAt, w.assigned_to AS assignedTo,
+           c.full_name AS clientName, c.phone, c.address, c.zone, c.island
+    FROM work_orders w
+    LEFT JOIN services s ON s.id = w.service_id
+    LEFT JOIN clients c ON c.id = s.client_id
+    WHERE w.status NOT IN ('concluida', 'cancelada')
+    ORDER BY ${PRIORITY_ORDER('w.priority')}, w.scheduled_at IS NULL, w.scheduled_at, w.id
+    LIMIT ${FIELD_LIMIT}
+  `).all() as CompanionSnapshot['work']['orders'];
+  const tickets = db.prepare(`
+    SELECT t.id, t.subject, t.priority, t.opened_at AS openedAt, c.full_name AS clientName, c.phone
+    FROM support_tickets t JOIN clients c ON c.id = t.client_id
+    WHERE t.status IN ('aberto', 'em_curso')
+    ORDER BY ${PRIORITY_ORDER('t.priority')}, t.opened_at
+    LIMIT ${FIELD_LIMIT}
+  `).all() as CompanionSnapshot['work']['tickets'];
+  return {
+    orders: orders.map((o) => ({ ...o, phone: dialable(o.phone) })),
+    tickets: tickets.map((t) => ({ ...t, phone: dialable(t.phone) }))
+  };
 }
 
 async function readWans(db: Database.Database): Promise<Pick<CompanionSnapshot['network'], 'wans' | 'wanReason'>> {
@@ -105,14 +197,17 @@ export async function buildCompanionSnapshot(
       pendingPreviousCve: summary.pendingPreviousCve,
       overduePayments: summary.overduePayments,
       criticalOverdue: summary.criticalOverdue.slice(0, LIST_LIMIT)
-        .map(({ clientName, amountCve, daysOverdue }) => ({ clientName, amountCve: Number(amountCve) || 0, daysOverdue }))
+        .map(({ clientName, amountCve, daysOverdue }) => ({ clientName, amountCve: Number(amountCve) || 0, daysOverdue })),
+      debtors: loadDebtors(db),
+      cashToday: loadCashToday(db),
+      monthlyReceipts: loadMonthlyReceipts(db)
     },
     network: {
       tone: health.tone,
       probeEnabled: health.probeEnabled,
       lastProbeAt: health.lastProbeAt,
       downCount: health.downNow.length,
-      downNow: health.downNow.slice(0, LIST_LIMIT).map(({ name, since }) => ({ name, since })),
+      downNow: health.downNow.map(({ kind, id, name, since }) => ({ kind, id, name, since })),
       findingsCount: health.findings.length,
       ...(await wanReader(db).catch((err: unknown) => ({ wans: null, wanReason: err instanceof Error ? err.message : 'Router indisponível' })))
     },
@@ -123,6 +218,7 @@ export async function buildCompanionSnapshot(
       openWorkOrders: summary.openWorkOrders,
       openTickets: summary.openTickets
     },
+    work: loadWork(db),
     sms: {
       today: smsCounts(db, CV_DAY_START),
       month: smsCounts(db, CV_MONTH_START)

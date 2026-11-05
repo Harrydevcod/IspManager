@@ -2,6 +2,7 @@ import { getSqliteDatabase } from '../db/database';
 import { readSecret } from './secrets';
 import { selfHealCompanionAddress, signedFetch } from './sms-outbox';
 import { buildCompanionSnapshot, type CompanionSnapshot } from './companion-snapshot';
+import { appSupportsSealed, payloadForApp } from './companion-crypto';
 
 /**
  * Sincronização desktop → telemóvel, além dos SMS: o desktop pergunta pelo
@@ -23,13 +24,20 @@ export type CompanionDeviceStatus = {
 
 export type CompanionSyncDeps = {
   fetchStatus: () => Promise<{ reachable: boolean; status: CompanionDeviceStatus | null }>;
-  pushSnapshot: (snapshot: CompanionSnapshot) => Promise<boolean>;
+  pushSnapshot: (snapshot: CompanionSnapshot, sealed: boolean) => Promise<boolean>;
   buildSnapshot: () => Promise<CompanionSnapshot>;
   selfHeal: () => Promise<void>;
 };
 
 const LAST_SEEN_KEY = 'smsCompanionLastSeen';
 const STATUS_KEY = 'smsCompanionDeviceStatus';
+/**
+ * Once this pairing has seen an app that decrypts, the snapshot always goes
+ * sealed: the version in /status is not signed, so a host posing as the phone
+ * must not be able to talk the desktop back into plain text. Cleared only by a
+ * new pairing or a revoke (routes/sms.ts).
+ */
+export const SEALED_KEY = 'smsCompanionSealed';
 const DEFAULT_SNAPSHOT_MINUTES = 5;
 
 // Estado do processo, não da base: perder isto num reinício só antecipa um push.
@@ -94,9 +102,11 @@ async function defaultFetchStatus(): Promise<{ reachable: boolean; status: Compa
   }
 }
 
-async function defaultPushSnapshot(snapshot: CompanionSnapshot): Promise<boolean> {
+async function defaultPushSnapshot(snapshot: CompanionSnapshot, sealed: boolean): Promise<boolean> {
+  const secret = readSecret(getSqliteDatabase(), 'smsCompanionPairingKey');
+  if (!secret) return false;
   try {
-    const response = await signedFetch('/dashboard', 'POST', snapshot, 5000);
+    const response = await signedFetch('/dashboard', 'POST', payloadForApp(snapshot, sealed, secret), 5000);
     return response.ok;
   } catch {
     return false;
@@ -142,7 +152,8 @@ export async function runCompanionSyncIfDue(now: Date = new Date(), deps: Compan
   wasOnline = true;
   if (!due) return { online: true, pushed: false };
 
-  const pushed = await deps.pushSnapshot(await deps.buildSnapshot());
+  if (appSupportsSealed(status?.appVersion)) setSetting(SEALED_KEY, 'true');
+  const pushed = await deps.pushSnapshot(await deps.buildSnapshot(), getSetting(SEALED_KEY) === 'true');
   if (pushed) lastPushAt = now.getTime();
   return { online: true, pushed };
 }

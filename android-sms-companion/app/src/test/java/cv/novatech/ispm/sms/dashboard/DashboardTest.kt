@@ -80,4 +80,78 @@ class DashboardTest {
     assertEquals("800 kb/s", DashboardRules.formatBps(800_000))
     assertEquals("—", DashboardRules.formatBps(null))
   }
+
+  // ISPM 2.53+: the same schema 1 with the Terreno fields added.
+  private val withField = sample
+    .replace(
+      "\"criticalOverdue\":[{\"clientName\":\"Ana Lopes\",\"amountCve\":2750,\"daysOverdue\":41}]}",
+      "\"criticalOverdue\":[{\"clientName\":\"Ana Lopes\",\"amountCve\":2750,\"daysOverdue\":41}]," +
+        "\"debtors\":[{\"clientName\":\"Ana Lopes\",\"clientCode\":\"C1\",\"phone\":\"+2389912233\",\"amountCve\":5000,\"daysOverdue\":41}," +
+        "{\"clientName\":\"Rui\",\"clientCode\":\"C2\",\"phone\":null,\"amountCve\":2500,\"daysOverdue\":3}]," +
+        "\"cashToday\":{\"totalCve\":3500,\"byAccount\":[{\"name\":\"Caixa loja\",\"amountCve\":3500}]}," +
+        "\"monthlyReceipts\":[{\"month\":\"2026-10\",\"amountCve\":63000},{\"month\":\"2026-11\",\"amountCve\":9500}]}"
+    )
+    .replace(
+      "\"downNow\":[{\"name\":\"Antena X\",\"since\":\"2026-11-03T11:00:00Z\"}]",
+      "\"downNow\":[{\"kind\":\"assignment\",\"id\":7,\"name\":\"Antena X\",\"since\":\"2026-11-03T11:00:00Z\"}]"
+    )
+    .replace(
+      "\"customers\":",
+      "\"work\":{\"orders\":[{\"id\":4,\"title\":\"Trocar antena\",\"priority\":\"alta\",\"scheduledAt\":null,\"assignedTo\":\"Zé\"," +
+        "\"clientName\":\"Ana Lopes\",\"phone\":\"+2389912233\",\"address\":\"Rua 1\",\"zone\":\"Monte Sossego\",\"island\":\"São Vicente\"}]," +
+        "\"tickets\":[{\"id\":9,\"subject\":\"Sem net\",\"priority\":\"media\",\"openedAt\":\"2026-11-03 10:00:00\",\"clientName\":\"Rui\",\"phone\":null}]},\"customers\":"
+    )
+
+  @Test fun parsesTheTerrenoFields() {
+    val d = Dashboard.parse(withField)!!
+    assertTrue(d.hasFieldData)
+    assertEquals(Dashboard.Debtor("Ana Lopes", 5000, 41, "C1", "+2389912233"), d.money.debtors.first())
+    assertNull(d.money.debtors[1].phone)
+    assertEquals(3500L, d.money.cashToday.totalCve)
+    assertEquals("Caixa loja", d.money.cashToday.byAccount.single().name)
+    assertEquals(listOf("2026-10", "2026-11"), d.money.monthlyReceipts.map { it.month })
+    assertEquals("assignment:7", d.network.downNow.single().key)
+    assertEquals("Monte Sossego", d.work.orders.single().zone)
+    assertNull(d.work.tickets.single().phone)
+  }
+
+  @Test fun anOlderDesktopHasNoTerrenoData() {
+    val d = Dashboard.parse(sample)!!
+    assertFalse(d.hasFieldData)
+    assertTrue(d.money.debtors.isEmpty() && d.work.orders.isEmpty())
+    assertEquals("name:Antena X", d.network.downNow.single().key) // no id: the name stands in
+  }
+
+  private fun down(id: Long, since: String = "2026-11-03T11:00:00Z") = Dashboard.Down("Antena $id", since, "assignment", id)
+
+  @Test fun networkChangesBetweenSnapshots() {
+    val now = FieldRules.parseInstant("2026-11-03T11:30:00Z")!!
+    val c = FieldRules.networkChanges(listOf(down(1), down(2)), listOf(down(2), down(3)), now)
+    assertEquals(listOf(3L), c.wentDown.map { it.id })
+    assertEquals(1L, c.restored.single().down.id)
+    assertEquals(30L, c.restored.single().minutesDown)
+    assertEquals(2, c.count)
+  }
+
+  @Test fun aDesktopUpgradeDoesNotReannounceOutages() {
+    val old = listOf(Dashboard.Down("Antena 1", "2026-11-03T11:00:00Z")) // 2.52: no id
+    assertEquals(0, FieldRules.networkChanges(old, listOf(down(1)), 0).count)
+  }
+
+  @Test fun theFirstSnapshotNeverAlerts() {
+    assertEquals(0, FieldRules.networkChanges(null, listOf(down(1), down(2)), 0).count)
+  }
+
+  @Test fun sqliteTimestampsAreUnderstood() {
+    assertEquals(FieldRules.parseInstant("2026-11-03T10:00:00Z"), FieldRules.parseInstant("2026-11-03 10:00:00"))
+    assertNull(FieldRules.parseInstant("ontem"))
+  }
+
+  @Test fun intentsForTheField() {
+    assertEquals("tel:+2389912233", FieldRules.dialUri("+2389912233"))
+    assertEquals("smsto:+2389912233", FieldRules.smsUri("+2389912233"))
+    assertEquals("https://wa.me/2389912233", FieldRules.whatsappUrl("+238 991 22 33"))
+    assertEquals("geo:0,0?q=Rua%201%2C%20Monte%20Sossego%2C%20Cabo%20Verde", FieldRules.mapsUri("Rua 1", "Monte Sossego", " "))
+    assertNull(FieldRules.mapsUri(null, "", null))
+  }
 }

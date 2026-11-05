@@ -12,4 +12,11 @@ class SettingsStore(context: Context) {
   fun setSubscriptionId(id: Int?) {
     prefs.edit().putInt("subscriptionId", id ?: -1).apply()
   }
+
+  /** Ask for the fingerprint/PIN to open the app. On by default: client data lives here. */
+  fun lockEnabled(): Boolean = prefs.getBoolean("lockEnabled", true)
+
+  fun setLockEnabled(value: Boolean) {
+    prefs.edit().putBoolean("lockEnabled", value).apply()
+  }
 }
