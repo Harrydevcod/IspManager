@@ -31,6 +31,15 @@
  * - cada gravação acaba em `# fim`; um ficheiro sem essa linha está cortado e lê-se a cópia;
  * - um ficheiro que existe e não se lê pára a corrida sem gravar nada.
  * Um ficheiro sem `# fim` e sem cópia é de uma versão anterior e lê-se como está.
+ *
+ * Medido no hEX S a 2026-11-05 (reinício limpo às 18:50, já com a v9): o ficheiro voltou outra
+ * vez só com o pós-arranque. Não houve gravação cortada — foi a leitura: logo após o arranque o
+ * `sd1` já é `type=disk` mas os ficheiros ainda não se leem (não listados, ou texto vazio), o
+ * estado saía vazio e a corrida gravava-o por cima da cópia e do principal. Por isso, com o
+ * disco montado, um estado vazio só se aceita como instalação nova:
+ * - ficheiro que existe e não dá texto com `# fim` (nem é da versão anterior) pára a corrida;
+ * - nenhum ficheiro nos primeiros 10 minutos ligado também pára; depois disso é instalação nova.
+ * Ambos deixam um aviso no registo, para se ver qual dos dois apanhou o próximo arranque.
  */
 
 // O `/file get` e o `/file set` servem até 60 kB; acima de metade disso fica no script.
@@ -76,6 +85,16 @@ export function loadUsageState(name: string, dataName: string, disk: string | nu
     :if ([:typeof [:find $main "${USAGE_STATE_END}"]] != "nil") do={ :set text $main } else={
       :if ([:typeof [:find $back "${USAGE_STATE_END}"]] != "nil") do={ :set text $back } else={
         :if (!$hasBack) do={ :set text $main }
+      }
+    }
+    :if ([:len $text] = 0) do={
+      :if ($hasMain || $hasBack) do={
+        :log warning "${name}: estado no disco sem # fim, corrida sem gravar"
+        :error "estado sem fim"
+      }
+      :if ([/system resource get uptime] < [:totime "00:10:00"]) do={
+        :log warning "${name}: estado ainda por ler no disco, corrida sem gravar"
+        :error "estado por ler"
       }
     }
   }
