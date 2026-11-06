@@ -4,7 +4,20 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
-## [2.55](https://github.com/Harrydevcod/IspManager/releases/tag/v2.55.0) — 2026-11-06
+## [2.56](https://github.com/Harrydevcod/IspManager/releases/tag/v2.56.0) — 2026-11-06
+
+### Adicionado
+- **Uso justo (FUP) nos clientes PPPoE.** Cada plano pode ter um consumo de referência por ciclo (download + upload). A partir do limiar de aviso (80% por omissão), o cliente recebe uma mensagem por WhatsApp ou SMS, uma vez por ciclo. Acima do limiar de limitação (100%), a velocidade passa a uma percentagem da contratada (50% por omissão) na janela de pico, até ao ciclo seguinte.
+  - **A janela vive no router.** Cada cliente limitado tem uma fila `ispm-fup-<serviço>` com o horário da janela (18:00–00:00 por omissão). É o MikroTik que a liga e desliga, mesmo com o ISPM fechado. O relógio do router tem de estar no fuso configurado; o ISPM avisa se não estiver.
+  - **Configurações › Uso justo:** limiares, janela, fuso, canal e texto do aviso, com o impacto antes de gravar, histórico que não se apaga e "Repor default". Só o administrador altera.
+  - **Planos:** consumo de referência (0 = fora do uso justo) e velocidade no pico própria.
+  - **Clientes:** colunas PPPoE e Consumo, e o filtro "Acima de 80%" / "Limitados". A ficha mostra o ciclo, os GB e os avisos e limitações registados.
+
+### Alterado
+- **Financeiro:** ao estreitar a janela, a coluna de ações fica sempre visível; são as outras colunas que encolhem.
+
+### Corrigido
+- **Listas com o servidor em falha.** Clientes, Planos e Pagamentos mostravam "0 planos" e totais a zero, como se a base estivesse vazia. Agora mostram só a mensagem de erro e "Tentar de novo".
 
 ### Alterado
 - **O dia é o de Cabo Verde em toda a aplicação.** Até aqui, partes da aplicação contavam o dia em UTC e outras no relógio do computador. Entre as 23:00 e a meia-noite discordavam: um recibo lançado às 23:30 ficava com a data do dia seguinte, ou fora do saldo de uma conta aberta nesse mesmo dia. Agora seguem o dia de Cabo Verde:
