@@ -330,6 +330,31 @@ export function fupQueueLimit(uploadMbps: number, downloadMbps: number, percent:
   return `${k(uploadMbps)}k/${k(downloadMbps)}k`;
 }
 
+/** RouterOS devolve taxas em bit/s e horas como `18h30m`, mesmo quando aceita `18:30:00`. */
+function sameQueueLimit(actual: string | null, desired: string): boolean {
+  const parts = (value: string | null) => value?.split('/').map((part) => {
+    const match = /^(\d+)([kmg]?)$/i.exec(part.trim());
+    if (!match) return NaN;
+    return Number(match[1]) * ({ '': 1, k: 1000, m: 1000000, g: 1000000000 }[match[2].toLowerCase()] ?? NaN);
+  });
+  const left = parts(actual), right = parts(desired);
+  return left?.length === 2 && right?.length === 2 && left.every((value, i) => value === right[i]);
+}
+
+function sameQueueTime(actual: string | null, desired: string): boolean {
+  const normalize = (value: string | null) => {
+    const [range, ...days] = (value ?? '').split(',');
+    const times = range.split('-').map((time) => {
+      if (/^\d{1,2}:\d{2}:\d{2}$/.test(time)) return time.split(':').reduce((total, part) => total * 60 + Number(part), 0);
+      const match = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(time);
+      return match && match[0] ? Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0) : NaN;
+    });
+    return { times, days };
+  };
+  const left = normalize(actual), right = normalize(desired);
+  return left.times.length === 2 && left.times.every((value, i) => value === right.times[i]) && left.days.join(',') === right.days.join(',');
+}
+
 /**
  * Uma fila simples `ispm-fup-<serviço>` à frente da fila dinâmica
  * da sessão PPPoE de cada limitado, e nenhuma para os outros. Sem sessão não
@@ -369,7 +394,7 @@ export async function syncFupQueues(
     const existing = ours.get(name);
     if (existing) {
       keep.add(name);
-      if ((existing.maxLimit !== limit || existing.time !== time) && await attempt(() => patchSimpleQueue(deps.transport, existing.id, { 'max-limit': limit, time }))) {
+      if ((!sameQueueLimit(existing.maxLimit, limit) || !sameQueueTime(existing.time, time)) && await attempt(() => patchSimpleQueue(deps.transport, existing.id, { 'max-limit': limit, time }))) {
         summary.updated++;
         audit(row, row.serviceId, existing.maxLimit, limit);
       }

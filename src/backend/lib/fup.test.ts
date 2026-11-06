@@ -230,7 +230,8 @@ test('fila persiste fora do pico, acompanha a configuração e sai no ciclo segu
   const first = await syncFupQueues(db, { transport, dryRun: false, now: offPeak('2026-10-20') });
   expect(first).toMatchObject({ added: 1, clockZone: 'UTC', clockMismatch: true });
   expect(calls).toContainEqual(expect.objectContaining({ method: 'PUT', path: '/queue/simple', body: expect.objectContaining({ time: '18:00:00-23:00:00,sun,mon,tue,wed,thu,fri,sat' }) }));
-  queues.push({ '.id': '*2', name: `ispm-fup-${serviceId}`, dynamic: 'false', 'max-limit': '1000k/5000k', time: '18:00:00-23:00:00,sun,mon,tue,wed,thu,fri,sat' });
+  queues.push({ '.id': '*2', name: `ispm-fup-${serviceId}`, dynamic: 'false', 'max-limit': '1000000/5000000', time: '18h-23h,sun,mon,tue,wed,thu,fri,sat' });
+  expect(await syncFupQueues(db, { transport, dryRun: false, now: peak('2026-10-20') })).toMatchObject({ updated: 0 });
   saveFupSettings(db, { janela_pico_fim: '22:00' }, 'admin');
   expect(await syncFupQueues(db, { transport, dryRun: false, now: peak('2026-10-20') })).toMatchObject({ updated: 1 });
   expect(calls).toContainEqual(expect.objectContaining({ method: 'PATCH', path: '/queue/simple/*2', body: expect.objectContaining({ time: '18:00:00-22:00:00,sun,mon,tue,wed,thu,fri,sat' }) }));

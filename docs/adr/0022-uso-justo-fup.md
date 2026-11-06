@@ -61,8 +61,9 @@ reconciliação que já existe.
 
 ## Consequências
 
-- A fila estática à frente da dinâmica foi medida no CHR 7.24.2; a passagem automática pela janela
-  configurada no router exige uma nova verificação no laboratório com o ISPM parado.
+- No CHR 7.24.2 foi medida a fila estática à frente da dinâmica e a passagem do tráfego para a
+  dinâmica fora da janela, sem uma nova reconciliação do ISPM. O RouterOS devolve os horários e
+  taxas normalizados (`18h-23h` e bit/s), que são comparados pelos seus valores efetivos.
 - O método PROFILE foi removido: um perfil PPP não consegue aplicar um horário autonomamente.
 - **Por ver no hEX S de produção:** o débito real limitado. A licença livre do CHR corta a 1 Mbit/s,
   por isso no laboratório mediu-se a ordem das filas e quem conta os bytes, não a velocidade.
