@@ -48,8 +48,9 @@ function fupColumn(byService: Map<number, FupUsage>, thresholds: FupThresholds |
       const limited = fup.state === 'LIMITADO';
       return (
         <span className="fup-cell" title={`${formatGb(fup.totalBytes)} de ${fup.referenceGb} GB no ciclo${limited ? ' · limitado no pico' : ''}`}>
-          <FupUsageBar percent={fup.percent} thresholds={thresholds} label={`Uso justo de ${row.clientName}`} />
-          <span>{Math.round(fup.percent)}%{limited && <span className="sr-only"> limitado</span>}</span>
+          {/* "Limitado" vai no rótulo da barra: um .sr-only absoluto escapa ao scroll da tabela e alarga a página. */}
+          <FupUsageBar percent={fup.percent} thresholds={thresholds} label={`Uso justo de ${row.clientName}${limited ? ', limitado no pico' : ''}`} />
+          <span>{Math.round(fup.percent)}%</span>
         </span>
       );
     }
@@ -90,7 +91,8 @@ export function ClientUsage({ rows, fup, onInstalled }: { rows: ClientUsageRow[]
       )}
       {actionError && <p role="alert" className="router-muted">{actionError}</p>}
       <DataTable rows={rows} rowKey={(row) => row.serviceId} columns={columns}
-        gridTemplateColumns="82px minmax(150px, 1.5fr) minmax(100px, 1fr) repeat(4, minmax(95px, .8fr)) minmax(130px, 1fr)"
+        // Cabe em 868 px (1225 de ecrã): a barra tem a largura da coluna Consumo dos Clientes.
+        gridTemplateColumns="72px minmax(106px, 1.5fr) minmax(100px, 1fr) minmax(76px, .8fr) repeat(2, minmax(82px, .8fr)) minmax(108px, .8fr) 96px"
         defaultSort={{ key: 'Total do mês', direction: 'desc' }}
         empty={<EmptyState title="Sem serviços PPPoE ativos" description="O consumo aparece aqui quando houver serviços ativos com utilizador PPPoE." />} />
     </>
