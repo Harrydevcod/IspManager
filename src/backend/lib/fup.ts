@@ -7,7 +7,7 @@ import { normalizeWhatsappPhone } from './whatsapp-provider';
 import { requestNetworkSync } from './network-sync';
 import { recordSystemAuditEntry } from './audit';
 import { effectivePeakPercent, readFupSettings, type FupSettings } from './fup-settings';
-import { addSimpleQueue, listActive, listSimpleQueues, patchSimpleQueue, removeSimpleQueue, type RouterTransport } from './routeros';
+import { addSimpleQueue, listActive, listSimpleQueues, patchSimpleQueue, readClockZone, removeSimpleQueue, type RouterTransport } from './routeros';
 
 /**
  * Motor da política de uso justo (FUP).
@@ -123,6 +123,8 @@ export type FupServiceUsage = {
   totalBytes: number;
   percent: number;
   state: FupState;
+  /** A limitação está ativa no ciclo, independentemente da hora. */
+  limited: boolean;
   /** Limitado agora: estado LIMITADO, ainda acima do limiar, e dentro da janela de pico. */
   limitedNow: boolean;
 };
@@ -160,6 +162,8 @@ export function loadFupUsage(db: Database.Database, now: Date, settings: FupSett
     const referenceGb = row.referenceGb ?? 0;
     const percent = usagePercent(down + up, referenceGb);
     const state = stateFromEvents((events.all(row.serviceId, cycle.period) as Array<{ kind: string }>).map((e) => e.kind));
+    const limited = row.status === 'active' && referenceGb > 0 && state === 'LIMITADO'
+      && percent >= settings.limiar_limitacao_percent;
     return {
       serviceId: row.serviceId,
       clientId: row.clientId,
@@ -180,16 +184,16 @@ export function loadFupUsage(db: Database.Database, now: Date, settings: FupSett
       totalBytes: down + up,
       percent,
       state,
-      limitedNow: row.status === 'active' && referenceGb > 0 && state === 'LIMITADO'
-        && percent >= settings.limiar_limitacao_percent && peak
+      limited,
+      limitedNow: limited && peak
     };
   });
 }
 
-/** Serviço → % da velocidade a aplicar agora. Só os limitados aparecem. */
+/** Serviço → % da velocidade a aplicar durante a janela deste ciclo. */
 export function fupLimitedServices(db: Database.Database, now = new Date()): Map<number, number> {
   const settings = readFupSettings(db);
-  return new Map(loadFupUsage(db, now, settings).filter((row) => row.limitedNow).map((row) => [row.serviceId, row.peakPercent]));
+  return new Map(loadFupUsage(db, now, settings).filter((row) => row.limited).map((row) => [row.serviceId, row.peakPercent]));
 }
 
 /** Pré-visualização: quantos ficariam em aviso e limitados com a configuração dada e os dados do ciclo. */
@@ -279,12 +283,13 @@ export function runFupEngine(db: Database.Database, now: Date, deps: FupEngineDe
     }
   }
 
-  // O estado mudou com as transições: relê para saber quem fica limitado agora.
-  const limited = loadFupUsage(db, now, settings).filter((row) => row.limitedNow).map((row) => `${row.serviceId}:${row.peakPercent}`).join(',');
+  // O estado mudou com as transições: relê para saber quem fica limitado no ciclo.
+  const current = loadFupUsage(db, now, settings);
+  const limited = current.filter((row) => row.limited).map((row) => `${row.serviceId}:${row.peakPercent}`).join(',');
   const changed = lastLimited.get(db) !== limited;
   lastLimited.set(db, limited);
   if (changed) deps.requestSync();
-  return { evaluated: rows.length, events, notices, limitedNow: limited ? limited.split(',').length : 0, syncRequested: changed };
+  return { evaluated: rows.length, events, notices, limitedNow: current.filter((row) => row.limitedNow).length, syncRequested: changed };
 }
 
 /** O job `fup_engine`: os avisos entram nas filas que já existem (WhatsApp ou SMS). */
@@ -317,7 +322,7 @@ export function listFupEvents(db: Database.Database, serviceId: number) {
 const QUEUE_PREFIX = 'ispm-fup-';
 const QUEUE_COMMENT = 'ispm:fup:';
 
-export type FupQueueSummary = { wanted: number; added: number; updated: number; removed: number; failed: number };
+export type FupQueueSummary = { wanted: number; added: number; updated: number; removed: number; failed: number; clockZone: string | null; clockMismatch: boolean | null };
 
 /** `max-limit` da fila simples (upload/download do cliente) a uma % do plano, em kbit/s. */
 export function fupQueueLimit(uploadMbps: number, downloadMbps: number, percent: number): string {
@@ -326,10 +331,10 @@ export function fupQueueLimit(uploadMbps: number, downloadMbps: number, percent:
 }
 
 /**
- * Método QUEUE: uma fila simples `ispm-fup-<serviço>` à frente da fila dinâmica
+ * Uma fila simples `ispm-fup-<serviço>` à frente da fila dinâmica
  * da sessão PPPoE de cada limitado, e nenhuma para os outros. Sem sessão não
  * há interface para apontar: a fila entra na passagem a seguir à ligação.
- * Noutro método só remove as que tenham ficado. Cada mudança fica na auditoria
+ * O horário na fila é aplicado pelo router. Cada mudança fica na auditoria
  * com o cliente, o plano e o valor antes e depois.
  */
 export async function syncFupQueues(
@@ -337,12 +342,12 @@ export async function syncFupQueues(
   deps: { transport: RouterTransport; dryRun: boolean; now?: Date }
 ): Promise<FupQueueSummary> {
   const settings = readFupSettings(db);
-  const rows = settings.fup_aplicacao_metodo === 'QUEUE'
-    ? loadFupUsage(db, deps.now ?? new Date(), settings).filter((row) => row.limitedNow && row.downloadMbps && row.uploadMbps)
-    : [];
+  const rows = loadFupUsage(db, deps.now ?? new Date(), settings).filter((row) => row.limited && row.downloadMbps && row.uploadMbps);
   const queues = await listSimpleQueues(deps.transport);
   const ours = new Map(queues.filter((q) => !q.dynamic && q.name.startsWith(QUEUE_PREFIX)).map((q) => [q.name, q]));
-  const summary: FupQueueSummary = { wanted: rows.length, added: 0, updated: 0, removed: 0, failed: 0 };
+  const clockZone = await readClockZone(deps.transport).catch(() => null);
+  const summary: FupQueueSummary = { wanted: rows.length, added: 0, updated: 0, removed: 0, failed: 0, clockZone, clockMismatch: clockZone === null ? null : clockZone !== settings.fuso_horario };
+  const time = `${settings.janela_pico_inicio}:00-${settings.janela_pico_fim}:00,sun,mon,tue,wed,thu,fri,sat`;
   if (rows.length === 0 && ours.size === 0) return summary;
   const online = new Set(rows.length ? (await listActive(deps.transport)).map((session) => session.name) : []);
   const audit = (row: Pick<FupServiceUsage, 'serviceId' | 'clientName' | 'username' | 'planName'> | null, serviceId: number, before: string | null, after: string | null) =>
@@ -364,7 +369,7 @@ export async function syncFupQueues(
     const existing = ours.get(name);
     if (existing) {
       keep.add(name);
-      if (existing.maxLimit !== limit && await attempt(() => patchSimpleQueue(deps.transport, existing.id, { 'max-limit': limit }))) {
+      if ((existing.maxLimit !== limit || existing.time !== time) && await attempt(() => patchSimpleQueue(deps.transport, existing.id, { 'max-limit': limit, time }))) {
         summary.updated++;
         audit(row, row.serviceId, existing.maxLimit, limit);
       }
@@ -372,7 +377,8 @@ export async function syncFupQueues(
     }
     if (!online.has(row.username)) continue;
     const dynamic = queues.find((q) => q.dynamic && q.name === target);
-    if (await attempt(() => addSimpleQueue(deps.transport, { name, target, maxLimit: limit, comment: `${QUEUE_COMMENT}${row.serviceId}`, placeBefore: dynamic?.id }))) {
+    if (!dynamic?.id) continue;
+    if (await attempt(() => addSimpleQueue(deps.transport, { name, target, maxLimit: limit, time, comment: `${QUEUE_COMMENT}${row.serviceId}`, placeBefore: dynamic.id }))) {
       summary.added++;
       keep.add(name);
       audit(row, row.serviceId, null, limit);

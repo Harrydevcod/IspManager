@@ -47,7 +47,7 @@ describe('validação', () => {
     ['limiar_limitacao_percent', 'abc'], ['percent_velocidade_pico', '0'], ['percent_velocidade_pico', '250'],
     ['janela_pico_inicio', '25:00'], ['janela_pico_fim', '7h'], ['fuso_horario', 'Mars/Olympus'], ['fuso_horario', ''],
     ['intervalo_recolha_minutos', '0'], ['intervalo_recolha_minutos', '61'], ['canal_aviso', 'EMAIL'], ['canal_aviso', 'FAX'],
-    ['fup_aplicacao_metodo', 'RADIUS'], ['mensagem_aviso', '  ']
+    ['mensagem_aviso', '  ']
   ] as Array<[FupSettingKey, string]>)('%s = %j é recusado', (key, value) => {
     expect(errorsFor({ [key]: value })[key]).toBeTruthy();
   });
@@ -55,7 +55,7 @@ describe('validação', () => {
   test('regras cruzadas: aviso < limitação e início < fim', () => {
     expect(errorsFor({ limiar_aviso_percent: '100', limiar_limitacao_percent: '100' }).limiar_aviso_percent).toMatch(/menor/);
     expect(errorsFor({ janela_pico_inicio: '23:00', janela_pico_fim: '18:00' }).janela_pico_inicio).toMatch(/anterior/);
-    expect(errorsFor({ limiar_aviso_percent: '150', limiar_limitacao_percent: '200', fup_aplicacao_metodo: 'QUEUE', canal_aviso: 'SMS', fuso_horario: 'Europe/Lisbon' })).toEqual({});
+    expect(errorsFor({ limiar_aviso_percent: '150', limiar_limitacao_percent: '200', canal_aviso: 'SMS', fuso_horario: 'Europe/Lisbon' })).toEqual({});
   });
 });
 

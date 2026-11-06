@@ -1733,15 +1733,16 @@ export async function removeActive(transport: RouterTransport, id: string): Prom
   await transport({ method: 'DELETE', path: `/ppp/active/${id}` });
 }
 
-export type RouterSimpleQueue = { id: string; name: string; target: string | null; maxLimit: string | null; dynamic: boolean; comment: string | null };
+export type RouterSimpleQueue = { id: string; name: string; target: string | null; maxLimit: string | null; time: string | null; dynamic: boolean; comment: string | null };
 
 export async function listSimpleQueues(transport: RouterTransport): Promise<RouterSimpleQueue[]> {
-  const raw = await transport({ method: 'GET', path: '/queue/simple?.proplist=.id,name,target,max-limit,dynamic,comment' });
+  const raw = await transport({ method: 'GET', path: '/queue/simple?.proplist=.id,name,target,max-limit,time,dynamic,comment' });
   return asArray(raw).map((row) => ({
     id: str(row['.id']) ?? '',
     name: str(row.name) ?? '',
     target: str(row.target),
     maxLimit: str(row['max-limit']),
+    time: str(row.time),
     dynamic: row.dynamic === true || row.dynamic === 'true',
     comment: str(row.comment)
   }));
@@ -1750,20 +1751,26 @@ export async function listSimpleQueues(transport: RouterTransport): Promise<Rout
 /** `placeBefore`: `.id` da fila dinâmica do PPPoE, para esta apanhar o tráfego primeiro. */
 export async function addSimpleQueue(
   transport: RouterTransport,
-  queue: { name: string; target: string; maxLimit: string; comment: string; placeBefore?: string }
+  queue: { name: string; target: string; maxLimit: string; time: string; comment: string; placeBefore?: string }
 ): Promise<void> {
   await transport({
     method: 'PUT',
     path: '/queue/simple',
     body: {
-      name: queue.name, target: queue.target, 'max-limit': queue.maxLimit, comment: queue.comment,
+      name: queue.name, target: queue.target, 'max-limit': queue.maxLimit, time: queue.time, comment: queue.comment,
       ...(queue.placeBefore ? { 'place-before': queue.placeBefore } : {})
     }
   });
 }
 
-export async function patchSimpleQueue(transport: RouterTransport, id: string, fields: { 'max-limit': string }): Promise<void> {
+export async function patchSimpleQueue(transport: RouterTransport, id: string, fields: { 'max-limit': string; time: string }): Promise<void> {
   await transport({ method: 'PATCH', path: `/queue/simple/${id}`, body: fields });
+}
+
+export async function readClockZone(transport: RouterTransport): Promise<string | null> {
+  const raw = await transport({ method: 'GET', path: '/system/clock' });
+  const row = Array.isArray(raw) ? raw[0] : raw;
+  return str((row as Record<string, unknown> | null)?.['time-zone-name']);
 }
 
 export async function removeSimpleQueue(transport: RouterTransport, id: string): Promise<void> {
