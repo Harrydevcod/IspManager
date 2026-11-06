@@ -19,6 +19,8 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 ### Corrigido
 - **Listas com o servidor em falha.** Clientes, Planos e Pagamentos mostravam "0 planos" e totais a zero, como se a base estivesse vazia. Agora mostram só a mensagem de erro e "Tentar de novo".
 
+## [2.55](https://github.com/Harrydevcod/IspManager/releases/tag/v2.55.0) — 2026-11-06
+
 ### Alterado
 - **O dia é o de Cabo Verde em toda a aplicação.** Até aqui, partes da aplicação contavam o dia em UTC e outras no relógio do computador. Entre as 23:00 e a meia-noite discordavam: um recibo lançado às 23:30 ficava com a data do dia seguinte, ou fora do saldo de uma conta aberta nesse mesmo dia. Agora seguem o dia de Cabo Verde:
   - as datas de emissão, vencimento e atraso;
