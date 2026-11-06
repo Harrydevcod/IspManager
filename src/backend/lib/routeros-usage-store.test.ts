@@ -28,3 +28,18 @@ test.each([['wan', wanUsageScript, 'ispm-wan-usage'], ['client', clientUsageScri
   // Ilegível: avisa e pára antes de chegar à gravação.
   expect(text.indexOf(':error "estado ilegivel"')).toBeLessThan(text.indexOf(':set output ($output . "# fim'));
 });
+
+// 2026-11-05, hEX S, reinício limpo já com a v9: logo após o arranque os ficheiros ainda não se
+// liam, o estado saía vazio e a corrida gravava-o por cima dos dois. Estado vazio com o disco
+// montado só passa como instalação nova: nunca com ficheiros lá, nunca nos primeiros 10 minutos.
+test.each([['wan', wanUsageScript, 'ispm-wan-usage'], ['client', clientUsageScript, 'ispm-client-usage']])('%s: estado por ler logo após o arranque não grava por cima', (_, script, name) => {
+  const text = script('sd1');
+  const guard = text.indexOf(':if ([:len $text] = 0) do={');
+  expect(guard).toBeGreaterThan(text.indexOf(':if (!$hasBack) do={ :set text $main }'));
+  expect(guard).toBeLessThan(text.indexOf(':set output ($output . "# fim'));
+  expect(text).toMatch(/:if \(\$hasMain \|\| \$hasBack\) do=\{\s*:log warning "[^"]+: estado no disco sem # fim, corrida sem gravar"\s*:error/);
+  expect(text).toMatch(/:if \(\[\/system resource get uptime\] < \[:totime "00:10:00"\]\) do=\{\s*:log warning "[^"]+: estado ainda por ler no disco, corrida sem gravar"\s*:error/);
+  expect(text).toContain(`:log warning "${name}: estado ainda por ler`);
+  // Só no ramo do ficheiro: sem disco o estado é o script de dados e nada muda.
+  expect(guard).toBeGreaterThan(text.indexOf(':if ([:len $dataFile] > 0) do={'));
+});
