@@ -332,9 +332,13 @@ async function createPaymentLink(db: Database.Database, paymentId: number, trans
   return { ok: true, value: db.prepare(`${linkSelect} WHERE id = ?`).get(linkId) as StripeLink };
 }
 
-function localDate(unixSeconds: number | null): string {
-  const d = unixSeconds ? new Date(unixSeconds * 1000) : new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/**
+ * Dia UTC do pagamento, a mesma convenção de `todayIso()`. O saldo só conta movimentos desde o
+ * `opening_date` da conta, que é UTC; com o dia local, um pagamento entre as 23:00 e a meia-noite
+ * de Cabo Verde ficava um dia antes da abertura e fora do saldo.
+ */
+function paymentDay(unixSeconds: number | null): string {
+  return (unixSeconds ? new Date(unixSeconds * 1000) : new Date()).toISOString().slice(0, 10);
 }
 
 /** `payPayment` recusou o recibo: desfaz a transação sem perder a razão. */
@@ -431,7 +435,7 @@ export async function runStripeSweep(
           paymentMethod: 'outro',
           accountId: config.accountId,
           amountCve,
-          paymentDate: localDate(remote.value.paidAt),
+          paymentDate: paymentDay(remote.value.paidAt),
           notes: `Stripe ${link.stripeInvoiceId}`
         });
         // Desfaz o `paid`: a conta de destino pode ter sido desativada, e isso
