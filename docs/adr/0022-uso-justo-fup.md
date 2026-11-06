@@ -63,7 +63,14 @@ reconciliação que já existe.
 
 - No método PROFILE, uma sessão PPPoE longa não sente a limitação até religar. Para efeito imediato
   usa-se o método QUEUE.
-- Antes de produção falta medir no laboratório (CHR):
-  - a troca de perfil com sessão ativa;
-  - se a fila estática fica à frente da dinâmica;
-  - a passagem entre janelas de pico.
+- **Medido no CHR 7.24.2 (2026-11-06, `.scratch/chr-fup.cts`, 14/14):**
+  - O `plano-lab-FUP` nasce com `500k/500k`, a marca `ispm:fup:1` e os endereços do perfil-base.
+  - **PROFILE:** o secret troca de perfil sem derrubar a sessão. A fila dinâmica da sessão aberta
+    continua a `1M` e só passa a `500k` depois de religar.
+  - **QUEUE:** a `ispm-fup-1` entra à frente da `<pppoe-…>` e a sessão não cai. Num ping pelo
+    túnel apanhou os 84 000 B todos, e a dinâmica 0.
+  - **Janela:** com a configuração alterada a quente, a passagem seguinte repõe o perfil normal e
+    tira a fila. O motor não repete a limitação.
+  - **Ciclo:** no ciclo seguinte grava-se RESTAURADO no período antigo.
+- **Por ver no hEX S de produção:** o débito real limitado. A licença livre do CHR corta a 1 Mbit/s,
+  por isso no laboratório mediu-se a ordem das filas e quem conta os bytes, não a velocidade.
