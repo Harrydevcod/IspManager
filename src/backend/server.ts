@@ -34,6 +34,7 @@ import { registerWorkOrderRoutes } from './routes/work-orders';
 import { registerSupportTicketRoutes } from './routes/support-tickets';
 import { registerBackupRoutes } from './routes/backup';
 import { registerJobRoutes } from './routes/jobs';
+import { registerFupRoutes } from './routes/fup';
 import { licenseGateHook, registerLicenseRoutes } from './routes/license';
 import { licenseAllowsWrites } from './lib/license';
 import { registerTopologyRoutes } from './routes/topology';
@@ -52,6 +53,8 @@ import { registerNetworkRoutes } from './routes/network';
 import { networkProbeIntervalMs, runNetworkProbeIfDue } from './lib/network-probe';
 import { runWanUsageIfDue } from './lib/wan-usage';
 import { runClientUsageIfDue } from './lib/client-usage';
+import { runFupEngineIfDue } from './lib/fup';
+import { readFupSettings } from './lib/fup-settings';
 import { runRouterConfigBackupIfDue } from './lib/router-config-backup';
 import { runRouterLogWatchIfDue } from './lib/router-log-watch';
 import { requestNetworkSync, runExclusive } from './lib/network-sync';
@@ -218,6 +221,7 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
   await registerSupportTicketRoutes(app);
   await registerBackupRoutes(app);
   await registerJobRoutes(app);
+  await registerFupRoutes(app);
   await registerTopologyRoutes(app);
   await registerTopologyManagementRoutes(app);
   await registerNetworkRoutes(app);
@@ -330,8 +334,20 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
     wanUsageTick();
     setInterval(wanUsageTick, 60_000).unref();
     const clientUsageTick = () => { void runJob('client_usage', runClientUsageIfDue).catch((err) => app.log.error({ err }, 'client usage failed')); };
+    // Auto-reagendada: o "intervalo de recolha" da FUP muda a quente.
+    const scheduleClientUsage = () => {
+      setTimeout(() => { clientUsageTick(); scheduleClientUsage(); }, readFupSettings(getSqliteDatabase()).intervalo_recolha_minutos * 60_000).unref();
+    };
     clientUsageTick();
-    setInterval(clientUsageTick, 60_000).unref();
+    scheduleClientUsage();
+    // Motor FUP: decide avisos e limitações; quem escreve no router é a reconciliação.
+    // Guarda de licença como os outros jobs que escrevem (enfileira avisos).
+    const fupTick = () => {
+      if (!licenseAllowsWrites()) return;
+      try { runJobSync('fup_engine', () => runFupEngineIfDue()); } catch (err) { app.log.error({ err }, 'fup engine failed'); }
+    };
+    fupTick();
+    setInterval(fupTick, 60_000).unref();
     // Uma cópia por dia; o tick curto só serve para apanhar o primeiro momento na rede de gestão.
     const routerConfigTick = () => { void runJob('router_config_backup', runRouterConfigBackupIfDue).catch((err) => app.log.error({ err }, 'router config backup failed')); };
     routerConfigTick();

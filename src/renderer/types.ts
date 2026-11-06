@@ -58,6 +58,18 @@ export type Client = {
   island: string | null;
   zone: string | null;
   status: 'active' | 'suspended' | 'cancelled';
+  /** Uso justo do ciclo, juntado no ecrã a partir de /api/fup/usage. */
+  fup?: ClientFup;
+};
+
+/** O consumo de um cliente: os utilizadores PPPoE e o serviço mais perto do limite. */
+export type ClientFup = {
+  usernames: string[];
+  /** % do serviço com mais consumo face à referência; null = nenhum plano com referência. */
+  percent: number | null;
+  totalBytes: number;
+  limited: boolean;
+  thresholds: { aviso: number; limitacao: number };
 };
 
 export type ServiceRow = {
@@ -273,6 +285,9 @@ export type PlanRow = {
   downloadMbps: number | null;
   uploadMbps: number | null;
   routerProfile?: string | null;
+  /** FUP (0096): 0 = plano sem uso justo; % nula = a global. */
+  fupReferenceGb?: number;
+  fupPeakPercent?: number | null;
   /** Última sincronização do perfil PPP com o router; null = nunca lida. */
   routerSyncStatus?: 'synced' | 'pending' | 'external' | 'error' | 'dry_run' | null;
   routerSyncDetail?: string | null;

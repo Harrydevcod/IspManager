@@ -1,12 +1,15 @@
 import { ArrowRightLeft, Cable, LifeBuoy, MessageCircle, Pencil, Plus, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, BulkActionBar, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
+import { Badge, BulkActionBar, Button, ColumnPicker, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { ClientImportDialog } from './clients/import';
 import { TransferServiceDialog } from './services/TransferServiceDialog';
 import { NewTicketDialog } from './support/NewTicketDialog';
 import { SmsInbox } from './settings/SmsInbox';
 import { authFetch, useAuth } from '../lib/auth';
+import { useColumnVisibility } from '../lib/columnVisibility';
+import { FupUsageBar, FupUsageSection } from './fup/FupUsageSection';
+import { formatGb, fupRequest, summarizeByClient, type FupThresholds, type FupUsage } from './fup/fup-api';
 import { CV_ISLANDS, DEFAULT_ISLAND, isKnownIsland } from '../lib/islands';
 import { formatCve, formatPtDate } from '../lib/format';
 import { paginateRows, sortByColumns, type SortState } from '../lib/listView';
@@ -41,12 +44,36 @@ const CLIENT_COLUMNS: DataTableColumn<Client>[] = [
   { header: 'Ilha', sortValue: (client) => client.island, cell: (client) => <span>{client.island || '—'}</span> },
   { header: 'Zona', sortValue: (client) => client.zone, cell: (client) => <span>{client.zone || '—'}</span> },
   {
+    header: 'PPPoE',
+    sortValue: (client) => client.fup?.usernames.join(', ') ?? '',
+    cell: (client) => <span className="entity-code fup-username">{client.fup?.usernames.join(', ') || '—'}</span>
+  },
+  {
+    header: 'Consumo',
+    sortValue: (client) => client.fup?.percent ?? client.fup?.totalBytes ?? -1,
+    cell: (client) => {
+      const fup = client.fup;
+      if (!fup) return <span>—</span>;
+      if (fup.percent === null) return <span title="Plano sem consumo de referência">{formatGb(fup.totalBytes)}</span>;
+      return (
+        <span className="fup-cell" title={`${formatGb(fup.totalBytes)} no ciclo${fup.limited ? ' · limitado no pico' : ''}`}>
+          <FupUsageBar percent={fup.percent} thresholds={fup.thresholds} label={`Consumo de ${client.fullName}`} />
+          <span>{Math.round(fup.percent)}%{fup.limited && <span className="sr-only"> limitado</span>}</span>
+        </span>
+      );
+    }
+  },
+  {
     header: 'Estado',
     align: 'center',
     sortValue: (client) => statusLabel(client.status),
     cell: (client) => <Badge tone={statusTone(client.status)}>{statusLabel(client.status)}</Badge>
   }
 ];
+const CLIENT_HEADERS = CLIENT_COLUMNS.map((column) => column.header);
+// Medido na base real (2026-11-06): 33 de 34 clientes em São Vicente — a coluna não distingue ninguém.
+// Escondida por omissão para a tabela caber a 1225 px; volta pelo botão Colunas.
+const CLIENT_HIDDEN_BY_DEFAULT = ['Ilha'];
 const DEFAULT_CLIENT_PAGE_SIZE = 25;
 const DEFAULT_CLIENT_STATUS_FILTER: 'all' | Client['status'] = 'active';
 
@@ -119,6 +146,9 @@ export function ClientsModule({
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
+  const [fupUsage, setFupUsage] = useState<FupUsage[]>([]);
+  const [fupThresholds, setFupThresholds] = useState<FupThresholds>({ aviso: 80, limitacao: 100 });
+  const [fupFilter, setFupFilter] = useState<'all' | 'aviso' | 'limited'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | Client['status']>(
     DEFAULT_CLIENT_STATUS_FILTER
   );
@@ -144,6 +174,7 @@ export function ClientsModule({
   const [bulkStatus, setBulkStatus] = useState<Client['status']>('suspended');
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const selection = useRowSelection<number>();
+  const columnVisibility = useColumnVisibility('ispm.clients.hiddenColumns', CLIENT_HEADERS, CLIENT_HIDDEN_BY_DEFAULT);
   const confirm = useConfirm();
 
   const loadClients = useCallback(() => {
@@ -158,6 +189,13 @@ export function ClientsModule({
       .then((data) => {
         setClients(data);
         setLoadError(null);
+        // O consumo é um extra da lista: se falhar, os clientes aparecem na mesma.
+        void fupRequest<{ usage: FupUsage[]; thresholds: FupThresholds }>('/usage')
+          .then((fup) => {
+            setFupUsage(Array.isArray(fup?.usage) ? fup.usage : []);
+            if (fup?.thresholds) setFupThresholds(fup.thresholds);
+          })
+          .catch(() => setFupUsage([]));
       })
       .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : 'Erro ao carregar clientes';
@@ -340,15 +378,23 @@ export function ClientsModule({
     }
   }
 
-  const filteredClients = useMemo(() => clients.filter((client) => {
+  const clientsWithFup = useMemo(() => {
+    const byClient = summarizeByClient(fupUsage, fupThresholds);
+    return clients.map((client) => ({ ...client, fup: byClient.get(client.id) }));
+  }, [clients, fupUsage, fupThresholds]);
+
+  const filteredClients = useMemo(() => clientsWithFup.filter((client) => {
     const normalizedSearch = search.trim().toLowerCase();
     const matchesSearch = !normalizedSearch
       || client.fullName.toLowerCase().includes(normalizedSearch)
       || client.clientCode.toLowerCase().includes(normalizedSearch)
-      || (client.phone || '').toLowerCase().includes(normalizedSearch);
+      || (client.phone || '').toLowerCase().includes(normalizedSearch)
+      || Boolean(client.fup?.usernames.some((username) => username.toLowerCase().includes(normalizedSearch)));
     const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  }), [clients, search, statusFilter]);
+    const matchesFup = fupFilter === 'all'
+      || (fupFilter === 'limited' ? Boolean(client.fup?.limited) : (client.fup?.percent ?? 0) >= fupThresholds.aviso);
+    return matchesSearch && matchesStatus && matchesFup;
+  }), [clientsWithFup, search, statusFilter, fupFilter, fupThresholds]);
   const visibleClients = useMemo(
     // O Cliente Indiferenciado (VD) abre sempre a lista, seja qual for a ordenação.
     () => sortByColumns(filteredClients, sortState, CLIENT_COLUMNS, DEFAULT_CLIENT_SORT.key)
@@ -362,7 +408,7 @@ export function ClientsModule({
 
   useEffect(() => {
     setClientPage(1);
-  }, [search, statusFilter, sortState, clientPageSize]);
+  }, [search, statusFilter, fupFilter, sortState, clientPageSize]);
 
   // Seleção em massa restrita ao filtro atual.
   const visibleIds = useMemo(() => visibleClients.filter((client) => !client.systemKind).map((client) => client.id), [visibleClients]);
@@ -486,14 +532,26 @@ export function ClientsModule({
           <option value="suspended">Suspensos</option>
           <option value="cancelled">Cancelados</option>
         </Select>
+        <Select label="Uso justo" value={fupFilter} onChange={(event) => setFupFilter(event.target.value as 'all' | 'aviso' | 'limited')}>
+          <option value="all">Todos</option>
+          <option value="aviso">Acima de {fupThresholds.aviso}%</option>
+          <option value="limited">Limitados</option>
+        </Select>
         <Button variant="secondary" onClick={() => {
           setSearch('');
           setStatusFilter(DEFAULT_CLIENT_STATUS_FILTER);
+          setFupFilter('all');
           setSortState(DEFAULT_CLIENT_SORT);
           setClientPage(1);
         }}>
           Limpar filtros
         </Button>
+        <ColumnPicker
+          headers={CLIENT_HEADERS}
+          hidden={columnVisibility.hidden}
+          onToggle={columnVisibility.toggle}
+          onReset={columnVisibility.reset}
+        />
         <small>{visibleClients.length} clientes</small>
       </FilterBar>
 
@@ -578,6 +636,10 @@ export function ClientsModule({
             <div><dt>Morada</dt><dd>{selectedClient.address || '-'}</dd></div>
             <div><dt>Estado</dt><dd><Badge tone={statusTone(selectedClient.status)}>{statusLabel(selectedClient.status)}</Badge></dd></div>
           </dl>
+
+          {fupUsage.filter((row) => row.clientId === selectedClient.id).map((row) => (
+            <FupUsageSection key={row.serviceId} serviceId={row.serviceId} />
+          ))}
 
           <section className="client-profitability">
             <header>
@@ -726,7 +788,8 @@ export function ClientsModule({
             sort={sortState}
             onSortChange={setSortState}
             onRowClick={setSelectedClient}
-            gridTemplateColumns="88px minmax(180px, 1.6fr) minmax(110px, 0.8fr) minmax(120px, 0.8fr) minmax(110px, 0.8fr) 120px"
+            gridTemplateColumns="76px minmax(96px, 1.3fr) 88px minmax(0, 0.6fr) minmax(64px, 0.6fr) 68px 96px 80px"
+            hiddenColumns={columnVisibility.hidden}
             actionsWidth="92px"
             columns={CLIENT_COLUMNS}
             actions={(client) => {

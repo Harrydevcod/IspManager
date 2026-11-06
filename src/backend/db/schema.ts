@@ -138,7 +138,11 @@ export const internetPlans = sqliteTable('internet_plans', {
   downloadMbps: integer('download_mbps'),
   uploadMbps: integer('upload_mbps'),
   routerProfile: text('router_profile'),
-  code: text('code')
+  code: text('code'),
+  /** FUP (0096): consumo de referência do ciclo em GB; 0 = sem FUP. */
+  fupReferenceGb: integer('fup_reference_gb').notNull().default(0),
+  /** % da velocidade na janela de pico quando limitado; nulo = a global. */
+  fupPeakPercent: integer('fup_peak_percent')
 });
 
 export const iptvProviders = sqliteTable('iptv_providers', {
@@ -174,7 +178,9 @@ export const services = sqliteTable('services', {
   pppoePasswordSyncPending: integer('pppoe_password_sync_pending', { mode: 'boolean' }).notNull().default(false),
   /** IPTV via VPN (0089, ADR 0021): técnica, não fatura. */
   iptvVpn: integer('iptv_vpn', { mode: 'boolean' }).notNull().default(false),
-  iptvProviderId: integer('iptv_provider_id').references(() => iptvProviders.id, { onDelete: 'set null' })
+  iptvProviderId: integer('iptv_provider_id').references(() => iptvProviders.id, { onDelete: 'set null' }),
+  /** Dia em que o ciclo FUP começa (0096); nulo = o dia da ativação. */
+  fupCycleDay: integer('fup_cycle_day')
 });
 
 export const payments = sqliteTable('payments', {
@@ -1059,4 +1065,32 @@ export const articles = sqliteTable('articles', {
   active: integer('active', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at').notNull().default("(datetime('now'))"),
   updatedAt: text('updated_at').notNull().default("(datetime('now'))")
+});
+
+/** Política de uso justo (0096). */
+export const fupEvents = sqliteTable('fup_events', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  serviceId: integer('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+  period: text('period').notNull(),
+  kind: text('kind', { enum: ['AVISO', 'LIMITADO', 'RESTAURADO'] }).notNull(),
+  detailJson: text('detail_json'),
+  createdAt: text('created_at').notNull().default("(datetime('now'))")
+});
+
+export const fupSettings = sqliteTable('fup_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  type: text('type', { enum: ['NUMERO', 'TEXTO', 'HORA', 'FUSO'] }).notNull(),
+  updatedAt: text('updated_at'),
+  updatedBy: text('updated_by')
+});
+
+export const fupSettingsHistory = sqliteTable('fup_settings_history', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  key: text('key').notNull(),
+  oldValue: text('old_value'),
+  newValue: text('new_value').notNull(),
+  changedBy: text('changed_by').notNull(),
+  changedAt: text('changed_at').notNull().default("(datetime('now'))"),
+  reason: text('reason')
 });

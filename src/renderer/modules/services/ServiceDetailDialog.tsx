@@ -7,6 +7,7 @@ import { formatCve, formatPtDate, formatPtDateTime } from '../../lib/format';
 import { statusLabel, statusTone } from '../../lib/status';
 import { CreatePppoeButton, RevealPppoePassword } from './PppoeCredentials';
 import { IptvSection } from './IptvSection';
+import { FupUsageSection } from '../fup/FupUsageSection';
 import type { DeviceAssignment, ManualServiceEventType, ServiceEvent, ServiceEventType, ServiceRow, TechnicalHistory } from '../../types';
 
 /** Os tipos que o operador escolhe no formulário de evento. */
@@ -376,6 +377,9 @@ export function ServiceDetailDialog({
           </>
         )}
       </section>
+
+      {/* O consumo só se mede pela sessão PPPoE: sem utilizador não há o que mostrar. */}
+      {service.pppoeUsername && <FupUsageSection serviceId={service.id} />}
 
       {/* Depois da PPPoE e antes do equipamento: a origem que o router segue sai dos dois. */}
       <IptvSection service={service} canManage={canManage} onChanged={onIptvChanged} assignments={technicalHistory?.assignments} />

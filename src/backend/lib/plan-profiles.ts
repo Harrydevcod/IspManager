@@ -59,6 +59,18 @@ export type PlanProfileAction =
   | { kind: 'update'; id: string; name: string; diff: ProfileDiff }
   | { kind: 'none'; detail: string; owned?: boolean };
 
+/** Sufixo do perfil limitado de um plano (FUP): `<perfil do plano>-FUP`. */
+export const FUP_PROFILE_SUFFIX = '-FUP';
+export const FUP_COMMENT_PREFIX = 'ispm:fup:';
+export const isFupProfile = (name: string | null | undefined) => Boolean(name?.endsWith(FUP_PROFILE_SUFFIX));
+
+/** `rate-limit` a uma % da do plano, em kbit/s (50 % de 5 Mbps não é inteiro em Mbps). */
+export function fupRateLimit(uploadMbps: number | null, downloadMbps: number | null, percent: number): string | null {
+  if (!rateLimitFor(uploadMbps, downloadMbps)) return null;
+  const k = (mbps: number) => Math.max(1, Math.round(mbps * 10 * percent));
+  return `${k(uploadMbps!)}k/${k(downloadMbps!)}k`;
+}
+
 /** `rate-limit` do RouterOS é rx/tx do lado do router: o que ele recebe é o upload do cliente. */
 export function rateLimitFor(uploadMbps: number | null, downloadMbps: number | null): string | null {
   // Sem os dois números não se escreve velocidade nenhuma: adivinhá-la
@@ -127,11 +139,17 @@ const CURRENT: Record<string, (profile: RouterProfile) => string | null> = {
 const sameRate = (current: string | null, wanted: string) => current?.trim().split(/\s+/)[0] === wanted;
 
 /** Função pura: dado o plano, os perfis do router e as definições de rede, o que há a fazer. */
-export function planProfileAction(plan: PlanForProfile, profiles: RouterProfile[], network: PlanNetwork): PlanProfileAction {
+export function planProfileAction(
+  plan: PlanForProfile,
+  profiles: RouterProfile[],
+  network: PlanNetwork,
+  /** O perfil FUP do plano tem marca e limite próprios; o resto é igual. */
+  options: { tag?: string; rateLimit?: string | null } = {}
+): PlanProfileAction {
   const name = plan.routerProfile?.trim();
   if (!name) return { kind: 'none', detail: 'Escreva primeiro o nome do perfil no plano.' };
 
-  const tag = `${COMMENT_PREFIX}${plan.id}`;
+  const tag = options.tag ?? `${COMMENT_PREFIX}${plan.id}`;
   const existing = profiles.find((profile) => profile.name === name);
   if (existing && existing.comment !== tag) {
     return {
@@ -141,7 +159,7 @@ export function planProfileAction(plan: PlanForProfile, profiles: RouterProfile[
     };
   }
 
-  const rateLimit = rateLimitFor(plan.uploadMbps, plan.downloadMbps);
+  const rateLimit = options.rateLimit !== undefined ? options.rateLimit : rateLimitFor(plan.uploadMbps, plan.downloadMbps);
   if (!rateLimit) {
     return {
       kind: 'none',
@@ -297,4 +315,44 @@ function recordPlanAudit(db: Database.Database, action: string, planId: number, 
   } catch {
     // A auditoria não pode fazer falhar o que já aconteceu no router.
   }
+}
+
+/**
+ * Perfis limitados (FUP), um por plano com consumo de referência: cópia dos
+ * campos de rede do plano, com o `rate-limit` à % de pico (plano > global).
+ * A falta de um perfil não trava nada — o serviço
+ * limitado fica no perfil normal até o perfil existir.
+ */
+export async function syncFupProfiles(
+  db: Database.Database,
+  deps: { transport: RouterTransport; dryRun: boolean; globalPeakPercent: number }
+): Promise<PlanSyncSummary> {
+  const plans = db.prepare(`
+    SELECT ${PLAN_COLUMNS}, fup_peak_percent AS fupPeakPercent FROM internet_plans
+    WHERE router_profile IS NOT NULL AND TRIM(router_profile) <> '' AND fup_reference_gb > 0
+    ORDER BY id
+  `).all() as Array<PlanForProfile & { fupPeakPercent: number | null }>;
+  if (plans.length === 0) return { plans: 0, applied: 0, failed: 0 };
+  const profiles = await listProfiles(deps.transport);
+  const network = readPlanNetwork(db);
+  let applied = 0;
+  let failed = 0;
+  for (const plan of plans) {
+    const percent = plan.fupPeakPercent ?? deps.globalPeakPercent;
+    const action = planProfileAction(
+      { ...plan, routerProfile: `${plan.routerProfile!.trim()}${FUP_PROFILE_SUFFIX}` },
+      profiles,
+      network,
+      { tag: `${FUP_COMMENT_PREFIX}${plan.id}`, rateLimit: fupRateLimit(plan.uploadMbps, plan.downloadMbps, percent) }
+    );
+    if (action.kind === 'none' || deps.dryRun) continue;
+    try {
+      await applyAction(deps.transport, action);
+      applied += 1;
+      recordPlanAudit(db, `fup_profile_${action.kind}`, plan.id, `${describeAction(action, false)} (FUP ${percent}%) para o plano ${plan.name}`, auditMetadata(action));
+    } catch {
+      failed += 1;
+    }
+  }
+  return { plans: plans.length, applied, failed };
 }

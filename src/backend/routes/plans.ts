@@ -32,7 +32,10 @@ const planSchema = z.object({
   // ispm-plano-<id>; um nome do operador fica como esta (ADR 0011).
   routerProfile: z.string().trim().max(64).regex(/^[\w .-]*$/).optional().nullable(),
   active: z.coerce.boolean().default(true),
-  code: codeField
+  code: codeField,
+  // FUP (0096). Ausentes = ficam como estão; 0 GB = plano sem FUP; % nula = a global.
+  fupReferenceGb: z.coerce.number().int().min(0).max(1_000_000).optional(),
+  fupPeakPercent: z.coerce.number().int().min(1).max(200).optional().nullable()
 });
 
 const bulkPreviewSchema = z.object({
@@ -90,6 +93,8 @@ export async function registerPlanRoutes(app: FastifyInstance) {
         download_mbps AS downloadMbps,
         upload_mbps AS uploadMbps,
         router_profile AS routerProfile,
+        fup_reference_gb AS fupReferenceGb,
+        fup_peak_percent AS fupPeakPercent,
         rs.status AS routerSyncStatus,
         rs.detail AS routerSyncDetail,
         rs.last_error AS routerSyncError,
@@ -120,6 +125,8 @@ export async function registerPlanRoutes(app: FastifyInstance) {
         download_mbps AS downloadMbps,
         upload_mbps AS uploadMbps,
         router_profile AS routerProfile,
+        fup_reference_gb AS fupReferenceGb,
+        fup_peak_percent AS fupPeakPercent,
         description,
         active
       FROM internet_plans
@@ -135,6 +142,11 @@ export async function registerPlanRoutes(app: FastifyInstance) {
 
   app.post('/api/plans', canWritePlans, async (request, reply) => {
     const parsed = planSchema.safeParse(request.body);
+    // Os campos FUP são configuração da política: só o administrador os muda.
+    if (parsed.success && request.user !== undefined && request.user.role !== 'admin') {
+      delete parsed.data.fupReferenceGb;
+      delete parsed.data.fupPeakPercent;
+    }
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Dados de plano invalidos' });
     }
@@ -147,9 +159,10 @@ export async function registerPlanRoutes(app: FastifyInstance) {
       const result = db.prepare(`
         INSERT INTO internet_plans (
           name, download_speed, upload_speed, connection_type, monthly_price_cve,
-          installation_fee_cve, description, active, download_mbps, upload_mbps, router_profile, code, created_at, updated_at
+          installation_fee_cve, description, active, download_mbps, upload_mbps, router_profile, code,
+          fup_reference_gb, fup_peak_percent, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
       `).run(
         parsed.data.name,
         parsed.data.downloadSpeed,
@@ -162,7 +175,9 @@ export async function registerPlanRoutes(app: FastifyInstance) {
         parsed.data.downloadMbps ?? null,
         parsed.data.uploadMbps ?? null,
         parsed.data.routerProfile || null,
-        parsed.data.code || nextCode(db, 'internet_plans', 'PLN')
+        parsed.data.code || nextCode(db, 'internet_plans', 'PLN'),
+        parsed.data.fupReferenceGb ?? 0,
+        parsed.data.fupPeakPercent ?? null
       );
       const planId = Number(result.lastInsertRowid);
       // O nome estável depende do id, que só existe depois do INSERT.
@@ -180,6 +195,11 @@ export async function registerPlanRoutes(app: FastifyInstance) {
   app.put('/api/plans/:id', canWritePlans, async (request, reply) => {
     const id = Number((request.params as { id: string }).id);
     const parsed = planSchema.safeParse(request.body);
+    // Os campos FUP são configuração da política: só o administrador os muda.
+    if (parsed.success && request.user !== undefined && request.user.role !== 'admin') {
+      delete parsed.data.fupReferenceGb;
+      delete parsed.data.fupPeakPercent;
+    }
     if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
       return reply.status(400).send({ error: 'Dados de plano invalidos' });
     }
@@ -202,6 +222,8 @@ export async function registerPlanRoutes(app: FastifyInstance) {
           upload_mbps = ?,
           router_profile = ?,
           code = COALESCE(?, code),
+          fup_reference_gb = COALESCE(?, fup_reference_gb),
+          fup_peak_percent = CASE WHEN ? THEN ? ELSE fup_peak_percent END,
           updated_at = datetime('now')
       WHERE id = ?
     `).run(
@@ -217,6 +239,9 @@ export async function registerPlanRoutes(app: FastifyInstance) {
       parsed.data.uploadMbps ?? null,
       parsed.data.routerProfile || defaultProfileName(id),
       parsed.data.code || null,
+      parsed.data.fupReferenceGb ?? null,
+      parsed.data.fupPeakPercent !== undefined ? 1 : 0,
+      parsed.data.fupPeakPercent ?? null,
       id
     );
 
