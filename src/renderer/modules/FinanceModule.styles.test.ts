@@ -10,4 +10,8 @@ describe('FinanceModule responsive shell', () => {
     expect(css).toMatch(/\.finance-tabs-row\s*\{[^}]*min-width:\s*0;/);
     expect(css).toMatch(/@media \(max-width: 1100px\)[\s\S]*?\.finance-tabs-row \.segmented-tabs\s*\{[^}]*width:\s*100%;/);
   });
+
+  test('keeps the row actions visible while the data columns scroll underneath', () => {
+    expect(css).toMatch(/@media \(min-width: 761px\) and \(max-width: 1439px\)[\s\S]*?\.finance-shell \.data-table-actions,[\s\S]*?position:\s*sticky;[\s\S]*?right:\s*0;/);
+  });
 });
