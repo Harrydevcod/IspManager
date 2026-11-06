@@ -4,6 +4,21 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.55](https://github.com/Harrydevcod/IspManager/releases/tag/v2.55.0) — 2026-11-06
+
+### Alterado
+- **O dia é o de Cabo Verde em toda a aplicação.** Até aqui, partes da aplicação contavam o dia em UTC e outras no relógio do computador. Entre as 23:00 e a meia-noite discordavam: um recibo lançado às 23:30 ficava com a data do dia seguinte, ou fora do saldo de uma conta aberta nesse mesmo dia. Agora seguem o dia de Cabo Verde:
+  - as datas de emissão, vencimento e atraso;
+  - os recibos, os pagamentos Stripe, a numeração anual e o mês de competência;
+  - os avisos, as despesas recorrentes e os painéis;
+  - as datas sugeridas nos formulários.
+
+  O consumo das WAN continua em UTC, porque é assim que a conta Starlink conta. Os registos já gravados não mudam.
+
+### Corrigido
+- **Consumo das WAN depois de reiniciar o router.** Logo após o arranque, o cartão do router já aparece mas os ficheiros ainda não se leem, e o contador gravava um estado vazio por cima. Isso apagava o total do dia até ao reinício e os 30 dias de histórico no router. A 5/11, por exemplo, o ISPM ficou com 75 GB contra ~200 GB na Starlink. Agora o contador não grava enquanto não consegue ler o que já lá estava, e deixa um aviso no Registo do router. O ISPM atualiza o contador no router sozinho (WAN v10, clientes v6).
+- **App móvel 0.8.1:** deixou de pedir a permissão de receber SMS, que levava o Play Protect a bloquear a instalação. Por isso, as respostas dos clientes já não chegam a "SMS recebidos".
+
 ## [2.54](https://github.com/Harrydevcod/IspManager/releases/tag/v2.54.0) — 2026-11-05
 
 Para a app móvel ISPM SMS 0.8.0. Com uma app anterior, tudo o que já existia continua a funcionar.
