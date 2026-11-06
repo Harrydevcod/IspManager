@@ -39,3 +39,35 @@
     width: 100%;
   }
 }
+
+/* Ações sempre à vista ao estreitar a janela. Nesta faixa a tabela ganha scroll
+   horizontal (styles.css); as colunas de dados encolhem até ao mínimo e depois
+   deslizam por baixo — a coluna de ações fica presa à direita do contentor de
+   scroll. Abaixo de 761px as linhas já são cartões, com as ações dentro. */
+@media (min-width: 761px) and (max-width: 1439px) {
+  .finance-shell .data-table-actions,
+  .finance-shell .data-table-actions-heading {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+  }
+
+  .finance-shell .data-table-actions,
+  .finance-shell .data-table-actions-heading {
+    align-self: stretch;
+    padding-left: var(--space-2);
+    box-shadow: -12px 0 12px -12px rgb(0 0 0 / 0.45);
+  }
+
+  /* `inherit`: o fundo da própria linha, em hover e ativa incluídos. */
+  .finance-shell .data-table-actions {
+    background: inherit;
+  }
+
+  .finance-shell .data-table-actions-heading {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    background: var(--surface);
+  }
+}
