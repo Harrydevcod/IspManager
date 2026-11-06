@@ -72,7 +72,7 @@
 /* Coluna de consumo na lista de clientes. */
 .fup-cell {
   display: grid;
-  grid-template-columns: 64px auto;
+  grid-template-columns: 48px minmax(0, auto);
   align-items: center;
   gap: var(--space-2);
   font-variant-numeric: tabular-nums;
@@ -130,3 +130,13 @@
 .fup-history-filters .field input,
 .fup-history-filters .field select { max-width: 220px; }
 .fup-history-table td { font-variant-numeric: tabular-nums; }
+
+/* O utilizador PPPoE distingue maiúsculas: mostra-se como está, não como um código. */
+.entity-code.fup-username { text-transform: none; letter-spacing: 0; }
+
+.fup-lede {
+  margin: var(--space-1) 0 0;
+  max-width: 72ch;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}

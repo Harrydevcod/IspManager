@@ -11,7 +11,7 @@ type Preview = { current: Impact; candidate: Impact };
 
 const CHOICES: Record<string, Array<[string, string]>> = {
   canal_aviso: [['WHATSAPP', 'WhatsApp'], ['SMS', 'SMS']],
-  fup_aplicacao_metodo: [['PROFILE', 'Perfil PPP (na próxima ligação)'], ['QUEUE', 'Fila simples (imediato)']]
+  fup_aplicacao_metodo: [['PROFILE', 'Perfil PPP'], ['QUEUE', 'Fila simples']]
 };
 
 const TIME_ZONES: string[] = (() => {
@@ -25,7 +25,8 @@ const TIME_ZONES: string[] = (() => {
 /** Como o valor aparece no histórico: escolhas com o nome legível, o resto como está. */
 function displayValue(key: string, value: string | null): string {
   if (value === null) return '—';
-  return CHOICES[key]?.find(([code]) => code === value)?.[1] ?? value;
+  const shown = CHOICES[key]?.find(([code]) => code === value)?.[1] ?? value;
+  return shown.length > 60 ? `${shown.slice(0, 57)}…` : shown;
 }
 
 /** Configurações › Uso justo. Toda a gente lê; só o administrador grava e repõe. */
@@ -139,7 +140,7 @@ export function FupSettingsPanel() {
       <header className="backups-head">
         <div>
           <h3><Gauge size={16} aria-hidden /> Uso justo</h3>
-          <p className="backups-dir">
+          <p className="fup-lede">
             Consumo de referência por plano (download + upload): aviso, limitação na janela de pico e reposição no ciclo seguinte.
             Os valores do plano mandam sobre estes.
           </p>
@@ -155,8 +156,8 @@ export function FupSettingsPanel() {
           <div key={row.key} className={`fup-setting${row.key === 'mensagem_aviso' ? ' fup-setting-text' : ''}${changes[row.key] !== undefined ? ' fup-setting-dirty' : ''}`}>
             {field(row)}
             <div className="fup-setting-meta">
-              <span>Default: {displayValue(row.key, row.default)}</span>
-              <span>· {row.updatedAt ? `Alterado a ${formatPtDate(row.updatedAt.slice(0, 10))}${row.updatedBy ? ` por ${row.updatedBy}` : ''}` : 'Nunca alterado'}</span>
+              <span>Default: {row.key === 'mensagem_aviso' ? 'texto recomendado' : displayValue(row.key, row.default)}</span>
+              <span>· {row.updatedAt ? `Alterado a ${formatPtDate(row.updatedAt)}${row.updatedBy ? ` por ${row.updatedBy}` : ''}` : 'Nunca alterado'}</span>
               {canWrite && row.value !== row.default && (
                 <Button variant="ghost" size="sm" leadingIcon={<RotateCcw size={12} aria-hidden />} onClick={() => void reset(row)}>
                   Repor default
@@ -194,7 +195,7 @@ export function FupSettingsPanel() {
       <header className="backups-head">
         <div>
           <h3><History size={16} aria-hidden /> Histórico de alterações</h3>
-          <p className="backups-dir">Cada alteração fica registada e não se apaga.</p>
+          <p className="fup-lede">Cada alteração fica registada e não se apaga.</p>
         </div>
       </header>
       <div className="fup-history-filters">

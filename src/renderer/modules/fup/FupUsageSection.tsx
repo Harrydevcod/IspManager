@@ -98,7 +98,9 @@ export function FupUsageSection({ serviceId }: { serviceId: number }) {
             <li key={event.id}>
               <Badge tone={event.kind === 'RESTAURADO' ? 'success' : event.kind === 'LIMITADO' ? 'danger' : 'warn'}>{EVENT_LABEL[event.kind]}</Badge>
               <span>{formatPtDateTime(event.createdAt)}</span>
-              {typeof event.detail?.percent === 'number' && <small>{event.detail.percent}% · {String(event.detail.gb ?? '')} GB</small>}
+              {typeof event.detail?.percent === 'number' && typeof event.detail.gb === 'number' && (
+                <small>{event.detail.percent}% · {formatGb(event.detail.gb * 1024 ** 3)}</small>
+              )}
             </li>
           ))}
         </ol>

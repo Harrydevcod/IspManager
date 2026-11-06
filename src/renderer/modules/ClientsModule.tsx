@@ -1,12 +1,13 @@
 import { ArrowRightLeft, Cable, LifeBuoy, MessageCircle, Pencil, Plus, Upload, UsersRound, Wallet } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, BulkActionBar, Button, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
+import { Badge, BulkActionBar, Button, ColumnPicker, DataTable, Dialog, EmptyState, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { ClientImportDialog } from './clients/import';
 import { TransferServiceDialog } from './services/TransferServiceDialog';
 import { NewTicketDialog } from './support/NewTicketDialog';
 import { SmsInbox } from './settings/SmsInbox';
 import { authFetch, useAuth } from '../lib/auth';
+import { useColumnVisibility } from '../lib/columnVisibility';
 import { FupUsageBar, FupUsageSection } from './fup/FupUsageSection';
 import { formatGb, fupRequest, summarizeByClient, type FupThresholds, type FupUsage } from './fup/fup-api';
 import { CV_ISLANDS, DEFAULT_ISLAND, isKnownIsland } from '../lib/islands';
@@ -45,19 +46,19 @@ const CLIENT_COLUMNS: DataTableColumn<Client>[] = [
   {
     header: 'PPPoE',
     sortValue: (client) => client.fup?.usernames.join(', ') ?? '',
-    cell: (client) => <span className="entity-code">{client.fup?.usernames.join(', ') || '—'}</span>
+    cell: (client) => <span className="entity-code fup-username">{client.fup?.usernames.join(', ') || '—'}</span>
   },
   {
-    header: 'Consumo do ciclo',
+    header: 'Consumo',
     sortValue: (client) => client.fup?.percent ?? client.fup?.totalBytes ?? -1,
     cell: (client) => {
       const fup = client.fup;
       if (!fup) return <span>—</span>;
       if (fup.percent === null) return <span title="Plano sem consumo de referência">{formatGb(fup.totalBytes)}</span>;
       return (
-        <span className="fup-cell" title={`${formatGb(fup.totalBytes)} no ciclo`}>
+        <span className="fup-cell" title={`${formatGb(fup.totalBytes)} no ciclo${fup.limited ? ' · limitado no pico' : ''}`}>
           <FupUsageBar percent={fup.percent} thresholds={fup.thresholds} label={`Consumo de ${client.fullName}`} />
-          <span>{Math.round(fup.percent)}%{fup.limited ? ' · limitado' : ''}</span>
+          <span>{Math.round(fup.percent)}%{fup.limited && <span className="sr-only"> limitado</span>}</span>
         </span>
       );
     }
@@ -69,6 +70,10 @@ const CLIENT_COLUMNS: DataTableColumn<Client>[] = [
     cell: (client) => <Badge tone={statusTone(client.status)}>{statusLabel(client.status)}</Badge>
   }
 ];
+const CLIENT_HEADERS = CLIENT_COLUMNS.map((column) => column.header);
+// Medido na base real (2026-11-06): 33 de 34 clientes em São Vicente — a coluna não distingue ninguém.
+// Escondida por omissão para a tabela caber a 1225 px; volta pelo botão Colunas.
+const CLIENT_HIDDEN_BY_DEFAULT = ['Ilha'];
 const DEFAULT_CLIENT_PAGE_SIZE = 25;
 const DEFAULT_CLIENT_STATUS_FILTER: 'all' | Client['status'] = 'active';
 
@@ -169,6 +174,7 @@ export function ClientsModule({
   const [bulkStatus, setBulkStatus] = useState<Client['status']>('suspended');
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const selection = useRowSelection<number>();
+  const columnVisibility = useColumnVisibility('ispm.clients.hiddenColumns', CLIENT_HEADERS, CLIENT_HIDDEN_BY_DEFAULT);
   const confirm = useConfirm();
 
   const loadClients = useCallback(() => {
@@ -540,6 +546,12 @@ export function ClientsModule({
         }}>
           Limpar filtros
         </Button>
+        <ColumnPicker
+          headers={CLIENT_HEADERS}
+          hidden={columnVisibility.hidden}
+          onToggle={columnVisibility.toggle}
+          onReset={columnVisibility.reset}
+        />
         <small>{visibleClients.length} clientes</small>
       </FilterBar>
 
@@ -776,7 +788,8 @@ export function ClientsModule({
             sort={sortState}
             onSortChange={setSortState}
             onRowClick={setSelectedClient}
-            gridTemplateColumns="88px minmax(180px, 1.6fr) minmax(110px, 0.8fr) minmax(120px, 0.8fr) minmax(110px, 0.8fr) 120px"
+            gridTemplateColumns="76px minmax(96px, 1.3fr) 88px minmax(0, 0.6fr) minmax(64px, 0.6fr) 68px 96px 80px"
+            hiddenColumns={columnVisibility.hidden}
             actionsWidth="92px"
             columns={CLIENT_COLUMNS}
             actions={(client) => {

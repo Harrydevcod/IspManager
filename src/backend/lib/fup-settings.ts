@@ -33,8 +33,8 @@ export const FUP_SETTING_DEFINITIONS: Record<FupSettingKey, Definition> = {
   janela_pico_fim: { type: 'HORA', default: '23:00', label: 'Fim da janela de pico', description: 'Hora a partir da qual a velocidade contratada é reposta.' },
   fuso_horario: { type: 'FUSO', default: 'Atlantic/Cape_Verde', label: 'Fuso horário', description: 'Fuso (IANA) em que se lê a janela de pico.' },
   intervalo_recolha_minutos: { type: 'NUMERO', default: '5', label: 'Intervalo de recolha (min)', description: 'De quantos em quantos minutos o ISPM lê o consumo no router.' },
-  canal_aviso: { type: 'TEXTO', default: 'WHATSAPP', label: 'Canal do aviso', description: 'Por onde sai o aviso: WHATSAPP ou SMS.' },
-  fup_aplicacao_metodo: { type: 'TEXTO', default: 'PROFILE', label: 'Método de aplicação', description: 'PROFILE troca o perfil PPP do secret, que vale na próxima ligação; QUEUE troca o perfil e põe também uma fila simples na sessão aberta, para valer já.' },
+  canal_aviso: { type: 'TEXTO', default: 'WHATSAPP', label: 'Canal do aviso', description: 'Por onde sai o aviso: WhatsApp ou SMS. O cliente que recusou avisos não recebe nenhum.' },
+  fup_aplicacao_metodo: { type: 'TEXTO', default: 'PROFILE', label: 'Método de aplicação', description: 'Perfil PPP: troca o perfil do secret e vale na próxima ligação. Fila simples: troca o perfil e limita já a sessão aberta.' },
   mensagem_aviso: { type: 'TEXTO', default: 'Caro cliente {nome}, já usou {percent}% do consumo de referência do seu plano ({gb} de {referencia} GB) neste ciclo. Ao chegar aos 100%, a velocidade entre as {inicio} e as {fim} passa a {pico}% da contratada até ao próximo ciclo.', label: 'Mensagem de aviso', description: 'Texto do aviso. Campos: {nome} {percent} {gb} {referencia} {inicio} {fim} {pico}.' }
 };
 
@@ -83,13 +83,14 @@ export function validateFupSettings(raw: Record<FupSettingKey, string>): Partial
   percent('percent_velocidade_pico');
   if (!errors.limiar_aviso_percent && !errors.limiar_limitacao_percent
     && Number(raw.limiar_aviso_percent) >= Number(raw.limiar_limitacao_percent)) {
-    errors.limiar_aviso_percent = 'O limiar de aviso tem de ser menor que o de limitação.';
+    // Regra entre dois campos: assinala os dois, seja qual for o que se mexeu.
+    errors.limiar_aviso_percent = errors.limiar_limitacao_percent = 'O limiar de aviso tem de ser menor que o de limitação.';
   }
   for (const key of ['janela_pico_inicio', 'janela_pico_fim'] as const) {
     if (!HHMM.test(raw[key])) errors[key] = 'Hora no formato HH:MM.';
   }
   if (!errors.janela_pico_inicio && !errors.janela_pico_fim && minutesOf(raw.janela_pico_inicio) >= minutesOf(raw.janela_pico_fim)) {
-    errors.janela_pico_inicio = 'O início da janela tem de ser anterior ao fim.';
+    errors.janela_pico_inicio = errors.janela_pico_fim = 'O início da janela tem de ser anterior ao fim.';
   }
   if (!isValidTimeZone(raw.fuso_horario)) errors.fuso_horario = 'Fuso horário IANA inválido (ex.: Atlantic/Cape_Verde).';
   const interval = raw.intervalo_recolha_minutos.trim();

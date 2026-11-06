@@ -143,7 +143,7 @@ export async function registerPlanRoutes(app: FastifyInstance) {
   app.post('/api/plans', canWritePlans, async (request, reply) => {
     const parsed = planSchema.safeParse(request.body);
     // Os campos FUP são configuração da política: só o administrador os muda.
-    if (parsed.success && request.user?.role !== 'admin') {
+    if (parsed.success && request.user !== undefined && request.user.role !== 'admin') {
       delete parsed.data.fupReferenceGb;
       delete parsed.data.fupPeakPercent;
     }
@@ -196,7 +196,7 @@ export async function registerPlanRoutes(app: FastifyInstance) {
     const id = Number((request.params as { id: string }).id);
     const parsed = planSchema.safeParse(request.body);
     // Os campos FUP são configuração da política: só o administrador os muda.
-    if (parsed.success && request.user?.role !== 'admin') {
+    if (parsed.success && request.user !== undefined && request.user.role !== 'admin') {
       delete parsed.data.fupReferenceGb;
       delete parsed.data.fupPeakPercent;
     }
