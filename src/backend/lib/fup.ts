@@ -59,7 +59,8 @@ export function minutesInZone(now: Date, timeZone: string): number {
 export function inPeakWindow(now: Date, settings: Pick<FupSettings, 'janela_pico_inicio' | 'janela_pico_fim' | 'fuso_horario'>): boolean {
   const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
   const minutes = minutesInZone(now, settings.fuso_horario);
-  return minutes >= toMinutes(settings.janela_pico_inicio) && minutes < toMinutes(settings.janela_pico_fim);
+  const end = settings.janela_pico_fim === '00:00' ? 24 * 60 : toMinutes(settings.janela_pico_fim);
+  return minutes >= toMinutes(settings.janela_pico_inicio) && minutes < end;
 }
 
 /** Dia em que o ciclo começa: o do serviço, senão o da ativação (até 28), senão 1. */
@@ -346,8 +347,8 @@ function sameQueueTime(actual: string | null, desired: string): boolean {
     const [range, ...days] = (value ?? '').split(',');
     const times = range.split('-').map((time) => {
       if (/^\d{1,2}:\d{2}:\d{2}$/.test(time)) return time.split(':').reduce((total, part) => total * 60 + Number(part), 0);
-      const match = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(time);
-      return match && match[0] ? Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0) : NaN;
+      const match = /^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(time);
+      return match && match[0] ? Number(match[1] ?? 0) * 86400 + Number(match[2] ?? 0) * 3600 + Number(match[3] ?? 0) * 60 + Number(match[4] ?? 0) : NaN;
     });
     return { times, days };
   };
@@ -372,7 +373,8 @@ export async function syncFupQueues(
   const ours = new Map(queues.filter((q) => !q.dynamic && q.name.startsWith(QUEUE_PREFIX)).map((q) => [q.name, q]));
   const clockZone = await readClockZone(deps.transport).catch(() => null);
   const summary: FupQueueSummary = { wanted: rows.length, added: 0, updated: 0, removed: 0, failed: 0, clockZone, clockMismatch: clockZone === null ? null : clockZone !== settings.fuso_horario };
-  const time = `${settings.janela_pico_inicio}:00-${settings.janela_pico_fim}:00,sun,mon,tue,wed,thu,fri,sat`;
+  const end = settings.janela_pico_fim === '00:00' ? '24:00' : settings.janela_pico_fim;
+  const time = `${settings.janela_pico_inicio}:00-${end}:00,sun,mon,tue,wed,thu,fri,sat`;
   if (rows.length === 0 && ours.size === 0) return summary;
   const online = new Set(rows.length ? (await listActive(deps.transport)).map((session) => session.name) : []);
   const audit = (row: Pick<FupServiceUsage, 'serviceId' | 'clientName' | 'username' | 'planName'> | null, serviceId: number, before: string | null, after: string | null) =>

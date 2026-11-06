@@ -87,6 +87,9 @@ describe('cálculos', () => {
     expect(inPeakWindow(new Date('2026-11-06T23:59:00Z'), settings)).toBe(true);
     expect(inPeakWindow(new Date('2026-11-07T00:00:00Z'), settings)).toBe(false);
     expect(inPeakWindow(new Date('2026-11-06T23:30:00Z'), { ...settings, fuso_horario: 'UTC' })).toBe(false);
+    const midnight = { ...settings, janela_pico_fim: '00:00' };
+    expect(inPeakWindow(new Date('2026-11-07T00:59:00Z'), midnight)).toBe(true);
+    expect(inPeakWindow(new Date('2026-11-07T01:00:00Z'), midnight)).toBe(false);
   });
 
   test('transições: só sobem, e o salto direto leva aviso e limitação', () => {
@@ -229,8 +232,8 @@ test('fila persiste fora do pico, acompanha a configuração e sai no ciclo segu
   };
   const first = await syncFupQueues(db, { transport, dryRun: false, now: offPeak('2026-10-20') });
   expect(first).toMatchObject({ added: 1, clockZone: 'UTC', clockMismatch: true });
-  expect(calls).toContainEqual(expect.objectContaining({ method: 'PUT', path: '/queue/simple', body: expect.objectContaining({ time: '18:00:00-23:00:00,sun,mon,tue,wed,thu,fri,sat' }) }));
-  queues.push({ '.id': '*2', name: `ispm-fup-${serviceId}`, dynamic: 'false', 'max-limit': '1000000/5000000', time: '18h-23h,sun,mon,tue,wed,thu,fri,sat' });
+  expect(calls).toContainEqual(expect.objectContaining({ method: 'PUT', path: '/queue/simple', body: expect.objectContaining({ time: '18:00:00-24:00:00,sun,mon,tue,wed,thu,fri,sat' }) }));
+  queues.push({ '.id': '*2', name: `ispm-fup-${serviceId}`, dynamic: 'false', 'max-limit': '1000000/5000000', time: '18h-1d,sun,mon,tue,wed,thu,fri,sat' });
   expect(await syncFupQueues(db, { transport, dryRun: false, now: peak('2026-10-20') })).toMatchObject({ updated: 0 });
   saveFupSettings(db, { janela_pico_fim: '22:00' }, 'admin');
   expect(await syncFupQueues(db, { transport, dryRun: false, now: peak('2026-10-20') })).toMatchObject({ updated: 1 });

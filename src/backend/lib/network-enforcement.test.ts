@@ -1121,12 +1121,12 @@ describe('FUP na reconciliação', () => {
     expect(result.fupQueues).toMatchObject({ wanted: 1, added: 1 });
     expect(base.calls).toContainEqual({
       method: 'PUT', path: '/queue/simple',
-      body: { name: 'ispm-fup-1', target: '<pppoe-joao-1>', 'max-limit': '1000k/5000k', time: '18:00:00-23:00:00,sun,mon,tue,wed,thu,fri,sat', comment: 'ispm:fup:1', 'place-before': '*Q1' }
+      body: { name: 'ispm-fup-1', target: '<pppoe-joao-1>', 'max-limit': '1000k/5000k', time: '18:00:00-24:00:00,sun,mon,tue,wed,thu,fri,sat', comment: 'ispm:fup:1', 'place-before': '*Q1' }
     });
     expect((db.prepare("SELECT summary FROM audit_logs WHERE action = 'fup.fila'").get() as { summary: string }).summary).toContain('sem fila → 1000k/5000k');
 
     vi.setSystemTime(OFF_PEAK);
-    queues.push({ '.id': '*Q9', name: 'ispm-fup-1', target: '<pppoe-joao-1>', 'max-limit': '1000k/5000k', time: '18:00:00-23:00:00,sun,mon,tue,wed,thu,fri,sat', dynamic: 'false' });
+    queues.push({ '.id': '*Q9', name: 'ispm-fup-1', target: '<pppoe-joao-1>', 'max-limit': '1000k/5000k', time: '18:00:00-24:00:00,sun,mon,tue,wed,thu,fri,sat', dynamic: 'false' });
     const after = await runRouterPass(db, { transport, config });
     expect(after.fupQueues).toMatchObject({ wanted: 1, removed: 0 });
     expect(base.calls).not.toContainEqual({ method: 'DELETE', path: '/queue/simple/*Q9' });

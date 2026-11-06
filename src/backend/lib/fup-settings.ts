@@ -29,7 +29,7 @@ export const FUP_SETTING_DEFINITIONS: Record<FupSettingKey, Definition> = {
   limiar_limitacao_percent: { type: 'NUMERO', default: '100', label: 'Limiar de limitação (%)', description: 'Percentagem a partir da qual a velocidade é reduzida na janela de pico, até ao ciclo seguinte.' },
   percent_velocidade_pico: { type: 'NUMERO', default: '50', label: 'Velocidade no pico (%)', description: 'Velocidade de um cliente limitado na janela de pico, em % da contratada. O plano pode ter a sua.' },
   janela_pico_inicio: { type: 'HORA', default: '18:00', label: 'Início da janela de pico', description: 'Hora a partir da qual a limitação se aplica. É o router que liga e desliga a janela, mesmo com o ISPM fechado.' },
-  janela_pico_fim: { type: 'HORA', default: '23:00', label: 'Fim da janela de pico', description: 'Hora a partir da qual a velocidade contratada é reposta.' },
+  janela_pico_fim: { type: 'HORA', default: '00:00', label: 'Fim da janela de pico', description: 'Hora a partir da qual a velocidade contratada é reposta. 00:00 termina a janela à meia-noite.' },
   fuso_horario: { type: 'FUSO', default: 'Atlantic/Cape_Verde', label: 'Fuso horário', description: 'Fuso (IANA) da janela de pico. O router aplica a janela pelo seu próprio relógio: tem de estar no mesmo fuso.' },
   intervalo_recolha_minutos: { type: 'NUMERO', default: '5', label: 'Intervalo de recolha (min)', description: 'De quantos em quantos minutos o ISPM lê o consumo no router.' },
   canal_aviso: { type: 'TEXTO', default: 'WHATSAPP', label: 'Canal do aviso', description: 'Por onde sai o aviso: WhatsApp ou SMS. O cliente que recusou avisos não recebe nenhum.' },
@@ -87,7 +87,7 @@ export function validateFupSettings(raw: Record<FupSettingKey, string>): Partial
   for (const key of ['janela_pico_inicio', 'janela_pico_fim'] as const) {
     if (!HHMM.test(raw[key])) errors[key] = 'Hora no formato HH:MM.';
   }
-  if (!errors.janela_pico_inicio && !errors.janela_pico_fim && minutesOf(raw.janela_pico_inicio) >= minutesOf(raw.janela_pico_fim)) {
+  if (!errors.janela_pico_inicio && !errors.janela_pico_fim && (raw.janela_pico_inicio === raw.janela_pico_fim || (raw.janela_pico_fim !== '00:00' && minutesOf(raw.janela_pico_inicio) >= minutesOf(raw.janela_pico_fim)))) {
     errors.janela_pico_inicio = errors.janela_pico_fim = 'O início da janela tem de ser anterior ao fim.';
   }
   if (!isValidTimeZone(raw.fuso_horario)) errors.fuso_horario = 'Fuso horário IANA inválido (ex.: Atlantic/Cape_Verde).';

@@ -2,7 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type Database from 'better-sqlite3';
+import Database from 'better-sqlite3';
+import midnightMigration from '../db/migrations/0098_fup_meia_noite';
 import {
   FUP_SETTING_DEFINITIONS, FUP_SETTING_KEYS, FupSettingsError, effectivePeakPercent, invalidateFupSettingsCache, listFupSettingsHistory,
   readFupSettings, resetFupSetting, saveFupSettings, validateFupSettings, type FupSettingKey
@@ -40,6 +41,8 @@ afterAll(() => {
 describe('validação', () => {
   test('defaults válidos', () => {
     expect(errorsFor({})).toEqual({});
+    expect(FUP_SETTING_DEFINITIONS.janela_pico_fim.default).toBe('00:00');
+    expect(errorsFor({ janela_pico_inicio: '18:00', janela_pico_fim: '00:00' })).toEqual({});
   });
 
   test.each([
@@ -70,6 +73,21 @@ describe('precedência', () => {
 });
 
 describe('gravação', () => {
+  test('migração estende o horário original e preserva os horários personalizados', () => {
+    const fixture = new Database(':memory:');
+    fixture.exec('CREATE TABLE fup_settings (key TEXT, value TEXT, updated_at TEXT); CREATE TABLE fup_settings_history (key TEXT, old_value TEXT, new_value TEXT, changed_by TEXT, reason TEXT);');
+    fixture.prepare('INSERT INTO fup_settings VALUES (?, ?, ?)').run('janela_pico_fim', '23:00', null);
+    fixture.exec(midnightMigration.sql);
+    expect(fixture.prepare('SELECT value FROM fup_settings').get()).toEqual({ value: '00:00' });
+    expect(fixture.prepare('SELECT old_value, new_value FROM fup_settings_history').get()).toEqual({ old_value: '23:00', new_value: '00:00' });
+    fixture.prepare('UPDATE fup_settings SET value = ?, updated_at = ?').run('23:00', '2026-01-01');
+    fixture.exec(midnightMigration.sql);
+    expect(fixture.prepare('SELECT value FROM fup_settings').get()).toEqual({ value: '23:00' });
+    fixture.prepare('UPDATE fup_settings SET value = ?, updated_at = ?').run('22:00', '2026-01-01');
+    fixture.exec(midnightMigration.sql);
+    expect(fixture.prepare('SELECT value FROM fup_settings').get()).toEqual({ value: '22:00' });
+    fixture.close();
+  });
   test('cada alteração grava o histórico e invalida a cache', () => {
     const before = historyCount();
     expect(readFupSettings(db).limiar_aviso_percent).toBe(80);
