@@ -5,7 +5,7 @@ import path from 'node:path';
 import type Database from 'better-sqlite3';
 import {
   bytesToGb, cycleFor, cycleStartDay, fupLimitedServices, inPeakWindow, loadFupUsage, nextTransitions, previewFupImpact,
-  runFupEngine, usagePercent, type FupEngineDeps
+  runFupEngine, syncFupQueues, usagePercent, type FupEngineDeps
 } from './fup';
 import { collectClientUsage } from './client-usage';
 import { invalidateFupSettingsCache, readFupSettings, saveFupSettings } from './fup-settings';
@@ -87,6 +87,9 @@ describe('cálculos', () => {
     expect(inPeakWindow(new Date('2026-11-06T23:59:00Z'), settings)).toBe(true);
     expect(inPeakWindow(new Date('2026-11-07T00:00:00Z'), settings)).toBe(false);
     expect(inPeakWindow(new Date('2026-11-06T23:30:00Z'), { ...settings, fuso_horario: 'UTC' })).toBe(false);
+    const midnight = { ...settings, janela_pico_fim: '00:00' };
+    expect(inPeakWindow(new Date('2026-11-07T00:59:00Z'), midnight)).toBe(true);
+    expect(inPeakWindow(new Date('2026-11-07T01:00:00Z'), midnight)).toBe(false);
   });
 
   test('transições: só sobem, e o salto direto leva aviso e limitação', () => {
@@ -130,7 +133,8 @@ describe('motor', () => {
     addUsage('2026-10-14', 20);
     runFupEngine(db, offPeak('2026-10-22'), d);
     expect(kinds()).toEqual(['2026-10:AVISO', '2026-10:LIMITADO']);
-    expect(fupLimitedServices(db, offPeak('2026-10-22')).size).toBe(0);
+    expect(fupLimitedServices(db, offPeak('2026-10-22'))).toEqual(new Map([[serviceId, 50]]));
+    expect(loadFupUsage(db, offPeak('2026-10-22'), readFupSettings(db))[0].limitedNow).toBe(false);
     expect(fupLimitedServices(db, peak('2026-10-22'))).toEqual(new Map([[serviceId, 50]]));
 
     // Novo ciclo a 10/11: repõe e não limita.
@@ -142,7 +146,7 @@ describe('motor', () => {
     expect(d.enqueueNotice).toHaveBeenCalledTimes(1);
   });
 
-  test('pede passagem ao router só quando o conjunto de limitados muda (bordas da janela)', () => {
+  test('não pede passagem ao router nas bordas da janela', () => {
     const d = deps();
     addUsage('2026-10-12', 120);
     runFupEngine(db, offPeak('2026-10-20'), d);
@@ -150,9 +154,9 @@ describe('motor', () => {
     runFupEngine(db, offPeak('2026-10-20'), d);
     expect(d.requestSync.mock.calls.length).toBe(before);
     runFupEngine(db, peak('2026-10-20'), d);
-    expect(d.requestSync.mock.calls.length).toBe(before + 1);
+    expect(d.requestSync.mock.calls.length).toBe(before);
     runFupEngine(db, offPeak('2026-10-21'), d);
-    expect(d.requestSync.mock.calls.length).toBe(before + 2);
+    expect(d.requestSync.mock.calls.length).toBe(before);
   });
 
   test('alteração a meio do ciclo não repete o aviso; subir o limiar levanta a limitação já', () => {
@@ -212,4 +216,41 @@ describe('motor', () => {
     expect(previewFupImpact(db, peak('2026-10-20'), { ...settings, limiar_limitacao_percent: 85 })).toEqual({ aviso: 0, limitados: 1 });
     expect(kinds()).toEqual([]);
   });
+});
+
+test('fila persiste fora do pico, acompanha a configuração e sai no ciclo seguinte', async () => {
+  addUsage('2026-10-12', 120);
+  runFupEngine(db, offPeak('2026-10-20'), deps());
+  const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+  const queues: Array<Record<string, unknown>> = [{ '.id': '*1', name: '<pppoe-ana>', dynamic: 'true' }];
+  const transport: RouterTransport = async (request) => {
+    calls.push(request);
+    if (request.path.startsWith('/queue/simple?')) return queues;
+    if (request.path.startsWith('/ppp/active')) return [{ '.id': '*a', name: 'ana' }];
+    if (request.path.startsWith('/system/clock')) return [{ 'time-zone-name': 'UTC' }];
+    return {};
+  };
+  const first = await syncFupQueues(db, { transport, dryRun: false, now: offPeak('2026-10-20') });
+  expect(first).toMatchObject({ added: 1, clockZone: 'UTC', clockMismatch: true });
+  expect(calls).toContainEqual(expect.objectContaining({ method: 'PUT', path: '/queue/simple', body: expect.objectContaining({ time: '18:00:00-24:00:00,sun,mon,tue,wed,thu,fri,sat' }) }));
+  queues.push({ '.id': '*2', name: `ispm-fup-${serviceId}`, dynamic: 'false', 'max-limit': '1000000/5000000', time: '18h-1d,sun,mon,tue,wed,thu,fri,sat' });
+  expect(await syncFupQueues(db, { transport, dryRun: false, now: peak('2026-10-20') })).toMatchObject({ updated: 0 });
+  saveFupSettings(db, { janela_pico_fim: '22:00' }, 'admin');
+  expect(await syncFupQueues(db, { transport, dryRun: false, now: peak('2026-10-20') })).toMatchObject({ updated: 1 });
+  expect(calls).toContainEqual(expect.objectContaining({ method: 'PATCH', path: '/queue/simple/*2', body: expect.objectContaining({ time: '18:00:00-22:00:00,sun,mon,tue,wed,thu,fri,sat' }) }));
+  expect(await syncFupQueues(db, { transport, dryRun: false, now: peak('2026-11-10') })).toMatchObject({ removed: 1 });
+});
+
+test('aguarda a fila dinâmica antes de criar uma fila FUP', async () => {
+  addUsage('2026-10-12', 120);
+  runFupEngine(db, peak('2026-10-20'), deps());
+  const calls: Array<{ method: string; path: string }> = [];
+  const transport: RouterTransport = async (request) => {
+    calls.push(request);
+    if (request.path.startsWith('/ppp/active')) return [{ '.id': '*a', name: 'ana' }];
+    return [];
+  };
+  const result = await syncFupQueues(db, { transport, dryRun: false, now: peak('2026-10-20') });
+  expect(result.added).toBe(0);
+  expect(calls.some((request) => request.method === 'PUT' && request.path === '/queue/simple')).toBe(false);
 });

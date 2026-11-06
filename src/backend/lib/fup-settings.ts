@@ -17,7 +17,6 @@ export type FupSettings = {
   fuso_horario: string;
   intervalo_recolha_minutos: number;
   canal_aviso: 'SMS' | 'WHATSAPP';
-  fup_aplicacao_metodo: 'PROFILE' | 'QUEUE';
   mensagem_aviso: string;
 };
 
@@ -29,12 +28,11 @@ export const FUP_SETTING_DEFINITIONS: Record<FupSettingKey, Definition> = {
   limiar_aviso_percent: { type: 'NUMERO', default: '80', label: 'Limiar de aviso (%)', description: 'Percentagem do consumo de referência a partir da qual o cliente recebe o aviso, uma vez por ciclo.' },
   limiar_limitacao_percent: { type: 'NUMERO', default: '100', label: 'Limiar de limitação (%)', description: 'Percentagem a partir da qual a velocidade é reduzida na janela de pico, até ao ciclo seguinte.' },
   percent_velocidade_pico: { type: 'NUMERO', default: '50', label: 'Velocidade no pico (%)', description: 'Velocidade de um cliente limitado na janela de pico, em % da contratada. O plano pode ter a sua.' },
-  janela_pico_inicio: { type: 'HORA', default: '18:00', label: 'Início da janela de pico', description: 'Hora a partir da qual a limitação se aplica.' },
-  janela_pico_fim: { type: 'HORA', default: '23:00', label: 'Fim da janela de pico', description: 'Hora a partir da qual a velocidade contratada é reposta.' },
-  fuso_horario: { type: 'FUSO', default: 'Atlantic/Cape_Verde', label: 'Fuso horário', description: 'Fuso (IANA) em que se lê a janela de pico.' },
+  janela_pico_inicio: { type: 'HORA', default: '18:00', label: 'Início da janela de pico', description: 'Hora a partir da qual a limitação se aplica. É o router que liga e desliga a janela, mesmo com o ISPM fechado.' },
+  janela_pico_fim: { type: 'HORA', default: '00:00', label: 'Fim da janela de pico', description: 'Hora a partir da qual a velocidade contratada é reposta. 00:00 termina a janela à meia-noite.' },
+  fuso_horario: { type: 'FUSO', default: 'Atlantic/Cape_Verde', label: 'Fuso horário', description: 'Fuso (IANA) da janela de pico. O router aplica a janela pelo seu próprio relógio: tem de estar no mesmo fuso.' },
   intervalo_recolha_minutos: { type: 'NUMERO', default: '5', label: 'Intervalo de recolha (min)', description: 'De quantos em quantos minutos o ISPM lê o consumo no router.' },
   canal_aviso: { type: 'TEXTO', default: 'WHATSAPP', label: 'Canal do aviso', description: 'Por onde sai o aviso: WhatsApp ou SMS. O cliente que recusou avisos não recebe nenhum.' },
-  fup_aplicacao_metodo: { type: 'TEXTO', default: 'PROFILE', label: 'Método de aplicação', description: 'Perfil PPP: troca o perfil do secret e vale na próxima ligação. Fila simples: troca o perfil e limita já a sessão aberta.' },
   mensagem_aviso: { type: 'TEXTO', default: 'Caro cliente {nome}, já usou {percent}% do consumo de referência do seu plano ({gb} de {referencia} GB) neste ciclo. Ao chegar aos 100%, a velocidade entre as {inicio} e as {fim} passa a {pico}% da contratada até ao próximo ciclo.', label: 'Mensagem de aviso', description: 'Texto do aviso. Campos: {nome} {percent} {gb} {referencia} {inicio} {fim} {pico}.' }
 };
 
@@ -89,7 +87,7 @@ export function validateFupSettings(raw: Record<FupSettingKey, string>): Partial
   for (const key of ['janela_pico_inicio', 'janela_pico_fim'] as const) {
     if (!HHMM.test(raw[key])) errors[key] = 'Hora no formato HH:MM.';
   }
-  if (!errors.janela_pico_inicio && !errors.janela_pico_fim && minutesOf(raw.janela_pico_inicio) >= minutesOf(raw.janela_pico_fim)) {
+  if (!errors.janela_pico_inicio && !errors.janela_pico_fim && (raw.janela_pico_inicio === raw.janela_pico_fim || (raw.janela_pico_fim !== '00:00' && minutesOf(raw.janela_pico_inicio) >= minutesOf(raw.janela_pico_fim)))) {
     errors.janela_pico_inicio = errors.janela_pico_fim = 'O início da janela tem de ser anterior ao fim.';
   }
   if (!isValidTimeZone(raw.fuso_horario)) errors.fuso_horario = 'Fuso horário IANA inválido (ex.: Atlantic/Cape_Verde).';
@@ -97,7 +95,6 @@ export function validateFupSettings(raw: Record<FupSettingKey, string>): Partial
   if (!/^\d+$/.test(interval) || Number(interval) < 1 || Number(interval) > 60) errors.intervalo_recolha_minutos = 'Tem de ser um número inteiro de 1 a 60.';
   if (raw.canal_aviso === 'EMAIL') errors.canal_aviso = 'Sem envio de email configurado: escolha WHATSAPP ou SMS.';
   else if (raw.canal_aviso !== 'SMS' && raw.canal_aviso !== 'WHATSAPP') errors.canal_aviso = 'Canal inválido: WHATSAPP ou SMS.';
-  if (raw.fup_aplicacao_metodo !== 'PROFILE' && raw.fup_aplicacao_metodo !== 'QUEUE') errors.fup_aplicacao_metodo = 'Método inválido: PROFILE ou QUEUE.';
   if (!raw.mensagem_aviso.trim()) errors.mensagem_aviso = 'A mensagem não pode ficar vazia.';
   else if (raw.mensagem_aviso.length > 1000) errors.mensagem_aviso = 'A mensagem passa dos 1000 caracteres.';
   return errors;

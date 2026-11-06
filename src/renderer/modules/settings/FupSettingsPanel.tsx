@@ -10,8 +10,7 @@ type Impact = { aviso: number; limitados: number };
 type Preview = { current: Impact; candidate: Impact };
 
 const CHOICES: Record<string, Array<[string, string]>> = {
-  canal_aviso: [['WHATSAPP', 'WhatsApp'], ['SMS', 'SMS']],
-  fup_aplicacao_metodo: [['PROFILE', 'Perfil PPP'], ['QUEUE', 'Fila simples']]
+  canal_aviso: [['WHATSAPP', 'WhatsApp'], ['SMS', 'SMS']]
 };
 
 const TIME_ZONES: string[] = (() => {
@@ -36,6 +35,7 @@ export function FupSettingsPanel() {
   const confirm = useConfirm();
   const { toast } = useToast();
   const [settings, setSettings] = useState<FupSettingRow[] | null>(null);
+  const [clockZone, setClockZone] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [reason, setReason] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -56,8 +56,8 @@ export function FupSettingsPanel() {
   const dirty = Object.keys(changes).length > 0;
 
   useEffect(() => {
-    fupRequest<{ settings: FupSettingRow[] }>('/settings')
-      .then((data) => setSettings(data.settings))
+    fupRequest<{ settings: FupSettingRow[]; routerClock: { clockZone: string | null } }>('/settings')
+      .then((data) => { setSettings(data.settings); setClockZone(data.routerClock.clockZone); })
       .catch((err: Error) => setLoadError(err.message));
   }, []);
 
@@ -148,6 +148,9 @@ export function FupSettingsPanel() {
       </header>
 
       {!canWrite && <Message tone="neutral">Só administradores alteram a política de uso justo.</Message>}
+      {clockZone && clockZone !== settings.find((row) => row.key === 'fuso_horario')?.value && (
+        <Message tone="warn">O fuso do router ({clockZone}) difere do configurado. Acerte o fuso no router para que a janela de pico seja aplicada à hora pretendida.</Message>
+      )}
 
       <datalist id="fup-time-zones">{TIME_ZONES.map((zone) => <option key={zone} value={zone} />)}</datalist>
 

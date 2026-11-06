@@ -69,6 +69,15 @@ test('o operador lê a configuração, o histórico e o consumo, mas não grava'
   expect(Math.round(usage.usage.percent)).toBe(85);
 });
 
+test('configuração apresenta o fuso observado na última passagem do router', async () => {
+  db.prepare("INSERT INTO job_runs (job, status, summary_json) VALUES ('network_enforcement', 'ok', ?)")
+    .run(JSON.stringify({ fupQueues: { clockZone: 'UTC', clockMismatch: true } }));
+  const result = (await call(operator, 'GET', '/api/fup/settings')).json();
+  expect(result.routerClock).toEqual({ clockZone: 'UTC', clockMismatch: true });
+  expect(result.settings.some((row: { key: string }) => row.key === 'fup_aplicacao_metodo')).toBe(false);
+  expect((await call(admin, 'PUT', '/api/fup/settings', { changes: { fup_aplicacao_metodo: 'QUEUE' } })).statusCode).toBe(400);
+});
+
 test('a pré-visualização conta com a configuração candidata e não grava', async () => {
   const before = db.prepare('SELECT COUNT(*) AS n FROM fup_settings_history').get();
   const preview = await call(admin, 'POST', '/api/fup/preview', { changes: { limiar_limitacao_percent: '85' } });

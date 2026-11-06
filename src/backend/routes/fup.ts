@@ -42,7 +42,16 @@ export async function registerFupRoutes(app: FastifyInstance) {
   const adminOnly = { preHandler: requireRole(['admin']) };
   const authed = { preHandler: requireAuth() };
 
-  app.get('/api/fup/settings', authed, async () => ({ settings: describeFupSettings(getSqliteDatabase()) }));
+  app.get('/api/fup/settings', authed, async () => {
+    const db = getSqliteDatabase();
+    const last = db.prepare("SELECT summary_json AS summary FROM job_runs WHERE job IN ('network_enforcement', 'network_enforcement_manual') AND summary_json IS NOT NULL ORDER BY id DESC LIMIT 1").get() as { summary: string } | undefined;
+    let clockZone: string | null = null;
+    try {
+      const value: unknown = JSON.parse(last?.summary ?? '{}')?.fupQueues?.clockZone;
+      if (typeof value === 'string' && value) clockZone = value;
+    } catch { /* Resumo antigo ou inválido: o fuso é desconhecido. */ }
+    return { settings: describeFupSettings(db), routerClock: { clockZone, clockMismatch: clockZone === null ? null : clockZone !== readFupSettings(db).fuso_horario } };
+  });
 
   app.put('/api/fup/settings', adminOnly, async (request, reply) => {
     const parsed = changesSchema.safeParse(request.body);

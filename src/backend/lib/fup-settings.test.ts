@@ -2,7 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type Database from 'better-sqlite3';
+import Database from 'better-sqlite3';
+import midnightMigration from '../db/migrations/0098_fup_meia_noite';
 import {
   FUP_SETTING_DEFINITIONS, FUP_SETTING_KEYS, FupSettingsError, effectivePeakPercent, invalidateFupSettingsCache, listFupSettingsHistory,
   readFupSettings, resetFupSetting, saveFupSettings, validateFupSettings, type FupSettingKey
@@ -40,6 +41,8 @@ afterAll(() => {
 describe('validação', () => {
   test('defaults válidos', () => {
     expect(errorsFor({})).toEqual({});
+    expect(FUP_SETTING_DEFINITIONS.janela_pico_fim.default).toBe('00:00');
+    expect(errorsFor({ janela_pico_inicio: '18:00', janela_pico_fim: '00:00' })).toEqual({});
   });
 
   test.each([
@@ -47,7 +50,7 @@ describe('validação', () => {
     ['limiar_limitacao_percent', 'abc'], ['percent_velocidade_pico', '0'], ['percent_velocidade_pico', '250'],
     ['janela_pico_inicio', '25:00'], ['janela_pico_fim', '7h'], ['fuso_horario', 'Mars/Olympus'], ['fuso_horario', ''],
     ['intervalo_recolha_minutos', '0'], ['intervalo_recolha_minutos', '61'], ['canal_aviso', 'EMAIL'], ['canal_aviso', 'FAX'],
-    ['fup_aplicacao_metodo', 'RADIUS'], ['mensagem_aviso', '  ']
+    ['mensagem_aviso', '  ']
   ] as Array<[FupSettingKey, string]>)('%s = %j é recusado', (key, value) => {
     expect(errorsFor({ [key]: value })[key]).toBeTruthy();
   });
@@ -55,7 +58,7 @@ describe('validação', () => {
   test('regras cruzadas: aviso < limitação e início < fim', () => {
     expect(errorsFor({ limiar_aviso_percent: '100', limiar_limitacao_percent: '100' }).limiar_aviso_percent).toMatch(/menor/);
     expect(errorsFor({ janela_pico_inicio: '23:00', janela_pico_fim: '18:00' }).janela_pico_inicio).toMatch(/anterior/);
-    expect(errorsFor({ limiar_aviso_percent: '150', limiar_limitacao_percent: '200', fup_aplicacao_metodo: 'QUEUE', canal_aviso: 'SMS', fuso_horario: 'Europe/Lisbon' })).toEqual({});
+    expect(errorsFor({ limiar_aviso_percent: '150', limiar_limitacao_percent: '200', canal_aviso: 'SMS', fuso_horario: 'Europe/Lisbon' })).toEqual({});
   });
 });
 
@@ -70,6 +73,21 @@ describe('precedência', () => {
 });
 
 describe('gravação', () => {
+  test('migração estende o horário original e preserva os horários personalizados', () => {
+    const fixture = new Database(':memory:');
+    fixture.exec('CREATE TABLE fup_settings (key TEXT, value TEXT, updated_at TEXT); CREATE TABLE fup_settings_history (key TEXT, old_value TEXT, new_value TEXT, changed_by TEXT, reason TEXT);');
+    fixture.prepare('INSERT INTO fup_settings VALUES (?, ?, ?)').run('janela_pico_fim', '23:00', null);
+    fixture.exec(midnightMigration.sql);
+    expect(fixture.prepare('SELECT value FROM fup_settings').get()).toEqual({ value: '00:00' });
+    expect(fixture.prepare('SELECT old_value, new_value FROM fup_settings_history').get()).toEqual({ old_value: '23:00', new_value: '00:00' });
+    fixture.prepare('UPDATE fup_settings SET value = ?, updated_at = ?').run('23:00', '2026-01-01');
+    fixture.exec(midnightMigration.sql);
+    expect(fixture.prepare('SELECT value FROM fup_settings').get()).toEqual({ value: '23:00' });
+    fixture.prepare('UPDATE fup_settings SET value = ?, updated_at = ?').run('22:00', '2026-01-01');
+    fixture.exec(midnightMigration.sql);
+    expect(fixture.prepare('SELECT value FROM fup_settings').get()).toEqual({ value: '22:00' });
+    fixture.close();
+  });
   test('cada alteração grava o histórico e invalida a cache', () => {
     const before = historyCount();
     expect(readFupSettings(db).limiar_aviso_percent).toBe(80);

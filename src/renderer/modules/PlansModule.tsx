@@ -424,9 +424,7 @@ export function PlansModule() {
             placeholder="Global"
             disabled={!canReprice}
             onChange={(event) => updateForm('fupPeakPercent', event.target.value)}
-            hint={form.routerProfile.trim()
-              ? `Perfil limitado: ${form.routerProfile.trim()}-FUP. Vazio = a % das Configurações.`
-              : 'Vazio = a % das Configurações › Uso justo.'}
+            hint="Vazio = a % das Configurações › Uso justo."
           />
           <Field label="Mensalidade CVE" required type="number" min={0} value={form.monthlyPriceCve} onChange={(event) => updateForm('monthlyPriceCve', event.target.value)} />
           <Field label="Instalacao CVE" type="number" min={0} value={form.installationFeeCve} onChange={(event) => updateForm('installationFeeCve', event.target.value)} />

@@ -5,9 +5,8 @@ import { readPppoeSecret } from './secrets';
 import { isMacAddress, normalizeMacAddress } from '../../shared/mac';
 import { syncIptv, type IptvSyncResult } from './iptv';
 import { DROP_CAPTURE_SCRIPT_NAME, DROP_CAPTURE_SCRIPT_VERSION, dropCaptureScript } from './routeros-drop-capture-script';
-import { FUP_PROFILE_SUFFIX, readBaseProfileName, readSuspendedProfileName, syncFupProfiles, syncPlanProfiles, type PlanSyncSummary } from './plan-profiles';
-import { fupLimitedServices, syncFupQueues, type FupQueueSummary } from './fup';
-import { readFupSettings } from './fup-settings';
+import { readBaseProfileName, readSuspendedProfileName, syncPlanProfiles, type PlanSyncSummary } from './plan-profiles';
+import { syncFupQueues, type FupQueueSummary } from './fup';
 import {
   createSecret,
   createTransport,
@@ -110,8 +109,6 @@ export type DesiredService = {
    * secret para ele. Null = o plano não diz, e o que estiver no secret fica.
    */
   profile: string | null;
-  /** Limitado pela FUP agora: `profile` é o `<perfil do plano>-FUP`. */
-  fup?: true;
 };
 
 export type PlannedAction =
@@ -203,11 +200,6 @@ export function loadDesiredServices(db: Database.Database, options: { suspendedP
     return number !== null && firstOfClient.get(row.clientId) === row.serviceId && clientsByNumber.get(number)?.size === 1;
   };
 
-  // FUP: na janela de pico, um limitado pede o perfil `-FUP` do plano (nos dois
-  // métodos; o QUEUE junta a fila para valer já na sessão aberta).
-  const limited = fupLimitedServices(db);
-  const fupProfile = (row: ServiceRow) => row.status === 'active' && row.profile && limited.has(row.serviceId);
-
   return rows.map((row) => ({
     serviceId: row.serviceId,
     clientName: row.clientName,
@@ -217,10 +209,8 @@ export function loadDesiredServices(db: Database.Database, options: { suspendedP
     hasPassword: row.hasPassword === 1,
     passwordPending: row.passwordPending === 1,
     enabled: row.status === 'active' || (row.status === 'suspended' && Boolean(options.suspendedProfile)),
-    profile: row.status === 'suspended' && options.suspendedProfile ? options.suspendedProfile
-      : fupProfile(row) ? `${row.profile}${FUP_PROFILE_SUFFIX}` : row.profile,
-    ...(row.status === 'suspended' && options.suspendedProfile ? { suspended: true } : {}),
-    ...(fupProfile(row) ? { fup: true as const } : {})
+    profile: row.status === 'suspended' && options.suspendedProfile ? options.suspendedProfile : row.profile,
+    ...(row.status === 'suspended' && options.suspendedProfile ? { suspended: true } : {})
   }));
 }
 
@@ -566,9 +556,7 @@ export type EnforcementSummary = {
   actions: PlannedAction[];
   /** Passagem dos perfis dos planos, feita antes da dos secrets. */
   planProfiles?: PlanSyncSummary | { error: string };
-  /** Perfis `-FUP` dos planos com consumo de referência. */
-  fupProfiles?: PlanSyncSummary | { error: string };
-  /** Filas FUP (método QUEUE). */
+  /** Filas da FUP: a janela de pico vive nelas (ADR 0022). */
   fupQueues?: FupQueueSummary | { error: string };
   /** Passo IPTV via VPN, feito depois dos secrets (ADR 0021). */
   iptv?: IptvSyncResult | { error: string };
@@ -692,13 +680,9 @@ export async function runNetworkEnforcement(db: Database.Database, deps: Enforce
   }
   // Sem perfil de suspensão confirmado, um suspenso volta ao corte por disable.
   // A decisão acontece antes do planeamento para respeitar a mesma trava.
-  // Perfil FUP que ainda não existe no router: o limitado fica no perfil normal
-  // do plano em vez de ficar pendente — a FUP nunca tira o acesso.
-  const desired = selected
-    .map((service) => service.fup && (!routerProfiles || !routerProfiles.has(service.profile ?? ''))
-      ? { ...service, profile: service.profile!.slice(0, -FUP_PROFILE_SUFFIX.length), fup: undefined }
-      : service)
-    .map((service) => suspendedProfileError && service.suspended ? { ...service, enabled: false, profile: null, suspended: false } : service);
+  const desired = suspendedProfileError
+    ? selected.map((service) => service.suspended ? { ...service, enabled: false, profile: null, suspended: false } : service)
+    : selected;
   const confirmed = deps.overrideDrift ? new Map<number, ConfirmedState>() : loadConfirmedState(db);
   const plan = planActions(desired, secrets, { reportOrphans: deps.reportOrphans, suspendedProfile, baseProfile, confirmed, peers: allDesired });
   const activeByName = new Map<string, RouterActive>(active.map((session) => [session.name, session]));
@@ -974,8 +958,6 @@ async function applyAction(
     await patchSecret(transport, action.secretId, { profile: action.profile });
     const enteringSuspension = Boolean(suspendedProfile && action.profile === suspendedProfile && action.from !== suspendedProfile);
     const leavingSuspension = Boolean(suspendedProfile && action.from === suspendedProfile && action.profile !== suspendedProfile);
-    // FUP: a troca para o perfil limitado (ou de volta) não religa — vale na
-    // próxima ligação. Quem quer efeito imediato usa o método QUEUE.
     if (enteringSuspension || leavingSuspension) {
       const session = activeByName.get(login);
       if (session) {
@@ -1047,19 +1029,13 @@ export async function runRouterPass(
   } catch (err) {
     planProfiles = { error: err instanceof Error ? err.message : String(err) };
   }
-  let fupProfiles: PlanSyncSummary | { error: string };
-  try {
-    fupProfiles = await syncFupProfiles(db, { transport, dryRun: config.dryRun, globalPeakPercent: readFupSettings(db).percent_velocidade_pico });
-  } catch (err) {
-    fupProfiles = { error: err instanceof Error ? err.message : String(err) };
-  }
   const summary = await runNetworkEnforcement(db, {
     transport,
     dryRun: config.dryRun,
     maxDisables: config.maxDisablesPerRun
   });
-  // Filas FUP (método QUEUE) depois dos secrets: a fila aponta para a sessão PPPoE.
-  // Corre também no método PROFILE, para tirar filas que tenham ficado de antes.
+  // Filas FUP depois dos secrets: a fila aponta para a sessão PPPoE. Uma falha aqui não
+  // desfaz cortes nem reposições já feitos.
   let fupQueues: FupQueueSummary | { error: string };
   try {
     fupQueues = await syncFupQueues(db, { transport, dryRun: config.dryRun });
@@ -1086,7 +1062,7 @@ export async function runRouterPass(
       dropCapture = { error: err instanceof Error ? err.message : String(err) };
     }
   }
-  return { ...summary, planProfiles, fupProfiles, fupQueues, iptv, dropCapture };
+  return { ...summary, planProfiles, fupQueues, iptv, dropCapture };
 }
 
 // ------------------------------------------------------------------ leitura

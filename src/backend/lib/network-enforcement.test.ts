@@ -1097,60 +1097,20 @@ describe('FUP na reconciliação', () => {
 
   afterEach(() => { vi.useRealTimers(); });
 
-  const limitedDb = (method: 'PROFILE' | 'QUEUE' = 'PROFILE') => {
+  const limitedDb = () => {
     const db = memoryDb();
     addService(db, 1, 'active', 'joao-1');
     db.prepare("UPDATE services SET activation_date = '2026-03-10' WHERE id = 1").run();
     db.prepare('UPDATE internet_plans SET fup_reference_gb = 100 WHERE id = 1').run();
-    db.prepare("UPDATE fup_settings SET value = ? WHERE key = 'fup_aplicacao_metodo'").run(method);
     db.prepare('INSERT INTO client_traffic_daily (day, service_id, rx_bytes, tx_bytes) VALUES (?, 1, 0, ?)').run('2026-10-12', 120 * 1024 ** 3);
     db.prepare("INSERT INTO fup_events (service_id, period, kind) VALUES (1, '2026-10', 'AVISO'), (1, '2026-10', 'LIMITADO')").run();
     return db;
   };
   const at = (date: Date) => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(date); };
 
-  test('cria o perfil -FUP do plano a 50 % com os campos de rede, e marca própria', async () => {
+  test('fila simples à frente da dinâmica mantém-se fora da janela', async () => {
     at(PEAK);
     const db = limitedDb();
-    for (const [key, value] of [['routerosPppLocalAddress', '10.0.0.1'], ['routerosPppRemotePool', 'pool'], ['routerosPppDns', '8.8.8.8'], ['routerosPppParentQueue', 'total']]) setting(db, key, value);
-    const { transport, calls } = recordingTransport([secret()]);
-    const result = await runRouterPass(db, { transport, config });
-    expect(result.fupProfiles).toMatchObject({ plans: 1 });
-    expect(calls).toContainEqual(expect.objectContaining({
-      method: 'PUT', path: '/ppp/profile',
-      body: expect.objectContaining({ name: 'plano-10M-FUP', comment: 'ispm:fup:1', 'rate-limit': '1000k/5000k' })
-    }));
-  });
-
-  test('PROFILE: na janela muda o secret para o perfil -FUP sem derrubar a sessão', async () => {
-    at(PEAK);
-    const db = limitedDb();
-    const { transport, calls } = recordingTransport([secret()], [{ id: '*A', name: 'joao-1' }], ['default', 'plano-10M', 'plano-10M-FUP', 'SUSPENSO']);
-    await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
-    expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'plano-10M-FUP' } });
-    expect(calls).not.toContainEqual({ method: 'DELETE', path: '/ppp/active/*A' });
-  });
-
-  test('PROFILE: fora da janela repõe o perfil normal', async () => {
-    at(OFF_PEAK);
-    const db = limitedDb();
-    const { transport, calls } = recordingTransport([secret({ profile: 'plano-10M-FUP' })], [], ['default', 'plano-10M', 'plano-10M-FUP', 'SUSPENSO']);
-    await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
-    expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'plano-10M' } });
-  });
-
-  test('perfil -FUP em falta no router: fica no perfil normal, nunca sem acesso', async () => {
-    at(PEAK);
-    const db = limitedDb();
-    const { transport, calls } = recordingTransport([secret()]);
-    const summary = await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
-    expect(summary.failed).toBe(0);
-    expect(calls.filter((call) => call.method !== 'GET')).toEqual([]);
-  });
-
-  test('QUEUE: fila simples à frente da dinâmica da sessão, removida fora da janela', async () => {
-    at(PEAK);
-    const db = limitedDb('QUEUE');
     const queues: Array<Record<string, unknown>> = [{ '.id': '*Q1', name: '<pppoe-joao-1>', target: '<pppoe-joao-1>', dynamic: 'true' }];
     const base = recordingTransport([secret()], [{ id: '*A', name: 'joao-1' }], ['default', 'plano-10M', 'plano-10M-FUP', 'SUSPENSO']);
     const transport = (async (req: RouterRequest) => {
@@ -1161,24 +1121,16 @@ describe('FUP na reconciliação', () => {
     expect(result.fupQueues).toMatchObject({ wanted: 1, added: 1 });
     expect(base.calls).toContainEqual({
       method: 'PUT', path: '/queue/simple',
-      body: { name: 'ispm-fup-1', target: '<pppoe-joao-1>', 'max-limit': '1000k/5000k', comment: 'ispm:fup:1', 'place-before': '*Q1' }
+      body: { name: 'ispm-fup-1', target: '<pppoe-joao-1>', 'max-limit': '1000k/5000k', time: '18:00:00-24:00:00,sun,mon,tue,wed,thu,fri,sat', comment: 'ispm:fup:1', 'place-before': '*Q1' }
     });
     expect((db.prepare("SELECT summary FROM audit_logs WHERE action = 'fup.fila'").get() as { summary: string }).summary).toContain('sem fila → 1000k/5000k');
 
     vi.setSystemTime(OFF_PEAK);
-    queues.push({ '.id': '*Q9', name: 'ispm-fup-1', target: '<pppoe-joao-1>', 'max-limit': '1000k/5000k', dynamic: 'false' });
+    queues.push({ '.id': '*Q9', name: 'ispm-fup-1', target: '<pppoe-joao-1>', 'max-limit': '1000k/5000k', time: '18:00:00-24:00:00,sun,mon,tue,wed,thu,fri,sat', dynamic: 'false' });
     const after = await runRouterPass(db, { transport, config });
-    expect(after.fupQueues).toMatchObject({ wanted: 0, removed: 1 });
-    expect(base.calls).toContainEqual({ method: 'DELETE', path: '/queue/simple/*Q9' });
+    expect(after.fupQueues).toMatchObject({ wanted: 1, removed: 0 });
+    expect(base.calls).not.toContainEqual({ method: 'DELETE', path: '/queue/simple/*Q9' });
   });
 
-  test('router em baixo: nada se perde, a passagem seguinte aplica', async () => {
-    at(PEAK);
-    const db = limitedDb();
-    const down = (async () => { throw new Error('router sem resposta'); }) as RouterTransport;
-    await expect(runNetworkEnforcement(db, { transport: down, dryRun: false, maxDisables: 5 })).rejects.toThrow('router sem resposta');
-    const { transport, calls } = recordingTransport([secret()], [], ['default', 'plano-10M', 'plano-10M-FUP', 'SUSPENSO']);
-    await runNetworkEnforcement(db, { transport, dryRun: false, maxDisables: 5 });
-    expect(calls).toContainEqual({ method: 'PATCH', path: '/ppp/secret/*1', body: { profile: 'plano-10M-FUP' } });
-  });
+
 });
