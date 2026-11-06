@@ -99,7 +99,12 @@ export function PlansModule() {
   function loadPlans() {
     setLoading(true);
     return authFetch('http://127.0.0.1:3001/api/plans')
-      .then((response) => response.json() as Promise<PlanRow[]>)
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Não foi possível carregar os planos.');
+        const data: unknown = await response.json();
+        if (!Array.isArray(data)) throw new Error('Resposta de planos inválida.');
+        return data as PlanRow[];
+      })
       .then((data) => { setPlans(data); setLoadError(null); })
       .catch(() => { setPlans([]); setLoadError('Não foi possível carregar os planos.'); })
       .finally(() => setLoading(false));
@@ -202,10 +207,10 @@ export function PlansModule() {
         <div>
           <p className="eyebrow">Modulo</p>
           <h2>Planos de internet</h2>
-          <p className="plans-header-subtitle">
+          {!loadError && <p className="plans-header-subtitle">
             <strong>{totals.active}</strong> ativos
             {totals.inactive > 0 && <> · <strong>{totals.inactive}</strong> inativos</>}
-          </p>
+          </p>}
         </div>
         {canManagePlans && (
           <ModuleHeaderActions
@@ -258,13 +263,13 @@ export function PlansModule() {
           <Button variant="secondary" onClick={() => { setSearch(''); setTypeFilter('all'); setActiveFilter('all'); }}>
             Limpar filtros
           </Button>
-          <small>{visiblePlans.length} {visiblePlans.length === 1 ? 'plano' : 'planos'}</small>
+          {!loadError && <small>{visiblePlans.length} {visiblePlans.length === 1 ? 'plano' : 'planos'}</small>}
         </FilterBar>
       </div>
 
       {loading && plans.length === 0 && <SkeletonList rows={6} />}
 
-      {!loading && visiblePlans.length === 0 && (
+      {!loading && !loadError && visiblePlans.length === 0 && (
         <EmptyState
           icon={Wifi}
           title="Nenhum plano encontrado"

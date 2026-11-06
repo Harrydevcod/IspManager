@@ -167,7 +167,12 @@ export function PaymentsModule({
   const loadPayments = useCallback(() => {
     setLoading(true);
     return authFetch('http://127.0.0.1:3001/api/payments')
-      .then((response) => response.json() as Promise<PaymentRow[]>)
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Não foi possível carregar os pagamentos.');
+        const data: unknown = await response.json();
+        if (!Array.isArray(data)) throw new Error('Resposta de pagamentos inválida.');
+        return data as PaymentRow[];
+      })
       .then((data) => {
         setPayments(data);
         setLoadError(null);
@@ -1106,7 +1111,7 @@ export function PaymentsModule({
         }}>
           Limpar filtros
         </Button>
-        <small>{visiblePayments.length} cobrancas{showAllMonths ? ' (todos os meses)' : ` em ${formatPtMonth(referenceMonth)}`}</small>
+        {!loadError && <small>{visiblePayments.length} cobrancas{showAllMonths ? ' (todos os meses)' : ` em ${formatPtMonth(referenceMonth)}`}</small>}
         <ColumnPicker
           headers={PAYMENT_HEADERS}
           hidden={columnVisibility.hidden}
@@ -1115,7 +1120,7 @@ export function PaymentsModule({
         />
       </FilterBar>
 
-      <PaymentsTotals totals={totals} />
+      {!loadError && <PaymentsTotals totals={totals} />}
 
       {monthlyPreview && (
         <MonthlyBillingPreview
@@ -1198,7 +1203,7 @@ export function PaymentsModule({
 
       {loading && payments.length === 0 ? (
         <SkeletonList rows={6} />
-      ) : (
+      ) : !loadError ? (
         <>
           <BulkActionBar count={selection.count} onClear={selection.clear} noun={{ one: 'cobrança selecionada', many: 'cobranças selecionadas' }}>
             <Button variant="secondary" size="sm" leadingIcon={<Send size={14} aria-hidden />} disabled={bulkSubmitting} onClick={() => void runBulkNotify()}>
@@ -1244,7 +1249,7 @@ export function PaymentsModule({
             onPageSizeChange={setPaymentPageSize}
           />
         </>
-      )}
+      ) : null}
 
       <OverdueNotifyDialog
         preview={overduePreview}

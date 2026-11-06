@@ -60,7 +60,7 @@ export async function fupRequest<T>(path: string, init: RequestInit = {}): Promi
   const response = await authFetch(`${FUP_API}${path}`, {
     ...init,
     headers: init.body ? { 'Content-Type': 'application/json', ...(init.headers ?? {}) } : init.headers
-  });
+  }).catch(() => { throw new Error('Sem ligação ao servidor.'); });
   const body = await response.json().catch(() => ({ error: 'Resposta inválida do servidor' }));
   if (!response.ok) throw Object.assign(new Error((body as FupApiError).error ?? 'Pedido falhou'), { body });
   return body as T;
