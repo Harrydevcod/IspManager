@@ -1,5 +1,6 @@
 import { getSqliteDatabase } from '../db/database';
 import type { Database } from 'better-sqlite3';
+import { businessYear } from '../../shared/business-day';
 
 const DEFAULT_INVOICE_PREFIX = 'FT';
 const DEFAULT_RECEIPT_PREFIX = 'RC';
@@ -39,7 +40,7 @@ export function allocateDocumentNumber(kind: DocumentKind, database?: Database, 
   if (['PR', 'OR', 'PF'].includes(series.toUpperCase())) {
     throw Object.assign(new Error('PR, OR e PF são reservados aos documentos informativos. Altere o prefixo da fatura ou recibo nas Configurações antes de emitir.'), { statusCode: 409 });
   }
-  const year = documentYear ?? new Date().getFullYear();
+  const year = documentYear ?? businessYear();
   if (!Number.isInteger(year) || year < 1 || year > 9999) throw new Error('Invalid document year');
   const row = db.prepare(`
     INSERT INTO document_sequences (series, year, last_number)

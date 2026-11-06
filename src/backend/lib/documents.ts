@@ -6,6 +6,7 @@ import { isAudiovisualAnnualReference } from './audiovisual';
 import { isManualInvoiceReference } from '../../shared/billing-period';
 import { documentBankAccounts } from './treasury';
 import { RENTAL_LINE_PREFIX, type BillingLine } from './billing';
+import { SQL_BUSINESS_TODAY } from '../../shared/business-day';
 
 const PDFDocument = require('pdfkit');
 
@@ -1030,7 +1031,7 @@ export async function renderPaymentDocumentPdf(id: number, kind: DocumentKind, a
     db.transaction(() => {
       db.prepare(`
         UPDATE payments
-        SET invoice_number = ?, invoice_date = COALESCE(invoice_date, date('now')), updated_at = datetime('now')
+        SET invoice_number = ?, invoice_date = COALESCE(invoice_date, ${SQL_BUSINESS_TODAY}), updated_at = datetime('now')
         WHERE id = ?
       `).run(allocateDocumentNumber('invoice'), id);
     })();
@@ -1040,7 +1041,7 @@ export async function renderPaymentDocumentPdf(id: number, kind: DocumentKind, a
     db.transaction(() => {
       db.prepare(`
         UPDATE payments
-        SET receipt_number = ?, receipt_date = COALESCE(receipt_date, date('now')), updated_at = datetime('now')
+        SET receipt_number = ?, receipt_date = COALESCE(receipt_date, ${SQL_BUSINESS_TODAY}), updated_at = datetime('now')
         WHERE id = ?
       `).run(allocateDocumentNumber('receipt'), id);
     })();

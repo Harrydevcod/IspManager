@@ -2,11 +2,12 @@ import { useState, type FormEvent } from 'react';
 import { Button, Dialog, Field, Message, Select } from '../../components';
 import type { PaymentMethod } from './PaymentDetailDialog';
 import { AccountSelect } from '../treasury/AccountSelect';
+import { businessDay } from '../../../shared/business-day';
 
 export type BulkPaymentMode = 'pay' | 'cancel';
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return businessDay();
 }
 
 type BulkPaymentDialogProps = {

@@ -32,6 +32,7 @@ import {
 } from '../../lib/treasury';
 import { AccountDialog, CashCountDialog, ReverseMovementDialog, TransferDialog } from './TreasuryDialogs';
 import './TreasuryModule.css';
+import { businessMonth } from '../../../shared/business-day';
 
 type Tab = 'contas' | 'movimentos';
 
@@ -49,7 +50,7 @@ const MOVEMENT_TONE: Record<MovementKind, 'success' | 'danger' | 'info' | 'neutr
 const REVERSIBLE: MovementKind[] = ['deposito', 'transferencia', 'ajuste'];
 
 function firstOfMonth() {
-  return `${new Date().toISOString().slice(0, 7)}-01`;
+  return `${businessMonth()}-01`;
 }
 
 const ACCOUNT_COLUMNS: DataTableColumn<TreasuryAccount>[] = [

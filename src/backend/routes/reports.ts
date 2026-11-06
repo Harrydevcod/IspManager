@@ -10,6 +10,7 @@ import { detectAdminNetwork } from '../lib/admin-network';
 import { buildOperationsStatusPdf } from '../lib/operations-export';
 import { LANDED_COST_SQL, parkValue, portfolioRows } from '../lib/capex';
 import { MANUAL_INVOICE_PREFIX } from '../../shared/billing-period';
+import { businessMonth } from '../../shared/business-day';
 
 type ReportMetricRow = {
   totalClients: number;
@@ -85,7 +86,7 @@ export async function registerReportRoutes(app: FastifyInstance) {
   // empacotada (file://) não consegue ler o nome — ver o cors exposedHeaders.
   app.get('/api/reports/operations.pdf', { preHandler: requireRole(['admin', 'operator']) }, async (request, reply) => {
     const pdf = await buildOperationsStatusPdf();
-    const stamp = new Date().toISOString().slice(0, 7);
+    const stamp = businessMonth();
     const filename = `Estado da operacao - ${stamp}.pdf`;
     return reply
       .header('content-type', 'application/pdf')

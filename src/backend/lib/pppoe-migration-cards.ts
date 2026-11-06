@@ -3,6 +3,7 @@ import { labelForOperationMode } from '../../shared/operation';
 import { formatDate, loadCompany, PALETTE } from './documents';
 import { ANTENNA_TYPES, NAT_MODES } from './iptv-source';
 import { readPppoeSecret } from './secrets';
+import { businessDay } from '../../shared/business-day';
 
 const PDFDocument = require('pdfkit');
 
@@ -79,7 +80,7 @@ export function renderMigrationCardsPdf(cards: MigrationCard[]): Promise<Buffer>
   const W = 595.28; const H = 841.89; const M = 36; const cw = W - 2 * M;
   const half = (H - 2 * M) / 2;
   const pages = Math.max(1, Math.ceil(cards.length / 2));
-  const today = formatDate(new Date().toISOString().slice(0, 10));
+  const today = formatDate(businessDay());
   const line = (value: string, x: number, y: number, width: number, size: number, font = 'Helvetica', color: string = PALETTE.ink, align: 'left' | 'right' = 'left') =>
     doc.font(font).fontSize(size).fillColor(color).text(value, x, y, { width, align, lineBreak: false, ellipsis: true });
 

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
+import { businessMonth } from '../../shared/business-day';
 
 let app: FastifyInstance;
 let db: Database.Database;
@@ -758,8 +759,7 @@ describe('investments CRUD', () => {
   });
 
   test('dashboard summary aggregates investment cost per month', async () => {
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const currentMonth = businessMonth();
     db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_cve)
                 VALUES ('Backbone corrente', 'infraestrutura', ?, ?, 15000)`).run(`${currentMonth}-01`, currentMonth);
     db.prepare(`INSERT INTO investments (name, type, investment_date, reference_month, total_cost_cve)

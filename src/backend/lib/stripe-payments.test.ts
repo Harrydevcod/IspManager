@@ -154,11 +154,11 @@ function fakeStripe() {
     setRefundStatus(value: StripeRefund['status']) { refundStatus = value; },
     pauseCreation(gate: Promise<void>) { creationGate = gate; },
     /** O cliente pagou na página do Stripe. */
-    pay(id: string) {
+    pay(id: string, paidAt = Math.floor(Date.now() / 1000)) {
       const invoice = invoices.get(id)!;
       invoice.status = 'paid';
       invoice.amountPaid = invoice.amountDue;
-      invoice.paidAt = Math.floor(Date.now() / 1000);
+      invoice.paidAt = paidAt;
     }
   };
 }
@@ -571,6 +571,22 @@ describe('passagem do Stripe', () => {
     const run = await stripePayments.runStripeSweep(db, stripe.transport);
     expect(run).toMatchObject({ paid: 1 });
     expect(treasury.accountBalance(db, other.value.id)).toBe(2500);
+  });
+
+  // Falhava entre as 23:00 e a meia-noite de Cabo Verde: o recibo levava o dia do relógio do PC e
+  // a conta abria no dia UTC, e o saldo, que só conta desde a abertura, deixava-o de fora.
+  test('um pagamento às 23:30 de Cabo Verde fica nesse dia e entra no saldo da conta aberta nele', async () => {
+    const stripe = fakeStripe();
+    const { paymentId } = seed('12');
+    const link = await openLink(stripe, paymentId);
+    stripe.pay(link.stripeInvoiceId!, Date.parse('2026-11-06T00:30:00Z') / 1000);
+    const opened = treasury.createAccount(db, { kind: 'banco', name: 'Aberta a 5/11', openingDate: '2026-11-05' });
+    if (!opened.ok) throw new Error(opened.error);
+    setSetting('stripeTreasuryAccountId', String(opened.value.id));
+
+    expect(await stripePayments.runStripeSweep(db, stripe.transport)).toMatchObject({ paid: 1 });
+    expect(receiptsOf(paymentId).map((receipt) => receipt.paymentDate)).toEqual(['2026-11-05']);
+    expect(treasury.accountBalance(db, opened.value.id)).toBe(2500);
   });
 });
 

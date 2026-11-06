@@ -7,6 +7,7 @@ import { allocateDocumentNumber } from './numbering';
 import { applyClientCreditToPayment } from './payments';
 import { loadAudiovisualConfig } from './audiovisual';
 import { INSTALLATION_FEE_REFERENCE } from '../../shared/billing-period';
+import { businessDay, SQL_BUSINESS_TODAY } from '../../shared/business-day';
 
 export type BillingLine = {
   kind: 'internet' | 'audiovisual' | 'instalacao' | 'aluguer' | 'equipamento';
@@ -154,8 +155,9 @@ export type BillingPreview = {
  */
 export const PAYMENT_DUE_DAYS = 30;
 
+/** Hoje em Cabo Verde (ver `shared/business-day.ts`). */
 export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return businessDay();
 }
 
 export function dueDateFromIssue(issueIso: string, days: number = PAYMENT_DUE_DAYS): string {
@@ -279,7 +281,7 @@ export function generateMonthlyBilling(db: DatabaseType, referenceMonth: string)
       client_id, service_id, reference_month, amount_cve, due_date,
       status, invoice_number, invoice_date, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
+    VALUES (?, ?, ?, ?, ?, 'pending', NULL, ${SQL_BUSINESS_TODAY}, datetime('now'), datetime('now'))
   `);
   const updateInvoice = db.prepare('UPDATE payments SET invoice_number = ? WHERE id = ? AND invoice_number IS NULL');
   const insertLine = db.prepare(`
@@ -341,7 +343,7 @@ export function insertInstallationFeeIfDue(
       client_id, service_id, reference_month, amount_cve, due_date,
       status, invoice_number, invoice_date, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
+    VALUES (?, ?, ?, ?, ?, 'pending', NULL, ${SQL_BUSINESS_TODAY}, datetime('now'), datetime('now'))
   `).run(params.clientId, params.serviceId, INSTALLATION_FEE_REFERENCE, params.amountCve, dueIso);
   const paymentId = Number(inserted.lastInsertRowid);
 
@@ -408,7 +410,7 @@ export function insertEquipmentPurchase(
         client_id, service_id, reference_month, amount_cve, due_date,
         status, invoice_number, invoice_date, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, ?, ?, 'pending', NULL, ${SQL_BUSINESS_TODAY}, datetime('now'), datetime('now'))
     `).run(input.clientId, input.serviceId, reference, input.amountCve, dueDateFromIssue(todayIso()));
     paymentId = Number(inserted.lastInsertRowid);
 
@@ -422,7 +424,7 @@ export function insertEquipmentPurchase(
 
   db.prepare(`
     UPDATE service_device_assignments
-    SET ownership = 'cliente', owned_since = date('now'), updated_at = datetime('now')
+    SET ownership = 'cliente', owned_since = ${SQL_BUSINESS_TODAY}, updated_at = datetime('now')
     WHERE id = ?
   `).run(input.assignmentId);
 

@@ -35,6 +35,7 @@ import { VoidReceiptDialog } from './payments/VoidReceiptDialog';
 import { ReverseMonthlyDialog, type ReverseMonthlyPreview } from './payments/ReverseMonthlyDialog';
 import { BulkPaymentDialog, type BulkPaymentMode } from './payments/BulkPaymentDialog';
 import { FieldReceiptProposals } from './payments/FieldReceiptProposals';
+import { businessDay } from '../../shared/business-day';
 
 // ---------------------------------------------------------------------------
 // Payment-private types (local to this module)
@@ -49,7 +50,7 @@ const DEFAULT_PAYMENT_STATUS_FILTER: 'all' | PaymentRow['status'] = 'pending';
 // ---------------------------------------------------------------------------
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return businessDay();
 }
 
 function paymentReminderStorageKey(paymentId: number, isoDate: string) {

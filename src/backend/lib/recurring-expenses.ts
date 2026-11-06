@@ -1,4 +1,5 @@
 import { getSqliteDatabase } from '../db/database';
+import { businessDay } from '../../shared/business-day';
 
 /**
  * Generates one expense row per active template per month due. Catch-up sem
@@ -28,11 +29,9 @@ function monthsAfter(last: string, target: string): string[] {
 
 export function runRecurringExpensesIfDue(now: Date = new Date()): RecurringExpenseRun {
   const db = getSqliteDatabase();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const monthKey = `${year}-${month}`;
-  const today = now.getDate();
-  const todayIso = `${monthKey}-${String(today).padStart(2, '0')}`;
+  const todayIso = businessDay(now);
+  const monthKey = todayIso.slice(0, 7);
+  const today = Number(todayIso.slice(8, 10));
 
   const templates = db.prepare(`
     SELECT id, name, category, amount_cve AS amountCve, day_of_month AS dayOfMonth,

@@ -10,6 +10,7 @@ import { AccountSelect } from '../treasury/AccountSelect';
 import { isManualInvoiceReference, referenceMonthLabel } from '../../../shared/billing-period';
 import { STRIPE_LINK_LABEL, StripeLinkPanel, type StripeState } from './StripeLinkPanel';
 import { Vinti4LinkPanel, type Vinti4State } from './Vinti4LinkPanel';
+import { businessDay } from '../../../shared/business-day';
 
 export type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
 export type PaymentActionMode = 'pay' | 'cancel' | 'whatsapp';
@@ -33,7 +34,7 @@ const CANCEL_REASON_CHIPS_PAID = [
 ];
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return businessDay();
 }
 
 type PaymentDetailDialogProps = {

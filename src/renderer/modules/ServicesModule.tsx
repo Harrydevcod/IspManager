@@ -23,6 +23,7 @@ import { ServiceReturnDialog } from './services/ServiceReturnDialog';
 import { DeviceOwnerDialog, type PromoteOwnerResult } from './services/DeviceOwnerDialog';
 import { TransferServiceDialog, type TransferResult } from './services/TransferServiceDialog';
 import { ServiceItemDraftsBuilder, emptyItemDraft, type ItemDraft } from './services/ServiceItemDraftsBuilder';
+import { businessDay } from '../../shared/business-day';
 
 type EventFormState = {
   eventType: ManualServiceEventType;
@@ -66,7 +67,7 @@ function emptyServiceForm(): ServiceFormState {
     planId: '',
     monthlyValueCve: '',
     dueDay: '1',
-    activationDate: new Date().toISOString().slice(0, 10),
+    activationDate: businessDay(),
     status: 'active',
     technicalNotes: '',
     pppoeUsername: '',
@@ -246,7 +247,7 @@ export function ServicesModule({
       planId: service.planId ? String(service.planId) : '',
       monthlyValueCve: String(service.monthlyValueCve),
       dueDay: String(service.dueDay),
-      activationDate: service.activationDate || new Date().toISOString().slice(0, 10),
+      activationDate: service.activationDate || businessDay(),
       status: service.status,
       technicalNotes: service.technicalNotes || '',
       pppoeUsername: service.pppoeUsername || '',

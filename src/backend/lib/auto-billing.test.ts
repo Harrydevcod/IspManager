@@ -74,12 +74,14 @@ const paymentsForService = (serviceId: number) =>
   (db.prepare('SELECT reference_month AS m FROM payments WHERE service_id = ? ORDER BY m').all(serviceId) as Array<{ m: string }>)
     .map((r) => r.m);
 
+// As datas são ao meio-dia local: o mesmo dia em Cabo Verde seja qual for o fuso da máquina
+// (meia-noite em UTC ainda é a véspera em CV, que é o dia que a faturação usa).
 describe('runMonthlyBillingIfDue — competência do mês fechado', () => {
   test('no dia 30, fatura o próprio mês que fecha', () => {
     seedActiveService('A');
     setSetting('autoBillingDay', '30');
 
-    const result = runMonthlyBillingIfDue(new Date(2026, 5, 30)); // 30 Jun
+    const result = runMonthlyBillingIfDue(new Date(2026, 5, 30, 12)); // 30 Jun
 
     expect(result).toMatchObject({ ran: true, months: ['2026-06'], created: 1 });
     expect(billedMonths()).toEqual(['2026-06']);
@@ -90,7 +92,7 @@ describe('runMonthlyBillingIfDue — competência do mês fechado', () => {
     setSetting('autoBillingDay', '30');
     setSetting('lastAutoBillingMonth', '2026-05');
 
-    const result = runMonthlyBillingIfDue(new Date(2026, 6, 3)); // 3 Jul
+    const result = runMonthlyBillingIfDue(new Date(2026, 6, 3, 12)); // 3 Jul
 
     expect(result).toMatchObject({ ran: true, months: ['2026-06'] });
     expect(paymentsForService(svc)).toEqual(['2026-06']); // Junho, nunca Julho
@@ -101,7 +103,7 @@ describe('runMonthlyBillingIfDue — competência do mês fechado', () => {
     setSetting('autoBillingDay', '30');
     setSetting('lastAutoBillingMonth', '2026-06');
 
-    const result = runMonthlyBillingIfDue(new Date(2026, 6, 30)); // 30 Jul
+    const result = runMonthlyBillingIfDue(new Date(2026, 6, 30, 12)); // 30 Jul
 
     expect(result).toMatchObject({ ran: true, months: ['2026-07'] });
   });
@@ -111,7 +113,7 @@ describe('runMonthlyBillingIfDue — competência do mês fechado', () => {
     setSetting('autoBillingDay', '30');
     setSetting('lastAutoBillingMonth', '2026-05');
 
-    const result = runMonthlyBillingIfDue(new Date(2026, 6, 30)); // 30 Jul
+    const result = runMonthlyBillingIfDue(new Date(2026, 6, 30, 12)); // 30 Jul
 
     expect(result).toMatchObject({ ran: true, months: ['2026-06', '2026-07'], created: 2 });
     expect(billedMonths()).toEqual(['2026-06', '2026-07']);
@@ -122,7 +124,7 @@ describe('runMonthlyBillingIfDue — competência do mês fechado', () => {
     setSetting('autoBillingDay', '30');
     setSetting('lastAutoBillingMonth', '2026-04');
 
-    const result = runMonthlyBillingIfDue(new Date(2026, 6, 10)); // 10 Jul → alvo Junho
+    const result = runMonthlyBillingIfDue(new Date(2026, 6, 10, 12)); // 10 Jul → alvo Junho
 
     expect(result).toMatchObject({ ran: true, months: ['2026-05', '2026-06'], created: 2 });
     expect(billedMonths()).toEqual(['2026-05', '2026-06']);
@@ -133,7 +135,7 @@ describe('runMonthlyBillingIfDue — competência do mês fechado', () => {
     setSetting('autoBillingDay', '30');
     // sem lastAutoBillingMonth
 
-    const result = runMonthlyBillingIfDue(new Date(2026, 6, 10)); // 10 Jul → alvo Junho
+    const result = runMonthlyBillingIfDue(new Date(2026, 6, 10, 12)); // 10 Jul → alvo Junho
 
     expect(result).toMatchObject({ ran: true, months: ['2026-06'] });
     expect(billedMonths()).toEqual(['2026-06']);
@@ -144,7 +146,7 @@ describe('runMonthlyBillingIfDue — competência do mês fechado', () => {
     setSetting('autoBillingDay', '30');
     setSetting('lastAutoBillingMonth', '2026-08');
 
-    const result = runMonthlyBillingIfDue(new Date(2026, 6, 10)); // 10 Jul → alvo Junho
+    const result = runMonthlyBillingIfDue(new Date(2026, 6, 10, 12)); // 10 Jul → alvo Junho
 
     expect(result).toMatchObject({ skipped: true });
     expect(billedMonths()).toEqual([]);
@@ -156,12 +158,12 @@ describe('runMonthlyBillingIfDue — competência do mês fechado', () => {
     setSetting('lastAutoBillingMonth', '2026-01');
 
     // 27 Fev: ainda não fecha Fevereiro; alvo recai em Janeiro (já feito) → skip
-    const feb = runMonthlyBillingIfDue(new Date(2026, 1, 27));
+    const feb = runMonthlyBillingIfDue(new Date(2026, 1, 27, 12));
     expect(feb).toMatchObject({ skipped: true });
     expect(paymentsForService(svc)).toEqual([]);
 
     // 1 Mar: fecha Fevereiro
-    const mar = runMonthlyBillingIfDue(new Date(2026, 2, 1));
+    const mar = runMonthlyBillingIfDue(new Date(2026, 2, 1, 12));
     expect(mar).toMatchObject({ ran: true, months: ['2026-02'] });
     expect(paymentsForService(svc)).toEqual(['2026-02']);
   });
@@ -170,10 +172,10 @@ describe('runMonthlyBillingIfDue — competência do mês fechado', () => {
     seedActiveService('A');
     setSetting('autoBillingDay', '30');
 
-    const first = runMonthlyBillingIfDue(new Date(2026, 5, 30));
+    const first = runMonthlyBillingIfDue(new Date(2026, 5, 30, 12));
     expect(first).toMatchObject({ ran: true, months: ['2026-06'] });
 
-    const second = runMonthlyBillingIfDue(new Date(2026, 5, 30));
+    const second = runMonthlyBillingIfDue(new Date(2026, 5, 30, 12));
     expect(second).toMatchObject({ skipped: true });
 
     const count = (db.prepare('SELECT COUNT(*) AS n FROM payments').get() as { n: number }).n;
@@ -185,7 +187,7 @@ describe('runMonthlyBillingIfDue — competência do mês fechado', () => {
     const cancelled = seedCancelledClientWithActiveService('NOK');
     setSetting('autoBillingDay', '30');
 
-    runMonthlyBillingIfDue(new Date(2026, 5, 30));
+    runMonthlyBillingIfDue(new Date(2026, 5, 30, 12));
 
     expect(paymentsForService(active)).toEqual(['2026-06']);
     expect(paymentsForService(cancelled)).toEqual([]);
@@ -195,14 +197,14 @@ describe('runMonthlyBillingIfDue — competência do mês fechado', () => {
     seedActiveService('A');
     // sem autoBillingDay → default 30
 
-    const onDay29 = runMonthlyBillingIfDue(new Date(2026, 5, 29)); // alvo = Maio
+    const onDay29 = runMonthlyBillingIfDue(new Date(2026, 5, 29, 12)); // alvo = Maio
     expect(onDay29).toMatchObject({ ran: true, months: ['2026-05'] });
 
     db.prepare('DELETE FROM payment_lines').run();
     db.prepare('DELETE FROM payments').run();
     db.prepare('DELETE FROM app_settings').run();
     seedActiveService('B');
-    const onDay30 = runMonthlyBillingIfDue(new Date(2026, 5, 30)); // alvo = Junho
+    const onDay30 = runMonthlyBillingIfDue(new Date(2026, 5, 30, 12)); // alvo = Junho
     expect(onDay30).toMatchObject({ ran: true, months: ['2026-06'] });
   });
 });

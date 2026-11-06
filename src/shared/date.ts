@@ -1,3 +1,5 @@
+import { businessDay } from './business-day';
+
 // Single source of truth for pt-PT date formatting, shared by backend and
 // renderer. Parses date-only strings as local midnight (avoids the UTC
 // off-by-one of `new Date('YYYY-MM-DD')`) and passes datetime strings through
@@ -82,8 +84,9 @@ export function dayStartUtc(iso: string): number | null {
   return t;
 }
 
+/** Hoje (o dia de Cabo Verde, ver `business-day.ts`) como timestamp UTC à meia-noite. */
 export function todayStartUtc(now: Date): number {
-  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return dayStartUtc(businessDay(now))!;
 }
 
 /** `AAAA-MM-DD` → `DD-MM-AAAA`; devolve `-` se não houver data. */

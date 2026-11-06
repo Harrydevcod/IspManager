@@ -16,6 +16,7 @@
  */
 
 import { dayStartUtc, labelDay, todayStartUtc } from './date';
+import { businessDay } from './business-day';
 
 export type AssignmentDates = {
   /** Quando o equipamento foi instalado (`AAAA-MM-DD`). */
@@ -89,7 +90,7 @@ export function validateAssignmentDates(
 
 /** Hoje em `AAAA-MM-DD`, o valor por omissão de todos estes campos. */
 export function todayIso(now: Date = new Date()): string {
-  return new Date(todayStartUtc(now)).toISOString().slice(0, 10);
+  return businessDay(now);
 }
 
 export type FactMoment = {

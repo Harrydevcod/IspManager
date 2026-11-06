@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent } from 'react';
 import type { RevenuePoint } from '../types';
 import { formatCompactEscudos } from '../../shared/money';
+import { businessMonth } from '../../shared/business-day';
 
 const monthLabelFormatter = new Intl.DateTimeFormat('pt-PT', { month: 'short' });
 const longMonthFormatter = new Intl.DateTimeFormat('pt-PT', { month: 'long', year: 'numeric' });
@@ -157,10 +158,7 @@ export function RevenueBars({
 
   const layout = useMemo(() => revenueLayout(points, width), [points, width]);
 
-  const todayKey = useMemo(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  }, []);
+  const todayKey = useMemo(() => businessMonth(), []);
 
   if (points.every((p) => p.paidCve === 0 && p.pendingCve === 0 && p.expenseCve === 0 && p.opexCve === 0)) {
     const year = points[0]?.referenceMonth.slice(0, 4) ?? new Date().getFullYear();

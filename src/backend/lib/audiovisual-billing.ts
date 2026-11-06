@@ -2,6 +2,7 @@ import { getSqliteDatabase } from '../db/database';
 import { dueDateFromIssue, todayIso, PAYMENT_DUE_DAYS } from './billing';
 import { allocateDocumentNumber } from './numbering';
 import { audiovisualAnnualReference, loadAudiovisualConfig } from './audiovisual';
+import { SQL_BUSINESS_TODAY } from '../../shared/business-day';
 
 type AnnualServiceRow = {
   serviceId: number;
@@ -72,7 +73,7 @@ export function runAudiovisualAnnualIfDue(now: Date = new Date(), onlyServiceId?
       client_id, service_id, reference_month, amount_cve, due_date,
       status, invoice_number, invoice_date, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
+    VALUES (?, ?, ?, ?, ?, 'pending', NULL, ${SQL_BUSINESS_TODAY}, datetime('now'), datetime('now'))
   `);
   const updateInvoice = db.prepare('UPDATE payments SET invoice_number = ? WHERE id = ? AND invoice_number IS NULL');
   const insertLine = db.prepare(`

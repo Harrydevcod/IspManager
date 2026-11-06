@@ -30,6 +30,7 @@ import {
   type OperationsStatus,
   type OperationsSystem
 } from '../../shared/operations-status';
+import { businessDay, SQL_BUSINESS_TODAY, CAPE_VERDE_UTC_OFFSET_HOURS } from '../../shared/business-day';
 
 /**
  * Estado da operação — leitura viva, calculada a cada pedido.
@@ -64,9 +65,8 @@ function num(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
+/** Dia de Cabo Verde do instante (ver `shared/business-day.ts`). */
+const isoDate = (date: Date): string => businessDay(date);
 
 function share(part: number, whole: number): number {
   return whole > 0 ? part / whole : 0;
@@ -771,11 +771,13 @@ function loadAccessLayer(
 
 // -------------------------------------------------------------- cobrança
 
-function nextBillingDate(now: Date, billingDay: number): Date {
+/** O próximo dia de faturação depois de hoje (em Cabo Verde); hoje mesmo já conta como passado. */
+function nextBillingDate(now: Date, billingDay: number): string {
   const day = Math.min(Math.max(billingDay, 1), 28 + 3);
-  const candidate = new Date(now.getFullYear(), now.getMonth(), day);
-  if (candidate >= now) return candidate;
-  return new Date(now.getFullYear(), now.getMonth() + 1, day);
+  const [year, month, today] = businessDay(now).split('-').map(Number);
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  const next = day > today ? candidate : new Date(Date.UTC(year, month, day));
+  return next.toISOString().slice(0, 10);
 }
 
 function loadBilling(
@@ -795,8 +797,8 @@ function loadBilling(
         THEN amount_cve - ${balanceSqlExpr('payments')} END), 0) AS paidCve,
       COALESCE(SUM(CASE WHEN ${overdueSqlPredicate()} THEN ${balanceSqlExpr('payments')} END), 0) AS overdueCve,
       COUNT(CASE WHEN ${overdueSqlPredicate()} THEN 1 END) AS overdueCount,
-      COALESCE(SUM(CASE WHEN status = 'pending' AND date(due_date) >= date('now') THEN ${balanceSqlExpr('payments')} END), 0) AS pendingNotDueCve,
-      COUNT(CASE WHEN status = 'pending' AND date(due_date) >= date('now') THEN 1 END) AS pendingNotDueCount,
+      COALESCE(SUM(CASE WHEN status = 'pending' AND date(due_date) >= ${SQL_BUSINESS_TODAY} THEN ${balanceSqlExpr('payments')} END), 0) AS pendingNotDueCve,
+      COUNT(CASE WHEN status = 'pending' AND date(due_date) >= ${SQL_BUSINESS_TODAY} THEN 1 END) AS pendingNotDueCount,
       COALESCE(SUM(CASE WHEN status = 'cancelled' THEN amount_cve END), 0) AS cancelledCve
     FROM payments
   `).get() as Record<string, number>;
@@ -822,7 +824,7 @@ function loadBilling(
   const registeredToday = db.prepare(`
     SELECT COUNT(*) AS count, COALESCE(SUM(amount_cve), 0) AS amountCve
     FROM payment_receipts
-    WHERE voided_at IS NULL AND date(created_at) = date('now')
+    WHERE voided_at IS NULL AND date(created_at, '${CAPE_VERDE_UTC_OFFSET_HOURS} hours') = ${SQL_BUSINESS_TODAY}
   `).get() as { count: number; amountCve: number };
 
   const debtors = db.prepare(`
@@ -865,9 +867,9 @@ function loadBilling(
     SELECT COUNT(*) AS count, COALESCE(SUM(amount_cve), 0) AS amountCve
     FROM payments
     WHERE status = 'pending'
-      AND date(due_date) >= date('now')
+      AND date(due_date) >= ${SQL_BUSINESS_TODAY}
       AND date(due_date) <= date(@billingDate)
-  `).get({ billingDate: isoDate(billingDate) }) as { count: number; amountCve: number };
+  `).get({ billingDate }) as { count: number; amountCve: number };
 
   const documents = db.prepare(`
     SELECT
@@ -914,7 +916,7 @@ function loadBilling(
       code: 'billing.calendar-collision',
       severity: 'amber',
       title: `${num(collisionWindow.count)} fatura(s) vencem antes do próximo ciclo`,
-      detail: `${cve(num(collisionWindow.amountCve))} vencem até ${isoDate(billingDate)}, o dia em que a faturação automática emite o ciclo seguinte. Dois ciclos na mesma janela.`
+      detail: `${cve(num(collisionWindow.amountCve))} vencem até ${billingDate}, o dia em que a faturação automática emite o ciclo seguinte. Dois ciclos na mesma janela.`
     });
   }
 
@@ -956,7 +958,7 @@ function loadBilling(
     calendarCollision: num(collisionWindow.count) > 0
       ? {
           autoBillingDay,
-          nextBillingDate: isoDate(billingDate),
+          nextBillingDate: billingDate,
           dueBeforeBillingCve: num(collisionWindow.amountCve),
           dueBeforeBillingCount: num(collisionWindow.count)
         }

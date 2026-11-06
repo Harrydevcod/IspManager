@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import { getSqliteDatabase } from '../db/database';
 import { loadCompanyOpexContext, loadRevenueAttribution, profitability, type InvestmentBaseRow } from './opex';
 import { formatPtDate, formatPtMonth } from '../../shared/date';
+import { businessDay } from '../../shared/business-day';
 
 const PDFDocument = require('pdfkit');
 
@@ -136,7 +137,7 @@ function formatCve(value: number, currency = 'CVE'): string {
 export async function buildProfitabilityPdf(): Promise<Buffer> {
   const company = loadCompany();
   const data = loadReportData();
-  const today = formatPtDate(new Date().toISOString().slice(0, 10));
+  const today = formatPtDate(businessDay());
 
   return new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 40, autoFirstPage: true, bufferPages: true });

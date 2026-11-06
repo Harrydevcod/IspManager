@@ -12,6 +12,7 @@ import {
   fallbackWhatsappTemplate,
   fallbackWhatsappTestTemplate
 } from '../../shared/whatsapp';
+import { businessDay } from '../../shared/business-day';
 
 let app: FastifyInstance;
 let db: Database.Database;
@@ -51,7 +52,7 @@ describe('fatura manual sem serviço', () => {
 
 // Política: vencimento = data de emissão (hoje) + 30 dias
 function expectedDueIso(): string {
-  const d = new Date();
+  const d = new Date(`${businessDay()}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + 30);
   return d.toISOString().slice(0, 10);
 }
@@ -1139,7 +1140,7 @@ describe('finance routes', () => {
     const pay = await app.inject({
       method: 'POST',
       url: `/api/payments/${original.id}/pay`,
-      payload: { paymentMethod: 'numerario', paymentDate: new Date().toISOString().slice(0, 10) }
+      payload: { paymentMethod: 'numerario', paymentDate: businessDay() }
     });
     expect(pay.statusCode).toBe(200);
     const cancel = await app.inject({
@@ -1333,7 +1334,7 @@ describe('finance routes', () => {
 
     // A emissão é carimbada hoje (date('now')); a data de pagamento não pode
     // ser anterior à emissão, por isso paga-se com uma data >= hoje.
-    const payDate = new Date().toISOString().slice(0, 10);
+    const payDate = businessDay();
     // Uma transferencia tem de dizer em que banco caiu (0058).
     const bank = db.prepare(`
       INSERT INTO treasury_accounts (kind, name, opening_date) VALUES ('banco', 'Banco rota', '2000-01-01')

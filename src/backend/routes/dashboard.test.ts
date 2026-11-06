@@ -5,6 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
+import { businessMonth, businessYear } from '../../shared/business-day';
 
 let app: FastifyInstance;
 let db: Database.Database;
@@ -99,9 +100,8 @@ describe('GET /api/dashboard/summary', () => {
         VALUES ('INDIF', 'Cliente Indiferenciado', 'active', 'indifferentiated')`).run();
       const account = createAccount(db, { kind: 'caixa', name: 'Caixa TV', openingDate: '2020-01-01' });
       if (!account.ok) throw new Error(account.error);
-      const now = new Date();
-      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const issuedOn = period === 'currentMonth' ? `${currentMonth}-01` : `${now.getFullYear() - 1}-12-01`;
+      const currentMonth = businessMonth();
+      const issuedOn = period === 'currentMonth' ? `${currentMonth}-01` : `${businessYear() - 1}-12-01`;
       const ticket = createSaleTicket(db, {
         requestKey: randomUUID(), issuedOn, paymentMethod: 'numerario', accountId: account.value.id,
         lines: [{ description: 'Venda livre', quantity: 1, unitPriceCve: 1250.25 }]
@@ -181,8 +181,7 @@ describe('GET /api/dashboard/summary', () => {
     `).run(clientId.id, planId.id);
     const serviceId = db.prepare(`SELECT id FROM services LIMIT 1`).get() as { id: number };
 
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const currentMonth = businessMonth();
     const dueDate = `${currentMonth}-10`;
 
     seedPaidPayment(clientId.id, serviceId.id, currentMonth, 3500, dueDate, dueDate);
@@ -195,8 +194,8 @@ describe('GET /api/dashboard/summary', () => {
     expect(body.activeServices).toBe(1);
     expect(body.planMix).toEqual([{ connectionType: 'fibra', count: 1 }]);
 
-    expect(body.revenueByMonth[0].referenceMonth).toBe(`${now.getFullYear()}-01`);
-    expect(body.revenueByMonth.at(-1)?.referenceMonth).toBe(`${now.getFullYear()}-12`);
+    expect(body.revenueByMonth[0].referenceMonth).toBe(`${businessYear()}-01`);
+    expect(body.revenueByMonth.at(-1)?.referenceMonth).toBe(`${businessYear()}-12`);
     const currentPoint = body.revenueByMonth.find(
       (p: { referenceMonth: string }) => p.referenceMonth === currentMonth
     );
@@ -214,8 +213,7 @@ describe('GET /api/dashboard/summary', () => {
     `).run(clientId.id, planId.id);
     const serviceId = db.prepare(`SELECT id FROM services LIMIT 1`).get() as { id: number };
 
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const currentMonth = businessMonth();
     const dueDate = `${currentMonth}-15`;
 
     db.prepare(`
@@ -246,10 +244,9 @@ describe('GET /api/dashboard/summary', () => {
     const serviceId = db.prepare(`SELECT id FROM services LIMIT 1`).get() as { id: number };
 
     // Forma real pós-paga: competência do mês fechado, vencimento no mês corrente.
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const previousMonth = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+    const currentMonth = businessMonth();
+    const [cy, cm] = currentMonth.split('-').map(Number);
+    const previousMonth = new Date(Date.UTC(cy, cm - 2, 1)).toISOString().slice(0, 7);
     db.prepare(`
       INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
       VALUES (?, ?, ?, 3000, ?, 'pending')
@@ -276,7 +273,7 @@ describe('GET /api/dashboard/summary', () => {
     const serviceId = db.prepare(`SELECT id FROM services LIMIT 1`).get() as { id: number };
 
     // December of last year is always lexically before the current month.
-    const previousMonth = `${new Date().getFullYear() - 1}-12`;
+    const previousMonth = `${businessYear() - 1}-12`;
     db.prepare(`
       INSERT INTO payments (client_id, service_id, reference_month, amount_cve, due_date, status)
       VALUES (?, ?, ?, 5000, ?, 'overdue')
@@ -302,9 +299,8 @@ describe('GET /api/dashboard/summary', () => {
     `).run(clientId.id, planId.id);
     const serviceId = db.prepare(`SELECT id FROM services LIMIT 1`).get() as { id: number };
 
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const previousMonth = `${now.getFullYear() - 1}-12`;
+    const currentMonth = businessMonth();
+    const previousMonth = `${businessYear() - 1}-12`;
 
     seedPaidPayment(clientId.id, serviceId.id, currentMonth, 2000, `${currentMonth}-08`, `${currentMonth}-08`);
     seedPaidPayment(clientId.id, serviceId.id, previousMonth, 2000, `${previousMonth}-08`, `${previousMonth}-08`);
@@ -328,10 +324,9 @@ describe('GET /api/dashboard/summary', () => {
     `).run(clientId.id, planId.id);
     const serviceId = db.prepare(`SELECT id FROM services LIMIT 1`).get() as { id: number };
 
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const previousMonth = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+    const currentMonth = businessMonth();
+    const [cy, cm] = currentMonth.split('-').map(Number);
+    const previousMonth = new Date(Date.UTC(cy, cm - 2, 1)).toISOString().slice(0, 7);
 
     // Pós-pago: fatura da competência do mês fechado, paga só este mês.
     seedPaidPayment(clientId.id, serviceId.id, previousMonth, 2500, `${previousMonth}-05`, `${currentMonth}-03`);

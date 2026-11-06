@@ -7,6 +7,7 @@ import { escudosToCentavos, isSettled, roundEscudos } from '../../shared/money';
 import { isManualInvoiceReference } from '../../shared/billing-period';
 import { recordReceiptMovement, resolveReceiptAccount, reverseReceiptMovements } from './treasury';
 import { reactivateServiceIfEligibleAfterPayment } from './auto-suspension';
+import { SQL_BUSINESS_TODAY } from '../../shared/business-day';
 
 type PaymentStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';
 type PaymentMethod = 'numerario' | 'transferencia' | 'outro';
@@ -298,7 +299,7 @@ export function regeneratePayment(db: Database, id: number): PaymentOpResult<{
         client_id, service_id, reference_month, amount_cve, due_date,
         status, invoice_number, invoice_date, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, 'pending', NULL, date('now'), datetime('now'), datetime('now'))
+      VALUES (?, ?, ?, ?, ?, 'pending', NULL, ${SQL_BUSINESS_TODAY}, datetime('now'), datetime('now'))
     `).run(payment.clientId, payment.serviceId, payment.referenceMonth, amountCve, dueDate);
     const regeneratedId = Number(inserted.lastInsertRowid);
     const invoiceNumber = allocateDocumentNumber('invoice');
@@ -460,7 +461,7 @@ function writeReceipt(
     INSERT INTO payment_receipts (
       payment_id, amount_cve, payment_date, payment_method, source,
       receipt_number, receipt_date, notes, created_by
-    ) VALUES (?, ?, ?, ?, ?, ?, date('now'), ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ${SQL_BUSINESS_TODAY}, ?, ?)
   `).run(
     head.id,
     input.amountCve,
@@ -481,7 +482,7 @@ function writeReceipt(
     db.prepare(`
       UPDATE payments
       SET status = 'paid', payment_method = ?, payment_date = ?,
-          receipt_number = ?, receipt_date = COALESCE(receipt_date, date('now')),
+          receipt_number = ?, receipt_date = COALESCE(receipt_date, ${SQL_BUSINESS_TODAY}),
           updated_at = datetime('now')
       WHERE id = ?
     `).run(input.paymentMethod, input.paymentDate, receipt.receiptNumber, head.id);
@@ -781,7 +782,7 @@ export function voidReceipt(
 export function overdueSqlPredicate(alias = ''): string {
   const col = alias ? `${alias}.` : '';
   return `(${col}status = 'overdue'`
-    + ` OR (${col}status = 'pending' AND date(${col}due_date) < date('now')))`;
+    + ` OR (${col}status = 'pending' AND date(${col}due_date) < ${SQL_BUSINESS_TODAY}))`;
 }
 
 export function markPaymentOverdue(db: Database, id: number): PaymentOpResult<PaymentRecord> {
