@@ -1,0 +1,132 @@
+/* Uso justo (FUP): barra de consumo, números do ciclo e eventos. */
+
+.fup-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.fup-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--fup-tone);
+  transition: width 400ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.fup-bar-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in oklch, var(--text) 35%, transparent);
+}
+.fup-bar-success { --fup-tone: var(--success); }
+.fup-bar-warn { --fup-tone: var(--warn); }
+.fup-bar-danger { --fup-tone: var(--danger); }
+@media (prefers-reduced-motion: reduce) {
+  .fup-bar-fill { transition: none; }
+}
+
+.fup-headline {
+  font-size: var(--fs-xl);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  margin-right: var(--space-2);
+}
+.fup-cycle {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.fup-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+.fup-figures div { display: grid; gap: 2px; }
+.fup-figures dt { color: var(--text-3); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.04em; }
+.fup-figures dd { margin: 0; font-variant-numeric: tabular-nums; font-weight: 550; }
+.fup-figures small { color: var(--text-3); font-weight: 400; }
+
+.fup-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.fup-events li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.fup-events small { color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+/* Coluna de consumo na lista de clientes. */
+.fup-cell {
+  display: grid;
+  grid-template-columns: 64px auto;
+  align-items: center;
+  gap: var(--space-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.fup-cell .fup-bar { height: 6px; }
+
+/* Configurações › Uso justo */
+.fup-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4) var(--space-5);
+}
+.fup-setting {
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+}
+.fup-setting .field input,
+.fup-setting .field select { max-width: 240px; }
+.fup-setting.fup-setting-text { grid-column: 1 / -1; }
+.fup-setting.fup-setting-text textarea { max-width: 640px; }
+.fup-setting-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+.fup-setting-dirty .field input,
+.fup-setting-dirty .field select,
+.fup-setting-dirty textarea { border-color: var(--accent); }
+
+.fup-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r2, 10px);
+  background: var(--surface-2);
+}
+.fup-preview strong { font-variant-numeric: tabular-nums; font-size: var(--fs-xl); }
+.fup-preview-delta { color: var(--text-3); font-size: var(--fs-sm); }
+.fup-preview-actions { margin-left: auto; display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+.fup-history-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: end;
+}
+.fup-history-filters .field input,
+.fup-history-filters .field select { max-width: 220px; }
+.fup-history-table td { font-variant-numeric: tabular-nums; }

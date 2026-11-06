@@ -1,4 +1,4 @@
-import { Activity, Banknote, Building2, CreditCard, DatabaseBackup, KeyRound, MessageCircle, Radar, Smartphone } from 'lucide-react';
+import { Activity, Banknote, Building2, CreditCard, DatabaseBackup, Gauge, KeyRound, MessageCircle, Radar, Smartphone } from 'lucide-react';
 import QRCode from 'qrcode';
 import type { FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -37,9 +37,10 @@ import { ErrorReportsPanel } from './ErrorReportsPanel';
 import { JobHealthPanel } from './JobHealthPanel';
 import { LicensePanel } from './LicensePanel';
 import { VaultPanel } from './settings/VaultPanel';
+import { FupSettingsPanel } from './settings/FupSettingsPanel';
 import { useAuth } from '../lib/auth';
 
-type SettingsTab = 'company' | 'billing' | 'payments' | 'whatsapp' | 'sms' | 'network' | 'backups' | 'jobs' | 'license' | 'vault';
+type SettingsTab = 'company' | 'billing' | 'payments' | 'whatsapp' | 'sms' | 'network' | 'fup' | 'backups' | 'jobs' | 'license' | 'vault';
 
 const TABS: { id: SettingsTab; label: string; icon: typeof Building2 }[] = [
   { id: 'company', label: 'Empresa', icon: Building2 },
@@ -48,6 +49,7 @@ const TABS: { id: SettingsTab; label: string; icon: typeof Building2 }[] = [
   { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
   { id: 'sms', label: 'SMS', icon: Smartphone },
   { id: 'network', label: 'Rede', icon: Radar },
+  { id: 'fup', label: 'Uso justo', icon: Gauge },
   { id: 'backups', label: 'Backups', icon: DatabaseBackup },
   { id: 'jobs', label: 'Automatismos', icon: Activity },
   { id: 'license', label: 'Licença', icon: KeyRound },
@@ -999,6 +1001,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
         onConfirm={(password) => void confirmSmsPassword(password)}
         onClose={() => setSmsPasswordFor(null)}
       />
+
+      {activeTab === 'fup' && <FupSettingsPanel />}
 
       {activeTab === 'backups' && <BackupsPanel />}
 

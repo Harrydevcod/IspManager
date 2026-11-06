@@ -27,7 +27,7 @@ const plan = {
 };
 
 const cases: Array<{ name: string; render: () => ReactElement; headers: string[] }> = [
-  { name: 'Clientes', render: () => <ClientsModule />, headers: ['Código', 'Nome', 'Telefone', 'Ilha', 'Zona', 'Estado', 'Ações'] },
+  { name: 'Clientes', render: () => <ClientsModule />, headers: ['Código', 'Nome', 'Telefone', 'Ilha', 'Zona', 'PPPoE', 'Consumo do ciclo', 'Estado', 'Ações'] },
   { name: 'Serviços', render: () => <ServicesModule />, headers: ['Código', 'Cliente', 'Plano', 'Dia venc.', 'IP', 'Mensalidade', 'TV', 'Estado', 'Ações'] },
   { name: 'Planos', render: () => <PlansModule />, headers: ['Código', 'Nome', 'Tipo', 'Velocidade ↓/↑', 'Preço/mês', 'Router', 'Estado', 'Ações'] }
 ];

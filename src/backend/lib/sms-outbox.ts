@@ -13,7 +13,7 @@ export type SmsDispatchResult = { ok: true; androidRequestId: string } | { ok: f
 export type SmsStatusResult = { status: SmsOutboxStatus; error?: string; deliveredAt?: string | null };
 
 export type SmsOutboxDeps = {
-  postRequest: (entry: { id: number; requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test'; clientName: string | null }) => Promise<SmsDispatchResult>;
+  postRequest: (entry: { id: number; requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test' | 'fup_notice'; clientName: string | null }) => Promise<SmsDispatchResult>;
   fetchStatus: (androidRequestId: string) => Promise<SmsStatusResult>;
 };
 
@@ -21,7 +21,7 @@ export type EnqueueSmsInput = {
   clientId?: number | null;
   paymentId?: number | null;
   serviceId?: number | null;
-  eventType: SmsEventType | 'test';
+  eventType: SmsEventType | 'test' | 'fup_notice';
   toPhone: string;
   body: string;
 };
@@ -221,7 +221,7 @@ export async function selfHealCompanionAddress(): Promise<void> {
   if (found && found !== current) setSetting('smsCompanionBaseUrl', found);
 }
 
-async function defaultPostRequest(entry: { requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test'; clientName: string | null }): Promise<SmsDispatchResult> {
+async function defaultPostRequest(entry: { requestId: string; toPhone: string; body: string; eventType: SmsEventType | 'test' | 'fup_notice'; clientName: string | null }): Promise<SmsDispatchResult> {
   try {
     const response = await signedFetch('/requests', 'POST', entry);
     const json = await readJson(response);
@@ -268,7 +268,7 @@ export async function runSmsOutboxIfDue(
     ORDER BY s.id ASC LIMIT 20
   `).all(nowIso) as Array<{
     id: number;
-    eventType: SmsEventType | 'test';
+    eventType: SmsEventType | 'test' | 'fup_notice';
     toPhone: string;
     body: string;
     attempts: number;

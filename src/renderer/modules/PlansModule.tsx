@@ -20,6 +20,8 @@ type PlanFormState = {
   downloadMbps: string;
   uploadMbps: string;
   routerProfile: string;
+  fupReferenceGb: string;
+  fupPeakPercent: string;
   connectionType: 'radio' | 'fibra' | 'cabo' | 'outro';
   monthlyPriceCve: string;
   installationFeeCve: string;
@@ -36,6 +38,8 @@ function emptyPlanForm(): PlanFormState {
     downloadMbps: '',
     uploadMbps: '',
     routerProfile: '',
+    fupReferenceGb: '0',
+    fupPeakPercent: '',
     connectionType: 'fibra',
     monthlyPriceCve: '',
     installationFeeCve: '',
@@ -125,6 +129,8 @@ export function PlansModule() {
       downloadMbps: plan.downloadMbps == null ? '' : String(plan.downloadMbps),
       uploadMbps: plan.uploadMbps == null ? '' : String(plan.uploadMbps),
       routerProfile: plan.routerProfile ?? '',
+      fupReferenceGb: String(plan.fupReferenceGb ?? 0),
+      fupPeakPercent: plan.fupPeakPercent == null ? '' : String(plan.fupPeakPercent),
       connectionType: plan.connectionType,
       monthlyPriceCve: String(plan.monthlyPriceCve),
       installationFeeCve: String(plan.installationFeeCve),
@@ -155,6 +161,9 @@ export function PlansModule() {
         downloadMbps: form.downloadMbps ? Number(form.downloadMbps) : null,
         uploadMbps: form.uploadMbps ? Number(form.uploadMbps) : null,
         routerProfile: form.routerProfile.trim() || null,
+        // Os campos FUP só vão do administrador; para os outros ficam como estão.
+        fupReferenceGb: canReprice ? Number(form.fupReferenceGb || 0) : undefined,
+        fupPeakPercent: canReprice ? (form.fupPeakPercent ? Number(form.fupPeakPercent) : null) : undefined,
         active: form.active === '1'
       })
     });
@@ -394,6 +403,30 @@ export function PlansModule() {
             onChange={(value) => updateForm('routerProfile', value)}
             savedPlan={editingPlan ? { id: editingPlan.id, routerProfile: editingPlan.routerProfile ?? null } : null}
             canWriteRouter={canReprice}
+          />
+          <Field
+            label="Consumo de referência (GB)"
+            type="number"
+            min={0}
+            step={1}
+            value={form.fupReferenceGb}
+            disabled={!canReprice}
+            onChange={(event) => updateForm('fupReferenceGb', event.target.value)}
+            hint="Por ciclo, download + upload. 0 = plano fora do uso justo."
+          />
+          <Field
+            label="Velocidade no pico (%)"
+            type="number"
+            min={1}
+            max={200}
+            step={1}
+            value={form.fupPeakPercent}
+            placeholder="Global"
+            disabled={!canReprice}
+            onChange={(event) => updateForm('fupPeakPercent', event.target.value)}
+            hint={form.routerProfile.trim()
+              ? `Perfil limitado: ${form.routerProfile.trim()}-FUP. Vazio = a % das Configurações.`
+              : 'Vazio = a % das Configurações › Uso justo.'}
           />
           <Field label="Mensalidade CVE" required type="number" min={0} value={form.monthlyPriceCve} onChange={(event) => updateForm('monthlyPriceCve', event.target.value)} />
           <Field label="Instalacao CVE" type="number" min={0} value={form.installationFeeCve} onChange={(event) => updateForm('installationFeeCve', event.target.value)} />

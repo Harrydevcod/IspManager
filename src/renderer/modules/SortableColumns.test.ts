@@ -48,6 +48,7 @@ describe('colunas ordenáveis', () => {
       'router/RouterTables.tsx',
       'services/BulkPlanChangeDialog.tsx',
       'services/EquipmentImportDialog.tsx',
+      'settings/FupSettingsPanel.tsx',
       'settings/NetworkTab.tsx',
       'support/SupportModule.tsx',
       'topology/IncidentsWorkspace.tsx',
