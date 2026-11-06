@@ -29,7 +29,8 @@ import { useLive } from './useLive';
 import { PRESENCE_URL, presenceMessage, type NetworkPresence } from '../../lib/networkPresence';
 import { WanTraffic } from './WanTraffic';
 import { WanUsage } from './WanUsage';
-import { ClientUsage, type ClientUsageRow } from './ClientUsage';
+import { ClientUsage, type ClientUsageFup, type ClientUsageRow } from './ClientUsage';
+import { FUP_API } from '../fup/fup-api';
 import { ConfigBackups, type ConfigSnapshots } from './ConfigBackups';
 import './RouterModule.css';
 
@@ -177,6 +178,7 @@ export default function RouterModule() {
   const profiles = useLive<Live<{ profiles: RouterProfileOption[] }>>(`${ROUTER_API}/profiles`, tab === 'profiles');
   const log = useLive<Live<RouterLog>>(`${ROUTER_API}/log`, tab === 'log');
   const consumption = useLive<ClientUsageRow[]>(`${ROUTER_API}/clients/usage`, tab === 'consumption', 60_000);
+  const consumptionFup = useLive<ClientUsageFup>(`${FUP_API}/usage`, tab === 'consumption', 60_000);
   const plans = useLive<PlanRow[]>('http://127.0.0.1:3001/api/plans', tab === 'profiles');
 
   const backups = useLive<ConfigSnapshots>(`${ROUTER_API}/config/snapshots`, tab === 'backups', 60_000);
@@ -291,7 +293,7 @@ export default function RouterModule() {
         )}
         {tab === 'consumption' && (
           consumption.error && !consumption.data ? <ErrorRetry message={consumption.error} onRetry={consumption.reload} />
-            : consumption.data ? <ClientUsage rows={consumption.data} onInstalled={consumption.reload} /> : <SkeletonList rows={5} />
+            : consumption.data ? <ClientUsage rows={consumption.data} fup={consumptionFup.data ?? null} onInstalled={consumption.reload} /> : <SkeletonList rows={5} />
         )}
       </div>
 
