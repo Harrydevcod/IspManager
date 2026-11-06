@@ -1,5 +1,7 @@
-import { describe, expect, test } from 'vitest';
-import { formatGb, summarizeByClient, usageTone, type FupUsage } from './fup-api';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { formatGb, fupRequest, summarizeByClient, usageTone, type FupUsage } from './fup-api';
+
+afterEach(() => vi.unstubAllGlobals());
 
 const thresholds = { aviso: 80, limitacao: 100 };
 
@@ -11,6 +13,10 @@ const row = (overrides: Partial<FupUsage>): FupUsage => ({
 });
 
 describe('uso justo no ecrã', () => {
+  test('falha de rede apresenta uma mensagem compreensível', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    await expect(fupRequest('/settings')).rejects.toThrow('Sem ligação ao servidor.');
+  });
   test('verde até ao aviso, laranja até à limitação, vermelho acima', () => {
     expect(usageTone(79.9, thresholds)).toBe('success');
     expect(usageTone(80, thresholds)).toBe('warn');

@@ -129,6 +129,7 @@ describe('motor', () => {
     expect(d.enqueueNotice).toHaveBeenCalledTimes(1);
     expect(d.enqueueNotice.mock.calls[0][0]).toMatchObject({ channel: 'WHATSAPP', phone: '9911111', serviceId });
     expect(d.enqueueNotice.mock.calls[0][0].body).toContain('85%');
+    expect(d.enqueueNotice.mock.calls[0][0].body).toContain('(85,0 de');
 
     addUsage('2026-10-14', 20);
     runFupEngine(db, offPeak('2026-10-22'), d);

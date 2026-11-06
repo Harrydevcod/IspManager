@@ -263,7 +263,7 @@ export function runFupEngine(db: Database.Database, now: Date, deps: FupEngineDe
     let state = row.state;
     for (const kind of nextTransitions(state, row.percent, settings)) {
       const detail = {
-        de: state, para: kind, percent: Math.round(row.percent), gb: Number(bytesToGb(row.totalBytes).toFixed(2)),
+        de: state, para: kind, percent: Math.round(row.percent), gb: Number(bytesToGb(row.totalBytes).toFixed(1)), // a casa que o ecrã mostra: sem duplo arredondamento
         referenciaGb: row.referenceGb, plano: row.planName, ciclo: `${row.cycle.start}..${row.cycle.end}`
       };
       if (!log(row, kind, row.cycle.period, detail)) continue;
@@ -271,7 +271,7 @@ export function runFupEngine(db: Database.Database, now: Date, deps: FupEngineDe
       // `whatsapp_opt_out` é a única recusa de avisos do ISPM: vale para os dois canais.
       if (kind === 'AVISO' && row.phone && !row.whatsappOptOut) {
         const body = renderFupMessage(settings.mensagem_aviso, {
-          nome: row.clientName, percent: Math.round(row.percent), gb: bytesToGb(row.totalBytes).toFixed(1),
+          nome: row.clientName, percent: Math.round(row.percent), gb: bytesToGb(row.totalBytes).toFixed(1).replace('.', ','),
           referencia: row.referenceGb, inicio: settings.janela_pico_inicio, fim: settings.janela_pico_fim, pico: row.peakPercent
         });
         try {

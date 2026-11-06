@@ -197,8 +197,8 @@ export function ClientsModule({
           })
           .catch(() => setFupUsage([]));
       })
-      .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : 'Erro ao carregar clientes';
+      .catch(() => {
+        const message = 'Não foi possível carregar os clientes.';
         setLoadError(message);
         toast(message, 'error');
       })
@@ -552,7 +552,7 @@ export function ClientsModule({
           onToggle={columnVisibility.toggle}
           onReset={columnVisibility.reset}
         />
-        <small>{visibleClients.length} clientes</small>
+        {!loadError && <small>{visibleClients.length} clientes</small>}
       </FilterBar>
 
       {/*
