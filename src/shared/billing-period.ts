@@ -1,3 +1,5 @@
+import { businessDay } from './business-day';
+
 export const DEFAULT_POSTPAID_BILLING_DAY = 30;
 
 /**
@@ -38,9 +40,7 @@ export function defaultPostpaidReferenceMonth(
   now: Date = new Date(),
   billingDay: number = DEFAULT_POSTPAID_BILLING_DAY
 ): string {
-  if (now.getDate() >= billingDay) {
-    return monthKey(now.getFullYear(), now.getMonth());
-  }
-  const previous = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return monthKey(previous.getFullYear(), previous.getMonth());
+  const [year, month, day] = businessDay(now).split('-').map(Number);
+  if (day >= billingDay) return monthKey(year, month - 1);
+  return month === 1 ? monthKey(year - 1, 11) : monthKey(year, month - 2);
 }

@@ -7,9 +7,10 @@ import { formatCve } from '../lib/format';
 import './InvestmentsModule.css';
 import { EMPTY_INVESTMENT_LIST, EMPTY_PORTFOLIO, type InvestmentList, type PortfolioReport, type RevenuePoint } from '../types';
 import { PortfolioTable } from './finance/PortfolioTable';
+import { businessDay, businessMonth } from '../../shared/business-day';
 
 function currentMonth() {
-  return new Date().toISOString().slice(0, 7);
+  return businessMonth();
 }
 
 /**
@@ -67,7 +68,7 @@ export function ProfitModule() {
     setExportBusy(format);
     setExportError(null);
     try {
-      const fallback = `Rentabilidade-${new Date().toISOString().slice(0, 10)}.${format}`;
+      const fallback = `Rentabilidade-${businessDay()}.${format}`;
       await downloadAuthenticated(`http://127.0.0.1:3001/api/investments/report.${format}`, fallback);
     } catch {
       setExportError('Não foi possível gerar o relatório. Tenta novamente.');

@@ -8,6 +8,7 @@ import { cashReceiptFilterSql } from '../lib/payments';
 import { externalInvestmentCapexCve, externalInvestmentCapexSql, parkValue, stockCapexByYear, stockCapexCve } from '../lib/capex';
 import { syncSourceMovement, validatePayingAccount } from '../lib/treasury';
 import { requireAuth, requireRole } from './auth';
+import { businessDay, businessMonth } from '../../shared/business-day';
 
 const investmentType = z.enum(['cliente', 'zona', 'equipamento', 'infraestrutura', 'manutencao', 'expansao', 'outro']);
 const investmentStatus = z.enum(['planeado', 'em_execucao', 'ativo', 'recuperado', 'cancelado']);
@@ -554,7 +555,7 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
 
   app.get('/api/investments/report.pdf', { preHandler: requireRole(['admin', 'operator']) }, async (request, reply) => {
     const buffer = await buildProfitabilityPdf();
-    const filename = `Rentabilidade-${new Date().toISOString().slice(0, 10)}.pdf`;
+    const filename = `Rentabilidade-${businessDay()}.pdf`;
     const inline = (request.query as { inline?: string } | undefined)?.inline === '1';
     reply
       .header('Content-Type', 'application/pdf')
@@ -564,7 +565,7 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
 
   app.get('/api/investments/report.xlsx', { preHandler: requireRole(['admin', 'operator']) }, async (request, reply) => {
     const buffer = await buildProfitabilityXlsx();
-    const filename = `Rentabilidade-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const filename = `Rentabilidade-${businessDay()}.xlsx`;
     reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="${filename}"`)
@@ -592,8 +593,7 @@ export async function registerInvestmentRoutes(app: FastifyInstance) {
     const installed = Number(inv.installedClients) || 0;
 
     const startMonth = inv.investmentDate.slice(0, 7);
-    const now = new Date();
-    const endMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const endMonth = businessMonth();
 
     const months: string[] = [];
     {

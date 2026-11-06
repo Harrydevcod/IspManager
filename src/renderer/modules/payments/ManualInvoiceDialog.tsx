@@ -4,6 +4,7 @@ import { Button, Combobox, Dialog, Field, Message, Select, Textarea, Toggle } fr
 import { authFetch } from '../../lib/auth';
 import { formatCve } from '../../lib/format';
 import type { ArticleRow, Client, ServiceRow } from '../../types';
+import { businessDay } from '../../../shared/business-day';
 
 const API = 'http://127.0.0.1:3001/api';
 const MAX_LINES = 20;
@@ -20,7 +21,7 @@ type ManualInvoiceDialogProps = {
 };
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return businessDay();
 }
 
 const emptyLine = (): Line => ({ description: '', quantity: '1', amount: '' });

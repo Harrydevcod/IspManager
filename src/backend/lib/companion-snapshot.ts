@@ -8,6 +8,7 @@ import type { OperationsSeverity } from '../../shared/operations-status';
 import { normalizeSmsPhone } from '../../shared/sms';
 import { balanceSqlExpr, cashReceiptFilterSql, overdueSqlPredicate } from './payments';
 import { openPaymentLinkSql } from './vinti4';
+import { SQL_BUSINESS_TODAY, sqlBusinessDate } from '../../shared/business-day';
 
 /**
  * O resumo que o desktop envia ao telemóvel pareado para o Painel da app.
@@ -176,7 +177,7 @@ function loadCashToday(db: Database.Database): CompanionSnapshot['money']['cashT
   const byAccount = db.prepare(`
     SELECT COALESCE(a.name, 'Sem conta') AS name, SUM(r.amount_cve) AS amountCve
     FROM payment_receipts r LEFT JOIN treasury_accounts a ON a.id = r.account_id
-    WHERE ${cashReceiptFilterSql('r')} AND r.payment_date = date('now', '-1 hours')
+    WHERE ${cashReceiptFilterSql('r')} AND r.payment_date = ${SQL_BUSINESS_TODAY}
     GROUP BY r.account_id
     ORDER BY amountCve DESC
   `).all() as Array<{ name: string; amountCve: number }>;
@@ -188,7 +189,7 @@ function loadCashToday(db: Database.Database): CompanionSnapshot['money']['cashT
 
 function loadMonthlyReceipts(db: Database.Database): CompanionSnapshot['money']['monthlyReceipts'] {
   const months = [5, 4, 3, 2, 1, 0].map((back) =>
-    (db.prepare(`SELECT strftime('%Y-%m', date('now', '-1 hours', 'start of month', ?)) AS m`).get(`-${back} months`) as { m: string }).m);
+    (db.prepare(`SELECT strftime('%Y-%m', ${sqlBusinessDate("'start of month'", '?')}) AS m`).get(`-${back} months`) as { m: string }).m);
   const totals = new Map((db.prepare(`
     SELECT substr(r.payment_date, 1, 7) AS month, SUM(r.amount_cve) AS amountCve
     FROM payment_receipts r

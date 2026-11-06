@@ -6,6 +6,7 @@ import { lineRef } from './articles';
 import { loadCompany, computeTotals } from './documents';
 import type { UserRole } from './auth';
 import type { Proposal, ProposalAction, ProposalDraftInput, ProposalLine, ProposalList, ProposalSnapshot, ProposalStatus, ProposalSummary, ProposalTax, InformativeDocumentType, PaymentRequest } from '../../shared/proposals';
+import { businessYear } from '../../shared/business-day';
 export class ProposalError extends Error {
     constructor(message: string, public statusCode = 400) { super(message); }
 }
@@ -262,7 +263,7 @@ function issueProposal(proposal: Row, request?: FastifyRequest) {
     }
     // Revalidate stored payment instructions before allocating a number.
     validate({documentType: proposal.document_type, paymentRequest: proposal.payment_request_json ? JSON.parse(proposal.payment_request_json) : null, clientId: null, recipient: JSON.parse(proposal.recipient_json), title: proposal.title, validUntil: proposal.valid_until, conditions: proposal.conditions, lines: getProposal(proposal.id).lines.map(({kind,description,period,quantity,unitPriceCentavos,planId,catalogId,articleId}) => ({kind,description,period,quantity,unitPriceCentavos,planId,catalogId,articleId}))});
-    const year = new Date().getFullYear();
+    const year = businessYear();
     const series = {proposal: ['PR','proposal_sequences'], quotation: ['OR','quotation_sequences'], proforma: ['PF','proforma_sequences']}[proposal.document_type];
     const sequence = db.prepare(`INSERT INTO ${series[1]}(year,last_number) VALUES(?,1)
         ON CONFLICT(year) DO UPDATE SET last_number=last_number+1 RETURNING last_number`).get(year) as {last_number:number};

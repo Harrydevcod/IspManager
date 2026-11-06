@@ -10,9 +10,10 @@ import {
   type TreasuryAccountKind,
   type TreasuryMovement
 } from '../../lib/treasury';
+import { businessDay } from '../../../shared/business-day';
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return businessDay();
 }
 
 function parseMoney(value: string): number {

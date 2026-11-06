@@ -11,6 +11,7 @@ import {
 } from '../../shared/whatsapp';
 import { enqueueWhatsapp } from './whatsapp-outbox';
 import { configuredWhatsappProviderLabel, normalizeWhatsappPhone, resolveWhatsappProvider } from './whatsapp-provider';
+import { businessDay, sqlBusinessDate } from '../../shared/business-day';
 
 const LAST_RUN_KEY = 'lastOverdueNoticesDate';
 const DEFAULT_REMINDER_DAYS = 3;
@@ -92,7 +93,7 @@ export function loadOverdueCandidates(reminderWindow: number): OverdueCandidate[
     JOIN clients c ON c.id = py.client_id
     WHERE c.system_kind IS NULL AND py.document_type = 'invoice'
       AND (py.status = 'overdue'
-           OR (py.status = 'pending' AND py.due_date <= date('now', '+' || ? || ' days')))
+           OR (py.status = 'pending' AND py.due_date <= ${sqlBusinessDate("'+' || ? || ' days'")}))
     ORDER BY py.due_date ASC
   `).all(reminderWindow) as OverdueCandidate[];
 }
@@ -159,7 +160,7 @@ export async function runOverdueNoticesIfDue(
     return { skipped: true, reason: `${configuredWhatsappProviderLabel(getSqliteDatabase())} nao configurado` };
   }
 
-  const todayIso = now.toISOString().slice(0, 10);
+  const todayIso = businessDay(now);
   if (getSetting(LAST_RUN_KEY) === todayIso) {
     return { skipped: true, reason: `avisos de ${todayIso} ja executados` };
   }

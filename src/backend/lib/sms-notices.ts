@@ -11,6 +11,7 @@ import {
   renderSmsTemplate,
   type SmsEventType
 } from '../../shared/sms';
+import { businessDay } from '../../shared/business-day';
 
 const LAST_RUN_KEY = 'lastSmsOverdueNoticesDate';
 const DEFAULT_SUSPENSION_DAYS = 15;
@@ -34,7 +35,7 @@ function writeSetting(key: string, value: string): void {
 
 /** Cheap pre-check for the hourly timer: true when today's run hasn't happened. */
 export function smsOverdueNoticesDueToday(now: Date = new Date()): boolean {
-  return getSetting('smsAutoNoticesEnabled') === 'true' && getSetting(LAST_RUN_KEY) !== now.toISOString().slice(0, 10);
+  return getSetting('smsAutoNoticesEnabled') === 'true' && getSetting(LAST_RUN_KEY) !== businessDay(now);
 }
 
 export function smsTemplateFor(eventType: SmsEventType): string {
@@ -77,7 +78,7 @@ export function runSmsOverdueNoticesIfDue(now: Date = new Date()): SmsOverdueNot
     return { skipped: true, reason: 'telemovel SMS nao pareado' };
   }
 
-  const todayIso = now.toISOString().slice(0, 10);
+  const todayIso = businessDay(now);
   if (getSetting(LAST_RUN_KEY) === todayIso) {
     return { skipped: true, reason: `avisos SMS de ${todayIso} ja executados` };
   }

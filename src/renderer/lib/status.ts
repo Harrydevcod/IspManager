@@ -1,4 +1,5 @@
 import type { EffectivePaymentStatus, PaymentRow } from '../types';
+import { businessDay } from '../../shared/business-day';
 
 type BadgeTone = 'success' | 'danger' | 'info' | 'neutral' | 'accent';
 
@@ -13,12 +14,12 @@ type BadgeTone = 'success' | 'danger' | 'info' | 'neutral' | 'accent';
  * passou o prazo continua a ser dívida vencida, e trocar o vermelho por um
  * âmbar simpático era esconder o caso que se quer ver primeiro.
  *
- * O "hoje" é UTC como em todo o lado (o SQLite compara com date('now'), que
- * também é UTC): se divergissem, cliente e servidor discordavam à meia-noite.
+ * O "hoje" é o de Cabo Verde, o mesmo do backend (`SQL_BUSINESS_TODAY`): se divergissem,
+ * cliente e servidor discordavam à meia-noite.
  */
 export function effectivePaymentStatus(
   payment: Pick<PaymentRow, 'status' | 'dueDate'> & { receivedCve?: number },
-  today = new Date().toISOString().slice(0, 10)
+  today = businessDay()
 ): EffectivePaymentStatus {
   if (payment.status === 'pending' && payment.dueDate < today) return 'overdue';
   if (payment.status === 'pending' && (payment.receivedCve || 0) > 0) return 'partial';

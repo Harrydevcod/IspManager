@@ -4,6 +4,7 @@ import type {
   FiscalDocument,
   FiscalDocumentList,
 } from "../../shared/fiscal-documents";
+import { SQL_BUSINESS_TODAY } from '../../shared/business-day';
 const date = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -38,7 +39,7 @@ export function listFiscalDocuments(
   const source = `WITH archive AS (
     SELECT 'payment' source, p.id sourceId, p.id paymentId, p.document_type documentType, p.invoice_number number,
       COALESCE(p.invoice_date,p.created_at) date, p.client_id clientId, c.full_name clientName,
-      p.amount_cve amountCve, CASE WHEN p.status='pending' AND p.due_date < date('now','localtime') THEN 'overdue' ELSE p.status END status
+      p.amount_cve amountCve, CASE WHEN p.status='pending' AND p.due_date < ${SQL_BUSINESS_TODAY} THEN 'overdue' ELSE p.status END status
       FROM payments p JOIN clients c ON c.id=p.client_id WHERE p.invoice_number IS NOT NULL AND trim(p.invoice_number)<>'' AND upper(trim(p.invoice_number))<>'PENDING'
     UNION ALL
     SELECT 'receipt', r.id, p.id, 'receipt', r.receipt_number, r.receipt_date, p.client_id, c.full_name,

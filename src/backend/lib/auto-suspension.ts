@@ -10,6 +10,7 @@ import {
   readRouterConfig,
   testConnection
 } from './routeros';
+import { SQL_BUSINESS_TODAY } from '../../shared/business-day';
 
 let lastGate: 'ok' | 'offsite' | 'foreign' | 'unreachable' | null = null;
 
@@ -117,7 +118,7 @@ const balanceExpr = `(
  */
 const suspendableInvoiceSql = `
   p.status IN ('pending', 'overdue')
-  AND date(p.due_date, '+' || ? || ' days') < date('now')
+  AND date(p.due_date, '+' || ? || ' days') < ${SQL_BUSINESS_TODAY}
   AND ${balanceExpr} > 0.005
   AND NOT EXISTS (
     SELECT 1 FROM service_events e
@@ -174,7 +175,7 @@ function rawCandidates(db: Database.Database, graceDays: number): SuspensionCand
       p.id AS paymentId,
       p.invoice_number AS invoiceNumber,
       p.due_date AS dueDate,
-      CAST(julianday(date('now')) - julianday(date(p.due_date)) AS INTEGER) AS daysOverdue,
+      CAST(julianday(${SQL_BUSINESS_TODAY}) - julianday(date(p.due_date)) AS INTEGER) AS daysOverdue,
       ${balanceExpr} AS balanceCve
     FROM services s
     JOIN clients c ON c.id = s.client_id

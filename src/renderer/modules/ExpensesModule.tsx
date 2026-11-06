@@ -9,6 +9,7 @@ import { formatCve, formatPtDate, formatPtMonth } from '../lib/format';
 import './ExpensesModule.css';
 import { AccountSelect } from './treasury/AccountSelect';
 import type { Client, Expense, ExpenseCategory, ExpenseList, ExpenseTemplate, ExpenseTemplateList, Investment, InvestmentList } from '../types';
+import { businessDay } from '../../shared/business-day';
 
 type AllocationTarget = 'none' | 'investment' | 'zone' | 'client';
 
@@ -46,7 +47,7 @@ type FormState = {
 };
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return businessDay();
 }
 
 function currentMonth() {

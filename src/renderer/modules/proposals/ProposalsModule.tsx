@@ -35,6 +35,7 @@ import {
   parsePaymentAmount,
 } from "./draft";
 import "./ProposalsModule.css";
+import { businessDay } from '../../../shared/business-day';
 
 /** Um botão por tipo: o operador vê logo que há orçamento e proforma, não só proposta. */
 const NEW_DOCUMENT_BUTTONS: Array<[InformativeDocumentType, string]> = [
@@ -106,7 +107,7 @@ export function ProposalsModule({
   const [actor, setActor] = useState("");
   const [channel, setChannel] = useState("WhatsApp");
   const [deliveredAt, setDeliveredAt] = useState(
-    new Date().toISOString().slice(0, 10),
+    businessDay(),
   );
   const [documentTypeFilter, setDocumentTypeFilter] = useState("");
   const [paymentAmount, setPaymentAmount] = useState("");

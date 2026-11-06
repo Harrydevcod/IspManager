@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { getSqliteDatabase } from '../db/database';
 import { balanceSqlExpr, cashReceiptFilterSql, overdueSqlPredicate } from './payments';
+import { businessMonth, businessYear, SQL_BUSINESS_TODAY, sqlBusinessDate } from '../../shared/business-day';
 
 type DashboardMetricRow = {
   totalClients: number;
@@ -43,19 +44,17 @@ export type CriticalOverdue = {
 type PlanMixEntry = { connectionType: string; count: number };
 
 function currentMonthKey(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return businessMonth();
 }
 
 function previousMonthKey(): string {
-  const now = new Date();
-  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+  const [year, month] = businessMonth().split('-').map(Number);
+  return new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 7);
 }
 
 function currentYearMonths(): string[] {
   const months: string[] = [];
-  const year = new Date().getFullYear();
+  const year = businessYear();
   for (let m = 1; m <= 12; m++) {
     months.push(`${year}-${String(m).padStart(2, '0')}`);
   }
@@ -182,8 +181,8 @@ export function loadDashboardSummary(db: Database.Database = getSqliteDatabase()
     FROM payments
     JOIN clients ON clients.id = payments.client_id
     WHERE payments.status = 'pending'
-      AND payments.due_date >= date('now')
-      AND payments.due_date < date('now', '+7 days')
+      AND payments.due_date >= ${SQL_BUSINESS_TODAY}
+      AND payments.due_date < ${sqlBusinessDate("'+7 days'")}
     ORDER BY payments.due_date ASC
     LIMIT 6
   `).all() as UpcomingDue[];
