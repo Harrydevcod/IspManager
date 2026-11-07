@@ -88,10 +88,8 @@ export async function registerIptvRoutes(app: FastifyInstance) {
     const { iptvVpn, iptvProviderId } = parsed.data;
     // Ao desmarcar o fornecedor não conta: grava-se null em vez de validar um id que já não se usa.
     if (iptvVpn && iptvProviderId !== null) {
-      const provider = db.prepare('SELECT active, needs_vpn AS needsVpn FROM iptv_providers WHERE id = ?').get(iptvProviderId) as
-        { active: number; needsVpn: number } | undefined;
+      const provider = db.prepare('SELECT active FROM iptv_providers WHERE id = ?').get(iptvProviderId) as { active: number } | undefined;
       if (!provider || !provider.active) return reply.status(400).send({ error: 'Fornecedor de IPTV inexistente ou inactivo' });
-      if (!provider.needsVpn) return reply.status(400).send({ error: 'Este fornecedor de IPTV não precisa de VPN' });
     }
     const after = { iptvVpn: iptvVpn ? 1 : 0, iptvProviderId: iptvVpn ? iptvProviderId : null };
     db.transaction(() => {

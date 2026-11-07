@@ -103,8 +103,8 @@ export function IptvSection({ service, canManage, onChanged, assignments }: Iptv
     }
   };
 
-  // Só os que precisam de VPN; um desativado ou sem VPN continua a aparecer enquanto for o deste serviço.
-  const options = providers.filter((p) => (p.active === 1 && p.needsVpn === 1) || p.id === service.iptvProviderId);
+  // Todos os ativos, com e sem VPN; um desativado continua a aparecer enquanto for o deste serviço.
+  const options = providers.filter((p) => p.active === 1 || p.id === service.iptvProviderId);
   const optionLabel = (p: IptvProvider) => p.active !== 1 ? `${p.name} (desativado)` : p.needsVpn !== 1 ? `${p.name} (sem VPN)` : p.name;
   const source = target ? describeSource(target.source) : null;
   const seen = validation ? describeValidation(validation) : null;

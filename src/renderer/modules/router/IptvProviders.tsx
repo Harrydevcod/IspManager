@@ -117,7 +117,7 @@ export function IptvProviders({ providers, canEdit, onChanged }: { providers: Ip
         rows={providers}
         rowKey={(row) => row.id}
         columns={columns}
-        gridTemplateColumns="minmax(10rem, 1.2fr) 7rem 9rem 8rem minmax(10rem, 2fr)"
+        gridTemplateColumns="minmax(10rem, 1.2fr) 7rem 9rem 8rem minmax(8rem, 2fr)"
         actionsWidth="56px"
         actions={canEdit ? (row) => (
           <Button variant="icon" size="sm" title="Editar" aria-label={`Editar ${row.name}`} onClick={() => { setEditing(row); setOpen(true); }}>

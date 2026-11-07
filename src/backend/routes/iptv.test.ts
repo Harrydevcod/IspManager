@@ -129,7 +129,7 @@ describe('iptv routes', () => {
     expect(inactive.statusCode).toBe(400);
   });
 
-  test('fornecedor nasce a precisar de VPN; desligado, não serve para marcar um serviço', async () => {
+  test('fornecedor nasce a precisar de VPN; sem VPN, continua a poder ser o de um serviço', async () => {
     const serviceId = seedService();
     const created = (await createProvider('wan.example.tv')).json() as { id: number; needsVpn: number };
     expect(created.needsVpn).toBe(1);
@@ -137,8 +137,8 @@ describe('iptv routes', () => {
     expect((updated.json() as { needsVpn: number; hosts: string }).needsVpn).toBe(0);
     expect((updated.json() as { hosts: string }).hosts).toBe('wan.example.tv');
     const marked = await app.inject({ method: 'PUT', url: `/api/services/${serviceId}/iptv`, payload: { iptvVpn: true, iptvProviderId: created.id } });
-    expect(marked.statusCode).toBe(400);
-    expect((marked.json() as { error: string }).error).toBe('Este fornecedor de IPTV não precisa de VPN');
+    expect(marked.statusCode).toBe(200);
+    expect(marked.json()).toMatchObject({ iptvProviderId: created.id });
   });
 
   test('fornecedor com hosts válidos dá 201 e grava a forma canónica sem repetidos', async () => {
