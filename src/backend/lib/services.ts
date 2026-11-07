@@ -269,6 +269,8 @@ export function createService(db: Database, data: ServiceInput, userId: number |
 }
 
 export type ServiceStatus = 'active' | 'suspended' | 'cancelled';
+/** Quem suspendeu: o operador, a cobrança, ou o próprio cliente (ausência temporária). */
+export type SuspensionSource = 'manual' | 'nonpayment' | 'client_request';
 
 export type ServiceStatusChange = {
   changed: boolean;
@@ -299,29 +301,51 @@ export function changeServiceStatus(
   db: Database,
   id: number,
   next: ServiceStatus,
-  options: { reason?: string | null; actorId?: number | null; source?: 'manual' | 'nonpayment' | null } = {}
+  options: {
+    reason?: string | null;
+    actorId?: number | null;
+    source?: SuspensionSource | null;
+    /** Só com `client_request`: dia (CV) em que a pausa acaba sozinha. */
+    pauseUntil?: string | null;
+  } = {}
 ): ServiceOpResult<ServiceStatusChange> {
-  const row = db.prepare('SELECT status, client_id AS clientId FROM services WHERE id = ?').get(id) as { status: ServiceStatus; clientId: number } | undefined;
+  const row = db.prepare(`
+    SELECT status, client_id AS clientId, suspension_source AS suspensionSource, pause_until AS pauseUntil
+    FROM services WHERE id = ?
+  `).get(id) as { status: ServiceStatus; clientId: number; suspensionSource: string | null; pauseUntil: string | null } | undefined;
   if (!row) {
     return { ok: false, status: 404, error: 'Servico nao encontrado' };
   }
   if (isSystemClient(db, row.clientId)) {
     return { ok: false, status: 409, error: SYSTEM_CLIENT_ERROR };
   }
+  const source = options.source ?? 'manual';
+  const pauseUntil = source === 'client_request' ? options.pauseUntil ?? null : null;
   if (row.status === next) {
-    return { ok: true, value: { changed: false, previous: row.status, next } };
+    // Prolongar (ou encurtar) uma pausa: o serviço continua suspenso, muda o regresso.
+    const repause = next === 'suspended' && source === 'client_request'
+      && (row.suspensionSource !== source || row.pauseUntil !== pauseUntil);
+    if (!repause) return { ok: true, value: { changed: false, previous: row.status, next } };
+    db.prepare(`
+      UPDATE services SET suspension_source = ?, pause_until = ?, updated_at = datetime('now') WHERE id = ?
+    `).run(source, pauseUntil, id);
+    db.prepare(`
+      INSERT INTO service_events (service_id, event_type, notes, created_by)
+      VALUES (?, 'suspensao', ?, ?)
+    `).run(id, options.reason?.trim() || null, options.actorId ?? null);
+    return { ok: true, value: { changed: true, previous: row.status, next } };
   }
 
   if (next === 'suspended') {
     db.prepare(`
       UPDATE services
-      SET status = ?, suspension_source = ?, suspended_at = datetime('now'), updated_at = datetime('now')
+      SET status = ?, suspension_source = ?, suspended_at = datetime('now'), pause_until = ?, updated_at = datetime('now')
       WHERE id = ?
-    `).run(next, options.source ?? 'manual', id);
+    `).run(next, source, pauseUntil, id);
   } else {
     db.prepare(`
       UPDATE services
-      SET status = ?, suspension_source = NULL, suspended_at = NULL, updated_at = datetime('now')
+      SET status = ?, suspension_source = NULL, suspended_at = NULL, pause_until = NULL, updated_at = datetime('now')
       WHERE id = ?
     `).run(next, id);
   }

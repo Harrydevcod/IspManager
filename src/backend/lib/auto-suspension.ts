@@ -10,7 +10,7 @@ import {
   readRouterConfig,
   testConnection
 } from './routeros';
-import { SQL_BUSINESS_TODAY } from '../../shared/business-day';
+import { businessDay, SQL_BUSINESS_TODAY } from '../../shared/business-day';
 
 let lastGate: 'ok' | 'offsite' | 'foreign' | 'unreachable' | null = null;
 
@@ -469,4 +469,27 @@ export function reactivateServiceIfEligibleAfterPayment(
   if (!result.ok || !result.value.changed) return false;
   systemAudit(db, 'payment_reactivated_service', serviceId, 'Serviço reativado após pagamento');
   return true;
+}
+
+/**
+ * Fim de uma pausa a pedido do cliente: no dia de regresso (de Cabo Verde) o
+ * serviço volta a ativo. Só decide a intenção; a reconciliação repõe o PPPoE.
+ * Não depende do interruptor da suspensão automática: a pausa foi um pedido
+ * do cliente, não uma regra de cobrança.
+ */
+export function resumeDuePauses(db: Database.Database = getSqliteDatabase(), now: Date = new Date()): number[] {
+  const due = db.prepare(`
+    SELECT s.id FROM services s JOIN clients c ON c.id = s.client_id
+    WHERE s.status = 'suspended' AND s.suspension_source = 'client_request' AND c.status = 'active'
+      AND s.pause_until IS NOT NULL AND s.pause_until <= ?
+  `).all(businessDay(now)) as Array<{ id: number }>;
+
+  const resumed: number[] = [];
+  for (const { id } of due) {
+    const result = changeServiceStatus(db, id, 'active', { reason: 'Regresso da ausência a pedido do cliente' });
+    if (!result.ok || !result.value.changed) continue;
+    systemAudit(db, 'client_pause_ended', id, 'Serviço reativado no dia de regresso do cliente');
+    resumed.push(id);
+  }
+  return resumed;
 }

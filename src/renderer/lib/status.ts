@@ -44,6 +44,21 @@ export function statusLabel(status: ClientOrServiceStatus): string {
   }
 }
 
+/**
+ * Estado do serviço como o operador o lê: uma pausa a pedido do cliente não é
+ * um corte, e diz quando acaba.
+ */
+export function serviceStatusLabel(service: {
+  status: ClientOrServiceStatus;
+  suspensionSource?: string | null;
+  pauseUntil?: string | null;
+}): string {
+  if (service.status !== 'suspended' || service.suspensionSource !== 'client_request') return statusLabel(service.status);
+  if (!service.pauseUntil) return 'Em pausa';
+  const [, month, day] = service.pauseUntil.split('-');
+  return `Em pausa · regressa a ${day}/${month}`;
+}
+
 export function planActiveTone(active: number): BadgeTone {
   return active ? 'success' : 'neutral';
 }

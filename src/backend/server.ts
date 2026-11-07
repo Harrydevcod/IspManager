@@ -60,7 +60,7 @@ import { runRouterLogWatchIfDue } from './lib/router-log-watch';
 import { requestNetworkSync, runExclusive } from './lib/network-sync';
 import { hasDueSessionDrops, recoverInterruptedPlanChanges, runScheduledSessionDrops } from './lib/plan-change';
 import { routerosIntervalMs } from './lib/routeros';
-import { autoSuspensionIntervalMs, runAutomaticSuspension } from './lib/auto-suspension';
+import { autoSuspensionIntervalMs, resumeDuePauses, runAutomaticSuspension } from './lib/auto-suspension';
 import { runJob, runJobSync } from './lib/jobRuns';
 import { readStripeConfig, runStripeSweep } from './lib/stripe-payments';
 
@@ -364,7 +364,10 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
   if (process.env.ISPM_AUTO_SUSPENSION !== 'off' && !process.env.VITEST) {
     const suspensionTick = () => {
       if (!licenseAllowsWrites()) return;
-      void runJob('auto_suspension', async () => runAutomaticSuspension())
+      // A pausa acaba antes de a cobrança decidir: quem regressa entra já como ativo.
+      void runJob('client_pause_resume', async () => ({ resumed: resumeDuePauses() }))
+        .catch((err) => app.log.error({ err }, 'client pause resume failed'))
+        .then(() => runJob('auto_suspension', async () => runAutomaticSuspension()))
         .catch((err) => app.log.error({ err }, 'automatic suspension failed'));
     };
     const scheduleSuspension = () => {
