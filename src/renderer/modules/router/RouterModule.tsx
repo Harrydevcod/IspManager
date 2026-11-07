@@ -209,11 +209,11 @@ export default function RouterModule() {
             <h2>Router de gestão do ISP</h2>
             {head && <Badge tone={head.dryRun ? 'info' : 'success'}>{head.dryRun ? 'Em ensaio' : 'A controlar'}</Badge>}
           </div>
-          <p className="router-subtitle">
-            {head
-              ? [head.system.identity, head.host, head.system.boardName, head.system.version && `RouterOS ${head.system.version}`].filter(Boolean).join(' · ')
-              : 'O MikroTik da operadora, à cabeça da rede: sessões, perfis, interfaces, registo e a ligação ao ISPM.'}
-          </p>
+          {head && (
+            <p className="router-subtitle">
+              {[head.system.identity, head.host, head.system.boardName, head.system.version && `RouterOS ${head.system.version}`].filter(Boolean).join(' · ')}
+            </p>
+          )}
         </div>
         <ModuleHeaderActions
           ariaLabel="Ações do router"

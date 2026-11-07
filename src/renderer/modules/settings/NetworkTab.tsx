@@ -185,7 +185,7 @@ export function NetworkTab({
         </>
       )}
       <div className="settings-test-whatsapp" aria-label="Teste da sonda de rede">
-        <span>{probeMessage || 'Sonda todos os equipamentos com IP uma vez, sem esperar pelo intervalo.'}</span>
+        <span>{probeMessage}</span>
         <div className="form-actions">
           <Button
             variant="secondary"
@@ -197,10 +197,6 @@ export function NetworkTab({
           </Button>
         </div>
       </div>
-      <Message tone="neutral">
-        A ligação ao router de gestão, a reconciliação e a suspensão automática estão no módulo
-        Router de gestão, no menu lateral.
-      </Message>
     </>
   );
 
