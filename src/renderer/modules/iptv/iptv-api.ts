@@ -81,13 +81,24 @@ type Tone = 'success' | 'danger' | 'warn' | 'neutral' | 'info';
 // Com o artigo: "da antena", "do router".
 const VIA_LEGACY: Record<IptvLegacy['via'], string> = { antena: 'da antena', router: 'do router do cliente', aparelho: 'do aparelho IPTV' };
 
-/** A origem que o script segue, numa frase: o que o operador confere no router. */
-export function describeSource(source: IptvSource): { text: string; tone: Tone } {
-  if (source.kind === 'missing') return { text: source.reason, tone: 'warn' };
-  if (source.kind === 'mac') return { text: `MAC ${VIA_LEGACY[source.via]} ${source.mac}`, tone: 'neutral' };
-  if (!source.legacy && source.legacyGap) return { text: `PPPoE ${source.username} · sem MAC até migrar: ${source.legacyGap}`, tone: 'warn' };
-  const legacy = source.legacy ? `, e o MAC ${VIA_LEGACY[source.legacy.via]} ${source.legacy.mac} até migrar` : '';
-  return { text: `PPPoE ${source.username}${legacy}`, tone: 'neutral' };
+/**
+ * A origem que o script segue: `text` curto à vista, `detail` com a frase toda para o
+ * hover (null quando o curto já diz tudo). É o que o operador confere no router.
+ */
+export function describeSource(source: IptvSource): { text: string; detail: string | null; tone: Tone } {
+  if (source.kind === 'missing') return { text: source.reason, detail: null, tone: 'warn' };
+  if (source.kind === 'mac') return { text: `MAC ${source.mac}`, detail: `MAC ${VIA_LEGACY[source.via]} ${source.mac}`, tone: 'neutral' };
+  if (!source.legacy && source.legacyGap) {
+    return { text: `PPPoE ${source.username} · sem MAC`, detail: `PPPoE ${source.username} · sem MAC até migrar: ${source.legacyGap}`, tone: 'warn' };
+  }
+  if (source.legacy) {
+    return {
+      text: `PPPoE ${source.username} · em migração`,
+      detail: `PPPoE ${source.username}, e o MAC ${VIA_LEGACY[source.legacy.via]} ${source.legacy.mac} até migrar`,
+      tone: 'neutral'
+    };
+  }
+  return { text: `PPPoE ${source.username}`, detail: null, tone: 'neutral' };
 }
 
 export function describeValidation(validation: IptvValidation): { label: string; detail: string | null; tone: Tone } {

@@ -109,13 +109,15 @@ describe('IptvSection', () => {
     expect(vi.mocked(authFetch).mock.calls.some(([url]) => String(url).includes('/validate'))).toBe(false);
   });
 
-  test('em migração diz o utilizador e o MAC legacy que ainda conta', async () => {
+  test('em migração: curto à vista, o MAC legacy que ainda conta no hover', async () => {
     serve({
       '/api/iptv/providers': () => json([]),
       '/api/iptv/status': () => json({ targets: [{ serviceId: 7, source: { kind: 'pppoe', username: 'skn020', legacy: { mac: 'BC:07:1D:5E:54:E7', via: 'router' } } }], last: null })
     });
     await render(service({}));
-    expect(container.textContent).toContain('PPPoE skn020, e o MAC do router do cliente BC:07:1D:5E:54:E7 até migrar');
+    const hint = container.querySelector('.has-hint')!;
+    expect(hint.textContent).toBe('PPPoE skn020 · em migração');
+    expect(hint.getAttribute('title')).toBe('PPPoE skn020, e o MAC do router do cliente BC:07:1D:5E:54:E7 até migrar');
   });
 
   test('ligar a marca grava e pede para recarregar', async () => {

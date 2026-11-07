@@ -6,6 +6,7 @@ import {
   IPTV_API, describeSource, describeValidation, iptvRequest,
   type IptvProvider, type IptvStatus, type IptvTarget, type IptvValidateResult, type IptvValidation
 } from '../iptv/iptv-api';
+import { SourceText } from '../iptv/SourceText';
 import type { DeviceAssignment, ServiceRow } from '../../types';
 
 /**
@@ -157,7 +158,7 @@ export function IptvSection({ service, canManage, onChanged, assignments }: Iptv
               {service.status !== 'active'
                 ? 'Só os serviços ativos entram na lista'
                 : source
-                  ? source.tone === 'warn' ? <Badge tone="warn">{source.text}</Badge> : source.text
+                  ? <SourceText source={source} />
                   : 'A ler…'}
             </dd>
           </div>
