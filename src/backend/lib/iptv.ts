@@ -107,7 +107,7 @@ export const HOST = { test: (value: string): boolean => canonicalHost(value) !==
 
 /** Um endereço só tem uma entrada na lista (o RouterOS recusa a segunda): o primeiro fornecedor, por id, fica com ela. */
 function desiredServers(db: Database.Database): Array<{ address: string; comment: string }> {
-  const rows = db.prepare('SELECT id, name, hosts FROM iptv_providers WHERE active = 1 ORDER BY id').all() as Array<{ id: number; name: string; hosts: string }>;
+  const rows = db.prepare('SELECT id, name, hosts FROM iptv_providers WHERE active = 1 AND needs_vpn = 1 ORDER BY id').all() as Array<{ id: number; name: string; hosts: string }>;
   const seen = new Set<string>();
   return rows.flatMap((row) => row.hosts.split(/\r?\n/).map((h) => h.trim()).flatMap((h) => canonicalHost(h) ?? [])
     .sort().filter((h) => !seen.has(h) && !!seen.add(h))

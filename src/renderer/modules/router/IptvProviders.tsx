@@ -3,13 +3,14 @@ import { Pencil, Plus, Tv } from 'lucide-react';
 import { Badge, Button, DataTable, Dialog, EmptyState, Field, Message, Textarea, Toggle, useToast, type DataTableColumn } from '../../components';
 import { IPTV_API, iptvRequest, type IptvProvider } from '../iptv/iptv-api';
 
-type ProviderForm = { name: string; hosts: string; notes: string; active: boolean };
+type ProviderForm = { name: string; hosts: string; notes: string; active: boolean; needsVpn: boolean };
 
 const providerForm = (row: IptvProvider | null): ProviderForm => ({
   name: row?.name ?? '',
   hosts: row?.hosts ?? '',
   notes: row?.notes ?? '',
-  active: row ? row.active === 1 : true
+  active: row ? row.active === 1 : true,
+  needsVpn: row ? row.needsVpn === 1 : true
 });
 
 const hostCount = (hosts: string) => hosts.split(/\r?\n/).filter((line) => line.trim()).length;
@@ -32,7 +33,7 @@ function ProviderDialog({ provider, open, onClose, onSaved }: {
     event.preventDefault();
     setSubmitting(true);
     setError(null);
-    const body = { name: form.name.trim(), hosts: form.hosts, notes: form.notes.trim() || null, active: form.active };
+    const body = { name: form.name.trim(), hosts: form.hosts, notes: form.notes.trim() || null, active: form.active, needsVpn: form.needsVpn };
     try {
       await iptvRequest(provider ? `${IPTV_API}/providers/${provider.id}` : `${IPTV_API}/providers`, { method: provider ? 'PUT' : 'POST', body });
       onSaved(provider ? 'Fornecedor atualizado.' : 'Fornecedor criado.');
@@ -65,10 +66,16 @@ function ProviderDialog({ provider, open, onClose, onSaved }: {
           rows={5}
           value={form.hosts}
           placeholder={'portal.exemplo.tv\n203.0.113.10'}
-          hint="Um domínio, IP ou gama por linha. Vão para a lista de servidores do router com o comentário do ISPM."
+          hint="Um domínio, IP ou gama por linha. Se precisar de VPN, vão para a lista de servidores do router com o comentário do ISPM."
           onChange={(event) => setForm((f) => ({ ...f, hosts: event.target.value }))}
         />
         <Field label="Notas" maxLength={500} value={form.notes} onChange={(event) => setForm((f) => ({ ...f, notes: event.target.value }))} />
+        <Toggle
+          title="Precisa de VPN"
+          description="Ligado, os servidores vão para a lista do router e o IPTV sai pelo túnel. Desligado, segue pelas WAN."
+          checked={form.needsVpn}
+          onChange={(event) => setForm((f) => ({ ...f, needsVpn: event.target.checked }))}
+        />
         {provider && (
           <Toggle
             title="Fornecedor ativo"
@@ -91,6 +98,7 @@ export function IptvProviders({ providers, canEdit, onChanged }: { providers: Ip
   const columns: DataTableColumn<IptvProvider>[] = [
     { header: 'Nome', cell: (row) => <strong>{row.name}</strong>, sortValue: (row) => row.name },
     { header: 'Servidores', cell: (row) => hostCount(row.hosts), align: 'end', sortValue: (row) => hostCount(row.hosts) },
+    { header: 'VPN', sortValue: (row) => row.needsVpn, cell: (row) => row.needsVpn === 1 ? <Badge tone="accent">Precisa de VPN</Badge> : <span className="router-muted">Pelas WAN</span> },
     { header: 'Estado', sortValue: (row) => row.active === 1 ? 'Ativo' : 'Desativado', cell: (row) => <Badge tone={row.active === 1 ? 'success' : 'neutral'}>{row.active === 1 ? 'Ativo' : 'Desativado'}</Badge> },
     { header: 'Notas', sortValue: (row) => row.notes ?? '', cell: (row) => row.notes || <span className="router-muted">—</span> }
   ];
@@ -109,7 +117,7 @@ export function IptvProviders({ providers, canEdit, onChanged }: { providers: Ip
         rows={providers}
         rowKey={(row) => row.id}
         columns={columns}
-        gridTemplateColumns="minmax(10rem, 1.2fr) 7rem 8rem minmax(10rem, 2fr)"
+        gridTemplateColumns="minmax(10rem, 1.2fr) 7rem 9rem 8rem minmax(8rem, 2fr)"
         actionsWidth="56px"
         actions={canEdit ? (row) => (
           <Button variant="icon" size="sm" title="Editar" aria-label={`Editar ${row.name}`} onClick={() => { setEditing(row); setOpen(true); }}>

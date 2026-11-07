@@ -152,6 +152,8 @@ export const iptvProviders = sqliteTable('iptv_providers', {
   hosts: text('hosts').notNull().default(''),
   notes: text('notes'),
   active: integer('active', { mode: 'boolean' }).notNull().default(true),
+  /** 0: segue pelas WAN e os servidores ficam fora da lista do router. */
+  needsVpn: integer('needs_vpn', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
   updatedAt: text('updated_at').notNull().default('CURRENT_TIMESTAMP')
 });

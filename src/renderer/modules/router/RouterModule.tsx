@@ -43,7 +43,7 @@ const TABS: ReadonlyArray<{ id: RouterTab; label: string; icon: typeof Router }>
   { id: 'profiles', label: 'Perfis PPP', icon: Layers },
   { id: 'interfaces', label: 'Interfaces', icon: Waypoints },
   { id: 'consumption', label: 'Consumo', icon: ChartNoAxesCombined },
-  { id: 'iptv', label: 'IPTV via VPN', icon: Tv },
+  { id: 'iptv', label: 'IPTV', icon: Tv },
   { id: 'backups', label: 'Cópias', icon: History },
   { id: 'log', label: 'Registo', icon: ScrollText },
   { id: 'config', label: 'Configuração', icon: Settings2 }
@@ -182,7 +182,7 @@ export default function RouterModule() {
   const plans = useLive<PlanRow[]>('http://127.0.0.1:3001/api/plans', tab === 'profiles');
 
   const backups = useLive<ConfigSnapshots>(`${ROUTER_API}/config/snapshots`, tab === 'backups', 60_000);
-  // IPTV via VPN: o estado vem da base (lê-se fora da rede); a infraestrutura lê o router, só para o admin.
+  // IPTV: o estado vem da base (lê-se fora da rede); a infraestrutura lê o router, só para o admin.
   const auth = useAuth();
   const isAdmin = auth.isAuthBypassed || auth.hasRole('admin');
   const iptvStatus = useLive<IptvStatus>(`${IPTV_API}/status`, tab === 'iptv');
