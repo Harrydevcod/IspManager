@@ -162,5 +162,7 @@ describe('IptvSection', () => {
     expect(container.querySelector('h3')?.textContent).toBe(label);
     expect([...container.querySelectorAll('button')].some((b) => b.textContent === 'Validar no router')).toBe(validates);
     expect(container.textContent).not.toContain('IPTV via VPN');
+    const select = container.querySelector('select');
+    if (select) expect([...select.options].map((o) => o.textContent)).toEqual(['Nenhum', 'Dino', 'Local']);
   });
 });
