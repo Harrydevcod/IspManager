@@ -222,6 +222,10 @@ export function ServiceDetailDialog({
                 {rentalTotalCve > 0 ? ` + ${formatCve(rentalTotalCve)} aluguer` : ''})
               </small>
             )}
+            {/* O preço acima é o contratado; durante a pausa a fatura leva só o aluguer. */}
+            {service.status === 'suspended' && service.suspensionSource === 'client_request' && (
+              <span className="service-pause-billing">Em pausa: fatura {formatCve(rentalTotalCve)}</span>
+            )}
           </dd>
         </div>
         {rentalTotalCve > 0 && (

@@ -4849,6 +4849,14 @@ label.field-toggle {
   max-width: 32ch;
 }
 
+.service-pause-billing {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--info);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ------------------------------------------------------- compra de equipamento */
 
 .purchase-device {
