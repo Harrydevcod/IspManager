@@ -142,4 +142,23 @@ describe('IptvSection', () => {
     await act(async () => { button.click(); });
     expect(container.textContent).toContain('Fora da rede de gestão: o ISPM não fala com o router daqui.');
   });
+
+  test.each([
+    ['sem IPTV', { iptvVpn: false }, 'Sem IPTV', false],
+    ['fornecedor com VPN', { iptvProviderId: 1 }, 'Pelo túnel VPN', true],
+    ['fornecedor pelas WAN', { iptvProviderId: 2 }, 'Pelas WAN', false],
+    ['sem fornecedor', { iptvProviderId: null }, 'Pelo túnel VPN', true]
+  ] as const)('o caminho vem do fornecedor: %s', async (_name, fields, label, validates) => {
+    serve({
+      '/api/iptv/providers': () => json([
+        { id: 1, name: 'Dino', hosts: '', notes: null, active: 1, needsVpn: 1 },
+        { id: 2, name: 'Local', hosts: '', notes: null, active: 1, needsVpn: 0 }
+      ]),
+      '/api/iptv/status': () => json({ targets: [], last: null })
+    });
+    await render(service(fields));
+    expect(container.querySelector('h3')?.textContent).toBe(label);
+    expect([...container.querySelectorAll('button')].some((b) => b.textContent === 'Validar no router')).toBe(validates);
+    expect(container.textContent).not.toContain('IPTV via VPN');
+  });
 });

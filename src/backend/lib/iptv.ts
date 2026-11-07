@@ -55,12 +55,20 @@ export function loadAntennaMacs(db: Database.Database, serviceIds: number[]): Ma
   }));
 }
 
-/** Serviços activos com a marca, e o identificador que o script segue para cada um. */
+/**
+ * Serviços activos com IPTV que vão pelo túnel, e o identificador que o script segue
+ * para cada um. O caminho é do fornecedor: um que não precisa de VPN fica pelas WAN e
+ * o cliente dele não entra na lista. Sem fornecedor indicado entra, como antes da 0099.
+ */
 export function loadIptvTargets(db: Database.Database): IptvTarget[] {
   const services = db.prepare(`
     SELECT s.id, s.pppoe_username AS pppoeUsername, n.divergence
-    FROM services s LEFT JOIN service_network_state n ON n.service_id = s.id
-    WHERE s.iptv_vpn = 1 AND s.status = 'active' ORDER BY s.id
+    FROM services s
+    LEFT JOIN service_network_state n ON n.service_id = s.id
+    LEFT JOIN iptv_providers p ON p.id = s.iptv_provider_id
+    WHERE s.iptv_vpn = 1 AND s.status = 'active'
+      AND (s.iptv_provider_id IS NULL OR p.needs_vpn = 1)
+    ORDER BY s.id
   `).all() as Array<{ id: number; pppoeUsername: string | null; divergence: string | null }>;
   const devices = activeDevicesQuery(db);
   return services.map((service) => {

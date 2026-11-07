@@ -99,7 +99,7 @@ export type ServiceRow = {
   pppoePasswordConfigured?: boolean;
   /** Password alterada localmente e ainda não confirmada no MikroTik. */
   pppoePasswordPending?: number | null;
-  /** IPTV via VPN (ADR 0021): marca técnica, não fatura. */
+  /** Tem IPTV (ADR 0021); o caminho (túnel ou WAN) vem do fornecedor. Não fatura. */
   iptvVpn?: boolean;
   iptvProviderId?: number | null;
   /** Realidade lida do router (ADR 0007); null enquanto nunca foi lido. */
