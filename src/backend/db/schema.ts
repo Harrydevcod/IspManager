@@ -177,6 +177,8 @@ export const services = sqliteTable('services', {
   pppoePassword: text('pppoe_password'),
   suspensionSource: text('suspension_source'),
   suspendedAt: text('suspended_at'),
+  /** Regresso de uma pausa a pedido do cliente (0100). */
+  pauseUntil: text('pause_until'),
   pppoePasswordSyncPending: integer('pppoe_password_sync_pending', { mode: 'boolean' }).notNull().default(false),
   /** IPTV via VPN (0089, ADR 0021): técnica, não fatura. */
   iptvVpn: integer('iptv_vpn', { mode: 'boolean' }).notNull().default(false),

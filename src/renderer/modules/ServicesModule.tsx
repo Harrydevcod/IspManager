@@ -8,7 +8,7 @@ import { formatCve } from '../lib/format';
 import { todayIso } from '../../shared/assignment-dates';
 import { labelForType, requiresStaticIp } from '../../shared/equipment';
 import { suggestIpPrefix } from '../lib/ip';
-import { statusLabel, statusTone } from '../lib/status';
+import { serviceStatusLabel, statusLabel, statusTone } from '../lib/status';
 import type { AudiovisualConfig, Client, DeviceAssignment, ManualServiceEventType, PlanRow, ReturnCondition, ServiceRow, StockCatalogRow, StockSummary, TechnicalHistory } from '../types';
 import { BulkIpDialog, type ActiveAssignment } from './services/BulkIpDialog';
 import { EquipmentImportDialog } from './services/EquipmentImportDialog';
@@ -20,6 +20,7 @@ import { IpField } from './services/IpField';
 import { MANUAL_EVENT_TYPES, RETURN_CONDITION_LABELS, ServiceDetailDialog, eventTypeLabel } from './services/ServiceDetailDialog';
 import { PurchaseDeviceDialog } from './services/PurchaseDeviceDialog';
 import { ServiceReturnDialog } from './services/ServiceReturnDialog';
+import { SuspendServiceDialog, type SuspendRequest } from './services/SuspendServiceDialog';
 import { DeviceOwnerDialog, type PromoteOwnerResult } from './services/DeviceOwnerDialog';
 import { TransferServiceDialog, type TransferResult } from './services/TransferServiceDialog';
 import { ServiceItemDraftsBuilder, emptyItemDraft, type ItemDraft } from './services/ServiceItemDraftsBuilder';
@@ -132,6 +133,8 @@ export function ServicesModule({
   const [addItemDrafts, setAddItemDrafts] = useState<ItemDraft[]>([]);
   const [addLaborCve, setAddLaborCve] = useState('');
   const [showEventDialog, setShowEventDialog] = useState(false);
+  const [suspendTarget, setSuspendTarget] = useState<ServiceRow | null>(null);
+  const [suspendError, setSuspendError] = useState<string | null>(null);
   const [eventForm, setEventForm] = useState<EventFormState>(emptyEventForm());
   const [replaceTarget, setReplaceTarget] = useState<DeviceAssignment | null>(null);
   /**
@@ -351,39 +354,63 @@ export function ServicesModule({
   }
 
   async function changeServiceStateFromNetwork(service: ServiceRow, next: 'active' | 'suspended') {
-    const suspending = next === 'suspended';
+    // Suspender pede o motivo (pausa do cliente ou corte do operador): diálogo próprio.
+    if (next === 'suspended') {
+      setSuspendError(null);
+      setSuspendTarget(service);
+      return;
+    }
     if (!(await confirm({
-      title: suspending ? 'Suspender serviço' : 'Reativar serviço',
-      message: suspending
-        ? 'O serviço fica suspenso no ISPM e a reconciliação desativa o PPPoE no MikroTik.'
-        : 'O serviço volta a ativo e a reconciliação repõe o PPPoE no MikroTik.',
-      confirmLabel: suspending ? 'Suspender' : 'Reativar',
-      tone: suspending ? 'danger' : 'default'
+      title: 'Reativar serviço',
+      message: 'O serviço volta a ativo e a reconciliação repõe o PPPoE no MikroTik.',
+      confirmLabel: 'Reativar',
+      tone: 'default'
     }))) return;
+    await postServiceStatus(service, { status: 'active' });
+  }
 
-    setNetworkAction(next);
+  async function postServiceStatus(
+    service: ServiceRow,
+    body: { status: 'active' | 'suspended'; source?: SuspendRequest['source']; pauseUntil?: string | null }
+  ): Promise<boolean> {
+    const suspending = body.status === 'suspended';
+    setNetworkAction(body.status);
     try {
       const response = await authFetch(`http://127.0.0.1:3001/api/services/${service.id}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: next })
+        body: JSON.stringify(body)
       });
       const result = await response.json().catch(() => ({})) as { error?: string; changed?: boolean };
       if (!response.ok) {
-        toast(result.error || 'Não foi possível alterar o estado do serviço.', 'error');
-        return;
+        const message = result.error || 'Não foi possível alterar o estado do serviço.';
+        if (suspending) setSuspendError(message);
+        else toast(message, 'error');
+        return false;
       }
       toast(
-        suspending ? 'Serviço suspenso. A rede será reconciliada.' : 'Serviço reativado. A rede será reconciliada.',
+        !suspending
+          ? 'Serviço reativado. A rede será reconciliada.'
+          : body.source === 'client_request'
+            ? 'Serviço em pausa. Só o aluguer entra na fatura.'
+            : 'Serviço suspenso. A rede será reconciliada.',
         'success'
       );
       await loadServices();
       await loadTechnicalHistory(service.id);
+      return true;
     } catch {
-      toast('Falha de rede ao alterar o estado do serviço.', 'error');
+      if (suspending) setSuspendError('Falha de rede ao alterar o estado do serviço.');
+      else toast('Falha de rede ao alterar o estado do serviço.', 'error');
+      return false;
     } finally {
       setNetworkAction(null);
     }
+  }
+
+  async function confirmSuspend(request: SuspendRequest) {
+    if (!suspendTarget) return;
+    if (await postServiceStatus(suspendTarget, { status: 'suspended', ...request })) setSuspendTarget(null);
   }
 
   function openPasswordChange(service: ServiceRow) {
@@ -1292,8 +1319,8 @@ export function ServicesModule({
             {
               header: 'Estado',
               align: 'center',
-              sortValue: (service) => statusLabel(service.status),
-              cell: (service) => <Badge tone={statusTone(service.status)}>{statusLabel(service.status)}</Badge>
+              sortValue: (service) => serviceStatusLabel(service),
+              cell: (service) => <Badge tone={statusTone(service.status)}>{serviceStatusLabel(service)}</Badge>
             }
           ]}
           empty={
@@ -1755,6 +1782,16 @@ export function ServicesModule({
           <Field wide label="Notas" value={editDraft.notes} onChange={(event) => setEditDraft((current) => ({ ...current, notes: event.target.value }))} />
         </form>
       </Dialog>
+
+      {suspendTarget && (
+        <SuspendServiceDialog
+          service={suspendTarget}
+          submitting={networkAction === 'suspended'}
+          error={suspendError}
+          onClose={() => setSuspendTarget(null)}
+          onConfirm={(request) => void confirmSuspend(request)}
+        />
+      )}
 
       {returnTarget && (
         <ServiceReturnDialog

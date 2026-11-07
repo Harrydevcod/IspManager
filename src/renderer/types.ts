@@ -84,6 +84,10 @@ export type ServiceRow = {
   monthlyValueCve: number;
   dueDay: number;
   status: 'active' | 'suspended' | 'cancelled';
+  /** Quem suspendeu; 'client_request' = pausa a pedido do cliente (ausência). */
+  suspensionSource?: 'manual' | 'nonpayment' | 'client_request' | null;
+  /** Regresso da pausa (YYYY-MM-DD, dia de CV). Null = sem data. */
+  pauseUntil?: string | null;
   activationDate: string | null;
   technicalNotes: string | null;
   audiovisualMode: 'none' | 'monthly' | 'annual';

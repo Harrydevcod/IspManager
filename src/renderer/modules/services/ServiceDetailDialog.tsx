@@ -1,10 +1,10 @@
-import { ArrowRightLeft, Cable, Coins, Gauge, History, KeyRound, LogOut, PackageCheck, Pencil, Plus, RefreshCw, Router, ShieldCheck, ShieldOff, Trash2, Wrench } from 'lucide-react';
+import { ArrowRightLeft, CalendarClock, Cable, Coins, Gauge, History, KeyRound, LogOut, PackageCheck, Pencil, Plus, RefreshCw, Router, ShieldCheck, ShieldOff, Trash2, Wrench } from 'lucide-react';
 import { labelForType } from '../../../shared/equipment';
 import { labelForWanMode } from '../../../shared/wan';
 import { labelForOperationMode } from '../../../shared/operation';
 import { Badge, Button, Dialog, EmptyState, Message } from '../../components';
 import { formatCve, formatPtDate, formatPtDateTime } from '../../lib/format';
-import { statusLabel, statusTone } from '../../lib/status';
+import { serviceStatusLabel, statusTone } from '../../lib/status';
 import { CreatePppoeButton, RevealPppoePassword } from './PppoeCredentials';
 import { IptvSection } from './IptvSection';
 import { FupUsageSection } from '../fup/FupUsageSection';
@@ -222,6 +222,10 @@ export function ServiceDetailDialog({
                 {rentalTotalCve > 0 ? ` + ${formatCve(rentalTotalCve)} aluguer` : ''})
               </small>
             )}
+            {/* O preço acima é o contratado; durante a pausa a fatura leva só o aluguer. */}
+            {service.status === 'suspended' && service.suspensionSource === 'client_request' && (
+              <span className="service-pause-billing">Em pausa: fatura {formatCve(rentalTotalCve)}</span>
+            )}
           </dd>
         </div>
         {rentalTotalCve > 0 && (
@@ -245,7 +249,7 @@ export function ServiceDetailDialog({
         <div>
           <dt>Estado</dt>
           <dd>
-            <Badge tone={statusTone(service.status)}>{statusLabel(service.status)}</Badge>
+            <Badge tone={statusTone(service.status)}>{serviceStatusLabel(service)}</Badge>
             {service.status === 'cancelled' && hasPendingReturns && (
               <> <Badge tone="warn">Equipamento por devolver</Badge></>
             )}
@@ -359,6 +363,17 @@ export function ServiceDetailDialog({
                     onClick={onSuspend}
                   >
                     Suspender
+                  </Button>
+                )}
+                {service.status === 'suspended' && service.suspensionSource === 'client_request' && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={networkActionBusy}
+                    leadingIcon={<CalendarClock size={14} aria-hidden />}
+                    onClick={onSuspend}
+                  >
+                    Alterar regresso
                   </Button>
                 )}
                 {service.status === 'suspended' && (
