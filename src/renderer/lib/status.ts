@@ -56,7 +56,8 @@ export function serviceStatusLabel(service: {
   if (service.status !== 'suspended' || service.suspensionSource !== 'client_request') return statusLabel(service.status);
   if (!service.pauseUntil) return 'Em pausa';
   const [, month, day] = service.pauseUntil.split('-');
-  return `Em pausa · regressa a ${day}/${month}`;
+  // Curto de propósito: a 1225 px a coluna Estado da ficha parte "regressa a" em duas linhas.
+  return `Em pausa até ${day}/${month}`;
 }
 
 export function planActiveTone(active: number): BadgeTone {
