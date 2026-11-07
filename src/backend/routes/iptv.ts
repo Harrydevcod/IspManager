@@ -21,14 +21,16 @@ const providerSchema = z.object({
   name: z.string().trim().min(1).max(80),
   hosts: z.string().default(''),
   notes: z.string().trim().max(500).nullish(),
-  active: z.boolean().default(true)
+  active: z.boolean().default(true),
+  needsVpn: z.boolean().default(true)
 });
 // O PUT é parcial: sem defaults, para o que não vem ficar como está.
 const updateSchema = z.object({
   name: providerSchema.shape.name.optional(),
   hosts: z.string().optional(),
   notes: providerSchema.shape.notes,
-  active: z.boolean().optional()
+  active: z.boolean().optional(),
+  needsVpn: z.boolean().optional()
 });
 
 /** Uma linha por host; as vazias ignoram-se. Guarda a forma canónica, sem repetidos. */
@@ -44,7 +46,7 @@ function parseHosts(text: string): { hosts: string } | { error: string } {
   return { hosts: canonical.join('\n') };
 }
 
-const PROVIDER_COLUMNS = 'id, name, hosts, notes, active, created_at AS createdAt, updated_at AS updatedAt';
+const PROVIDER_COLUMNS = 'id, name, hosts, notes, active, needs_vpn AS needsVpn, created_at AS createdAt, updated_at AS updatedAt';
 
 /**
  * As rotas que leem o router: só na rede de gestão e na fila das escritas do router
@@ -86,8 +88,10 @@ export async function registerIptvRoutes(app: FastifyInstance) {
     const { iptvVpn, iptvProviderId } = parsed.data;
     // Ao desmarcar o fornecedor não conta: grava-se null em vez de validar um id que já não se usa.
     if (iptvVpn && iptvProviderId !== null) {
-      const provider = db.prepare('SELECT active FROM iptv_providers WHERE id = ?').get(iptvProviderId) as { active: number } | undefined;
+      const provider = db.prepare('SELECT active, needs_vpn AS needsVpn FROM iptv_providers WHERE id = ?').get(iptvProviderId) as
+        { active: number; needsVpn: number } | undefined;
       if (!provider || !provider.active) return reply.status(400).send({ error: 'Fornecedor de IPTV inexistente ou inactivo' });
+      if (!provider.needsVpn) return reply.status(400).send({ error: 'Este fornecedor de IPTV não precisa de VPN' });
     }
     const after = { iptvVpn: iptvVpn ? 1 : 0, iptvProviderId: iptvVpn ? iptvProviderId : null };
     db.transaction(() => {
@@ -113,8 +117,8 @@ export async function registerIptvRoutes(app: FastifyInstance) {
     if ('error' in hosts) return reply.status(400).send({ error: hosts.error });
     const db = getSqliteDatabase();
     const created = db.transaction(() => {
-      const { lastInsertRowid } = db.prepare('INSERT INTO iptv_providers (name, hosts, notes, active) VALUES (?, ?, ?, ?)')
-        .run(parsed.data.name, hosts.hosts, parsed.data.notes ?? null, parsed.data.active ? 1 : 0);
+      const { lastInsertRowid } = db.prepare('INSERT INTO iptv_providers (name, hosts, notes, active, needs_vpn) VALUES (?, ?, ?, ?, ?)')
+        .run(parsed.data.name, hosts.hosts, parsed.data.notes ?? null, parsed.data.active ? 1 : 0, parsed.data.needsVpn ? 1 : 0);
       const provider = db.prepare(`SELECT ${PROVIDER_COLUMNS} FROM iptv_providers WHERE id = ?`).get(lastInsertRowid);
       recordAuditStrict(db, request, {
         action: 'iptv_provider_create', entityType: 'iptv_provider', entityId: Number(lastInsertRowid),
@@ -132,7 +136,7 @@ export async function registerIptvRoutes(app: FastifyInstance) {
     if (!Number.isInteger(id) || id <= 0 || !parsed.success) return reply.status(400).send({ error: 'Dados do fornecedor inválidos' });
     const db = getSqliteDatabase();
     const before = db.prepare(`SELECT ${PROVIDER_COLUMNS} FROM iptv_providers WHERE id = ?`).get(id) as
-      { name: string; hosts: string; notes: string | null; active: number } | undefined;
+      { name: string; hosts: string; notes: string | null; active: number; needsVpn: number } | undefined;
     if (!before) return reply.status(404).send({ error: 'Fornecedor não encontrado' });
     // Parcial: o que não vem fica como está.
     const hosts = parsed.data.hosts === undefined ? { hosts: before.hosts } : parseHosts(parsed.data.hosts);
@@ -140,11 +144,12 @@ export async function registerIptvRoutes(app: FastifyInstance) {
     const next = {
       name: parsed.data.name ?? before.name,
       notes: parsed.data.notes === undefined ? before.notes : parsed.data.notes,
-      active: parsed.data.active === undefined ? before.active : parsed.data.active ? 1 : 0
+      active: parsed.data.active === undefined ? before.active : parsed.data.active ? 1 : 0,
+      needsVpn: parsed.data.needsVpn === undefined ? before.needsVpn : parsed.data.needsVpn ? 1 : 0
     };
     const after = db.transaction(() => {
-      db.prepare("UPDATE iptv_providers SET name = ?, hosts = ?, notes = ?, active = ?, updated_at = datetime('now') WHERE id = ?")
-        .run(next.name, hosts.hosts, next.notes, next.active, id);
+      db.prepare("UPDATE iptv_providers SET name = ?, hosts = ?, notes = ?, active = ?, needs_vpn = ?, updated_at = datetime('now') WHERE id = ?")
+        .run(next.name, hosts.hosts, next.notes, next.active, next.needsVpn, id);
       const provider = db.prepare(`SELECT ${PROVIDER_COLUMNS} FROM iptv_providers WHERE id = ?`).get(id);
       recordAuditStrict(db, request, {
         action: 'iptv_provider_update', entityType: 'iptv_provider', entityId: id,

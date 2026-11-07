@@ -103,8 +103,9 @@ export function IptvSection({ service, canManage, onChanged, assignments }: Iptv
     }
   };
 
-  // Um fornecedor desativado continua a aparecer enquanto for o deste serviço.
-  const options = providers.filter((p) => p.active === 1 || p.id === service.iptvProviderId);
+  // Só os que precisam de VPN; um desativado ou sem VPN continua a aparecer enquanto for o deste serviço.
+  const options = providers.filter((p) => (p.active === 1 && p.needsVpn === 1) || p.id === service.iptvProviderId);
+  const optionLabel = (p: IptvProvider) => p.active !== 1 ? `${p.name} (desativado)` : p.needsVpn !== 1 ? `${p.name} (sem VPN)` : p.name;
   const source = target ? describeSource(target.source) : null;
   const seen = validation ? describeValidation(validation) : null;
 
@@ -134,7 +135,7 @@ export function IptvSection({ service, canManage, onChanged, assignments }: Iptv
             onChange={(event) => void save(true, event.target.value ? Number(event.target.value) : null)}
           >
             <option value="">Nenhum</option>
-            {options.map((p) => <option key={p.id} value={p.id}>{p.active === 1 ? p.name : `${p.name} (desativado)`}</option>)}
+            {options.map((p) => <option key={p.id} value={p.id}>{optionLabel(p)}</option>)}
           </Select>
         )}
       </div>

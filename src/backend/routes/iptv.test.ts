@@ -129,6 +129,18 @@ describe('iptv routes', () => {
     expect(inactive.statusCode).toBe(400);
   });
 
+  test('fornecedor nasce a precisar de VPN; desligado, não serve para marcar um serviço', async () => {
+    const serviceId = seedService();
+    const created = (await createProvider('wan.example.tv')).json() as { id: number; needsVpn: number };
+    expect(created.needsVpn).toBe(1);
+    const updated = await app.inject({ method: 'PUT', url: `/api/iptv/providers/${created.id}`, payload: { needsVpn: false } });
+    expect((updated.json() as { needsVpn: number; hosts: string }).needsVpn).toBe(0);
+    expect((updated.json() as { hosts: string }).hosts).toBe('wan.example.tv');
+    const marked = await app.inject({ method: 'PUT', url: `/api/services/${serviceId}/iptv`, payload: { iptvVpn: true, iptvProviderId: created.id } });
+    expect(marked.statusCode).toBe(400);
+    expect((marked.json() as { error: string }).error).toBe('Este fornecedor de IPTV não precisa de VPN');
+  });
+
   test('fornecedor com hosts válidos dá 201 e grava a forma canónica sem repetidos', async () => {
     const response = await createProvider('line.dino.ws\n1.2.3.4\nLINE.dino.ws\n\n8.8.8.8/24');
     expect(response.statusCode).toBe(201);

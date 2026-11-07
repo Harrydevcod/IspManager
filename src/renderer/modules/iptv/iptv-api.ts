@@ -60,6 +60,8 @@ export type IptvProvider = {
   hosts: string;
   notes: string | null;
   active: 0 | 1;
+  /** 0: segue pelas WAN; os servidores não vão para a lista do router. */
+  needsVpn: 0 | 1;
 };
 
 /** Lê ou escreve na API do IPTV; num erro, lança a frase pt-PT que o servidor mandou. */

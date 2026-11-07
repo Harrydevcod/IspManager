@@ -130,6 +130,15 @@ describe('IPTV via VPN', () => {
     expect(adds.sort()).toEqual(['1.2.3.4', 'line.dino.ws']);
   });
 
+  test('fornecedor que não precisa de VPN não põe servidores na lista do router', async () => {
+    const db = seed();
+    db.prepare("INSERT INTO iptv_providers (id, name, hosts, needs_vpn) VALUES (2, 'Pelas WAN', 'wan.example.tv', 0)").run();
+    const { transport, calls } = router();
+    await syncIptv(db, { transport, dryRun: false });
+    const adds = calls.filter((c) => c.method === 'PUT' && c.path === '/ip/firewall/address-list').map((c) => (c.body as { address: string }).address);
+    expect(adds.sort()).toEqual(['1.2.3.4', 'line.dino.ws']);
+  });
+
   test('IPv4 com octeto acima de 255 é ignorado', async () => {
     const db = seed();
     db.prepare("UPDATE iptv_providers SET hosts = '999.1.1.1\n8.8.8.8/24'").run();
