@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
+import { businessDay } from '../../shared/business-day';
 import { computeMonthlyBilling, generateMonthlyBilling } from '../lib/billing';
 import { loadAudiovisualConfig } from '../lib/audiovisual';
 import { runAudiovisualAnnualIfDue } from '../lib/audiovisual-billing';
@@ -64,7 +65,10 @@ const cancelSchema = z.object({
 
 const serviceStatusActionSchema = z.object({
   status: z.enum(['active', 'suspended']),
-  reason: z.string().trim().max(300).optional().nullable()
+  reason: z.string().trim().max(300).optional().nullable(),
+  // A suspensão pela cobrança ('nonpayment') nunca entra por aqui: é do job.
+  source: z.enum(['manual', 'client_request']).optional(),
+  pauseUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable()
 }).strict();
 
 // Sem trim: a senha preserva os bytes. O limite 8–64 vive em changePppoePassword.
@@ -100,6 +104,8 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
         s.monthly_value_cve AS monthlyValueCve,
         s.due_day AS dueDay,
         s.status,
+        s.suspension_source AS suspensionSource,
+        s.pause_until AS pauseUntil,
         s.activation_date AS activationDate,
         s.technical_notes AS technicalNotes,
         s.audiovisual_mode AS audiovisualMode,
@@ -266,22 +272,36 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: 'Um servico cancelado nao pode ser reativado por esta acao' });
     }
 
-    const result = changeServiceStatus(db, id, parsed.data.status, {
+    const { status, source, pauseUntil } = parsed.data;
+    const clientPause = status === 'suspended' && source === 'client_request';
+    if (pauseUntil && !clientPause) {
+      return reply.status(400).send({ error: 'A data de regresso só se aplica a uma ausência a pedido do cliente' });
+    }
+    if (pauseUntil && pauseUntil <= businessDay()) {
+      return reply.status(400).send({ error: 'A data de regresso tem de ser posterior a hoje' });
+    }
+
+    const result = changeServiceStatus(db, id, status, {
       actorId: request.user?.id ?? null,
-      source: parsed.data.status === 'suspended' ? 'manual' : null,
+      source: status === 'suspended' ? source ?? 'manual' : null,
+      pauseUntil: clientPause ? pauseUntil ?? null : null,
       reason: parsed.data.reason
-        || (parsed.data.status === 'suspended' ? 'Suspensão manual pela ficha do serviço' : 'Reativação manual pela ficha do serviço')
+        || (clientPause
+          ? `Ausência a pedido do cliente${pauseUntil ? ` até ${pauseUntil}` : ''}`
+          : status === 'suspended' ? 'Suspensão manual pela ficha do serviço' : 'Reativação manual pela ficha do serviço')
     });
     if (!result.ok) return reply.status(result.status).send({ error: result.error });
 
     recordAudit(request, {
-      action: parsed.data.status === 'suspended' ? 'manual_suspend' : 'manual_reactivate',
+      action: clientPause ? 'client_pause' : status === 'suspended' ? 'manual_suspend' : 'manual_reactivate',
       entityType: 'service',
       entityId: id,
-      summary: parsed.data.status === 'suspended'
-        ? `Suspendeu manualmente o servico ${id}`
-        : `Reativou manualmente o servico ${id}`,
-      metadata: { previous: result.value.previous, next: result.value.next }
+      summary: clientPause
+        ? `Pôs o servico ${id} em pausa a pedido do cliente${pauseUntil ? ` até ${pauseUntil}` : ''}`
+        : status === 'suspended'
+          ? `Suspendeu manualmente o servico ${id}`
+          : `Reativou manualmente o servico ${id}`,
+      metadata: { previous: result.value.previous, next: result.value.next, pauseUntil: pauseUntil ?? null }
     });
 
     return result.value;

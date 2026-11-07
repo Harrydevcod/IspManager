@@ -2,7 +2,7 @@ import type Database from 'better-sqlite3';
 import { recordAuditStrict } from './audit';
 import { loadConfirmedState, loadDesiredServices, planActions, runNetworkEnforcement, type DesiredService } from './network-enforcement';
 import { readBaseProfileName, readSuspendedProfileName } from './plan-profiles';
-import { patchSecret, removeActive, RouterError, type RouterActive, type RouterSecret, type RouterTransport } from './routeros';
+import { isInternalSecret, patchSecret, removeActive, RouterError, type RouterActive, type RouterSecret, type RouterTransport } from './routeros';
 import { changeServiceStatus } from './services';
 
 /**
@@ -138,6 +138,9 @@ function build(db: Database.Database, secrets: RouterSecret[], active: RouterAct
 
   for (const secret of secrets) {
     if (claimed.has(secret.id)) continue;
+    // Acesso do próprio ISP (`ispm-interno`, ex.: gestao-arydson): não há serviço a que
+    // o associar nem razão para o desativar. Fica visível na Visão geral, não aqui.
+    if (isInternalSecret(secret)) continue;
     rows.push({
       key: `only_router:${secret.id}`, kind: 'only_router', serviceId: null, secretId: secret.id, clientName: null,
       login: secret.name, ispm: 'Não existe',

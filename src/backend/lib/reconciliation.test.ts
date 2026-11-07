@@ -135,6 +135,14 @@ describe('buildReconciliation', () => {
     ]);
   });
 
+  test('o acesso interno do ISP (ispm-interno) não é decisão: nem linha nem resolve', async () => {
+    const router = fakeRouter([secret({ id: '*7', name: 'gestao-arydson', comment: 'ispm-interno gestao do dono', profile: 'ULTRA' })]);
+    expect(rows(router)).toEqual([]);
+    const [result] = await resolve(router, [{ key: 'only_router:*7', direction: 'ispm' }]);
+    expect(result).toMatchObject({ status: 'failed', message: 'Esta divergência já não existe: atualize a lista' });
+    expect(router.secrets[0].disabled).toBeFalsy();
+  });
+
   test('serviço sem secret é "só no ISPM"; apagado no router fica retido', async () => {
     addService(1, 'active', 'joao-1');
     expect(rows(fakeRouter([]))).toEqual([expect.objectContaining({ key: 'only_ispm:1', held: false, router: 'Não existe' })]);

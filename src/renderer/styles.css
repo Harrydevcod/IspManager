@@ -4826,12 +4826,44 @@ label.field-toggle {
   display: grid;
   gap: var(--space-2);
 }
+
 /* Texto curto com a versão completa no hover (atributo title). */
 .has-hint {
   cursor: help;
   text-decoration: underline dotted;
   text-decoration-color: var(--text-3);
   text-underline-offset: 3px;
+}
+
+/* ------------------------------------------------------- suspender / pausa a pedido */
+
+.suspend-service {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.suspend-service-lead {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.suspend-service-lead strong {
+  color: var(--text);
+}
+
+.suspend-service .field {
+  max-width: 32ch;
+}
+
+.service-pause-billing {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--info);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ------------------------------------------------------- compra de equipamento */
