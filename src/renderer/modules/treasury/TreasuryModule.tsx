@@ -404,7 +404,6 @@ export function TreasuryModule() {
                 <EmptyState
                   icon={List}
                   title="Sem movimentos neste período"
-                  description="Os recebimentos, depósitos e despesas pagas por uma conta aparecem aqui."
                 />
               }
             />

@@ -377,7 +377,7 @@ export function DiscoveryWorkspace({ active, onRegisterBackbone, onOpenService, 
             do router porque a pergunta é a mesma — até onde é que isto vai. */}
         <Toggle
           title="Identificar modelos"
-          description="Pergunta a cada equipamento vivo que aparelho é. Demora mais."
+          description="Demora mais."
           wide={false}
           checked={discovery.identifyModels}
           disabled={scanning}

@@ -134,7 +134,7 @@ function OutagesView({ active, tabs }: ViewProps) {
         gridTemplateColumns="132px minmax(110px, 1.6fr) minmax(80px, 1fr) 98px 98px 96px 80px 80px"
         empty={live.data.probeEnabled
           ? <EmptyState icon={ShieldCheck} title="Sem incidentes" description={`Nenhum equipamento do backbone caiu nos últimos ${live.data.windowDays} dias de observação.`} />
-          : <EmptyState icon={Radar} title="Sonda de rede desligada" description="Os incidentes vêm da sonda. Ligue-a em Definições para os começar a registar." />} />
+          : <EmptyState icon={Radar} title="Sonda de rede desligada" description="Ligue a sonda em Definições." />} />
 
       <Dialog open={selected !== null} onClose={() => setSelected(null)} size="lg"
         eyebrow={selected ? `${STATUS[selected.status].label} · ${formatPtDateTime(selected.startedAt)} · ${formatDuration(selected.durationSeconds)}` : undefined}
@@ -183,8 +183,8 @@ function RouterFindingsView({ active, tabs }: ViewProps) {
         // Cabe nos 857 px que a tabela tem no ecrã de 1920 a 150%.
         gridTemplateColumns="minmax(128px, 1.2fr) 138px minmax(100px, 1fr) minmax(88px, 0.8fr) 56px 98px 98px"
         empty={live.data.lastRouterReadAt
-          ? <EmptyState icon={ShieldCheck} title="Sem achados" description="O registo do router não assinalou nada nos últimos 7 dias." />
-          : <EmptyState icon={ScrollText} title="Registo do router por ler" description="Os achados aparecem depois da primeira leitura, com o ISPM na rede de gestão." />} />
+          ? <EmptyState icon={ShieldCheck} title="Sem achados" />
+          : <EmptyState icon={ScrollText} title="Registo do router por ler" />} />
     </>
   );
 }
@@ -251,7 +251,7 @@ function DiaryView({ active, tabs }: ViewProps) {
       <DataTable stickyHeader rows={live.data} rowKey={(row) => row.id} columns={diaryColumns}
         onRowClick={canWrite ? setEditing : undefined}
         gridTemplateColumns="112px 136px minmax(180px, 1.4fr) minmax(140px, 1fr) minmax(140px, 1fr)"
-        empty={<EmptyState icon={NotebookPen} title="Diário vazio" description="Registe aqui o que aconteceu na rede, a causa e como se resolveu." />} />
+        empty={<EmptyState icon={NotebookPen} title="Diário vazio" />} />
       <NetworkDiaryDialog open={editing !== undefined} entry={editing} onClose={() => setEditing(undefined)}
         onSaved={() => { setEditing(undefined); live.reload(); }} />
     </>

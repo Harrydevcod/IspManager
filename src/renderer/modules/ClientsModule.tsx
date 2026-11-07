@@ -658,7 +658,6 @@ export function ClientsModule({
                 size="sm"
                 icon={Wallet}
                 title="Sem custos de instalacao"
-                description="Instala equipamentos no servico ou adiciona investimentos para calcular a rentabilidade."
               />
             )}
 

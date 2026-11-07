@@ -378,13 +378,12 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
           <EmptyState icon={CheckCircle2} title="Sem dados incompletos" description="Todos os clientes têm os campos essenciais preenchidos." />
         )}
         {view === 'duplicates' && dq && dq.duplicateGroups.length === 0 && (
-          <EmptyState icon={CheckCircle2} title="Sem duplicados" description="Não foram encontrados clientes com telefone ou nome repetidos." />
+          <EmptyState icon={CheckCircle2} title="Sem duplicados" />
         )}
         {summary && view === 'revenue' && summary.revenueByMonth.length === 0 && (
           <EmptyState
             icon={Banknote}
             title="Ainda sem receita"
-            description="Quando emitires e receberes pagamentos, aparecem aqui agrupados por mês."
           />
         )}
         {summary && view === 'overdue' && summary.overdueClients.length === 0 && (
@@ -398,7 +397,6 @@ export function ReportsModule({ onOpenClient }: { onOpenClient?: (clientId: numb
           <EmptyState
             icon={Cable}
             title="Ainda sem equipamentos"
-            description="Quando registares equipamentos no Stock, aparecem aqui resumidos por tipo."
           />
         )}
         {((view === 'incomplete' && dq) || (view !== 'incomplete' && view !== 'duplicates' && summary)) && (view === 'incomplete' ? (dq!.pagination.total) : total) > PAGE_SIZE && (

@@ -633,9 +633,6 @@ export function ExpensesModule() {
           </div>
           <fieldset className="expense-allocation">
             <legend>Alocação (opcional)</legend>
-            <small>
-              Se ligares a um alvo, o valor vai 100% para esse investimento/zona/cliente em vez de entrar no rateio uniforme.
-            </small>
             <div className="expense-allocation-tabs">
               {(['none', 'investment', 'zone', 'client'] as AllocationTarget[]).map((target) => (
                 <Button
@@ -731,10 +728,6 @@ export function ExpensesModule() {
               {templates.totals.count} no total
             </div>
           </div>
-          <small>
-            Cada template ativo gera uma despesa por mês no dia configurado (1–28). A geração é
-            idempotente — chamar "Gerar agora" várias vezes não duplica lançamentos.
-          </small>
 
           <form onSubmit={submitTemplate} className="expense-template-form">
             <Field
@@ -780,7 +773,6 @@ export function ExpensesModule() {
               size="sm"
               icon={FileText}
               title="Sem templates ainda"
-              description="Adiciona uma despesa recorrente acima para automatizar lançamentos mensais."
             />
           ) : (
             <ul className="expense-template-list">

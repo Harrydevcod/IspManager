@@ -174,7 +174,6 @@ export function BulkIpDialog({ onClose, onSaved }: BulkIdentityDialogProps) {
           size="sm"
           icon={Cable}
           title="Sem equipamento instalado"
-          description="Assim que instalares equipamento nos serviços, aparece aqui para identificar."
         />
       )}
       {!loading && rows.length > 0 && (

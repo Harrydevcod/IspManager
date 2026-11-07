@@ -68,26 +68,18 @@ export function SuspendServiceDialog({ service, submitting, error, onClose, onCo
           </Select>
         )}
 
-        {source === 'client_request' ? (
+        {source === 'client_request' && (
           <>
-            <p className="suspend-service-lead">
-              Enquanto estiver em pausa, a mensalidade sai <strong>só com o aluguer dos equipamentos</strong>.
-              O PPPoE é desativado no MikroTik, e pagar não reativa o serviço.
-            </p>
+            <p className="suspend-service-lead">Fatura só o aluguer.</p>
             <Field
               label="Regressa a"
               type="date"
               min={minDate}
               value={pauseUntil}
               onChange={(event) => setPauseUntil(event.target.value)}
-              error={dateInvalid ? 'A data de regresso tem de ser posterior a hoje' : undefined}
-              hint={pauseUntil ? 'Nesse dia o serviço volta a ativo sozinho' : 'Sem data, a pausa só acaba quando reativar à mão'}
+              error={dateInvalid ? 'Tem de ser depois de hoje' : undefined}
             />
           </>
-        ) : (
-          <p className="suspend-service-lead">
-            O serviço fica suspenso no ISPM e a reconciliação desativa o PPPoE no MikroTik.
-          </p>
         )}
 
         {error ? <Message tone="error">{error}</Message> : null}

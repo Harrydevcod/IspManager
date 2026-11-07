@@ -183,7 +183,6 @@ export function AccountDialog({ open, kind, account, onClose, onSaved }: {
         ) : (
           <Toggle
             title="Caixa predefinida para numerário"
-            description="O dinheiro recebido em numerário entra aqui, a menos que se escolha outra caixa."
             checked={form.isDefaultCash}
             disabled={account?.isDefaultCash}
             onChange={(event) => setForm((f) => ({ ...f, isDefaultCash: event.target.checked }))}
@@ -323,7 +322,7 @@ export function TransferDialog({ open, accounts, initialFromId, isAdmin, onClose
         {insufficient && isAdmin && (
           <Toggle
             title="Registar mesmo assim"
-            description="A conta de origem fica com saldo negativo. Só para acertar um saldo de abertura em falta."
+            description="A conta de origem fica com saldo negativo."
             checked={allowNegative}
             onChange={(event) => setAllowNegative(event.target.checked)}
           />

@@ -166,7 +166,7 @@ function SetupScreen() {
 
         {window.ispm?.chooseBackupFile && (
           <div className="auth-setup-import">
-            <p>Já usavas o ISPM noutra máquina? Restaura a base de dados a partir de um backup em vez de começar do zero.</p>
+            <p>Já usavas o ISPM noutra máquina? Restaura um backup.</p>
             <button
               type="button"
               className="auth-setup-import-btn"

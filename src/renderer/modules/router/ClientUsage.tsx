@@ -94,7 +94,7 @@ export function ClientUsage({ rows, fup, onInstalled }: { rows: ClientUsageRow[]
         // Cabe em 868 px (1225 de ecrã): a barra tem a largura da coluna Consumo dos Clientes.
         gridTemplateColumns="72px minmax(106px, 1.5fr) minmax(100px, 1fr) minmax(76px, .8fr) repeat(2, minmax(82px, .8fr)) minmax(108px, .8fr) 96px"
         defaultSort={{ key: 'Total do mês', direction: 'desc' }}
-        empty={<EmptyState title="Sem serviços PPPoE ativos" description="O consumo aparece aqui quando houver serviços ativos com utilizador PPPoE." />} />
+        empty={<EmptyState title="Sem serviços PPPoE ativos" />} />
     </>
   );
 }

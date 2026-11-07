@@ -362,7 +362,6 @@ export function OperationsStatusPanel({ active }: { active: boolean }) {
               size="sm"
               icon={Network}
               title="Sem backbone registado"
-              description="Adiciona equipamentos na Topologia para veres aqui a carga e a receita por antena."
             />
           ) : (
             <BarChart rows={backboneRows} ariaLabel="Receita mensal por equipamento de backbone" />
@@ -525,7 +524,6 @@ export function OperationsStatusPanel({ active }: { active: boolean }) {
       )}
 
       <p className="ops-footnote">
-        Riscos e ações são derivados dos dados a cada leitura, não de uma lista fixa: resolvido o problema, a linha desaparece.
         Janela de comparação: {status.period.from} a {status.period.to}.
       </p>
     </div>

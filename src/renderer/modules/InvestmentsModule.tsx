@@ -601,7 +601,6 @@ export function InvestmentsModule() {
             <EmptyState
               icon={Wallet}
               title="Sem investimentos neste filtro"
-              description="Ajusta o intervalo de datas ou regista um novo investimento."
             />
           }
         />
@@ -750,7 +749,7 @@ export function InvestmentsModule() {
                     </span>
                   ))}
                   <span className="investment-zone-note">
-                    Zona do cliente, não a do investimento — receita de caixa menos o OPEX rateado.
+                    Pela zona do cliente.
                   </span>
                 </div>
               )}
@@ -869,7 +868,6 @@ export function InvestmentsModule() {
               <Field className="col-2" label="Margem (%)" type="number" min={0} step={0.01} value={form.desiredMarginPct} onChange={(e) => setForm((f) => ({ ...f, desiredMarginPct: e.target.value }))} />
               <Field className="col-2" label="Custo op./mês" type="number" min={0} step={0.01} value={form.monthlyOperationalCostCve} onChange={(e) => setForm((f) => ({ ...f, monthlyOperationalCostCve: e.target.value }))} />
               <Field className="col-2" label="Receita acumulada" type="number" min={0} step={0.01} value={form.accumulatedRevenueCve} onChange={(e) => setForm((f) => ({ ...f, accumulatedRevenueCve: e.target.value }))} />
-              <p className="investment-form-caption">Receita acumulada: só é usada quando o investimento não tem cliente/zona ligados — com pagamentos reais o cálculo é automático.</p>
             </div>
 
             <div className="investment-form-section">

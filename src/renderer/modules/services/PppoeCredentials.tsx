@@ -71,9 +71,6 @@ export function CreatePppoeButton({ serviceId, clientName, onCreated }: { servic
         }
       >
         <form id="pppoe-create-form" className="client-form" onSubmit={submit}>
-          <Message tone="neutral">
-            A senha é gerada pelo ISPM e fica no cofre. O utilizador nasce no router na sincronização seguinte.
-          </Message>
           <Field
             wide
             label="Utilizador PPPoE"
@@ -166,7 +163,7 @@ export function RevealPppoePassword({ serviceId }: { serviceId: number }) {
               label="A sua password"
               type="password"
               autoComplete="current-password"
-              hint="Só administradores podem ver a senha. A consulta fica registada na auditoria."
+              hint="Só administradores. Fica na auditoria."
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               error={error ?? undefined}
@@ -247,7 +244,7 @@ export function PppoeMigrationCardsDialog({ onClose }: { onClose: () => void }) 
           label="A sua password"
           type="password"
           autoComplete="current-password"
-          hint="Só administradores. A geração fica registada na auditoria."
+          hint="Só administradores. Fica na auditoria."
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           error={error ?? undefined}

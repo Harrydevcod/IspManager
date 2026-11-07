@@ -310,7 +310,7 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
             <span><b /> Ligação definida</span>
             <span><b data-medium="fibra" /> Fibra</span>
             <span><b data-medium="radio" /> Rádio</span>
-            <small>As linhas são administrativas. O ponto no canto é a última leitura da sonda; sem ponto, ninguém mediu.</small>
+            <small>O ponto é a última leitura da sonda.</small>
           </div>
         )}
       </section>

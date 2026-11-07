@@ -292,7 +292,6 @@ export function ReconcileEmpty() {
     <EmptyState
       icon={Check}
       title="O registo bate certo com a rede"
-      description="Nada a aplicar. Varra outra vez depois de instalar ou trocar equipamento."
     />
   );
 }

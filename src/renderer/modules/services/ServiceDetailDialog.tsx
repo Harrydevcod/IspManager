@@ -433,7 +433,6 @@ export function ServiceDetailDialog({
             size="sm"
             icon={Cable}
             title="Sem equipamento atribuído"
-            description="Atribui hardware a este serviço para começar a registar histórico técnico."
           />
         )}
         {technicalHistory && technicalHistory.assignments.length > 0 && (
@@ -646,7 +645,6 @@ export function ServiceDetailDialog({
             size="sm"
             icon={History}
             title="Sem eventos registados"
-            description="Quando criares ordens de serviço ou trocas de equipamento aparecem aqui."
           />
         )}
         {technicalHistory && technicalHistory.events.length > 0 && (

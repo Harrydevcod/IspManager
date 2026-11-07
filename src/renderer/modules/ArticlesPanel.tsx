@@ -110,7 +110,7 @@ export function ArticlesPanel({ canManage, createRequest }: { canManage: boolean
               <Pencil size={14} aria-hidden />
             </Button>
           ) : undefined}
-          empty={<EmptyState icon={Tags} title="Ainda não há artigos" description="As linhas livres dos talões e das faturas manuais aparecem aqui com código. Também pode criar um à mão." />}
+          empty={<EmptyState icon={Tags} title="Ainda não há artigos" />}
         />
       )}
       <Dialog
@@ -139,7 +139,6 @@ export function ArticlesPanel({ canManage, createRequest }: { canManage: boolean
           </Select>
           <Textarea label="Nota no documento" rows={2} maxLength={300} value={form.documentNote}
             placeholder="Garantia 12 meses · Recondicionado"
-            hint="Garantia, estado do produto… Aparece nas observações dos documentos que o incluem."
             onChange={(event) => setForm({ ...form, documentNote: event.target.value })} />
         </form>
       </Dialog>

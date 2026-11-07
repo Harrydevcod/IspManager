@@ -66,20 +66,19 @@ function ProviderDialog({ provider, open, onClose, onSaved }: {
           rows={5}
           value={form.hosts}
           placeholder={'portal.exemplo.tv\n203.0.113.10'}
-          hint="Um domínio, IP ou gama por linha. Se precisar de VPN, vão para a lista de servidores do router com o comentário do ISPM."
+          hint="Um domínio, IP ou gama por linha."
           onChange={(event) => setForm((f) => ({ ...f, hosts: event.target.value }))}
         />
         <Field label="Notas" maxLength={500} value={form.notes} onChange={(event) => setForm((f) => ({ ...f, notes: event.target.value }))} />
         <Toggle
           title="Precisa de VPN"
-          description="Ligado, os servidores vão para a lista do router e o IPTV sai pelo túnel. Desligado, segue pelas WAN."
+          description="Ligado: pelo túnel. Desligado: pelas WAN."
           checked={form.needsVpn}
           onChange={(event) => setForm((f) => ({ ...f, needsVpn: event.target.checked }))}
         />
         {provider && (
           <Toggle
             title="Fornecedor ativo"
-            description="Desativado, os servidores saem da lista do router; os serviços que o têm ficam como estão."
             checked={form.active}
             onChange={(event) => setForm((f) => ({ ...f, active: event.target.checked }))}
           />
@@ -124,7 +123,7 @@ export function IptvProviders({ providers, canEdit, onChanged }: { providers: Ip
             <Pencil size={16} aria-hidden />
           </Button>
         ) : undefined}
-        empty={<EmptyState size="sm" icon={Tv} title="Sem fornecedores" description="Registe um fornecedor para o ISPM manter os servidores dele na lista do router." />}
+        empty={<EmptyState size="sm" icon={Tv} title="Sem fornecedores" />}
       />
       <ProviderDialog
         provider={editing}

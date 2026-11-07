@@ -79,12 +79,12 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
       {/* Depois deste campo, para a grelha de duas colunas fechar sem buraco. */}
       {usesMeta && (
         <Message tone="neutral">
-          A Cloud API só entrega texto livre a quem escreveu à empresa nas últimas 24 horas. Avisos de fatura, atraso e corte precisam de modelos aprovados pela Meta, que o ISPM ainda não envia: fora dessa janela o envio falha. A confirmação de entrega e de leitura também não está disponível com este fornecedor.
+          Só entrega a quem escreveu à empresa nas últimas 24 horas.
         </Message>
       )}
       <Toggle
         title="Enviar avisos de atraso automaticamente"
-        description="Uma vez por dia, o sistema envia avisos de atraso/suspensao aos clientes elegiveis via WhatsApp. Desligado por defeito — liga so com consentimento dos clientes e o fornecedor configurado."
+        description="Só com consentimento dos clientes."
         checked={form.autoNoticesEnabled}
         onChange={(event) => onToggle('autoNoticesEnabled', event.target.checked)}
       />

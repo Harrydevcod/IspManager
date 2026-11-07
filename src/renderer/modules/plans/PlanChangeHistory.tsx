@@ -97,7 +97,7 @@ export function PlanChangeHistory({ onClose }: { onClose: () => void }) {
             onRowClick={(row) => setOpenId(row.id)}
             gridTemplateColumns="minmax(116px, 0.9fr) minmax(120px, 1.1fr) 72px 84px minmax(72px, 0.6fr) minmax(80px, 1.6fr) 184px"
             columns={COLUMNS}
-            empty={<EmptyState icon={History} title="Ainda sem mudanças em massa" description="Selecione serviços no módulo Serviços e use “Mudar de plano”." />}
+            empty={<EmptyState icon={History} title="Ainda sem mudanças em massa" />}
           />
         )}
     </Dialog>

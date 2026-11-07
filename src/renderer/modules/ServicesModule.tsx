@@ -1327,7 +1327,6 @@ export function ServicesModule({
             <EmptyState
               icon={Wrench}
               title="Nenhum serviço encontrado"
-              description="Ajusta os filtros ou ativa um novo serviço para um cliente."
             />
           }
         />
@@ -1381,7 +1380,7 @@ export function ServicesModule({
             label="Utilizador PPPoE"
             value={form.pppoeUsername}
             onChange={(event) => updateForm('pppoeUsername', event.target.value)}
-            hint="Identidade deste cliente no router. Em branco, o serviço fica fora do controlo de acesso."
+            hint="Em branco, fica fora do controlo de acesso."
           />
           {editingService ? <div className="field">
             <span className="field-label">Senha PPPoE</span>
@@ -1395,7 +1394,7 @@ export function ServicesModule({
             <div className="service-items-builder">
               <Toggle
                 title={avConfig.label}
-                description="Mensal entra na fatura da internet; anual gera fatura própria."
+                description="Mensal: na fatura da internet. Anual: fatura própria."
                 checked={form.audiovisualMode !== 'none'}
                 onChange={(event) => setForm((current) => ({
                   ...current,
@@ -1442,7 +1441,6 @@ export function ServicesModule({
             <div className="service-items-builder">
               <Toggle
                 title="Registar instalacao agora"
-                description="Atribui equipamento/materiais, abate o stock e contabiliza a mão de obra no momento da criação."
                 checked={attachItems}
                 onChange={(event) => toggleAttachItems(event.target.checked)}
               />
@@ -1548,8 +1546,7 @@ export function ServicesModule({
         ) : (
           <form id="device-form" className="client-form" onSubmit={submitShare}>
             <Message>
-              Para um prédio com switch, ou uma antena com várias saídas de rede. Não desconta stock — a mesma antena
-              passa a servir também este cliente, e o custo dela passa a ser dividido pelos serviços que serve.
+              Não desconta stock; o custo da antena divide-se pelos serviços.
             </Message>
             <Select
               wide
@@ -1732,7 +1729,7 @@ export function ServicesModule({
       >
         <form id="edit-device-form" className="client-form" onSubmit={submitEditDevice}>
           <Message>
-            Corrige a identificação do equipamento instalado. O stock não é alterado e a atribuição mantém-se ativa.
+            O stock não é alterado.
           </Message>
           <WanModeSelect
             value={editDraft.wanMode}
@@ -1767,7 +1764,7 @@ export function ServicesModule({
               step="50"
               value={editRental}
               onChange={(event) => setEditRental(event.target.value)}
-              hint="Vale a partir da próxima fatura; as já emitidas não mudam"
+              hint="Vale a partir da próxima fatura"
             />
           )}
           {/* Corrigir o dia em que isto foi mesmo instalado: dezenas de registos

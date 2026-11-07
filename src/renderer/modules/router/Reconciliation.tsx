@@ -188,8 +188,7 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
     <>
       <div className="recon-bar">
         <p className="router-muted">
-          Escolha, linha a linha, o que fazer: cada botão diz o que muda e onde. Nada é aplicado antes da revisão.
-          {dryRun ? ' O router está em ensaio: aplicar só diz o que faria.' : ''}
+          {dryRun ? 'Router em ensaio: aplicar só diz o que faria.' : ''}
         </p>
         <ColumnPicker headers={HEADERS} hidden={columnVisibility.hidden} onToggle={columnVisibility.toggle} onReset={columnVisibility.reset} />
         <Button disabled={decided.length === 0} onClick={() => setReviewing(true)}>
@@ -218,7 +217,7 @@ export function Reconciliation({ data, dryRun, onChanged }: { data: Reconciliati
           headerState: selection.visibleState(keys),
           onToggleAll: () => selection.toggleVisible(keys)
         }}
-        empty={<EmptyState icon={ArrowLeftRight} title="ISPM e router de acordo" description="Não há utilizadores, planos nem estados diferentes entre os dois." />}
+        empty={<EmptyState icon={ArrowLeftRight} title="ISPM e router de acordo" />}
       />
 
       <Dialog

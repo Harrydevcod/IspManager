@@ -196,7 +196,7 @@ export function BulkPlanChangeDialog({ serviceIds, plans, onClose, onDone }: {
           </Select>
           <Toggle
             title="A mensalidade acompanha o preço do plano"
-            description="Desligado, muda só o plano e a velocidade; o valor de cada serviço fica como está."
+            description="Desligado, o valor de cada serviço fica como está."
             wide={false}
             checked={updatePrice}
             onChange={(event) => setUpdatePrice(event.target.checked)}

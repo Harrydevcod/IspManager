@@ -111,7 +111,7 @@ export function SaleTicketDetailDialog({ payment, onClose, onCancelled }: {
         {error && <Message tone="error">{error}</Message>}
         <Textarea label="Motivo da anulação" required maxLength={500} rows={3} value={reason} disabled={submitting} onChange={(event) => setReason(event.target.value)} />
         <Field label="A sua palavra-passe de administrador" type="password" autoComplete="current-password" required value={password} disabled={submitting} onChange={(event) => setPassword(event.target.value)} />
-        <Toggle title="Confirmo a devolução dos produtos" description="Todos os artigos desta venda foram devolvidos e podem regressar ao stock." checked={returned} disabled={submitting} onChange={(event) => setReturned(event.target.checked)} />
+        <Toggle title="Confirmo a devolução dos produtos" checked={returned} disabled={submitting} onChange={(event) => setReturned(event.target.checked)} />
       </form>
     </Dialog>
   </>;

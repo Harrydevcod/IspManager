@@ -26,7 +26,6 @@ export function IptvTunnels({ tunnels }: { tunnels: Live<Tunnels> }) {
   return (
     <section className="router-findings" aria-label="VPN do IPTV">
       <h3><Route size={16} aria-hidden /> VPN do IPTV</h3>
-      <p className="router-muted">Qualquer VPN serve: configure-a no router e aparece aqui com o nome que lá tem. O IPTV segue a rota da tabela do IPTV.</p>
       {tunnels.error ? <Message tone="neutral">{tunnels.error}</Message>
         : !tunnels.data ? <SkeletonList rows={2} />
         : (
@@ -35,7 +34,7 @@ export function IptvTunnels({ tunnels }: { tunnels: Live<Tunnels> }) {
             rowKey={(row) => row.name}
             columns={columns}
             gridTemplateColumns="minmax(8rem, 1fr) 7rem minmax(10rem, 1.5fr) minmax(9rem, 1.4fr)"
-            empty={<EmptyState size="sm" icon={Route} title="Sem túneis no router" description="Configure a VPN no router; aparece aqui com o nome que lá tiver." />}
+            empty={<EmptyState size="sm" icon={Route} title="Sem túneis no router" />}
           />
         )}
     </section>

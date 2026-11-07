@@ -18,7 +18,6 @@ export function BillingTab({ form, onUpdate, onToggle }: BillingTabProps) {
         max={31}
         value={form.autoBillingDay}
         onChange={(event) => onUpdate('autoBillingDay', event.target.value)}
-        hint="Ao fechar o mês (dia 30), gera as faturas com competência desse mês. Recupera meses não abertos."
       />
       <Field
         label="Dia padrão de vencimento"
@@ -28,7 +27,6 @@ export function BillingTab({ form, onUpdate, onToggle }: BillingTabProps) {
         max={31}
         value={form.defaultDueDay}
         onChange={(event) => onUpdate('defaultDueDay', event.target.value)}
-        hint="Referência informativa. O vencimento real é a data de emissão + 30 dias."
       />
       <Field
         label="Preço de instalação CVE"
@@ -36,7 +34,7 @@ export function BillingTab({ form, onUpdate, onToggle }: BillingTabProps) {
         min={0}
         value={form.installationFeeCve}
         onChange={(event) => onUpdate('installationFeeCve', event.target.value)}
-        hint="Faturado uma vez ao criar um serviço. Um plano com preço de instalação próprio (> 0) tem precedência sobre este valor."
+        hint="Um plano com instalação própria tem precedência."
       />
       <Field
         label="Moeda"
@@ -88,29 +86,24 @@ export function BillingTab({ form, onUpdate, onToggle }: BillingTabProps) {
         value={form.productPolicy}
         onChange={(event) => onUpdate('productPolicy', event.target.value)}
         placeholder="Devoluções, trocas, garantia geral…"
-        hint="Só sai nos documentos que vendem produtos. A garantia de cada artigo vai na nota do próprio artigo."
       />
       <Toggle
         title="Mostrar linha de IVA nos documentos"
-        description="Quando desligado, fatura/recibo mostram apenas o total (serviço informal). Liga quando estiveres com contabilidade organizada."
         checked={form.showIva}
         onChange={(event) => onToggle('showIva', event.target.checked)}
       />
       <Toggle
         title="Imprimir QR Code fiscal nos documentos"
-        description="QR no formato Portaria 47/2021 (preparatório para e-Fatura). Liga quando estiveres preparado para credenciação na DNRE."
         checked={form.printQrCode}
         onChange={(event) => onToggle('printQrCode', event.target.checked)}
       />
       <Toggle
         title="Detalhar aluguer de equipamento na fatura"
-        description="O valor cobrado é o mesmo. Ligado, cada equipamento aparece em letra miúda por baixo da mensalidade, com a sua renda; desligado, vai tudo somado ao plano com a nota &quot;Inclui equipamento cedido&quot;."
         checked={form.printRentalLines}
         onChange={(event) => onToggle('printRentalLines', event.target.checked)}
       />
       <Toggle
         title="Conteúdos audiovisuais"
-        description="Permite oferecer o serviço aos clientes. Mensal entra na fatura da internet; anual é faturado à parte."
         checked={form.audiovisualEnabled}
         onChange={(event) => onToggle('audiovisualEnabled', event.target.checked)}
       />
@@ -121,7 +114,7 @@ export function BillingTab({ form, onUpdate, onToggle }: BillingTabProps) {
             required
             value={form.audiovisualLabel}
             onChange={(event) => onUpdate('audiovisualLabel', event.target.value)}
-            hint="Designação legal impressa nos documentos (evitar &quot;IPTV&quot;)."
+            hint="Evitar &quot;IPTV&quot;."
           />
           <Field
             label="Valor mensal CVE"

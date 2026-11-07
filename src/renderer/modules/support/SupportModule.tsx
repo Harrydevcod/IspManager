@@ -87,7 +87,7 @@ export function SupportModule() {
               onRowClick={(row) => setOpenId(row.id)} activeKey={openId}
               gridTemplateColumns="64px 168px 96px minmax(140px, 1.2fr) minmax(180px, 1.6fr) 120px 110px minmax(110px, .8fr) 96px"
               empty={<EmptyState title={status ? 'Nenhum pedido neste estado' : 'Ainda sem pedidos'}
-                description="Quando um cliente reportar uma avaria, registe-a em Novo pedido." />} />
+                />} />
           )}
 
       <NewTicketDialog open={creating} onClose={() => setCreating(false)}

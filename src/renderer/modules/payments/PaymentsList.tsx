@@ -218,7 +218,6 @@ export function PaymentsList({
         <EmptyState
           icon={ReceiptText}
           title="Nenhuma cobrança encontrada"
-          description="Ajusta os filtros ou aguarda novos serviços para gerar cobranças."
         />
       }
     />

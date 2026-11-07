@@ -141,9 +141,6 @@ export function LinkDialog({ open, upstream, device, link, pending, error, onSav
           </div>
         )}
         <Textarea label="Notas" value={form.notes} maxLength={500} rows={2} onChange={(event) => update('notes', event.target.value)} />
-        <p className="link-editor-hint">
-          Sinal e SNR não se escrevem aqui: só aparecem quando houver monitorização das próprias antenas.
-        </p>
       </form>
     </Dialog>
   );

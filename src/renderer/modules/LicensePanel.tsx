@@ -80,7 +80,6 @@ export function LicensePanel() {
           size="sm"
           icon={ShieldCheck}
           title="Licenciamento não configurado"
-          description="Esta instalação não exige licença: todas as funcionalidades estão disponíveis sem restrições."
         />
       </section>
     );
