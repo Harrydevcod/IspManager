@@ -116,7 +116,7 @@ describe('IptvSection', () => {
     });
     await render(service({}));
     const hint = container.querySelector('.has-hint')!;
-    expect(hint.textContent).toBe('PPPoE skn020 · em migração');
+    expect(hint.textContent).toBe('PPPoE skn020 + MAC');
     expect(hint.getAttribute('title')).toBe('PPPoE skn020, e o MAC do router do cliente BC:07:1D:5E:54:E7 até migrar');
   });
 

@@ -75,7 +75,7 @@ function Clients({ rows, lastRan }: { rows: ClientRow[]; lastRan: boolean }) {
         rows={rows}
         rowKey={(row) => row.serviceId}
         columns={columns}
-        gridTemplateColumns="minmax(7rem, 1fr) 4rem minmax(10rem, 1.5fr) 7rem 8rem minmax(8rem, 1fr)"
+        gridTemplateColumns="minmax(8.5rem, 1fr) 6rem minmax(10rem, 1.4fr) 7.5rem 7.5rem minmax(6.5rem, 0.6fr)"
         empty={<EmptyState size="sm" icon={Tv} title="Nenhum serviço com IPTV via VPN" description="Marque o serviço na ficha dele, em Serviços." />}
       />
     </section>

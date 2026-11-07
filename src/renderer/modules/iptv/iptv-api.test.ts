@@ -5,7 +5,7 @@ vi.mock('../../lib/auth', () => ({ authFetch: vi.fn() }));
 
 test('curto à vista, frase completa no hover, no género do equipamento', () => {
   expect(describeSource({ kind: 'pppoe', username: 'skn014', legacy: { mac: 'E2:5F:12:4C:4C:38', via: 'antena' } }))
-    .toEqual({ text: 'PPPoE skn014 · em migração', detail: 'PPPoE skn014, e o MAC da antena E2:5F:12:4C:4C:38 até migrar', tone: 'neutral' });
+    .toEqual({ text: 'PPPoE skn014 + MAC', detail: 'PPPoE skn014, e o MAC da antena E2:5F:12:4C:4C:38 até migrar', tone: 'neutral' });
   expect(describeSource({ kind: 'mac', mac: 'AA:BB:CC:DD:EE:FF', via: 'router' }))
     .toEqual({ text: 'MAC AA:BB:CC:DD:EE:FF', detail: 'MAC do router do cliente AA:BB:CC:DD:EE:FF', tone: 'neutral' });
 });
