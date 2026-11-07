@@ -4,6 +4,23 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.59](https://github.com/Harrydevcod/IspManager/releases/tag/v2.59.0) — 2026-11-07
+
+### Adicionado
+- **Pausa a pedido do cliente.** Quando um cliente vai estar fora (férias, viagem) e não quer cancelar, "Suspender" na ficha do serviço pergunta agora o motivo: **Ausência a pedido do cliente** ou **Suspensão pelo operador**. Na ausência pode indicar-se a data de regresso.
+  - Enquanto estiver em pausa, a mensalidade sai **só com o aluguer dos equipamentos** e o PPPoE é desativado no MikroTik. Pagar não reativa o serviço.
+  - No dia de regresso (hora de Cabo Verde) o serviço volta sozinho a ativo. Sem data, a pausa só acaba quando reativar à mão.
+  - A lista e a ficha mostram "Em pausa até 08/12", e a ficha diz quanto se fatura durante a pausa ("Em pausa: fatura 500$00"). "Alterar regresso" muda a data.
+
+### Alterado
+- **Ficha do serviço: a secção "IPTV via VPN" passa a "IPTV".** O serviço diz se tem IPTV e de que fornecedor; o caminho vem do fornecedor: **Pelo túnel VPN**, **Pelas WAN** ou **Sem IPTV**. O seletor mostra só o nome do fornecedor. "Origem no router" e "Validar no router" só aparecem quando o caminho é o túnel.
+- **A origem do IPTV aparece curta** ("PPPoE skn026 + MAC"), na ficha e na tabela do router. A frase completa aparece ao passar o rato.
+
+### Corrigido
+- **O cliente de um fornecedor que não precisa de VPN deixa de entrar na lista do túnel** no router. Aparecia em "Clientes com IPTV via VPN" sem usar a VPN. Um cliente com IPTV sem fornecedor indicado continua a entrar, como até aqui.
+- **Reconciliação: o acesso interno do ISP (`ispm-interno`, ex.: `gestao-arydson`) deixa de aparecer** com "Desativar no router" ou "Associar a um serviço". Continua visível na Visão geral.
+- **Router › IPTV:** a tabela "Clientes com IPTV via VPN" cortava o nome do cliente e a origem a 1225 px.
+
 ## [2.58](https://github.com/Harrydevcod/IspManager/releases/tag/v2.58.0) — 2026-11-07
 
 ### Alterado
