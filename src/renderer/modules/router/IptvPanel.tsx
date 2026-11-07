@@ -4,6 +4,7 @@ import {
   CHECK_STATUS, describeSource, type IptvActive, type IptvCheck, type IptvProvider, type IptvStatus, type IptvSyncResult, type IptvTarget,
   type IptvTunnels as IptvTunnelsData
 } from '../iptv/iptv-api';
+import { SourceText } from '../iptv/SourceText';
 import { IptvProviders } from './IptvProviders';
 import { IptvTunnels } from './IptvTunnels';
 import type { ServiceRow } from '../../types';
@@ -55,10 +56,7 @@ function Clients({ rows, lastRan }: { rows: ClientRow[]; lastRan: boolean }) {
     {
       header: 'Origem',
       sortValue: (row) => describeSource(row.source).text,
-      cell: (row) => {
-        const source = describeSource(row.source);
-        return source.tone === 'warn' ? <Badge tone="warn">{source.text}</Badge> : source.text;
-      }
+      cell: (row) => <SourceText source={describeSource(row.source)} />
     },
     {
       header: 'A entrar por',

@@ -37,6 +37,15 @@ describe('IPTV via VPN', () => {
     ]);
   });
 
+  test('o fornecedor decide o caminho: só entra no túnel quem precisa de VPN', () => {
+    const db = seed();
+    db.prepare("INSERT INTO iptv_providers (id, name, hosts, needs_vpn) VALUES (2, 'Pelas WAN', 'wan.example.tv', 0)").run();
+    db.prepare('UPDATE services SET iptv_provider_id = 1 WHERE id = 1').run();
+    db.prepare('UPDATE services SET iptv_provider_id = 2 WHERE id = 2').run();
+    db.prepare("UPDATE services SET iptv_vpn = 1, pppoe_username = 'skn099' WHERE id = 3").run(); // sem fornecedor
+    expect(loadIptvTargets(db).map((t) => t.serviceId)).toEqual([1, 3]);
+  });
+
   test('cliente em migração: o script leva o utilizador e o MAC legacy', async () => {
     const db = seed();
     db.prepare(`UPDATE services SET pppoe_username = 'skn020' WHERE id = 2`).run();

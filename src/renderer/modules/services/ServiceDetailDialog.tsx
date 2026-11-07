@@ -112,7 +112,7 @@ type ServiceDetailDialogProps = {
   onChangePassword: () => void;
   /** O serviço ganhou utilizador PPPoE: recarregar. */
   onPppoeCreated: () => void;
-  /** A marca IPTV via VPN mudou: recarregar. */
+  /** A marca de IPTV mudou: recarregar. */
   onIptvChanged: () => void;
 };
 

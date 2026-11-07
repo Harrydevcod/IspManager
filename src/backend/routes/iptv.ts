@@ -97,7 +97,7 @@ export async function registerIptvRoutes(app: FastifyInstance) {
         .run(after.iptvVpn, after.iptvProviderId, id);
       recordAuditStrict(db, request, {
         action: 'service_iptv_vpn', entityType: 'service', entityId: id,
-        summary: `${iptvVpn ? 'Marcou' : 'Desmarcou'} o serviço ${id} para IPTV via VPN`,
+        summary: `${iptvVpn ? 'Marcou' : 'Desmarcou'} o serviço ${id} com IPTV`,
         metadata: { before, after }
       });
     })();

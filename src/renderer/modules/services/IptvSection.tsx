@@ -6,6 +6,7 @@ import {
   IPTV_API, describeSource, describeValidation, iptvRequest,
   type IptvProvider, type IptvStatus, type IptvTarget, type IptvValidateResult, type IptvValidation
 } from '../iptv/iptv-api';
+import { SourceText } from '../iptv/SourceText';
 import type { DeviceAssignment, ServiceRow } from '../../types';
 
 /**
@@ -36,12 +37,16 @@ type IptvSectionProps = {
 };
 
 /**
- * IPTV via VPN na ficha do serviço (ADR 0021). A origem vem da base, sem tocar no
- * router; só "Validar no router" o lê, e só a pedido.
+ * IPTV na ficha do serviço (ADR 0021). O serviço diz que tem IPTV e de que fornecedor;
+ * o caminho é do fornecedor: precisa de VPN → túnel, senão pelas WAN (0099). A origem
+ * vem da base, sem tocar no router; só "Validar no router" o lê, e só a pedido.
  */
 export function IptvSection({ service, canManage, onChanged, assignments }: IptvSectionProps) {
   const marked = Boolean(service.iptvVpn);
   const [providers, setProviders] = useState<IptvProvider[]>([]);
+  // Sem fornecedor (ou ainda por carregar) vai pelo túnel, como o backend em `loadIptvTargets`.
+  const provider = providers.find((p) => p.id === service.iptvProviderId);
+  const viaTunnel = marked && provider?.needsVpn !== 0;
   const [target, setTarget] = useState<IptvTarget | null>(null);
   const [validation, setValidation] = useState<IptvValidation | null>(null);
   const [collisions, setCollisions] = useState<IptvValidateResult['lanCollisions']>([]);
@@ -65,12 +70,12 @@ export function IptvSection({ service, canManage, onChanged, assignments }: Iptv
     setCollisions([]);
     setError(null);
     setTarget(null);
-    if (!marked) { setTarget(null); return; }
+    if (!viaTunnel) { setTarget(null); return; }
     iptvRequest<IptvStatus>(`${IPTV_API}/status`)
       .then((status) => { if (alive) setTarget(status.targets.find((row) => row.serviceId === service.id) ?? null); })
       .catch((failure: Error) => { if (alive) setError(failure.message); });
     return () => { alive = false; validationRevision.current += 1; };
-  }, [marked, service.id, service.iptvProviderId, service.status, service.pppoeUsername, assignments]);
+  }, [viaTunnel, service.id, service.iptvProviderId, service.status, service.pppoeUsername, assignments]);
 
   const save = async (iptvVpn: boolean, iptvProviderId: number | null) => {
     setBusy('save');
@@ -105,7 +110,8 @@ export function IptvSection({ service, canManage, onChanged, assignments }: Iptv
 
   // Todos os ativos, com e sem VPN; um desativado continua a aparecer enquanto for o deste serviço.
   const options = providers.filter((p) => p.active === 1 || p.id === service.iptvProviderId);
-  const optionLabel = (p: IptvProvider) => p.active !== 1 ? `${p.name} (desativado)` : p.needsVpn !== 1 ? `${p.name} (sem VPN)` : p.name;
+  const optionLabel = (p: IptvProvider) =>
+    `${p.name} · ${p.needsVpn === 1 ? 'precisa de VPN' : 'pelas WAN'}${p.active !== 1 ? ' (desativado)' : ''}`;
   const source = target ? describeSource(target.source) : null;
   const seen = validation ? describeValidation(validation) : null;
 
@@ -113,16 +119,20 @@ export function IptvSection({ service, canManage, onChanged, assignments }: Iptv
     <section className="technical-section">
       <header className="technical-section-head">
         <div>
-          <p className="eyebrow"><Tv size={12} /> IPTV via VPN</p>
-          <h3>{marked ? <Badge tone="accent">Pelo túnel VPN</Badge> : <Badge tone="neutral">Pelas WAN</Badge>}</h3>
+          <p className="eyebrow"><Tv size={12} /> IPTV</p>
+          <h3>
+            {!marked
+              ? <Badge tone="neutral">Sem IPTV</Badge>
+              : viaTunnel ? <Badge tone="accent">Pelo túnel VPN</Badge> : <Badge tone="neutral">Pelas WAN</Badge>}
+          </h3>
         </div>
       </header>
 
       <div className="iptv-controls">
         <Toggle
           wide={false}
-          title="IPTV via VPN"
-          description="O IPTV deste cliente sai pelo túnel VPN; o resto continua pelas WAN. Não fatura."
+          title="IPTV"
+          description="Cliente com IPTV. O caminho vem do fornecedor: os que precisam de VPN saem pelo túnel, os outros pelas WAN. Não fatura."
           checked={marked}
           disabled={!canManage || busy !== null}
           onChange={(event) => void save(event.target.checked, event.target.checked ? service.iptvProviderId ?? null : null)}
@@ -140,7 +150,7 @@ export function IptvSection({ service, canManage, onChanged, assignments }: Iptv
         )}
       </div>
 
-      {marked && (
+      {viaTunnel && (
         <dl className="technical-item-meta">
           <div>
             <dt>Origem no router</dt>
@@ -148,7 +158,7 @@ export function IptvSection({ service, canManage, onChanged, assignments }: Iptv
               {service.status !== 'active'
                 ? 'Só os serviços ativos entram na lista'
                 : source
-                  ? source.tone === 'warn' ? <Badge tone="warn">{source.text}</Badge> : source.text
+                  ? <SourceText source={source} />
                   : 'A ler…'}
             </dd>
           </div>
@@ -164,7 +174,7 @@ export function IptvSection({ service, canManage, onChanged, assignments }: Iptv
       {collisions.map((collision) => <Message key={`${collision.assignmentId}-${collision.collidesWith}`} tone="warn">A gama LAN {collision.lanCidr} do equipamento {collision.assignmentId} colide com a gama do ISP {collision.collidesWith}. Altere a gama LAN do cliente.</Message>)}
       {error && <Message tone="error">{error}</Message>}
 
-      {marked && canManage && service.status === 'active' && (
+      {viaTunnel && canManage && service.status === 'active' && (
         <div className="technical-item-actions">
           <Button variant="secondary" size="sm" disabled={busy !== null} leadingIcon={<ScanSearch size={14} aria-hidden />} onClick={() => void validate()}>
             {busy === 'validate' ? 'A validar…' : 'Validar no router'}

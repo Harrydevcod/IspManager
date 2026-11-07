@@ -4826,6 +4826,15 @@ label.field-toggle {
   display: grid;
   gap: var(--space-2);
 }
+
+/* Texto curto com a versão completa no hover (atributo title). */
+.has-hint {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--text-3);
+  text-underline-offset: 3px;
+}
+
 /* ------------------------------------------------------- suspender / pausa a pedido */
 
 .suspend-service {
