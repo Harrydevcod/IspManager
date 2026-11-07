@@ -93,7 +93,7 @@ export function describeSource(source: IptvSource): { text: string; detail: stri
   }
   if (source.legacy) {
     return {
-      text: `PPPoE ${source.username} · em migração`,
+      text: `PPPoE ${source.username} + MAC`,
       detail: `PPPoE ${source.username}, e o MAC ${VIA_LEGACY[source.legacy.via]} ${source.legacy.mac} até migrar`,
       tone: 'neutral'
     };

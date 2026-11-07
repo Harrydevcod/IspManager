@@ -110,8 +110,8 @@ export function IptvSection({ service, canManage, onChanged, assignments }: Iptv
 
   // Todos os ativos, com e sem VPN; um desativado continua a aparecer enquanto for o deste serviço.
   const options = providers.filter((p) => p.active === 1 || p.id === service.iptvProviderId);
-  const optionLabel = (p: IptvProvider) =>
-    `${p.name} · ${p.needsVpn === 1 ? 'precisa de VPN' : 'pelas WAN'}${p.active !== 1 ? ' (desativado)' : ''}`;
+  // Só o nome: se precisa de VPN decide-se na gestão dos fornecedores; o caminho vê-se na etiqueta.
+  const optionLabel = (p: IptvProvider) => p.active !== 1 ? `${p.name} (desativado)` : p.name;
   const source = target ? describeSource(target.source) : null;
   const seen = validation ? describeValidation(validation) : null;
 
