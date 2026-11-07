@@ -37,14 +37,13 @@ export function ErrorReportsPanel() {
         <div>
           <h3>Relatórios de erro</h3>
           <p className="license-reason">
-            Quando a app falha, envia ao programador a stack do erro, a versão e o sistema operativo. Nunca vão
-            clientes, faturas, NIF, telefones, e-mails, endereços nem o conteúdo dos pedidos.
+            Nunca envia dados de clientes.
           </p>
         </div>
       </header>
       <Toggle
         title="Enviar relatórios de erro"
-        description="Desligado por omissão. A mudança aplica-se ao reiniciar a aplicação."
+        description="Aplica-se ao reiniciar."
         checked={state.enabled}
         disabled={saving}
         onChange={(event) => void toggle(event.target.checked)}

@@ -524,7 +524,7 @@ export function StockModule({
   // Garantia, estado…: gravada na linha do documento que o vende e impressa nas observações.
   const documentNoteField = (
     <Textarea label="Nota no documento" rows={2} maxLength={300} value={catalogForm.documentNote}
-      placeholder="Garantia 12 meses" hint="Aparece nas observações dos documentos que vendem este artigo."
+      placeholder="Garantia 12 meses"
       onChange={(event) => updateCatalogForm('documentNote', event.target.value)} />
   );
 

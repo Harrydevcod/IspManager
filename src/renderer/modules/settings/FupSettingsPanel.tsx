@@ -141,7 +141,6 @@ export function FupSettingsPanel() {
         <div>
           <h3><Gauge size={16} aria-hidden /> Uso justo</h3>
           <p className="fup-lede">
-            Consumo de referência por plano (download + upload): aviso, limitação na janela de pico e reposição no ciclo seguinte.
             Os valores do plano mandam sobre estes.
           </p>
         </div>
@@ -222,7 +221,7 @@ export function FupSettingsPanel() {
           { header: 'Por', sortValue: (row) => row.changedBy, cell: (row) => row.changedBy },
           { header: 'Motivo', sortValue: (row) => row.reason ?? '', cell: (row) => row.reason ?? '—' }
         ]}
-        empty={<EmptyState size="sm" icon={History} title="Sem alterações" description="Ainda ninguém alterou estes parâmetros, ou o filtro não apanha nenhuma." />}
+        empty={<EmptyState size="sm" icon={History} title="Sem alterações" />}
       />
     </section>
   );

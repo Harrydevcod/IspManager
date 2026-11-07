@@ -87,7 +87,7 @@ export function StoredLog() {
   if (list.length === 0 || day === null) {
     return (
       <EmptyState icon={ScrollText} title="Ainda não há linhas guardadas"
-        description="O ISPM guarda o registo do router de 5 em 5 minutos, enquanto estiver na rede de gestão." />
+        />
     );
   }
 
@@ -133,7 +133,7 @@ export function StoredLog() {
               defaultSort={{ key: 'Hora', direction: 'desc' }}
               gridTemplateColumns="minmax(96px, 0.4fr) minmax(140px, 0.6fr) minmax(260px, 3fr)"
               columns={LOG_COLUMNS}
-              empty={<EmptyState icon={ScrollText} title="Nenhuma linha com esse filtro" description="Limpe a procura, desligue o filtro de erros e avisos ou mostre a manutenção do ISPM." />}
+              empty={<EmptyState icon={ScrollText} title="Nenhuma linha com esse filtro" />}
             />
           )}
     </>

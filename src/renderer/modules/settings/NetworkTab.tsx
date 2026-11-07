@@ -156,7 +156,6 @@ export function NetworkTab({
     <>
       <Toggle
         title="Sonda de rede"
-        description="Faz ping periódico aos equipamentos com IP registado e mostra em Relatórios → Operação quais estão de pé. Só lê a rede: não altera nada em nenhum equipamento."
         checked={form.networkProbeEnabled}
         onChange={(event) => onToggle('networkProbeEnabled', event.target.checked)}
       />
@@ -169,7 +168,6 @@ export function NetworkTab({
             max={3600}
             value={form.networkProbeIntervalSeconds}
             onChange={(event) => onUpdate('networkProbeIntervalSeconds', event.target.value)}
-            hint="Aplica-se sem reiniciar. A sonda só corre com a aplicação aberta."
           />
           <Field
             label="Falhas seguidas para declarar em baixo"
@@ -178,11 +176,9 @@ export function NetworkTab({
             max={10}
             value={form.networkProbeFailThreshold}
             onChange={(event) => onUpdate('networkProbeFailThreshold', event.target.value)}
-            hint="Um ping perdido numa ligação rádio é normal. Três seguidas já é avaria."
           />
           <Toggle
             title="Sondar também os equipamentos dos clientes"
-            description="Além do backbone, faz ping às CPEs com IP fixo de serviços ativos. Mais leituras, mais ruído: liga quando quiseres detetar o cliente em baixo antes de ele telefonar."
             checked={form.networkProbeIncludeClients}
             onChange={(event) => onToggle('networkProbeIncludeClients', event.target.checked)}
           />
@@ -212,7 +208,7 @@ export function NetworkTab({
     <>
       <Toggle
         title="Router de gestão do ISP"
-        description="O MikroTik da operadora, à cabeça da rede. Liga o ISPM a ele para cortar e repor clientes sozinho, aprovisionar o acesso PPPoE e mostrar quem está mesmo online. Enquanto o ensaio estiver ligado, nada é alterado no router. Não é o router do cliente: o ISPM nunca se liga a equipamento que esteja em casa de alguém."
+        description="O MikroTik da operadora, nunca o do cliente."
         checked={form.routerosEnabled}
         onChange={(event) => onToggle('routerosEnabled', event.target.checked)}
       />
@@ -223,7 +219,7 @@ export function NetworkTab({
             value={form.routerosHost}
             onChange={(event) => onUpdate('routerosHost', event.target.value)}
             placeholder="192.168.88.1"
-            hint="IP do router da operadora na LAN. O serviço www-ssl tem de estar ligado no RouterOS."
+            hint="O serviço www-ssl tem de estar ligado."
           />
           <Field
             label="Porta"
@@ -237,7 +233,7 @@ export function NetworkTab({
             label="Utilizador da API"
             value={form.routerosUser}
             onChange={(event) => onUpdate('routerosUser', event.target.value)}
-            hint="Utilizador dedicado, com o grupo limitado a read, write, api e rest-api — nunca full."
+            hint="Grupo com read, write, api e rest-api — nunca full."
           />
           <SecretField label="Senha do router" configured={Boolean(form.routerosPasswordConfigured)}
             draft={secretDraft} onDraftChange={(next) => { onSecretDraftChange(next); onUpdate('routerosPassword', next.editing ? next.value : ''); }} />
@@ -254,7 +250,7 @@ export function NetworkTab({
           </div>
           <Toggle
             title="Ensaio (não altera nada no router)"
-            description="Calcula tudo o que faria — cortes, reposições, secrets em falta, perfis — e mostra o relatório sem tocar no router. Desligue só depois de conferir o relatório contra o parque real."
+            description="Mostra o que faria, sem tocar no router."
             checked={form.routerosDryRun}
             onChange={(event) => onToggle('routerosDryRun', event.target.checked)}
           />
@@ -265,7 +261,6 @@ export function NetworkTab({
             max={3600}
             value={form.routerosIntervalSeconds}
             onChange={(event) => onUpdate('routerosIntervalSeconds', event.target.value)}
-            hint="Aplica-se sem reiniciar. Só corre com a aplicação aberta."
           />
           <Field
             label="Máximo de cortes por passagem"
@@ -274,7 +269,7 @@ export function NetworkTab({
             max={500}
             value={form.routerosMaxDisablesPerRun}
             onChange={(event) => onUpdate('routerosMaxDisablesPerRun', event.target.value)}
-            hint="Trava da reconciliação: se uma passagem quiser cortar mais, não corta nenhum."
+            hint="Se uma passagem quiser cortar mais, não corta nenhum."
           />
           <RouterOptionsNotice options={routerOptions} />
           <RouterChoice
@@ -284,7 +279,7 @@ export function NetworkTab({
             options={routerOptions}
             list="profiles"
             noun="perfis PPP"
-            hint="Perfil PPP que já dá rede aos clientes: é dele que «Ler do perfil» copia os campos abaixo, e é para ele que vai um serviço sem perfil no plano."
+            hint="Perfil que já dá rede aos clientes."
           />
           <PlanNetworkFields form={form} onUpdate={onUpdate} options={routerOptions} onReload={reloadRouterOptions} />
           <RouterChoice
@@ -295,14 +290,14 @@ export function NetworkTab({
             list="profiles"
             noun="perfis PPP"
             emptyLabel="Nenhum: o secret é desativado"
-            hint="Perfil PPP para onde vai o cliente suspenso (velocidade mínima)."
+            hint="Para o cliente suspenso."
           />
           <Field
             label="Prefixo dos utilizadores PPPoE"
             value={form.routerosPppoePrefix}
             maxLength={16}
             onChange={(event) => onUpdate('routerosPppoePrefix', event.target.value)}
-            hint="Com «skn», o cliente C0002 fica skn002. Vazio: o utilizador sai do nome do cliente."
+            hint="Com «skn», C0002 fica skn002."
           />
           <RouterChoice
             label="Lista de origens do IPTV"
@@ -311,7 +306,6 @@ export function NetworkTab({
             options={routerOptions}
             list="addressLists"
             noun="address-lists"
-            hint="A address-list onde o ISPM põe os clientes com IPTV via VPN. O túnel, a tabela e a marca descobrem-se no router a partir dela."
           />
           <RouterChoice
             label="Lista de servidores do IPTV"
@@ -320,11 +314,9 @@ export function NetworkTab({
             options={routerOptions}
             list="addressLists"
             noun="address-lists"
-            hint="A address-list com os servidores dos fornecedores de IPTV registados no ISPM."
           />
           <Toggle
             title="Suspensão automática por falta de pagamento"
-            description="Depois da tolerância, suspende apenas o serviço em dívida. O ensaio protege também esta automação: enquanto estiver ligado, só mostra quem seria suspenso."
             checked={form.autoSuspensionEnabled}
             onChange={(event) => onToggle('autoSuspensionEnabled', event.target.checked)}
           />
@@ -337,7 +329,7 @@ export function NetworkTab({
                 max={120}
                 value={form.autoSuspensionGraceDays}
                 onChange={(event) => onUpdate('autoSuspensionGraceDays', event.target.value)}
-                hint="Ex.: vencimento dia 10 + 5 dias de tolerância → elegível para suspensão no dia 16."
+                hint="Ex.: dia 10 + 5 dias → suspende no dia 16."
               />
               <Field
                 label="Verificar cobranças a cada (minutos)"
@@ -346,7 +338,6 @@ export function NetworkTab({
                 max={1440}
                 value={form.autoSuspensionIntervalMinutes}
                 onChange={(event) => onUpdate('autoSuspensionIntervalMinutes', event.target.value)}
-                hint="Também verifica no arranque, para recuperar o período em que o PC esteve desligado."
               />
               <Field
                 label="Máximo de suspensões automáticas por passagem"
@@ -363,7 +354,7 @@ export function NetworkTab({
                 max={100}
                 value={form.autoSuspensionMaxPercent}
                 onChange={(event) => onUpdate('autoSuspensionMaxPercent', event.target.value)}
-                hint="Se qualquer uma das duas travas disparar, nenhum serviço é suspenso."
+                hint="Se uma das travas disparar, nada é suspenso."
               />
               <Message tone="neutral">
                 {form.routerosDryRun
@@ -376,7 +367,7 @@ export function NetworkTab({
       )}
       <div className="settings-test-whatsapp" aria-label="Teste de ligação ao router">
         <span>
-          Corre o teste por etapas contra os valores acima — não é preciso gravar primeiro.
+          Não é preciso gravar primeiro.
         </span>
         {routerReport && (
           <>

@@ -375,7 +375,6 @@ function EmptyInspector() {
         icon={Focus}
         size="sm"
         title="Selecione um nó"
-        description="Consulte configuração, estado administrativo e associações sem sair do mapa."
       />
     </div>
   );

@@ -24,7 +24,6 @@ export function PaymentTab({ form, onUpdate, onToggle, secretDraft, onSecretDraf
       </header>
       <Toggle
         title="Ativar pagamentos por Vinti4"
-        description="Acrescenta o Vinti4 às vias de pagamento de uma fatura: cola-se na fatura um EasyLink criado no Portal do Comerciante, o link segue nos avisos de WhatsApp e SMS e o cliente paga com cartão vinti4, Visa ou Mastercard."
         checked={form.vinti4Enabled}
         onChange={(event) => onToggle('vinti4Enabled', event.target.checked)}
       />
@@ -47,7 +46,6 @@ export function PaymentTab({ form, onUpdate, onToggle, secretDraft, onSecretDraf
       </header>
       <Toggle
         title="Ativar pagamentos por Stripe"
-        description="Acrescenta o Stripe às vias de pagamento de uma fatura: o ISPM gera um link, o cliente paga por cartão e o recibo é registado sozinho. Numerário e transferência continuam a funcionar como sempre."
         checked={form.stripeEnabled}
         onChange={(event) => onToggle('stripeEnabled', event.target.checked)}
       />

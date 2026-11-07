@@ -78,7 +78,6 @@ export function OverdueNotifyDialog({ preview, suspensionNoticeDays, sending, on
               size="sm"
               icon={Send}
               title="Sem clientes elegíveis"
-              description="Não há cobranças em atraso com telefone WhatsApp válido para envio em massa."
             />
           )}
 

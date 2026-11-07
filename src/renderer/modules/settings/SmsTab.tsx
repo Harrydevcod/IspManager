@@ -64,13 +64,12 @@ export function SmsTab({
     <>
       <Toggle
         title="Ligação à app móvel ISPM SMS"
-        description="Ligada, o desktop envia os SMS ao telemóvel pareado (que pede aprovação antes de usar o cartão SIM), atualiza o Painel da app e lê o estado do telemóvel. Desligada, não o contacta de forma nenhuma: o pareamento fica guardado e os SMS em fila saem quando voltar a ligar. Ligar pede a password de administrador."
+        description="Ligar pede a password de administrador."
         checked={form.smsCompanionEnabled}
         onChange={(event) => onToggle('smsCompanionEnabled', event.target.checked)}
       />
       <Toggle
         title="Avisos automaticos de atraso e corte por SMS"
-        description="Uma vez por dia, cada fatura em atraso ou perto do corte gera um SMS para todos os clientes com telefone valido, alem do WhatsApp. Chegam ao telemovel para aprovar (Aprovar todos). Clientes que recusaram avisos ficam de fora."
         checked={form.smsAutoNoticesEnabled}
         disabled={!form.smsCompanionEnabled}
         onChange={(event) => onToggle('smsAutoNoticesEnabled', event.target.checked)}
@@ -213,7 +212,7 @@ export function SmsTab({
       <TemplateField
         field="smsInvoiceIssuedTemplate"
         label="SMS — emissão de fatura"
-        hint="Sem acentos (á, ã, ç, õ): com eles cada SMS passa de 160 para 70 caracteres e custa 2 a 3 mensagens."
+        hint="Evite acentos: com eles cada SMS cai de 160 para 70 caracteres."
         value={form.smsInvoiceIssuedTemplate}
         recommended={fallbackSmsInvoiceIssuedTemplate}
         onUpdate={onUpdate}

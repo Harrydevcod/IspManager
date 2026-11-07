@@ -121,7 +121,6 @@ export function SaleTicketDialog({ open, onClose, onCreated }: {
   </>}>
     <form id="sale-ticket-form" className="client-form sale-ticket-form" onSubmit={submit}>
       <div className="sale-ticket-recipient"><div><span className="field-label">Destinatário</span><strong>Cliente Indiferenciado</strong></div><Badge tone="success">Pago na emissão</Badge></div>
-      <p className="sale-ticket-hint">Venda avulsa com pagamento integral. Os produtos do stock saem do armazém ao emitir; cada linha livre fica guardada com código em Stock → Artigos e serviços.</p>
       {error && <Message tone="error">{error}</Message>}
       {catalogError && <Message tone="error">Não foi possível carregar o catálogo. Pode emitir linhas livres.</Message>}
       <div className="service-items-builder"><div className="service-items-group">

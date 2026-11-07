@@ -23,7 +23,6 @@ export function LanCidrField({ catalogType, value, onChange }: { catalogType: st
       placeholder="192.168.0.0/24"
       onChange={(event) => onChange(event.target.value)}
       error={invalid ? 'Use rede/prefixo, ex.: 192.168.0.0/24' : undefined}
-      hint="A LAN do router do cliente, para avisar se colide com uma gama do ISP."
     />
   );
 }
@@ -132,7 +131,6 @@ export function IptvSection({ service, canManage, onChanged, assignments }: Iptv
         <Toggle
           wide={false}
           title="IPTV"
-          description="Cliente com IPTV. O caminho vem do fornecedor: os que precisam de VPN saem pelo túnel, os outros pelas WAN. Não fatura."
           checked={marked}
           disabled={!canManage || busy !== null}
           onChange={(event) => void save(event.target.checked, event.target.checked ? service.iptvProviderId ?? null : null)}
@@ -156,7 +154,7 @@ export function IptvSection({ service, canManage, onChanged, assignments }: Iptv
             <dt>Origem no router</dt>
             <dd>
               {service.status !== 'active'
-                ? 'Só os serviços ativos entram na lista'
+                ? 'Serviço inativo'
                 : source
                   ? <SourceText source={source} />
                   : 'A ler…'}

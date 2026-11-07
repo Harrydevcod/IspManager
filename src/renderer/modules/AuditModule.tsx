@@ -184,7 +184,6 @@ export function AuditModule() {
         <EmptyState
           icon={Inbox}
           title="Sem eventos de auditoria"
-          description="Ainda não há registos. Ações sobre clientes, planos e faturação aparecem aqui assim que ocorrerem."
         />
       )}
 

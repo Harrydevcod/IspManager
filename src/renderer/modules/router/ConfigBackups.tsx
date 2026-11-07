@@ -118,7 +118,7 @@ export function ConfigBackups({ data, onChanged }: { data: ConfigSnapshots; onCh
         onRowClick={(row) => setSelectedId(row.id)} activeKey={selectedId}
         gridTemplateColumns="minmax(140px, 1.2fr) minmax(90px, 1fr) repeat(3, minmax(96px, .8fr))"
         defaultSort={{ key: 'Data', direction: 'desc' }}
-        empty={<EmptyState title="Ainda sem cópias" description="A primeira é feita sozinha com o ISPM aberto na rede de gestão, ou já com Copiar agora." />} />
+        empty={<EmptyState title="Ainda sem cópias" />} />
       {selectedId !== null && <SnapshotDialog id={selectedId} onClose={() => setSelectedId(null)} />}
     </>
   );

@@ -115,7 +115,6 @@ export function DeviceOwnerDialog({
           assignment.sharedWith.length > 0 ? (
             <Select
               label="Novo titular"
-              hint="So os servicos que ja sao servidos por esta antena podem assumi-la."
               value={String(targetId)}
               onChange={(event) => setTargetId(Number(event.target.value))}
             >
@@ -136,7 +135,6 @@ export function DeviceOwnerDialog({
 
         <Toggle
           title="O titular antigo continua a ser servido por esta antena"
-          description="Ligue quando a antena continua a alimentar o titular antigo; deixe desligado quando ele esta a sair."
           checked={keepPrevious}
           onChange={(event) => setKeepPrevious(event.target.checked)}
         />

@@ -186,7 +186,7 @@ export function BackupsPanel() {
         <div>
           <h3>Backups</h3>
           <p className="backups-dir">
-            Cópias completas da base de dados. Restaurar substitui os dados atuais e reinicia a aplicação.
+            Restaurar substitui os dados atuais.
           </p>
         </div>
         <div className="backups-head-actions">
@@ -249,9 +249,6 @@ export function BackupsPanel() {
             Guardar
           </Button>
         </div>
-        <p className="backups-config-hint">
-          Deixa a pasta vazia para usar a predefinição. Uma pasta sincronizada (Drive, Dropbox, OneDrive) funciona como backup externo.
-        </p>
         <p className="backups-effective">
           <span>A guardar em</span>
           <code title={backupDir}>{backupDir || '—'}</code>
@@ -280,7 +277,6 @@ export function BackupsPanel() {
             size="sm"
             icon={Archive}
             title="Sem backups ainda"
-            description="Cria o primeiro backup agora ou importa um ficheiro .sqlite existente."
           />
         ) : (
           <ul className="backups-list">

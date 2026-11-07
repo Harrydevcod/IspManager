@@ -173,7 +173,7 @@ export function ManualInvoiceDialog({ open, onClose, onCreated }: ManualInvoiceD
 
         <Toggle
           title="Destinatário novo"
-          description="Para quem ainda não é cliente. Fica registado em Clientes, sem serviço, e da próxima vez já aparece na lista."
+          description="Fica registado em Clientes, sem serviço."
           checked={isNewRecipient}
           disabled={submitting}
           onChange={(event) => { setIsNewRecipient(event.target.checked); setServiceId(''); setWithStripe(false); }}

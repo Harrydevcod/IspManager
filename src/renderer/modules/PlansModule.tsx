@@ -392,7 +392,7 @@ export function PlansModule() {
             max={10000}
             value={form.downloadMbps}
             onChange={(event) => updateForm('downloadMbps', event.target.value)}
-            hint="Número para relatórios. A velocidade no router vem do perfil PPP."
+            hint="A velocidade no router vem do perfil PPP."
           />
           <Field
             label="Upload (Mbps)"

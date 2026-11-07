@@ -85,7 +85,6 @@ export function JobHealthPanel() {
       <header className="backups-head">
         <div>
           <h3>Saúde dos automatismos</h3>
-          <p className="backups-dir">Tarefas em segundo plano: faturação, avisos e envios. Última execução de cada uma.</p>
         </div>
         <Button variant="secondary" size="sm" leadingIcon={<RefreshCw size={14} aria-hidden />} loading={loading} onClick={() => void load()}>
           Atualizar
@@ -99,7 +98,6 @@ export function JobHealthPanel() {
           size="sm"
           icon={Activity}
           title="Ainda sem execuções registadas"
-          description="As tarefas correm no arranque e em intervalos. Aparecem aqui assim que correrem pela primeira vez."
         />
       ) : (
         <ul className="job-health-list">

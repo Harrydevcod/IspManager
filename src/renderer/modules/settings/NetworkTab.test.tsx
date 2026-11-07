@@ -72,7 +72,7 @@ const failedReport: RouterTestReport = {
 describe('NetworkTab — diagnóstico do router', () => {
   test('sem relatório mostra só a explicação do botão', () => {
     const html = render(null);
-    expect(html).toContain('não é preciso gravar primeiro');
+    expect(html).toContain('Não é preciso gravar primeiro');
     expect(html).not.toContain('settings-router-steps');
   });
 

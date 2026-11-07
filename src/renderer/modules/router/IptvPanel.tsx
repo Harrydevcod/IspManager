@@ -38,9 +38,6 @@ function Infrastructure({ infra }: { infra: Live<IptvCheck[]> }) {
             })}
           </ol>
         )}
-      <p className="router-muted">
-        O túnel, a tabela e a marca descobrem-se a partir da lista de origens. Trocar de VPN ou de WAN faz-se só no router.
-      </p>
     </section>
   );
 }
@@ -100,7 +97,7 @@ function ManualEntries({ last }: { last: Extract<IptvSyncResult, { status: 'appl
   return (
     <section className="router-findings" aria-label="Entradas manuais na lista de origens">
       <h3><ListChecks size={16} aria-hidden /> Entradas manuais na lista de origens</h3>
-      <p className="router-muted">Foram postas à mão no router. O ISPM nunca as apaga: reveja-as e remova as que já não servem.</p>
+      <p className="router-muted">Postas à mão no router; o ISPM nunca as apaga.</p>
       <DataTable rows={rows} rowKey={(row) => row.key} columns={columns} gridTemplateColumns="9rem minmax(10rem, 1.5fr) minmax(12rem, 1.5fr)" empty={null} />
     </section>
   );

@@ -100,7 +100,7 @@ export function LicenseDialog({ open, onClose }: { open: boolean; onClose: () =>
     >
       <Textarea
         label="Ficheiro de licença"
-        hint="Abra o ficheiro .ispmlic que recebeu e cole aqui o conteúdo."
+        hint="Cole o conteúdo do ficheiro .ispmlic."
         rows={5}
         value={token}
         spellCheck={false}

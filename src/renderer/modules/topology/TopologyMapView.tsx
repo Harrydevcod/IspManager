@@ -531,7 +531,7 @@ function TopologyStatsBar({
         <StatAction
           label="Sem ligação"
           value={snapshot.stats.unmappedAssignmentCount}
-          hint="Equipamento instalado sem dizer de que backbone pende. Abra a aba Backbone para definir a ligação."
+          hint="Defina a ligação na aba Backbone."
           onClick={onOpenBackbone}
         />
         <span
