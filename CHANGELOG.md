@@ -4,6 +4,12 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.58](https://github.com/Harrydevcod/IspManager/releases/tag/v2.58.0) — 2026-11-07
+
+### Alterado
+- **Router de gestão: a aba "IPTV via VPN" passa a chamar-se "IPTV".** Nem todo o portal precisa do túnel. Cada fornecedor diz agora se **precisa de VPN**: a tabela tem a coluna própria ("Precisa de VPN" ou "Pelas WAN") e o diálogo de criar ou editar tem o interruptor. Os servidores de um fornecedor sem VPN não vão para a lista do router, por isso o IPTV dele segue pelas WAN. Os fornecedores que já existiam ficam marcados como precisando de VPN e o router não muda nada ao atualizar.
+- **Ficha do serviço:** o seletor de fornecedor de IPTV mostra todos os ativos; os que não precisam de VPN aparecem com "(sem VPN)".
+
 ## [2.57](https://github.com/Harrydevcod/IspManager/releases/tag/v2.57.0) — 2026-11-06
 
 ### Adicionado
