@@ -9,6 +9,9 @@ import type Database from 'better-sqlite3';
 export type FupSettingType = 'NUMERO' | 'TEXTO' | 'HORA' | 'FUSO';
 
 export type FupSettings = {
+  plafond_predefinido_gb: number;
+  dia_ciclo: string;
+  acao_ao_limite: 'REDUZIR' | 'BLOQUEAR';
   limiar_aviso_percent: number;
   limiar_limitacao_percent: number;
   percent_velocidade_pico: number;
@@ -25,6 +28,9 @@ export type FupSettingKey = keyof FupSettings;
 type Definition = { type: FupSettingType; default: string; label: string; description: string };
 
 export const FUP_SETTING_DEFINITIONS: Record<FupSettingKey, Definition> = {
+  plafond_predefinido_gb: { type: 'NUMERO', default: '0', label: 'Plafond predefinido (GB)', description: 'Consumo de referência dos planos que não definem o seu. 0 = sem plafond.' },
+  dia_ciclo: { type: 'TEXTO', default: 'ATIVACAO', label: 'Dia de renovação', description: 'Dia em que o consumo volta a zero. O serviço pode ter o seu.' },
+  acao_ao_limite: { type: 'TEXTO', default: 'REDUZIR', label: 'Ação ao atingir o limite', description: 'Reduzir a velocidade na janela de pico, ou bloquear a ligação o dia inteiro até ao ciclo seguinte.' },
   limiar_aviso_percent: { type: 'NUMERO', default: '80', label: 'Limiar de aviso (%)', description: 'Percentagem do consumo de referência a partir da qual o cliente recebe o aviso, uma vez por ciclo.' },
   limiar_limitacao_percent: { type: 'NUMERO', default: '100', label: 'Limiar de limitação (%)', description: 'Percentagem a partir da qual a velocidade é reduzida na janela de pico, até ao ciclo seguinte.' },
   percent_velocidade_pico: { type: 'NUMERO', default: '50', label: 'Velocidade no pico (%)', description: 'Velocidade de um cliente limitado na janela de pico, em % da contratada. O plano pode ter a sua.' },
@@ -33,12 +39,12 @@ export const FUP_SETTING_DEFINITIONS: Record<FupSettingKey, Definition> = {
   fuso_horario: { type: 'FUSO', default: 'Atlantic/Cape_Verde', label: 'Fuso horário', description: 'Fuso (IANA) da janela de pico. O router aplica a janela pelo seu próprio relógio: tem de estar no mesmo fuso.' },
   intervalo_recolha_minutos: { type: 'NUMERO', default: '5', label: 'Intervalo de recolha (min)', description: 'De quantos em quantos minutos o ISPM lê o consumo no router.' },
   canal_aviso: { type: 'TEXTO', default: 'WHATSAPP', label: 'Canal do aviso', description: 'Por onde sai o aviso: WhatsApp ou SMS. O cliente que recusou avisos não recebe nenhum.' },
-  mensagem_aviso: { type: 'TEXTO', default: 'Caro cliente {nome}, já usou {percent}% do consumo de referência do seu plano ({gb} de {referencia} GB) neste ciclo. Ao chegar aos 100%, a velocidade entre as {inicio} e as {fim} passa a {pico}% da contratada até ao próximo ciclo.', label: 'Mensagem de aviso', description: 'Texto do aviso. Campos: {nome} {percent} {gb} {referencia} {inicio} {fim} {pico}.' }
+  mensagem_aviso: { type: 'TEXTO', default: 'Caro cliente {nome}, já usou {percent}% do consumo de referência do seu plano ({gb} de {referencia} GB) neste ciclo. Ao chegar aos 100%, {acao} até ao próximo ciclo.', label: 'Mensagem de aviso', description: 'Texto do aviso. Campos: {nome} {percent} {gb} {referencia} {inicio} {fim} {pico} {acao}.' }
 };
 
 export const FUP_SETTING_KEYS = Object.keys(FUP_SETTING_DEFINITIONS) as FupSettingKey[];
 
-const NUMERIC = new Set<FupSettingKey>(['limiar_aviso_percent', 'limiar_limitacao_percent', 'percent_velocidade_pico', 'intervalo_recolha_minutos']);
+const NUMERIC = new Set<FupSettingKey>(['plafond_predefinido_gb', 'limiar_aviso_percent', 'limiar_limitacao_percent', 'percent_velocidade_pico', 'intervalo_recolha_minutos']);
 
 export class FupSettingsError extends Error {
   constructor(public readonly errors: Partial<Record<FupSettingKey, string>>) {
@@ -95,8 +101,16 @@ export function validateFupSettings(raw: Record<FupSettingKey, string>): Partial
   if (!/^\d+$/.test(interval) || Number(interval) < 1 || Number(interval) > 60) errors.intervalo_recolha_minutos = 'Tem de ser um número inteiro de 1 a 60.';
   if (raw.canal_aviso === 'EMAIL') errors.canal_aviso = 'Sem envio de email configurado: escolha WHATSAPP ou SMS.';
   else if (raw.canal_aviso !== 'SMS' && raw.canal_aviso !== 'WHATSAPP') errors.canal_aviso = 'Canal inválido: WHATSAPP ou SMS.';
+  const plafond = raw.plafond_predefinido_gb.trim();
+  if (!/^\d+$/.test(plafond) || Number(plafond) > 100_000) errors.plafond_predefinido_gb = 'Tem de ser um número inteiro de 0 a 100 000.';
+  if (raw.dia_ciclo !== 'ATIVACAO' && !(/^\d{1,2}$/.test(raw.dia_ciclo) && Number(raw.dia_ciclo) >= 1 && Number(raw.dia_ciclo) <= 28)) errors.dia_ciclo = 'Dia de 1 a 28, ou o da ativação.';
+  if (raw.acao_ao_limite !== 'REDUZIR' && raw.acao_ao_limite !== 'BLOQUEAR') errors.acao_ao_limite = 'Ação inválida: REDUZIR ou BLOQUEAR.';
   if (!raw.mensagem_aviso.trim()) errors.mensagem_aviso = 'A mensagem não pode ficar vazia.';
   else if (raw.mensagem_aviso.length > 1000) errors.mensagem_aviso = 'A mensagem passa dos 1000 caracteres.';
+  // Bloqueado não tem janela: uma mensagem que a cite mentia ao cliente.
+  else if (raw.acao_ao_limite === 'BLOQUEAR' && /\{(inicio|fim|pico)\}/.test(raw.mensagem_aviso)) {
+    errors.mensagem_aviso = 'Com a ligação bloqueada não há janela de pico: use {acao} em vez de {inicio}, {fim} e {pico}.';
+  }
   return errors;
 }
 
@@ -136,6 +150,28 @@ export function invalidateFupSettingsCache(db: Database.Database): void {
 /** Precedência: o plano, se o definir; senão a global (que já caiu no default se vazia). */
 export function effectivePeakPercent(plan: { fupPeakPercent: number | null }, settings: Pick<FupSettings, 'percent_velocidade_pico'>): number {
   return plan.fupPeakPercent ?? settings.percent_velocidade_pico;
+}
+
+/**
+ * Plafond do serviço. Precedência: o do serviço (0 = isento), senão o do plano
+ * se for maior que 0, senão o predefinido das Definições.
+ */
+export function effectiveReferenceGb(serviceGb: number | null, planGb: number | null, settings: Pick<FupSettings, 'plafond_predefinido_gb'>): number {
+  if (serviceGb !== null) return serviceGb;
+  if (planGb !== null && planGb > 0) return planGb;
+  return settings.plafond_predefinido_gb;
+}
+
+/** Dia global de início do ciclo; nulo = o da ativação. */
+export function globalCycleDay(settings: Pick<FupSettings, 'dia_ciclo'>): number | null {
+  return settings.dia_ciclo === 'ATIVACAO' ? null : Number(settings.dia_ciclo);
+}
+
+/** O que acontece aos 100%, para o campo {acao} da mensagem. */
+export function fupActionText(settings: Pick<FupSettings, 'acao_ao_limite' | 'janela_pico_inicio' | 'janela_pico_fim'>, peakPercent: number): string {
+  return settings.acao_ao_limite === 'BLOQUEAR'
+    ? 'a ligação fica bloqueada'
+    : `a velocidade entre as ${settings.janela_pico_inicio} e as ${settings.janela_pico_fim} passa a ${peakPercent}% da contratada`;
 }
 
 export function candidateFupSettings(db: Database.Database, changes: Partial<Record<string, unknown>>): { raw: Record<FupSettingKey, string>; errors: Partial<Record<FupSettingKey, string>> } {

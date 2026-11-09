@@ -11,6 +11,10 @@ export type FupUsage = {
   username: string;
   planName: string | null;
   referenceGb: number;
+  /** Plafond próprio do serviço; nulo = herda. */
+  serviceReferenceGb: number | null;
+  /** Plano ou predefinido: o que vale sem plafond próprio. */
+  inheritedReferenceGb: number;
   peakPercent: number;
   cycleStart: string;
   cycleEnd: string;
@@ -52,7 +56,7 @@ export type FupHistoryRow = {
   reason: string | null;
 };
 
-export type FupThresholds = { aviso: number; limitacao: number };
+export type FupThresholds = { aviso: number; limitacao: number; acao?: 'REDUZIR' | 'BLOQUEAR' };
 
 export type FupApiError = { error: string; errors?: Record<string, string> };
 

@@ -6,7 +6,7 @@ afterEach(() => vi.unstubAllGlobals());
 const thresholds = { aviso: 80, limitacao: 100 };
 
 const row = (overrides: Partial<FupUsage>): FupUsage => ({
-  serviceId: 1, clientId: 1, username: 'ana', planName: 'Standard', referenceGb: 100, peakPercent: 50,
+  serviceId: 1, clientId: 1, username: 'ana', planName: 'Standard', referenceGb: 100, serviceReferenceGb: null, inheritedReferenceGb: 100, peakPercent: 50,
   cycleStart: '2026-10-10', cycleEnd: '2026-11-09', period: '2026-10',
   downloadBytes: 0, uploadBytes: 0, totalBytes: 0, percent: 0, state: 'NORMAL', limitedNow: false,
   ...overrides

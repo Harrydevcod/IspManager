@@ -5,7 +5,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import midnightMigration from '../db/migrations/0098_fup_meia_noite';
 import {
-  FUP_SETTING_DEFINITIONS, FUP_SETTING_KEYS, FupSettingsError, effectivePeakPercent, invalidateFupSettingsCache, listFupSettingsHistory,
+  FUP_SETTING_DEFINITIONS, FUP_SETTING_KEYS, FupSettingsError, effectivePeakPercent, effectiveReferenceGb, fupActionText, globalCycleDay, invalidateFupSettingsCache, listFupSettingsHistory,
   readFupSettings, resetFupSetting, saveFupSettings, validateFupSettings, type FupSettingKey
 } from './fup-settings';
 
@@ -59,6 +59,34 @@ describe('validação', () => {
     expect(errorsFor({ limiar_aviso_percent: '100', limiar_limitacao_percent: '100' }).limiar_aviso_percent).toMatch(/menor/);
     expect(errorsFor({ janela_pico_inicio: '23:00', janela_pico_fim: '18:00' }).janela_pico_inicio).toMatch(/anterior/);
     expect(errorsFor({ limiar_aviso_percent: '150', limiar_limitacao_percent: '200', canal_aviso: 'SMS', fuso_horario: 'Europe/Lisbon' })).toEqual({});
+  });
+});
+
+describe('plafond, renovação e ação', () => {
+  test('validação das chaves novas', () => {
+    expect(errorsFor({ plafond_predefinido_gb: '-1' }).plafond_predefinido_gb).toBeDefined();
+    expect(errorsFor({ plafond_predefinido_gb: '100001' }).plafond_predefinido_gb).toBeDefined();
+    expect(errorsFor({ plafond_predefinido_gb: '250' })).toEqual({});
+    expect(errorsFor({ dia_ciclo: '0' }).dia_ciclo).toBeDefined();
+    expect(errorsFor({ dia_ciclo: '29' }).dia_ciclo).toBeDefined();
+    expect(errorsFor({ dia_ciclo: '28' })).toEqual({});
+    expect(errorsFor({ acao_ao_limite: 'DESLIGAR' }).acao_ao_limite).toBeDefined();
+    expect(errorsFor({ acao_ao_limite: 'BLOQUEAR' })).toEqual({});
+    expect(errorsFor({ acao_ao_limite: 'BLOQUEAR', mensagem_aviso: 'Entre as {inicio} e as {fim}.' }).mensagem_aviso).toMatch(/\{acao\}/);
+  });
+
+  test('precedência do plafond e texto da ação', () => {
+    const settings = { plafond_predefinido_gb: 250 };
+    expect(effectiveReferenceGb(null, 0, settings)).toBe(250);
+    expect(effectiveReferenceGb(null, null, settings)).toBe(250);
+    expect(effectiveReferenceGb(null, 300, settings)).toBe(300);
+    expect(effectiveReferenceGb(500, 300, settings)).toBe(500);
+    expect(effectiveReferenceGb(0, 300, settings)).toBe(0);
+    expect(globalCycleDay({ dia_ciclo: 'ATIVACAO' })).toBeNull();
+    expect(globalCycleDay({ dia_ciclo: '15' })).toBe(15);
+    const window = { janela_pico_inicio: '18:00', janela_pico_fim: '00:00' };
+    expect(fupActionText({ ...window, acao_ao_limite: 'REDUZIR' }, 50)).toBe('a velocidade entre as 18:00 e as 00:00 passa a 50% da contratada');
+    expect(fupActionText({ ...window, acao_ao_limite: 'BLOQUEAR' }, 50)).toBe('a ligação fica bloqueada');
   });
 });
 

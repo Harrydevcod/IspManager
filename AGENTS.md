@@ -21,3 +21,5 @@ Nenhuma release sai sem um **smoke visual** de cada ecrã que ela muda. A releas
   - na app empacotada: `electron-builder --dir` e depois `release/win-unpacked/ISPM.exe`.
 - **O quê.** Capturas de cada ecrã alterado à largura real, 1225 px (ecrã de 1920 a 150%), e numa largura estreita. Os estados que se aplicarem: com dados, vazio, erro, fora da rede. Cada fluxo novo é clicado de ponta a ponta. O `/health` 200 sozinho não é smoke.
 - **Depois.** As capturas vão para o utilizador antes de lançar. Um defeito encontrado no smoke corrige-se antes da release, não numa versão a seguir.
+- **No Chrome, antes do merge.** Um PR que mexe em ecrãs só se funde depois de o smoke correr no Chrome com os ecrãs alterados deixados abertos em abas, para o utilizador os ver ao vivo. Fica tudo a correr até ele dar o visto.
+- **Nunca uma release só para corrigir ecrãs.** Um defeito de ecrã corrige-se no próprio PR, antes do merge.

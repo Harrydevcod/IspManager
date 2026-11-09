@@ -210,6 +210,38 @@ describe('motor', () => {
     expect(loadFupUsage(db, peak('2026-10-31'), readFupSettings(db))[0].percent).toBeCloseTo(90);
   });
 
+  test('plafond: serviço > plano > predefinido; 0 no serviço isenta', () => {
+    addUsage('2026-10-12', 120);
+    const gb = () => loadFupUsage(db, peak('2026-10-20'), readFupSettings(db))[0];
+    expect(gb()).toMatchObject({ referenceGb: 100, serviceReferenceGb: null, inheritedReferenceGb: 100 });
+    db.prepare('UPDATE internet_plans SET fup_reference_gb = 0').run();
+    expect(gb().referenceGb).toBe(0);
+    saveFupSettings(db, { plafond_predefinido_gb: '250' }, 'admin');
+    expect(gb()).toMatchObject({ referenceGb: 250, inheritedReferenceGb: 250 });
+    db.prepare('UPDATE services SET fup_reference_gb = 500').run();
+    expect(gb()).toMatchObject({ referenceGb: 500, serviceReferenceGb: 500, inheritedReferenceGb: 250 });
+    db.prepare('UPDATE services SET fup_reference_gb = 0').run();
+    runFupEngine(db, peak('2026-10-20'), deps());
+    expect(gb().referenceGb).toBe(0);
+    expect(kinds()).toEqual([]);
+  });
+
+  test('dia de renovação: serviço > Definições > ativação', () => {
+    saveFupSettings(db, { dia_ciclo: '1' }, 'admin');
+    expect(loadFupUsage(db, peak('2026-11-02'), readFupSettings(db))[0].cycle.start).toBe('2026-11-01');
+    db.prepare('UPDATE services SET fup_cycle_day = 5').run();
+    expect(loadFupUsage(db, peak('2026-11-06'), readFupSettings(db))[0].cycle.start).toBe('2026-11-05');
+  });
+
+  test('bloquear: limitado a toda a hora e o aviso diz que a ligação fica bloqueada', () => {
+    saveFupSettings(db, { acao_ao_limite: 'BLOQUEAR' }, 'admin');
+    const d = deps();
+    addUsage('2026-10-12', 120);
+    runFupEngine(db, offPeak('2026-10-20'), d);
+    expect(loadFupUsage(db, offPeak('2026-10-20'), readFupSettings(db))[0].limitedNow).toBe(true);
+    expect(d.enqueueNotice.mock.calls[0][0].body).toContain('a ligação fica bloqueada até ao próximo ciclo');
+  });
+
   test('pré-visualização conta com a configuração candidata e não grava nada', () => {
     addUsage('2026-10-12', 85);
     const settings = readFupSettings(db);
@@ -240,6 +272,30 @@ test('fila persiste fora do pico, acompanha a configuração e sai no ciclo segu
   expect(await syncFupQueues(db, { transport, dryRun: false, now: peak('2026-10-20') })).toMatchObject({ updated: 1 });
   expect(calls).toContainEqual(expect.objectContaining({ method: 'PATCH', path: '/queue/simple/*2', body: expect.objectContaining({ time: '18:00:00-22:00:00,sun,mon,tue,wed,thu,fri,sat' }) }));
   expect(await syncFupQueues(db, { transport, dryRun: false, now: peak('2026-11-10') })).toMatchObject({ removed: 1 });
+});
+
+test('bloquear usa a mesma fila, o dia todo a 1k, e trocar a ação corrige a fila existente', async () => {
+  saveFupSettings(db, { acao_ao_limite: 'BLOQUEAR' }, 'admin');
+  db.prepare('UPDATE internet_plans SET download_mbps = NULL, upload_mbps = NULL').run();
+  addUsage('2026-10-12', 120);
+  runFupEngine(db, offPeak('2026-10-20'), deps());
+  const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+  const queues: Array<Record<string, unknown>> = [{ '.id': '*1', name: '<pppoe-ana>', dynamic: 'true' }];
+  const transport: RouterTransport = async (request) => {
+    calls.push(request);
+    if (request.path.startsWith('/queue/simple?')) return queues;
+    if (request.path.startsWith('/ppp/active')) return [{ '.id': '*a', name: 'ana' }];
+    return [];
+  };
+  // Sem Mbps no plano, bloquear continua a funcionar: não depende delas.
+  expect(await syncFupQueues(db, { transport, dryRun: false, now: offPeak('2026-10-20') })).toMatchObject({ added: 1 });
+  expect(calls).toContainEqual(expect.objectContaining({ method: 'PUT', path: '/queue/simple', body: expect.objectContaining({ 'max-limit': '1k/1k', time: '0s-1d,sun,mon,tue,wed,thu,fri,sat' }) }));
+  queues.push({ '.id': '*2', name: `ispm-fup-${serviceId}`, dynamic: 'false', 'max-limit': '1000/1000', time: '0s-1d,sun,mon,tue,wed,thu,fri,sat' });
+  expect(await syncFupQueues(db, { transport, dryRun: false, now: offPeak('2026-10-20') })).toMatchObject({ updated: 0 });
+  db.prepare('UPDATE internet_plans SET download_mbps = 10, upload_mbps = 2').run();
+  saveFupSettings(db, { acao_ao_limite: 'REDUZIR' }, 'admin');
+  expect(await syncFupQueues(db, { transport, dryRun: false, now: offPeak('2026-10-20') })).toMatchObject({ updated: 1 });
+  expect(calls).toContainEqual(expect.objectContaining({ method: 'PATCH', path: '/queue/simple/*2', body: expect.objectContaining({ time: '18:00:00-24:00:00,sun,mon,tue,wed,thu,fri,sat' }) }));
 });
 
 test('aguarda a fila dinâmica antes de criar uma fila FUP', async () => {

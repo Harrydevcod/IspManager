@@ -6,13 +6,14 @@ import {
   FupSettingsError, candidateFupSettings, describeFupSettings, listFupSettingsHistory, readFupSettings, resetFupSetting, saveFupSettings
 } from '../lib/fup-settings';
 import { requestNetworkSync } from '../lib/network-sync';
-import { recordAudit } from '../lib/audit';
+import { recordAudit, recordAuditStrict } from '../lib/audit';
 import { requireAuth, requireRole } from './auth';
 
 const changesSchema = z.object({
   changes: z.record(z.string(), z.union([z.string(), z.number()])),
   reason: z.string().trim().max(500).optional().nullable()
 });
+const plafondSchema = z.object({ referenceGb: z.number().int().min(0).max(100_000).nullable() });
 const historySchema = z.object({
   key: z.string().max(64).optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -25,6 +26,8 @@ const usageRow = (row: ReturnType<typeof loadFupUsage>[number]) => ({
   username: row.username,
   planName: row.planName,
   referenceGb: row.referenceGb,
+  serviceReferenceGb: row.serviceReferenceGb,
+  inheritedReferenceGb: row.inheritedReferenceGb,
   peakPercent: row.peakPercent,
   cycleStart: row.cycle.start,
   cycleEnd: row.cycle.end,
@@ -106,7 +109,10 @@ export async function registerFupRoutes(app: FastifyInstance) {
         limiar_aviso_percent: Number(raw.limiar_aviso_percent),
         limiar_limitacao_percent: Number(raw.limiar_limitacao_percent),
         percent_velocidade_pico: Number(raw.percent_velocidade_pico),
-        fuso_horario: raw.fuso_horario
+        fuso_horario: raw.fuso_horario,
+        plafond_predefinido_gb: Number(raw.plafond_predefinido_gb),
+        dia_ciclo: raw.dia_ciclo,
+        acao_ao_limite: raw.acao_ao_limite as typeof settings.acao_ao_limite
       };
       return { current: previewFupImpact(db, new Date(), settings), candidate: previewFupImpact(db, new Date(), candidate) };
     } catch (err) {
@@ -120,7 +126,7 @@ export async function registerFupRoutes(app: FastifyInstance) {
     const settings = readFupSettings(db);
     return {
       usage: loadFupUsage(db, new Date(), settings).map(usageRow),
-      thresholds: { aviso: settings.limiar_aviso_percent, limitacao: settings.limiar_limitacao_percent }
+      thresholds: { aviso: settings.limiar_aviso_percent, limitacao: settings.limiar_limitacao_percent, acao: settings.acao_ao_limite }
     };
   });
 
@@ -133,8 +139,36 @@ export async function registerFupRoutes(app: FastifyInstance) {
     if (!row) return reply.status(404).send({ error: 'Serviço sem utilizador PPPoE' });
     return {
       usage: usageRow(row),
-      thresholds: { aviso: settings.limiar_aviso_percent, limitacao: settings.limiar_limitacao_percent },
+      thresholds: { aviso: settings.limiar_aviso_percent, limitacao: settings.limiar_limitacao_percent, acao: settings.acao_ao_limite },
       events: listFupEvents(db, id).map((event) => ({ ...event, detail: event.detailJson ? JSON.parse(event.detailJson) : null, detailJson: undefined }))
     };
+  });
+
+  // Plafond próprio do serviço (pacote extra ou exceção): nulo = herda, 0 = isento.
+  app.put('/api/fup/services/:id/plafond', adminOnly, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) return reply.status(400).send({ error: 'Serviço inválido' });
+    const parsed = plafondSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Plafond inválido: inteiro de 0 a 100 000 GB, ou vazio para herdar.' });
+    const db = getSqliteDatabase();
+    const current = db.prepare('SELECT fup_reference_gb AS gb FROM services WHERE id = ?').get(id) as { gb: number | null } | undefined;
+    if (!current) return reply.status(404).send({ error: 'Serviço não encontrado' });
+    const next = parsed.data.referenceGb;
+    if (current.gb !== next) {
+      const label = (gb: number | null) => (gb === null ? 'herda' : gb === 0 ? 'isento' : `${gb} GB`);
+      // A alteração e o registo entram juntos: um plafond mudado sem rasto não fica.
+      db.transaction(() => {
+        db.prepare("UPDATE services SET fup_reference_gb = ?, updated_at = datetime('now') WHERE id = ?").run(next, id);
+        recordAuditStrict(db, request, {
+          action: 'fup.plafond', entityType: 'service', entityId: id,
+          summary: `Plafond do serviço ${id}: ${label(current.gb)} → ${label(next)}`,
+          metadata: { antes: current.gb, depois: next }
+        });
+      })();
+      requestNetworkSync();
+    }
+    const settings = readFupSettings(db);
+    const [row] = loadFupUsage(db, new Date(), settings, { serviceId: id });
+    return { serviceReferenceGb: next, usage: row ? usageRow(row) : null };
   });
 }

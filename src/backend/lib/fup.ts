@@ -6,7 +6,7 @@ import { enqueueWhatsapp } from './whatsapp-outbox';
 import { normalizeWhatsappPhone } from './whatsapp-provider';
 import { requestNetworkSync } from './network-sync';
 import { recordSystemAuditEntry } from './audit';
-import { effectivePeakPercent, readFupSettings, type FupSettings } from './fup-settings';
+import { effectivePeakPercent, effectiveReferenceGb, fupActionText, globalCycleDay, readFupSettings, type FupSettings } from './fup-settings';
 import { addSimpleQueue, listActive, listSimpleQueues, patchSimpleQueue, readClockZone, removeSimpleQueue, type RouterTransport } from './routeros';
 
 /**
@@ -63,9 +63,10 @@ export function inPeakWindow(now: Date, settings: Pick<FupSettings, 'janela_pico
   return minutes >= toMinutes(settings.janela_pico_inicio) && minutes < end;
 }
 
-/** Dia em que o ciclo começa: o do serviço, senão o da ativação (até 28), senão 1. */
-export function cycleStartDay(cycleDay: number | null, activationDate: string | null): number {
+/** Dia em que o ciclo começa: o do serviço, senão o das Definições, senão o da ativação (até 28), senão 1. */
+export function cycleStartDay(cycleDay: number | null, activationDate: string | null, globalDay: number | null = null): number {
   if (cycleDay !== null && cycleDay >= 1 && cycleDay <= 28) return cycleDay;
+  if (globalDay !== null && globalDay >= 1 && globalDay <= 28) return globalDay;
   const day = activationDate && /^\d{4}-\d{2}-\d{2}/.test(activationDate) ? Number(activationDate.slice(8, 10)) : 1;
   return Math.min(Math.max(day, 1), 28);
 }
@@ -117,6 +118,10 @@ export type FupServiceUsage = {
   downloadMbps: number | null;
   uploadMbps: number | null;
   referenceGb: number;
+  /** Plafond próprio do serviço; nulo = herda. */
+  serviceReferenceGb: number | null;
+  /** O que o serviço teria sem plafond próprio (plano ou predefinido). */
+  inheritedReferenceGb: number;
   peakPercent: number;
   cycle: { start: string; end: string; period: string };
   downloadBytes: number;
@@ -132,7 +137,7 @@ export type FupServiceUsage = {
 
 type Row = {
   serviceId: number; clientId: number; clientName: string; phone: string | null; whatsappOptOut: number; status: string;
-  username: string; planId: number | null; planName: string | null; downloadMbps: number | null; uploadMbps: number | null; referenceGb: number | null; planPeak: number | null;
+  username: string; planId: number | null; planName: string | null; downloadMbps: number | null; uploadMbps: number | null; referenceGb: number | null; serviceReferenceGb: number | null; planPeak: number | null;
   cycleDay: number | null; activationDate: string | null;
 };
 
@@ -144,7 +149,7 @@ export function loadFupUsage(db: Database.Database, now: Date, settings: FupSett
   const rows = db.prepare(`
     SELECT s.id AS serviceId, c.id AS clientId, c.full_name AS clientName, c.phone AS phone, c.whatsapp_opt_out AS whatsappOptOut,
       s.status AS status, s.pppoe_username AS username, p.id AS planId, p.name AS planName, p.download_mbps AS downloadMbps, p.upload_mbps AS uploadMbps,
-      p.fup_reference_gb AS referenceGb, p.fup_peak_percent AS planPeak, s.fup_cycle_day AS cycleDay, s.activation_date AS activationDate
+      p.fup_reference_gb AS referenceGb, s.fup_reference_gb AS serviceReferenceGb, p.fup_peak_percent AS planPeak, s.fup_cycle_day AS cycleDay, s.activation_date AS activationDate
     FROM services s
     JOIN clients c ON c.id = s.client_id
     LEFT JOIN internet_plans p ON p.id = s.plan_id
@@ -156,11 +161,13 @@ export function loadFupUsage(db: Database.Database, now: Date, settings: FupSett
     FROM client_traffic_daily WHERE service_id = ? AND day >= ? AND day <= ?`);
   const events = db.prepare('SELECT kind FROM fup_events WHERE service_id = ? AND period = ?');
   const today = dayInZone(now, settings.fuso_horario);
-  const peak = inPeakWindow(now, settings);
+  // Bloqueado não tem janela: está limitado a toda a hora.
+  const peak = settings.acao_ao_limite === 'BLOQUEAR' || inPeakWindow(now, settings);
+  const globalDay = globalCycleDay(settings);
   return rows.map((row) => {
-    const cycle = cycleFor(today, cycleStartDay(row.cycleDay, row.activationDate));
+    const cycle = cycleFor(today, cycleStartDay(row.cycleDay, row.activationDate, globalDay));
     const { down, up } = usage.get(row.serviceId, cycle.start, cycle.end) as { down: number; up: number };
-    const referenceGb = row.referenceGb ?? 0;
+    const referenceGb = effectiveReferenceGb(row.serviceReferenceGb, row.referenceGb, settings);
     const percent = usagePercent(down + up, referenceGb);
     const state = stateFromEvents((events.all(row.serviceId, cycle.period) as Array<{ kind: string }>).map((e) => e.kind));
     const limited = row.status === 'active' && referenceGb > 0 && state === 'LIMITADO'
@@ -178,6 +185,8 @@ export function loadFupUsage(db: Database.Database, now: Date, settings: FupSett
       downloadMbps: row.downloadMbps,
       uploadMbps: row.uploadMbps,
       referenceGb,
+      serviceReferenceGb: row.serviceReferenceGb,
+      inheritedReferenceGb: effectiveReferenceGb(null, row.referenceGb, settings),
       peakPercent: effectivePeakPercent({ fupPeakPercent: row.planPeak }, settings),
       cycle,
       downloadBytes: down,
@@ -272,7 +281,8 @@ export function runFupEngine(db: Database.Database, now: Date, deps: FupEngineDe
       if (kind === 'AVISO' && row.phone && !row.whatsappOptOut) {
         const body = renderFupMessage(settings.mensagem_aviso, {
           nome: row.clientName, percent: Math.round(row.percent), gb: bytesToGb(row.totalBytes).toFixed(1).replace('.', ','),
-          referencia: row.referenceGb, inicio: settings.janela_pico_inicio, fim: settings.janela_pico_fim, pico: row.peakPercent
+          referencia: row.referenceGb, inicio: settings.janela_pico_inicio, fim: settings.janela_pico_fim, pico: row.peakPercent,
+          acao: fupActionText(settings, row.peakPercent)
         });
         try {
           deps.enqueueNotice({ serviceId: row.serviceId, clientId: row.clientId, phone: row.phone, body, channel: settings.canal_aviso });
@@ -325,6 +335,11 @@ const QUEUE_COMMENT = 'ispm:fup:';
 
 export type FupQueueSummary = { wanted: number; added: number; updated: number; removed: number; failed: number; clockZone: string | null; clockMismatch: boolean | null };
 
+/** `max-limit` de um cliente bloqueado: o mínimo que o RouterOS aceita, que na prática corta a ligação. */
+export const FUP_BLOCK_LIMIT = '1k/1k';
+/** Fila de um bloqueado: o dia inteiro, todos os dias. */
+export const FUP_BLOCK_TIME = '0s-1d,sun,mon,tue,wed,thu,fri,sat';
+
 /** `max-limit` da fila simples (upload/download do cliente) a uma % do plano, em kbit/s. */
 export function fupQueueLimit(uploadMbps: number, downloadMbps: number, percent: number): string {
   const k = (mbps: number) => Math.max(1, Math.round(mbps * 10 * percent));
@@ -368,13 +383,16 @@ export async function syncFupQueues(
   deps: { transport: RouterTransport; dryRun: boolean; now?: Date }
 ): Promise<FupQueueSummary> {
   const settings = readFupSettings(db);
-  const rows = loadFupUsage(db, deps.now ?? new Date(), settings).filter((row) => row.limited && row.downloadMbps && row.uploadMbps);
+  // ponytail: bloquear = a mesma fila a 1k o dia todo; a sessão fica, mas não passa tráfego útil. Um só mecanismo, que sai no restauro.
+  const block = settings.acao_ao_limite === 'BLOQUEAR';
+  // A reduzir, a fila parte das Mbps do plano; a bloquear não precisa delas.
+  const rows = loadFupUsage(db, deps.now ?? new Date(), settings).filter((row) => row.limited && (block || (row.downloadMbps && row.uploadMbps)));
   const queues = await listSimpleQueues(deps.transport);
   const ours = new Map(queues.filter((q) => !q.dynamic && q.name.startsWith(QUEUE_PREFIX)).map((q) => [q.name, q]));
   const clockZone = await readClockZone(deps.transport).catch(() => null);
   const summary: FupQueueSummary = { wanted: rows.length, added: 0, updated: 0, removed: 0, failed: 0, clockZone, clockMismatch: clockZone === null ? null : clockZone !== settings.fuso_horario };
   const end = settings.janela_pico_fim === '00:00' ? '24:00' : settings.janela_pico_fim;
-  const time = `${settings.janela_pico_inicio}:00-${end}:00,sun,mon,tue,wed,thu,fri,sat`;
+  const time = block ? FUP_BLOCK_TIME : `${settings.janela_pico_inicio}:00-${end}:00,sun,mon,tue,wed,thu,fri,sat`;
   if (rows.length === 0 && ours.size === 0) return summary;
   const online = new Set(rows.length ? (await listActive(deps.transport)).map((session) => session.name) : []);
   const audit = (row: Pick<FupServiceUsage, 'serviceId' | 'clientName' | 'username' | 'planName'> | null, serviceId: number, before: string | null, after: string | null) =>
@@ -392,7 +410,7 @@ export async function syncFupQueues(
   for (const row of rows) {
     const name = `${QUEUE_PREFIX}${row.serviceId}`;
     const target = `<pppoe-${row.username}>`;
-    const limit = fupQueueLimit(row.uploadMbps!, row.downloadMbps!, row.peakPercent);
+    const limit = block ? FUP_BLOCK_LIMIT : fupQueueLimit(row.uploadMbps!, row.downloadMbps!, row.peakPercent);
     const existing = ours.get(name);
     if (existing) {
       keep.add(name);
