@@ -41,7 +41,8 @@
   font-size: var(--fs-sm);
 }
 
-.fup-figures {
+/* `.fup-section` à frente: `.client-detail dl` (5 colunas fixas) ganhava por especificidade e esmagava os números no ecrã estreito. */
+.fup-section .fup-figures {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: var(--space-3);
