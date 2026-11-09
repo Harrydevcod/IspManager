@@ -4,6 +4,23 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.61](https://github.com/Harrydevcod/IspManager/releases/tag/v2.61.0) — 2026-11-09
+
+### Adicionado
+- **Plafond mensal de dados nas Configurações › Uso justo.** Três campos novos:
+  - **Plafond predefinido (GB):** vale para os planos que não definem o seu. 0 = sem plafond.
+  - **Dia de renovação:** o dia em que o consumo volta a zero. É o dia da ativação de cada serviço ou um dia fixo, de 1 a 28.
+  - **Ação ao atingir o limite:** **Reduzir velocidade no pico**, como até aqui, ou **Bloquear ligação** até ao ciclo seguinte. O bloqueio é aplicado pelo router a toda a hora, mesmo com o ISPM fechado, e sai sozinho no ciclo novo.
+- **Plafond próprio na ficha do serviço,** para um pacote extra ou uma exceção. Vazio = herda o do plano ou o predefinido; 0 = isento. Só o administrador o altera, e cada alteração fica na Auditoria.
+- **A mensagem de aviso aceita o campo `{acao}`**, que diz ao cliente o que acontece aos 100%, seja reduzir ou bloquear. A mensagem de origem passa a usá-lo; uma mensagem personalizada fica como está. Com **Bloquear**, uma mensagem que cite a janela de pico é recusada.
+
+### Alterado
+- **Um plano com 0 GB passa a herdar o plafond predefinido** (antes, ficava fora do uso justo). Como o predefinido começa a 0, nada muda até o definir.
+
+### Corrigido
+- **Ficha do serviço, ecrã estreito:** os números do uso justo ficavam esmagados em cinco colunas ("DOWNLOADUPLOAD"). Passam a duas.
+- **Configurações › Uso justo:** os botões **Descartar** e **Guardar** ficavam mais altos do que o campo do motivo.
+
 ## [2.60](https://github.com/Harrydevcod/IspManager/releases/tag/v2.60.0) — 2026-11-07
 
 ### Alterado
