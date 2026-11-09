@@ -15,7 +15,7 @@ const ROWS: ClientUsageRow[] = [
 ];
 
 const usage = (serviceId: number, referenceGb: number, percent: number, totalBytes: number): FupUsage => ({
-  serviceId, clientId: serviceId, username: `u${serviceId}`, planName: 'P', referenceGb, peakPercent: 50,
+  serviceId, clientId: serviceId, username: `u${serviceId}`, planName: 'P', referenceGb, serviceReferenceGb: null, inheritedReferenceGb: referenceGb, peakPercent: 50,
   cycleStart: '2026-11-01', cycleEnd: '2026-11-30', period: '2026-11',
   downloadBytes: totalBytes, uploadBytes: 0, totalBytes, percent, state: percent >= 100 ? 'LIMITADO' : 'NORMAL', limitedNow: false
 });

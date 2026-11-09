@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Gauge } from 'lucide-react';
-import { Badge, Message } from '../../components';
+import { Badge, Button, Field, Message, useToast } from '../../components';
+import { useAuth } from '../../lib/auth';
 import { formatPtDate, formatPtDateTime } from '../../lib/format';
 import {
   EVENT_LABEL, STATE_LABEL, formatGb, fupRequest, usageTone,
@@ -28,7 +29,58 @@ export function FupUsageBar({ percent, thresholds, label }: { percent: number; t
   );
 }
 
-/** Consumo do ciclo, estado FUP e eventos, na ficha do serviço. Só leitura. */
+/**
+ * Plafond próprio do serviço (pacote extra ou exceção). Vazio = herda do plano
+ * ou do predefinido; 0 = isento. Só o administrador grava.
+ */
+function PlafondField({ usage, onSaved }: { usage: FupUsage; onSaved: (usage: FupUsage) => void }) {
+  const auth = useAuth();
+  const canWrite = auth.isAuthBypassed || auth.hasRole('admin');
+  const { toast } = useToast();
+  const saved = usage.serviceReferenceGb === null ? '' : String(usage.serviceReferenceGb);
+  const [value, setValue] = useState(saved);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => setValue(saved), [saved]);
+  const trimmed = value.trim();
+  const valid = trimmed === '' || (/^\d+$/.test(trimmed) && Number(trimmed) <= 100_000);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const result = await fupRequest<{ usage: FupUsage | null }>(`/services/${usage.serviceId}/plafond`, {
+        method: 'PUT', body: JSON.stringify({ referenceGb: trimmed === '' ? null : Number(trimmed) })
+      });
+      if (result.usage) onSaved(result.usage);
+      toast('Plafond guardado.', 'success');
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fup-plafond">
+      <Field
+        label="Plafond do serviço (GB)"
+        type="number"
+        min={0}
+        step={1}
+        inputMode="numeric"
+        value={value}
+        placeholder={usage.inheritedReferenceGb > 0 ? `${usage.inheritedReferenceGb} · herdado` : 'Sem plafond · herdado'}
+        error={valid ? undefined : 'Inteiro de 0 a 100 000, ou vazio para herdar.'}
+        disabled={!canWrite || saving}
+        onChange={(event) => setValue(event.target.value)}
+      />
+      {canWrite && trimmed !== saved && (
+        <Button size="sm" onClick={() => void save()} loading={saving} disabled={!valid}>Guardar</Button>
+      )}
+    </div>
+  );
+}
+
+/** Consumo do ciclo, estado FUP e eventos, na ficha do serviço. */
 export function FupUsageSection({ serviceId }: { serviceId: number }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,8 +128,7 @@ export function FupUsageSection({ serviceId }: { serviceId: number }) {
       {usage && detail && (
         usage.referenceGb <= 0 ? (
           <Message tone="neutral">
-            O plano {usage.planName ?? ''} não tem consumo de referência: este serviço está fora da política de uso justo.
-            Consumo do ciclo: {formatGb(usage.totalBytes)}.
+            {usage.serviceReferenceGb === 0 ? 'Serviço isento de plafond.' : 'Sem plafond.'} Consumo do ciclo: {formatGb(usage.totalBytes)}.
           </Message>
         ) : (
           <>
@@ -86,10 +137,16 @@ export function FupUsageSection({ serviceId }: { serviceId: number }) {
               <div><dt>Total</dt><dd>{formatGb(usage.totalBytes)} <small>de {usage.referenceGb} GB</small></dd></div>
               <div><dt>Download</dt><dd>{formatGb(usage.downloadBytes)}</dd></div>
               <div><dt>Upload</dt><dd>{formatGb(usage.uploadBytes)}</dd></div>
-              <div><dt>Velocidade no pico</dt><dd>{usage.peakPercent}% <small>quando limitado</small></dd></div>
+              {detail.thresholds.acao === 'BLOQUEAR'
+                ? <div><dt>Ao limite</dt><dd>Bloqueado</dd></div>
+                : <div><dt>Velocidade no pico</dt><dd>{usage.peakPercent}% <small>quando limitado</small></dd></div>}
             </dl>
           </>
         )
+      )}
+
+      {usage && detail && (
+        <PlafondField usage={usage} onSaved={(next) => setDetail((current) => (current ? { ...current, usage: next } : current))} />
       )}
 
       {detail && detail.events.length > 0 && (

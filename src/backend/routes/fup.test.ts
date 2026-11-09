@@ -107,3 +107,27 @@ test('campos FUP do plano: só o administrador os muda', async () => {
   await call(admin, 'PUT', '/api/plans/1', plan);
   expect((await call(admin, 'GET', '/api/plans/1')).json()).toMatchObject({ fupReferenceGb: 300, fupPeakPercent: 40 });
 });
+
+test('plafond do serviço: só o administrador o muda, com auditoria; vazio volta a herdar', async () => {
+  const url = '/api/fup/services/1/plafond';
+  expect((await call(operator, 'PUT', url, { referenceGb: 500 })).statusCode).toBe(403);
+  expect((await call(admin, 'PUT', url, { referenceGb: -1 })).statusCode).toBe(400);
+  expect((await call(admin, 'PUT', '/api/fup/services/999999/plafond', { referenceGb: 5 })).statusCode).toBe(404);
+  const saved = (await call(admin, 'PUT', url, { referenceGb: 500 })).json();
+  expect(saved.usage).toMatchObject({ referenceGb: 500, serviceReferenceGb: 500, inheritedReferenceGb: 300 });
+  const audit = db.prepare("SELECT summary, metadata_json AS metadata FROM audit_logs WHERE action = 'fup.plafond' ORDER BY id DESC LIMIT 1").get() as { summary: string; metadata: string };
+  expect(audit.summary).toBe('Plafond do serviço 1: herda → 500 GB');
+  expect(JSON.parse(audit.metadata)).toEqual({ antes: null, depois: 500 });
+  expect((await call(admin, 'PUT', url, { referenceGb: null })).json().usage).toMatchObject({ referenceGb: 300, serviceReferenceGb: null });
+});
+
+test('ação ao limite: bloquear recusa uma mensagem que cite a janela de pico', async () => {
+  const windowed = 'Caro {nome}, entre as {inicio} e as {fim} fica a {pico}%.';
+  const refused = await call(admin, 'PUT', '/api/fup/settings', { changes: { acao_ao_limite: 'BLOQUEAR', mensagem_aviso: windowed } });
+  expect(refused.statusCode).toBe(400);
+  expect(refused.json().errors.mensagem_aviso).toMatch(/\{acao\}/);
+  expect((await call(admin, 'PUT', '/api/fup/settings', { changes: { acao_ao_limite: 'BLOQUEAR', plafond_predefinido_gb: '250', dia_ciclo: '1' } })).json().changed)
+    .toEqual(['plafond_predefinido_gb', 'dia_ciclo', 'acao_ao_limite']);
+  expect((await call(admin, 'PUT', '/api/fup/settings', { changes: { dia_ciclo: '29' } })).statusCode).toBe(400);
+  await call(admin, 'PUT', '/api/fup/settings', { changes: { acao_ao_limite: 'REDUZIR', plafond_predefinido_gb: '0', dia_ciclo: 'ATIVACAO' } });
+});

@@ -10,7 +10,9 @@ type Impact = { aviso: number; limitados: number };
 type Preview = { current: Impact; candidate: Impact };
 
 const CHOICES: Record<string, Array<[string, string]>> = {
-  canal_aviso: [['WHATSAPP', 'WhatsApp'], ['SMS', 'SMS']]
+  canal_aviso: [['WHATSAPP', 'WhatsApp'], ['SMS', 'SMS']],
+  acao_ao_limite: [['REDUZIR', 'Reduzir velocidade no pico'], ['BLOQUEAR', 'Bloquear ligação']],
+  dia_ciclo: [['ATIVACAO', 'Dia da ativação'], ...Array.from({ length: 28 }, (_, i) => [String(i + 1), `Dia ${i + 1}`] as [string, string])]
 };
 
 const TIME_ZONES: string[] = (() => {
@@ -141,7 +143,7 @@ export function FupSettingsPanel() {
         <div>
           <h3><Gauge size={16} aria-hidden /> Uso justo</h3>
           <p className="fup-lede">
-            Os valores do plano mandam sobre estes.
+            Os valores do serviço e do plano mandam sobre estes.
           </p>
         </div>
       </header>

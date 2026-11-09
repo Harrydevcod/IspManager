@@ -184,7 +184,9 @@ export const services = sqliteTable('services', {
   iptvVpn: integer('iptv_vpn', { mode: 'boolean' }).notNull().default(false),
   iptvProviderId: integer('iptv_provider_id').references(() => iptvProviders.id, { onDelete: 'set null' }),
   /** Dia em que o ciclo FUP começa (0096); nulo = o dia da ativação. */
-  fupCycleDay: integer('fup_cycle_day')
+  fupCycleDay: integer('fup_cycle_day'),
+  /** Plafond FUP do serviço (0101); nulo = herda, 0 = isento. */
+  fupReferenceGb: integer('fup_reference_gb')
 });
 
 export const payments = sqliteTable('payments', {
