@@ -8,7 +8,8 @@ const NEW_MESSAGE = 'Caro cliente {nome}, já usou {percent}% do consumo de refe
  * ou, se o plano estiver a 0, o predefinido das Definições; 0 = isento.
  *
  * A mensagem de aviso de origem passa a usar {acao}, que diz a verdade tanto a
- * reduzir como a bloquear. Uma mensagem já personalizada não se toca.
+ * reduzir como a bloquear. Uma mensagem já personalizada não se toca. Não vai
+ * para o histórico: não é uma alteração do operador.
  */
 const migration: Migration = {
   version: 101,
@@ -16,9 +17,6 @@ const migration: Migration = {
   sql: `
     ALTER TABLE services ADD COLUMN fup_reference_gb INTEGER CHECK (fup_reference_gb IS NULL OR fup_reference_gb >= 0);
 
-    INSERT INTO fup_settings_history (key, old_value, new_value, changed_by, reason)
-      SELECT 'mensagem_aviso', value, '${NEW_MESSAGE}', 'sistema', 'Mensagem de origem passa a usar {acao}'
-      FROM fup_settings WHERE key = 'mensagem_aviso' AND value = '${OLD_MESSAGE}';
     UPDATE fup_settings SET value = '${NEW_MESSAGE}' WHERE key = 'mensagem_aviso' AND value = '${OLD_MESSAGE}';
   `
 };
