@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityOptionsCompat
 import app.cash.paparazzi.DeviceConfig
@@ -65,7 +66,10 @@ class ScreensSnapshotTest(private val label: String, device: DeviceConfig, priva
 
   private fun shot(name: String, content: @Composable () -> Unit) =
     paparazzi.snapshot(name = "$label-$name") {
-      CompositionLocalProvider(LocalActivityResultRegistryOwner provides registryOwner) {
+      CompositionLocalProvider(
+        LocalActivityResultRegistryOwner provides registryOwner,
+        LocalInspectionMode provides true
+      ) {
         IspmTheme(dark) { Box(Modifier.fillMaxSize().background(Bg)) { content() } }
       }
     }

@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import cv.novatech.ispm.sms.ui.components.ButtonVariant
 import cv.novatech.ispm.sms.ui.components.GroupDivider
 import cv.novatech.ispm.sms.ui.components.GroupRow
@@ -24,7 +25,8 @@ import cv.novatech.ispm.sms.ui.theme.*
 fun CallerIdRow() {
   if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
   val context = LocalContext.current
-  var held by remember { mutableStateOf(holdsRole(context)) }
+  val inspection = LocalInspectionMode.current
+  var held by remember { mutableStateOf(!inspection && holdsRole(context)) }
   val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { held = holdsRole(context) }
   GroupDivider()
   GroupRow("Identificar clientes que ligam") {
