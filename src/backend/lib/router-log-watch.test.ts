@@ -106,6 +106,19 @@ describe('achados do registo do router', () => {
     expect(found).toHaveLength(6);
   });
 
+  test('SYN flood e túnel VPN a falhar (registo de 10–12/11)', () => {
+    const found = collectFindings([
+      entry('*1', '2026-11-10 21:21:40', 'system,warning', 'possible SYN flooding on tcp port 53'),
+      entry('*2', '2026-11-10 21:21:42', 'system,warning', 'possible SYN flooding on tcp port 53'),
+      entry('*3', '2026-11-12 07:19:55', 'wireguard,info',
+        'wg-surfshark: [wg-surfshark] JgYlpt7jFh0FV2QO0QQ3yFfsnqikUq977V3cObFGTQ4=: Handshake for peer did not complete after 5 seconds, retrying (try 2)')
+    ], { addresses: [], macs: [] }, NOW);
+    expect(found.map(({ day, kind, subject, count }) => ({ day, kind, subject, count }))).toEqual([
+      { day: '2026-11-10', kind: 'syn_flood', subject: 'tcp/53', count: 2 },
+      { day: '2026-11-12', kind: 'vpn_falha', subject: 'wg-surfshark', count: 1 }
+    ]);
+  });
+
   test('um DHCP intruso com o endereço do próprio router é um endereço duplicado', () => {
     const found = collectFindings([
       entry('*1', '2026-10-07 10:29:23', 'bridge,warning', ROGUE('192.168.1.1', 'bc:07:1d:5e:42:9e')),
@@ -172,6 +185,22 @@ describe('vigia do registo do router', () => {
     expect(findings()).toMatchObject([
       { day: '2026-10-19', kind: 'config_externa', subject: 'ppp secret <admin> added', count: 1 },
       { day: '2026-10-21', kind: 'porta_oscila', subject: 'LAN3', count: 1 }
+    ]);
+  });
+
+  test('as linhas guardadas antes da 0102 contam uma vez para o SYN flood e a VPN', async () => {
+    const keep = db.prepare('INSERT INTO router_log_lines (at, topics, message) VALUES (?, ?, ?)');
+    keep.run('2026-11-10 21:21:42', 'system,warning', 'possible SYN flooding on tcp port 53');
+    keep.run('2026-11-10 21:22:00', 'netwatch,info', DOWN('192.168.1.251'));
+    // A 0087 já tinha contado: só os da 0102 entram.
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('routerLogKinds0087Counted', 'x')").run();
+    const later = new Date('2026-11-12T09:00:00');
+    const rows = log([1, '2026-11-12 08:00:00', 'interface,info', 'LAN3 link down']);
+    await watchRouterLog(db, router(rows), later);
+    await watchRouterLog(db, router(rows), later);
+    expect(findings()).toMatchObject([
+      { day: '2026-11-10', kind: 'syn_flood', subject: 'tcp/53', count: 1 },
+      { day: '2026-11-12', kind: 'porta_oscila', subject: 'LAN3', count: 1 }
     ]);
   });
 

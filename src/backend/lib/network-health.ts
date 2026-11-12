@@ -29,6 +29,8 @@ export type NetworkHealth = {
   routerJournal: boolean;
   /** Porque é que a última leitura do registo do router falhou; `null` se correu bem. */
   routerReadError: string | null;
+  /** Porque é que a vigia do registo não correu da última vez (fora da rede de gestão…); `null` se correu. */
+  routerSkipReason: string | null;
   antennas: HealthOutage[];
   clients: HealthOutage[];
   downNow: HealthDown[];
@@ -53,15 +55,17 @@ export function parseCaptureLine(message: string): Omit<DropCaptureHost, 'device
 
 // Do mais grave para o menos: é a ordem em que o painel os mostra.
 const SEVERITY: FindingKind[] = [
-  'laco_rede', 'ip_duplicado', 'antena_em_baixo', 'config_externa', 'dhcp_intruso', 'router_reiniciou', 'porta_oscila',
-  'pppoe_queda', 'dhcp_ciclo', 'login_falhado'
+  'laco_rede', 'ip_duplicado', 'antena_em_baixo', 'config_externa', 'syn_flood', 'dhcp_intruso', 'router_reiniciou', 'porta_oscila',
+  'vpn_falha', 'pppoe_queda', 'dhcp_ciclo', 'login_falhado'
 ];
 const MAC_KINDS: FindingKind[] = ['laco_rede', 'ip_duplicado', 'dhcp_intruso', 'dhcp_ciclo'];
 // Os dois que deitam a rede abaixo: um dia depois ainda pintam o cartão de crítico.
 const CRITICAL_KINDS: FindingKind[] = ['laco_rede', 'ip_duplicado'];
-const WARN_KINDS: FindingKind[] = [...CRITICAL_KINDS, 'antena_em_baixo', 'dhcp_intruso', 'config_externa', 'router_reiniciou', 'porta_oscila'];
+const WARN_KINDS: FindingKind[] = [...CRITICAL_KINDS, 'antena_em_baixo', 'dhcp_intruso', 'config_externa', 'router_reiniciou', 'porta_oscila', 'syn_flood'];
 // Uma porta que cai uma vez é alguém a mudar um cabo; cinco é um cabo ou uma ficha a falhar.
 export const PORT_FLAP_THRESHOLD = 5;
+// O WireGuard repete o handshake sozinho: uma ou duas falhas por dia são normais (medido 07–12/11).
+export const VPN_FAIL_THRESHOLD = 5;
 
 export type DropPattern = { periodMinutes: number; lastAt: string; nextAt: string };
 
@@ -133,6 +137,19 @@ const utcSql = (date: Date) => date.toISOString().slice(0, 19).replace('T', ' ')
 const localSql = (date: Date) =>
   `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 
+/** O motivo da última corrida de um job, se ela foi saltada; `null` se correu ou nunca correu. */
+function lastSkipReason(db: Database.Database, job: string): string | null {
+  const row = db.prepare('SELECT status, summary_json AS summary FROM job_runs WHERE job = ? ORDER BY id DESC LIMIT 1')
+    .get(job) as { status: string; summary: string | null } | undefined;
+  if (row?.status !== 'skipped') return null;
+  try {
+    const reason = (JSON.parse(row.summary ?? 'null') as { reason?: unknown } | null)?.reason;
+    return typeof reason === 'string' ? reason : null;
+  } catch {
+    return null;
+  }
+}
+
 /** A quem pertence um MAC e quem o fabricou, pelo que o registo e a Descoberta sabem. */
 export function macLookup(db: Database.Database) {
   const clientOfMac = db.prepare(`
@@ -203,6 +220,7 @@ export function loadNetworkHealth(db: Database.Database, hours = 72, now = new D
   `).all(localSql(new Date(now.getTime() - hours * 3_600_000))) as Array<Omit<HealthFinding, 'deviceName' | 'clientName' | 'vendor'>>)
     .filter((row) => row.kind !== 'dhcp_ciclo' || row.count >= DHCP_CHURN_THRESHOLD)
     .filter((row) => row.kind !== 'porta_oscila' || row.count >= PORT_FLAP_THRESHOLD)
+    .filter((row) => row.kind !== 'vpn_falha' || row.count >= VPN_FAIL_THRESHOLD)
     .map((row): HealthFinding => {
       const name = (statement: Database.Statement) => (statement.get(row.subject) as { name: string } | undefined)?.name ?? null;
       if (MAC_KINDS.includes(row.kind)) return { ...row, deviceName: null, ...aboutMac(row.subject) };
@@ -225,6 +243,7 @@ export function loadNetworkHealth(db: Database.Database, hours = 72, now = new D
     lastRouterReadAt: (db.prepare("SELECT value FROM app_settings WHERE key = 'routerLogReadAt'").get() as { value: string } | undefined)?.value ?? null,
     routerJournal: db.prepare("SELECT 1 FROM app_settings WHERE key = 'routerLogJournal'").get() !== undefined,
     routerReadError: (db.prepare("SELECT value FROM app_settings WHERE key = 'routerLogReadError'").get() as { value: string } | undefined)?.value ?? null,
+    routerSkipReason: lastSkipReason(db, 'router_log_watch'),
     antennas,
     clients,
     downNow,

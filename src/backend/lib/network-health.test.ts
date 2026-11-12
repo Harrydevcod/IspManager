@@ -26,7 +26,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   for (const table of ['network_diary', 'router_log_findings', 'router_log_lines', 'network_probe_events', 'network_probe_state', 'network_discovery_hosts',
-    'service_device_assignments', 'backbone_devices', 'services', 'clients', 'app_settings']) {
+    'service_device_assignments', 'backbone_devices', 'services', 'clients', 'app_settings', 'job_runs']) {
     db.prepare(`DELETE FROM ${table}`).run();
   }
 });
@@ -140,6 +140,26 @@ describe('saúde da rede', () => {
   test('diz quando foi a última leitura do router', () => {
     db.prepare("INSERT INTO app_settings (key, value) VALUES ('routerLogReadAt', '2026-10-07T14:55:00.000Z'), ('networkProbeEnabled', 'true')").run();
     expect(loadNetworkHealth(db, 72, NOW)).toMatchObject({ lastRouterReadAt: '2026-10-07T14:55:00.000Z', probeEnabled: true });
+  });
+
+  test('SYN flood é aviso; a VPN só aparece a partir de 5 falhas na janela', () => {
+    finding('vpn_falha', 'wg-surfshark', '2026-10-07 07:19:55', 4);
+    finding('syn_flood', 'tcp/53', '2026-10-06 21:21:42', 2);
+    let health = loadNetworkHealth(db, 72, NOW);
+    expect(health.tone).toBe('warn');
+    expect(health.findings.map(({ kind, subject }) => ({ kind, subject }))).toEqual([{ kind: 'syn_flood', subject: 'tcp/53' }]);
+    finding('vpn_falha', 'wg-surfshark', '2026-10-06 07:00:00', 1);
+    health = loadNetworkHealth(db, 72, NOW);
+    expect(health.findings.map((row) => row.kind)).toEqual(['syn_flood', 'vpn_falha']);
+  });
+
+  test('diz porque é que o registo do router está parado, até a vigia voltar a correr', () => {
+    const run = db.prepare("INSERT INTO job_runs (job, status, ran_at, summary_json) VALUES ('router_log_watch', ?, ?, ?)");
+    run.run('ok', '2026-10-07 08:00:00', '{"lines":3}');
+    run.run('skipped', '2026-10-07 09:00:00', JSON.stringify({ skipped: true, reason: 'Fora da rede de gestão: O router não respondeu.' }));
+    expect(loadNetworkHealth(db, 72, NOW).routerSkipReason).toBe('Fora da rede de gestão: O router não respondeu.');
+    run.run('ok', '2026-10-07 10:00:00', '{"lines":0}');
+    expect(loadNetworkHealth(db, 72, NOW).routerSkipReason).toBeNull();
   });
 });
 

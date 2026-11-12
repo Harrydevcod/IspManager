@@ -4,13 +4,13 @@ import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-netw
 import { compactEntries } from './router-log-reading';
 import {
   createTransport, DHCP_RELEASE, ensureLogJournal, isRouterConfigured, listAddresses, listInterfaces, listLog, LOGIN_FAILURE, PPPOE_DROP,
-  readLogJournal, readRouterConfig, ROGUE_DHCP,
+  readLogJournal, readRouterConfig, ROGUE_DHCP, SYN_FLOOD, VPN_HANDSHAKE,
   type RouterLogEntry, type RouterTransport
 } from './routeros';
 
 export const FINDING_KINDS = [
   'antena_em_baixo', 'ip_duplicado', 'laco_rede', 'dhcp_intruso', 'dhcp_ciclo', 'pppoe_queda', 'login_falhado',
-  'config_externa', 'porta_oscila', 'router_reiniciou'
+  'config_externa', 'porta_oscila', 'router_reiniciou', 'syn_flood', 'vpn_falha'
 ] as const;
 export type FindingKind = typeof FINDING_KINDS[number];
 
@@ -43,9 +43,12 @@ export const LOG_RETENTION_DAYS = 90;
 const LINES_RECOVERED = 'routerLogLinesRecovered';
 // Marca de que as linhas guardadas antes de se encurtarem as gravações dos contadores já foram limpas.
 const LINES_COMPACTED = 'routerLogLinesCompacted';
-// Marca de que os achados que nasceram na 0087 já foram contados nas linhas guardadas antes dela.
-const KINDS_0087_COUNTED = 'routerLogKinds0087Counted';
-const KINDS_0087: FindingKind[] = ['config_externa', 'porta_oscila', 'router_reiniciou'];
+// Os achados que nasceram depois de já haver linhas guardadas, com a marca de que estas já
+// foram contadas para eles. Cada migração que alarga o CHECK junta aqui uma entrada.
+const LATE_KINDS: Array<{ mark: string; kinds: FindingKind[] }> = [
+  { mark: 'routerLogKinds0087Counted', kinds: ['config_externa', 'porta_oscila', 'router_reiniciou'] },
+  { mark: 'routerLogKinds0102Counted', kinds: ['syn_flood', 'vpn_falha'] }
+];
 /** A última leitura do registo que falhou, até uma voltar a correr bem. */
 export const READ_ERROR = 'routerLogReadError';
 
@@ -140,6 +143,8 @@ export function collectFindings(entries: RouterLogEntry[], router: RouterIdentit
       const channel = match[4] ?? match[3];
       if (!MACHINE_CHANNELS.has(channel)) add(at, 'config_externa', `${match[1]} ${match[2]}`, `${match[5]} · ${channel}`);
     } else if ((match = LINK_DOWN.exec(message))) add(at, 'porta_oscila', match[1], '');
+    else if ((match = SYN_FLOOD.exec(message))) add(at, 'syn_flood', `tcp/${match[1]}`, '');
+    else if ((match = VPN_HANDSHAKE.exec(message))) add(at, 'vpn_falha', match[1], '');
     else if (ROUTER_REBOOTED.test(message)) add(at, 'router_reiniciou', 'reinicio', 'O router reiniciou');
     else if ((match = CLOCK_CHANGE.exec(message))) {
       const jump = clockMs(match.slice(5, 9)) - clockMs(match.slice(1, 5));
@@ -254,11 +259,13 @@ export async function watchRouterLog(db: Database.Database, transport: RouterTra
   const { fresh, all, key, cursor, recovered } = await readFresh(db, transport);
   const router = fresh.length > 0 ? await readRouterIdentity(transport) : null;
   const findings = router ? collectFindings(fresh, router, now) : [];
-  // As linhas já guardadas antes de a vigia saber destes três tipos: contam-se uma vez, só eles
-  // (os outros já estão somados). O router não entra aqui: nenhum dos três depende dele.
-  const backfill = readSetting(db, KINDS_0087_COUNTED) === null
-    ? collectFindings(loadStoredLines(db), { addresses: [], macs: [] }, now).filter((finding) => KINDS_0087.includes(finding.kind))
-    : null;
+  // As linhas já guardadas antes de a vigia saber de um tipo: contam-se uma vez, só para ele
+  // (os outros já estão somados). O router não entra aqui: nenhum destes tipos depende dele.
+  const pending = LATE_KINDS.filter(({ mark }) => readSetting(db, mark) === null);
+  const lateKinds = new Set(pending.flatMap(({ kinds }) => kinds));
+  const backfill = pending.length > 0
+    ? collectFindings(loadStoredLines(db), { addresses: [], macs: [] }, now).filter((finding) => lateKinds.has(finding.kind))
+    : [];
   const MERGE = `ON CONFLICT(day, kind, subject) DO UPDATE SET count = count + excluded.count, label = excluded.label,
       first_at = min(first_at, excluded.first_at), last_at = max(last_at, excluded.last_at)`;
   const upsert = db.prepare(`INSERT INTO router_log_findings (day, kind, subject, label, count, first_at, last_at)
@@ -289,10 +296,8 @@ export async function watchRouterLog(db: Database.Database, transport: RouterTra
       moveToLoop.run(mac);
       dropDuplicate.run(mac);
     }
-    if (backfill) {
-      for (const finding of backfill) upsert.run(finding);
-      setSetting.run(KINDS_0087_COUNTED, now.toISOString());
-    }
+    for (const finding of backfill) upsert.run(finding);
+    for (const { mark } of pending) setSetting.run(mark, now.toISOString());
     for (const finding of findings) upsert.run(finding);
     if (cursor !== null) setSetting.run(key, cursor);
     setSetting.run('routerLogReadAt', now.toISOString());

@@ -708,6 +708,9 @@ export const LOGIN_FAILURE = /login failure for user (.+?) from (\S+) via (\S+)/
 export const ROGUE_DHCP = /^(\S+): received DHCP server message on untrusted port from source IP (\S+), MAC (\S+)/;
 export const PPPOE_DROP = /^<pppoe-(.+?)>: terminating\.\.\. - (.+?)\s*$/;
 export const DHCP_RELEASE = /deassigned (\S+) for (\S+)(?: (\S+))?/;
+export const SYN_FLOOD = /^possible SYN flooding on tcp port (\d+)/;
+// `wg-surfshark: [wg-surfshark] <chave>: Handshake for peer did not complete after 5 seconds, retrying (try 2)`.
+export const VPN_HANDSHAKE = /^(\S+): \[\S+\] \S+: Handshake for peer did not complete/;
 
 /** Um aparelho que liberta o IP mais do que isto no registo está em ciclo, não a sair da rede. */
 export const DHCP_CHURN_THRESHOLD = 10;
