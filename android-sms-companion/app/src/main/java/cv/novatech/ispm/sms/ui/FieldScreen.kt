@@ -1,24 +1,17 @@
 package cv.novatech.ispm.sms.ui
 
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -29,9 +22,7 @@ import org.json.JSONObject
 import cv.novatech.ispm.sms.dashboard.DashboardRules
 import cv.novatech.ispm.sms.dashboard.FieldRules
 import cv.novatech.ispm.sms.dashboard.Freshness
-import cv.novatech.ispm.sms.ui.components.rememberNow
-import cv.novatech.ispm.sms.ui.dashboard.Card
-import cv.novatech.ispm.sms.ui.dashboard.Eyebrow
+import cv.novatech.ispm.sms.ui.components.*
 import cv.novatech.ispm.sms.ui.theme.*
 
 /**
@@ -79,57 +70,41 @@ fun FieldScreen(
   val freshness = DashboardRules.freshness(receivedAt, now)
   var query by rememberSaveable { mutableStateOf("") }
   val found = remember(query, dashboard) { ClientRules.search(dashboard?.clients.orEmpty(), query) }
-  LazyColumn(
-    Modifier.fillMaxSize().padding(horizontal = 16.dp),
-    verticalArrangement = Arrangement.spacedBy(10.dp),
-    contentPadding = PaddingValues(vertical = 16.dp)
-  ) {
-    item {
-      Column {
-        Text("Terreno", color = TextPrimary, style = MaterialTheme.typography.titleLarge)
-        if (receivedAt != null) {
-          val stale = freshness == Freshness.STALE
-          Text(
-            if (stale) "Dados de ${DashboardRules.ago(now - receivedAt)}: confirme antes de cobrar"
-            else "Atualizado ${DashboardRules.ago(now - receivedAt)}",
-            color = if (stale) Warn else TextMuted, style = MaterialTheme.typography.bodySmall
-          )
-        }
-      }
-    }
+  val line = receivedAt?.let {
+    if (freshness == Freshness.STALE) "Dados de ${DashboardRules.ago(now - it)}: confirme antes de cobrar" to Warn
+    else "Atualizado ${DashboardRules.ago(now - it)}" to TextMuted
+  }
+  LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 32.dp)) {
+    item { ScreenTitle("Terreno", line?.first, line?.second ?: TextMuted) }
     if (!dashboard?.clients.isNullOrEmpty()) {
       item {
         OutlinedTextField(
           value = query, onValueChange = { query = it },
           placeholder = { Text("Procurar cliente: nome, código ou número", color = TextMuted) },
-          singleLine = true, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth(),
-          colors = OutlinedTextFieldDefaults.colors(
-            focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary,
-            focusedBorderColor = AccentBlue, unfocusedBorderColor = BorderC, cursorColor = AccentBlue
-          )
+          singleLine = true, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
         )
       }
     }
     when {
       dashboard == null -> item { Note("À espera do primeiro resumo do ISPM no PC.") }
       query.isNotBlank() -> {
-        item { Eyebrow("Clientes · ${found.size}") }
+        item { Heading("Clientes", found.size) }
         if (found.isEmpty()) item { Note("Nenhum cliente com \"${query.trim()}\".") }
         items(found, key = { "c:" + it.code + it.name }) { ClientRow(it, onOpen) }
       }
       !dashboard.hasFieldData -> item { Note("Atualize o ISPM no PC para ver a cobrança e as ordens de trabalho aqui.") }
       else -> {
-        item { Eyebrow("Cobrar · ${dashboard.money.debtors.size}") }
+        item { Heading("Cobrar", dashboard.money.debtors.size) }
         if (dashboard.money.debtors.isEmpty()) item { Note("Ninguém em atraso.") }
         items(dashboard.money.debtors, key = { "d:" + it.clientCode + it.clientName }) {
           DebtorRow(it, onOpen, receivedFrom[it.clientCode], onReceive = { receiving = it })
         }
-        item { Spacer(Modifier.height(6.dp)); Eyebrow("Ordens de trabalho · ${dashboard.work.orders.size}") }
+        item { Heading("Ordens de trabalho", dashboard.work.orders.size) }
         if (dashboard.work.orders.isEmpty()) item { Note("Sem OS em aberto.") }
         items(dashboard.work.orders, key = { "o:${it.id}" }) {
           OrderRow(it, onOpen, closed = it.id in closedOrders, onComplete = { completing = it })
         }
-        item { Spacer(Modifier.height(6.dp)); Eyebrow("Assistência · ${dashboard.work.tickets.size}") }
+        item { Heading("Assistência", dashboard.work.tickets.size) }
         if (dashboard.work.tickets.isEmpty()) item { Note("Sem pedidos abertos.") }
         items(dashboard.work.tickets, key = { "t:${it.id}" }) { TicketRow(it, onOpen) }
       }
@@ -138,18 +113,24 @@ fun FieldScreen(
 }
 
 @Composable
-private fun Note(text: String) = Text(text, color = TextMuted, style = MaterialTheme.typography.bodySmall)
+private fun Heading(title: String, count: Int) = SectionHeader(title, count, Modifier.padding(top = 20.dp, bottom = 4.dp))
 
-/** A row that opens to its actions on tap; one open at a time is enough on a phone. */
+@Composable
+private fun Note(text: String) = Text(text, color = TextMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 10.dp))
+
+/**
+ * A row that opens to its actions on tap; one open at a time is enough on a phone.
+ * Rows are separated by hairlines, not boxed: a list of 30 debtors is a list.
+ */
 @Composable
 private fun Expandable(header: @Composable () -> Unit, actions: @Composable ColumnScope.() -> Unit) {
   var open by remember { mutableStateOf(false) }
-  Card(Modifier.animateContentSize().clickable { open = !open }) {
-    header()
+  Column(Modifier.fillMaxWidth().animateContentSize()) {
+    Column(Modifier.fillMaxWidth().clickable { open = !open }.padding(vertical = 12.dp)) { header() }
     if (open) {
-      Spacer(Modifier.height(12.dp))
-      actions()
+      Column(Modifier.fillMaxWidth().padding(bottom = 14.dp)) { actions() }
     }
+    Hairline()
   }
 }
 
@@ -164,7 +145,7 @@ private fun DebtorRow(d: Dashboard.Debtor, onOpen: (String) -> Unit, received: L
           color = if (d.daysOverdue >= 30) Danger else TextMuted, style = MaterialTheme.typography.bodySmall
         )
       }
-      Text(DashboardRules.formatCve(d.amountCve), color = TextPrimary, style = MaterialTheme.typography.titleSmall)
+      Text(DashboardRules.formatCve(d.amountCve), color = if (d.daysOverdue >= 30) Danger else TextPrimary, style = MaterialTheme.typography.titleSmall)
     }
     if (received != null) {
       Text("Recebido ${DashboardRules.formatCve(received)} · à espera de confirmação no PC", color = Success, style = MaterialTheme.typography.bodySmall)
@@ -273,8 +254,7 @@ private fun TicketRow(t: Dashboard.Ticket, onOpen: (String) -> Unit) = Expandabl
 
 @Composable
 private fun PriorityDot(priority: String) {
-  val c = when (priority) { "alta" -> Danger; "media" -> Warn; else -> TextMuted }
-  Box(Modifier.size(8.dp).clip(CircleShape).background(c))
+  StatusDot(when (priority) { "alta" -> Danger; "media" -> Warn; else -> TextMuted })
 }
 
 /** Call / SMS / WhatsApp (+ map). Without a valid number the contact buttons say why instead of failing. */
@@ -294,10 +274,5 @@ private fun ContactActions(phone: String?, onOpen: (String) -> Unit, mapsUri: St
 }
 
 @Composable
-private fun Action(label: String, modifier: Modifier, onClick: () -> Unit) = OutlinedButton(
-  onClick = onClick,
-  modifier = modifier,
-  shape = RoundedCornerShape(10.dp),
-  contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
-  colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
-) { Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1) }
+private fun Action(label: String, modifier: Modifier, onClick: () -> Unit) =
+  IspmButton(label, onClick, modifier, ButtonVariant.SECONDARY)

@@ -24,6 +24,9 @@ import androidx.core.content.FileProvider
 import cv.novatech.ispm.sms.dashboard.Dashboard
 import cv.novatech.ispm.sms.dashboard.DashboardRules
 import cv.novatech.ispm.sms.events.FieldPhotos
+import cv.novatech.ispm.sms.ui.components.ButtonVariant
+import cv.novatech.ispm.sms.ui.components.IspmButton
+import cv.novatech.ispm.sms.ui.components.SegmentedControl
 import cv.novatech.ispm.sms.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -32,12 +35,6 @@ import java.io.File
 import java.util.UUID
 
 private const val MAX_PHOTOS = 3
-
-@Composable
-private fun fieldColors() = OutlinedTextFieldDefaults.colors(
-  focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary,
-  focusedBorderColor = AccentBlue, unfocusedBorderColor = BorderC, cursorColor = AccentBlue
-)
 
 /**
  * Concluir uma OS no terreno: notas obrigatórias, até 3 fotos e, se o técnico
@@ -76,24 +73,25 @@ fun CompleteOrderSheet(
     withLocation = granted
   }
 
-  ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Surface) {
+  ModalBottomSheet(onDismissRequest = onDismiss) {
     Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       Text("Concluir OS", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
       Text(order.title + (order.clientName?.let { " · $it" } ?: ""), color = TextSecondary, style = MaterialTheme.typography.bodySmall)
       OutlinedTextField(
         value = notes, onValueChange = { notes = it.take(2000) },
-        label = { Text("O que foi feito") }, minLines = 3, modifier = Modifier.fillMaxWidth(), colors = fieldColors()
+        label = { Text("O que foi feito") }, minLines = 3, modifier = Modifier.fillMaxWidth()
       )
       Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Fotos · ${photos.size}/$MAX_PHOTOS", color = TextSecondary, modifier = Modifier.weight(1f))
-        TextButton(
-          enabled = photos.size < MAX_PHOTOS && !compressing,
+        IspmButton(
+          if (compressing) "A preparar…" else "Tirar foto",
           onClick = {
             val uri = photoUri(context)
             pendingUri = uri
             camera.launch(uri)
-          }
-        ) { Text(if (compressing) "A preparar…" else "Tirar foto", color = AccentBlue) }
+          },
+          enabled = photos.size < MAX_PHOTOS && !compressing
+        )
       }
       if (photoError) Text("A foto não ficou guardada. Tente de novo.", color = Warn, style = MaterialTheme.typography.bodySmall)
       Row(verticalAlignment = Alignment.CenterVertically) {
@@ -105,12 +103,12 @@ fun CompleteOrderSheet(
           if (on && !hasLocationPermission(context)) locationPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION) else withLocation = on
         })
       }
-      Button(
+      IspmButton(
+        "Concluir e enviar ao PC",
         onClick = { onSubmit(notes.trim(), photos.toList(), if (withLocation) lastLocation(context) else null) },
-        enabled = notes.isNotBlank() && !compressing,
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth()
-      ) { Text("Concluir e enviar ao PC", fontWeight = FontWeight.SemiBold) }
+        modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.PRIMARY,
+        enabled = notes.isNotBlank() && !compressing
+      )
     }
   }
 }
@@ -131,7 +129,7 @@ fun ReceiptSheet(
   var note by remember { mutableStateOf("") }
   val value = amount.filter { it.isDigit() }.toLongOrNull() ?: 0L
 
-  ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Surface) {
+  ModalBottomSheet(onDismissRequest = onDismiss) {
     Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       Text("Recebi em mão", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
       Text("${debtor.clientName} · deve ${DashboardRules.formatCve(debtor.amountCve)}", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
@@ -139,23 +137,18 @@ fun ReceiptSheet(
         value = amount, onValueChange = { amount = it.filter(Char::isDigit).take(9) },
         label = { Text("Valor recebido (CVE)") }, singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = Modifier.fillMaxWidth(), colors = fieldColors()
+        modifier = Modifier.fillMaxWidth()
       )
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(selected = method == "numerario", onClick = { method = "numerario" }, label = { Text("Numerário") })
-        FilterChip(selected = method == "transferencia", onClick = { method = "transferencia" }, label = { Text("Transferência") })
-      }
+      SegmentedControl(listOf("numerario", "transferencia"), method, { if (it == "numerario") "Numerário" else "Transferência" }, { method = it })
       OutlinedTextField(
         value = note, onValueChange = { note = it.take(500) },
-        label = { Text("Nota (opcional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors()
+        label = { Text("Nota (opcional)") }, singleLine = true, modifier = Modifier.fillMaxWidth()
       )
       Text("Fica à espera de confirmação no PC: só aí entra na caixa.", color = TextMuted, style = MaterialTheme.typography.bodySmall)
-      Button(
-        onClick = { onSubmit(value, method, note.trim()) },
-        enabled = value > 0,
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth()
-      ) { Text("Enviar ${DashboardRules.formatCve(value)} ao PC", fontWeight = FontWeight.SemiBold) }
+      IspmButton(
+        "Enviar ${DashboardRules.formatCve(value)} ao PC", onClick = { onSubmit(value, method, note.trim()) },
+        modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.PRIMARY, enabled = value > 0
+      )
     }
   }
 }

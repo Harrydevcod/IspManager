@@ -3,6 +3,8 @@ package cv.novatech.ispm.sms
 import android.content.Context
 import cv.novatech.ispm.sms.send.SendBudget
 import cv.novatech.ispm.sms.send.SimLimits
+import cv.novatech.ispm.sms.state.ThemePref
+import cv.novatech.ispm.sms.state.ThemeRules
 
 /** Device-local choices that never come from the desktop. */
 class SettingsStore(context: Context) {
@@ -32,5 +34,11 @@ class SettingsStore(context: Context) {
 
   fun setLockEnabled(value: Boolean) {
     prefs.edit().putBoolean("lockEnabled", value).apply()
+  }
+
+  fun themePref(): ThemePref = ThemeRules.parse(prefs.getString("theme", null))
+
+  fun setThemePref(value: ThemePref) {
+    prefs.edit().putString("theme", value.name).apply()
   }
 }
