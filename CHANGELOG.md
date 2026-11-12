@@ -4,6 +4,11 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.65](https://github.com/Harrydevcod/IspManager/releases/tag/v2.65.0) — 2026-11-12
+
+### Alterado
+- **Acordo de pagamento com prestações à medida.** O valor e a data de cada prestação passam a ser editáveis. Uma dívida de 5.500$ pode ficar, por exemplo, em 3.500 + 1.000 + 1.000. A divisão igual em meses seguidos é só a proposta inicial, e "Repartir igual" volta a ela. Enquanto a soma não bate com a dívida, o acordo mostra "Falta distribuir" ou "Excede" e não deixa criar. As datas têm de ser crescentes e a primeira não pode ser no passado.
+
 ## [2.64](https://github.com/Harrydevcod/IspManager/releases/tag/v2.64.0) — 2026-11-12
 
 ### Adicionado
