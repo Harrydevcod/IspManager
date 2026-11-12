@@ -23,3 +23,5 @@ Nenhuma release sai sem um **smoke visual** de cada ecrã que ela muda. A releas
 - **Depois.** As capturas vão para o utilizador antes de lançar. Um defeito encontrado no smoke corrige-se antes da release, não numa versão a seguir.
 - **No Chrome, antes do merge.** Um PR que mexe em ecrãs só se funde depois de o smoke correr no Chrome com os ecrãs alterados deixados abertos em abas, para o utilizador os ver ao vivo. Fica tudo a correr até ele dar o visto.
 - **Nunca uma release só para corrigir ecrãs.** Um defeito de ecrã corrige-se no próprio PR, antes do merge.
+- **Telemóvel (app ISPM SMS).** Um PR que mexe nos ecrãs da app Android (`android-sms-companion/**/ui/**`, tema ou textos) só se funde depois de o utilizador ver as capturas do artefacto `ispm-sms-companion-screens` do CI. São geradas pelo `ScreensSnapshotTest` (Paparazzi), em Pixel 5, ecrã pequeno de 360 dp e letra grande, e cobrem cada estado novo. O teste no telemóvel real faz-se com o APK assinado, antes de anunciar a versão.
+- **Largura estreita no desktop: 420 px** (iframe da própria app; a janela da extensão ignora o redimensionamento).
