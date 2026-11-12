@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cv.novatech.ispm.sms.dashboard.Dashboard
@@ -80,7 +81,7 @@ private fun WaitingForDesktop(sync: SyncPhase, onSync: () -> Unit) {
     }
     syncLine(sync)?.let { (text, color) ->
       Spacer(Modifier.height(8.dp))
-      Text(text, color = color, style = MaterialTheme.typography.bodySmall)
+      Text(text, color = color, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
     }
   }
 }
@@ -254,14 +255,18 @@ private fun MonthBars(months: List<Dashboard.MonthAmount>) {
       val current = i == months.lastIndex
       Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Bottom, horizontalAlignment = Alignment.CenterHorizontally) {
         if (m.amountCve == max) {
-          Text(DashboardRules.formatCve(m.amountCve).removeSuffix("\$00") + "$", color = TextSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+          Text(
+            DashboardRules.formatCve(m.amountCve).removeSuffix("\$00") + "$", color = TextSecondary,
+            style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false,
+            modifier = Modifier.wrapContentWidth(unbounded = true)
+          )
           Spacer(Modifier.height(4.dp))
         }
         Box(
           Modifier.fillMaxWidth()
             .fillMaxHeight((m.amountCve.toFloat() / max * 0.78f).coerceAtLeast(0.02f))
             .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
-            .background(if (current) AccentBlue else SurfaceMuted)
+            .background(if (current) AccentBlue else BorderStrong)
         )
         Spacer(Modifier.height(6.dp))
         val idx = m.month.substringAfter('-').toIntOrNull()?.minus(1)

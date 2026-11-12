@@ -8,6 +8,7 @@ val Bg = Color(0xFF05070D)            // --bg
 val Surface = Color(0xFF0E1524)       // --surface
 val SurfaceMuted = Color(0xFF0A0F1A)  // between --bg and --surface: nav bar, quiet bars
 val BorderC = Color(0xFF1E2A42)       // --border
+val BorderStrong = Color(0xFF2A3A58)  // --border-2: marks that must read on a Surface card
 val TextPrimary = Color(0xFFE8EEFC)   // --text
 val TextSecondary = Color(0xFF94A5C4) // --text-2
 val TextMuted = Color(0xFF7786A3)     // --text-3

@@ -31,7 +31,7 @@ fun RequestCard(req: RequestUi, onApprove: () -> Unit, onReject: () -> Unit, onU
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
       Column(Modifier.weight(1f)) {
         Text(req.clientName ?: req.toPhone, color = TextPrimary, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
-        Text(req.toPhone, color = TextMuted, style = MaterialTheme.typography.bodySmall)
+        if (req.clientName != null) Text(req.toPhone, color = TextMuted, style = MaterialTheme.typography.bodySmall)
       }
       Box(Modifier.clip(RoundedCornerShape(6.dp)).background(badge.bg).padding(horizontal = 7.dp, vertical = 3.dp)) {
         Text(badge.label, color = badge.fg, style = MaterialTheme.typography.labelSmall)
@@ -60,8 +60,8 @@ fun RequestCard(req: RequestUi, onApprove: () -> Unit, onReject: () -> Unit, onU
         Button(
           onClick = onApprove, modifier = Modifier.weight(1f),
           colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Bg)
-        ) { Text("Aprovar e enviar") }
-        OutlinedButton(onClick = onReject, modifier = Modifier.weight(1f)) { Text("Rejeitar", color = TextSecondary) }
+        ) { Text("Aprovar", maxLines = 1) }
+        OutlinedButton(onClick = onReject, modifier = Modifier.weight(1f)) { Text("Rejeitar", color = TextSecondary, maxLines = 1) }
       }
     }
   }
