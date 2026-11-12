@@ -1,0 +1,102 @@
+/** @vitest-environment jsdom */
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { ToastProvider } from '../../components';
+import { ClientFinanceDialog } from './ClientFinanceDialog';
+import type { ClientFinance } from '../../types';
+
+let root: Root | null = null;
+let finance: ClientFinance;
+let posted: { url: string; body: Record<string, unknown> } | null;
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
+const invoice = (paymentId: number, month: string, balanceCve: number) => ({
+  paymentId,
+  referenceMonth: month,
+  invoiceNumber: `FT-${paymentId}`,
+  dueDate: `${month}-10`,
+  amountCve: balanceCve,
+  receivedCve: 0,
+  balanceCve,
+  daysOverdue: 90,
+  bucket: 'd90' as const,
+  isOverdue: true,
+  planId: null
+});
+
+beforeEach(() => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  posted = null;
+  finance = {
+    client: { id: 7, name: 'Maria Lopes', code: 'CLT-7', phone: '9912345', zone: 'Achada', status: 'active' },
+    summary: { openCve: 5000, overdueCve: 5000, overdueInvoices: 2, creditCve: 0, maxDaysOverdue: 90, lastPaymentDate: '2026-06-01', lastPaymentCve: 2500 },
+    invoices: [invoice(1, '2026-07', 2500), invoice(2, '2026-08', 2500)],
+    receipts: [],
+    notices: [{ channel: 'sms', id: 3, kind: 'payment_overdue', origin: null, status: 'sent', at: '2026-08-20 10:00:00', paymentId: 2, invoiceNumber: 'FT-2', referenceMonth: '2026-08' }],
+    plans: []
+  };
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith('/payment-plans') && init?.method === 'POST') {
+      posted = { url, body: JSON.parse(String(init.body)) };
+      return json({}, 201);
+    }
+    if (url.endsWith('/clients/7/finance')) return json(finance);
+    return json({ error: 'nope' }, 404);
+  }));
+});
+
+afterEach(async () => {
+  await act(async () => root?.unmount());
+  root = null;
+  document.body.replaceChildren();
+  vi.unstubAllGlobals();
+});
+
+async function mount(onOpenInvoice = vi.fn()) {
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  root = createRoot(host);
+  await act(async () => {
+    root!.render(<ToastProvider><ClientFinanceDialog clientId={7} onClose={() => {}} onOpenInvoice={onOpenInvoice} /></ToastProvider>);
+  });
+  await act(async () => { await Promise.resolve(); });
+  return onOpenInvoice;
+}
+
+const tab = (label: RegExp) =>
+  [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) => label.test(b.textContent || ''))!;
+
+test('mostra a dívida e abre a fatura clicada', async () => {
+  const onOpenInvoice = await mount();
+  const text = document.body.textContent || '';
+  expect(text).toContain('Maria Lopes');
+  expect(text).toContain('5.000$00');
+  expect(text).toContain('Faturas em aberto (2)');
+
+  await act(async () => { (document.querySelector('[data-row-key="1"], .data-table-row') as HTMLElement).click(); });
+  expect(onOpenInvoice).toHaveBeenCalledWith(1);
+});
+
+test('avisos juntam SMS e WhatsApp numa lista', async () => {
+  await mount();
+  await act(async () => tab(/Avisos/).click());
+  expect(document.body.textContent).toContain('SMS');
+  expect(document.body.textContent).toContain('Em atraso');
+});
+
+test('cria o acordo com as faturas em aberto e as prestações escolhidas', async () => {
+  await mount();
+  await act(async () => tab(/Acordo/).click());
+  const text = document.body.textContent || '';
+  expect(text).toContain('1.668$00');
+  expect(text).toContain('1.666$00');
+
+  const submit = [...document.querySelectorAll('button')].find((b) => b.textContent === 'Criar acordo')!;
+  await act(async () => submit.click());
+  expect(posted?.url).toContain('/clients/7/payment-plans');
+  expect(posted?.body).toMatchObject({ paymentIds: [1, 2], installments: 3, notes: null });
+});

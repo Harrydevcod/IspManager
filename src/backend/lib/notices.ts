@@ -1,6 +1,7 @@
 import { getSqliteDatabase } from '../db/database';
 import { balanceSqlExpr } from './payments';
 import { openPaymentLinkSql } from './vinti4';
+import { planProtectedSql } from './payment-plans';
 import {
   fallbackWhatsappOverdueTemplate,
   fallbackWhatsappReminderTemplate,
@@ -70,6 +71,7 @@ export type OverdueCandidate = {
 /**
  * Faturas em aberto já vencidas, ou a vencer dentro de [reminderWindow] dias,
  * com o saldo em dívida. Fonte única para os avisos de WhatsApp e de SMS.
+ * Ficam de fora as que estão num acordo de pagamento em dia.
  */
 export function loadOverdueCandidates(reminderWindow: number): OverdueCandidate[] {
   return getSqliteDatabase().prepare(`
@@ -94,6 +96,8 @@ export function loadOverdueCandidates(reminderWindow: number): OverdueCandidate[
     WHERE c.system_kind IS NULL AND py.document_type = 'invoice'
       AND (py.status = 'overdue'
            OR (py.status = 'pending' AND py.due_date <= ${sqlBusinessDate("'+' || ? || ' days'")}))
+      -- Acordo de pagamento em dia (0103): a cobrança dessas faturas é o calendário do acordo.
+      AND ${planProtectedSql('py')}
     ORDER BY py.due_date ASC
   `).all(reminderWindow) as OverdueCandidate[];
 }

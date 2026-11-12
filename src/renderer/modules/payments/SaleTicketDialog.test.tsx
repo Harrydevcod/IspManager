@@ -20,7 +20,7 @@ let cancelResponse: () => Promise<Response>;
 const requests: Array<Record<string, unknown>> = [];
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
 const ticketPayment: PaymentRow = {
-  id: 45, documentType: 'sale_ticket', clientName: 'Cliente Indiferenciado', clientCode: 'CI',
+  id: 45, documentType: 'sale_ticket', clientId: 1, clientName: 'Cliente Indiferenciado', clientCode: 'CI',
   clientNif: null, clientPhone: null, referenceMonth: '2026-10', amountCve: 2500, dueDate: '2026-10-13',
   paymentDate: '2026-10-13', paymentMethod: 'numerario', status: 'paid', invoiceNumber: 'TV/45', receiptNumber: null,
   canRegenerate: 0, receivedCve: 2500, balanceCve: 0

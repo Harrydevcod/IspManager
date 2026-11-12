@@ -22,6 +22,8 @@ import {
   voidReceipt
 } from '../lib/payments';
 import { loadReceivables } from '../lib/receivables';
+import { loadClientFinance } from '../lib/client-finance';
+import { cancelPaymentPlan, cancelPaymentPlanSchema, createPaymentPlan, createPaymentPlanSchema } from '../lib/payment-plans';
 import { createManualInvoice, manualInvoiceSchema } from '../lib/manual-invoice';
 import { MANUAL_INVOICE_PREFIX } from '../../shared/billing-period';
 import { clearVinti4Link, openPaymentLinkSql, readVinti4Config, setVinti4Link, vinti4LinkFor } from '../lib/vinti4';
@@ -876,6 +878,55 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
 
   app.get('/api/receivables', { preHandler: requireRole(['admin', 'operator']) }, async () => {
     return loadReceivables(getSqliteDatabase());
+  });
+
+  app.get('/api/clients/:id/finance', { preHandler: requireRole(['admin', 'operator']) }, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.status(400).send({ error: 'Cliente invalido' });
+    }
+    const finance = loadClientFinance(getSqliteDatabase(), id);
+    if (!finance) return reply.status(404).send({ error: 'Cliente nao encontrado' });
+    return finance;
+  });
+
+  app.post('/api/clients/:id/payment-plans', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const parsed = createPaymentPlanSchema.safeParse(request.body);
+    if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Acordo invalido' });
+    }
+    const result = createPaymentPlan(getSqliteDatabase(), id, parsed.data, request.user?.id ?? null);
+    if (!result.ok) return reply.status(result.status).send({ error: result.error });
+
+    const plan = result.value;
+    recordAudit(request, {
+      action: 'payment_plan_create',
+      entityType: 'payment_plan',
+      entityId: plan.id,
+      summary: `Acordo de pagamento ${plan.id} do cliente ${id}: ${plan.totalCve} CVE em ${plan.installments.length} prestacoes`,
+      metadata: { clientId: id, paymentIds: plan.invoices.map((i) => i.paymentId), installments: plan.installments }
+    });
+    return reply.status(201).send(plan);
+  });
+
+  app.post('/api/payment-plans/:id/cancel', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const parsed = cancelPaymentPlanSchema.safeParse(request.body);
+    if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Indique o motivo do cancelamento' });
+    }
+    const result = cancelPaymentPlan(getSqliteDatabase(), id, parsed.data.reason);
+    if (!result.ok) return reply.status(result.status).send({ error: result.error });
+
+    recordAudit(request, {
+      action: 'payment_plan_cancel',
+      entityType: 'payment_plan',
+      entityId: id,
+      summary: `Cancelou o acordo de pagamento ${id} do cliente ${result.value.clientId}`,
+      metadata: { reason: parsed.data.reason, paidCve: result.value.paidCve, remainingCve: result.value.remainingCve }
+    });
+    return result.value;
   });
 
   app.post('/api/payments/:id/overdue', billingWrite, async (request, reply) => {

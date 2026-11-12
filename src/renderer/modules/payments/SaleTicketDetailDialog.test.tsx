@@ -26,7 +26,7 @@ test('anulação recarrega o PDF real do preview e descarta o documento pago', a
   });
   const container = document.createElement('div'); document.body.append(container);
   const root = createRoot(container);
-  const payment: PaymentRow = { id: 1, clientName: 'Cliente Indiferenciado', clientCode: 'INDIF', clientNif: null, clientPhone: null,
+  const payment: PaymentRow = { id: 1, clientId: 1, clientName: 'Cliente Indiferenciado', clientCode: 'INDIF', clientNif: null, clientPhone: null,
     documentType: 'sale_ticket', referenceMonth: 'AVULSA-1', amountCve: 100, dueDate: '2026-10-13', paymentDate: '2026-10-13',
     paymentMethod: 'numerario', status: 'paid', invoiceNumber: 'TV-2026-00001', receiptNumber: null, receivedCve: 100, balanceCve: 0, canRegenerate: 0 };
   const field = (label: string) => [...document.querySelectorAll('label')].find((item) => item.querySelector('.field-label')?.textContent === label)!.querySelector<HTMLInputElement | HTMLTextAreaElement>('input,textarea')!;

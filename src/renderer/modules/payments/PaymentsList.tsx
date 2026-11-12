@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Smartphone, Undo2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileText, MessageCircle, ReceiptText, RotateCcw, Send, Smartphone, Undo2, Wallet, X } from 'lucide-react';
 import { Badge, DataTable, EmptyState, RowActionsMenu, type DataTableSelection, type RowActionGroup } from '../../components';
 import type { DataTableColumn } from '../../components/DataTable';
 import { formatCve, formatPtDate, formatPtMonth } from '../../lib/format';
@@ -84,6 +84,7 @@ type PaymentsListProps = {
   submitting: boolean;
   isReminderSentToday: (paymentId: number) => boolean;
   onPreview: (payment: PaymentRow) => void;
+  onOpenClientFinance?: (clientId: number) => void;
   onOpenPdf: (payment: PaymentRow, type: 'invoice' | 'receipt') => void;
   onMarkOverdue: (payment: PaymentRow) => void;
   onOpenPayForm: (payment: PaymentRow) => void;
@@ -105,6 +106,7 @@ export function PaymentsList({
   submitting,
   isReminderSentToday,
   onPreview,
+  onOpenClientFinance,
   onOpenPdf,
   onMarkOverdue,
   onOpenPayForm,
@@ -164,7 +166,10 @@ export function PaymentsList({
         const documentos: RowActionGroup = {
           label: 'Documentos',
           items: [
-            { label: 'Fatura PDF', icon: <FileText size={15} aria-hidden />, onClick: () => onOpenPdf(p, 'invoice') }
+            { label: 'Fatura PDF', icon: <FileText size={15} aria-hidden />, onClick: () => onOpenPdf(p, 'invoice') },
+            ...(onOpenClientFinance
+              ? [{ label: 'Ficha financeira do cliente', icon: <Wallet size={15} aria-hidden />, onClick: () => onOpenClientFinance(p.clientId) }]
+              : [])
           ]
         };
         const comunicacao: RowActionGroup = {
