@@ -4,6 +4,17 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.63](https://github.com/Harrydevcod/IspManager/releases/tag/v2.63.0) — 2026-11-12
+
+### Adicionado
+- **Saúde da rede: ataque SYN ao router.** Quando o router regista um SYN flood numa porta, o achado aparece no Painel e em Topologia › Incidentes, com a indicação de confirmar que o DNS do router não responde à WAN.
+- **Saúde da rede: túnel VPN a falhar.** As falhas de handshake do WireGuard passam a contar, a partir de 5 na janela. As falhas soltas são normais e não aparecem.
+- **O registo do router diz quando está parado.** Fora da rede de gestão, o cartão da Saúde da rede e a aba Router passam a dizer "Registo do router parado: fora da rede de gestão", em vez de mostrar só a hora da última leitura.
+- O histórico já guardado conta para os dois achados novos, por isso os casos desde o início de novembro aparecem logo.
+
+### Alterado
+- **App ISPM SMS 0.10.0:** a app foi redesenhada com a letra e os ícones do ISPM no PC e tem tema claro e escuro, que pode seguir o do telemóvel.
+
 ## [2.62](https://github.com/Harrydevcod/IspManager/releases/tag/v2.62.0) — 2026-11-12
 
 ### Adicionado
