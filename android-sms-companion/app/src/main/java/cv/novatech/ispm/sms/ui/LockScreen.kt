@@ -31,7 +31,7 @@ fun LockScreen(onUnlock: () -> Unit) {
     Text("ISPM SMS bloqueado", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
     Spacer(Modifier.height(6.dp))
     Text(
-      "Os pedidos de SMS continuam a chegar. Desbloqueie com a impressão digital ou o PIN do telemóvel.",
+      "Desbloqueie com a impressão digital ou o PIN.",
       color = TextMuted, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center
     )
     Spacer(Modifier.height(24.dp))

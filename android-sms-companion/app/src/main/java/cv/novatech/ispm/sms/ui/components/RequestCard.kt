@@ -14,7 +14,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cv.novatech.ispm.sms.state.RequestUi
@@ -60,7 +59,7 @@ fun RequestCard(req: RequestUi, onApprove: () -> Unit, onReject: () -> Unit, onU
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(
           onClick = onApprove, modifier = Modifier.weight(1f),
-          colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Color.White)
+          colors = ButtonDefaults.buttonColors(containerColor = AccentBlue, contentColor = Bg)
         ) { Text("Aprovar e enviar") }
         OutlinedButton(onClick = onReject, modifier = Modifier.weight(1f)) { Text("Rejeitar", color = TextSecondary) }
       }

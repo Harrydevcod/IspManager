@@ -44,8 +44,7 @@ import { runMonthlyBillingIfDue } from './lib/auto-billing';
 import { runAudiovisualAnnualIfDue } from './lib/audiovisual-billing';
 import { runOverdueNoticesIfDue } from './lib/notices';
 import { runSmsOverdueNoticesIfDue, smsOverdueNoticesDueToday } from './lib/sms-notices';
-import { runCompanionSyncIfDue } from './lib/companion-sync';
-import { pullCompanionEventsIfDue } from './lib/companion-events';
+import { runCompanionTick } from './lib/companion-tick';
 import { registerCompanionRoutes } from './routes/companion';
 import { pollWhatsappDeliveryIfDue, runWhatsappOutboxIfDue } from './lib/whatsapp-outbox';
 import { pollSmsStatusIfDue, runSmsOutboxIfDue, smsDispatchIntervalMs } from './lib/sms-outbox';
@@ -308,9 +307,7 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
     // Estado do telemóvel + resumo do Painel. Só leitura: não depende da licença.
     // Depois do estado, o canal de volta: o que o telemóvel guardou no terreno.
     const syncCompanion = () => {
-      void runCompanionSyncIfDue()
-        .then(() => runJob('companion_events', () => pullCompanionEventsIfDue()))
-        .catch((err) => app.log.warn({ err }, 'companion sync failed'));
+      void runCompanionTick().catch((err) => app.log.warn({ err }, 'companion sync failed'));
     };
     syncCompanion();
     setInterval(syncCompanion, 60_000).unref();

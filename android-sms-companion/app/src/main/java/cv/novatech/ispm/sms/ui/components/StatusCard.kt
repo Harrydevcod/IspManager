@@ -63,18 +63,18 @@ fun StatusCard(state: CompanionUiState, onForget: () -> Unit) {
     }
     if (link == DesktopLink.MISMATCH) {
       Text(
-        "Gere um QR novo no ISPM (Definições → SMS) e leia-o aqui depois de esquecer este pareamento.",
+        "Esqueça este pareamento e leia o QR novo do ISPM.",
         color = TextSecondary, style = MaterialTheme.typography.bodySmall
       )
     } else if (link == DesktopLink.WAITING) {
       Text(
-        "Sem pedidos do computador nos últimos minutos. Confirme a mesma rede Wi-Fi e a ligação ligada no ISPM.",
+        "Confirme que o PC está na mesma rede Wi-Fi.",
         color = TextSecondary, style = MaterialTheme.typography.bodySmall
       )
     }
     Spacer(Modifier.height(6.dp))
     Text(
-      if (state.serverRunning) "A ouvir ${state.listenAddress}" else "Servidor parado — reabra a app",
+      if (state.serverRunning) "A ouvir ${state.listenAddress}" else "Servidor parado. Reabra a app.",
       color = if (state.serverRunning) TextSecondary else Warn,
       style = MaterialTheme.typography.bodySmall
     )

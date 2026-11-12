@@ -72,7 +72,7 @@ describe('runCompanionSyncIfDue', () => {
     pair();
     const d = deps();
     const now = new Date('2026-11-03T12:00:00Z');
-    expect(await sync.runCompanionSyncIfDue(now, d)).toEqual({ online: true, pushed: true });
+    expect(await sync.runCompanionSyncIfDue(now, d)).toEqual({ online: true, pushed: true, syncRequested: false });
     expect(d.pushSnapshot).toHaveBeenCalledTimes(1);
     expect(sync.readCompanionPresence()).toEqual({ lastSeen: now.toISOString(), device, lastPush: { at: now.toISOString(), ok: true, reason: null } });
   });
@@ -109,14 +109,24 @@ describe('runCompanionSyncIfDue', () => {
   test('offline: hunts for the phone at once, then pushes when it comes back', async () => {
     pair();
     const offline = deps({ fetchStatus: vi.fn(async () => ({ reachable: false, status: null })) });
-    expect(await sync.runCompanionSyncIfDue(new Date('2026-11-03T12:00:00Z'), offline)).toEqual({ online: false, pushed: false });
+    expect(await sync.runCompanionSyncIfDue(new Date('2026-11-03T12:00:00Z'), offline)).toEqual({ online: false, pushed: false, syncRequested: false });
     expect(offline.selfHeal).toHaveBeenCalledTimes(1);
     expect(offline.fetchStatus).toHaveBeenCalledTimes(2); // antes e depois de procurar
     expect(sync.readCompanionPresence().lastSeen).toBeNull();
 
     // Voltou ao fim de 1 min: o intervalo de 5 min não se aplica, envia logo.
     const back = deps();
-    expect(await sync.runCompanionSyncIfDue(new Date('2026-11-03T12:01:00Z'), back)).toEqual({ online: true, pushed: true });
+    expect(await sync.runCompanionSyncIfDue(new Date('2026-11-03T12:01:00Z'), back)).toEqual({ online: true, pushed: true, syncRequested: false });
+  });
+
+  test('the phone asked for a sync: pushes inside the interval and says so', async () => {
+    pair();
+    setSetting('smsCompanionSnapshotMinutes', '5');
+    const t0 = Date.parse('2026-11-03T12:00:00Z');
+    await sync.runCompanionSyncIfDue(new Date(t0), deps());
+    const asked = deps({ fetchStatus: vi.fn(async () => ({ reachable: true, status: device, syncRequested: true })) });
+    expect(await sync.runCompanionSyncIfDue(new Date(t0 + 60_000), asked)).toEqual({ online: true, pushed: true, syncRequested: true });
+    expect(asked.pushSnapshot).toHaveBeenCalledTimes(1);
   });
 
   test('a phone without /status (app 0.2.0) still counts as seen', async () => {

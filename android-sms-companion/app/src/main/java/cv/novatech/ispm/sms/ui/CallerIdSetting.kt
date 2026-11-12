@@ -41,10 +41,6 @@ fun CallerIdSetting() {
     Row(verticalAlignment = Alignment.CenterVertically) {
       Column(Modifier.weight(1f)) {
         Text("Identificar clientes que ligam", color = TextPrimary, fontWeight = FontWeight.SemiBold)
-        Text(
-          "Quando um cliente liga, uma notificação diz quem é e quanto deve. Não bloqueia chamadas e nada sai do telemóvel.",
-          color = TextSecondary, style = MaterialTheme.typography.bodySmall
-        )
       }
       Spacer(Modifier.width(12.dp))
       if (held) {

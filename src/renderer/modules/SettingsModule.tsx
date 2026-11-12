@@ -197,6 +197,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
   const [smsPairing, setSmsPairing] = useState<{ baseUrl: string; deviceName: string }>({ baseUrl: '', deviceName: '' });
   const [smsPairingBusy, setSmsPairingBusy] = useState(false);
   const [smsDetecting, setSmsDetecting] = useState(false);
+  const [smsSyncing, setSmsSyncing] = useState(false);
   const [smsQrDataUrl, setSmsQrDataUrl] = useState<string>('');
   const [smsVerifying, setSmsVerifying] = useState(false);
   const pairingPollRef = useRef<{ cancelled: boolean } | null>(null);
@@ -311,6 +312,27 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
       if (requestId === smsReportRequestRef.current) {
         setSmsReportLoading(false);
       }
+    }
+  }
+
+  // Com êxito a linha de presença já diz "resumo entregue há 0 s"; só a falha precisa de mensagem.
+  async function syncSmsNow() {
+    setSmsSyncing(true);
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/sms/sync', { method: 'POST' });
+      const data = (await response.json().catch(() => ({}))) as { online?: boolean; pushed?: boolean; lastPush?: { reason: string | null } | null; error?: string };
+      if (!response.ok) {
+        setMessage({ tone: 'error', text: data.error ?? 'Não foi possível sincronizar.', placement: 'top' });
+      } else if (!data.online) {
+        setMessage({ tone: 'error', text: 'O telemóvel não respondeu.', placement: 'top' });
+      } else if (!data.pushed) {
+        setMessage({ tone: 'error', text: `O resumo não chegou ao telemóvel: ${data.lastPush?.reason ?? 'sem motivo'}.`, placement: 'top' });
+      }
+      await loadSmsStatus();
+    } catch {
+      setMessage({ tone: 'error', text: 'Falha de rede ao sincronizar.', placement: 'top' });
+    } finally {
+      setSmsSyncing(false);
     }
   }
 
@@ -909,6 +931,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
             smsDetecting={smsDetecting}
             smsQrDataUrl={smsQrDataUrl}
             onDetectPhone={() => void detectSmsPhone()}
+            smsSyncing={smsSyncing}
+            onSyncNow={() => void syncSmsNow()}
             onCreatePairing={() => {
               setSmsPasswordError(null);
               setSmsPasswordFor('pair');

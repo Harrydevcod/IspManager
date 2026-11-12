@@ -62,6 +62,8 @@ function smsTabProps(
     smsDetecting: false,
     smsQrDataUrl: '',
     onDetectPhone: vi.fn(),
+    smsSyncing: false,
+    onSyncNow: vi.fn(),
     onCreatePairing: vi.fn(),
     onRevokePairing: vi.fn(),
     onResumeVerification: vi.fn(),
@@ -190,5 +192,16 @@ describe('SmsTab pairing', () => {
     const html = renderSmsTab({ smsStatus: { ...offline, reachable: true } });
     expect(html).toContain('Gerar novo QR');
     expect(html).toContain('Revogar pareamento');
+  });
+});
+
+describe('SmsTab sync now', () => {
+  test('shows "Sincronizar agora" for a live pairing with the link on', () => {
+    expect(renderSmsTab({ smsStatus: { ...smsStatus, enabled: true } })).toContain('Sincronizar agora');
+  });
+
+  test('hides it with the link off or nothing paired', () => {
+    expect(renderSmsTab({ smsStatus: { ...smsStatus, enabled: false } })).not.toContain('Sincronizar agora');
+    expect(renderSmsTab({ smsStatus: { ...smsStatus, enabled: true, configured: false } })).not.toContain('Sincronizar agora');
   });
 });

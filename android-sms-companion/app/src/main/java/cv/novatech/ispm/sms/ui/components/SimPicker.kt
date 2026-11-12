@@ -39,10 +39,6 @@ fun SimPicker(sims: List<SimOption>, selected: Int?, onRequestPhoneState: () -> 
     sims.forEach { sim -> SimRow(sim.label, selected == sim.subscriptionId) { onChoose(sim.subscriptionId) } }
     if (sims.size >= 2) {
       SimRow("Automático: alternar entre os SIMs", selected == SendBudget.ROTATE) { onChoose(SendBudget.ROTATE) }
-      Text(
-        "Cada SMS sai pelo SIM com mais folga no ritmo escolhido. Se a operadora recusar por excesso, esse SIM descansa 1 h.",
-        color = TextMuted, style = MaterialTheme.typography.bodySmall
-      )
     }
   }
 }

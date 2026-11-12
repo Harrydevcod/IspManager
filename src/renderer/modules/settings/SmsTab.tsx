@@ -1,4 +1,4 @@
-import { QrCode, RotateCcw, Unlink, Wifi } from 'lucide-react';
+import { QrCode, RefreshCw, RotateCcw, Unlink, Wifi } from 'lucide-react';
 import { SmsInbox } from './SmsInbox';
 import { Button, Field, Toggle } from '../../components';
 import type { SmsMonthlyReport, SmsStatus } from '../../types';
@@ -30,6 +30,9 @@ type SmsTabProps = {
   smsDetecting: boolean;
   smsQrDataUrl: string;
   onDetectPhone: () => void;
+  smsSyncing: boolean;
+  /** Troca completa com o telemóvel já: resumo, canal de volta e fila de SMS. */
+  onSyncNow: () => void;
   onCreatePairing: () => void;
   onRevokePairing: () => void;
   /** O QR expirou sem ser lido: volta a esperar pelo mesmo QR. */
@@ -52,6 +55,8 @@ export function SmsTab({
   smsDetecting,
   smsQrDataUrl,
   onDetectPhone,
+  smsSyncing,
+  onSyncNow,
   onCreatePairing,
   onRevokePairing,
   onResumeVerification
@@ -69,7 +74,7 @@ export function SmsTab({
         onChange={(event) => onToggle('smsCompanionEnabled', event.target.checked)}
       />
       <Toggle
-        title="Avisos automaticos de atraso e corte por SMS"
+        title="Avisos automáticos de atraso e corte por SMS"
         checked={form.smsAutoNoticesEnabled}
         disabled={!form.smsCompanionEnabled}
         onChange={(event) => onToggle('smsAutoNoticesEnabled', event.target.checked)}
@@ -85,8 +90,20 @@ export function SmsTab({
             ))}
           </div>
         )}
+        {presence && smsStatus?.enabled && smsStatus.configured && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onSyncNow}
+            loading={smsSyncing}
+            disabled={smsPairingBusy}
+            leadingIcon={<RefreshCw size={14} aria-hidden />}
+          >
+            Sincronizar agora
+          </Button>
+        )}
         <Field
-          label="Endereco do Android na rede local"
+          label="Endereço do Android na rede local"
           value={smsPairing.baseUrl}
           onChange={(event) => onPairingChange('baseUrl', event.target.value)}
           placeholder="http://192.168.1.50:8765"
@@ -202,7 +219,7 @@ export function SmsTab({
       />
       <Field
         className="field-short"
-        label="Reenvio apos falha (minutos)"
+        label="Reenvio após falha (minutos)"
         type="number"
         min={1}
         max={1440}
@@ -211,7 +228,7 @@ export function SmsTab({
       />
       <TemplateField
         field="smsInvoiceIssuedTemplate"
-        label="SMS — emissão de fatura"
+        label="SMS: emissão de fatura"
         hint="Evite acentos: com eles cada SMS cai de 160 para 70 caracteres."
         value={form.smsInvoiceIssuedTemplate}
         recommended={fallbackSmsInvoiceIssuedTemplate}
@@ -219,21 +236,21 @@ export function SmsTab({
       />
       <TemplateField
         field="smsReceiptConfirmedTemplate"
-        label="SMS — confirmação de recibo"
+        label="SMS: confirmação de recibo"
         value={form.smsReceiptConfirmedTemplate}
         recommended={fallbackSmsReceiptConfirmedTemplate}
         onUpdate={onUpdate}
       />
       <TemplateField
         field="smsPaymentOverdueTemplate"
-        label="SMS — atraso de pagamento"
+        label="SMS: atraso de pagamento"
         value={form.smsPaymentOverdueTemplate}
         recommended={fallbackSmsPaymentOverdueTemplate}
         onUpdate={onUpdate}
       />
       <TemplateField
         field="smsSuspensionNoticeTemplate"
-        label="SMS — aviso de suspensão"
+        label="SMS: aviso de suspensão"
         value={form.smsSuspensionNoticeTemplate}
         recommended={fallbackSmsSuspensionNoticeTemplate}
         onUpdate={onUpdate}

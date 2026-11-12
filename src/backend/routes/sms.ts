@@ -7,6 +7,7 @@ import { canStoreSecrets, readSecret, writeSecret } from '../lib/secrets';
 import { confirmSessionPassword, requireRole } from './auth';
 import { discoverCompanionHosts, enqueueSmsNotification, findPairedCompanion, verifyCompanionPairing } from '../lib/sms-outbox';
 import { readCompanionPresence, requestCompanionSnapshotPush, SEALED_KEY } from '../lib/companion-sync';
+import { runCompanionTick } from '../lib/companion-tick';
 import { openPaymentLinkSql } from '../lib/vinti4';
 import { SMS_REPORT_TIMEZONE, smsReportMonthUtcRange } from '../../shared/sms-report';
 import { normalizeSmsPhone, renderSmsTemplate } from '../../shared/sms';
@@ -118,6 +119,20 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     }
     const result = await verifyCompanionPairing();
     return { ...result, deviceName: getSetting('smsCompanionDeviceName') };
+  });
+
+  // "Sincronizar agora": a troca completa já, em vez de esperar pelo tick.
+  app.post('/api/sms/sync', adminOnly, async (_request, reply) => {
+    if (getSetting('smsCompanionEnabled') !== 'true') {
+      return reply.status(409).send({ error: 'A ligação à app móvel está desligada.' });
+    }
+    const result = await runCompanionTick(true);
+    const sync = result?.sync;
+    return {
+      online: Boolean(sync && 'online' in sync && sync.online),
+      pushed: Boolean(sync && 'pushed' in sync && sync.pushed),
+      ...readCompanionPresence()
+    };
   });
 
   // Locates the phone on the LAN so the operator doesn't have to hunt for its IP.

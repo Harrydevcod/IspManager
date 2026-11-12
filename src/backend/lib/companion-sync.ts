@@ -43,8 +43,11 @@ export type PushOutcome = { ok: true } | { ok: false; reason: string };
 /** The last push attempt, kept so a refused snapshot is never silent again. */
 export type CompanionLastPush = { at: string; ok: boolean; reason: string | null };
 
+/** `syncRequested`: o operador carregou em "Sincronizar" no telemóvel (app 0.9.0+). */
+export type FetchedStatus = { reachable: boolean; status: CompanionDeviceStatus | null; syncRequested?: boolean };
+
 export type CompanionSyncDeps = {
-  fetchStatus: () => Promise<{ reachable: boolean; status: CompanionDeviceStatus | null }>;
+  fetchStatus: () => Promise<FetchedStatus>;
   pushSnapshot: (snapshot: CompanionSnapshot, sealed: boolean) => Promise<PushOutcome>;
   buildSnapshot: () => Promise<CompanionSnapshot>;
   selfHeal: () => Promise<void>;
@@ -111,7 +114,7 @@ export function parseDeviceStatus(json: Record<string, unknown>): CompanionDevic
   };
 }
 
-async function defaultFetchStatus(): Promise<{ reachable: boolean; status: CompanionDeviceStatus | null }> {
+async function defaultFetchStatus(): Promise<FetchedStatus> {
   try {
     const response = await signedFetch('/status', 'GET', undefined, 3500);
     // 401: o telemóvel responde mas não tem este pareamento — não conta como visto.
@@ -119,7 +122,7 @@ async function defaultFetchStatus(): Promise<{ reachable: boolean; status: Compa
     // App 0.2.0 ainda sem /status (404): está viva, só não diz mais nada.
     if (!response.ok) return { reachable: true, status: null };
     const json = await response.json().catch(() => ({})) as Record<string, unknown>;
-    return { reachable: true, status: parseDeviceStatus(json) };
+    return { reachable: true, status: parseDeviceStatus(json), syncRequested: json.syncRequested === true };
   } catch {
     return { reachable: false, status: null };
   }
@@ -151,7 +154,7 @@ const defaultDeps: CompanionSyncDeps = {
 
 export type CompanionSyncResult =
   | { skipped: true; reason: string }
-  | { online: boolean; pushed: boolean };
+  | { online: boolean; pushed: boolean; syncRequested: boolean };
 
 /**
  * Um tick (de minuto a minuto): estado do telemóvel e, se for altura, o resumo.
@@ -163,30 +166,32 @@ export async function runCompanionSyncIfDue(now: Date = new Date(), deps: Compan
     return { skipped: true, reason: 'telemovel SMS nao pareado' };
   }
 
-  let { reachable, status } = await deps.fetchStatus();
-  if (!reachable) {
+  let fetched = await deps.fetchStatus();
+  if (!fetched.reachable) {
     await deps.selfHeal();
-    ({ reachable, status } = await deps.fetchStatus());
+    fetched = await deps.fetchStatus();
   }
-  if (!reachable) {
+  if (!fetched.reachable) {
     wasOnline = false;
-    return { online: false, pushed: false };
+    return { online: false, pushed: false, syncRequested: false };
   }
+  const { status } = fetched;
+  const syncRequested = fetched.syncRequested === true;
 
   setSetting(LAST_SEEN_KEY, now.toISOString());
   if (status) setSetting(STATUS_KEY, JSON.stringify(status));
 
-  // Volta a estar online → envia já, para o Painel não ficar com o resumo velho.
-  const due = !wasOnline || now.getTime() - lastPushAt >= snapshotIntervalMs();
+  // Volta a estar online, ou o telemóvel pediu → envia já, para o Painel não ficar com o resumo velho.
+  const due = syncRequested || !wasOnline || now.getTime() - lastPushAt >= snapshotIntervalMs();
   wasOnline = true;
-  if (!due) return { online: true, pushed: false };
+  if (!due) return { online: true, pushed: false, syncRequested };
 
   if (appSupportsSealed(status?.appVersion)) setSetting(SEALED_KEY, 'true');
   const outcome = await deps.pushSnapshot(await deps.buildSnapshot(), getSetting(SEALED_KEY) === 'true');
   const lastPush: CompanionLastPush = { at: now.toISOString(), ok: outcome.ok, reason: outcome.ok ? null : outcome.reason };
   setSetting(LAST_PUSH_KEY, JSON.stringify(lastPush));
   if (outcome.ok) lastPushAt = now.getTime();
-  return { online: true, pushed: outcome.ok };
+  return { online: true, pushed: outcome.ok, syncRequested };
 }
 
 /** O que o desktop sabe do telemóvel sem lhe perguntar (para o ecrã de Definições). */
