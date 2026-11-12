@@ -65,6 +65,12 @@ test('com o diário em disco, o cartão diz que o registo do router é contínuo
   await act(async () => root.unmount());
 });
 
+test('fora da rede de gestão, o cartão diz que o registo do router está parado', async () => {
+  const { host, root } = await mount({ ...calm, routerSkipReason: 'Fora da rede de gestão: O router não respondeu. Nada atendeu no endereço indicado.' });
+  expect(host.querySelector('.network-health-seen.warn')!.textContent).toBe('Registo do router parado: fora da rede de gestão');
+  await act(async () => root.unmount());
+});
+
 test('rede crítica: mostra as três situações mais graves, os números e abre o detalhe', async () => {
   const { host, root, onOpenNetwork } = await mount(conflict);
   expect(host.textContent).toContain('Crítico');
@@ -189,6 +195,17 @@ test('alterações fora do ISPM e portas a cair dizem o quê, quem e o que procu
   expect([findingSubject(rule), findingLabel(rule)]).toEqual(['Regra de firewall', 'Criou']);
   const clock = finding({ kind: 'router_reiniciou', subject: 'relogio', label: 'Relógio acertado em 617 min', count: 1 });
   expect([findingSubject(clock), findingWho(clock), findingLabel(clock)]).toEqual(['Relógio', 'O próprio router', 'Relógio acertado em 617 min']);
+});
+
+test('SYN flood e túnel VPN a falhar dizem o que é e o que verificar', () => {
+  const syn = finding({ kind: 'syn_flood', subject: 'tcp/53', count: 2 });
+  const vpn = finding({ kind: 'vpn_falha', subject: 'wg-surfshark', count: 15 });
+  expect(healthSituations({ ...calm, findings: [syn, vpn] }).map(({ tone, title, detail }) => ({ tone, title, detail }))).toEqual([
+    { tone: 'warn', title: 'Ataque SYN ao router', detail: 'Porta 53 · confirme que o DNS do router não responde à WAN' },
+    { tone: 'neutral', title: 'Túnel VPN a falhar', detail: 'wg-surfshark · o par não responde ao handshake' }
+  ]);
+  expect([findingSubject(syn), findingWho(syn), findingLabel(syn)]).toEqual(['Porta 53', 'O próprio router', 'Confirme que o DNS não responde à WAN']);
+  expect([findingSubject(vpn), findingWho(vpn), findingLabel(vpn)]).toEqual(['wg-surfshark', 'O próprio router', 'O par não responde ao handshake']);
 });
 
 test('as horas locais do router e do diário não passam pelo fuso', () => {

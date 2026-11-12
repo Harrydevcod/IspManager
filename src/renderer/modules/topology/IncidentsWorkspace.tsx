@@ -5,7 +5,7 @@ import { useAuth } from '../../lib/auth';
 import { formatPtDateTime } from '../../lib/format';
 import { useLive } from '../router/useLive';
 import { NetworkDiaryDialog } from './NetworkDiaryDialog';
-import { findingLabel, findingSubject, findingTone, findingWho, formatLocalStamp, KIND_LABEL, NETWORK_API, networkRequest, type DiaryEntry, type HealthFinding, type NetworkHealth } from './network-health';
+import { findingLabel, findingSubject, findingTone, findingWho, formatLocalStamp, KIND_LABEL, NETWORK_API, networkRequest, routerLogStopped, type DiaryEntry, type HealthFinding, type NetworkHealth } from './network-health';
 
 export type IncidentClient = { clientId: number; clientCode: string; clientName: string; zone: string | null };
 
@@ -172,12 +172,16 @@ function RouterFindingsView({ active, tabs }: ViewProps) {
     );
   }
 
+  const stopped = routerLogStopped(live.data);
   return (
     <>
       <Bar tabs={tabs}
-        meta={live.data.lastRouterReadAt
-          ? `Lido a ${shortStamp(live.data.lastRouterReadAt)} · últimos 7 dias${live.data.routerJournal ? ' · registo no cartão' : ''}`
-          : 'Registo por ler'}
+        meta={[
+          live.data.lastRouterReadAt
+            ? `Lido a ${shortStamp(live.data.lastRouterReadAt)} · últimos 7 dias${live.data.routerJournal ? ' · registo no cartão' : ''}`
+            : 'Registo por ler',
+          ...(stopped ? [`parado: ${stopped}`] : [])
+        ].join(' · ')}
         action={!live.data.routerJournal && <JournalInstall active={active} onInstalled={live.reload} />} />
       <DataTable stickyHeader rows={live.data.findings} rowKey={(row) => `${row.kind}:${row.subject}`} columns={findingColumns}
         // Cabe nos 857 px que a tabela tem no ecrã de 1920 a 150%.

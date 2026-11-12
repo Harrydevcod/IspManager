@@ -5,7 +5,7 @@ import { useAuth } from '../../lib/auth';
 import { formatPtDateTime } from '../../lib/format';
 import { useLive } from '../router/useLive';
 import { NetworkDiaryDialog } from './NetworkDiaryDialog';
-import { antennaDrops, healthSituations, NETWORK_API, TONE_LABEL, type NetworkHealth } from './network-health';
+import { antennaDrops, healthSituations, NETWORK_API, routerLogStopped, TONE_LABEL, type NetworkHealth } from './network-health';
 
 /**
  * A rede no painel inicial: o que a sonda e o registo do router viram nas últimas 72 horas.
@@ -22,6 +22,7 @@ export function NetworkHealthCard({ onOpenNetwork }: { onOpenNetwork: () => void
   const unreadable = Boolean(live.error) || (live.data !== null && !health);
   const situations = health ? healthSituations(health) : [];
   const openDiary = health?.diary.filter((entry) => entry.status === 'aberta').length ?? 0;
+  const stopped = health ? routerLogStopped(health) : null;
 
   return (
     <Card eyebrow={`Últimas ${health?.hours ?? 72} horas`} title="Saúde da rede" className="network-health-card"
@@ -54,8 +55,10 @@ export function NetworkHealthCard({ onOpenNetwork }: { onOpenNetwork: () => void
               Router: {health.lastRouterReadAt ? formatPtDateTime(health.lastRouterReadAt) : 'por ler'}
               {health.routerJournal && ' · registo contínuo no cartão'}
             </p>
-            {health.routerReadError && (
+            {health.routerReadError ? (
               <p className="network-health-seen warn" role="status">Registo do router por ler: {health.routerReadError}</p>
+            ) : stopped && (
+              <p className="network-health-seen warn" role="status">Registo do router parado: {stopped}</p>
             )}
 
             <div className="dashboard-card-footer">

@@ -1,7 +1,7 @@
 import { authFetch } from '../../lib/auth';
 
 export type FindingKind = 'antena_em_baixo' | 'ip_duplicado' | 'laco_rede' | 'dhcp_intruso' | 'dhcp_ciclo' | 'pppoe_queda' | 'login_falhado'
-  | 'config_externa' | 'porta_oscila' | 'router_reiniciou';
+  | 'config_externa' | 'porta_oscila' | 'router_reiniciou' | 'syn_flood' | 'vpn_falha';
 export type HealthTone = 'ok' | 'warn' | 'danger';
 export type HealthOutage = { id: number; name: string; ipAddress: string; downs: number; downSeconds: number; longestSeconds: number };
 export type HealthDown = { kind: 'backbone' | 'assignment'; id: number; name: string; ipAddress: string; since: string };
@@ -22,6 +22,8 @@ export type NetworkHealth = {
   routerJournal: boolean;
   /** Porque é que a última leitura do registo do router falhou; `null` se correu bem. */
   routerReadError?: string | null;
+  /** Porque é que a vigia do registo não correu da última vez; `null` se correu. */
+  routerSkipReason?: string | null;
   antennas: HealthOutage[];
   clients: HealthOutage[];
   downNow: HealthDown[];
@@ -72,10 +74,19 @@ export const KIND_LABEL: Record<FindingKind, string> = {
   login_falhado: 'Login falhado no router',
   config_externa: 'Alteração feita fora do ISPM',
   porta_oscila: 'Porta a cair e a voltar',
-  router_reiniciou: 'Router reiniciou'
+  router_reiniciou: 'Router reiniciou',
+  syn_flood: 'Ataque SYN ao router',
+  vpn_falha: 'Túnel VPN a falhar'
 };
 
-const WARN_KINDS: FindingKind[] = ['antena_em_baixo', 'dhcp_intruso', 'config_externa', 'porta_oscila', 'router_reiniciou'];
+const WARN_KINDS: FindingKind[] = ['antena_em_baixo', 'dhcp_intruso', 'config_externa', 'porta_oscila', 'router_reiniciou', 'syn_flood'];
+const ROUTER_KINDS: FindingKind[] = ['laco_rede', 'router_reiniciou', 'syn_flood', 'vpn_falha'];
+
+/** "Fora da rede de gestão: O router não respondeu…" → "fora da rede de gestão"; `null` se a vigia correu. */
+export function routerLogStopped(health: Pick<NetworkHealth, 'routerSkipReason'>): string | null {
+  const reason = health.routerSkipReason?.split(':')[0].trim();
+  return reason ? reason.charAt(0).toLowerCase() + reason.slice(1) : null;
+}
 
 /** A gravidade de um achado: o painel e a aba Incidentes pintam-no pela mesma escala. */
 export function findingTone(kind: FindingKind): 'danger' | 'warn' | 'neutral' {
@@ -84,12 +95,11 @@ export function findingTone(kind: FindingKind): 'danger' | 'warn' | 'neutral' {
 
 /** A quem o achado diz respeito, do nome mais útil para o menos. */
 export function findingWho(finding: HealthFinding): string {
-  if (finding.kind === 'laco_rede') return 'O próprio router';
+  if (ROUTER_KINDS.includes(finding.kind)) return 'O próprio router';
   if (finding.kind === 'config_externa') {
     const change = parseConfigChange(finding);
     if (change?.user) return `${change.user}${change.channel ? ` (${change.channel})` : ''}`;
   }
-  if (finding.kind === 'router_reiniciou') return 'O próprio router';
   return finding.deviceName ?? finding.clientName ?? finding.vendor ?? '—';
 }
 
@@ -97,13 +107,19 @@ export function findingWho(finding: HealthFinding): string {
 export function findingSubject(finding: HealthFinding): string {
   if (finding.kind === 'config_externa') return parseConfigChange(finding)?.object ?? finding.subject;
   if (finding.kind === 'router_reiniciou') return finding.subject === 'relogio' ? 'Relógio' : 'Arranque';
+  if (finding.kind === 'syn_flood') return synPort(finding);
   return finding.subject;
 }
+
+/** `tcp/53` → "Porta 53". */
+const synPort = (finding: Pick<HealthFinding, 'subject'>) => `Porta ${finding.subject.replace(/^tcp\//, '')}`;
 
 /** A coluna "Detalhe" da tabela. */
 export function findingLabel(finding: HealthFinding): string {
   if (finding.kind === 'config_externa') return parseConfigChange(finding)?.verb ?? finding.label;
   if (finding.kind === 'porta_oscila') return 'Cabo, ficha ou aparelho a reiniciar';
+  if (finding.kind === 'syn_flood') return 'Confirme que o DNS não responde à WAN';
+  if (finding.kind === 'vpn_falha') return 'O par não responde ao handshake';
   return finding.label || '—';
 }
 
@@ -120,6 +136,8 @@ function findingDetail(finding: HealthFinding): string {
   if (finding.kind === 'config_externa') return configChange(finding);
   if (finding.kind === 'porta_oscila') return `${finding.subject} perdeu a ligação · cabo, ficha ou aparelho a reiniciar`;
   if (finding.kind === 'router_reiniciou') return finding.label;
+  if (finding.kind === 'syn_flood') return `${synPort(finding)} · confirme que o DNS do router não responde à WAN`;
+  if (finding.kind === 'vpn_falha') return `${finding.subject} · o par não responde ao handshake`;
   return [finding.clientName ?? finding.vendor, finding.subject, finding.label].filter(Boolean).join(' · ');
 }
 

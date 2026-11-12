@@ -83,6 +83,17 @@ test('a vista Router lista os achados do registo, um dado por coluna', async () 
   await act(async () => root.unmount());
 });
 
+test('fora da rede de gestão, a vista Router diz que o registo está parado', async () => {
+  const { host, root } = await mount(body);
+  stubFetch({
+    hours: 168, tone: 'ok', probeEnabled: true, lastProbeAt: null, lastRouterReadAt: '2026-10-07T22:14:00.000Z', routerJournal: false,
+    routerSkipReason: 'Fora da rede de gestão: O router não respondeu.', antennas: [], clients: [], downNow: [], diary: [], findings: []
+  });
+  await openView(host, 'Router');
+  expect(host.textContent).toContain('últimos 7 dias · parado: fora da rede de gestão');
+  await act(async () => root.unmount());
+});
+
 test('com um disco no router, a vista Router oferece guardar o registo no cartão e o botão sai depois de ligado', async () => {
   const { host, root } = await mount(body);
   const health = {
