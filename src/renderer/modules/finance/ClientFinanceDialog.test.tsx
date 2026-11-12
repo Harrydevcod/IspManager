@@ -77,6 +77,15 @@ async function mount(onOpenInvoice = vi.fn()) {
 const tab = (label: RegExp) =>
   [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) => label.test(b.textContent || ''))!;
 
+const amountInputs = () =>
+  [...document.querySelectorAll<HTMLInputElement>('.client-finance-schedule-edit input[type="number"]')];
+
+/** O React só vê a mudança pelo setter nativo seguido do evento input. */
+function typeInto(input: HTMLInputElement, value: string) {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 test('mostra a dívida e abre a fatura clicada', async () => {
   const onOpenInvoice = await mount();
   const text = document.body.textContent || '';
@@ -98,14 +107,45 @@ test('avisos juntam SMS e WhatsApp numa lista', async () => {
 test('cria o acordo com as faturas em aberto e as prestações escolhidas', async () => {
   await mount();
   await act(async () => tab(/Acordo/).click());
-  const text = document.body.textContent || '';
-  expect(text).toContain('1.668$00');
-  expect(text).toContain('1.666$00');
+  expect(amountInputs().map((input) => input.value)).toEqual(['1666', '1666', '1668']);
 
   const submit = [...document.querySelectorAll('button')].find((b) => b.textContent === 'Criar acordo')!;
   await act(async () => submit.click());
   expect(posted?.url).toContain('/clients/7/payment-plans');
-  expect(posted?.body).toMatchObject({ paymentIds: [1, 2], installments: 3, notes: null });
+  expect(posted?.body).toMatchObject({ paymentIds: [1, 2], notes: null });
+  expect((posted?.body as { installments: Array<{ amountCve: number }> }).installments.map((i) => i.amountCve))
+    .toEqual([1666, 1666, 1668]);
+});
+
+test('prestações à medida: só cria quando a soma bate com a dívida', async () => {
+  await mount();
+  await act(async () => tab(/Acordo/).click());
+  const submit = () => [...document.querySelectorAll('button')].find((b) => b.textContent === 'Criar acordo')!;
+
+  await act(async () => typeInto(amountInputs()[0], '2500'));
+  expect(document.body.textContent).toContain('Excede 834$00');
+  expect(submit().disabled).toBe(true);
+
+  await act(async () => typeInto(amountInputs()[1], '1000'));
+  await act(async () => typeInto(amountInputs()[2], '1000'));
+  expect(document.body.textContent).toContain('Falta distribuir 500$00');
+  expect(submit().disabled).toBe(true);
+
+  await act(async () => typeInto(amountInputs()[0], '3000'));
+  expect(submit().disabled).toBe(false);
+  await act(async () => submit().click());
+  expect((posted?.body as { installments: Array<{ amountCve: number }> }).installments.map((i) => i.amountCve))
+    .toEqual([3000, 1000, 1000]);
+});
+
+test('repartir igual repõe a proposta', async () => {
+  await mount();
+  await act(async () => tab(/Acordo/).click());
+  await act(async () => typeInto(amountInputs()[0], '100'));
+  const reset = [...document.querySelectorAll('button')].find((b) => b.textContent === 'Repartir igual')!;
+  await act(async () => reset.click());
+  expect(amountInputs().map((input) => input.value)).toEqual(['1666', '1666', '1668']);
+  expect([...document.querySelectorAll('button')].some((b) => b.textContent === 'Repartir igual')).toBe(false);
 });
 
 test('liquidar todas emite um só pedido com as faturas e a conta', async () => {

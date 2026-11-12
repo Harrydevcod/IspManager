@@ -185,7 +185,55 @@
 
 .client-finance-plan-submit {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
+  gap: var(--space-2) var(--space-3);
+}
+
+/* Calendário editável: cada prestação com a largura do seu dado. */
+.client-finance-schedule-edit {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.client-finance-schedule-edit li {
+  display: grid;
+  /* Encolhem só no ecrã estreito (420 px), nunca alargam além do dado. */
+  grid-template-columns: 24px minmax(0, 160px) minmax(0, 140px);
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* O input numérico tem largura intrínseca: sem isto, transborda a coluna. */
+.client-finance-schedule-edit input {
+  width: 100%;
+  min-width: 0;
+}
+
+.client-finance-schedule-edit input[type='number'] {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.client-finance-schedule-seq {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.client-finance-schedule-left {
+  margin-right: auto;
+  color: var(--warn);
+  font-size: var(--fs-sm);
+}
+
+.client-finance-schedule-left b {
+  font-variant-numeric: tabular-nums;
 }
 
 .client-finance-plan-history h3 {

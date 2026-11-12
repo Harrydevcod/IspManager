@@ -20,7 +20,7 @@ import type { DataTableColumn, DataTableSelection } from '../../components/DataT
 import { authFetch } from '../../lib/auth';
 import { formatCve, formatPtDate, formatPtDateTime, formatPtMonth } from '../../lib/format';
 import { businessDay } from '../../../shared/business-day';
-import { MAX_INSTALLMENTS, MIN_INSTALLMENTS, monthlyDueDates, splitInstallments } from '../../../shared/payment-plan';
+import { MAX_INSTALLMENTS, MIN_INSTALLMENTS, monthlyDueDates, scheduleError, splitInstallments } from '../../../shared/payment-plan';
 import { METHOD_LABELS } from '../payments/ReceiptsSection';
 import { AccountSelect } from '../treasury/AccountSelect';
 import {
@@ -40,6 +40,8 @@ type Tone = 'success' | 'info' | 'warn' | 'danger' | 'neutral';
 type Receipt = ClientFinance['receipts'][number];
 type Notice = ClientFinance['notices'][number];
 type Installment = PaymentPlan['installments'][number];
+/** Linha do calendário em edição: o valor fica em texto enquanto se escreve. */
+type ScheduleDraft = { dueDate: string; amount: string };
 
 const PLAN_STATUS: Record<PaymentPlanStatus, { label: string; tone: Tone }> = {
   em_dia: { label: 'Acordo em dia', tone: 'success' },
@@ -580,11 +582,24 @@ function NewPlanForm({ finance, onChanged }: { finance: ClientFinance; onChanged
   const [submitting, setSubmitting] = useState(false);
 
   const total = Math.round(eligible.filter((i) => selected.has(i.paymentId)).reduce((sum, i) => sum + i.balanceCve, 0) * 100) / 100;
-  const preview = useMemo(() => {
+  // A proposta (partes iguais, meses seguidos) refaz-se quando muda a dívida, o nº ou a 1.ª data;
+  // as edições do operador valem só para a proposta em que foram feitas.
+  const proposalKey = `${total}|${count}|${firstDueDate}`;
+  const proposal = useMemo((): ScheduleDraft[] => {
     if (total < count || !firstDueDate || firstDueDate < today) return [];
     const amounts = splitInstallments(total, count);
-    return monthlyDueDates(firstDueDate, count).map((dueDate, i) => ({ seq: i + 1, dueDate, amountCve: amounts[i] }));
+    return monthlyDueDates(firstDueDate, count).map((dueDate, i) => ({ dueDate, amount: String(amounts[i]) }));
   }, [total, count, firstDueDate, today]);
+  const [edits, setEdits] = useState<{ key: string; rows: ScheduleDraft[] } | null>(null);
+  const schedule = edits?.key === proposalKey ? edits.rows : proposal;
+  const edited = schedule !== proposal;
+  const entries = schedule.map((row) => ({ dueDate: row.dueDate, amountCve: Number(row.amount.replace(',', '.')) }));
+  const invalid = schedule.length > 0 ? scheduleError(entries, total, today) : null;
+  const leftCentavos = Math.round(total * 100) - entries.reduce((sum, e) => sum + Math.round((e.amountCve || 0) * 100), 0);
+
+  function editRow(index: number, patch: Partial<ScheduleDraft>) {
+    setEdits({ key: proposalKey, rows: schedule.map((row, i) => (i === index ? { ...row, ...patch } : row)) });
+  }
 
   if (eligible.length === 0) {
     return <EmptyState size="sm" icon={Handshake} title="Sem dívida para renegociar" />;
@@ -609,7 +624,7 @@ function NewPlanForm({ finance, onChanged }: { finance: ClientFinance; onChanged
       const response = await authFetch(`${API}/clients/${finance.client.id}/payment-plans`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentIds: [...selected], installments: count, firstDueDate, notes: notes.trim() || null })
+        body: JSON.stringify({ paymentIds: [...selected], installments: entries, notes: notes.trim() || null })
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({})) as { error?: string };
@@ -656,20 +671,43 @@ function NewPlanForm({ finance, onChanged }: { finance: ClientFinance; onChanged
 
       <Textarea label="Notas" wide={false} value={notes} maxLength={500} rows={2} onChange={(e) => setNotes(e.target.value)} />
 
-      {preview.length > 0 && (
-        <DataTable<Installment>
-          rows={preview.map((p) => ({ ...p, status: 'por_pagar' as const }))}
-          rowKey={(i) => i.seq}
-          columns={INSTALLMENT_COLUMNS.slice(0, 3)}
-          defaultSort={{ key: 'Nº', direction: 'asc' }}
-          gridTemplateColumns="56px minmax(112px, 1fr) 128px"
-          className="client-finance-schedule"
-          empty={null}
-        />
+      {schedule.length > 0 && (
+        <ol className="client-finance-schedule-edit" aria-label="Prestações">
+          {schedule.map((row, i) => (
+            <li key={i}>
+              <span className="client-finance-schedule-seq">{i + 1}</span>
+              <Field
+                label={`Data da prestação ${i + 1}`}
+                hideLabel
+                type="date"
+                min={today}
+                value={row.dueDate}
+                onChange={(e) => editRow(i, { dueDate: e.target.value })}
+              />
+              <Field
+                label={`Valor da prestação ${i + 1}`}
+                hideLabel
+                type="number"
+                inputMode="decimal"
+                min="0.01"
+                step="0.01"
+                value={row.amount}
+                onChange={(e) => editRow(i, { amount: e.target.value })}
+              />
+            </li>
+          ))}
+        </ol>
       )}
 
       <div className="client-finance-plan-submit">
-        <Button type="submit" loading={submitting} disabled={preview.length === 0}>Criar acordo</Button>
+        {leftCentavos !== 0 && schedule.length > 0 && (
+          <span className="client-finance-schedule-left" role="status">
+            {leftCentavos > 0 ? 'Falta distribuir' : 'Excede'} <b>{formatCve(Math.abs(leftCentavos) / 100)}</b>
+          </span>
+        )}
+        {leftCentavos === 0 && invalid && <span className="client-finance-schedule-left" role="status">{invalid}</span>}
+        {edited && <Button type="button" variant="secondary" onClick={() => setEdits(null)}>Repartir igual</Button>}
+        <Button type="submit" loading={submitting} disabled={schedule.length === 0 || invalid !== null}>Criar acordo</Button>
       </div>
     </form>
   );
