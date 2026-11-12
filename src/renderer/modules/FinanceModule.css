@@ -220,3 +220,65 @@
   white-space: nowrap;
   max-width: 320px;
 }
+
+/* O calendário tem três ou quatro dados curtos: à largura toda, ficava um vazio à direita. */
+.client-finance-schedule {
+  max-width: 520px;
+}
+
+.client-finance-open {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.client-finance-settle-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border: 1px solid color-mix(in oklch, var(--accent) 40%, var(--border));
+  border-radius: var(--r2);
+  background: color-mix(in oklch, var(--accent) 10%, var(--surface));
+  font-size: var(--fs-sm);
+}
+
+.client-finance-settle-bar > b {
+  font-variant-numeric: tabular-nums;
+}
+
+.client-finance-settle-bar > button {
+  margin-left: auto;
+}
+
+.client-finance-settle {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.client-finance-settle-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.client-finance-settle-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-1-5) 0;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Botão com texto na coluna de ações, que por omissão encolhe tudo a ícone de 36px. */
+.data-table-actions .client-finance-settle-one {
+  width: auto;
+  padding: 0 var(--space-3);
+  color: var(--text);
+}

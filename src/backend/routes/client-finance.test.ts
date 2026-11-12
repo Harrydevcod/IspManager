@@ -202,3 +202,53 @@ describe('acordo de pagamento', () => {
     expect((await createPlan(clientId, { paymentIds: invoices, installments: 2, firstDueDate: FUTURE })).statusCode).toBe(201);
   });
 });
+
+describe('POST /api/clients/:id/settle', () => {
+  const settle = (clientId: number, body: Record<string, unknown>) =>
+    app.inject({ method: 'POST', url: `/api/clients/${clientId}/settle`, payload: body });
+
+  test('um recibo liquida várias faturas; o PDF junta-as; anular devolve-as todas', async () => {
+    const { clientId, invoices } = seed();
+    expect((await pay(invoices[0], 1000)).statusCode).toBe(200);
+
+    const response = await settle(clientId, { paymentIds: invoices, paymentMethod: 'numerario' });
+    expect(response.statusCode).toBe(200);
+    const result = response.json();
+    expect(result).toMatchObject({ totalCve: 4000, paymentIds: invoices });
+    expect(result.receiptIds).toHaveLength(2);
+
+    const rows = db.prepare(`
+      SELECT p.status, p.receipt_number AS paymentReceipt, r.receipt_number AS receiptNumber, r.amount_cve AS amount
+      FROM payment_receipts r JOIN payments p ON p.id = r.payment_id
+      WHERE r.id IN (${result.receiptIds.join(',')}) ORDER BY r.id
+    `).all() as Array<{ status: string; paymentReceipt: string; receiptNumber: string; amount: number }>;
+    expect(rows.map((r) => r.amount)).toEqual([1500, 2500]);
+    expect(new Set(rows.flatMap((r) => [r.receiptNumber, r.paymentReceipt]))).toEqual(new Set([result.receiptNumber]));
+    expect(rows.every((r) => r.status === 'paid')).toBe(true);
+    expect((await finance(clientId)).summary.openCve).toBe(0);
+    expect(db.prepare(`SELECT action FROM audit_logs WHERE action = 'settle_invoices'`).get()).toBeTruthy();
+
+    const pdf = await app.inject({ method: 'GET', url: `/api/receipts/${result.receiptIds[0]}/receipt.pdf` });
+    expect(pdf.statusCode).toBe(200);
+    expect(pdf.headers['content-type']).toContain('pdf');
+
+    const voided = await app.inject({
+      method: 'POST', url: `/api/receipts/${result.receiptIds[1]}/void`, payload: { reason: 'Recibo emitido por engano' }
+    });
+    expect(voided.statusCode).toBe(200);
+    const left = db.prepare(`SELECT COUNT(*) AS n FROM payment_receipts WHERE receipt_number = ? AND voided_at IS NULL`).get(result.receiptNumber);
+    expect(left).toEqual({ n: 0 });
+    expect((await finance(clientId)).summary.openCve).toBe(4000);
+  });
+
+  test('recusa fatura de outro cliente, fatura já liquidada e lista vazia', async () => {
+    const a = seed('CLT-A');
+    const b = seed('CLT-B');
+    expect((await settle(a.clientId, { paymentIds: [b.invoices[0]] })).statusCode).toBe(400);
+    expect((await settle(a.clientId, { paymentIds: [] })).statusCode).toBe(400);
+    expect((await settle(a.clientId, { paymentIds: [a.invoices[0]] })).statusCode).toBe(200);
+    expect((await settle(a.clientId, { paymentIds: a.invoices })).statusCode).toBe(400);
+    // A recusa não deixa meio recibo: a segunda fatura continua em aberto.
+    expect((await finance(a.clientId)).invoices.map((i: { paymentId: number }) => i.paymentId)).toEqual([a.invoices[1]]);
+  });
+});

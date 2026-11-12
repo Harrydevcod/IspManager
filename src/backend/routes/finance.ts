@@ -19,6 +19,7 @@ import {
   previewReverseMonthly,
   regeneratePayment,
   revertPayment,
+  settleInvoices,
   voidReceipt
 } from '../lib/payments';
 import { loadReceivables } from '../lib/receivables';
@@ -54,6 +55,13 @@ const paySchema = z.object({
   amountCve: z.number().finite().positive().optional(),
   // Caixa ou banco onde o dinheiro entrou. Obrigatorio para transferencia e
   // outro; numerario sem conta cai na caixa predefinida (lib/treasury.ts).
+  accountId: z.number().int().positive().optional().nullable()
+});
+
+const settleSchema = z.object({
+  paymentIds: z.array(z.number().int().positive()).min(1).max(200),
+  paymentMethod: z.enum(['numerario', 'transferencia', 'outro']).default('numerario'),
+  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   accountId: z.number().int().positive().optional().nullable()
 });
 
@@ -908,6 +916,25 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
       metadata: { clientId: id, paymentIds: plan.invoices.map((i) => i.paymentId), installments: plan.installments }
     });
     return reply.status(201).send(plan);
+  });
+
+  app.post('/api/clients/:id/settle', billingWrite, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const parsed = settleSchema.safeParse(request.body);
+    if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
+      return reply.status(400).send({ error: 'Liquidacao invalida' });
+    }
+    const result = settleInvoices(getSqliteDatabase(), id, { ...parsed.data, userId: request.user?.id ?? null });
+    if (!result.ok) return reply.status(result.status).send({ error: result.error });
+
+    recordAudit(request, {
+      action: 'settle_invoices',
+      entityType: 'receipt',
+      entityId: result.value.receiptNumber,
+      summary: `Recibo ${result.value.receiptNumber} liquidou ${result.value.paymentIds.length} fatura(s) do cliente ${id}: ${result.value.totalCve} CVE`,
+      metadata: { clientId: id, ...result.value }
+    });
+    return result.value;
   });
 
   app.post('/api/payment-plans/:id/cancel', billingWrite, async (request, reply) => {

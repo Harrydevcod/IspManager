@@ -44,6 +44,13 @@ beforeEach(() => {
       posted = { url, body: JSON.parse(String(init.body)) };
       return json({}, 201);
     }
+    if (url.endsWith('/clients/7/settle') && init?.method === 'POST') {
+      posted = { url, body: JSON.parse(String(init.body)) };
+      return json({ receiptNumber: 'RC-2026-00300', receiptIds: [9, 10], paymentIds: [1, 2], totalCve: 5000 });
+    }
+    if (url.endsWith('/treasury/accounts')) {
+      return json([{ id: 4, kind: 'caixa', name: 'Caixa', active: true, isDefaultCash: true }]);
+    }
     if (url.endsWith('/clients/7/finance')) return json(finance);
     return json({ error: 'nope' }, 404);
   }));
@@ -99,4 +106,19 @@ test('cria o acordo com as faturas em aberto e as prestações escolhidas', asyn
   await act(async () => submit.click());
   expect(posted?.url).toContain('/clients/7/payment-plans');
   expect(posted?.body).toMatchObject({ paymentIds: [1, 2], installments: 3, notes: null });
+});
+
+test('liquidar todas emite um só pedido com as faturas e a conta', async () => {
+  await mount();
+  const selectAll = document.querySelector<HTMLInputElement>('[role="columnheader"] input[type="checkbox"], thead input[type="checkbox"], .data-table-header input[type="checkbox"]')!;
+  await act(async () => selectAll.click());
+  const bulk = [...document.querySelectorAll('button')].find((b) => b.textContent === 'Liquidar todas')!;
+  await act(async () => bulk.click());
+  await act(async () => { await Promise.resolve(); });
+  expect(document.body.textContent).toContain('2 faturas · 5.000$00');
+
+  const emit = [...document.querySelectorAll('button')].find((b) => b.textContent === 'Emitir recibo')!;
+  await act(async () => emit.click());
+  expect(posted?.url).toContain('/clients/7/settle');
+  expect(posted?.body).toMatchObject({ paymentIds: [1, 2], paymentMethod: 'numerario', accountId: 4 });
 });

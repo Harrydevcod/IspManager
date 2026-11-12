@@ -454,9 +454,11 @@ function writeReceipt(
     source: ReceiptSource;
     notes?: string | null;
     userId?: number | null;
+    /** Número já alocado: um recibo que liquida várias faturas (`settleInvoices`). */
+    receiptNumber?: string;
   }
 ): ReceiptRecord {
-  const receiptNumber = allocateDocumentNumber('receipt', db);
+  const receiptNumber = input.receiptNumber ?? allocateDocumentNumber('receipt', db);
   const info = db.prepare(`
     INSERT INTO payment_receipts (
       payment_id, amount_cve, payment_date, payment_method, source,
@@ -621,6 +623,88 @@ export function payPayment(
   return { ok: true, value };
 }
 
+export type SettleResult = {
+  receiptNumber: string;
+  receiptIds: number[];
+  paymentIds: number[];
+  totalCve: number;
+};
+
+/**
+ * Liquida de uma vez o saldo de várias faturas do mesmo cliente com UM recibo.
+ *
+ * O recibo é um número só; por baixo fica uma linha de `payment_receipts` por
+ * fatura, todas com esse número, para o saldo de cada fatura (e tudo o que o lê:
+ * carteira, acordos, relatórios) continuar a contar fatura a fatura. O PDF junta
+ * as linhas pelo número; anular uma anula todas (`voidReceipt`).
+ */
+export function settleInvoices(
+  db: Database,
+  clientId: number,
+  input: {
+    paymentIds: number[];
+    paymentMethod: PaymentMethod;
+    paymentDate?: string;
+    accountId?: number | null;
+    userId?: number | null;
+  }
+): PaymentOpResult<SettleResult> {
+  const ids = [...new Set(input.paymentIds)];
+  if (ids.length === 0) return { ok: false, status: 400, error: 'Escolha pelo menos uma fatura' };
+  const paymentDate = input.paymentDate || todayIso();
+
+  const heads: Array<PaymentHead & { balanceCve: number }> = [];
+  for (const id of ids) {
+    const head = loadHead(db, id);
+    if (!head || head.clientId !== clientId) return { ok: false, status: 400, error: 'Fatura não pertence a este cliente' };
+    if (head.documentType === 'sale_ticket') return saleTicketLocked;
+    if (head.status === 'cancelled') return { ok: false, status: 400, error: `Fatura ${head.invoiceNumber || id} está anulada` };
+    const { errors } = validatePaymentDates({ dataEmissao: head.invoiceDate, dataPagamento: paymentDate });
+    if (errors.length) return { ok: false, status: 400, error: `${head.invoiceNumber || id}: ${errors.join(' ')}` };
+    const balanceCve = roundEscudos(head.amountCve - receivedTotal(db, id));
+    if (isSettled(balanceCve)) return { ok: false, status: 400, error: `Fatura ${head.invoiceNumber || id} já está liquidada` };
+    heads.push({ ...head, balanceCve });
+  }
+
+  const destination = resolveReceiptAccount(db, input.paymentMethod, input.accountId);
+  if (!destination.ok) return destination;
+  const client = db.prepare('SELECT full_name AS name FROM clients WHERE id = ?').get(clientId) as { name: string } | undefined;
+
+  const value = db.transaction((): SettleResult => {
+    const receiptNumber = allocateDocumentNumber('receipt', db);
+    const receiptIds: number[] = [];
+    for (const head of heads) {
+      const receipt = writeReceipt(db, head, {
+        amountCve: head.balanceCve,
+        paymentDate,
+        paymentMethod: input.paymentMethod,
+        source: 'cash',
+        userId: input.userId,
+        receiptNumber
+      });
+      receiptIds.push(receipt.id);
+      // Um movimento por linha: anular o recibo estorna-as uma a uma, como sempre.
+      recordReceiptMovement(db, {
+        receiptId: receipt.id,
+        accountId: destination.value.id,
+        amountCve: head.balanceCve,
+        movementDate: paymentDate,
+        description: `Recibo ${receiptNumber} · ${client?.name ?? 'Cliente'} (${head.invoiceNumber || head.referenceMonth})`,
+        userId: input.userId
+      });
+      if (head.serviceId !== null) reactivateServiceIfEligibleAfterPayment(db, head.serviceId, input.userId ?? null);
+    }
+    return {
+      receiptNumber,
+      receiptIds,
+      paymentIds: heads.map((h) => h.id),
+      totalCve: roundEscudos(heads.reduce((sum, h) => sum + h.balanceCve, 0))
+    };
+  }).immediate();
+
+  return { ok: true, value };
+}
+
 /**
  * Abate o credito do cliente numa fatura em aberto.
  *
@@ -714,28 +798,34 @@ export function voidReceipt(
     return { ok: false, status: 400, error: 'Fatura anulada: o recibo ja nao pode ser mexido' };
   }
 
-  const value = db.transaction(() => {
+  // Um recibo que liquidou várias faturas (`settleInvoices`) é um documento só:
+  // anulá-lo anula todas as linhas com o mesmo número.
+  const group = [receipt, ...(db.prepare(`
+    ${receiptSelect} WHERE receipt_number = ? AND id <> ? AND voided_at IS NULL
+  `).all(receipt.receiptNumber, id) as ReceiptRecord[])];
+
+  const voidOne = (r: ReceiptRecord, h: PaymentHead) => {
     db.prepare(`
       UPDATE payment_receipts SET voided_at = datetime('now'), void_reason = ? WHERE id = ?
-    `).run(reason, id);
+    `).run(reason, r.id);
 
     // O dinheiro sai da conta onde tinha entrado (recibos de credito nao tem movimento).
-    reverseReceiptMovements(db, id, `recibo ${receipt.receiptNumber} anulado: ${reason}`, userId);
+    reverseReceiptMovements(db, r.id, `recibo ${r.receiptNumber} anulado: ${reason}`, userId);
 
     // Simetrico do lancamento que este recibo gerou (excesso a favor ou uso do
     // credito), qualquer que tenha sido o sentido.
     const ledger = db.prepare(`
       SELECT COALESCE(SUM(amount_cve), 0) AS total FROM client_credits WHERE receipt_id = ?
-    `).get(id) as { total: number };
+    `).get(r.id) as { total: number };
     if (escudosToCentavos(ledger.total) !== 0) {
       db.prepare(`
         INSERT INTO client_credits (client_id, amount_cve, receipt_id, reason)
         VALUES (?, ?, ?, ?)
-      `).run(head.clientId, -ledger.total, id, `Estorno do recibo ${receipt.receiptNumber}`);
+      `).run(h.clientId, -ledger.total, r.id, `Estorno do recibo ${r.receiptNumber}`);
     }
 
-    const remaining = roundEscudos(head.amountCve - receivedTotal(db, head.id));
-    const reopened = head.status === 'paid' && !isSettled(remaining);
+    const remaining = roundEscudos(h.amountCve - receivedTotal(db, h.id));
+    const reopened = h.status === 'paid' && !isSettled(remaining);
     if (reopened) {
       // O recibo da fatura passa a ser o ultimo que ainda vale; se nao sobrou
       // nenhum, a fatura volta a nao ter recibo — como antes de alguem pagar.
@@ -745,7 +835,7 @@ export function voidReceipt(
         FROM payment_receipts
         WHERE payment_id = ? AND voided_at IS NULL
         ORDER BY payment_date DESC, id DESC LIMIT 1
-      `).get(head.id) as { receiptNumber: string; receiptDate: string; paymentDate: string; paymentMethod: string } | undefined;
+      `).get(h.id) as { receiptNumber: string; receiptDate: string; paymentDate: string; paymentMethod: string } | undefined;
 
       db.prepare(`
         UPDATE payments
@@ -758,16 +848,25 @@ export function voidReceipt(
         survivor?.paymentMethod ?? null,
         survivor?.receiptNumber ?? null,
         survivor?.receiptDate ?? null,
-        head.id
+        h.id
       );
     }
 
     return {
-      receipt: db.prepare(`${receiptSelect} WHERE id = ?`).get(id) as ReceiptRecord,
-      paymentId: head.id,
+      receipt: db.prepare(`${receiptSelect} WHERE id = ?`).get(r.id) as ReceiptRecord,
+      paymentId: h.id,
       reopened,
       balanceCve: remaining
     };
+  };
+
+  const value = db.transaction(() => {
+    let result: ReturnType<typeof voidOne> | undefined;
+    for (const r of group) {
+      const out = voidOne(r, r.id === receipt.id ? head : loadHead(db, r.paymentId)!);
+      if (r.id === receipt.id) result = out;
+    }
+    return result!;
   })();
 
   return { ok: true, value };

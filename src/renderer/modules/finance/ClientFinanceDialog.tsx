@@ -22,6 +22,7 @@ import { formatCve, formatPtDate, formatPtDateTime, formatPtMonth } from '../../
 import { businessDay } from '../../../shared/business-day';
 import { MAX_INSTALLMENTS, MIN_INSTALLMENTS, monthlyDueDates, splitInstallments } from '../../../shared/payment-plan';
 import { METHOD_LABELS } from '../payments/ReceiptsSection';
+import { AccountSelect } from '../treasury/AccountSelect';
 import {
   AGING_LABELS,
   type ClientFinance,
@@ -100,7 +101,6 @@ const INVOICE_COLUMNS: DataTableColumn<ClientFinanceInvoice>[] = [
     defaultDirection: 'desc',
     cell: (i) => <Badge tone={BUCKET_TONE[i.bucket]}>{i.isOverdue ? `${i.daysOverdue} d` : AGING_LABELS[i.bucket]}</Badge>
   },
-  { header: 'Valor', align: 'end', sortValue: (i) => i.amountCve, cell: (i) => <span>{formatCve(i.amountCve)}</span> },
   { header: 'Recebido', align: 'end', sortValue: (i) => i.receivedCve, cell: (i) => <span>{i.receivedCve > 0 ? formatCve(i.receivedCve) : '—'}</span> },
   { header: 'Em aberto', align: 'end', sortValue: (i) => i.balanceCve, defaultDirection: 'desc', cell: (i) => <b>{formatCve(i.balanceCve)}</b> },
   {
@@ -110,6 +110,9 @@ const INVOICE_COLUMNS: DataTableColumn<ClientFinanceInvoice>[] = [
     cell: (i) => (i.planId ? <Badge tone="info">Acordo</Badge> : <span>—</span>)
   }
 ];
+
+/** Em aberto: o que decide a cobrança. Mês e recebido ficam no detalhe da fatura e em Pagamentos. */
+const OPEN_COLUMNS = INVOICE_COLUMNS.filter((c) => !['Mês', 'Recebido'].includes(c.header));
 
 /** Escolha das faturas a renegociar: só o que identifica a fatura e o saldo que entra no acordo. */
 const PICK_COLUMNS = INVOICE_COLUMNS.filter((c) => ['Fatura', 'Mês', 'Vencimento', 'Em aberto'].includes(c.header));
@@ -141,7 +144,7 @@ const NOTICE_COLUMNS: DataTableColumn<Notice>[] = [
   { header: 'Data', sortValue: (n) => n.at, cell: (n) => <span>{formatPtDateTime(n.at)}</span> },
   { header: 'Canal', sortValue: (n) => n.channel, cell: (n) => <span>{n.channel === 'sms' ? 'SMS' : 'WhatsApp'}</span> },
   { header: 'Tipo', sortValue: (n) => NOTICE_KIND[n.kind] || n.kind, cell: (n) => <span>{NOTICE_KIND[n.kind] || n.kind}</span> },
-  { header: 'Origem', sortValue: (n) => n.origin, cell: (n) => <span>{n.origin === 'manual' ? 'Manual' : 'Automático'}</span> },
+  { header: 'Origem', sortValue: (n) => n.origin, cell: (n) => <span>{n.origin === null ? '—' : n.origin === 'manual' ? 'Manual' : 'Automático'}</span> },
   { header: 'Fatura', sortValue: (n) => n.invoiceNumber, cell: (n) => <span>{invoiceLabel(n.invoiceNumber, n.referenceMonth)}</span> },
   {
     header: 'Estado',
@@ -274,14 +277,11 @@ export function ClientFinanceDialog({ clientId, onClose, onOpenInvoice, onOpenCl
 
           <div className="tab-panel" role="tabpanel" id={`client-finance-panel-${tab}`} aria-labelledby={`client-finance-tab-${tab}`}>
             {tab === 'faturas' && (
-              <DataTable<ClientFinanceInvoice>
-                rows={finance.invoices}
-                rowKey={(i) => i.paymentId}
-                columns={INVOICE_COLUMNS}
-                defaultSort={{ key: 'Vencimento', direction: 'asc' }}
-                onRowClick={(i) => onOpenInvoice(i.paymentId)}
-                gridTemplateColumns="minmax(112px, 1fr) 96px 104px 112px 104px 104px 112px 88px"
-                empty={<EmptyState size="sm" icon={Wallet} title="Sem dívida em aberto" />}
+              <OpenInvoicesPanel
+                key={finance.invoices.map((i) => `${i.paymentId}:${i.balanceCve}`).join(',')}
+                finance={finance}
+                onOpenInvoice={onOpenInvoice}
+                onChanged={load}
               />
             )}
             {tab === 'pagamentos' && (
@@ -311,6 +311,143 @@ export function ClientFinanceDialog({ clientId, onClose, onOpenInvoice, onOpenCl
           </div>
         </div>
       )}
+    </Dialog>
+  );
+}
+
+function OpenInvoicesPanel({ finance, onOpenInvoice, onChanged }: {
+  finance: ClientFinance;
+  onOpenInvoice: (paymentId: number) => void;
+  onChanged: () => Promise<void>;
+}) {
+  const [selected, setSelected] = useState<Set<number>>(() => new Set());
+  const [settling, setSettling] = useState<ClientFinanceInvoice[] | null>(null);
+  const invoices = finance.invoices;
+  const chosen = invoices.filter((i) => selected.has(i.paymentId));
+  const chosenTotal = Math.round(chosen.reduce((sum, i) => sum + i.balanceCve, 0) * 100) / 100;
+
+  const selection: DataTableSelection = {
+    isSelected: (key) => selected.has(Number(key)),
+    onToggleRow: (key) => setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(Number(key))) next.delete(Number(key));
+      else next.add(Number(key));
+      return next;
+    }),
+    headerState: selected.size === 0 ? 'none' : selected.size === invoices.length ? 'all' : 'some',
+    onToggleAll: () => setSelected(selected.size === invoices.length ? new Set() : new Set(invoices.map((i) => i.paymentId)))
+  };
+
+  return (
+    <div className="client-finance-open">
+      {chosen.length > 0 && (
+        <div className="client-finance-settle-bar" role="status">
+          <span><b>{chosen.length}</b> {chosen.length === 1 ? 'fatura' : 'faturas'}</span>
+          <b>{formatCve(chosenTotal)}</b>
+          <Button size="sm" onClick={() => setSettling(chosen)}>
+            {chosen.length === invoices.length && invoices.length > 1 ? 'Liquidar todas' : 'Liquidar selecionadas'}
+          </Button>
+        </div>
+      )}
+      <DataTable<ClientFinanceInvoice>
+        rows={invoices}
+        rowKey={(i) => i.paymentId}
+        columns={OPEN_COLUMNS}
+        selection={selection}
+        defaultSort={{ key: 'Vencimento', direction: 'asc' }}
+        onRowClick={(i) => onOpenInvoice(i.paymentId)}
+        gridTemplateColumns="minmax(112px, 1fr) 116px 112px 108px 72px"
+        actionsHeader=""
+        actionsWidth="104px"
+        actions={(i) => (
+          <Button size="sm" variant="secondary" className="client-finance-settle-one" onClick={(event) => { event.stopPropagation(); setSettling([i]); }}>
+            Liquidar
+          </Button>
+        )}
+        empty={<EmptyState size="sm" icon={Wallet} title="Sem dívida em aberto" />}
+      />
+      {settling && (
+        <SettleDialog
+          clientId={finance.client.id}
+          invoices={settling}
+          onClose={() => setSettling(null)}
+          onDone={async () => { setSettling(null); await onChanged(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function SettleDialog({ clientId, invoices, onClose, onDone }: {
+  clientId: number;
+  invoices: ClientFinanceInvoice[];
+  onClose: () => void;
+  onDone: () => Promise<void>;
+}) {
+  const { toast } = useToast();
+  const today = businessDay();
+  const [method, setMethod] = useState<'numerario' | 'transferencia' | 'outro'>('numerario');
+  const [accountId, setAccountId] = useState('');
+  const [date, setDate] = useState(today);
+  const [submitting, setSubmitting] = useState(false);
+  const total = Math.round(invoices.reduce((sum, i) => sum + i.balanceCve, 0) * 100) / 100;
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setSubmitting(true);
+    try {
+      const response = await authFetch(`${API}/clients/${clientId}/settle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentIds: invoices.map((i) => i.paymentId), paymentMethod: method, paymentDate: date, accountId: Number(accountId) })
+      });
+      const body = await response.json().catch(() => ({})) as { error?: string; receiptNumber?: string };
+      if (!response.ok) {
+        toast(body.error || 'Não foi possível liquidar.', 'error');
+        return;
+      }
+      toast(`Recibo ${body.receiptNumber} emitido.`, 'success');
+      await onDone();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      size="sm"
+      eyebrow="Liquidar"
+      title={invoices.length === 1 ? `${invoices[0].invoiceNumber || 'Fatura'} · ${formatCve(total)}` : `${invoices.length} faturas · ${formatCve(total)}`}
+      actions={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>Cancelar</Button>
+          <Button type="submit" form="client-finance-settle" loading={submitting} disabled={!accountId}>
+            Emitir recibo
+          </Button>
+        </>
+      }
+    >
+      <form id="client-finance-settle" className="client-finance-settle" onSubmit={submit}>
+        {invoices.length > 1 && (
+          <ul className="client-finance-settle-list">
+            {invoices.map((i) => (
+              <li key={i.paymentId}>
+                <span className="entity-code">{i.invoiceNumber || '—'}</span>
+                <b>{formatCve(i.balanceCve)}</b>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Select label="Método" value={method} onChange={(e) => setMethod(e.target.value as typeof method)} disabled={submitting}>
+          <option value="numerario">Numerário</option>
+          <option value="transferencia">Transferência</option>
+          <option value="outro">Outro</option>
+        </Select>
+        <AccountSelect purpose={method} value={accountId} onChange={setAccountId} disabled={submitting} />
+        <Field label="Data" type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} disabled={submitting} required />
+      </form>
     </Dialog>
   );
 }
@@ -413,7 +550,8 @@ function ActivePlan({ plan, onChanged }: { plan: PaymentPlan; onChanged: () => P
         rowKey={(i) => i.seq}
         columns={INSTALLMENT_COLUMNS}
         defaultSort={{ key: 'Nº', direction: 'asc' }}
-        gridTemplateColumns="56px 120px 128px 112px"
+        gridTemplateColumns="56px minmax(112px, 1fr) 128px 112px"
+        className="client-finance-schedule"
         empty={null}
       />
       <form className="client-finance-plan-cancel" onSubmit={cancel}>
@@ -524,7 +662,8 @@ function NewPlanForm({ finance, onChanged }: { finance: ClientFinance; onChanged
           rowKey={(i) => i.seq}
           columns={INSTALLMENT_COLUMNS.slice(0, 3)}
           defaultSort={{ key: 'Nº', direction: 'asc' }}
-          gridTemplateColumns="56px 120px 128px"
+          gridTemplateColumns="56px minmax(112px, 1fr) 128px"
+          className="client-finance-schedule"
           empty={null}
         />
       )}
