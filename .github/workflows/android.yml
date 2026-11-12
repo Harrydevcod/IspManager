@@ -46,6 +46,14 @@ jobs:
       - name: Unit tests (signature parity)
         run: gradle test --no-daemon --stacktrace
 
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-reports
+          path: android-sms-companion/app/build/reports/tests/
+          if-no-files-found: ignore
+
       # Visual smoke: every screen and state as PNG, for the owner to see before the merge.
       - name: Draw the screens (Paparazzi)
         run: gradle recordPaparazziDebug --no-daemon --stacktrace
