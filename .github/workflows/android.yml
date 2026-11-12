@@ -46,6 +46,17 @@ jobs:
       - name: Unit tests (signature parity)
         run: gradle test --no-daemon --stacktrace
 
+      # Visual smoke: every screen and state as PNG, for the owner to see before the merge.
+      - name: Draw the screens (Paparazzi)
+        run: gradle recordPaparazziDebug --no-daemon --stacktrace
+
+      - name: Upload screens
+        uses: actions/upload-artifact@v4
+        with:
+          name: ispm-sms-companion-screens
+          path: android-sms-companion/app/src/test/snapshots/images/*.png
+          if-no-files-found: error
+
       - name: Assemble debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
 
