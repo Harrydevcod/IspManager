@@ -13,12 +13,16 @@ import android.provider.Settings
 import android.telephony.SubscriptionManager
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -31,6 +35,8 @@ import kotlinx.coroutines.launch
 import cv.novatech.ispm.sms.state.DeviceSnapshot
 import cv.novatech.ispm.sms.state.PairingInfo
 import cv.novatech.ispm.sms.state.SimOption
+import cv.novatech.ispm.sms.state.ThemePref
+import cv.novatech.ispm.sms.state.ThemeRules
 import cv.novatech.ispm.sms.state.parsePairingPayload
 import cv.novatech.ispm.sms.ui.CompanionApp
 import cv.novatech.ispm.sms.ui.LockScreen
@@ -41,6 +47,7 @@ import cv.novatech.ispm.sms.ui.theme.IspmTheme
 class MainActivity : FragmentActivity() {
   private val app get() = application as IspmSmsApp
   private var locked by mutableStateOf(true)
+  private var themePref by mutableStateOf(ThemePref.SYSTEM)
 
   private val permissionLauncher =
     registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -62,8 +69,13 @@ class MainActivity : FragmentActivity() {
     // Decided before the first frame, so the lock screen never prompts when the lock is off.
     locked = LockRules.mustLock(app.settingsStore.lockEnabled(), deviceSecure(), app.unlocked, app.backgroundAt, System.currentTimeMillis())
 
+    themePref = app.settingsStore.themePref()
     setContent {
-      IspmTheme {
+      val systemDark = isSystemInDarkTheme()
+      val dark = ThemeRules.isDark(themePref, systemDark)
+      // Status and navigation bar icons follow the theme on screen, not the phone's.
+      SideEffect { applySystemBars(dark) }
+      IspmTheme(dark) {
         val state by app.holder.state.collectAsStateWithLifecycle()
         val fieldEvents by app.eventStore.events.collectAsStateWithLifecycle()
         if (locked) {
@@ -100,6 +112,9 @@ class MainActivity : FragmentActivity() {
           },
           onRejectAll = { app.holder.rejectAll() },
           onSync = { app.holder.requestSync() },
+          themePref = themePref,
+          onThemeChange = ::setTheme,
+          onToggleTheme = { setTheme(ThemeRules.toggle(themePref, systemDark)) },
           pendingEvents = fieldEvents,
           onFieldEvent = { kind, payload, photos ->
             // Photos are written to disk: off the main thread.
@@ -109,6 +124,17 @@ class MainActivity : FragmentActivity() {
         )
       }
     }
+  }
+
+  private fun setTheme(pref: ThemePref) {
+    themePref = pref
+    app.settingsStore.setThemePref(pref)
+  }
+
+  private fun applySystemBars(dark: Boolean) {
+    val transparent = android.graphics.Color.TRANSPARENT
+    val style = if (dark) SystemBarStyle.dark(transparent) else SystemBarStyle.light(transparent, transparent)
+    enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
   }
 
   override fun onStart() {

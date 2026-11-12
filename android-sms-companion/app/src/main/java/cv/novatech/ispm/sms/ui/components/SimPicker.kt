@@ -1,58 +1,36 @@
 package cv.novatech.ispm.sms.ui.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cv.novatech.ispm.sms.state.SimOption
 import cv.novatech.ispm.sms.send.SendBudget
 import cv.novatech.ispm.sms.ui.theme.*
 
-/** "SIM para enviar": only shown on dual-slot phones. Default = the phone's SMS SIM. */
+/** "SIM para enviar": only shown on dual-slot phones. Default = the phone's SMS SIM. A radio list inside a group. */
 @Composable
 fun SimPicker(sims: List<SimOption>, selected: Int?, onRequestPhoneState: () -> Unit, onChoose: (Int?) -> Unit) {
-  Column(
-    Modifier.fillMaxWidth()
-      .clip(RoundedCornerShape(14.dp)).background(Surface)
-      .border(1.dp, BorderC, RoundedCornerShape(14.dp))
-      .padding(14.dp)
-  ) {
-    Text("SIM para enviar", color = TextPrimary, fontWeight = FontWeight.SemiBold)
-    Spacer(Modifier.height(8.dp))
+  Group {
     if (sims.isEmpty()) {
-      Text(
-        "Escolher o SIM →", color = AccentBlue, style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.clickable { onRequestPhoneState() }
-      )
-      return@Column
+      GroupRow("Escolher o SIM", "O Android tem de mostrar os SIMs à app", onClick = onRequestPhoneState)
+      return@Group
     }
     SimRow("Predefinido do telemóvel", selected == null) { onChoose(null) }
-    sims.forEach { sim -> SimRow(sim.label, selected == sim.subscriptionId) { onChoose(sim.subscriptionId) } }
+    sims.forEach { sim ->
+      GroupDivider()
+      SimRow(sim.label, selected == sim.subscriptionId) { onChoose(sim.subscriptionId) }
+    }
     if (sims.size >= 2) {
-      SimRow("Automático: alternar entre os SIMs", selected == SendBudget.ROTATE) { onChoose(SendBudget.ROTATE) }
+      GroupDivider()
+      SimRow("Alternar entre os SIMs", selected == SendBudget.ROTATE) { onChoose(SendBudget.ROTATE) }
     }
   }
 }
 
 @Composable
-private fun SimRow(label: String, active: Boolean, onClick: () -> Unit) {
-  Row(
-    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
-      .background(if (active) AccentBlue.copy(alpha = 0.14f) else SurfaceMuted)
-      .clickable { onClick() }.padding(horizontal = 10.dp, vertical = 9.dp),
-    verticalAlignment = Alignment.CenterVertically
-  ) {
-    Text(label, color = if (active) TextPrimary else TextSecondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-    if (active) Text("✓", color = AccentBlue, fontWeight = FontWeight.SemiBold)
+private fun SimRow(label: String, active: Boolean, onClick: () -> Unit) =
+  GroupRow(label, onClick = onClick) {
+    if (active) Icon(Lucide.Check, contentDescription = "Escolhido", tint = Accent, modifier = Modifier.size(20.dp))
   }
-  Spacer(Modifier.height(6.dp))
-}

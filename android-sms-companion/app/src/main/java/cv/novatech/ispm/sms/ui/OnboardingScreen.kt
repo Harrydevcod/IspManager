@@ -14,9 +14,10 @@ import com.journeyapps.barcodescanner.ScanOptions
 import cv.novatech.ispm.sms.PortraitCaptureActivity
 import cv.novatech.ispm.sms.state.PairingInfo
 import cv.novatech.ispm.sms.state.parsePairingPayload
-import cv.novatech.ispm.sms.ui.theme.AccentOrange
-import cv.novatech.ispm.sms.ui.theme.TextMuted
-import cv.novatech.ispm.sms.ui.theme.TextSecondary
+import cv.novatech.ispm.sms.ui.components.AppMark
+import cv.novatech.ispm.sms.ui.components.ButtonVariant
+import cv.novatech.ispm.sms.ui.components.IspmButton
+import cv.novatech.ispm.sms.ui.theme.*
 
 @Composable
 fun OnboardingScreen(onPaired: (PairingInfo) -> Unit, onInvalid: () -> Unit) {
@@ -30,18 +31,21 @@ fun OnboardingScreen(onPaired: (PairingInfo) -> Unit, onInvalid: () -> Unit) {
   }
 
   Column(
-    Modifier.fillMaxSize().padding(24.dp),
+    Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 32.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalArrangement = Arrangement.Center
   ) {
-    Text("ISPM SMS", style = MaterialTheme.typography.titleLarge)
-    Spacer(Modifier.height(8.dp))
+    AppMark()
+    Spacer(Modifier.height(24.dp))
+    Text("ISPM SMS", color = TextPrimary, style = MaterialTheme.typography.titleLarge)
+    Spacer(Modifier.height(6.dp))
     Text(
       "Leia o QR do ISPM no PC, em Definições › SMS.",
       color = TextSecondary, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium
     )
-    Spacer(Modifier.height(24.dp))
-    Button(
+    Spacer(Modifier.height(28.dp))
+    IspmButton(
+      "Ler QR Code",
       onClick = {
         scanLauncher.launch(
           ScanOptions()
@@ -51,14 +55,12 @@ fun OnboardingScreen(onPaired: (PairingInfo) -> Unit, onInvalid: () -> Unit) {
             .setCaptureActivity(PortraitCaptureActivity::class.java)
         )
       },
-      modifier = Modifier.fillMaxWidth()
-    ) { Text("Ler QR Code") }
+      modifier = Modifier.fillMaxWidth(), variant = ButtonVariant.PRIMARY, icon = Lucide.QrCode
+    )
     Spacer(Modifier.height(10.dp))
-    OutlinedButton(onClick = { showManual = true }, modifier = Modifier.fillMaxWidth()) {
-      Text("Inserir código manualmente", color = TextSecondary)
-    }
+    IspmButton("Inserir código manualmente", { showManual = true }, Modifier.fillMaxWidth(), ButtonVariant.SECONDARY)
     Spacer(Modifier.height(16.dp))
-    Text("A câmara é usada apenas para ler o código de pareamento.", color = TextMuted, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall)
+    Text("A câmara só lê o código de pareamento.", color = TextMuted, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall)
   }
 
   if (showManual) {
@@ -78,20 +80,15 @@ fun OnboardingScreen(onPaired: (PairingInfo) -> Unit, onInvalid: () -> Unit) {
 private fun ManualPairSheet(onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
   var text by remember { mutableStateOf("") }
   ModalBottomSheet(onDismissRequest = onDismiss) {
-    Column(Modifier.padding(20.dp).fillMaxWidth()) {
-      Text("Código de pareamento", style = MaterialTheme.typography.titleMedium)
-      Spacer(Modifier.height(12.dp))
+    Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      Text("Código de pareamento", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
       OutlinedTextField(
         value = text, onValueChange = { text = it },
         placeholder = { Text("ispm-sms://pair?secret=…") },
-        singleLine = true, modifier = Modifier.fillMaxWidth(),
+        singleLine = true, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth(),
         keyboardOptions = KeyboardOptions.Default
       )
-      Spacer(Modifier.height(12.dp))
-      Button(onClick = { onSubmit(text) }, enabled = text.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
-        Text("Parear")
-      }
-      Spacer(Modifier.height(8.dp))
+      IspmButton("Parear", { onSubmit(text) }, Modifier.fillMaxWidth(), ButtonVariant.PRIMARY, enabled = text.isNotBlank())
     }
   }
 }

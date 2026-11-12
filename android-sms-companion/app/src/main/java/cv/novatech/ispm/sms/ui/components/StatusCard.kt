@@ -1,22 +1,12 @@
 package cv.novatech.ispm.sms.ui.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cv.novatech.ispm.sms.state.CompanionUiState
 import cv.novatech.ispm.sms.state.DesktopLink
@@ -34,56 +24,39 @@ fun rememberNow(): Long {
   return now
 }
 
+// Seconds on purpose: "visto há 12 s" is the liveness the operator checks here.
 private fun ago(ms: Long): String {
   val s = (ms / 1000).coerceAtLeast(0)
   return if (s < 60) "há $s s" else "há ${s / 60} min"
 }
 
+/** The link to the PC, as a group of facts; the way out (forget and re-pair) under it. */
 @Composable
 fun StatusCard(state: CompanionUiState, onForget: () -> Unit) {
   val now = rememberNow()
-  val link = desktopLink(state, now)
-  val (label, color) = when (link) {
+  val (line, tone) = when (desktopLink(state, now)) {
     DesktopLink.LINKED -> "Ligado ao ISPM · visto ${ago(now - (state.lastDesktopAt ?: now))}" to Success
-    DesktopLink.MISMATCH -> "O ISPM usa outro pareamento" to Warn
-    DesktopLink.WAITING -> "À espera do ISPM" to TextMuted
+    DesktopLink.MISMATCH -> "O ISPM usa outro pareamento. Esqueça este e leia o QR novo." to Warn
+    DesktopLink.WAITING -> "À espera do ISPM. Confirme que o PC está na mesma rede Wi-Fi." to TextMuted
   }
-  Column(
-    Modifier.fillMaxWidth()
-      .clip(RoundedCornerShape(14.dp)).background(Surface)
-      .border(1.dp, BorderC, RoundedCornerShape(14.dp))
-      .padding(14.dp)
-  ) {
-    Text("Pareado · ${state.deviceName}", color = TextPrimary, fontWeight = FontWeight.SemiBold)
-    Spacer(Modifier.height(6.dp))
-    Row(verticalAlignment = Alignment.CenterVertically) {
-      Dot(color)
-      Spacer(Modifier.width(6.dp))
-      Text(label, color = color, style = MaterialTheme.typography.bodySmall)
-    }
-    if (link == DesktopLink.MISMATCH) {
-      Text(
-        "Esqueça este pareamento e leia o QR novo do ISPM.",
-        color = TextSecondary, style = MaterialTheme.typography.bodySmall
+  Column {
+    Group {
+      GroupRow(state.deviceName.ifBlank { "Este telemóvel" }, line, detailColor = tone) { StatusDot(tone) }
+      GroupDivider()
+      GroupRow(
+        "Servidor",
+        if (state.serverRunning) "A ouvir ${state.listenAddress}" else "Parado. Reabra a app.",
+        detailColor = if (state.serverRunning) TextMuted else Warn
       )
-    } else if (link == DesktopLink.WAITING) {
-      Text(
-        "Confirme que o PC está na mesma rede Wi-Fi.",
-        color = TextSecondary, style = MaterialTheme.typography.bodySmall
-      )
+      GroupDivider()
+      GroupRow("Permissão de SMS") {
+        Text(
+          if (state.smsPermissionGranted) "Concedida" else "Em falta",
+          color = if (state.smsPermissionGranted) Success else Warn, style = MaterialTheme.typography.labelMedium
+        )
+      }
     }
-    Spacer(Modifier.height(6.dp))
-    Text(
-      if (state.serverRunning) "A ouvir ${state.listenAddress}" else "Servidor parado. Reabra a app.",
-      color = if (state.serverRunning) TextSecondary else Warn,
-      style = MaterialTheme.typography.bodySmall
-    )
-    Text(
-      if (state.smsPermissionGranted) "Permissão SMS ✓" else "Permissão SMS em falta",
-      color = if (state.smsPermissionGranted) Success else Warn,
-      style = MaterialTheme.typography.bodySmall
-    )
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(10.dp))
     ForgetPairingButton(onForget)
   }
 }
@@ -92,11 +65,7 @@ fun StatusCard(state: CompanionUiState, onForget: () -> Unit) {
 @Composable
 fun ForgetPairingButton(onForget: () -> Unit) {
   var confirm by remember { mutableStateOf(false) }
-  OutlinedButton(
-    onClick = { confirm = true },
-    colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger),
-    modifier = Modifier.fillMaxWidth()
-  ) { Text("Esquecer e parear de novo") }
+  IspmButton("Esquecer e parear de novo", { confirm = true }, Modifier.fillMaxWidth(), ButtonVariant.CRITICAL)
   if (confirm) {
     AlertDialog(
       onDismissRequest = { confirm = false },
@@ -105,10 +74,7 @@ fun ForgetPairingButton(onForget: () -> Unit) {
       confirmButton = {
         TextButton(onClick = { confirm = false; onForget() }) { Text("Esquecer", color = Danger) }
       },
-      dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancelar") } }
+      dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancelar", color = TextSecondary) } }
     )
   }
 }
-
-@Composable
-private fun Dot(c: Color) = Box(Modifier.size(6.dp).clip(CircleShape).background(c))

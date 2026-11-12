@@ -2,11 +2,6 @@ package cv.novatech.ispm.sms.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -15,6 +10,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import cv.novatech.ispm.sms.ui.components.AppMark
+import cv.novatech.ispm.sms.ui.components.ButtonVariant
+import cv.novatech.ispm.sms.ui.components.IspmButton
 import cv.novatech.ispm.sms.ui.theme.*
 
 /** Covers every screen while locked; asks once on its own, then on the button. */
@@ -26,15 +24,15 @@ fun LockScreen(onUnlock: () -> Unit) {
     verticalArrangement = Arrangement.Center,
     horizontalAlignment = Alignment.CenterHorizontally
   ) {
-    Icon(Icons.Filled.Lock, contentDescription = null, tint = TextMuted, modifier = Modifier.size(40.dp))
-    Spacer(Modifier.height(16.dp))
+    AppMark(64)
+    Spacer(Modifier.height(20.dp))
     Text("ISPM SMS bloqueado", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(4.dp))
     Text(
       "Desbloqueie com a impressão digital ou o PIN.",
-      color = TextMuted, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center
+      color = TextMuted, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center
     )
     Spacer(Modifier.height(24.dp))
-    Button(onClick = onUnlock, colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)) { Text("Desbloquear") }
+    IspmButton("Desbloquear", onUnlock, Modifier.widthIn(min = 200.dp), ButtonVariant.PRIMARY, icon = Lucide.Lock)
   }
 }
