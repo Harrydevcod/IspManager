@@ -4,6 +4,19 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.62](https://github.com/Harrydevcod/IspManager/releases/tag/v2.62.0) — 2026-11-12
+
+### Adicionado
+- **Sincronizar agora com o telemóvel.** Um botão em Configurações › SMS envia logo o resumo ao telemóvel, recebe os registos do terreno e despacha a fila de SMS, sem esperar pelo minuto seguinte.
+- **App ISPM SMS 0.9.0:** botão **Sincronizar** no Painel do telemóvel. O ISPM responde na verificação seguinte, no máximo num minuto. Se o PC não responder em 3 minutos, a app avisa.
+
+### Alterado
+- **App ISPM SMS:** as cores passam a ser as mesmas do ISPM no PC, o texto sobre o azul passa a escuro para se ler melhor, e há menos texto a explicar o funcionamento.
+
+### Corrigido
+- **Um SMS podia ser enviado duas vezes** quando duas rondas de envio se sobrepunham. Passa a haver uma ronda de cada vez.
+- **App ISPM SMS:** as barras dos meses passados do gráfico estavam quase invisíveis; o valor da barra mais alta aparecia cortado; "Aprovar e enviar" partia-se em duas linhas em telemóveis pequenos (passa a "Aprovar"); um pedido sem nome mostrava o número duas vezes.
+
 ## [2.61](https://github.com/Harrydevcod/IspManager/releases/tag/v2.61.0) — 2026-11-09
 
 ### Adicionado
