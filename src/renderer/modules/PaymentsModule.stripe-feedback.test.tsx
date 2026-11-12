@@ -14,7 +14,7 @@ vi.mock('../lib/download', () => ({
 }));
 
 const payment: PaymentRow = {
-  id: 41, clientName: 'Cliente teste', clientCode: 'C0041', clientNif: null, clientPhone: null,
+  id: 41, clientId: 1, clientName: 'Cliente teste', clientCode: 'C0041', clientNif: null, clientPhone: null,
   referenceMonth: '2026-09', amountCve: 2500, dueDate: '2026-10-01', paymentDate: '2026-09-30',
   paymentMethod: 'stripe', status: 'paid', invoiceNumber: 'FT41', receiptNumber: 'RC41',
   canRegenerate: 0, receivedCve: 2500, balanceCve: 0

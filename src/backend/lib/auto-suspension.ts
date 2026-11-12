@@ -11,6 +11,7 @@ import {
   testConnection
 } from './routeros';
 import { businessDay, SQL_BUSINESS_TODAY } from '../../shared/business-day';
+import { planProtectedSql } from './payment-plans';
 
 let lastGate: 'ok' | 'offsite' | 'foreign' | 'unreachable' | null = null;
 
@@ -114,9 +115,11 @@ const balanceExpr = `(
  * reativação do serviço desde que ficou cortável. Reativar à mão (ou por
  * pagamento) é uma decisão sobre a dívida que já existia — a passagem seguinte
  * não a desfaz; só uma fatura que passe a tolerância depois volta a cortar.
+ * Fatura num acordo de pagamento em dia também não corta (0103).
  * Os dois `?` são a tolerância em dias.
  */
-const suspendableInvoiceSql = `
+// Função, não constante: `payment-plans` importa `payments`, que importa este módulo.
+const suspendableInvoiceSql = () => `
   p.status IN ('pending', 'overdue')
   AND date(p.due_date, '+' || ? || ' days') < ${SQL_BUSINESS_TODAY}
   AND ${balanceExpr} > 0.005
@@ -126,6 +129,7 @@ const suspendableInvoiceSql = `
       AND e.event_type = 'reativacao'
       AND e.created_at >= date(p.due_date, '+' || ? || ' days')
   )
+  AND ${planProtectedSql('p')}
 `;
 
 function graceDays(db: Database.Database): number {
@@ -186,7 +190,7 @@ function rawCandidates(db: Database.Database, graceDays: number): SuspensionCand
       AND c.system_kind IS NULL
       AND s.pppoe_username IS NOT NULL
       AND TRIM(s.pppoe_username) <> ''
-      AND ${suspendableInvoiceSql}
+      AND ${suspendableInvoiceSql()}
     ORDER BY s.id, date(p.due_date), p.id
   `).all(graceDays, graceDays) as Array<Omit<SuspensionCandidate, 'creditCve'>>;
 
@@ -264,7 +268,7 @@ function hasSuspendableDebt(db: Database.Database, serviceId: number, graceDays:
     JOIN services s ON s.id = p.service_id
     WHERE p.service_id = ?
       AND p.client_id = s.client_id
-      AND ${suspendableInvoiceSql}
+      AND ${suspendableInvoiceSql()}
     LIMIT 1
   `).get(serviceId, graceDays, graceDays) as { found: number } | undefined;
   return Boolean(row);

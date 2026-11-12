@@ -1,11 +1,12 @@
 import { AlertTriangle, Banknote, Receipt, TrendingUp, Wallet } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { TabList } from '../components';
 import { ExpensesModule } from './ExpensesModule';
 import { InvestmentsModule } from './InvestmentsModule';
 import { PaymentsModule } from './PaymentsModule';
 import { ProfitModule } from './ProfitModule';
 import { ReceivablesModule } from './ReceivablesModule';
+import { ClientFinanceDialog } from './finance/ClientFinanceDialog';
 import './FinanceModule.css';
 
 type FinanceTab = 'pagamentos' | 'pendentes' | 'lucro' | 'investimentos' | 'despesas';
@@ -39,8 +40,16 @@ export function FinanceModule({
   onOpenClient?: (clientId: number) => void;
 } = {}) {
   const [tab, setTab] = useState<FinanceTab>('pagamentos');
+  const [financeClientId, setFinanceClientId] = useState<number | null>(null);
+  // Fatura aberta a partir da ficha financeira; o foco vindo de fora (App) continua a valer.
+  const [localPaymentFocus, setLocalPaymentFocus] = useState<number | null>(null);
+  const focusPaymentId = localPaymentFocus ?? paymentFocusId;
+  const handlePaymentFocus = useCallback(() => {
+    setLocalPaymentFocus(null);
+    onPaymentFocusHandled?.();
+  }, [onPaymentFocusHandled]);
   // A focused document must open the billing workspace even if another tab was selected.
-  useEffect(() => {if(paymentFocusId) setTab('pagamentos');},[paymentFocusId]);
+  useEffect(() => {if(focusPaymentId) setTab('pagamentos');},[focusPaymentId]);
 
   return (
     <div className="finance-shell">
@@ -52,13 +61,23 @@ export function FinanceModule({
       <div className="tab-panel" role="tabpanel" id={`finance-panel-${tab}`} aria-labelledby={`finance-tab-${tab}`}>
 
       {tab === 'pagamentos' && (
-        <PaymentsModule focusPaymentId={paymentFocusId} onPaymentFocusHandled={onPaymentFocusHandled} focusStatus={paymentsFocus} focusMonth={paymentsMonth} onFocusHandled={onPaymentsFocusHandled} />
+        <PaymentsModule focusPaymentId={focusPaymentId} onPaymentFocusHandled={handlePaymentFocus} focusStatus={paymentsFocus} focusMonth={paymentsMonth} onFocusHandled={onPaymentsFocusHandled} onOpenClientFinance={setFinanceClientId} />
       )}
-      {tab === 'pendentes' && <ReceivablesModule onOpenClient={onOpenClient} />}
+      {tab === 'pendentes' && <ReceivablesModule onOpenClient={setFinanceClientId} />}
       {tab === 'lucro' && <ProfitModule />}
       {tab === 'investimentos' && <InvestmentsModule />}
       {tab === 'despesas' && <ExpensesModule />}
       </div>
+
+      {financeClientId !== null && (
+        <ClientFinanceDialog
+          key={financeClientId}
+          clientId={financeClientId}
+          onClose={() => setFinanceClientId(null)}
+          onOpenInvoice={(paymentId) => { setFinanceClientId(null); setLocalPaymentFocus(paymentId); }}
+          onOpenClient={onOpenClient ? (id) => { setFinanceClientId(null); onOpenClient(id); } : undefined}
+        />
+      )}
     </div>
   );
 }

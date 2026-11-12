@@ -81,12 +81,14 @@ export function PaymentsModule({
   focusPaymentId, onPaymentFocusHandled,
   focusStatus,
   focusMonth,
-  onFocusHandled
+  onFocusHandled,
+  onOpenClientFinance
 }: {
   focusPaymentId?: number | null; onPaymentFocusHandled?: () => void;
   focusStatus?: 'overdue' | 'pending' | null;
   focusMonth?: string | null;
   onFocusHandled?: () => void;
+  onOpenClientFinance?: (clientId: number) => void;
 } = {}) {
   // Competência por defeito = mês fechado: criada no início do mês → mês anterior;
   // a partir do dia 30 → o mês que está a fechar (mesma regra da auto-faturação).
@@ -1226,6 +1228,7 @@ export function PaymentsModule({
             submitting={submitting}
             isReminderSentToday={wasReminderSentToday}
             onPreview={previewPaymentDocument}
+            onOpenClientFinance={onOpenClientFinance}
             onOpenPdf={openPdf}
             onMarkOverdue={(p) => void markOverdue(p)}
             onOpenPayForm={openPayForm}

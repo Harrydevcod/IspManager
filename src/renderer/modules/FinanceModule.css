@@ -71,3 +71,214 @@
     background: var(--surface);
   }
 }
+
+/* -------------------------------------------------------------------------
+   Ficha financeira do cliente (ClientFinanceDialog)
+   ------------------------------------------------------------------------- */
+
+.client-finance {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.client-finance-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.client-finance .metric-grid {
+  margin-bottom: 0;
+}
+
+.client-finance .tab-panel {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.client-finance-plan,
+.client-finance-plan-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.client-finance-plan-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-8);
+}
+
+.client-finance-plan-head > div,
+.client-finance-plan-total {
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.client-finance-plan-head span,
+.client-finance-plan-total span {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.client-finance-plan-head b,
+.client-finance-plan-total b {
+  font-size: var(--fs-lg);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-tight);
+}
+
+.client-finance-plan-head b.is-danger {
+  color: var(--danger);
+}
+
+.client-finance-progress {
+  height: 6px;
+  border-radius: var(--rpill);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.client-finance-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--success));
+  transition: width var(--motion-slow) var(--ease-out);
+}
+
+.client-finance-plan-invoices {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+/* Campos com a largura do seu dado, nunca a linha toda. */
+.client-finance-plan-fields,
+.client-finance-plan-cancel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+}
+
+.client-finance-plan-fields > label {
+  width: 168px;
+}
+
+.client-finance-plan-cancel > label {
+  width: min(360px, 100%);
+}
+
+.client-finance-plan-form textarea {
+  max-width: 560px;
+}
+
+.client-finance-plan-submit {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.client-finance-plan-history h3 {
+  margin: 0 0 var(--space-2);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.client-finance-plan-history ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.client-finance-plan-history li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+
+.client-finance-plan-history small {
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+
+/* O calendário tem três ou quatro dados curtos: à largura toda, ficava um vazio à direita. */
+.client-finance-schedule {
+  max-width: 520px;
+}
+
+.client-finance-open {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.client-finance-settle-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border: 1px solid color-mix(in oklch, var(--accent) 40%, var(--border));
+  border-radius: var(--r2);
+  background: color-mix(in oklch, var(--accent) 10%, var(--surface));
+  font-size: var(--fs-sm);
+}
+
+.client-finance-settle-bar > b {
+  font-variant-numeric: tabular-nums;
+}
+
+.client-finance-settle-bar > button {
+  margin-left: auto;
+}
+
+.client-finance-settle {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.client-finance-settle-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.client-finance-settle-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-1-5) 0;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Botão com texto na coluna de ações, que por omissão encolhe tudo a ícone de 36px. */
+.data-table-actions .client-finance-settle-one {
+  width: auto;
+  padding: 0 var(--space-3);
+  color: var(--text);
+}

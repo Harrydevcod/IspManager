@@ -272,6 +272,31 @@ export const clientCredits = sqliteTable('client_credits', {
   createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP')
 });
 
+// Acordo de pagamento (0103): prestações por cima de faturas; pago e estado derivam dos saldos.
+export const paymentPlans = sqliteTable('payment_plans', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  clientId: integer('client_id').notNull(),
+  totalCve: real('total_cve').notNull(),
+  status: text('status', { enum: ['active', 'cancelled'] }).notNull().default('active'),
+  notes: text('notes'),
+  createdBy: integer('created_by'),
+  createdAt: text('created_at').notNull().default('CURRENT_TIMESTAMP'),
+  cancelledAt: text('cancelled_at'),
+  cancelReason: text('cancel_reason')
+});
+
+export const paymentPlanInvoices = sqliteTable('payment_plan_invoices', {
+  planId: integer('plan_id').notNull(),
+  paymentId: integer('payment_id').notNull()
+}, (table) => [primaryKey({ columns: [table.planId, table.paymentId] })]);
+
+export const paymentPlanInstallments = sqliteTable('payment_plan_installments', {
+  planId: integer('plan_id').notNull(),
+  seq: integer('seq').notNull(),
+  dueDate: text('due_date').notNull(),
+  amountCve: real('amount_cve').notNull()
+}, (table) => [primaryKey({ columns: [table.planId, table.seq] })]);
+
 export const equipmentCatalog = sqliteTable('equipment_catalog', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   category: text('category').notNull().default('equipamento'),

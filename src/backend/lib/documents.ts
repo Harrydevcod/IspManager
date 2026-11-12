@@ -148,6 +148,9 @@ export function formatReferenceForDocument(reference: string): string {
 
 type PaymentDocumentRow = {
   id: number;
+  /** Recibo de várias faturas: a referência e o período deixam de ser um mês só. */
+  referenceLabel?: string;
+  periodLabel?: string;
   clientName: string;
   clientCode: string | null;
   clientNif: string | null;
@@ -581,7 +584,7 @@ function buildDocument(
     doc.fillColor(PALETTE.ink).fontSize(11).font('Helvetica-Bold')
       .text(value, cx + 14, y + 24, { width: cellW - 16, lineBreak: false });
   };
-  writeMeta(M, 'REFERENCIA', formatReferenceForDocument(row.referenceMonth));
+  writeMeta(M, 'REFERENCIA', row.referenceLabel ?? formatReferenceForDocument(row.referenceMonth));
   doc.moveTo(M + cellW, y + 8).lineTo(M + cellW, y + stripH - 8).strokeColor(PALETTE.hairline).lineWidth(0.5).stroke();
   writeMeta(M + cellW, 'EMITIDO EM', formatDate(docDate));
   doc.moveTo(M + cellW * 2, y + 8).lineTo(M + cellW * 2, y + stripH - 8).strokeColor(PALETTE.hairline).lineWidth(0.5).stroke();
@@ -721,7 +724,7 @@ function buildDocument(
     renderItem('Servico de Internet', totals.total, [planLine], false, row.planCode);
   }
   doc.fillColor(PALETTE.light).fontSize(8.5).font('Helvetica')
-    .text(`Periodo de referencia ${formatReferenceForDocument(row.referenceMonth)}`, M, y, { width: CW, lineBreak: false });
+    .text(`Periodo de referencia ${row.periodLabel ?? formatReferenceForDocument(row.referenceMonth)}`, M, y, { width: CW, lineBreak: false });
   y += 22;
 
   // === 5) FISCAL BREAKDOWN — Subtotal · IVA · Total (right-aligned mini table)
@@ -973,6 +976,34 @@ export async function renderReceiptPdf(receiptId: number, archive = false): Prom
         description: `Por conta da fatura ${invoice.invoiceNumber || invoice.referenceMonth}`,
         amountCve: receipt.amountCve
       }];
+
+  // Recibo que liquidou várias faturas (`settleInvoices`): um documento, uma linha por fatura.
+  const group = db.prepare(`
+    SELECT r.amount_cve AS amountCve, p.invoice_number AS invoiceNumber, p.reference_month AS referenceMonth
+    FROM payment_receipts r JOIN payments p ON p.id = r.payment_id
+    WHERE r.receipt_number = ? AND (r.voided_at IS NULL) = (? IS NULL)
+    ORDER BY p.due_date, p.id
+  `).all(receipt.receiptNumber, receipt.voidedAt) as Array<{ amountCve: number; invoiceNumber: string | null; referenceMonth: string }>;
+  if (group.length > 1) {
+    const total = Math.round(group.reduce((sum, g) => sum + Number(g.amountCve), 0) * 100) / 100;
+    const first = formatReferenceForDocument(group[0].referenceMonth);
+    const last = formatReferenceForDocument(group[group.length - 1].referenceMonth);
+    const grouped: PaymentDocumentRow = {
+      ...row,
+      referenceLabel: `${group.length} faturas`,
+      periodLabel: first === last ? first : `${first} a ${last}`,
+      amountCve: total,
+      notes: [invoice.notes?.trim(), `Liquida ${group.length} faturas.`].filter(Boolean).join('\n')
+    };
+    const groupLines: DocumentLine[] = group.map((g) => ({
+      kind: 'internet',
+      // Mês abreviado: a coluna trunca por volta dos 30 caracteres.
+      description: `${g.invoiceNumber || 'Fatura'} · ${formatReferenceForDocument(g.referenceMonth).replace(/^(\p{L}{3})\p{L}*\//u, '$1/')}`,
+      amountCve: g.amountCve
+    }));
+    const buffer = await pdfBuffer(grouped, 'receipt', groupLines);
+    return { buffer, filename: documentFilename('receipt', grouped) };
+  }
 
   const buffer = await pdfBuffer(row, 'receipt', lines);
   return { buffer, filename: documentFilename('receipt', row) };

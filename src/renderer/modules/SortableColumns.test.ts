@@ -36,6 +36,7 @@ describe('colunas ordenáveis', () => {
       'ReceivablesModule.tsx',
       'ServicesModule.tsx',
       'StockModule.tsx',
+      'finance/ClientFinanceDialog.tsx',
       'finance/PortfolioTable.tsx',
       'payments/PaymentsList.tsx',
       'plans/PlanChangeHistory.tsx',

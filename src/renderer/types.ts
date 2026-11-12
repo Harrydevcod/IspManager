@@ -131,6 +131,7 @@ export type PaymentRow = {
   serviceId?: number | null;
   /** Data de emissão, como vem da lista. */
   invoiceDate?: string | null;
+  clientId: number;
   clientName: string;
   clientCode: string | null;
   clientNif: string | null;
@@ -227,6 +228,78 @@ export type ReceivablesReport = {
   };
   aging: Record<AgingBucket, { invoices: number; amountCve: number }>;
   clients: ReceivableClient[];
+};
+
+export type PaymentPlanStatus = 'em_dia' | 'em_atraso' | 'cumprido' | 'cancelado';
+export type InstallmentStatus = 'paga' | 'por_pagar' | 'em_atraso';
+
+export type PaymentPlan = {
+  id: number;
+  clientId: number;
+  totalCve: number;
+  paidCve: number;
+  remainingCve: number;
+  arrearsCve: number;
+  status: PaymentPlanStatus;
+  notes: string | null;
+  createdAt: string;
+  createdBy: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  invoices: Array<{ paymentId: number; invoiceNumber: string | null; referenceMonth: string; balanceCve: number }>;
+  installments: Array<{ seq: number; dueDate: string; amountCve: number; status: InstallmentStatus }>;
+};
+
+export type ClientFinanceInvoice = {
+  paymentId: number;
+  referenceMonth: string;
+  invoiceNumber: string | null;
+  dueDate: string;
+  amountCve: number;
+  receivedCve: number;
+  balanceCve: number;
+  daysOverdue: number;
+  bucket: AgingBucket;
+  isOverdue: boolean;
+  planId: number | null;
+};
+
+export type ClientFinance = {
+  client: { id: number; name: string; code: string | null; phone: string | null; zone: string | null; status: string };
+  summary: {
+    openCve: number;
+    overdueCve: number;
+    overdueInvoices: number;
+    creditCve: number;
+    maxDaysOverdue: number;
+    lastPaymentDate: string | null;
+    lastPaymentCve: number | null;
+  };
+  invoices: ClientFinanceInvoice[];
+  receipts: Array<{
+    id: number;
+    paymentId: number;
+    invoiceNumber: string | null;
+    referenceMonth: string;
+    receiptNumber: string;
+    paymentDate: string;
+    amountCve: number;
+    paymentMethod: string;
+    source: 'cash' | 'credit';
+    voidedAt: string | null;
+  }>;
+  notices: Array<{
+    channel: 'whatsapp' | 'sms';
+    id: number;
+    kind: string;
+    origin: string | null;
+    status: string;
+    at: string;
+    paymentId: number | null;
+    invoiceNumber: string | null;
+    referenceMonth: string | null;
+  }>;
+  plans: PaymentPlan[];
 };
 
 export type SmsEventType = 'invoice_issued' | 'receipt_confirmed' | 'payment_overdue' | 'suspension_notice';

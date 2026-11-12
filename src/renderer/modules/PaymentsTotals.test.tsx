@@ -26,6 +26,7 @@ function row(
 ): PaymentRow {
   return {
     id,
+    clientId: id,
     clientName: `Cliente ${id}`,
     clientCode: `C00${id}`,
     clientNif: null,

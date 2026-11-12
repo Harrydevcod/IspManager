@@ -28,6 +28,8 @@ export type ReceivableInvoice = {
   balanceCve: number;
   daysOverdue: number;
   bucket: AgingBucket;
+  /** Mesmo predicado de vencido que os painéis (`overdueSqlPredicate`). */
+  isOverdue: boolean;
 };
 
 export type ReceivableClient = {
@@ -76,7 +78,8 @@ export function agingBucket(daysOverdue: number): AgingBucket {
 
 const num = (value: unknown): number => Math.round((Number(value) || 0) * 100) / 100;
 
-export function loadReceivables(db: Database): ReceivablesReport {
+/** `clientId` restringe a um cliente (ficha financeira); sem ele, a carteira toda. */
+export function loadReceivables(db: Database, clientId?: number): ReceivablesReport {
   // Em aberto = ainda ha saldo e o documento nao esta anulado. O `> 0.005`
   // trava o residuo de virgula flutuante que sobra de somar REAL em escudos.
   const rows = db.prepare(`
@@ -102,8 +105,9 @@ export function loadReceivables(db: Database): ReceivablesReport {
     FROM payments p
     JOIN clients c ON c.id = p.client_id
     WHERE c.system_kind IS NULL AND p.status <> 'cancelled' AND ${balanceSqlExpr('p')} > 0.005
+      ${clientId === undefined ? '' : 'AND p.client_id = ?'}
     ORDER BY p.due_date, c.full_name
-  `).all() as Array<{
+  `).all(...(clientId === undefined ? [] : [clientId])) as Array<{
     paymentId: number;
     clientId: number;
     clientName: string;
@@ -150,7 +154,8 @@ export function loadReceivables(db: Database): ReceivablesReport {
       receivedCve: num(row.receivedCve),
       balanceCve,
       daysOverdue,
-      bucket
+      bucket,
+      isOverdue: Boolean(row.isOverdue)
     });
 
     aging[bucket].invoices += 1;
