@@ -41,7 +41,7 @@ enum class Tab(val label: String, val icon: ImageVector) {
   TERRENO("Terreno", Lucide.MapPin),
   PEDIDOS("Pedidos", Lucide.MessageSquare),
   HISTORICO("Histórico", Lucide.History),
-  DEFINICOES("Definições", Lucide.Settings)
+  DEFINICOES("Ajustes", Lucide.Settings)
 }
 
 @Composable
@@ -121,8 +121,8 @@ private fun PairedApp(
       }
     }
     Hairline()
-    // Five tabs on a narrow phone (or a large system font): a label must never wrap
-    // ("Definiçõe/s"). All labels share one size, stepped down until the widest fits.
+    // Five tabs on a narrow phone (or a large system font): all labels share one
+    // size, stepped down until the widest fits without wrapping.
     var labelScale by remember { mutableFloatStateOf(1f) }
     val labelSize = MaterialTheme.typography.labelSmall.fontSize * labelScale
     NavigationBar(containerColor = Surface, tonalElevation = 0.dp) {
