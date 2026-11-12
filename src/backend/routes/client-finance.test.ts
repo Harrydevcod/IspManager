@@ -22,6 +22,7 @@ let loadAutoSuspensionPreview: (db: Database.Database) => { candidates: Array<{ 
 
 const FUTURE = monthlyDueDates(businessDay(), 2)[1];
 const YESTERDAY = businessDay(Date.now() - 86_400_000);
+const FOUR_DAYS_AGO = businessDay(Date.now() - 4 * 86_400_000);
 
 beforeAll(async () => {
   dataDir = mkdtempSync(path.join(tmpdir(), 'ispm-client-finance-'));
@@ -155,8 +156,13 @@ describe('acordo de pagamento', () => {
     expect(noticed()).toEqual([]);
     expect((await finance(clientId)).invoices.every((i: { planId: number }) => i.planId === plan.id)).toBe(true);
 
-    // A 1.ª prestação venceu ontem e nada foi pago: o acordo cai em atraso e a proteção sai.
+    // Venceu ontem e nada foi pago: ainda dentro dos 3 dias de folga, o acordo segue em dia.
     db.prepare('UPDATE payment_plan_installments SET due_date = ? WHERE plan_id = ? AND seq = 1').run(YESTERDAY, plan.id);
+    expect((await finance(clientId)).plans[0]).toMatchObject({ status: 'em_dia', arrearsCve: 0 });
+    expect(suspendable()).toEqual([]);
+
+    // Passada a folga: o acordo cai em atraso e a proteção sai.
+    db.prepare('UPDATE payment_plan_installments SET due_date = ? WHERE plan_id = ? AND seq = 1').run(FOUR_DAYS_AGO, plan.id);
     const late = (await finance(clientId)).plans[0];
     expect(late).toMatchObject({ status: 'em_atraso', arrearsCve: 2500 });
     expect(late.installments[0].status).toBe('em_atraso');

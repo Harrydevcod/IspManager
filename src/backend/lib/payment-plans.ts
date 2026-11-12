@@ -1,8 +1,8 @@
 import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
-import { businessDay, SQL_BUSINESS_TODAY } from '../../shared/business-day';
+import { businessDay, sqlBusinessDate } from '../../shared/business-day';
 import { roundEscudos } from '../../shared/money';
-import { MAX_INSTALLMENTS, MIN_INSTALLMENTS, monthlyDueDates, splitInstallments } from '../../shared/payment-plan';
+import { MAX_INSTALLMENTS, MIN_INSTALLMENTS, monthlyDueDates, PLAN_GRACE_DAYS, splitInstallments } from '../../shared/payment-plan';
 import { balanceSqlExpr, type PaymentOpResult } from './payments';
 
 /**
@@ -13,7 +13,7 @@ import { balanceSqlExpr, type PaymentOpResult } from './payments';
  * anulada conta como perdoada). Em dia = cobre tudo o que já venceu no calendário.
  *
  * Enquanto em dia, as faturas abrangidas saem do corte automático e dos avisos de cobrança
- * (`planProtectedSql`). Uma prestação por pagar depois do vencimento tira a proteção sozinha:
+ * (`planProtectedSql`). Uma prestação por pagar `PLAN_GRACE_DAYS` dias depois do vencimento tira a proteção sozinha:
  * o funil normal retoma sem ninguém ter de lembrar.
  */
 
@@ -80,9 +80,13 @@ export function planProtectedSql(paymentAlias: string): string {
       AND pp.status = 'active'
       AND COALESCE((
         SELECT SUM(ins.amount_cve) FROM payment_plan_installments ins
-        WHERE ins.plan_id = pp.id AND date(ins.due_date) < ${SQL_BUSINESS_TODAY}
+        WHERE ins.plan_id = pp.id AND date(ins.due_date) < ${sqlBusinessDate(`'-${PLAN_GRACE_DAYS} days'`)}
       ), 0) <= pp.total_cve - ${planRemainingSql('pp')} + 0.005
   )`;
+}
+
+function planLateBefore(): string {
+  return businessDay(Date.now() - PLAN_GRACE_DAYS * 86_400_000);
 }
 
 function isValidIsoDate(value: string): boolean {
@@ -185,7 +189,8 @@ const planSelect = () => `
   LEFT JOIN users u ON u.id = pp.created_by
 `;
 
-function toView(db: Database, row: PlanRow, today: string): PaymentPlanView {
+/** `lateBefore`: uma prestação vencida antes deste dia e por pagar está em atraso (passou a folga). */
+function toView(db: Database, row: PlanRow, lateBefore: string): PaymentPlanView {
   const remainingCve = roundEscudos(Math.min(row.remainingCve, row.totalCve));
   const paidCve = roundEscudos(row.totalCve - remainingCve);
   const installmentRows = db.prepare(`
@@ -197,10 +202,10 @@ function toView(db: Database, row: PlanRow, today: string): PaymentPlanView {
   let dueSoFar = 0;
   const installments = installmentRows.map((ins): PaymentPlanInstallment => {
     cumulative += ins.amountCve;
-    if (ins.dueDate < today) dueSoFar += ins.amountCve;
+    if (ins.dueDate < lateBefore) dueSoFar += ins.amountCve;
     const status: InstallmentStatus = paidCve + 0.005 >= cumulative
       ? 'paga'
-      : ins.dueDate < today ? 'em_atraso' : 'por_pagar';
+      : ins.dueDate < lateBefore ? 'em_atraso' : 'por_pagar';
     return { ...ins, status };
   });
   const arrearsCve = roundEscudos(Math.max(0, dueSoFar - paidCve));
@@ -230,12 +235,12 @@ function toView(db: Database, row: PlanRow, today: string): PaymentPlanView {
 
 export function loadPaymentPlan(db: Database, planId: number): PaymentPlanView | null {
   const row = db.prepare(`${planSelect()} WHERE pp.id = ?`).get(planId) as PlanRow | undefined;
-  return row ? toView(db, row, businessDay()) : null;
+  return row ? toView(db, row, planLateBefore()) : null;
 }
 
 /** Acordos do cliente, o mais recente primeiro. */
 export function listClientPaymentPlans(db: Database, clientId: number): PaymentPlanView[] {
-  const today = businessDay();
+  const lateBefore = planLateBefore();
   const rows = db.prepare(`${planSelect()} WHERE pp.client_id = ? ORDER BY pp.id DESC`).all(clientId) as PlanRow[];
-  return rows.map((row) => toView(db, row, today));
+  return rows.map((row) => toView(db, row, lateBefore));
 }
