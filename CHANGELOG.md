@@ -4,6 +4,13 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.64](https://github.com/Harrydevcod/IspManager/releases/tag/v2.64.0) — 2026-11-12
+
+### Adicionado
+- **Ficha financeira do cliente.** Em Financeiro › Pendentes, clicar num cliente abre a ficha financeira dele sem sair do Financeiro. Em Pagamentos, cada linha tem a ação "Ficha financeira do cliente". A ficha mostra a dívida e o vencido, as faturas em atraso, o crédito e o último pagamento. Tem separadores para as faturas em aberto, o histórico de pagamentos e os avisos enviados, com WhatsApp e SMS numa só lista.
+- **Acordo de pagamento.** Divide as faturas em aberto em 2 a 12 prestações mensais. Enquanto o cliente cumprir, essas faturas ficam fora do corte automático e dos avisos de cobrança. Uma prestação por pagar 3 dias depois do vencimento devolve-as ao funil normal. O acordo mostra o que já foi pago, o que falta e o estado de cada prestação. Cancelá-lo exige um motivo.
+- **Liquidar faturas na ficha.** Há um botão "Liquidar" em cada fatura. Também se podem selecionar várias, ou todas, e liquidá-las de uma vez com um único recibo, cujo PDF lista as faturas pagas. Anular esse recibo anula-o em todas as faturas.
+
 ## [2.63](https://github.com/Harrydevcod/IspManager/releases/tag/v2.63.0) — 2026-11-12
 
 ### Adicionado
