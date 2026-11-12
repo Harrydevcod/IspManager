@@ -11,7 +11,7 @@ import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
 import { businessDay } from '../../shared/business-day';
-import { monthlyDueDates, splitInstallments } from '../../shared/payment-plan';
+import { monthlyDueDates, scheduleError, splitInstallments } from '../../shared/payment-plan';
 
 let app: FastifyInstance;
 let db: Database.Database;
@@ -91,6 +91,12 @@ const pay = (paymentId: number, amountCve: number) =>
 const createPlan = (clientId: number, body: Record<string, unknown>) =>
   app.inject({ method: 'POST', url: `/api/clients/${clientId}/payment-plans`, payload: body });
 
+/** Calendário em partes iguais e meses seguidos, como a proposta inicial do ecrã. */
+const even = (totalCve: number, count: number, first = FUTURE) => {
+  const amounts = splitInstallments(totalCve, count);
+  return monthlyDueDates(first, count).map((dueDate, i) => ({ dueDate, amountCve: amounts[i] }));
+};
+
 const finance = async (clientId: number) =>
   (await app.inject({ method: 'GET', url: `/api/clients/${clientId}/finance` })).json();
 
@@ -145,7 +151,7 @@ describe('acordo de pagamento', () => {
     expect(suspendable()).toContain(invoices[0]);
     expect(noticed()).toEqual(expect.arrayContaining(invoices));
 
-    const response = await createPlan(clientId, { paymentIds: invoices, installments: 2, firstDueDate: FUTURE, notes: 'Combinado ao balcão' });
+    const response = await createPlan(clientId, { paymentIds: invoices, installments: even(5000, 2), notes: 'Combinado ao balcão' });
     expect(response.statusCode).toBe(201);
     const plan = response.json();
     expect(plan).toMatchObject({ totalCve: 5000, paidCve: 0, status: 'em_dia' });
@@ -183,17 +189,56 @@ describe('acordo de pagamento', () => {
     const a = seed('CLT-A');
     const b = seed('CLT-B');
 
-    expect((await createPlan(a.clientId, { paymentIds: [b.invoices[0]], installments: 2, firstDueDate: FUTURE })).statusCode).toBe(400);
-    expect((await createPlan(a.clientId, { paymentIds: a.invoices, installments: 2, firstDueDate: YESTERDAY })).statusCode).toBe(400);
-    expect((await createPlan(a.clientId, { paymentIds: a.invoices, installments: 13, firstDueDate: FUTURE })).statusCode).toBe(400);
-    expect((await createPlan(a.clientId, { paymentIds: [a.invoices[0]], installments: 2, firstDueDate: FUTURE })).statusCode).toBe(201);
-    expect((await createPlan(a.clientId, { paymentIds: a.invoices, installments: 2, firstDueDate: FUTURE })).statusCode).toBe(409);
+    expect((await createPlan(a.clientId, { paymentIds: [b.invoices[0]], installments: even(2500, 2) })).statusCode).toBe(400);
+    expect((await createPlan(a.clientId, { paymentIds: a.invoices, installments: even(5000, 2, YESTERDAY) })).statusCode).toBe(400);
+    expect((await createPlan(a.clientId, { paymentIds: a.invoices, installments: even(5000, 13) })).statusCode).toBe(400);
+    expect((await createPlan(a.clientId, { paymentIds: [a.invoices[0]], installments: even(2500, 2) })).statusCode).toBe(201);
+    expect((await createPlan(a.clientId, { paymentIds: a.invoices, installments: even(5000, 2) })).statusCode).toBe(409);
     expect(db.prepare('SELECT COUNT(*) AS n FROM payment_plans').get()).toEqual({ n: 1 });
+  });
+
+  test('prestações à medida: grava o calendário combinado tal qual', async () => {
+    const { clientId, invoices } = seed();
+    const [d1, d2, d3] = monthlyDueDates(FUTURE, 3);
+    const schedule = [
+      { dueDate: d1, amountCve: 3000 },
+      { dueDate: d2, amountCve: 1500 },
+      { dueDate: d3, amountCve: 500 }
+    ];
+
+    const response = await createPlan(clientId, { paymentIds: invoices, installments: schedule });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().installments.map(({ dueDate, amountCve }: { dueDate: string; amountCve: number }) => ({ dueDate, amountCve })))
+      .toEqual(schedule);
+  });
+
+  test('prestações à medida: recusa soma diferente da dívida e datas fora de ordem', async () => {
+    const { clientId, invoices } = seed();
+    const [d1, d2] = monthlyDueDates(FUTURE, 2);
+    const plan = (installments: Array<{ dueDate: string; amountCve: number }>) =>
+      createPlan(clientId, { paymentIds: invoices, installments });
+
+    const short = await plan([{ dueDate: d1, amountCve: 2500 }, { dueDate: d2, amountCve: 1000 }]);
+    expect(short.statusCode).toBe(400);
+    expect(short.json().error).toMatch(/soma/);
+    expect((await plan([{ dueDate: d2, amountCve: 2500 }, { dueDate: d1, amountCve: 2500 }])).statusCode).toBe(400);
+    expect((await plan([{ dueDate: d1, amountCve: 2500 }, { dueDate: d1, amountCve: 2500 }])).statusCode).toBe(400);
+    expect((await plan([{ dueDate: d1, amountCve: 4999.999 }, { dueDate: d2, amountCve: 0.001 }])).statusCode).toBe(400);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM payment_plans').get()).toEqual({ n: 0 });
+  });
+
+  test('scheduleError espelha as regras no ecrã', () => {
+    const today = '2027-01-10';
+    expect(scheduleError([{ dueDate: '2027-01-10', amountCve: 1000.5 }, { dueDate: '2027-02-01', amountCve: 1000 }], 2000.5, today)).toBeNull();
+    expect(scheduleError([{ dueDate: '2027-01-09', amountCve: 1000 }, { dueDate: '2027-02-01', amountCve: 1000 }], 2000, today)).toMatch(/passado/);
+    expect(scheduleError([{ dueDate: '2027-02-30', amountCve: 1000 }, { dueDate: '2027-03-01', amountCve: 1000 }], 2000, today)).toMatch(/inválida/);
+    expect(scheduleError([{ dueDate: '2027-01-10', amountCve: 2000 }], 2000, today)).toMatch(/Entre/);
   });
 
   test('cancelar exige motivo, devolve as faturas ao funil e só acontece uma vez', async () => {
     const { clientId, invoices } = seed();
-    const plan = (await createPlan(clientId, { paymentIds: invoices, installments: 3, firstDueDate: FUTURE })).json();
+    const plan = (await createPlan(clientId, { paymentIds: invoices, installments: even(5000, 3) })).json();
     const cancel = (body: Record<string, unknown>) =>
       app.inject({ method: 'POST', url: `/api/payment-plans/${plan.id}/cancel`, payload: body });
 
@@ -205,7 +250,7 @@ describe('acordo de pagamento', () => {
     expect((await cancel({ reason: 'outra vez' })).statusCode).toBe(409);
 
     // Cancelado, as faturas podem entrar num acordo novo.
-    expect((await createPlan(clientId, { paymentIds: invoices, installments: 2, firstDueDate: FUTURE })).statusCode).toBe(201);
+    expect((await createPlan(clientId, { paymentIds: invoices, installments: even(5000, 2) })).statusCode).toBe(201);
   });
 });
 

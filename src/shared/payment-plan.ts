@@ -25,3 +25,32 @@ export function monthlyDueDates(firstDueDate: string, count: number): string[] {
     return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(Math.min(d, lastDay)).padStart(2, '0')}`;
   });
 }
+
+export type ScheduleEntry = { dueDate: string; amountCve: number };
+
+function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+/**
+ * O calendário é o que se combinou com o cliente: valores e datas livres, mas tem de cobrir a dívida
+ * exata (senão "cumprido" mente) e andar para a frente no tempo. Devolve o motivo da recusa, ou null.
+ */
+export function scheduleError(schedule: ScheduleEntry[], totalCve: number, today: string): string | null {
+  if (schedule.length < MIN_INSTALLMENTS || schedule.length > MAX_INSTALLMENTS) {
+    return `Entre ${MIN_INSTALLMENTS} e ${MAX_INSTALLMENTS} prestações`;
+  }
+  for (const [i, entry] of schedule.entries()) {
+    if (!isIsoDate(entry.dueDate)) return `Data da prestação ${i + 1} inválida`;
+    if (i === 0 && entry.dueDate < today) return 'A 1.ª prestação não pode ser no passado';
+    if (i > 0 && entry.dueDate <= schedule[i - 1].dueDate) return 'As datas das prestações têm de ser crescentes';
+    if (!(entry.amountCve > 0) || Math.abs(entry.amountCve * 100 - Math.round(entry.amountCve * 100)) > 1e-6) {
+      return `Valor da prestação ${i + 1} inválido`;
+    }
+  }
+  const sumCentavos = schedule.reduce((sum, entry) => sum + Math.round(entry.amountCve * 100), 0);
+  if (sumCentavos !== Math.round(totalCve * 100)) return 'A soma das prestações tem de ser igual à dívida';
+  return null;
+}

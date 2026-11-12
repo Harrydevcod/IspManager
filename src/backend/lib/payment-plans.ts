@@ -2,7 +2,7 @@ import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
 import { businessDay, sqlBusinessDate } from '../../shared/business-day';
 import { roundEscudos } from '../../shared/money';
-import { MAX_INSTALLMENTS, MIN_INSTALLMENTS, monthlyDueDates, PLAN_GRACE_DAYS, splitInstallments } from '../../shared/payment-plan';
+import { MAX_INSTALLMENTS, MIN_INSTALLMENTS, PLAN_GRACE_DAYS, scheduleError } from '../../shared/payment-plan';
 import { balanceSqlExpr, type PaymentOpResult } from './payments';
 
 /**
@@ -19,8 +19,11 @@ import { balanceSqlExpr, type PaymentOpResult } from './payments';
 
 export const createPaymentPlanSchema = z.object({
   paymentIds: z.array(z.number().int().positive()).min(1).max(200),
-  installments: z.number().int().min(MIN_INSTALLMENTS).max(MAX_INSTALLMENTS),
-  firstDueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  // O calendário combinado com o cliente: valores e datas livres (scheduleError valida o resto).
+  installments: z.array(z.object({
+    dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    amountCve: z.number().positive()
+  })).min(MIN_INSTALLMENTS).max(MAX_INSTALLMENTS),
   notes: z.string().trim().max(500).optional().nullable()
 });
 export type CreatePaymentPlanInput = z.infer<typeof createPaymentPlanSchema>;
@@ -89,11 +92,6 @@ function planLateBefore(): string {
   return businessDay(Date.now() - PLAN_GRACE_DAYS * 86_400_000);
 }
 
-function isValidIsoDate(value: string): boolean {
-  const date = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}
-
 export function createPaymentPlan(
   db: Database,
   clientId: number,
@@ -101,12 +99,7 @@ export function createPaymentPlan(
   userId: number | null
 ): PaymentOpResult<PaymentPlanView> {
   const paymentIds = [...new Set(input.paymentIds)];
-  if (!isValidIsoDate(input.firstDueDate)) {
-    return { ok: false, status: 400, error: 'Data da 1.ª prestação inválida' };
-  }
-  if (input.firstDueDate < businessDay()) {
-    return { ok: false, status: 400, error: 'A 1.ª prestação não pode ser no passado' };
-  }
+  const today = businessDay();
   const client = db.prepare('SELECT id FROM clients WHERE id = ? AND system_kind IS NULL').get(clientId);
   if (!client) return { ok: false, status: 404, error: 'Cliente não encontrado' };
 
@@ -133,21 +126,18 @@ export function createPaymentPlan(
       total += row.balanceCve;
     }
     total = roundEscudos(total);
-    if (total < input.installments) {
-      return { ok: false, status: 400, error: 'Valor demasiado baixo para tantas prestações' };
-    }
+    const invalid = scheduleError(input.installments, total, today);
+    if (invalid) return { ok: false, status: 400, error: invalid };
 
     const planId = Number(db.prepare(`
       INSERT INTO payment_plans (client_id, total_cve, notes, created_by) VALUES (?, ?, ?, ?)
     `).run(clientId, total, input.notes || null, userId).lastInsertRowid);
     const linkInvoice = db.prepare('INSERT INTO payment_plan_invoices (plan_id, payment_id) VALUES (?, ?)');
     for (const paymentId of paymentIds) linkInvoice.run(planId, paymentId);
-    const amounts = splitInstallments(total, input.installments);
-    const dates = monthlyDueDates(input.firstDueDate, input.installments);
     const addInstallment = db.prepare(`
       INSERT INTO payment_plan_installments (plan_id, seq, due_date, amount_cve) VALUES (?, ?, ?, ?)
     `);
-    amounts.forEach((amount, i) => addInstallment.run(planId, i + 1, dates[i], amount));
+    input.installments.forEach((entry, i) => addInstallment.run(planId, i + 1, entry.dueDate, roundEscudos(entry.amountCve)));
     return { ok: true, value: planId };
   });
 
