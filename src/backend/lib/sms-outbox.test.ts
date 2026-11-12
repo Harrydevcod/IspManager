@@ -80,6 +80,19 @@ describe('SMS outbox', () => {
     expect(row).toMatchObject({ status: 'pending_approval', android_request_id: 'android-1' });
   });
 
+  test('an overlapping drain is skipped: the same SMS never goes to the phone twice', async () => {
+    enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const postRequest = vi.fn(async () => { await gate; return { ok: true as const, androidRequestId: 'android-1' }; });
+    const deps = { postRequest, fetchStatus: async () => ({ status: 'pending_approval' as const }) };
+    const first = runSmsOutboxIfDue(new Date(), deps);
+    expect((await runSmsOutboxIfDue(new Date(), deps)).skipped).toBeDefined();
+    release();
+    await first;
+    expect(postRequest).toHaveBeenCalledTimes(1);
+  });
+
   test('offline Android schedules retry', async () => {
     const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
     await runSmsOutboxIfDue(new Date('2026-06-04T12:00:00Z'), {

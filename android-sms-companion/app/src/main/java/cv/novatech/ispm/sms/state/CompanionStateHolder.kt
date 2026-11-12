@@ -35,13 +35,14 @@ class CompanionStateHolder(
   @Volatile private var dashboardReceivedAt: Long? = null
   @Volatile private var lastDesktopAt: Long? = null
   @Volatile private var lastRejectedAt: Long? = null
+  @Volatile private var syncRequestedAt: Long? = null
   /** Requests waiting for their SIM: 0 = queued behind another, else when it can go. */
   private val waiting = java.util.concurrent.ConcurrentHashMap<String, Long>()
   private val undo = UndoController(scope, onSend = ::performSend)
 
   fun refresh() {
     val snap = PairingSnapshot(pairingStore.isPaired(), pairingStore.deviceName(), "${localIpv4()}:8765")
-    _state.value = buildUiState(snap, serverRunning, permissionGranted, requestStore.list(), undo.sendingIds, device, dashboard, dashboardReceivedAt, lastDesktopAt, lastRejectedAt, waiting.toMap())
+    _state.value = buildUiState(snap, serverRunning, permissionGranted, requestStore.list(), undo.sendingIds, device, dashboard, dashboardReceivedAt, lastDesktopAt, lastRejectedAt, waiting.toMap(), syncRequestedAt)
   }
 
   fun setServerRunning(value: Boolean) { serverRunning = value; refresh() }
@@ -58,6 +59,9 @@ class CompanionStateHolder(
     lastDesktopAt = null; lastRejectedAt = null
     refresh()
   }
+  fun requestSync() { syncRequestedAt = now(); refresh() }
+  /** Goes in `GET /status` until the summary arrives or the wait runs out. */
+  fun syncRequested(): Boolean = SyncRules.phase(syncRequestedAt, dashboardReceivedAt, now()) == SyncPhase.WAITING
   fun markDesktopSeen() { lastDesktopAt = now(); refresh() }
   fun markDesktopRejected() { lastRejectedAt = now(); refresh() }
 

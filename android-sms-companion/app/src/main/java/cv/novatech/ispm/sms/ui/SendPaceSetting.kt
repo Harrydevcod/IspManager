@@ -33,7 +33,7 @@ fun SendPaceSetting() {
   ) {
     Text("Ritmo de envio por SIM", color = TextPrimary, fontWeight = FontWeight.SemiBold)
     Text(
-      "Com \"Aprovar todos\", os SMS saem a este ritmo em vez de todos de uma vez. Acima disto, a operadora pode bloquear o cartão.",
+      "Acima disto, a operadora pode bloquear o cartão.",
       color = TextSecondary, style = MaterialTheme.typography.bodySmall
     )
     Spacer(Modifier.height(10.dp))

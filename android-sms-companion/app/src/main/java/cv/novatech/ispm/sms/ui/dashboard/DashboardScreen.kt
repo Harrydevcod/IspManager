@@ -6,7 +6,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,11 +20,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cv.novatech.ispm.sms.dashboard.Dashboard
 import cv.novatech.ispm.sms.dashboard.DashboardRules
 import cv.novatech.ispm.sms.dashboard.Freshness
+import cv.novatech.ispm.sms.state.SyncPhase
+import cv.novatech.ispm.sms.state.SyncRules
 import cv.novatech.ispm.sms.ui.theme.*
 import kotlinx.coroutines.delay
 
@@ -28,16 +37,17 @@ import kotlinx.coroutines.delay
  * network up, then the day-to-day counts.
  */
 @Composable
-fun DashboardScreen(dashboard: Dashboard?, receivedAt: Long?) {
+fun DashboardScreen(dashboard: Dashboard?, receivedAt: Long?, syncRequestedAt: Long? = null, onSync: () -> Unit = {}) {
   // Re-render every 30 s so "há N min" and the stale state move on their own.
   var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
   LaunchedEffect(Unit) {
     while (true) { delay(30_000); now = System.currentTimeMillis() }
   }
   val freshness = DashboardRules.freshness(receivedAt, now)
+  val sync = SyncRules.phase(syncRequestedAt, receivedAt, now)
 
   if (dashboard == null || freshness == Freshness.NONE) {
-    WaitingForDesktop()
+    WaitingForDesktop(sync, onSync)
     return
   }
 
@@ -46,7 +56,7 @@ fun DashboardScreen(dashboard: Dashboard?, receivedAt: Long?) {
     verticalArrangement = Arrangement.spacedBy(12.dp),
     contentPadding = PaddingValues(vertical = 16.dp)
   ) {
-    item { Header(dashboard.companyName, receivedAt!!, now, freshness) }
+    item { Header(dashboard.companyName, receivedAt!!, now, freshness, sync, onSync) }
     item { OperationCard(dashboard.operation) }
     if (dashboard.hasFieldData) item { CashTodayCard(dashboard.money) }
     item { MoneyCard(dashboard.money) }
@@ -56,33 +66,59 @@ fun DashboardScreen(dashboard: Dashboard?, receivedAt: Long?) {
 }
 
 @Composable
-private fun WaitingForDesktop() {
+private fun WaitingForDesktop(sync: SyncPhase, onSync: () -> Unit) {
   Column(
     Modifier.fillMaxSize().padding(32.dp),
     verticalArrangement = Arrangement.Center,
     horizontalAlignment = Alignment.CenterHorizontally
   ) {
-    Text("À espera do desktop", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
-    Spacer(Modifier.height(6.dp))
-    Text(
-      "O ISPM no PC envia o resumo de 5 em 5 minutos quando está ligado e na mesma rede.",
-      color = TextMuted, style = MaterialTheme.typography.bodySmall
-    )
+    Text("À espera do ISPM", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
+    Spacer(Modifier.height(16.dp))
+    OutlinedButton(onClick = onSync, enabled = sync != SyncPhase.WAITING) {
+      SyncGlyph(sync)
+      Spacer(Modifier.width(8.dp))
+      Text("Sincronizar", color = TextPrimary)
+    }
+    syncLine(sync)?.let { (text, color) ->
+      Spacer(Modifier.height(8.dp))
+      Text(text, color = color, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+    }
+  }
+}
+
+/** What the sync is doing, when it is doing something; null = show the usual freshness. */
+private fun syncLine(sync: SyncPhase): Pair<String, Color>? = when (sync) {
+  SyncPhase.WAITING -> "A aguardar o ISPM" to TextSecondary
+  SyncPhase.NO_ANSWER -> "O ISPM não respondeu. O PC está ligado e na mesma rede?" to Warn
+  SyncPhase.IDLE -> null
+}
+
+@Composable
+private fun SyncGlyph(sync: SyncPhase) {
+  if (sync == SyncPhase.WAITING) {
+    CircularProgressIndicator(Modifier.size(18.dp), color = AccentBlue, strokeWidth = 2.dp)
+  } else {
+    Icon(Icons.Filled.Refresh, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(20.dp))
   }
 }
 
 @Composable
-private fun Header(company: String, receivedAt: Long, now: Long, freshness: Freshness) {
+private fun Header(company: String, receivedAt: Long, now: Long, freshness: Freshness, sync: SyncPhase, onSync: () -> Unit) {
   val stale = freshness == Freshness.STALE
-  Column {
-    Text(company, color = TextPrimary, style = MaterialTheme.typography.titleLarge)
-    Spacer(Modifier.height(2.dp))
-    Text(
-      if (stale) "O desktop não envia ${DashboardRules.ago(now - receivedAt)} — PC desligado ou fora da rede?"
-      else "Atualizado ${DashboardRules.ago(now - receivedAt)}",
-      color = if (stale) Warn else TextMuted,
-      style = MaterialTheme.typography.bodySmall
-    )
+  val (line, lineColor) = syncLine(sync)
+    ?: if (stale) "Sem dados novos ${DashboardRules.ago(now - receivedAt)}. PC desligado ou fora da rede?" to Warn
+    else "Atualizado ${DashboardRules.ago(now - receivedAt)}" to TextMuted
+  Row(verticalAlignment = Alignment.CenterVertically) {
+    Column(Modifier.weight(1f)) {
+      Text(company, color = TextPrimary, style = MaterialTheme.typography.titleLarge)
+      Spacer(Modifier.height(2.dp))
+      Text(line, color = lineColor, style = MaterialTheme.typography.bodySmall)
+    }
+    // 48 dp target (IconButton default); disabled while a request is already out.
+    IconButton(onClick = onSync, enabled = sync != SyncPhase.WAITING) {
+      if (sync == SyncPhase.WAITING) SyncGlyph(sync)
+      else Icon(Icons.Filled.Refresh, contentDescription = "Sincronizar", tint = TextSecondary)
+    }
   }
 }
 
@@ -219,14 +255,18 @@ private fun MonthBars(months: List<Dashboard.MonthAmount>) {
       val current = i == months.lastIndex
       Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Bottom, horizontalAlignment = Alignment.CenterHorizontally) {
         if (m.amountCve == max) {
-          Text(DashboardRules.formatCve(m.amountCve).removeSuffix("\$00") + "$", color = TextSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+          Text(
+            DashboardRules.formatCve(m.amountCve).removeSuffix("\$00") + "$", color = TextSecondary,
+            style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false,
+            modifier = Modifier.wrapContentWidth(unbounded = true)
+          )
           Spacer(Modifier.height(4.dp))
         }
         Box(
           Modifier.fillMaxWidth()
             .fillMaxHeight((m.amountCve.toFloat() / max * 0.78f).coerceAtLeast(0.02f))
             .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
-            .background(if (current) AccentBlue else SurfaceMuted)
+            .background(if (current) AccentBlue else BorderStrong)
         )
         Spacer(Modifier.height(6.dp))
         val idx = m.month.substringAfter('-').toIntOrNull()?.minus(1)

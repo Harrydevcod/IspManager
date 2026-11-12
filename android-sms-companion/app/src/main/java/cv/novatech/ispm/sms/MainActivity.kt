@@ -99,6 +99,7 @@ class MainActivity : FragmentActivity() {
             applySecureFlag()
           },
           onRejectAll = { app.holder.rejectAll() },
+          onSync = { app.holder.requestSync() },
           pendingEvents = fieldEvents,
           onFieldEvent = { kind, payload, photos ->
             // Photos are written to disk: off the main thread.

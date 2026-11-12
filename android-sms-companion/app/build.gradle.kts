@@ -2,6 +2,7 @@ plugins {
   id("com.android.application")
   id("org.jetbrains.kotlin.android")
   id("org.jetbrains.kotlin.plugin.compose")
+  id("app.cash.paparazzi")
 }
 
 android {
@@ -12,8 +13,8 @@ android {
     applicationId = "cv.novatech.ispm.sms"
     minSdk = 26
     targetSdk = 35
-    versionCode = 12
-    versionName = "0.8.1"
+    versionCode = 13
+    versionName = "0.9.0"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 

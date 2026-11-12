@@ -49,7 +49,9 @@ data class CompanionUiState(
   /** Last request signed with our secret (in memory: resets with the process). */
   val lastDesktopAt: Long? = null,
   /** Last signed request that failed verification: the desktop has another secret. */
-  val lastRejectedAt: Long? = null
+  val lastRejectedAt: Long? = null,
+  /** "Sincronizar" pressed; see [SyncRules]. In memory: resets with the process. */
+  val syncRequestedAt: Long? = null
 )
 
 enum class DesktopLink { LINKED, WAITING, MISMATCH }
@@ -93,7 +95,8 @@ fun buildUiState(
   dashboardReceivedAt: Long? = null,
   lastDesktopAt: Long? = null,
   lastRejectedAt: Long? = null,
-  waiting: Map<String, Long> = emptyMap()
+  waiting: Map<String, Long> = emptyMap(),
+  syncRequestedAt: Long? = null
 ): CompanionUiState {
   val ui = requests.map { it.toUi(sendingIds.contains(it.id), waiting[it.id]) }
   val pending = ui.filter { it.status in OPEN }
@@ -118,6 +121,7 @@ fun buildUiState(
     dashboard = dashboard,
     dashboardReceivedAt = dashboardReceivedAt,
     lastDesktopAt = lastDesktopAt,
-    lastRejectedAt = lastRejectedAt
+    lastRejectedAt = lastRejectedAt,
+    syncRequestedAt = syncRequestedAt
   )
 }

@@ -66,7 +66,8 @@ fun CompanionApp(
   onLockEnabledChange: (Boolean) -> Unit,
   pendingEvents: List<FieldEvent> = emptyList(),
   onFieldEvent: (String, JSONObject, List<ByteArray>) -> Unit = { _, _, _ -> },
-  onRejectAll: () -> Unit = {}
+  onRejectAll: () -> Unit = {},
+  onSync: () -> Unit = {}
 ) {
   Surface(Modifier.fillMaxSize().background(Bg)) {
     if (!state.paired) {
@@ -75,7 +76,7 @@ fun CompanionApp(
       PairedApp(
         state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim,
         onApprove, onApproveAll, onUndo, onReject, onForgetPairing, onOpen, onLockEnabledChange,
-        pendingEvents, onFieldEvent, onRejectAll
+        pendingEvents, onFieldEvent, onRejectAll, onSync
       )
     }
   }
@@ -97,14 +98,15 @@ private fun PairedApp(
   onLockEnabledChange: (Boolean) -> Unit,
   pendingEvents: List<FieldEvent>,
   onFieldEvent: (String, JSONObject, List<ByteArray>) -> Unit,
-  onRejectAll: () -> Unit
+  onRejectAll: () -> Unit,
+  onSync: () -> Unit
 ) {
   // Pending SMS outrank the overview: open on Pedidos when there is work waiting.
   var tab by rememberSaveable { mutableStateOf(if (state.pending.isNotEmpty()) Tab.PEDIDOS else Tab.PAINEL) }
   Column(Modifier.fillMaxSize()) {
     Box(Modifier.weight(1f).fillMaxWidth()) {
       when (tab) {
-        Tab.PAINEL -> DashboardScreen(state.dashboard, state.dashboardReceivedAt)
+        Tab.PAINEL -> DashboardScreen(state.dashboard, state.dashboardReceivedAt, state.syncRequestedAt, onSync)
         Tab.TERRENO -> FieldScreen(state.dashboard, state.dashboardReceivedAt, onOpen, pendingEvents, onFieldEvent)
         Tab.PEDIDOS -> RequestsScreen(state, onRequestPermission, onRequestBatteryExemption, onApprove, onApproveAll, onUndo, onReject, onForgetPairing, onRejectAll)
         Tab.HISTORICO -> HistoryScreen(state)

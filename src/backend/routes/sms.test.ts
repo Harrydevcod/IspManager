@@ -185,6 +185,18 @@ describe('SMS routes', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  test('POST /api/sms/sync with the connection off refuses and never contacts the phone', async () => {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionEnabled','false'), ('smsCompanionBaseUrl','http://192.168.1.50:8765')`).run();
+    writeSecret(db, 'smsCompanionPairingKey', 'secret');
+    const fetchMock = vi.fn(async () => new Response('{}'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await app.inject({ method: 'POST', url: '/api/sms/sync' });
+
+    expect(response.statusCode).toBe(409);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test('POST /api/sms/pairing creates a pairing payload and stores the pairing config', async () => {
     const response = await app.inject({ method: 'POST', url: '/api/sms/pairing', payload: { baseUrl: 'http://192.168.1.50:8765', deviceName: 'Android A' } });
     expect(response.statusCode).toBe(200);

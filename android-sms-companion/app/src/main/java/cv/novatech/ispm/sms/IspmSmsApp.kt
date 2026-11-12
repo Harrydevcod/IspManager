@@ -124,7 +124,9 @@ class IspmSmsApp : Application() {
           .put("pausedUntil", u.pausedUntil?.let { java.time.Instant.ofEpochMilli(it).toString() } ?: JSONObject.NULL))
       }
     }
-    return DeviceStatus.read(this, holder.state.value.pending.size).toJson().put("simBudgets", budgets)
+    return DeviceStatus.read(this, holder.state.value.pending.size).toJson()
+      .put("simBudgets", budgets)
+      .put("syncRequested", holder.syncRequested())
   }
 
   /** `POST /dashboard`: keeps the snapshot and alerts on the change into red. False = rejected. */

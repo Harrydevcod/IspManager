@@ -5,3 +5,5 @@ local.properties
 .idea/
 .kotlin/
 captures/
+# Paparazzi PNGs: CI artifact for the visual smoke, not committed goldens (yet).
+app/src/test/snapshots/

@@ -250,6 +250,10 @@ async function defaultFetchStatus(androidRequestId: string): Promise<SmsStatusRe
 
 const defaultDeps: SmsOutboxDeps = { postRequest: defaultPostRequest, fetchStatus: defaultFetchStatus };
 
+// Uma linha fica em pending_dispatch enquanto o POST está no ar: duas drenagens
+// sobrepostas (timer + "Sincronizar agora") mandavam o mesmo SMS duas vezes.
+let drainRunning = false;
+
 export async function runSmsOutboxIfDue(
   now: Date = new Date(),
   deps: SmsOutboxDeps = defaultDeps
@@ -257,7 +261,16 @@ export async function runSmsOutboxIfDue(
   if (getSetting('smsCompanionEnabled') !== 'true') {
     return { dispatched: 0, retried: 0, skipped: 'SMS companion desativado' };
   }
+  if (drainRunning) return { dispatched: 0, retried: 0, skipped: 'drenagem ja em execucao' };
+  drainRunning = true;
+  try {
+    return await drainSmsOutbox(now, deps);
+  } finally {
+    drainRunning = false;
+  }
+}
 
+async function drainSmsOutbox(now: Date, deps: SmsOutboxDeps): Promise<{ dispatched: number; retried: number }> {
   const db = getSqliteDatabase();
   const nowIso = now.toISOString().replace('T', ' ').slice(0, 19);
   const rows = db.prepare(`

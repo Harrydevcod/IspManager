@@ -90,7 +90,7 @@ fun FieldScreen(
         if (receivedAt != null) {
           val stale = freshness == Freshness.STALE
           Text(
-            if (stale) "Dados de ${DashboardRules.ago(now - receivedAt)} — o PC não envia, confirme antes de cobrar"
+            if (stale) "Dados de ${DashboardRules.ago(now - receivedAt)}: confirme antes de cobrar"
             else "Atualizado ${DashboardRules.ago(now - receivedAt)}",
             color = if (stale) Warn else TextMuted, style = MaterialTheme.typography.bodySmall
           )

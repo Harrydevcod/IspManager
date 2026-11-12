@@ -37,7 +37,7 @@ fun OnboardingScreen(onPaired: (PairingInfo) -> Unit, onInvalid: () -> Unit) {
     Text("ISPM SMS", style = MaterialTheme.typography.titleLarge)
     Spacer(Modifier.height(8.dp))
     Text(
-      "Para parear, lê o QR Code que aparece no ISPM (Configurações → SMS).",
+      "Leia o QR do ISPM no PC, em Definições › SMS.",
       color = TextSecondary, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium
     )
     Spacer(Modifier.height(24.dp))
@@ -47,7 +47,7 @@ fun OnboardingScreen(onPaired: (PairingInfo) -> Unit, onInvalid: () -> Unit) {
           ScanOptions()
             .setOrientationLocked(false)
             .setBeepEnabled(false)
-            .setPrompt("Aponta ao QR do ISPM")
+            .setPrompt("Aponte ao QR do ISPM")
             .setCaptureActivity(PortraitCaptureActivity::class.java)
         )
       },

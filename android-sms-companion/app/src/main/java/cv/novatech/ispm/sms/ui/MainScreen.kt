@@ -155,10 +155,6 @@ private fun LockSetting(enabled: Boolean, deviceSecure: Boolean, onChange: (Bool
     Row(verticalAlignment = Alignment.CenterVertically) {
       Column(Modifier.weight(1f)) {
         Text("Bloquear a app", color = TextPrimary, fontWeight = FontWeight.SemiBold)
-        Text(
-          "Pede a impressão digital ou o PIN ao abrir e depois de 2 min fora. Esconde os dados nas apps recentes.",
-          color = TextSecondary, style = MaterialTheme.typography.bodySmall
-        )
       }
       Spacer(Modifier.width(12.dp))
       Switch(checked = enabled, onCheckedChange = onChange)

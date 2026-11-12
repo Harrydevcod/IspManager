@@ -9,13 +9,17 @@ import androidx.compose.ui.unit.dp
 
 private val DarkColors = darkColorScheme(
   primary = AccentBlue,
-  onPrimary = TextPrimary,
+  onPrimary = Bg, // --on-accent: light text on #3380FF is only 3.6:1
   secondary = AccentOrange,
   background = Bg,
   onBackground = TextPrimary,
   surface = Surface,
   onSurface = TextPrimary,
-  error = Danger
+  surfaceVariant = Surface,
+  onSurfaceVariant = TextSecondary,
+  outline = BorderC,
+  error = Danger,
+  onError = Bg
 )
 
 private val IspmShapes = Shapes(
