@@ -11,14 +11,15 @@ import {
   renderWhatsappTemplate
 } from '../../shared/whatsapp';
 import { enqueueWhatsapp } from './whatsapp-outbox';
-import { configuredWhatsappProviderLabel, normalizeWhatsappPhone, resolveWhatsappProvider } from './whatsapp-provider';
-import { businessDay, sqlBusinessDate } from '../../shared/business-day';
+import { configuredWhatsappProviderLabel, normalizeWhatsappPhone, resolveWhatsappProvider, whatsappChannelEnabled } from './whatsapp-provider';
+import { businessDay, businessHour, cutDate, NOTICE_SEND_FROM_HOUR, sqlBusinessDate } from '../../shared/business-day';
+import { autoSuspensionGraceDays } from './auto-suspension';
+import { SUSPENSION_NOTICE_LEAD_DAYS } from '../../shared/upcoming-suspension';
 
 const LAST_RUN_KEY = 'lastOverdueNoticesDate';
 const DEFAULT_REMINDER_DAYS = 3;
 const DEFAULT_OVERDUE_DAYS = 1;
 const DEFAULT_WARNING_DAYS = 7;
-const DEFAULT_SUSPENSION_DAYS = 15;
 const DEFAULT_COOLDOWN_DAYS = 7;
 
 export type NoticeType = 'reminder' | 'overdue' | 'warning' | 'suspension';
@@ -27,14 +28,15 @@ export type FunnelStage = { stage: NoticeType; threshold: number };
 
 /**
  * Funil de cobrança configurável, por dias relativos ao vencimento (negativo =
- * antes). Reutiliza `whatsappSuspensionNoticeDays` para a etapa de suspensão.
+ * antes). A etapa de suspensão vem da tolerância do corte automático: começa
+ * {@link SUSPENSION_NOTICE_LEAD_DAYS} dias antes do corte, nunca antes do aviso.
  * Devolve as etapas ordenadas por threshold crescente.
  */
 export function loadFunnel(): FunnelStage[] {
   const reminderDays = Number(getSetting('dunningReminderDays')) || DEFAULT_REMINDER_DAYS;
   const overdueDays = Number(getSetting('dunningOverdueDays')) || DEFAULT_OVERDUE_DAYS;
   const warningDays = Number(getSetting('dunningWarningDays')) || DEFAULT_WARNING_DAYS;
-  const suspensionDays = Number(getSetting('whatsappSuspensionNoticeDays')) || DEFAULT_SUSPENSION_DAYS;
+  const suspensionDays = Math.max(warningDays, autoSuspensionGraceDays(getSqliteDatabase()) + 1 - SUSPENSION_NOTICE_LEAD_DAYS);
   const stages: FunnelStage[] = [
     { stage: 'reminder', threshold: -Math.abs(reminderDays) },
     { stage: 'overdue', threshold: overdueDays },
@@ -121,6 +123,11 @@ function writeSetting(key: string, value: string): void {
   `).run(key, value);
 }
 
+/** Pré-verificação barata para o relógio de hora a hora: hoje ainda por correr, e já é hora. */
+export function overdueNoticesDueToday(now: Date = new Date()): boolean {
+  return isEnabled() && getSetting(LAST_RUN_KEY) !== businessDay(now) && businessHour(now) >= NOTICE_SEND_FROM_HOUR;
+}
+
 function isEnabled(): boolean {
   const raw = getSetting('autoNoticesEnabled').toLowerCase();
   return raw === 'true' || raw === '1';
@@ -160,6 +167,9 @@ export async function runOverdueNoticesIfDue(
     return { skipped: true, reason: 'avisos automaticos desativados' };
   }
 
+  if (!whatsappChannelEnabled(getSqliteDatabase())) {
+    return { skipped: true, reason: 'canal WhatsApp desligado' };
+  }
   if (!resolveWhatsappProvider(getSqliteDatabase())) {
     return { skipped: true, reason: `${configuredWhatsappProviderLabel(getSqliteDatabase())} nao configurado` };
   }
@@ -168,10 +178,13 @@ export async function runOverdueNoticesIfDue(
   if (getSetting(LAST_RUN_KEY) === todayIso) {
     return { skipped: true, reason: `avisos de ${todayIso} ja executados` };
   }
+  if (businessHour(now) < NOTICE_SEND_FROM_HOUR) {
+    return { skipped: true, reason: `avisos so a partir das ${NOTICE_SEND_FROM_HOUR}:00` };
+  }
 
   const db = getSqliteDatabase();
   const funnel = loadFunnel();
-  const suspensionDays = Number(getSetting('whatsappSuspensionNoticeDays')) || DEFAULT_SUSPENSION_DAYS;
+  const grace = autoSuspensionGraceDays(db);
   const cooldownDays = Number(getSetting('noticeCooldownDays')) || DEFAULT_COOLDOWN_DAYS;
   const companyName = getSetting('companyName') || 'ISPM';
   // Janela de antecipação = etapa mais cedo do funil (reminder, threshold negativo).
@@ -180,9 +193,12 @@ export async function runOverdueNoticesIfDue(
   const candidates = loadOverdueCandidates(reminderWindow);
 
   const recentlyNotified = db.prepare(`
-    SELECT 1 FROM whatsapp_notices
-    WHERE payment_id = ? AND notice_type = ? AND status = 'sent'
-      AND sent_at >= datetime('now', ?)
+    SELECT 1 FROM whatsapp_notices n
+    LEFT JOIN whatsapp_outbox o ON o.id = n.outbox_id
+    WHERE n.payment_id = ? AND n.notice_type = ? AND n.status = 'sent'
+      AND n.sent_at >= datetime('now', ?)
+      -- Um aviso cuja mensagem falhou na fila não conta: não chegou ao cliente.
+      AND COALESCE(o.status, 'sent') NOT IN ('failed', 'cancelled')
     LIMIT 1
   `);
   const logNotice = db.prepare(`
@@ -219,7 +235,8 @@ export async function runOverdueNoticesIfDue(
         referenceMonth: row.referenceMonth,
         invoiceNumber: row.invoiceNumber,
         daysOverdue: row.daysOverdue,
-        suspensionDays,
+        suspensionDays: grace + 1,
+        suspensionDate: cutDate(row.dueDate, grace, todayIso),
         paymentLink: row.paymentLink
       },
       companyName

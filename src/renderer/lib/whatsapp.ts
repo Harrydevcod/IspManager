@@ -32,6 +32,7 @@ type WhatsappTemplateContext = {
   receiptNumber?: string | null;
   daysOverdue?: number;
   suspensionDays?: number;
+  suspensionDate?: string | null;
   paymentLink?: string | null;
 };
 

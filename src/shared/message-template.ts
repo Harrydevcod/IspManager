@@ -14,6 +14,8 @@ export type MessageTemplateData = {
   receiptNumber?: string | null;
   daysOverdue?: number;
   suspensionDays?: number;
+  /** Dia do corte (`AAAA-MM-DD`), de `cutDate`. Ganha a `suspensionDays` em `{data_suspensao}`. */
+  suspensionDate?: string | null;
   /** Link de pagamento online da fatura; vazio = `{link}` desaparece. */
   paymentLink?: string | null;
 };
@@ -60,7 +62,7 @@ export function renderMessageTemplate(template: string, data: MessageTemplateDat
     recibo: data.receiptNumber || '-',
     dias_atraso: days(data.daysOverdue),
     dias_suspensao: days(data.suspensionDays),
-    data_suspensao: suspensionDate(data.dueDate, data.suspensionDays)
+    data_suspensao: data.suspensionDate ? formatPtDate(data.suspensionDate) : suspensionDate(data.dueDate, data.suspensionDays)
   };
   return expandPaymentLink(template, data.paymentLink).replace(/\{([a-z_]+)\}/gi, (token, key: string) => values[key.toLowerCase()] ?? token);
 }

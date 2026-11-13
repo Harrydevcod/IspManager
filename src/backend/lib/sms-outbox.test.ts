@@ -150,6 +150,22 @@ describe('SMS outbox', () => {
     expect(row.failed_at).toBeTruthy();
   });
 
+  test('telemóvel fora de alcance não gasta tentativas: o SMS espera por ele', async () => {
+    const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
+    db.prepare('UPDATE sms_outbox SET max_attempts=1 WHERE id=?').run(id);
+    const unreachable = { postRequest: async () => ({ ok: false as const, error: 'fetch failed', unreachable: true }), fetchStatus: async () => ({ status: 'pending_approval' as const }) };
+
+    await runSmsOutboxIfDue(new Date(), unreachable);
+    expect(db.prepare('SELECT status, attempts, last_error FROM sms_outbox WHERE id = ?').get(id))
+      .toEqual({ status: 'pending_dispatch', attempts: 0, last_error: 'fetch failed' });
+
+    // 24 h sem resposta: desiste, com a razão à vista.
+    db.prepare('UPDATE sms_outbox SET next_attempt_at = NULL WHERE id = ?').run(id);
+    await runSmsOutboxIfDue(new Date(Date.now() + 25 * 3_600_000), unreachable);
+    expect(db.prepare('SELECT status, last_error FROM sms_outbox WHERE id = ?').get(id))
+      .toEqual({ status: 'failed', last_error: 'Telemóvel inacessível há 24 h' });
+  });
+
   test('poll updates final sent status', async () => {
     const id = enqueueSmsNotification({ eventType: 'test', toPhone: '+2389912233', body: 'teste' });
     db.prepare(`UPDATE sms_outbox SET status='pending_approval', android_request_id='android-1' WHERE id=?`).run(id);

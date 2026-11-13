@@ -71,6 +71,8 @@ export function SmsTab({
         title="Ligação à app móvel ISPM SMS"
         description="Ligar pede a password de administrador."
         checked={form.smsCompanionEnabled}
+        // Nunca os dois canais desligados: sem o WhatsApp ligado, o SMS não se desliga.
+        disabled={form.smsCompanionEnabled && !form.whatsappChannelEnabled}
         onChange={(event) => onToggle('smsCompanionEnabled', event.target.checked)}
       />
       <Toggle

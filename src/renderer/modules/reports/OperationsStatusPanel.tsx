@@ -9,6 +9,7 @@ import { formatCve, formatPtDateTime, formatPtMonth } from '../../lib/format';
 import { formatCompactEscudos } from '../../../shared/money';
 import { SEVERITY_LABELS, type OperationsSeverity, type OperationsStatus } from '../../../shared/operations-status';
 import { downloadAuthenticated } from '../../lib/download';
+import { authFetch, useAuth } from '../../lib/auth';
 import { BarChart, DonutChart, TrendChart, type BarRow, type Slice } from './OperationsCharts';
 import { OPERATIONS_POLL_MS, useOperationsStatus } from './useOperationsStatus';
 import './OperationsStatusPanel.css';
@@ -83,7 +84,9 @@ function SectionTitle({ children, count }: { children: ReactNode; count?: number
   );
 }
 
-function FindingList({ findings }: { findings: OperationsStatus['network']['findings'] }) {
+type Finding = OperationsStatus['network']['findings'][number];
+
+function FindingList({ findings, action }: { findings: Finding[]; action?: (finding: Finding) => ReactNode }) {
   const relevant = findings.filter((finding) => finding.severity !== 'green');
   if (relevant.length === 0) return null;
   return (
@@ -97,6 +100,7 @@ function FindingList({ findings }: { findings: OperationsStatus['network']['find
             <strong>{finding.title}</strong>
             <small>{finding.detail}</small>
           </div>
+          {action?.(finding)}
         </li>
       ))}
     </ul>
@@ -105,6 +109,29 @@ function FindingList({ findings }: { findings: OperationsStatus['network']['find
 
 export function OperationsStatusPanel({ active }: { active: boolean }) {
   const { status, error, loading, updatedAt, refresh } = useOperationsStatus(active);
+  const { user } = useAuth();
+  const [channelError, setChannelError] = useState<string | null>(null);
+  const [switchingChannel, setSwitchingChannel] = useState(false);
+
+  async function turnOffWhatsapp() {
+    setSwitchingChannel(true);
+    setChannelError(null);
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/settings/whatsapp-channel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: false })
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { error?: string };
+        setChannelError(body.error || 'Não foi possível desligar o canal WhatsApp.');
+        return;
+      }
+      refresh();
+    } finally {
+      setSwitchingChannel(false);
+    }
+  }
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
@@ -501,7 +528,16 @@ export function OperationsStatusPanel({ active }: { active: boolean }) {
           <ShieldAlert className="ops-card-glyph" size={18} aria-hidden />
         </Panel>
       </div>
-      <FindingList findings={[...messaging.findings, ...accessLayer.findings, ...system.findings, ...compliance.findings]} />
+      {channelError && <p className="module-message error" role="alert">{channelError}</p>}
+      <FindingList
+        findings={[...messaging.findings, ...accessLayer.findings, ...system.findings, ...compliance.findings]}
+        action={(finding) => finding.code === 'messaging.provider-blocked' && user?.role === 'admin'
+          && messaging.sms.enabled && messaging.sms.paired ? (
+            <Button variant="secondary" size="sm" loading={switchingChannel} onClick={() => void turnOffWhatsapp()}>
+              Desligar canal WhatsApp
+            </Button>
+          ) : null}
+      />
 
       {status.risks.length > 0 && (
         <>

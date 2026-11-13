@@ -2,9 +2,11 @@
 import { getSqliteDatabase } from '../db/database';
 import { isSystemClient, SYSTEM_CLIENT_ERROR } from './system-client';
 import { renderPaymentDocumentPdf } from './documents';
+import { enqueueSmsFallbackForWhatsapp } from './sms-notices';
 import {
   configuredWhatsappProviderLabel,
   resolveWhatsappProvider,
+  whatsappChannelEnabled,
   type WhatsappProvider,
   type WhatsappSendResult
 } from './whatsapp-provider';
@@ -29,7 +31,8 @@ export type OutboxDeps = {
 };
 
 const defaultDeps: OutboxDeps = {
-  resolveProvider: () => resolveWhatsappProvider(getSqliteDatabase()),
+  // Canal desligado = fornecedor nenhum: a fila não contacta ninguém.
+  resolveProvider: () => whatsappChannelEnabled(getSqliteDatabase()) ? resolveWhatsappProvider(getSqliteDatabase()) : null,
   renderPdf: renderPaymentDocumentPdf
 };
 
@@ -40,11 +43,16 @@ function backoffMinutes(attempt: number): number {
 }
 
 function notConfigured(): string {
+  if (!whatsappChannelEnabled(getSqliteDatabase())) return 'canal WhatsApp desligado';
   return `${configuredWhatsappProviderLabel(getSqliteDatabase())} nao configurado`;
 }
 
+export const WHATSAPP_CHANNEL_OFF_ERROR = 'Canal WhatsApp desligado';
+
 export function enqueueWhatsapp(entry: WhatsappOutboxEntry): number {
   const db = getSqliteDatabase();
+  // Canal desligado: nada entra na fila, para não haver falhas que não são falhas.
+  if (!whatsappChannelEnabled(db)) throw new Error(WHATSAPP_CHANNEL_OFF_ERROR);
   const documentClient = entry.docPaymentId
     ? db.prepare('SELECT client_id AS clientId FROM payments WHERE id = ?').get(entry.docPaymentId) as { clientId: number } | undefined
     : undefined;
@@ -126,7 +134,9 @@ async function drainOutbox(
   // O `provider_message_id` só faz sentido junto de quem o emitiu.
   const markSent = db.prepare(`UPDATE whatsapp_outbox SET status='sent', provider=?, provider_message_id=?, attempts=attempts+1, last_error=NULL, next_attempt_at=NULL, updated_at=datetime('now') WHERE id=?`);
   const markRetry = db.prepare(`UPDATE whatsapp_outbox SET attempts=attempts+1, last_error=?, next_attempt_at=?, updated_at=datetime('now') WHERE id=?`);
-  const markFailed = db.prepare(`UPDATE whatsapp_outbox SET status='failed', attempts=attempts+1, last_error=?, updated_at=datetime('now') WHERE id=?`);
+  const markFailedStmt = db.prepare(`UPDATE whatsapp_outbox SET status='failed', attempts=attempts+1, last_error=?, updated_at=datetime('now') WHERE id=?`);
+  // Falha definitiva de um aviso de cobrança: o SMS equivalente entra já, não no dia seguinte.
+  const markFailed = { run: (error: string, id: number) => { markFailedStmt.run(error, id); enqueueSmsFallbackForWhatsapp(id); } };
 
   let sent = 0, failed = 0, retried = 0;
 

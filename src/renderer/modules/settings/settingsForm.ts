@@ -36,7 +36,7 @@ export type SettingsFormState = {
   whatsappReceiptTemplate: string;
   whatsappOverdueTemplate: string;
   whatsappSuspensionTemplate: string;
-  whatsappSuspensionNoticeDays: string;
+  whatsappChannelEnabled: boolean;
   autoNoticesEnabled: boolean;
   noticeCooldownDays: string;
   ultraMsgInstanceId: string;

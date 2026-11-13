@@ -11,8 +11,11 @@ import {
 } from '../../shared/whatsapp';
 import { balanceSqlExpr, overdueSqlPredicate } from '../lib/payments';
 import { openPaymentLinkSql } from '../lib/vinti4';
-import { enqueueWhatsapp, runWhatsappOutboxIfDue } from '../lib/whatsapp-outbox';
-import { configuredWhatsappProviderLabel, normalizeWhatsappPhone, resolveWhatsappProvider } from '../lib/whatsapp-provider';
+import { enqueueWhatsapp, runWhatsappOutboxIfDue, WHATSAPP_CHANNEL_OFF_ERROR } from '../lib/whatsapp-outbox';
+import { configuredWhatsappProviderLabel, normalizeWhatsappPhone, resolveWhatsappProvider, whatsappChannelEnabled } from '../lib/whatsapp-provider';
+import { autoSuspensionGraceDays } from '../lib/auto-suspension';
+import { loadFunnel } from '../lib/notices';
+import { cutDate } from '../../shared/business-day';
 
 const sendWhatsappSchema = z.object({
   phone: z.string().trim().min(1),
@@ -83,6 +86,9 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Mensagem WhatsApp invalida' });
     }
 
+    if (!whatsappChannelEnabled(getSqliteDatabase())) {
+      return reply.status(409).send({ error: WHATSAPP_CHANNEL_OFF_ERROR });
+    }
     const provider = resolveWhatsappProvider(getSqliteDatabase());
     if (!provider) {
       return reply.status(400).send({ error: `${configuredWhatsappProviderLabel(getSqliteDatabase())} nao configurado` });
@@ -108,6 +114,9 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
     const parsed = sendDocumentSchema.safeParse(request.body);
     if (!Number.isInteger(id) || id <= 0 || !parsed.success) {
       return reply.status(400).send({ error: 'Pedido invalido' });
+    }
+    if (!whatsappChannelEnabled(getSqliteDatabase())) {
+      return reply.status(409).send({ error: WHATSAPP_CHANNEL_OFF_ERROR });
     }
     const provider = resolveWhatsappProvider(getSqliteDatabase());
     if (!provider) {
@@ -170,9 +179,10 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
       ORDER BY py.due_date ASC
     `).all() as OverdueCandidate[];
 
-    const suspensionDays = Number(getSetting('whatsappSuspensionNoticeDays')) || 15;
+    const grace = autoSuspensionGraceDays(db);
+    const suspensionStart = loadFunnel().find((stage) => stage.stage === 'suspension')?.threshold ?? grace + 1;
     const candidatesForNotice = parsed.data.noticeType === 'suspension'
-      ? candidates.filter((row) => row.daysOverdue >= suspensionDays)
+      ? candidates.filter((row) => row.daysOverdue >= suspensionStart)
       : candidates;
 
     const eligible = candidatesForNotice.filter((row) => {
@@ -211,6 +221,9 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
       return { dryRun: false, total: candidatesForNotice.length, sent: 0, failed: [], skipped, details: [] };
     }
 
+    if (!whatsappChannelEnabled(getSqliteDatabase())) {
+      return reply.status(409).send({ error: WHATSAPP_CHANNEL_OFF_ERROR });
+    }
     const provider = resolveWhatsappProvider(getSqliteDatabase());
     if (!provider) {
       return reply.status(400).send({ error: `${configuredWhatsappProviderLabel(getSqliteDatabase())} nao configurado` });
@@ -244,7 +257,8 @@ export async function registerWhatsappRoutes(app: FastifyInstance) {
           referenceMonth: row.referenceMonth,
           invoiceNumber: row.invoiceNumber,
           daysOverdue: row.daysOverdue,
-          suspensionDays,
+          suspensionDays: grace + 1,
+          suspensionDate: cutDate(row.dueDate, grace),
           paymentLink: row.paymentLink
         },
         companyName

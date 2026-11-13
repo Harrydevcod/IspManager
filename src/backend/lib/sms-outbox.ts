@@ -9,7 +9,8 @@ import type { SmsEventType } from '../../shared/sms';
 const DEFAULT_COMPANION_PORT = 8765;
 
 export type SmsOutboxStatus = 'pending_dispatch' | 'pending_approval' | 'approved' | 'sent' | 'failed' | 'rejected' | 'cancelled';
-export type SmsDispatchResult = { ok: true; androidRequestId: string } | { ok: false; error: string };
+/** `unreachable`: o telemóvel não respondeu (desligado, fora do Wi-Fi). Não é recusa: espera-se por ele. */
+export type SmsDispatchResult = { ok: true; androidRequestId: string } | { ok: false; error: string; unreachable?: boolean };
 export type SmsStatusResult = { status: SmsOutboxStatus; error?: string; deliveredAt?: string | null };
 
 export type SmsOutboxDeps = {
@@ -228,7 +229,7 @@ async function defaultPostRequest(entry: { requestId: string; toPhone: string; b
     if (!response.ok) return { ok: false, error: String(json.error || `Android recusou SMS (${response.status})`) };
     return { ok: true, androidRequestId: String(json.id || entry.requestId) };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Android companion offline' };
+    return { ok: false, error: err instanceof Error ? err.message : 'Android companion offline', unreachable: true };
   }
 }
 
@@ -270,11 +271,14 @@ export async function runSmsOutboxIfDue(
   }
 }
 
+const UNREACHABLE_GIVE_UP_MS = 24 * 3_600_000;
+
 async function drainSmsOutbox(now: Date, deps: SmsOutboxDeps): Promise<{ dispatched: number; retried: number }> {
   const db = getSqliteDatabase();
   const nowIso = now.toISOString().replace('T', ' ').slice(0, 19);
   const rows = db.prepare(`
-    SELECT s.id, s.event_type AS eventType, s.to_phone AS toPhone, s.body, s.attempts, s.max_attempts AS maxAttempts, c.full_name AS clientName
+    SELECT s.id, s.event_type AS eventType, s.to_phone AS toPhone, s.body, s.attempts, s.max_attempts AS maxAttempts,
+           s.created_at AS createdAt, c.full_name AS clientName
     FROM sms_outbox s
     LEFT JOIN clients c ON c.id = s.client_id
     WHERE s.status='pending_dispatch' AND (s.next_attempt_at IS NULL OR s.next_attempt_at <= ?)
@@ -286,6 +290,7 @@ async function drainSmsOutbox(now: Date, deps: SmsOutboxDeps): Promise<{ dispatc
     body: string;
     attempts: number;
     maxAttempts: number;
+    createdAt: string;
     clientName: string | null;
   }>;
 
@@ -311,13 +316,28 @@ async function drainSmsOutbox(now: Date, deps: SmsOutboxDeps): Promise<{ dispatc
       continue;
     }
 
+    const next = new Date(now.getTime() + retryGraceMinutes() * 60_000).toISOString().replace('T', ' ').slice(0, 19);
+    // Telemóvel fora de alcance: não gasta tentativas, espera por ele até 24 h.
+    if (result.unreachable) {
+      if (now.getTime() - Date.parse(`${row.createdAt.replace(' ', 'T')}Z`) >= UNREACHABLE_GIVE_UP_MS) {
+        db.prepare(`
+          UPDATE sms_outbox SET status='failed', last_error=?, failed_at=datetime('now'), updated_at=datetime('now') WHERE id=?
+        `).run('Telemóvel inacessível há 24 h', row.id);
+      } else {
+        db.prepare(`
+          UPDATE sms_outbox SET last_error=?, next_attempt_at=?, updated_at=datetime('now') WHERE id=?
+        `).run(result.error, next, row.id);
+      }
+      retried += 1;
+      continue;
+    }
+
     const attemptsAfter = row.attempts + 1;
     if (attemptsAfter >= row.maxAttempts) {
       db.prepare(`
         UPDATE sms_outbox SET status='failed', attempts=attempts+1, last_error=?, failed_at=datetime('now'), updated_at=datetime('now') WHERE id=?
       `).run(result.error, row.id);
     } else {
-      const next = new Date(now.getTime() + retryGraceMinutes() * 60_000).toISOString().replace('T', ' ').slice(0, 19);
       db.prepare(`
         UPDATE sms_outbox SET attempts=attempts+1, last_error=?, next_attempt_at=?, updated_at=datetime('now') WHERE id=?
       `).run(result.error, next, row.id);

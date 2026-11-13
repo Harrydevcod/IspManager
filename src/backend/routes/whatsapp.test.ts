@@ -165,7 +165,7 @@ describe('POST /api/payments/notify-overdue', () => {
   test('dry-run suspension notices only include invoices past the configured suspension threshold', async () => {
     db.prepare(`
       INSERT INTO app_settings (key, value)
-      VALUES ('whatsappSuspensionNoticeDays', '15')
+      VALUES ('autoSuspensionGraceDays', '21')
     `).run();
 
     insertOverdueClient({ code: 'CLT-OLD', name: 'Cliente Atrasado', phone: '9910000', daysOverdue: 20 });

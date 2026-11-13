@@ -189,7 +189,13 @@ describe('ligar a app móvel ISPM SMS', () => {
     const admin = await adminToken();
     expect((await save(admin, { smsCompanionEnabled: true, confirmPassword: 'supersecret' })).statusCode).toBe(200);
     expect((await save(admin, { smsCompanionEnabled: true, companyName: 'Outro nome' })).statusCode).toBe(200);
-    expect((await save(admin, { smsCompanionEnabled: false })).statusCode).toBe(200);
+    // Nunca os dois canais parados: sem o WhatsApp configurado, o SMS não se desliga.
+    const alone = await save(admin, { smsCompanionEnabled: false });
+    expect(alone.statusCode).toBe(400);
+    expect(alone.json().error).toMatch(/Pelo menos um canal/);
+    expect(storedSmsEnabled()).toBe('true');
+    expect((await save(admin, { smsCompanionEnabled: true, ultraMsgInstanceId: 'instance1', ultraMsgToken: 'tok' })).statusCode).toBe(200);
+    expect((await save(admin, { smsCompanionEnabled: false, ultraMsgInstanceId: 'instance1' })).statusCode).toBe(200);
     expect(storedSmsEnabled()).toBe('false');
     expect(auditSummaries()).toContain('Desligou a app movel ISPM SMS');
   });

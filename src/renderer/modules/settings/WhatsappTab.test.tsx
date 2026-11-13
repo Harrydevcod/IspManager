@@ -8,7 +8,8 @@ function markup(overrides: Partial<SettingsFormState>) {
     whatsappProvider: 'ultramsg',
     ultraMsgInstanceId: 'instance9',
     metaPhoneNumberId: '1055',
-    whatsappSuspensionNoticeDays: '15',
+    whatsappChannelEnabled: true,
+    smsCompanionEnabled: true,
     noticeCooldownDays: '7',
     autoNoticesEnabled: false,
     whatsappTestTemplate: '',
@@ -48,5 +49,12 @@ describe('WhatsappTab', () => {
     expect(html).toContain('Token de acesso Meta');
     expect(html).toContain('24 horas');
     expect(html).not.toContain('UltraMsg instance ID');
+  });
+
+  test('o canal WhatsApp não se desliga quando o SMS também está desligado', () => {
+    // O interruptor do canal é o primeiro da aba.
+    const channel = (html: string) => html.match(/<input[^>]*type="checkbox"[^>]*>/)?.[0] ?? '';
+    expect(channel(markup({ whatsappChannelEnabled: true, smsCompanionEnabled: false }))).toContain('disabled=""');
+    expect(channel(markup({ whatsappChannelEnabled: true, smsCompanionEnabled: true }))).not.toContain('disabled=""');
   });
 });

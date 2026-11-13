@@ -3,7 +3,7 @@ import { getSqliteDatabase } from '../db/database';
 import { normalizeSmsPhone } from '../../shared/sms';
 import { enqueueSmsNotification } from './sms-outbox';
 import { enqueueWhatsapp } from './whatsapp-outbox';
-import { normalizeWhatsappPhone } from './whatsapp-provider';
+import { normalizeWhatsappPhone, whatsappChannelActive } from './whatsapp-provider';
 import { requestNetworkSync } from './network-sync';
 import { recordSystemAuditEntry } from './audit';
 import { effectivePeakPercent, effectiveReferenceGb, fupActionText, globalCycleDay, readFupSettings, type FupSettings } from './fup-settings';
@@ -307,7 +307,8 @@ export function runFupEngine(db: Database.Database, now: Date, deps: FupEngineDe
 export function runFupEngineIfDue(now = new Date()): FupEngineSummary {
   return runFupEngine(getSqliteDatabase(), now, {
     enqueueNotice: (notice) => {
-      if (notice.channel === 'SMS') {
+      // WhatsApp desligado ou por configurar: o aviso segue por SMS em vez de falhar.
+      if (notice.channel === 'SMS' || !whatsappChannelActive(getSqliteDatabase())) {
         const toPhone = normalizeSmsPhone(notice.phone);
         if (!toPhone) throw new Error('Telefone inválido para SMS');
         enqueueSmsNotification({ clientId: notice.clientId, serviceId: notice.serviceId, eventType: 'fup_notice', toPhone, body: notice.body });

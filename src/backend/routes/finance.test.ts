@@ -161,7 +161,7 @@ describe('settings routes', () => {
       whatsappInvoiceReadyTemplate: fallbackWhatsappInvoiceReadyTemplate,
       whatsappReceiptTemplate: fallbackWhatsappReceiptTemplate,
       whatsappOverdueTemplate: fallbackWhatsappOverdueTemplate,
-      whatsappSuspensionNoticeDays: 15,
+      whatsappChannelEnabled: true,
       ultraMsgInstanceId: '',
       ultraMsgToken: ''
     });
@@ -207,7 +207,6 @@ describe('settings routes', () => {
         whatsappReceiptTemplate: 'Recibo emitido {recibo}',
         whatsappOverdueTemplate: 'Fatura em atraso {fatura}',
         whatsappSuspensionTemplate: 'Suspensao em {dias_suspensao} dias',
-        whatsappSuspensionNoticeDays: 10,
         ultraMsgInstanceId: 'instance1150',
         ultraMsgToken: 'token-teste'
       }
@@ -230,7 +229,7 @@ describe('settings routes', () => {
       whatsappReceiptTemplate: 'Recibo emitido {recibo}',
       whatsappOverdueTemplate: 'Fatura em atraso {fatura}',
       whatsappSuspensionTemplate: 'Suspensao em {dias_suspensao} dias',
-      whatsappSuspensionNoticeDays: 10,
+      whatsappChannelEnabled: true,
       ultraMsgInstanceId: 'instance1150',
       // O token nunca sai: o GET diz so que existe.
       ultraMsgToken: '',
@@ -292,7 +291,7 @@ describe('whatsapp routes', () => {
     db.prepare("INSERT INTO app_settings (key, value) VALUES ('companyName', 'ISP CV')").run();
     db.prepare("INSERT INTO app_settings (key, value) VALUES ('whatsappOverdueTemplate', 'Atraso {nome} {fatura} {valor} {mes} {vencimento} {empresa}')").run();
     db.prepare("INSERT INTO app_settings (key, value) VALUES ('whatsappSuspensionTemplate', 'Corte {nome} {dias_atraso}/{dias_suspensao} {fatura}')").run();
-    db.prepare("INSERT INTO app_settings (key, value) VALUES ('whatsappSuspensionNoticeDays', '10')").run();
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('autoSuspensionGraceDays', '15')").run();
 
     const client = db.prepare(`
       INSERT INTO clients (client_code, full_name, phone, status)
@@ -326,7 +325,7 @@ describe('whatsapp routes', () => {
       payload: { dryRun: false, noticeType: 'suspension' }
     });
     expect(suspension.statusCode).toBe(200);
-    expect((fetchMock.mock.calls[0][1]?.body as URLSearchParams).get('body')).toContain('Corte Cliente WhatsApp 12 dias/10 dias FT-001');
+    expect((fetchMock.mock.calls[0][1]?.body as URLSearchParams).get('body')).toContain('Corte Cliente WhatsApp 12 dias/16 dias FT-001');
 
     fetchMock.mockRestore();
   });
