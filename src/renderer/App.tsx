@@ -11,6 +11,7 @@ import { installKeyboardNavigationIntent } from './lib/keyboardNavigation';
 import { readSidebarCollapsed, writeSidebarCollapsed } from './lib/sidebar';
 import { watchSystemTheme } from './lib/theme';
 import { Dashboard } from './modules/Dashboard';
+import { useUpcomingSuspensionsNotice } from './modules/finance/UpcomingSuspensionsCard';
 import { FinanceModule } from './modules/FinanceModule';
 import { TreasuryModule } from './modules/treasury/TreasuryModule';
 import { PlansModule } from './modules/PlansModule';
@@ -149,6 +150,10 @@ function AppShell() {
   // O cartão da rede no painel abre a Topologia já nos Incidentes; sair dela esquece o pedido.
   const [topologyTab, setTopologyTab] = useState<'incidents' | undefined>(undefined);
   useEffect(() => { if (section !== 'topology') setTopologyTab(undefined); }, [section]);
+
+  // Suspensões a chegar: notificação do Windows uma vez por dia, para quem cobra.
+  const openDashboard = useCallback(() => setSection('dashboard'), []);
+  useUpcomingSuspensionsNotice(visibleSections.some((item) => item.id === 'finance'), openDashboard);
 
   useEffect(() => writeSidebarCollapsed(navCollapsed), [navCollapsed]);
   useEffect(() => installKeyboardNavigationIntent(), []);
@@ -434,6 +439,7 @@ function AppShell() {
               onOpenWorkOrders={() => setSection('work-orders')}
               onOpenMonth={(month) => { setPaymentsMonth(month); setSection('finance'); }}
               onOpenNetwork={() => { setTopologyTab('incidents'); setSection('topology'); }}
+              onOpenPayment={(id) => { setPaymentFocusId(id); setSection('finance'); }}
             />
           )}
           {section === 'clients' && (

@@ -39,6 +39,13 @@ afterAll(() => {
   delete process.env.ISPM_DATA_DIR;
 });
 
+/** 10:00 de Cabo Verde do dia UTC de hoje: os avisos só saem a partir das 08:00. */
+function daytime(): Date {
+  const at = new Date();
+  at.setUTCHours(11, 0, 0, 0);
+  return at;
+}
+
 function setSetting(key: string, value: string) {
   db.prepare(`
     INSERT INTO app_settings (key, value) VALUES (?, ?)
@@ -50,7 +57,7 @@ function enableNotices() {
   setSetting('autoNoticesEnabled', 'true');
   setSetting('ultraMsgInstanceId', 'instance123');
   writeSecret(db, 'ultraMsgToken', 'token123');
-  setSetting('whatsappSuspensionNoticeDays', '15');
+  setSetting('autoSuspensionGraceDays', '21'); // aviso de suspensão aos 15 dias (corte aos 22)
   setSetting('noticeCooldownDays', '7');
 }
 
@@ -96,7 +103,7 @@ describe('runOverdueNoticesIfDue', () => {
   test('skips entirely when the toggle is disabled', async () => {
     insertOverdue({ code: 'A', name: 'Ana', phone: '9911111', daysOverdue: 20 });
 
-    const result = await runOverdueNoticesIfDue(new Date());
+    const result = await runOverdueNoticesIfDue(daytime());
 
     expect(result).toMatchObject({ skipped: true });
     expect(outboxCount()).toBe(0);
@@ -110,7 +117,7 @@ describe('runOverdueNoticesIfDue', () => {
     insertOverdue({ code: 'OPT', name: 'Opt Out', phone: '9930000', daysOverdue: 22, optOut: true }); // skip
     insertOverdue({ code: 'NOPH', name: 'Sem Telefone', phone: null, daysOverdue: 23 }); // skip
 
-    const result = await runOverdueNoticesIfDue(new Date());
+    const result = await runOverdueNoticesIfDue(daytime());
 
     expect(result).toMatchObject({ ran: true, enqueued: 2, skipped: 2 });
 
@@ -128,8 +135,8 @@ describe('runOverdueNoticesIfDue', () => {
     enableNotices();
     insertOverdue({ code: 'A', name: 'Ana', phone: '9911111', daysOverdue: 20 });
 
-    await runOverdueNoticesIfDue(new Date());
-    const second = await runOverdueNoticesIfDue(new Date());
+    await runOverdueNoticesIfDue(daytime());
+    const second = await runOverdueNoticesIfDue(daytime());
 
     expect(second).toMatchObject({ skipped: true });
   });
@@ -138,8 +145,8 @@ describe('runOverdueNoticesIfDue', () => {
     enableNotices();
     insertOverdue({ code: 'A', name: 'Ana', phone: '9911111', daysOverdue: 20 });
 
-    await runOverdueNoticesIfDue(new Date()); // day 1: enqueues 1
-    const tomorrow = new Date(Date.now() + 86_400_000);
+    await runOverdueNoticesIfDue(daytime()); // day 1: enqueues 1
+    const tomorrow = new Date(daytime().getTime() + 86_400_000);
     const result = await runOverdueNoticesIfDue(tomorrow); // day 2: deduped by cooldown
 
     expect(result).toMatchObject({ ran: true, enqueued: 0, skipped: 1 });
@@ -153,7 +160,7 @@ describe('runOverdueNoticesIfDue', () => {
     insertPayment({ code: 'WRN', name: 'Em Aviso', phone: '9922222', daysFromDue: 10, status: 'overdue' }); // warning (>=7, <15)
     insertPayment({ code: 'FUT', name: 'Longe', phone: '9933333', daysFromDue: -10, status: 'pending' }); // too early, no stage
 
-    const result = await runOverdueNoticesIfDue(new Date());
+    const result = await runOverdueNoticesIfDue(daytime());
 
     expect(result).toMatchObject({ ran: true, enqueued: 2 });
     const notices = db.prepare('SELECT notice_type AS type FROM whatsapp_notices ORDER BY type').all() as Array<{ type: string }>;

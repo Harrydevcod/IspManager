@@ -60,6 +60,16 @@ function configuredProviderId(db: Database.Database): WhatsappProviderId {
   return setting(db, 'whatsappProvider') === 'meta-cloud' ? 'meta-cloud' : 'ultramsg';
 }
 
+/** O interruptor do canal nas Definições. Por omissão ligado. */
+export function whatsappChannelEnabled(db: Database.Database): boolean {
+  return setting(db, 'whatsappChannelEnabled') !== 'false';
+}
+
+/** Ligado e configurado: só assim alguma mensagem sai por WhatsApp. */
+export function whatsappChannelActive(db: Database.Database): boolean {
+  return whatsappChannelEnabled(db) && resolveWhatsappProvider(db) !== null;
+}
+
 /** Nome do fornecedor escolhido, para dizer "X nao configurado". */
 export function configuredWhatsappProviderLabel(db: Database.Database): string {
   return LABELS[configuredProviderId(db)];

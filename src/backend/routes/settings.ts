@@ -7,7 +7,8 @@ import { recordAudit } from '../lib/audit';
 import { confirmSessionPassword, requireRole } from './auth';
 import { getAccount } from '../lib/treasury';
 import { canStoreSecrets, readSecret, readSecretsLost, refreshSecretsLost, SECRET_KEYS, writeSecret, type SecretKey } from '../lib/secrets';
-import { WHATSAPP_PROVIDER_IDS, type WhatsappProviderId } from '../lib/whatsapp-provider';
+import { WHATSAPP_PROVIDER_IDS, whatsappChannelActive, whatsappChannelEnabled, type WhatsappProviderId } from '../lib/whatsapp-provider';
+import { smsChannelActive } from '../lib/sms-notices';
 import {
   fallbackWhatsappInvoiceReadyTemplate,
   fallbackWhatsappOverdueTemplate,
@@ -23,7 +24,7 @@ import {
   fallbackSmsSuspensionNoticeTemplate
 } from '../../shared/sms';
 
-const strictOptionalBoolean = z.preprocess((value) => {
+const strictBoolean = (value: unknown) => {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'string') {
     const normalized = value.trim().toLowerCase();
@@ -31,7 +32,10 @@ const strictOptionalBoolean = z.preprocess((value) => {
     if (normalized === 'false' || normalized === '0') return false;
   }
   return value;
-}, z.boolean().optional().default(false));
+};
+const strictOptionalBoolean = z.preprocess(strictBoolean, z.boolean().optional().default(false));
+// Omitido = ligado: um formulário antigo, sem o campo, não desliga o canal.
+const strictOptionalBooleanOn = z.preprocess(strictBoolean, z.boolean().optional().default(true));
 
 function isPrivateCompanionHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
@@ -67,6 +71,9 @@ const bankAccountSchema = z.object({
   reference: z.string().trim().max(120).optional().default('')
 });
 
+const NO_ACTIVE_CHANNEL_ERROR = 'Pelo menos um canal de envio tem de ficar ligado: configure o outro antes de desligar este.';
+class NoActiveChannelError extends Error {}
+
 const settingsSchema = z.object({
   companyName: z.string().trim().min(1),
   nif: z.string().trim().optional().nullable(),
@@ -101,7 +108,7 @@ const settingsSchema = z.object({
   whatsappReceiptTemplate: z.string().trim().max(700).optional().nullable(),
   whatsappOverdueTemplate: z.string().trim().max(700).optional().nullable(),
   whatsappSuspensionTemplate: z.string().trim().max(700).optional().nullable(),
-  whatsappSuspensionNoticeDays: z.coerce.number().int().min(1).max(120).optional().default(15),
+  whatsappChannelEnabled: strictOptionalBooleanOn,
   autoNoticesEnabled: z.coerce.boolean().optional().default(false),
   noticeCooldownDays: z.coerce.number().int().min(1).max(90).optional().default(7),
   ultraMsgInstanceId: z.string().trim().max(64).optional().nullable(),
@@ -222,7 +229,7 @@ const defaultSettings = {
   whatsappReceiptTemplate: fallbackWhatsappReceiptTemplate,
   whatsappOverdueTemplate: fallbackWhatsappOverdueTemplate,
   whatsappSuspensionTemplate: fallbackWhatsappSuspensionTemplate,
-  whatsappSuspensionNoticeDays: 15,
+  whatsappChannelEnabled: true,
   autoNoticesEnabled: false,
   noticeCooldownDays: 7,
   ultraMsgInstanceId: '',
@@ -302,9 +309,6 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       } else if (row.key === 'ivaRate') {
         const n = Number(row.value);
         settings.ivaRate = Number.isFinite(n) ? n : defaultSettings.ivaRate;
-      } else if (row.key === 'whatsappSuspensionNoticeDays') {
-        const n = Number(row.value);
-        settings.whatsappSuspensionNoticeDays = Number.isFinite(n) ? n : defaultSettings.whatsappSuspensionNoticeDays;
       } else if (row.key === 'noticeCooldownDays') {
         const n = Number(row.value);
         settings.noticeCooldownDays = Number.isFinite(n) ? n : defaultSettings.noticeCooldownDays;
@@ -339,6 +343,8 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       } else if (row.key === 'routerosPassword' || row.key === 'ultraMsgToken' || row.key === 'metaAccessToken' || row.key === 'stripeSecretKey') {
         // Nunca saem: ver `secretFlags`.
         settings[row.key] = '';
+      } else if (row.key === 'whatsappChannelEnabled') {
+        settings.whatsappChannelEnabled = row.value !== 'false';
       } else if (row.key === 'fiscalRegime') {
         settings.fiscalRegime = row.value === 'rempe' ? 'rempe' : 'normal';
       } else if (row.key === 'showIva' || row.key === 'printQrCode' || row.key === 'printRentalLines' || row.key === 'autoNoticesEnabled' || row.key === 'smsCompanionEnabled' || row.key === 'smsAutoNoticesEnabled' || row.key === 'audiovisualEnabled' || row.key === 'networkProbeEnabled' || row.key === 'networkProbeIncludeClients' || row.key === 'routerosEnabled' || row.key === 'autoSuspensionEnabled' || row.key === 'stripeEnabled' || row.key === 'vinti4Enabled') {
@@ -358,6 +364,37 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     // So de leitura: nao entra no schema do PUT porque nao se edita. Fica
     // gravado pela passagem de arranque, que corre antes de alguem abrir isto.
     return { ...settings, ...secretFlags(db), secretsLost: readSecretsLost(db) };
+  });
+
+  // Desligar o WhatsApp a partir do alerta do painel, sem passar pelo formulário inteiro.
+  app.post('/api/settings/whatsapp-channel', adminOnly, async (request, reply) => {
+    const parsed = z.object({ enabled: z.boolean() }).safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Pedido inválido' });
+    const db = getSqliteDatabase();
+    const was = whatsappChannelEnabled(db);
+    if (was === parsed.data.enabled) return { enabled: was };
+    try {
+      db.transaction(() => {
+        db.prepare(`
+          INSERT INTO app_settings (key, value, updated_at) VALUES ('whatsappChannelEnabled', ?, datetime('now'))
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
+        `).run(String(parsed.data.enabled));
+        if (!parsed.data.enabled) {
+          if (!smsChannelActive(db)) throw new NoActiveChannelError();
+          db.prepare(`UPDATE whatsapp_outbox SET status = 'cancelled', updated_at = datetime('now') WHERE status = 'pending'`).run();
+        }
+      })();
+    } catch (error) {
+      if (error instanceof NoActiveChannelError) return reply.status(400).send({ error: NO_ACTIVE_CHANNEL_ERROR });
+      throw error;
+    }
+    recordAudit(request, {
+      action: 'update',
+      entityType: 'settings',
+      summary: parsed.data.enabled ? 'Ligou o canal WhatsApp' : 'Desligou o canal WhatsApp',
+      metadata: { whatsappChannelEnabled: parsed.data.enabled }
+    });
+    return { enabled: parsed.data.enabled };
   });
 
   app.put('/api/settings', adminOnly, async (request, reply) => {
@@ -447,6 +484,12 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     if (writesSecret && !canStoreSecrets()) {
       return reply.status(409).send({ error: 'Cofre de credenciais trancado: nao e possivel gravar senhas nesta sessao.' });
     }
+    // Nunca os dois canais de envio parados: desligar um só passa com o outro
+    // ativo (ligado e configurado) depois de gravado. Desligar o WhatsApp
+    // cancela o que estava na fila, para não ficar a falhar sem ninguém ver.
+    const storedWhatsappEnabled = whatsappChannelEnabled(db);
+    const whatsappTurnsOff = storedWhatsappEnabled && parsed.data.whatsappChannelEnabled === false;
+    const smsTurnsOff = storedSmsEnabled?.value === 'true' && parsed.data.smsCompanionEnabled === false;
     const run = db.transaction(() => {
       for (const [key, value] of Object.entries(parsed.data)) {
         // Omitida ou vazia = manter: é o que chega de um formulário que nunca
@@ -461,9 +504,18 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       // O aviso recalcula-se do que ficou gravado: cala-se sozinho para as
       // credenciais reescritas e mantém-se para as que continuam por abrir.
       refreshSecretsLost(db);
+      if ((whatsappTurnsOff || smsTurnsOff) && !whatsappChannelActive(db) && !smsChannelActive(db)) {
+        throw new NoActiveChannelError();
+      }
+      if (whatsappTurnsOff) db.prepare(`UPDATE whatsapp_outbox SET status = 'cancelled', updated_at = datetime('now') WHERE status = 'pending'`).run();
     });
 
-    run();
+    try {
+      run();
+    } catch (error) {
+      if (error instanceof NoActiveChannelError) return reply.status(400).send({ error: NO_ACTIVE_CHANNEL_ERROR });
+      throw error;
+    }
     recordAudit(request, {
       action: 'update',
       entityType: 'settings',
@@ -482,6 +534,14 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         entityType: 'settings',
         summary: smsTurnsOn ? 'Ligou a app movel ISPM SMS' : 'Desligou a app movel ISPM SMS',
         metadata: { smsCompanionEnabled: parsed.data.smsCompanionEnabled }
+      });
+    }
+    if (whatsappTurnsOff || (!storedWhatsappEnabled && parsed.data.whatsappChannelEnabled === true)) {
+      recordAudit(request, {
+        action: 'update',
+        entityType: 'settings',
+        summary: whatsappTurnsOff ? 'Desligou o canal WhatsApp' : 'Ligou o canal WhatsApp',
+        metadata: { whatsappChannelEnabled: parsed.data.whatsappChannelEnabled }
       });
     }
     if (goesLive || (wasLive && parsed.data.routerosDryRun)) {

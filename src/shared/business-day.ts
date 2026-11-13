@@ -36,3 +36,22 @@ export function sqlBusinessDate(...modifiers: string[]): string {
 
 /** `date('now', '-1 hours')`: hoje em Cabo Verde, para comparar com colunas de data. */
 export const SQL_BUSINESS_TODAY = sqlBusinessDate();
+
+/** Hora (0–23) em Cabo Verde no instante dado. */
+export function businessHour(at: Date | number = new Date()): number {
+  return new Date(new Date(at).getTime() + OFFSET_MS).getUTCHours();
+}
+
+/** Os avisos automáticos ao cliente só saem a partir desta hora de Cabo Verde, nunca de madrugada. */
+export const NOTICE_SEND_FROM_HOUR = 8;
+
+/**
+ * O dia do corte automático: o job suspende quando `vencimento + tolerância < hoje`, ou seja, a
+ * partir de vencimento + tolerância + 1. Um corte já vencido (o router adiou) é hoje, nunca uma
+ * data passada.
+ */
+export function cutDate(dueDate: string, graceDays: number, today: string = businessDay()): string {
+  const [y, m, d] = dueDate.slice(0, 10).split('-').map(Number);
+  const cut = new Date(Date.UTC(y, m - 1, d + graceDays + 1)).toISOString().slice(0, 10);
+  return cut < today ? today : cut;
+}

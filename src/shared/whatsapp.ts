@@ -22,6 +22,7 @@ export type WhatsappTemplateData = {
   receiptNumber?: string | null;
   daysOverdue?: number;
   suspensionDays?: number;
+  suspensionDate?: string | null;
   /** Link de pagamento online da fatura; vazio = `{link}` desaparece. */
   paymentLink?: string | null;
 };

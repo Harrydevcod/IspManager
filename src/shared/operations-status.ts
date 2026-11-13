@@ -269,6 +269,8 @@ export type OperationsBilling = {
 
 export type OperationsMessaging = {
   whatsapp: {
+    /** Interruptor do canal nas Definições. */
+    enabled: boolean;
     pending: number;
     failed: number;
     sentThisWeek: number;

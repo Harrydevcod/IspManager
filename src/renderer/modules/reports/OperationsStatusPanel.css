@@ -426,6 +426,7 @@
 .ops-finding div { display: grid; gap: var(--space-0-5); min-width: 0; }
 .ops-finding strong { color: var(--text); font-size: var(--fs-sm); font-weight: 600; }
 .ops-finding small { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
+.ops-finding > button { margin-left: auto; align-self: center; flex: 0 0 auto; }
 
 /* ----------------------------------------------------------------- ações */
 

@@ -38,6 +38,7 @@ describe('colunas ordenáveis', () => {
       'StockModule.tsx',
       'finance/ClientFinanceDialog.tsx',
       'finance/PortfolioTable.tsx',
+      'finance/UpcomingSuspensionsCard.tsx',
       'payments/PaymentsList.tsx',
       'plans/PlanChangeHistory.tsx',
       'router/ClientUsage.tsx',

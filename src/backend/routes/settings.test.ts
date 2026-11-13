@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
-import { getCredentialVault, readSecret, setCredentialVault, type SecretKey } from '../lib/secrets';
+import { getCredentialVault, readSecret, setCredentialVault, writeSecret, type SecretKey } from '../lib/secrets';
 
 let app: FastifyInstance;
 let db: Database.Database;
@@ -34,7 +34,6 @@ const validSettings = {
   whatsappReceiptTemplate: 'recibo',
   whatsappOverdueTemplate: 'atraso',
   whatsappSuspensionTemplate: 'suspensao',
-  whatsappSuspensionNoticeDays: 15,
   autoNoticesEnabled: false,
   noticeCooldownDays: 7,
   ultraMsgInstanceId: '',
@@ -552,5 +551,40 @@ describe('credenciais nas definicoes', () => {
     await app.inject({ method: 'PUT', url: '/api/settings', payload: { ...validSettings } });
     const depois = await app.inject({ method: 'GET', url: '/api/settings' });
     expect(depois.json().secretsLost).toEqual([]);
+  });
+});
+
+// Nunca os dois canais de envio parados; desligar o WhatsApp tira-o da fila de vez.
+describe('canal WhatsApp', () => {
+  const setting = (key: string, value: string) => db.prepare(`
+    INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).run(key, value);
+  const turn = (enabled: boolean) => app.inject({ method: 'POST', url: '/api/settings/whatsapp-channel', payload: { enabled } });
+
+  beforeEach(() => {
+    db.prepare('DELETE FROM whatsapp_outbox').run();
+  });
+
+  test('sem o SMS ativo o WhatsApp não se desliga', async () => {
+    const response = await turn(false);
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toMatch(/Pelo menos um canal/);
+    expect((await app.inject({ method: 'GET', url: '/api/settings' })).json().whatsappChannelEnabled).toBe(true);
+  });
+
+  test('com o SMS ativo desliga, cancela a fila e deixa de aceitar mensagens', async () => {
+    setting('smsCompanionEnabled', 'true');
+    setting('smsCompanionBaseUrl', 'http://192.168.1.50:8765');
+    writeSecret(db, 'smsCompanionPairingKey', 'segredo');
+    db.prepare(`INSERT INTO whatsapp_outbox (to_phone, kind, body, origin, status) VALUES ('+2389911111', 'text', 'x', 'auto', 'pending')`).run();
+
+    expect((await turn(false)).statusCode).toBe(200);
+    expect(db.prepare('SELECT status FROM whatsapp_outbox').all()).toEqual([{ status: 'cancelled' }]);
+    expect((await app.inject({ method: 'GET', url: '/api/settings' })).json().whatsappChannelEnabled).toBe(false);
+
+    const { enqueueWhatsapp } = await import('../lib/whatsapp-outbox');
+    expect(() => enqueueWhatsapp({ toPhone: '+2389911111', kind: 'text', body: 'x' })).toThrow('Canal WhatsApp desligado');
+    const manual = await app.inject({ method: 'POST', url: '/api/whatsapp/send', payload: { phone: '9911111', body: 'x' } });
+    expect(manual.statusCode).toBe(409);
   });
 });

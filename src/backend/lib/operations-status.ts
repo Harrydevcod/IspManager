@@ -666,8 +666,10 @@ function loadAccessLayer(
 
   const counts = db.prepare(`
     SELECT
-      (SELECT COUNT(*) FROM whatsapp_notices
-        WHERE notice_type = 'suspension' AND date(sent_at) >= @from) AS suspensionNoticesSent,
+      (SELECT COUNT(*) FROM whatsapp_notices n
+        LEFT JOIN whatsapp_outbox o ON o.id = n.outbox_id
+        WHERE n.notice_type = 'suspension' AND date(n.sent_at) >= @from
+          AND COALESCE(o.status, 'sent') NOT IN ('failed', 'cancelled')) AS suspensionNoticesSent,
       -- O corte automático deixa rasto no serviço (migração 0040). É a prova de
       -- que o aviso passou a ter consequência, e conta-se, não se declara.
       (SELECT COUNT(*) FROM service_events
@@ -1006,7 +1008,9 @@ function loadMessaging(db: Database.Database, settings: Settings, from: string):
     SELECT paired_at AS pairedAt, revoked_at AS revokedAt FROM sms_companion_pairing WHERE id = 1
   `).get() as { pairedAt: string | null; revokedAt: string | null } | undefined;
 
-  const blocked = providerBlocked(lastFailure?.lastError ?? null);
+  // Canal desligado nas Definições: as falhas antigas são história, não alerta.
+  const whatsappEnabled = settings.whatsappChannelEnabled !== 'false';
+  const blocked = whatsappEnabled && providerBlocked(lastFailure?.lastError ?? null);
   const smsEnabled = settings.smsCompanionEnabled === 'true';
   const smsPaired = Boolean(pairing?.pairedAt && !pairing.revokedAt);
 
@@ -1018,7 +1022,7 @@ function loadMessaging(db: Database.Database, settings: Settings, from: string):
       title: 'Canal WhatsApp recusado pelo provedor',
       detail: `${num(whatsapp.failed)} falhadas e ${num(whatsapp.pending)} em fila. O provedor respondeu: "${(lastFailure?.lastError ?? '').slice(0, 180)}". Enquanto isto durar, nenhum aviso de cobrança chega ao cliente.`
     });
-  } else if (num(whatsapp.failed) > 0) {
+  } else if (whatsappEnabled && num(whatsapp.failed) > 0) {
     findings.push({
       code: 'messaging.failures',
       severity: 'amber',
@@ -1039,6 +1043,7 @@ function loadMessaging(db: Database.Database, settings: Settings, from: string):
 
   return {
     whatsapp: {
+      enabled: whatsappEnabled,
       pending: num(whatsapp.pending),
       failed: num(whatsapp.failed),
       sentThisWeek: num(whatsapp.sentThisWeek),

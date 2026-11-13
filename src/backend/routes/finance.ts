@@ -41,6 +41,7 @@ import {
 import { readPppoeSecret } from '../lib/secrets';
 import { serviceTransferSchema, transferService } from '../lib/serviceTransfer';
 import { confirmSessionPassword, requireAuth, requireRole } from './auth';
+import { loadUpcomingSuspensions } from '../lib/auto-suspension';
 import { registerSaleTicketRoutes } from './sale-tickets';
 
 const monthSchema = z.object({
@@ -883,6 +884,10 @@ export async function registerFinanceRoutes(app: FastifyInstance) {
     });
     return result.value;
   });
+
+  // Quem o corte automático suspende nos próximos 7 dias, com o estado real do último aviso.
+  app.get('/api/finance/upcoming-suspensions', { preHandler: requireRole(['admin', 'operator']) }, async () =>
+    loadUpcomingSuspensions(getSqliteDatabase()));
 
   app.get('/api/receivables', { preHandler: requireRole(['admin', 'operator']) }, async () => {
     return loadReceivables(getSqliteDatabase());

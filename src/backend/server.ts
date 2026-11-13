@@ -42,7 +42,7 @@ import { registerTopologyManagementRoutes } from './routes/topology-management';
 import { createBackup, pruneBackups, runScheduledBackupIfDue, setNormalBackupsBlocked, setVaultForRestore } from './lib/backup';
 import { runMonthlyBillingIfDue } from './lib/auto-billing';
 import { runAudiovisualAnnualIfDue } from './lib/audiovisual-billing';
-import { runOverdueNoticesIfDue } from './lib/notices';
+import { overdueNoticesDueToday, runOverdueNoticesIfDue } from './lib/notices';
 import { runSmsOverdueNoticesIfDue, smsOverdueNoticesDueToday } from './lib/sms-notices';
 import { runCompanionTick } from './lib/companion-tick';
 import { registerCompanionRoutes } from './routes/companion';
@@ -225,36 +225,33 @@ export async function createBackendApp(options: { localProtection?: LocalProtect
   await registerTopologyManagementRoutes(app);
   await registerNetworkRoutes(app);
 
-  // Automatic overdue/suspension WhatsApp notices — opt-in via the
-  // `autoNoticesEnabled` setting (off by default). Fire-and-forget: the send
-  // loop is rate-limited and must never block server boot.
-  if (process.env.ISPM_AUTO_NOTICES !== 'off' && licenseAllowsWrites()) {
-    void runJob('overdue_notices', runOverdueNoticesIfDue)
-      .then((result) => {
-        if ('ran' in result) {
-          app.log.info({ result }, 'auto notices executed');
+  // Avisos automáticos de cobrança: primeiro o WhatsApp (`autoNoticesEnabled`),
+  // depois o SMS (`smsAutoNoticesEnabled`), que só manda o que o WhatsApp não
+  // levou. Cada job corre uma vez por dia a partir das 08:00 de Cabo Verde; o
+  // relógio de hora a hora apanha o dia mesmo com a app aberta de madrugada.
+  if (process.env.ISPM_AUTO_NOTICES !== 'off') {
+    const smsEnabled = process.env.ISPM_SMS_OUTBOX !== 'off' && !process.env.VITEST;
+    const dailyNotices = async () => {
+      if (!licenseAllowsWrites()) return;
+      if (overdueNoticesDueToday()) {
+        try {
+          const result = await runJob('overdue_notices', runOverdueNoticesIfDue);
+          if ('ran' in result) app.log.info({ result }, 'auto notices executed');
+        } catch (err) {
+          app.log.error({ err }, 'auto notices failed');
         }
-      })
-      .catch((err) => {
-        app.log.error({ err }, 'auto notices failed');
-      });
-  }
-
-  // SMS reinforcement of the dunning funnel — opt-in via `smsAutoNoticesEnabled`.
-  // Runs at boot and re-checks hourly so a backend left running for days still
-  // fires once per calendar day (the job itself is guarded per day).
-  if (process.env.ISPM_AUTO_NOTICES !== 'off' && process.env.ISPM_SMS_OUTBOX !== 'off' && !process.env.VITEST) {
-    const smsNotices = () => {
-      if (!licenseAllowsWrites() || !smsOverdueNoticesDueToday()) return;
-      try {
-        const result = runJobSync('sms_overdue_notices', runSmsOverdueNoticesIfDue);
-        if ('ran' in result) app.log.info({ result }, 'sms auto notices executed');
-      } catch (err) {
-        app.log.error({ err }, 'sms auto notices failed');
+      }
+      if (smsEnabled && smsOverdueNoticesDueToday()) {
+        try {
+          const result = runJobSync('sms_overdue_notices', runSmsOverdueNoticesIfDue);
+          if ('ran' in result) app.log.info({ result }, 'sms auto notices executed');
+        } catch (err) {
+          app.log.error({ err }, 'sms auto notices failed');
+        }
       }
     };
-    smsNotices();
-    setInterval(smsNotices, 60 * 60_000).unref();
+    void dailyNotices();
+    if (!process.env.VITEST) setInterval(() => void dailyNotices(), 60 * 60_000).unref();
   }
 
   // WhatsApp outbox: drain the send queue and poll delivery status on intervals.

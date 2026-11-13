@@ -2,6 +2,8 @@ import { isSystemClient, SYSTEM_CLIENT_ERROR } from '../lib/system-client';
 import type { FastifyInstance } from 'fastify';
 import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
+import { autoSuspensionGraceDays } from '../lib/auto-suspension';
+import { cutDate } from '../../shared/business-day';
 import { getSqliteDatabase } from '../db/database';
 import { canStoreSecrets, readSecret, writeSecret } from '../lib/secrets';
 import { confirmSessionPassword, requireRole } from './auth';
@@ -230,7 +232,8 @@ export async function registerSmsRoutes(app: FastifyInstance) {
       invoiceNumber: payment.invoiceNumber,
       receiptNumber: payment.receiptNumber,
       daysOverdue,
-      suspensionDays: Number(getSetting('whatsappSuspensionNoticeDays')) || 15,
+      suspensionDays: autoSuspensionGraceDays(getSqliteDatabase()) + 1,
+      suspensionDate: cutDate(payment.dueDate, autoSuspensionGraceDays(getSqliteDatabase())),
       paymentLink: payment.paymentLink
     }, getSetting('companyName') || 'ISPM');
     const outboxId = enqueueSmsNotification({

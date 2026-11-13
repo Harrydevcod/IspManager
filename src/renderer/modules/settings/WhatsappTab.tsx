@@ -30,8 +30,16 @@ type WhatsappTabProps = {
 
 export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, onSecretDraftChange = () => undefined, metaSecretDraft = { editing: false }, onMetaSecretDraftChange = () => undefined, onToggle, testPhone, onTestPhoneChange, testMessage, testSending, onSendTest }: WhatsappTabProps) {
   const usesMeta = form.whatsappProvider === 'meta-cloud';
+  // Nunca os dois canais desligados: sem o SMS ligado, o WhatsApp não se desliga.
+  const lastChannel = form.whatsappChannelEnabled && !form.smsCompanionEnabled;
   return (
     <>
+      <Toggle
+        title="Canal WhatsApp"
+        checked={form.whatsappChannelEnabled}
+        disabled={lastChannel}
+        onChange={(event) => onToggle('whatsappChannelEnabled', event.target.checked)}
+      />
       <Select
         label="Fornecedor"
         value={form.whatsappProvider}
@@ -68,15 +76,15 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
             draft={secretDraft} onDraftChange={(next) => { onSecretDraftChange(next); onUpdate('ultraMsgToken', next.editing ? next.value : ''); }} />
         </>
       )}
+      {/* Ao lado do token: a grelha de duas colunas fecha sem buraco. */}
       <Field
-        label="Avisar suspensao apos X dias"
+        label="Nao repetir o mesmo aviso durante X dias"
         type="number"
         min={1}
-        max={120}
-        value={form.whatsappSuspensionNoticeDays}
-        onChange={(event) => onUpdate('whatsappSuspensionNoticeDays', event.target.value)}
+        max={90}
+        value={form.noticeCooldownDays}
+        onChange={(event) => onUpdate('noticeCooldownDays', event.target.value)}
       />
-      {/* Depois deste campo, para a grelha de duas colunas fechar sem buraco. */}
       {usesMeta && (
         <Message tone="neutral">
           Só entrega a quem escreveu à empresa nas últimas 24 horas.
@@ -87,14 +95,6 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
         description="Só com consentimento dos clientes."
         checked={form.autoNoticesEnabled}
         onChange={(event) => onToggle('autoNoticesEnabled', event.target.checked)}
-      />
-      <Field
-        label="Nao repetir o mesmo aviso durante X dias"
-        type="number"
-        min={1}
-        max={90}
-        value={form.noticeCooldownDays}
-        onChange={(event) => onUpdate('noticeCooldownDays', event.target.value)}
       />
       <TemplateField
         field="whatsappTestTemplate"

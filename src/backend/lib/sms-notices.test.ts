@@ -21,6 +21,8 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  db.prepare('DELETE FROM whatsapp_notices').run();
+  db.prepare('DELETE FROM whatsapp_outbox').run();
   db.prepare('DELETE FROM sms_outbox').run();
   db.prepare('DELETE FROM client_credits').run();
   db.prepare('DELETE FROM payment_receipts').run();
@@ -36,6 +38,13 @@ afterAll(() => {
   delete process.env.ISPM_DATA_DIR;
 });
 
+/** 10:00 de Cabo Verde do dia UTC de hoje: os avisos só saem a partir das 08:00. */
+function daytime(): Date {
+  const at = new Date();
+  at.setUTCHours(11, 0, 0, 0);
+  return at;
+}
+
 function setSetting(key: string, value: string) {
   db.prepare(`INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(key, value);
 }
@@ -46,7 +55,7 @@ function enableSms() {
   setSetting('smsCompanionEnabled', 'true');
   setSetting('smsCompanionBaseUrl', 'http://192.168.1.50:8765');
   writeSecret(db, 'smsCompanionPairingKey', 'secret');
-  setSetting('whatsappSuspensionNoticeDays', '15');
+  setSetting('autoSuspensionGraceDays', '21'); // aviso de suspensão aos 15 dias (corte aos 22)
   setSetting('noticeCooldownDays', '7');
 }
 
@@ -78,7 +87,7 @@ describe('runSmsOverdueNoticesIfDue', () => {
   test('skips when the toggle is off', () => {
     setSetting('smsCompanionEnabled', 'true');
     insertInvoice({ code: 'A', phone: '9911111', daysFromDue: 20 });
-    expect(mod.runSmsOverdueNoticesIfDue(new Date())).toMatchObject({ skipped: true });
+    expect(mod.runSmsOverdueNoticesIfDue(daytime())).toMatchObject({ skipped: true });
     expect(outbox()).toHaveLength(0);
   });
 
@@ -86,7 +95,7 @@ describe('runSmsOverdueNoticesIfDue', () => {
     setSetting('smsAutoNoticesEnabled', 'true');
     setSetting('smsCompanionEnabled', 'true');
     insertInvoice({ code: 'A', phone: '9911111', daysFromDue: 20 });
-    expect(mod.runSmsOverdueNoticesIfDue(new Date())).toEqual({ skipped: true, reason: 'telemovel SMS nao pareado' });
+    expect(mod.runSmsOverdueNoticesIfDue(daytime())).toEqual({ skipped: true, reason: 'telemovel SMS nao pareado' });
   });
 
   test('queues one SMS per eligible invoice, without WhatsApp configured', () => {
@@ -98,7 +107,7 @@ describe('runSmsOverdueNoticesIfDue', () => {
     insertInvoice({ code: 'NOPH', phone: null, daysFromDue: 20 });
     insertInvoice({ code: 'BAD', phone: '12', daysFromDue: 20 });
 
-    const result = mod.runSmsOverdueNoticesIfDue(new Date());
+    const result = mod.runSmsOverdueNoticesIfDue(daytime());
     expect(result).toMatchObject({ ran: true, enqueued: 2, skipped: 4 });
 
     const rows = outbox();
@@ -114,9 +123,9 @@ describe('runSmsOverdueNoticesIfDue', () => {
   test('runs once per day', () => {
     enableSms();
     insertInvoice({ code: 'A', phone: '9911111', daysFromDue: 20 });
-    expect(mod.runSmsOverdueNoticesIfDue(new Date())).toMatchObject({ ran: true, enqueued: 1 });
-    expect(mod.smsOverdueNoticesDueToday(new Date())).toBe(false);
-    expect(mod.runSmsOverdueNoticesIfDue(new Date())).toMatchObject({ skipped: true });
+    expect(mod.runSmsOverdueNoticesIfDue(daytime())).toMatchObject({ ran: true, enqueued: 1 });
+    expect(mod.smsOverdueNoticesDueToday(daytime())).toBe(false);
+    expect(mod.runSmsOverdueNoticesIfDue(daytime())).toMatchObject({ skipped: true });
     expect(outbox()).toHaveLength(1);
   });
 
@@ -124,10 +133,77 @@ describe('runSmsOverdueNoticesIfDue', () => {
     enableSms();
     const paymentId = insertInvoice({ code: 'A', phone: '9911111', daysFromDue: 20 });
     db.prepare(`INSERT INTO sms_outbox (payment_id, event_type, to_phone, body, status) VALUES (?, 'suspension_notice', '+2389911111', 'manual', 'sent')`).run(paymentId);
-    expect(mod.runSmsOverdueNoticesIfDue(new Date())).toMatchObject({ ran: true, enqueued: 0, skipped: 1 });
+    expect(mod.runSmsOverdueNoticesIfDue(daytime())).toMatchObject({ ran: true, enqueued: 0, skipped: 1 });
 
     db.prepare(`UPDATE sms_outbox SET status='rejected'`).run();
     setSetting('lastSmsOverdueNoticesDate', '');
-    expect(mod.runSmsOverdueNoticesIfDue(new Date())).toMatchObject({ ran: true, enqueued: 1 });
+    expect(mod.runSmsOverdueNoticesIfDue(daytime())).toMatchObject({ ran: true, enqueued: 1 });
+  });
+});
+
+/** Um aviso automático de WhatsApp para a fatura, com a mensagem na fila no estado dado. */
+function whatsappNotice(paymentId: number, stage: string, outboxStatus: string): number {
+  const { clientId } = db.prepare('SELECT client_id AS clientId FROM payments WHERE id = ?').get(paymentId) as { clientId: number };
+  const outboxId = Number(db.prepare(`
+    INSERT INTO whatsapp_outbox (to_phone, kind, body, client_id, origin, status) VALUES ('+2389911111', 'text', 'x', ?, 'auto', ?)
+  `).run(clientId, outboxStatus).lastInsertRowid);
+  db.prepare(`
+    INSERT INTO whatsapp_notices (payment_id, client_id, notice_type, origin, phone, body, status, outbox_id)
+    VALUES (?, ?, ?, 'auto', '+2389911111', 'x', 'sent', ?)
+  `).run(paymentId, clientId, stage, outboxId);
+  return outboxId;
+}
+
+function enableWhatsapp() {
+  setSetting('ultraMsgInstanceId', 'instance1');
+  writeSecret(db, 'ultraMsgToken', 'token');
+}
+
+describe('SMS como recurso do WhatsApp', () => {
+  test('nada sai antes das 08:00 de Cabo Verde', () => {
+    enableSms();
+    insertInvoice({ code: 'A', phone: '9911111', daysFromDue: 20 });
+    const dawn = daytime();
+    dawn.setUTCHours(7); // 06:00 em Cabo Verde
+    expect(mod.smsOverdueNoticesDueToday(dawn)).toBe(false);
+    expect(mod.runSmsOverdueNoticesIfDue(dawn)).toMatchObject({ skipped: true });
+    expect(outbox()).toHaveLength(0);
+  });
+
+  test('o aviso de suspensão traz o dia real do corte (vencimento + tolerância + 1)', () => {
+    enableSms();
+    insertInvoice({ code: 'A', phone: '9911111', daysFromDue: 20 });
+    mod.runSmsOverdueNoticesIfDue(daytime());
+    const { cut } = db.prepare(`SELECT strftime('%d-%m-%Y', 'now', '-20 days', '+22 days') AS cut`).get() as { cut: string };
+    expect(outbox()[0]).toMatchObject({ eventType: 'suspension_notice' });
+    expect(outbox()[0].body).toContain(`suspensa a ${cut}`);
+  });
+
+  test('não duplica o que o WhatsApp já levou, mas cobre o que falhou', () => {
+    enableSms();
+    enableWhatsapp();
+    const delivered = insertInvoice({ code: 'OK', phone: '9911111', daysFromDue: 20 });
+    const failed = insertInvoice({ code: 'KO', phone: '9922222', daysFromDue: 20 });
+    whatsappNotice(delivered, 'suspension', 'delivered');
+    whatsappNotice(failed, 'suspension', 'failed');
+
+    expect(mod.runSmsOverdueNoticesIfDue(daytime())).toMatchObject({ ran: true, enqueued: 1, skipped: 1 });
+    expect(outbox().map((row) => row.paymentId)).toEqual([failed]);
+  });
+
+  test('uma mensagem de WhatsApp que falha de vez passa logo a SMS, uma só vez', () => {
+    enableSms();
+    const paymentId = insertInvoice({ code: 'A', phone: '9911111', daysFromDue: 20 });
+    const outboxId = whatsappNotice(paymentId, 'suspension', 'failed');
+
+    expect(mod.enqueueSmsFallbackForWhatsapp(outboxId)).toBe(true);
+    expect(mod.enqueueSmsFallbackForWhatsapp(outboxId)).toBe(false);
+    expect(outbox()).toEqual([expect.objectContaining({ paymentId, eventType: 'suspension_notice' })]);
+  });
+
+  test('sem o telemóvel pareado o recurso não faz nada', () => {
+    const paymentId = insertInvoice({ code: 'A', phone: '9911111', daysFromDue: 20 });
+    expect(mod.enqueueSmsFallbackForWhatsapp(whatsappNotice(paymentId, 'suspension', 'failed'))).toBe(false);
+    expect(outbox()).toHaveLength(0);
   });
 });

@@ -877,6 +877,11 @@ h2 {
   margin-bottom: var(--space-3);
 }
 
+.upcoming-suspensions-card {
+  margin-bottom: var(--space-4);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+
 .dashboard-topline {
   display: grid;
   grid-template-columns: 1fr;

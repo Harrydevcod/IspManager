@@ -20,6 +20,7 @@ export type SmsTemplateData = {
   receiptNumber?: string | null;
   daysOverdue?: number;
   suspensionDays?: number;
+  suspensionDate?: string | null;
   /**
    * Link de pagamento online. Fora dos modelos por omissão: a página do Stripe
    * tem um URL longo, que num SMS custa vários segmentos. Quem quiser, põe `{link}`.

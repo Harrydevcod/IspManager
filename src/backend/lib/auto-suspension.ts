@@ -10,7 +10,8 @@ import {
   readRouterConfig,
   testConnection
 } from './routeros';
-import { businessDay, SQL_BUSINESS_TODAY } from '../../shared/business-day';
+import { businessDay, cutDate, sqlBusinessDate, SQL_BUSINESS_TODAY } from '../../shared/business-day';
+import type { NoticeDelivery, UpcomingSuspension } from '../../shared/upcoming-suspension';
 import { planProtectedSql } from './payment-plans';
 
 let lastGate: 'ok' | 'offsite' | 'foreign' | 'unreachable' | null = null;
@@ -116,12 +117,13 @@ const balanceExpr = `(
  * pagamento) é uma decisão sobre a dívida que já existia — a passagem seguinte
  * não a desfaz; só uma fatura que passe a tolerância depois volta a cortar.
  * Fatura num acordo de pagamento em dia também não corta (0103).
- * Os dois `?` são a tolerância em dias.
+ * Os dois `?` são a tolerância em dias. `horizonDays` > 0 olha para a frente:
+ * as faturas que ficam cortáveis até daqui a esse número de dias.
  */
 // Função, não constante: `payment-plans` importa `payments`, que importa este módulo.
-const suspendableInvoiceSql = () => `
+const suspendableInvoiceSql = (horizonDays = 0) => `
   p.status IN ('pending', 'overdue')
-  AND date(p.due_date, '+' || ? || ' days') < ${SQL_BUSINESS_TODAY}
+  AND date(p.due_date, '+' || ? || ' days') < ${horizonDays > 0 ? sqlBusinessDate(`'+${Math.trunc(horizonDays)} days'`) : SQL_BUSINESS_TODAY}
   AND ${balanceExpr} > 0.005
   AND NOT EXISTS (
     SELECT 1 FROM service_events e
@@ -132,7 +134,7 @@ const suspendableInvoiceSql = () => `
   AND ${planProtectedSql('p')}
 `;
 
-function graceDays(db: Database.Database): number {
+export function autoSuspensionGraceDays(db: Database.Database): number {
   return intSetting(db, 'autoSuspensionGraceDays', DEFAULT_GRACE_DAYS, 1, 120);
 }
 
@@ -140,7 +142,7 @@ export function readAutoSuspensionConfig(db: Database.Database): AutoSuspensionC
   const router = readRouterConfig(db);
   return {
     enabled: setting(db, 'autoSuspensionEnabled') === 'true',
-    graceDays: graceDays(db),
+    graceDays: autoSuspensionGraceDays(db),
     intervalMinutes: intSetting(db, 'autoSuspensionIntervalMinutes', DEFAULT_INTERVAL_MINUTES, 5, 1440),
     maxPerRun: intSetting(db, 'autoSuspensionMaxPerRun', DEFAULT_MAX_PER_RUN, 1, 500),
     maxPercent: intSetting(db, 'autoSuspensionMaxPercent', DEFAULT_MAX_PERCENT, 1, 100),
@@ -169,7 +171,7 @@ function activeControlledCount(db: Database.Database): number {
 }
 
 /** A fatura elegível mais antiga por serviço. */
-function rawCandidates(db: Database.Database, graceDays: number): SuspensionCandidate[] {
+function rawCandidates(db: Database.Database, graceDays: number, horizonDays = 0): SuspensionCandidate[] {
   const rows = db.prepare(`
     SELECT
       s.id AS serviceId,
@@ -190,7 +192,7 @@ function rawCandidates(db: Database.Database, graceDays: number): SuspensionCand
       AND c.system_kind IS NULL
       AND s.pppoe_username IS NOT NULL
       AND TRIM(s.pppoe_username) <> ''
-      AND ${suspendableInvoiceSql()}
+      AND ${suspendableInvoiceSql(horizonDays)}
     ORDER BY s.id, date(p.due_date), p.id
   `).all(graceDays, graceDays) as Array<Omit<SuspensionCandidate, 'creditCve'>>;
 
@@ -259,6 +261,48 @@ export function loadAutoSuspensionPreview(db: Database.Database): AutoSuspension
     guardTriggered: guard.triggered,
     guardReason: guard.reason
   };
+}
+
+/**
+ * Quem o corte automático vai suspender nos próximos `horizonDays` dias, com o
+ * estado real do último aviso em cada canal (o da fila, não o do registo de
+ * avisos, que grava "enviado" ao enfileirar). Mesmo critério do job: quem tem
+ * crédito por abater ou um acordo em dia não aparece, porque não vai ser cortado.
+ */
+export function loadUpcomingSuspensions(db: Database.Database, horizonDays = 7, today = businessDay()): UpcomingSuspension[] {
+  const grace = autoSuspensionGraceDays(db);
+  const lastSms = db.prepare(`
+    SELECT status, created_at AS at FROM sms_outbox
+    WHERE payment_id = ? AND event_type IN ('payment_overdue', 'suspension_notice')
+    ORDER BY id DESC LIMIT 1
+  `);
+  const lastWhatsapp = db.prepare(`
+    SELECT o.status, o.created_at AS at FROM whatsapp_notices n
+    JOIN whatsapp_outbox o ON o.id = n.outbox_id
+    WHERE n.payment_id = ?
+    ORDER BY n.id DESC LIMIT 1
+  `);
+  const phone = db.prepare('SELECT phone, client_code AS clientCode FROM clients WHERE id = ?');
+  return rawCandidates(db, grace, horizonDays)
+    .filter((row) => escudosToCentavos(row.creditCve) <= 0)
+    .map((row) => {
+      const client = phone.get(row.clientId) as { phone: string | null; clientCode: string };
+      return {
+        serviceId: row.serviceId,
+        clientId: row.clientId,
+        clientName: row.clientName,
+        clientCode: client.clientCode,
+        phone: client.phone,
+        paymentId: row.paymentId,
+        invoiceNumber: row.invoiceNumber,
+        dueDate: row.dueDate,
+        balanceCve: row.balanceCve,
+        cutDate: cutDate(row.dueDate, grace, today),
+        sms: (lastSms.get(row.paymentId) as NoticeDelivery | undefined) ?? null,
+        whatsapp: (lastWhatsapp.get(row.paymentId) as NoticeDelivery | undefined) ?? null
+      };
+    })
+    .sort((a, b) => a.cutDate.localeCompare(b.cutDate) || a.clientName.localeCompare(b.clientName));
 }
 
 function hasSuspendableDebt(db: Database.Database, serviceId: number, graceDays: number): boolean {
@@ -463,7 +507,7 @@ export function reactivateServiceIfEligibleAfterPayment(
     return false;
   }
 
-  if (hasSuspendableDebt(db, serviceId, graceDays(db))) return false;
+  if (hasSuspendableDebt(db, serviceId, autoSuspensionGraceDays(db))) return false;
 
   const result = changeServiceStatus(db, serviceId, 'active', {
     reason: 'Reativação automática após regularização da dívida',

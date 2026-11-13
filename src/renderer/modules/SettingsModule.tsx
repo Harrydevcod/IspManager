@@ -122,7 +122,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     whatsappReceiptTemplate: fallbackWhatsappReceiptTemplate,
     whatsappOverdueTemplate: fallbackWhatsappOverdueTemplate,
     whatsappSuspensionTemplate: fallbackWhatsappSuspensionTemplate,
-    whatsappSuspensionNoticeDays: '15',
+    whatsappChannelEnabled: true,
     autoNoticesEnabled: false,
     noticeCooldownDays: '7',
     ultraMsgInstanceId: '',
@@ -436,7 +436,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
         if (!response.ok) {
           throw new Error('Nao foi possivel carregar configuracoes');
         }
-        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'whatsappSuspensionNoticeDays' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold' | 'routerosPort' | 'routerosIntervalSeconds' | 'routerosMaxDisablesPerRun' | 'autoSuspensionGraceDays' | 'autoSuspensionIntervalMinutes' | 'autoSuspensionMaxPerRun' | 'autoSuspensionMaxPercent' | 'stripeTreasuryAccountId' | 'vinti4TreasuryAccountId'> & { stripeTreasuryAccountId: number; vinti4TreasuryAccountId: number; defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; whatsappSuspensionNoticeDays: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number; routerosPort: number; routerosIntervalSeconds: number; routerosMaxDisablesPerRun: number; autoSuspensionGraceDays: number; autoSuspensionIntervalMinutes: number; autoSuspensionMaxPerRun: number; autoSuspensionMaxPercent: number; secretsLost?: string[] }>;
+        return response.json() as Promise<Omit<SettingsFormState, 'defaultDueDay' | 'autoBillingDay' | 'audiovisualMonthlyCve' | 'audiovisualAnnualCve' | 'installationFeeCve' | 'ivaRate' | 'noticeCooldownDays' | 'smsDispatchIntervalSeconds' | 'smsRetryGraceMinutes' | 'networkProbeIntervalSeconds' | 'networkProbeFailThreshold' | 'routerosPort' | 'routerosIntervalSeconds' | 'routerosMaxDisablesPerRun' | 'autoSuspensionGraceDays' | 'autoSuspensionIntervalMinutes' | 'autoSuspensionMaxPerRun' | 'autoSuspensionMaxPercent' | 'stripeTreasuryAccountId' | 'vinti4TreasuryAccountId'> & { stripeTreasuryAccountId: number; vinti4TreasuryAccountId: number; defaultDueDay: number; autoBillingDay: number; audiovisualMonthlyCve: number; audiovisualAnnualCve: number; installationFeeCve: number; ivaRate: number; noticeCooldownDays: number; smsDispatchIntervalSeconds: number; smsRetryGraceMinutes: number; networkProbeIntervalSeconds: number; networkProbeFailThreshold: number; routerosPort: number; routerosIntervalSeconds: number; routerosMaxDisablesPerRun: number; autoSuspensionGraceDays: number; autoSuspensionIntervalMinutes: number; autoSuspensionMaxPerRun: number; autoSuspensionMaxPercent: number; secretsLost?: string[] }>;
       })
       .then((settings) => {
         const loadedForm = {
@@ -448,7 +448,6 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
           audiovisualAnnualCve: String(settings.audiovisualAnnualCve),
           installationFeeCve: String(settings.installationFeeCve),
           ivaRate: String(settings.ivaRate),
-          whatsappSuspensionNoticeDays: String(settings.whatsappSuspensionNoticeDays),
           noticeCooldownDays: String(settings.noticeCooldownDays),
           smsDispatchIntervalSeconds: String(settings.smsDispatchIntervalSeconds),
           smsRetryGraceMinutes: String(settings.smsRetryGraceMinutes),
@@ -599,7 +598,6 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
           audiovisualAnnualCve: Number(savedForm.audiovisualAnnualCve),
           installationFeeCve: Number(savedForm.installationFeeCve),
           ivaRate: Number(savedForm.ivaRate),
-          whatsappSuspensionNoticeDays: Number(savedForm.whatsappSuspensionNoticeDays),
           noticeCooldownDays: Number(savedForm.noticeCooldownDays),
           smsDispatchIntervalSeconds: Number(savedForm.smsDispatchIntervalSeconds),
           smsRetryGraceMinutes: Number(savedForm.smsRetryGraceMinutes),

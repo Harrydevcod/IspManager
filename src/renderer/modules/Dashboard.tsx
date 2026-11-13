@@ -5,6 +5,7 @@ import { authFetch } from '../lib/auth';
 import { formatCve, formatPtDate } from '../lib/format';
 import type { DashboardSummary } from '../types';
 import { NetworkHealthCard } from './topology/NetworkHealthCard';
+import { UpcomingSuspensionsCard } from './finance/UpcomingSuspensionsCard';
 
 type DashboardProps = {
   onOpenClients: () => void;
@@ -14,6 +15,7 @@ type DashboardProps = {
   onOpenWorkOrders: () => void;
   onOpenMonth: (referenceMonth: string) => void;
   onOpenNetwork: () => void;
+  onOpenPayment: (paymentId: number) => void;
 };
 
 // Torna um tile/elemento informativo acionável por teclado (Enter/Espaço) e rato.
@@ -38,7 +40,8 @@ export function Dashboard({
   onOpenLowStock,
   onOpenWorkOrders,
   onOpenMonth,
-  onOpenNetwork
+  onOpenNetwork,
+  onOpenPayment
 }: DashboardProps) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -177,6 +180,8 @@ export function Dashboard({
           </div>
         </dl>
       </section>
+
+      <UpcomingSuspensionsCard onOpenPayment={onOpenPayment} />
 
       <section className="dashboard-topline" aria-label="Resumo visual da operacao">
         <Card

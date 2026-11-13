@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { cutDate } from '../../shared/business-day';
+import { SUSPENSION_NOTICE_LEAD_DAYS } from '../../shared/upcoming-suspension';
 import { AlertTriangle, CalendarPlus, RotateCcw, Send } from 'lucide-react';
 import { BulkActionBar, Button, ColumnPicker, ErrorRetry, Field, FilterBar, Message, ModuleHeaderActions, PaginationControls, Select, SkeletonList, useConfirm, useToast } from '../components';
 import { formatCve, formatPtMonth } from '../lib/format';
@@ -163,7 +165,9 @@ export function PaymentsModule({
   const [whatsappReceiptTemplate, setWhatsappReceiptTemplate] = useState(fallbackWhatsappReceiptTemplate);
   const [whatsappOverdueTemplate, setWhatsappOverdueTemplate] = useState(fallbackWhatsappOverdueTemplate);
   const [whatsappSuspensionTemplate, setWhatsappSuspensionTemplate] = useState(fallbackWhatsappSuspensionTemplate);
-  const [whatsappSuspensionNoticeDays, setWhatsappSuspensionNoticeDays] = useState(15);
+  const [autoSuspensionGraceDays, setAutoSuspensionGraceDays] = useState(15);
+  // O aviso de suspensão começa uma semana antes do corte (mesma regra do funil no backend).
+  const suspensionNoticeFrom = autoSuspensionGraceDays + 1 - SUSPENSION_NOTICE_LEAD_DAYS;
   const [whatsappTick, setWhatsappTick] = useState(0);
 
   const loadPayments = useCallback(() => {
@@ -211,7 +215,7 @@ export function PaymentsModule({
         whatsappReceiptTemplate?: string;
         whatsappOverdueTemplate?: string;
         whatsappSuspensionTemplate?: string;
-        whatsappSuspensionNoticeDays?: number;
+        autoSuspensionGraceDays?: number;
       } | null) => {
         if (cancelled || !settings) return;
         setCompanyName(settings.companyName || 'ISPM');
@@ -220,7 +224,7 @@ export function PaymentsModule({
         setWhatsappReceiptTemplate(settings.whatsappReceiptTemplate || fallbackWhatsappReceiptTemplate);
         setWhatsappOverdueTemplate(settings.whatsappOverdueTemplate || fallbackWhatsappOverdueTemplate);
         setWhatsappSuspensionTemplate(settings.whatsappSuspensionTemplate || fallbackWhatsappSuspensionTemplate);
-        setWhatsappSuspensionNoticeDays(settings.whatsappSuspensionNoticeDays || 15);
+        setAutoSuspensionGraceDays(settings.autoSuspensionGraceDays || 15);
       })
       .catch(() => { /* keep defaults */ });
     return () => { cancelled = true; };
@@ -270,7 +274,7 @@ export function PaymentsModule({
     const status = effectivePaymentStatus(payment);
     const template = status === 'paid'
       ? whatsappReceiptTemplate
-      : status === 'overdue' && daysOverdue >= whatsappSuspensionNoticeDays
+      : status === 'overdue' && daysOverdue >= suspensionNoticeFrom
         ? whatsappSuspensionTemplate
         : status === 'overdue'
           ? whatsappOverdueTemplate
@@ -293,7 +297,8 @@ export function PaymentsModule({
         invoiceNumber: payment.invoiceNumber,
         receiptNumber: payment.receiptNumber,
         daysOverdue,
-        suspensionDays: whatsappSuspensionNoticeDays,
+        suspensionDays: autoSuspensionGraceDays + 1,
+        suspensionDate: cutDate(payment.dueDate, autoSuspensionGraceDays),
         paymentLink: payment.paymentLinkUrl
       }
     );
@@ -1256,7 +1261,7 @@ export function PaymentsModule({
 
       <OverdueNotifyDialog
         preview={overduePreview}
-        suspensionNoticeDays={whatsappSuspensionNoticeDays}
+        suspensionNoticeDays={suspensionNoticeFrom}
         sending={notifySending}
         onClose={closeOverduePreview}
         onConfirm={() => void confirmNotifyOverdue()}

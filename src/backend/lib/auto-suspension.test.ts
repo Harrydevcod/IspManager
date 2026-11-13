@@ -3,8 +3,10 @@ import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrate';
 import { RouterError } from './routeros';
 import { writeSecret } from './secrets';
+import { businessDay } from '../../shared/business-day';
 import {
   loadAutoSuspensionPreview,
+  loadUpcomingSuspensions,
   reactivateServiceIfEligibleAfterPayment,
   runAutomaticSuspension
 } from './auto-suspension';
@@ -356,5 +358,55 @@ describe('suspensão automática por falta de pagamento', () => {
     db.prepare(`UPDATE payments SET status='paid' WHERE id=?`).run(newer);
 
     expect(reactivateServiceIfEligibleAfterPayment(db, serviceId)).toBe(true);
+  });
+});
+
+describe('suspensões a chegar', () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = dbForTest();
+    configure(db, true); // tolerância de 5 dias: corta no 6.º dia depois do vencimento
+  });
+
+  test('apanha o corte daqui a 3 dias e deixa de fora o de daqui a 8', () => {
+    const soon = seed(db, 'BREVE', '-3 days');
+    seed(db, 'LONGE', '+2 days');
+
+    const rows = loadUpcomingSuspensions(db, 7);
+
+    expect(rows.map((row) => row.clientCode)).toEqual(['BREVE']);
+    const due = db.prepare("SELECT date(due_date, '+6 days') AS cut FROM payments WHERE id = ?").get(soon.paymentId) as { cut: string };
+    expect(rows[0]).toMatchObject({ paymentId: soon.paymentId, cutDate: due.cut, balanceCve: 3000, sms: null, whatsapp: null });
+  });
+
+  test('um corte já vencido que o router adiou é hoje, nunca uma data passada', () => {
+    seed(db, 'ADIADO', '-20 days');
+    expect(loadUpcomingSuspensions(db, 7)[0].cutDate).toBe(businessDay());
+  });
+
+  test('quem tem crédito por abater não aparece: o job não o corta', () => {
+    const { clientId } = seed(db, 'CREDITO', '-3 days');
+    db.prepare("INSERT INTO client_credits (client_id, amount_cve, reason) VALUES (?, 500, 'Credito')").run(clientId);
+    expect(loadUpcomingSuspensions(db, 7)).toEqual([]);
+  });
+
+  test('o estado do aviso vem da fila, não do registo que diz enviado', () => {
+    const { clientId, paymentId } = seed(db, 'AVISO', '-3 days');
+    const outboxId = Number(db.prepare(`
+      INSERT INTO whatsapp_outbox (to_phone, kind, body, client_id, origin, status) VALUES ('+2389911111', 'text', 'x', ?, 'auto', 'failed')
+    `).run(clientId).lastInsertRowid);
+    db.prepare(`
+      INSERT INTO whatsapp_notices (payment_id, client_id, notice_type, origin, phone, body, status, outbox_id)
+      VALUES (?, ?, 'suspension', 'auto', '+2389911111', 'x', 'sent', ?)
+    `).run(paymentId, clientId, outboxId);
+    db.prepare(`
+      INSERT INTO sms_outbox (client_id, payment_id, event_type, to_phone, body, status) VALUES (?, ?, 'suspension_notice', '+2389911111', 'x', 'pending_approval')
+    `).run(clientId, paymentId);
+
+    expect(loadUpcomingSuspensions(db, 7)[0]).toMatchObject({
+      whatsapp: { status: 'failed' },
+      sms: { status: 'pending_approval' }
+    });
   });
 });
