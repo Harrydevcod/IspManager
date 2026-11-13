@@ -55,18 +55,17 @@ function smsTabProps(
     smsReport,
     smsReportLoading: false,
     onSmsReportMonthChange: vi.fn(),
-    smsPairing: { baseUrl: '', deviceName: '' },
-    onPairingChange: vi.fn(),
-    smsVerifying: false,
+    smsSession: null,
     smsPairingBusy: false,
     smsDetecting: false,
-    smsQrDataUrl: '',
     onDetectPhone: vi.fn(),
     smsSyncing: false,
     onSyncNow: vi.fn(),
     onCreatePairing: vi.fn(),
     onRevokePairing: vi.fn(),
-    onResumeVerification: vi.fn(),
+    onRenewPairing: vi.fn(),
+    onConfirmPairing: vi.fn(),
+    onCancelPairing: vi.fn(),
     ...overrides
   };
 }
@@ -175,22 +174,46 @@ describe('SmsTab connection switch', () => {
 describe('SmsTab pairing', () => {
   const offline = { ...smsStatus, reachable: false, paired: false, active: false };
 
-  test('an expired QR offers to keep waiting or cancel, never "lê este QR para parear"', () => {
-    const html = renderSmsTab({ smsStatus: offline, smsQrDataUrl: 'data:image/png;base64,AA' });
-    expect(html).toContain('Continuar à espera');
-    expect(html).toContain('Cancelar pareamento');
-    expect(html).not.toContain('Gerar novo pareamento');
+  const qr = 'data:image/png;base64,AA';
+
+  test('no address or device name fields: the phone is found on its own', () => {
+    const html = renderSmsTab({ smsStatus: null });
+    expect(html).not.toContain('Endereço do Android');
+    expect(html).not.toContain('Nome do dispositivo');
+    expect(html).toContain('Parear telemóvel');
   });
 
-  test('while waiting the QR says how to leave an old pairing on the phone', () => {
-    const html = renderSmsTab({ smsStatus: offline, smsVerifying: true, smsQrDataUrl: 'data:image/png;base64,AA' });
-    expect(html).toContain('Esquecer e parear de novo');
-    expect(html).not.toContain('Continuar à espera');
+  test('while waiting: the QR and a way out, no other pairing buttons', () => {
+    const html = renderSmsTab({ smsStatus: offline, smsSession: { state: 'waiting', qrDataUrl: qr } });
+    expect(html).toContain('alt="QR Code de pareamento do Android SMS"');
+    expect(html).toContain('Cancelar');
+    expect(html).not.toContain('Novo QR');
+    expect(html).not.toContain('Revogar pareamento');
+  });
+
+  test('an expired QR offers a new one or cancel', () => {
+    const html = renderSmsTab({ smsStatus: offline, smsSession: { state: 'expired', qrDataUrl: qr } });
+    expect(html).toContain('Novo QR');
+    expect(html).toContain('Cancelar');
+  });
+
+  test('a phone found shows the same 6-digit code to confirm', () => {
+    const html = renderSmsTab({ smsStatus: null, smsSession: { state: 'found', qrDataUrl: qr, sas: '063024', model: 'Samsung A15' } });
+    expect(html).toContain('063 024');
+    expect(html).toContain('Encontrado: Samsung A15');
+    expect(html).toContain('Confirmar');
+    expect(html).toContain('Não coincide');
+    expect(html).not.toContain('alt="QR Code');
+  });
+
+  test('a silent phone offers "Procurar telemóvel" first', () => {
+    const html = renderSmsTab({ smsStatus: offline });
+    expect(html).toContain('Procurar telemóvel');
   });
 
   test('a phone with another secret asks for a new QR', () => {
     const html = renderSmsTab({ smsStatus: { ...offline, reachable: true } });
-    expect(html).toContain('Gerar novo QR');
+    expect(html).toContain('Parear de novo');
     expect(html).toContain('Revogar pareamento');
   });
 });

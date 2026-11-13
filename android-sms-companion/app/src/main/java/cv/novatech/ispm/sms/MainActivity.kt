@@ -84,7 +84,9 @@ class MainActivity : FragmentActivity() {
         }
         CompanionApp(
           state = state,
-          onPaired = { app.holder.pair(it) },
+          onPaired = ::startPairing,
+          onConfirmPairing = { app.holder.confirmPairingOnPhone() },
+          onCancelPairing = { app.holder.cancelPairing() },
           onInvalidPairing = { toast("Código de pareamento inválido") },
           onRequestPermission = { permissionLauncher.launch(Manifest.permission.SEND_SMS) },
           onRequestBatteryExemption = ::requestBatteryExemption,
@@ -214,8 +216,42 @@ class MainActivity : FragmentActivity() {
 
   private fun handlePairingIntent(intent: Intent?) {
     val data = intent?.dataString ?: return
+    // A link from anywhere must never replace a working pairing: re-pairing is
+    // "Esquecer e parear de novo", then the in-app scanner.
+    if (app.pairingStore.isPaired()) return
     val info: PairingInfo = parsePairingPayload(data) ?: return
-    app.holder.pair(info)
+    startPairing(info)
+  }
+
+  /**
+   * v2 goes through the phone's fingerprint/PIN first (as WhatsApp does before
+   * linking a device); without a screen lock there is nothing to ask.
+   */
+  private fun startPairing(info: PairingInfo) {
+    when (info) {
+      is PairingInfo.V1 -> runPairing { app.holder.pair(info) }
+      is PairingInfo.V2 -> {
+        if (!deviceSecure()) {
+          runPairing { app.holder.beginPairing(info) }
+          return
+        }
+        BiometricPrompt(this, ContextCompat.getMainExecutor(this), object : BiometricPrompt.AuthenticationCallback() {
+          override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+            runPairing { app.holder.beginPairing(info) }
+          }
+        }).authenticate(
+          BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Parear com ${info.deviceName}")
+            .setSubtitle("Impressão digital ou PIN do telemóvel")
+            .setAllowedAuthenticators(BIOMETRIC_WEAK or DEVICE_CREDENTIAL)
+            .build()
+        )
+      }
+    }
+  }
+
+  private fun runPairing(block: () -> Unit) {
+    runCatching(block).onFailure { toast("Não foi possível parear: ${it.message ?: "erro"}") }
   }
 
   private fun refreshDevice() {

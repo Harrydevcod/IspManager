@@ -6,7 +6,10 @@ import cv.novatech.ispm.sms.SmsRequest
 import cv.novatech.ispm.sms.SmsRequestStore
 import cv.novatech.ispm.sms.dashboard.Dashboard
 import cv.novatech.ispm.sms.net.localIpv4
+import cv.novatech.ispm.sms.pairing.PendingPairing
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -19,7 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 class CompanionStateHolder(
   private val pairingStore: PairingStore,
   private val requestStore: SmsRequestStore,
-  scope: CoroutineScope,
+  private val scope: CoroutineScope,
   private val send: (SmsRequest, Int?) -> Unit,
   /** Waits for a SIM with room (SendScheduler), then calls back with it. Default: send now on the chosen SIM. */
   private val dispatch: suspend (SmsRequest, (Int?) -> Boolean) -> Unit = { _, go -> go(null) },
@@ -36,25 +39,59 @@ class CompanionStateHolder(
   @Volatile private var lastDesktopAt: Long? = null
   @Volatile private var lastRejectedAt: Long? = null
   @Volatile private var syncRequestedAt: Long? = null
+  @Volatile var pendingPairing: PendingPairing? = null
+    private set
   /** Requests waiting for their SIM: 0 = queued behind another, else when it can go. */
   private val waiting = java.util.concurrent.ConcurrentHashMap<String, Long>()
   private val undo = UndoController(scope, onSend = ::performSend)
 
   fun refresh() {
     val snap = PairingSnapshot(pairingStore.isPaired(), pairingStore.deviceName(), "${localIpv4()}:8765")
-    _state.value = buildUiState(snap, serverRunning, permissionGranted, requestStore.list(), undo.sendingIds, device, dashboard, dashboardReceivedAt, lastDesktopAt, lastRejectedAt, waiting.toMap(), syncRequestedAt)
+    val code = pendingPairing?.let { PairingCode(it.sas, it.desktopName, it.phoneConfirmed) }
+    _state.value = buildUiState(snap, serverRunning, permissionGranted, requestStore.list(), undo.sendingIds, device, dashboard, dashboardReceivedAt, lastDesktopAt, lastRejectedAt, waiting.toMap(), syncRequestedAt, code)
   }
 
   fun setServerRunning(value: Boolean) { serverRunning = value; refresh() }
   fun setPermissionGranted(value: Boolean) { permissionGranted = value; refresh() }
   fun setDevice(value: DeviceSnapshot) { device = value; refresh() }
   fun setDashboard(value: Dashboard?, receivedAt: Long?) { dashboard = value; dashboardReceivedAt = receivedAt; refresh() }
-  fun pair(info: PairingInfo) {
-    pairingStore.save(info.secret, info.deviceName)
+  /** v1 QR (ISPM até à 2.66): the secret came in the QR itself. */
+  fun pair(info: PairingInfo.V1) = commit(info.secret, info.deviceName, 1)
+
+  /** v2 QR: derive the secret, show the code, wait for the PC to prove it (2 min). */
+  fun beginPairing(info: PairingInfo.V2) {
+    val pending = PendingPairing.start(info, now())
+    pendingPairing = pending
+    refresh()
+    scope.launch {
+      delay(PendingPairing.TTL_MS)
+      if (pendingPairing === pending) cancelPairing()
+    }
+  }
+
+  /** Called from the server thread once `POST /pair/confirm` checks out. */
+  fun completePairing(pending: PendingPairing) {
+    if (pendingPairing !== pending) return
+    pendingPairing = null
+    commit(pending.secret, pending.desktopName, 2)
+  }
+
+  /** The operator saw the same code on both screens. */
+  fun confirmPairingOnPhone() {
+    pendingPairing?.phoneConfirmed = true
+    refresh()
+  }
+
+  fun cancelPairing() { pendingPairing = null; refresh() }
+
+  private fun commit(secret: String, deviceName: String, version: Int) {
+    pairingStore.save(secret, deviceName, version)
     lastDesktopAt = null; lastRejectedAt = null
     refresh()
   }
+
   fun unpair() {
+    pendingPairing = null
     pairingStore.clear()
     lastDesktopAt = null; lastRejectedAt = null
     refresh()

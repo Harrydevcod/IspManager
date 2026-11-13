@@ -67,11 +67,19 @@ fun CompanionApp(
   themePref: ThemePref = ThemePref.SYSTEM,
   onThemeChange: (ThemePref) -> Unit = {},
   onToggleTheme: (() -> Unit)? = null,
-  initialTab: Tab? = null
+  initialTab: Tab? = null,
+  onConfirmPairing: () -> Unit = {},
+  onCancelPairing: () -> Unit = {}
 ) {
   Box(Modifier.fillMaxSize().background(Bg)) {
-    if (!state.paired) {
-      Box(Modifier.systemBarsPadding()) { OnboardingScreen(onPaired = onPaired, onInvalid = onInvalidPairing) }
+    // Re-pairing from a paired phone goes through "Esquecer e parear de novo"; the code can't show otherwise.
+    if (!state.paired || state.pairingCode != null) {
+      Box(Modifier.systemBarsPadding()) {
+        OnboardingScreen(
+          onPaired = onPaired, onInvalid = onInvalidPairing, pairingCode = state.pairingCode,
+          onConfirmPairing = onConfirmPairing, onCancelPairing = onCancelPairing
+        )
+      }
     } else {
       PairedApp(
         state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim,

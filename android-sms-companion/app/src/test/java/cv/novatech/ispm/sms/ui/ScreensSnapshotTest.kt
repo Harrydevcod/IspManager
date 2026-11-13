@@ -18,6 +18,7 @@ import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
 import cv.novatech.ispm.sms.dashboard.Dashboard
 import cv.novatech.ispm.sms.state.CompanionUiState
+import cv.novatech.ispm.sms.state.PairingCode
 import cv.novatech.ispm.sms.state.RequestUi
 import cv.novatech.ispm.sms.state.SyncRules
 import cv.novatech.ispm.sms.state.ThemePref
@@ -163,6 +164,8 @@ class ScreensSnapshotTest(private val label: String, device: DeviceConfig, priva
 
   @Test fun entrada() {
     shot("pareamento") { OnboardingScreen({}, {}) }
+    shot("pareamento-codigo") { OnboardingScreen({}, {}, PairingCode("063024", "LOJA-PC")) }
+    shot("pareamento-codigo-confirmado") { OnboardingScreen({}, {}, PairingCode("063024", "LOJA-PC", confirmedOnPhone = true)) }
     shot("bloqueio") { LockScreen {} }
   }
 }

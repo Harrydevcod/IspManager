@@ -1,4 +1,4 @@
-import { QrCode, RefreshCw, RotateCcw, Unlink, Wifi } from 'lucide-react';
+import { Check, QrCode, RefreshCw, RotateCcw, Unlink, Wifi } from 'lucide-react';
 import { SmsInbox } from './SmsInbox';
 import { Button, Field, Toggle } from '../../components';
 import type { SmsMonthlyReport, SmsStatus } from '../../types';
@@ -10,9 +10,10 @@ import {
   fallbackSmsSuspensionNoticeTemplate
 } from '../../../shared/sms';
 import { type SettingsFormState, type ToggleField, type UpdateField } from './settingsForm';
-import { describeSmsPairing, describeSmsPresence } from './smsPresence';
+import { describeSmsPairing, describeSmsPresence, type SmsPairingSession } from './smsPresence';
 
-type SmsPairing = { baseUrl: string; deviceName: string };
+/** Sessão de pareamento v2 no ecrã: o QR e, depois de o telemóvel o ler, o código. */
+export type SmsPairingScreen = SmsPairingSession & { qrDataUrl: string; sas?: string };
 
 type SmsTabProps = {
   form: SettingsFormState;
@@ -23,20 +24,20 @@ type SmsTabProps = {
   smsReport: SmsMonthlyReport | null;
   smsReportLoading: boolean;
   onSmsReportMonthChange: (month: string) => void;
-  smsPairing: SmsPairing;
-  onPairingChange: (field: keyof SmsPairing, value: string) => void;
-  smsVerifying: boolean;
+  smsSession: SmsPairingScreen | null;
   smsPairingBusy: boolean;
   smsDetecting: boolean;
-  smsQrDataUrl: string;
   onDetectPhone: () => void;
   smsSyncing: boolean;
   /** Troca completa com o telemóvel já: resumo, canal de volta e fila de SMS. */
   onSyncNow: () => void;
   onCreatePairing: () => void;
   onRevokePairing: () => void;
-  /** O QR expirou sem ser lido: volta a esperar pelo mesmo QR. */
-  onResumeVerification: () => void;
+  /** O QR expirou sem ser lido: um QR novo, sem pedir outra vez a password. */
+  onRenewPairing: () => void;
+  /** O operador viu o mesmo código nos dois ecrãs. */
+  onConfirmPairing: () => void;
+  onCancelPairing: () => void;
 };
 
 export function SmsTab({
@@ -48,22 +49,20 @@ export function SmsTab({
   smsReport,
   smsReportLoading,
   onSmsReportMonthChange,
-  smsPairing,
-  onPairingChange,
-  smsVerifying,
+  smsSession,
   smsPairingBusy,
   smsDetecting,
-  smsQrDataUrl,
   onDetectPhone,
   smsSyncing,
   onSyncNow,
   onCreatePairing,
   onRevokePairing,
-  onResumeVerification
+  onRenewPairing,
+  onConfirmPairing,
+  onCancelPairing
 }: SmsTabProps) {
-  const pairing = describeSmsPairing(smsStatus, { verifying: smsVerifying, qrShown: Boolean(smsQrDataUrl), formBaseUrl: smsPairing.baseUrl });
-  const presence = pairing.state === 'waiting' || pairing.state === 'expired' ? null : describeSmsPresence(smsStatus);
-  const qrOpen = pairing.state === 'waiting' || pairing.state === 'expired';
+  const pairing = describeSmsPairing(smsStatus, smsSession);
+  const presence = smsSession ? null : describeSmsPresence(smsStatus);
 
   return (
     <>
@@ -81,7 +80,7 @@ export function SmsTab({
         disabled={!form.smsCompanionEnabled}
         onChange={(event) => onToggle('smsAutoNoticesEnabled', event.target.checked)}
       />
-      <div className="settings-test-whatsapp" aria-label="Pareamento do Android SMS">
+      <div className="settings-test-whatsapp sms-pairing-panel" aria-label="Pareamento do Android SMS">
         <span className="sms-pairing-state" data-tone={pairing.tone} role="status">{pairing.line}</span>
         {presence && (
           <div className="sms-presence" data-tone={presence.tone} role="status">
@@ -104,57 +103,44 @@ export function SmsTab({
             Sincronizar agora
           </Button>
         )}
-        <Field
-          label="Endereço do Android na rede local"
-          value={smsPairing.baseUrl}
-          onChange={(event) => onPairingChange('baseUrl', event.target.value)}
-          placeholder="http://192.168.1.50:8765"
-          disabled={qrOpen}
-        />
-        {pairing.addressChanged && !qrOpen && (
-          <small className="sms-pairing-address-warning">
-            Endereço diferente do guardado ({smsStatus?.baseUrl}). Só passa a valer com um novo pareamento.
-          </small>
-        )}
-        <Button
-          variant={pairing.primary === 'detect' ? 'primary' : 'ghost'}
-          onClick={onDetectPhone}
-          loading={smsDetecting}
-          disabled={smsPairingBusy || qrOpen}
-          leadingIcon={<Wifi size={14} aria-hidden />}
-        >
-          Procurar telemóvel na rede
-        </Button>
-        <Field
-          label="Nome do dispositivo"
-          value={smsPairing.deviceName}
-          onChange={(event) => onPairingChange('deviceName', event.target.value)}
-          placeholder="Telemóvel da loja"
-          disabled={qrOpen}
-        />
-        {qrOpen ? (
-          <div className="sms-pairing-qr" data-state={pairing.state}>
-            <img src={smsQrDataUrl} alt="QR Code de pareamento do Android SMS" width={220} height={220} />
-            <span>{pairing.state === 'waiting'
-              ? 'No telemóvel, abra a app ISPM SMS e leia este QR. Se a app já estiver pareada: Definições → "Esquecer e parear de novo".'
-              : 'Ninguém leu este QR em 60 s. Continue à espera ou cancele e comece de novo.'}</span>
+        {smsSession?.state === 'found' ? (
+          <div className="sms-pairing-confirm" role="group" aria-label="Código de confirmação">
+            <span className="sms-pairing-confirm-label">Código no telemóvel</span>
+            <output className="sms-pairing-sas">{`${smsSession.sas?.slice(0, 3)} ${smsSession.sas?.slice(3)}`}</output>
             <div className="sms-pairing-actions">
-              {pairing.state === 'expired' && (
-                <Button variant="primary" onClick={onResumeVerification} leadingIcon={<RotateCcw size={14} aria-hidden />}>
-                  Continuar à espera
+              <Button variant="primary" onClick={onConfirmPairing} loading={smsPairingBusy} leadingIcon={<Check size={14} aria-hidden />}>
+                Confirmar
+              </Button>
+              <Button variant="critical" onClick={onCancelPairing} disabled={smsPairingBusy}>
+                Não coincide
+              </Button>
+            </div>
+          </div>
+        ) : smsSession ? (
+          <div className="sms-pairing-qr" data-state={smsSession.state}>
+            <img src={smsSession.qrDataUrl} alt="QR Code de pareamento do Android SMS" width={220} height={220} />
+            <span>{smsSession.state === 'waiting' ? 'Na app ISPM SMS: Ler QR Code.' : 'Ninguém leu este QR em 2 min.'}</span>
+            <div className="sms-pairing-actions">
+              {smsSession.state === 'expired' && (
+                <Button variant="primary" onClick={onRenewPairing} loading={smsPairingBusy} leadingIcon={<RotateCcw size={14} aria-hidden />}>
+                  Novo QR
                 </Button>
               )}
-              <Button variant="critical" onClick={onRevokePairing} disabled={smsPairingBusy}>
-                Cancelar pareamento
+              <Button variant="critical" onClick={onCancelPairing} disabled={smsPairingBusy}>
+                Cancelar
               </Button>
             </div>
           </div>
         ) : (
           <div className="sms-pairing-actions">
+            {pairing.primary === 'detect' && (
+              <Button variant="primary" onClick={onDetectPhone} loading={smsDetecting} disabled={smsPairingBusy} leadingIcon={<Wifi size={14} aria-hidden />}>
+                Procurar telemóvel
+              </Button>
+            )}
             <Button
               variant={pairing.primary === 'pair' ? 'primary' : 'secondary'}
               onClick={onCreatePairing}
-              disabled={!smsPairing.baseUrl || !smsPairing.deviceName}
               loading={smsPairingBusy}
               leadingIcon={<QrCode size={14} aria-hidden />}
             >

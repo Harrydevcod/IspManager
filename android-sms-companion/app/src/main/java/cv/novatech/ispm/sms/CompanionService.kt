@@ -36,7 +36,10 @@ class CompanionService : Service() {
       onDashboard = app::acceptDashboard,
       onAuthenticated = { app.holder.markDesktopSeen() },
       onRejected = { app.holder.markDesktopRejected() },
-      eventStore = app.eventStore
+      eventStore = app.eventStore,
+      pendingPairing = { app.holder.pendingPairing },
+      onPairConfirmed = { app.holder.completePairing(it) },
+      model = listOf(Build.MANUFACTURER, Build.MODEL).distinct().joinToString(" ").trim().ifBlank { "Telemóvel" }
     )
     val started = runCatching { server?.start() }.isSuccess
     app.holder.setServerRunning(started)

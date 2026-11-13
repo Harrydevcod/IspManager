@@ -2,6 +2,7 @@ package cv.novatech.ispm.sms
 
 import cv.novatech.ispm.sms.events.EventStore
 import cv.novatech.ispm.sms.events.FieldEventCodec
+import cv.novatech.ispm.sms.pairing.PendingPairing
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
 import java.io.DataInputStream
@@ -30,7 +31,13 @@ class CompanionServer(
   /** A signed request that failed: the desktop holds another pairing. */
   private val onRejected: () -> Unit = {},
   /** Field events waiting for the desktop (canal de volta, 0.7.0+). */
-  private val eventStore: EventStore? = null
+  private val eventStore: EventStore? = null,
+  /** A v2 QR read and not yet confirmed on the PC (ADR 0023). */
+  private val pendingPairing: () -> PendingPairing? = { null },
+  /** The PC proved it derived the same secret: store it. */
+  private val onPairConfirmed: (PendingPairing) -> Unit = {},
+  /** Shown on the PC next to the confirmation code. */
+  private val model: String = "Telemóvel"
 ) : NanoHTTPD(port) {
 
   override fun serve(session: IHTTPSession): Response {
@@ -44,7 +51,9 @@ class CompanionServer(
     } catch (_: Exception) {
       return json(Response.Status.BAD_REQUEST, JSONObject().put("error", "corpo incompleto"))
     }
-    if (!verify(session, body)) {
+    // Pairing runs before the normal check: the phone has no shared secret yet.
+    if (session.uri.startsWith("/pair/")) return pairRoute(session, body)
+    if (!verify(session, body, pairingStore.secret())) {
       if (session.headers.containsKey("x-ispm-signature")) onRejected()
       return json(Response.Status.UNAUTHORIZED, JSONObject().put("error", "assinatura invalida"))
     }
@@ -57,7 +66,39 @@ class CompanionServer(
     }
   }
 
+  /**
+   * Only answers while a v2 QR is pending (2 min). `/pair/offer` hands out the
+   * phone's public key with a MAC only the holder of the derived secret can
+   * compute; `/pair/confirm` must be signed with that same secret.
+   */
+  private fun pairRoute(session: IHTTPSession, body: String): Response {
+    val notFound = json(Response.Status.NOT_FOUND, JSONObject().put("error", "rota inexistente"))
+    val pending = pendingPairing()?.takeIf { it.live(System.currentTimeMillis()) } ?: return notFound
+    if (session.method == Method.GET && session.uri == "/pair/offer") {
+      if (session.parameters["th"]?.firstOrNull() != pending.tokenHash) return notFound
+      return json(Response.Status.OK, pending.offer(model))
+    }
+    if (session.method == Method.POST && session.uri == "/pair/confirm") {
+      val th = runCatching { JSONObject(body).optString("th") }.getOrDefault("")
+      if (!verify(session, body, pending.secret) || th != pending.tokenHash) {
+        return json(Response.Status.UNAUTHORIZED, JSONObject().put("error", "assinatura invalida"))
+      }
+      // Both screens must agree: nothing is stored until the phone said "Coincide".
+      if (!pending.phoneConfirmed) {
+        return json(Response.Status.CONFLICT, JSONObject().put("error", "confirme no telemovel"))
+      }
+      onPairConfirmed(pending)
+      return json(Response.Status.OK, JSONObject().put("ok", true))
+    }
+    return notFound
+  }
+
   private fun route(session: IHTTPSession, body: String): Response {
+    // v2 pairings prove themselves here: the answer is signed with the secret.
+    if (session.method == Method.GET && session.uri == "/ping") {
+      return signed(session, "application/json", JSONObject().put("ok", true).toString().toByteArray(Charsets.UTF_8))
+    }
+
     if (session.method == Method.GET && session.uri == "/status") {
       return json(Response.Status.OK, statusProvider())
     }
@@ -138,8 +179,7 @@ class CompanionServer(
   private fun json(status: Response.Status, payload: JSONObject): Response =
     newFixedLengthResponse(status, "application/json", payload.toString())
 
-  private fun verify(session: IHTTPSession, body: String): Boolean {
-    val secret = pairingStore.secret()
+  private fun verify(session: IHTTPSession, body: String, secret: String): Boolean {
     if (secret.isBlank()) return false
     val timestamp = session.headers["x-ispm-timestamp"] ?: return false
     val nonce = session.headers["x-ispm-nonce"] ?: return false

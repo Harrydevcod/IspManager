@@ -74,34 +74,28 @@ describe('describeSmsPresence', () => {
 });
 
 describe('describeSmsPairing', () => {
-  const opts = { verifying: false, qrShown: false, formBaseUrl: base.baseUrl };
   const offline = { ...base, active: false, reachable: false, paired: false };
 
   test('unpaired asks for the first pairing', () => {
-    expect(describeSmsPairing(null, opts)).toMatchObject({ state: 'unpaired', primary: 'pair', pairLabel: 'Gerar pareamento' });
+    expect(describeSmsPairing(null, null)).toMatchObject({ state: 'unpaired', primary: 'pair', pairLabel: 'Parear telemóvel' });
   });
-  test('verifying wins over any stale status', () => {
-    expect(describeSmsPairing(offline, { ...opts, verifying: true, qrShown: true }).state).toBe('waiting');
+  test('an open session wins over any stale status', () => {
+    expect(describeSmsPairing(offline, { state: 'waiting' }).state).toBe('waiting');
+    expect(describeSmsPairing(base, { state: 'found', model: 'Samsung A15' })).toMatchObject({ state: 'found', line: 'Encontrado: Samsung A15' });
+    expect(describeSmsPairing(offline, { state: 'expired' }).state).toBe('expired');
   });
   test('off never claims the phone is paired', () => {
-    const v = describeSmsPairing({ ...offline, enabled: false }, opts);
+    const v = describeSmsPairing({ ...offline, enabled: false }, null);
     expect(v.state).toBe('off');
     expect(v.line).not.toMatch(/pareado/i);
   });
   test('active only when the phone proved the secret', () => {
-    expect(describeSmsPairing(base, opts)).toMatchObject({ state: 'active', primary: 'none' });
+    expect(describeSmsPairing(base, null)).toMatchObject({ state: 'active', primary: 'none' });
   });
-  test('a QR left after the wait expired says so instead of "lê este QR"', () => {
-    expect(describeSmsPairing(offline, { ...opts, qrShown: true }).state).toBe('expired');
-  });
-  test('answers with another secret: mismatch, new QR', () => {
-    expect(describeSmsPairing({ ...offline, reachable: true }, opts)).toMatchObject({ state: 'mismatch', primary: 'pair', pairLabel: 'Gerar novo QR' });
+  test('answers with another secret: mismatch, pair again', () => {
+    expect(describeSmsPairing({ ...offline, reachable: true }, null)).toMatchObject({ state: 'mismatch', primary: 'pair', pairLabel: 'Parear de novo' });
   });
   test('silent phone: look for it on the network before re-pairing', () => {
-    expect(describeSmsPairing(offline, opts)).toMatchObject({ state: 'unreachable', primary: 'detect' });
-  });
-  test('flags a typed address that differs from the saved one', () => {
-    expect(describeSmsPairing(offline, { ...opts, formBaseUrl: 'http://192.168.0.17:8765' }).addressChanged).toBe(true);
-    expect(describeSmsPairing(offline, opts).addressChanged).toBe(false);
+    expect(describeSmsPairing(offline, null)).toMatchObject({ state: 'unreachable', primary: 'detect' });
   });
 });
