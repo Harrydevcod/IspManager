@@ -4,6 +4,22 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.67](https://github.com/Harrydevcod/IspManager/releases/tag/v2.67.0) — 2026-11-13
+
+**Antes de atualizar:** instale a app ISPM SMS 0.11 no telemóvel. As versões anteriores da app não leem o QR novo. Os telemóveis que já estão pareados continuam a funcionar sem fazer nada.
+
+### Alterado
+- **Pareamento da app ISPM SMS mais seguro, à maneira do WhatsApp e do Vínculo ao Telemóvel.** O QR deixa de levar a chave secreta: só serve uma vez e caduca ao fim de 2 minutos. O computador e o telemóvel calculam a chave cada um do seu lado, e ela nunca passa pela rede nem pelo ecrã.
+- **Já não é preciso escrever o IP nem o nome do telemóvel.** O computador encontra sozinho o telemóvel que leu o QR.
+- **O mesmo código de 6 dígitos aparece nos dois ecrãs** e confirma-se nos dois: "Coincide" no telemóvel e "Confirmar" no computador. Se os códigos não baterem, "Não coincide" cancela. Até lá, o pareamento anterior continua a valer.
+- **"Ativo" só aparece quando o telemóvel prova que é o pareado**, com uma resposta assinada.
+- **QR expirado:** "Novo QR" gera outro sem pedir a password de novo.
+
+### Na app ISPM SMS 0.11
+- Pede a impressão digital ou o PIN antes de parear.
+- A chave fica guardada no cofre do Android (Keystore), e não em claro.
+- Um link `ispm-sms://` já não substitui um pareamento que existe: para trocar de computador, use "Esquecer e parear de novo".
+
 ## [2.66](https://github.com/Harrydevcod/IspManager/releases/tag/v2.66.0) — 2026-11-13
 
 ### Adicionado
