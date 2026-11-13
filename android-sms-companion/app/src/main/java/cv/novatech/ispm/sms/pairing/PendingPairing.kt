@@ -17,6 +17,13 @@ class PendingPairing(
   val tokenHash: String,
   val expiresAt: Long
 ) {
+  /**
+   * The operator saw the same code here and tapped "Coincide". Without it a
+   * rogue PC (a forged QR or deep link) could finish the pairing on its own:
+   * the code check must hold on both screens, not only on the PC.
+   */
+  @Volatile var phoneConfirmed = false
+
   fun live(now: Long) = now < expiresAt
 
   fun offer(model: String): JSONObject = JSONObject()

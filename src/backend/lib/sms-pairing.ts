@@ -137,6 +137,8 @@ export async function confirmPairingSession(): Promise<{ ok: true; found: Found 
       body,
       signal: AbortSignal.timeout(3500)
     });
+    // Os dois ecrãs têm de concordar: o telemóvel só grava depois do "Coincide" lá.
+    if (response.status === 409) return { ok: false, status: 409, error: 'Toque em "Coincide" no telemóvel e confirme de novo.' };
     if (!response.ok) return { ok: false, status: 502, error: 'O telemóvel recusou a confirmação. Leia um QR novo.' };
   } catch {
     return { ok: false, status: 502, error: 'O telemóvel deixou de responder. Confirme que a app está aberta e tente de novo.' };

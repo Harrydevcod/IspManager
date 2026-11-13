@@ -85,6 +85,7 @@ class MainActivity : FragmentActivity() {
         CompanionApp(
           state = state,
           onPaired = ::startPairing,
+          onConfirmPairing = { app.holder.confirmPairingOnPhone() },
           onCancelPairing = { app.holder.cancelPairing() },
           onInvalidPairing = { toast("Código de pareamento inválido") },
           onRequestPermission = { permissionLauncher.launch(Manifest.permission.SEND_SMS) },
@@ -215,6 +216,9 @@ class MainActivity : FragmentActivity() {
 
   private fun handlePairingIntent(intent: Intent?) {
     val data = intent?.dataString ?: return
+    // A link from anywhere must never replace a working pairing: re-pairing is
+    // "Esquecer e parear de novo", then the in-app scanner.
+    if (app.pairingStore.isPaired()) return
     val info: PairingInfo = parsePairingPayload(data) ?: return
     startPairing(info)
   }

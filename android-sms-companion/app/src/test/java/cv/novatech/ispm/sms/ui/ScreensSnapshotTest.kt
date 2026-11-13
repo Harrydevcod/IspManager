@@ -165,6 +165,7 @@ class ScreensSnapshotTest(private val label: String, device: DeviceConfig, priva
   @Test fun entrada() {
     shot("pareamento") { OnboardingScreen({}, {}) }
     shot("pareamento-codigo") { OnboardingScreen({}, {}, PairingCode("063024", "LOJA-PC")) }
+    shot("pareamento-codigo-confirmado") { OnboardingScreen({}, {}, PairingCode("063024", "LOJA-PC", confirmedOnPhone = true)) }
     shot("bloqueio") { LockScreen {} }
   }
 }

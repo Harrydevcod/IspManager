@@ -26,10 +26,11 @@ fun OnboardingScreen(
   onPaired: (PairingInfo) -> Unit,
   onInvalid: () -> Unit,
   pairingCode: PairingCode? = null,
+  onConfirmPairing: () -> Unit = {},
   onCancelPairing: () -> Unit = {}
 ) {
   if (pairingCode != null) {
-    PairingCodeScreen(pairingCode, onCancelPairing)
+    PairingCodeScreen(pairingCode, onConfirmPairing, onCancelPairing)
     return
   }
   var showManual by remember { mutableStateOf(false) }
@@ -104,15 +105,15 @@ private fun ManualPairSheet(onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
   }
 }
 
-/** ADR 0023: the PC shows the same six digits; the operator confirms there. */
+/** ADR 0023: the PC shows the same six digits; the operator confirms on both screens. */
 @Composable
-private fun PairingCodeScreen(code: PairingCode, onCancel: () -> Unit) {
+private fun PairingCodeScreen(code: PairingCode, onConfirm: () -> Unit, onCancel: () -> Unit) {
   Column(
     Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 32.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalArrangement = Arrangement.Center
   ) {
-    Text("Confirme no computador", color = TextPrimary, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+    Text(if (code.confirmedOnPhone) "Confirme no computador" else "O computador mostra o mesmo código?", color = TextPrimary, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
     Spacer(Modifier.height(6.dp))
     Text(code.desktopName, color = TextSecondary, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
     Spacer(Modifier.height(28.dp))
@@ -122,11 +123,17 @@ private fun PairingCodeScreen(code: PairingCode, onCancel: () -> Unit) {
       style = MaterialTheme.typography.headlineLarge.copy(fontSize = 44.sp, lineHeight = 52.sp, letterSpacing = 2.sp)
     )
     Spacer(Modifier.height(28.dp))
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-      CircularProgressIndicator(Modifier.size(16.dp), color = TextMuted, strokeWidth = 2.dp)
-      Text("À espera do computador", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+    if (code.confirmedOnPhone) {
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        CircularProgressIndicator(Modifier.size(16.dp), color = TextMuted, strokeWidth = 2.dp)
+        Text("À espera do computador", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+      }
+      Spacer(Modifier.height(28.dp))
+      IspmButton("Cancelar", onCancel, Modifier.fillMaxWidth(), ButtonVariant.SECONDARY)
+    } else {
+      IspmButton("Coincide", onConfirm, Modifier.fillMaxWidth(), ButtonVariant.PRIMARY)
+      Spacer(Modifier.height(10.dp))
+      IspmButton("Não coincide", onCancel, Modifier.fillMaxWidth(), ButtonVariant.CRITICAL)
     }
-    Spacer(Modifier.height(28.dp))
-    IspmButton("Cancelar", onCancel, Modifier.fillMaxWidth(), ButtonVariant.SECONDARY)
   }
 }

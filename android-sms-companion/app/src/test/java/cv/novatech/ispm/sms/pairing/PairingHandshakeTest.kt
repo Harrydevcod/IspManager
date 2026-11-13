@@ -56,6 +56,12 @@ class PairingHandshakeTest {
     assertNotEquals(pending.secret, PendingPairing.start(info, now = 0).secret)
   }
 
+  @Test fun pendingWaitsForTheOperatorOnThePhone() {
+    val desktop = PairingHandshake.generateKeyPair()
+    val pending = PendingPairing.start(PairingInfo.V2(PairingHandshake.encode(desktop.public), token, "PC"), now = 0)
+    assertEquals(false, pending.phoneConfirmed)
+  }
+
   @Test fun pendingExpiresAfterTwoMinutes() {
     val desktop = PairingHandshake.generateKeyPair()
     val pending = PendingPairing.start(PairingInfo.V2(PairingHandshake.encode(desktop.public), token, "PC"), now = 1_000)

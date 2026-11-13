@@ -139,4 +139,13 @@ describe('pareamento v2', () => {
     expect(await confirmPairingSession()).toMatchObject({ ok: false, status: 502 });
     expect(readPairingSession().state).toBe('found');
   });
+
+  test('sem o "Coincide" no telemóvel, nada se grava e a sessão fica', async () => {
+    hosts.list = ['http://192.168.1.50:8765'];
+    const { qrPayload } = startPairingSession();
+    vi.stubGlobal('fetch', fakePhone(qrPayload, { confirmStatus: 409 }).fetchMock);
+    await untilFound();
+    expect(await confirmPairingSession()).toMatchObject({ ok: false, status: 409, error: expect.stringContaining('Coincide') });
+    expect(readPairingSession().state).toBe('found');
+  });
 });

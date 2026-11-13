@@ -56,7 +56,7 @@ data class CompanionUiState(
   val pairingCode: PairingCode? = null
 )
 
-data class PairingCode(val sas: String, val desktopName: String)
+data class PairingCode(val sas: String, val desktopName: String, val confirmedOnPhone: Boolean = false)
 
 enum class DesktopLink { LINKED, WAITING, MISMATCH }
 

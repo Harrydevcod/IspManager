@@ -68,13 +68,17 @@ fun CompanionApp(
   onThemeChange: (ThemePref) -> Unit = {},
   onToggleTheme: (() -> Unit)? = null,
   initialTab: Tab? = null,
+  onConfirmPairing: () -> Unit = {},
   onCancelPairing: () -> Unit = {}
 ) {
   Box(Modifier.fillMaxSize().background(Bg)) {
-    // A v2 code on screen wins even over an old pairing (deep link while paired).
+    // Re-pairing from a paired phone goes through "Esquecer e parear de novo"; the code can't show otherwise.
     if (!state.paired || state.pairingCode != null) {
       Box(Modifier.systemBarsPadding()) {
-        OnboardingScreen(onPaired = onPaired, onInvalid = onInvalidPairing, pairingCode = state.pairingCode, onCancelPairing = onCancelPairing)
+        OnboardingScreen(
+          onPaired = onPaired, onInvalid = onInvalidPairing, pairingCode = state.pairingCode,
+          onConfirmPairing = onConfirmPairing, onCancelPairing = onCancelPairing
+        )
       }
     } else {
       PairedApp(

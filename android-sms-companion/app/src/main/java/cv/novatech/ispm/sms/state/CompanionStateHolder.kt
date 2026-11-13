@@ -47,7 +47,7 @@ class CompanionStateHolder(
 
   fun refresh() {
     val snap = PairingSnapshot(pairingStore.isPaired(), pairingStore.deviceName(), "${localIpv4()}:8765")
-    val code = pendingPairing?.let { PairingCode(it.sas, it.desktopName) }
+    val code = pendingPairing?.let { PairingCode(it.sas, it.desktopName, it.phoneConfirmed) }
     _state.value = buildUiState(snap, serverRunning, permissionGranted, requestStore.list(), undo.sendingIds, device, dashboard, dashboardReceivedAt, lastDesktopAt, lastRejectedAt, waiting.toMap(), syncRequestedAt, code)
   }
 
@@ -74,6 +74,12 @@ class CompanionStateHolder(
     if (pendingPairing !== pending) return
     pendingPairing = null
     commit(pending.secret, pending.desktopName, 2)
+  }
+
+  /** The operator saw the same code on both screens. */
+  fun confirmPairingOnPhone() {
+    pendingPairing?.phoneConfirmed = true
+    refresh()
   }
 
   fun cancelPairing() { pendingPairing = null; refresh() }

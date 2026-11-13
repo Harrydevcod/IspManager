@@ -42,9 +42,13 @@ Estudámos duas apps que resolvem o mesmo problema:
 3. **O desktop encontra o telemóvel**: varre a /24 na porta 8765 com `GET /pair/offer?th=sha256(t)[:16]`.
    Só o telemóvel que leu aquele QR responde, com `{pub, mac = HMAC(S, "offer"‖k‖pub), model}`. O
    desktop verifica o `mac` e fica a saber o IP sem ninguém o escrever.
-4. **Os dois ecrãs mostram o mesmo código.** O operador carrega em "Confirmar" no desktop, e o desktop
-   envia `POST /pair/confirm` assinado com S. Só então os dois lados gravam S: o desktop no cofre
-   DPAPI, o telemóvel selado com AES-GCM por uma chave não exportável do Android Keystore.
+4. **Os dois ecrãs mostram o mesmo código, e confirma-se nos dois.** O operador toca em "Coincide" no
+   telemóvel e carrega em "Confirmar" no desktop, que envia `POST /pair/confirm` assinado com S. Sem o
+   "Coincide", o telemóvel responde 409 e não grava nada. Só então os dois lados gravam S: o desktop no
+   cofre DPAPI, o telemóvel selado com AES-GCM por uma chave não exportável do Android Keystore.
+   Confirmar só no desktop protegia o PC de um telemóvel falso, mas não o telemóvel de um PC falso
+   (QR forjado ou link `ispm-sms://`). Pela mesma razão, um link direto nunca substitui um pareamento
+   que já existe: parear de novo é "Esquecer e parear de novo" e depois o leitor de QR da app.
 5. **Num pareamento v2, `/ping` responde assinado** (`x-ispm-response-signature`). O desktop só aceita
    "pareado" com essa assinatura válida (`smsCompanionPairingVersion = 2`).
 

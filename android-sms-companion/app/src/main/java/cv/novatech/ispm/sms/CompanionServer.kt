@@ -83,6 +83,10 @@ class CompanionServer(
       if (!verify(session, body, pending.secret) || th != pending.tokenHash) {
         return json(Response.Status.UNAUTHORIZED, JSONObject().put("error", "assinatura invalida"))
       }
+      // Both screens must agree: nothing is stored until the phone said "Coincide".
+      if (!pending.phoneConfirmed) {
+        return json(Response.Status.CONFLICT, JSONObject().put("error", "confirme no telemovel"))
+      }
       onPairConfirmed(pending)
       return json(Response.Status.OK, JSONObject().put("ok", true))
     }
