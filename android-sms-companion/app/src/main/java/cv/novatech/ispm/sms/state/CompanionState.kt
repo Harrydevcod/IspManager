@@ -51,8 +51,12 @@ data class CompanionUiState(
   /** Last signed request that failed verification: the desktop has another secret. */
   val lastRejectedAt: Long? = null,
   /** "Sincronizar" pressed; see [SyncRules]. In memory: resets with the process. */
-  val syncRequestedAt: Long? = null
+  val syncRequestedAt: Long? = null,
+  /** A v2 QR read: the code the PC must show too. In memory, 2 min. */
+  val pairingCode: PairingCode? = null
 )
+
+data class PairingCode(val sas: String, val desktopName: String)
 
 enum class DesktopLink { LINKED, WAITING, MISMATCH }
 
@@ -96,7 +100,8 @@ fun buildUiState(
   lastDesktopAt: Long? = null,
   lastRejectedAt: Long? = null,
   waiting: Map<String, Long> = emptyMap(),
-  syncRequestedAt: Long? = null
+  syncRequestedAt: Long? = null,
+  pairingCode: PairingCode? = null
 ): CompanionUiState {
   val ui = requests.map { it.toUi(sendingIds.contains(it.id), waiting[it.id]) }
   val pending = ui.filter { it.status in OPEN }
@@ -122,6 +127,7 @@ fun buildUiState(
     dashboardReceivedAt = dashboardReceivedAt,
     lastDesktopAt = lastDesktopAt,
     lastRejectedAt = lastRejectedAt,
-    syncRequestedAt = syncRequestedAt
+    syncRequestedAt = syncRequestedAt,
+    pairingCode = pairingCode
   )
 }

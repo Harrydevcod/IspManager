@@ -26,7 +26,7 @@ import type { SmsMonthlyReport, SmsStatus } from '../types';
 import { BackupsPanel } from './BackupsPanel';
 import { BillingTab } from './settings/BillingTab';
 import { CompanyTab } from './settings/CompanyTab';
-import { SmsTab } from './settings/SmsTab';
+import { SmsTab, type SmsPairingScreen } from './settings/SmsTab';
 import { WhatsappTab } from './settings/WhatsappTab';
 import { PaymentTab } from './settings/PaymentTab';
 import type { SettingsFormState } from './settings/settingsForm';
@@ -194,68 +194,93 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
   const [smsReportMonth, setSmsReportMonth] = useState(currentSmsReportMonth);
   const [smsReport, setSmsReport] = useState<SmsMonthlyReport | null>(null);
   const [smsReportLoading, setSmsReportLoading] = useState(false);
-  const [smsPairing, setSmsPairing] = useState<{ baseUrl: string; deviceName: string }>({ baseUrl: '', deviceName: '' });
   const [smsPairingBusy, setSmsPairingBusy] = useState(false);
   const [smsDetecting, setSmsDetecting] = useState(false);
   const [smsSyncing, setSmsSyncing] = useState(false);
-  const [smsQrDataUrl, setSmsQrDataUrl] = useState<string>('');
-  const [smsVerifying, setSmsVerifying] = useState(false);
+  const [smsSession, setSmsSession] = useState<SmsPairingScreen | null>(null);
   const pairingPollRef = useRef<{ cancelled: boolean } | null>(null);
-  const smsSavedPairingRef = useRef({ baseUrl: '', deviceName: '' });
   const smsReportRequestRef = useRef(0);
   const hasUnsavedChanges = !lastSavedForm || JSON.stringify(form) !== JSON.stringify(lastSavedForm);
 
-  function stopPairingVerification() {
+  function stopPairingPoll() {
     if (pairingPollRef.current) pairingPollRef.current.cancelled = true;
     pairingPollRef.current = null;
-    setSmsVerifying(false);
   }
 
-  // Polls the phone after a QR is shown: confirms it scanned the code (signature
-  // accepted) before declaring success, closes the QR, and surfaces a clear
-  // success/failure message. Keeps the QR open on failure so the user can retry.
-  async function startPairingVerification(deviceName: string) {
-    if (pairingPollRef.current) pairingPollRef.current.cancelled = true;
+  // Pareamento v2: o servidor procura na rede o telemóvel que leu o QR; aqui só
+  // se pergunta pelo estado até aparecer o código, expirar ou alguém cancelar.
+  async function showPairingQr(qrPayload: string) {
+    stopPairingPoll();
     const token = { cancelled: false };
     pairingPollRef.current = token;
-    setSmsVerifying(true);
-    const deadline = Date.now() + 60_000;
-    // Remember the last thing the phone told us so a timeout can explain *why*:
-    // never reachable → wrong IP / off-network; reachable but never paired →
-    // the QR was not read (or an old one was).
-    let everReachable = false;
-    try {
-      while (!token.cancelled && Date.now() < deadline) {
-        await new Promise((resolve) => window.setTimeout(resolve, 2000));
-        if (token.cancelled) return;
-        try {
-          const response = await authFetch('http://127.0.0.1:3001/api/sms/pairing/verify');
-          const data = (await response.json().catch(() => ({}))) as { reachable?: boolean; paired?: boolean; deviceName?: string };
-          if (token.cancelled) return;
-          if (data.reachable) everReachable = true;
-          if (data.paired) {
-            setSmsQrDataUrl('');
-            setMessage({ tone: 'success', text: `Telemovel "${data.deviceName || deviceName}" pareado com sucesso.`, placement: 'top' });
-            await loadSmsStatus();
-            return;
-          }
-        } catch {
-          // Phone not reachable yet — keep polling until the deadline.
-        }
+    const qrDataUrl = await QRCode.toDataURL(qrPayload, { width: 220, margin: 1 }).catch(() => '');
+    if (token.cancelled) return;
+    setSmsSession({ state: 'waiting', qrDataUrl });
+    while (!token.cancelled) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1500));
+      if (token.cancelled) return;
+      const data = await authFetch('http://127.0.0.1:3001/api/sms/pairing/session')
+        .then((response) => response.json() as Promise<{ state?: string; sas?: string; model?: string }>)
+        .catch(() => null);
+      if (token.cancelled) return;
+      if (!data) continue;
+      if (data.state === 'idle') {
+        setSmsSession(null);
+        break;
       }
-      if (!token.cancelled) {
-        setMessage({
-          tone: 'error',
-          text: everReachable
-            ? `O telemovel "${deviceName}" respondeu mas nao aceitou o pareamento. Le o QR Code atual (nao um antigo) no app ISPM SMS e tenta de novo.`
-            : `O telemovel "${deviceName}" nao respondeu em ${smsPairing.baseUrl || 'endereco guardado'}. Confirma que o app ISPM SMS esta aberto, na mesma rede Wi-Fi, e que o endereco/IP esta correto (usa "Detetar telemovel na rede").`,
-          placement: 'top'
-        });
+      if (data.state === 'found' || data.state === 'expired') {
+        setSmsSession({ state: data.state, qrDataUrl, sas: data.sas, model: data.model });
+        break;
       }
-    } finally {
-      if (pairingPollRef.current === token) pairingPollRef.current = null;
-      setSmsVerifying(false);
     }
+    if (pairingPollRef.current === token) pairingPollRef.current = null;
+  }
+
+  async function renewSmsPairing() {
+    setSmsPairingBusy(true);
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/sms/pairing/renew', { method: 'POST' });
+      const data = (await response.json().catch(() => ({}))) as { error?: string; qrPayload?: string };
+      if (!response.ok || !data.qrPayload) {
+        setSmsSession(null);
+        setMessage({ tone: 'error', text: data.error || 'Nao foi possivel gerar um QR novo.', placement: 'top' });
+        return;
+      }
+      void showPairingQr(data.qrPayload);
+    } catch {
+      setMessage({ tone: 'error', text: 'Falha de rede ao gerar um QR novo.', placement: 'top' });
+    } finally {
+      setSmsPairingBusy(false);
+    }
+  }
+
+  async function confirmSmsPairing() {
+    setSmsPairingBusy(true);
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/sms/pairing/confirm', { method: 'POST' });
+      const data = (await response.json().catch(() => ({}))) as { error?: string; baseUrl?: string; deviceName?: string };
+      if (!response.ok) {
+        setMessage({ tone: 'error', text: data.error || 'Nao foi possivel confirmar o pareamento.', placement: 'top' });
+        return;
+      }
+      // O servidor já gravou a ligação ligada: não fica como alteração por guardar.
+      const paired = (current: SettingsFormState) => ({ ...current, smsCompanionEnabled: true, smsCompanionBaseUrl: data.baseUrl || '' });
+      setForm(paired);
+      setLastSavedForm((current) => (current ? paired(current) : current));
+      setSmsSession(null);
+      setMessage({ tone: 'success', text: `${data.deviceName || 'Telemóvel'} pareado.`, placement: 'top' });
+      await loadSmsStatus();
+    } catch {
+      setMessage({ tone: 'error', text: 'Falha de rede ao confirmar o pareamento.', placement: 'top' });
+    } finally {
+      setSmsPairingBusy(false);
+    }
+  }
+
+  async function cancelSmsPairing() {
+    stopPairingPoll();
+    setSmsSession(null);
+    await authFetch('http://127.0.0.1:3001/api/sms/pairing/session', { method: 'DELETE' }).catch(() => null);
   }
 
   function loadSmsStatus() {
@@ -263,21 +288,6 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
       .then((response) => (response.ok ? (response.json() as Promise<SmsStatus>) : null))
       .then((data) => {
         setSmsStatus(data);
-        // Confirmado pelo telemóvel (por exemplo numa atualização periódica depois
-        // de o QR expirar): o QR já não serve para nada.
-        if (data?.active && !pairingPollRef.current) setSmsQrDataUrl('');
-        // Hydrate the pairing form from the persisted settings so the IP and
-        // device name survive reloads. Keep anything the operator is mid-typing.
-        // A field still showing the last saved value follows the server (the
-        // address can change by itself: self-heal, "Procurar telemóvel").
-        if (data) {
-          const previous = smsSavedPairingRef.current;
-          smsSavedPairingRef.current = { baseUrl: data.baseUrl || '', deviceName: data.deviceName || '' };
-          setSmsPairing((current) => ({
-            baseUrl: !current.baseUrl || current.baseUrl === previous.baseUrl ? data.baseUrl || '' : current.baseUrl,
-            deviceName: !current.deviceName || current.deviceName === previous.deviceName ? data.deviceName || '' : current.deviceName
-          }));
-        }
       })
       .catch(() => setSmsStatus(null));
   }
@@ -347,7 +357,6 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
       }
       if (data.paired && data.baseUrl) {
         // O servidor reconheceu o telemóvel pelo segredo e já gravou o endereço.
-        setSmsPairing((current) => ({ ...current, baseUrl: data.baseUrl as string }));
         setMessage({
           tone: 'success',
           text: data.updated
@@ -356,14 +365,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
           placement: 'top'
         });
         await loadSmsStatus();
-      } else if (data.baseUrl) {
-        setSmsPairing((current) => ({ ...current, baseUrl: data.baseUrl as string }));
-        setMessage({ tone: 'success', text: `Telemovel encontrado em ${data.baseUrl}. Confirma o nome e gera o pareamento.`, placement: 'top' });
-      } else if (data.candidates && data.candidates.length > 1) {
-        setSmsPairing((current) => ({ ...current, baseUrl: data.candidates![0] }));
-        setMessage({ tone: 'neutral', text: `Varios dispositivos respondem na porta do companion (${data.candidates.join(', ')}). Confirma qual e o telemovel.`, placement: 'top' });
       } else {
-        setMessage({ tone: 'error', text: 'Nenhum telemovel encontrado na rede local. Confirma que o app ISPM SMS esta aberto no telemovel e na mesma rede Wi-Fi.', placement: 'top' });
+        setMessage({ tone: 'error', text: 'O telemóvel pareado não está na rede local. Confirme que a app ISPM SMS está aberta e no mesmo Wi-Fi.', placement: 'top' });
       }
     } catch {
       setMessage({ tone: 'error', text: 'Falha de rede ao procurar o telemovel.', placement: 'top' });
@@ -372,34 +375,20 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     }
   }
 
-  /** Devolve `null` se pareou, ou a mensagem de erro (para o diálogo da password). */
+  /** Devolve `null` se o QR abriu, ou a mensagem de erro (para o diálogo da password). */
   async function createSmsPairing(confirmPassword: string): Promise<string | null> {
     setSmsPairingBusy(true);
     try {
       const response = await authFetch('http://127.0.0.1:3001/api/sms/pairing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...smsPairing, confirmPassword })
+        body: JSON.stringify({ confirmPassword })
       });
       const data = (await response.json().catch(() => ({}))) as { error?: string; qrPayload?: string };
-      if (!response.ok) {
+      if (!response.ok || !data.qrPayload) {
         return data.error || 'Nao foi possivel parear o Android SMS.';
       }
-      // O servidor já gravou a ligação ligada: não fica como alteração por guardar.
-      const paired = (current: SettingsFormState) => ({ ...current, smsCompanionEnabled: true, smsCompanionBaseUrl: smsPairing.baseUrl });
-      setForm(paired);
-      setLastSavedForm((current) => (current ? paired(current) : current));
-      setMessage({ tone: 'neutral', text: 'QR Code gerado. Le-o no telemovel — a aguardar confirmacao do pareamento...', placement: 'top' });
-      if (data.qrPayload) {
-        try {
-          const url = await QRCode.toDataURL(data.qrPayload, { width: 220, margin: 1 });
-          setSmsQrDataUrl(url);
-        } catch {
-          setSmsQrDataUrl('');
-        }
-      }
-      await loadSmsStatus();
-      void startPairingVerification(smsPairing.deviceName);
+      void showPairingQr(data.qrPayload);
       return null;
     } catch {
       return 'Falha de rede ao parear o Android SMS.';
@@ -410,7 +399,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
 
   async function revokeSmsPairing() {
     setSmsPairingBusy(true);
-    stopPairingVerification();
+    stopPairingPoll();
     try {
       const response = await authFetch('http://127.0.0.1:3001/api/sms/pairing', { method: 'DELETE' });
       if (!response.ok) {
@@ -419,7 +408,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
       }
       setForm((current) => ({ ...current, smsCompanionEnabled: false }));
       setLastSavedForm((current) => (current ? { ...current, smsCompanionEnabled: false } : current));
-      setSmsQrDataUrl('');
+      setSmsSession(null);
       setMessage({ tone: 'success', text: 'Pareamento Android revogado.', placement: 'top' });
       await loadSmsStatus();
     } catch {
@@ -648,10 +637,7 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
       // Desligar a app móvel corta também a verificação do pareamento em curso:
       // desligada, o desktop não contacta o telemóvel.
       if (lastSavedForm?.smsCompanionEnabled !== settledForm.smsCompanionEnabled) {
-        if (!settledForm.smsCompanionEnabled) {
-          stopPairingVerification();
-          setSmsQrDataUrl('');
-        }
+        if (!settledForm.smsCompanionEnabled && smsSession) void cancelSmsPairing();
         void loadSmsStatus();
       }
       setLastSavedForm(settledForm);
@@ -922,12 +908,9 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
             smsReport={smsReport}
             smsReportLoading={smsReportLoading}
             onSmsReportMonthChange={setSmsReportMonth}
-            smsPairing={smsPairing}
-            onPairingChange={(field, value) => setSmsPairing((current) => ({ ...current, [field]: value }))}
-            smsVerifying={smsVerifying}
+            smsSession={smsSession}
             smsPairingBusy={smsPairingBusy}
             smsDetecting={smsDetecting}
-            smsQrDataUrl={smsQrDataUrl}
             onDetectPhone={() => void detectSmsPhone()}
             smsSyncing={smsSyncing}
             onSyncNow={() => void syncSmsNow()}
@@ -936,7 +919,9 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
               setSmsPasswordFor('pair');
             }}
             onRevokePairing={() => void revokeSmsPairing()}
-            onResumeVerification={() => void startPairingVerification(smsPairing.deviceName)}
+            onRenewPairing={() => void renewSmsPairing()}
+            onConfirmPairing={() => void confirmSmsPairing()}
+            onCancelPairing={() => void cancelSmsPairing()}
           />
         )}
 

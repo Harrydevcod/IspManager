@@ -3,7 +3,7 @@ import os from 'node:os';
 import { getSqliteDatabase } from '../db/database';
 import { isSystemClient, SYSTEM_CLIENT_ERROR } from './system-client';
 import { readSecret } from './secrets';
-import { createSmsSignature } from './sms-signing';
+import { createSmsSignature, verifyResponseSignature } from './sms-signing';
 import type { SmsEventType } from '../../shared/sms';
 
 const DEFAULT_COMPANION_PORT = 8765;
@@ -110,21 +110,29 @@ export async function signedFetch(path: string, method: 'GET' | 'POST', bodyObje
 }
 
 /**
- * Probes the paired phone to confirm it actually holds the current pairing
- * secret. The phone's companion server verifies the HMAC signature before
- * routing, so a `401` means the signature was rejected (phone has a different
- * secret or none yet — i.e. it has not scanned this QR), while any other status
- * (200/404) means the signature was accepted → the phone is paired. A network
- * error/timeout means the phone is unreachable (wrong address or off-network).
+ * Asks the phone at `baseUrl` (default: the saved one) to prove it holds the
+ * pairing secret. v1 phones verify our HMAC before routing, so anything but a
+ * `401` meant "paired". A v2 pairing (ADR 0023) demands more: the phone signs
+ * its `/ping` answer with the same secret, so a host that merely skips the
+ * check never passes. A network error/timeout means unreachable.
  */
-export async function verifyCompanionPairing(timeoutMs = 3500): Promise<{ reachable: boolean; paired: boolean }> {
+async function pingProvesPairing(timeoutMs: number, baseUrl?: string): Promise<'paired' | 'rejected' | 'unreachable'> {
+  const nonce = randomUUID();
   try {
-    const response = await signedFetch('/ping', 'GET', undefined, timeoutMs);
-    if (response.status === 401) return { reachable: true, paired: false };
-    return { reachable: true, paired: true };
+    const response = await signedFetch('/ping', 'GET', undefined, timeoutMs, baseUrl, nonce);
+    if (response.status === 401) return 'rejected';
+    if (getSetting('smsCompanionPairingVersion') !== '2') return 'paired';
+    const secret = readSecret(getSqliteDatabase(), 'smsCompanionPairingKey');
+    const body = Buffer.from(await response.arrayBuffer());
+    return response.ok && verifyResponseSignature(secret, nonce, body, response.headers.get('x-ispm-response-signature')) ? 'paired' : 'rejected';
   } catch {
-    return { reachable: false, paired: false };
+    return 'unreachable';
   }
+}
+
+export async function verifyCompanionPairing(timeoutMs = 3500): Promise<{ reachable: boolean; paired: boolean }> {
+  const result = await pingProvesPairing(timeoutMs);
+  return { reachable: result !== 'unreachable', paired: result === 'paired' };
 }
 
 function isPrivateIpv4(ip: string): boolean {
@@ -193,8 +201,8 @@ export async function discoverCompanionHosts(opts?: { timeoutMs?: number; concur
 }
 
 /**
- * Among LAN hosts running a companion, the one that accepts our pairing secret
- * (signed `/ping` ≠ 401) is uniquely our paired phone — so this recovers the
+ * Among LAN hosts running a companion, the one that proves our pairing secret
+ * (see pingProvesPairing) is uniquely our paired phone — so this recovers the
  * phone after its DHCP address changes. Pass a precomputed host list to avoid a
  * second sweep. Returns null if none matches (phone off-network / not paired).
  */
@@ -203,10 +211,7 @@ export async function findPairedCompanion(hosts?: string[], timeoutMs = 700): Pr
   if (!secret) return null;
   const candidates = hosts ?? (await discoverCompanionHosts({ timeoutMs }));
   for (const baseUrl of candidates) {
-    try {
-      const response = await signedFetch('/ping', 'GET', undefined, timeoutMs, baseUrl);
-      if (response.status !== 401) return baseUrl;
-    } catch { /* went away mid-sweep — skip */ }
+    if ((await pingProvesPairing(timeoutMs, baseUrl)) === 'paired') return baseUrl;
   }
   return null;
 }

@@ -7018,7 +7018,12 @@ button.danger:disabled {
 .sms-pairing-state[data-tone='success'] { color: var(--success); }
 .sms-pairing-state[data-tone='warn'] { color: var(--warn); }
 .sms-pairing-state[data-tone='danger'] { color: var(--danger); }
-.sms-pairing-address-warning { color: var(--warn); font-size: var(--fs-xs); font-weight: 600; }
+.sms-pairing-qr[data-state='expired'] img { opacity: 0.35; }
+/* Pareamento v2: o mesmo código nos dois ecrãs, lido de relance. */
+.sms-pairing-confirm { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); margin-top: var(--space-3); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--r1); background: var(--surface-2); }
+.sms-pairing-confirm-label { color: var(--text-3); font-size: var(--fs-xs); letter-spacing: 0.04em; text-transform: uppercase; }
+.sms-pairing-sas { color: var(--text); font-size: 2.5rem; font-weight: 600; line-height: 1.1; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; }
+.sms-pairing-confirm .sms-pairing-actions { justify-content: center; }
 
 /* ── Licenciamento ────────────────────────────────────────────────────────
    O aviso vive acima do cabeçalho da página e nunca tapa a aplicação: uma

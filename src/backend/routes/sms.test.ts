@@ -197,15 +197,39 @@ describe('SMS routes', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  test('POST /api/sms/pairing creates a pairing payload and stores the pairing config', async () => {
-    const response = await app.inject({ method: 'POST', url: '/api/sms/pairing', payload: { baseUrl: 'http://192.168.1.50:8765', deviceName: 'Android A' } });
+  test('POST /api/sms/pairing opens a v2 session: QR without secret, nothing saved until confirmed', async () => {
+    const response = await app.inject({ method: 'POST', url: '/api/sms/pairing', payload: {} });
     expect(response.statusCode).toBe(200);
     const body = response.json();
-    expect(body.qrPayload).toContain('ispm-sms://pair');
-    expect(body.secret).toBeTruthy();
+    expect(body.qrPayload).toMatch(/^ispm-sms:\/\/pair\?v=2&/);
+    expect(body.secret).toBeUndefined();
 
     const status = await app.inject({ method: 'GET', url: '/api/sms/status' });
-    expect(status.json()).toMatchObject({ configured: true });
+    expect(status.json()).toMatchObject({ configured: false });
+    const session = await app.inject({ method: 'GET', url: '/api/sms/pairing/session' });
+    expect(session.json()).toMatchObject({ state: 'waiting' });
+
+    await app.inject({ method: 'DELETE', url: '/api/sms/pairing/session' });
+    expect((await app.inject({ method: 'GET', url: '/api/sms/pairing/session' })).json()).toEqual({ state: 'idle' });
+  });
+
+  test('POST /api/sms/pairing/confirm without a phone found is 409', async () => {
+    await app.inject({ method: 'POST', url: '/api/sms/pairing', payload: {} });
+    const response = await app.inject({ method: 'POST', url: '/api/sms/pairing/confirm' });
+    expect(response.statusCode).toBe(409);
+    await app.inject({ method: 'DELETE', url: '/api/sms/pairing/session' });
+  });
+
+  test('POST /api/sms/pairing/renew needs an open session', async () => {
+    expect((await app.inject({ method: 'POST', url: '/api/sms/pairing/renew' })).statusCode).toBe(409);
+  });
+
+  test('a v2 pairing is not proven by a phone that answers without signing', async () => {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionEnabled','true'), ('smsCompanionBaseUrl','http://192.168.1.50:8765'), ('smsCompanionPairingVersion','2')`).run();
+    writeSecret(db, 'smsCompanionPairingKey', 'segredo');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 404 })));
+    const response = await app.inject({ method: 'GET', url: '/api/sms/pairing/verify' });
+    expect(response.json()).toMatchObject({ reachable: true, paired: false });
   });
 
   test('POST /api/sms/discover saves the new IP of the phone found by its secret', async () => {
@@ -247,7 +271,8 @@ describe('SMS routes', () => {
   });
 
   test('DELETE /api/sms/pairing revokes the companion', async () => {
-    await app.inject({ method: 'POST', url: '/api/sms/pairing', payload: { baseUrl: 'http://192.168.1.50:8765', deviceName: 'Android A' } });
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('smsCompanionEnabled','true'), ('smsCompanionBaseUrl','http://192.168.1.50:8765'), ('smsCompanionPairingVersion','2')`).run();
+    writeSecret(db, 'smsCompanionPairingKey', 'segredo');
     const response = await app.inject({ method: 'DELETE', url: '/api/sms/pairing' });
     expect(response.statusCode).toBe(200);
     const status = await app.inject({ method: 'GET', url: '/api/sms/status' });

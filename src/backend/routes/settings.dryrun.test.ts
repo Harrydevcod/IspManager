@@ -200,14 +200,15 @@ describe('ligar a app móvel ISPM SMS', () => {
     expect(auditSummaries()).toContain('Desligou a app movel ISPM SMS');
   });
 
-  test('parear também liga, por isso também pede a password', async () => {
+  test('parear também liga, por isso abrir o QR pede a password', async () => {
     const admin = await adminToken();
     const headers = { authorization: `Bearer ${admin}` };
-    const payload = { baseUrl: 'http://192.168.1.50:8765', deviceName: 'Android A' };
-    expect((await app.inject({ method: 'POST', url: '/api/sms/pairing', headers, payload })).statusCode).toBe(400);
-    expect(storedSmsEnabled()).toBeUndefined();
-    const ok = await app.inject({ method: 'POST', url: '/api/sms/pairing', headers, payload: { ...payload, confirmPassword: 'supersecret' } });
+    expect((await app.inject({ method: 'POST', url: '/api/sms/pairing', headers, payload: {} })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/api/sms/pairing/session', headers })).json()).toEqual({ state: 'idle' });
+    const ok = await app.inject({ method: 'POST', url: '/api/sms/pairing', headers, payload: { confirmPassword: 'supersecret' } });
     expect(ok.statusCode).toBe(200);
-    expect(storedSmsEnabled()).toBe('true');
+    // Só liga quando o operador confirmar o código (pareamento v2).
+    expect(storedSmsEnabled()).toBeUndefined();
+    await app.inject({ method: 'DELETE', url: '/api/sms/pairing/session', headers });
   });
 });

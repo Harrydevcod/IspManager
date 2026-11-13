@@ -1,6 +1,6 @@
 import { isSystemClient, SYSTEM_CLIENT_ERROR } from '../lib/system-client';
 import type { FastifyInstance } from 'fastify';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { autoSuspensionGraceDays } from '../lib/auto-suspension';
 import { cutDate } from '../../shared/business-day';
@@ -14,11 +14,7 @@ import { openPaymentLinkSql } from '../lib/vinti4';
 import { SMS_REPORT_TIMEZONE, smsReportMonthUtcRange } from '../../shared/sms-report';
 import { normalizeSmsPhone, renderSmsTemplate } from '../../shared/sms';
 import { smsTemplateFor } from '../lib/sms-notices';
-
-const pairingSchema = z.object({
-  baseUrl: z.string().url(),
-  deviceName: z.string().trim().min(1).max(80)
-});
+import { cancelPairingSession, confirmPairingSession, readPairingSession, startPairingSession } from '../lib/sms-pairing';
 
 const paymentSmsSchema = z.object({
   eventType: z.enum(['invoice_issued', 'receipt_confirmed', 'payment_overdue', 'suspension_notice'])
@@ -149,8 +145,8 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     // IP — save the address so a DHCP change never forces a re-pairing.
     // Same rule as selfHealCompanionAddress: a saved address that still verifies
     // is never replaced, so another host on the LAN cannot take over a healthy link.
-    // ponytail: "paired" = the host did not answer 401 to a signed /ping; a real
-    // proof needs the phone to sign its responses (protocol change in the app).
+    // v1 pairings: "paired" = the host did not answer 401 to a signed /ping; v2
+    // pairings demand a signed answer (pingProvesPairing in sms-outbox).
     const savedStillPaired = pairedUrl ? (await verifyCompanionPairing(1500)).paired : false;
     const updated = Boolean(pairedUrl && !savedStillPaired && pairedUrl !== getSetting('smsCompanionBaseUrl'));
     if (pairedUrl && updated) setSetting('smsCompanionBaseUrl', pairedUrl);
@@ -158,19 +154,42 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     return { candidates: hosts, baseUrl, paired: Boolean(pairedUrl), updated };
   });
 
+  // Pareamento v2: o QR só leva a chave pública e um token de uso único. O
+  // pareamento atual continua a valer até o operador confirmar o código.
   app.post('/api/sms/pairing', adminOnly, async (request, reply) => {
-    const parsed = pairingSchema.safeParse(request.body);
-    if (!parsed.success) return reply.status(400).send({ error: 'Pareamento SMS invalido' });
     if (!canStoreSecrets()) {
       return reply.status(409).send({ error: 'Cofre de credenciais trancado: nao e possivel parear nesta sessao.' });
     }
     // Parear liga a app móvel: a mesma password que o interruptor nas Definições.
     const confirmPassword = (request.body as { confirmPassword?: unknown } | null)?.confirmPassword;
     if (!(await confirmSessionPassword(request, reply, confirmPassword))) return reply;
-    const secret = randomBytes(32).toString('hex');
+    return startPairingSession();
+  });
+
+  // QR expirado: um novo, sem pedir outra vez a password, só se houver sessão aberta.
+  app.post('/api/sms/pairing/renew', adminOnly, async (_request, reply) => {
+    if (readPairingSession().state === 'idle') return reply.status(409).send({ error: 'Nenhum pareamento em curso.' });
+    return startPairingSession();
+  });
+
+  app.get('/api/sms/pairing/session', adminOnly, async () => readPairingSession());
+
+  app.delete('/api/sms/pairing/session', adminOnly, async () => {
+    cancelPairingSession();
+    return { ok: true };
+  });
+
+  app.post('/api/sms/pairing/confirm', adminOnly, async (_request, reply) => {
+    if (!canStoreSecrets()) {
+      return reply.status(409).send({ error: 'Cofre de credenciais trancado: nao e possivel parear nesta sessao.' });
+    }
+    const result = await confirmPairingSession();
+    if (!result.ok) return reply.status(result.status).send({ error: result.error });
+    const { baseUrl, secret, model } = result.found;
     setSetting('smsCompanionEnabled', 'true');
-    setSetting('smsCompanionBaseUrl', parsed.data.baseUrl);
-    setSetting('smsCompanionDeviceName', parsed.data.deviceName);
+    setSetting('smsCompanionBaseUrl', baseUrl);
+    setSetting('smsCompanionDeviceName', model);
+    setSetting('smsCompanionPairingVersion', '2');
     writeSecret(getSqliteDatabase(), 'smsCompanionPairingKey', secret);
     setSetting('smsCompanionPairingKeyHash', createHash('sha256').update(secret).digest('hex'));
     // O estado guardado era do telemóvel anterior; o novo envia o seu ao responder.
@@ -180,12 +199,13 @@ export async function registerSmsRoutes(app: FastifyInstance) {
     // A new phone proves again that it decrypts before anything goes sealed.
     setSetting(SEALED_KEY, '');
     requestCompanionSnapshotPush();
-    const qrPayload = `ispm-sms://pair?secret=${encodeURIComponent(secret)}&device=${encodeURIComponent(parsed.data.deviceName)}`;
-    return { ok: true, secret, qrPayload };
+    return { ok: true, baseUrl, deviceName: model };
   });
 
   app.delete('/api/sms/pairing', adminOnly, async () => {
+    cancelPairingSession();
     setSetting('smsCompanionEnabled', 'false');
+    setSetting('smsCompanionPairingVersion', '');
     writeSecret(getSqliteDatabase(), 'smsCompanionPairingKey', '');
     setSetting('smsCompanionPairingKeyHash', '');
     setSetting('smsCompanionLastSeen', '');

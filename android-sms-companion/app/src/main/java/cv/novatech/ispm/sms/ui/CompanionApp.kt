@@ -67,11 +67,15 @@ fun CompanionApp(
   themePref: ThemePref = ThemePref.SYSTEM,
   onThemeChange: (ThemePref) -> Unit = {},
   onToggleTheme: (() -> Unit)? = null,
-  initialTab: Tab? = null
+  initialTab: Tab? = null,
+  onCancelPairing: () -> Unit = {}
 ) {
   Box(Modifier.fillMaxSize().background(Bg)) {
-    if (!state.paired) {
-      Box(Modifier.systemBarsPadding()) { OnboardingScreen(onPaired = onPaired, onInvalid = onInvalidPairing) }
+    // A v2 code on screen wins even over an old pairing (deep link while paired).
+    if (!state.paired || state.pairingCode != null) {
+      Box(Modifier.systemBarsPadding()) {
+        OnboardingScreen(onPaired = onPaired, onInvalid = onInvalidPairing, pairingCode = state.pairingCode, onCancelPairing = onCancelPairing)
+      }
     } else {
       PairedApp(
         state, onRequestPermission, onRequestBatteryExemption, onRequestPhoneState, onChooseSim,
