@@ -7007,14 +7007,12 @@ button.danger:disabled {
 
 /* Tudo o que acompanha o QR (estado, presença, ações) no mesmo eixo central. */
 .sms-pairing-panel { grid-column: 1 / -1; justify-items: center; text-align: center; }
-.sms-pairing-qr { display: flex; flex-direction: column; align-items: center; justify-self: center; max-width: 100%; gap: var(--space-2); margin-top: var(--space-3); }
+.sms-pairing-qr { display: flex; flex-direction: column; align-items: center; max-width: 100%; gap: var(--space-2); margin-top: var(--space-3); }
 .sms-pairing-qr img { max-width: 100%; height: auto; border-radius: 12px; background: #fff; padding: var(--space-2); }
-.sms-pairing-qr > span { font-size: 0.8rem; color: var(--text-secondary, #9aa6b8); text-align: center; }
-.sms-pairing-qr > span { max-width: 36ch; }
+.sms-pairing-qr > span { max-width: 36ch; font-size: 0.8rem; color: var(--text-secondary, #9aa6b8); }
 /* Não é .form-actions: lá o último botão pinta-se de primário, e aqui o último
    é "Revogar", destrutivo. Cada botão traz a sua variante. */
-.sms-pairing-actions { display: flex; flex-wrap: wrap; justify-content: center; justify-self: center; max-width: 100%; gap: var(--space-2); }
-.sms-pairing-qr .sms-pairing-actions { justify-content: center; }
+.sms-pairing-actions { display: flex; flex-wrap: wrap; justify-content: center; max-width: 100%; gap: var(--space-2); }
 /* Estado do pareamento: a cor reforça, o texto já diz tudo. */
 .sms-pairing-state { color: var(--text-2); max-width: 80ch; }
 .sms-pairing-state[data-tone='success'] { color: var(--success); }
@@ -7022,10 +7020,9 @@ button.danger:disabled {
 .sms-pairing-state[data-tone='danger'] { color: var(--danger); }
 .sms-pairing-qr[data-state='expired'] img { opacity: 0.35; }
 /* Pareamento v2: o mesmo código nos dois ecrãs, lido de relance. */
-.sms-pairing-confirm { display: flex; flex-direction: column; align-items: center; justify-self: center; max-width: 100%; gap: var(--space-2); margin-top: var(--space-3); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--r1); background: var(--surface-2); }
+.sms-pairing-confirm { display: flex; flex-direction: column; align-items: center; max-width: 100%; gap: var(--space-2); margin-top: var(--space-3); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--r1); background: var(--surface-2); }
 .sms-pairing-confirm-label { color: var(--text-3); font-size: var(--fs-xs); letter-spacing: 0.04em; text-transform: uppercase; }
 .sms-pairing-sas { color: var(--text); font-size: 2.5rem; font-weight: 600; line-height: 1.1; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; }
-.sms-pairing-confirm .sms-pairing-actions { justify-content: center; }
 
 /* ── Licenciamento ────────────────────────────────────────────────────────
    O aviso vive acima do cabeçalho da página e nunca tapa a aplicação: uma
