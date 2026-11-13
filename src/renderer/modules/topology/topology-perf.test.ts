@@ -22,7 +22,6 @@ import { composeTopologyGraph } from './topology-graph';
 import { filterTopologyGraph } from './topology-filters';
 import { layoutTopologyGraph } from './topology-layout';
 import { decorateNodes } from './TopologyMapView';
-import { placeNodes } from './useMapLayout';
 
 function backbone(id: number): TopologyBackboneNode {
   return {
@@ -254,13 +253,5 @@ describe('pipeline do mapa', () => {
     expect(nodes.length).toBeGreaterThan(500);
     expect(ms).toBeLessThan(2000);
 
-    // Um quadro de arrasto: só `placeNodes`, e quem não se mexeu é o mesmo objeto
-    // — é o que deixa o `memo` dos nós saltar os outros 550.
-    const overrides = new Map(nodes.slice(0, 20).map((node) => [node.id, { x: 1, y: 1 }]));
-    let placed = nodes;
-    const dragMs = mede(() => { placed = placeNodes(nodes, overrides, new Set()); });
-    expect(dragMs).toBeLessThan(50);
-    expect(placed.slice(20).every((node, index) => node === nodes[index + 20])).toBe(true);
-    expect(placed[0].data).toBe(nodes[0].data);
   });
 });

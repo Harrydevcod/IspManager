@@ -4,6 +4,7 @@ import {
   Copy,
   Focus,
   Pencil,
+  UserRound,
   X
 } from 'lucide-react';
 import { labelForType, requiresStaticIp } from '../../../shared/equipment';
@@ -46,6 +47,8 @@ export type BackboneManageActions = {
   onEdit: (deviceId: number) => void;
   onDuplicate: (deviceId: number) => void;
   onRetire: (deviceId: number) => void;
+  /** CPE de cliente registado como backbone: passa para o serviço do cliente. */
+  onMoveToClient: (deviceId: number) => void;
 };
 
 const ISSUE_LABELS: Record<TopologyIssueCode, string> = {
@@ -194,6 +197,9 @@ function BackboneDetails({
           </Button>
           <Button variant="secondary" size="sm" leadingIcon={<Copy size={14} aria-hidden />} onClick={() => manage.onDuplicate(node.backboneDeviceId)}>
             Duplicar
+          </Button>
+          <Button variant="secondary" size="sm" leadingIcon={<UserRound size={14} aria-hidden />} onClick={() => manage.onMoveToClient(node.backboneDeviceId)}>
+            Passar para cliente
           </Button>
           <Button variant="critical" size="sm" className="topology-inspector-retire" title="Retirar" leadingIcon={<Archive size={14} aria-hidden />} onClick={() => manage.onRetire(node.backboneDeviceId)}>
             <span className="topology-inspector-retire-label">Retirar</span>

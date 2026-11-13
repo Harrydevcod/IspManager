@@ -760,3 +760,10 @@
   display: block;
   margin-bottom: var(--space-1);
 }
+
+/* Passar para cliente: campos com a largura do dado, nunca a linha toda. */
+.move-to-client-form {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 440px;
+}

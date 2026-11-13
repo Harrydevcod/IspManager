@@ -290,4 +290,3 @@ export type TopologySearchResponse = {
 };
 
 /** Um nó arrumado à mão no mapa (0090). Os que não têm linha seguem o dagre. */
-export type TopologyPosition = { nodeKey: string; x: number; y: number };

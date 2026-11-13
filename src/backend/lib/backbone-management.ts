@@ -2,7 +2,7 @@ import type Database from 'better-sqlite3';
 import { normalizeMacAddress } from '../../shared/mac';
 import { BACKBONE_UPLINK_TYPES_SQL } from '../../shared/topology';
 import { PLACEMENT_CTE } from './topology-read-model';
-import { checkSoldSerialIdentity } from './serviceInstall';
+import { checkDeviceIdentity, checkSoldSerialIdentity, installDeviceWithinTx } from './serviceInstall';
 import type {
   AssignmentBackboneInput,
   AssignmentListQuery,
@@ -586,6 +586,104 @@ export function updateBackbone(
     return updated;
   } catch (error) {
     return handleSqlError(error);
+  }
+}
+
+export type MoveToClientInput = {
+  serviceId: number;
+  /** O mesmo aparelho já na ficha do cliente: atualiza-o em vez de instalar outro. */
+  assignmentId?: number | null;
+};
+
+/**
+ * Um CPE de cliente registado por engano como backbone passa para o serviço do cliente.
+ * Retirar o backbone devolve a unidade ao stock; instalar como novo volta a tirá-la (saldo zero);
+ * juntar a uma atribuição existente deixa-a no stock, porque a unidade estava contada duas vezes.
+ */
+export function moveBackboneToClient(
+  db: Database.Database,
+  id: number,
+  input: MoveToClientInput,
+  actorId: number | null
+): { assignmentId: number; backbone: BackboneDeviceDetail } {
+  const move = db.transaction(() => {
+    const backbone = getBackbone(db, id);
+    if (!backbone) throw new BackboneNotFoundError('Backbone não encontrado');
+    if (backbone.status === 'retired') throw new BackboneValidationError('Este backbone já está retirado');
+    const service = db.prepare(`
+      SELECT s.id, c.full_name AS clientName FROM services s JOIN clients c ON c.id = s.client_id
+      WHERE s.id = ? AND s.status <> 'cancelled'
+    `).get(input.serviceId) as { id: number; clientName: string } | undefined;
+    if (!service) throw new BackboneValidationError('Serviço do cliente não encontrado');
+
+    const retired = updateBackbone(db, id, {
+      catalogId: backbone.catalogId,
+      name: backbone.name,
+      status: 'retired',
+      serialNumber: backbone.serialNumber,
+      assetTag: backbone.assetTag,
+      ipAddress: backbone.ipAddress,
+      macAddress: backbone.macAddress,
+      routerInterface: backbone.routerInterface,
+      wanMode: backbone.wanMode,
+      operationMode: backbone.operationMode,
+      island: backbone.island,
+      zone: backbone.zone,
+      notes: backbone.notes,
+      upstreamDeviceIds: [],
+      expectedUpdatedAt: backbone.updatedAt
+    }, actorId);
+
+    const identity = { ipAddress: backbone.ipAddress, macAddress: backbone.macAddress };
+    if (input.assignmentId) {
+      const target = db.prepare(`
+        SELECT a.id, ec.type FROM service_device_assignments a JOIN equipment_catalog ec ON ec.id = a.catalog_id
+        WHERE a.id = ? AND a.service_id = ? AND a.end_date IS NULL
+      `).get(input.assignmentId, service.id) as { id: number; type: string } | undefined;
+      if (!target) throw new BackboneValidationError('O equipamento escolhido não está ativo neste serviço');
+      if (target.type !== backbone.catalogType) {
+        throw new BackboneValidationError('O equipamento escolhido é de outro tipo');
+      }
+      const issue = checkDeviceIdentity(db, identity, target.id);
+      if (issue) throw new BackboneConflictError(issue.error);
+      db.prepare(`
+        UPDATE service_device_assignments SET
+          ip_address = COALESCE(?, ip_address), mac_address = COALESCE(?, mac_address),
+          wan_mode = COALESCE(?, wan_mode), operation_mode = COALESCE(?, operation_mode),
+          updated_at = datetime('now')
+        WHERE id = ?
+      `).run(backbone.ipAddress, normalizeMacAddress(backbone.macAddress), backbone.wanMode, backbone.operationMode, target.id);
+      return { assignmentId: target.id, backbone: retired };
+    }
+
+    const issue = checkDeviceIdentity(db, { ...identity, serialNumber: backbone.serialNumber, assetTag: backbone.assetTag });
+    if (issue) throw new BackboneConflictError(issue.error);
+    const installed = installDeviceWithinTx(db, {
+      serviceId: service.id,
+      clientName: service.clientName,
+      device: {
+        catalogId: backbone.catalogId,
+        serialNumber: backbone.serialNumber,
+        assetTag: backbone.assetTag,
+        ipAddress: backbone.ipAddress,
+        macAddress: backbone.macAddress,
+        wanMode: backbone.wanMode,
+        operationMode: backbone.operationMode
+      },
+      userId: actorId
+    });
+    return { assignmentId: Number(installed.assignmentId), backbone: retired };
+  });
+  try {
+    return move.immediate();
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('device_identity:')) {
+      throw new BackboneConflictError(error.message.split(':').slice(2).join(':'));
+    }
+    if (error instanceof Error && error.message.startsWith('stock_insufficient:')) {
+      throw new BackboneValidationError(`Stock insuficiente. Disponivel: ${error.message.split(':')[1]}`);
+    }
+    throw error;
   }
 }
 

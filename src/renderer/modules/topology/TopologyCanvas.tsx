@@ -1,6 +1,5 @@
 import {
   Background,
-  type NodeChange,
   BackgroundVariant,
   MiniMap,
   ReactFlow,
@@ -43,11 +42,6 @@ type TopologyCanvasProps = {
   onPaneDoubleClick?: () => void;
   /** Um cartão da paleta largado no mapa; em cima de uma backbone, ela é o montante. */
   onDropCatalog?: (catalogId: number, upstreamDeviceId: number | null) => void;
-  /** Mover nós à mão (e em grupo, com Shift + caixa). Sem isto o mapa é só leitura. */
-  draggable?: boolean;
-  onNodesChange?: (changes: NodeChange<TopologyCanvasNode>[]) => void;
-  onNodeDragStart?: (nodes: TopologyCanvasNode[]) => void;
-  onNodeDragStop?: (nodes: TopologyCanvasNode[]) => void;
   /** Clicar numa ligação — abre as propriedades dela. */
   onEdgeClick?: (edgeId: string) => void;
   /** Botão direito num nó ou numa ligação, com o ponto do ecrã onde abrir o menu. */
@@ -168,10 +162,6 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
     onConnectNodes,
     onPaneDoubleClick,
     onDropCatalog,
-    draggable = false,
-    onNodesChange,
-    onNodeDragStart,
-    onNodeDragStop,
     onEdgeClick,
     onContextMenu
   }, ref) {
@@ -241,13 +231,8 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
           nodes={nodes}
           edges={flowEdges}
           nodeTypes={topologyNodeTypes}
-          nodesDraggable={draggable}
-          // Um clique com tremido de 1–3 px (trackpad, rato velho) não pode
-          // arrumar o nó à mão e gravar uma posição: só conta a partir de 4 px.
-          nodeDragThreshold={4}
-          onNodesChange={onNodesChange}
-          onNodeDragStart={(_event, _node, dragged) => onNodeDragStart?.(dragged)}
-          onNodeDragStop={(_event, _node, dragged) => onNodeDragStop?.(dragged)}
+          // Os cartões não se arrastam: o desenho é sempre o automático (decisão do utilizador, 13/11).
+          nodesDraggable={false}
           onEdgeClick={onEdgeClick && ((_event, edge) => onEdgeClick(edge.id))}
           onNodeContextMenu={onContextMenu && ((event, node) => {
             event.preventDefault();
@@ -269,8 +254,8 @@ const TopologyCanvasInner = forwardRef<TopologyCanvasHandle, TopologyCanvasProps
           nodesFocusable={false}
           edgesFocusable={false}
           deleteKeyCode={null}
-          selectionKeyCode={draggable ? 'Shift' : null}
-          multiSelectionKeyCode={draggable ? 'Shift' : null}
+          selectionKeyCode={null}
+          multiSelectionKeyCode={null}
           minZoom={0.25}
           maxZoom={2.5}
           panOnDrag
