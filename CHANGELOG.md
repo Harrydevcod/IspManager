@@ -4,6 +4,24 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.66](https://github.com/Harrydevcod/IspManager/releases/tag/v2.66.0) — 2026-11-13
+
+### Adicionado
+- **Suspensões a chegar.** No topo do Painel aparece quem o corte automático vai suspender nos próximos 7 dias, com a data do corte, o valor em dívida e o estado real do último SMS e do último WhatsApp. Cada linha tem "Avisar por SMS" e "Ficha financeira". Uma vez por dia, uma notificação do Windows avisa quando há suspensões a chegar.
+- **Interruptor do canal WhatsApp** nas Definições. Nunca podem ficar os dois canais desligados. Com o WhatsApp desligado nada entra na fila, e o que estava à espera é cancelado. O alerta "Canal WhatsApp recusado pelo provedor" tem agora o botão "Desligar canal WhatsApp".
+- **Topologia: "Passar para cliente".** Um CPE de cliente registado por engano como backbone passa para a ficha do cliente. Junta-se ao equipamento que ele já tem, ou fica instalado como novo.
+
+### Alterado
+- **O SMS é o recurso do WhatsApp.** Um aviso que o WhatsApp não levou sai por SMS, e uma mensagem de WhatsApp que falha de vez passa logo a SMS. O aviso do uso justo (FUP) também segue por SMS quando o WhatsApp está desligado.
+- **O aviso de suspensão traz a data real do corte** e sai uma semana antes dele. O campo "Avisar suspensão após X dias" deixa de existir: a data vem da tolerância da suspensão automática.
+- **Os avisos automáticos só saem a partir das 08:00.**
+- **Mapa da Topologia sem arrastar.** Os cartões ficam no desenho automático.
+
+### Corrigido
+- **Os SMS já não falham quando o telemóvel está fora de alcance.** A mensagem espera por ele até 24 horas, em vez de gastar as tentativas em minutos.
+- **Um aviso de WhatsApp que falhou deixa de contar como enviado.**
+- **A 420 px, a Topologia já não sai 16 px para fora do ecrã.**
+
 ## [2.65](https://github.com/Harrydevcod/IspManager/releases/tag/v2.65.0) — 2026-11-12
 
 ### Alterado
