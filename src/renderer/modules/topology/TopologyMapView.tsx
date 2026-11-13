@@ -3,7 +3,7 @@ import './TopologyModule.css';
 import './TopologyCanvas.css';
 import './TopologyInspector.css';
 
-import { Archive, AlertTriangle, Copy, Focus, Network, Pencil, RotateCw, SlidersHorizontal, Unlink, X } from 'lucide-react';
+import { Archive, AlertTriangle, Copy, Focus, Network, Pencil, RotateCw, SlidersHorizontal, Unlink, UserRound, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type {
@@ -37,7 +37,7 @@ import {
 import { layoutTopologyGraph, type TopologyDirection } from './topology-layout';
 import { linkStroke, linkSummary } from './link-format';
 import { useMapAuthoring, writeInputFrom } from './useMapAuthoring';
-import { placeNodes, useMapLayout } from './useMapLayout';
+import { MoveToClientDialog } from './MoveToClientDialog';
 import { useTopologyWorkspace } from './useTopologyWorkspace';
 import type { TopologyModuleProps } from './TopologyModule';
 
@@ -569,7 +569,6 @@ function TopologyStage({
   toolsSlot,
   onCloseInspector,
   authoring,
-  layout,
   onEditLink,
   onDisconnectUpstream,
   manage,
@@ -592,7 +591,6 @@ function TopologyStage({
   toolsSlot: HTMLElement | null;
   onCloseInspector: () => void;
   authoring: MapAuthoring;
-  layout: ReturnType<typeof useMapLayout>;
   onEditLink: (edgeId: string) => void;
   onDisconnectUpstream: (deviceId: number, upstreamDeviceId: number) => void;
   manage: BackboneManageActions | undefined;
@@ -625,10 +623,6 @@ function TopologyStage({
             onConnectNodes={authoring.connectNodes}
             onPaneDoubleClick={authoring.canManage ? authoring.openPalette : undefined}
             onDropCatalog={authoring.canManage ? authoring.pickCatalog : undefined}
-            draggable={authoring.canManage}
-            onNodesChange={layout.onNodesChange}
-            onNodeDragStart={layout.onDragStart}
-            onNodeDragStop={layout.onDragStop}
             onEdgeClick={authoring.canManage ? onEditLink : undefined}
             onContextMenu={onContextMenu}
           />
@@ -718,12 +712,8 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
   const [direction, setDirection] = useState<TopologyDirection>('TB');
   const { toast } = useToast();
   const confirm = useConfirm();
-  const layout = useMapLayout(
-    direction,
-    props.active,
-    authoring.canManage,
-    useCallback((message: string) => toast(message, 'error'), [toast])
-  );
+  // O mapa é sempre o desenho automático: arrastar cartões desarrumava-o (decisão do utilizador, 13/11).
+  const [movingDeviceId, setMovingDeviceId] = useState<number | null>(null);
   const [editingLinkId, setEditingLinkId] = useState<string | null>(null);
   // Tirar uma alimentação parte o ramo a jusante: pergunta-se sempre, do inspetor ou do diálogo.
   const { disconnectUpstream } = authoring;
@@ -753,7 +743,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
     });
   }, [confirm, retire, setSelectedNode, workspace.snapshot]);
   const manage: BackboneManageActions | undefined = authoring.canManage
-    ? { onEdit: authoring.openEdit, onDuplicate: authoring.duplicate, onRetire: confirmRetire }
+    ? { onEdit: authoring.openEdit, onDuplicate: authoring.duplicate, onRetire: confirmRetire, onMoveToClient: setMovingDeviceId }
     : undefined;
   const [menu, setMenu] = useState<{ x: number; y: number; groups: RowActionGroup[] } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -765,10 +755,8 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
     live
   );
   const { edges } = rendered;
-  const nodes = useMemo(
-    () => placeNodes(rendered.nodes, layout.overrides, layout.boxSelection),
-    [rendered.nodes, layout.overrides, layout.boxSelection]
-  );
+  const { nodes } = rendered;
+  const movingDevice = workspace.snapshot?.backbones.find((item) => item.backboneDeviceId === movingDeviceId);
   useRefitOnShapeChange(canvasRef, direction, nodes.length);
   // Escolher um nó com o painel recolhido volta a abri-lo — senão o clique
   // parecia não fazer nada. Recolher com o mesmo nó selecionado não mexe no id,
@@ -833,6 +821,7 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
           { label: focused ? 'Ver a rede completa' : 'Ver só este backbone', icon: <Focus size={14} aria-hidden />, onClick: () => workspace.focusBackbone(focused ? null : id) }
         ] },
         { label: 'Inventário', items: manage ? [
+          { label: 'Passar para cliente', icon: <UserRound size={14} aria-hidden />, onClick: () => manage.onMoveToClient(id) },
           { label: 'Retirar', icon: <Archive size={14} aria-hidden />, danger: true, onClick: () => manage.onRetire(id) }
         ] : [] }
       ] });
@@ -864,20 +853,6 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
     onZoomIn: () => canvasRef.current?.zoomIn(),
     onZoomOut: () => canvasRef.current?.zoomOut(),
     onFit: () => canvasRef.current?.fit(),
-    layout: authoring.canManage ? {
-      arranged: layout.arranged,
-      canUndo: layout.canUndo,
-      canRedo: layout.canRedo,
-      onUndo: layout.undo,
-      onRedo: layout.redo,
-      onReset: () => {
-        void confirm({
-          title: 'Reorganizar o mapa?',
-          message: 'As posições que arrumou à mão neste desenho são apagadas e o mapa volta ao desenho automático. Os equipamentos e as ligações não mudam.',
-          confirmLabel: 'Reorganizar'
-        }).then((ok) => { if (ok) void layout.reset(); });
-      }
-    } : undefined
   };
   return (
     <section className="topology-module" aria-label="Topologia de rede">
@@ -925,7 +900,6 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
           workspace.setSelectedNode(null);
         }}
         authoring={authoring}
-        layout={layout}
         onEditLink={(edgeId) => {
           if (edgeId.startsWith('core-link:backbone:')) setEditingLinkId(edgeId);
         }}
@@ -969,6 +943,18 @@ function TopologyMapWorkspace(props: TopologyMapViewProps) {
           onCatalogRetry={authoring.retryCatalogs}
           onClose={authoring.closeEditor}
           onSubmit={authoring.submitEditor}
+        />
+      )}
+      {movingDevice && (
+        <MoveToClientDialog
+          device={{ id: movingDevice.backboneDeviceId, name: movingDevice.label, catalogType: movingDevice.catalogType }}
+          onClose={() => setMovingDeviceId(null)}
+          onMoved={() => {
+            setMovingDeviceId(null);
+            setSelectedNode(null);
+            void refresh();
+            onMutation();
+          }}
         />
       )}
     </section>

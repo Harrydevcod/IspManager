@@ -11,6 +11,7 @@ import {
   getBackbone,
   listAssignments,
   listBackbones,
+  moveBackboneToClient,
   setAssignmentBackbone,
   updateBackbone
 } from '../lib/backbone-management';
@@ -36,6 +37,7 @@ const linkWriteSchema = z.object({
   notes: z.string().trim().max(500).nullable().transform((value) => value || null)
 }).strict();
 const assignmentParamsSchema = z.object({ id: idSchema });
+const moveToClientSchema = z.object({ serviceId: idSchema, assignmentId: idSchema.nullable().optional() });
 const backboneListSchema = z.object({
   query: z.string().trim().max(120).optional(),
   status: z.enum(['active', 'maintenance', 'retired']).optional(),
@@ -176,6 +178,34 @@ export async function registerTopologyManagementRoutes(app: FastifyInstance) {
         return updated;
       })();
       return reply.send(backbone);
+    } catch (error) {
+      return repositoryError(reply, error);
+    }
+  });
+
+  // CPE de cliente registado por engano como backbone: passa para o serviço do cliente.
+  app.post('/api/topology/backbones/:id/move-to-client', canManage, async (request, reply) => {
+    const params = backboneParamsSchema.safeParse(request.params);
+    const body = moveToClientSchema.safeParse(request.body);
+    if (!params.success || !body.success) return reply.status(400).send({ error: 'Dados invalidos' });
+    try {
+      const db = getSqliteDatabase();
+      const result = db.transaction(() => {
+        const moved = moveBackboneToClient(db, params.data.id, body.data, request.user?.id ?? null);
+        recordAuditStrict(db, request, {
+          action: 'topology.backbone.move_to_client',
+          entityType: 'backbone_device',
+          entityId: params.data.id,
+          metadata: {
+            backboneDeviceId: params.data.id,
+            serviceId: body.data.serviceId,
+            assignmentId: moved.assignmentId,
+            mergedIntoExisting: Boolean(body.data.assignmentId)
+          }
+        });
+        return moved;
+      })();
+      return reply.send(result);
     } catch (error) {
       return repositoryError(reply, error);
     }

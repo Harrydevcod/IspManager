@@ -15,6 +15,7 @@ const TABLES_TO_CLEAR = [
   // Antes das unidades: as ligações apontam para elas com FK RESTRICT.
   'backbone_links',
   'backbone_devices',
+  'service_events',
   'service_device_shares',
   'service_device_assignments',
   'stock_movements',
@@ -340,5 +341,72 @@ describe('propriedades das ligações (0091)', () => {
     const rows = db.prepare('SELECT upstream_device_id AS up, medium FROM backbone_links WHERE device_id = ? ORDER BY up')
       .all(leaf.id) as Array<{ up: number; medium: string | null }>;
     expect(rows).toEqual([{ up: top.id, medium: 'ptp' }, { up: other.id, medium: null }]);
+  });
+});
+
+describe('passar para cliente', () => {
+  const stockOf = (catalogId: number) =>
+    (db.prepare('SELECT stock_total AS n FROM equipment_catalog WHERE id = ?').get(catalogId) as { n: number }).n;
+  const serviceOf = (assignmentId: number) =>
+    (db.prepare('SELECT service_id AS id FROM service_device_assignments WHERE id = ?').get(assignmentId) as { id: number }).id;
+  const create = async (catalogId: number, name = 'CIBEL_AP', extra: Record<string, unknown> = {}) =>
+    (await app.inject({
+      method: 'POST',
+      url: '/api/topology/backbones',
+      payload: { ...validBackbone(catalogId, name), ipAddress: '192.168.1.146', macAddress: '8c:86:dd:53:05:56', ...extra }
+    })).json() as { id: number };
+  const move = (id: number, payload: Record<string, unknown>) =>
+    app.inject({ method: 'POST', url: `/api/topology/backbones/${id}/move-to-client`, payload });
+
+  test('o mesmo aparelho da ficha: atualiza MAC e IP, retira o backbone e devolve a unidade contada a dobrar', async () => {
+    const catalogId = insertCatalog('CPE 510', 3);
+    const assignmentId = insertActiveAssignment(catalogId);
+    const backbone = await create(catalogId);
+    expect(stockOf(catalogId)).toBe(2);
+
+    const response = await move(backbone.id, { serviceId: serviceOf(assignmentId), assignmentId });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ assignmentId, backbone: { status: 'retired' } });
+    expect(db.prepare('SELECT mac_address AS mac, ip_address AS ip FROM service_device_assignments WHERE id = ?').get(assignmentId))
+      .toEqual({ mac: '8C:86:DD:53:05:56', ip: '192.168.1.146' });
+    expect(stockOf(catalogId)).toBe(3);
+    expect(db.prepare(`SELECT action FROM audit_logs WHERE action = 'topology.backbone.move_to_client'`).get())
+      .toEqual({ action: 'topology.backbone.move_to_client' });
+  });
+
+  test('instalar como novo: fica no serviço e o stock não mexe', async () => {
+    const catalogId = insertCatalog('CPE 510', 3);
+    const serviceId = serviceOf(insertActiveAssignment(catalogId));
+    const backbone = await create(catalogId);
+    expect(stockOf(catalogId)).toBe(2);
+
+    const response = await move(backbone.id, { serviceId });
+
+    expect(response.statusCode).toBe(200);
+    const { assignmentId } = response.json() as { assignmentId: number };
+    expect(serviceOf(assignmentId)).toBe(serviceId);
+    expect(stockOf(catalogId)).toBe(2);
+  });
+
+  test('recusa equipamento de outro serviço ou tipo e backbone que alimenta outros, sem mexer em nada', async () => {
+    const catalogId = insertCatalog('CPE 510', 5);
+    const assignmentId = insertActiveAssignment(catalogId);
+    const serviceId = serviceOf(assignmentId);
+    const otherType = insertCatalog('Rocket', 5);
+    db.prepare(`UPDATE equipment_catalog SET type = 'router' WHERE id = ?`).run(otherType);
+    const routerAssignment = Number(db.prepare(`
+      INSERT INTO service_device_assignments (service_id, catalog_id, serial_number) VALUES (?, ?, 'R-1')
+    `).run(serviceId, otherType).lastInsertRowid);
+    const backbone = await create(catalogId);
+
+    expect((await move(backbone.id, { serviceId: serviceId + 99, assignmentId })).statusCode).toBe(400);
+    expect((await move(backbone.id, { serviceId, assignmentId: routerAssignment })).statusCode).toBe(400);
+
+    await create(catalogId, 'Alimentado', { serialNumber: 'BB-002', assetTag: 'AT-002', ipAddress: null, macAddress: null, upstreamDeviceIds: [backbone.id] });
+    expect((await move(backbone.id, { serviceId, assignmentId })).statusCode).toBe(400);
+
+    expect(db.prepare('SELECT status FROM backbone_devices WHERE id = ?').get(backbone.id)).toEqual({ status: 'active' });
+    expect(db.prepare('SELECT mac_address AS mac FROM service_device_assignments WHERE id = ?').get(assignmentId)).toEqual({ mac: null });
   });
 });

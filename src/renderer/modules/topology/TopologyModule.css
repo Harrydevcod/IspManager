@@ -139,6 +139,9 @@
 .content > .topology-shell {
   flex: 1 1 0;
   min-height: 22rem;
+  /* Sem o mínimo a zero, a coluna crescia até ao conteúdo mais largo (a tira das
+     abas com as ferramentas do mapa) e, a 420 px, empurrava a página 16 px para fora. */
+  grid-template-columns: minmax(0, 1fr);
 }
 
 /* Janela estreita: contadores e ferramentas partem-se em várias linhas e
@@ -759,4 +762,18 @@
 .incidents-dragged .field-label {
   display: block;
   margin-bottom: var(--space-1);
+}
+
+/* Passar para cliente: campos com a largura do dado, nunca a linha toda. */
+.move-to-client-form {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 440px;
+}
+
+/* O nome do modelo é longo: o select corta-o em vez de alargar o diálogo. */
+.move-to-client-form select,
+.move-to-client-form input {
+  width: 100%;
+  min-width: 0;
 }

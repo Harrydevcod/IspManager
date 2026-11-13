@@ -1115,7 +1115,7 @@ test('Shift+F10 e a tecla Menu abrem no nó focado o mesmo menu do botão direit
   };
 
   await press({ key: 'F10', shiftKey: true });
-  expect(items()).toEqual(['Editar', 'Duplicar', 'Ver só este backbone', 'Retirar']);
+  expect(items()).toEqual(['Editar', 'Duplicar', 'Ver só este backbone', 'Passar para cliente', 'Retirar']);
   // O foco entra no menu: quem usa teclado continua a partir do primeiro item.
   expect(document.activeElement?.textContent).toBe('Editar');
   await act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
@@ -1169,9 +1169,9 @@ test('o botão direito num backbone edita, duplica e retira sem sair do mapa', a
   };
 
   await openMenu();
-  expect(items().map((item) => item.textContent)).toEqual(['Editar', 'Duplicar', 'Ver só este backbone', 'Retirar']);
+  expect(items().map((item) => item.textContent)).toEqual(['Editar', 'Duplicar', 'Ver só este backbone', 'Passar para cliente', 'Retirar']);
   // O botão direito também escolhe o nó: o inspetor mostra-o com as mesmas ações.
-  expect(container.querySelector('[aria-label="Gerir equipamento"]')?.textContent).toBe('EditarDuplicarRetirar');
+  expect(container.querySelector('[aria-label="Gerir equipamento"]')?.textContent).toBe('EditarDuplicarPassar para clienteRetirar');
 
   await pick('Editar');
   expect(items()).toHaveLength(0);
@@ -1198,4 +1198,12 @@ test('o botão direito num backbone edita, duplica e retira sem sair do mapa', a
     status: 'retired', name: 'Ubiquiti Rocket Prism', serialNumber: 'SN-ROCKET',
     expectedUpdatedAt: '2026-10-29T00:00:00.000Z'
   })]);
+});
+
+test('os cartões do mapa não se arrastam nem gravam posições', async () => {
+  const container = await mountMap();
+  const node = container.querySelector('.react-flow__node[data-id="backbone:10"]');
+  expect(node?.classList.contains('draggable')).toBe(false);
+  const urls = vi.mocked(fetch).mock.calls.map(([input]) => String(input));
+  expect(urls.some((url) => url.includes('/topology/positions'))).toBe(false);
 });
