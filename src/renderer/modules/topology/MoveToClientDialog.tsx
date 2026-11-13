@@ -103,7 +103,8 @@ export function MoveToClientDialog({ device, onClose, onMoved }: MoveToClientDia
           <Select label="Equipamento na ficha" value={target} onChange={(e) => setTarget(e.target.value)}>
             {assignments.map((a) => (
               <option key={a.id} value={a.id}>
-                {[a.catalogBrand, a.catalogModel].filter(Boolean).join(' ')} · {a.macAddress || a.serialNumber || `#${a.id}`}
+                {/* A identidade primeiro: o nome do modelo é longo e o select corta o fim. */}
+                {a.macAddress || a.serialNumber || `#${a.id}`} · {[a.catalogBrand, a.catalogModel].filter(Boolean).join(' ')}
               </option>
             ))}
             <option value={NEW_DEVICE}>Instalar como novo</option>

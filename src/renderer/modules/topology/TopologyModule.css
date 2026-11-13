@@ -767,3 +767,10 @@
   gap: var(--space-4);
   max-width: 440px;
 }
+
+/* O nome do modelo é longo: o select corta-o em vez de alargar o diálogo. */
+.move-to-client-form select,
+.move-to-client-form input {
+  width: 100%;
+  min-width: 0;
+}
