@@ -36,6 +36,7 @@ beforeEach(() => {
   db.prepare('DELETE FROM network_probe_events').run();
   db.prepare('DELETE FROM network_probe_state').run();
   db.prepare('DELETE FROM service_device_assignments').run();
+  db.prepare('DELETE FROM service_network_state').run();
   db.prepare('DELETE FROM services').run();
   db.prepare('DELETE FROM clients').run();
   db.prepare('DELETE FROM backbone_devices').run();
@@ -74,6 +75,12 @@ function seedClientDevice(clientName: string, ip: string, serviceStatus = 'activ
     INSERT INTO service_device_assignments (service_id, catalog_id, ip_address, start_date)
     VALUES (?, ?, ?, '2026-01-01')
   `).run(serviceId, catalogId, ip).lastInsertRowid as number;
+}
+
+/** A sessão PPPoE do serviço da atribuição, como a reconciliação com o router a grava. */
+function setPppoe(assignmentId: number, online: boolean, checkedAt = "datetime('now')") {
+  db.prepare(`INSERT INTO service_network_state (service_id, online, checked_at)
+    SELECT service_id, ?, ${checkedAt} FROM service_device_assignments WHERE id = ?`).run(online ? 1 : 0, assignmentId);
 }
 
 /** Sonda que responde conforme o IP, para separar vivos de mortos. */
@@ -298,5 +305,42 @@ describe('computeUptime', () => {
     });
     expect(result.uptime).toBe(1);
     expect(result.observedSeconds).toBe(0);
+  });
+
+  describe('sessão PPPoE ativa é prova de vida do cliente', () => {
+    const run = () => probe.runNetworkProbe(db, { includeClients: true, failThreshold: 1, ping: pingerFor(['192.168.2.108']) });
+    const stateOf = (id: number) => probe.loadProbeStates(db).find((row) => row.targetKind === 'assignment' && row.targetId === id)!;
+
+    // 14/11/2026: 11 de 15 "em baixo" estavam ligados por PPPoE; o IP gravado já não era o deles.
+    test('ping ao IP gravado falha mas a sessão está ativa: de pé, sem contar como ping respondido', async () => {
+      const id = seedClientDevice('Samira Duarte', '192.168.2.108');
+      setPppoe(id, true);
+      const summary = await run();
+      expect(summary.down).toBe(0);
+      expect(stateOf(id)).toMatchObject({ state: 'up', lastOkAt: null });
+    });
+
+    test('leitura do router com mais de 15 min não prova nada', async () => {
+      const id = seedClientDevice('Samira Duarte', '192.168.2.108');
+      setPppoe(id, true, "datetime('now', '-1 hour')");
+      await run();
+      expect(stateOf(id).state).toBe('down');
+    });
+
+    test('sessão em baixo e ping a falhar: em baixo, como antes', async () => {
+      const id = seedClientDevice('Samira Duarte', '192.168.2.108');
+      setPppoe(id, false);
+      await run();
+      expect(stateOf(id).state).toBe('down');
+    });
+
+    test('subir só pela sessão não inventa a duração da queda: fica como tempo por observar', async () => {
+      const id = seedClientDevice('Samira Duarte', '192.168.2.108');
+      await run();
+      setPppoe(id, true);
+      await run();
+      const events = db.prepare('SELECT to_state, gap_before FROM network_probe_events WHERE target_id = ? ORDER BY id').all(id);
+      expect(events).toEqual([{ to_state: 'down', gap_before: 0 }, { to_state: 'up', gap_before: 1 }]);
+    });
   });
 });

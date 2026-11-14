@@ -15,6 +15,8 @@ export type ProbeTarget = {
   id: number;
   name: string;
   ipAddress: string;
+  /** Sessão PPPoE do serviço ativa na última leitura do router (há menos de 15 min). */
+  pppoeOnline?: boolean;
 };
 
 export type ProbeStateRow = {
@@ -138,18 +140,20 @@ export function loadProbeTargets(db: Database.Database, includeClients: boolean)
   if (!includeClients) return targets;
 
   const assignments = db.prepare(`
-    SELECT a.id, c.full_name AS name, a.ip_address AS ipAddress
+    SELECT a.id, c.full_name AS name, a.ip_address AS ipAddress,
+           COALESCE(n.online = 1 AND n.checked_at >= datetime('now', '-15 minutes'), 0) AS pppoeOnline
     FROM service_device_assignments a
     JOIN services s ON s.id = a.service_id
     JOIN clients c ON c.id = s.client_id
+    LEFT JOIN service_network_state n ON n.service_id = s.id
     WHERE a.end_date IS NULL
       AND s.status = 'active'
       AND a.ip_address IS NOT NULL AND TRIM(a.ip_address) <> ''
     ORDER BY c.full_name
-  `).all() as Array<{ id: number; name: string; ipAddress: string }>;
+  `).all() as Array<{ id: number; name: string; ipAddress: string; pppoeOnline: number }>;
 
   for (const row of assignments) {
-    targets.push({ kind: 'assignment', id: row.id, name: row.name, ipAddress: row.ipAddress });
+    targets.push({ kind: 'assignment', id: row.id, name: row.name, ipAddress: row.ipAddress, pppoeOnline: row.pppoeOnline === 1 });
   }
   return targets;
 }
@@ -254,7 +258,10 @@ export async function runNetworkProbe(
   db.transaction(() => {
     targets.forEach((target, index) => {
       const previous = previousByKey.get(`${target.kind}:${target.id}`) ?? null;
-      const result = results[index];
+      // ponytail: a sessão PPPoE é a prova de vida do cliente. O IP gravado na atribuição fica
+      // velho com a migração para PPPoE (14/11/2026: 11 de 15 "em baixo" estavam ligados).
+      const proven = target.pppoeOnline === true && !results[index].ok;
+      const result = proven ? { ok: true, rttMs: null } : results[index];
       const decision = decideProbeTransition(previous, result, options.failThreshold);
       if (decision.state === 'up') summary.up += 1; else summary.down += 1;
 
@@ -265,14 +272,15 @@ export async function runNetworkProbe(
         state: decision.state,
         rttMs: result.rttMs,
         consecutiveFails: decision.consecutiveFails,
-        lastOkAt: result.ok ? now : previous?.lastOkAt ?? null,
+        lastOkAt: results[index].ok ? now : previous?.lastOkAt ?? null,
         lastChangeAt: decision.changed ? now : previous?.lastChangeAt ?? now,
         checkedAt: now
       });
 
       // Buraco de observação: a aplicação esteve fechada mais tempo do que a
       // sonda tolera. Marca-se, porque esse tempo não é rede de pé nem em baixo.
-      const gapBefore = previous ? secondsBetween(previous.checkedAt, now) > gapLimitSeconds : false;
+      // Subir só pela prova PPPoE também: o ping não servia, a "queda" de antes não foi vista.
+      const gapBefore = previous ? secondsBetween(previous.checkedAt, now) > gapLimitSeconds || (proven && decision.changed) : false;
 
       // A primeira observação de um equipamento vivo não é transição: só se
       // regista o que muda depois de já se conhecer o estado anterior — ou a
