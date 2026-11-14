@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Gauge, History, RotateCcw } from 'lucide-react';
 import { Button, DataTable, EmptyState, Field, Message, Select, Textarea, useConfirm, useToast } from '../../components';
 import { useAuth } from '../../lib/auth';
@@ -20,6 +20,15 @@ const CHOICES: Record<string, Array<[string, string]>> = {
   unidade_gb: [['DECIMAL', 'GB decimais'], ['BINARIO', 'GiB binários']],
   dia_ciclo: [['ATIVACAO', 'Dia da ativação'], ...Array.from({ length: 28 }, (_, i) => [String(i + 1), `Dia ${i + 1}`] as [string, string])]
 };
+
+/** Secções do painel: o que é de cada tipo de FUP e o que é comum aos dois. */
+const SECTIONS: Array<[string, string[]]> = [
+  ['FUP por plano', ['plafond_predefinido_gb', 'dia_ciclo']],
+  ['FUP global', ['pacote_operadora_gb', 'limiar_pacote_percent']],
+  ['Limitação', ['acao_ao_limite', 'horario_limitacao', 'limiar_aviso_percent', 'limiar_limitacao_percent', 'percent_velocidade_pico', 'janela_pico_inicio', 'janela_pico_fim', 'fuso_horario']],
+  ['Aviso e medição', ['canal_aviso', 'mensagem_aviso', 'unidade_gb', 'intervalo_recolha_minutos']]
+];
+const SECTIONED = new Set(SECTIONS.flatMap(([, keys]) => keys));
 
 const TIME_ZONES: string[] = (() => {
   try {
@@ -153,7 +162,6 @@ export function FupSettingsPanel() {
       <header className="backups-head">
         <div>
           <h3><Gauge size={16} aria-hidden /> Uso justo</h3>
-          {!pool?.enabled && <p className="fup-lede">Os valores do serviço e do plano mandam sobre estes.</p>}
         </div>
       </header>
 
@@ -162,33 +170,51 @@ export function FupSettingsPanel() {
         <Message tone="warn">O fuso do router ({clockZone}) difere do configurado. Acerte o fuso no router para que a janela de pico seja aplicada à hora pretendida.</Message>
       )}
 
-      {pool?.enabled && (() => {
-        const perGb = settings.find((row) => row.key === 'unidade_gb')?.value === 'BINARIO' ? 1024 ** 3 : 1e9;
-        return (
-          <Message tone={pool.exhausted ? 'warn' : 'neutral'}>
-            Pacote da operadora: {gbText(pool.usedBytes / perGb)} de {gbText(pool.packageGb)} GB ({Math.round(pool.percent)} %) · quota {gbText(pool.shareGb)} GB por cliente · {pool.activeClients} clientes · {pool.exhausted ? 'todos limitados' : 'ciclo'} até {formatPtDate(pool.cycle.end)}
-          </Message>
-        );
-      })()}
-
       <datalist id="fup-time-zones">{TIME_ZONES.map((zone) => <option key={zone} value={zone} />)}</datalist>
 
-      <div className="fup-settings-grid">
-        {settings.map((row) => (
-          <div key={row.key} className={`fup-setting${row.key === 'mensagem_aviso' ? ' fup-setting-text' : ''}${changes[row.key] !== undefined ? ' fup-setting-dirty' : ''}`}>
-            {field(row)}
-            <div className="fup-setting-meta">
-              <span>Default: {row.key === 'mensagem_aviso' ? 'texto recomendado' : displayValue(row.key, row.default)}</span>
-              <span>· {row.updatedAt ? `Alterado a ${formatPtDate(row.updatedAt)}${row.updatedBy ? ` por ${row.updatedBy}` : ''}` : 'Nunca alterado'}</span>
-              {canWrite && row.value !== row.default && (
-                <Button variant="ghost" size="sm" leadingIcon={<RotateCcw size={12} aria-hidden />} onClick={() => void reset(row)}>
-                  Repor default
-                </Button>
-              )}
+      {SECTIONS.map(([title, keys], index) => {
+        // Uma chave nova fora do mapa cai na última secção: nunca desaparece do ecrã.
+        const rows = settings.filter((row) => keys.includes(row.key) || (index === SECTIONS.length - 1 && !SECTIONED.has(row.key)));
+        const global = title === 'FUP global';
+        const packageGb = Number(draft.pacote_operadora_gb ?? settings.find((row) => row.key === 'pacote_operadora_gb')?.value ?? 0);
+        const perGb = settings.find((row) => row.key === 'unidade_gb')?.value === 'BINARIO' ? 1024 ** 3 : 1e9;
+        return (
+          <div key={title} className="fup-section">
+            <h4 className="fup-section-title">{title}</h4>
+            {title === 'FUP por plano' && <p className="fup-lede">Os valores do serviço e do plano mandam sobre estes.</p>}
+            {global && pool?.enabled && (
+              <Message tone={pool.exhausted ? 'warn' : 'neutral'}>
+                {gbText(pool.usedBytes / perGb)} de {gbText(pool.packageGb)} GB gastos ({Math.round(pool.percent)} %) · {pool.exhausted ? 'todos limitados' : 'ciclo'} até {formatPtDate(pool.cycle.end)}
+              </Message>
+            )}
+            <div className="fup-settings-grid">
+              {rows.map((row) => (
+                <Fragment key={row.key}>
+                  <div className={`fup-setting${row.key === 'mensagem_aviso' ? ' fup-setting-text' : ''}${changes[row.key] !== undefined ? ' fup-setting-dirty' : ''}`}>
+                    {field(row)}
+                    <div className="fup-setting-meta">
+                      <span>Default: {row.key === 'mensagem_aviso' ? 'texto recomendado' : displayValue(row.key, row.default)}</span>
+                      <span>· {row.updatedAt ? `Alterado a ${formatPtDate(row.updatedAt)}${row.updatedBy ? ` por ${row.updatedBy}` : ''}` : 'Nunca alterado'}</span>
+                      {canWrite && row.value !== row.default && (
+                        <Button variant="ghost" size="sm" leadingIcon={<RotateCcw size={12} aria-hidden />} onClick={() => void reset(row)}>
+                          Repor default
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  {/* A quota acompanha o pacote em edição: o que cada cliente leva, antes de gravar. */}
+                  {row.key === 'pacote_operadora_gb' && pool && (
+                    <div className="fup-setting">
+                      <Field label="Quota por cliente (GB)" readOnly disabled value={packageGb > 0 && pool.activeClients > 0 ? gbText(packageGb / pool.activeClients) : '—'} />
+                      <div className="fup-setting-meta"><span>{pool.activeClients} clientes ativos</span></div>
+                    </div>
+                  )}
+                </Fragment>
+              ))}
             </div>
           </div>
-        ))}
-      </div>
+        );
+      })}
 
       {canWrite && dirty && (
         <div className="fup-preview" role="status" aria-live="polite">
