@@ -4,6 +4,28 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.69](https://github.com/Harrydevcod/IspManager/releases/tag/v2.69.0) — 2026-11-14
+
+**Antes de atualizar:** nada muda sozinho. O horário da limitação começa em "Só no pico", como até aqui, e o FUP global vem desligado, com o pacote da operadora a 0.
+
+### Adicionado
+- **Horário da limitação**, em Definições › Uso justo › Limitação. Escolhe quando a velocidade reduzida se aplica:
+  - "Só no pico", como até aqui;
+  - "Pico e fim de semana": a janela de pico de segunda a sexta, e o dia inteiro ao sábado e ao domingo;
+  - "Dia inteiro": a velocidade fica reduzida 24 horas por dia até ao ciclo seguinte.
+
+  O router aplica o horário sozinho, mesmo com o ISPM fechado. O fim de semana usa uma segunda fila, `ispm-fup-<serviço>-fds`. O `{acao}` da mensagem de aviso descreve o horário escolhido.
+- **FUP global: o pacote da operadora repartido por todos**, para quando o link tem poucos GB no mês. Com o **Pacote da operadora (GB)** acima de 0:
+  - **Quota por cliente:** cada cliente ativo recebe a mesma parte do pacote, que substitui o plafond do plano. A conta é feita no ciclo da conta da operadora.
+  - **Limitar todos a partir de (%):** 90 % por omissão. Quando o consumo das WAN passa esta percentagem do pacote, todos os clientes ficam limitados até a operadora renovar.
+  - **Ligações sem ficha:** o escritório e os colaboradores entram na divisão do pacote. Começa em 1.
+  - **Adicionar GB:** os GB comprados à operadora a meio do ciclo somam-se ao pacote só nesse ciclo. Ficam registados no histórico com o motivo.
+  - **Total distribuído:** mostra quanto do pacote vai para os clientes e quanto fica nas ligações sem ficha.
+- **Secções com título no uso justo:** FUP por plano, FUP global, Limitação e Aviso e medição.
+
+### Corrigido
+- **O ISPM deixou de reescrever a fila do uso justo a cada passagem quando o router reordena os dias.** Por exemplo, o router devolve `sat,sun` como `sun,sat`.
+
 ## [2.68](https://github.com/Harrydevcod/IspManager/releases/tag/v2.68.0) — 2026-11-14
 
 **Antes de atualizar:** o uso justo passa a contar GB decimais, como o plano os anuncia. Os clientes são avisados e limitados cerca de 7 % mais cedo do que antes. Quem já passou o limite fica limitado na execução seguinte do motor e recebe o aviso. Para manter a contagem antiga, escolha "GiB binários" em Definições › Uso justo.
