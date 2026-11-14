@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Gauge, History, RotateCcw } from 'lucide-react';
-import { Badge, Button, DataTable, EmptyState, Field, Message, Select, Textarea, useConfirm, useToast } from '../../components';
+import { Button, DataTable, EmptyState, Field, Message, Select, Textarea, useConfirm, useToast } from '../../components';
 import { useAuth } from '../../lib/auth';
 import { formatPtDate, formatPtDateTime } from '../../lib/format';
 import { fupRequest, type FupApiError, type FupHistoryRow, type FupSettingRow } from '../fup/fup-api';
@@ -12,7 +12,7 @@ type Preview = { current: Impact; candidate: Impact };
 const CHOICES: Record<string, Array<[string, string]>> = {
   canal_aviso: [['WHATSAPP', 'WhatsApp'], ['SMS', 'SMS']],
   acao_ao_limite: [['REDUZIR', 'Reduzir velocidade no pico'], ['BLOQUEAR', 'Bloquear ligação']],
-  unidade_gb: [['DECIMAL', 'GB decimais (1000³ bytes)'], ['BINARIO', 'GiB binários (1024³ bytes)']],
+  unidade_gb: [['DECIMAL', 'GB decimais'], ['BINARIO', 'GiB binários']],
   dia_ciclo: [['ATIVACAO', 'Dia da ativação'], ...Array.from({ length: 28 }, (_, i) => [String(i + 1), `Dia ${i + 1}`] as [string, string])]
 };
 
@@ -27,8 +27,7 @@ const TIME_ZONES: string[] = (() => {
 /** Como o valor aparece no histórico: escolhas com o nome legível, o resto como está. */
 function displayValue(key: string, value: string | null): string {
   if (value === null) return '—';
-  const shown = CHOICES[key]?.find(([code]) => code === value)?.[1] ?? value;
-  return shown.length > 60 ? `${shown.slice(0, 57)}…` : shown;
+  return CHOICES[key]?.find(([code]) => code === value)?.[1] ?? value;
 }
 
 /** Configurações › Uso justo. Toda a gente lê; só o administrador grava e repõe. */
@@ -215,14 +214,15 @@ export function FupSettingsPanel() {
         className="fup-history-table"
         rows={history}
         rowKey={(row) => row.id}
-        gridTemplateColumns="minmax(130px, 0.8fr) minmax(160px, 1.2fr) minmax(90px, 0.7fr) minmax(90px, 0.7fr) minmax(90px, 0.7fr) minmax(140px, 1.2fr)"
+        gridTemplateColumns="minmax(130px, 0.8fr) minmax(150px, 1fr) minmax(120px, 1fr) minmax(120px, 1fr) minmax(90px, 0.6fr) minmax(120px, 1fr)"
         columns={[
           { header: 'Data', sortValue: (row) => row.changedAt, defaultDirection: 'desc', cell: (row) => formatPtDateTime(row.changedAt) },
-          { header: 'Parâmetro', sortValue: (row) => labels.get(row.key) ?? row.key, cell: (row) => labels.get(row.key) ?? row.key },
-          { header: 'Antes', sortValue: (row) => row.oldValue ?? '', cell: (row) => displayValue(row.key, row.oldValue) },
-          { header: 'Depois', sortValue: (row) => row.newValue, cell: (row) => <Badge tone="accent">{displayValue(row.key, row.newValue)}</Badge> },
-          { header: 'Por', sortValue: (row) => row.changedBy, cell: (row) => row.changedBy },
-          { header: 'Motivo', sortValue: (row) => row.reason ?? '', cell: (row) => row.reason ?? '—' }
+          { header: 'Parâmetro', sortValue: (row) => labels.get(row.key) ?? row.key, cell: (row) => <span>{labels.get(row.key) ?? row.key}</span> },
+          // Uma linha por valor: um texto longo (a mensagem) corta com reticências e lê-se inteiro ao passar o rato.
+          { header: 'Antes', sortValue: (row) => row.oldValue ?? '', cell: (row) => <span title={displayValue(row.key, row.oldValue)}>{displayValue(row.key, row.oldValue)}</span> },
+          { header: 'Depois', sortValue: (row) => row.newValue, cell: (row) => <strong title={displayValue(row.key, row.newValue)}>{displayValue(row.key, row.newValue)}</strong> },
+          { header: 'Por', sortValue: (row) => row.changedBy, cell: (row) => <span>{row.changedBy}</span> },
+          { header: 'Motivo', sortValue: (row) => row.reason ?? '', cell: (row) => <span title={row.reason ?? undefined}>{row.reason ?? '—'}</span> }
         ]}
         empty={<EmptyState size="sm" icon={History} title="Sem alterações" />}
       />
