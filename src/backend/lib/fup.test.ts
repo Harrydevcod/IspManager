@@ -435,6 +435,18 @@ describe('uso justo global: pacote da operadora', () => {
     expect(() => saveFupSettings(db, { ligacoes_extra_pacote: '-1' }, 'admin')).toThrow('0 a 100');
   });
 
+  test('recarga soma-se ao pacote só no ciclo dela', () => {
+    saveFupSettings(db, { pacote_operadora_gb: '200', ligacoes_extra_pacote: '0' }, 'admin');
+    wan('2026-10-20', 185);
+    const pool = (now: Date) => loadOperatorPool(db, now, readFupSettings(db));
+    expect(pool(day('2026-10-24')).exhausted).toBe(true);
+    saveFupSettings(db, { pacote_extra_gb: '100', pacote_extra_ciclo: '2026-10-19' }, 'admin');
+    expect(pool(day('2026-10-24'))).toMatchObject({ baseGb: 200, extraGb: 100, packageGb: 300, shareGb: 150, exhausted: false });
+    expect(byId(day('2026-10-24')).get(beto)).toMatchObject({ limited: false, globalLimit: false });
+    // No ciclo seguinte (19/11) a recarga já não conta.
+    expect(pool(day('2026-11-20'))).toMatchObject({ extraGb: 0, packageGb: 200 });
+  });
+
   test('isento fica fora da quota e do divisor', () => {
     db.prepare('UPDATE services SET fup_reference_gb = 0 WHERE id = ?').run(beto);
     saveFupSettings(db, { pacote_operadora_gb: '200', ligacoes_extra_pacote: '0' }, 'admin');

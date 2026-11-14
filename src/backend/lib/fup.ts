@@ -154,7 +154,11 @@ export type OperatorPool = {
   enabled: boolean;
   cycle: { start: string; end: string };
   usedBytes: number;
+  /** Base + recargas deste ciclo. */
   packageGb: number;
+  baseGb: number;
+  /** Recargas do ciclo corrente; as de um ciclo anterior já não contam. */
+  extraGb: number;
   percent: number;
   activeClients: number;
   /** Ligações sem ficha que também partilham o pacote: o escritório, os colaboradores. */
@@ -170,17 +174,21 @@ export type OperatorPool = {
  */
 export function loadOperatorPool(db: Database.Database, now: Date, settings: FupSettings): OperatorPool {
   const cycle = cycleBounds(utcDay(now), starlinkCycleDay(db));
-  const packageGb = settings.pacote_operadora_gb;
+  const baseGb = settings.pacote_operadora_gb;
+  const extraGb = settings.pacote_extra_ciclo === cycle.start ? settings.pacote_extra_gb : 0;
+  const packageGb = baseGb > 0 ? baseGb + extraGb : 0;
   const { used } = db.prepare('SELECT COALESCE(SUM(rx_bytes + tx_bytes), 0) AS used FROM wan_traffic_daily WHERE day >= ? AND day <= ?')
     .get(cycle.start, cycle.end) as { used: number };
   const { n } = db.prepare(`SELECT COUNT(*) AS n FROM services WHERE status = 'active'
     AND pppoe_username IS NOT NULL AND TRIM(pppoe_username) <> '' AND COALESCE(fup_reference_gb, -1) <> 0`).get() as { n: number };
   const percent = usagePercent(used, packageGb, bytesPerGb(settings));
   return {
-    enabled: packageGb > 0,
+    enabled: baseGb > 0,
     cycle,
     usedBytes: used,
     packageGb,
+    baseGb,
+    extraGb,
     percent,
     activeClients: n,
     extraConnections: settings.ligacoes_extra_pacote,

@@ -13,6 +13,7 @@ const changesSchema = z.object({
   changes: z.record(z.string(), z.union([z.string(), z.number()])),
   reason: z.string().trim().max(500).optional().nullable()
 });
+const topupSchema = z.object({ gb: z.number().int().min(1).max(1_000_000), reason: z.string().trim().max(500).optional().nullable() });
 const plafondSchema = z.object({ referenceGb: z.number().int().min(0).max(100_000).nullable() });
 const historySchema = z.object({
   key: z.string().max(64).optional(),
@@ -74,6 +75,21 @@ export async function registerFupRoutes(app: FastifyInstance) {
     }
   });
 
+  // Recarga: GB comprados à operadora a meio do ciclo. Somam-se às do mesmo ciclo e caem na renovação.
+  app.post('/api/fup/pool/topup', adminOnly, async (request, reply) => {
+    const parsed = topupSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Indique os GB a adicionar (1 a 1 000 000).' });
+    const db = getSqliteDatabase();
+    const settings = readFupSettings(db);
+    const pool = loadOperatorPool(db, new Date(), settings);
+    if (!pool.enabled) return reply.status(400).send({ error: 'Defina primeiro o pacote da operadora.' });
+    const total = pool.extraGb + parsed.data.gb;
+    saveFupSettings(db, { pacote_extra_gb: String(total), pacote_extra_ciclo: pool.cycle.start }, request.user?.username ?? 'desconhecido', parsed.data.reason || 'Recarga do pacote');
+    recordAudit(request, { action: 'fup.recarga', entityType: 'fup_settings', summary: `Adicionou ${parsed.data.gb} GB ao pacote da operadora (ciclo ${pool.cycle.start}, total extra ${total} GB)` });
+    requestNetworkSync();
+    return { pool: loadOperatorPool(db, new Date(), readFupSettings(db)), settings: describeFupSettings(db) };
+  });
+
   app.post('/api/fup/settings/:key/reset', adminOnly, async (request, reply) => {
     const { key } = request.params as { key: string };
     const db = getSqliteDatabase();
@@ -116,6 +132,8 @@ export async function registerFupRoutes(app: FastifyInstance) {
         acao_ao_limite: raw.acao_ao_limite as typeof settings.acao_ao_limite,
         horario_limitacao: raw.horario_limitacao as typeof settings.horario_limitacao,
         pacote_operadora_gb: Number(raw.pacote_operadora_gb),
+        pacote_extra_gb: Number(raw.pacote_extra_gb),
+        pacote_extra_ciclo: raw.pacote_extra_ciclo,
         ligacoes_extra_pacote: Number(raw.ligacoes_extra_pacote),
         limiar_pacote_percent: Number(raw.limiar_pacote_percent)
       };
