@@ -8,6 +8,9 @@ import '../fup/fup.css';
 
 type Impact = { aviso: number; limitados: number };
 type Preview = { current: Impact; candidate: Impact };
+type Pool = { enabled: boolean; cycle: { start: string; end: string }; usedBytes: number; packageGb: number; percent: number; activeClients: number; shareGb: number; exhausted: boolean };
+
+const gbText = (value: number) => new Intl.NumberFormat('pt-PT', { maximumFractionDigits: value < 10 ? 1 : 0 }).format(value);
 
 const CHOICES: Record<string, Array<[string, string]>> = {
   canal_aviso: [['WHATSAPP', 'WhatsApp'], ['SMS', 'SMS']],
@@ -39,6 +42,7 @@ export function FupSettingsPanel() {
   const { toast } = useToast();
   const [settings, setSettings] = useState<FupSettingRow[] | null>(null);
   const [clockZone, setClockZone] = useState<string | null>(null);
+  const [pool, setPool] = useState<Pool | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [reason, setReason] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -59,8 +63,8 @@ export function FupSettingsPanel() {
   const dirty = Object.keys(changes).length > 0;
 
   useEffect(() => {
-    fupRequest<{ settings: FupSettingRow[]; routerClock: { clockZone: string | null } }>('/settings')
-      .then((data) => { setSettings(data.settings); setClockZone(data.routerClock.clockZone); })
+    fupRequest<{ settings: FupSettingRow[]; pool: Pool; routerClock: { clockZone: string | null } }>('/settings')
+      .then((data) => { setSettings(data.settings); setPool(data.pool); setClockZone(data.routerClock.clockZone); })
       .catch((err: Error) => setLoadError(err.message));
   }, []);
 
@@ -89,6 +93,7 @@ export function FupSettingsPanel() {
         method: 'PUT', body: JSON.stringify({ changes, reason: reason.trim() || null })
       });
       setSettings(result.settings);
+      fupRequest<{ pool: Pool }>('/settings').then((data) => setPool(data.pool)).catch(() => undefined);
       setDraft({});
       setReason('');
       toast(`Configuração guardada (${result.changed.length} alteração/ões). Entra em vigor na próxima execução do motor.`, 'success');
@@ -125,7 +130,9 @@ export function FupSettingsPanel() {
     const value = draft[row.key] ?? row.value;
     const set = (next: string) => setDraft((current) => ({ ...current, [row.key]: next }));
     // A bloquear, a ligação fica cortada o dia todo: o horário não tem efeito.
-    const blocked = row.key === 'horario_limitacao' && (draft.acao_ao_limite ?? settings.find((s) => s.key === 'acao_ao_limite')?.value) === 'BLOQUEAR';
+    const current = (key: string) => draft[key] ?? settings.find((s) => s.key === key)?.value;
+    const blocked = (row.key === 'horario_limitacao' && current('acao_ao_limite') === 'BLOQUEAR')
+      || (row.key === 'limiar_pacote_percent' && Number(current('pacote_operadora_gb')) === 0);
     const common = { label: row.label, hint: row.description, error: errors[row.key], disabled: !canWrite || blocked };
     if (CHOICES[row.key]) {
       return (
@@ -155,6 +162,15 @@ export function FupSettingsPanel() {
       {clockZone && clockZone !== settings.find((row) => row.key === 'fuso_horario')?.value && (
         <Message tone="warn">O fuso do router ({clockZone}) difere do configurado. Acerte o fuso no router para que a janela de pico seja aplicada à hora pretendida.</Message>
       )}
+
+      {pool?.enabled && (() => {
+        const perGb = settings.find((row) => row.key === 'unidade_gb')?.value === 'BINARIO' ? 1024 ** 3 : 1e9;
+        return (
+          <Message tone={pool.exhausted ? 'warn' : 'neutral'}>
+            Pacote da operadora: {gbText(pool.usedBytes / perGb)} de {gbText(pool.packageGb)} GB ({Math.round(pool.percent)} %) · quota {gbText(pool.shareGb)} GB por cliente · {pool.activeClients} clientes · {pool.exhausted ? 'todos limitados' : 'ciclo'} até {formatPtDate(pool.cycle.end)}
+          </Message>
+        );
+      })()}
 
       <datalist id="fup-time-zones">{TIME_ZONES.map((zone) => <option key={zone} value={zone} />)}</datalist>
 

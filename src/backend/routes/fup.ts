@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
-import { listFupEvents, loadFupUsage, previewFupImpact } from '../lib/fup';
+import { listFupEvents, loadFupUsage, loadOperatorPool, previewFupImpact } from '../lib/fup';
 import {
   FupSettingsError, bytesPerGb, candidateFupSettings, describeFupSettings, listFupSettingsHistory, readFupSettings, resetFupSetting, saveFupSettings
 } from '../lib/fup-settings';
@@ -37,7 +37,8 @@ const usageRow = (row: ReturnType<typeof loadFupUsage>[number]) => ({
   totalBytes: row.totalBytes,
   percent: row.percent,
   state: row.state,
-  limitedNow: row.limitedNow
+  limitedNow: row.limitedNow,
+  globalLimit: row.globalLimit
 });
 
 /** Política de uso justo: leitura para todos, escrita só do administrador. */
@@ -53,7 +54,7 @@ export async function registerFupRoutes(app: FastifyInstance) {
       const value: unknown = JSON.parse(last?.summary ?? '{}')?.fupQueues?.clockZone;
       if (typeof value === 'string' && value) clockZone = value;
     } catch { /* Resumo antigo ou inválido: o fuso é desconhecido. */ }
-    return { settings: describeFupSettings(db), routerClock: { clockZone, clockMismatch: clockZone === null ? null : clockZone !== readFupSettings(db).fuso_horario } };
+    return { settings: describeFupSettings(db), pool: loadOperatorPool(db, new Date(), readFupSettings(db)), routerClock: { clockZone, clockMismatch: clockZone === null ? null : clockZone !== readFupSettings(db).fuso_horario } };
   });
 
   app.put('/api/fup/settings', adminOnly, async (request, reply) => {
@@ -112,7 +113,10 @@ export async function registerFupRoutes(app: FastifyInstance) {
         fuso_horario: raw.fuso_horario,
         plafond_predefinido_gb: Number(raw.plafond_predefinido_gb),
         dia_ciclo: raw.dia_ciclo,
-        acao_ao_limite: raw.acao_ao_limite as typeof settings.acao_ao_limite
+        acao_ao_limite: raw.acao_ao_limite as typeof settings.acao_ao_limite,
+        horario_limitacao: raw.horario_limitacao as typeof settings.horario_limitacao,
+        pacote_operadora_gb: Number(raw.pacote_operadora_gb),
+        limiar_pacote_percent: Number(raw.limiar_pacote_percent)
       };
       return { current: previewFupImpact(db, new Date(), settings), candidate: previewFupImpact(db, new Date(), candidate) };
     } catch (err) {

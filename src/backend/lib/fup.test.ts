@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import {
-  bytesToGb, cycleFor, cycleStartDay, fupLimitedServices, inLimitWindow, inPeakWindow, loadFupUsage, nextTransitions, previewFupImpact,
+  bytesToGb, cycleFor, cycleStartDay, fupLimitedServices, inLimitWindow, inPeakWindow, loadFupUsage, loadOperatorPool, nextTransitions, previewFupImpact,
   runFupEngine, syncFupQueues, usagePercent, type FupEngineDeps
 } from './fup';
 import { collectClientUsage } from './client-usage';
@@ -383,6 +383,70 @@ describe('horário da limitação', () => {
     expect([...fupLimitedServices(db, offPeak('2026-11-09')).keys()]).toEqual([other]);
     runFupEngine(db, offPeak('2026-11-22'), deps());
     expect(fupLimitedServices(db, offPeak('2026-11-22')).size).toBe(0);
+  });
+});
+
+describe('uso justo global: pacote da operadora', () => {
+  // Ciclo da conta por omissão: dia 19 → 2026-10-19..2026-11-18.
+  const day = (d: string) => new Date(`${d}T13:00:00Z`);
+  const wan = (d: string, gb: number) => db.prepare('INSERT INTO wan_traffic_daily (day, interface, rx_bytes, tx_bytes) VALUES (?, ?, ?, 0)').run(d, `wan-${Math.random()}`, gb * GB);
+  let beto: number;
+  beforeEach(() => {
+    db.prepare('DELETE FROM wan_traffic_daily').run();
+    beto = Number(db.prepare(`INSERT INTO services (client_id, plan_id, pppoe_username, status, activation_date)
+      VALUES ((SELECT id FROM clients), (SELECT id FROM internet_plans), 'beto', 'active', '2026-03-10')`).run().lastInsertRowid);
+    db.prepare('INSERT INTO client_traffic_daily (day, service_id, rx_bytes, tx_bytes) VALUES (?, ?, 0, ?)').run('2026-10-20', beto, 30 * GB);
+    addUsage('2026-10-20', 120);
+  });
+  const byId = (now: Date) => new Map(loadFupUsage(db, now, readFupSettings(db)).map((row) => [row.serviceId, row]));
+
+  test('desligado (0): manda o plafond do plano e o ciclo de cada serviço', () => {
+    expect(byId(day('2026-10-24')).get(serviceId)).toMatchObject({ referenceGb: 100, cycle: { start: '2026-10-10' }, globalLimit: false });
+  });
+
+  test('quota igual: pacote ÷ clientes ativos, no ciclo da operadora, sem olhar ao plano', () => {
+    db.prepare('UPDATE internet_plans SET fup_reference_gb = 500').run();
+    saveFupSettings(db, { pacote_operadora_gb: '200' }, 'admin');
+    wan('2026-10-20', 150);
+    runFupEngine(db, day('2026-10-24'), deps());
+    const rows = byId(day('2026-10-24'));
+    expect(rows.get(serviceId)).toMatchObject({ referenceGb: 100, cycle: { start: '2026-10-19', end: '2026-11-18' }, state: 'LIMITADO', limited: true, globalLimit: false });
+    expect(rows.get(beto)).toMatchObject({ referenceGb: 100, state: 'NORMAL', limited: false });
+    expect(loadOperatorPool(db, day('2026-10-24'), readFupSettings(db))).toMatchObject({ activeClients: 2, shareGb: 100, percent: 75, exhausted: false });
+  });
+
+  test('pacote acima do limiar limita todos sem gravar eventos, e levanta na renovação da operadora', () => {
+    saveFupSettings(db, { pacote_operadora_gb: '200' }, 'admin');
+    wan('2026-10-20', 185);
+    runFupEngine(db, day('2026-10-24'), deps());
+    const rows = byId(day('2026-10-24'));
+    expect(rows.get(beto)).toMatchObject({ state: 'NORMAL', limited: true, globalLimit: true });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM fup_events WHERE service_id = ?').get(beto)).toEqual({ n: 0 });
+    expect(previewFupImpact(db, day('2026-10-24'), readFupSettings(db)).limitados).toBe(2);
+    runFupEngine(db, day('2026-11-19'), deps());
+    expect(fupLimitedServices(db, day('2026-11-19')).size).toBe(0);
+  });
+
+  test('isento fica fora da quota e do divisor', () => {
+    db.prepare('UPDATE services SET fup_reference_gb = 0 WHERE id = ?').run(beto);
+    saveFupSettings(db, { pacote_operadora_gb: '200' }, 'admin');
+    wan('2026-10-20', 190);
+    const rows = byId(day('2026-10-24'));
+    expect(loadOperatorPool(db, day('2026-10-24'), readFupSettings(db))).toMatchObject({ activeClients: 1, shareGb: 200, exhausted: true });
+    expect(rows.get(beto)).toMatchObject({ referenceGb: 0, limited: false });
+    expect(rows.get(serviceId)).toMatchObject({ referenceGb: 200, limited: true });
+  });
+
+  test('pacote esgotado cria a fila de todos os que estão ligados', async () => {
+    saveFupSettings(db, { pacote_operadora_gb: '200' }, 'admin');
+    wan('2026-10-20', 190);
+    const queues = [{ '.id': '*1', name: '<pppoe-ana>', dynamic: 'true' }, { '.id': '*2', name: '<pppoe-beto>', dynamic: 'true' }];
+    const transport: RouterTransport = async (request) => {
+      if (request.path.startsWith('/queue/simple?')) return queues;
+      if (request.path.startsWith('/ppp/active')) return [{ '.id': '*a', name: 'ana' }, { '.id': '*b', name: 'beto' }];
+      return [];
+    };
+    expect(await syncFupQueues(db, { transport, dryRun: false, now: day('2026-10-24') })).toMatchObject({ wanted: 2, added: 2 });
   });
 });
 

@@ -7,6 +7,7 @@ import { normalizeWhatsappPhone, whatsappChannelActive } from './whatsapp-provid
 import { requestNetworkSync } from './network-sync';
 import { recordSystemAuditEntry } from './audit';
 import { bytesPerGb, effectivePeakPercent, effectiveReferenceGb, fupActionText, globalCycleDay, readFupSettings, type FupSettings } from './fup-settings';
+import { cycleBounds, starlinkCycleDay, utcDay } from './wan-usage';
 import { addSimpleQueue, listActive, listSimpleQueues, patchSimpleQueue, readClockZone, removeSimpleQueue, type RouterTransport } from './routeros';
 
 /**
@@ -145,7 +146,45 @@ export type FupServiceUsage = {
   limited: boolean;
   /** Limitado agora: estado LIMITADO, ainda acima do limiar, e dentro da janela de pico. */
   limitedNow: boolean;
+  /** Limitado porque o pacote da operadora passou o limiar, não pelo consumo próprio. */
+  globalLimit: boolean;
 };
+
+export type OperatorPool = {
+  enabled: boolean;
+  cycle: { start: string; end: string };
+  usedBytes: number;
+  packageGb: number;
+  percent: number;
+  activeClients: number;
+  shareGb: number;
+  exhausted: boolean;
+};
+
+/**
+ * Pacote da operadora (uso justo global): o consumo das WAN no ciclo da conta
+ * dividido pelos serviços ativos. O dia é o UTC, como nas WAN e na Starlink.
+ * Isento (plafond 0 no serviço) fica fora do divisor.
+ */
+export function loadOperatorPool(db: Database.Database, now: Date, settings: FupSettings): OperatorPool {
+  const cycle = cycleBounds(utcDay(now), starlinkCycleDay(db));
+  const packageGb = settings.pacote_operadora_gb;
+  const { used } = db.prepare('SELECT COALESCE(SUM(rx_bytes + tx_bytes), 0) AS used FROM wan_traffic_daily WHERE day >= ? AND day <= ?')
+    .get(cycle.start, cycle.end) as { used: number };
+  const { n } = db.prepare(`SELECT COUNT(*) AS n FROM services WHERE status = 'active'
+    AND pppoe_username IS NOT NULL AND TRIM(pppoe_username) <> '' AND COALESCE(fup_reference_gb, -1) <> 0`).get() as { n: number };
+  const percent = usagePercent(used, packageGb, bytesPerGb(settings));
+  return {
+    enabled: packageGb > 0,
+    cycle,
+    usedBytes: used,
+    packageGb,
+    percent,
+    activeClients: n,
+    shareGb: packageGb > 0 && n > 0 ? packageGb / n : 0,
+    exhausted: packageGb > 0 && percent >= settings.limiar_pacote_percent
+  };
+}
 
 type Row = {
   serviceId: number; clientId: number; clientName: string; phone: string | null; whatsappOptOut: number; status: string;
@@ -176,14 +215,20 @@ export function loadFupUsage(db: Database.Database, now: Date, settings: FupSett
   const peak = inLimitWindow(now, settings);
   const globalDay = globalCycleDay(settings);
   const perGb = bytesPerGb(settings);
+  // Uso justo global: um pacote partilhado tem um só ciclo (o da operadora) e uma quota igual para todos.
+  const pool = loadOperatorPool(db, now, settings);
+  const poolCycle = { ...pool.cycle, period: pool.cycle.start.slice(0, 7) };
   return rows.map((row) => {
-    const cycle = cycleFor(today, cycleStartDay(row.cycleDay, row.activationDate, globalDay));
+    const cycle = pool.enabled ? poolCycle : cycleFor(today, cycleStartDay(row.cycleDay, row.activationDate, globalDay));
     const { down, up } = usage.get(row.serviceId, cycle.start, cycle.end) as { down: number; up: number };
-    const referenceGb = effectiveReferenceGb(row.serviceReferenceGb, row.referenceGb, settings);
+    const referenceGb = !pool.enabled ? effectiveReferenceGb(row.serviceReferenceGb, row.referenceGb, settings)
+      : row.serviceReferenceGb === 0 ? 0 : pool.shareGb;
     const percent = usagePercent(down + up, referenceGb, perGb);
     const state = stateFromEvents((events.all(row.serviceId, cycle.period) as Array<{ kind: string }>).map((e) => e.kind));
-    const limited = row.status === 'active' && referenceGb > 0 && state === 'LIMITADO'
+    const ownLimit = row.status === 'active' && referenceGb > 0 && state === 'LIMITADO'
       && percent >= settings.limiar_limitacao_percent;
+    const globalLimit = !ownLimit && pool.exhausted && row.status === 'active' && referenceGb > 0;
+    const limited = ownLimit || globalLimit;
     return {
       serviceId: row.serviceId,
       clientId: row.clientId,
@@ -207,7 +252,8 @@ export function loadFupUsage(db: Database.Database, now: Date, settings: FupSett
       percent,
       state,
       limited,
-      limitedNow: limited && peak
+      limitedNow: limited && peak,
+      globalLimit
     };
   });
 }
@@ -224,7 +270,7 @@ export function previewFupImpact(db: Database.Database, now: Date, settings: Fup
   let limitados = 0;
   for (const row of loadFupUsage(db, now, settings)) {
     if (row.status !== 'active' || row.referenceGb <= 0) continue;
-    if (row.percent >= settings.limiar_limitacao_percent) limitados++;
+    if (row.percent >= settings.limiar_limitacao_percent || row.globalLimit) limitados++;
     else if (row.percent >= settings.limiar_aviso_percent) aviso++;
   }
   return { aviso, limitados };
