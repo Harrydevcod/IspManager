@@ -12,6 +12,7 @@ export type FupSettings = {
   plafond_predefinido_gb: number;
   dia_ciclo: string;
   acao_ao_limite: 'REDUZIR' | 'BLOQUEAR';
+  horario_limitacao: 'JANELA' | 'JANELA_FDS' | 'DIA_INTEIRO';
   limiar_aviso_percent: number;
   limiar_limitacao_percent: number;
   percent_velocidade_pico: number;
@@ -32,6 +33,7 @@ export const FUP_SETTING_DEFINITIONS: Record<FupSettingKey, Definition> = {
   plafond_predefinido_gb: { type: 'NUMERO', default: '0', label: 'Plafond predefinido (GB)', description: 'Consumo de referência dos planos que não definem o seu. 0 = sem plafond.' },
   dia_ciclo: { type: 'TEXTO', default: 'ATIVACAO', label: 'Dia de renovação', description: 'Dia em que o consumo volta a zero. O serviço pode ter o seu.' },
   acao_ao_limite: { type: 'TEXTO', default: 'REDUZIR', label: 'Ação ao atingir o limite', description: 'Reduzir a velocidade na janela de pico, ou bloquear a ligação o dia inteiro até ao ciclo seguinte.' },
+  horario_limitacao: { type: 'TEXTO', default: 'JANELA', label: 'Horário da limitação', description: 'Quando a velocidade reduzida se aplica: só na janela de pico, na janela e ao fim de semana o dia inteiro, ou o dia inteiro até ao ciclo seguinte.' },
   limiar_aviso_percent: { type: 'NUMERO', default: '80', label: 'Limiar de aviso (%)', description: 'Percentagem do consumo de referência a partir da qual o cliente recebe o aviso, uma vez por ciclo.' },
   limiar_limitacao_percent: { type: 'NUMERO', default: '100', label: 'Limiar de limitação (%)', description: 'Percentagem a partir da qual a velocidade é reduzida na janela de pico, até ao ciclo seguinte.' },
   percent_velocidade_pico: { type: 'NUMERO', default: '50', label: 'Velocidade no pico (%)', description: 'Velocidade de um cliente limitado na janela de pico, em % da contratada. O plano pode ter a sua.' },
@@ -107,12 +109,15 @@ export function validateFupSettings(raw: Record<FupSettingKey, string>): Partial
   if (!/^\d+$/.test(plafond) || Number(plafond) > 100_000) errors.plafond_predefinido_gb = 'Tem de ser um número inteiro de 0 a 100 000.';
   if (raw.dia_ciclo !== 'ATIVACAO' && !(/^\d{1,2}$/.test(raw.dia_ciclo) && Number(raw.dia_ciclo) >= 1 && Number(raw.dia_ciclo) <= 28)) errors.dia_ciclo = 'Dia de 1 a 28, ou o da ativação.';
   if (raw.acao_ao_limite !== 'REDUZIR' && raw.acao_ao_limite !== 'BLOQUEAR') errors.acao_ao_limite = 'Ação inválida: REDUZIR ou BLOQUEAR.';
+  if (!['JANELA', 'JANELA_FDS', 'DIA_INTEIRO'].includes(raw.horario_limitacao)) errors.horario_limitacao = 'Horário inválido: JANELA, JANELA_FDS ou DIA_INTEIRO.';
   if (raw.unidade_gb !== 'DECIMAL' && raw.unidade_gb !== 'BINARIO') errors.unidade_gb = 'Unidade inválida: DECIMAL ou BINARIO.';
   if (!raw.mensagem_aviso.trim()) errors.mensagem_aviso = 'A mensagem não pode ficar vazia.';
   else if (raw.mensagem_aviso.length > 1000) errors.mensagem_aviso = 'A mensagem passa dos 1000 caracteres.';
   // Bloqueado não tem janela: uma mensagem que a cite mentia ao cliente.
   else if (raw.acao_ao_limite === 'BLOQUEAR' && /\{(inicio|fim|pico)\}/.test(raw.mensagem_aviso)) {
     errors.mensagem_aviso = 'Com a ligação bloqueada não há janela de pico: use {acao} em vez de {inicio}, {fim} e {pico}.';
+  } else if (raw.horario_limitacao === 'DIA_INTEIRO' && /\{(inicio|fim)\}/.test(raw.mensagem_aviso)) {
+    errors.mensagem_aviso = 'Com a limitação o dia inteiro não há janela de pico: use {acao} em vez de {inicio} e {fim}.';
   }
   return errors;
 }
@@ -176,10 +181,12 @@ export function globalCycleDay(settings: Pick<FupSettings, 'dia_ciclo'>): number
 }
 
 /** O que acontece aos 100%, para o campo {acao} da mensagem. */
-export function fupActionText(settings: Pick<FupSettings, 'acao_ao_limite' | 'janela_pico_inicio' | 'janela_pico_fim'>, peakPercent: number): string {
-  return settings.acao_ao_limite === 'BLOQUEAR'
-    ? 'a ligação fica bloqueada'
-    : `a velocidade entre as ${settings.janela_pico_inicio} e as ${settings.janela_pico_fim} passa a ${peakPercent}% da contratada`;
+export function fupActionText(settings: Pick<FupSettings, 'acao_ao_limite' | 'horario_limitacao' | 'janela_pico_inicio' | 'janela_pico_fim'>, peakPercent: number): string {
+  if (settings.acao_ao_limite === 'BLOQUEAR') return 'a ligação fica bloqueada';
+  const window = `entre as ${settings.janela_pico_inicio} e as ${settings.janela_pico_fim}`;
+  if (settings.horario_limitacao === 'DIA_INTEIRO') return `a velocidade passa a ${peakPercent}% da contratada`;
+  if (settings.horario_limitacao === 'JANELA_FDS') return `a velocidade ${window}, e o dia inteiro ao sábado e ao domingo, passa a ${peakPercent}% da contratada`;
+  return `a velocidade ${window} passa a ${peakPercent}% da contratada`;
 }
 
 export function candidateFupSettings(db: Database.Database, changes: Partial<Record<string, unknown>>): { raw: Record<FupSettingKey, string>; errors: Partial<Record<FupSettingKey, string>> } {

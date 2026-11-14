@@ -12,6 +12,7 @@ type Preview = { current: Impact; candidate: Impact };
 const CHOICES: Record<string, Array<[string, string]>> = {
   canal_aviso: [['WHATSAPP', 'WhatsApp'], ['SMS', 'SMS']],
   acao_ao_limite: [['REDUZIR', 'Reduzir velocidade no pico'], ['BLOQUEAR', 'Bloquear ligação']],
+  horario_limitacao: [['JANELA', 'Só na janela de pico'], ['JANELA_FDS', 'Janela de pico e fim de semana inteiro'], ['DIA_INTEIRO', 'Dia inteiro até ao ciclo seguinte']],
   unidade_gb: [['DECIMAL', 'GB decimais'], ['BINARIO', 'GiB binários']],
   dia_ciclo: [['ATIVACAO', 'Dia da ativação'], ...Array.from({ length: 28 }, (_, i) => [String(i + 1), `Dia ${i + 1}`] as [string, string])]
 };
@@ -123,7 +124,9 @@ export function FupSettingsPanel() {
   const field = (row: FupSettingRow) => {
     const value = draft[row.key] ?? row.value;
     const set = (next: string) => setDraft((current) => ({ ...current, [row.key]: next }));
-    const common = { label: row.label, hint: row.description, error: errors[row.key], disabled: !canWrite };
+    // A bloquear, a ligação fica cortada o dia todo: o horário não tem efeito.
+    const blocked = row.key === 'horario_limitacao' && (draft.acao_ao_limite ?? settings.find((s) => s.key === 'acao_ao_limite')?.value) === 'BLOQUEAR';
+    const common = { label: row.label, hint: row.description, error: errors[row.key], disabled: !canWrite || blocked };
     if (CHOICES[row.key]) {
       return (
         <Select {...common} value={value} onChange={(event) => set(event.target.value)}>

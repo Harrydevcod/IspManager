@@ -62,6 +62,19 @@ export function inPeakWindow(now: Date, settings: Pick<FupSettings, 'janela_pico
   return minutes >= toMinutes(settings.janela_pico_inicio) && minutes < end;
 }
 
+/** Sábado ou domingo no fuso dado. */
+function weekendInZone(now: Date, timeZone: string): boolean {
+  const day = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(now);
+  return day === 'Sat' || day === 'Sun';
+}
+
+/** A limitação aplica-se agora: o dia todo a bloquear ou com DIA_INTEIRO, o fim de semana com JANELA_FDS, senão a janela. */
+export function inLimitWindow(now: Date, settings: Pick<FupSettings, 'acao_ao_limite' | 'horario_limitacao' | 'janela_pico_inicio' | 'janela_pico_fim' | 'fuso_horario'>): boolean {
+  if (settings.acao_ao_limite === 'BLOQUEAR' || settings.horario_limitacao === 'DIA_INTEIRO') return true;
+  if (settings.horario_limitacao === 'JANELA_FDS' && weekendInZone(now, settings.fuso_horario)) return true;
+  return inPeakWindow(now, settings);
+}
+
 /** Dia em que o ciclo começa: o do serviço, senão o das Definições, senão o da ativação (até 28), senão 1. */
 export function cycleStartDay(cycleDay: number | null, activationDate: string | null, globalDay: number | null = null): number {
   if (cycleDay !== null && cycleDay >= 1 && cycleDay <= 28) return cycleDay;
@@ -160,8 +173,7 @@ export function loadFupUsage(db: Database.Database, now: Date, settings: FupSett
     FROM client_traffic_daily WHERE service_id = ? AND day >= ? AND day <= ?`);
   const events = db.prepare('SELECT kind FROM fup_events WHERE service_id = ? AND period = ?');
   const today = dayInZone(now, settings.fuso_horario);
-  // Bloqueado não tem janela: está limitado a toda a hora.
-  const peak = settings.acao_ao_limite === 'BLOQUEAR' || inPeakWindow(now, settings);
+  const peak = inLimitWindow(now, settings);
   const globalDay = globalCycleDay(settings);
   const perGb = bytesPerGb(settings);
   return rows.map((row) => {
@@ -341,6 +353,19 @@ export const FUP_BLOCK_LIMIT = '1k/1k';
 /** Fila de um bloqueado: o dia inteiro, todos os dias. */
 export const FUP_BLOCK_TIME = '0s-1d,sun,mon,tue,wed,thu,fri,sat';
 
+/**
+ * Filas de cada limitado: nome (sufixo) e horário. O `time=` do RouterOS só tem
+ * um intervalo de horas, por isso janela + fim de semana inteiro são duas filas
+ * com dias que não se sobrepõem.
+ */
+export function fupQueueSlots(settings: Pick<FupSettings, 'acao_ao_limite' | 'horario_limitacao' | 'janela_pico_inicio' | 'janela_pico_fim'>): Array<{ suffix: string; time: string }> {
+  if (settings.acao_ao_limite === 'BLOQUEAR' || settings.horario_limitacao === 'DIA_INTEIRO') return [{ suffix: '', time: FUP_BLOCK_TIME }];
+  const end = settings.janela_pico_fim === '00:00' ? '24:00' : settings.janela_pico_fim;
+  const window = `${settings.janela_pico_inicio}:00-${end}:00`;
+  if (settings.horario_limitacao === 'JANELA_FDS') return [{ suffix: '', time: `${window},mon,tue,wed,thu,fri` }, { suffix: '-fds', time: '0s-1d,sat,sun' }];
+  return [{ suffix: '', time: `${window},sun,mon,tue,wed,thu,fri,sat` }];
+}
+
 /** `max-limit` da fila simples (upload/download do cliente) a uma % do plano, em kbit/s. */
 export function fupQueueLimit(uploadMbps: number, downloadMbps: number, percent: number): string {
   const k = (mbps: number) => Math.max(1, Math.round(mbps * 10 * percent));
@@ -366,7 +391,8 @@ function sameQueueTime(actual: string | null, desired: string): boolean {
       const match = /^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(time);
       return match && match[0] ? Number(match[1] ?? 0) * 86400 + Number(match[2] ?? 0) * 3600 + Number(match[3] ?? 0) * 60 + Number(match[4] ?? 0) : NaN;
     });
-    return { times, days };
+    // O RouterOS reordena os dias (`sat,sun` volta como `sun,sat`): compara-se o conjunto.
+    return { times, days: [...days].sort() };
   };
   const left = normalize(actual), right = normalize(desired);
   return left.times.length === 2 && left.times.every((value, i) => value === right.times[i]) && left.days.join(',') === right.days.join(',');
@@ -392,8 +418,7 @@ export async function syncFupQueues(
   const ours = new Map(queues.filter((q) => !q.dynamic && q.name.startsWith(QUEUE_PREFIX)).map((q) => [q.name, q]));
   const clockZone = await readClockZone(deps.transport).catch(() => null);
   const summary: FupQueueSummary = { wanted: rows.length, added: 0, updated: 0, removed: 0, failed: 0, clockZone, clockMismatch: clockZone === null ? null : clockZone !== settings.fuso_horario };
-  const end = settings.janela_pico_fim === '00:00' ? '24:00' : settings.janela_pico_fim;
-  const time = block ? FUP_BLOCK_TIME : `${settings.janela_pico_inicio}:00-${end}:00,sun,mon,tue,wed,thu,fri,sat`;
+  const slots = fupQueueSlots(settings);
   if (rows.length === 0 && ours.size === 0) return summary;
   const online = new Set(rows.length ? (await listActive(deps.transport)).map((session) => session.name) : []);
   const audit = (row: Pick<FupServiceUsage, 'serviceId' | 'clientName' | 'username' | 'planName'> | null, serviceId: number, before: string | null, after: string | null) =>
@@ -409,30 +434,32 @@ export async function syncFupQueues(
 
   const keep = new Set<string>();
   for (const row of rows) {
-    const name = `${QUEUE_PREFIX}${row.serviceId}`;
     const target = `<pppoe-${row.username}>`;
     const limit = block ? FUP_BLOCK_LIMIT : fupQueueLimit(row.uploadMbps!, row.downloadMbps!, row.peakPercent);
-    const existing = ours.get(name);
-    if (existing) {
-      keep.add(name);
-      if ((!sameQueueLimit(existing.maxLimit, limit) || !sameQueueTime(existing.time, time)) && await attempt(() => patchSimpleQueue(deps.transport, existing.id, { 'max-limit': limit, time }))) {
-        summary.updated++;
-        audit(row, row.serviceId, existing.maxLimit, limit);
+    for (const { suffix, time } of slots) {
+      const name = `${QUEUE_PREFIX}${row.serviceId}${suffix}`;
+      const existing = ours.get(name);
+      if (existing) {
+        keep.add(name);
+        if ((!sameQueueLimit(existing.maxLimit, limit) || !sameQueueTime(existing.time, time)) && await attempt(() => patchSimpleQueue(deps.transport, existing.id, { 'max-limit': limit, time }))) {
+          summary.updated++;
+          audit(row, row.serviceId, existing.maxLimit, limit);
+        }
+        continue;
       }
-      continue;
-    }
-    if (!online.has(row.username)) continue;
-    const dynamic = queues.find((q) => q.dynamic && q.name === target);
-    if (!dynamic?.id) continue;
-    if (await attempt(() => addSimpleQueue(deps.transport, { name, target, maxLimit: limit, time, comment: `${QUEUE_COMMENT}${row.serviceId}`, placeBefore: dynamic.id }))) {
-      summary.added++;
-      keep.add(name);
-      audit(row, row.serviceId, null, limit);
+      if (!online.has(row.username)) continue;
+      const dynamic = queues.find((q) => q.dynamic && q.name === target);
+      if (!dynamic?.id) continue;
+      if (await attempt(() => addSimpleQueue(deps.transport, { name, target, maxLimit: limit, time, comment: `${QUEUE_COMMENT}${row.serviceId}`, placeBefore: dynamic.id }))) {
+        summary.added++;
+        keep.add(name);
+        audit(row, row.serviceId, null, limit);
+      }
     }
   }
   for (const [name, queue] of ours) {
     if (keep.has(name)) continue;
-    const serviceId = Number(name.slice(QUEUE_PREFIX.length));
+    const serviceId = parseInt(name.slice(QUEUE_PREFIX.length), 10); // `34-fds` → 34
     if (await attempt(() => removeSimpleQueue(deps.transport, queue.id))) {
       summary.removed++;
       audit(null, serviceId, queue.maxLimit, null);

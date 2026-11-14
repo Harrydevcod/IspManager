@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import {
-  bytesToGb, cycleFor, cycleStartDay, fupLimitedServices, inPeakWindow, loadFupUsage, nextTransitions, previewFupImpact,
+  bytesToGb, cycleFor, cycleStartDay, fupLimitedServices, inLimitWindow, inPeakWindow, loadFupUsage, nextTransitions, previewFupImpact,
   runFupEngine, syncFupQueues, usagePercent, type FupEngineDeps
 } from './fup';
 import { collectClientUsage } from './client-usage';
-import { bytesPerGb, invalidateFupSettingsCache, readFupSettings, saveFupSettings } from './fup-settings';
+import { bytesPerGb, fupActionText, invalidateFupSettingsCache, readFupSettings, saveFupSettings } from './fup-settings';
 import type { RouterTransport } from './routeros';
 
 const GB = 1e9;
@@ -315,6 +315,75 @@ test('aguarda a fila dinâmica antes de criar uma fila FUP', async () => {
   const result = await syncFupQueues(db, { transport, dryRun: false, now: peak('2026-10-20') });
   expect(result.added).toBe(0);
   expect(calls.some((request) => request.method === 'PUT' && request.path === '/queue/simple')).toBe(false);
+});
+
+describe('horário da limitação', () => {
+  // 2026-11-14 é sábado, 2026-11-17 terça; 10:00 em CV = 11:00 UTC.
+  const saturday = new Date('2026-11-14T11:00:00Z');
+  const tuesday = new Date('2026-11-17T11:00:00Z');
+
+  test('janela, fim de semana inteiro e dia inteiro', () => {
+    const base = readFupSettings(db);
+    expect(inLimitWindow(saturday, base)).toBe(false);
+    expect(inLimitWindow(saturday, { ...base, horario_limitacao: 'JANELA_FDS' })).toBe(true);
+    expect(inLimitWindow(tuesday, { ...base, horario_limitacao: 'JANELA_FDS' })).toBe(false);
+    expect(inLimitWindow(tuesday, { ...base, horario_limitacao: 'DIA_INTEIRO' })).toBe(true);
+    expect(() => saveFupSettings(db, { horario_limitacao: 'NOITE' }, 'teste')).toThrow('Horário inválido');
+    expect(() => saveFupSettings(db, { horario_limitacao: 'DIA_INTEIRO', mensagem_aviso: 'Das {inicio} às {fim}' }, 'teste')).toThrow('dia inteiro');
+    expect(fupActionText({ ...base, horario_limitacao: 'JANELA_FDS' }, 50)).toBe('a velocidade entre as 18:00 e as 00:00, e o dia inteiro ao sábado e ao domingo, passa a 50% da contratada');
+    expect(fupActionText({ ...base, horario_limitacao: 'DIA_INTEIRO' }, 50)).toBe('a velocidade passa a 50% da contratada');
+  });
+
+  test('fim de semana inteiro = duas filas; voltar à janela tira a do fim de semana; dia inteiro = uma fila 24 h', async () => {
+    saveFupSettings(db, { horario_limitacao: 'JANELA_FDS' }, 'admin');
+    addUsage('2026-11-12', 120);
+    runFupEngine(db, saturday, deps());
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const queues: Array<Record<string, unknown>> = [{ '.id': '*1', name: '<pppoe-ana>', dynamic: 'true' }];
+    const transport: RouterTransport = async (request) => {
+      calls.push(request);
+      if (request.path.startsWith('/queue/simple?')) return queues;
+      if (request.path.startsWith('/ppp/active')) return [{ '.id': '*a', name: 'ana' }];
+      return [];
+    };
+    expect(await syncFupQueues(db, { transport, dryRun: false, now: saturday })).toMatchObject({ added: 2 });
+    expect(calls).toContainEqual(expect.objectContaining({ method: 'PUT', body: expect.objectContaining({ name: `ispm-fup-${serviceId}`, time: '18:00:00-24:00:00,mon,tue,wed,thu,fri' }) }));
+    expect(calls).toContainEqual(expect.objectContaining({ method: 'PUT', body: expect.objectContaining({ name: `ispm-fup-${serviceId}-fds`, time: '0s-1d,sat,sun' }) }));
+    queues.push(
+      { '.id': '*2', name: `ispm-fup-${serviceId}`, dynamic: 'false', 'max-limit': '1000000/5000000', time: '18h-1d,mon,tue,wed,thu,fri' },
+      // O RouterOS devolve os dias pela ordem dele: `sun,sat`.
+      { '.id': '*3', name: `ispm-fup-${serviceId}-fds`, dynamic: 'false', 'max-limit': '1000000/5000000', time: '0s-1d,sun,sat' }
+    );
+    expect(await syncFupQueues(db, { transport, dryRun: false, now: saturday })).toMatchObject({ added: 0, updated: 0, removed: 0 });
+
+    saveFupSettings(db, { horario_limitacao: 'JANELA' }, 'admin');
+    expect(await syncFupQueues(db, { transport, dryRun: false, now: saturday })).toMatchObject({ updated: 1, removed: 1 });
+    expect(calls).toContainEqual(expect.objectContaining({ method: 'DELETE', path: '/queue/simple/*3' }));
+    expect(calls).toContainEqual(expect.objectContaining({ method: 'PATCH', path: '/queue/simple/*2', body: expect.objectContaining({ time: '18:00:00-24:00:00,sun,mon,tue,wed,thu,fri,sat' }) }));
+
+    saveFupSettings(db, { horario_limitacao: 'DIA_INTEIRO' }, 'admin');
+    queues.splice(2);
+    expect(await syncFupQueues(db, { transport, dryRun: false, now: saturday })).toMatchObject({ updated: 1 });
+    expect(calls).toContainEqual(expect.objectContaining({ method: 'PATCH', path: '/queue/simple/*2', body: expect.objectContaining({ 'max-limit': '1000k/5000k', time: '0s-1d,sun,mon,tue,wed,thu,fri,sat' }) }));
+  });
+
+  test('dia inteiro dura até ao ciclo de cada serviço, pela data de ativação', () => {
+    saveFupSettings(db, { horario_limitacao: 'DIA_INTEIRO' }, 'admin');
+    db.prepare('UPDATE services SET activation_date = ?').run('2026-03-09');
+    const other = Number(db.prepare(`INSERT INTO services (client_id, plan_id, pppoe_username, status, activation_date)
+      VALUES ((SELECT id FROM clients), (SELECT id FROM internet_plans), 'beto', 'active', '2026-03-22')`).run().lastInsertRowid);
+    addUsage('2026-10-23', 120);
+    db.prepare('INSERT INTO client_traffic_daily (day, service_id, rx_bytes, tx_bytes) VALUES (?, ?, 0, ?)').run('2026-10-23', other, 120 * GB);
+    runFupEngine(db, offPeak('2026-10-24'), deps());
+    expect([...fupLimitedServices(db, offPeak('2026-10-24')).keys()].sort()).toEqual([serviceId, other].sort());
+    expect(loadFupUsage(db, offPeak('2026-10-24'), readFupSettings(db)).every((row) => row.limitedNow)).toBe(true);
+
+    // A 9/11 o primeiro renova; o segundo fica limitado até 22/11.
+    runFupEngine(db, offPeak('2026-11-09'), deps());
+    expect([...fupLimitedServices(db, offPeak('2026-11-09')).keys()]).toEqual([other]);
+    runFupEngine(db, offPeak('2026-11-22'), deps());
+    expect(fupLimitedServices(db, offPeak('2026-11-22')).size).toBe(0);
+  });
 });
 
 describe('unidade de consumo nas Definições', () => {
