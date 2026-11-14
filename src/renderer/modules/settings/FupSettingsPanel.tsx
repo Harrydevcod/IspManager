@@ -10,12 +10,13 @@ type Impact = { aviso: number; limitados: number };
 type Preview = { current: Impact; candidate: Impact };
 type Pool = { enabled: boolean; cycle: { start: string; end: string }; usedBytes: number; packageGb: number; percent: number; activeClients: number; shareGb: number; exhausted: boolean };
 
-const gbText = (value: number) => new Intl.NumberFormat('pt-PT', { maximumFractionDigits: value < 10 ? 1 : 0 }).format(value);
+// O pt-PT não agrupa 4 algarismos (7432); aqui agrupa sempre, como "9 000 GB".
+const gbText = (value: number) => (value < 10 ? value.toFixed(1).replace('.', ',') : String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '));
 
 const CHOICES: Record<string, Array<[string, string]>> = {
   canal_aviso: [['WHATSAPP', 'WhatsApp'], ['SMS', 'SMS']],
   acao_ao_limite: [['REDUZIR', 'Reduzir velocidade no pico'], ['BLOQUEAR', 'Bloquear ligação']],
-  horario_limitacao: [['JANELA', 'Só na janela de pico'], ['JANELA_FDS', 'Janela de pico e fim de semana inteiro'], ['DIA_INTEIRO', 'Dia inteiro até ao ciclo seguinte']],
+  horario_limitacao: [['JANELA', 'Só no pico'], ['JANELA_FDS', 'Pico e fim de semana'], ['DIA_INTEIRO', 'Dia inteiro']],
   unidade_gb: [['DECIMAL', 'GB decimais'], ['BINARIO', 'GiB binários']],
   dia_ciclo: [['ATIVACAO', 'Dia da ativação'], ...Array.from({ length: 28 }, (_, i) => [String(i + 1), `Dia ${i + 1}`] as [string, string])]
 };
@@ -152,9 +153,7 @@ export function FupSettingsPanel() {
       <header className="backups-head">
         <div>
           <h3><Gauge size={16} aria-hidden /> Uso justo</h3>
-          <p className="fup-lede">
-            Os valores do serviço e do plano mandam sobre estes.
-          </p>
+          {!pool?.enabled && <p className="fup-lede">Os valores do serviço e do plano mandam sobre estes.</p>}
         </div>
       </header>
 
