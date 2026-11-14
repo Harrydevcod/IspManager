@@ -157,7 +157,7 @@ export type OperatorPool = {
   packageGb: number;
   percent: number;
   activeClients: number;
-  /** Ligações sem ficha que também partilham o pacote: a casa do dono, internet de graça. */
+  /** Ligações sem ficha que também partilham o pacote: o escritório, internet de graça. */
   extraConnections: number;
   shareGb: number;
   exhausted: boolean;

@@ -427,7 +427,7 @@ describe('uso justo global: pacote da operadora', () => {
     expect(fupLimitedServices(db, day('2026-11-19')).size).toBe(0);
   });
 
-  test('ligações sem ficha (casa do dono, internet de graça) entram no divisor', () => {
+  test('ligações sem ficha (escritório, internet de graça) entram no divisor', () => {
     saveFupSettings(db, { pacote_operadora_gb: '300' }, 'admin');
     expect(loadOperatorPool(db, day('2026-10-24'), readFupSettings(db))).toMatchObject({ activeClients: 2, extraConnections: 1, shareGb: 100 });
     saveFupSettings(db, { ligacoes_extra_pacote: '0' }, 'admin');

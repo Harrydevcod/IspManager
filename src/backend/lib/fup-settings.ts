@@ -48,7 +48,7 @@ export const FUP_SETTING_DEFINITIONS: Record<FupSettingKey, Definition> = {
   mensagem_aviso: { type: 'TEXTO', default: 'Caro cliente {nome}, já usou {percent}% do consumo de referência do seu plano ({gb} de {referencia} GB) neste ciclo. Ao chegar aos 100%, {acao} até ao próximo ciclo.', label: 'Mensagem de aviso', description: 'Texto do aviso. Campos: {nome} {percent} {gb} {referencia} {inicio} {fim} {pico} {acao}.' },
   unidade_gb: { type: 'TEXTO', default: 'DECIMAL', label: 'Unidade de consumo', description: 'Como se contam os GB do plafond, dos avisos e da tabela de consumo: decimais (1000³ bytes, como o Starlink) ou binários (1024³ bytes).' },
   pacote_operadora_gb: { type: 'NUMERO', default: '0', label: 'Pacote da operadora (GB)', description: 'GB do link por ciclo da conta. Acima de 0, cada cliente tem uma quota igual do pacote, em vez do plafond do plano. 0 = desligado.' },
-  ligacoes_extra_pacote: { type: 'NUMERO', default: '1', label: 'Ligações sem ficha', description: 'Casa do dono e internet de graça que entram na divisão do pacote.' },
+  ligacoes_extra_pacote: { type: 'NUMERO', default: '1', label: 'Ligações sem ficha', description: 'Escritório e internet de graça que entram na divisão do pacote.' },
   limiar_pacote_percent: { type: 'NUMERO', default: '90', label: 'Limitar todos a partir de (%)', description: 'Percentagem do pacote da operadora a partir da qual todos os clientes ficam limitados até o pacote renovar.' }
 };
 
