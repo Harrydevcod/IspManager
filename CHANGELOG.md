@@ -4,6 +4,14 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.70](https://github.com/Harrydevcod/IspManager/releases/tag/v2.70.0) — 2026-11-14
+
+### Corrigido
+- **"Em baixo agora" deixou de contar clientes que estão ligados.** O cartão Saúde da rede e a app ISPM SMS mostravam 15 em baixo, e só 3 estavam.
+  - **Clientes em PPPoE.** Um cliente com a sessão ativa conta como ligado. O ping ia para o IP antigo do equipamento, que deixou de valer com a passagem para PPPoE. Se a última leitura do router tiver mais de 15 minutos, volta a decidir o ping. O tempo antes de a sessão o mostrar ligado fica no histórico como não observado, e não como dias de queda.
+  - **Clientes em DHCP.** O cliente só aparece em baixo se nenhum equipamento do serviço responder. O router de casa costuma não responder ao ping mesmo com a antena do mesmo cliente a funcionar.
+  - A Topologia e o histórico continuam a mostrar o estado real de cada equipamento.
+
 ## [2.69](https://github.com/Harrydevcod/IspManager/releases/tag/v2.69.0) — 2026-11-14
 
 **Antes de atualizar:** nada muda sozinho. O horário da limitação começa em "Só no pico", como até aqui, e o FUP global vem desligado, com o pacote da operadora a 0.
