@@ -21,6 +21,7 @@ export type FupSettings = {
   intervalo_recolha_minutos: number;
   canal_aviso: 'SMS' | 'WHATSAPP';
   mensagem_aviso: string;
+  unidade_gb: 'DECIMAL' | 'BINARIO';
 };
 
 export type FupSettingKey = keyof FupSettings;
@@ -39,7 +40,8 @@ export const FUP_SETTING_DEFINITIONS: Record<FupSettingKey, Definition> = {
   fuso_horario: { type: 'FUSO', default: 'Atlantic/Cape_Verde', label: 'Fuso horário', description: 'Fuso (IANA) da janela de pico. O router aplica a janela pelo seu próprio relógio: tem de estar no mesmo fuso.' },
   intervalo_recolha_minutos: { type: 'NUMERO', default: '5', label: 'Intervalo de recolha (min)', description: 'De quantos em quantos minutos o ISPM lê o consumo no router.' },
   canal_aviso: { type: 'TEXTO', default: 'WHATSAPP', label: 'Canal do aviso', description: 'Por onde sai o aviso: WhatsApp ou SMS. O cliente que recusou avisos não recebe nenhum.' },
-  mensagem_aviso: { type: 'TEXTO', default: 'Caro cliente {nome}, já usou {percent}% do consumo de referência do seu plano ({gb} de {referencia} GB) neste ciclo. Ao chegar aos 100%, {acao} até ao próximo ciclo.', label: 'Mensagem de aviso', description: 'Texto do aviso. Campos: {nome} {percent} {gb} {referencia} {inicio} {fim} {pico} {acao}.' }
+  mensagem_aviso: { type: 'TEXTO', default: 'Caro cliente {nome}, já usou {percent}% do consumo de referência do seu plano ({gb} de {referencia} GB) neste ciclo. Ao chegar aos 100%, {acao} até ao próximo ciclo.', label: 'Mensagem de aviso', description: 'Texto do aviso. Campos: {nome} {percent} {gb} {referencia} {inicio} {fim} {pico} {acao}.' },
+  unidade_gb: { type: 'TEXTO', default: 'DECIMAL', label: 'Unidade de consumo', description: 'Como se contam os GB do plafond, dos avisos e da tabela de consumo: decimais (1000³ bytes, como o Starlink) ou binários (1024³ bytes).' }
 };
 
 export const FUP_SETTING_KEYS = Object.keys(FUP_SETTING_DEFINITIONS) as FupSettingKey[];
@@ -105,6 +107,7 @@ export function validateFupSettings(raw: Record<FupSettingKey, string>): Partial
   if (!/^\d+$/.test(plafond) || Number(plafond) > 100_000) errors.plafond_predefinido_gb = 'Tem de ser um número inteiro de 0 a 100 000.';
   if (raw.dia_ciclo !== 'ATIVACAO' && !(/^\d{1,2}$/.test(raw.dia_ciclo) && Number(raw.dia_ciclo) >= 1 && Number(raw.dia_ciclo) <= 28)) errors.dia_ciclo = 'Dia de 1 a 28, ou o da ativação.';
   if (raw.acao_ao_limite !== 'REDUZIR' && raw.acao_ao_limite !== 'BLOQUEAR') errors.acao_ao_limite = 'Ação inválida: REDUZIR ou BLOQUEAR.';
+  if (raw.unidade_gb !== 'DECIMAL' && raw.unidade_gb !== 'BINARIO') errors.unidade_gb = 'Unidade inválida: DECIMAL ou BINARIO.';
   if (!raw.mensagem_aviso.trim()) errors.mensagem_aviso = 'A mensagem não pode ficar vazia.';
   else if (raw.mensagem_aviso.length > 1000) errors.mensagem_aviso = 'A mensagem passa dos 1000 caracteres.';
   // Bloqueado não tem janela: uma mensagem que a cite mentia ao cliente.
@@ -160,6 +163,11 @@ export function effectiveReferenceGb(serviceGb: number | null, planGb: number | 
   if (serviceGb !== null) return serviceGb;
   if (planGb !== null && planGb > 0) return planGb;
   return settings.plafond_predefinido_gb;
+}
+
+/** Bytes de 1 GB na unidade escolhida: decimal (10⁹) ou binária (1024³). */
+export function bytesPerGb(settings: Pick<FupSettings, 'unidade_gb'>): number {
+  return settings.unidade_gb === 'BINARIO' ? 1024 ** 3 : 1e9;
 }
 
 /** Dia global de início do ciclo; nulo = o da ativação. */

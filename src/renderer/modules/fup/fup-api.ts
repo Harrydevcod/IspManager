@@ -56,7 +56,7 @@ export type FupHistoryRow = {
   reason: string | null;
 };
 
-export type FupThresholds = { aviso: number; limitacao: number; acao?: 'REDUZIR' | 'BLOQUEAR' };
+export type FupThresholds = { aviso: number; limitacao: number; acao?: 'REDUZIR' | 'BLOQUEAR'; bytesPerGb?: number };
 
 export type FupApiError = { error: string; errors?: Record<string, string> };
 
@@ -70,11 +70,15 @@ export async function fupRequest<T>(path: string, init: RequestInit = {}): Promi
   return body as T;
 }
 
-const GB = 1024 ** 3;
+/** Bytes de 1 GB na unidade das Definições; sem ela, decimal (10⁹). */
+export const perGbOf = (thresholds: FupThresholds | null | undefined) => thresholds?.bytesPerGb ?? 1e9;
 
-/** GB em base 1024³, com uma casa decimal (pt-PT). */
-export function formatGb(bytes: number): string {
-  return `${(bytes / GB).toLocaleString('pt-PT', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} GB`;
+/** "GB" decimal ou "GiB" binário, conforme a unidade. */
+export const gbLabel = (perGb: number) => (perGb === 1024 ** 3 ? 'GiB' : 'GB');
+
+/** Consumo na unidade das Definições, com uma casa decimal (pt-PT). */
+export function formatGb(bytes: number, perGb = 1e9): string {
+  return `${(bytes / perGb).toLocaleString('pt-PT', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${gbLabel(perGb)}`;
 }
 
 /** Verde até ao aviso, laranja até à limitação, vermelho acima. */

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
 import { listFupEvents, loadFupUsage, previewFupImpact } from '../lib/fup';
 import {
-  FupSettingsError, candidateFupSettings, describeFupSettings, listFupSettingsHistory, readFupSettings, resetFupSetting, saveFupSettings
+  FupSettingsError, bytesPerGb, candidateFupSettings, describeFupSettings, listFupSettingsHistory, readFupSettings, resetFupSetting, saveFupSettings
 } from '../lib/fup-settings';
 import { requestNetworkSync } from '../lib/network-sync';
 import { recordAudit, recordAuditStrict } from '../lib/audit';
@@ -126,7 +126,7 @@ export async function registerFupRoutes(app: FastifyInstance) {
     const settings = readFupSettings(db);
     return {
       usage: loadFupUsage(db, new Date(), settings).map(usageRow),
-      thresholds: { aviso: settings.limiar_aviso_percent, limitacao: settings.limiar_limitacao_percent, acao: settings.acao_ao_limite }
+      thresholds: { aviso: settings.limiar_aviso_percent, limitacao: settings.limiar_limitacao_percent, acao: settings.acao_ao_limite, bytesPerGb: bytesPerGb(settings) }
     };
   });
 
@@ -139,7 +139,7 @@ export async function registerFupRoutes(app: FastifyInstance) {
     if (!row) return reply.status(404).send({ error: 'Serviço sem utilizador PPPoE' });
     return {
       usage: usageRow(row),
-      thresholds: { aviso: settings.limiar_aviso_percent, limitacao: settings.limiar_limitacao_percent, acao: settings.acao_ao_limite },
+      thresholds: { aviso: settings.limiar_aviso_percent, limitacao: settings.limiar_limitacao_percent, acao: settings.acao_ao_limite, bytesPerGb: bytesPerGb(settings) },
       events: listFupEvents(db, id).map((event) => ({ ...event, detail: event.detailJson ? JSON.parse(event.detailJson) : null, detailJson: undefined }))
     };
   });

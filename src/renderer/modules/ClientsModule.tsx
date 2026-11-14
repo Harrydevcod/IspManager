@@ -9,7 +9,7 @@ import { SmsInbox } from './settings/SmsInbox';
 import { authFetch, useAuth } from '../lib/auth';
 import { useColumnVisibility } from '../lib/columnVisibility';
 import { FupUsageBar, FupUsageSection } from './fup/FupUsageSection';
-import { formatGb, fupRequest, summarizeByClient, type FupThresholds, type FupUsage } from './fup/fup-api';
+import { formatGb, fupRequest, perGbOf, summarizeByClient, type FupThresholds, type FupUsage } from './fup/fup-api';
 import { CV_ISLANDS, DEFAULT_ISLAND, isKnownIsland } from '../lib/islands';
 import { formatCve, formatPtDate } from '../lib/format';
 import { paginateRows, sortByColumns, type SortState } from '../lib/listView';
@@ -54,9 +54,9 @@ const CLIENT_COLUMNS: DataTableColumn<Client>[] = [
     cell: (client) => {
       const fup = client.fup;
       if (!fup) return <span>—</span>;
-      if (fup.percent === null) return <span title="Plano sem consumo de referência">{formatGb(fup.totalBytes)}</span>;
+      if (fup.percent === null) return <span title="Plano sem consumo de referência">{formatGb(fup.totalBytes, perGbOf(fup.thresholds))}</span>;
       return (
-        <span className="fup-cell" title={`${formatGb(fup.totalBytes)} no ciclo${fup.limited ? ' · limitado no pico' : ''}`}>
+        <span className="fup-cell" title={`${formatGb(fup.totalBytes, perGbOf(fup.thresholds))} no ciclo${fup.limited ? ' · limitado no pico' : ''}`}>
           <FupUsageBar percent={fup.percent} thresholds={fup.thresholds} label={`Consumo de ${client.fullName}`} />
           <span>{Math.round(fup.percent)}%{fup.limited && <span className="sr-only"> limitado</span>}</span>
         </span>
