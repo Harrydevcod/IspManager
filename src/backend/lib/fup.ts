@@ -157,6 +157,8 @@ export type OperatorPool = {
   packageGb: number;
   percent: number;
   activeClients: number;
+  /** Ligações sem ficha que também partilham o pacote: a casa do dono, internet de graça. */
+  extraConnections: number;
   shareGb: number;
   exhausted: boolean;
 };
@@ -181,7 +183,8 @@ export function loadOperatorPool(db: Database.Database, now: Date, settings: Fup
     packageGb,
     percent,
     activeClients: n,
-    shareGb: packageGb > 0 && n > 0 ? packageGb / n : 0,
+    extraConnections: settings.ligacoes_extra_pacote,
+    shareGb: packageGb > 0 && n + settings.ligacoes_extra_pacote > 0 ? packageGb / (n + settings.ligacoes_extra_pacote) : 0,
     exhausted: packageGb > 0 && percent >= settings.limiar_pacote_percent
   };
 }

@@ -24,6 +24,7 @@ export type FupSettings = {
   mensagem_aviso: string;
   unidade_gb: 'DECIMAL' | 'BINARIO';
   pacote_operadora_gb: number;
+  ligacoes_extra_pacote: number;
   limiar_pacote_percent: number;
 };
 
@@ -47,12 +48,13 @@ export const FUP_SETTING_DEFINITIONS: Record<FupSettingKey, Definition> = {
   mensagem_aviso: { type: 'TEXTO', default: 'Caro cliente {nome}, já usou {percent}% do consumo de referência do seu plano ({gb} de {referencia} GB) neste ciclo. Ao chegar aos 100%, {acao} até ao próximo ciclo.', label: 'Mensagem de aviso', description: 'Texto do aviso. Campos: {nome} {percent} {gb} {referencia} {inicio} {fim} {pico} {acao}.' },
   unidade_gb: { type: 'TEXTO', default: 'DECIMAL', label: 'Unidade de consumo', description: 'Como se contam os GB do plafond, dos avisos e da tabela de consumo: decimais (1000³ bytes, como o Starlink) ou binários (1024³ bytes).' },
   pacote_operadora_gb: { type: 'NUMERO', default: '0', label: 'Pacote da operadora (GB)', description: 'GB do link por ciclo da conta. Acima de 0, cada cliente tem uma quota igual do pacote, em vez do plafond do plano. 0 = desligado.' },
+  ligacoes_extra_pacote: { type: 'NUMERO', default: '1', label: 'Ligações sem ficha', description: 'Casa do dono e internet de graça que entram na divisão do pacote.' },
   limiar_pacote_percent: { type: 'NUMERO', default: '90', label: 'Limitar todos a partir de (%)', description: 'Percentagem do pacote da operadora a partir da qual todos os clientes ficam limitados até o pacote renovar.' }
 };
 
 export const FUP_SETTING_KEYS = Object.keys(FUP_SETTING_DEFINITIONS) as FupSettingKey[];
 
-const NUMERIC = new Set<FupSettingKey>(['pacote_operadora_gb', 'limiar_pacote_percent', 'plafond_predefinido_gb', 'limiar_aviso_percent', 'limiar_limitacao_percent', 'percent_velocidade_pico', 'intervalo_recolha_minutos']);
+const NUMERIC = new Set<FupSettingKey>(['pacote_operadora_gb', 'ligacoes_extra_pacote', 'limiar_pacote_percent', 'plafond_predefinido_gb', 'limiar_aviso_percent', 'limiar_limitacao_percent', 'percent_velocidade_pico', 'intervalo_recolha_minutos']);
 
 export class FupSettingsError extends Error {
   constructor(public readonly errors: Partial<Record<FupSettingKey, string>>) {
@@ -115,6 +117,8 @@ export function validateFupSettings(raw: Record<FupSettingKey, string>): Partial
   if (raw.acao_ao_limite !== 'REDUZIR' && raw.acao_ao_limite !== 'BLOQUEAR') errors.acao_ao_limite = 'Ação inválida: REDUZIR ou BLOQUEAR.';
   const pool = raw.pacote_operadora_gb.trim();
   if (!/^\d+$/.test(pool) || Number(pool) > 1_000_000) errors.pacote_operadora_gb = 'Tem de ser um número inteiro de 0 a 1 000 000.';
+  const extra = raw.ligacoes_extra_pacote.trim();
+  if (!/^\d+$/.test(extra) || Number(extra) > 100) errors.ligacoes_extra_pacote = 'Tem de ser um número inteiro de 0 a 100.';
   const poolPercent = raw.limiar_pacote_percent.trim();
   if (!/^\d+$/.test(poolPercent) || Number(poolPercent) < 1 || Number(poolPercent) > 100) errors.limiar_pacote_percent = 'Tem de ser um número inteiro de 1 a 100.';
   if (!['JANELA', 'JANELA_FDS', 'DIA_INTEIRO'].includes(raw.horario_limitacao)) errors.horario_limitacao = 'Horário inválido: JANELA, JANELA_FDS ou DIA_INTEIRO.';

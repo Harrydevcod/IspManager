@@ -406,7 +406,7 @@ describe('uso justo global: pacote da operadora', () => {
 
   test('quota igual: pacote ÷ clientes ativos, no ciclo da operadora, sem olhar ao plano', () => {
     db.prepare('UPDATE internet_plans SET fup_reference_gb = 500').run();
-    saveFupSettings(db, { pacote_operadora_gb: '200' }, 'admin');
+    saveFupSettings(db, { pacote_operadora_gb: '200', ligacoes_extra_pacote: '0' }, 'admin');
     wan('2026-10-20', 150);
     runFupEngine(db, day('2026-10-24'), deps());
     const rows = byId(day('2026-10-24'));
@@ -416,7 +416,7 @@ describe('uso justo global: pacote da operadora', () => {
   });
 
   test('pacote acima do limiar limita todos sem gravar eventos, e levanta na renovação da operadora', () => {
-    saveFupSettings(db, { pacote_operadora_gb: '200' }, 'admin');
+    saveFupSettings(db, { pacote_operadora_gb: '200', ligacoes_extra_pacote: '0' }, 'admin');
     wan('2026-10-20', 185);
     runFupEngine(db, day('2026-10-24'), deps());
     const rows = byId(day('2026-10-24'));
@@ -427,9 +427,17 @@ describe('uso justo global: pacote da operadora', () => {
     expect(fupLimitedServices(db, day('2026-11-19')).size).toBe(0);
   });
 
+  test('ligações sem ficha (casa do dono, internet de graça) entram no divisor', () => {
+    saveFupSettings(db, { pacote_operadora_gb: '300' }, 'admin');
+    expect(loadOperatorPool(db, day('2026-10-24'), readFupSettings(db))).toMatchObject({ activeClients: 2, extraConnections: 1, shareGb: 100 });
+    saveFupSettings(db, { ligacoes_extra_pacote: '0' }, 'admin');
+    expect(loadOperatorPool(db, day('2026-10-24'), readFupSettings(db)).shareGb).toBe(150);
+    expect(() => saveFupSettings(db, { ligacoes_extra_pacote: '-1' }, 'admin')).toThrow('0 a 100');
+  });
+
   test('isento fica fora da quota e do divisor', () => {
     db.prepare('UPDATE services SET fup_reference_gb = 0 WHERE id = ?').run(beto);
-    saveFupSettings(db, { pacote_operadora_gb: '200' }, 'admin');
+    saveFupSettings(db, { pacote_operadora_gb: '200', ligacoes_extra_pacote: '0' }, 'admin');
     wan('2026-10-20', 190);
     const rows = byId(day('2026-10-24'));
     expect(loadOperatorPool(db, day('2026-10-24'), readFupSettings(db))).toMatchObject({ activeClients: 1, shareGb: 200, exhausted: true });
@@ -438,7 +446,7 @@ describe('uso justo global: pacote da operadora', () => {
   });
 
   test('pacote esgotado cria a fila de todos os que estão ligados', async () => {
-    saveFupSettings(db, { pacote_operadora_gb: '200' }, 'admin');
+    saveFupSettings(db, { pacote_operadora_gb: '200', ligacoes_extra_pacote: '0' }, 'admin');
     wan('2026-10-20', 190);
     const queues = [{ '.id': '*1', name: '<pppoe-ana>', dynamic: 'true' }, { '.id': '*2', name: '<pppoe-beto>', dynamic: 'true' }];
     const transport: RouterTransport = async (request) => {

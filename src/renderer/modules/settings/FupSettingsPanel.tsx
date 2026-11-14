@@ -8,7 +8,7 @@ import '../fup/fup.css';
 
 type Impact = { aviso: number; limitados: number };
 type Preview = { current: Impact; candidate: Impact };
-type Pool = { enabled: boolean; cycle: { start: string; end: string }; usedBytes: number; packageGb: number; percent: number; activeClients: number; shareGb: number; exhausted: boolean };
+type Pool = { enabled: boolean; cycle: { start: string; end: string }; usedBytes: number; packageGb: number; percent: number; activeClients: number; extraConnections: number; shareGb: number; exhausted: boolean };
 
 // O pt-PT não agrupa 4 algarismos (7432); aqui agrupa sempre, como "9 000 GB".
 const gbText = (value: number) => (value < 10 ? value.toFixed(1).replace('.', ',') : String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '));
@@ -24,7 +24,7 @@ const CHOICES: Record<string, Array<[string, string]>> = {
 /** Secções do painel: o que é de cada tipo de FUP e o que é comum aos dois. */
 const SECTIONS: Array<[string, string[]]> = [
   ['FUP por plano', ['plafond_predefinido_gb', 'dia_ciclo']],
-  ['FUP global', ['pacote_operadora_gb', 'limiar_pacote_percent']],
+  ['FUP global', ['pacote_operadora_gb', 'ligacoes_extra_pacote', 'limiar_pacote_percent']],
   ['Limitação', ['acao_ao_limite', 'horario_limitacao', 'limiar_aviso_percent', 'limiar_limitacao_percent', 'percent_velocidade_pico', 'janela_pico_inicio', 'janela_pico_fim', 'fuso_horario']],
   ['Aviso e medição', ['canal_aviso', 'mensagem_aviso', 'unidade_gb', 'intervalo_recolha_minutos']]
 ];
@@ -176,7 +176,9 @@ export function FupSettingsPanel() {
         // Uma chave nova fora do mapa cai na última secção: nunca desaparece do ecrã.
         const rows = settings.filter((row) => keys.includes(row.key) || (index === SECTIONS.length - 1 && !SECTIONED.has(row.key)));
         const global = title === 'FUP global';
-        const packageGb = Number(draft.pacote_operadora_gb ?? settings.find((row) => row.key === 'pacote_operadora_gb')?.value ?? 0);
+        const draftNumber = (key: string) => Number(draft[key] ?? settings.find((row) => row.key === key)?.value ?? 0);
+        const packageGb = draftNumber('pacote_operadora_gb');
+        const extra = draftNumber('ligacoes_extra_pacote');
         const perGb = settings.find((row) => row.key === 'unidade_gb')?.value === 'BINARIO' ? 1024 ** 3 : 1e9;
         return (
           <div key={title} className="fup-section">
@@ -203,10 +205,10 @@ export function FupSettingsPanel() {
                     </div>
                   </div>
                   {/* A quota acompanha o pacote em edição: o que cada cliente leva, antes de gravar. */}
-                  {row.key === 'pacote_operadora_gb' && pool && (
+                  {row.key === 'ligacoes_extra_pacote' && pool && (
                     <div className="fup-setting">
-                      <Field label="Quota por cliente (GB)" readOnly disabled value={packageGb > 0 && pool.activeClients > 0 ? gbText(packageGb / pool.activeClients) : '—'} />
-                      <div className="fup-setting-meta"><span>{pool.activeClients} clientes ativos</span></div>
+                      <Field label="Quota por cliente (GB)" readOnly disabled value={packageGb > 0 && pool.activeClients + extra > 0 ? gbText(packageGb / (pool.activeClients + extra)) : '—'} />
+                      <div className="fup-setting-meta"><span>{pool.activeClients} clientes ativos + {extra}</span></div>
                     </div>
                   )}
                 </Fragment>

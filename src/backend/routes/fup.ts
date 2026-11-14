@@ -116,6 +116,7 @@ export async function registerFupRoutes(app: FastifyInstance) {
         acao_ao_limite: raw.acao_ao_limite as typeof settings.acao_ao_limite,
         horario_limitacao: raw.horario_limitacao as typeof settings.horario_limitacao,
         pacote_operadora_gb: Number(raw.pacote_operadora_gb),
+        ligacoes_extra_pacote: Number(raw.ligacoes_extra_pacote),
         limiar_pacote_percent: Number(raw.limiar_pacote_percent)
       };
       return { current: previewFupImpact(db, new Date(), settings), candidate: previewFupImpact(db, new Date(), candidate) };
