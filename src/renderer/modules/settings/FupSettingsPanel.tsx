@@ -241,6 +241,20 @@ export function FupSettingsPanel() {
                       <div className="fup-setting-meta"><span>{pool.activeClients} clientes ativos + {extra}</span></div>
                     </div>
                   )}
+                  {/* O pacote inteiro, repartido: o que vai para os clientes e o que fica nas ligações sem ficha. */}
+                  {row.key === 'ligacoes_extra_pacote' && pool && (() => {
+                    const share = packageGb > 0 && pool.activeClients + extra > 0 ? packageGb / (pool.activeClients + extra) : 0;
+                    return (
+                      <div className="fup-setting">
+                        <Field label="Total distribuído (GB)" readOnly disabled value={share > 0 ? gbText(packageGb) : '—'} />
+                        {share > 0 && (
+                          <div className="fup-setting-meta">
+                            <span>Clientes {gbText(share * pool.activeClients)} · sem ficha {gbText(share * extra)}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </Fragment>
               ))}
             </div>
