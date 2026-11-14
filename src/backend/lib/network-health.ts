@@ -207,8 +207,15 @@ export function loadNetworkHealth(db: Database.Database, hours = 72, now = new D
     LEFT JOIN (${BACKBONE_NAMES}) b ON p.target_kind = 'backbone' AND b.id = p.target_id
     LEFT JOIN (${CLIENT_NAMES}) c ON p.target_kind = 'assignment' AND c.id = p.target_id
     WHERE p.state = 'down' AND p.checked_at >= datetime(?, '-10 minutes') AND COALESCE(b.name, c.name) IS NOT NULL
+      -- Conta o cliente sem rede, não o equipamento calado: o router de casa costuma
+      -- não responder ao ping com a antena do mesmo serviço de pé (14/11/2026, ainda em DHCP).
+      AND NOT (p.target_kind = 'assignment' AND EXISTS (
+        SELECT 1 FROM service_device_assignments a1
+        JOIN service_device_assignments a2 ON a2.service_id = a1.service_id AND a2.id <> a1.id AND a2.end_date IS NULL
+        JOIN network_probe_state p2 ON p2.target_kind = 'assignment' AND p2.target_id = a2.id
+        WHERE a1.id = p.target_id AND p2.state = 'up' AND p2.checked_at >= datetime(?, '-10 minutes')))
     ORDER BY p.target_kind DESC, p.last_change_at
-  `).all(lastProbeAt) as HealthDown[];
+  `).all(lastProbeAt, lastProbeAt) as HealthDown[];
 
   const aboutMac = macLookup(db);
   const clientOfLogin = loginLookup(db);

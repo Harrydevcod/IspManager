@@ -99,6 +99,20 @@ describe('saúde da rede', () => {
     expect(health.tone).toBe('danger');
   });
 
+  test('em baixo agora conta o cliente sem rede: router calado com a antena do serviço de pé não conta', () => {
+    const anderson = clientDevice('Anderson Delgado', '192.168.2.226');
+    const serviceId = (db.prepare('SELECT service_id AS id FROM service_device_assignments WHERE id = ?').get(anderson) as { id: number }).id;
+    const antena = Number(db.prepare("INSERT INTO service_device_assignments (service_id, catalog_id, start_date, ip_address) VALUES (?, ?, '2026-01-01', '192.168.1.152')")
+      .run(serviceId, catalogId).lastInsertRowid);
+    const kay = clientDevice('Kay Luiz', '192.168.1.22');
+    const state = db.prepare(`INSERT INTO network_probe_state (target_kind, target_id, ip_address, state, last_change_at, checked_at)
+      VALUES ('assignment', ?, ?, ?, ?, ?)`);
+    state.run(anderson, '192.168.2.226', 'down', utc(5), utc(0));
+    state.run(antena, '192.168.1.152', 'up', utc(5), utc(0));
+    state.run(kay, '192.168.1.22', 'down', utc(2), utc(0));
+    expect(loadNetworkHealth(db, 72, NOW).downNow.map((row) => row.name)).toEqual(['Kay Luiz']);
+  });
+
   test('os achados do router somam os dias da janela e ganham nome, cliente e fabricante', () => {
     antenna('TL-S5 Espia', '192.168.1.251');
     clientDevice('Alcindo Alves', '192.168.1.146', '18:FD:74:22:23:B7', 'skn001');
