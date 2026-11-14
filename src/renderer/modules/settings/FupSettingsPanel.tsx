@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Gauge, History, RotateCcw } from 'lucide-react';
-import { Button, DataTable, EmptyState, Field, Message, Select, Textarea, useConfirm, useToast } from '../../components';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Gauge, History, Plus, RotateCcw } from 'lucide-react';
+import { Button, DataTable, Dialog, EmptyState, Field, Message, Select, Textarea, useConfirm, useToast } from '../../components';
 import { useAuth } from '../../lib/auth';
 import { formatPtDate, formatPtDateTime } from '../../lib/format';
 import { fupRequest, type FupApiError, type FupHistoryRow, type FupSettingRow } from '../fup/fup-api';
@@ -8,13 +8,29 @@ import '../fup/fup.css';
 
 type Impact = { aviso: number; limitados: number };
 type Preview = { current: Impact; candidate: Impact };
+type Pool = { enabled: boolean; cycle: { start: string; end: string }; usedBytes: number; packageGb: number; baseGb: number; extraGb: number; percent: number; activeClients: number; extraConnections: number; shareGb: number; exhausted: boolean };
+
+// O pt-PT não agrupa 4 algarismos (7432); aqui agrupa sempre, como "9 000 GB".
+const gbText = (value: number) => (value < 10 ? value.toFixed(1).replace('.', ',') : String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '));
 
 const CHOICES: Record<string, Array<[string, string]>> = {
   canal_aviso: [['WHATSAPP', 'WhatsApp'], ['SMS', 'SMS']],
   acao_ao_limite: [['REDUZIR', 'Reduzir velocidade no pico'], ['BLOQUEAR', 'Bloquear ligação']],
+  horario_limitacao: [['JANELA', 'Só no pico'], ['JANELA_FDS', 'Pico e fim de semana'], ['DIA_INTEIRO', 'Dia inteiro']],
   unidade_gb: [['DECIMAL', 'GB decimais'], ['BINARIO', 'GiB binários']],
   dia_ciclo: [['ATIVACAO', 'Dia da ativação'], ...Array.from({ length: 28 }, (_, i) => [String(i + 1), `Dia ${i + 1}`] as [string, string])]
 };
+
+/** Secções do painel: o que é de cada tipo de FUP e o que é comum aos dois. */
+const SECTIONS: Array<[string, string[]]> = [
+  ['FUP por plano', ['plafond_predefinido_gb', 'dia_ciclo']],
+  ['FUP global', ['pacote_operadora_gb', 'ligacoes_extra_pacote', 'limiar_pacote_percent']],
+  ['Limitação', ['acao_ao_limite', 'horario_limitacao', 'limiar_aviso_percent', 'limiar_limitacao_percent', 'percent_velocidade_pico', 'janela_pico_inicio', 'janela_pico_fim', 'fuso_horario']],
+  ['Aviso e medição', ['canal_aviso', 'mensagem_aviso', 'unidade_gb', 'intervalo_recolha_minutos']]
+];
+// Escritas só pela recarga do pacote (botão "Adicionar GB"), nunca como campo.
+const HIDDEN = new Set(['pacote_extra_gb', 'pacote_extra_ciclo']);
+const SECTIONED = new Set([...SECTIONS.flatMap(([, keys]) => keys), ...HIDDEN]);
 
 const TIME_ZONES: string[] = (() => {
   try {
@@ -38,6 +54,7 @@ export function FupSettingsPanel() {
   const { toast } = useToast();
   const [settings, setSettings] = useState<FupSettingRow[] | null>(null);
   const [clockZone, setClockZone] = useState<string | null>(null);
+  const [pool, setPool] = useState<Pool | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [reason, setReason] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -46,6 +63,7 @@ export function FupSettingsPanel() {
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<FupHistoryRow[]>([]);
   const [historyFilter, setHistoryFilter] = useState({ key: '', from: '', to: '' });
+  const [topup, setTopup] = useState<{ gb: string; reason: string; saving: boolean } | null>(null);
 
   const labels = useMemo(() => new Map((settings ?? []).map((row) => [row.key, row.label])), [settings]);
   const changes = useMemo(() => {
@@ -58,8 +76,8 @@ export function FupSettingsPanel() {
   const dirty = Object.keys(changes).length > 0;
 
   useEffect(() => {
-    fupRequest<{ settings: FupSettingRow[]; routerClock: { clockZone: string | null } }>('/settings')
-      .then((data) => { setSettings(data.settings); setClockZone(data.routerClock.clockZone); })
+    fupRequest<{ settings: FupSettingRow[]; pool: Pool; routerClock: { clockZone: string | null } }>('/settings')
+      .then((data) => { setSettings(data.settings); setPool(data.pool); setClockZone(data.routerClock.clockZone); })
       .catch((err: Error) => setLoadError(err.message));
   }, []);
 
@@ -88,6 +106,7 @@ export function FupSettingsPanel() {
         method: 'PUT', body: JSON.stringify({ changes, reason: reason.trim() || null })
       });
       setSettings(result.settings);
+      fupRequest<{ pool: Pool }>('/settings').then((data) => setPool(data.pool)).catch(() => undefined);
       setDraft({});
       setReason('');
       toast(`Configuração guardada (${result.changed.length} alteração/ões). Entra em vigor na próxima execução do motor.`, 'success');
@@ -117,13 +136,34 @@ export function FupSettingsPanel() {
     }
   }
 
+  async function addGb() {
+    if (!topup) return;
+    setTopup({ ...topup, saving: true });
+    try {
+      const result = await fupRequest<{ pool: Pool; settings: FupSettingRow[] }>('/pool/topup', {
+        method: 'POST', body: JSON.stringify({ gb: Number(topup.gb), reason: topup.reason.trim() || null })
+      });
+      setPool(result.pool);
+      setSettings(result.settings);
+      setTopup(null);
+      toast(`${gbText(Number(topup.gb))} GB adicionados ao pacote deste ciclo.`, 'success');
+    } catch (err) {
+      setTopup((current) => (current ? { ...current, saving: false } : current));
+      toast((err as Error).message, 'error');
+    }
+  }
+
   if (loadError) return <Message tone="error">Não foi possível carregar a configuração do uso justo: {loadError}</Message>;
   if (!settings) return <Message>A carregar…</Message>;
 
   const field = (row: FupSettingRow) => {
     const value = draft[row.key] ?? row.value;
     const set = (next: string) => setDraft((current) => ({ ...current, [row.key]: next }));
-    const common = { label: row.label, hint: row.description, error: errors[row.key], disabled: !canWrite };
+    // A bloquear, a ligação fica cortada o dia todo: o horário não tem efeito.
+    const current = (key: string) => draft[key] ?? settings.find((s) => s.key === key)?.value;
+    const blocked = (row.key === 'horario_limitacao' && current('acao_ao_limite') === 'BLOQUEAR')
+      || (row.key === 'limiar_pacote_percent' && Number(current('pacote_operadora_gb')) === 0);
+    const common = { label: row.label, hint: row.description, error: errors[row.key], disabled: !canWrite || blocked };
     if (CHOICES[row.key]) {
       return (
         <Select {...common} value={value} onChange={(event) => set(event.target.value)}>
@@ -142,9 +182,6 @@ export function FupSettingsPanel() {
       <header className="backups-head">
         <div>
           <h3><Gauge size={16} aria-hidden /> Uso justo</h3>
-          <p className="fup-lede">
-            Os valores do serviço e do plano mandam sobre estes.
-          </p>
         </div>
       </header>
 
@@ -155,22 +192,104 @@ export function FupSettingsPanel() {
 
       <datalist id="fup-time-zones">{TIME_ZONES.map((zone) => <option key={zone} value={zone} />)}</datalist>
 
-      <div className="fup-settings-grid">
-        {settings.map((row) => (
-          <div key={row.key} className={`fup-setting${row.key === 'mensagem_aviso' ? ' fup-setting-text' : ''}${changes[row.key] !== undefined ? ' fup-setting-dirty' : ''}`}>
-            {field(row)}
-            <div className="fup-setting-meta">
-              <span>Default: {row.key === 'mensagem_aviso' ? 'texto recomendado' : displayValue(row.key, row.default)}</span>
-              <span>· {row.updatedAt ? `Alterado a ${formatPtDate(row.updatedAt)}${row.updatedBy ? ` por ${row.updatedBy}` : ''}` : 'Nunca alterado'}</span>
-              {canWrite && row.value !== row.default && (
-                <Button variant="ghost" size="sm" leadingIcon={<RotateCcw size={12} aria-hidden />} onClick={() => void reset(row)}>
-                  Repor default
-                </Button>
-              )}
+      {SECTIONS.map(([title, keys], index) => {
+        // Uma chave nova fora do mapa cai na última secção: nunca desaparece do ecrã.
+        const rows = settings.filter((row) => !HIDDEN.has(row.key) && (keys.includes(row.key) || (index === SECTIONS.length - 1 && !SECTIONED.has(row.key))));
+        const global = title === 'FUP global';
+        const draftNumber = (key: string) => Number(draft[key] ?? settings.find((row) => row.key === key)?.value ?? 0);
+        const packageGb = draftNumber('pacote_operadora_gb') + (pool?.extraGb ?? 0);
+        const extra = draftNumber('ligacoes_extra_pacote');
+        const perGb = settings.find((row) => row.key === 'unidade_gb')?.value === 'BINARIO' ? 1024 ** 3 : 1e9;
+        return (
+          <div key={title} className="fup-section">
+            <h4 className="fup-section-title">{title}</h4>
+            {title === 'FUP por plano' && <p className="fup-lede">Os valores do serviço e do plano mandam sobre estes.</p>}
+            {global && pool?.enabled && (
+              <Message tone={pool.exhausted ? 'warn' : 'neutral'}>
+                {gbText(pool.usedBytes / perGb)} de {gbText(pool.baseGb)}{pool.extraGb > 0 ? ` + ${gbText(pool.extraGb)}` : ''} GB gastos ({Math.round(pool.percent)} %) · {pool.exhausted ? 'todos limitados' : 'ciclo'} até {formatPtDate(pool.cycle.end)}
+              </Message>
+            )}
+            <div className="fup-settings-grid">
+              {rows.map((row) => (
+                <Fragment key={row.key}>
+                  <div className={`fup-setting${row.key === 'mensagem_aviso' ? ' fup-setting-text' : ''}${changes[row.key] !== undefined ? ' fup-setting-dirty' : ''}`}>
+                    {field(row)}
+                    <div className="fup-setting-meta">
+                      <span>Default: {row.key === 'mensagem_aviso' ? 'texto recomendado' : displayValue(row.key, row.default)}</span>
+                      <span>· {row.updatedAt ? `Alterado a ${formatPtDate(row.updatedAt)}${row.updatedBy ? ` por ${row.updatedBy}` : ''}` : 'Nunca alterado'}</span>
+                      {canWrite && row.value !== row.default && (
+                        <Button variant="ghost" size="sm" leadingIcon={<RotateCcw size={12} aria-hidden />} onClick={() => void reset(row)}>
+                          Repor default
+                        </Button>
+                      )}
+                    </div>
+                    {row.key === 'pacote_operadora_gb' && pool?.enabled && (
+                      <div className="fup-setting-meta">
+                        {pool.extraGb > 0 && <span>+{gbText(pool.extraGb)} GB neste ciclo</span>}
+                        {canWrite && (
+                          <Button variant="secondary" size="sm" leadingIcon={<Plus size={12} aria-hidden />} onClick={() => setTopup({ gb: '', reason: '', saving: false })}>
+                            Adicionar GB
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {/* A quota acompanha o pacote em edição: o que cada cliente leva, antes de gravar. */}
+                  {row.key === 'ligacoes_extra_pacote' && pool && (
+                    <div className="fup-setting">
+                      <Field label="Quota por cliente (GB)" readOnly disabled value={packageGb > 0 && pool.activeClients + extra > 0 ? gbText(packageGb / (pool.activeClients + extra)) : '—'} />
+                      <div className="fup-setting-meta"><span>{pool.activeClients} clientes ativos + {extra}</span></div>
+                    </div>
+                  )}
+                  {/* O pacote inteiro, repartido: o que vai para os clientes e o que fica nas ligações sem ficha. */}
+                  {row.key === 'ligacoes_extra_pacote' && pool && (() => {
+                    const share = packageGb > 0 && pool.activeClients + extra > 0 ? packageGb / (pool.activeClients + extra) : 0;
+                    return (
+                      <div className="fup-setting">
+                        <Field label="Total distribuído (GB)" readOnly disabled value={share > 0 ? gbText(packageGb) : '—'} />
+                        {share > 0 && (
+                          <div className="fup-setting-meta">
+                            <span>Clientes {gbText(share * pool.activeClients)} · sem ficha {gbText(share * extra)}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </Fragment>
+              ))}
             </div>
           </div>
-        ))}
-      </div>
+        );
+      })}
+
+      {topup && pool && (() => {
+        const gb = Number(topup.gb);
+        const valid = Number.isInteger(gb) && gb >= 1 && gb <= 1_000_000;
+        const total = pool.packageGb + (valid ? gb : 0);
+        const divisor = pool.activeClients + pool.extraConnections;
+        return (
+          <Dialog
+            open
+            size="sm"
+            title="Adicionar GB ao pacote"
+            onClose={() => !topup.saving && setTopup(null)}
+            actions={(
+              <>
+                <Button variant="secondary" onClick={() => setTopup(null)} disabled={topup.saving}>Cancelar</Button>
+                <Button onClick={() => void addGb()} loading={topup.saving} disabled={!valid}>Adicionar</Button>
+              </>
+            )}
+          >
+            <div className="fup-topup-form">
+            <Field label="GB a adicionar" type="number" min={1} step={1} autoFocus value={topup.gb} onChange={(event) => setTopup({ ...topup, gb: event.target.value })} />
+            <Field label="Motivo (opcional)" maxLength={500} value={topup.reason} onChange={(event) => setTopup({ ...topup, reason: event.target.value })} />
+            <p className="fup-topup-result">
+              Pacote deste ciclo: {gbText(pool.packageGb)}{valid ? ` + ${gbText(gb)} = ${gbText(total)}` : ''} GB · quota {divisor > 0 ? gbText(total / divisor) : '—'} GB · até {formatPtDate(pool.cycle.end)}
+            </p>
+            </div>
+          </Dialog>
+        );
+      })()}
 
       {canWrite && dirty && (
         <div className="fup-preview" role="status" aria-live="polite">

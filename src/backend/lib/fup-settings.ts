@@ -12,6 +12,7 @@ export type FupSettings = {
   plafond_predefinido_gb: number;
   dia_ciclo: string;
   acao_ao_limite: 'REDUZIR' | 'BLOQUEAR';
+  horario_limitacao: 'JANELA' | 'JANELA_FDS' | 'DIA_INTEIRO';
   limiar_aviso_percent: number;
   limiar_limitacao_percent: number;
   percent_velocidade_pico: number;
@@ -22,6 +23,11 @@ export type FupSettings = {
   canal_aviso: 'SMS' | 'WHATSAPP';
   mensagem_aviso: string;
   unidade_gb: 'DECIMAL' | 'BINARIO';
+  pacote_operadora_gb: number;
+  ligacoes_extra_pacote: number;
+  pacote_extra_gb: number;
+  pacote_extra_ciclo: string;
+  limiar_pacote_percent: number;
 };
 
 export type FupSettingKey = keyof FupSettings;
@@ -32,6 +38,7 @@ export const FUP_SETTING_DEFINITIONS: Record<FupSettingKey, Definition> = {
   plafond_predefinido_gb: { type: 'NUMERO', default: '0', label: 'Plafond predefinido (GB)', description: 'Consumo de referência dos planos que não definem o seu. 0 = sem plafond.' },
   dia_ciclo: { type: 'TEXTO', default: 'ATIVACAO', label: 'Dia de renovação', description: 'Dia em que o consumo volta a zero. O serviço pode ter o seu.' },
   acao_ao_limite: { type: 'TEXTO', default: 'REDUZIR', label: 'Ação ao atingir o limite', description: 'Reduzir a velocidade na janela de pico, ou bloquear a ligação o dia inteiro até ao ciclo seguinte.' },
+  horario_limitacao: { type: 'TEXTO', default: 'JANELA', label: 'Horário da limitação', description: 'Quando a velocidade reduzida se aplica: só na janela de pico, na janela e ao fim de semana o dia inteiro, ou o dia inteiro até ao ciclo seguinte.' },
   limiar_aviso_percent: { type: 'NUMERO', default: '80', label: 'Limiar de aviso (%)', description: 'Percentagem do consumo de referência a partir da qual o cliente recebe o aviso, uma vez por ciclo.' },
   limiar_limitacao_percent: { type: 'NUMERO', default: '100', label: 'Limiar de limitação (%)', description: 'Percentagem a partir da qual a velocidade é reduzida na janela de pico, até ao ciclo seguinte.' },
   percent_velocidade_pico: { type: 'NUMERO', default: '50', label: 'Velocidade no pico (%)', description: 'Velocidade de um cliente limitado na janela de pico, em % da contratada. O plano pode ter a sua.' },
@@ -41,12 +48,17 @@ export const FUP_SETTING_DEFINITIONS: Record<FupSettingKey, Definition> = {
   intervalo_recolha_minutos: { type: 'NUMERO', default: '5', label: 'Intervalo de recolha (min)', description: 'De quantos em quantos minutos o ISPM lê o consumo no router.' },
   canal_aviso: { type: 'TEXTO', default: 'WHATSAPP', label: 'Canal do aviso', description: 'Por onde sai o aviso: WhatsApp ou SMS. O cliente que recusou avisos não recebe nenhum.' },
   mensagem_aviso: { type: 'TEXTO', default: 'Caro cliente {nome}, já usou {percent}% do consumo de referência do seu plano ({gb} de {referencia} GB) neste ciclo. Ao chegar aos 100%, {acao} até ao próximo ciclo.', label: 'Mensagem de aviso', description: 'Texto do aviso. Campos: {nome} {percent} {gb} {referencia} {inicio} {fim} {pico} {acao}.' },
-  unidade_gb: { type: 'TEXTO', default: 'DECIMAL', label: 'Unidade de consumo', description: 'Como se contam os GB do plafond, dos avisos e da tabela de consumo: decimais (1000³ bytes, como o Starlink) ou binários (1024³ bytes).' }
+  unidade_gb: { type: 'TEXTO', default: 'DECIMAL', label: 'Unidade de consumo', description: 'Como se contam os GB do plafond, dos avisos e da tabela de consumo: decimais (1000³ bytes, como o Starlink) ou binários (1024³ bytes).' },
+  pacote_operadora_gb: { type: 'NUMERO', default: '0', label: 'Pacote da operadora (GB)', description: 'GB do link por ciclo da conta. Acima de 0, cada cliente tem uma quota igual do pacote, em vez do plafond do plano. 0 = desligado.' },
+  ligacoes_extra_pacote: { type: 'NUMERO', default: '1', label: 'Ligações sem ficha', description: 'Escritório e colaboradores que entram na divisão do pacote.' },
+  pacote_extra_gb: { type: 'NUMERO', default: '0', label: 'GB adicionados ao pacote', description: 'Recargas do ciclo corrente da operadora; caem na renovação.' },
+  pacote_extra_ciclo: { type: 'TEXTO', default: '', label: 'Ciclo dos GB adicionados', description: 'Início do ciclo da operadora a que as recargas pertencem.' },
+  limiar_pacote_percent: { type: 'NUMERO', default: '90', label: 'Limitar todos a partir de (%)', description: 'Percentagem do pacote da operadora a partir da qual todos os clientes ficam limitados até o pacote renovar.' }
 };
 
 export const FUP_SETTING_KEYS = Object.keys(FUP_SETTING_DEFINITIONS) as FupSettingKey[];
 
-const NUMERIC = new Set<FupSettingKey>(['plafond_predefinido_gb', 'limiar_aviso_percent', 'limiar_limitacao_percent', 'percent_velocidade_pico', 'intervalo_recolha_minutos']);
+const NUMERIC = new Set<FupSettingKey>(['pacote_operadora_gb', 'pacote_extra_gb', 'ligacoes_extra_pacote', 'limiar_pacote_percent', 'plafond_predefinido_gb', 'limiar_aviso_percent', 'limiar_limitacao_percent', 'percent_velocidade_pico', 'intervalo_recolha_minutos']);
 
 export class FupSettingsError extends Error {
   constructor(public readonly errors: Partial<Record<FupSettingKey, string>>) {
@@ -107,12 +119,24 @@ export function validateFupSettings(raw: Record<FupSettingKey, string>): Partial
   if (!/^\d+$/.test(plafond) || Number(plafond) > 100_000) errors.plafond_predefinido_gb = 'Tem de ser um número inteiro de 0 a 100 000.';
   if (raw.dia_ciclo !== 'ATIVACAO' && !(/^\d{1,2}$/.test(raw.dia_ciclo) && Number(raw.dia_ciclo) >= 1 && Number(raw.dia_ciclo) <= 28)) errors.dia_ciclo = 'Dia de 1 a 28, ou o da ativação.';
   if (raw.acao_ao_limite !== 'REDUZIR' && raw.acao_ao_limite !== 'BLOQUEAR') errors.acao_ao_limite = 'Ação inválida: REDUZIR ou BLOQUEAR.';
+  const pool = raw.pacote_operadora_gb.trim();
+  if (!/^\d+$/.test(pool) || Number(pool) > 1_000_000) errors.pacote_operadora_gb = 'Tem de ser um número inteiro de 0 a 1 000 000.';
+  const topup = raw.pacote_extra_gb.trim();
+  if (!/^\d+$/.test(topup) || Number(topup) > 1_000_000) errors.pacote_extra_gb = 'Tem de ser um número inteiro de 0 a 1 000 000.';
+  if (raw.pacote_extra_ciclo !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(raw.pacote_extra_ciclo)) errors.pacote_extra_ciclo = 'Data no formato AAAA-MM-DD.';
+  const extra = raw.ligacoes_extra_pacote.trim();
+  if (!/^\d+$/.test(extra) || Number(extra) > 100) errors.ligacoes_extra_pacote = 'Tem de ser um número inteiro de 0 a 100.';
+  const poolPercent = raw.limiar_pacote_percent.trim();
+  if (!/^\d+$/.test(poolPercent) || Number(poolPercent) < 1 || Number(poolPercent) > 100) errors.limiar_pacote_percent = 'Tem de ser um número inteiro de 1 a 100.';
+  if (!['JANELA', 'JANELA_FDS', 'DIA_INTEIRO'].includes(raw.horario_limitacao)) errors.horario_limitacao = 'Horário inválido: JANELA, JANELA_FDS ou DIA_INTEIRO.';
   if (raw.unidade_gb !== 'DECIMAL' && raw.unidade_gb !== 'BINARIO') errors.unidade_gb = 'Unidade inválida: DECIMAL ou BINARIO.';
   if (!raw.mensagem_aviso.trim()) errors.mensagem_aviso = 'A mensagem não pode ficar vazia.';
   else if (raw.mensagem_aviso.length > 1000) errors.mensagem_aviso = 'A mensagem passa dos 1000 caracteres.';
   // Bloqueado não tem janela: uma mensagem que a cite mentia ao cliente.
   else if (raw.acao_ao_limite === 'BLOQUEAR' && /\{(inicio|fim|pico)\}/.test(raw.mensagem_aviso)) {
     errors.mensagem_aviso = 'Com a ligação bloqueada não há janela de pico: use {acao} em vez de {inicio}, {fim} e {pico}.';
+  } else if (raw.horario_limitacao === 'DIA_INTEIRO' && /\{(inicio|fim)\}/.test(raw.mensagem_aviso)) {
+    errors.mensagem_aviso = 'Com a limitação o dia inteiro não há janela de pico: use {acao} em vez de {inicio} e {fim}.';
   }
   return errors;
 }
@@ -176,10 +200,12 @@ export function globalCycleDay(settings: Pick<FupSettings, 'dia_ciclo'>): number
 }
 
 /** O que acontece aos 100%, para o campo {acao} da mensagem. */
-export function fupActionText(settings: Pick<FupSettings, 'acao_ao_limite' | 'janela_pico_inicio' | 'janela_pico_fim'>, peakPercent: number): string {
-  return settings.acao_ao_limite === 'BLOQUEAR'
-    ? 'a ligação fica bloqueada'
-    : `a velocidade entre as ${settings.janela_pico_inicio} e as ${settings.janela_pico_fim} passa a ${peakPercent}% da contratada`;
+export function fupActionText(settings: Pick<FupSettings, 'acao_ao_limite' | 'horario_limitacao' | 'janela_pico_inicio' | 'janela_pico_fim'>, peakPercent: number): string {
+  if (settings.acao_ao_limite === 'BLOQUEAR') return 'a ligação fica bloqueada';
+  const window = `entre as ${settings.janela_pico_inicio} e as ${settings.janela_pico_fim}`;
+  if (settings.horario_limitacao === 'DIA_INTEIRO') return `a velocidade passa a ${peakPercent}% da contratada`;
+  if (settings.horario_limitacao === 'JANELA_FDS') return `a velocidade ${window}, e o dia inteiro ao sábado e ao domingo, passa a ${peakPercent}% da contratada`;
+  return `a velocidade ${window} passa a ${peakPercent}% da contratada`;
 }
 
 export function candidateFupSettings(db: Database.Database, changes: Partial<Record<string, unknown>>): { raw: Record<FupSettingKey, string>; errors: Partial<Record<FupSettingKey, string>> } {

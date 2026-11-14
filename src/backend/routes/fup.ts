@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getSqliteDatabase } from '../db/database';
-import { listFupEvents, loadFupUsage, previewFupImpact } from '../lib/fup';
+import { listFupEvents, loadFupUsage, loadOperatorPool, previewFupImpact } from '../lib/fup';
 import {
   FupSettingsError, bytesPerGb, candidateFupSettings, describeFupSettings, listFupSettingsHistory, readFupSettings, resetFupSetting, saveFupSettings
 } from '../lib/fup-settings';
@@ -13,6 +13,7 @@ const changesSchema = z.object({
   changes: z.record(z.string(), z.union([z.string(), z.number()])),
   reason: z.string().trim().max(500).optional().nullable()
 });
+const topupSchema = z.object({ gb: z.number().int().min(1).max(1_000_000), reason: z.string().trim().max(500).optional().nullable() });
 const plafondSchema = z.object({ referenceGb: z.number().int().min(0).max(100_000).nullable() });
 const historySchema = z.object({
   key: z.string().max(64).optional(),
@@ -37,7 +38,8 @@ const usageRow = (row: ReturnType<typeof loadFupUsage>[number]) => ({
   totalBytes: row.totalBytes,
   percent: row.percent,
   state: row.state,
-  limitedNow: row.limitedNow
+  limitedNow: row.limitedNow,
+  globalLimit: row.globalLimit
 });
 
 /** Política de uso justo: leitura para todos, escrita só do administrador. */
@@ -53,7 +55,7 @@ export async function registerFupRoutes(app: FastifyInstance) {
       const value: unknown = JSON.parse(last?.summary ?? '{}')?.fupQueues?.clockZone;
       if (typeof value === 'string' && value) clockZone = value;
     } catch { /* Resumo antigo ou inválido: o fuso é desconhecido. */ }
-    return { settings: describeFupSettings(db), routerClock: { clockZone, clockMismatch: clockZone === null ? null : clockZone !== readFupSettings(db).fuso_horario } };
+    return { settings: describeFupSettings(db), pool: loadOperatorPool(db, new Date(), readFupSettings(db)), routerClock: { clockZone, clockMismatch: clockZone === null ? null : clockZone !== readFupSettings(db).fuso_horario } };
   });
 
   app.put('/api/fup/settings', adminOnly, async (request, reply) => {
@@ -71,6 +73,21 @@ export async function registerFupRoutes(app: FastifyInstance) {
       if (err instanceof FupSettingsError) return reply.status(400).send({ error: 'Configuração inválida', errors: err.errors });
       throw err;
     }
+  });
+
+  // Recarga: GB comprados à operadora a meio do ciclo. Somam-se às do mesmo ciclo e caem na renovação.
+  app.post('/api/fup/pool/topup', adminOnly, async (request, reply) => {
+    const parsed = topupSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Indique os GB a adicionar (1 a 1 000 000).' });
+    const db = getSqliteDatabase();
+    const settings = readFupSettings(db);
+    const pool = loadOperatorPool(db, new Date(), settings);
+    if (!pool.enabled) return reply.status(400).send({ error: 'Defina primeiro o pacote da operadora.' });
+    const total = pool.extraGb + parsed.data.gb;
+    saveFupSettings(db, { pacote_extra_gb: String(total), pacote_extra_ciclo: pool.cycle.start }, request.user?.username ?? 'desconhecido', parsed.data.reason || 'Recarga do pacote');
+    recordAudit(request, { action: 'fup.recarga', entityType: 'fup_settings', summary: `Adicionou ${parsed.data.gb} GB ao pacote da operadora (ciclo ${pool.cycle.start}, total extra ${total} GB)` });
+    requestNetworkSync();
+    return { pool: loadOperatorPool(db, new Date(), readFupSettings(db)), settings: describeFupSettings(db) };
   });
 
   app.post('/api/fup/settings/:key/reset', adminOnly, async (request, reply) => {
@@ -112,7 +129,13 @@ export async function registerFupRoutes(app: FastifyInstance) {
         fuso_horario: raw.fuso_horario,
         plafond_predefinido_gb: Number(raw.plafond_predefinido_gb),
         dia_ciclo: raw.dia_ciclo,
-        acao_ao_limite: raw.acao_ao_limite as typeof settings.acao_ao_limite
+        acao_ao_limite: raw.acao_ao_limite as typeof settings.acao_ao_limite,
+        horario_limitacao: raw.horario_limitacao as typeof settings.horario_limitacao,
+        pacote_operadora_gb: Number(raw.pacote_operadora_gb),
+        pacote_extra_gb: Number(raw.pacote_extra_gb),
+        pacote_extra_ciclo: raw.pacote_extra_ciclo,
+        ligacoes_extra_pacote: Number(raw.ligacoes_extra_pacote),
+        limiar_pacote_percent: Number(raw.limiar_pacote_percent)
       };
       return { current: previewFupImpact(db, new Date(), settings), candidate: previewFupImpact(db, new Date(), candidate) };
     } catch (err) {

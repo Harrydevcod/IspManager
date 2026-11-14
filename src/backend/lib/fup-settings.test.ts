@@ -84,7 +84,7 @@ describe('plafond, renovação e ação', () => {
     expect(effectiveReferenceGb(0, 300, settings)).toBe(0);
     expect(globalCycleDay({ dia_ciclo: 'ATIVACAO' })).toBeNull();
     expect(globalCycleDay({ dia_ciclo: '15' })).toBe(15);
-    const window = { janela_pico_inicio: '18:00', janela_pico_fim: '00:00' };
+    const window = { janela_pico_inicio: '18:00', janela_pico_fim: '00:00', horario_limitacao: 'JANELA' as const };
     expect(fupActionText({ ...window, acao_ao_limite: 'REDUZIR' }, 50)).toBe('a velocidade entre as 18:00 e as 00:00 passa a 50% da contratada');
     expect(fupActionText({ ...window, acao_ao_limite: 'BLOQUEAR' }, 50)).toBe('a ligação fica bloqueada');
   });

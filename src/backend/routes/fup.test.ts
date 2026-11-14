@@ -131,3 +131,18 @@ test('ação ao limite: bloquear recusa uma mensagem que cite a janela de pico',
   expect((await call(admin, 'PUT', '/api/fup/settings', { changes: { dia_ciclo: '29' } })).statusCode).toBe(400);
   await call(admin, 'PUT', '/api/fup/settings', { changes: { acao_ao_limite: 'REDUZIR', plafond_predefinido_gb: '0', dia_ciclo: 'ATIVACAO' } });
 });
+
+test('recarga do pacote: só o administrador, só com o pacote ligado, soma-se no ciclo e fica no histórico', async () => {
+  expect((await call(operator, 'POST', '/api/fup/pool/topup', { gb: 100 })).statusCode).toBe(403);
+  expect((await call(admin, 'POST', '/api/fup/pool/topup', { gb: 100 })).statusCode).toBe(400);
+  await call(admin, 'PUT', '/api/fup/settings', { changes: { pacote_operadora_gb: '1000' } });
+  expect((await call(admin, 'POST', '/api/fup/pool/topup', { gb: 0 })).statusCode).toBe(400);
+  const first = await call(admin, 'POST', '/api/fup/pool/topup', { gb: 100, reason: 'Starlink' });
+  expect(first.json().pool).toMatchObject({ baseGb: 1000, extraGb: 100, packageGb: 1100 });
+  const second = (await call(admin, 'POST', '/api/fup/pool/topup', { gb: 50 })).json().pool;
+  expect(second).toMatchObject({ extraGb: 150, packageGb: 1150 });
+  const history = (await call(admin, 'GET', '/api/fup/history?key=pacote_extra_gb')).json().history;
+  expect(history.map((h: { newValue: string }) => h.newValue)).toEqual(['150', '100']);
+  expect(history[1]).toMatchObject({ reason: 'Starlink' });
+  await call(admin, 'PUT', '/api/fup/settings', { changes: { pacote_operadora_gb: '0', pacote_extra_gb: '0', pacote_extra_ciclo: '' } });
+});

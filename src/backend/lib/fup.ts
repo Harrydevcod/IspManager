@@ -7,6 +7,7 @@ import { normalizeWhatsappPhone, whatsappChannelActive } from './whatsapp-provid
 import { requestNetworkSync } from './network-sync';
 import { recordSystemAuditEntry } from './audit';
 import { bytesPerGb, effectivePeakPercent, effectiveReferenceGb, fupActionText, globalCycleDay, readFupSettings, type FupSettings } from './fup-settings';
+import { cycleBounds, starlinkCycleDay, utcDay } from './wan-usage';
 import { addSimpleQueue, listActive, listSimpleQueues, patchSimpleQueue, readClockZone, removeSimpleQueue, type RouterTransport } from './routeros';
 
 /**
@@ -60,6 +61,19 @@ export function inPeakWindow(now: Date, settings: Pick<FupSettings, 'janela_pico
   const minutes = minutesInZone(now, settings.fuso_horario);
   const end = settings.janela_pico_fim === '00:00' ? 24 * 60 : toMinutes(settings.janela_pico_fim);
   return minutes >= toMinutes(settings.janela_pico_inicio) && minutes < end;
+}
+
+/** Sábado ou domingo no fuso dado. */
+function weekendInZone(now: Date, timeZone: string): boolean {
+  const day = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(now);
+  return day === 'Sat' || day === 'Sun';
+}
+
+/** A limitação aplica-se agora: o dia todo a bloquear ou com DIA_INTEIRO, o fim de semana com JANELA_FDS, senão a janela. */
+export function inLimitWindow(now: Date, settings: Pick<FupSettings, 'acao_ao_limite' | 'horario_limitacao' | 'janela_pico_inicio' | 'janela_pico_fim' | 'fuso_horario'>): boolean {
+  if (settings.acao_ao_limite === 'BLOQUEAR' || settings.horario_limitacao === 'DIA_INTEIRO') return true;
+  if (settings.horario_limitacao === 'JANELA_FDS' && weekendInZone(now, settings.fuso_horario)) return true;
+  return inPeakWindow(now, settings);
 }
 
 /** Dia em que o ciclo começa: o do serviço, senão o das Definições, senão o da ativação (até 28), senão 1. */
@@ -132,7 +146,56 @@ export type FupServiceUsage = {
   limited: boolean;
   /** Limitado agora: estado LIMITADO, ainda acima do limiar, e dentro da janela de pico. */
   limitedNow: boolean;
+  /** Limitado porque o pacote da operadora passou o limiar, não pelo consumo próprio. */
+  globalLimit: boolean;
 };
+
+export type OperatorPool = {
+  enabled: boolean;
+  cycle: { start: string; end: string };
+  usedBytes: number;
+  /** Base + recargas deste ciclo. */
+  packageGb: number;
+  baseGb: number;
+  /** Recargas do ciclo corrente; as de um ciclo anterior já não contam. */
+  extraGb: number;
+  percent: number;
+  activeClients: number;
+  /** Ligações sem ficha que também partilham o pacote: o escritório, os colaboradores. */
+  extraConnections: number;
+  shareGb: number;
+  exhausted: boolean;
+};
+
+/**
+ * Pacote da operadora (uso justo global): o consumo das WAN no ciclo da conta
+ * dividido pelos serviços ativos. O dia é o UTC, como nas WAN e na Starlink.
+ * Isento (plafond 0 no serviço) fica fora do divisor.
+ */
+export function loadOperatorPool(db: Database.Database, now: Date, settings: FupSettings): OperatorPool {
+  const cycle = cycleBounds(utcDay(now), starlinkCycleDay(db));
+  const baseGb = settings.pacote_operadora_gb;
+  const extraGb = settings.pacote_extra_ciclo === cycle.start ? settings.pacote_extra_gb : 0;
+  const packageGb = baseGb > 0 ? baseGb + extraGb : 0;
+  const { used } = db.prepare('SELECT COALESCE(SUM(rx_bytes + tx_bytes), 0) AS used FROM wan_traffic_daily WHERE day >= ? AND day <= ?')
+    .get(cycle.start, cycle.end) as { used: number };
+  const { n } = db.prepare(`SELECT COUNT(*) AS n FROM services WHERE status = 'active'
+    AND pppoe_username IS NOT NULL AND TRIM(pppoe_username) <> '' AND COALESCE(fup_reference_gb, -1) <> 0`).get() as { n: number };
+  const percent = usagePercent(used, packageGb, bytesPerGb(settings));
+  return {
+    enabled: baseGb > 0,
+    cycle,
+    usedBytes: used,
+    packageGb,
+    baseGb,
+    extraGb,
+    percent,
+    activeClients: n,
+    extraConnections: settings.ligacoes_extra_pacote,
+    shareGb: packageGb > 0 && n + settings.ligacoes_extra_pacote > 0 ? packageGb / (n + settings.ligacoes_extra_pacote) : 0,
+    exhausted: packageGb > 0 && percent >= settings.limiar_pacote_percent
+  };
+}
 
 type Row = {
   serviceId: number; clientId: number; clientName: string; phone: string | null; whatsappOptOut: number; status: string;
@@ -160,18 +223,23 @@ export function loadFupUsage(db: Database.Database, now: Date, settings: FupSett
     FROM client_traffic_daily WHERE service_id = ? AND day >= ? AND day <= ?`);
   const events = db.prepare('SELECT kind FROM fup_events WHERE service_id = ? AND period = ?');
   const today = dayInZone(now, settings.fuso_horario);
-  // Bloqueado não tem janela: está limitado a toda a hora.
-  const peak = settings.acao_ao_limite === 'BLOQUEAR' || inPeakWindow(now, settings);
+  const peak = inLimitWindow(now, settings);
   const globalDay = globalCycleDay(settings);
   const perGb = bytesPerGb(settings);
+  // Uso justo global: um pacote partilhado tem um só ciclo (o da operadora) e uma quota igual para todos.
+  const pool = loadOperatorPool(db, now, settings);
+  const poolCycle = { ...pool.cycle, period: pool.cycle.start.slice(0, 7) };
   return rows.map((row) => {
-    const cycle = cycleFor(today, cycleStartDay(row.cycleDay, row.activationDate, globalDay));
+    const cycle = pool.enabled ? poolCycle : cycleFor(today, cycleStartDay(row.cycleDay, row.activationDate, globalDay));
     const { down, up } = usage.get(row.serviceId, cycle.start, cycle.end) as { down: number; up: number };
-    const referenceGb = effectiveReferenceGb(row.serviceReferenceGb, row.referenceGb, settings);
+    const referenceGb = !pool.enabled ? effectiveReferenceGb(row.serviceReferenceGb, row.referenceGb, settings)
+      : row.serviceReferenceGb === 0 ? 0 : pool.shareGb;
     const percent = usagePercent(down + up, referenceGb, perGb);
     const state = stateFromEvents((events.all(row.serviceId, cycle.period) as Array<{ kind: string }>).map((e) => e.kind));
-    const limited = row.status === 'active' && referenceGb > 0 && state === 'LIMITADO'
+    const ownLimit = row.status === 'active' && referenceGb > 0 && state === 'LIMITADO'
       && percent >= settings.limiar_limitacao_percent;
+    const globalLimit = !ownLimit && pool.exhausted && row.status === 'active' && referenceGb > 0;
+    const limited = ownLimit || globalLimit;
     return {
       serviceId: row.serviceId,
       clientId: row.clientId,
@@ -195,7 +263,8 @@ export function loadFupUsage(db: Database.Database, now: Date, settings: FupSett
       percent,
       state,
       limited,
-      limitedNow: limited && peak
+      limitedNow: limited && peak,
+      globalLimit
     };
   });
 }
@@ -212,7 +281,7 @@ export function previewFupImpact(db: Database.Database, now: Date, settings: Fup
   let limitados = 0;
   for (const row of loadFupUsage(db, now, settings)) {
     if (row.status !== 'active' || row.referenceGb <= 0) continue;
-    if (row.percent >= settings.limiar_limitacao_percent) limitados++;
+    if (row.percent >= settings.limiar_limitacao_percent || row.globalLimit) limitados++;
     else if (row.percent >= settings.limiar_aviso_percent) aviso++;
   }
   return { aviso, limitados };
@@ -341,6 +410,19 @@ export const FUP_BLOCK_LIMIT = '1k/1k';
 /** Fila de um bloqueado: o dia inteiro, todos os dias. */
 export const FUP_BLOCK_TIME = '0s-1d,sun,mon,tue,wed,thu,fri,sat';
 
+/**
+ * Filas de cada limitado: nome (sufixo) e horário. O `time=` do RouterOS só tem
+ * um intervalo de horas, por isso janela + fim de semana inteiro são duas filas
+ * com dias que não se sobrepõem.
+ */
+export function fupQueueSlots(settings: Pick<FupSettings, 'acao_ao_limite' | 'horario_limitacao' | 'janela_pico_inicio' | 'janela_pico_fim'>): Array<{ suffix: string; time: string }> {
+  if (settings.acao_ao_limite === 'BLOQUEAR' || settings.horario_limitacao === 'DIA_INTEIRO') return [{ suffix: '', time: FUP_BLOCK_TIME }];
+  const end = settings.janela_pico_fim === '00:00' ? '24:00' : settings.janela_pico_fim;
+  const window = `${settings.janela_pico_inicio}:00-${end}:00`;
+  if (settings.horario_limitacao === 'JANELA_FDS') return [{ suffix: '', time: `${window},mon,tue,wed,thu,fri` }, { suffix: '-fds', time: '0s-1d,sat,sun' }];
+  return [{ suffix: '', time: `${window},sun,mon,tue,wed,thu,fri,sat` }];
+}
+
 /** `max-limit` da fila simples (upload/download do cliente) a uma % do plano, em kbit/s. */
 export function fupQueueLimit(uploadMbps: number, downloadMbps: number, percent: number): string {
   const k = (mbps: number) => Math.max(1, Math.round(mbps * 10 * percent));
@@ -366,7 +448,8 @@ function sameQueueTime(actual: string | null, desired: string): boolean {
       const match = /^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(time);
       return match && match[0] ? Number(match[1] ?? 0) * 86400 + Number(match[2] ?? 0) * 3600 + Number(match[3] ?? 0) * 60 + Number(match[4] ?? 0) : NaN;
     });
-    return { times, days };
+    // O RouterOS reordena os dias (`sat,sun` volta como `sun,sat`): compara-se o conjunto.
+    return { times, days: [...days].sort() };
   };
   const left = normalize(actual), right = normalize(desired);
   return left.times.length === 2 && left.times.every((value, i) => value === right.times[i]) && left.days.join(',') === right.days.join(',');
@@ -392,8 +475,7 @@ export async function syncFupQueues(
   const ours = new Map(queues.filter((q) => !q.dynamic && q.name.startsWith(QUEUE_PREFIX)).map((q) => [q.name, q]));
   const clockZone = await readClockZone(deps.transport).catch(() => null);
   const summary: FupQueueSummary = { wanted: rows.length, added: 0, updated: 0, removed: 0, failed: 0, clockZone, clockMismatch: clockZone === null ? null : clockZone !== settings.fuso_horario };
-  const end = settings.janela_pico_fim === '00:00' ? '24:00' : settings.janela_pico_fim;
-  const time = block ? FUP_BLOCK_TIME : `${settings.janela_pico_inicio}:00-${end}:00,sun,mon,tue,wed,thu,fri,sat`;
+  const slots = fupQueueSlots(settings);
   if (rows.length === 0 && ours.size === 0) return summary;
   const online = new Set(rows.length ? (await listActive(deps.transport)).map((session) => session.name) : []);
   const audit = (row: Pick<FupServiceUsage, 'serviceId' | 'clientName' | 'username' | 'planName'> | null, serviceId: number, before: string | null, after: string | null) =>
@@ -409,30 +491,32 @@ export async function syncFupQueues(
 
   const keep = new Set<string>();
   for (const row of rows) {
-    const name = `${QUEUE_PREFIX}${row.serviceId}`;
     const target = `<pppoe-${row.username}>`;
     const limit = block ? FUP_BLOCK_LIMIT : fupQueueLimit(row.uploadMbps!, row.downloadMbps!, row.peakPercent);
-    const existing = ours.get(name);
-    if (existing) {
-      keep.add(name);
-      if ((!sameQueueLimit(existing.maxLimit, limit) || !sameQueueTime(existing.time, time)) && await attempt(() => patchSimpleQueue(deps.transport, existing.id, { 'max-limit': limit, time }))) {
-        summary.updated++;
-        audit(row, row.serviceId, existing.maxLimit, limit);
+    for (const { suffix, time } of slots) {
+      const name = `${QUEUE_PREFIX}${row.serviceId}${suffix}`;
+      const existing = ours.get(name);
+      if (existing) {
+        keep.add(name);
+        if ((!sameQueueLimit(existing.maxLimit, limit) || !sameQueueTime(existing.time, time)) && await attempt(() => patchSimpleQueue(deps.transport, existing.id, { 'max-limit': limit, time }))) {
+          summary.updated++;
+          audit(row, row.serviceId, existing.maxLimit, limit);
+        }
+        continue;
       }
-      continue;
-    }
-    if (!online.has(row.username)) continue;
-    const dynamic = queues.find((q) => q.dynamic && q.name === target);
-    if (!dynamic?.id) continue;
-    if (await attempt(() => addSimpleQueue(deps.transport, { name, target, maxLimit: limit, time, comment: `${QUEUE_COMMENT}${row.serviceId}`, placeBefore: dynamic.id }))) {
-      summary.added++;
-      keep.add(name);
-      audit(row, row.serviceId, null, limit);
+      if (!online.has(row.username)) continue;
+      const dynamic = queues.find((q) => q.dynamic && q.name === target);
+      if (!dynamic?.id) continue;
+      if (await attempt(() => addSimpleQueue(deps.transport, { name, target, maxLimit: limit, time, comment: `${QUEUE_COMMENT}${row.serviceId}`, placeBefore: dynamic.id }))) {
+        summary.added++;
+        keep.add(name);
+        audit(row, row.serviceId, null, limit);
+      }
     }
   }
   for (const [name, queue] of ours) {
     if (keep.has(name)) continue;
-    const serviceId = Number(name.slice(QUEUE_PREFIX.length));
+    const serviceId = parseInt(name.slice(QUEUE_PREFIX.length), 10); // `34-fds` → 34
     if (await attempt(() => removeSimpleQueue(deps.transport, queue.id))) {
       summary.removed++;
       audit(null, serviceId, queue.maxLimit, null);

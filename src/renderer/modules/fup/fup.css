@@ -146,3 +146,35 @@
 /* Plafond do serviço: campo estreito, nunca a toda a largura. */
 .fup-plafond { display: flex; align-items: flex-end; gap: var(--space-2, 8px); margin-top: var(--space-3, 12px); }
 .fup-plafond .field { width: 14rem; max-width: 100%; }
+
+.fup-section {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.fup-section:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.fup-section-title {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-base);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.fup-topup-result {
+  margin: var(--space-2) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.fup-topup-form {
+  display: grid;
+  gap: var(--space-3);
+}
