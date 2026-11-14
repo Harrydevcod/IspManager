@@ -24,8 +24,8 @@ describe('uso justo no ecrã', () => {
     expect(usageTone(100.1, thresholds)).toBe('danger');
   });
 
-  test('GB em base 1024³, em pt-PT', () => {
-    expect(formatGb(1.5 * 1024 ** 3)).toBe('1,5 GB');
+  test('GB decimais (10⁹), em pt-PT', () => {
+    expect(formatGb(1.5e9)).toBe('1,5 GB');
   });
 
   test('por cliente: soma o consumo, fica com a maior % e marca limitado', () => {

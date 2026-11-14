@@ -8,10 +8,10 @@ import {
   runFupEngine, syncFupQueues, usagePercent, type FupEngineDeps
 } from './fup';
 import { collectClientUsage } from './client-usage';
-import { invalidateFupSettingsCache, readFupSettings, saveFupSettings } from './fup-settings';
+import { bytesPerGb, invalidateFupSettingsCache, readFupSettings, saveFupSettings } from './fup-settings';
 import type { RouterTransport } from './routeros';
 
-const GB = 1024 ** 3;
+const GB = 1e9;
 let db: Database.Database;
 let dataDir: string;
 let closeDatabaseForTests: () => void;
@@ -61,11 +61,16 @@ afterAll(() => {
 });
 
 describe('cálculos', () => {
-  test('GB em base 1024³ e percentagem da referência', () => {
+  test('GB decimais (10⁹) e percentagem da referência: 160,1 GB passam os 150', () => {
     expect(bytesToGb(GB * 1.5)).toBe(1.5);
     expect(usagePercent(80 * GB, 100)).toBe(80);
     expect(usagePercent(150 * GB, 100)).toBe(150);
     expect(usagePercent(10 * GB, 0)).toBe(0);
+    expect(Math.round(usagePercent(160.1e9, 150))).toBe(107);
+    // Com a unidade binária das Definições, os mesmos bytes ficam nos 99 %.
+    expect(bytesPerGb({ unidade_gb: 'BINARIO' })).toBe(1024 ** 3);
+    expect(bytesPerGb({ unidade_gb: 'DECIMAL' })).toBe(1e9);
+    expect(Math.round(usagePercent(160.1e9, 150, bytesPerGb({ unidade_gb: 'BINARIO' })))).toBe(99);
   });
 
   test('ciclo a partir do dia da ativação, do dia definido, e limitado a 28', () => {
@@ -310,4 +315,14 @@ test('aguarda a fila dinâmica antes de criar uma fila FUP', async () => {
   const result = await syncFupQueues(db, { transport, dryRun: false, now: peak('2026-10-20') });
   expect(result.added).toBe(0);
   expect(calls.some((request) => request.method === 'PUT' && request.path === '/queue/simple')).toBe(false);
+});
+
+describe('unidade de consumo nas Definições', () => {
+  test('aceita só DECIMAL ou BINARIO e o motor conta na unidade gravada', () => {
+    expect(() => saveFupSettings(db, { unidade_gb: 'TB' }, 'teste')).toThrow('Unidade inválida');
+    saveFupSettings(db, { unidade_gb: 'BINARIO' }, 'teste');
+    expect(readFupSettings(db).unidade_gb).toBe('BINARIO');
+    saveFupSettings(db, { unidade_gb: 'DECIMAL' }, 'teste');
+    expect(readFupSettings(db).unidade_gb).toBe('DECIMAL');
+  });
 });

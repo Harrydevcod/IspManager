@@ -12,6 +12,7 @@ type Preview = { current: Impact; candidate: Impact };
 const CHOICES: Record<string, Array<[string, string]>> = {
   canal_aviso: [['WHATSAPP', 'WhatsApp'], ['SMS', 'SMS']],
   acao_ao_limite: [['REDUZIR', 'Reduzir velocidade no pico'], ['BLOQUEAR', 'Bloquear ligação']],
+  unidade_gb: [['DECIMAL', 'GB decimais (1000³ bytes)'], ['BINARIO', 'GiB binários (1024³ bytes)']],
   dia_ciclo: [['ATIVACAO', 'Dia da ativação'], ...Array.from({ length: 28 }, (_, i) => [String(i + 1), `Dia ${i + 1}`] as [string, string])]
 };
 

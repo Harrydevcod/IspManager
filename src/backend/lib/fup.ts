@@ -6,7 +6,7 @@ import { enqueueWhatsapp } from './whatsapp-outbox';
 import { normalizeWhatsappPhone, whatsappChannelActive } from './whatsapp-provider';
 import { requestNetworkSync } from './network-sync';
 import { recordSystemAuditEntry } from './audit';
-import { effectivePeakPercent, effectiveReferenceGb, fupActionText, globalCycleDay, readFupSettings, type FupSettings } from './fup-settings';
+import { bytesPerGb, effectivePeakPercent, effectiveReferenceGb, fupActionText, globalCycleDay, readFupSettings, type FupSettings } from './fup-settings';
 import { addSimpleQueue, listActive, listSimpleQueues, patchSimpleQueue, readClockZone, removeSimpleQueue, type RouterTransport } from './routeros';
 
 /**
@@ -27,16 +27,15 @@ import { addSimpleQueue, listActive, listSimpleQueues, patchSimpleQueue, readClo
 export type FupState = 'NORMAL' | 'AVISO' | 'LIMITADO';
 export type FupEventKind = 'AVISO' | 'LIMITADO' | 'RESTAURADO';
 
-const GB = 1024 ** 3;
-
-export function bytesToGb(bytes: number): number {
-  return bytes / GB;
+// A unidade vem das Definições (bytesPerGb); por omissão GB decimais, como o Starlink.
+export function bytesToGb(bytes: number, perGb = 1e9): number {
+  return bytes / perGb;
 }
 
 /** Percentagem do consumo de referência; 0 se o plano não tem referência. */
-export function usagePercent(bytes: number, referenceGb: number): number {
+export function usagePercent(bytes: number, referenceGb: number, perGb = 1e9): number {
   if (!(referenceGb > 0)) return 0;
-  return (bytes / (referenceGb * GB)) * 100;
+  return (bytes / (referenceGb * perGb)) * 100;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -164,11 +163,12 @@ export function loadFupUsage(db: Database.Database, now: Date, settings: FupSett
   // Bloqueado não tem janela: está limitado a toda a hora.
   const peak = settings.acao_ao_limite === 'BLOQUEAR' || inPeakWindow(now, settings);
   const globalDay = globalCycleDay(settings);
+  const perGb = bytesPerGb(settings);
   return rows.map((row) => {
     const cycle = cycleFor(today, cycleStartDay(row.cycleDay, row.activationDate, globalDay));
     const { down, up } = usage.get(row.serviceId, cycle.start, cycle.end) as { down: number; up: number };
     const referenceGb = effectiveReferenceGb(row.serviceReferenceGb, row.referenceGb, settings);
-    const percent = usagePercent(down + up, referenceGb);
+    const percent = usagePercent(down + up, referenceGb, perGb);
     const state = stateFromEvents((events.all(row.serviceId, cycle.period) as Array<{ kind: string }>).map((e) => e.kind));
     const limited = row.status === 'active' && referenceGb > 0 && state === 'LIMITADO'
       && percent >= settings.limiar_limitacao_percent;
@@ -272,7 +272,7 @@ export function runFupEngine(db: Database.Database, now: Date, deps: FupEngineDe
     let state = row.state;
     for (const kind of nextTransitions(state, row.percent, settings)) {
       const detail = {
-        de: state, para: kind, percent: Math.round(row.percent), gb: Number(bytesToGb(row.totalBytes).toFixed(1)), // a casa que o ecrã mostra: sem duplo arredondamento
+        de: state, para: kind, percent: Math.round(row.percent), gb: Number(bytesToGb(row.totalBytes, bytesPerGb(settings)).toFixed(1)), // a casa que o ecrã mostra: sem duplo arredondamento
         referenciaGb: row.referenceGb, plano: row.planName, ciclo: `${row.cycle.start}..${row.cycle.end}`
       };
       if (!log(row, kind, row.cycle.period, detail)) continue;
@@ -280,7 +280,7 @@ export function runFupEngine(db: Database.Database, now: Date, deps: FupEngineDe
       // `whatsapp_opt_out` é a única recusa de avisos do ISPM: vale para os dois canais.
       if (kind === 'AVISO' && row.phone && !row.whatsappOptOut) {
         const body = renderFupMessage(settings.mensagem_aviso, {
-          nome: row.clientName, percent: Math.round(row.percent), gb: bytesToGb(row.totalBytes).toFixed(1).replace('.', ','),
+          nome: row.clientName, percent: Math.round(row.percent), gb: bytesToGb(row.totalBytes, bytesPerGb(settings)).toFixed(1).replace('.', ','),
           referencia: row.referenceGb, inicio: settings.janela_pico_inicio, fim: settings.janela_pico_fim, pico: row.peakPercent,
           acao: fupActionText(settings, row.peakPercent)
         });

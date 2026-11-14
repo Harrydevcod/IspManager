@@ -34,7 +34,7 @@ beforeAll(async () => {
   db.prepare(`INSERT INTO clients (id, client_code, full_name) VALUES (1, 'C0001', 'Joao Silva')`).run();
   db.prepare(`INSERT INTO services (id, client_id, plan_id, monthly_value_cve, status, pppoe_username, fup_cycle_day) VALUES (1, 1, 1, 2500, 'active', 'skn001', 1)`).run();
   const today = new Date(Date.now() - 3_600_000).toISOString().slice(0, 10);
-  db.prepare('INSERT INTO client_traffic_daily (day, service_id, rx_bytes, tx_bytes) VALUES (?, 1, ?, ?)').run(today, 5 * 1024 ** 3, 80 * 1024 ** 3);
+  db.prepare('INSERT INTO client_traffic_daily (day, service_id, rx_bytes, tx_bytes) VALUES (?, 1, ?, ?)').run(today, 5e9, 80e9);
 
   const setup = await app.inject({ method: 'POST', url: '/api/auth/setup', payload: { username: 'admin', password: 'supersecret', fullName: 'Admin' } });
   admin = setup.json().token;
@@ -65,7 +65,7 @@ test('o operador lê a configuração, o histórico e o consumo, mas não grava'
   expect((await call(operator, 'PUT', '/api/fup/settings', { changes: { limiar_aviso_percent: '70' } })).statusCode).toBe(403);
   expect((await call(operator, 'POST', '/api/fup/settings/limiar_aviso_percent/reset')).statusCode).toBe(403);
   const usage = (await call(operator, 'GET', '/api/fup/services/1')).json();
-  expect(usage.usage).toMatchObject({ username: 'skn001', downloadBytes: 80 * 1024 ** 3, uploadBytes: 5 * 1024 ** 3, state: 'NORMAL' });
+  expect(usage.usage).toMatchObject({ username: 'skn001', downloadBytes: 80e9, uploadBytes: 5e9, state: 'NORMAL' });
   expect(Math.round(usage.usage.percent)).toBe(85);
 });
 

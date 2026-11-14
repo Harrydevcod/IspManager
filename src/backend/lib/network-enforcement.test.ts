@@ -1102,7 +1102,7 @@ describe('FUP na reconciliação', () => {
     addService(db, 1, 'active', 'joao-1');
     db.prepare("UPDATE services SET activation_date = '2026-03-10' WHERE id = 1").run();
     db.prepare('UPDATE internet_plans SET fup_reference_gb = 100 WHERE id = 1').run();
-    db.prepare('INSERT INTO client_traffic_daily (day, service_id, rx_bytes, tx_bytes) VALUES (?, 1, 0, ?)').run('2026-10-12', 120 * 1024 ** 3);
+    db.prepare('INSERT INTO client_traffic_daily (day, service_id, rx_bytes, tx_bytes) VALUES (?, 1, 0, ?)').run('2026-10-12', 120e9);
     db.prepare("INSERT INTO fup_events (service_id, period, kind) VALUES (1, '2026-10', 'AVISO'), (1, '2026-10', 'LIMITADO')").run();
     return db;
   };

@@ -4,6 +4,8 @@ import { detectAdminNetwork, isOffNetwork, offNetworkReason } from './admin-netw
 import { createTransport, isRouterConfigured, readClientUsageData, readRouterConfig, type RouterTransport } from './routeros';
 import { refreshUsageCounterForJob, usageCounterDisk } from './usage-counter';
 import { counterDelta, utcDay } from './wan-usage';
+import { cycleFor, cycleStartDay, dayInZone } from './fup';
+import { globalCycleDay, readFupSettings } from './fup-settings';
 
 export type ClientUsageCounter = { name: string; rxTotal: number; txTotal: number; rxLast: number; txLast: number; uptime: string };
 
@@ -60,21 +62,37 @@ export async function runClientUsageIfDue() {
   return { ...await collectClientUsage(db, transport), ...counter };
 }
 
-export function loadClientUsage(db: Database.Database, today = utcDay()) {
-  return db.prepare(`SELECT s.id AS serviceId, c.client_code AS clientCode, c.full_name AS clientName,
-      COALESCE(p.name, 'Sem plano') AS plan,
+/**
+ * Consumo de cada serviço PPPoE no ciclo do uso justo: o mesmo "hoje" (fuso das
+ * Definições) e o mesmo início de ciclo de loadFupUsage, para o total da tabela
+ * bater com a percentagem ao lado.
+ */
+export function loadClientUsage(db: Database.Database, now = new Date()) {
+  const settings = readFupSettings(db);
+  const today = dayInZone(now, settings.fuso_horario);
+  const globalDay = globalCycleDay(settings);
+  const services = db.prepare(`SELECT s.id AS serviceId, s.status AS status, c.client_code AS clientCode, c.full_name AS clientName,
+      COALESCE(p.name, 'Sem plano') AS plan, s.fup_cycle_day AS cycleDay, s.activation_date AS activationDate,
       COALESCE(d.tx_bytes, 0) AS todayDownBytes, COALESCE(d.rx_bytes, 0) AS todayUpBytes,
-      COALESCE(m.tx_bytes, 0) AS monthDownBytes, COALESCE(m.rx_bytes, 0) AS monthUpBytes,
       EXISTS(SELECT 1 FROM client_usage_state st WHERE st.pppoe_name = s.pppoe_username) AS measured
     FROM services s JOIN clients c ON c.id = s.client_id
     LEFT JOIN internet_plans p ON p.id = s.plan_id
     LEFT JOIN client_traffic_daily d ON d.service_id = s.id AND d.day = ?
-    LEFT JOIN (SELECT service_id, SUM(rx_bytes) AS rx_bytes, SUM(tx_bytes) AS tx_bytes
-      FROM client_traffic_daily WHERE day >= ? AND day <= ? GROUP BY service_id) m ON m.service_id = s.id
-    WHERE (s.status = 'active' OR m.service_id IS NOT NULL) AND s.pppoe_username IS NOT NULL AND s.pppoe_username <> ''
-    ORDER BY monthDownBytes + monthUpBytes DESC, c.client_code, s.id`)
-    .all(today, `${today.slice(0, 7)}-01`, today) as Array<{
-      serviceId: number; clientCode: string; clientName: string; plan: string;
-      todayDownBytes: number; todayUpBytes: number; monthDownBytes: number; monthUpBytes: number; measured: number;
+    WHERE s.pppoe_username IS NOT NULL AND s.pppoe_username <> ''`).all(today) as Array<{
+      serviceId: number; status: string; clientCode: string; clientName: string; plan: string;
+      cycleDay: number | null; activationDate: string | null;
+      todayDownBytes: number; todayUpBytes: number; measured: number;
     }>;
+  const cycleUsage = db.prepare(`SELECT COUNT(*) AS days, COALESCE(SUM(tx_bytes), 0) AS down, COALESCE(SUM(rx_bytes), 0) AS up
+    FROM client_traffic_daily WHERE service_id = ? AND day >= ? AND day <= ?`);
+  return services
+    .map(({ status, cycleDay, activationDate, ...row }) => {
+      const cycle = cycleFor(today, cycleStartDay(cycleDay, activationDate, globalDay));
+      const usage = cycleUsage.get(row.serviceId, cycle.start, cycle.end) as { days: number; down: number; up: number };
+      return { ...row, cycleStart: cycle.start, cycleDownBytes: usage.down, cycleUpBytes: usage.up, keep: status === 'active' || usage.days > 0 };
+    })
+    .filter((row) => row.keep)
+    .map(({ keep: _keep, ...row }) => row)
+    .sort((a, b) => (b.cycleDownBytes + b.cycleUpBytes) - (a.cycleDownBytes + a.cycleUpBytes)
+      || a.clientCode.localeCompare(b.clientCode) || a.serviceId - b.serviceId);
 }

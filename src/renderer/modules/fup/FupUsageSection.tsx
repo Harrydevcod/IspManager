@@ -4,7 +4,7 @@ import { Badge, Button, Field, Message, useToast } from '../../components';
 import { useAuth } from '../../lib/auth';
 import { formatPtDate, formatPtDateTime } from '../../lib/format';
 import {
-  EVENT_LABEL, STATE_LABEL, formatGb, fupRequest, usageTone,
+  EVENT_LABEL, STATE_LABEL, formatGb, fupRequest, gbLabel, perGbOf, usageTone,
   type FupEvent, type FupThresholds, type FupUsage
 } from './fup-api';
 import './fup.css';
@@ -83,6 +83,7 @@ function PlafondField({ usage, onSaved }: { usage: FupUsage; onSaved: (usage: Fu
 /** Consumo do ciclo, estado FUP e eventos, na ficha do serviço. */
 export function FupUsageSection({ serviceId }: { serviceId: number }) {
   const [detail, setDetail] = useState<Detail | null>(null);
+  const perGb = perGbOf(detail?.thresholds);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -128,15 +129,15 @@ export function FupUsageSection({ serviceId }: { serviceId: number }) {
       {usage && detail && (
         usage.referenceGb <= 0 ? (
           <Message tone="neutral">
-            {usage.serviceReferenceGb === 0 ? 'Serviço isento de plafond.' : 'Sem plafond.'} Consumo do ciclo: {formatGb(usage.totalBytes)}.
+            {usage.serviceReferenceGb === 0 ? 'Serviço isento de plafond.' : 'Sem plafond.'} Consumo do ciclo: {formatGb(usage.totalBytes, perGb)}.
           </Message>
         ) : (
           <>
             <FupUsageBar percent={usage.percent} thresholds={detail.thresholds} label="Consumo do ciclo" />
             <dl className="fup-figures">
-              <div><dt>Total</dt><dd>{formatGb(usage.totalBytes)} <small>de {usage.referenceGb} GB</small></dd></div>
-              <div><dt>Download</dt><dd>{formatGb(usage.downloadBytes)}</dd></div>
-              <div><dt>Upload</dt><dd>{formatGb(usage.uploadBytes)}</dd></div>
+              <div><dt>Total</dt><dd>{formatGb(usage.totalBytes, perGb)} <small>de {usage.referenceGb} {gbLabel(perGb)}</small></dd></div>
+              <div><dt>Download</dt><dd>{formatGb(usage.downloadBytes, perGb)}</dd></div>
+              <div><dt>Upload</dt><dd>{formatGb(usage.uploadBytes, perGb)}</dd></div>
               {detail.thresholds.acao === 'BLOQUEAR'
                 ? <div><dt>Ao limite</dt><dd>Bloqueado</dd></div>
                 : <div><dt>Velocidade no pico</dt><dd>{usage.peakPercent}% <small>quando limitado</small></dd></div>}
@@ -156,7 +157,7 @@ export function FupUsageSection({ serviceId }: { serviceId: number }) {
               <Badge tone={event.kind === 'RESTAURADO' ? 'success' : event.kind === 'LIMITADO' ? 'danger' : 'warn'}>{EVENT_LABEL[event.kind]}</Badge>
               <span>{formatPtDateTime(event.createdAt)}</span>
               {typeof event.detail?.percent === 'number' && typeof event.detail.gb === 'number' && (
-                <small>{event.detail.percent}% · {formatGb(event.detail.gb * 1024 ** 3)}</small>
+                <small>{event.detail.percent}% · {formatGb(event.detail.gb * perGb, perGb)}</small>
               )}
             </li>
           ))}
