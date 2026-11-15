@@ -59,6 +59,22 @@ test('rede estável: diz que não há nada a assinalar e até onde viu', async (
   await act(async () => root.unmount());
 });
 
+const dish: NonNullable<NetworkHealth['starlink']> = {
+  name: 'Starlink Mini', software: '2026.10.31', readAt: '2026-11-15 20:00:00', error: null, uptimeSeconds: 229_019,
+  latencyMs: 20.4, latencyP95Ms: 29.6, dropRate: 0.0057, obstructed: false, fractionObstructed: 0, alerts: [], outageCause: null,
+  cuts: 8, cutSeconds: 15, longCuts: [{ startedAt: '2026-11-15 10:52:05', durationMs: 12_400, cause: 'Sem sinal do satélite' }]
+};
+
+test('a antena Starlink: o link numa linha e o corte longo à frente de tudo', async () => {
+  const { host, root } = await mount({ ...conflict, starlink: dish });
+  expect(host.textContent).toContain('Starlink Mini 20 ms · perda 0,6 % · 8 cortes, 15 s');
+  const first = healthSituations({ ...conflict, starlink: { ...dish, alerts: ['Cabo de rede lento'] } }).slice(0, 2);
+  expect(first.map((row) => [row.title, row.count])).toEqual([['Starlink Mini cortou a ligação', 1], ['Cabo de rede lento', null]]);
+  expect(first[0].detail).toMatch(/^Último às \d{2}:\d{2} · 12,4 s · Sem sinal do satélite$/);
+  expect(healthSituations({ ...calm, starlink: { ...dish, longCuts: [], outageCause: 'Obstrução' } })[0]).toMatchObject({ tone: 'danger', title: 'Starlink Mini sem ligação' });
+  await act(async () => root.unmount());
+});
+
 test('com o diário em disco, o cartão diz que o registo do router é contínuo', async () => {
   const { host, root } = await mount({ ...calm, routerJournal: true });
   expect(host.querySelector('.network-health-seen')!.textContent).toContain('registo contínuo no cartão');

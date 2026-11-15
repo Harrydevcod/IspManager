@@ -1,4 +1,5 @@
 import { authFetch } from '../../lib/auth';
+import { formatPtDateTime } from '../../lib/format';
 
 export type FindingKind = 'antena_em_baixo' | 'ip_duplicado' | 'laco_rede' | 'dhcp_intruso' | 'dhcp_ciclo' | 'pppoe_queda' | 'login_falhado'
   | 'config_externa' | 'porta_oscila' | 'router_reiniciou' | 'syn_flood' | 'vpn_falha';
@@ -32,6 +33,15 @@ export type NetworkHealth = {
   /** O retrato que o router tirou no início da última queda em bloco (script `ispm-queda`). */
   dropCapture?: DropCapture | null;
   diary: DiaryEntry[];
+  /** A antena Starlink por dentro; `null` se nunca foi lida. */
+  starlink?: StarlinkHealth | null;
+};
+export type DishCut = { startedAt: string; durationMs: number; cause: string };
+export type StarlinkHealth = {
+  name: string; software: string; readAt: string; error: string | null; uptimeSeconds: number;
+  latencyMs: number | null; latencyP95Ms: number | null; dropRate: number | null;
+  obstructed: boolean; fractionObstructed: number; alerts: string[]; outageCause: string | null;
+  cuts: number; cutSeconds: number; longCuts: DishCut[];
 };
 export type DropCapture = { at: string; hosts: Array<{ host: string; deviceName: string | null; mac: string; arp: string; port: string }> };
 
@@ -200,6 +210,7 @@ export type Situation = { key: string; tone: 'danger' | 'warn' | 'neutral'; titl
 export function healthSituations(health: NetworkHealth): Situation[] {
   const seenByRouter = new Set(health.findings.filter((row) => row.kind === 'antena_em_baixo').map((row) => row.subject));
   return [
+    ...starlinkSituations(health.starlink ?? null),
     ...health.downNow.filter((row) => row.kind === 'backbone').map((row): Situation => ({
       key: `down:${row.id}`, tone: 'danger', title: `${row.name} em baixo`, detail: row.ipAddress, count: null
     })),
@@ -231,6 +242,34 @@ export function healthSituations(health: NetworkHealth): Situation[] {
       key: `client:${row.id}`, tone: 'neutral', title: `${row.name} sem resposta`, detail: `${row.ipAddress} · equipamento de cliente`, count: null
     }))
   ];
+}
+
+const hourOf = (utc: string) => formatPtDateTime(utc).slice(-5);
+const secondsOf = (ms: number) => `${(ms / 1000).toLocaleString('pt-PT', { maximumFractionDigits: 1 })} s`;
+
+/** A antena Starlink primeiro: com ela em baixo, nada do resto da rede chega à internet. */
+function starlinkSituations(dish: StarlinkHealth | null): Situation[] {
+  if (!dish) return [];
+  const last = dish.longCuts[0];
+  return [
+    ...(dish.outageCause ? [{ key: 'dish:down', tone: 'danger' as const, title: `${dish.name} sem ligação`, detail: dish.outageCause, count: null }] : []),
+    ...(last ? [{
+      key: 'dish:cuts', tone: 'warn' as const, title: `${dish.name} cortou a ligação`,
+      detail: `Último às ${hourOf(last.startedAt)} · ${secondsOf(last.durationMs)} · ${last.cause}`, count: dish.longCuts.length
+    }] : []),
+    ...(dish.obstructed ? [{ key: 'dish:obstructed', tone: 'warn' as const, title: `${dish.name} obstruída`, detail: 'Algo tapa o céu à antena', count: null }] : []),
+    ...dish.alerts.map((alert): Situation => ({ key: `dish:${alert}`, tone: 'warn', title: alert, detail: dish.name, count: null }))
+  ];
+}
+
+/** "Starlink Mini 20 ms · perda 0,6 % · 7 cortes, 3 s": o estado do link numa linha. */
+export function starlinkLine(dish: StarlinkHealth): string {
+  const parts = [
+    dish.latencyMs === null ? null : `${Math.round(dish.latencyMs)} ms`,
+    dish.dropRate === null ? null : `perda ${(dish.dropRate * 100).toLocaleString('pt-PT', { maximumFractionDigits: 1 })} %`,
+    dish.cuts === 0 ? 'sem cortes' : `${dish.cuts} ${dish.cuts === 1 ? 'corte' : 'cortes'}, ${dish.cutSeconds} s`
+  ].filter(Boolean);
+  return `${dish.name} ${parts.join(' · ')}`;
 }
 
 /**

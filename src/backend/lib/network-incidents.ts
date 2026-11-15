@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { loadProbeEvents, loadProbeStates, readProbeConfig, secondsBetween, sqlNow } from './network-probe';
+import { loadDishIncidents } from './starlink-dish';
 
 export type IncidentStatus = 'open' | 'resolved' | 'unknown';
 
@@ -7,7 +8,8 @@ export type IncidentClient = { clientId: number; clientCode: string; clientName:
 
 export type NetworkIncident = {
   key: string;
-  backboneDeviceId: number;
+  /** `null` num corte da antena Starlink: cai a saída de toda a rede, não um equipamento do backbone. */
+  backboneDeviceId: number | null;
   name: string;
   zone: string | null;
   status: IncidentStatus;
@@ -19,6 +21,8 @@ export type NetworkIncident = {
   /** Equipamentos que só recebem sinal através deste. */
   draggedDevices: string[];
   clients: IncidentClient[];
+  /** A causa que a antena Starlink deu ao corte; `null` nas quedas do backbone. */
+  cause: string | null;
 };
 
 type Outage = { deviceId: number; startedAt: string; endedAt: string | null; status: IncidentStatus };
@@ -124,10 +128,34 @@ export function loadIncidents(db: Database.Database, windowDays = 30, now = sqlN
         endedAt: outage.endedAt,
         durationSeconds: outage.status === 'unknown' ? null : secondsBetween(outage.startedAt, outage.endedAt ?? now),
         draggedDevices: closure.filter((id) => id !== outage.deviceId).map((id) => devices.get(id)!.name).sort(),
-        clients: [...clients.values()].sort((a, b) => a.clientCode.localeCompare(b.clientCode))
+        clients: [...clients.values()].sort((a, b) => a.clientCode.localeCompare(b.clientCode)),
+        cause: null
       };
-    })
-    .sort((a, b) => Number(b.status === 'open') - Number(a.status === 'open') || b.startedAt.localeCompare(a.startedAt));
+    });
+
+  // Um corte da antena deixa toda a gente sem internet: afeta todos os clientes com serviço ativo.
+  const dishCuts = loadDishIncidents(db, windowStart);
+  const everyone = dishCuts.length === 0 ? [] : db.prepare(`
+    SELECT DISTINCT c.id AS clientId, c.client_code AS clientCode, c.full_name AS clientName, c.zone
+    FROM services s JOIN clients c ON c.id = s.client_id WHERE s.status = 'active' ORDER BY c.client_code
+  `).all() as IncidentClient[];
+  for (const cut of dishCuts) {
+    incidents.push({
+      key: `starlink:${cut.dishId}:${cut.startedAt}`,
+      backboneDeviceId: null,
+      name: cut.name,
+      zone: null,
+      status: 'resolved',
+      startedAt: cut.startedAt,
+      endedAt: cut.endedAt,
+      durationSeconds: Math.round(cut.durationMs / 1000),
+      draggedDevices: [],
+      clients: everyone,
+      cause: cut.cause
+    });
+  }
+
+  incidents.sort((a, b) => Number(b.status === 'open') - Number(a.status === 'open') || b.startedAt.localeCompare(a.startedAt));
 
   return { probeEnabled: config.enabled, windowDays, incidents };
 }

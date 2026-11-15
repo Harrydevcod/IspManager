@@ -156,7 +156,8 @@ test('as vistas são abas a sério: o painel tem nome e as setas mudam de vista'
 
 test('formatDuration', () => {
   expect(formatDuration(null)).toBe('Desconhecida');
-  expect(formatDuration(20)).toBe('1 min');
+  expect(formatDuration(20)).toBe('20 s');
+  expect(formatDuration(90)).toBe('2 min');
   expect(formatDuration(3 * 3600 + 5 * 60)).toBe('3 h 05 min');
   expect(formatDuration(26 * 3600)).toBe('1 d 2 h');
 });

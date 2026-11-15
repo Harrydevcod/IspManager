@@ -928,6 +928,27 @@ export const wanTrafficDaily = sqliteTable('wan_traffic_daily', {
   source: text('source').notNull().default('counted')
 }, (table) => [primaryKey({ columns: [table.day, table.interface] })]);
 
+// Leituras e cortes da antena Starlink (migration 0106).
+export const starlinkDishSamples = sqliteTable('starlink_dish_samples', {
+  at: text('at').primaryKey(),
+  dishId: text('dish_id').notNull(),
+  latencyMs: real('latency_ms'),
+  dropRate: real('drop_rate').notNull(),
+  downlinkBps: real('downlink_bps').notNull(),
+  uplinkBps: real('uplink_bps').notNull(),
+  obstructed: integer('obstructed').notNull().default(0),
+  fractionObstructed: real('fraction_obstructed').notNull().default(0),
+  alerts: text('alerts').notNull().default(''),
+  outageCause: text('outage_cause')
+});
+
+export const starlinkDishOutages = sqliteTable('starlink_dish_outages', {
+  dishId: text('dish_id').notNull(),
+  startedAt: text('started_at').notNull(),
+  durationMs: integer('duration_ms').notNull(),
+  cause: text('cause').notNull()
+}, (table) => [primaryKey({ columns: [table.dishId, table.startedAt] })]);
+
 export const wanCounterState = sqliteTable('wan_counter_state', {
   interface: text('interface').primaryKey(),
   rxLast: integer('rx_last').notNull(),
