@@ -384,6 +384,15 @@ describe('definicoes do MikroTik', () => {
 
 describe('credenciais nas definicoes', () => {
 
+  test('guarda os modelos Meta e preserva-os quando um formulário antigo omite os campos', async () => {
+    const saved = await app.inject({ method: 'PUT', url: '/api/settings', payload: { ...validSettings, metaBusinessAccountId: '123', metaTemplateInvoice: 'fatura|pt_PT' } });
+    expect(saved.statusCode).toBe(200);
+    const legacy = await app.inject({ method: 'PUT', url: '/api/settings', payload: validSettings });
+    expect(legacy.statusCode).toBe(200);
+    const read = await app.inject({ method: 'GET', url: '/api/settings' });
+    expect(read.json()).toMatchObject({ metaBusinessAccountId: '123', metaTemplateInvoice: 'fatura|pt_PT' });
+  });
+
   // O que o backend consegue usar, não os bytes: no ficheiro está cifrado.
   function stored(key: SecretKey): string {
     return readSecret(db, key);

@@ -5,11 +5,16 @@ import {
   fallbackWhatsappInvoiceReadyTemplate,
   fallbackWhatsappOverdueTemplate,
   fallbackWhatsappReceiptTemplate,
+  fallbackWhatsappReminderTemplate,
   fallbackWhatsappSuspensionTemplate,
   fallbackWhatsappTemplate,
+  fallbackWhatsappWarningTemplate,
   fallbackWhatsappTestTemplate
 } from '../../../shared/whatsapp';
+import { numberMetaVariables } from '../../../shared/whatsapp';
 import { type SettingsFormState, type ToggleField, type UpdateField } from './settingsForm';
+import { useState } from 'react';
+import { authFetch } from '../../lib/auth';
 
 type TestMessage = { tone: 'neutral' | 'success' | 'error'; text: string } | null;
 
@@ -30,6 +35,26 @@ type WhatsappTabProps = {
 
 export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, onSecretDraftChange = () => undefined, metaSecretDraft = { editing: false }, onMetaSecretDraftChange = () => undefined, onToggle, testPhone, onTestPhoneChange, testMessage, testSending, onSendTest }: WhatsappTabProps) {
   const usesMeta = form.whatsappProvider === 'meta-cloud';
+  const [models, setModels] = useState<Array<{ name: string; language: string; body: string }>>([]);
+  const [modelStatus, setModelStatus] = useState('');
+  async function loadModels() {
+    setModelStatus('A consultar modelos aprovados…');
+    try {
+      const response = await authFetch('http://127.0.0.1:3001/api/whatsapp/meta/templates');
+      const result = await response.json() as { templates?: Array<{ name: string; language: string; body: string }>; error?: string };
+      if (!response.ok || !Array.isArray(result.templates)) throw new Error(result.error || 'Não foi possível consultar os modelos.');
+      setModels(result.templates);
+      setModelStatus(result.templates.length ? 'Modelos aprovados carregados.' : 'Não há modelos de texto aprovados.');
+    } catch (error) {
+      setModels([]);
+      setModelStatus(error instanceof TypeError ? 'Sem ligação ao ISPM. Tente novamente.' : error instanceof Error ? error.message : 'Não foi possível consultar os modelos.');
+    }
+  }
+  async function copyForMeta(text: string) {
+    const numbered = numberMetaVariables(text);
+    try { await navigator.clipboard.writeText(numbered); setModelStatus('Texto copiado para criar o modelo na Meta.'); }
+    catch { setModelStatus('Não foi possível copiar. Selecione e copie o texto do campo.'); }
+  }
   // Nunca os dois canais desligados: sem o SMS ligado, o WhatsApp não se desliga.
   const lastChannel = form.whatsappChannelEnabled && !form.smsCompanionEnabled;
   return (
@@ -61,6 +86,8 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
           />
           <SecretField label="Token de acesso Meta" configured={Boolean(form.metaAccessTokenConfigured)}
             draft={metaSecretDraft} onDraftChange={(next) => { onMetaSecretDraftChange(next); onUpdate('metaAccessToken', next.editing ? next.value : ''); }} />
+          <Field label="ID da conta WhatsApp Business" inputMode="numeric" autoComplete="off" value={form.metaBusinessAccountId}
+            onChange={(event) => onUpdate('metaBusinessAccountId', event.target.value.replace(/\D/g, ''))} />
         </>
       ) : (
         <>
@@ -87,9 +114,43 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
       />
       {usesMeta && (
         <Message tone="neutral">
-          Só entrega a quem escreveu à empresa nas últimas 24 horas.
+          Texto livre só chega a quem escreveu à empresa nas últimas 24 horas. Para avisos iniciados pela empresa, escolha modelos aprovados.
         </Message>
       )}
+      {usesMeta && <div className="wide-field">
+        <p>Guarde o ID da conta e o token antes de consultar os modelos.</p>
+        <Button variant="secondary" onClick={() => { void loadModels(); }}>Consultar modelos aprovados</Button>
+        {modelStatus && <p role="status">{modelStatus}</p>}
+        {([
+          ['metaTemplateInvoice', 'Fatura emitida'],
+          ['metaTemplateReceipt', 'Recibo'],
+          ['metaTemplateReminder', 'Lembrete antes do vencimento'],
+          ['metaTemplateOverdue', 'Fatura em atraso'],
+          ['metaTemplateWarning', 'Aviso de atraso prolongado'],
+          ['metaTemplateSuspension', 'Aviso de suspensão']
+        ] as const).map(([field, label]) => {
+          const selected = form[field] || '';
+          const chosen = models.find((model) => `${model.name}|${model.language}` === selected);
+          const text = field === 'metaTemplateOverdue' ? form.whatsappOverdueTemplate : field === 'metaTemplateSuspension' ? form.whatsappSuspensionTemplate : field === 'metaTemplateInvoice' ? form.whatsappInvoiceReadyTemplate : field === 'metaTemplateReceipt' ? form.whatsappReceiptTemplate : field === 'metaTemplateReminder' ? form.whatsappReminderTemplate : form.whatsappWarningTemplate;
+          const sourceFields = text?.match(/\{[a-z_]+\}/gi)?.length ?? 0;
+          const modelSlots = chosen ? Array.from(chosen.body.matchAll(/\{\{([^{}]+)\}\}/g), (match) => match[1]) : [];
+          const modelFields = modelSlots.length;
+          const invalidSequence = modelSlots.some((slot, index) => slot !== String(index + 1));
+          const differentText = Boolean(chosen && numberMetaVariables(text) !== chosen.body.replace(/\r\n/g, '\n').trim());
+          return <div key={field}>
+            <Select label={label} value={selected} onChange={(event) => onUpdate(field, event.target.value)}>
+              <option value="">Sem modelo — texto livre</option>
+              {selected && !chosen && <option value={selected}>{selected} (consulte para verificar)</option>}
+              {models.map((model) => <option key={`${model.name}|${model.language}`} value={`${model.name}|${model.language}`}>{model.name} · {model.language}</option>)}
+            </Select>
+            {chosen && <p>{chosen.body}</p>}
+            {chosen && (invalidSequence || (text !== null && sourceFields !== modelFields)) && <Message tone="error">Os campos não correspondem ou não estão numerados pela ordem. O aviso não será enviado até corrigir.</Message>}
+            {chosen && !invalidSequence && sourceFields === modelFields && differentText && <Message tone="error">O texto aprovado difere do texto do ISPM. O aviso não será enviado até corrigir.</Message>}
+            {text !== null && <Button variant="ghost" size="sm" onClick={() => { void copyForMeta(text); }}>Copiar texto para a Meta</Button>}
+          </div>;
+        })}
+        <p>Os campos do texto do ISPM são preenchidos pela ordem em que aparecem. Se não corresponderem ao modelo aprovado, o aviso não é enviado.</p>
+      </div>}
       <Toggle
         title="Enviar avisos de atraso automaticamente"
         description="Só com consentimento dos clientes."
@@ -147,10 +208,24 @@ export function WhatsappTab({ form, onUpdate, secretDraft = { editing: false }, 
         onUpdate={onUpdate}
       />
       <TemplateField
+        field="whatsappReminderTemplate"
+        label="Lembrete antes do vencimento"
+        value={form.whatsappReminderTemplate}
+        recommended={fallbackWhatsappReminderTemplate}
+        onUpdate={onUpdate}
+      />
+      <TemplateField
         field="whatsappOverdueTemplate"
         label="Fatura em atraso"
         value={form.whatsappOverdueTemplate}
         recommended={fallbackWhatsappOverdueTemplate}
+        onUpdate={onUpdate}
+      />
+      <TemplateField
+        field="whatsappWarningTemplate"
+        label="Aviso de atraso prolongado"
+        value={form.whatsappWarningTemplate}
+        recommended={fallbackWhatsappWarningTemplate}
         onUpdate={onUpdate}
       />
       <TemplateField

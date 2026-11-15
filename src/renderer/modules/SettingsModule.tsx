@@ -15,6 +15,7 @@ import {
   renderWhatsappMessage,
   sendWhatsapp
 } from '../lib/whatsapp';
+import { fallbackWhatsappReminderTemplate, fallbackWhatsappWarningTemplate } from '../../shared/whatsapp';
 import {
   fallbackSmsInvoiceIssuedTemplate,
   fallbackSmsPaymentOverdueTemplate,
@@ -122,6 +123,8 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     whatsappInvoiceReadyTemplate: fallbackWhatsappInvoiceReadyTemplate,
     whatsappReceiptTemplate: fallbackWhatsappReceiptTemplate,
     whatsappOverdueTemplate: fallbackWhatsappOverdueTemplate,
+    whatsappReminderTemplate: fallbackWhatsappReminderTemplate,
+    whatsappWarningTemplate: fallbackWhatsappWarningTemplate,
     whatsappSuspensionTemplate: fallbackWhatsappSuspensionTemplate,
     whatsappChannelEnabled: true,
     autoNoticesEnabled: false,
@@ -130,6 +133,13 @@ export function SettingsModule({ scope = 'all', initialTab }: SettingsModuleProp
     ultraMsgToken: '',
     whatsappProvider: 'ultramsg',
     metaPhoneNumberId: '',
+    metaBusinessAccountId: '',
+    metaTemplateReminder: '',
+    metaTemplateOverdue: '',
+    metaTemplateWarning: '',
+    metaTemplateSuspension: '',
+    metaTemplateInvoice: '',
+    metaTemplateReceipt: '',
     metaAccessToken: '',
     smsCompanionEnabled: false,
     smsAutoNoticesEnabled: false,

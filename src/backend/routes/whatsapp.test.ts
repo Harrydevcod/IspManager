@@ -88,6 +88,68 @@ function stubUltraMsg(status: number, body: unknown) {
 }
 
 describe('WhatsApp outbox routes', () => {
+  test('payment invoice text sends the selected approved template for that customer', async () => {
+    const set = db.prepare('INSERT INTO app_settings (key,value) VALUES (?, ?)');
+    set.run('whatsappProvider', 'meta-cloud'); set.run('metaPhoneNumberId', '1055'); set.run('metaBusinessAccountId', '123');
+    set.run('metaTemplateInvoice', 'fatura|pt_PT'); set.run('whatsappInvoiceReadyTemplate', 'Olá {nome}');
+    writeSecret(db, 'metaAccessToken', 'token');
+    insertOverdueClient({ code: 'A', name: 'Ana', phone: '9911111', daysOverdue: 5 });
+    const payment = db.prepare('SELECT id FROM payments').get() as { id: number };
+    const calls: RequestInit[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      calls.push(init);
+      return { ok: true, text: async () => JSON.stringify(calls.length === 1 ? { data: [{ name: 'fatura', language: 'pt_PT', status: 'APPROVED', components: [{ type: 'BODY', text: 'Olá {{1}}' }] }] } : { messages: [{ id: 'wamid.2' }] }) };
+    }));
+    const response = await app.inject({ method: 'POST', url: '/api/whatsapp/send', payload: { phone: '9911111', body: 'Olá Ana', paymentId: payment.id, event: 'invoice' } });
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(String(calls[1].body))).toMatchObject({ type: 'template', template: { name: 'fatura', components: [{ parameters: [{ text: 'Ana' }] }] } });
+  });
+  test('does not send a payment model to a different phone', async () => {
+    const set = db.prepare('INSERT INTO app_settings (key,value) VALUES (?, ?)');
+    set.run('whatsappProvider', 'meta-cloud'); set.run('metaPhoneNumberId', '1055'); set.run('metaTemplateInvoice', 'fatura|pt_PT');
+    writeSecret(db, 'metaAccessToken', 'token');
+    insertOverdueClient({ code: 'A', name: 'Ana', phone: '9911111', daysOverdue: 5 });
+    const payment = db.prepare('SELECT id FROM payments').get() as { id: number };
+    const fetchStub = vi.fn(); vi.stubGlobal('fetch', fetchStub);
+    const response = await app.inject({ method: 'POST', url: '/api/whatsapp/send', payload: { phone: '9922222', body: 'Olá Ana', paymentId: payment.id, event: 'invoice' } });
+    expect(response.statusCode).toBe(409);
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+  test('does not send a model when displayed payment text is stale', async () => {
+    const set = db.prepare('INSERT INTO app_settings (key,value) VALUES (?, ?)');
+    set.run('whatsappProvider', 'meta-cloud'); set.run('metaPhoneNumberId', '1055'); set.run('metaTemplateInvoice', 'fatura|pt_PT');
+    set.run('whatsappInvoiceReadyTemplate', 'Olá {nome}'); writeSecret(db, 'metaAccessToken', 'token');
+    insertOverdueClient({ code: 'A', name: 'Ana', phone: '9911111', daysOverdue: 5 });
+    const payment = db.prepare('SELECT id FROM payments').get() as { id: number };
+    const fetchStub = vi.fn(); vi.stubGlobal('fetch', fetchStub);
+    const response = await app.inject({ method: 'POST', url: '/api/whatsapp/send', payload: { phone: '9911111', body: 'Olá outro cliente', paymentId: payment.id, event: 'invoice' } });
+    expect(response.statusCode).toBe(409);
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+  test('manual overdue notice uses its selected Meta template', async () => {
+    const set = db.prepare('INSERT INTO app_settings (key,value) VALUES (?, ?)');
+    set.run('whatsappProvider', 'meta-cloud'); set.run('metaPhoneNumberId', '1055'); set.run('metaBusinessAccountId', '123');
+    set.run('metaTemplateOverdue', 'aviso|pt_PT'); set.run('whatsappOverdueTemplate', 'Caro {nome}');
+    writeSecret(db, 'metaAccessToken', 'token');
+    insertOverdueClient({ code: 'A', name: 'Ana', phone: '9911111', daysOverdue: 5 });
+    const calls: RequestInit[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      calls.push(init);
+      return { ok: true, text: async () => JSON.stringify(calls.length === 1 ? { data: [{ name: 'aviso', language: 'pt_PT', status: 'APPROVED', components: [{ type: 'BODY', text: 'Caro {{1}}' }] }] } : { messages: [{ id: 'wamid.1' }] }) };
+    }));
+    const response = await app.inject({ method: 'POST', url: '/api/payments/notify-overdue', payload: { noticeType: 'overdue' } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().sent).toBe(1);
+    expect(JSON.parse(String(calls[1].body))).toMatchObject({ type: 'template', template: { name: 'aviso', components: [{ parameters: [{ text: 'Ana' }] }] } });
+  });
+  test('lists Meta templates with saved business account and secret', async () => {
+    db.prepare(`INSERT INTO app_settings (key,value) VALUES ('metaBusinessAccountId','123')`).run();
+    writeSecret(db, 'metaAccessToken', 'token');
+    stubUltraMsg(200, { data: [{ name: 'aviso', language: 'pt_PT', status: 'APPROVED', components: [{ type: 'BODY', text: 'Olá {{1}}' }] }] });
+    const response = await app.inject({ method: 'GET', url: '/api/whatsapp/meta/templates' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ templates: [{ name: 'aviso', language: 'pt_PT', body: 'Olá {{1}}' }] });
+  });
   test('POST /api/whatsapp/send enqueues and processes the row', async () => {
     stubUltraMsg(200, { sent: 'true', id: 'msg-1' });
     db.prepare(`INSERT INTO app_settings (key,value,updated_at) VALUES ('ultraMsgInstanceId','i1',datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run();

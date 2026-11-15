@@ -35,6 +35,8 @@ export type SettingsFormState = {
   whatsappInvoiceReadyTemplate: string;
   whatsappReceiptTemplate: string;
   whatsappOverdueTemplate: string;
+  whatsappReminderTemplate: string;
+  whatsappWarningTemplate: string;
   whatsappSuspensionTemplate: string;
   whatsappChannelEnabled: boolean;
   autoNoticesEnabled: boolean;
@@ -45,6 +47,13 @@ export type SettingsFormState = {
   ultraMsgTokenConfigured?: boolean;
   whatsappProvider: 'ultramsg' | 'meta-cloud';
   metaPhoneNumberId: string;
+  metaBusinessAccountId: string;
+  metaTemplateReminder: string;
+  metaTemplateOverdue: string;
+  metaTemplateWarning: string;
+  metaTemplateSuspension: string;
+  metaTemplateInvoice: string;
+  metaTemplateReceipt: string;
   /** Só um token novo; vazio = manter o guardado. */
   metaAccessToken: string;
   metaAccessTokenConfigured?: boolean;

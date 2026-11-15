@@ -304,6 +304,14 @@ export function PaymentsModule({
     );
   }
 
+  function whatsappPaymentEvent(payment: PaymentRow): { paymentId: number; event: 'invoice' | 'receipt' | 'overdue' | 'suspension' } | undefined {
+    const status = effectivePaymentStatus(payment);
+    const daysOverdue = Math.max(0, Math.floor((Date.now() - new Date(`${payment.dueDate}T00:00:00`).getTime()) / 86_400_000));
+    if (status === 'paid') return { paymentId: payment.id, event: 'receipt' };
+    if (status === 'overdue') return { paymentId: payment.id, event: daysOverdue >= suspensionNoticeFrom ? 'suspension' : 'overdue' };
+    return payment.invoiceNumber ? { paymentId: payment.id, event: 'invoice' } : undefined;
+  }
+
   async function submitWhatsapp(payment: PaymentRow) {
     if (!normalizeWhatsappPhone(payment.clientPhone)) {
       setMessage('Cliente sem telefone valido para WhatsApp.');
@@ -311,7 +319,7 @@ export function PaymentsModule({
     }
     setSubmitting(true);
     try {
-      await sendWhatsapp(payment.clientPhone, whatsappMessageFor(payment));
+      await sendWhatsapp(payment.clientPhone, whatsappMessageFor(payment), whatsappPaymentEvent(payment));
       if (payment.status !== 'paid') {
         markReminderSent(payment.id);
       }
@@ -783,7 +791,7 @@ export function PaymentsModule({
     setBulkSubmitting(true);
     try {
       const result = await runBulk(targets, async (payment) => {
-        await sendWhatsapp(payment.clientPhone, whatsappMessageFor(payment));
+        await sendWhatsapp(payment.clientPhone, whatsappMessageFor(payment), whatsappPaymentEvent(payment));
         markReminderSent(payment.id);
       });
       setWhatsappTick((tick) => tick + 1);

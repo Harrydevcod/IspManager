@@ -3,12 +3,14 @@ import { getSqliteDatabase } from '../db/database';
 import { isSystemClient, SYSTEM_CLIENT_ERROR } from './system-client';
 import { renderPaymentDocumentPdf } from './documents';
 import { enqueueSmsFallbackForWhatsapp } from './sms-notices';
+import { z } from 'zod';
 import {
   configuredWhatsappProviderLabel,
   resolveWhatsappProvider,
   whatsappChannelEnabled,
   type WhatsappProvider,
-  type WhatsappSendResult
+  type WhatsappSendResult,
+  type WhatsappTemplate
 } from './whatsapp-provider';
 
 export type WhatsappOutboxEntry = {
@@ -20,6 +22,7 @@ export type WhatsappOutboxEntry = {
   clientId?: number | null;
   origin?: 'manual' | 'auto';
   maxAttempts?: number;
+  template?: WhatsappTemplate;
 };
 
 type PdfRenderer = (paymentId: number, kind: 'invoice' | 'receipt') => Promise<{ buffer: Buffer; filename: string }>;
@@ -38,6 +41,7 @@ const defaultDeps: OutboxDeps = {
 
 // Exponential backoff (minutes) per attempt number (1-based).
 const BACKOFF_MINUTES = [1, 5, 15, 60, 180];
+const templateSchema = z.object({ name: z.string().min(1).max(512), language: z.string().min(1).max(32), params: z.array(z.string().min(1).max(1024)).max(100) });
 function backoffMinutes(attempt: number): number {
   return BACKOFF_MINUTES[attempt - 1] ?? 360;
 }
@@ -63,8 +67,8 @@ export function enqueueWhatsapp(entry: WhatsappOutboxEntry): number {
   // A coluna `provider` fica com o valor por omissão: quem a decide é o envio,
   // porque é o fornecedor ativo nesse momento que fica dono da mensagem.
   const info = db.prepare(`
-    INSERT INTO whatsapp_outbox (to_phone, kind, body, doc_payment_id, doc_kind, client_id, origin, max_attempts)
-    VALUES (@toPhone, @kind, @body, @docPaymentId, @docKind, @clientId, @origin, @maxAttempts)
+    INSERT INTO whatsapp_outbox (to_phone, kind, body, doc_payment_id, doc_kind, client_id, origin, max_attempts, template_json)
+    VALUES (@toPhone, @kind, @body, @docPaymentId, @docKind, @clientId, @origin, @maxAttempts, @templateJson)
   `).run({
     toPhone: entry.toPhone,
     kind: entry.kind,
@@ -73,7 +77,8 @@ export function enqueueWhatsapp(entry: WhatsappOutboxEntry): number {
     docKind: entry.docKind ?? null,
     clientId: entry.clientId ?? null,
     origin: entry.origin ?? 'manual',
-    maxAttempts: entry.maxAttempts ?? 5
+    maxAttempts: entry.maxAttempts ?? 5,
+    templateJson: entry.template ? JSON.stringify(entry.template) : null
   });
   return info.lastInsertRowid as number;
 }
@@ -82,6 +87,7 @@ type OutboxRow = {
   id: number; to_phone: string; kind: 'text' | 'document'; body: string | null;
   doc_payment_id: number | null; doc_kind: 'invoice' | 'receipt' | null;
   attempts: number; max_attempts: number;
+  template_json: string | null;
 };
 
 export type OutboxRunResult = { skipped?: string; sent: number; failed: number; retried: number };
@@ -122,7 +128,7 @@ async function drainOutbox(
   const db = getSqliteDatabase();
   const nowIso = now.toISOString().replace('T', ' ').slice(0, 19);
   const rows = db.prepare(`
-    SELECT id, to_phone, kind, body, doc_payment_id, doc_kind, attempts, max_attempts
+    SELECT id, to_phone, kind, body, doc_payment_id, doc_kind, attempts, max_attempts, template_json
     FROM whatsapp_outbox
     WHERE status = 'pending'
       AND (next_attempt_at IS NULL OR next_attempt_at <= @nowIso)
@@ -150,7 +156,11 @@ async function drainOutbox(
         const { buffer, filename } = await renderPdf(row.doc_payment_id, row.doc_kind);
         result = await provider.sendDocument({ to: row.to_phone, document: buffer, filename, caption: row.body ?? '' });
       } else {
-        result = await provider.sendText({ to: row.to_phone, body: row.body ?? '' });
+        if (row.template_json && provider.id !== 'meta-cloud') {
+          markFailed.run('Modelo Meta requer o fornecedor Meta Cloud API', row.id); failed += 1; continue;
+        }
+        const template = row.template_json ? templateSchema.parse(JSON.parse(row.template_json)) : undefined;
+        result = await provider.sendText({ to: row.to_phone, body: row.body ?? '', ...(template ? { template } : {}) });
       }
     } catch (err) {
       // Rendering/permanent error — do not retry forever.
