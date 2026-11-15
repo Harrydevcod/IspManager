@@ -4,6 +4,16 @@ Todas as versões notáveis do ISPM. O formato segue o [Keep a Changelog](https:
 
 **Numeração — a partir da 2.0:** as versões dizem-se com **dois números** (2.0, 2.1, 2.2). Não há versões de correção: um problema urgente sai como a minor seguinte, não como 2.0.1. O `package.json`, o `latest.yml` e as comparações do auto-update continuam a usar três números com o terceiro sempre a zero (`2.0.0`, `2.1.0`), porque o [Versionamento Semântico](https://semver.org/lang/pt-BR/) exige três e uma versão inválida parte a atualização automática em silêncio. Onde o número é lido por pessoas — este ficheiro, a etiqueta, o título da release e o ecrã Sobre — usam-se dois.
 
+## [2.72](https://github.com/Harrydevcod/IspManager/releases/tag/v2.72.0) — 2026-11-15
+
+### Adicionado
+- **A antena Starlink por dentro.** Com o PC na rede de gestão, o ISPM lê a antena de minuto a minuto: latência, perda, obstrução, alertas e cada corte que ela registou.
+  - **Saúde da rede:** uma linha com o estado do link (por exemplo "Starlink Mini 20 ms · perda 0,6 % · 7 cortes, 3 s"). A antena sem ligação pinta o cartão de crítico; um corte de 5 segundos ou mais, obstrução ou um alerta da antena pintam-no de atenção.
+  - **Incidentes › Quedas:** um corte de 5 segundos ou mais entra na lista com a causa dada pela antena e os clientes afetados. Os micro-cortes contam só no resumo.
+
+### Alterado
+- Uma queda com menos de um minuto mostra-se em segundos ("12 s", em vez de "1 min").
+
 ## [2.71](https://github.com/Harrydevcod/IspManager/releases/tag/v2.71.0) — 2026-11-15
 
 **Antes de atualizar:** para usar o relé, instale também a app ISPM SMS 0.12 no telemóvel. Sem relé configurado, tudo funciona como até aqui.
