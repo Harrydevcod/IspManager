@@ -85,7 +85,9 @@ export function UpcomingSuspensionsCard({ onOpenPayment }: { onOpenPayment: (pay
     { header: 'Cliente', cell: (row) => <strong>{row.clientName}</strong>, sortValue: (row) => row.clientName },
     {
       header: 'Corte',
-      cell: (row) => <Badge tone={row.cutDate <= today ? 'danger' : 'warn'}>{cutLabel(row.cutDate, today)}</Badge>,
+      cell: (row) => row.held
+        ? <span title={`Sem aviso entregue. Corte previsto: ${cutLabel(row.cutDate, today).toLowerCase()}`}><Badge tone="neutral">Retido</Badge></span>
+        : <Badge tone={row.cutDate <= today ? 'danger' : 'warn'}>{cutLabel(row.cutDate, today)}</Badge>,
       sortValue: (row) => row.cutDate
     },
     { header: 'Fatura', cell: (row) => row.invoiceNumber ?? `#${row.paymentId}`, sortValue: (row) => row.invoiceNumber ?? '' },

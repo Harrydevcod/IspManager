@@ -71,12 +71,13 @@ export function Dashboard({
     ? (((summary?.paidMonthCve || 0) - previousMonthRevenue) / previousMonthRevenue) * 100
     : null;
   const attentionCount = summary
-    ? summary.overduePayments + summary.openWorkOrders
+    ? summary.overduePayments + summary.openWorkOrders + (summary.stalledNotices || 0)
     : 0;
   const criticalOverdueCve = summary?.criticalOverdue.reduce((acc, overdue) => acc + overdue.amountCve, 0) || 0;
   const briefNeedsAttention = attentionCount > 0;
   const alertSignals = summary
     ? [
+        { label: 'Avisos por entregar', value: summary.stalledNotices || 0, tone: 'danger' },
         { label: 'Atraso', value: summary.overduePayments, tone: 'danger' },
         { label: 'Ordens', value: summary.openWorkOrders, tone: 'info' }
       ].filter((signal) => signal.value > 0)

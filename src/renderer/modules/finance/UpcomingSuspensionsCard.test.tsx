@@ -18,8 +18,8 @@ beforeEach(() => {
   posted = null;
   rows = [{
     serviceId: 11, clientId: 10, clientName: 'Junior Taxista', clientCode: 'C0010', phone: '5915971',
-    paymentId: 153, invoiceNumber: 'FT-2026-00153', dueDate: '2026-09-29', balanceCve: 1000, cutDate: '2026-11-04',
-    sms: { status: 'failed', at: '2026-11-03 08:12:18' }, whatsapp: { status: 'failed', at: '2026-11-03 08:12:18' }
+    paymentId: 153, invoiceNumber: 'FT-2026-00153', dueDate: '2026-09-29', balanceCve: 1000, cutDate: '2026-11-04', held: false,
+    sms: { status: 'sent', at: '2026-11-03 08:12:18' }, whatsapp: { status: 'failed', at: '2026-11-03 08:12:18' }
   }];
   vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -54,6 +54,13 @@ test('mostra quem vai ser cortado, com o estado real de cada canal', async () =>
   expect(host.textContent).toContain('Junior Taxista');
   expect(host.textContent).toContain('Hoje'); // corte já vencido: é hoje
   expect(host.textContent).toContain('Falhou');
+});
+
+test('sem aviso entregue, o corte aparece retido em vez de ter data', async () => {
+  rows = [{ ...rows[0], held: true, sms: { status: 'failed', at: '2026-11-03 08:12:18' } }];
+  const host = await mount();
+  expect(host.textContent).toContain('Retido');
+  expect(host.textContent).not.toContain('Hoje');
 });
 
 test('"Avisar por SMS" põe o aviso de suspensão na fila do telemóvel', async () => {

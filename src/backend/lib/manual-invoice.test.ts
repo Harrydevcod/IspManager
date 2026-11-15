@@ -260,7 +260,8 @@ describe('é uma dívida como as outras', () => {
 
     const preview = autoSuspension.loadAutoSuspensionPreview(db);
 
-    expect(preview.candidates.map((row) => row.paymentId)).toEqual([onService.paymentId]);
+    // Sem aviso entregue o corte espera, mas a fatura está em condição de corte.
+    expect(preview.heldUnnotified.map((row) => row.paymentId)).toEqual([onService.paymentId]);
   });
 });
 

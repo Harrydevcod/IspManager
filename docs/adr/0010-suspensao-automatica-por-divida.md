@@ -25,6 +25,12 @@ engano quem pagou, ou transformar um erro de dados num corte em massa.
   vencidas há mais que `autoSuspensionGraceDays`.
 - Qualquer crédito positivo na conta do cliente bloqueia o corte automático e
   manda o caso para revisão.
+- Só se corta quem foi avisado dessa fatura: um SMS `sent` (vencido ou aviso de corte) ou um
+  WhatsApp `sent`/`delivered`/`read` (vencido, aviso ou suspensão). Conta o estado da fila de
+  envio, não o registo de avisos. Sem aviso entregue o serviço fica ativo, aparece como "Retido"
+  em "Suspensões a chegar" e não entra nas travas; a suspensão manual continua disponível.
+  Medido a 2026-11-15: de 6 a 13/11 nenhum SMS saiu e o WhatsApp nunca entregou nada, com o
+  corte ligado. Um dia de avisos falhados sem nenhuma entrega é achado vermelho no Painel.
 - Antes de cada corte LIVE, dívida, crédito e estado são revalidados.
 - Antes de mudar qualquer serviço para `suspended` em LIVE, o backend faz uma leitura REST real ao MikroTik. Se o router estiver inacessível (LAN/VPN em baixo, timeout, rota ausente, credenciais recusadas), não muda o estado do serviço, regista `auto_suspension_router_unreachable` e deixa o candidato para a passagem seguinte.
 - Há duas travas: máximo absoluto por passagem e percentagem máxima da base PPPoE

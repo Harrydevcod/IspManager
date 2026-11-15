@@ -12,6 +12,7 @@ import {
 } from './routeros';
 import { businessDay, cutDate, sqlBusinessDate, SQL_BUSINESS_TODAY } from '../../shared/business-day';
 import type { NoticeDelivery, UpcomingSuspension } from '../../shared/upcoming-suspension';
+import { noticeDelivered } from './notice-delivery';
 import { planProtectedSql } from './payment-plans';
 
 let lastGate: 'ok' | 'offsite' | 'foreign' | 'unreachable' | null = null;
@@ -52,8 +53,11 @@ export type AutoSuspensionPreview = AutoSuspensionConfig & {
   controlledActiveServices: number;
   candidates: SuspensionCandidate[];
   blockedByCredit: SuspensionCandidate[];
+  /** Em condição de corte mas sem nenhum aviso entregue: ficam ativos até um chegar. */
+  heldUnnotified: SuspensionCandidate[];
   candidateCount: number;
   blockedByCreditCount: number;
+  heldUnnotifiedCount: number;
   candidatePercent: number;
   guardTriggered: boolean;
   guardReason: string | null;
@@ -240,8 +244,10 @@ export function loadAutoSuspensionPreview(db: Database.Database): AutoSuspension
 
   // Um crédito ainda não abatido pode liquidar a fatura. Por segurança, o
   // corte automático espera revisão em vez de presumir onde aplicar o crédito.
-  const candidates = raw.filter((row) => escudosToCentavos(row.creditCve) <= 0);
+  const withoutCredit = raw.filter((row) => escudosToCentavos(row.creditCve) <= 0);
   const blockedByCredit = raw.filter((row) => escudosToCentavos(row.creditCve) > 0);
+  const candidates = withoutCredit.filter((row) => noticeDelivered(db, row.paymentId));
+  const heldUnnotified = withoutCredit.filter((row) => !candidates.includes(row));
   const controlledActiveServices = activeControlledCount(db);
   const guard = guardFor(
     candidates.length,
@@ -255,8 +261,10 @@ export function loadAutoSuspensionPreview(db: Database.Database): AutoSuspension
     controlledActiveServices,
     candidates,
     blockedByCredit,
+    heldUnnotified,
     candidateCount: candidates.length,
     blockedByCreditCount: blockedByCredit.length,
+    heldUnnotifiedCount: heldUnnotified.length,
     candidatePercent: guard.percent,
     guardTriggered: guard.triggered,
     guardReason: guard.reason
@@ -298,6 +306,7 @@ export function loadUpcomingSuspensions(db: Database.Database, horizonDays = 7, 
         dueDate: row.dueDate,
         balanceCve: row.balanceCve,
         cutDate: cutDate(row.dueDate, grace, today),
+        held: !noticeDelivered(db, row.paymentId),
         sms: (lastSms.get(row.paymentId) as NoticeDelivery | undefined) ?? null,
         whatsapp: (lastWhatsapp.get(row.paymentId) as NoticeDelivery | undefined) ?? null
       };
@@ -389,7 +398,9 @@ export async function runAutomaticSuspension(
       simulated: 0,
       applied: 0,
       revalidatedOut: 0,
-      reason: 'Nenhum serviço elegível para suspensão'
+      reason: preview.heldUnnotifiedCount > 0
+        ? `${preview.heldUnnotifiedCount} em condição de corte sem aviso entregue: corte retido`
+        : 'Nenhum serviço elegível para suspensão'
     };
   }
 

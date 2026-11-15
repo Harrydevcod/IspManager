@@ -6,6 +6,7 @@ import { INSTALLED_UNITS_SQL, landedCostSql } from './capex';
 import { buildProposals, dismissalKey, type ProposalKind } from './discovery-reconcile';
 import { loadPppoeCallers, loadRegisteredDevices, loadSeenHosts } from './network-discovery';
 import { jobHealth } from './jobRuns';
+import { stalledNotices } from './notice-delivery';
 import { loadNetworkStatus } from './network-probe';
 import { balanceSqlExpr, overdueSqlPredicate } from './payments';
 import { formatPtDateTime, parseDate } from '../../shared/date';
@@ -1004,15 +1005,13 @@ function loadMessaging(db: Database.Database, settings: Settings, from: string):
     FROM sms_outbox
   `).get({ from }) as Record<string, number>;
 
-  const pairing = db.prepare(`
-    SELECT paired_at AS pairedAt, revoked_at AS revokedAt FROM sms_companion_pairing WHERE id = 1
-  `).get() as { pairedAt: string | null; revokedAt: string | null } | undefined;
-
   // Canal desligado nas Definições: as falhas antigas são história, não alerta.
   const whatsappEnabled = settings.whatsappChannelEnabled !== 'false';
   const blocked = whatsappEnabled && providerBlocked(lastFailure?.lastError ?? null);
   const smsEnabled = settings.smsCompanionEnabled === 'true';
-  const smsPaired = Boolean(pairing?.pairedAt && !pairing.revokedAt);
+  // O pareamento é o endereço do telemóvel mais a chave selada (a mesma condição de quem envia).
+  // A tabela `sms_companion_pairing` nunca foi escrita: lida daqui, dizia sempre "sem emparelhamento".
+  const smsPaired = Boolean(settings.smsCompanionBaseUrl?.trim() && settings.smsCompanionPairingKey?.trim());
 
   const findings: OperationsFinding[] = [];
   if (blocked) {
@@ -1038,6 +1037,16 @@ function loadMessaging(db: Database.Database, settings: Settings, from: string):
       severity: 'red',
       title: 'Sem canal alternativo',
       detail: 'Com o WhatsApp em baixo e o companion SMS desligado ou não emparelhado, não há forma automática de avisar um cliente.'
+    });
+  }
+
+  const stalled = stalledNotices(db);
+  if (stalled) {
+    findings.push({
+      code: 'messaging.nothing-delivered',
+      severity: 'red',
+      title: 'Nenhum aviso entregue nas últimas 24 horas',
+      detail: `${stalled.failed} falhado(s) e nenhum entregue.${stalled.smsError ? ` SMS: "${stalled.smsError.slice(0, 120)}".` : ''} O corte automático espera por um aviso entregue.`
     });
   }
 
